@@ -122,3 +122,8 @@ See the full [tutorial](docs/tutorial.md) for more details.
   build/sbt generate
   ``` 
   This will regenerate the OpenAPI data models in the UC server and data models + APIs in the client SDK.
+
+### Using more recent JDKs
+
+The build script [checks for a lower bound on the JDK](./build.sbt#L14) but the [current SBT version](./project/build.properties)
+imposes an upper bound. Please check the [JDK compatibility](https://docs.scala-lang.org/overviews/jdk-compatibility/overview.html) documentation for more information
