@@ -1,0 +1,48 @@
+#!/bin/bash
+
+SCRIPT_DIR="$(dirname "$(readlink -f "$0")")"
+ROOT_DIR="$(dirname "$SCRIPT_DIR")"
+
+run_sbt() {
+  SBT_COMMAND="$ROOT_DIR/build/sbt -info clean package"
+  echo "Running SBT to generate CLI JAR: $SBT_COMMAND"
+  $SBT_COMMAND || exit
+}
+
+CLI_TARGET_DIR="$ROOT_DIR/examples/cli/target"
+CLI_JAR=$(find "$CLI_TARGET_DIR" -name "unitycatalog-cli-*.jar" | head -n 1)
+if [ -z "$CLI_JAR" ]; then
+    echo "CLI JAR not found starting with 'unitycatalog-cli-*' in the target directory '$CLI_TARGET_DIR'."
+    run_sbt
+fi
+
+CLI_CLASSPATH_FILE=$(find "$CLI_TARGET_DIR" -name "classpath" | head -n 1)
+if [ -z "$CLI_CLASSPATH_FILE" ]; then
+    echo "No classpath file found in the target directory '$CLI_TARGET_DIR'."
+    run_sbt
+fi
+
+
+# Function to properly quote arguments
+quote_arg() {
+    local arg="$1"
+    # Escape spaces in the argument
+    arg="\"${arg//\"/\\\"}\""
+    echo "$arg"
+}
+
+# Iterate over all arguments and quote them properly
+quoted_args=()
+for arg in "$@"; do
+    quoted_args+=("$(quote_arg "$arg")")
+done
+
+# Join quoted arguments into a single string
+quoted_args_str="${quoted_args[*]}"
+
+# Print the quoted arguments for debugging
+# echo "Quoted arguments: $quoted_args_str"
+
+CLI_JAVA_COMMAND="java -cp $(cat "$CLI_CLASSPATH_FILE") io.unitycatalog.cli.UnityCatalogCli"
+# echo "Running command: $CLI_JAVA_COMMAND"
+eval $CLI_JAVA_COMMAND $quoted_args_str  || exit

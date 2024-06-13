@@ -1,0 +1,93 @@
+{
+  "format-version" : 1,
+  "table-uuid" : "55d4dc69-5b14-4483-bfc8-f33b80f99f99",
+  "location" : "file:/tmp/uniform_iceberg_table",
+  "last-updated-ms" : 1717798711566,
+  "last-column-id" : 2,
+  "schema" : {
+    "type" : "struct",
+    "schema-id" : 0,
+    "fields" : [ {
+      "id" : 1,
+      "name" : "x",
+      "required" : false,
+      "type" : "int"
+    }, {
+      "id" : 2,
+      "name" : "y",
+      "required" : false,
+      "type" : "string"
+    } ]
+  },
+  "current-schema-id" : 0,
+  "schemas" : [ {
+    "type" : "struct",
+    "schema-id" : 0,
+    "fields" : [ {
+      "id" : 1,
+      "name" : "x",
+      "required" : false,
+      "type" : "int"
+    }, {
+      "id" : 2,
+      "name" : "y",
+      "required" : false,
+      "type" : "string"
+    } ]
+  } ],
+  "partition-spec" : [ ],
+  "default-spec-id" : 0,
+  "partition-specs" : [ {
+    "spec-id" : 0,
+    "fields" : [ ]
+  } ],
+  "last-partition-id" : 999,
+  "default-sort-order-id" : 0,
+  "sort-orders" : [ {
+    "order-id" : 0,
+    "fields" : [ ]
+  } ],
+  "properties" : {
+    "schema.name-mapping.default" : "[ {\n  \"field-id\" : 1,\n  \"names\" : [ \"x\" ]\n}, {\n  \"field-id\" : 2,\n  \"names\" : [ \"y\" ]\n} ]",
+    "delta-timestamp" : "1717798710940",
+    "delta-version" : "1"
+  },
+  "current-snapshot-id" : 6116814959227549927,
+  "refs" : {
+    "main" : {
+      "snapshot-id" : 6116814959227549927,
+      "type" : "branch"
+    }
+  },
+  "snapshots" : [ {
+    "snapshot-id" : 6116814959227549927,
+    "timestamp-ms" : 1717798711520,
+    "summary" : {
+      "operation" : "append",
+      "added-data-files" : "2",
+      "added-records" : "2",
+      "added-files-size" : "2548",
+      "changed-partition-count" : "1",
+      "total-records" : "2",
+      "total-files-size" : "2548",
+      "total-data-files" : "2",
+      "total-delete-files" : "0",
+      "total-position-deletes" : "0",
+      "total-equality-deletes" : "0"
+    },
+    "manifest-list" : "file:/tmp/uniform_iceberg_table/metadata/snap-6116814959227549927-1-d8f2f281-068d-4926-98e2-cb46aa8bb449.avro",
+    "schema-id" : 0
+  } ],
+  "statistics" : [ ],
+  "snapshot-log" : [ {
+    "timestamp-ms" : 1717798711520,
+    "snapshot-id" : 6116814959227549927
+  } ],
+  "metadata-log" : [ {
+    "timestamp-ms" : 1717798708045,
+    "metadata-file" : "file:/tmp/uniform_iceberg_table/metadata/00000-dfec5831-d8c5-452f-9151-0b21f161ec77.metadata.json"
+  }, {
+    "timestamp-ms" : 1717798708455,
+    "metadata-file" : "file:/tmp/uniform_iceberg_table/metadata/00001-6b7ac64d-2bcb-42aa-9b30-b6d5b7bcd027.metadata.json"
+  } ]
+}

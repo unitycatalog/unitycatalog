@@ -1,0 +1,103 @@
+{
+  "format-version" : 1,
+  "table-uuid" : "a3f96e6c-825e-4b0d-97d3-58bf9fbf1bf3",
+  "location" : "file:/tmp/marksheet_uniform",
+  "last-updated-ms" : 1717800478262,
+  "last-column-id" : 3,
+  "schema" : {
+    "type" : "struct",
+    "schema-id" : 0,
+    "fields" : [ {
+      "id" : 1,
+      "name" : "id",
+      "required" : false,
+      "type" : "int"
+    }, {
+      "id" : 2,
+      "name" : "name",
+      "required" : false,
+      "type" : "string"
+    }, {
+      "id" : 3,
+      "name" : "marks",
+      "required" : false,
+      "type" : "int"
+    } ]
+  },
+  "current-schema-id" : 0,
+  "schemas" : [ {
+    "type" : "struct",
+    "schema-id" : 0,
+    "fields" : [ {
+      "id" : 1,
+      "name" : "id",
+      "required" : false,
+      "type" : "int"
+    }, {
+      "id" : 2,
+      "name" : "name",
+      "required" : false,
+      "type" : "string"
+    }, {
+      "id" : 3,
+      "name" : "marks",
+      "required" : false,
+      "type" : "int"
+    } ]
+  } ],
+  "partition-spec" : [ ],
+  "default-spec-id" : 0,
+  "partition-specs" : [ {
+    "spec-id" : 0,
+    "fields" : [ ]
+  } ],
+  "last-partition-id" : 999,
+  "default-sort-order-id" : 0,
+  "sort-orders" : [ {
+    "order-id" : 0,
+    "fields" : [ ]
+  } ],
+  "properties" : {
+    "schema.name-mapping.default" : "[ {\n  \"field-id\" : 1,\n  \"names\" : [ \"id\" ]\n}, {\n  \"field-id\" : 2,\n  \"names\" : [ \"name\" ]\n}, {\n  \"field-id\" : 3,\n  \"names\" : [ \"marks\" ]\n} ]",
+    "delta-timestamp" : "1717800477708",
+    "delta-version" : "1"
+  },
+  "current-snapshot-id" : 1249442174133317666,
+  "refs" : {
+    "main" : {
+      "snapshot-id" : 1249442174133317666,
+      "type" : "branch"
+    }
+  },
+  "snapshots" : [ {
+    "snapshot-id" : 1249442174133317666,
+    "timestamp-ms" : 1717800478206,
+    "summary" : {
+      "operation" : "append",
+      "added-data-files" : "1",
+      "added-records" : "15",
+      "added-files-size" : "2151",
+      "changed-partition-count" : "1",
+      "total-records" : "15",
+      "total-files-size" : "2151",
+      "total-data-files" : "1",
+      "total-delete-files" : "0",
+      "total-position-deletes" : "0",
+      "total-equality-deletes" : "0"
+    },
+    "manifest-list" : "file:/tmp/marksheet_uniform/metadata/snap-1249442174133317666-1-3d76bd5d-21ad-4512-9c62-35ddd82eceed.avro",
+    "schema-id" : 0
+  } ],
+  "statistics" : [ ],
+  "snapshot-log" : [ {
+    "timestamp-ms" : 1717800478206,
+    "snapshot-id" : 1249442174133317666
+  } ],
+  "metadata-log" : [ {
+    "timestamp-ms" : 1717800331996,
+    "metadata-file" : "file:/tmp/marksheet_uniform/metadata/00000-cb4b21f7-5602-4320-8584-e7c52cb9f4cf.metadata.json"
+  }, {
+    "timestamp-ms" : 1717800332330,
+    "metadata-file" : "file:/tmp/marksheet_uniform/metadata/00001-d766d6c3-71c1-4964-b76b-6e84ff0b0f8b.metadata.json"
+  } ]
+}

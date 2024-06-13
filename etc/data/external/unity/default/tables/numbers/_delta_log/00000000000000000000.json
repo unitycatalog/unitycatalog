@@ -1,0 +1,4 @@
+{"commitInfo":{"timestamp":1717718814945,"engineInfo":"Kernel-3.2.0/class io.unitycatalog.cli.UnityCatalogCli","operation":"CREATE TABLE","operationParameters":{"partitionBy":"[]"},"isBlindAppend":true,"txnId":"ffb649db-bdc7-4fd8-b5fd-be4d51791490"}}
+{"metaData":{"id":"be2b1d74-ef9d-4300-b4c3-d5cebebf8cbc","format":{"provider":"parquet","options":{}},"schemaString":"{\n  \"type\" : \"struct\",\n  \"fields\" : [ {\n  \"name\" : \"as_int\",\n  \"type\" : \"integer\",\n  \"nullable\" : true, \n  \"metadata\" : {}\n},\n{\n  \"name\" : \"as_double\",\n  \"type\" : \"double\",\n  \"nullable\" : true, \n  \"metadata\" : {}\n} ]\n}","partitionColumns":[],"createdTime":1717718814262,"configuration":{}}}
+{"protocol":{"minReaderVersion":1,"minWriterVersion":2}}
+{"add":{"path":"d1df15d1-33d8-45ab-ad77-465476e2d5cd-000.parquet","partitionValues":{},"size":804,"modificationTime":1717718814943,"dataChange":true}}

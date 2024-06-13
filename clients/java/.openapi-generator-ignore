@@ -1,0 +1,31 @@
+# Ignore documentation files
+docs/
+docs/**
+api-docs/
+api-docs/**
+api/**
+gradle/**
+README.md
+
+# Android manifest file
+src/main/AndroidManifest.xml
+
+# Ignore Gradle and Maven build files
+pom.xml
+build.gradle
+settings.gradle
+gradlew
+gradlew.bat
+build.sbt
+gradle.properties
+
+# Ignore git configuration files
+.gitignore
+.github/**
+git_push.sh
+
+# Travis CI configuration
+.travis.yml
+
+# Ignore generated tests
+src/test/java/**

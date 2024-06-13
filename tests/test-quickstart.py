@@ -1,0 +1,121 @@
+#!/usr/bin/env python3
+
+import subprocess
+import atexit
+import os
+import signal
+import sys
+import time
+
+commands_and_expected_output_strings = [
+    # catalogs
+    ("bin/uc catalog list", ["unity"]),
+
+    # tables
+    ("bin/uc schema list --catalog unity", ["default"]),
+
+    # tables
+    ("bin/uc table list --catalog unity --schema default", ["numbers", "marksheet", "MANAGED", "EXTERNAL"]),
+    ("bin/uc table get --full_name unity.default.numbers --output json", ["numbers", "as_int", "EXTERNAL"]),
+    ("bin/uc table read --full_name unity.default.numbers ", ["as_int"]),
+    (f"rm -rf /tmp/uc/myTable", []),
+    (f"bin/uc table create --full_name unity.default.myTable --columns \"col1 int, col2 double\" --storage_location /tmp/uc/myTable", ["myTable", "col"]),
+    ("bin/uc table write --full_name unity.default.myTable", [""]),
+    ("bin/uc table read --full_name unity.default.myTable", ["col1", "col2"]),
+
+    # volumes
+    ("bin/uc volume list --catalog unity --schema default --output jsonPretty", ["txt_files", "json_files"]),
+    ("bin/uc volume get --full_name unity.default.txt_files --output jsonPretty", ["txt_files", "MANAGED"]),
+    ("bin/uc volume get --full_name unity.default.json_files --output jsonPretty", ["json_files", "EXTERNAL"]),
+    ("bin/uc volume read --full_name unity.default.json_files", ["c.json", "d.json"]),
+    ("bin/uc volume read --full_name unity.default.txt_files", ["a.txt", "b.txt"]),
+    ("bin/uc volume read --full_name unity.default.json_files --path c.json", ["marks"]),
+    ("bin/uc volume read --full_name unity.default.json_files --path dir1", ["e.json"]),
+    (f"mkdir -p /tmp/uc/myVolume", []),
+    (f"cp etc/data/external/unity/default/volumes/json_files/c.json /tmp/uc/myVolume/", []),
+    ("bin/uc volume create --full_name unity.default.myVolume --storage_location /tmp/uc/myVolume", ["myVolume"]),
+    ("bin/uc volume read --full_name unity.default.myVolume", ["c.json"]),
+    ("bin/uc volume read --full_name unity.default.myVolume --path c.json", ["marks"]),
+    (f"rm -rf /tmp/uc/myVolume", []),
+
+    # functions
+    ("bin/uc function list --catalog unity --schema default --output jsonPretty", ["sum", "lowercase"]),
+    ("bin/uc function get --full_name unity.default.sum --output jsonPretty", ["sum", "x + y + z"]),
+    ("bin/uc function get --full_name unity.default.lowercase --output jsonPretty", ["lowercase", "lower()"]),
+    ("bin/uc function call --full_name unity.default.sum --input_params \"1,2,3\"", ["6"]),
+    ("bin/uc function create --full_name unity.default.myFunction --data_type INT --input_params \"a int, b int\" --def \"c=a*b\\nreturn c\" --output jsonPretty", ["myFunction", "a*b"]),
+    ("bin/uc function call --full_name unity.default.myFunction --input_params \"2,3\"", ["6"]),
+]
+
+def run_command_and_check_output(command, search_strings):
+    try:
+        # Run the command and capture the output
+        result = subprocess.run(command, shell=True, check=True, text=True, capture_output=True)
+        output = result.stdout
+        search_results = {s: s in output for s in search_strings}
+        return output, search_results
+    except subprocess.CalledProcessError as e:
+        print(f">> Command failed with error: {e.output} {command} {search_strings}")
+        exit(1)
+
+
+def start_server():
+    print(f">> Starting server ...")
+    with open(os.devnull, 'w') as fp:
+        process = subprocess.Popen("bin/start-uc-server", shell=True, stdout=fp, stderr=fp, preexec_fn=os.setsid)
+        print(f">> Started server with PID {os.getpgid(process.pid)}")
+        atexit.register(kill_process, process)
+        # Give the process a moment to start and check if it has terminated immediately
+        return_code = process.poll()
+        if return_code is not None:
+            stdout, stderr = process.communicate()
+            print(f"Error starting process: {stderr.decode().strip()}")
+            sys.exit(1)
+        print(f">> Waiting for server to accept connections ...")
+        i = 0
+        success = False
+        while i < 10 and not success:
+            try:
+                subprocess.run("bin/uc catalog list", shell=True, check=True, text=True, capture_output=True)
+                success = True
+            except subprocess.CalledProcessError:
+                print(".")
+                time.sleep(1)
+            i = i + 1
+
+        if i >= 10:
+            print(">> Server too long to get ready, failing tests.")
+            exit(1)
+    return process
+
+
+def kill_process(process):
+    try:
+        os.killpg(os.getpgid(process.pid), signal.SIGTERM)
+        print(">> Stopped the server")
+    except ProcessLookupError:
+        # Process already terminated
+        pass
+
+if __name__ == "__main__":
+    stdout, search_results = run_command_and_check_output("git status", ["h2db"])
+    if True in [f for s, f in search_results.items()]:
+        print()
+        print(">> Cannot run this with uncommitted modifications in h2db")
+        exit(1)
+    server_process = start_server()
+    for command, expected_strings in commands_and_expected_output_strings:
+        print(f">> Running client command: {command}")
+        stdout, search_results = run_command_and_check_output(command, expected_strings)
+        print(stdout)
+        for string, found in search_results.items():
+            if not found:
+                kill_process(server_process)
+                print(f">> Output of {command} did not contain '{string}'")
+                print(">> Output:\n" + stdout)
+                print("FAILED: EXPECTED OUTPUT NOT FOUND")
+                exit(1)
+    kill_process(server_process)
+    print("SUCCESS")
+
+

@@ -1,0 +1,8 @@
+{
+  "marks" :[
+    {"name" :  "a" , "score" :  20},
+    {"name" :  "b" , "score" :  30},
+    {"name" :  "c" , "score" :  40},
+    {"name" :  "d" , "score" :  50}
+  ]
+}

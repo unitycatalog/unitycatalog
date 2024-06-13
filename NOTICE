@@ -1,0 +1,160 @@
+Copyright (2024) Databricks, Inc.
+
+This Software includes software developed at Databricks (https://www.databricks.com/) and its use is subject to the included LICENSE file.
+—--
+
+This Software contains code from the following open source projects, licensed under the Apache 2.0 license:
+
+aws/aws-sdk-java - https://github.com/aws/aws-sdk-java/tree/master
+Copyright 2010-2014 Amazon.com, Inc. or its affiliates. All Rights Reserved.
+License - https://github.com/aws/aws-sdk-java/blob/master/LICENSE.txt
+Notice - https://github.com/aws/aws-sdk-java/blob/master/NOTICE.txt
+
+databricks/databricks-sdk-java - https://github.com/databricks/databricks-sdk-java
+Copyright (2023) Databricks, Inc.
+License - https://github.com/databricks/databricks-sdk-java/blob/main/LICENSE
+Notice - https://github.com/databricks/databricks-sdk-java/blob/main/NOTICE
+
+FasterXML/jackson-annotations - https://github.com/FasterXML/jackson-annotations
+Copyright jackson-annotations authors
+License - https://github.com/FasterXML/jackson-annotations/blob/2.18/LICENSE
+
+FasterXML/jackson -core - https://github.com/FasterXML/jackson-core
+Copyright jackson-core authors
+License - https://github.com/FasterXML/jackson-core/blob/2.18/LICENSE
+
+FasterXML/jackson-databind - https://github.com/FasterXML/jackson-databind
+Copyright jackson-databind authors
+License - https://github.com/FasterXML/jackson-databind/blob/2.18/LICENSE
+
+FasterXML/jackson-datatype-jsr310 - https://github.com/FasterXML/jackson-modules-java8
+Copyright /jackson-datatype-jsr310 authors
+License - https://github.com/FasterXML/jackson-modules-java8/blob/2.18/LICENSE
+
+google/guava - https://github.com/google/guava
+Copyright guava authors
+License - https://github.com/google/guava/blob/master/LICENSE
+
+line/armeria - https://github.com/line/armeria
+Copyright 2015 LINE Corporation
+License - https://github.com/line/armeria/blob/main/LICENSE.txt
+Notice - https://github.com/line/armeria/blob/main/NOTICE.txt
+apache/commons-cli - https://github.com/apache/commons-cli
+Copyright 2002-2024 The Apache Software Foundation
+License - https://github.com/apache/commons-cli/blob/master/LICENSE.txt
+Notice - https://github.com/apache/commons-cli/blob/master/NOTICE.txt
+
+vdmeer /asciitable - https://github.com/vdmeer/asciitable
+Copyright asciitable authors
+License - https://github.com/vdmeer/asciitable/blob/master/LICENSE
+
+delta-io/delta - https://github.com/delta-io/delta
+Copyright (2021) The Delta Lake Project Authors.
+License - https://github.com/delta-io/delta/blob/master/LICENSE.txt
+Notice - https://github.com/delta-io/delta/blob/master/NOTICE.txt
+
+sbt/sbt-jupiter-interface - https://github.com/sbt/sbt-jupiter-interface/tree/main
+Copyright sbt-jupiter-interface authors
+LIcense - https://github.com/sbt/sbt-jupiter-interface/blob/main/LICENSE
+
+raphw/byte-buddy - https://github.com/raphw/byte-buddy
+Copyright byte-buddy authors
+License - https://github.com/raphw/byte-buddy/blob/master/LICENSE
+Notice - https://github.com/raphw/byte-buddy/blob/master/NOTICE
+
+apache/hadoop - https://github.com/apache/hadoop/tree/trunk
+Copyright 2006 and onwards The Apache Software Foundation.
+License - https://github.com/apache/hadoop/blob/trunk/LICENSE.txt
+Notice - https://github.com/apache/hadoop/blob/trunk/NOTICE.txt
+
+apache/httpcomponents-client - https://github.com/apache/httpcomponents-client
+Copyright 1999-2023 The Apache Software Foundation
+License - https://github.com/apache/httpcomponents-client/blob/master/LICENSE.txt
+Notice - https://github.com/apache/httpcomponents-client/blob/master/NOTICE.txt
+
+apache/httpcomponents-core - https://github.com/apache/httpcomponents-core
+Copyright 2005-2024 The Apache Software Foundation
+License - https://github.com/apache/httpcomponents-core/blob/master/LICENSE.txt
+Notice - https://github.com/apache/httpcomponents-core/blob/master/NOTICE.txt
+
+OpenAPITools/jackson-databind-nullable - https://github.com/OpenAPITools/jackson-databind-nullable
+Copyright jackson-databind-nullable authors
+License - https://github.com/OpenAPITools/jackson-databind-nullable/blob/master/LICENSE
+
+snakeyaml/snakeyaml - https://github.com/snakeyaml/snakeyaml
+Copyright snakeyaml authors
+License - https://github.com/snakeyaml/snakeyaml/blob/master/LICENSE.txt
+—--
+
+This Software contains code from the following open source projects, licensed under the MIT license:
+
+projecktlombok/lombok - https://github.com/projectlombok/lombok
+Copyright (C) 2009-2021 The Project Lombok Authors.
+License - https://github.com/projectlombok/lombok/blob/master/LICENSE
+
+qos-ch/sl4j/sl4j-api - https://github.com/qos-ch/slf4j/tree/master/slf4j-api
+Copyright (c) 2004-2023 QOS.ch All rights reserved.
+License - https://github.com/qos-ch/slf4j/blob/master/slf4j-api/LICENSE.txt
+
+qos-ch/sl4j/sl4j-jdk - https://github.com/qos-ch/slf4j/tree/master/slf4j-jdk
+Copyright (c) 2004-2023 QOS.ch All rights reserved.
+License - https://github.com/qos-ch/slf4j/blob/master/slf4j-jdk14/LICENSE.txt
+—--
+
+This Software contains code from the following open source projects, licensed under the BSD 2 Clause license:
+
+sbt/junit-interface - https://github.com/sbt/junit-interface
+Copyright (c) 2009-2012, Stefan Zeiger All rights reserved.
+License - https://github.com/sbt/junit-interface/blob/develop/LICENSE.txt
+—--
+
+This Software contains code from the following open source projects, licensed under the BSD 3 Clause license:
+
+findbugsproject/findbugs - https://github.com/findbugsproject/findbugs/tree/master
+Copyright findbugs-jsr305 authors
+License - https://github.com/findbugsproject/findbugs/blob/master/findbugs/licenses/LICENSE-jsr305.txt
+—--
+
+This Software contains code from the following open source projects, licensed under the Eclipse Public license:
+
+H2database/h2database - https://github.com/h2database/h2database
+Copyright h2database authors
+License - https://github.com/h2database/h2database/blob/master/LICENSE.txt
+
+junit-team/junit5 - https://github.com/junit-team/junit5
+Copyright junit5 authors
+License - https://github.com/junit-team/junit5/blob/main/LICENSE.md
+
+jakartaee/common-annotations-api - https://github.com/jakartaee/common-annotations-api
+Copyright Jakarta Annotations authors
+License - https://github.com/jakartaee/common-annotations-api/blob/master/LICENSE.md
+Notice - https://github.com/jakartaee/common-annotations-api/blob/master/NOTICE.md
+—--
+
+This Software contains code from the following open source projects, licensed under the Common Development and Distribution license:
+
+javaee/javax.annotations - https://github.com/javaee/javax.annotation
+Copyright javax.annotations authors
+License -https://github.com/javaee/javax.annotation/blob/master/LICENSE
+—--
+
+This Software contains code from the following open source projects, licensed under the BSD 3 Clause license:
+
+jakartaee/jaf-api - https://github.com/jakartaee/jaf-api
+Copyright (c) 2018 Oracle and/or its affiliates. All rights reserved. 
+License - https://github.com/jakartaee/jaf-api/blob/master/LICENSE.md
+—--
+
+This Software contains code from the following open source projects, licensed under the GNU Lesser General Public license:
+
+hibernate-orm/hibernate-core - https://github.com/hibernate/hibernate-orm/tree/main/hibernate-core
+Copyright hibernate-core authors
+LIcense - https://github.com/hibernate/hibernate-orm/blob/main/lgpl.txt
+
+
+
+
+
+
+
+

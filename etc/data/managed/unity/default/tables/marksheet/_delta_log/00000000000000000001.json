@@ -1,0 +1,2 @@
+{"commitInfo":{"timestamp":1716330643665,"engineInfo":"Kernel-3.2.0/OpenCatalogCLI","operation":"WRITE","operationParameters":{},"isBlindAppend":true,"txnId":"f7ceb5f2-5781-476f-a8a7-466b15cd3b91"}}
+{"add":{"path":"027fe86d-9338-4b86-b5f9-a1f9ba95e682-000.parquet","partitionValues":{},"size":1079,"modificationTime":1716330643663,"dataChange":true}}
