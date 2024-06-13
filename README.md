@@ -42,7 +42,7 @@ Let's list the tables.
 bin/uc table list --catalog unity --schema default
 ```
 You should see a few tables. Some details are truncated because of the nested nature of the data.
-To see all the content, you can add `--format jsonPretty` to any command.
+To see all the content, you can add `--output jsonPretty` to any command.
 
 Next, let's get the metadata of one those tables. 
 
