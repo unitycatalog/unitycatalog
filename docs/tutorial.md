@@ -91,7 +91,7 @@ load delta;
 If you have installed these extensions before, you may have to run `update extensions` and restart DuckDB
 for the following steps to work.
 
-Now that we have DuckDB all set up, let's trying connecting to UC by specifying a secret.
+Now that we have DuckDB all set up, let's try connecting to UC by specifying a secret.
 ```sh
 CREATE SECRET (
       TYPE UC,
