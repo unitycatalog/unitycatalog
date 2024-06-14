@@ -1,0 +1,5 @@
+# Ignore all build artifacts
+**/target
+
+# Ignore generated sbt launch jar
+build/sbt-launch-*.jar
