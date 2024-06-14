@@ -6,6 +6,7 @@ import io.unitycatalog.cli.utils.CliUtils;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import io.unitycatalog.client.ApiClient;
 import io.unitycatalog.client.ApiException;
+import io.unitycatalog.server.persist.PropertiesUtil;
 import org.apache.commons.cli.*;
 import org.apache.logging.log4j.core.config.Configurator;
 
@@ -19,8 +20,9 @@ import static io.unitycatalog.cli.utils.CliUtils.commonOptions;
 public class UnityCatalogCli {
 
     static {
-        System.setProperty("log4j.configurationFile", "etc/conf/cli.log4j2.properties");
-        Configurator.initialize(null, "etc/conf/cli.log4j2.properties");
+        String logPropertiesPath = PropertiesUtil.getInstance().getLogPropertiesPath("cli");
+        System.setProperty("log4j.configurationFile", logPropertiesPath);
+        Configurator.initialize(null, logPropertiesPath);
     }
 
     public static void main(String[] args) {
@@ -187,5 +189,17 @@ public class UnityCatalogCli {
             });
         }
         return apiClient;
+    }
+
+    private String getLogPropertiesFilePath() {
+        String envValue = System.getenv("SERVER_PROPERTIES_FILE");
+        String systemPropertyValue = System.getProperty("serverPropertiesFile");
+        if (envValue != null) {
+            return envValue;
+        } else if (systemPropertyValue != null) {
+            return systemPropertyValue;
+        } else {
+            return "etc/conf/server.properties";
+        }
     }
 }
