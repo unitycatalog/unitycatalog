@@ -22,12 +22,21 @@ Let's take Unity Catalog for spin. In this guide, we are going to do the followi
   as well as provide a convenient way to explore the content of any UC server implementation.
 
 ### Prerequisites
+- Docker
+
+OR
+
 You have to ensure that you local environment has the following:
 - Clone this repository.
 - Ensure the `JAVA_HOME` environment variable your terminal is configured to point to JDK11+.
 - Compile the project using `build/sbt package`
 
 ### Run the UC Server
+```shell
+docker run -d -i --name unitycatalog -p 8080:8080 datacatering/unitycatalog:0.1.0
+```
+
+
 In a terminal, in the cloned repository root directory, start the UC server.
 
 ```
