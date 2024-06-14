@@ -22,7 +22,7 @@ Let's take Unity Catalog for spin. In this guide, we are going to do the followi
   as well as provide a convenient way to explore the content of any UC server implementation.
 
 ### Prerequisites
-You have to ensure that you local environment has the following:
+You have to ensure that your local environment has the following:
 - Clone this repository.
 - Ensure the `JAVA_HOME` environment variable your terminal is configured to point to JDK11+.
 - Compile the project using `build/sbt package`
@@ -85,7 +85,7 @@ You should see it print a short table saying `Success` = `true`. Then we attach 
 ```sql
 ATTACH 'unity' AS unity (TYPE UC_CATALOG);
 ```
-Now we ready to query. Try the following
+Now we are ready to query. Try the following
 
 ```sql
 SHOW ALL TABLES;

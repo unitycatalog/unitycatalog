@@ -10,7 +10,7 @@ bin/start-uc-server
 
 ## Configuration
 
-The  server config file is at the location `etc/conf/server.properties` (relative to the project root).
+The server config file is at the location `etc/conf/server.properties` (relative to the project root).
 
 - `server.env`: The environment in which the server is running. This can be set to `dev` or `test`. When 
  set to `test` the server will instantiate an empty in-memory h2 database for storing metadata.
