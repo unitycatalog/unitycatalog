@@ -9,13 +9,13 @@ import io.unitycatalog.server.exception.GlobalExceptionHandler;
 import io.unitycatalog.server.model.GenerateTemporaryVolumeCredential;
 import io.unitycatalog.server.model.GenerateTemporaryVolumeCredentialResponse;
 import io.unitycatalog.server.model.VolumeInfo;
-import io.unitycatalog.server.persist.VolumeOperations;
+import io.unitycatalog.server.persist.VolumeRepository;
 import io.unitycatalog.server.utils.TemporaryCredentialUtils;
 
 @ExceptionHandler(GlobalExceptionHandler.class)
 public class TemporaryVolumeCredentialsService {
 
-    private static final VolumeOperations volumeRepository = VolumeOperations.getInstance();
+    private static final VolumeRepository volumeRepository = VolumeRepository.getInstance();
     @Post("")
     public HttpResponse generateTemporaryTableCredential
             (GenerateTemporaryVolumeCredential generateTemporaryVolumeCredential) {

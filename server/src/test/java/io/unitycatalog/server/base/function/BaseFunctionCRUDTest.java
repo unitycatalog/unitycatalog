@@ -3,6 +3,7 @@ package io.unitycatalog.server.base.function;
 import io.unitycatalog.client.ApiException;
 import io.unitycatalog.client.model.*;
 import io.unitycatalog.server.base.BaseCRUDTest;
+import io.unitycatalog.server.utils.TestUtils;
 import org.junit.*;
 
 import io.unitycatalog.server.base.ServerConfig;
@@ -39,6 +40,20 @@ public abstract class BaseFunctionCRUDTest extends BaseCRUDTest {
         }
         try {
             schemaOperations.deleteSchema(SCHEMA_FULL_NAME);
+        } catch (Exception e) {
+            // Ignore
+        }
+        try {
+            if (schemaOperations.getSchema(TestUtils.CATALOG_NEW_NAME + "." + TestUtils.SCHEMA_NEW_NAME) != null) {
+                schemaOperations.deleteSchema(TestUtils.CATALOG_NEW_NAME + "." + TestUtils.SCHEMA_NEW_NAME);
+            }
+        } catch (Exception e) {
+            // Ignore
+        }
+        try {
+            if (schemaOperations.getSchema(TestUtils.CATALOG_NEW_NAME + "." + TestUtils.SCHEMA_NAME) != null) {
+                schemaOperations.deleteSchema(TestUtils.CATALOG_NEW_NAME + "." + TestUtils.SCHEMA_NAME);
+            }
         } catch (Exception e) {
             // Ignore
         }
@@ -105,9 +120,17 @@ public abstract class BaseFunctionCRUDTest extends BaseCRUDTest {
         FunctionInfo retrievedFunctionInfo = functionOperations.getFunction(FUNCTION_FULL_NAME);
         assertEquals(functionInfo, retrievedFunctionInfo);
 
+        // now update the parent catalog
+        catalogOperations.updateCatalog(CATALOG_NAME, CATALOG_NEW_NAME, "");
+        // get the function again
+        FunctionInfo retrievedFunctionInfoAfterCatUpdate = functionOperations.getFunction(
+                CATALOG_NEW_NAME + "." + SCHEMA_NAME + "." + FUNCTION_NAME);
+        assertEquals(retrievedFunctionInfo.getFunctionId(),
+                retrievedFunctionInfoAfterCatUpdate.getFunctionId());
+
         // Delete function
-        functionOperations.deleteFunction(FUNCTION_FULL_NAME, true);
-        assertFalse(contains(functionOperations.listFunctions(CATALOG_NAME, SCHEMA_NAME),
+        functionOperations.deleteFunction(CATALOG_NEW_NAME + "." + SCHEMA_NAME + "." + FUNCTION_NAME, true);
+        assertFalse(contains(functionOperations.listFunctions(CATALOG_NEW_NAME, SCHEMA_NAME),
                 functionInfo, f -> f.getFunctionId().equals(functionInfo.getFunctionId())));
     }
 }

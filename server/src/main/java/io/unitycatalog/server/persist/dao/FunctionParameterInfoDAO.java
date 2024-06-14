@@ -28,7 +28,7 @@ public class FunctionParameterInfoDAO {
     private String id;
 
     @ManyToOne
-    @JoinColumn(name = "function_id")
+    @JoinColumn(name = "function_id", referencedColumnName = "id")
     private FunctionInfoDAO function;
 
     // Whether the parameter is an input or return parameter

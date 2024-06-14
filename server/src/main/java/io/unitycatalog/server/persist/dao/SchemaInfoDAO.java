@@ -24,16 +24,13 @@ public class SchemaInfoDAO {
 
     @Id
     @Column(name = "id", columnDefinition = "BINARY(16)")
-    private UUID schemaId;
-
-    @Column(name = "full_name")
-    private String fullName;
+    private UUID id;
 
     @Column(name = "name")
     private String name;
 
-    @Column(name = "catalog_name")
-    private String catalogName;
+    @Column(name = "catalog_id", columnDefinition = "BINARY(16)")
+    private UUID catalogId;
 
     @Column(name = "comment")
     private String comment;
@@ -44,26 +41,12 @@ public class SchemaInfoDAO {
     @Column(name = "updated_at")
     private Date updatedAt;
 
-    public static SchemaInfoDAO toSchemaInfoDAO(SchemaInfo schemaInfo) {
-        return SchemaInfoDAO.builder()
-            .schemaId(schemaInfo.getSchemaId() != null ? UUID.fromString(schemaInfo.getSchemaId()) : null)
-            .fullName(schemaInfo.getFullName())
-            .name(schemaInfo.getName())
-            .catalogName(schemaInfo.getCatalogName())
-            .comment(schemaInfo.getComment())
-            .createdAt(schemaInfo.getCreatedAt() != null ? Date.from(Instant.ofEpochMilli(schemaInfo.getCreatedAt())) : new Date())
-            .updatedAt(schemaInfo.getUpdatedAt() != null ? Date.from(Instant.ofEpochMilli(schemaInfo.getUpdatedAt())) : new Date())
-            .build();
-    }
-
     public static SchemaInfo toSchemaInfo(SchemaInfoDAO schemaInfoDAO) {
         return new SchemaInfo()
-            .schemaId(schemaInfoDAO.getSchemaId().toString())
-            .fullName(schemaInfoDAO.getFullName())
-            .name(schemaInfoDAO.getName())
-            .catalogName(schemaInfoDAO.getCatalogName())
-            .comment(schemaInfoDAO.getComment())
-            .createdAt(schemaInfoDAO.getCreatedAt().getTime())
-            .updatedAt((schemaInfoDAO.getUpdatedAt() !=null) ? schemaInfoDAO.getUpdatedAt().getTime() : null);
+                .schemaId(schemaInfoDAO.getId().toString())
+                .name(schemaInfoDAO.getName())
+                .comment(schemaInfoDAO.getComment())
+                .createdAt(schemaInfoDAO.getCreatedAt().getTime())
+                .updatedAt((schemaInfoDAO.getUpdatedAt() !=null) ? schemaInfoDAO.getUpdatedAt().getTime() : null);
     }
 }
