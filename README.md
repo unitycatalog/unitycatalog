@@ -33,7 +33,7 @@ You have to ensure that you local environment has the following:
 
 ### Run the UC Server
 ```shell
-docker run -d -i --name unitycatalog -p 8080:8080 datacatering/unitycatalog:0.1.0
+docker run -d -i --name unitycatalog -p 8081:8081 datacatering/unitycatalog:0.1.0
 ```
 
 

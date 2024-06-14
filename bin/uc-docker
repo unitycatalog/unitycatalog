@@ -1,0 +1,25 @@
+#!/bin/bash
+
+# Function to properly quote arguments
+quote_arg() {
+    local arg="$1"
+    # Escape spaces in the argument
+    arg="\"${arg//\"/\\\"}\""
+    echo "$arg"
+}
+
+# Iterate over all arguments and quote them properly
+quoted_args=()
+for arg in "$@"; do
+    quoted_args+=("$(quote_arg "$arg")")
+done
+
+# Join quoted arguments into a single string
+quoted_args_str="${quoted_args[*]}"
+
+# Print the quoted arguments for debugging
+# echo "Quoted arguments: $quoted_args_str"
+
+CLI_JAVA_COMMAND="java -cp unitycatalog-cli.jar io.unitycatalog.cli.UnityCatalogCli"
+# echo "Running command: $CLI_JAVA_COMMAND"
+eval "$CLI_JAVA_COMMAND" "$quoted_args_str"  || exit
