@@ -112,6 +112,7 @@ lazy val server = (project in file("server"))
   .enablePlugins(OpenApiGeneratorPlugin)
   .settings (
     name := s"$artifactNamePrefix-server",
+    assembly / assemblyJarName := s"$artifactNamePrefix-server-assembly.jar",
     commonSettings,
     javaCheckstyleSettings(file("dev") / "checkstyle-config.xml"),
     libraryDependencies ++= Seq(
@@ -199,6 +200,7 @@ lazy val cli = (project in file("examples") / "cli")
   .dependsOn(client % "compile->compile;test->test")
   .settings(
     name := s"$artifactNamePrefix-cli",
+    assembly / assemblyJarName := s"$artifactNamePrefix-cli-assembly.jar",
     mainClass := Some(orgName + ".cli.UnityCatalogCli"),
     commonSettings,
     javaCheckstyleSettings(file("dev") / "checkstyle-config.xml"),

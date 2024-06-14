@@ -2,8 +2,8 @@ FROM openjdk:24-slim
 
 WORKDIR /opt/app
 
-COPY server/target/unitycatalog-server*.jar unitycatalog-server.jar
-COPY examples/cli/target/unitycatalog-cli*.jar unitycatalog-cli.jar
+COPY server/target/unitycatalog-server-assembly.jar unitycatalog-server.jar
+COPY examples/cli/target/unitycatalog-cli-assembly.jar unitycatalog-cli.jar
 COPY etc etc
 
 ENV SERVER_PROPERTIES_FILE=/opt/app/etc/conf/server.properties
