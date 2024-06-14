@@ -143,9 +143,9 @@ lazy val server = (project in file("server"))
 
       // Iceberg REST Catalog dependencies
       "org.apache.iceberg" % "iceberg-core" % "1.5.2",
-      "io.vertx" % "vertx-core" % "4.3.5",
-      "io.vertx" % "vertx-web" % "4.3.5",
-      "io.vertx" % "vertx-web-client" % "4.3.5",
+      "io.vertx" % "vertx-core" % "4.5.8",
+      "io.vertx" % "vertx-web" % "4.5.8",
+      "io.vertx" % "vertx-web-client" % "4.5.8",
 
       // Test dependencies
       "junit" %  "junit" % "4.13.2" % Test,
