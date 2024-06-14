@@ -26,7 +26,12 @@ lazy val commonSettings = Seq(
   autoScalaLibrary := false,
   crossPaths := false,  // No scala cross building
   assembly / assemblyMergeStrategy := {
-    case PathList("META-INF", xs @ _*) => MergeStrategy.discard
+    case PathList("META-INF", xs@_*) =>
+      (xs map {_.toLowerCase}) match {
+        case "services" :: xs =>
+          MergeStrategy.filterDistinctLines
+        case _ => MergeStrategy.discard
+      }
     case x => MergeStrategy.first
   },
 
@@ -113,6 +118,7 @@ lazy val server = (project in file("server"))
   .settings (
     name := s"$artifactNamePrefix-server",
     assembly / assemblyJarName := s"$artifactNamePrefix-server-assembly.jar",
+    assembly / mainClass := Some(orgName + ".server.UnityCatalogServer"),
     commonSettings,
     javaCheckstyleSettings(file("dev") / "checkstyle-config.xml"),
     libraryDependencies ++= Seq(
@@ -134,6 +140,7 @@ lazy val server = (project in file("server"))
       "org.apache.logging.log4j" % "log4j-slf4j-impl" % "2.23.1",
 
       "jakarta.activation" % "jakarta.activation-api" % "2.1.3",
+      "jakarta.annotation" % "jakarta.annotation-api" % "1.3.5" % Provided,
       "net.bytebuddy" % "byte-buddy" % "1.14.15",
       "org.projectlombok" % "lombok" % "1.18.32" % "provided",
 
@@ -201,6 +208,7 @@ lazy val cli = (project in file("examples") / "cli")
   .settings(
     name := s"$artifactNamePrefix-cli",
     assembly / assemblyJarName := s"$artifactNamePrefix-cli-assembly.jar",
+    assembly / mainClass := Some(orgName + ".cli.UnityCatalogCli"),
     mainClass := Some(orgName + ".cli.UnityCatalogCli"),
     commonSettings,
     javaCheckstyleSettings(file("dev") / "checkstyle-config.xml"),
