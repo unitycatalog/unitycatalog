@@ -1,7 +1,9 @@
 FROM openjdk:24-slim
 
-COPY server/target/unitycatalog-server*.jar /opt/app/unitycatalog-server.jar
-COPY examples/cli/target/unitycatalog-cli*.jar /opt/app/unitycatalog-cli.jar
-COPY etc /opt/app/etc
+WORKDIR /opt/app
 
-ENTRYPOINT ["java", "-cp", "/opt/app/unitycatalog-server.jar", "io.unitycatalog.server.UnityCatalogServer"]
+COPY server/target/unitycatalog-server*.jar unitycatalog-server.jar
+COPY examples/cli/target/unitycatalog-cli*.jar unitycatalog-cli.jar
+COPY etc .
+
+ENTRYPOINT ["java", "-cp", "unitycatalog-server.jar", "io.unitycatalog.server.UnityCatalogServer"]
