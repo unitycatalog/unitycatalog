@@ -4,7 +4,7 @@ WORKDIR /opt/app
 
 COPY server/target/unitycatalog-server*.jar unitycatalog-server.jar
 COPY examples/cli/target/unitycatalog-cli*.jar unitycatalog-cli.jar
-COPY etc .
+COPY etc etc
 
 ENV SERVER_PROPERTIES_FILE=/opt/app/etc/conf/server.properties
 ENV SERVER_JOG4J_CONFIGURATION_FILE=/opt/app/etc/conf/server.log4j2.properties
