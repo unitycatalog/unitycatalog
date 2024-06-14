@@ -7,9 +7,9 @@ name: SBT Tests
 
 on:
   push:
-    branches: [ "main" ]
+    branches-ignore: [ "main" ]
   pull_request:
-    branches: [ "main" ]
+    branches-ignore: [ "main" ]
 
 permissions:
   contents: read
