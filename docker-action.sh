@@ -1,24 +1,22 @@
 #!/bin/bash
 
-SCRIPT_DIR="$(dirname "$(readlink -f "$0")")"
-ROOT_DIR="$(dirname "$SCRIPT_DIR")"
-APP_VERSION=$(awk -F ' := ' '{print $2}' "$ROOT_DIR/version.sbt" | tr -d '"')
+APP_VERSION=$(awk -F ' := ' '{print $2}' version.sbt | tr -d '"')
 PLATFORMS="linux/amd64,linux/arm64"
 
 run_sbt() {
-  SBT_COMMAND="$ROOT_DIR/build/sbt -info clean package"
+  SBT_COMMAND="./build/sbt -info clean package"
   echo "Running SBT to generate Server and CLI JAR: $SBT_COMMAND"
   $SBT_COMMAND || exit
 }
 
-SERVER_TARGET_DIR="$ROOT_DIR/server/target"
+SERVER_TARGET_DIR="server/target"
 SERVER_JAR=$(find "$SERVER_TARGET_DIR" -name "unitycatalog-server*.jar" | head -n 1)
 if [ -z "$SERVER_JAR" ]; then
     echo "Server JAR not found starting with 'unitycatalog-server*' in the target directory '$SERVER_TARGET_DIR'."
     run_sbt
 fi
 
-CLI_TARGET_DIR="$ROOT_DIR/examples/cli/target"
+CLI_TARGET_DIR="examples/cli/target"
 CLI_JAR=$(find "$CLI_TARGET_DIR" -name "unitycatalog-cli-*.jar" | head -n 1)
 if [ -z "$CLI_JAR" ]; then
     echo "CLI JAR not found starting with 'unitycatalog-cli-*' in the target directory '$CLI_TARGET_DIR'."
