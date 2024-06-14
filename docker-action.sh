@@ -4,7 +4,7 @@ APP_VERSION=$(awk -F ' := ' '{print $2}' version.sbt | tr -d '"')
 PLATFORMS="linux/amd64,linux/arm64"
 
 run_sbt() {
-  SBT_COMMAND="./build/sbt -info clean assembly"
+  SBT_COMMAND="./build/sbt -J-Xms4G -J-Xmx4G -info clean assembly"
   echo "Running SBT to generate Server and CLI JAR: $SBT_COMMAND"
   $SBT_COMMAND || exit
 }
