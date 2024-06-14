@@ -1,1 +1,7 @@
 etc/db/h2db.mv.db
+
+# Ignore all build folders
+**/target
+
+# Ignore generated sbt launch jar
+build/sbt-launch-*.jar
