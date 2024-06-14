@@ -30,7 +30,7 @@ You have to ensure that you local environment has the following:
 ### Run the UC Server
 In a terminal, in the cloned repository root directory, start the UC server.
 
-```
+```sh
 bin/start-uc-server
 ```
 
@@ -38,15 +38,15 @@ For the rest of the steps, continue in a different terminal.
 
 ### Operate on Delta tables with the CLI
 Let's list the tables. 
-```
+```sh
 bin/uc table list --catalog unity --schema default
 ```
 You should see a few tables. Some details are truncated because of the nested nature of the data.
 To see all the content, you can add `--format jsonPretty` to any command.
 
-Next, let's get the metadata of one those tables. 
+Next, let's get the metadata of one of those tables. 
 
-```
+```sh
 bin/uc table get --full_name unity.default.numbers
 ```
 
@@ -54,7 +54,7 @@ You can see that it is a Delta table. Now, specifically for Delta tables, this C
 print snippet of the contents of a Delta table (powered by the [Delta Kernel Java](https://delta.io/blog/delta-kernel/) project).
 Let's try that.
 
-```
+```sh
 bin/uc table read --full_name unity.default.numbers
 ```
 
@@ -63,7 +63,7 @@ bin/uc table read --full_name unity.default.numbers
 For trying with DuckDB, you will have to [install it](https://duckdb.org/docs/installation/) (at least version 1.0).
 Let's start DuckDB and install a couple of extensions. To start DuckDB, run the command `duckdb` in the terminal.
 Then, in the DuckDB shell, run the following commands:
-```sh
+```sql
 install uc_catalog from core_nightly;
 load uc_catalog;
 install delta;
@@ -72,8 +72,8 @@ load delta;
 If you have installed these extensions before, you may have to run `update extensions` and restart DuckDB 
 for the following steps to work.
 
-Now that we have DuckDB all set up, let's trying connecting to UC by specifying a secret. 
-```sh
+Now that we have DuckDB all set up, let's try connecting to UC by specifying a secret. 
+```sql
 CREATE SECRET (
       TYPE UC,
       TOKEN 'not-used',
@@ -82,7 +82,7 @@ CREATE SECRET (
  );
 ```
 You should see it print a short table saying `Success` = `true`. Then we attach the `unity` catalog to DuckDB.
-```sh
+```sql
 ATTACH 'unity' AS unity (TYPE UC_CATALOG);
 ```
 Now we ready to query. Try the following
@@ -106,19 +106,19 @@ See the full [tutorial](docs/tutorial.md) for more details.
 - Compatibility and stability: The APIs are currently evolving and should not be assumed to be stable.
 
 ## Compiling and testing
-- Install JDK 11 by whatever mechanism that is appropriate for your system, and
+- Install JDK 11 by whatever mechanism is appropriate for your system, and
   set that version to be the default Java version (e.g., by setting env variable
   JAVA_HOME)
 - To compile all the code without running tests, run the following:
-  ```
+  ```sh
   build/sbt clean compile
   ```
 - To compile and execute tests, run the following:
-  ```
+  ```sh
   build/sbt clean test
   ```
 - To update the API specification, just update the `api/all.yaml` and then run the following:
-  ```
+  ```sh
   build/sbt generate
   ``` 
   This will regenerate the OpenAPI data models in the UC server and data models + APIs in the client SDK.
