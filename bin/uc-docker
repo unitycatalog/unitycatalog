@@ -21,5 +21,6 @@ quoted_args_str="${quoted_args[*]}"
 # echo "Quoted arguments: $quoted_args_str"
 
 CLI_JAVA_COMMAND="java -cp unitycatalog-cli.jar io.unitycatalog.cli.UnityCatalogCli"
+SERVER_URL=${SERVER_URL:-http://localhost:8081}
 # echo "Running command: $CLI_JAVA_COMMAND"
-eval "$CLI_JAVA_COMMAND" "$quoted_args_str"  || exit
+eval "$CLI_JAVA_COMMAND" --server "$SERVER_URL" "$quoted_args_str"  || exit
