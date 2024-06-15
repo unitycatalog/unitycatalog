@@ -7,7 +7,7 @@ import com.linecorp.armeria.common.HttpResponse;
 import com.linecorp.armeria.common.HttpStatus;
 import com.linecorp.armeria.server.annotation.*;
 import io.unitycatalog.server.model.UpdateSchema;
-import io.unitycatalog.server.persist.SchemaOperations;
+import io.unitycatalog.server.persist.SchemaRepository;
 import io.unitycatalog.server.utils.ValidationUtils;
 
 import java.util.Optional;
@@ -17,20 +17,13 @@ import static io.unitycatalog.server.utils.ValidationUtils.SCHEMA;
 
 @ExceptionHandler(GlobalExceptionHandler.class)
 public class SchemaService {
-    private static final SchemaOperations schemaOperations = SchemaOperations.getInstance();
+    private static final SchemaRepository schemaOperations = SchemaRepository.getInstance();
 
     public SchemaService() {}
 
     @Post("")
     public HttpResponse createSchema(CreateSchema createSchema) {
-        if (!ValidationUtils.catalogExists(createSchema.getCatalogName())) {
-            return ValidationUtils.entityNotFoundResponse(CATALOG, createSchema.getCatalogName());
-        }
-        if (ValidationUtils.schemaExists(createSchema.getCatalogName(), createSchema.getName())) {
-            return ValidationUtils.entityAlreadyExistsResponse(SCHEMA, createSchema.getCatalogName(), createSchema.getName());
-        }
-        SchemaInfo schemaInfo = schemaOperations.createSchema(createSchema);
-        return HttpResponse.ofJson(schemaInfo);
+        return HttpResponse.ofJson(schemaOperations.createSchema(createSchema));
     }
 
     @Get("")
@@ -43,20 +36,12 @@ public class SchemaService {
 
     @Get("/{full_name}")
     public HttpResponse getSchema(@Param("full_name") String fullName) {
-        SchemaInfo schemaInfo = schemaOperations.getSchema(fullName);
-        if (schemaInfo != null) {
-            return HttpResponse.ofJson(schemaInfo);
-        }
-        return ValidationUtils.entityNotFoundResponse(SCHEMA, fullName);
+        return HttpResponse.ofJson(schemaOperations.getSchema(fullName));
     }
 
     @Patch("/{full_name}")
     public HttpResponse updateSchema(@Param("full_name") String fullName, UpdateSchema updateSchema) {
-        SchemaInfo updatedSchema = schemaOperations.updateSchema(fullName, updateSchema);
-        if (updatedSchema != null) {
-            return HttpResponse.ofJson(updatedSchema);
-        }
-        return ValidationUtils.entityNotFoundResponse(SCHEMA, fullName);
+        return HttpResponse.ofJson(schemaOperations.updateSchema(fullName, updateSchema));
     }
 
     @Delete("/{full_name}")

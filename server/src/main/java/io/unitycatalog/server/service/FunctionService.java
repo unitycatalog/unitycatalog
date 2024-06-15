@@ -23,17 +23,7 @@ public class FunctionService {
 
     @Post("")
     public HttpResponse createFunction(CreateFunctionRequest createFunctionRequest) {
-        String catalogName = createFunctionRequest.getFunctionInfo().getCatalogName();
-        String schemaName = createFunctionRequest.getFunctionInfo().getSchemaName();
-        String functionName = createFunctionRequest.getFunctionInfo().getName();
-        if (!ValidationUtils.schemaExists(catalogName, schemaName)) {
-            return ValidationUtils.entityNotFoundResponse(SCHEMA, catalogName, schemaName);
-        }
-        if (ValidationUtils.functionExists(catalogName, schemaName, functionName)) {
-            return ValidationUtils.entityAlreadyExistsResponse(FUNCTION, catalogName, schemaName, functionName);
-        }
-        FunctionInfo createdFunction = FUNCTION_REPOSITORY.createFunction(createFunctionRequest);
-        return HttpResponse.ofJson(createdFunction);
+        return HttpResponse.ofJson(FUNCTION_REPOSITORY.createFunction(createFunctionRequest));
     }
 
     @Get("")
@@ -47,11 +37,7 @@ public class FunctionService {
 
     @Get("/{name}")
     public HttpResponse getFunction(@Param("name") String name) {
-        FunctionInfo functionInfo = FUNCTION_REPOSITORY.getFunction(name);
-        if (functionInfo != null) {
-            return HttpResponse.ofJson(functionInfo);
-        }
-        return ValidationUtils.entityNotFoundResponse(FUNCTION, name);
+        return HttpResponse.ofJson(FUNCTION_REPOSITORY.getFunction(name));
     }
 
     @Delete("/{name}")

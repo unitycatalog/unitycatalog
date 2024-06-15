@@ -54,6 +54,21 @@ public abstract class BaseTableCRUDTest extends BaseCRUDTest {
         } catch (Exception e) {
             // Ignore
         }
+        try {
+            if (schemaOperations.getSchema(TestUtils.CATALOG_NEW_NAME + "." + TestUtils.SCHEMA_NEW_NAME) != null) {
+                schemaOperations.deleteSchema(TestUtils.CATALOG_NEW_NAME + "." + TestUtils.SCHEMA_NEW_NAME);
+            }
+        } catch (Exception e) {
+            // Ignore
+        }
+        try {
+            if (schemaOperations.getSchema(TestUtils.CATALOG_NEW_NAME + "." + TestUtils.SCHEMA_NAME) != null) {
+                schemaOperations.deleteSchema(TestUtils.CATALOG_NEW_NAME + "." + TestUtils.SCHEMA_NAME);
+            }
+        } catch (Exception e) {
+            // Ignore
+        }
+
         super.cleanUp();
     }
 
@@ -205,11 +220,18 @@ public abstract class BaseTableCRUDTest extends BaseCRUDTest {
         assertNotNull(managedListTable.getCreatedAt());
         assertNotNull(managedListTable.getTableId());
 
+        // Now update the parent schema name
+        schemaOperations.updateSchema(TestUtils.SCHEMA_FULL_NAME, new UpdateSchema().newName(TestUtils.SCHEMA_NEW_NAME).comment(TestUtils.SCHEMA_COMMENT));
+        // now fetch the table again
+        TableInfo managedTableAfterSchemaUpdate = tableOperations.getTable(TestUtils.CATALOG_NAME + "." + TestUtils.SCHEMA_NEW_NAME + "." + TABLE_NAME);
+        assertEquals(managedTable.getTableId(), managedTableAfterSchemaUpdate.getTableId());
+
 
         // Delete managed table
+        String newTableFullName = TestUtils.CATALOG_NAME + "." + TestUtils.SCHEMA_NEW_NAME + "." + TABLE_NAME;
         System.out.println("Testing delete table..");
-        tableOperations.deleteTable(TABLE_FULL_NAME);
-        assertThrows(Exception.class, () -> tableOperations.getTable(TABLE_FULL_NAME));
+        tableOperations.deleteTable(newTableFullName);
+        assertThrows(Exception.class, () -> tableOperations.getTable(newTableFullName));
 
     }
 }

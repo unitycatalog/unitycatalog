@@ -7,6 +7,7 @@ import jakarta.persistence.Table;
 import lombok.*;
 
 import java.util.Date;
+import java.util.UUID;
 
 @Entity
 @Table(name = "uc_volumes")
@@ -19,15 +20,12 @@ import java.util.Date;
 public class VolumeInfoDAO {
 
     @Id
-    @Column(name = "volume_id")
-    private String volumeId;
-
+    @Column(name = "id", columnDefinition = "BINARY(16)")
+    private UUID id;
     @Column(name = "name")
     private String name;
-    @Column(name = "catalog_name")
-    private String catalogName;
-    @Column(name = "schema_name")
-    private String schemaName;
+    @Column(name = "schema_id", columnDefinition = "BINARY(16)")
+    private UUID schemaId;
     @Column(name = "comment")
     private String comment;
     @Column(name = "storage_location")
@@ -36,8 +34,6 @@ public class VolumeInfoDAO {
     private Date createdAt;
     @Column(name = "updated_at")
     private Date updatedAt;
-    @Column(name = "full_name")
-    private String fullName;
     @Column(name = "volume_type")
     private String volumeType;
 

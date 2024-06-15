@@ -6,6 +6,7 @@ import io.unitycatalog.server.base.BaseCRUDTest;
 import io.unitycatalog.server.persist.FileUtils;
 import io.unitycatalog.server.persist.HibernateUtil;
 import io.unitycatalog.server.persist.dao.VolumeInfoDAO;
+import io.unitycatalog.server.utils.TestUtils;
 import org.hibernate.Session;
 import org.hibernate.SessionFactory;
 import org.junit.*;
@@ -56,13 +57,29 @@ public abstract class BaseVolumeCRUDTest extends BaseCRUDTest {
         } catch (Exception e) {
             // Ignore
         }
+        try {
+            if (schemaOperations.getSchema(TestUtils.CATALOG_NEW_NAME + "." + TestUtils.SCHEMA_NEW_NAME) != null) {
+                schemaOperations.deleteSchema(TestUtils.CATALOG_NEW_NAME + "." + TestUtils.SCHEMA_NEW_NAME);
+            }
+        } catch (Exception e) {
+            // Ignore
+        }
+        try {
+            if (schemaOperations.getSchema(TestUtils.CATALOG_NEW_NAME + "." + TestUtils.SCHEMA_NAME) != null) {
+                schemaOperations.deleteSchema(TestUtils.CATALOG_NEW_NAME + "." + TestUtils.SCHEMA_NAME);
+            }
+        } catch (Exception e) {
+            // Ignore
+        }
         super.cleanUp();
     }
+
+    private SchemaInfo schemaInfo;
 
     protected void createCommonResources() throws ApiException {
         // Common setup operations such as creating a catalog and schema
         catalogOperations.createCatalog(CATALOG_NAME, "Common catalog for volumes");
-        schemaOperations.createSchema(new CreateSchema().name(SCHEMA_NAME).catalogName(CATALOG_NAME));
+        schemaInfo = schemaOperations.createSchema(new CreateSchema().name(SCHEMA_NAME).catalogName(CATALOG_NAME));
     }
 
     @Test
@@ -126,15 +143,13 @@ public abstract class BaseVolumeCRUDTest extends BaseCRUDTest {
         try (Session session = sessionFactory.openSession()) {
             session.beginTransaction();
             VolumeInfoDAO managedVolume = VolumeInfoDAO.builder()
-                    .catalogName(CATALOG_NAME)
-                    .schemaName(SCHEMA_NAME)
                     .volumeType(VolumeType.MANAGED.getValue())
                     .storageLocation("/tmp/managed_volume")
                     .name(VOLUME_NAME)
-                    .fullName(VOLUME_FULL_NAME)
                     .createdAt(new Date())
                     .updatedAt(new Date())
-                    .volumeId(UUID.randomUUID().toString())
+                    .id(UUID.randomUUID())
+                    .schemaId(UUID.fromString(schemaInfo.getSchemaId()))
                     .build();
             session.persist(managedVolume);
             session.getTransaction().commit();
@@ -159,9 +174,17 @@ public abstract class BaseVolumeCRUDTest extends BaseCRUDTest {
             return volume.getName().equals(VOLUME_NAME);
         }));
 
+        //NOW Update the schema name
+        schemaOperations.updateSchema(SCHEMA_FULL_NAME,
+                new UpdateSchema().newName(SCHEMA_NEW_NAME).comment(SCHEMA_COMMENT));
+        // get volume
+        VolumeInfo volumePostSchemaNameChange = volumeOperations.getVolume
+                (CATALOG_NAME + "." + SCHEMA_NEW_NAME + "." + VOLUME_NAME);
+        assertEquals(volumePostSchemaNameChange.getVolumeId(), managedVolumeInfo.getVolumeId());
+
         // Delete volume
         System.out.println("Testing delete volume..");
-        volumeOperations.deleteVolume(VOLUME_FULL_NAME);
-        assertEquals(0, getSize(volumeOperations.listVolumes(CATALOG_NAME, SCHEMA_NAME)));
+        volumeOperations.deleteVolume(CATALOG_NAME + "." + SCHEMA_NEW_NAME + "." + VOLUME_NAME);
+        assertEquals(0, getSize(volumeOperations.listVolumes(CATALOG_NAME, SCHEMA_NEW_NAME)));
     }
 }

@@ -18,6 +18,10 @@ public abstract class BaseCRUDTest extends BaseServerTest {
             if (catalogOperations.getCatalog(CATALOG_NAME) != null) {
                 catalogOperations.deleteCatalog(CATALOG_NAME);
             }
+        } catch (Exception e) {
+            // Ignore
+        }
+        try {
             if (catalogOperations.getCatalog(CATALOG_NEW_NAME) != null) {
                 catalogOperations.deleteCatalog(CATALOG_NEW_NAME);
             }
