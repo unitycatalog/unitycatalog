@@ -55,16 +55,33 @@ public class CatalogRepository {
     public ListCatalogsResponse listCatalogs() {
         ListCatalogsResponse response = new ListCatalogsResponse();
         try (Session session = sessionFactory.openSession()) {
-            response.setCatalogs(session
-                    .createQuery("from CatalogInfoDAO ", CatalogInfoDAO.class).list()
-                    .stream().map(CatalogInfoDAO::toCatalogInfo).collect(Collectors.toList()));
+            session.setDefaultReadOnly(true);
+            Transaction tx = session.beginTransaction();
+            try {
+                response.setCatalogs(session
+                        .createQuery("from CatalogInfoDAO ", CatalogInfoDAO.class).list()
+                        .stream().map(CatalogInfoDAO::toCatalogInfo).collect(Collectors.toList()));
+                tx.commit();
+            } catch (Exception e) {
+                tx.rollback();
+                throw e;
+            }
             return response;
         }
     }
 
     public CatalogInfo getCatalog(String name) {
         try (Session session = sessionFactory.openSession()) {
-            CatalogInfoDAO catalogInfo = getCatalogDAO(session, name);
+            session.setDefaultReadOnly(true);
+            Transaction tx = session.beginTransaction();
+            CatalogInfoDAO catalogInfo = null;
+            try {
+                catalogInfo = getCatalogDAO(session, name);
+                tx.commit();
+            } catch (Exception e) {
+                tx.rollback();
+                throw e;
+            }
             if (catalogInfo == null) {
                 throw new BaseException(ErrorCode.NOT_FOUND, "Catalog not found: " + name);
             }

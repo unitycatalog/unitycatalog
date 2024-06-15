@@ -91,46 +91,62 @@ public class FunctionRepository {
     public ListFunctionsResponse listFunctions(String catalogName, String schemaName, Optional<Integer> maxResults, Optional<String> nextPageToken) {
         ListFunctionsResponse response = new ListFunctionsResponse();
         try (Session session = SESSION_FACTORY.openSession()) {
-            SchemaInfoDAO schemaInfo = schemaRepository.getSchemaDAO(session, catalogName + "." + schemaName);
-            if (schemaInfo == null) {
-                throw new BaseException(ErrorCode.NOT_FOUND, "Schema not found: " + schemaName);
+            session.setDefaultReadOnly(true);
+            Transaction tx = session.beginTransaction();
+            try {
+                SchemaInfoDAO schemaInfo = schemaRepository.getSchemaDAO(session, catalogName + "." + schemaName);
+                if (schemaInfo == null) {
+                    throw new BaseException(ErrorCode.NOT_FOUND, "Schema not found: " + schemaName);
+                }
+                String queryString = "from FunctionInfoDAO f where f.schemaId = :schemaId";
+                Query<FunctionInfoDAO> query = session.createQuery(queryString, FunctionInfoDAO.class);
+                query.setParameter("schemaId", schemaInfo.getId());
+                maxResults.ifPresent(query::setMaxResults);
+                if (nextPageToken.isPresent()) {
+                    // Perform pagination logic here if needed
+                    // Example: query.setFirstResult(startIndex);
+                }
+                List<FunctionInfoDAO> functions = query.list();
+                response.setFunctions(
+                        functions.stream().map(FunctionInfoDAO::toFunctionInfo)
+                                .peek(f -> addNamespaceInfo(f, catalogName, schemaName))
+                                .collect(Collectors.toList()));
+                tx.commit();
+            } catch (Exception e) {
+                tx.rollback();
+                throw e;
             }
-            String queryString = "from FunctionInfoDAO f where f.schemaId = :schemaId";
-            Query<FunctionInfoDAO> query = session.createQuery(queryString, FunctionInfoDAO.class);
-            query.setParameter("schemaId", schemaInfo.getId());
-            maxResults.ifPresent(query::setMaxResults);
-            if (nextPageToken.isPresent()) {
-                // Perform pagination logic here if needed
-                // Example: query.setFirstResult(startIndex);
-            }
-            List<FunctionInfoDAO> functions = query.list();
-            response.setFunctions(
-                    functions.stream().map(FunctionInfoDAO::toFunctionInfo)
-                            .peek(f -> addNamespaceInfo(f, catalogName, schemaName))
-                            .collect(Collectors.toList()));
-            return response;
         }
+        return response;
     }
 
     public FunctionInfo getFunction(String name) {
+        FunctionInfo functionInfo = null;
         try (Session session = SESSION_FACTORY.openSession()) {
-            session.beginTransaction();
-            String[] parts = name.split("\\.");
-            if (parts.length != 3) {
-                throw new BaseException(ErrorCode.INVALID_ARGUMENT, "Invalid function name: " + name);
+            session.setDefaultReadOnly(true);
+            Transaction tx = session.beginTransaction();
+            try {
+                String[] parts = name.split("\\.");
+                if (parts.length != 3) {
+                    throw new BaseException(ErrorCode.INVALID_ARGUMENT, "Invalid function name: " + name);
+                }
+                String catalogName = parts[0], schemaName = parts[1], functionName = parts[2];
+                FunctionInfoDAO functionInfoDAO = getFunctionDAO(session, catalogName, schemaName, functionName);
+                if (functionInfoDAO == null) {
+                    throw new BaseException(ErrorCode.NOT_FOUND, "Function not found: " + name);
+                }
+                functionInfo = functionInfoDAO.toFunctionInfo();
+                addNamespaceInfo(functionInfo, catalogName, schemaName);
+                tx.commit();
+            } catch (Exception e) {
+                tx.rollback();
+                throw e;
             }
-            String catalogName = parts[0], schemaName = parts[1], functionName = parts[2];
-            FunctionInfoDAO functionInfoDAO = getFunctionDAO(session, catalogName, schemaName, functionName);
-            if (functionInfoDAO == null) {
-                throw new BaseException(ErrorCode.NOT_FOUND, "Function not found: " + name);
-            }
-            FunctionInfo functionInfo =functionInfoDAO.toFunctionInfo();
-            addNamespaceInfo(functionInfo, catalogName, schemaName);
-            return functionInfo;
         } catch (Exception e) {
             LOGGER.error("Error getting function", e);
             return null;
         }
+        return functionInfo;
     }
 
     public void addNamespaceInfo(FunctionInfo functionInfo, String catalogName, String schemaName) {

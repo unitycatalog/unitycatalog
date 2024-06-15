@@ -106,33 +106,49 @@ public class VolumeRepository {
 
     public VolumeInfo getVolumeById(String volumeId) {
         try (Session session = sessionFactory.openSession()) {
-            session.beginTransaction();
-            Query<VolumeInfoDAO> query = session.createQuery("FROM VolumeInfoDAO WHERE id = :value", VolumeInfoDAO.class);
-            query.setParameter("value", UUID.fromString(volumeId));
-            query.setMaxResults(1);
-            return VolumeInfoConverter.fromDAO(query.uniqueResult());
+            session.setDefaultReadOnly(true);
+            Transaction tx = session.beginTransaction();
+            try {
+                Query<VolumeInfoDAO> query = session.createQuery("FROM VolumeInfoDAO WHERE id = :value", VolumeInfoDAO.class);
+                query.setParameter("value", UUID.fromString(volumeId));
+                query.setMaxResults(1);
+                VolumeInfoDAO volumeInfoDAO = query.uniqueResult();
+                tx.commit();
+                return VolumeInfoConverter.fromDAO(volumeInfoDAO);
+            } catch (Exception e) {
+                tx.rollback();
+                throw e;
+            }
         }
     }
 
     public ListVolumesResponseContent listVolumes(String catalogName, String schemaName, Optional<Integer> maxResults, Optional<String> pageToken, Optional<Boolean> includeBrowse) {
         ListVolumesResponseContent responseContent = new ListVolumesResponseContent();
         try (Session session = sessionFactory.openSession()) {
-            SchemaInfoDAO schemaInfo = schemaRepository.getSchemaDAO(session, catalogName, schemaName);
-            if (schemaInfo == null) {
-                throw new BaseException(ErrorCode.NOT_FOUND, "Schema not found: " + catalogName + "." + schemaName);
+            session.setDefaultReadOnly(true);
+            Transaction tx = session.beginTransaction();
+            try {
+                SchemaInfoDAO schemaInfo = schemaRepository.getSchemaDAO(session, catalogName, schemaName);
+                if (schemaInfo == null) {
+                    throw new BaseException(ErrorCode.NOT_FOUND, "Schema not found: " + catalogName + "." + schemaName);
+                }
+                String queryString = "from VolumeInfoDAO v where v.schemaId = :schemaId";
+                Query<VolumeInfoDAO> query = session.createQuery(queryString, VolumeInfoDAO.class);
+                query.setParameter("schemaId", schemaInfo.getId());
+                maxResults.ifPresent(query::setMaxResults);
+                if (pageToken.isPresent()) {
+                    // Perform pagination logic here if needed
+                    // Example: query.setFirstResult(startIndex);
+                }
+                responseContent.setVolumes(query.list().stream()
+                        .map(x -> convertFromDAO(x, catalogName, schemaName))
+                        .collect(Collectors.toList()));
+                tx.commit();
+                return responseContent;
+            } catch (Exception e) {
+                tx.rollback();
+                throw e;
             }
-            String queryString = "from VolumeInfoDAO v where v.schemaId = :schemaId";
-            Query<VolumeInfoDAO> query = session.createQuery(queryString, VolumeInfoDAO.class);
-            query.setParameter("schemaId", schemaInfo.getId());
-            maxResults.ifPresent(query::setMaxResults);
-            if (pageToken.isPresent()) {
-                // Perform pagination logic here if needed
-                // Example: query.setFirstResult(startIndex);
-            }
-            responseContent.setVolumes(query.list().stream()
-                    .map(x -> convertFromDAO(x, catalogName, schemaName))
-                    .collect(Collectors.toList()));
-            return responseContent;
         }
     }
 

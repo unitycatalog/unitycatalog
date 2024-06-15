@@ -96,26 +96,44 @@ public class SchemaRepository {
     public ListSchemasResponse listSchemas(String catalogName, Optional<Integer> maxResults,
                                            Optional<String> pageToken) {
         try (Session session = sessionFactory.openSession()) {
+            ListSchemasResponse response = new ListSchemasResponse();
+            session.setDefaultReadOnly(true);
+            Transaction tx = session.beginTransaction();
             // TODO: Implement pagination and filtering if required
             // For now, returning all schemas without pagination
-            CatalogInfoDAO catalog = catalogRepository.getCatalogDAO(session, catalogName);
-            if (catalog == null) {
-                throw new BaseException(ErrorCode.NOT_FOUND, "Catalog not found: " + catalogName);
+            try {
+                CatalogInfoDAO catalog = catalogRepository.getCatalogDAO(session, catalogName);
+                if (catalog == null) {
+                    throw new BaseException(ErrorCode.NOT_FOUND, "Catalog not found: " + catalogName);
+                }
+
+                Query<SchemaInfoDAO> query = session
+                        .createQuery("FROM SchemaInfoDAO WHERE catalogId = :value", SchemaInfoDAO.class);
+                query.setParameter("value", catalog.getId());
+                response.setSchemas(query.list().stream().map(SchemaInfoDAO::toSchemaInfo)
+                        .peek(x -> addNamespaceData(x, catalogName))
+                        .collect(Collectors.toList()));
+                tx.commit();
+            } catch (Exception e) {
+                tx.rollback();
+                throw e;
             }
-            ListSchemasResponse response = new ListSchemasResponse();
-            Query<SchemaInfoDAO> query = session
-                    .createQuery("FROM SchemaInfoDAO WHERE catalogId = :value", SchemaInfoDAO.class);
-            query.setParameter("value", catalog.getId());
-            response.setSchemas(query.list().stream().map(SchemaInfoDAO::toSchemaInfo)
-                            .peek(x -> addNamespaceData(x, catalogName))
-                    .collect(Collectors.toList()));
             return response;
         }
     }
 
     public SchemaInfo getSchema(String fullName) {
         try (Session session = sessionFactory.openSession()) {
-            SchemaInfoDAO schemaInfo = getSchemaDAO(session, fullName);
+            session.setDefaultReadOnly(true);
+            Transaction tx = session.beginTransaction();
+            SchemaInfoDAO schemaInfo = null;
+            try {
+                schemaInfo = getSchemaDAO(session, fullName);
+                tx.commit();
+            } catch (Exception e) {
+                tx.rollback();
+                throw e;
+            }
             if (schemaInfo == null) {
                 throw new BaseException(ErrorCode.NOT_FOUND, "Schema not found: " + fullName);
             }
