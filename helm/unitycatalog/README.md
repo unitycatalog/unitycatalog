@@ -38,7 +38,7 @@ The following table lists the configurable parameters of the UnityCatalog chart 
 | `image.tag`              | Image tag                                        | `latest`                       |
 | `image.pullPolicy`       | Image pull policy                                | `IfNotPresent`                 |
 | `service.type`           | Kubernetes service type                          | `ClusterIP`                    |
-| `service.port`           | Service port                                     | `80`                           |
+| `service.port`           | Service port                                     | `8081`                         |
 | `ingress.enabled`        | Enable ingress controller resource               | `false`                        |
 | `ingress.annotations`    | Ingress annotations                              | `{}`                           |
 | `ingress.hosts`          | Hostnames for ingress                            | `[]`                           |
