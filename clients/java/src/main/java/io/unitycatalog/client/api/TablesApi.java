@@ -346,8 +346,7 @@ public class TablesApi {
           localVarResponse.headers().map(),
           localVarResponse.body() == null ? null : memberVarObjectMapper.readValue(localVarResponse.body(), new TypeReference<ListTablesResponse>() {}) // closes the InputStream
         );
-      } finally {
-      }
+      } 
     } catch (IOException e) {
       throw new ApiException(e);
     }
@@ -355,6 +354,8 @@ public class TablesApi {
       Thread.currentThread().interrupt();
       throw new ApiException(e);
     }
+    finally {
+      }
   }
 
   private HttpRequest.Builder listTablesRequestBuilder(String catalogName, String schemaName, Integer maxResults, String pageToken) throws ApiException {
