@@ -2,3 +2,6 @@ etc/db/h2db.mv.db
 target/
 .idea/
 .bsp/
+etc/logs/
+api/.openapi-generator
+build/sbt-launch-*
