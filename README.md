@@ -12,7 +12,7 @@ Unity Catalog is the most open and interoperable catalog for data and AI
 - **Unified governance** for data and AI - Asset-level access control is enforced through 
     temporary credential vending via REST APIs
 
-![image info](./uc-ecosystem.png)
+![image info](./uc-ecosystem-2.png)
 
 ## Quickstart - Hello UC!
 Let's take Unity Catalog for spin. In this guide, we are going to do the following:
