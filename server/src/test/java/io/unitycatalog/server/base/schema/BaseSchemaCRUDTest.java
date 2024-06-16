@@ -1,10 +1,7 @@
 package io.unitycatalog.server.base.schema;
 
 import io.unitycatalog.client.ApiException;
-import io.unitycatalog.client.model.CreateCatalog;
-import io.unitycatalog.client.model.CreateSchema;
-import io.unitycatalog.client.model.SchemaInfo;
-import io.unitycatalog.client.model.UpdateSchema;
+import io.unitycatalog.client.model.*;
 import io.unitycatalog.server.base.BaseCRUDTest;
 import io.unitycatalog.server.base.ServerConfig;
 import io.unitycatalog.server.utils.TestUtils;
@@ -38,7 +35,22 @@ public abstract class BaseSchemaCRUDTest extends BaseCRUDTest {
         } catch (Exception e) {
             // Ignore
         }
+        try {
+            if (schemaOperations.getSchema(TestUtils.CATALOG_NEW_NAME + "." + TestUtils.SCHEMA_NEW_NAME) != null) {
+                schemaOperations.deleteSchema(TestUtils.CATALOG_NEW_NAME + "." + TestUtils.SCHEMA_NEW_NAME);
+            }
+        } catch (Exception e) {
+            // Ignore
+        }
+        try {
+            if (schemaOperations.getSchema(TestUtils.CATALOG_NEW_NAME + "." + TestUtils.SCHEMA_NAME) != null) {
+                schemaOperations.deleteSchema(TestUtils.CATALOG_NEW_NAME + "." + TestUtils.SCHEMA_NAME);
+            }
+        } catch (Exception e) {
+                // Ignore
+        }
         super.cleanUp();
+
     }
 
     protected void createCommonResources() throws ApiException {
@@ -84,10 +96,16 @@ public abstract class BaseSchemaCRUDTest extends BaseCRUDTest {
         Assert.assertEquals(TestUtils.SCHEMA_NEW_FULL_NAME, updatedSchemaInfo.getFullName());
         assertNotNull(updatedSchemaInfo.getUpdatedAt());
 
+        //Now update the parent catalog name
+        catalogOperations.updateCatalog(TestUtils.CATALOG_NAME, TestUtils.CATALOG_NEW_NAME, "");
+        SchemaInfo updatedSchemaInfo2 = schemaOperations.getSchema(TestUtils.CATALOG_NEW_NAME
+                + "." + TestUtils.SCHEMA_NEW_NAME);
+        assertEquals(retrievedSchemaInfo.getSchemaId(), updatedSchemaInfo2.getSchemaId());
+
         // Delete schema
         System.out.println("Testing delete schema..");
-        schemaOperations.deleteSchema(TestUtils.SCHEMA_NEW_FULL_NAME);
-        assertFalse(TestUtils.contains(schemaOperations.listSchemas(TestUtils.CATALOG_NAME), updatedSchemaInfo, (schema) ->
+        schemaOperations.deleteSchema(TestUtils.CATALOG_NEW_NAME + "." + TestUtils.SCHEMA_NEW_NAME);
+        assertFalse(TestUtils.contains(schemaOperations.listSchemas(TestUtils.CATALOG_NEW_NAME), updatedSchemaInfo, (schema) ->
                 schema.getName().equals(TestUtils.SCHEMA_NEW_NAME)));
     }
 }

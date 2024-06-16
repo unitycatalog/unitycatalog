@@ -6,6 +6,7 @@ import io.unitycatalog.server.persist.FileUtils;
 import io.unitycatalog.server.persist.dao.VolumeInfoDAO;
 
 import java.util.Date;
+import java.util.UUID;
 
 public class VolumeInfoConverter {
 
@@ -14,15 +15,12 @@ public class VolumeInfoConverter {
             return null;
         }
         return VolumeInfoDAO.builder()
-                .volumeId(volumeInfo.getVolumeId())
+                .id(UUID.fromString(volumeInfo.getVolumeId()))
                 .name(volumeInfo.getName())
-                .catalogName(volumeInfo.getCatalogName())
-                .schemaName(volumeInfo.getSchemaName())
                 .comment(volumeInfo.getComment())
                 .storageLocation(volumeInfo.getStorageLocation())
                 .createdAt(volumeInfo.getCreatedAt() != null?  new Date(volumeInfo.getCreatedAt()) : new Date())
                 .updatedAt(volumeInfo.getUpdatedAt() != null ? new Date(volumeInfo.getUpdatedAt()) : new Date())
-                .fullName(volumeInfo.getFullName())
                 .volumeType(volumeInfo.getVolumeType().getValue())
                 .build();
     }
@@ -32,15 +30,12 @@ public class VolumeInfoConverter {
             return null;
         }
         return new VolumeInfo()
-                .volumeId(dao.getVolumeId())
+                .volumeId(dao.getId().toString())
                 .name(dao.getName())
-                .catalogName(dao.getCatalogName())
-                .schemaName(dao.getSchemaName())
                 .comment(dao.getComment())
                 .storageLocation(FileUtils.convertRelativePathToURI(dao.getStorageLocation()))
                 .createdAt(dao.getCreatedAt().getTime())
                 .updatedAt(dao.getUpdatedAt().getTime())
-                .fullName(dao.getFullName())
                 .volumeType(VolumeType.valueOf(dao.getVolumeType()));
     }
 
