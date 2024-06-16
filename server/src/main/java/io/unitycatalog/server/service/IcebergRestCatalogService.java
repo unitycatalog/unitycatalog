@@ -105,7 +105,7 @@ public class IcebergRestCatalogService {
       return ListNamespacesResponse.builder().build();
     }
 
-    throw new IllegalArgumentException("invalid parent " + parent.get());
+    throw new BaseException(ErrorCode.INVALID_ARGUMENT, "invalid parent " + parent.get());
   }
 
   @Get("/v1/namespaces/{namespace}")
@@ -139,18 +139,25 @@ public class IcebergRestCatalogService {
     }
 
     // Else it's an invalid parameter
-    throw new IllegalArgumentException();
+    throw new BaseException(ErrorCode.INVALID_ARGUMENT, "invalid namespace " + namespace);
   }
 
   // Table APIs
+  private List<String> splitAndValidateTwoPartNamespace(String namespace) {
+    List<String> namespaceParts = Splitter.on(".").splitToList(namespace);
+    if (namespaceParts.size() != 2) {
+      String errMsg = "Invalid namespace " + namespace
+              + ". Operation requires a two-part namespace of the form <catalog>.<schema>";
+      throw new BaseException(ErrorCode.INVALID_ARGUMENT, errMsg);
+    }
+
+    return namespaceParts;
+  }
 
   @Head("/v1/namespaces/{namespace}/tables/{table}")
   public HttpResponse tableExists(@Param("namespace") String namespace,
                                   @Param("table") String table) {
-    List<String> namespaceParts = Splitter.on(".").splitToList(namespace);
-    if (namespaceParts.size() != 2) {
-      throw new IllegalArgumentException("invalid namespace " + namespace);
-    }
+    List<String> namespaceParts = splitAndValidateTwoPartNamespace(namespace);
     String catalog = namespaceParts.get(0);
     String schema = namespaceParts.get(1);
     try (Session session = sessionFactory.openSession()) {
@@ -169,10 +176,7 @@ public class IcebergRestCatalogService {
   @ProducesJson
   public LoadTableResponse loadTable(@Param("namespace") String namespace,
                                      @Param("table") String table) throws IOException {
-    List<String> namespaceParts = Splitter.on(".").splitToList(namespace);
-    if (namespaceParts.size() != 2) {
-      throw new IllegalArgumentException("invalid namespace " + namespace);
-    }
+    List<String> namespaceParts = splitAndValidateTwoPartNamespace(namespace);
     String catalog = namespaceParts.get(0);
     String schema = namespaceParts.get(1);
     String metadataLocation;
@@ -205,10 +209,7 @@ public class IcebergRestCatalogService {
   public org.apache.iceberg.rest.responses.ListTablesResponse listTables(
     @Param("namespace") String namespace)
     throws JsonProcessingException {
-    List<String> namespaceParts = Splitter.on(".").splitToList(namespace);
-    if (namespaceParts.size() != 2) {
-      throw new IllegalArgumentException("invalid namespace " + namespace);
-    }
+    List<String> namespaceParts = splitAndValidateTwoPartNamespace(namespace);
     String catalog = namespaceParts.get(0);
     String schema = namespaceParts.get(1);
     AggregatedHttpResponse resp =
@@ -236,5 +237,4 @@ public class IcebergRestCatalogService {
       .addAll(filteredTables)
       .build();
   }
-
 }
