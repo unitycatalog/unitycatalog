@@ -7,9 +7,9 @@ import java.util.HashSet;
  */
 @javax.annotation.Generated(value = "org.openapitools.codegen.languages.JavaClientCodegen", comments = "Generator version: 7.5.0")
 public class ServerVariable {
-    public String description;
-    public String defaultValue;
-    public HashSet<String> enumValues = null;
+    private String description;
+    private String defaultValue;
+    private HashSet<String> enumValues = null;
 
     /**
      * @param description A description for the server variable.
