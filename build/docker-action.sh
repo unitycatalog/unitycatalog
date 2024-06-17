@@ -1,10 +1,14 @@
 #!/bin/bash
 
+#Script to help create server and cli jar files via SBT. Then to build and push as Docker image.
+
+SCRIPT_DIR="$(dirname "$(readlink -f "$0")")"
+ROOT_DIR="$(dirname "$SCRIPT_DIR")"
 APP_VERSION=$(awk -F ' := ' '{print $2}' version.sbt | tr -d '"')
 PLATFORMS="linux/amd64,linux/arm64"
 
 run_sbt() {
-  SBT_COMMAND="./build/sbt -J-Xms4G -J-Xmx4G -info clean assembly"
+  SBT_COMMAND="$ROOT_DIR/build/sbt -J-Xms4G -J-Xmx4G -info clean assembly"
   echo "Running SBT to generate Server and CLI JAR: $SBT_COMMAND"
   $SBT_COMMAND || exit
 }
@@ -23,10 +27,12 @@ if [ -z "$CLI_JAR" ]; then
     run_sbt
 fi
 
+echo "Setting up docker for multi-platform builds using buildx"
 docker run --privileged --rm tonistiigi/binfmt --install all
 docker buildx create --use --name builder
 docker buildx inspect --bootstrap builder
 
-docker buildx build \
+echo "Running Docker build command, version=$APP_VERSION, platforms=$PLATFORMS"
+(cd "$ROOT_DIR/.."; docker buildx build \
   --platform "$PLATFORMS" \
-  -t datacatering/unitycatalog:"$APP_VERSION" --push .
+  -t datacatering/unitycatalog:"$APP_VERSION" --push .)

@@ -36,7 +36,6 @@ You have to ensure that you local environment has the following:
 docker run -d -i --name unitycatalog -p 8081:8081 datacatering/unitycatalog:0.1.0
 ```
 
-
 In a terminal, in the cloned repository root directory, start the UC server.
 
 ```

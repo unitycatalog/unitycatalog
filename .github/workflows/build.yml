@@ -23,4 +23,4 @@ jobs:
           distribution: 'temurin'
           cache: 'sbt'
       - name: Build and push images
-        run: bash docker-action.sh
+        run: bash build/docker-action.sh
