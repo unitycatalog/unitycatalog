@@ -93,7 +93,7 @@ SELECT * from unity.default.numbers;
 ```
 
 You should see the tables listed and the contents of the `numbers` table printed.
-TO quit DuckDB, run the command `Ctrl+D` or type `.exit` in the DuckDB shell.
+To quit DuckDB, run the command `Ctrl+D` or type `.exit` in the DuckDB shell.
 
 ## Full Tutorial
 
