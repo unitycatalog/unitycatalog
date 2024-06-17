@@ -1,5 +1,4 @@
 etc/db/h2db.mv.db
-.idea
-*target*
-build/sbt-launch-*
-.bsp
+target/
+.idea/
+.bsp/

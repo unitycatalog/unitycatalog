@@ -3,7 +3,9 @@ package io.unitycatalog.server.persist;
 import io.unitycatalog.server.exception.BaseException;
 import io.unitycatalog.server.model.*;
 import io.unitycatalog.server.persist.converters.TableInfoConverter;
+import io.unitycatalog.server.persist.dao.CatalogInfoDAO;
 import io.unitycatalog.server.persist.dao.PropertyDAO;
+import io.unitycatalog.server.persist.dao.SchemaInfoDAO;
 import io.unitycatalog.server.persist.dao.TableInfoDAO;
 import io.unitycatalog.server.utils.ValidationUtils;
 import lombok.Getter;
@@ -22,49 +24,66 @@ public class TableRepository {
     private static final TableRepository instance = new TableRepository();
     private static final Logger LOGGER = LoggerFactory.getLogger(TableRepository.class);
     private static final SessionFactory sessionFactory = HibernateUtil.getSessionFactory();
-    private static final CatalogOperations catalogOperations = CatalogOperations.getInstance();
-    private static final SchemaOperations schemaOperations = SchemaOperations.getInstance();
+    private static final CatalogRepository catalogOperations = CatalogRepository.getInstance();
+    private static final SchemaRepository schemaOperations = SchemaRepository.getInstance();
 
     private TableRepository() {}
 
     public TableInfo getTableById(String tableId) {
         LOGGER.debug("Getting table by id: " + tableId);
         try (Session session = sessionFactory.openSession()) {
-            TableInfoDAO tableInfoDAO = session.get(TableInfoDAO.class, UUID.fromString(tableId));
-            if (tableInfoDAO == null) {
-                throw new BaseException(ErrorCode.NOT_FOUND, "Table not found: " + tableId);
+            session.setDefaultReadOnly(true);
+            Transaction tx = session.beginTransaction();
+            try {
+                TableInfoDAO tableInfoDAO = session.get(TableInfoDAO.class, UUID.fromString(tableId));
+                if (tableInfoDAO == null) {
+                    throw new BaseException(ErrorCode.NOT_FOUND, "Table not found: " + tableId);
+                }
+                TableInfo tableInfo = TableInfoConverter.convertToDTO(tableInfoDAO);
+                tableInfo.setColumns(TableInfoConverter.convertColumnsToDTO(tableInfoDAO.getColumns()));
+                tableInfo.setProperties(TableInfoConverter.convertPropertiesToMap(findProperties(session, tableInfoDAO.getId())));
+                tx.commit();
+                return tableInfo;
+            } catch (Exception e) {
+                tx.rollback();
+                throw e;
             }
-
-            TableInfo tableInfo = TableInfoConverter.convertToDTO(tableInfoDAO);
-            tableInfo.setColumns(TableInfoConverter.convertColumnsToDTO(tableInfoDAO.getColumns()));
-            tableInfo.setProperties(TableInfoConverter
-                    .convertPropertiesToMap(findProperties(session, tableInfoDAO.getId())));
-            return tableInfo;
         }
     }
 
     public TableInfo getTable(String fullName) {
         LOGGER.debug("Getting table: " + fullName);
+        TableInfo tableInfo = null;
         try (Session session = sessionFactory.openSession()) {
-            String[] parts = fullName.split("\\.");
-            if (parts.length != 3) {
-                throw new BaseException(ErrorCode.INVALID_ARGUMENT, "Invalid table name: " + fullName);
+            session.setDefaultReadOnly(true);
+            Transaction tx = session.beginTransaction();
+            try {
+                String[] parts = fullName.split("\\.");
+                if (parts.length != 3) {
+                    throw new BaseException(ErrorCode.INVALID_ARGUMENT, "Invalid table name: " + fullName);
+                }
+                String catalogName = parts[0];
+                String schemaName = parts[1];
+                String tableName = parts[2];
+                TableInfoDAO tableInfoDAO = findTable(session, catalogName, schemaName, tableName);
+                if (tableInfoDAO == null) {
+                    throw new BaseException(ErrorCode.NOT_FOUND, "Table not found: " + fullName);
+                }
+                tableInfo = TableInfoConverter.convertToDTO(tableInfoDAO);
+                tableInfo.setColumns(TableInfoConverter.convertColumnsToDTO(tableInfoDAO.getColumns()));
+                tableInfo.setProperties(TableInfoConverter
+                        .convertPropertiesToMap(findProperties(session, tableInfoDAO.getId())));
+                tableInfo.setCatalogName(catalogName);
+                tableInfo.setSchemaName(schemaName);
+                tx.commit();
+            } catch (Exception e) {
+                if (tx != null && tx.getStatus().canRollback()) {
+                    tx.rollback();
+                }
+                throw e;
             }
-            String catalogName = parts[0];
-            String schemaName = parts[1];
-            String tableName = parts[2];
-            TableInfoDAO tableInfoDAO = findTable(session, catalogName, schemaName, tableName);
-            if (tableInfoDAO == null) {
-                throw new BaseException(ErrorCode.NOT_FOUND, "Table not found: " + fullName);
-            }
-            TableInfo tableInfo = TableInfoConverter.convertToDTO(tableInfoDAO);
-            tableInfo.setColumns(TableInfoConverter.convertColumnsToDTO(tableInfoDAO.getColumns()));
-            tableInfo.setProperties(TableInfoConverter
-                    .convertPropertiesToMap(findProperties(session, tableInfoDAO.getId())));
-            tableInfo.setCatalogName(catalogName);
-            tableInfo.setSchemaName(schemaName);
-            return tableInfo;
         }
+        return tableInfo;
     }
 
     private List<PropertyDAO> findProperties(Session session, UUID tableId) {
@@ -161,18 +180,11 @@ public class TableRepository {
     }
 
     public String getSchemaId(Session session, String catalogName, String schemaName) {
-
-        CatalogInfo catalogInfoDAO = catalogOperations.getCatalog(session, catalogName);
-        if (catalogInfoDAO == null) {
-            throw new BaseException(ErrorCode.NOT_FOUND, "Catalog not found: " + catalogName);
-        }
-        SchemaInfo schemaInfo = schemaOperations.getSchema(session, catalogName
-                + "." + schemaName);
+        SchemaInfoDAO schemaInfo = schemaOperations.getSchemaDAO(session, catalogName, schemaName);
         if (schemaInfo == null) {
             throw new BaseException(ErrorCode.NOT_FOUND, "Schema not found: " + schemaName);
         }
-        return schemaInfo.getSchemaId();
-
+        return schemaInfo.getId().toString();
     }
 
     public static Date convertMillisToDate(String millisString) {
@@ -206,37 +218,45 @@ public class TableRepository {
      * @return
      */
     public ListTablesResponse listTables(String catalogName,
-                                      String schemaName,
-                                      Integer maxResults,
-                                      String nextPageToken,
-                                      Boolean omitProperties,
-                                      Boolean omitColumns) {
+                                         String schemaName,
+                                         Integer maxResults,
+                                         String nextPageToken,
+                                         Boolean omitProperties,
+                                         Boolean omitColumns) {
         List<TableInfo> result = new ArrayList<>();
         String returnNextPageToken = null;
         String hql = "FROM TableInfoDAO t WHERE t.schemaId = :schemaId and " +
                 "(t.updatedAt < :pageToken OR :pageToken is null) order by t.updatedAt desc";
         try (Session session = sessionFactory.openSession()) {
-            String schemaId = getSchemaId(session, catalogName, schemaName);
-            Query<TableInfoDAO> query = session.createQuery(hql, TableInfoDAO.class);
-            query.setParameter("schemaId", UUID.fromString(schemaId));
-            query.setParameter("pageToken", convertMillisToDate(nextPageToken));
-            query.setMaxResults(maxResults);
-            List<TableInfoDAO> tableInfoDAOList = query.list();
-
-            returnNextPageToken = getNextPageToken(tableInfoDAOList);
-
-            for (TableInfoDAO tableInfoDAO : tableInfoDAOList) {
-                TableInfo tableInfo = TableInfoConverter.convertToDTO(tableInfoDAO);
-                if (!omitColumns) {
-                    tableInfo.setColumns(TableInfoConverter.convertColumnsToDTO(tableInfoDAO.getColumns()));
+            session.setDefaultReadOnly(true);
+            Transaction tx = session.beginTransaction();
+            try {
+                String schemaId = getSchemaId(session, catalogName, schemaName);
+                Query<TableInfoDAO> query = session.createQuery(hql, TableInfoDAO.class);
+                query.setParameter("schemaId", UUID.fromString(schemaId));
+                query.setParameter("pageToken", convertMillisToDate(nextPageToken));
+                query.setMaxResults(maxResults);
+                List<TableInfoDAO> tableInfoDAOList = query.list();
+                returnNextPageToken = getNextPageToken(tableInfoDAOList);
+                for (TableInfoDAO tableInfoDAO : tableInfoDAOList) {
+                    TableInfo tableInfo = TableInfoConverter.convertToDTO(tableInfoDAO);
+                    if (!omitColumns) {
+                        tableInfo.setColumns(TableInfoConverter.convertColumnsToDTO(tableInfoDAO.getColumns()));
+                    }
+                    if (!omitProperties) {
+                        tableInfo.setProperties(TableInfoConverter.convertPropertiesToMap(
+                                findProperties(session, tableInfoDAO.getId())));
+                    }
+                    tableInfo.setCatalogName(catalogName);
+                    tableInfo.setSchemaName(schemaName);
+                    result.add(tableInfo);
                 }
-                if (!omitProperties) {
-                    tableInfo.setProperties(TableInfoConverter.convertPropertiesToMap(
-                            findProperties(session, tableInfoDAO.getId())));
+                tx.commit();
+            } catch (Exception e) {
+                if (tx != null && tx.getStatus().canRollback()) {
+                    tx.rollback();
                 }
-                tableInfo.setCatalogName(catalogName);
-                tableInfo.setSchemaName(schemaName);
-                result.add(tableInfo);
+                throw e;
             }
         }
         return new ListTablesResponse().tables(result).nextPageToken(returnNextPageToken);
@@ -252,22 +272,20 @@ public class TableRepository {
             String catalogName = parts[0];
             String schemaName = parts[1];
             String tableName = parts[2];
-
-            String schemaId = getSchemaId(session, catalogName, schemaName);
-
-            TableInfoDAO tableInfoDAO = findBySchemaIdAndName(session, schemaId, tableName);
-            if (tableInfoDAO == null) {
-                throw new BaseException(ErrorCode.NOT_FOUND, "Table not found: " + fullName);
-            }
             Transaction tx = session.beginTransaction();
             try {
-                if (TableType.MANAGED.getValue().equals(tableInfoDAO.getType())) {
-                    FileUtils.deleteDirectory(tableInfoDAO.getUrl());
+                String schemaId = getSchemaId(session, catalogName, schemaName);
+                TableInfoDAO tableInfoDAO = findBySchemaIdAndName(session, schemaId, tableName);
+                if (tableInfoDAO == null) {
+                    throw new BaseException(ErrorCode.NOT_FOUND, "Table not found: " + fullName);
                 }
-            } catch (Throwable e) {
-                LOGGER.error("Error deleting table directory: " + tableInfoDAO.getUrl());
-            }
-            try {
+                if (TableType.MANAGED.getValue().equals(tableInfoDAO.getType())) {
+                    try {
+                        FileUtils.deleteDirectory(tableInfoDAO.getUrl());
+                    } catch (Throwable e) {
+                        LOGGER.error("Error deleting table directory: " + tableInfoDAO.getUrl());
+                    }
+                }
                 findProperties(session, tableInfoDAO.getId()).forEach(session::remove);
                 session.remove(tableInfoDAO);
                 tx.commit();

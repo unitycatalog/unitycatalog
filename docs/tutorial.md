@@ -2,11 +2,11 @@
 Let's take Unity Catalog for spin. In this tutorial, we are going to do the following:
 - In one terminal, run the UC server.
 - In another terminal, we will explore the contents of the UC server using the UC CLI,
-  which is example UC connector provided to demonstrate how to use the UC SDK for various assets,
+  which is an example UC connector provided to demonstrate how to use the UC SDK for various assets,
   as well as provide a convenient way to explore the content of any UC server implementation.
 
 ### Prerequisites
-You have to ensure that you local environment has the following:
+You have to ensure that your local environment has the following:
 - Clone this repository.
 - Ensure the `JAVA_HOME` environment variable your terminal is configured to point to JDK11+.
 - Compile the project running `build/sbt package` in the repository root directory.
@@ -67,7 +67,7 @@ Let's try creating a new table.
 bin/uc table create --full_name unity.default.myTable --columns "col1 int, col2 double" --storage_location /tmp/uc/myTable
 ```
 
-If you list the tables again you should see this new table. Next, let's write to the table with
+If you list the tables again, you should see this new table. Next, let's write to the table with
 some randomly generated data (again, powered by [Delta Kernel Java](https://delta.io/blog/delta-kernel/)] and read it back.
 
 ```
@@ -91,7 +91,7 @@ load delta;
 If you have installed these extensions before, you may have to run `update extensions` and restart DuckDB
 for the following steps to work.
 
-Now that we have DuckDB all set up, let's trying connecting to UC by specifying a secret.
+Now that we have DuckDB all set up, let's try connecting to UC by specifying a secret.
 ```sh
 CREATE SECRET (
       TYPE UC,
@@ -104,7 +104,7 @@ You should see it print a short table saying `Success` = `true`. Then we attach 
 ```sh
 ATTACH 'unity' AS unity (TYPE UC_CATALOG);
 ```
-Now we ready to query. Try the following
+Now we are ready to query. Try the following
 
 ```sql
 SHOW ALL TABLES;
@@ -137,7 +137,7 @@ You should see two text files listed and one directory. Let's read the content o
 ```
 bin/uc volume read --full_name unity.default.json_files --path c.json
 ```
-Voila! You have read the content of a file stored in a volume.We can also list the contents of any subdirectory.
+Voila! You have read the content of a file stored in a volume. We can also list the contents of any subdirectory.
 For e.g.:
 
 ```
@@ -179,7 +179,7 @@ with the function name and arguments.
 bin/uc function call --full_name unity.default.sum --input_params "1,2,3"
 ```
 
-Voila! You have called a function stored in UC. Lets try and create a new function.
+Voila! You have called a function stored in UC. Let's try and create a new function.
 
 ```
 bin/uc function create --full_name unity.default.myFunction --data_type INT --input_params "a int, b int" --def "c=a*b\nreturn c"

@@ -330,7 +330,7 @@ This is an experimental feature and only supported for python functions that tak
 It runs the functions using the python engine script at `etc/data/function/python_engine.py`.
 
 Example:
-Invoke a python sum function that take two integer inputs:
+Invoke a python sum function that takes two integer inputs:
 ```sh
 bin/uc function call --full_name my_catalog.my_schema.my_function --input_params "1,2"
 ```

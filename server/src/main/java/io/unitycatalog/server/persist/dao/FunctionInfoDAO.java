@@ -7,6 +7,7 @@ import org.hibernate.annotations.SQLRestriction;
 import io.unitycatalog.server.model.ColumnTypeName;
 
 import java.util.List;
+import java.util.UUID;
 
 // Hibernate annotations
 @Entity
@@ -20,17 +21,14 @@ import java.util.List;
 @Builder
 public class FunctionInfoDAO {
     @Id
-    @Column(name = "function_id")
-    private String functionId;
+    @Column(name = "id", columnDefinition = "BINARY(16)")
+    private UUID id;
 
     @Column(name = "name", nullable = false)
     private String name;
 
-    @Column(name = "catalog_name", nullable = false)
-    private String catalogName;
-
-    @Column(name = "schema_name", nullable = false)
-    private String schemaName;
+    @Column(name = "schema_id", columnDefinition = "BINARY(16)")
+    private UUID schemaId;
 
     @Column(name = "comment")
     private String comment;
@@ -43,9 +41,6 @@ public class FunctionInfoDAO {
 
     @Column(name = "data_type")
     private ColumnTypeName dataType;
-
-    @Column(name = "full_name")
-    private String fullName;
 
     @Column(name = "full_data_type")
     private String fullDataType;
@@ -88,15 +83,12 @@ public class FunctionInfoDAO {
 
     public static FunctionInfoDAO from(FunctionInfo functionInfo) {
         FunctionInfoDAO functionInfoDAO =  FunctionInfoDAO.builder()
-                .functionId(functionInfo.getFunctionId())
+                .id(functionInfo.getFunctionId()!= null? UUID.fromString(functionInfo.getFunctionId()) : null)
                 .name(functionInfo.getName())
-                .catalogName(functionInfo.getCatalogName())
-                .schemaName(functionInfo.getSchemaName())
                 .comment(functionInfo.getComment())
                 .createdAt(functionInfo.getCreatedAt())
                 .updatedAt(functionInfo.getUpdatedAt())
                 .dataType(functionInfo.getDataType())
-                .fullName(functionInfo.getFullName())
                 .fullDataType(functionInfo.getFullDataType())
                 .externalLanguage(functionInfo.getExternalLanguage())
                 .isDeterministic(functionInfo.getIsDeterministic())
@@ -122,15 +114,12 @@ public class FunctionInfoDAO {
 
     public FunctionInfo toFunctionInfo() {
         FunctionInfo functionInfo = new FunctionInfo()
-                .functionId(functionId)
+                .functionId(id.toString())
                 .name(name)
-                .catalogName(catalogName)
-                .schemaName(schemaName)
                 .comment(comment)
                 .createdAt(createdAt)
                 .updatedAt(updatedAt)
                 .dataType(dataType)
-                .fullName(fullName)
                 .fullDataType(fullDataType)
                 .externalLanguage(externalLanguage)
                 .isDeterministic(isDeterministic)
