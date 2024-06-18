@@ -147,10 +147,7 @@ public class IcebergRestCatalogService {
   @Head("/v1/namespaces/{namespace}/tables/{table}")
   public HttpResponse tableExists(@Param("namespace") String namespace,
                                   @Param("table") String table) {
-    List<String> namespaceParts = Splitter.on(".").splitToList(namespace);
-    if (namespaceParts.size() != 2) {
-      throw new IllegalArgumentException("invalid namespace " + namespace);
-    }
+    List<String> namespaceParts = splitTwoPartNamespace(namespace);
     String catalog = namespaceParts.get(0);
     String schema = namespaceParts.get(1);
     try (Session session = sessionFactory.openSession()) {
@@ -169,10 +166,7 @@ public class IcebergRestCatalogService {
   @ProducesJson
   public LoadTableResponse loadTable(@Param("namespace") String namespace,
                                      @Param("table") String table) throws IOException {
-    List<String> namespaceParts = Splitter.on(".").splitToList(namespace);
-    if (namespaceParts.size() != 2) {
-      throw new IllegalArgumentException("invalid namespace " + namespace);
-    }
+    List<String> namespaceParts = splitTwoPartNamespace(namespace);
     String catalog = namespaceParts.get(0);
     String schema = namespaceParts.get(1);
     String metadataLocation;
@@ -205,10 +199,7 @@ public class IcebergRestCatalogService {
   public org.apache.iceberg.rest.responses.ListTablesResponse listTables(
     @Param("namespace") String namespace)
     throws JsonProcessingException {
-    List<String> namespaceParts = Splitter.on(".").splitToList(namespace);
-    if (namespaceParts.size() != 2) {
-      throw new IllegalArgumentException("invalid namespace " + namespace);
-    }
+    List<String> namespaceParts = splitTwoPartNamespace(namespace);
     String catalog = namespaceParts.get(0);
     String schema = namespaceParts.get(1);
     AggregatedHttpResponse resp =
@@ -237,4 +228,13 @@ public class IcebergRestCatalogService {
       .build();
   }
 
+  private List<String> splitTwoPartNamespace(String namespace) {
+    List<String> namespaceParts = Splitter.on(".").splitToList(namespace);
+    if (namespaceParts.size() != 2) {
+      String errMsg = "Invalid two-part namespace " + namespace;
+      throw new BaseException(ErrorCode.INVALID_ARGUMENT, errMsg);
+    }
+
+    return namespaceParts;
+  }
 }

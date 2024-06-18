@@ -251,4 +251,21 @@ public class IcebergRestCatalogTest extends BaseServerTest {
     }
   }
 
+  @Test
+  public void testLoadTablesInvalidNamespace() {
+    AggregatedHttpResponse resp = client.get("/v1/namespaces/incomplete_namespace/tables/some_table").aggregate().join();
+    Assert.assertEquals(resp.status().code(), 400);
+  }
+
+  @Test
+  public void testListTablesInvalidNamespace() {
+    AggregatedHttpResponse resp = client.get("/v1/namespaces/incomplete_namespace/tables").aggregate().join();
+    Assert.assertEquals(resp.status().code(), 400);
+  }
+
+  @Test
+  public void testTableExistsInvalidNamespace() {
+    AggregatedHttpResponse resp = client.head("/v1/namespaces/incomplete_namespace/tables").aggregate().join();
+    Assert.assertEquals(resp.status().code(), 400);
+  }
 }
