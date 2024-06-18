@@ -4,6 +4,7 @@ import java.io.IOException;
 import java.net.URISyntaxException;
 import java.util.List;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.UUID;
 
 import com.linecorp.armeria.client.WebClient;
@@ -58,27 +59,13 @@ public class IcebergRestCatalogTest extends BaseServerTest {
   }
 
     protected void cleanUp() {
-        try {
-          if (catalogOperations.getCatalog(TestUtils.CATALOG_NAME) != null) {
-            catalogOperations.deleteCatalog(TestUtils.CATALOG_NAME);
-          }
-        } catch (Exception e) {
-          // Ignore
+      try {
+        if (catalogOperations.getCatalog(TestUtils.CATALOG_NAME) != null) {
+          catalogOperations.deleteCatalog(TestUtils.CATALOG_NAME, Optional.of(true));
         }
-        try {
-        if (schemaOperations.getSchema(TestUtils.CATALOG_NAME +"." +TestUtils.SCHEMA_NAME) != null) {
-            schemaOperations.deleteSchema(TestUtils.CATALOG_NAME+"."+TestUtils.SCHEMA_NAME);
-        }
-        } catch (Exception e) {
+      } catch (Exception e) {
         // Ignore
-        }
-        try {
-        if (tableOperations.getTable(TestUtils.CATALOG_NAME+ "." + TestUtils.SCHEMA_NAME + "." +TestUtils.TABLE_NAME) != null) {
-            tableOperations.deleteTable(TestUtils.CATALOG_NAME+ "." + TestUtils.SCHEMA_NAME + "." +TestUtils.TABLE_NAME);
-        }
-        } catch (Exception e) {
-        // Ignore
-        }
+      }
     }
 
   @Test

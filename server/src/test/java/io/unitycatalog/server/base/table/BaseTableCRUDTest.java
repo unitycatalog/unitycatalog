@@ -40,35 +40,6 @@ public abstract class BaseTableCRUDTest extends BaseCRUDTest {
     protected abstract TableOperations createTableOperations(ServerConfig serverConfig);
 
     protected void cleanUp() {
-        try {
-            if (tableOperations.getTable(TABLE_FULL_NAME) != null) {
-                tableOperations.deleteTable(TABLE_FULL_NAME);
-            }
-        } catch (Exception e) {
-            // Ignore
-        }
-        try {
-            if (schemaOperations.getSchema(TestUtils.SCHEMA_FULL_NAME) != null) {
-                schemaOperations.deleteSchema(TestUtils.SCHEMA_FULL_NAME);
-            }
-        } catch (Exception e) {
-            // Ignore
-        }
-        try {
-            if (schemaOperations.getSchema(TestUtils.CATALOG_NEW_NAME + "." + TestUtils.SCHEMA_NEW_NAME) != null) {
-                schemaOperations.deleteSchema(TestUtils.CATALOG_NEW_NAME + "." + TestUtils.SCHEMA_NEW_NAME);
-            }
-        } catch (Exception e) {
-            // Ignore
-        }
-        try {
-            if (schemaOperations.getSchema(TestUtils.CATALOG_NEW_NAME + "." + TestUtils.SCHEMA_NAME) != null) {
-                schemaOperations.deleteSchema(TestUtils.CATALOG_NEW_NAME + "." + TestUtils.SCHEMA_NAME);
-            }
-        } catch (Exception e) {
-            // Ignore
-        }
-
         super.cleanUp();
     }
 
@@ -226,12 +197,14 @@ public abstract class BaseTableCRUDTest extends BaseCRUDTest {
         TableInfo managedTableAfterSchemaUpdate = tableOperations.getTable(TestUtils.CATALOG_NAME + "." + TestUtils.SCHEMA_NEW_NAME + "." + TABLE_NAME);
         assertEquals(managedTable.getTableId(), managedTableAfterSchemaUpdate.getTableId());
 
+        // test delete parent schema when table exists
+        assertThrows(Exception.class, () -> schemaOperations.deleteSchema(TestUtils.CATALOG_NAME + "." + TestUtils.SCHEMA_NEW_NAME, Optional.of(false)));
 
-        // Delete managed table
+        // test force delete parent schema when table exists
         String newTableFullName = TestUtils.CATALOG_NAME + "." + TestUtils.SCHEMA_NEW_NAME + "." + TABLE_NAME;
-        System.out.println("Testing delete table..");
-        tableOperations.deleteTable(newTableFullName);
+        schemaOperations.deleteSchema(TestUtils.CATALOG_NAME + "." + TestUtils.SCHEMA_NEW_NAME, Optional.of(true));
         assertThrows(Exception.class, () -> tableOperations.getTable(newTableFullName));
+        assertThrows(Exception.class, () -> schemaOperations.getSchema(TestUtils.CATALOG_NAME + "." + TestUtils.SCHEMA_NEW_NAME));
 
     }
 }
