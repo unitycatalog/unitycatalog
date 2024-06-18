@@ -33,4 +33,4 @@ docker buildx create --use --name builder
 docker buildx inspect --bootstrap builder
 
 echo "Running Docker build command, version=$APP_VERSION, platforms=$PLATFORMS"
-docker buildx build -t datacatering/unitycatalog:"$APP_VERSION" -f "$ROOT_DIR/Dockerfile" --push "$ROOT_DIR"
+docker buildx build -t unitycatalog/unitycatalog:"$APP_VERSION" -f "$ROOT_DIR/Dockerfile" --push "$ROOT_DIR"
