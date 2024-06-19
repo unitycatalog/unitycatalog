@@ -1,6 +1,7 @@
 package io.unitycatalog.cli;
 
 import com.fasterxml.jackson.databind.ObjectWriter;
+import io.delta.kernel.exceptions.TableAlreadyExistsException;
 import io.unitycatalog.cli.delta.DeltaKernelWriteUtils;
 import io.unitycatalog.cli.utils.CliException;
 import io.unitycatalog.cli.utils.CliParams;
@@ -113,7 +114,11 @@ public class TableCli {
             try {
                 DeltaKernelUtils.createDeltaTable(path.toUri().toString(), columnInfos, null);
             } catch (Exception e) {
-                throw new CliException("Failed to create delta table at " + path, e);
+                if (e.getCause() != null && e.getCause().getClass().equals(TableAlreadyExistsException.class)) {
+                    // ignore
+                } else {
+                    throw new CliException("Failed to create delta table at " + path, e);
+                }
             }
         }
     }
