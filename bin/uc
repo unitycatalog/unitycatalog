@@ -45,4 +45,4 @@ quoted_args_str="${quoted_args[*]}"
 
 CLI_JAVA_COMMAND="java -cp $(cat "$CLI_CLASSPATH_FILE") io.unitycatalog.cli.UnityCatalogCli"
 # echo "Running command: $CLI_JAVA_COMMAND"
-eval $CLI_JAVA_COMMAND $quoted_args_str  || exit
+eval "$CLI_JAVA_COMMAND" "$quoted_args_str" || exit
