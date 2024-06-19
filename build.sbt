@@ -150,6 +150,9 @@ lazy val server = (project in file("server"))
       // Test dependencies
       "junit" %  "junit" % "4.13.2" % Test,
       "com.github.sbt" % "junit-interface" % "0.13.3" % Test,
+
+      // Hack dependencies to fix missing transitive dependencies for armeria
+      "io.netty" % "netty-all" % "4.2.0.Alpha1"
     ),
 
     Compile / compile / javacOptions ++= Seq(
