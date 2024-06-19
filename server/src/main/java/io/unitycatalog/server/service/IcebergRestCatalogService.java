@@ -26,6 +26,7 @@ import org.apache.iceberg.TableMetadataParser;
 import org.apache.iceberg.catalog.Namespace;
 import org.apache.iceberg.catalog.TableIdentifier;
 import org.apache.iceberg.relocated.com.google.common.base.Splitter;
+import org.apache.iceberg.rest.requests.RegisterTableRequest;
 import org.apache.iceberg.rest.responses.ConfigResponse;
 import org.apache.iceberg.rest.responses.GetNamespaceResponse;
 import org.apache.iceberg.rest.responses.ListNamespacesResponse;
@@ -151,13 +152,12 @@ public class IcebergRestCatalogService {
     String catalog = namespaceParts.get(0);
     String schema = namespaceParts.get(1);
     try (Session session = sessionFactory.openSession()) {
-      tableRepository.getTable(namespace + "." + table);
-      String metadataLocation =
-        tableRepository.getTableUniformMetadataLocation(session, catalog, schema, table);
-      if (metadataLocation == null) {
-        return HttpResponse.of(HttpStatus.NOT_FOUND);
-      } else {
+      TableInfo tableInfo = tableRepository.getTable(namespace + "." + table);
+
+      if (tableInfo.getDataSourceFormat() == DataSourceFormat.ICEBERG || tableRepository.getTableUniformMetadataLocation(session, catalog, schema, table) != null) {
         return HttpResponse.of(HttpStatus.OK);
+      } else {
+        return HttpResponse.of(HttpStatus.NOT_FOUND);
       }
     }
   }
@@ -171,21 +171,20 @@ public class IcebergRestCatalogService {
     String schema = namespaceParts.get(1);
     String metadataLocation;
     try (Session session = sessionFactory.openSession()) {
-      tableRepository.getTable(namespace + "." + table);
-      metadataLocation =
-        tableRepository.getTableUniformMetadataLocation(session, catalog, schema, table);
+      TableInfo tableInfo = tableRepository.getTable(namespace + "." + table);
+      metadataLocation = tableInfo.getDataSourceFormat() == DataSourceFormat.ICEBERG ? tableInfo.getStorageLocation() :
+              tableRepository.getTableUniformMetadataLocation(session, catalog, schema, table);
     }
 
     if (metadataLocation == null) {
       throw new BaseException(ErrorCode.NOT_FOUND, "Table not found: " + namespace + "." + table);
     }
 
-    String metadataJson = new String(Files.readAllBytes(Paths.get(URI.create(metadataLocation))));
-    TableMetadata tableMetadata = TableMetadataParser.fromJson(metadataLocation, metadataJson);
+    TableMetadata tableMetadata = parseTableMetadataFromLocation(metadataLocation);
 
     return LoadTableResponse.builder()
-      .withTableMetadata(tableMetadata)
-      .build();
+            .withTableMetadata(tableMetadata)
+            .build();
   }
 
   @Post("/v1/namespaces/{namespace}/tables/{table}/metrics")
@@ -213,8 +212,8 @@ public class IcebergRestCatalogService {
         .stream()
         .filter(tableInfo -> {
           String metadataLocation =
-            tableRepository.getTableUniformMetadataLocation(session, catalog, schema,
-              tableInfo.getName());
+                  tableInfo.getDataSourceFormat() == DataSourceFormat.ICEBERG ? tableInfo.getStorageLocation() :
+                          tableRepository.getTableUniformMetadataLocation(session, catalog, schema, tableInfo.getName());
           return metadataLocation != null;
         })
         .map(tableInfo -> TableIdentifier.of(tableInfo.getCatalogName(), tableInfo.getSchemaName(),
@@ -228,6 +227,34 @@ public class IcebergRestCatalogService {
       .build();
   }
 
+  @Post("/v1/namespaces/{namespace}/register")
+  @ProducesJson
+  @ConsumesJson
+  public LoadTableResponse registerTable(@Param("namespace") String namespace, RegisterTableRequest request) throws IOException
+  {
+    List<String> namespaceParts = splitTwoPartNamespace(namespace);
+    String catalog = namespaceParts.get(0);
+    String schema = namespaceParts.get(1);
+
+    // load metadata json
+    TableMetadata tableMetadata = parseTableMetadataFromLocation(request.metadataLocation());
+
+    CreateTable createTable = new CreateTable()
+            .name(request.name())
+            .catalogName(catalog)
+            .schemaName(schema)
+            .properties(tableMetadata.properties())
+            .tableType(TableType.EXTERNAL)
+            //.columns()
+            //.comment()
+            .dataSourceFormat(DataSourceFormat.ICEBERG)
+            .storageLocation(request.metadataLocation());
+    tableService.createTable(createTable);
+
+    // return LoadTableResponse per spec
+    return LoadTableResponse.builder().withTableMetadata(tableMetadata).build();
+  }
+
   private List<String> splitTwoPartNamespace(String namespace) {
     List<String> namespaceParts = Splitter.on(".").splitToList(namespace);
     if (namespaceParts.size() != 2) {
@@ -236,5 +263,10 @@ public class IcebergRestCatalogService {
     }
 
     return namespaceParts;
+  }
+
+  private TableMetadata parseTableMetadataFromLocation(String metadataLocation) throws IOException {
+    String metadataJson = new String(Files.readAllBytes(Paths.get(URI.create(metadataLocation))));
+    return TableMetadataParser.fromJson(metadataLocation, metadataJson);
   }
 }
