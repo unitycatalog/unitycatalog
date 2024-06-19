@@ -109,13 +109,11 @@ public class TableCli {
         if (!storageLocation.startsWith("s3://")) {
             // local filesystem path
             Path path = getLocalPath(storageLocation);
-            if (!(Files.exists(path))) {
-                // try and initialize the directory and initiate delta log at the location
-                try {
-                    DeltaKernelUtils.createDeltaTable(path.toUri().toString(), columnInfos, null);
-                } catch (Exception e) {
-                    throw new CliException("Failed to create delta table at " + path, e);
-                }
+            // try and initialize the directory and initiate delta log at the location
+            try {
+                DeltaKernelUtils.createDeltaTable(path.toUri().toString(), columnInfos, null);
+            } catch (Exception e) {
+                throw new CliException("Failed to create delta table at " + path, e);
             }
         }
     }
