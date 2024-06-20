@@ -167,11 +167,11 @@ bin/uc volume read --full_name unity.default.json_files --path dir1
 ```
 
 Now let's try creating a new external volume. First physically create a directory with some files in it.
-For example in the project root directory, create a directory `tmp/myVolume` and put some files in it.
+For example, create a directory `/tmp/myVolume` and put some files in it.
 Then create the volume in UC.
 
 ```sh
-bin/uc volume create --full_name unity.default.myVolume --storage_location tmp/myVolume
+bin/uc volume create --full_name unity.default.myVolume --storage_location /tmp/myVolume
 ```
 
 Now you can see the contents of this volume.
