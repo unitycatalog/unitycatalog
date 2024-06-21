@@ -20,8 +20,7 @@ import java.util.List;
 import java.util.UUID;
 
 import static io.unitycatalog.server.utils.TestUtils.*;
-import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertNotNull;
+import static org.junit.Assert.*;
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 
 public class CliExternalTableCreationTest extends BaseServerTest {
@@ -44,7 +43,7 @@ public class CliExternalTableCreationTest extends BaseServerTest {
             catalogOperations.createCatalog(CATALOG_NAME, "Test catalog");
             schemaOperations.createSchema(new CreateSchema().name(SCHEMA_NAME).catalogName(CATALOG_NAME).comment("Test schema"));
         } catch (Exception e) {
-            // Ignore
+            fail("Setup failed: " + e.getMessage());
         }
     }
 

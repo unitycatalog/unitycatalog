@@ -114,7 +114,7 @@ public class TableCli {
             try {
                 DeltaKernelUtils.createDeltaTable(path.toUri().toString(), columnInfos, null);
             } catch (Exception e) {
-                if (e.getCause() != null && e.getCause().getClass().equals(TableAlreadyExistsException.class)) {
+                if (e.getCause() instanceof TableAlreadyExistsException) {
                     // TODO confirm the schema of the existing table matches the schema of the new table
                 } else {
                     throw new CliException("Failed to create delta table at " + path, e);
