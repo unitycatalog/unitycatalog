@@ -14,7 +14,7 @@ The server config file is at the location `etc/conf/server.properties` (relative
 
 - `server.env`: The environment in which the server is running. This can be set to `dev` or `test`. When 
  set to `test` the server will instantiate an empty in-memory h2 database for storing metadata.
- If set to `false`, the server will use the file `etc/db/h2db.mv.db` as the metadata
+ If set to `dev`, the server will use the file `etc/db/h2db.mv.db` as the metadata
  store. Any changes made to the metadata will be persisted in this file.
 
 For enabling server to vend AWS temporary credentials to access S3 buckets (for accessing External tables/volumes), 

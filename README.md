@@ -1,18 +1,48 @@
-![image info](./uc-logo-horiz.png)
+<img src="./docs/assets/images/uc-logo.png" width="600px" />
 
-# Unity Catalog: Open, Multi-modal Catalog for Data & AI
-Unity Catalog is the most open and interoperable catalog for data and AI 
+# Unity Catalog: Open, Multimodal Catalog for Data & AI
+Unity Catalog is the industry’s only universal catalog for data and AI.
+
 - **Multimodal interface supports any format, engine, and asset**
-  - Multi-format table support - Delta Lake, Apache Iceberg as UniForm, Apache Parquet, CSV, etc.
-  - Beyond tables - Unstructured data (Volumes) and AI assets (ML models, Gen AI tools)
-  - Plugin support - extensible to Iceberg REST Catalog and HMS interface for client compatibility, 
-    plus additional plugins (e.g., integration with a new AI framework)
-  - Interoperates with the [Delta Sharing open protocol](https://delta.io/sharing/) for sharing tabular and non-tabular assets cross-domain
-- **Fully Open** - OpenAPI spec and OSS implementation (Apache 2.0 license)
-- **Unified governance** for data and AI - Asset-level access control is enforced through 
-    temporary credential vending via REST APIs
+  - Multi-format support: It is extensible and supports Delta Lake, Apache Iceberg and Apache Hudi via UniForm, Apache Parquet, JSON, CSV, and many others.
+  - Multi-engine support: With its open APIs, data cataloged in Unity can be read by many leading compute engines.
+  - Multimodal: It supports all your data and AI assets, including tables, files, functions, AI models.
+- **Open source API and implementation** - OpenAPI spec and OSS implementation (Apache 2.0 license). It is also compatible with Apache Hive's metastore API and Apache Iceberg's REST catalog API. Unity Catalog is currently a sandbox project with LF AI and Data Foundation (part of the Linux Foundation).
+- **Unified governance** for data and AI - Govern and secure tabular data, unstructured assets, and AI assets with a single interface.
 
-![image info](./uc-ecosystem-2.png)
+The first release of Unity Catalog focuses on a core set of APIs for tables, unstructured data, and AI assets - with more to come soon on governance, access, and client interoperability. This is just the beginning!
+
+![image info](./docs/assets/images/uc.png)
+
+### Vibrant ecosystem
+This is a community effort. Unity Catalog is supported by
+- [Amazon Web Services](https://aws.amazon.com/)
+- [Confluent](https://www.confluent.io/)
+- [Daft (Eventual)](https://github.com/Eventual-Inc/Daft)
+- [dbt Labs](https://www.getdbt.com/)
+- [DuckDB](https://duckdblabs.com/)
+- [Fivetran](https://www.fivetran.com/)
+- [Google Cloud](https://cloud.google.com/)
+- [Granica](https://granica.ai/)
+- [Immuta](https://www.immuta.com/)
+- [Informatica](https://www.informatica.com/)
+- [LanceDB](https://lancedb.com/)
+- [LangChain](https://www.langchain.com/)
+- [LlamaIndex](https://www.llamaindex.ai/)
+- [Microsoft Azure](https://azure.microsoft.com)
+- [NVIDIA](https://www.nvidia.com/)
+- [Onehouse](https://www.onehouse.ai/)
+- [PuppyGraph](https://www.puppygraph.com/)
+- [Salesforce](https://www.salesforce.com/)
+- [StarRocks (CelerData)](https://celerdata.com/)
+- [Tecton](https://www.tecton.ai/)
+- [Unstructured](https://unstructured.io/)
+
+Unity Catalog is proud to be hosted by the LF AI & Data Foundation.
+
+<a href="https://lfaidata.foundation/projects">
+  <img src="./docs/assets/images/lfaidata-project-badge-sandbox-color.png" width="200px" />
+</a>
 
 ## Quickstart - Hello UC!
 Let's take Unity Catalog for spin. In this guide, we are going to do the following:
