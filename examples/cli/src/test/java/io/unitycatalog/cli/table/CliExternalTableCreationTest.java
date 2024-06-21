@@ -33,6 +33,10 @@ public class CliExternalTableCreationTest extends BaseServerTest {
     private static final String SCHEMA_FULL_NAME = CATALOG_NAME + "." + SCHEMA_NAME;
     private static final String TABLE_FULL_NAME = CATALOG_NAME + "." + SCHEMA_NAME + "." + TABLE_NAME;
 
+    private static final List<ColumnInfo> columns = List.of(
+            new ColumnInfo().name("id").typeName(ColumnTypeName.INT).comment("id"),
+            new ColumnInfo().name("name").typeName(ColumnTypeName.STRING).comment("name"));
+
     @Before
     public void setUp() {
         super.setUp();
@@ -73,29 +77,10 @@ public class CliExternalTableCreationTest extends BaseServerTest {
         }
     }
 
-    @AfterEach
-    public void perTestCleanup() throws ApiException {
-        try {
-            if (tableOperations.getTable(TABLE_FULL_NAME) != null) {
-                tableOperations.deleteTable(TABLE_FULL_NAME);
-            }
-        } catch (Exception e) {
-            // Ignore
-        }
-    }
-
     @Test
     public void testCreateTableLocalDirectoryDoesNotExist() throws IOException, ApiException {
         String tablePath = "/tmp/" + UUID.randomUUID();
-        TableInfo tableInfo = tableOperations.createTable(new CreateTable().catalogName(CATALOG_NAME).schemaName(SCHEMA_NAME).name(TABLE_NAME).storageLocation(tablePath).columns(
-                List.of(
-                        new ColumnInfo().name("id").typeName(ColumnTypeName.INT).comment("id"),
-                        new ColumnInfo().name("name").typeName(ColumnTypeName.STRING).comment("name"))));
-        assertNotNull(tableInfo);
-        assertNotNull(tableInfo.getTableId());
-        assertEquals(tableInfo.getTableId(), tableOperations.getTable(TABLE_FULL_NAME).getTableId());
-        assertDoesNotThrow(() -> DeltaKernelUtils.readDeltaTable(tableOperations.getTable(TABLE_FULL_NAME).getStorageLocation(), null, 100));
-        deleteDirectory(Paths.get(tablePath));
+        createTableAndAssertReadTableSucceeds(tablePath, columns);
     }
 
     @Test
@@ -103,34 +88,29 @@ public class CliExternalTableCreationTest extends BaseServerTest {
         String tablePath = "/tmp/" + UUID.randomUUID();
         Path dir = Paths.get(tablePath);
         Files.createDirectory(dir);
-        TableInfo tableInfo = tableOperations.createTable(new CreateTable().catalogName(CATALOG_NAME).schemaName(SCHEMA_NAME).name(TABLE_NAME).storageLocation(tablePath).columns(
-                List.of(
-                        new ColumnInfo().name("id").typeName(ColumnTypeName.INT).comment("id"),
-                        new ColumnInfo().name("name").typeName(ColumnTypeName.STRING).comment("name"))));
-        assertNotNull(tableInfo);
-        assertNotNull(tableInfo.getTableId());
-        assertEquals(tableInfo.getTableId(), tableOperations.getTable(TABLE_FULL_NAME).getTableId());
-        assertDoesNotThrow(() -> DeltaKernelUtils.readDeltaTable(tableOperations.getTable(TABLE_FULL_NAME).getStorageLocation(), null, 100));
-        deleteDirectory(dir);
+        createTableAndAssertReadTableSucceeds(tablePath, columns);
     }
 
     @Test
-    public void testCreateTableLocalDirectoryExistsWithDeltaLog() throws ApiException {
+    public void testCreateTableLocalDirectoryExistsWithDeltaLog() throws ApiException, IOException {
         // First create a table with delta log
         String tablePath = "/tmp/" + UUID.randomUUID();
-        List<ColumnInfo> columns = List.of(
-                new ColumnInfo().name("id").typeName(ColumnTypeName.INT).comment("id"),
-                new ColumnInfo().name("name").typeName(ColumnTypeName.STRING).comment("name"));
         assertDoesNotThrow(() -> DeltaKernelUtils.createDeltaTable(Paths.get(tablePath).toUri().toString(), columns, null));
         assert(Files.exists(Paths.get(tablePath + "/_delta_log")));
-        TableInfo tableInfo = assertDoesNotThrow(() -> tableOperations.createTable(new CreateTable().catalogName(CATALOG_NAME).schemaName(SCHEMA_NAME).name(TABLE_NAME).storageLocation(tablePath).columns(
-                columns)));
+        createTableAndAssertReadTableSucceeds(tablePath, columns);
+    }
+
+
+    private void createTableAndAssertReadTableSucceeds(String tablePath, List<ColumnInfo> columns) throws IOException, ApiException {
+        TableInfo tableInfo = tableOperations.createTable(new CreateTable().catalogName(CATALOG_NAME).schemaName(SCHEMA_NAME).name(TABLE_NAME).storageLocation(tablePath).columns(columns));
         assertNotNull(tableInfo);
         assertNotNull(tableInfo.getTableId());
         assertEquals(tableInfo.getTableId(), tableOperations.getTable(TABLE_FULL_NAME).getTableId());
         assertDoesNotThrow(() -> DeltaKernelUtils.readDeltaTable(tableOperations.getTable(TABLE_FULL_NAME).getStorageLocation(), null, 100));
         assertDoesNotThrow(()-> deleteDirectory(Paths.get(tablePath)));
+        assertDoesNotThrow(() -> tableOperations.deleteTable(TABLE_FULL_NAME));
     }
+
 
     public static void deleteDirectory(Path path) throws IOException {
         Files.walkFileTree(path, new SimpleFileVisitor<Path>() {
