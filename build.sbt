@@ -45,6 +45,16 @@ lazy val commonSettings = Seq(
   }
 )
 
+enablePlugins(CoursierPlugin)
+
+useCoursier := true
+
+// Configure resolvers
+resolvers ++= Seq(
+  "Sonatype OSS Releases" at "https://oss.sonatype.org/content/repositories/releases/",
+  "Maven Central" at "https://repo1.maven.org/maven2/"
+)
+
 def javaCheckstyleSettings(configLocation: File) = Seq(
   checkstyleConfigLocation := CheckstyleConfigLocation.File(configLocation.toString),
   checkstyleSeverityLevel := Some(CheckstyleSeverityLevel.Error),
@@ -150,9 +160,6 @@ lazy val server = (project in file("server"))
       // Test dependencies
       "junit" %  "junit" % "4.13.2" % Test,
       "com.github.sbt" % "junit-interface" % "0.13.3" % Test,
-
-      // Hack dependencies to fix missing transitive dependencies for armeria
-      "io.netty" % "netty-all" % "4.2.0.Alpha1"
     ),
 
     Compile / compile / javacOptions ++= Seq(
