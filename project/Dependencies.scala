@@ -50,7 +50,7 @@ object Dependencies {
   )
 
   val lombok:Seq[ModuleID] = Seq(
-    "org.projectlombok" % "lombok" % Versions.lombok % "provided"
+    "org.projectlombok" % "lombok" % Versions.lombok
   )
 
   def jackson(includeAnnotations:Boolean): Seq[ModuleID] = {
@@ -87,13 +87,13 @@ object Dependencies {
   )
 
   val junit4:Seq[ModuleID] = Seq(
-    "junit" %  "junit" % Versions.junit % Test,
-    "com.github.sbt" % "junit-interface" % Versions.sbtJunitInterface % Test
+    "junit" %  "junit" % Versions.junit,
+    "com.github.sbt" % "junit-interface" % Versions.sbtJunitInterface
   )
 
   val junit5:Def.Initialize[Seq[ModuleID]] = Def.setting(Seq(
-    "org.junit.jupiter" % "junit-jupiter" % Versions.junitJupiter % Test,
-    "net.aichler" % "jupiter-interface" % JupiterKeys.jupiterVersion.value % Test,
+    "org.junit.jupiter" % "junit-jupiter" % Versions.junitJupiter,
+    "net.aichler" % "jupiter-interface" % JupiterKeys.jupiterVersion.value,
   ))
 
   val persistence:Seq[ModuleID] = Seq(

@@ -65,8 +65,8 @@ lazy val client = (project in file("clients/java"))
       Dependencies.hadoop ++ 
       Dependencies.jackson(includeAnnotations = true) ++
       Dependencies.Jakarta.annotation ++ 
-      Dependencies.junit4,
-    libraryDependencies ++= Dependencies.junit5.value,
+      Dependencies.junit4.map(_ % Test),
+    libraryDependencies ++= Dependencies.junit5.value.map(_ % Test),
     // OpenAPI generation specs
     openApiInputSpec := (file(".") / "api" / "all.yaml").toString,
     openApiGeneratorName := "java",
@@ -114,13 +114,15 @@ lazy val server = (project in file("server"))
       Dependencies.findBugs ++
       Dependencies.iceberg ++
       Dependencies.jackson(includeAnnotations = true) ++
+      Dependencies.junit4.map(_ % Test) ++
       Dependencies.Jakarta.activation ++
       Dependencies.javaxAnnotations ++
       Dependencies.log4j ++
-      Dependencies.lombok ++
+      Dependencies.lombok.map(_ % Provided) ++
       Dependencies.persistence ++
       Dependencies.s3AccessLibraries ++
-      Dependencies.vertx ,
+      Dependencies.vertx
+    ,
     Compile / compile / javacOptions ++= Seq(
       "-processor",
       "lombok.launch.AnnotationProcessorHider$AnnotationProcessor"
@@ -177,6 +179,7 @@ lazy val cli = (project in file("examples") / "cli")
       Dependencies.commonsCLI ++
       Dependencies.delta ++
       Dependencies.jackson(includeAnnotations=false) ++
+      Dependencies.junit4.map(_ % Test) ++
       Dependencies.json ++
       Dependencies.log4j ++
       Dependencies.snakeYaml
