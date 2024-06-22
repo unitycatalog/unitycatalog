@@ -260,3 +260,22 @@ SELECT * FROM iceberg."unity.default".marksheet_uniform
 
 - Open API specification: The Unity Catalog Rest API is documented [here](../api).
 - Compatibility and stability: The APIs are currently evolving and should not be assumed to be stable.
+
+# Running in a docker container
+The docker folder contains a Dockerfile that help users get up and running with UnityCatalog within a dockerized environment.
+
+You can build it with:
+```docker
+docker build -f Dockerfile -t <tagname>:<version> .
+```
+
+After building, start by running it as a detach container with:
+```docker
+`docker run -d -p 8080:8080 <image_id>`
+```
+By default, it runs on port `8080` but if you are already using that port in your service, you can change it in the `dockerfile`
+
+Finally, you can test it with an example:
+```bash
+curl http://localhost:8080/api/2.1/unity-catalog/catalogs # list catalogs output.
+```
