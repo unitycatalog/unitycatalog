@@ -89,9 +89,9 @@ public class TableInfoConverter {
                 .createdAt(dto.getCreatedAt() != null ? new Date(dto.getCreatedAt()) : new Date())
                 .updatedAt(dto.getUpdatedAt() != null ? new Date(dto.getUpdatedAt()) : new Date())
                 .columnCount(dto.getColumns() != null ? dto.getColumns().size() : 0)
-                .url(dto.getStorageLocation() != null ? dto.getStorageLocation() : null)
                 .type(dto.getTableType().toString())
                 .dataSourceFormat(dto.getDataSourceFormat().toString())
+                .url(dto.getStorageLocation())
                 .build();
     }
 
