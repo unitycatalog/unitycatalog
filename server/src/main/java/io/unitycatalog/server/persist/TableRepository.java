@@ -45,7 +45,9 @@ public class TableRepository {
                 tx.commit();
                 return tableInfo;
             } catch (Exception e) {
-                tx.rollback();
+               if (tx != null && tx.getStatus().canRollback()) {
+                    tx.rollback();
+                }
                 throw e;
             }
         }
