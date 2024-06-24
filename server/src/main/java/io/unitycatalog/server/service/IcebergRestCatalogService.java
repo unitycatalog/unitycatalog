@@ -154,7 +154,8 @@ public class IcebergRestCatalogService {
     try (Session session = sessionFactory.openSession()) {
       TableInfo tableInfo = tableRepository.getTable(namespace + "." + table);
 
-      if (tableInfo.getDataSourceFormat() == DataSourceFormat.ICEBERG || tableRepository.getTableUniformMetadataLocation(session, catalog, schema, table) != null) {
+      if (tableInfo.getDataSourceFormat() == DataSourceFormat.ICEBERG ||
+          tableRepository.getTableUniformMetadataLocation(session, catalog, schema, table) != null) {
         return HttpResponse.of(HttpStatus.OK);
       } else {
         return HttpResponse.of(HttpStatus.NOT_FOUND);
@@ -173,7 +174,7 @@ public class IcebergRestCatalogService {
     try (Session session = sessionFactory.openSession()) {
       TableInfo tableInfo = tableRepository.getTable(namespace + "." + table);
       metadataLocation = tableInfo.getDataSourceFormat() == DataSourceFormat.ICEBERG ? tableInfo.getStorageLocation() :
-              tableRepository.getTableUniformMetadataLocation(session, catalog, schema, table);
+          tableRepository.getTableUniformMetadataLocation(session, catalog, schema, table);
     }
 
     if (metadataLocation == null) {
@@ -183,8 +184,8 @@ public class IcebergRestCatalogService {
     TableMetadata tableMetadata = parseTableMetadataFromLocation(metadataLocation);
 
     return LoadTableResponse.builder()
-            .withTableMetadata(tableMetadata)
-            .build();
+        .withTableMetadata(tableMetadata)
+        .build();
   }
 
   @Post("/v1/namespaces/{namespace}/tables/{table}/metrics")
@@ -230,8 +231,8 @@ public class IcebergRestCatalogService {
   @Post("/v1/namespaces/{namespace}/register")
   @ProducesJson
   @ConsumesJson
-  public LoadTableResponse registerTable(@Param("namespace") String namespace, RegisterTableRequest request) throws IOException
-  {
+  public LoadTableResponse registerTable(@Param("namespace") String namespace,
+                                         RegisterTableRequest request) throws IOException {
     List<String> namespaceParts = splitTwoPartNamespace(namespace);
     String catalog = namespaceParts.get(0);
     String schema = namespaceParts.get(1);
@@ -240,15 +241,15 @@ public class IcebergRestCatalogService {
     TableMetadata tableMetadata = parseTableMetadataFromLocation(request.metadataLocation());
 
     CreateTable createTable = new CreateTable()
-            .name(request.name())
-            .catalogName(catalog)
-            .schemaName(schema)
-            .properties(tableMetadata.properties())
-            .tableType(TableType.EXTERNAL)
-            //.columns()
-            //.comment()
-            .dataSourceFormat(DataSourceFormat.ICEBERG)
-            .storageLocation(request.metadataLocation());
+        .name(request.name())
+        .catalogName(catalog)
+        .schemaName(schema)
+        .properties(tableMetadata.properties())
+        .tableType(TableType.EXTERNAL)
+        //.columns()
+        //.comment()
+        .dataSourceFormat(DataSourceFormat.ICEBERG)
+        .storageLocation(request.metadataLocation());
     tableService.createTable(createTable);
 
     // return LoadTableResponse per spec

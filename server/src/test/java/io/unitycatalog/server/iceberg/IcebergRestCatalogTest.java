@@ -56,7 +56,7 @@ public class IcebergRestCatalogTest extends BaseServerTest {
     client = WebClient
       .builder(uri)
       .auth(AuthToken.ofOAuth2(token))
-            .addHeader("Content-Type", "application/json")
+      .addHeader("Content-Type", "application/json")
       .build();
     cleanUp();
   }
@@ -256,12 +256,12 @@ public class IcebergRestCatalogTest extends BaseServerTest {
   }
 
   @Test
-  public void testRegisterTable() throws ApiException, IOException, URISyntaxException, JsonProcessingException {
+  public void testRegisterTable() throws ApiException, IOException, URISyntaxException {
     catalogOperations.createCatalog(TestUtils.CATALOG_NAME, "testCatalog");
     schemaOperations.createSchema(
-            new CreateSchema()
-                    .catalogName(TestUtils.CATALOG_NAME)
-                    .name(TestUtils.SCHEMA_NAME)
+        new CreateSchema()
+            .catalogName(TestUtils.CATALOG_NAME)
+            .name(TestUtils.SCHEMA_NAME)
     );
 
     String metadataLocation = FileUtils.convertRelativePathToURI(this.getClass().getResource("/metadata.json").toURI().toString());
@@ -270,30 +270,30 @@ public class IcebergRestCatalogTest extends BaseServerTest {
       Map<String, String> payload = Map.of("name", TestUtils.TABLE_NAME, "metadata-location", metadataLocation);
 
       AggregatedHttpResponse resp =
-              client.post(
-                              "/v1/namespaces/"
-                                      + TestUtils.CATALOG_NAME
-                                      + "."
-                                      + TestUtils.SCHEMA_NAME
-                                      + "/register",
-                              RESTObjectMapper.mapper().writeValueAsString(payload))
-                      .aggregate()
-                      .join();
+          client.post(
+                  "/v1/namespaces/"
+                      + TestUtils.CATALOG_NAME
+                      + "."
+                      + TestUtils.SCHEMA_NAME
+                      + "/register",
+                  RESTObjectMapper.mapper().writeValueAsString(payload))
+              .aggregate()
+              .join();
       Assert.assertEquals(resp.status().code(), 200);
       LoadTableResponse loadTableResponse =
-              RESTObjectMapper.mapper().readValue(resp.contentUtf8(), LoadTableResponse.class);
+          RESTObjectMapper.mapper().readValue(resp.contentUtf8(), LoadTableResponse.class);
       Assert.assertEquals(metadataLocation, loadTableResponse.tableMetadata().metadataFileLocation());
     }
 
     // Get newly registered table
     {
       AggregatedHttpResponse resp =
-              client.get(
-                      "/v1/namespaces/" + TestUtils.CATALOG_NAME + "." + TestUtils.SCHEMA_NAME + "/tables/" +
-                              TestUtils.TABLE_NAME).aggregate().join();
+          client.get(
+              "/v1/namespaces/" + TestUtils.CATALOG_NAME + "." + TestUtils.SCHEMA_NAME + "/tables/" +
+                  TestUtils.TABLE_NAME).aggregate().join();
       Assert.assertEquals(resp.status().code(), 200);
       LoadTableResponse loadTableResponse =
-              RESTObjectMapper.mapper().readValue(resp.contentUtf8(), LoadTableResponse.class);
+          RESTObjectMapper.mapper().readValue(resp.contentUtf8(), LoadTableResponse.class);
       Assert.assertEquals(metadataLocation, loadTableResponse.tableMetadata().metadataFileLocation());
     }
   }
