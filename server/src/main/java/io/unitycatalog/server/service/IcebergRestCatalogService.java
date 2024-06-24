@@ -174,7 +174,7 @@ public class IcebergRestCatalogService {
     try (Session session = sessionFactory.openSession()) {
       TableInfo tableInfo = tableRepository.getTable(namespace + "." + table);
       metadataLocation = tableInfo.getDataSourceFormat() == DataSourceFormat.ICEBERG ? tableInfo.getStorageLocation() :
-          tableRepository.getTableUniformMetadataLocation(session, catalog, schema, table);
+        tableRepository.getTableUniformMetadataLocation(session, catalog, schema, table);
     }
 
     if (metadataLocation == null) {
@@ -184,8 +184,8 @@ public class IcebergRestCatalogService {
     TableMetadata tableMetadata = parseTableMetadataFromLocation(metadataLocation);
 
     return LoadTableResponse.builder()
-        .withTableMetadata(tableMetadata)
-        .build();
+      .withTableMetadata(tableMetadata)
+      .build();
   }
 
   @Post("/v1/namespaces/{namespace}/tables/{table}/metrics")
@@ -213,8 +213,8 @@ public class IcebergRestCatalogService {
         .stream()
         .filter(tableInfo -> {
           String metadataLocation =
-                  tableInfo.getDataSourceFormat() == DataSourceFormat.ICEBERG ? tableInfo.getStorageLocation() :
-                          tableRepository.getTableUniformMetadataLocation(session, catalog, schema, tableInfo.getName());
+            tableInfo.getDataSourceFormat() == DataSourceFormat.ICEBERG ? tableInfo.getStorageLocation() :
+              tableRepository.getTableUniformMetadataLocation(session, catalog, schema, tableInfo.getName());
           return metadataLocation != null;
         })
         .map(tableInfo -> TableIdentifier.of(tableInfo.getCatalogName(), tableInfo.getSchemaName(),
