@@ -8,7 +8,12 @@ import com.linecorp.armeria.server.ServiceRequestContext;
 import com.linecorp.armeria.server.annotation.ExceptionHandlerFunction;
 import io.unitycatalog.server.utils.RESTObjectMapper;
 import lombok.SneakyThrows;
+import org.apache.iceberg.exceptions.AlreadyExistsException;
+import org.apache.iceberg.exceptions.CommitFailedException;
+import org.apache.iceberg.exceptions.NamespaceNotEmptyException;
+import org.apache.iceberg.exceptions.NoSuchNamespaceException;
 import org.apache.iceberg.exceptions.NoSuchTableException;
+import org.apache.iceberg.exceptions.NoSuchViewException;
 import org.apache.iceberg.rest.responses.ErrorResponse;
 
 public class IcebergRestExceptionHandler implements ExceptionHandlerFunction {
@@ -16,11 +21,15 @@ public class IcebergRestExceptionHandler implements ExceptionHandlerFunction {
   public HttpResponse handleException(ServiceRequestContext ctx, HttpRequest req, Throwable cause) {
     try {
       if (cause instanceof BaseException) {
+        // FIXME!! we should probably translate BaseException -> Iceberg REST exception somewhere
         return handleBaseException((BaseException)cause);
-      } else if(cause instanceof NoSuchTableException) {
+      } else if(cause instanceof NoSuchNamespaceException || cause instanceof NoSuchTableException || cause instanceof NoSuchViewException) {
         return createErrorResponse(HttpStatus.NOT_FOUND, cause);
+      } else if(cause instanceof AlreadyExistsException || cause instanceof NamespaceNotEmptyException || cause instanceof CommitFailedException) {
+        return createErrorResponse(HttpStatus.CONFLICT, cause);
+      } else if(cause instanceof IllegalArgumentException) {
+        return createErrorResponse(HttpStatus.BAD_REQUEST, cause);
       } else {
-        // FIXME!!
         return createErrorResponse(HttpStatus.INTERNAL_SERVER_ERROR, cause);
       }
     } catch (Exception e) {

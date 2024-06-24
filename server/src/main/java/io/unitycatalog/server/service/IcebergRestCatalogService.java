@@ -10,8 +10,6 @@ import com.linecorp.armeria.server.annotation.Head;
 import com.linecorp.armeria.server.annotation.Param;
 import com.linecorp.armeria.server.annotation.Post;
 import com.linecorp.armeria.server.annotation.ProducesJson;
-import io.unitycatalog.server.exception.BaseException;
-import io.unitycatalog.server.exception.ErrorCode;
 import io.unitycatalog.server.exception.IcebergRestExceptionHandler;
 import io.unitycatalog.server.model.CatalogInfo;
 import io.unitycatalog.server.model.ListCatalogsResponse;
@@ -26,6 +24,7 @@ import org.apache.iceberg.TableMetadataParser;
 import org.apache.iceberg.catalog.Namespace;
 import org.apache.iceberg.catalog.TableIdentifier;
 import org.apache.iceberg.exceptions.NoSuchTableException;
+import org.apache.iceberg.exceptions.NoSuchViewException;
 import org.apache.iceberg.relocated.com.google.common.base.Splitter;
 import org.apache.iceberg.rest.responses.ConfigResponse;
 import org.apache.iceberg.rest.responses.GetNamespaceResponse;
@@ -207,7 +206,7 @@ public class IcebergRestCatalogService {
     // a table with given path name and then tries to load a view with that
     // name if it didn't find a table, so for now, let's just return a 404
     // as that should be expected since it didn't find a table with the name
-    throw new NoSuchTableException("Table not found.");
+    throw new NoSuchViewException("View not found.");
   }
 
   @Post("/v1/namespaces/{namespace}/tables/{table}/metrics")
@@ -254,7 +253,7 @@ public class IcebergRestCatalogService {
     List<String> namespaceParts = Splitter.on(".").splitToList(namespace);
     if (namespaceParts.size() != 2) {
       String errMsg = "Invalid two-part namespace " + namespace;
-      throw new BaseException(ErrorCode.INVALID_ARGUMENT, errMsg);
+      throw new IllegalArgumentException(errMsg);
     }
 
     return namespaceParts;
