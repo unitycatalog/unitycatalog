@@ -3,7 +3,6 @@ package io.unitycatalog.server.persist;
 import io.unitycatalog.server.exception.BaseException;
 import io.unitycatalog.server.exception.ErrorCode;
 import io.unitycatalog.server.model.*;
-import io.unitycatalog.server.persist.converters.VolumeInfoConverter;
 import io.unitycatalog.server.persist.dao.SchemaInfoDAO;
 import io.unitycatalog.server.persist.dao.VolumeInfoDAO;
 import io.unitycatalog.server.utils.ValidationUtils;
@@ -49,7 +48,7 @@ public class VolumeRepository {
             throw new BaseException(ErrorCode.INVALID_ARGUMENT, "Storage location is required for external volume");
         }
         volumeInfo.setStorageLocation(createVolumeRequest.getStorageLocation());
-        VolumeInfoDAO volumeInfoDAO = VolumeInfoConverter.toDAO(volumeInfo);
+        VolumeInfoDAO volumeInfoDAO = VolumeInfoDAO.from(volumeInfo);
         try (Session session = sessionFactory.openSession()) {
             Transaction tx = session.beginTransaction();
             try {
@@ -114,7 +113,7 @@ public class VolumeRepository {
                 query.setMaxResults(1);
                 VolumeInfoDAO volumeInfoDAO = query.uniqueResult();
                 tx.commit();
-                return VolumeInfoConverter.fromDAO(volumeInfoDAO);
+                return volumeInfoDAO.toVolumeInfo();
             } catch (Exception e) {
                 tx.rollback();
                 throw e;
@@ -153,7 +152,7 @@ public class VolumeRepository {
     }
 
     private VolumeInfo convertFromDAO(VolumeInfoDAO volumeInfoDAO, String catalogName, String schemaName) {
-        VolumeInfo volumeInfo = VolumeInfoConverter.fromDAO(volumeInfoDAO);
+        VolumeInfo volumeInfo = volumeInfoDAO.toVolumeInfo();
         volumeInfo.setCatalogName(catalogName);
         volumeInfo.setSchemaName(schemaName);
         volumeInfo.setFullName(catalogName + "." + schemaName + "." + volumeInfo.getName());

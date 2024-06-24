@@ -1,6 +1,10 @@
 package io.unitycatalog.server.persist.dao;
 
 
+import io.unitycatalog.server.model.DataSourceFormat;
+import io.unitycatalog.server.model.TableInfo;
+import io.unitycatalog.server.model.TableType;
+import io.unitycatalog.server.persist.FileUtils;
 import jakarta.persistence.*;
 
 import lombok.*;
@@ -23,7 +27,6 @@ import java.util.UUID;
 @EqualsAndHashCode
 @Builder
 public class TableInfoDAO {
-
     @Id
     @Column(name = "id", columnDefinition = "BINARY(16)")
     private UUID id;
@@ -55,10 +58,42 @@ public class TableInfoDAO {
     @Column(name = "column_count")
     private Integer columnCount;
 
-    @OneToMany(mappedBy = "tableId", cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.LAZY)
+    @OneToMany(mappedBy = "table", cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.LAZY)
     private List<ColumnInfoDAO> columns;
 
     @Column(name = "uniform_iceberg_metadata_location", columnDefinition = "TEXT")
     private String uniformIcebergMetadataLocation;
 
+    @OneToMany(mappedBy = "table", cascade = CascadeType.ALL, orphanRemoval = true)
+    private List<PropertyDAO> properties;
+
+    public static TableInfoDAO from(TableInfo tableInfo) {
+        return TableInfoDAO.builder()
+                .name(tableInfo.getName())
+                .comment(tableInfo.getComment())
+                .createdAt(tableInfo.getCreatedAt() != null ? new Date(tableInfo.getCreatedAt()) : new Date())
+                .updatedAt(tableInfo.getUpdatedAt() != null ? new Date(tableInfo.getUpdatedAt()) : new Date())
+                .columnCount(tableInfo.getColumns() != null ? tableInfo.getColumns().size() : 0)
+                .url(tableInfo.getStorageLocation() != null ? tableInfo.getStorageLocation() : null)
+                .type(tableInfo.getTableType().toString())
+                .dataSourceFormat(tableInfo.getDataSourceFormat().toString())
+                .url(tableInfo.getStorageLocation())
+                .columns(ColumnInfoDAO.fromList(tableInfo.getColumns()))
+                .properties(PropertyDAO.from(tableInfo.getProperties()))
+                .build();
+    }
+
+    public TableInfo toTableInfo() {
+        return new TableInfo()
+                .name(name)
+                .tableType(TableType.valueOf(type))
+                .dataSourceFormat(DataSourceFormat.valueOf(dataSourceFormat))
+                .storageLocation(FileUtils.convertRelativePathToURI(url))
+                .comment(comment)
+                .createdAt(createdAt != null ? createdAt.getTime() : null)
+                .updatedAt(updatedAt != null ? updatedAt.getTime() : null)
+                .tableId(id.toString())
+                .columns(ColumnInfoDAO.toList(columns))
+                .properties(PropertyDAO.toMap(properties));
+    }
 }

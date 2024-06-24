@@ -1,15 +1,14 @@
 package io.unitycatalog.server.persist.dao;
 
 import io.unitycatalog.server.model.CatalogInfo;
-import jakarta.persistence.Column;
-import jakarta.persistence.Entity;
-import jakarta.persistence.Id;
-import jakarta.persistence.Table;
+import jakarta.persistence.*;
 import lombok.*;
+import org.hibernate.annotations.SQLRestriction;
 import org.hibernate.annotations.UuidGenerator;
 
 import java.time.Instant;
 import java.util.Date;
+import java.util.List;
 import java.util.UUID;
 
 @Entity
@@ -21,7 +20,6 @@ import java.util.UUID;
 @AllArgsConstructor
 @NoArgsConstructor
 public class CatalogInfoDAO {
-
     @Id
     @Column(name = "id", columnDefinition = "BINARY(16)")
     private UUID id;
@@ -37,6 +35,9 @@ public class CatalogInfoDAO {
 
     @Column(name = "updated_at")
     private Date updatedAt;
+
+    @OneToMany(mappedBy = "catalog", cascade = CascadeType.ALL, orphanRemoval = true)
+    private List<PropertyDAO> properties;
 
     public static CatalogInfoDAO toCatalogInfoDAO(CatalogInfo catalogInfo) {
         return CatalogInfoDAO.builder()
@@ -58,6 +59,4 @@ public class CatalogInfoDAO {
             .createdAt(catalogInfoDAO.getCreatedAt().getTime())
             .updatedAt(catalogInfoDAO.getUpdatedAt() != null? catalogInfoDAO.getUpdatedAt().getTime() :null);
     }
-
-
 }
