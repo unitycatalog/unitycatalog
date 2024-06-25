@@ -194,7 +194,10 @@ public class TableRepository {
             return "";
         }
         // Assuming the last item in the list is the least recent based on the query
-        return String.valueOf(tables.get(tables.size() - 1).getUpdatedAt().getTime());
+        long time = tables.get(tables.size() - 1).getCreatedAt().getTime();
+        if (tables.get(tables.size() - 1).getUpdatedAt() != null)
+            time = tables.get(tables.size() - 1).getUpdatedAt().getTime();
+        return String.valueOf(time);
     }
 
     /**
