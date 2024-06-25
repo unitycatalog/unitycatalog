@@ -100,13 +100,12 @@ public class TableRepository {
                 .tableType(createTable.getTableType())
                 .dataSourceFormat(createTable.getDataSourceFormat())
                 .columns(createTable.getColumns())
-                .storageLocation(createTable.getStorageLocation())
+                .storageLocation(FileUtils.convertRelativePathToURI(createTable.getStorageLocation()))
                 .comment(createTable.getComment())
                 .properties(createTable.getProperties());
         String fullName = getTableFullName(tableInfo);
         LOGGER.debug("Creating table: " + fullName);
 
-        //Session session = null;
         Transaction tx = null;
         try (Session session = sessionFactory.openSession()) {
             String catalogName = tableInfo.getCatalogName();
@@ -156,7 +155,7 @@ public class TableRepository {
             if (e instanceof BaseException) {
                 throw e;
             }
-            throw new BaseException(ErrorCode.INTERNAL, "Error creating table: " + fullName, e);
+            throw new BaseException(ErrorCode.INTERNAL, e.getMessage(), e);
         }
         return tableInfo;
     }

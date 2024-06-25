@@ -30,13 +30,13 @@ public class ColumnInfoDAO {
     private UUID id;
 
     @ManyToOne
-    @JoinColumn(name = "table", nullable = false)
+    @JoinColumn(name = "table_id", nullable = false, referencedColumnName = "id")
     private TableInfoDAO table;
 
     @Column(name = "ordinal_position", nullable = false)
     private short ordinalPosition;
 
-    @Column(name = "name", nullable = false, length = 255)
+    @Column(name = "name", nullable = false)
     private String name;
 
     @Lob
@@ -91,11 +91,11 @@ public class ColumnInfoDAO {
     public ColumnInfo toColumnInfo() {
         return new ColumnInfo()
                 .name(name)
-                .typeText(typeText != null ? typeText.toLowerCase(Locale.ROOT) : null)
+                .typeText(typeText)
                 .typeJson(typeJson)
                 .typeName(ColumnTypeName.valueOf(typeName))
-                .typePrecision(Optional.ofNullable(typePrecision).orElse(0))
-                .typeScale(Optional.ofNullable(typeScale).orElse(0))
+                .typePrecision(typePrecision)
+                .typeScale(typeScale)
                 .typeIntervalType(typeIntervalType)
                 .position((int) ordinalPosition)
                 .comment(comment)

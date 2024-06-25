@@ -34,15 +34,15 @@ public class PropertyDAO {
     private String value;
 
     @ManyToOne
-    @JoinColumn(name = "catalog_id", nullable = false, referencedColumnName = "id")
+    @JoinColumn(name = "catalog_id", referencedColumnName = "id")
     private CatalogInfoDAO catalog;
 
     @ManyToOne
-    @JoinColumn(name = "schema_id", nullable = false, referencedColumnName = "id")
+    @JoinColumn(name = "schema_id", referencedColumnName = "id")
     private SchemaInfoDAO schema;
 
     @ManyToOne
-    @JoinColumn(name = "table_id", nullable = false, referencedColumnName = "id")
+    @JoinColumn(name = "table_id", referencedColumnName = "id")
     private TableInfoDAO table;
 
     public static List<PropertyDAO> from(Map<String, String> properties) {
@@ -62,50 +62,3 @@ public class PropertyDAO {
                 .collect(Collectors.toMap(PropertyDAO::getKey, PropertyDAO::getValue));
     }
 }
-
-/*
-@Entity
-@Table(name = "uc_catalog_properties", uniqueConstraints = {
-        @UniqueConstraint(columnNames = {"catalog_id", "property_key"})})
-@Getter
-@Setter
-@NoArgsConstructor
-@AllArgsConstructor
-@ToString
-//@Builder
-class CatalogPropertyDAO extends PropertyDAO {
-    @ManyToOne
-    @JoinColumn(name = "catalog_id", nullable = false, referencedColumnName = "id")
-    private CatalogInfoDAO catalog;
-
-    public static List<CatalogPropertyDAO> from(Map<String, String> properties) {
-        if (properties == null) {
-            return new ArrayList<>();
-        }
-        return properties.entrySet().stream()
-                .map(entry -> CatalogPropertyDAO.builder()
-                        .key(entry.getKey())
-                        .value(entry.getValue())
-                        .build())
-                .collect(Collectors.toList());
-    }
-}
-
-@Entity
-@Table(name = "uc_schema_properties", uniqueConstraints = {
-        @UniqueConstraint(columnNames = {"schema_id", "property_key"})})
-class SchemaPropertyDAO extends PropertyDAO {
-    @ManyToOne
-    @JoinColumn(name = "schema_id", nullable = false, referencedColumnName = "id")
-    private SchemaInfoDAO schema;
-}
-
-@Entity
-@Table(name = "uc_table_properties", uniqueConstraints = {
-        @UniqueConstraint(columnNames = {"table_id", "property_key"})})
-class TablePropertyDAO extends PropertyDAO {
-    @ManyToOne
-    @JoinColumn(name = "table_id", nullable = false, referencedColumnName = "id")
-    private TableInfoDAO table;
-}
-*/

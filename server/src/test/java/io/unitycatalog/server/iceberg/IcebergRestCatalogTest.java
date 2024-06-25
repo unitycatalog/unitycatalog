@@ -91,7 +91,8 @@ public class IcebergRestCatalogTest extends BaseServerTest {
   @Test
   public void testNamespaces()
     throws ApiException, IOException {
-    catalogOperations.createCatalog(TestUtils.CATALOG_NAME, "testCatalog");
+    CreateCatalog createCatalog = new CreateCatalog().name(TestUtils.CATALOG_NAME).comment(TestUtils.COMMENT);
+    catalogOperations.createCatalog(createCatalog);
     schemaOperations.createSchema(
       new CreateSchema()
         .catalogName(TestUtils.CATALOG_NAME)
@@ -163,7 +164,8 @@ public class IcebergRestCatalogTest extends BaseServerTest {
 
   @Test
   public void testTable() throws ApiException, IOException, URISyntaxException {
-    catalogOperations.createCatalog(TestUtils.CATALOG_NAME, "testCatalog");
+    CreateCatalog createCatalog = new CreateCatalog().name(TestUtils.CATALOG_NAME).comment(TestUtils.COMMENT);
+    catalogOperations.createCatalog(createCatalog);
     schemaOperations.createSchema(
       new CreateSchema()
         .catalogName(TestUtils.CATALOG_NAME)

@@ -45,7 +45,9 @@ public class PropertiesUtil {
                 i++;
             }
         } catch (IOException ex) {
-            LOGGER.error("Exception during loading properties", ex);
+            // If the configuration file is not found, use test properties
+            LOGGER.warn("Properties file not found, using test properties", ex);
+            properties.put("server.env", "test");
         }
     }
 
