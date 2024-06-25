@@ -28,11 +28,12 @@ public class CatalogRepository {
 
     public CatalogInfo addCatalog(CreateCatalog createCatalog) {
         ValidationUtils.validateSqlObjectName(createCatalog.getName());
-        CatalogInfoDAO catalogInfo = new CatalogInfoDAO();
-        catalogInfo.setId(java.util.UUID.randomUUID());
-        catalogInfo.setName(createCatalog.getName());
-        catalogInfo.setComment(createCatalog.getComment());
-        catalogInfo.setCreatedAt(new Date());
+        CatalogInfo catalogInfo = new CatalogInfo()
+                .id(java.util.UUID.randomUUID().toString())
+                .comment(createCatalog.getComment())
+                .name(createCatalog.getName())
+                .createdAt(System.currentTimeMillis())
+                .properties(createCatalog.getProperties());
 
         try (Session session = sessionFactory.openSession()) {
             Transaction tx = session.beginTransaction();
@@ -41,10 +42,11 @@ public class CatalogRepository {
                     throw new BaseException(ErrorCode.ALREADY_EXISTS,
                             "Catalog already exists: " + createCatalog.getName());
                 }
-                session.persist(catalogInfo);
+                CatalogInfoDAO catalogInfoDAO = CatalogInfoDAO.from(catalogInfo);
+                catalogInfoDAO.getProperties().forEach(p -> p.setCatalog(catalogInfoDAO));
+                session.persist(catalogInfoDAO);
                 tx.commit();
-                System.out.println("Added catalog: " + catalogInfo.getName());
-                return CatalogInfoDAO.toCatalogInfo(catalogInfo);
+                return catalogInfo;
             } catch (Exception e) {
                 tx.rollback();
                 throw e;
@@ -59,7 +61,7 @@ public class CatalogRepository {
             Transaction tx = session.beginTransaction();
             try {
                 response.setCatalogs(session
-                        .createQuery("from CatalogInfoDAO ", CatalogInfoDAO.class).list()
+                        .createQuery("from CatalogInfoDAO", CatalogInfoDAO.class).list()
                         .stream().map(CatalogInfoDAO::toCatalogInfo).collect(Collectors.toList()));
                 tx.commit();
             } catch (Exception e) {
@@ -74,7 +76,7 @@ public class CatalogRepository {
         try (Session session = sessionFactory.openSession()) {
             session.setDefaultReadOnly(true);
             Transaction tx = session.beginTransaction();
-            CatalogInfoDAO catalogInfo = null;
+            CatalogInfoDAO catalogInfo;
             try {
                 catalogInfo = getCatalogDAO(session, name);
                 tx.commit();
@@ -85,8 +87,7 @@ public class CatalogRepository {
             if (catalogInfo == null) {
                 throw new BaseException(ErrorCode.NOT_FOUND, "Catalog not found: " + name);
             }
-            return CatalogInfoDAO.
-                    toCatalogInfo(getCatalogDAO(session, name));
+            return CatalogInfoDAO.toCatalogInfo(catalogInfo);
         }
     }
 

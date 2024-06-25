@@ -41,11 +41,25 @@ public class SchemaInfoDAO {
     @OneToMany(mappedBy = "schema", cascade = CascadeType.ALL, orphanRemoval = true)
     private List<PropertyDAO> properties;
 
+    public static SchemaInfoDAO from(SchemaInfo schemaInfo) {
+        return SchemaInfoDAO.builder()
+                .id(schemaInfo.getSchemaId() != null ? UUID.fromString(schemaInfo.getSchemaId()) : null)
+                .name(schemaInfo.getName())
+                .comment(schemaInfo.getComment())
+                .createdAt(schemaInfo.getCreatedAt() != null ? Date.from(Instant
+                        .ofEpochMilli(schemaInfo.getCreatedAt())) : new Date())
+                .updatedAt(schemaInfo.getUpdatedAt() != null ? Date.from(Instant
+                        .ofEpochMilli(schemaInfo.getUpdatedAt())) : null)
+                .properties(PropertyDAO.from(schemaInfo.getProperties()))
+                .build();
+    }
+
     public static SchemaInfo toSchemaInfo(SchemaInfoDAO schemaInfoDAO) {
         return new SchemaInfo()
                 .schemaId(schemaInfoDAO.getId().toString())
                 .name(schemaInfoDAO.getName())
                 .comment(schemaInfoDAO.getComment())
+                .properties(PropertyDAO.toMap(schemaInfoDAO.getProperties()))
                 .createdAt(schemaInfoDAO.getCreatedAt().getTime())
                 .updatedAt((schemaInfoDAO.getUpdatedAt() !=null) ? schemaInfoDAO.getUpdatedAt().getTime() : null);
     }

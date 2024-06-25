@@ -40,18 +40,20 @@ public class SchemaRepository {
                 }
                 CatalogInfoDAO catalogDAO = catalogRepository
                         .getCatalogDAO(session, createSchema.getCatalogName());
-                SchemaInfoDAO schemaInfo = new SchemaInfoDAO();
-                schemaInfo.setId(UUID.randomUUID());
-                schemaInfo.setName(createSchema.getName());
-                schemaInfo.setCatalogId(catalogDAO.getId());
-                schemaInfo.setComment(createSchema.getComment());
-                schemaInfo.setCreatedAt(new Date());
-                schemaInfo.setUpdatedAt(null);
-                session.persist(schemaInfo);
+                SchemaInfo schemaInfo = new SchemaInfo()
+                        .schemaId(UUID.randomUUID().toString())
+                        .name(createSchema.getName())
+                        .catalogName(createSchema.getCatalogName())
+                        .comment(createSchema.getComment())
+                        .createdAt(System.currentTimeMillis())
+                        .properties(createSchema.getProperties());
+                SchemaInfoDAO schemaInfoDAO = SchemaInfoDAO.from(schemaInfo);
+                schemaInfoDAO.setCatalogId(catalogDAO.getId());
+                schemaInfoDAO.getProperties().forEach(p -> p.setSchema(schemaInfoDAO));
+                session.persist(schemaInfoDAO);
                 tx.commit();
-                SchemaInfo toReturn = SchemaInfoDAO.toSchemaInfo(schemaInfo);
-                addNamespaceData(toReturn, createSchema.getCatalogName());
-                return toReturn;
+                addNamespaceData(schemaInfo, createSchema.getCatalogName());
+                return schemaInfo;
             } catch (Exception e) {
                 tx.rollback();
                 throw e;

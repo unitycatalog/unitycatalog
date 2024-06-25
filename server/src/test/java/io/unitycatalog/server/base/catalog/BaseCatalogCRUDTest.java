@@ -41,7 +41,10 @@ public abstract class BaseCatalogCRUDTest extends BaseCRUDTest {
     public void testCatalogCRUD() throws ApiException {
         // Create a catalog
         System.out.println("Testing create catalog..");
-        CreateCatalog createCatalog = new CreateCatalog().name(CATALOG_NAME).comment(COMMENT);
+        CreateCatalog createCatalog = new CreateCatalog()
+                .name(CATALOG_NAME)
+                .comment(COMMENT)
+                .properties(PROPERTIES);
         CatalogInfo catalogInfo = catalogOperations.createCatalog(createCatalog);
         assertCatalog(catalogInfo, CATALOG_NAME, COMMENT);
 

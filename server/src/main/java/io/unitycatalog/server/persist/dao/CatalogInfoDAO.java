@@ -39,7 +39,7 @@ public class CatalogInfoDAO {
     @OneToMany(mappedBy = "catalog", cascade = CascadeType.ALL, orphanRemoval = true)
     private List<PropertyDAO> properties;
 
-    public static CatalogInfoDAO toCatalogInfoDAO(CatalogInfo catalogInfo) {
+    public static CatalogInfoDAO from(CatalogInfo catalogInfo) {
         return CatalogInfoDAO.builder()
             .id(catalogInfo.getId() != null ? UUID.fromString(catalogInfo.getId()) : null)
             .name(catalogInfo.getName())
@@ -47,7 +47,8 @@ public class CatalogInfoDAO {
             .createdAt(catalogInfo.getCreatedAt() != null ? Date.from(Instant
                     .ofEpochMilli(catalogInfo.getCreatedAt())) : new Date())
             .updatedAt(catalogInfo.getUpdatedAt() != null ? Date.from(Instant
-                    .ofEpochMilli(catalogInfo.getUpdatedAt())) : new Date())
+                    .ofEpochMilli(catalogInfo.getUpdatedAt())) : null)
+            .properties(PropertyDAO.from(catalogInfo.getProperties()))
             .build();
     }
 
@@ -57,6 +58,7 @@ public class CatalogInfoDAO {
             .name(catalogInfoDAO.getName())
             .comment(catalogInfoDAO.getComment())
             .createdAt(catalogInfoDAO.getCreatedAt().getTime())
-            .updatedAt(catalogInfoDAO.getUpdatedAt() != null? catalogInfoDAO.getUpdatedAt().getTime() :null);
+            .updatedAt(catalogInfoDAO.getUpdatedAt() != null ? catalogInfoDAO.getUpdatedAt().getTime() : null)
+            .properties(PropertyDAO.toMap(catalogInfoDAO.getProperties()));
     }
 }
