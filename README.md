@@ -157,3 +157,25 @@ See the full [tutorial](docs/tutorial.md) for more details.
 
 The build script [checks for a lower bound on the JDK](./build.sbt#L14) but the [current SBT version](./project/build.properties)
 imposes an upper bound. Please check the [JDK compatibility](https://docs.scala-lang.org/overviews/jdk-compatibility/overview.html) documentation for more information
+
+
+### Serving the documentation with mkdocs
+
+Create a virtual environment:
+
+```sh
+python -m venv venv
+. ./venv/bin/activate 
+``` 
+
+Install the required dependencies:
+
+```sh
+pip install -r requirements-docs.txt
+```
+
+Then serve the docs with
+
+```sh
+mkdocs serve
+```
