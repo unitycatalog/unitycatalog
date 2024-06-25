@@ -1,22 +1,26 @@
 package io.unitycatalog.server.persist;
 
 import io.unitycatalog.server.exception.BaseException;
-import io.unitycatalog.server.model.*;
-import io.unitycatalog.server.persist.dao.CatalogInfoDAO;
-import io.unitycatalog.server.persist.dao.PropertyDAO;
+import io.unitycatalog.server.exception.ErrorCode;
+import io.unitycatalog.server.model.CreateTable;
+import io.unitycatalog.server.model.ListTablesResponse;
+import io.unitycatalog.server.model.TableInfo;
+import io.unitycatalog.server.model.TableType;
 import io.unitycatalog.server.persist.dao.SchemaInfoDAO;
 import io.unitycatalog.server.persist.dao.TableInfoDAO;
 import io.unitycatalog.server.utils.ValidationUtils;
 import lombok.Getter;
-import org.hibernate.query.Query;
-import io.unitycatalog.server.exception.ErrorCode;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 import org.hibernate.Session;
 import org.hibernate.SessionFactory;
 import org.hibernate.Transaction;
+import org.hibernate.query.Query;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
-import java.util.*;
+import java.util.ArrayList;
+import java.util.Date;
+import java.util.List;
+import java.util.UUID;
 
 public class TableRepository {
     @Getter
@@ -94,6 +98,7 @@ public class TableRepository {
     public TableInfo createTable(CreateTable createTable) {
         ValidationUtils.validateSqlObjectName(createTable.getName());
         TableInfo tableInfo = new TableInfo()
+                .tableId(UUID.randomUUID().toString())
                 .name(createTable.getName())
                 .catalogName(createTable.getCatalogName())
                 .schemaName(createTable.getSchemaName())
@@ -102,11 +107,12 @@ public class TableRepository {
                 .columns(createTable.getColumns())
                 .storageLocation(FileUtils.convertRelativePathToURI(createTable.getStorageLocation()))
                 .comment(createTable.getComment())
-                .properties(createTable.getProperties());
+                .properties(createTable.getProperties())
+                .createdAt(System.currentTimeMillis());
         String fullName = getTableFullName(tableInfo);
         LOGGER.debug("Creating table: " + fullName);
 
-        Transaction tx = null;
+        Transaction tx;
         try (Session session = sessionFactory.openSession()) {
             String catalogName = tableInfo.getCatalogName();
             String schemaName = tableInfo.getSchemaName();
@@ -129,21 +135,11 @@ public class TableRepository {
                 }
                 TableInfoDAO tableInfoDAO = TableInfoDAO.from(tableInfo);
                 tableInfoDAO.setSchemaId(UUID.fromString(schemaId));
-                String tableId = UUID.randomUUID().toString();
-                // set id
-                tableInfoDAO.setId(UUID.fromString(tableId));
-                // set table id in return object
-                tableInfo.setTableId(tableId);
-                // set created and updated time in return object
-                tableInfo.setCreatedAt(tableInfoDAO.getCreatedAt().getTime());
-                tableInfo.setUpdatedAt(tableInfoDAO.getUpdatedAt().getTime());
                 // create columns
                 tableInfoDAO.getColumns().forEach(c -> c.setTable(tableInfoDAO));
                 // create properties
                 tableInfoDAO.getProperties().forEach(p -> p.setTable(tableInfoDAO));
-                // finally create the table
                 session.persist(tableInfoDAO);
-
                 tx.commit();
             } catch (RuntimeException e) {
                 if (tx != null && tx.getStatus().canRollback()) {
@@ -155,7 +151,7 @@ public class TableRepository {
             if (e instanceof BaseException) {
                 throw e;
             }
-            throw new BaseException(ErrorCode.INTERNAL, e.getMessage(), e);
+            throw new BaseException(ErrorCode.INTERNAL, "Error creating table: " + fullName, e);
         }
         return tableInfo;
     }

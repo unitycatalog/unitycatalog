@@ -10,7 +10,7 @@ import java.util.Map;
 import java.util.UUID;
 import java.util.stream.Collectors;
 
-
+//Hibernate annotations
 @Entity
 @Table(name = "uc_properties")
 // Lombok annotations

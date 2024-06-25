@@ -6,7 +6,6 @@ import io.unitycatalog.server.model.TableInfo;
 import io.unitycatalog.server.model.TableType;
 import io.unitycatalog.server.persist.FileUtils;
 import jakarta.persistence.*;
-
 import lombok.*;
 
 import java.util.Date;
@@ -69,10 +68,11 @@ public class TableInfoDAO {
 
     public static TableInfoDAO from(TableInfo tableInfo) {
         return TableInfoDAO.builder()
+                .id(UUID.fromString(tableInfo.getTableId()))
                 .name(tableInfo.getName())
                 .comment(tableInfo.getComment())
                 .createdAt(tableInfo.getCreatedAt() != null ? new Date(tableInfo.getCreatedAt()) : new Date())
-                .updatedAt(tableInfo.getUpdatedAt() != null ? new Date(tableInfo.getUpdatedAt()) : new Date())
+                .updatedAt(tableInfo.getUpdatedAt() != null ? new Date(tableInfo.getUpdatedAt()) : null)
                 .columnCount(tableInfo.getColumns() != null ? tableInfo.getColumns().size() : 0)
                 .url(tableInfo.getStorageLocation() != null ? tableInfo.getStorageLocation() : null)
                 .type(tableInfo.getTableType().toString())

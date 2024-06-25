@@ -3,8 +3,6 @@ package io.unitycatalog.server.persist.dao;
 import io.unitycatalog.server.model.CatalogInfo;
 import jakarta.persistence.*;
 import lombok.*;
-import org.hibernate.annotations.SQLRestriction;
-import org.hibernate.annotations.UuidGenerator;
 
 import java.time.Instant;
 import java.util.Date;

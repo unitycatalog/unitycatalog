@@ -6,7 +6,10 @@ import jakarta.persistence.*;
 import lombok.*;
 import org.hibernate.annotations.UuidGenerator;
 
-import java.util.*;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Optional;
+import java.util.UUID;
 import java.util.stream.Collectors;
 
 //Hibernate annotations
@@ -36,7 +39,7 @@ public class ColumnInfoDAO {
     @Column(name = "ordinal_position", nullable = false)
     private short ordinalPosition;
 
-    @Column(name = "name", nullable = false)
+    @Column(name = "name", nullable = false, length = 255)
     private String name;
 
     @Lob

@@ -10,7 +10,6 @@ import io.unitycatalog.server.base.ServerConfig;
 import io.unitycatalog.server.base.catalog.CatalogOperations;
 
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.List;
 
 import static io.unitycatalog.cli.TestUtils.addServerAndAuthParams;

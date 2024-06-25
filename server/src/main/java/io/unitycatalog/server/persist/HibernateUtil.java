@@ -40,7 +40,7 @@ public class HibernateUtil {
                 configuration.setProperty("hibernate.hbm2ddl.auto", "update");
                 LOGGER.debug("Hibernate configuration set for production");
             }
-            configuration.setProperty("hibernate.show_sql", "true");
+            configuration.setProperty("hibernate.show_sql", "false");
             configuration.setProperty("hibernate.archive.autodetection", "class");
             configuration.setProperty("hibernate.archive.scan.packages", "com.databricks.unitycatalog.persist.dao");
             configuration.setProperty("hibernate.use_sql_comments", "true");

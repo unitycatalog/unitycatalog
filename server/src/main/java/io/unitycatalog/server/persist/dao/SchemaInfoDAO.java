@@ -3,7 +3,6 @@ package io.unitycatalog.server.persist.dao;
 import io.unitycatalog.server.model.SchemaInfo;
 import jakarta.persistence.*;
 import lombok.*;
-import org.hibernate.annotations.UuidGenerator;
 
 import java.time.Instant;
 import java.util.Date;
@@ -61,6 +60,6 @@ public class SchemaInfoDAO {
                 .comment(schemaInfoDAO.getComment())
                 .properties(PropertyDAO.toMap(schemaInfoDAO.getProperties()))
                 .createdAt(schemaInfoDAO.getCreatedAt().getTime())
-                .updatedAt((schemaInfoDAO.getUpdatedAt() !=null) ? schemaInfoDAO.getUpdatedAt().getTime() : null);
+                .updatedAt((schemaInfoDAO.getUpdatedAt() != null) ? schemaInfoDAO.getUpdatedAt().getTime() : null);
     }
 }

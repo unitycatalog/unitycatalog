@@ -62,7 +62,7 @@ public class CatalogRepository {
             try {
                 response.setCatalogs(session
                         .createQuery("from CatalogInfoDAO", CatalogInfoDAO.class).list()
-                        .stream().map(c -> c.toCatalogInfo()).collect(Collectors.toList()));
+                        .stream().map(CatalogInfoDAO::toCatalogInfo).collect(Collectors.toList()));
                 tx.commit();
             } catch (Exception e) {
                 tx.rollback();
