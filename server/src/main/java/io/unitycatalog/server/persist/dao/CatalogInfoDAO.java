@@ -52,13 +52,13 @@ public class CatalogInfoDAO {
             .build();
     }
 
-    public static CatalogInfo toCatalogInfo(CatalogInfoDAO catalogInfoDAO) {
+    public CatalogInfo toCatalogInfo() {
         return new CatalogInfo()
-            .id(catalogInfoDAO.getId().toString())
-            .name(catalogInfoDAO.getName())
-            .comment(catalogInfoDAO.getComment())
-            .createdAt(catalogInfoDAO.getCreatedAt().getTime())
-            .updatedAt(catalogInfoDAO.getUpdatedAt() != null ? catalogInfoDAO.getUpdatedAt().getTime() : null)
-            .properties(PropertyDAO.toMap(catalogInfoDAO.getProperties()));
+            .id(id.toString())
+            .name(name)
+            .comment(comment)
+            .createdAt(createdAt.getTime())
+            .updatedAt(updatedAt != null ? updatedAt.getTime() : null)
+            .properties(PropertyDAO.toMap(properties));
     }
 }

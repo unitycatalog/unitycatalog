@@ -62,7 +62,7 @@ public class CatalogRepository {
             try {
                 response.setCatalogs(session
                         .createQuery("from CatalogInfoDAO", CatalogInfoDAO.class).list()
-                        .stream().map(CatalogInfoDAO::toCatalogInfo).collect(Collectors.toList()));
+                        .stream().map(c -> c.toCatalogInfo()).collect(Collectors.toList()));
                 tx.commit();
             } catch (Exception e) {
                 tx.rollback();
@@ -76,18 +76,18 @@ public class CatalogRepository {
         try (Session session = sessionFactory.openSession()) {
             session.setDefaultReadOnly(true);
             Transaction tx = session.beginTransaction();
-            CatalogInfoDAO catalogInfo;
+            CatalogInfoDAO catalogInfoDAO;
             try {
-                catalogInfo = getCatalogDAO(session, name);
+                catalogInfoDAO = getCatalogDAO(session, name);
                 tx.commit();
             } catch (Exception e) {
                 tx.rollback();
                 throw e;
             }
-            if (catalogInfo == null) {
+            if (catalogInfoDAO == null) {
                 throw new BaseException(ErrorCode.NOT_FOUND, "Catalog not found: " + name);
             }
-            return CatalogInfoDAO.toCatalogInfo(catalogInfo);
+            return catalogInfoDAO.toCatalogInfo();
         }
     }
 
@@ -105,20 +105,20 @@ public class CatalogRepository {
         try (Session session = sessionFactory.openSession()) {
             Transaction tx = session.beginTransaction();
             try {
-                CatalogInfoDAO catalogInfo = getCatalogDAO(session, name);
-                if (catalogInfo == null) {
+                CatalogInfoDAO catalogInfoDAO = getCatalogDAO(session, name);
+                if (catalogInfoDAO == null) {
                     throw new BaseException(ErrorCode.NOT_FOUND, "Catalog not found: " + name);
                 }
                 if (getCatalogDAO(session, updateCatalog.getNewName()) != null) {
                     throw new BaseException(ErrorCode.ALREADY_EXISTS,
                             "Catalog already exists: " + updateCatalog.getNewName());
                 }
-                catalogInfo.setName(updateCatalog.getNewName());
-                catalogInfo.setComment(updateCatalog.getComment());
-                catalogInfo.setUpdatedAt(new Date());
-                session.merge(catalogInfo);
+                catalogInfoDAO.setName(updateCatalog.getNewName());
+                catalogInfoDAO.setComment(updateCatalog.getComment());
+                catalogInfoDAO.setUpdatedAt(new Date());
+                session.merge(catalogInfoDAO);
                 tx.commit();
-                return CatalogInfoDAO.toCatalogInfo(catalogInfo);
+                return catalogInfoDAO.toCatalogInfo();
             } catch (Exception e) {
                 tx.rollback();
                 throw e;
