@@ -2,7 +2,7 @@ site_name: Unity Catalog
 edit_uri: edit/main/docs/
 repo_name: unitycatalog/unitycatalog
 repo_url: https://github.com/unitycatalog/unitycatalog
-site_url: https://github.com/unitycatalog/unitycatalog
+site_url: https://docs.unitycatalog.io
 site_description:  Open, Multi-modal Catalog for Data & AI 
 site_author: unitycatalog
 
