@@ -2,10 +2,7 @@ package io.unitycatalog.server.persist;
 
 import io.unitycatalog.server.exception.BaseException;
 import io.unitycatalog.server.exception.ErrorCode;
-import io.unitycatalog.server.model.CreateTable;
-import io.unitycatalog.server.model.ListTablesResponse;
-import io.unitycatalog.server.model.TableInfo;
-import io.unitycatalog.server.model.TableType;
+import io.unitycatalog.server.model.*;
 import io.unitycatalog.server.persist.dao.SchemaInfoDAO;
 import io.unitycatalog.server.persist.dao.TableInfoDAO;
 import io.unitycatalog.server.utils.ValidationUtils;
@@ -17,10 +14,8 @@ import org.hibernate.query.Query;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.util.ArrayList;
-import java.util.Date;
-import java.util.List;
-import java.util.UUID;
+import java.util.*;
+import java.util.stream.Collectors;
 
 public class TableRepository {
     @Getter
@@ -97,6 +92,9 @@ public class TableRepository {
 
     public TableInfo createTable(CreateTable createTable) {
         ValidationUtils.validateSqlObjectName(createTable.getName());
+        List<ColumnInfo> columnInfos = createTable.getColumns().stream()
+                .map(c -> c.typeText(c.getTypeText().toLowerCase(Locale.ROOT)))
+                .collect(Collectors.toList());
         TableInfo tableInfo = new TableInfo()
                 .tableId(UUID.randomUUID().toString())
                 .name(createTable.getName())
@@ -104,7 +102,7 @@ public class TableRepository {
                 .schemaName(createTable.getSchemaName())
                 .tableType(createTable.getTableType())
                 .dataSourceFormat(createTable.getDataSourceFormat())
-                .columns(createTable.getColumns())
+                .columns(columnInfos)
                 .storageLocation(FileUtils.convertRelativePathToURI(createTable.getStorageLocation()))
                 .comment(createTable.getComment())
                 .properties(createTable.getProperties())
