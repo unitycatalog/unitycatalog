@@ -1,5 +1,7 @@
 import java.nio.file.{Files, StandardCopyOption}
 import sbt.util
+import scala.sys.process._
+import scala.util.{Try, Success, Failure}
 
 val orgName = "io.unitycatalog"
 val artifactNamePrefix = "unitycatalog"
@@ -129,9 +131,9 @@ lazy val server = (project in file("server"))
       "org.hibernate.orm" % "hibernate-core" % "6.5.0.Final",
       "org.openapitools" % "jackson-databind-nullable" % openApiToolsJacksonBindNullableVersion,
       // logging
-      "org.apache.logging.log4j" % "log4j-api" % "2.23.1",
-      "org.apache.logging.log4j" % "log4j-core" % "2.23.1",
-      "org.apache.logging.log4j" % "log4j-slf4j-impl" % "2.23.1",
+      "org.apache.logging.log4j" % "log4j-api" % log4jVersion,
+      "org.apache.logging.log4j" % "log4j-core" % log4jVersion,
+      "org.apache.logging.log4j" % "log4j-slf4j-impl" % log4jVersion,
 
       "jakarta.activation" % "jakarta.activation-api" % "2.1.3",
       "net.bytebuddy" % "byte-buddy" % "1.14.15",
@@ -212,9 +214,9 @@ lazy val cli = (project in file("examples") / "cli")
       "org.openapitools" % "jackson-databind-nullable" % openApiToolsJacksonBindNullableVersion,
       "org.yaml" % "snakeyaml" % "2.2",
       // logging
-      "org.apache.logging.log4j" % "log4j-api" % "2.23.1",
-      "org.apache.logging.log4j" % "log4j-core" % "2.23.1",
-      "org.apache.logging.log4j" % "log4j-slf4j-impl" % "2.23.1",
+      "org.apache.logging.log4j" % "log4j-api" % log4jVersion,
+      "org.apache.logging.log4j" % "log4j-core" % log4jVersion,
+      "org.apache.logging.log4j" % "log4j-slf4j-impl" % log4jVersion,
 
       "io.delta" % "delta-kernel-api" % "3.2.0",
       "io.delta" % "delta-kernel-defaults" % "3.2.0",
@@ -248,6 +250,58 @@ def generateClasspathFile(targetDir: File, classpath: Classpath): Unit = {
 
 val generate = taskKey[Unit]("generate code from APIs")
 
+lazy val createTarball = taskKey[Unit]("Create a tarball containing the JAR and scripts")
+
+createTarball := {
+  val log = streams.value.log
+
+  // Output directory for the tarball
+  val outputDir = target.value / "dist"
+  val projectJarFiles = Seq((server / Compile / packageBin).value.getAbsoluteFile,
+    (cli / Compile / packageBin).value.getAbsoluteFile,
+    (client / Compile / packageBin).value.getAbsoluteFile)
+  val scriptsDir = baseDirectory.value / "bin"
+  val etcDir = baseDirectory.value / "etc"
+
+  // All JAR files in the classpath
+  val allJars = (server / Compile / managedClasspath).value.files ++
+    (cli / Compile / managedClasspath).value.files ++
+    projectJarFiles
+
+  // Clean and create the output directory
+  IO.delete(outputDir)
+  IO.createDirectory(outputDir)
+
+  // Copy the JAR file to the output directory
+  allJars.foreach { jarFile =>
+    IO.copyFile(jarFile, outputDir / "jars" / jarFile.getName)
+  }
+  val classpathFile = outputDir / "jars" / "classpath"
+  Files.write(classpathFile.toPath, allJars.mkString(":").getBytes)
+  // Copy the script files to the output directory
+  IO.copyDirectory(scriptsDir, outputDir / "bin")
+  // Copy the etc files to the output directory
+  IO.copyDirectory(etcDir, outputDir / "etc")
+
+  // Create the tarball
+  val tarballFile = target.value / s"${name.value}-${version.value}.tar.gz"
+  log.info(s"Creating tarball at $tarballFile")
+
+  // Execute the tar command
+  val tarCommand = Seq(
+    "tar", "-czvf", tarballFile.getAbsolutePath,
+    "-C", outputDir.getAbsolutePath, "."
+  )
+
+  Try(Process(tarCommand).!) match {
+    case Success(0) => log.info(s"Tarball created successfully: $tarballFile")
+    case Success(exitCode) => sys.error(s"Tarball creation failed with exit code $exitCode")
+    case Failure(exception) => sys.error(s"Tarball creation failed with exception: ${exception.getMessage}")
+  }
+}
+
+
 // Library versions
 val jacksonVersion = "2.17.0"
 val openApiToolsJacksonBindNullableVersion = "0.2.6"
+val log4jVersion = "2.23.1"
