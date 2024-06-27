@@ -38,7 +38,7 @@ import com.fasterxml.jackson.annotation.JsonTypeName;
   SchemaInfo.JSON_PROPERTY_UPDATED_AT,
   SchemaInfo.JSON_PROPERTY_SCHEMA_ID
 })
-@javax.annotation.Generated(value = "org.openapitools.codegen.languages.JavaClientCodegen", comments = "Generator version: 7.5.0")
+@jakarta.annotation.Generated(value = "org.openapitools.codegen.languages.JavaClientCodegen", comments = "Generator version: 7.5.0")
 public class SchemaInfo {
   public static final String JSON_PROPERTY_NAME = "name";
   private String name;
@@ -77,7 +77,7 @@ public class SchemaInfo {
    * Name of schema, relative to parent catalog.
    * @return name
   **/
-  @javax.annotation.Nullable
+  @jakarta.annotation.Nullable
   @JsonProperty(JSON_PROPERTY_NAME)
   @JsonInclude(value = JsonInclude.Include.USE_DEFAULTS)
 
@@ -103,7 +103,7 @@ public class SchemaInfo {
    * Name of parent catalog.
    * @return catalogName
   **/
-  @javax.annotation.Nullable
+  @jakarta.annotation.Nullable
   @JsonProperty(JSON_PROPERTY_CATALOG_NAME)
   @JsonInclude(value = JsonInclude.Include.USE_DEFAULTS)
 
@@ -129,7 +129,7 @@ public class SchemaInfo {
    * User-provided free-form text description.
    * @return comment
   **/
-  @javax.annotation.Nullable
+  @jakarta.annotation.Nullable
   @JsonProperty(JSON_PROPERTY_COMMENT)
   @JsonInclude(value = JsonInclude.Include.USE_DEFAULTS)
 
@@ -163,7 +163,7 @@ public class SchemaInfo {
    * A map of key-value properties attached to the securable.
    * @return properties
   **/
-  @javax.annotation.Nullable
+  @jakarta.annotation.Nullable
   @JsonProperty(JSON_PROPERTY_PROPERTIES)
   @JsonInclude(value = JsonInclude.Include.USE_DEFAULTS)
 
@@ -189,7 +189,7 @@ public class SchemaInfo {
    * Full name of schema, in form of __catalog_name__.__schema_name__.
    * @return fullName
   **/
-  @javax.annotation.Nullable
+  @jakarta.annotation.Nullable
   @JsonProperty(JSON_PROPERTY_FULL_NAME)
   @JsonInclude(value = JsonInclude.Include.USE_DEFAULTS)
 
@@ -215,7 +215,7 @@ public class SchemaInfo {
    * Time at which this schema was created, in epoch milliseconds.
    * @return createdAt
   **/
-  @javax.annotation.Nullable
+  @jakarta.annotation.Nullable
   @JsonProperty(JSON_PROPERTY_CREATED_AT)
   @JsonInclude(value = JsonInclude.Include.USE_DEFAULTS)
 
@@ -241,7 +241,7 @@ public class SchemaInfo {
    * Time at which this schema was last modified, in epoch milliseconds.
    * @return updatedAt
   **/
-  @javax.annotation.Nullable
+  @jakarta.annotation.Nullable
   @JsonProperty(JSON_PROPERTY_UPDATED_AT)
   @JsonInclude(value = JsonInclude.Include.USE_DEFAULTS)
 
@@ -267,7 +267,7 @@ public class SchemaInfo {
    * Unique identifier for the schema.
    * @return schemaId
   **/
-  @javax.annotation.Nullable
+  @jakarta.annotation.Nullable
   @JsonProperty(JSON_PROPERTY_SCHEMA_ID)
   @JsonInclude(value = JsonInclude.Include.USE_DEFAULTS)
 

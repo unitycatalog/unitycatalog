@@ -49,7 +49,7 @@ import com.fasterxml.jackson.annotation.JsonPropertyOrder;
   CreateTable.JSON_PROPERTY_COMMENT,
   CreateTable.JSON_PROPERTY_PROPERTIES
 })
-@javax.annotation.Generated(value = "org.openapitools.codegen.languages.JavaClientCodegen", comments = "Generator version: 7.5.0")
+@jakarta.annotation.Generated(value = "org.openapitools.codegen.languages.JavaClientCodegen", comments = "Generator version: 7.5.0")
 public class CreateTable {
   public static final String JSON_PROPERTY_NAME = "name";
   private String name;
@@ -90,7 +90,7 @@ public class CreateTable {
    * Name of table, relative to parent schema.
    * @return name
   **/
-  @javax.annotation.Nonnull
+  @jakarta.annotation.Nonnull
   @JsonProperty(JSON_PROPERTY_NAME)
   @JsonInclude(value = JsonInclude.Include.ALWAYS)
 
@@ -115,7 +115,7 @@ public class CreateTable {
    * Name of parent catalog.
    * @return catalogName
   **/
-  @javax.annotation.Nonnull
+  @jakarta.annotation.Nonnull
   @JsonProperty(JSON_PROPERTY_CATALOG_NAME)
   @JsonInclude(value = JsonInclude.Include.ALWAYS)
 
@@ -140,7 +140,7 @@ public class CreateTable {
    * Name of parent schema relative to its parent catalog.
    * @return schemaName
   **/
-  @javax.annotation.Nonnull
+  @jakarta.annotation.Nonnull
   @JsonProperty(JSON_PROPERTY_SCHEMA_NAME)
   @JsonInclude(value = JsonInclude.Include.ALWAYS)
 
@@ -165,7 +165,7 @@ public class CreateTable {
    * Get tableType
    * @return tableType
   **/
-  @javax.annotation.Nonnull
+  @jakarta.annotation.Nonnull
   @JsonProperty(JSON_PROPERTY_TABLE_TYPE)
   @JsonInclude(value = JsonInclude.Include.ALWAYS)
 
@@ -190,7 +190,7 @@ public class CreateTable {
    * Get dataSourceFormat
    * @return dataSourceFormat
   **/
-  @javax.annotation.Nonnull
+  @jakarta.annotation.Nonnull
   @JsonProperty(JSON_PROPERTY_DATA_SOURCE_FORMAT)
   @JsonInclude(value = JsonInclude.Include.ALWAYS)
 
@@ -223,7 +223,7 @@ public class CreateTable {
    * The array of __ColumnInfo__ definitions of the table&#39;s columns.
    * @return columns
   **/
-  @javax.annotation.Nonnull
+  @jakarta.annotation.Nonnull
   @JsonProperty(JSON_PROPERTY_COLUMNS)
   @JsonInclude(value = JsonInclude.Include.ALWAYS)
 
@@ -248,7 +248,7 @@ public class CreateTable {
    * Storage root URL for table (for **MANAGED**, **EXTERNAL** tables)
    * @return storageLocation
   **/
-  @javax.annotation.Nullable
+  @jakarta.annotation.Nullable
   @JsonProperty(JSON_PROPERTY_STORAGE_LOCATION)
   @JsonInclude(value = JsonInclude.Include.USE_DEFAULTS)
 
@@ -273,7 +273,7 @@ public class CreateTable {
    * User-provided free-form text description.
    * @return comment
   **/
-  @javax.annotation.Nullable
+  @jakarta.annotation.Nullable
   @JsonProperty(JSON_PROPERTY_COMMENT)
   @JsonInclude(value = JsonInclude.Include.USE_DEFAULTS)
 
@@ -306,7 +306,7 @@ public class CreateTable {
    * A map of key-value properties attached to the securable.
    * @return properties
   **/
-  @javax.annotation.Nullable
+  @jakarta.annotation.Nullable
   @JsonProperty(JSON_PROPERTY_PROPERTIES)
   @JsonInclude(value = JsonInclude.Include.USE_DEFAULTS)
 
