@@ -1,6 +1,7 @@
 import java.nio.file.Files
 import sbt.util
 
+
 val orgName = "io.unitycatalog"
 val artifactNamePrefix = "unitycatalog"
 
@@ -58,21 +59,15 @@ lazy val client = (project in file("clients/java"))
   .settings(
     name := s"$artifactNamePrefix-client",
     commonSettings,
-    libraryDependencies ++= Seq(
-      "com.fasterxml.jackson.core" % "jackson-annotations" % jacksonVersion,
-      "com.fasterxml.jackson.core" % "jackson-core" % jacksonVersion,
-      "com.fasterxml.jackson.core" % "jackson-databind" % jacksonVersion,
-      "com.fasterxml.jackson.datatype" % "jackson-datatype-jsr310" % jacksonVersion,
-      "org.openapitools" % "jackson-databind-nullable" % openApiToolsJacksonBindNullableVersion,
-      "com.google.code.findbugs" % "jsr305" % "3.0.2",
-      "jakarta.annotation" % "jakarta.annotation-api" % "1.3.5" % Provided,
-
-      // Test dependencies
-      "junit" %  "junit" % "4.13.2" % Test,
-      "org.junit.jupiter" % "junit-jupiter" % "5.9.2" % Test,
-      "net.aichler" % "jupiter-interface" % JupiterKeys.jupiterVersion.value % Test,
-    ),
-
+    javaCheckstyleSettings(file("dev") / "checkstyle-config.xml"),
+    libraryDependencies ++=
+      Dependencies.findBugs ++
+      Dependencies.guava ++ 
+      Dependencies.hadoop ++ 
+      Dependencies.jackson(includeAnnotations = true) ++
+      Dependencies.Jakarta.annotation ++ 
+      Dependencies.junit4.map(_ % Test),
+    libraryDependencies ++= Dependencies.junit5.value.map(_ % Test),
     // OpenAPI generation specs
     openApiInputSpec := (file(".") / "api" / "all.yaml").toString,
     openApiGeneratorName := "java",
@@ -96,7 +91,6 @@ lazy val apiDocs = (project in file("api"))
   .enablePlugins(OpenApiGeneratorPlugin)
   .settings(
     name := s"$artifactNamePrefix-docs",
-
     // OpenAPI generation specs
     openApiInputSpec := (file("api") / "all.yaml").toString,
     openApiGeneratorName := "markdown",
@@ -115,44 +109,21 @@ lazy val server = (project in file("server"))
     name := s"$artifactNamePrefix-server",
     commonSettings,
     javaCheckstyleSettings(file("dev") / "checkstyle-config.xml"),
-    libraryDependencies ++= Seq(
-      "com.linecorp.armeria" %  "armeria" % "1.28.4",
-      "javax.annotation" %  "javax.annotation-api" % "1.3.2",
-      // Jackson dependencies
-      "com.fasterxml.jackson.core" % "jackson-annotations" % jacksonVersion,
-      "com.fasterxml.jackson.core" % "jackson-core" % jacksonVersion,
-      "com.fasterxml.jackson.core" % "jackson-databind" % jacksonVersion,
-      "com.fasterxml.jackson.datatype" % "jackson-datatype-jsr310" % jacksonVersion,
-
-      "com.google.code.findbugs" % "jsr305" % "3.0.2",
-      "com.h2database" %  "h2" % "2.2.224",
-      "org.hibernate.orm" % "hibernate-core" % "6.5.0.Final",
-      "org.openapitools" % "jackson-databind-nullable" % openApiToolsJacksonBindNullableVersion,
-      // logging
-      "org.apache.logging.log4j" % "log4j-api" % "2.23.1",
-      "org.apache.logging.log4j" % "log4j-core" % "2.23.1",
-      "org.apache.logging.log4j" % "log4j-slf4j-impl" % "2.23.1",
-
-      "jakarta.activation" % "jakarta.activation-api" % "2.1.3",
-      "net.bytebuddy" % "byte-buddy" % "1.14.15",
-      "org.projectlombok" % "lombok" % "1.18.32" % "provided",
-
-      //For s3 access
-      "com.amazonaws" % "aws-java-sdk-s3" % "1.12.728",
-      "org.apache.httpcomponents" % "httpcore" % "4.4.16",
-      "org.apache.httpcomponents" % "httpclient" % "4.5.14",
-
-      // Iceberg REST Catalog dependencies
-      "org.apache.iceberg" % "iceberg-core" % "1.5.2",
-      "io.vertx" % "vertx-core" % "4.3.5",
-      "io.vertx" % "vertx-web" % "4.3.5",
-      "io.vertx" % "vertx-web-client" % "4.3.5",
-
-      // Test dependencies
-      "junit" %  "junit" % "4.13.2" % Test,
-      "com.github.sbt" % "junit-interface" % "0.13.3" % Test,
-    ),
-
+    libraryDependencies ++=
+      Dependencies.armeria ++
+      Dependencies.byteBuddy ++
+      Dependencies.findBugs ++
+      Dependencies.iceberg ++
+      Dependencies.jackson(includeAnnotations = true) ++
+      Dependencies.junit4.map(_ % Test) ++
+      Dependencies.Jakarta.activation ++
+      Dependencies.javaxAnnotations ++
+      Dependencies.log4j ++
+      Dependencies.lombok.map(_ % Provided) ++
+      Dependencies.persistence ++
+      Dependencies.s3AccessLibraries ++
+      Dependencies.vertx
+    ,
     Compile / compile / javacOptions ++= Seq(
       "-processor",
       "lombok.launch.AnnotationProcessorHider$AnnotationProcessor"
@@ -201,32 +172,15 @@ lazy val cli = (project in file("examples") / "cli")
     commonSettings,
     javaCheckstyleSettings(file("dev") / "checkstyle-config.xml"),
     Compile / logLevel := util.Level.Info,
-    libraryDependencies ++= Seq(
-      "commons-cli" % "commons-cli" % "1.7.0",
-      "org.json" % "json" % "20240303",
-      "com.fasterxml.jackson.core" % "jackson-databind" % jacksonVersion,
-      "com.fasterxml.jackson.datatype" % "jackson-datatype-jsr310" % jacksonVersion,
-      "org.openapitools" % "jackson-databind-nullable" % openApiToolsJacksonBindNullableVersion,
-      "org.yaml" % "snakeyaml" % "2.2",
-      // logging
-      "org.apache.logging.log4j" % "log4j-api" % "2.23.1",
-      "org.apache.logging.log4j" % "log4j-core" % "2.23.1",
-      "org.apache.logging.log4j" % "log4j-slf4j-impl" % "2.23.1",
-
-      "io.delta" % "delta-kernel-api" % "3.2.0",
-      "io.delta" % "delta-kernel-defaults" % "3.2.0",
-      "io.delta" % "delta-storage" % "3.2.0",
-      "org.apache.hadoop" % "hadoop-client-api" % "3.4.0",
-      "org.apache.hadoop" % "hadoop-client-runtime" % "3.4.0",
-      "de.vandermeer" % "asciitable" % "0.3.2",
-      // for s3 access
-      "com.amazonaws" % "aws-java-sdk-core" % "1.12.728",
-      "org.apache.hadoop" % "hadoop-aws" % "3.4.0",
-      "com.google.guava" % "guava" % "31.0.1-jre",
-      // Test dependencies
-      "junit" %  "junit" % "4.13.2" % Test,
-      "com.github.sbt" % "junit-interface" % "0.13.3" % Test,
-    ),
+    libraryDependencies ++=
+      Dependencies.asciiTable ++
+      Dependencies.commonsCLI ++
+      Dependencies.delta ++
+      Dependencies.jackson(includeAnnotations=false) ++
+      Dependencies.junit4.map(_ % Test) ++
+      Dependencies.json ++
+      Dependencies.log4j ++
+      Dependencies.snakeYaml
   )
 
 def generateClasspathFile(targetDir: File, classpath: Classpath): Unit = {
@@ -238,7 +192,3 @@ def generateClasspathFile(targetDir: File, classpath: Classpath): Unit = {
 }
 
 val generate = taskKey[Unit]("generate code from APIs")
-
-// Library versions
-val jacksonVersion = "2.17.0"
-val openApiToolsJacksonBindNullableVersion = "0.2.6"
