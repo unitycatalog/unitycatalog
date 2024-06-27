@@ -25,6 +25,7 @@ public abstract class BaseCatalogCRUDTest extends BaseCRUDTest {
         Assert.assertEquals(name, catalogInfo.getName());
         Assert.assertEquals(comment, catalogInfo.getComment());
         Assert.assertNotNull(catalogInfo.getCreatedAt());
+        // TODO: Also assert properties once CLI supports it
     }
 
     protected void assertCatalogExists(List<CatalogInfo> catalogList, String name, String comment) {

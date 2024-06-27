@@ -4,6 +4,7 @@ import io.unitycatalog.client.ApiClient;
 import io.unitycatalog.server.base.ServerConfig;
 
 import java.net.URI;
+import java.util.HashMap;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
@@ -29,7 +30,7 @@ public class TestUtils {
     public static final String CATALOG_NEW_COMMENT = "new test comment";
     public static final String VOLUME_NEW_NAME = "uc_newtestvolume";
     public static final String VOLUME_NEW_FULL_NAME = CATALOG_NAME + "." + SCHEMA_NAME + "." + VOLUME_NEW_NAME;
-    public static final Map<String, String> PROPERTIES = Map.of("prop1", "value1", "prop2", "value2");
+    public static final Map<String, String> PROPERTIES = new HashMap<>(Map.of("prop1", "value1", "prop2", "value2"));
 
     public static int getRandomPort() {
         return (int) (Math.random() * 1000) + 9000;

@@ -67,7 +67,8 @@ public abstract class BaseSchemaCRUDTest extends BaseCRUDTest {
         SchemaInfo schemaInfo = schemaOperations.createSchema(createSchema);
         assertEquals(createSchema.getName(), schemaInfo.getName());
         assertEquals(createSchema.getCatalogName(), schemaInfo.getCatalogName());
-        Assert.assertEquals(TestUtils.SCHEMA_FULL_NAME, schemaInfo.getFullName());
+        assertEquals(TestUtils.SCHEMA_FULL_NAME, schemaInfo.getFullName());
+        // TODO: Assert properties once CLI supports it
         assertNotNull(schemaInfo.getCreatedAt());
 
         // List schemas
