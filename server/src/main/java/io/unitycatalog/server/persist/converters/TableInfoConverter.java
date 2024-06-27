@@ -1,24 +1,22 @@
 package io.unitycatalog.server.persist.converters;
 
-import java.nio.charset.StandardCharsets;
-import java.util.*;
-
+import com.fasterxml.jackson.core.JsonProcessingException;
 import io.unitycatalog.server.model.*;
 import io.unitycatalog.server.persist.FileUtils;
 import io.unitycatalog.server.persist.dao.ColumnInfoDAO;
-import io.unitycatalog.server.utils.JsonUtils;
-import io.unitycatalog.server.utils.ThrowingFunction;
 import io.unitycatalog.server.persist.dao.PropertyDAO;
+import io.unitycatalog.server.persist.dao.TableInfoDAO;
+import io.unitycatalog.server.utils.ThrowingFunction;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import java.util.stream.Collectors;
 
-import com.fasterxml.jackson.core.JsonProcessingException;
-import io.unitycatalog.server.persist.dao.TableInfoDAO;
+import java.util.*;
+import java.util.stream.Collectors;
 
 public class TableInfoConverter {
 
     private static final Logger LOGGER = LoggerFactory.getLogger(TableInfoConverter.class);
+
     public static TableInfo convertFromCreateRequest(CreateTable createTable) {
         if (createTable == null) {
             return null;
@@ -59,7 +57,7 @@ public class TableInfoConverter {
                 JsonProcessingException.class)).collect(Collectors.toList());
     }
 
-    private static ColumnInfo convertColumnToDTO(ColumnInfoDAO dao)throws JsonProcessingException {
+    private static ColumnInfo convertColumnToDTO(ColumnInfoDAO dao) {
         return new ColumnInfo()
                 .name(dao.getName())
                 .typeText(dao.getTypeText() != null ? dao.getTypeText().toLowerCase(Locale.ROOT) : null)
@@ -91,7 +89,6 @@ public class TableInfoConverter {
                 .createdAt(dto.getCreatedAt() != null ? new Date(dto.getCreatedAt()) : new Date())
                 .updatedAt(dto.getUpdatedAt() != null ? new Date(dto.getUpdatedAt()) : new Date())
                 .columnCount(dto.getColumns() != null ? dto.getColumns().size() : 0)
-                .url(dto.getStorageLocation() != null ? dto.getStorageLocation() : null)
                 .type(dto.getTableType().toString())
                 .dataSourceFormat(dto.getDataSourceFormat().toString())
                 .url(dto.getStorageLocation())

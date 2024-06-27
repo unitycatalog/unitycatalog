@@ -1,4 +1,4 @@
-import java.nio.file.{Files, StandardCopyOption}
+import java.nio.file.Files
 import sbt.util
 
 val orgName = "io.unitycatalog"
@@ -174,7 +174,7 @@ lazy val server = (project in file("server"))
     // OpenAPI generation configs for generating model codes from the spec
     openApiInputSpec := (file(".") / "api" / "all.yaml").toString,
     openApiGeneratorName := "java",
-    openApiOutputDir := serverOpenApiGenerateTempDir.toString,
+    openApiOutputDir := file("server").toString,
     openApiValidateSpec := SettingEnabled,
     openApiGenerateMetadata := SettingDisabled,
     openApiModelPackage := s"$orgName.server.model",
@@ -183,17 +183,14 @@ lazy val server = (project in file("server"))
       "useJakartaEe" -> "true",
       "hideGenerationTimestamp" -> "true"),
     openApiGlobalProperties := Map("models" -> ""),
+    openApiGenerateApiTests := SettingDisabled,
+    openApiGenerateModelTests := SettingDisabled,
+    openApiGenerateApiDocumentation := SettingDisabled,
+    openApiGenerateModelDocumentation := SettingDisabled,
 
-    // Define the simple generate command to generate model codes and copy them into the server dir
+    // Define the simple generate command to generate model codes
     generate := {
       val _ = openApiGenerate.value
-      val srcDir = (file(serverOpenApiGenerateTempDir.toString) / "src" / "main" / "java" / "io" / "unitycatalog" / "server" / "model" )
-      val dstDir = file("server").getAbsoluteFile / "src" / "main" / "java" / "io" / "unitycatalog" / "server" /"model"
-      println(s"Copying model files from $srcDir to $dstDir")
-
-      srcDir.listFiles().foreach { srcFile =>
-        Files.copy(srcFile.toPath, (dstDir / srcFile.getName).toPath, StandardCopyOption.REPLACE_EXISTING)
-      }
     }
   )
 
@@ -233,12 +230,6 @@ lazy val cli = (project in file("examples") / "cli")
       "com.github.sbt" % "junit-interface" % "0.13.3" % Test,
     ),
   )
-
-// Extra functionalities
-lazy val serverOpenApiGenerateTempDir = {
-  import java.nio.file.Files
-  Files.createTempDirectory("some-prefix")
-}
 
 def generateClasspathFile(targetDir: File, classpath: Classpath): Unit = {
   // Generate a classpath file with the entire runtime class path.
