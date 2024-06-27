@@ -137,7 +137,7 @@ public class DeltaKernelUtils {
     }
 
     public static DataType getDataType(ColumnInfo column) {
-        if (column.getTypeName() == null || column.getTypeText() == null) {
+        if (column.getTypeName() == null) {
             throw new IllegalArgumentException("Column type is missing: " + column.getName());
         }
         return findBasicTypeFromString(column.getTypeName().toString());
