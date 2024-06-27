@@ -9,7 +9,6 @@ on:
   push:
     branches: [ "main" ]
   pull_request:
-    branches: [ "main" ]
 
 permissions:
   contents: read
@@ -27,5 +26,7 @@ jobs:
         java-version: '11'
         distribution: 'temurin'
         cache: 'sbt'
-    - name: Run tests
-      run: sbt test
+    - name: Run tests with coverage
+      run: sbt clean coverage test
+    - name: Generate coverage report
+      run: sbt coverageReport

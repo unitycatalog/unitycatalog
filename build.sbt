@@ -37,6 +37,11 @@ lazy val commonSettings = Seq(
   fork := true,
   outputStrategy := Some(StdoutOutput),
 
+  coverageEnabled := true,
+  coverageFailOnMinimum := true,
+  coverageMinimumStmtTotal := 80,
+  coverageMinimumBranchTotal := 80,
+
   Compile / packageBin := {
     val packageFile = (Compile / packageBin).value
     generateClasspathFile(
