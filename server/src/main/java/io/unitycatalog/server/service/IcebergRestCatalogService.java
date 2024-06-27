@@ -165,7 +165,7 @@ public class IcebergRestCatalogService {
       String metadataLocation =
         tableRepository.getTableUniformMetadataLocation(session, catalog, schema, table);
       if (metadataLocation == null) {
-        throw new NoSuchTableException("Table not found: %s", namespace + "." + table);
+        throw new NoSuchTableException("Table does not exist: %s", namespace + "." + table);
       } else {
         return HttpResponse.of(HttpStatus.OK);
       }
@@ -187,7 +187,7 @@ public class IcebergRestCatalogService {
     }
 
     if (metadataLocation == null) {
-      throw new NoSuchTableException("Table not found: %s", namespace + "." + table);
+      throw new NoSuchTableException("Table does not exist: %s", namespace + "." + table);
     }
 
     String metadataJson = new String(Files.readAllBytes(Paths.get(URI.create(metadataLocation))));
@@ -206,7 +206,7 @@ public class IcebergRestCatalogService {
     // a table with given path name and then tries to load a view with that
     // name if it didn't find a table, so for now, let's just return a 404
     // as that should be expected since it didn't find a table with the name
-    throw new NoSuchViewException("View not found.");
+    throw new NoSuchViewException("View does not exist: %s", namespace + "." + view);
   }
 
   @Post("/v1/namespaces/{namespace}/tables/{table}/metrics")

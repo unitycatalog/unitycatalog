@@ -275,7 +275,6 @@ public class IcebergRestCatalogTest extends BaseServerTest {
   public void testListTablesInvalidNamespace() {
     AggregatedHttpResponse resp = client.get("/v1/namespaces/incomplete_namespace/tables").aggregate().join();
     Assert.assertEquals(resp.status().code(), 400);
-    System.out.println(resp.contentUtf8());
     ErrorResponse errorResponse = ErrorResponseParser.fromJson(resp.contentUtf8());
     Assert.assertEquals(IllegalArgumentException.class.getSimpleName(), errorResponse.type());
   }
