@@ -11,6 +11,7 @@ import io.unitycatalog.server.base.ServerConfig;
 import io.unitycatalog.server.base.table.TableOperations;
 
 import java.io.IOException;
+import java.util.ArrayList;
 import java.util.List;
 
 import static io.unitycatalog.cli.TestUtils.addServerAndAuthParams;
@@ -32,13 +33,18 @@ public class CliTableOperations implements TableOperations  {
         }
         columns.deleteCharAt(columns.length() - 1);
 
-        String [] args = addServerAndAuthParams(List.of(
-                "table", "create" ,
-                "--full_name", createTableRequest.getCatalogName() + "." + createTableRequest.getSchemaName() + "." + createTableRequest.getName(),
-                "--columns", columns.toString(),
-                "--format", createTableRequest.getDataSourceFormat() != null ? createTableRequest.getDataSourceFormat().name() : null,
-                "--storage_location", createTableRequest.getStorageLocation() != null ? createTableRequest.getStorageLocation() : null
-        ), config);
+        List<String> argsList = new ArrayList<>();
+        argsList.addAll(List.of("table", "create", "--full_name", createTableRequest.getCatalogName() + "." + createTableRequest.getSchemaName() + "." + createTableRequest.getName(),
+                "--columns", columns.toString()));
+        if (createTableRequest.getDataSourceFormat() != null) {
+            argsList.add("--format");
+            argsList.add(createTableRequest.getDataSourceFormat().name());
+        }
+        if (createTableRequest.getStorageLocation() != null) {
+            argsList.add("--storage_location");
+            argsList.add(createTableRequest.getStorageLocation());
+        }
+        String [] args = addServerAndAuthParams(argsList, config);
         JsonNode tableJson = executeCLICommand(args);
         return objectMapper.convertValue(tableJson, TableInfo.class);
     }
