@@ -34,7 +34,7 @@ import com.fasterxml.jackson.annotation.JsonPropertyOrder;
 @JsonPropertyOrder({
   FunctionDependency.JSON_PROPERTY_FUNCTION_FULL_NAME
 })
-@javax.annotation.Generated(value = "org.openapitools.codegen.languages.JavaClientCodegen", comments = "Generator version: 7.5.0")
+@jakarta.annotation.Generated(value = "org.openapitools.codegen.languages.JavaClientCodegen", comments = "Generator version: 7.5.0")
 public class FunctionDependency {
   public static final String JSON_PROPERTY_FUNCTION_FULL_NAME = "function_full_name";
   private String functionFullName;
@@ -51,7 +51,7 @@ public class FunctionDependency {
    * Full name of the dependent function, in the form of __catalog_name__.__schema_name__.__function_name__.
    * @return functionFullName
   **/
-  @javax.annotation.Nonnull
+  @jakarta.annotation.Nonnull
   @JsonProperty(JSON_PROPERTY_FUNCTION_FULL_NAME)
   @JsonInclude(value = JsonInclude.Include.ALWAYS)
 
