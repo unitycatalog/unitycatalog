@@ -51,6 +51,7 @@ public class CliUtils {
     public static final String AUTH_TOKEN = "auth_token";
     public static final String OUTPUT = "output";
 
+    public static final int TABLE_WIDTH = 190;
 
     public static class CliOptions {
         List<CliParams> necessaryParams;
@@ -175,13 +176,46 @@ public class CliUtils {
                         return;
                     } else {
                         List<String> columns = getColumns(node.get(0),at);
-                        int totalWidth = 190;
-                        int nameColumnWidth = 12;
-                        int columnWidth = (totalWidth-nameColumnWidth)/(columns.size() - 1);
+                        int[] columnWidths = new int[columns.size()];
+                        boolean[] fixedWidthColumns = new boolean[columns.size()];
+
+                        node.forEach(element -> {
+                            ObjectNode objectNode = (ObjectNode) element;
+                            Iterator<String> fieldNames = objectNode.fieldNames();
+                            int columnIndex = 0;
+                            while (fieldNames.hasNext()) {
+                                String fieldName = fieldNames.next();
+                                JsonNode value = element.get(fieldName);
+                                String valueString = value.isTextual() ? value.asText() : value.toString();
+
+                                columnWidths[columnIndex] = Math.max(columnWidths[columnIndex], fieldName.length());
+                                columnWidths[columnIndex] = Math.max(columnWidths[columnIndex], valueString.length());
+
+                                String fieldNameLowerCase = fieldName.toLowerCase();
+                                if (fieldNameLowerCase.equals("name") || fieldNameLowerCase.endsWith("id")) {
+                                    fixedWidthColumns[columnIndex] = true;
+                                }
+
+                                columnIndex++;
+                            }
+                        });
+
+                        int widthRemaining = TABLE_WIDTH;
+                        int fixedWidthColumnCount = 0;
+                        for (int i = 0; i < columns.size(); i++) {
+                            widthRemaining -= fixedWidthColumns[i] ? columnWidths[i]:0;
+                            if (fixedWidthColumns[i]) {
+                                fixedWidthColumnCount++;
+                            }
+                        }
+                        int columnWidth = (widthRemaining) / (columns.size() - fixedWidthColumnCount);
+
                         CWC_FixedWidth cwc = new CWC_FixedWidth();
-                        cwc.add(nameColumnWidth);
-                        for (int i = 1; i < columns.size(); i++) {
-                            cwc.add(columnWidth);
+                        for (int i = 0; i < columns.size(); i++) {
+                            if (!fixedWidthColumns[i]) {
+                                columnWidths[i] = columnWidth;
+                            }
+                            cwc.add(columnWidths[i]);
                         }
                         at.getRenderer().setCWC(cwc);
                         at.addRule();
@@ -191,11 +225,13 @@ public class CliUtils {
                             List<String> row = new ArrayList<>();
                             ObjectNode objectNode = (ObjectNode) element;
                             Iterator<String> fieldNames = objectNode.fieldNames();
+                            int columnIndex = 0;
                             while (fieldNames.hasNext()) {
                                 String fieldName = fieldNames.next();
                                 JsonNode value = element.get(fieldName);
                                 String valueString = value.isTextual() ? value.asText() : value.toString();
-                                row.add(preprocess(valueString, fieldName.equalsIgnoreCase("name") ? nameColumnWidth: columnWidth));
+                                row.add(preprocess(valueString, columnWidths[columnIndex]));
+                                columnIndex++;
                             }
                             at.addRow(row.toArray());
                             at.addRule();
