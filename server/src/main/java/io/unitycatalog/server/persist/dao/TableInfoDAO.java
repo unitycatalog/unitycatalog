@@ -55,7 +55,7 @@ public class TableInfoDAO {
     @Column(name = "column_count")
     private Integer columnCount;
 
-    @OneToMany(mappedBy = "tableId", cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.LAZY)
+    @OneToMany(mappedBy = "tableId", cascade = CascadeType.ALL, orphanRemoval = true)
     private List<ColumnInfoDAO> columns;
 
     @Column(name = "uniform_iceberg_metadata_location", columnDefinition = "TEXT")
