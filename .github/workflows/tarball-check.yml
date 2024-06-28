@@ -36,7 +36,7 @@ jobs:
           sleep 10  # Give the server some time to start
 
       - name: Verify server is running
-        run: curl -I http://localhost:8080
+        run: curl -I http://localhost:8081
         timeout-minutes: 1
 
       - name: Run and verify CLI
