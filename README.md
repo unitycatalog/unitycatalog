@@ -135,6 +135,27 @@ See the full [tutorial](docs/tutorial.md) for more details.
 - Open API specification: The Unity Catalog Rest API is documented [here](api).
 - Compatibility and stability: The APIs are currently evolving and should not be assumed to be stable.
 
+## Deployment
+- To create a tarball that can be used to deploy the UC server or run the CLI, run the following:
+  ```sh
+  build/sbt createTarball
+  ```
+  This will create a tarball in the `target` directory.
+- Unpacking the tarball will create the following directory structure:
+  ```
+  unitycatalog-<version>
+  ├── bin
+  │   ├── start-uc-server
+  │   └── uc
+  ├── etc
+  │   ├── conf
+  │   ├── data
+  │   ├── db
+  │   └── logs
+  └── jars
+  ```
+    The `bin` directory contains the scripts that you can use to start the UC server and run the CLI as explained in the quickstart section.
+
 ## Compiling and testing
 - Install JDK 11 by whatever mechanism is appropriate for your system, and
   set that version to be the default Java version (e.g., by setting env variable
@@ -152,11 +173,6 @@ See the full [tutorial](docs/tutorial.md) for more details.
   build/sbt generate
   ``` 
   This will regenerate the OpenAPI data models in the UC server and data models + APIs in the client SDK.
-- To create a tarball that can be used to deploy the UC server or run the CLI, run the following:
-  ```sh
-  build/sbt createTarball
-  ```
-  This will create a tarball in the `target` directory.
 ### Using more recent JDKs
 
 The build script [checks for a lower bound on the JDK](./build.sbt#L14) but the [current SBT version](./project/build.properties)
