@@ -36,7 +36,7 @@ import com.fasterxml.jackson.annotation.JsonPropertyOrder;
   GenerateTemporaryTableCredentialResponse.JSON_PROPERTY_AWS_TEMP_CREDENTIALS,
   GenerateTemporaryTableCredentialResponse.JSON_PROPERTY_EXPIRATION_TIME
 })
-@javax.annotation.Generated(value = "org.openapitools.codegen.languages.JavaClientCodegen", comments = "Generator version: 7.5.0")
+@jakarta.annotation.Generated(value = "org.openapitools.codegen.languages.JavaClientCodegen", comments = "Generator version: 7.5.0")
 public class GenerateTemporaryTableCredentialResponse {
   public static final String JSON_PROPERTY_AWS_TEMP_CREDENTIALS = "aws_temp_credentials";
   private AwsCredentials awsTempCredentials;
@@ -56,7 +56,7 @@ public class GenerateTemporaryTableCredentialResponse {
    * Get awsTempCredentials
    * @return awsTempCredentials
   **/
-  @javax.annotation.Nullable
+  @jakarta.annotation.Nullable
   @JsonProperty(JSON_PROPERTY_AWS_TEMP_CREDENTIALS)
   @JsonInclude(value = JsonInclude.Include.USE_DEFAULTS)
 
@@ -81,7 +81,7 @@ public class GenerateTemporaryTableCredentialResponse {
    * Server time when the credential will expire, in epoch milliseconds. The API client is advised to cache the credential given this expiration time. 
    * @return expirationTime
   **/
-  @javax.annotation.Nullable
+  @jakarta.annotation.Nullable
   @JsonProperty(JSON_PROPERTY_EXPIRATION_TIME)
   @JsonInclude(value = JsonInclude.Include.USE_DEFAULTS)
 
