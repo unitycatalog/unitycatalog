@@ -31,7 +31,7 @@ jobs:
 
       - name: Start server script
         run: |
-          nohup target/dist/bin/start-uc-server
+          nohup target/dist/bin/start-uc-server &
           echo $! > server_pid.txt
           sleep 10  # Give the server some time to start
 
