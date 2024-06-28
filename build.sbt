@@ -243,9 +243,10 @@ lazy val cli = (project in file("examples") / "cli")
     ),
   )
 
-lazy val unitycatalog = (project in file("."))
+lazy val root = (project in file("."))
   .aggregate(client, server, cli)
   .settings(
+    name := s"$artifactNamePrefix",
     createTarballSettings()
   )
 
