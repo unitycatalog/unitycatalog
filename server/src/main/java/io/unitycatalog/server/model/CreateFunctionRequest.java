@@ -30,7 +30,7 @@ import com.fasterxml.jackson.annotation.JsonTypeName;
 @JsonPropertyOrder({
   CreateFunctionRequest.JSON_PROPERTY_FUNCTION_INFO
 })
-@javax.annotation.Generated(value = "org.openapitools.codegen.languages.JavaClientCodegen", comments = "Generator version: 7.5.0")
+@jakarta.annotation.Generated(value = "org.openapitools.codegen.languages.JavaClientCodegen", comments = "Generator version: 7.5.0")
 public class CreateFunctionRequest {
   public static final String JSON_PROPERTY_FUNCTION_INFO = "function_info";
   private CreateFunction functionInfo;
@@ -48,7 +48,7 @@ public class CreateFunctionRequest {
    * Get functionInfo
    * @return functionInfo
   **/
-  @javax.annotation.Nonnull
+  @jakarta.annotation.Nonnull
   @JsonProperty(JSON_PROPERTY_FUNCTION_INFO)
   @JsonInclude(value = JsonInclude.Include.ALWAYS)
 

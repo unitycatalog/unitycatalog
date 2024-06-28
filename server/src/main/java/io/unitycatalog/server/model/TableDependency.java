@@ -29,7 +29,7 @@ import com.fasterxml.jackson.annotation.JsonTypeName;
 @JsonPropertyOrder({
   TableDependency.JSON_PROPERTY_TABLE_FULL_NAME
 })
-@javax.annotation.Generated(value = "org.openapitools.codegen.languages.JavaClientCodegen", comments = "Generator version: 7.5.0")
+@jakarta.annotation.Generated(value = "org.openapitools.codegen.languages.JavaClientCodegen", comments = "Generator version: 7.5.0")
 public class TableDependency {
   public static final String JSON_PROPERTY_TABLE_FULL_NAME = "table_full_name";
   private String tableFullName;
@@ -47,7 +47,7 @@ public class TableDependency {
    * Full name of the dependent table, in the form of __catalog_name__.__schema_name__.__table_name__.
    * @return tableFullName
   **/
-  @javax.annotation.Nonnull
+  @jakarta.annotation.Nonnull
   @JsonProperty(JSON_PROPERTY_TABLE_FULL_NAME)
   @JsonInclude(value = JsonInclude.Include.ALWAYS)
 
