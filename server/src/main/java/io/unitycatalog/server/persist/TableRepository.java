@@ -201,7 +201,7 @@ public class TableRepository {
 
     public static String getNextPageToken(List<TableInfoDAO> tables) {
         if (tables == null || tables.isEmpty()) {
-            return "";
+            return null;
         }
         // Assuming the last item in the list is the least recent based on the query
         return String.valueOf(tables.get(tables.size() - 1).getUpdatedAt().getTime());
