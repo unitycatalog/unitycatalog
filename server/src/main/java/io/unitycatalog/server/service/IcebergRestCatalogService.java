@@ -1,5 +1,39 @@
 package io.unitycatalog.server.service;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.linecorp.armeria.common.AggregatedHttpResponse;
+import com.linecorp.armeria.common.HttpResponse;
+import com.linecorp.armeria.common.HttpStatus;
+import com.linecorp.armeria.server.annotation.ExceptionHandler;
+import com.linecorp.armeria.server.annotation.Get;
+import com.linecorp.armeria.server.annotation.Head;
+import com.linecorp.armeria.server.annotation.Param;
+import com.linecorp.armeria.server.annotation.Post;
+import com.linecorp.armeria.server.annotation.ProducesJson;
+import io.unitycatalog.server.exception.IcebergRestExceptionHandler;
+import io.unitycatalog.server.model.CatalogInfo;
+import io.unitycatalog.server.model.ListCatalogsResponse;
+import io.unitycatalog.server.model.ListSchemasResponse;
+import io.unitycatalog.server.model.ListTablesResponse;
+import io.unitycatalog.server.model.SchemaInfo;
+import io.unitycatalog.server.persist.HibernateUtil;
+import io.unitycatalog.server.persist.TableRepository;
+import io.unitycatalog.server.utils.JsonUtils;
+import org.apache.iceberg.TableMetadata;
+import org.apache.iceberg.TableMetadataParser;
+import org.apache.iceberg.catalog.Namespace;
+import org.apache.iceberg.catalog.TableIdentifier;
+import org.apache.iceberg.exceptions.NoSuchTableException;
+import org.apache.iceberg.exceptions.NoSuchViewException;
+import org.apache.iceberg.relocated.com.google.common.base.Splitter;
+import org.apache.iceberg.rest.responses.ConfigResponse;
+import org.apache.iceberg.rest.responses.GetNamespaceResponse;
+import org.apache.iceberg.rest.responses.ListNamespacesResponse;
+import org.apache.iceberg.rest.responses.LoadTableResponse;
+import org.apache.iceberg.rest.responses.LoadViewResponse;
+import org.hibernate.Session;
+import org.hibernate.SessionFactory;
+
 import java.io.IOException;
 import java.net.URI;
 import java.nio.file.Files;
@@ -9,31 +43,7 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.stream.Collectors;
 
-import com.fasterxml.jackson.core.JsonProcessingException;
-import com.linecorp.armeria.common.AggregatedHttpResponse;
-import com.linecorp.armeria.common.HttpResponse;
-import com.linecorp.armeria.common.HttpStatus;
-import com.linecorp.armeria.server.annotation.*;
-import io.unitycatalog.server.exception.BaseException;
-import io.unitycatalog.server.exception.ErrorCode;
-import io.unitycatalog.server.exception.GlobalExceptionHandler;
-import io.unitycatalog.server.model.*;
-import io.unitycatalog.server.persist.HibernateUtil;
-import io.unitycatalog.server.persist.TableRepository;
-import io.unitycatalog.server.utils.JsonUtils;
-import org.apache.iceberg.TableMetadata;
-import org.apache.iceberg.TableMetadataParser;
-import org.apache.iceberg.catalog.Namespace;
-import org.apache.iceberg.catalog.TableIdentifier;
-import org.apache.iceberg.relocated.com.google.common.base.Splitter;
-import org.apache.iceberg.rest.responses.ConfigResponse;
-import org.apache.iceberg.rest.responses.GetNamespaceResponse;
-import org.apache.iceberg.rest.responses.ListNamespacesResponse;
-import org.apache.iceberg.rest.responses.LoadTableResponse;
-import org.hibernate.Session;
-import org.hibernate.SessionFactory;
-
-@ExceptionHandler(GlobalExceptionHandler.class)
+@ExceptionHandler(IcebergRestExceptionHandler.class)
 public class IcebergRestCatalogService {
 
   private final CatalogService catalogService;
@@ -155,7 +165,7 @@ public class IcebergRestCatalogService {
       String metadataLocation =
         tableRepository.getTableUniformMetadataLocation(session, catalog, schema, table);
       if (metadataLocation == null) {
-        return HttpResponse.of(HttpStatus.NOT_FOUND);
+        throw new NoSuchTableException("Table does not exist: %s", namespace + "." + table);
       } else {
         return HttpResponse.of(HttpStatus.OK);
       }
@@ -177,7 +187,7 @@ public class IcebergRestCatalogService {
     }
 
     if (metadataLocation == null) {
-      throw new BaseException(ErrorCode.NOT_FOUND, "Table not found: " + namespace + "." + table);
+      throw new NoSuchTableException("Table does not exist: %s", namespace + "." + table);
     }
 
     String metadataJson = new String(Files.readAllBytes(Paths.get(URI.create(metadataLocation))));
@@ -186,6 +196,17 @@ public class IcebergRestCatalogService {
     return LoadTableResponse.builder()
       .withTableMetadata(tableMetadata)
       .build();
+  }
+
+  @Get("/v1/namespaces/{namespace}/views/{view}")
+  @ProducesJson
+  public LoadViewResponse loadView(@Param("namespace") String namespace,
+                                   @Param("view") String view) {
+    // this is not supported yet, but Iceberg REST client tries to load
+    // a table with given path name and then tries to load a view with that
+    // name if it didn't find a table, so for now, let's just return a 404
+    // as that should be expected since it didn't find a table with the name
+    throw new NoSuchViewException("View does not exist: %s", namespace + "." + view);
   }
 
   @Post("/v1/namespaces/{namespace}/tables/{table}/metrics")
@@ -232,7 +253,7 @@ public class IcebergRestCatalogService {
     List<String> namespaceParts = Splitter.on(".").splitToList(namespace);
     if (namespaceParts.size() != 2) {
       String errMsg = "Invalid two-part namespace " + namespace;
-      throw new BaseException(ErrorCode.INVALID_ARGUMENT, errMsg);
+      throw new IllegalArgumentException(errMsg);
     }
 
     return namespaceParts;
