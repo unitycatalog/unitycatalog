@@ -1,6 +1,5 @@
 package io.unitycatalog.server.persist.dao;
 
-
 import jakarta.persistence.*;
 
 import lombok.*;

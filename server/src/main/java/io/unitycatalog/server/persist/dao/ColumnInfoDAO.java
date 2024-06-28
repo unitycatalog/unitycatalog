@@ -4,7 +4,6 @@ import jakarta.persistence.*;
 
 import org.hibernate.annotations.UuidGenerator;
 
-import java.io.Serializable;
 import java.util.UUID;
 
 import lombok.Builder;
