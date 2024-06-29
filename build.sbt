@@ -86,6 +86,7 @@ def javaCheckstyleSettings(configLocation: File) = Seq(
 
 lazy val client = (project in file("clients/java"))
   .enablePlugins(OpenApiGeneratorPlugin)
+  .disablePlugins(JavaFormatterPlugin)
   .settings(
     name := s"$artifactNamePrefix-client",
     commonSettings,
