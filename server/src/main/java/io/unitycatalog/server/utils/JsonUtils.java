@@ -52,10 +52,10 @@ public class JsonUtils {
             }
 
         } catch (JsonMappingException e) {
-            LOGGER.error("printJsonAsTable happen JsonMappingException,jsonString:{}",jsonString,e)
+            LOGGER.error("printJsonAsTable happen JsonMappingException,jsonString:{}",jsonString,e);
             System.out.println(jsonString);
         } catch (JsonProcessingException e) {
-            LOGGER.error("printJsonAsTable happen JsonProcessingException,jsonString:{}",jsonString,e)
+            LOGGER.error("printJsonAsTable happen JsonProcessingException,jsonString:{}",jsonString,e);
             System.out.println(jsonString);
         }
     }
