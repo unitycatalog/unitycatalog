@@ -7,3 +7,4 @@ api/.openapi-generator
 build/sbt-launch-*
 venv
 site
+.DS_Store
