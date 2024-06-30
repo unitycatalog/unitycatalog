@@ -28,7 +28,8 @@ public class PropertiesUtil {
 
     // Load properties from a configuration file
     private void loadProperties() {
-        try (InputStream input = Files.newInputStream(Paths.get("etc/conf/server.properties"))) {
+        InputStream input = null;
+        try (input = Files.newInputStream(Paths.get("etc/conf/server.properties"))) {
             properties.load(input);
             LOGGER.debug("Properties loaded successfully");
             int i=0;
