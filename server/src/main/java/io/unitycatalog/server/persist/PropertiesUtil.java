@@ -46,6 +46,14 @@ public class PropertiesUtil {
             }
         } catch (IOException ex) {
             LOGGER.error("Exception during loading properties", ex);
+        }finally {
+            if (null != input) {
+                try {
+                    input.close();
+                } catch (IOException e) {
+                    LOGGER.error("Exception during close InputStream for loading properties", e);
+                }
+            }
         }
     }
 
