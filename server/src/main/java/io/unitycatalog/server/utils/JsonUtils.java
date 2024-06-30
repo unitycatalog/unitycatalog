@@ -16,6 +16,8 @@ public class JsonUtils {
 
     private static final int MAX_COLUMN_WIDTH = 15;
 
+    private static final Logger LOGGER = LoggerFactory.getLogger(JsonUtils.class);
+
     public static void printJsonAsTable(String jsonString) {
         try {
             JsonNode rootNode = instance.readTree(jsonString);
@@ -48,8 +50,10 @@ public class JsonUtils {
             }
 
         } catch (JsonMappingException e) {
+            LOGGER.error("printJsonAsTable happen JsonMappingException,jsonString:{}",jsonString,e)
             System.out.println(jsonString);
         } catch (JsonProcessingException e) {
+            LOGGER.error("printJsonAsTable happen JsonProcessingException,jsonString:{}",jsonString,e)
             System.out.println(jsonString);
         }
     }
