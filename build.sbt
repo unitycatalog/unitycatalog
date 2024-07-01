@@ -1,4 +1,5 @@
 import java.nio.file.Files
+import java.io.File
 import sbt.util
 
 val orgName = "io.unitycatalog"
@@ -245,7 +246,7 @@ def generateClasspathFile(targetDir: File, classpath: Classpath): Unit = {
   // Generate a classpath file with the entire runtime class path.
   // This is used by the launcher scripts for launching CLI directly with JAR instead of SBT.
   val classpathFile = targetDir / "classpath"
-  Files.write(classpathFile.toPath, classpath.files.mkString(":").getBytes)
+  Files.write(classpathFile.toPath, classpath.files.mkString(File.pathSeparator).getBytes)
   println(s"Generated classpath file '$classpathFile'")
 }
 
