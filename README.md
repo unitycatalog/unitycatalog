@@ -155,8 +155,8 @@ See the full [tutorial](docs/tutorial.md) for more details.
 
 ## Setting up IDE and Code Style
 
-Java code adheres to the [Google style](https://google.github.io/styleguide/javaguide.html), which is verified via `build/sbt spotlessCheck` during builds.
-In order to automatically fix Java code style issues, please use `build/sbt spotlessApply`.
+Java code adheres to the [Google style](https://google.github.io/styleguide/javaguide.html), which is verified via `build/sbt javafmtCheckAll` during builds.
+In order to automatically fix Java code style issues, please use `build/sbt javafmtAll`.
 
 ### Configuring Code Formatter for Eclipse/IntelliJ
 

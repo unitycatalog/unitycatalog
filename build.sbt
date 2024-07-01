@@ -1,5 +1,4 @@
 import java.nio.file.Files
-import net.moznion.sbt.spotless.config._
 import sbt.util
 
 val orgName = "io.unitycatalog"
@@ -64,19 +63,12 @@ def javaCheckstyleSettings(configLocation: File) = Seq(
   // (Test / test) := ((Test / test) dependsOn (Test / checkstyle)).value,
 )
 
-lazy val spotlessJavaSettings = Seq(
-  spotlessJava := JavaConfig(
-    googleJavaFormat = GoogleJavaFormatConfig(),
-    removeUnusedImports = true,
-  )
-)
-
 lazy val client = (project in file("clients/java"))
   .enablePlugins(OpenApiGeneratorPlugin)
+  .disablePlugins(JavaFormatterPlugin)
   .settings(
     name := s"$artifactNamePrefix-client",
     commonSettings,
-    spotlessJavaSettings,
     libraryDependencies ++= Seq(
       "com.fasterxml.jackson.core" % "jackson-annotations" % jacksonVersion,
       "com.fasterxml.jackson.core" % "jackson-core" % jacksonVersion,
@@ -115,7 +107,6 @@ lazy val client = (project in file("clients/java"))
 
 lazy val apiDocs = (project in file("api"))
   .enablePlugins(OpenApiGeneratorPlugin)
-  .disablePlugins(SbtSpotless)
   .settings(
     name := s"$artifactNamePrefix-docs",
 
@@ -136,7 +127,6 @@ lazy val server = (project in file("server"))
   .settings (
     name := s"$artifactNamePrefix-server",
     commonSettings,
-    spotlessJavaSettings,
     javaCheckstyleSettings(file("dev") / "checkstyle-config.xml"),
     libraryDependencies ++= Seq(
       "com.linecorp.armeria" %  "armeria" % "1.28.4",
@@ -223,7 +213,6 @@ lazy val cli = (project in file("examples") / "cli")
     name := s"$artifactNamePrefix-cli",
     mainClass := Some(orgName + ".cli.UnityCatalogCli"),
     commonSettings,
-    spotlessJavaSettings,
     javaCheckstyleSettings(file("dev") / "checkstyle-config.xml"),
     Compile / logLevel := util.Level.Info,
     libraryDependencies ++= Seq(
