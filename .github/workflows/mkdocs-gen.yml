@@ -7,7 +7,7 @@ on:
       branches: [main]
 
 jobs:
-  check-docs:
+  mkdocs-generate:
     runs-on: ubuntu-22.04
     steps:
       - name: Check out
