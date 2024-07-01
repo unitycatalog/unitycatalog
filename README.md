@@ -140,21 +140,7 @@ See the full [tutorial](docs/tutorial.md) for more details.
   ```sh
   build/sbt createTarball
   ```
-  This will create a tarball in the `target` directory.
-- Unpacking the tarball will create the following directory structure:
-  ```
-  unitycatalog-<version>
-  ├── bin
-  │   ├── start-uc-server
-  │   └── uc
-  ├── etc
-  │   ├── conf
-  │   ├── data
-  │   ├── db
-  │   └── logs
-  └── jars
-  ```
-    The `bin` directory contains the scripts that you can use to start the UC server and run the CLI as explained in the quickstart section.
+  This will create a tarball in the `target` directory. See the full [deployment guide](docs/deployment.md) for more details.
 
 ## Compiling and testing
 - Install JDK 11 by whatever mechanism is appropriate for your system, and
