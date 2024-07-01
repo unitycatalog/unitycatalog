@@ -82,6 +82,7 @@ lazy val client = (project in file("clients/java"))
       "junit" %  "junit" % "4.13.2" % Test,
       "org.junit.jupiter" % "junit-jupiter" % "5.9.2" % Test,
       "net.aichler" % "jupiter-interface" % JupiterKeys.jupiterVersion.value % Test,
+      "org.assertj" % "assertj-core" % "3.25.1" % Test,
     ),
 
     // OpenAPI generation specs
