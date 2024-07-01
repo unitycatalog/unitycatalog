@@ -41,7 +41,7 @@ import com.fasterxml.jackson.annotation.JsonPropertyOrder;
   CatalogInfo.JSON_PROPERTY_UPDATED_AT,
   CatalogInfo.JSON_PROPERTY_ID
 })
-@javax.annotation.Generated(value = "org.openapitools.codegen.languages.JavaClientCodegen", comments = "Generator version: 7.5.0")
+@jakarta.annotation.Generated(value = "org.openapitools.codegen.languages.JavaClientCodegen", comments = "Generator version: 7.5.0")
 public class CatalogInfo {
   public static final String JSON_PROPERTY_NAME = "name";
   private String name;
@@ -73,7 +73,7 @@ public class CatalogInfo {
    * Name of catalog.
    * @return name
   **/
-  @javax.annotation.Nullable
+  @jakarta.annotation.Nullable
   @JsonProperty(JSON_PROPERTY_NAME)
   @JsonInclude(value = JsonInclude.Include.USE_DEFAULTS)
 
@@ -98,7 +98,7 @@ public class CatalogInfo {
    * User-provided free-form text description.
    * @return comment
   **/
-  @javax.annotation.Nullable
+  @jakarta.annotation.Nullable
   @JsonProperty(JSON_PROPERTY_COMMENT)
   @JsonInclude(value = JsonInclude.Include.USE_DEFAULTS)
 
@@ -131,7 +131,7 @@ public class CatalogInfo {
    * A map of key-value properties attached to the securable.
    * @return properties
   **/
-  @javax.annotation.Nullable
+  @jakarta.annotation.Nullable
   @JsonProperty(JSON_PROPERTY_PROPERTIES)
   @JsonInclude(value = JsonInclude.Include.USE_DEFAULTS)
 
@@ -156,7 +156,7 @@ public class CatalogInfo {
    * Time at which this catalog was created, in epoch milliseconds.
    * @return createdAt
   **/
-  @javax.annotation.Nullable
+  @jakarta.annotation.Nullable
   @JsonProperty(JSON_PROPERTY_CREATED_AT)
   @JsonInclude(value = JsonInclude.Include.USE_DEFAULTS)
 
@@ -181,7 +181,7 @@ public class CatalogInfo {
    * Time at which this catalog was last modified, in epoch milliseconds.
    * @return updatedAt
   **/
-  @javax.annotation.Nullable
+  @jakarta.annotation.Nullable
   @JsonProperty(JSON_PROPERTY_UPDATED_AT)
   @JsonInclude(value = JsonInclude.Include.USE_DEFAULTS)
 
@@ -206,7 +206,7 @@ public class CatalogInfo {
    * Unique identifier for the catalog.
    * @return id
   **/
-  @javax.annotation.Nullable
+  @jakarta.annotation.Nullable
   @JsonProperty(JSON_PROPERTY_ID)
   @JsonInclude(value = JsonInclude.Include.USE_DEFAULTS)
 

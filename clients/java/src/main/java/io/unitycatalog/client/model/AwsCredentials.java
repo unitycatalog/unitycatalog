@@ -36,7 +36,7 @@ import com.fasterxml.jackson.annotation.JsonPropertyOrder;
   AwsCredentials.JSON_PROPERTY_SECRET_ACCESS_KEY,
   AwsCredentials.JSON_PROPERTY_SESSION_TOKEN
 })
-@javax.annotation.Generated(value = "org.openapitools.codegen.languages.JavaClientCodegen", comments = "Generator version: 7.5.0")
+@jakarta.annotation.Generated(value = "org.openapitools.codegen.languages.JavaClientCodegen", comments = "Generator version: 7.5.0")
 public class AwsCredentials {
   public static final String JSON_PROPERTY_ACCESS_KEY_ID = "access_key_id";
   private String accessKeyId;
@@ -59,7 +59,7 @@ public class AwsCredentials {
    * The access key ID that identifies the temporary credentials.
    * @return accessKeyId
   **/
-  @javax.annotation.Nullable
+  @jakarta.annotation.Nullable
   @JsonProperty(JSON_PROPERTY_ACCESS_KEY_ID)
   @JsonInclude(value = JsonInclude.Include.USE_DEFAULTS)
 
@@ -84,7 +84,7 @@ public class AwsCredentials {
    * The secret access key that can be used to sign AWS API requests.
    * @return secretAccessKey
   **/
-  @javax.annotation.Nullable
+  @jakarta.annotation.Nullable
   @JsonProperty(JSON_PROPERTY_SECRET_ACCESS_KEY)
   @JsonInclude(value = JsonInclude.Include.USE_DEFAULTS)
 
@@ -109,7 +109,7 @@ public class AwsCredentials {
    * The token that users must pass to AWS API to use the temporary credentials.
    * @return sessionToken
   **/
-  @javax.annotation.Nullable
+  @jakarta.annotation.Nullable
   @JsonProperty(JSON_PROPERTY_SESSION_TOKEN)
   @JsonInclude(value = JsonInclude.Include.USE_DEFAULTS)
 

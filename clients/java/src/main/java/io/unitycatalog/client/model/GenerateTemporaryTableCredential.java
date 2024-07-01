@@ -36,7 +36,7 @@ import com.fasterxml.jackson.annotation.JsonPropertyOrder;
   GenerateTemporaryTableCredential.JSON_PROPERTY_TABLE_ID,
   GenerateTemporaryTableCredential.JSON_PROPERTY_OPERATION
 })
-@javax.annotation.Generated(value = "org.openapitools.codegen.languages.JavaClientCodegen", comments = "Generator version: 7.5.0")
+@jakarta.annotation.Generated(value = "org.openapitools.codegen.languages.JavaClientCodegen", comments = "Generator version: 7.5.0")
 public class GenerateTemporaryTableCredential {
   public static final String JSON_PROPERTY_TABLE_ID = "table_id";
   private String tableId;
@@ -56,7 +56,7 @@ public class GenerateTemporaryTableCredential {
    * Table id for which temporary credentials are generated.  Can be obtained from tables/{full_name} (get table info) API. 
    * @return tableId
   **/
-  @javax.annotation.Nonnull
+  @jakarta.annotation.Nonnull
   @JsonProperty(JSON_PROPERTY_TABLE_ID)
   @JsonInclude(value = JsonInclude.Include.ALWAYS)
 
@@ -81,7 +81,7 @@ public class GenerateTemporaryTableCredential {
    * Get operation
    * @return operation
   **/
-  @javax.annotation.Nonnull
+  @jakarta.annotation.Nonnull
   @JsonProperty(JSON_PROPERTY_OPERATION)
   @JsonInclude(value = JsonInclude.Include.ALWAYS)
 

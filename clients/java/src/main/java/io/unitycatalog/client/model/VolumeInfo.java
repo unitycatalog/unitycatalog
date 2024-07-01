@@ -44,7 +44,7 @@ import com.fasterxml.jackson.annotation.JsonPropertyOrder;
   VolumeInfo.JSON_PROPERTY_STORAGE_LOCATION,
   VolumeInfo.JSON_PROPERTY_FULL_NAME
 })
-@javax.annotation.Generated(value = "org.openapitools.codegen.languages.JavaClientCodegen", comments = "Generator version: 7.5.0")
+@jakarta.annotation.Generated(value = "org.openapitools.codegen.languages.JavaClientCodegen", comments = "Generator version: 7.5.0")
 public class VolumeInfo {
   public static final String JSON_PROPERTY_CATALOG_NAME = "catalog_name";
   private String catalogName;
@@ -88,7 +88,7 @@ public class VolumeInfo {
    * The name of the catalog where the schema and the volume are
    * @return catalogName
   **/
-  @javax.annotation.Nullable
+  @jakarta.annotation.Nullable
   @JsonProperty(JSON_PROPERTY_CATALOG_NAME)
   @JsonInclude(value = JsonInclude.Include.USE_DEFAULTS)
 
@@ -113,7 +113,7 @@ public class VolumeInfo {
    * The name of the schema where the volume is
    * @return schemaName
   **/
-  @javax.annotation.Nullable
+  @jakarta.annotation.Nullable
   @JsonProperty(JSON_PROPERTY_SCHEMA_NAME)
   @JsonInclude(value = JsonInclude.Include.USE_DEFAULTS)
 
@@ -138,7 +138,7 @@ public class VolumeInfo {
    * The name of the volume
    * @return name
   **/
-  @javax.annotation.Nullable
+  @jakarta.annotation.Nullable
   @JsonProperty(JSON_PROPERTY_NAME)
   @JsonInclude(value = JsonInclude.Include.USE_DEFAULTS)
 
@@ -163,7 +163,7 @@ public class VolumeInfo {
    * The comment attached to the volume
    * @return comment
   **/
-  @javax.annotation.Nullable
+  @jakarta.annotation.Nullable
   @JsonProperty(JSON_PROPERTY_COMMENT)
   @JsonInclude(value = JsonInclude.Include.USE_DEFAULTS)
 
@@ -188,7 +188,7 @@ public class VolumeInfo {
    * Time at which this volume was created, in epoch milliseconds.
    * @return createdAt
   **/
-  @javax.annotation.Nullable
+  @jakarta.annotation.Nullable
   @JsonProperty(JSON_PROPERTY_CREATED_AT)
   @JsonInclude(value = JsonInclude.Include.USE_DEFAULTS)
 
@@ -213,7 +213,7 @@ public class VolumeInfo {
    * Time at which this volume was last modified, in epoch milliseconds.
    * @return updatedAt
   **/
-  @javax.annotation.Nullable
+  @jakarta.annotation.Nullable
   @JsonProperty(JSON_PROPERTY_UPDATED_AT)
   @JsonInclude(value = JsonInclude.Include.USE_DEFAULTS)
 
@@ -238,7 +238,7 @@ public class VolumeInfo {
    * Unique identifier for the volume
    * @return volumeId
   **/
-  @javax.annotation.Nullable
+  @jakarta.annotation.Nullable
   @JsonProperty(JSON_PROPERTY_VOLUME_ID)
   @JsonInclude(value = JsonInclude.Include.USE_DEFAULTS)
 
@@ -263,7 +263,7 @@ public class VolumeInfo {
    * Get volumeType
    * @return volumeType
   **/
-  @javax.annotation.Nullable
+  @jakarta.annotation.Nullable
   @JsonProperty(JSON_PROPERTY_VOLUME_TYPE)
   @JsonInclude(value = JsonInclude.Include.USE_DEFAULTS)
 
@@ -288,7 +288,7 @@ public class VolumeInfo {
    * The storage location of the volume
    * @return storageLocation
   **/
-  @javax.annotation.Nullable
+  @jakarta.annotation.Nullable
   @JsonProperty(JSON_PROPERTY_STORAGE_LOCATION)
   @JsonInclude(value = JsonInclude.Include.USE_DEFAULTS)
 
@@ -313,7 +313,7 @@ public class VolumeInfo {
    * Full name of volume, in form of __catalog_name__.__schema_name__.__volume_name__.
    * @return fullName
   **/
-  @javax.annotation.Nullable
+  @jakarta.annotation.Nullable
   @JsonProperty(JSON_PROPERTY_FULL_NAME)
   @JsonInclude(value = JsonInclude.Include.USE_DEFAULTS)
 
