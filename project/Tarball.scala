@@ -63,6 +63,10 @@ object Tarball {
           case Failure(exception) =>
             sys.error(s"Tarball creation failed with exception: ${exception.getMessage}")
         }
+
+        // Clean up the output directory
+        IO.delete(outputDir)
+        log.info(s"Deleted temporary directory: $outputDir")
       }
     )
   }

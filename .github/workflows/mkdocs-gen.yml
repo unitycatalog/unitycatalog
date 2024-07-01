@@ -1,4 +1,4 @@
-name: Check Docs
+name: MkDocs Generation
 
 on:
     pull_request:
