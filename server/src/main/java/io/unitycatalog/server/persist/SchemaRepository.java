@@ -208,46 +208,63 @@ public class SchemaRepository {
         }
     }
 
+    public void processChildTables(Session session, UUID schemaId, boolean force) {
+        // first check if there are any child tables
+        List<TableInfoDAO> tables = tableRepository
+                .listTables(session, schemaId, Optional.of(1), Optional.empty());
+        if (tables != null && !tables.isEmpty()) {
+            if (!force) {
+                throw new BaseException(ErrorCode.FAILED_PRECONDITION,
+                        "Cannot delete schema with tables");
+            }
+            List<TableInfoDAO> allChildTables = tableRepository
+                    .listTables(session, schemaId, Optional.empty(), Optional.empty());
+            for (TableInfoDAO table : allChildTables) {
+                tableRepository.deleteTable(session, schemaId, table.getName());
+            }
+        }
+    }
+
+    public void processChildVolumes(Session session, UUID schemaId, boolean force) {
+        // first check if there are any child volumes
+        List<VolumeInfoDAO> volumes = volumeRepository
+                .listVolumes(session, schemaId, Optional.of(1), Optional.empty());
+        if (volumes != null && !volumes.isEmpty()) {
+            if (!force) {
+                throw new BaseException(ErrorCode.FAILED_PRECONDITION,
+                        "Cannot delete schema with volumes");
+            }
+            List<VolumeInfoDAO> allChildVolumes = volumeRepository
+                    .listVolumes(session, schemaId, Optional.empty(), Optional.empty());
+            for (VolumeInfoDAO volume : allChildVolumes) {
+                volumeRepository.deleteVolume(session, schemaId, volume.getName());
+            }
+        }
+    }
+
+    public void processChildFunctions(Session session, UUID schemaId, boolean force) {
+        // first check if there are any child functions
+        List<FunctionInfoDAO> functions = functionRepository
+                .listFunctions(session, schemaId, Optional.of(1), Optional.empty());
+        if (functions != null && !functions.isEmpty()) {
+            if (!force) {
+                throw new BaseException(ErrorCode.FAILED_PRECONDITION,
+                        "Cannot delete schema with functions");
+            }
+            List<FunctionInfoDAO> allChildFunctions = functionRepository
+                    .listFunctions(session, schemaId, Optional.empty(), Optional.empty());
+            for (FunctionInfoDAO function : allChildFunctions) {
+                functionRepository.deleteFunction(session, schemaId, function.getName());
+            }
+        }
+    }
+
     public void deleteSchema(Session session, UUID catalogId, String schemaName, boolean force) {
         SchemaInfoDAO schemaInfo = getSchemaDAO(session, catalogId, schemaName);
         if (schemaInfo != null) {
-
-            // handle tables
-            List<TableInfoDAO> tables = tableRepository.
-                    listTables(session, schemaInfo.getId(), 100, null);
-            if (tables != null && !tables.isEmpty() && !force) {
-                throw new BaseException(ErrorCode.FAILED_PRECONDITION,
-                        "Cannot delete schema with tables: " + schemaName);
-            } else if (tables != null){
-                for (TableInfoDAO table : tables) {
-                    tableRepository.deleteTable(session, schemaInfo.getId(), table.getName());
-                }
-            }
-
-            // handle volumes
-            List<VolumeInfoDAO> volumes = volumeRepository
-                    .listVolumes(session, schemaInfo.getId(), Optional.of(100), Optional.empty());
-            if (volumes != null && !volumes.isEmpty() && !force) {
-                throw new BaseException(ErrorCode.FAILED_PRECONDITION,
-                        "Cannot delete schema with volumes: " + schemaName);
-            } else if (volumes != null) {
-                for (VolumeInfoDAO volume : volumes) {
-                    volumeRepository.deleteVolume(session, schemaInfo.getId(), volume.getName());
-                }
-            }
-
-            // handle functions
-            List<FunctionInfoDAO> functions = functionRepository
-                    .listFunctions(session, schemaInfo.getId(), Optional.of(100), Optional.empty());
-            if (functions != null && !functions.isEmpty() && !force) {
-                throw new BaseException(ErrorCode.FAILED_PRECONDITION,
-                        "Cannot delete schema with functions: " + schemaName);
-            } else if (functions != null) {
-                for (FunctionInfoDAO function : functions) {
-                    functionRepository.deleteFunction(session, schemaInfo.getId(), function.getName());
-                }
-            }
-
+            processChildTables(session, schemaInfo.getId(), force);
+            processChildVolumes(session, schemaInfo.getId(), force);
+            processChildFunctions(session, schemaInfo.getId(), force);
             session.remove(schemaInfo);
         } else {
             throw new BaseException(ErrorCode.NOT_FOUND,

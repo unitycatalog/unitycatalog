@@ -132,13 +132,15 @@ public class CatalogRepository {
             try {
                 CatalogInfoDAO catalogInfo = getCatalogDAO(session, name);
                 if (catalogInfo != null) {
-                    List<SchemaInfoDAO> schemas = schemaRepository.listSchemas(session, catalogInfo.getId(), Optional.of(100));
-                    if (schemas != null & !schemas.isEmpty()) {
+                    // Check if there are any schemas in the catalog
+                    List<SchemaInfoDAO> schemas = schemaRepository.listSchemas(session, catalogInfo.getId(), Optional.of(1));
+                    if (schemas != null && !schemas.isEmpty()) {
                         if (!force) {
                             throw new BaseException(ErrorCode.FAILED_PRECONDITION,
                                     "Cannot delete catalog with schemas: " + name);
                         }
-                        for (SchemaInfoDAO schemaInfo : schemas) {
+                        List<SchemaInfoDAO> allChildSchemas = schemaRepository.listSchemas(session, catalogInfo.getId(), Optional.empty());
+                        for (SchemaInfoDAO schemaInfo : allChildSchemas) {
                             schemaRepository.deleteSchema(session, catalogInfo.getId(), schemaInfo.getName(), true);
                         }
                     }
