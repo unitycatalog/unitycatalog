@@ -187,6 +187,8 @@ lazy val server = (project in file("server"))
 
       // Iceberg REST Catalog dependencies
       "org.apache.iceberg" % "iceberg-core" % "1.5.2",
+      "org.apache.iceberg" % "iceberg-aws" % "1.5.2",
+      "software.amazon.awssdk" % "s3" % "2.24.0",
       "io.vertx" % "vertx-core" % "4.3.5",
       "io.vertx" % "vertx-web" % "4.3.5",
       "io.vertx" % "vertx-web-client" % "4.3.5",

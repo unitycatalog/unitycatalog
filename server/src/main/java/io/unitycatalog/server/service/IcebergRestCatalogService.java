@@ -10,6 +10,7 @@ import io.unitycatalog.server.model.*;
 import io.unitycatalog.server.model.ListTablesResponse;
 import io.unitycatalog.server.persist.TableRepository;
 import io.unitycatalog.server.persist.utils.HibernateUtils;
+import io.unitycatalog.server.service.iceberg.MetadataService;
 import io.unitycatalog.server.utils.JsonUtils;
 import java.io.IOException;
 import java.net.URI;
@@ -20,7 +21,6 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.stream.Collectors;
 import org.apache.iceberg.TableMetadata;
-import org.apache.iceberg.TableMetadataParser;
 import org.apache.iceberg.catalog.Namespace;
 import org.apache.iceberg.catalog.TableIdentifier;
 import org.apache.iceberg.exceptions.NoSuchTableException;
@@ -36,6 +36,7 @@ public class IcebergRestCatalogService {
   private final CatalogService catalogService;
   private final SchemaService schemaService;
   private final TableService tableService;
+  private final MetadataService metadataService;
   private final TableRepository tableRepository = TableRepository.getInstance();
   private static final SessionFactory sessionFactory = HibernateUtils.getSessionFactory();
 
@@ -44,6 +45,7 @@ public class IcebergRestCatalogService {
     this.catalogService = catalogService;
     this.schemaService = schemaService;
     this.tableService = tableService;
+    this.metadataService = new MetadataService();
   }
 
   // Config APIs
@@ -175,8 +177,7 @@ public class IcebergRestCatalogService {
       throw new NoSuchTableException("Table does not exist: %s", namespace + "." + table);
     }
 
-    String metadataJson = new String(Files.readAllBytes(Paths.get(URI.create(metadataLocation))));
-    TableMetadata tableMetadata = TableMetadataParser.fromJson(metadataLocation, metadataJson);
+    TableMetadata tableMetadata = metadataService.readTableMetadata(metadataLocation);
 
     return LoadTableResponse.builder().withTableMetadata(tableMetadata).build();
   }
