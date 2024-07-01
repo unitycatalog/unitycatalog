@@ -9,6 +9,7 @@ import io.unitycatalog.client.model.UpdateSchema;
 import io.unitycatalog.server.base.schema.SchemaOperations;
 
 import java.util.List;
+import java.util.Optional;
 
 import static io.unitycatalog.server.utils.TestUtils.toList;
 
@@ -40,7 +41,7 @@ public class SdkSchemaOperations implements SchemaOperations {
     }
 
     @Override
-    public void deleteSchema(String schemaFullName) throws ApiException {
-        schemasApi.deleteSchema(schemaFullName);
+    public void deleteSchema(String schemaFullName, Optional<Boolean> force) throws ApiException {
+        schemasApi.deleteSchema(schemaFullName, force.orElse(false));
     }
 }

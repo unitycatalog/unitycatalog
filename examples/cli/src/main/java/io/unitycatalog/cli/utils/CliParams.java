@@ -21,7 +21,8 @@ public enum CliParams {
     COMMENT("comment" , "Comment/Description of the entity.", "comment"),
     SERVER("server" , "UC Server to connect to. Default is reference server.", "server"),
     AUTH_TOKEN("auth_token" , "PAT token to authorize uc requests", "auth_token"),
-    OUTPUT("output" , "To indicate CLI output format preference", "output");
+    OUTPUT("output" , "To indicate CLI output format preference", "output"),
+    FORCE("force" , "To force delete the entity", "force");
     private final String value;
     private final String helpMessage;
     private final String serverParam;

@@ -8,6 +8,7 @@ import io.unitycatalog.client.model.CatalogInfo;
 
 import java.util.List;
 import java.util.Objects;
+import java.util.Optional;
 
 import static io.unitycatalog.server.utils.TestUtils.*;
 
@@ -60,7 +61,7 @@ public abstract class BaseCatalogCRUDTest extends BaseCRUDTest {
 
         // Delete catalog
         System.out.println("Testing delete catalog..");
-        catalogOperations.deleteCatalog(CATALOG_NEW_NAME);
+        catalogOperations.deleteCatalog(CATALOG_NEW_NAME, Optional.of(false));
         catalogList = catalogOperations.listCatalogs();
         Assert.assertNotNull(catalogList);
         assertCatalogNotExists(catalogList, CATALOG_NEW_NAME);

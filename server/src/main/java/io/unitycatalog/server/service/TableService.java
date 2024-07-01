@@ -43,8 +43,8 @@ public class TableService {
         return HttpResponse.ofJson(databaseOperations.
                 listTables(catalogName,
                         schemaName,
-                        maxResults.orElse(100),
-                        pageToken.orElse(null),
+                        maxResults,
+                        pageToken,
                         omitProperties.orElse(false),
                         omitColumns.orElse(false)));
     }

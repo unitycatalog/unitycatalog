@@ -162,11 +162,12 @@ public class SchemasApi {
    * Delete a schema
    * Deletes the specified schema from the parent catalog. 
    * @param fullName Full name of the schema. (required)
+   * @param force Force deletion even if the catalog is not empty. (optional)
    * @return Object
    * @throws ApiException if fails to make API call
    */
-  public Object deleteSchema(String fullName) throws ApiException {
-    ApiResponse<Object> localVarResponse = deleteSchemaWithHttpInfo(fullName);
+  public Object deleteSchema(String fullName, Boolean force) throws ApiException {
+    ApiResponse<Object> localVarResponse = deleteSchemaWithHttpInfo(fullName, force);
     return localVarResponse.getData();
   }
 
@@ -174,11 +175,12 @@ public class SchemasApi {
    * Delete a schema
    * Deletes the specified schema from the parent catalog. 
    * @param fullName Full name of the schema. (required)
+   * @param force Force deletion even if the catalog is not empty. (optional)
    * @return ApiResponse&lt;Object&gt;
    * @throws ApiException if fails to make API call
    */
-  public ApiResponse<Object> deleteSchemaWithHttpInfo(String fullName) throws ApiException {
-    HttpRequest.Builder localVarRequestBuilder = deleteSchemaRequestBuilder(fullName);
+  public ApiResponse<Object> deleteSchemaWithHttpInfo(String fullName, Boolean force) throws ApiException {
+    HttpRequest.Builder localVarRequestBuilder = deleteSchemaRequestBuilder(fullName, force);
     try {
       HttpResponse<InputStream> localVarResponse = memberVarHttpClient.send(
           localVarRequestBuilder.build(),
@@ -206,7 +208,7 @@ public class SchemasApi {
     }
   }
 
-  private HttpRequest.Builder deleteSchemaRequestBuilder(String fullName) throws ApiException {
+  private HttpRequest.Builder deleteSchemaRequestBuilder(String fullName, Boolean force) throws ApiException {
     // verify the required parameter 'fullName' is set
     if (fullName == null) {
       throw new ApiException(400, "Missing the required parameter 'fullName' when calling deleteSchema");
@@ -217,7 +219,22 @@ public class SchemasApi {
     String localVarPath = "/schemas/{full_name}"
         .replace("{full_name}", ApiClient.urlEncode(fullName.toString()));
 
-    localVarRequestBuilder.uri(URI.create(memberVarBaseUri + localVarPath));
+    List<Pair> localVarQueryParams = new ArrayList<>();
+    StringJoiner localVarQueryStringJoiner = new StringJoiner("&");
+    String localVarQueryParameterBaseName;
+    localVarQueryParameterBaseName = "force";
+    localVarQueryParams.addAll(ApiClient.parameterToPairs("force", force));
+
+    if (!localVarQueryParams.isEmpty() || localVarQueryStringJoiner.length() != 0) {
+      StringJoiner queryJoiner = new StringJoiner("&");
+      localVarQueryParams.forEach(p -> queryJoiner.add(p.getName() + '=' + p.getValue()));
+      if (localVarQueryStringJoiner.length() != 0) {
+        queryJoiner.add(localVarQueryStringJoiner.toString());
+      }
+      localVarRequestBuilder.uri(URI.create(memberVarBaseUri + localVarPath + '?' + queryJoiner.toString()));
+    } else {
+      localVarRequestBuilder.uri(URI.create(memberVarBaseUri + localVarPath));
+    }
 
     localVarRequestBuilder.header("Accept", "application/json");
 
