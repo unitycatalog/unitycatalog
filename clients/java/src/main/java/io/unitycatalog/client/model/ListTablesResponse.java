@@ -38,7 +38,7 @@ import com.fasterxml.jackson.annotation.JsonPropertyOrder;
   ListTablesResponse.JSON_PROPERTY_TABLES,
   ListTablesResponse.JSON_PROPERTY_NEXT_PAGE_TOKEN
 })
-@javax.annotation.Generated(value = "org.openapitools.codegen.languages.JavaClientCodegen", comments = "Generator version: 7.5.0")
+@jakarta.annotation.Generated(value = "org.openapitools.codegen.languages.JavaClientCodegen", comments = "Generator version: 7.5.0")
 public class ListTablesResponse {
   public static final String JSON_PROPERTY_TABLES = "tables";
   private List<TableInfo> tables = new ArrayList<>();
@@ -66,7 +66,7 @@ public class ListTablesResponse {
    * An array of table information objects.
    * @return tables
   **/
-  @javax.annotation.Nullable
+  @jakarta.annotation.Nullable
   @JsonProperty(JSON_PROPERTY_TABLES)
   @JsonInclude(value = JsonInclude.Include.USE_DEFAULTS)
 
@@ -91,7 +91,7 @@ public class ListTablesResponse {
    * Opaque token to retrieve the next page of results. Absent if there are no more pages. __page_token__ should be set to this value for the next request (for the next page of results). 
    * @return nextPageToken
   **/
-  @javax.annotation.Nullable
+  @jakarta.annotation.Nullable
   @JsonProperty(JSON_PROPERTY_NEXT_PAGE_TOKEN)
   @JsonInclude(value = JsonInclude.Include.USE_DEFAULTS)
 

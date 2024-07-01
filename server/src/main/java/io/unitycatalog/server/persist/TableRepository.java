@@ -29,7 +29,8 @@ public class TableRepository {
     private static final CatalogRepository catalogOperations = CatalogRepository.getInstance();
     private static final SchemaRepository schemaOperations = SchemaRepository.getInstance();
 
-    private TableRepository() {}
+    private TableRepository() {
+    }
 
     public TableInfo getTableById(String tableId) {
         LOGGER.debug("Getting table by id: " + tableId);
@@ -47,7 +48,9 @@ public class TableRepository {
                 tx.commit();
                 return tableInfo;
             } catch (Exception e) {
-                tx.rollback();
+                if (tx != null && tx.getStatus().canRollback()) {
+                    tx.rollback();
+                }
                 throw e;
             }
         }
@@ -96,7 +99,7 @@ public class TableRepository {
         return query.list();
     }
 
-    public String getTableUniformMetadataLocation(Session session,  String catalogName, String schemaName, String tableName) {
+    public String getTableUniformMetadataLocation(Session session, String catalogName, String schemaName, String tableName) {
         TableInfoDAO dao = findTable(session, catalogName, schemaName, tableName);
         return dao.getUniformIcebergMetadataLocation();
     }
@@ -203,7 +206,7 @@ public class TableRepository {
 
     public static String getNextPageToken(List<TableInfoDAO> tables) {
         if (tables == null || tables.isEmpty()) {
-            return "";
+            return null;
         }
         // Assuming the last item in the list is the least recent based on the query
         return String.valueOf(tables.get(tables.size() - 1).getUpdatedAt().getTime());
@@ -211,6 +214,7 @@ public class TableRepository {
 
     /**
      * Return the most recently updated tables first in descending order of updated time
+     *
      * @param catalogName
      * @param schemaName
      * @param maxResults

@@ -31,7 +31,7 @@ import com.fasterxml.jackson.annotation.JsonTypeName;
   GenerateTemporaryVolumeCredential.JSON_PROPERTY_VOLUME_ID,
   GenerateTemporaryVolumeCredential.JSON_PROPERTY_OPERATION
 })
-@javax.annotation.Generated(value = "org.openapitools.codegen.languages.JavaClientCodegen", comments = "Generator version: 7.5.0")
+@jakarta.annotation.Generated(value = "org.openapitools.codegen.languages.JavaClientCodegen", comments = "Generator version: 7.5.0")
 public class GenerateTemporaryVolumeCredential {
   public static final String JSON_PROPERTY_VOLUME_ID = "volume_id";
   private String volumeId;
@@ -52,7 +52,7 @@ public class GenerateTemporaryVolumeCredential {
    * Volume id for which temporary credentials are generated.  Can be obtained from volumes/{full_name} (get volume info) API. 
    * @return volumeId
   **/
-  @javax.annotation.Nonnull
+  @jakarta.annotation.Nonnull
   @JsonProperty(JSON_PROPERTY_VOLUME_ID)
   @JsonInclude(value = JsonInclude.Include.ALWAYS)
 
@@ -78,7 +78,7 @@ public class GenerateTemporaryVolumeCredential {
    * Get operation
    * @return operation
   **/
-  @javax.annotation.Nonnull
+  @jakarta.annotation.Nonnull
   @JsonProperty(JSON_PROPERTY_OPERATION)
   @JsonInclude(value = JsonInclude.Include.ALWAYS)
 

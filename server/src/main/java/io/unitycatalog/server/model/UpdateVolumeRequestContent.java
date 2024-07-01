@@ -30,7 +30,7 @@ import com.fasterxml.jackson.annotation.JsonTypeName;
   UpdateVolumeRequestContent.JSON_PROPERTY_COMMENT,
   UpdateVolumeRequestContent.JSON_PROPERTY_NEW_NAME
 })
-@javax.annotation.Generated(value = "org.openapitools.codegen.languages.JavaClientCodegen", comments = "Generator version: 7.5.0")
+@jakarta.annotation.Generated(value = "org.openapitools.codegen.languages.JavaClientCodegen", comments = "Generator version: 7.5.0")
 public class UpdateVolumeRequestContent {
   public static final String JSON_PROPERTY_COMMENT = "comment";
   private String comment;
@@ -51,7 +51,7 @@ public class UpdateVolumeRequestContent {
    * The comment attached to the volume
    * @return comment
   **/
-  @javax.annotation.Nullable
+  @jakarta.annotation.Nullable
   @JsonProperty(JSON_PROPERTY_COMMENT)
   @JsonInclude(value = JsonInclude.Include.USE_DEFAULTS)
 
@@ -77,7 +77,7 @@ public class UpdateVolumeRequestContent {
    * New name for the volume.
    * @return newName
   **/
-  @javax.annotation.Nullable
+  @jakarta.annotation.Nullable
   @JsonProperty(JSON_PROPERTY_NEW_NAME)
   @JsonInclude(value = JsonInclude.Include.USE_DEFAULTS)
 

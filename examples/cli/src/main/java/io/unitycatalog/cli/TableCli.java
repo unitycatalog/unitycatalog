@@ -1,6 +1,7 @@
 package io.unitycatalog.cli;
 
 import com.fasterxml.jackson.databind.ObjectWriter;
+import io.delta.kernel.exceptions.TableAlreadyExistsException;
 import io.unitycatalog.cli.delta.DeltaKernelWriteUtils;
 import io.unitycatalog.cli.utils.CliException;
 import io.unitycatalog.cli.utils.CliParams;
@@ -109,11 +110,13 @@ public class TableCli {
         if (!storageLocation.startsWith("s3://")) {
             // local filesystem path
             Path path = getLocalPath(storageLocation);
-            if (!(Files.exists(path))) {
-                // try and initialize the directory and initiate delta log at the location
-                try {
-                    DeltaKernelUtils.createDeltaTable(path.toUri().toString(), columnInfos, null);
-                } catch (Exception e) {
+            // try and initialize the directory and initiate delta log at the location
+            try {
+                DeltaKernelUtils.createDeltaTable(path.toUri().toString(), columnInfos, null);
+            } catch (Exception e) {
+                if (e.getCause() instanceof TableAlreadyExistsException) {
+                    // TODO confirm the schema of the existing table matches the schema of the new table
+                } else {
                     throw new CliException("Failed to create delta table at " + path, e);
                 }
             }
