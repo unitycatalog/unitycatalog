@@ -33,5 +33,4 @@ addSbtPlugin("com.etsy" % "sbt-checkstyle-plugin" % "3.1.1")
 // same version as Spark
 dependencyOverrides += "com.puppycrawl.tools" % "checkstyle" % "8.43"
 
-addSbtPlugin("org.scoverage" % "sbt-scoverage" % "2.0.12")
-dependencyOverrides += "org.scala-lang.modules" % "scala-xml_2.12" % "1.0.6"
+addSbtPlugin("com.github.sbt" % "sbt-jacoco" % "3.4.0")

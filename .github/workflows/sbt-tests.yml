@@ -27,6 +27,4 @@ jobs:
         distribution: 'temurin'
         cache: 'sbt'
     - name: Run tests with coverage
-      run: sbt clean coverage test
-    - name: Generate coverage report
-      run: sbt coverageReport
+      run: sbt jacoco

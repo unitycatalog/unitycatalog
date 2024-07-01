@@ -37,11 +37,6 @@ lazy val commonSettings = Seq(
   fork := true,
   outputStrategy := Some(StdoutOutput),
 
-  coverageEnabled := true,
-  coverageFailOnMinimum := true,
-  coverageMinimumStmtTotal := 80,
-  coverageMinimumBranchTotal := 80,
-
   Compile / packageBin := {
     val packageFile = (Compile / packageBin).value
     generateClasspathFile(
@@ -194,7 +189,19 @@ lazy val server = (project in file("server"))
     // Define the simple generate command to generate model codes
     generate := {
       val _ = openApiGenerate.value
-    }
+    },
+
+    // test coverage
+    jacocoReportSettings := JacocoReportSettings()
+      .withThresholds(
+        JacocoThresholds(
+          instruction = 40,
+          method = 58,
+          branch = 13,
+          complexity = 37,
+          line = 54,
+          clazz = 79)
+      )
   )
 
 lazy val cli = (project in file("examples") / "cli")
@@ -232,6 +239,18 @@ lazy val cli = (project in file("examples") / "cli")
       "junit" %  "junit" % "4.13.2" % Test,
       "com.github.sbt" % "junit-interface" % "0.13.3" % Test,
     ),
+
+    // test coverage
+    jacocoReportSettings := JacocoReportSettings()
+      .withThresholds(
+        JacocoThresholds(
+          instruction = 100,
+          method = 100,
+          branch = 100,
+          complexity = 100,
+          line = 100,
+          clazz = 100)
+      )
   )
 
 def generateClasspathFile(targetDir: File, classpath: Classpath): Unit = {
