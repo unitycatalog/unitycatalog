@@ -1,28 +1,28 @@
 package io.unitycatalog.server.service;
 
-import java.io.IOException;
-import java.net.URI;
-import java.nio.file.Files;
-import java.nio.file.Paths;
-import java.util.List;
-import java.util.Objects;
-import java.util.Optional;
-import java.util.stream.Collectors;
-
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.linecorp.armeria.common.AggregatedHttpResponse;
 import com.linecorp.armeria.common.HttpResponse;
 import com.linecorp.armeria.common.HttpStatus;
-import com.linecorp.armeria.server.annotation.*;
+import com.linecorp.armeria.server.annotation.ExceptionHandler;
+import com.linecorp.armeria.server.annotation.Get;
+import com.linecorp.armeria.server.annotation.Head;
+import com.linecorp.armeria.server.annotation.Param;
+import com.linecorp.armeria.server.annotation.Post;
+import com.linecorp.armeria.server.annotation.ProducesJson;
 import io.unitycatalog.server.exception.BaseException;
 import io.unitycatalog.server.exception.ErrorCode;
 import io.unitycatalog.server.exception.GlobalExceptionHandler;
-import io.unitycatalog.server.model.*;
+import io.unitycatalog.server.model.CatalogInfo;
+import io.unitycatalog.server.model.ListCatalogsResponse;
+import io.unitycatalog.server.model.ListSchemasResponse;
+import io.unitycatalog.server.model.ListTablesResponse;
+import io.unitycatalog.server.model.SchemaInfo;
 import io.unitycatalog.server.persist.HibernateUtil;
 import io.unitycatalog.server.persist.TableRepository;
+import io.unitycatalog.server.service.iceberg.MetadataService;
 import io.unitycatalog.server.utils.JsonUtils;
 import org.apache.iceberg.TableMetadata;
-import org.apache.iceberg.TableMetadataParser;
 import org.apache.iceberg.catalog.Namespace;
 import org.apache.iceberg.catalog.TableIdentifier;
 import org.apache.iceberg.relocated.com.google.common.base.Splitter;
@@ -33,12 +33,19 @@ import org.apache.iceberg.rest.responses.LoadTableResponse;
 import org.hibernate.Session;
 import org.hibernate.SessionFactory;
 
+import java.io.IOException;
+import java.util.List;
+import java.util.Objects;
+import java.util.Optional;
+import java.util.stream.Collectors;
+
 @ExceptionHandler(GlobalExceptionHandler.class)
 public class IcebergRestCatalogService {
 
   private final CatalogService catalogService;
   private final SchemaService schemaService;
   private final TableService tableService;
+  private final MetadataService metadataService;
   private final TableRepository tableRepository = TableRepository.getInstance();
   private static final SessionFactory sessionFactory = HibernateUtil.getSessionFactory();
 
@@ -48,6 +55,7 @@ public class IcebergRestCatalogService {
     this.catalogService = catalogService;
     this.schemaService = schemaService;
     this.tableService = tableService;
+    this.metadataService = new MetadataService();
   }
 
   // Config APIs
@@ -180,8 +188,7 @@ public class IcebergRestCatalogService {
       throw new BaseException(ErrorCode.NOT_FOUND, "Table not found: " + namespace + "." + table);
     }
 
-    String metadataJson = new String(Files.readAllBytes(Paths.get(URI.create(metadataLocation))));
-    TableMetadata tableMetadata = TableMetadataParser.fromJson(metadataLocation, metadataJson);
+    TableMetadata tableMetadata = metadataService.readTableMetadata(metadataLocation);
 
     return LoadTableResponse.builder()
       .withTableMetadata(tableMetadata)
