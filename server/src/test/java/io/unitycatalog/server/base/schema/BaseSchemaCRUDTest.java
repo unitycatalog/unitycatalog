@@ -50,33 +50,31 @@ public abstract class BaseSchemaCRUDTest extends BaseCRUDTest {
                 // Ignore
         }
         super.cleanUp();
-
-    }
-
-    protected void createCommonResources() throws ApiException {
-        // Common setup operations such as creating a catalog
-        catalogOperations.createCatalog(TestUtils.CATALOG_NAME, "Common catalog for schemas");
     }
 
     @Test
     public void testSchemaCRUDL() throws ApiException {
         // Create a schema
         System.out.println("Testing create schema..");
-        CreateSchema createSchema = new CreateSchema().name(TestUtils.SCHEMA_NAME).catalogName(TestUtils.CATALOG_NAME);
+        CreateSchema createSchema = new CreateSchema()
+                .name(TestUtils.SCHEMA_NAME)
+                .catalogName(TestUtils.CATALOG_NAME)
+                .properties(TestUtils.PROPERTIES);
         assertThrows(Exception.class, () -> schemaOperations.createSchema(createSchema));
 
         CreateCatalog createCatalog = new CreateCatalog().name(TestUtils.CATALOG_NAME);
-        catalogOperations.createCatalog(createCatalog.getName(), null);
+        catalogOperations.createCatalog(createCatalog);
         SchemaInfo schemaInfo = schemaOperations.createSchema(createSchema);
         assertEquals(createSchema.getName(), schemaInfo.getName());
         assertEquals(createSchema.getCatalogName(), schemaInfo.getCatalogName());
-        Assert.assertEquals(TestUtils.SCHEMA_FULL_NAME, schemaInfo.getFullName());
+        assertEquals(TestUtils.SCHEMA_FULL_NAME, schemaInfo.getFullName());
+        // TODO: Assert properties once CLI supports it
         assertNotNull(schemaInfo.getCreatedAt());
 
         // List schemas
         System.out.println("Testing list schemas..");
         Iterable<SchemaInfo> schemaList = schemaOperations.listSchemas(TestUtils.CATALOG_NAME);
-        assertTrue(TestUtils.contains(schemaList, schemaInfo, (schema) -> schema.getName().equals(TestUtils.SCHEMA_NAME)));
+        assertTrue(TestUtils.contains(schemaList, schemaInfo, (schema) -> schema.equals(schemaInfo)));
 
         // Get schema
         System.out.println("Testing get schema..");
@@ -97,7 +95,8 @@ public abstract class BaseSchemaCRUDTest extends BaseCRUDTest {
         assertNotNull(updatedSchemaInfo.getUpdatedAt());
 
         //Now update the parent catalog name
-        catalogOperations.updateCatalog(TestUtils.CATALOG_NAME, TestUtils.CATALOG_NEW_NAME, "");
+        UpdateCatalog updateCatalog = new UpdateCatalog().newName(TestUtils.CATALOG_NEW_NAME);
+        catalogOperations.updateCatalog(TestUtils.CATALOG_NAME, updateCatalog);
         SchemaInfo updatedSchemaInfo2 = schemaOperations.getSchema(TestUtils.CATALOG_NEW_NAME
                 + "." + TestUtils.SCHEMA_NEW_NAME);
         assertEquals(retrievedSchemaInfo.getSchemaId(), updatedSchemaInfo2.getSchemaId());

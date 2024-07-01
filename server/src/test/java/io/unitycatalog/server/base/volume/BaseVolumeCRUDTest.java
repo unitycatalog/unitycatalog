@@ -78,7 +78,8 @@ public abstract class BaseVolumeCRUDTest extends BaseCRUDTest {
 
     protected void createCommonResources() throws ApiException {
         // Common setup operations such as creating a catalog and schema
-        catalogOperations.createCatalog(CATALOG_NAME, "Common catalog for volumes");
+        CreateCatalog createCatalog = new CreateCatalog().name(CATALOG_NAME).comment(COMMENT);
+        catalogOperations.createCatalog(createCatalog);
         schemaInfo = schemaOperations.createSchema(new CreateSchema().name(SCHEMA_NAME).catalogName(CATALOG_NAME));
     }
 

@@ -91,12 +91,24 @@ public class IcebergRestCatalogTest extends BaseServerTest {
   @Test
   public void testNamespaces()
     throws ApiException, IOException {
-    catalogOperations.createCatalog(TestUtils.CATALOG_NAME, "testCatalog");
-    schemaOperations.createSchema(
-      new CreateSchema()
-        .catalogName(TestUtils.CATALOG_NAME)
-        .name(TestUtils.SCHEMA_NAME)
-    );
+    CreateCatalog createCatalog = new CreateCatalog()
+            .name(TestUtils.CATALOG_NAME)
+            .comment(TestUtils.COMMENT)
+            .properties(TestUtils.PROPERTIES);
+    CatalogInfo catalogInfo = catalogOperations.createCatalog(createCatalog);
+    assertEquals(createCatalog.getName(), catalogInfo.getName());
+    assertEquals(createCatalog.getComment(), catalogInfo.getComment());
+    assertEquals(createCatalog.getProperties(), catalogInfo.getProperties());
+
+    CreateSchema createSchema = new CreateSchema()
+            .catalogName(TestUtils.CATALOG_NAME)
+            .name(TestUtils.SCHEMA_NAME)
+            .properties(TestUtils.PROPERTIES);
+    SchemaInfo schemaInfo = schemaOperations.createSchema(createSchema);
+    assertEquals(createSchema.getName(), schemaInfo.getName());
+    assertEquals(createSchema.getCatalogName(), schemaInfo.getCatalogName());
+    assertEquals(TestUtils.SCHEMA_FULL_NAME, schemaInfo.getFullName());
+    assertEquals(createSchema.getProperties(), schemaInfo.getProperties());
     // GetNamespace for catalog
     {
       AggregatedHttpResponse resp =
@@ -104,6 +116,7 @@ public class IcebergRestCatalogTest extends BaseServerTest {
       Assert.assertEquals(resp.status().code(), 200);
       Assert.assertEquals(GetNamespaceResponse.builder()
           .withNamespace(Namespace.of(TestUtils.CATALOG_NAME))
+          .setProperties(TestUtils.PROPERTIES)
           .build()
           .toString(),
         RESTObjectMapper.mapper().readValue(resp.contentUtf8(), GetNamespaceResponse.class)
@@ -117,6 +130,7 @@ public class IcebergRestCatalogTest extends BaseServerTest {
       Assert.assertEquals(resp.status().code(), 200);
       Assert.assertEquals(GetNamespaceResponse.builder()
           .withNamespace(Namespace.of(TestUtils.CATALOG_NAME, TestUtils.SCHEMA_NAME))
+          .setProperties(TestUtils.PROPERTIES)
           .build()
           .toString(),
         RESTObjectMapper.mapper().readValue(resp.contentUtf8(), GetNamespaceResponse.class)
@@ -163,7 +177,8 @@ public class IcebergRestCatalogTest extends BaseServerTest {
 
   @Test
   public void testTable() throws ApiException, IOException, URISyntaxException {
-    catalogOperations.createCatalog(TestUtils.CATALOG_NAME, "testCatalog");
+    CreateCatalog createCatalog = new CreateCatalog().name(TestUtils.CATALOG_NAME).comment(TestUtils.COMMENT);
+    catalogOperations.createCatalog(createCatalog);
     schemaOperations.createSchema(
       new CreateSchema()
         .catalogName(TestUtils.CATALOG_NAME)

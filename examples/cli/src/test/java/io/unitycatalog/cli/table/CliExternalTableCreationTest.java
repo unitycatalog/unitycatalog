@@ -25,7 +25,6 @@ import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 
 public class CliExternalTableCreationTest extends BaseServerTest {
 
-
     private CatalogOperations catalogOperations;
     private SchemaOperations schemaOperations;
     private TableOperations tableOperations;
@@ -44,8 +43,9 @@ public class CliExternalTableCreationTest extends BaseServerTest {
         schemaOperations = new CliSchemaOperations(serverConfig);
         tableOperations = new CliTableOperations(serverConfig);
         try {
-            catalogOperations.createCatalog(CATALOG_NAME, "Test catalog");
-            schemaOperations.createSchema(new CreateSchema().name(SCHEMA_NAME).catalogName(CATALOG_NAME).comment("Test schema"));
+            CreateCatalog createCatalog = new CreateCatalog().name(CATALOG_NAME).comment(COMMENT);
+            catalogOperations.createCatalog(createCatalog);
+            schemaOperations.createSchema(new CreateSchema().name(SCHEMA_NAME).catalogName(CATALOG_NAME).comment(COMMENT));
         } catch (Exception e) {
             fail("Setup failed: " + e.getMessage());
         }
@@ -53,7 +53,6 @@ public class CliExternalTableCreationTest extends BaseServerTest {
 
     @Override
     public void cleanUp() {
-
         try {
             if (tableOperations.getTable(TABLE_FULL_NAME) != null) {
                 tableOperations.deleteTable(TABLE_FULL_NAME);
@@ -100,7 +99,6 @@ public class CliExternalTableCreationTest extends BaseServerTest {
         createTableAndAssertReadTableSucceeds(tablePath, columns);
     }
 
-
     private void createTableAndAssertReadTableSucceeds(String tablePath, List<ColumnInfo> columns) throws IOException, ApiException {
         TableInfo tableInfo = tableOperations.createTable(new CreateTable().catalogName(CATALOG_NAME).schemaName(SCHEMA_NAME).name(TABLE_NAME).storageLocation(tablePath).columns(columns));
         assertNotNull(tableInfo);
@@ -110,7 +108,6 @@ public class CliExternalTableCreationTest extends BaseServerTest {
         assertDoesNotThrow(()-> deleteDirectory(Paths.get(tablePath)));
         assertDoesNotThrow(() -> tableOperations.deleteTable(TABLE_FULL_NAME));
     }
-
 
     public static void deleteDirectory(Path path) throws IOException {
         Files.walkFileTree(path, new SimpleFileVisitor<Path>() {
@@ -127,8 +124,4 @@ public class CliExternalTableCreationTest extends BaseServerTest {
             }
         });
     }
-
-
-
-
 }

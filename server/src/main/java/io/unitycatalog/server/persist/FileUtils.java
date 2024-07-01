@@ -165,6 +165,9 @@ public class FileUtils {
     }
 
     public static String convertRelativePathToURI(String url) {
+        if (url == null) {
+            return null;
+        }
         if (url.startsWith("s3://")) {
             return url;
         } else {

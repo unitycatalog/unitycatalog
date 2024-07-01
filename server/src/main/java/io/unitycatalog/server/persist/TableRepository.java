@@ -1,23 +1,21 @@
 package io.unitycatalog.server.persist;
 
 import io.unitycatalog.server.exception.BaseException;
+import io.unitycatalog.server.exception.ErrorCode;
 import io.unitycatalog.server.model.*;
-import io.unitycatalog.server.persist.converters.TableInfoConverter;
-import io.unitycatalog.server.persist.dao.CatalogInfoDAO;
-import io.unitycatalog.server.persist.dao.PropertyDAO;
 import io.unitycatalog.server.persist.dao.SchemaInfoDAO;
 import io.unitycatalog.server.persist.dao.TableInfoDAO;
 import io.unitycatalog.server.utils.ValidationUtils;
 import lombok.Getter;
-import org.hibernate.query.Query;
-import io.unitycatalog.server.exception.ErrorCode;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 import org.hibernate.Session;
 import org.hibernate.SessionFactory;
 import org.hibernate.Transaction;
+import org.hibernate.query.Query;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.util.*;
+import java.util.stream.Collectors;
 
 public class TableRepository {
     @Getter
@@ -39,9 +37,7 @@ public class TableRepository {
                 if (tableInfoDAO == null) {
                     throw new BaseException(ErrorCode.NOT_FOUND, "Table not found: " + tableId);
                 }
-                TableInfo tableInfo = TableInfoConverter.convertToDTO(tableInfoDAO);
-                tableInfo.setColumns(TableInfoConverter.convertColumnsToDTO(tableInfoDAO.getColumns()));
-                tableInfo.setProperties(TableInfoConverter.convertPropertiesToMap(findProperties(session, tableInfoDAO.getId())));
+                TableInfo tableInfo = tableInfoDAO.toTableInfo();
                 tx.commit();
                 return tableInfo;
             } catch (Exception e) {
@@ -71,10 +67,7 @@ public class TableRepository {
                 if (tableInfoDAO == null) {
                     throw new BaseException(ErrorCode.NOT_FOUND, "Table not found: " + fullName);
                 }
-                tableInfo = TableInfoConverter.convertToDTO(tableInfoDAO);
-                tableInfo.setColumns(TableInfoConverter.convertColumnsToDTO(tableInfoDAO.getColumns()));
-                tableInfo.setProperties(TableInfoConverter
-                        .convertPropertiesToMap(findProperties(session, tableInfoDAO.getId())));
+                tableInfo = tableInfoDAO.toTableInfo();
                 tableInfo.setCatalogName(catalogName);
                 tableInfo.setSchemaName(schemaName);
                 tx.commit();
@@ -86,14 +79,6 @@ public class TableRepository {
             }
         }
         return tableInfo;
-    }
-
-    private List<PropertyDAO> findProperties(Session session, UUID tableId) {
-        LOGGER.debug("Getting properties for table: " + tableId);
-        String hql = "FROM PropertyDAO p WHERE p.entityId = :tableId and p.entityType = 'table'";
-        Query<PropertyDAO> query = session.createQuery(hql, PropertyDAO.class);
-        query.setParameter("tableId", tableId);
-        return query.list();
     }
 
     public String getTableUniformMetadataLocation(Session session,  String catalogName, String schemaName, String tableName) {
@@ -109,12 +94,25 @@ public class TableRepository {
 
     public TableInfo createTable(CreateTable createTable) {
         ValidationUtils.validateSqlObjectName(createTable.getName());
-        TableInfo tableInfo = TableInfoConverter.convertFromCreateRequest(createTable);
+        List<ColumnInfo> columnInfos = createTable.getColumns().stream()
+                .map(c -> c.typeText(c.getTypeText().toLowerCase(Locale.ROOT)))
+                .collect(Collectors.toList());
+        TableInfo tableInfo = new TableInfo()
+                .tableId(UUID.randomUUID().toString())
+                .name(createTable.getName())
+                .catalogName(createTable.getCatalogName())
+                .schemaName(createTable.getSchemaName())
+                .tableType(createTable.getTableType())
+                .dataSourceFormat(createTable.getDataSourceFormat())
+                .columns(columnInfos)
+                .storageLocation(FileUtils.convertRelativePathToURI(createTable.getStorageLocation()))
+                .comment(createTable.getComment())
+                .properties(createTable.getProperties())
+                .createdAt(System.currentTimeMillis());
         String fullName = getTableFullName(tableInfo);
         LOGGER.debug("Creating table: " + fullName);
 
-        //Session session = null;
-        Transaction tx = null;
+        Transaction tx;
         try (Session session = sessionFactory.openSession()) {
             String catalogName = tableInfo.getCatalogName();
             String schemaName = tableInfo.getSchemaName();
@@ -135,23 +133,13 @@ public class TableRepository {
                     throw new BaseException(ErrorCode.INVALID_ARGUMENT,
                             "Storage location is required for external table");
                 }
-                TableInfoDAO tableInfoDAO = TableInfoConverter.convertToDAO(tableInfo);
+                TableInfoDAO tableInfoDAO = TableInfoDAO.from(tableInfo);
                 tableInfoDAO.setSchemaId(UUID.fromString(schemaId));
-                String tableId = UUID.randomUUID().toString();
-                // set id
-                tableInfoDAO.setId(UUID.fromString(tableId));
-                // set table id in return object
-                tableInfo.setTableId(tableId);
-                // set created and updated time in return object
-                tableInfo.setCreatedAt(tableInfoDAO.getCreatedAt().getTime());
-                tableInfo.setUpdatedAt(tableInfoDAO.getUpdatedAt().getTime());
                 // create columns
-                tableInfoDAO.setColumns(TableInfoConverter.convertColumnsListToDAO(tableInfo, tableInfoDAO));
+                tableInfoDAO.getColumns().forEach(c -> c.setTable(tableInfoDAO));
                 // create properties
-                TableInfoConverter.convertPropertiesToDAOList(tableInfo, tableId).forEach(session::persist);
-                // finally create the table
+                tableInfoDAO.getProperties().forEach(p -> p.setTable(tableInfoDAO));
                 session.persist(tableInfoDAO);
-
                 tx.commit();
             } catch (RuntimeException e) {
                 if (tx != null && tx.getStatus().canRollback()) {
@@ -206,7 +194,10 @@ public class TableRepository {
             return null;
         }
         // Assuming the last item in the list is the least recent based on the query
-        return String.valueOf(tables.get(tables.size() - 1).getUpdatedAt().getTime());
+        long time = tables.get(tables.size() - 1).getCreatedAt().getTime();
+        if (tables.get(tables.size() - 1).getUpdatedAt() != null)
+            time = tables.get(tables.size() - 1).getUpdatedAt().getTime();
+        return String.valueOf(time);
     }
 
     /**
@@ -241,13 +232,12 @@ public class TableRepository {
                 List<TableInfoDAO> tableInfoDAOList = query.list();
                 returnNextPageToken = getNextPageToken(tableInfoDAOList);
                 for (TableInfoDAO tableInfoDAO : tableInfoDAOList) {
-                    TableInfo tableInfo = TableInfoConverter.convertToDTO(tableInfoDAO);
-                    if (!omitColumns) {
-                        tableInfo.setColumns(TableInfoConverter.convertColumnsToDTO(tableInfoDAO.getColumns()));
+                    TableInfo tableInfo = tableInfoDAO.toTableInfo();
+                    if (omitColumns) {
+                        tableInfo.setColumns(null);
                     }
-                    if (!omitProperties) {
-                        tableInfo.setProperties(TableInfoConverter.convertPropertiesToMap(
-                                findProperties(session, tableInfoDAO.getId())));
+                    if (omitProperties) {
+                        tableInfo.setProperties(null);
                     }
                     tableInfo.setCatalogName(catalogName);
                     tableInfo.setSchemaName(schemaName);
@@ -288,7 +278,6 @@ public class TableRepository {
                         LOGGER.error("Error deleting table directory: " + tableInfoDAO.getUrl());
                     }
                 }
-                findProperties(session, tableInfoDAO.getId()).forEach(session::remove);
                 session.remove(tableInfoDAO);
                 tx.commit();
             } catch (RuntimeException e) {
