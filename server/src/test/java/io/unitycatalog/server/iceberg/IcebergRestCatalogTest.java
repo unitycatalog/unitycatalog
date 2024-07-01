@@ -31,10 +31,10 @@ import org.apache.iceberg.rest.responses.ListTablesResponse;
 import org.apache.iceberg.rest.responses.LoadTableResponse;
 import org.hibernate.Session;
 import org.hibernate.Transaction;
-import org.junit.Assert;
 import org.junit.Before;
 import org.junit.Test;
-import static org.junit.Assert.assertEquals;
+
+import static org.assertj.core.api.Assertions.assertThat;
 
 public class IcebergRestCatalogTest extends BaseServerTest {
 
@@ -72,7 +72,7 @@ public class IcebergRestCatalogTest extends BaseServerTest {
   public void testConfig() {
     AggregatedHttpResponse resp =
       client.get("/v1/config").aggregate().join();
-    assertEquals("{\"defaults\":{},\"overrides\":{}}", resp.contentUtf8());
+    assertThat(resp.contentUtf8()).isEqualTo("{\"defaults\":{},\"overrides\":{}}");
   }
 
   @Test
@@ -88,63 +88,58 @@ public class IcebergRestCatalogTest extends BaseServerTest {
     {
       AggregatedHttpResponse resp =
         client.get("/v1/namespaces/" + TestUtils.CATALOG_NAME).aggregate().join();
-      Assert.assertEquals(resp.status().code(), 200);
-      Assert.assertEquals(GetNamespaceResponse.builder()
-          .withNamespace(Namespace.of(TestUtils.CATALOG_NAME))
-          .build()
-          .toString(),
-        RESTObjectMapper.mapper().readValue(resp.contentUtf8(), GetNamespaceResponse.class)
-          .toString());
+      assertThat(resp.status().code()).isEqualTo(200);
+      assertThat(RESTObjectMapper.mapper().readValue(resp.contentUtf8(), GetNamespaceResponse.class)).asString()
+              .isEqualTo(GetNamespaceResponse.builder()
+                      .withNamespace(Namespace.of(TestUtils.CATALOG_NAME))
+                      .build()
+                      .toString());
     }
     // GetNamespace for schema
     {
       AggregatedHttpResponse resp =
         client.get("/v1/namespaces/" + TestUtils.CATALOG_NAME + "." + TestUtils.SCHEMA_NAME)
           .aggregate().join();
-      Assert.assertEquals(resp.status().code(), 200);
-      Assert.assertEquals(GetNamespaceResponse.builder()
-          .withNamespace(Namespace.of(TestUtils.CATALOG_NAME, TestUtils.SCHEMA_NAME))
-          .build()
-          .toString(),
-        RESTObjectMapper.mapper().readValue(resp.contentUtf8(), GetNamespaceResponse.class)
-          .toString());
+      assertThat(resp.status().code()).isEqualTo(200);
+      assertThat(RESTObjectMapper.mapper().readValue(resp.contentUtf8(), GetNamespaceResponse.class)).asString()
+              .isEqualTo(GetNamespaceResponse.builder()
+                      .withNamespace(Namespace.of(TestUtils.CATALOG_NAME, TestUtils.SCHEMA_NAME))
+                      .build()
+                      .toString());
     }
 
     // ListNamespaces from root
     {
       AggregatedHttpResponse resp =
         client.get("/v1/namespaces").aggregate().join();
-      Assert.assertEquals(resp.status().code(), 200);
-      Assert.assertEquals(ListNamespacesResponse.builder()
-          .add(Namespace.of(TestUtils.CATALOG_NAME))
-          .build()
-          .toString(),
-        RESTObjectMapper.mapper().readValue(resp.contentUtf8(), ListNamespacesResponse.class)
-          .toString());
+      assertThat(resp.status().code()).isEqualTo(200);
+      assertThat(RESTObjectMapper.mapper().readValue(resp.contentUtf8(), ListNamespacesResponse.class)).asString()
+              .isEqualTo(ListNamespacesResponse.builder()
+                      .add(Namespace.of(TestUtils.CATALOG_NAME))
+                      .build()
+                      .toString());
     }
     // ListNamespaces from catalog
     {
       AggregatedHttpResponse resp =
         client.get("/v1/namespaces?parent=" + TestUtils.CATALOG_NAME).aggregate().join();
-      Assert.assertEquals(resp.status().code(), 200);
-      Assert.assertEquals(ListNamespacesResponse.builder()
-          .add(Namespace.of(TestUtils.CATALOG_NAME, TestUtils.SCHEMA_NAME))
-          .build()
-          .toString(),
-        RESTObjectMapper.mapper().readValue(resp.contentUtf8(), ListNamespacesResponse.class)
-          .toString());
+      assertThat(resp.status().code()).isEqualTo(200);
+      assertThat(RESTObjectMapper.mapper().readValue(resp.contentUtf8(), ListNamespacesResponse.class)).asString()
+              .isEqualTo(ListNamespacesResponse.builder()
+                      .add(Namespace.of(TestUtils.CATALOG_NAME, TestUtils.SCHEMA_NAME))
+                      .build()
+                      .toString());
     }
     // ListNamespaces from schema
     {
       AggregatedHttpResponse resp =
         client.get("/v1/namespaces?parent=" + TestUtils.CATALOG_NAME + "." + TestUtils.SCHEMA_NAME)
           .aggregate().join();
-      Assert.assertEquals(resp.status().code(), 200);
-      Assert.assertEquals(ListNamespacesResponse.builder()
-          .build()
-          .toString(),
-        RESTObjectMapper.mapper().readValue(resp.contentUtf8(), ListNamespacesResponse.class)
-          .toString());
+      assertThat(resp.status().code()).isEqualTo(200);
+      assertThat(RESTObjectMapper.mapper().readValue(resp.contentUtf8(), ListNamespacesResponse.class)).asString()
+              .isEqualTo(ListNamespacesResponse.builder()
+                      .build()
+                      .toString());
     }
   }
 
@@ -181,14 +176,14 @@ public class IcebergRestCatalogTest extends BaseServerTest {
         client.head(
           "/v1/namespaces/" + TestUtils.CATALOG_NAME + "." + TestUtils.SCHEMA_NAME + "/tables/" +
             TestUtils.TABLE_NAME).aggregate().join();
-      Assert.assertEquals(resp.status().code(), 404);
+      assertThat(resp.status().code()).isEqualTo(404);
     }
     {
       AggregatedHttpResponse resp =
         client.get(
           "/v1/namespaces/" + TestUtils.CATALOG_NAME + "." + TestUtils.SCHEMA_NAME + "/tables/" +
             TestUtils.TABLE_NAME).aggregate().join();
-      Assert.assertEquals(resp.status().code(), 404);
+      assertThat(resp.status().code()).isEqualTo(404);
     }
 
     // Add the uniform metadata
@@ -210,7 +205,7 @@ public class IcebergRestCatalogTest extends BaseServerTest {
         client.head(
           "/v1/namespaces/" + TestUtils.CATALOG_NAME + "." + TestUtils.SCHEMA_NAME + "/tables/" +
             TestUtils.TABLE_NAME).aggregate().join();
-      Assert.assertEquals(resp.status().code(), 200);
+      assertThat(resp.status().code()).isEqualTo(200);
     }
     // metadata is valid metadata content and metadata location matches
     {
@@ -218,11 +213,11 @@ public class IcebergRestCatalogTest extends BaseServerTest {
         client.get(
           "/v1/namespaces/" + TestUtils.CATALOG_NAME + "." + TestUtils.SCHEMA_NAME + "/tables/" +
             TestUtils.TABLE_NAME).aggregate().join();
-      Assert.assertEquals(resp.status().code(), 200);
+      assertThat(resp.status().code()).isEqualTo(200);
       LoadTableResponse loadTableResponse =
         RESTObjectMapper.mapper().readValue(resp.contentUtf8(), LoadTableResponse.class);
-      Assert.assertEquals(this.getClass().getResource("/metadata.json").toURI().toString(),
-        loadTableResponse.tableMetadata().metadataFileLocation());
+      assertThat(loadTableResponse.tableMetadata().metadataFileLocation())
+              .isEqualTo(this.getClass().getResource("/metadata.json").toURI().toString());
     }
 
     // List uniform tables
@@ -230,29 +225,28 @@ public class IcebergRestCatalogTest extends BaseServerTest {
       AggregatedHttpResponse resp =
         client.get(
           "/v1/namespaces/" + TestUtils.CATALOG_NAME + "." + TestUtils.SCHEMA_NAME + "/tables").aggregate().join();
-      Assert.assertEquals(resp.status().code(), 200);
+      assertThat(resp.status().code()).isEqualTo(200);
       ListTablesResponse loadTableResponse =
         RESTObjectMapper.mapper().readValue(resp.contentUtf8(), ListTablesResponse.class);
-      Assert.assertEquals(List.of(TableIdentifier.of(TestUtils.CATALOG_NAME, TestUtils.SCHEMA_NAME, TestUtils.TABLE_NAME)),
-        loadTableResponse.identifiers());
+      assertThat(loadTableResponse.identifiers()).containsExactly(TableIdentifier.of(TestUtils.CATALOG_NAME, TestUtils.SCHEMA_NAME, TestUtils.TABLE_NAME));
     }
   }
 
   @Test
   public void testLoadTablesInvalidNamespace() {
     AggregatedHttpResponse resp = client.get("/v1/namespaces/incomplete_namespace/tables/some_table").aggregate().join();
-    Assert.assertEquals(resp.status().code(), 400);
+    assertThat(resp.status().code()).isEqualTo(400);
   }
 
   @Test
   public void testListTablesInvalidNamespace() {
     AggregatedHttpResponse resp = client.get("/v1/namespaces/incomplete_namespace/tables").aggregate().join();
-    Assert.assertEquals(resp.status().code(), 400);
+    assertThat(resp.status().code()).isEqualTo(400);
   }
 
   @Test
   public void testTableExistsInvalidNamespace() {
     AggregatedHttpResponse resp = client.head("/v1/namespaces/incomplete_namespace/tables").aggregate().join();
-    Assert.assertEquals(resp.status().code(), 400);
+    assertThat(resp.status().code()).isEqualTo(400);
   }
 }
