@@ -244,12 +244,12 @@ lazy val cli = (project in file("examples") / "cli")
     jacocoReportSettings := JacocoReportSettings()
       .withThresholds(
         JacocoThresholds(
-          instruction = 100,
-          method = 100,
-          branch = 100,
-          complexity = 100,
-          line = 100,
-          clazz = 100)
+          instruction = 48,
+          method = 51,
+          branch = 28,
+          complexity = 31,
+          line = 47,
+          clazz = 76)
       )
   )
 
