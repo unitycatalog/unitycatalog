@@ -83,27 +83,7 @@ public abstract class BaseTableCRUDTest extends BaseCRUDTest {
 
         // Create a table
         System.out.println("Testing create table..");
-        ColumnInfo columnInfo1 = new ColumnInfo().name("as_int").typeText("INTEGER")
-                .typeJson("{\"type\": \"integer\"}")
-                .typeName(ColumnTypeName.INT).typePrecision(10).typeScale(0).position(0)
-                .comment("Integer column").nullable(true);
-        ColumnInfo columnInfo2 = new ColumnInfo().name("as_string").typeText("VARCHAR(255)")
-                .typeJson("{\"type\": \"string\", \"length\": \"255\"}")
-                .typeName(ColumnTypeName.STRING).position(1)
-                .comment("String column").nullable(true);
-
-        CreateTable createTableRequest = new CreateTable()
-                .name(TestUtils.TABLE_NAME)
-                .catalogName(TestUtils.CATALOG_NAME)
-                .schemaName(TestUtils.SCHEMA_NAME)
-                .columns(List.of(columnInfo1, columnInfo2))
-                .properties(TestUtils.PROPERTIES)
-                .comment(TestUtils.COMMENT)
-                .storageLocation("/tmp/stagingLocation")
-                .tableType(TableType.EXTERNAL)
-                .dataSourceFormat(DataSourceFormat.DELTA);
-
-        TableInfo tableInfo = tableOperations.createTable(createTableRequest);
+        TableInfo tableInfo = createDefaultTestingTable();
         assertEquals(TestUtils.TABLE_NAME, tableInfo.getName());
         Assert.assertEquals(TestUtils.CATALOG_NAME, tableInfo.getCatalogName());
         Assert.assertEquals(TestUtils.SCHEMA_NAME, tableInfo.getSchemaName());
@@ -216,5 +196,29 @@ public abstract class BaseTableCRUDTest extends BaseCRUDTest {
         tableOperations.deleteTable(newTableFullName);
         assertThrows(Exception.class, () -> tableOperations.getTable(newTableFullName));
 
+    }
+
+    protected TableInfo createDefaultTestingTable() throws IOException, ApiException {
+        ColumnInfo columnInfo1 = new ColumnInfo().name("as_int").typeText("INTEGER")
+                .typeJson("{\"type\": \"integer\"}")
+                .typeName(ColumnTypeName.INT).typePrecision(10).typeScale(0).position(0)
+                .comment("Integer column").nullable(true);
+        ColumnInfo columnInfo2 = new ColumnInfo().name("as_string").typeText("VARCHAR(255)")
+                .typeJson("{\"type\": \"string\", \"length\": \"255\"}")
+                .typeName(ColumnTypeName.STRING).position(1)
+                .comment("String column").nullable(true);
+
+        CreateTable createTableRequest = new CreateTable()
+                .name(TestUtils.TABLE_NAME)
+                .catalogName(TestUtils.CATALOG_NAME)
+                .schemaName(TestUtils.SCHEMA_NAME)
+                .columns(List.of(columnInfo1, columnInfo2))
+                .properties(TestUtils.PROPERTIES)
+                .comment(TestUtils.COMMENT)
+                .storageLocation("/tmp/stagingLocation")
+                .tableType(TableType.EXTERNAL)
+                .dataSourceFormat(DataSourceFormat.DELTA);
+
+        return tableOperations.createTable(createTableRequest);
     }
 }

@@ -33,7 +33,7 @@ import com.fasterxml.jackson.annotation.JsonTypeName;
 @JsonPropertyOrder({
   FunctionParameterInfos.JSON_PROPERTY_PARAMETERS
 })
-@javax.annotation.Generated(value = "org.openapitools.codegen.languages.JavaClientCodegen", comments = "Generator version: 7.5.0")
+@jakarta.annotation.Generated(value = "org.openapitools.codegen.languages.JavaClientCodegen", comments = "Generator version: 7.5.0")
 public class FunctionParameterInfos {
   public static final String JSON_PROPERTY_PARAMETERS = "parameters";
   private List<FunctionParameterInfo> parameters = new ArrayList<>();
@@ -59,7 +59,7 @@ public class FunctionParameterInfos {
    * The array of __FunctionParameterInfo__ definitions of the function&#39;s parameters.
    * @return parameters
   **/
-  @javax.annotation.Nullable
+  @jakarta.annotation.Nullable
   @JsonProperty(JSON_PROPERTY_PARAMETERS)
   @JsonInclude(value = JsonInclude.Include.USE_DEFAULTS)
 

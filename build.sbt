@@ -46,6 +46,16 @@ lazy val commonSettings = Seq(
   }
 )
 
+enablePlugins(CoursierPlugin)
+
+useCoursier := true
+
+// Configure resolvers
+resolvers ++= Seq(
+  "Sonatype OSS Releases" at "https://oss.sonatype.org/content/repositories/releases/",
+  "Maven Central" at "https://repo1.maven.org/maven2/"
+)
+
 def javaCheckstyleSettings(configLocation: File) = Seq(
   checkstyleConfigLocation := CheckstyleConfigLocation.File(configLocation.toString),
   checkstyleSeverityLevel := Some(CheckstyleSeverityLevel.Error),
@@ -65,7 +75,7 @@ lazy val client = (project in file("clients/java"))
       "com.fasterxml.jackson.datatype" % "jackson-datatype-jsr310" % jacksonVersion,
       "org.openapitools" % "jackson-databind-nullable" % openApiToolsJacksonBindNullableVersion,
       "com.google.code.findbugs" % "jsr305" % "3.0.2",
-      "jakarta.annotation" % "jakarta.annotation-api" % "1.3.5" % Provided,
+      "jakarta.annotation" % "jakarta.annotation-api" % "3.0.0" % Provided,
 
       // Test dependencies
       "junit" %  "junit" % "4.13.2" % Test,
@@ -81,6 +91,7 @@ lazy val client = (project in file("clients/java"))
     openApiModelPackage := s"$orgName.client.model",
     openApiAdditionalProperties := Map(
       "library" -> "native",
+      "useJakartaEe" -> "true",
       "hideGenerationTimestamp" -> "true"),
     openApiGenerateApiTests := SettingDisabled,
     openApiGenerateModelTests := SettingDisabled,
@@ -117,7 +128,7 @@ lazy val server = (project in file("server"))
     javaCheckstyleSettings(file("dev") / "checkstyle-config.xml"),
     libraryDependencies ++= Seq(
       "com.linecorp.armeria" %  "armeria" % "1.28.4",
-      "javax.annotation" %  "javax.annotation-api" % "1.3.2",
+      "jakarta.annotation" % "jakarta.annotation-api" % "3.0.0" % Provided,
       // Jackson dependencies
       "com.fasterxml.jackson.core" % "jackson-annotations" % jacksonVersion,
       "com.fasterxml.jackson.core" % "jackson-core" % jacksonVersion,
@@ -179,6 +190,7 @@ lazy val server = (project in file("server"))
     openApiModelPackage := s"$orgName.server.model",
     openApiAdditionalProperties := Map(
       "library" -> "resteasy",  // resteasy generates the most minimal models
+      "useJakartaEe" -> "true",
       "hideGenerationTimestamp" -> "true"),
     openApiGlobalProperties := Map("models" -> ""),
     openApiGenerateApiTests := SettingDisabled,
