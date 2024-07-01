@@ -28,7 +28,9 @@ public class PropertiesUtil {
 
     // Load properties from a configuration file
     private void loadProperties() {
-        try (InputStream input = Files.newInputStream(Paths.get("etc/conf/server.properties"))) {
+        InputStream input = null;
+        try {
+            input = Files.newInputStream(Paths.get("etc/conf/server.properties"));
             properties.load(input);
             LOGGER.debug("Properties loaded successfully");
             int i=0;
@@ -46,6 +48,14 @@ public class PropertiesUtil {
             }
         } catch (IOException ex) {
             LOGGER.error("Exception during loading properties", ex);
+        }finally {
+            if (null != input) {
+                try {
+                    input.close();
+                } catch (IOException e) {
+                    LOGGER.error("Exception during close InputStream for loading properties", e);
+                }
+            }
         }
     }
 
