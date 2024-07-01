@@ -1,4 +1,4 @@
-name: Test Quickstart
+name: Tutorial Tests
 
 on:
   push:
@@ -10,8 +10,7 @@ permissions:
   contents: read
 
 jobs:
-  build:
-
+  test:
     runs-on: ubuntu-latest
 
     steps:
@@ -33,7 +32,7 @@ jobs:
         python -m venv venv
         source venv/bin/activate
 
-    - name: Test Quickstart
+    - name: Test Tutorial
       run: |
-        chmod +x tests/test-quickstart.py
-        ./tests/test-quickstart.py
+        chmod +x tests/test_tutorial.py
+        ./tests/test_tutorial.py
