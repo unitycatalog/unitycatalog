@@ -25,4 +25,4 @@ fi
 
 SERVER_JAVA_COMMAND="java -cp $(cat "$SERVER_CLASSPATH_FILE") io.unitycatalog.server.UnityCatalogServer"
 
-$SERVER_JAVA_COMMAND $@ || exit
+$SERVER_JAVA_COMMAND "$@" || exit
