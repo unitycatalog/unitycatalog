@@ -170,8 +170,14 @@ imposes an upper bound. Please check the [JDK compatibility](https://docs.scala-
 Create a virtual environment:
 
 ```sh
-python -m venv venv
-. ./venv/bin/activate 
+# Create virtual environment
+python -m venv uc_docs_venv
+
+# Activate virtual environment (Linux/macOS)
+source uc_docs_venv/bin/activate
+
+# Activate virtual environment (Windows)
+uc_docs_venv\Scripts\activate
 ``` 
 
 Install the required dependencies:
