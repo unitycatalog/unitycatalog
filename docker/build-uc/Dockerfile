@@ -1,4 +1,4 @@
-FROM eclipse-temurin:17-jdk-alpine AS build_uc
+FROM eclipse-temurin:22-jdk-alpine AS build_uc
 
 # Install any required packages
 RUN <<EOF
@@ -6,6 +6,7 @@ RUN <<EOF
     apk update;
     apk upgrade; 
     apk add bash git;
+    rm -R /var/cache/apk/*;
 EOF
 
 # Define the shell used within the container

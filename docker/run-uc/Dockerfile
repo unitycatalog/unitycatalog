@@ -1,10 +1,11 @@
-FROM eclipse-temurin:17-jre-alpine AS run_uc
+FROM eclipse-temurin:22-jre-alpine AS run_uc
 
 RUN <<EOF
     set -ex;
     apk update;
     apk upgrade; 
     apk add bash;
+    rm -R /var/cache/apk/*;
 EOF
 
 # Define the shell used within the container
@@ -58,10 +59,10 @@ VOLUME  ${unitycatalog_home}
 WORKDIR "$unitycatalog_home"
 
 # Copy the Uber-Jar from the previous stage
-COPY --from=unitycatalogue_builder:0.1.0 "${unitycatalog_repo}/${unitycatalog_jar}/*.jar" "${unitycatalog_home}/${unitycatalog_jar}/"
+COPY --from=unitycatalog_jar:0.1.0 "${unitycatalog_repo}/${unitycatalog_jar}/*.jar" "${unitycatalog_home}/${unitycatalog_jar}/"
 
 # Copy the etc folder which contains the config files and the data folder
-COPY --from=unitycatalogue_builder:0.1.0 "${unitycatalog_repo}/${unitycatalog_etc}" "${unitycatalog_home}/${unitycatalog_etc}/"
+COPY --from=unitycatalog_jar:0.1.0 "${unitycatalog_repo}/${unitycatalog_etc}" "${unitycatalog_home}/${unitycatalog_etc}/"
 
 # Create the script that executes the server
 # The script looks for the JAR automatially and saves its

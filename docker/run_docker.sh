@@ -21,7 +21,7 @@ if [ -z "$container_details" ]; then
     
     docker run -v unitycatalog_volume:/opt/unitycatalog \
        --network unitycatalog_network -p 8080:8080 \
-       -d --name unitycatalog -t unitycatalogue:0.1.0
+       -d --name unitycatalog -t unitycatalog:0.1.0
 
     echo "Container $container_name created."
 else
