@@ -100,7 +100,6 @@ public class SchemaRepository {
     public ListSchemasResponse listSchemas(String catalogName, Optional<Integer> maxResults,
                                            Optional<String> pageToken) {
         try (Session session = sessionFactory.openSession()) {
-            ListSchemasResponse response = new ListSchemasResponse();
             session.setDefaultReadOnly(true);
             Transaction tx = session.beginTransaction();
             // TODO: Implement pagination and filtering if required
@@ -110,25 +109,29 @@ public class SchemaRepository {
                 if (catalog == null) {
                     throw new BaseException(ErrorCode.NOT_FOUND, "Catalog not found: " + catalogName);
                 }
-                response.setSchemas(listSchemas(session, catalog.getId(), maxResults)
-                        .stream().map(SchemaInfoDAO::toSchemaInfo)
-                        .peek(x -> addNamespaceData(x, catalogName))
-                        .collect(Collectors.toList()));
+                ListSchemasResponse response = listSchemas(session, catalog.getId(), catalogName, maxResults, pageToken);
                 tx.commit();
+                return response;
             } catch (Exception e) {
                 tx.rollback();
                 throw e;
             }
-            return response;
         }
     }
 
-    public List<SchemaInfoDAO> listSchemas(Session session, UUID catalogId, Optional<Integer> maxResults) {
+
+    public ListSchemasResponse listSchemas(Session session, UUID catalogId, String catalogName,
+                                           Optional<Integer> maxResults, Optional<String> pageToken) {
+        ListSchemasResponse response = new ListSchemasResponse();
         Query<SchemaInfoDAO> query = session
                 .createQuery("FROM SchemaInfoDAO WHERE catalogId = :value", SchemaInfoDAO.class);
         maxResults.ifPresent(query::setMaxResults);
         query.setParameter("value", catalogId);
-        return query.list();
+        response.setSchemas(query.list()
+                .stream().map(SchemaInfoDAO::toSchemaInfo)
+                .peek(x -> addNamespaceData(x, catalogName))
+                .collect(Collectors.toList()));
+        return response;
     }
 
     public SchemaInfo getSchema(String fullName) {
@@ -199,7 +202,7 @@ public class SchemaRepository {
             }
             Transaction tx = session.beginTransaction();
             try {
-                deleteSchema(session, catalog.getId(), namespace[1] ,force);
+                deleteSchema(session, catalog.getId(), namespace[0], namespace[1] ,force);
                 tx.commit();
             } catch (Exception e) {
                 tx.rollback();
@@ -208,63 +211,83 @@ public class SchemaRepository {
         }
     }
 
-    public void processChildTables(Session session, UUID schemaId, boolean force) {
+    public void processChildTables(Session session, UUID schemaId, String catalogName, String schemaName, boolean force) {
         // first check if there are any child tables
-        List<TableInfoDAO> tables = tableRepository
-                .listTables(session, schemaId, Optional.of(1), Optional.empty());
+        List<TableInfo> tables = tableRepository
+                .listTables(session, schemaId, catalogName, schemaName, Optional.of(1),
+                        Optional.empty(), true, true).getTables();
         if (tables != null && !tables.isEmpty()) {
             if (!force) {
                 throw new BaseException(ErrorCode.FAILED_PRECONDITION,
                         "Cannot delete schema with tables");
             }
-            List<TableInfoDAO> allChildTables = tableRepository
-                    .listTables(session, schemaId, Optional.empty(), Optional.empty());
-            for (TableInfoDAO table : allChildTables) {
-                tableRepository.deleteTable(session, schemaId, table.getName());
-            }
+            String nextToken = null;
+            do {
+                ListTablesResponse listTablesResponse = tableRepository
+                        .listTables(session, schemaId, catalogName, schemaName, Optional.empty(),
+                                Optional.ofNullable(nextToken), true, true);
+                for (TableInfo tableInfo : listTablesResponse.getTables()) {
+                    tableRepository.deleteTable(session, schemaId, tableInfo.getName());
+                }
+                nextToken = listTablesResponse.getNextPageToken();
+            } while (nextToken != null);
         }
     }
 
-    public void processChildVolumes(Session session, UUID schemaId, boolean force) {
+    public void processChildVolumes(Session session, UUID schemaId, String catalogName, String schemaName,
+                                    boolean force) {
         // first check if there are any child volumes
-        List<VolumeInfoDAO> volumes = volumeRepository
-                .listVolumes(session, schemaId, Optional.of(1), Optional.empty());
+        List<VolumeInfo> volumes = volumeRepository
+                .listVolumes(session, schemaId, catalogName, schemaName,
+                        Optional.of(1), Optional.empty()).getVolumes();
         if (volumes != null && !volumes.isEmpty()) {
             if (!force) {
                 throw new BaseException(ErrorCode.FAILED_PRECONDITION,
                         "Cannot delete schema with volumes");
             }
-            List<VolumeInfoDAO> allChildVolumes = volumeRepository
-                    .listVolumes(session, schemaId, Optional.empty(), Optional.empty());
-            for (VolumeInfoDAO volume : allChildVolumes) {
-                volumeRepository.deleteVolume(session, schemaId, volume.getName());
-            }
+            String nextToken = null;
+            do {
+                ListVolumesResponseContent listVolumesResponse = volumeRepository
+                        .listVolumes(session, schemaId, catalogName, schemaName,
+                                Optional.empty(), Optional.ofNullable(nextToken));
+                for (VolumeInfo volumeInfo : listVolumesResponse.getVolumes()) {
+                    volumeRepository.deleteVolume(session, schemaId, volumeInfo.getName());
+                }
+                nextToken = listVolumesResponse.getNextPageToken();
+            } while (nextToken != null);
         }
     }
 
-    public void processChildFunctions(Session session, UUID schemaId, boolean force) {
+    public void processChildFunctions(Session session, UUID schemaId, String catalogName, String schemaName,
+                                      boolean force) {
         // first check if there are any child functions
-        List<FunctionInfoDAO> functions = functionRepository
-                .listFunctions(session, schemaId, Optional.of(1), Optional.empty());
+        List<FunctionInfo> functions = functionRepository
+                .listFunctions(session, schemaId, catalogName, schemaName,
+                        Optional.of(1), Optional.empty()).getFunctions();
         if (functions != null && !functions.isEmpty()) {
             if (!force) {
                 throw new BaseException(ErrorCode.FAILED_PRECONDITION,
                         "Cannot delete schema with functions");
             }
-            List<FunctionInfoDAO> allChildFunctions = functionRepository
-                    .listFunctions(session, schemaId, Optional.empty(), Optional.empty());
-            for (FunctionInfoDAO function : allChildFunctions) {
-                functionRepository.deleteFunction(session, schemaId, function.getName());
-            }
+            String nextToken = null;
+            do {
+                ListFunctionsResponse listFunctionsResponse = functionRepository
+                        .listFunctions(session, schemaId, catalogName, schemaName,
+                                Optional.empty(), Optional.ofNullable(nextToken));
+                for (FunctionInfo functionInfo : listFunctionsResponse.getFunctions()) {
+                    functionRepository.deleteFunction(session, schemaId, functionInfo.getName());
+                }
+                nextToken = listFunctionsResponse.getNextPageToken();
+            } while (nextToken != null);
         }
     }
 
-    public void deleteSchema(Session session, UUID catalogId, String schemaName, boolean force) {
+    public void deleteSchema(Session session, UUID catalogId, String catalogName, String schemaName, boolean force) {
         SchemaInfoDAO schemaInfo = getSchemaDAO(session, catalogId, schemaName);
         if (schemaInfo != null) {
-            processChildTables(session, schemaInfo.getId(), force);
-            processChildVolumes(session, schemaInfo.getId(), force);
-            processChildFunctions(session, schemaInfo.getId(), force);
+            processChildTables(session, schemaInfo.getId(), catalogName, schemaName, force);
+            processChildVolumes(session, schemaInfo.getId(), catalogName, schemaName, force);
+            processChildFunctions(session, schemaInfo.getId(), catalogName, schemaName, force);
             session.remove(schemaInfo);
         } else {
             throw new BaseException(ErrorCode.NOT_FOUND,

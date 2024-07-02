@@ -133,16 +133,23 @@ public class CatalogRepository {
                 CatalogInfoDAO catalogInfo = getCatalogDAO(session, name);
                 if (catalogInfo != null) {
                     // Check if there are any schemas in the catalog
-                    List<SchemaInfoDAO> schemas = schemaRepository.listSchemas(session, catalogInfo.getId(), Optional.of(1));
+                    List<SchemaInfo> schemas = schemaRepository.listSchemas(session, catalogInfo.getId(),
+                            catalogInfo.getName(),  Optional.of(1), Optional.empty()).getSchemas();
                     if (schemas != null && !schemas.isEmpty()) {
                         if (!force) {
                             throw new BaseException(ErrorCode.FAILED_PRECONDITION,
                                     "Cannot delete catalog with schemas: " + name);
                         }
-                        List<SchemaInfoDAO> allChildSchemas = schemaRepository.listSchemas(session, catalogInfo.getId(), Optional.empty());
-                        for (SchemaInfoDAO schemaInfo : allChildSchemas) {
-                            schemaRepository.deleteSchema(session, catalogInfo.getId(), schemaInfo.getName(), true);
-                        }
+                        String nextToken = null;
+                        do {
+                            ListSchemasResponse listSchemasResponse = schemaRepository.listSchemas(session, catalogInfo.getId(),
+                                    catalogInfo.getName(), Optional.empty(), Optional.ofNullable(nextToken));
+                            for (SchemaInfo schemaInfo : listSchemasResponse.getSchemas()) {
+                                schemaRepository.deleteSchema(session, catalogInfo.getId(), catalogInfo.getName(),
+                                        schemaInfo.getName(), true);
+                            }
+                            nextToken = listSchemasResponse.getNextPageToken();
+                        } while (nextToken != null);
                     }
                     session.remove(catalogInfo);
                     tx.commit();

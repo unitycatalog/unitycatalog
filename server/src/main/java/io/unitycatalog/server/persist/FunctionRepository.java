@@ -88,8 +88,9 @@ public class FunctionRepository {
         }
     }
 
-    public ListFunctionsResponse listFunctions(String catalogName, String schemaName, Optional<Integer> maxResults, Optional<String> nextPageToken) {
-        ListFunctionsResponse response = new ListFunctionsResponse();
+    public ListFunctionsResponse listFunctions(String catalogName, String schemaName,
+                                               Optional<Integer> maxResults, Optional<String> nextPageToken) {
+
         try (Session session = SESSION_FACTORY.openSession()) {
             session.setDefaultReadOnly(true);
             Transaction tx = session.beginTransaction();
@@ -98,21 +99,20 @@ public class FunctionRepository {
                 if (schemaInfo == null) {
                     throw new BaseException(ErrorCode.NOT_FOUND, "Schema not found: " + schemaName);
                 }
-                List<FunctionInfoDAO> functions = listFunctions(session, schemaInfo.getId(), maxResults, nextPageToken);
-                response.setFunctions(
-                        functions.stream().map(FunctionInfoDAO::toFunctionInfo)
-                                .peek(f -> addNamespaceInfo(f, catalogName, schemaName))
-                                .collect(Collectors.toList()));
+                ListFunctionsResponse response = listFunctions(session, schemaInfo.getId(), catalogName,
+                        schemaName, maxResults, nextPageToken);
                 tx.commit();
+                return response;
             } catch (Exception e) {
                 tx.rollback();
                 throw e;
             }
         }
-        return response;
     }
 
-    public List<FunctionInfoDAO> listFunctions(Session session, UUID schemaId, Optional<Integer> maxResults, Optional<String> nextPageToken) {
+    public ListFunctionsResponse listFunctions(Session session, UUID schemaId, String catalogName, String schemaName,
+                                               Optional<Integer> maxResults, Optional<String> nextPageToken) {
+        ListFunctionsResponse response = new ListFunctionsResponse();
         Query<FunctionInfoDAO> query = session.createQuery(
                 "FROM FunctionInfoDAO WHERE schemaId = :schemaId", FunctionInfoDAO.class);
         query.setParameter("schemaId", schemaId);
@@ -121,7 +121,11 @@ public class FunctionRepository {
             // Perform pagination logic here if needed
             // Example: query.setFirstResult(startIndex);
         }
-        return query.list();
+        response.setFunctions(
+                query.list().stream().map(FunctionInfoDAO::toFunctionInfo)
+                        .peek(f -> addNamespaceInfo(f, catalogName, schemaName))
+                        .collect(Collectors.toList()));
+        return response;
     }
 
 

@@ -128,7 +128,6 @@ public class VolumeRepository {
     }
 
     public ListVolumesResponseContent listVolumes(String catalogName, String schemaName, Optional<Integer> maxResults, Optional<String> pageToken, Optional<Boolean> includeBrowse) {
-        ListVolumesResponseContent responseContent = new ListVolumesResponseContent();
         try (Session session = sessionFactory.openSession()) {
             session.setDefaultReadOnly(true);
             Transaction tx = session.beginTransaction();
@@ -137,10 +136,8 @@ public class VolumeRepository {
                 if (schemaInfo == null) {
                     throw new BaseException(ErrorCode.NOT_FOUND, "Schema not found: " + catalogName + "." + schemaName);
                 }
-                responseContent.setVolumes(listVolumes(session, schemaInfo.getId(), maxResults, pageToken)
-                        .stream()
-                        .map(x -> convertFromDAO(x, catalogName, schemaName))
-                        .collect(Collectors.toList()));
+                ListVolumesResponseContent responseContent = listVolumes(session, schemaInfo.getId(),
+                        catalogName, schemaName, maxResults, pageToken);
                 tx.commit();
                 return responseContent;
             } catch (Exception e) {
@@ -150,7 +147,9 @@ public class VolumeRepository {
         }
     }
 
-    public List<VolumeInfoDAO> listVolumes(Session session, UUID schemaId, Optional<Integer> maxResults, Optional<String> pageToken) {
+    public ListVolumesResponseContent listVolumes(Session session, UUID schemaId, String catalogName, String schemaName,
+                                                  Optional<Integer> maxResults, Optional<String> pageToken) {
+        ListVolumesResponseContent responseContent = new ListVolumesResponseContent();
         String queryString = "from VolumeInfoDAO v where v.schemaId = :schemaId";
         Query<VolumeInfoDAO> query = session.createQuery(queryString, VolumeInfoDAO.class);
         query.setParameter("schemaId", schemaId);
@@ -159,7 +158,11 @@ public class VolumeRepository {
             // Perform pagination logic here if needed
             // Example: query.setFirstResult(startIndex);
         }
-        return query.list();
+        responseContent.setVolumes(query.list()
+                .stream()
+                .map(x -> convertFromDAO(x, catalogName, schemaName))
+                .collect(Collectors.toList()));
+        return responseContent;
     }
 
     private VolumeInfo convertFromDAO(VolumeInfoDAO volumeInfoDAO, String catalogName, String schemaName) {

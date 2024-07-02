@@ -1,15 +1,12 @@
 package io.unitycatalog.server.persist;
 
-import com.fasterxml.jackson.databind.deser.std.UUIDDeserializer;
 import io.unitycatalog.server.exception.BaseException;
 import io.unitycatalog.server.model.*;
 import io.unitycatalog.server.persist.converters.TableInfoConverter;
-import io.unitycatalog.server.persist.dao.CatalogInfoDAO;
 import io.unitycatalog.server.persist.dao.PropertyDAO;
 import io.unitycatalog.server.persist.dao.SchemaInfoDAO;
 import io.unitycatalog.server.persist.dao.TableInfoDAO;
 import io.unitycatalog.server.utils.ValidationUtils;
-import jakarta.persistence.criteria.CriteriaBuilder;
 import lombok.Getter;
 import org.hibernate.query.Query;
 import io.unitycatalog.server.exception.ErrorCode;
@@ -28,6 +25,7 @@ public class TableRepository {
     private static final SessionFactory sessionFactory = HibernateUtil.getSessionFactory();
     private static final CatalogRepository catalogOperations = CatalogRepository.getInstance();
     private static final SchemaRepository schemaOperations = SchemaRepository.getInstance();
+    public static final Integer DEFAULT_PAGE_SIZE = 100;
 
     private TableRepository() {
     }
@@ -204,12 +202,16 @@ public class TableRepository {
         }
     }
 
-    public static String getNextPageToken(List<TableInfoDAO> tables) {
-        if (tables == null || tables.isEmpty()) {
+    public static String getNextPageToken(List<TableInfoDAO> tables, Integer pageSize) {
+        if (tables == null || tables.isEmpty() || tables.size() < pageSize) {
             return null;
         }
         // Assuming the last item in the list is the least recent based on the query
         return String.valueOf(tables.get(tables.size() - 1).getUpdatedAt().getTime());
+    }
+
+    public static Integer getPageSize(Optional<Integer> maxResults) {
+        return maxResults.filter(x -> (x > 0)).map(x -> Math.min(x, DEFAULT_PAGE_SIZE)).orElse(DEFAULT_PAGE_SIZE);
     }
 
     /**
@@ -229,32 +231,15 @@ public class TableRepository {
                                          Optional<String> nextPageToken,
                                          Boolean omitProperties,
                                          Boolean omitColumns) {
-        List<TableInfo> result = new ArrayList<>();
-        String returnNextPageToken = null;
-        String hql = "FROM TableInfoDAO t WHERE t.schemaId = :schemaId and " +
-                "(t.updatedAt < :pageToken OR :pageToken is null) order by t.updatedAt desc";
         try (Session session = sessionFactory.openSession()) {
             session.setDefaultReadOnly(true);
             Transaction tx = session.beginTransaction();
             try {
                 String schemaId = getSchemaId(session, catalogName, schemaName);
-                List<TableInfoDAO> tableInfoDAOList = listTables(session, UUID.fromString(schemaId), maxResults,
-                        nextPageToken);
-                returnNextPageToken = getNextPageToken(tableInfoDAOList);
-                for (TableInfoDAO tableInfoDAO : tableInfoDAOList) {
-                    TableInfo tableInfo = TableInfoConverter.convertToDTO(tableInfoDAO);
-                    if (!omitColumns) {
-                        tableInfo.setColumns(TableInfoConverter.convertColumnsToDTO(tableInfoDAO.getColumns()));
-                    }
-                    if (!omitProperties) {
-                        tableInfo.setProperties(TableInfoConverter.convertPropertiesToMap(
-                                findProperties(session, tableInfoDAO.getId())));
-                    }
-                    tableInfo.setCatalogName(catalogName);
-                    tableInfo.setSchemaName(schemaName);
-                    result.add(tableInfo);
-                }
+                ListTablesResponse response = listTables(session, UUID.fromString(schemaId),
+                        catalogName, schemaName, maxResults, nextPageToken, omitProperties, omitColumns);
                 tx.commit();
+                return response;
             } catch (Exception e) {
                 if (tx != null && tx.getStatus().canRollback()) {
                     tx.rollback();
@@ -262,18 +247,39 @@ public class TableRepository {
                 throw e;
             }
         }
-        return new ListTablesResponse().tables(result).nextPageToken(returnNextPageToken);
     }
 
-    public List<TableInfoDAO> listTables(Session session, UUID schemaId, Optional<Integer> maxResults,
-                                         Optional<String> nextPageToken) {
+    public ListTablesResponse listTables(Session session, UUID schemaId, String catalogName, String schemaName,
+                                         Optional<Integer> maxResults, Optional<String> nextPageToken,
+                                         Boolean omitProperties, Boolean omitColumns) {
+        List<TableInfo> result = new ArrayList<>();
+        String returnNextPageToken;
+        if (maxResults.isPresent() && maxResults.get() < 0) {
+            throw new BaseException(ErrorCode.INVALID_ARGUMENT, "maxResults must be greater than or equal to 0");
+        }
+        Integer pageSize = getPageSize(maxResults);
         String hql = "FROM TableInfoDAO t WHERE t.schemaId = :schemaId and " +
-                        "(t.updatedAt < :pageToken OR :pageToken is null) order by t.updatedAt desc";
+                "(t.updatedAt < :pageToken OR :pageToken is null) order by t.updatedAt desc";
         Query<TableInfoDAO> query = session.createQuery(hql, TableInfoDAO.class);
         query.setParameter("schemaId", schemaId);
         query.setParameter("pageToken", convertMillisToDate(nextPageToken));
-        maxResults.ifPresent(query::setMaxResults);
-        return query.list();
+        query.setMaxResults(pageSize);
+        List<TableInfoDAO> tableInfoDAOList = query.list();
+        returnNextPageToken = getNextPageToken(tableInfoDAOList, pageSize);
+        for (TableInfoDAO tableInfoDAO : tableInfoDAOList) {
+            TableInfo tableInfo = TableInfoConverter.convertToDTO(tableInfoDAO);
+            if (!omitColumns) {
+                tableInfo.setColumns(TableInfoConverter.convertColumnsToDTO(tableInfoDAO.getColumns()));
+            }
+            if (!omitProperties) {
+                tableInfo.setProperties(TableInfoConverter.convertPropertiesToMap(
+                        findProperties(session, tableInfoDAO.getId())));
+            }
+            tableInfo.setCatalogName(catalogName);
+            tableInfo.setSchemaName(schemaName);
+            result.add(tableInfo);
+        }
+        return new ListTablesResponse().tables(result).nextPageToken(returnNextPageToken);
     }
 
     public void deleteTable(String fullName) {
