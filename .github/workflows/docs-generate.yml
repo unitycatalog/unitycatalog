@@ -1,4 +1,4 @@
-name: Docs Generation
+name: Docs Generation Tests
 
 on:
     pull_request:
