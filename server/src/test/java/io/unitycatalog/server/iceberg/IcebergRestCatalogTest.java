@@ -3,9 +3,11 @@ package io.unitycatalog.server.iceberg;
 import java.io.IOException;
 import java.net.URISyntaxException;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.UUID;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
 import com.linecorp.armeria.client.WebClient;
 import com.linecorp.armeria.common.AggregatedHttpResponse;
 import com.linecorp.armeria.common.auth.AuthToken;
@@ -15,6 +17,7 @@ import io.unitycatalog.server.base.BaseServerTest;
 import io.unitycatalog.server.base.catalog.CatalogOperations;
 import io.unitycatalog.server.base.schema.SchemaOperations;
 import io.unitycatalog.server.base.table.TableOperations;
+import io.unitycatalog.server.persist.FileUtils;
 import io.unitycatalog.server.persist.HibernateUtil;
 import io.unitycatalog.server.persist.dao.TableInfoDAO;
 import io.unitycatalog.server.sdk.catalog.SdkCatalogOperations;
@@ -53,6 +56,7 @@ public class IcebergRestCatalogTest extends BaseServerTest {
     client = WebClient
       .builder(uri)
       .auth(AuthToken.ofOAuth2(token))
+      .addHeader("Content-Type", "application/json")
       .build();
     cleanUp();
   }
@@ -242,6 +246,49 @@ public class IcebergRestCatalogTest extends BaseServerTest {
       ListTablesResponse loadTableResponse =
         RESTObjectMapper.mapper().readValue(resp.contentUtf8(), ListTablesResponse.class);
       assertThat(loadTableResponse.identifiers()).containsExactly(TableIdentifier.of(TestUtils.CATALOG_NAME, TestUtils.SCHEMA_NAME, TestUtils.TABLE_NAME));
+    }
+  }
+
+  @Test
+  public void testRegisterTable() throws ApiException, IOException, URISyntaxException {
+    catalogOperations.createCatalog(TestUtils.CATALOG_NAME, "testCatalog");
+    schemaOperations.createSchema(
+        new CreateSchema()
+            .catalogName(TestUtils.CATALOG_NAME)
+            .name(TestUtils.SCHEMA_NAME)
+    );
+
+    String metadataLocation = FileUtils.convertRelativePathToURI(this.getClass().getResource("/metadata.json").toURI().toString());
+
+    {
+      Map<String, String> payload = Map.of("name", TestUtils.TABLE_NAME, "metadata-location", metadataLocation);
+
+      AggregatedHttpResponse resp =
+          client.post(
+                  "/v1/namespaces/"
+                      + TestUtils.CATALOG_NAME
+                      + "."
+                      + TestUtils.SCHEMA_NAME
+                      + "/register",
+                  RESTObjectMapper.mapper().writeValueAsString(payload))
+              .aggregate()
+              .join();
+      Assert.assertEquals(resp.status().code(), 200);
+      LoadTableResponse loadTableResponse =
+          RESTObjectMapper.mapper().readValue(resp.contentUtf8(), LoadTableResponse.class);
+      Assert.assertEquals(metadataLocation, loadTableResponse.tableMetadata().metadataFileLocation());
+    }
+
+    // Get newly registered table
+    {
+      AggregatedHttpResponse resp =
+          client.get(
+              "/v1/namespaces/" + TestUtils.CATALOG_NAME + "." + TestUtils.SCHEMA_NAME + "/tables/" +
+                  TestUtils.TABLE_NAME).aggregate().join();
+      Assert.assertEquals(resp.status().code(), 200);
+      LoadTableResponse loadTableResponse =
+          RESTObjectMapper.mapper().readValue(resp.contentUtf8(), LoadTableResponse.class);
+      Assert.assertEquals(metadataLocation, loadTableResponse.tableMetadata().metadataFileLocation());
     }
   }
 
