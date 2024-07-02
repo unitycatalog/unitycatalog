@@ -1,4 +1,4 @@
-import java.nio.file.{Files, StandardCopyOption}
+import java.nio.file.Files
 import sbt.util
 
 val orgName = "io.unitycatalog"
@@ -37,6 +37,7 @@ lazy val commonSettings = Seq(
 
   // Test configs
   Test / testOptions  := Seq(Tests.Argument(TestFrameworks.JUnit, "-a", "-v", "-q"), Tests.Filter(name => !(name startsWith s"$orgName.server.base"))),
+  Test / logLevel := util.Level.Info,
   Test / publishArtifact := false,
   fork := true,
   outputStrategy := Some(StdoutOutput),
@@ -48,6 +49,16 @@ lazy val commonSettings = Seq(
       classpath = (Runtime / dependencyClasspath).value)
     packageFile
   }
+)
+
+enablePlugins(CoursierPlugin)
+
+useCoursier := true
+
+// Configure resolvers
+resolvers ++= Seq(
+  "Sonatype OSS Releases" at "https://oss.sonatype.org/content/repositories/releases/",
+  "Maven Central" at "https://repo1.maven.org/maven2/"
 )
 
 def javaCheckstyleSettings(configLocation: File) = Seq(
@@ -69,12 +80,13 @@ lazy val client = (project in file("clients/java"))
       "com.fasterxml.jackson.datatype" % "jackson-datatype-jsr310" % jacksonVersion,
       "org.openapitools" % "jackson-databind-nullable" % openApiToolsJacksonBindNullableVersion,
       "com.google.code.findbugs" % "jsr305" % "3.0.2",
-      "jakarta.annotation" % "jakarta.annotation-api" % "1.3.5" % Provided,
+      "jakarta.annotation" % "jakarta.annotation-api" % "3.0.0" % Provided,
 
       // Test dependencies
       "junit" %  "junit" % "4.13.2" % Test,
       "org.junit.jupiter" % "junit-jupiter" % "5.9.2" % Test,
       "net.aichler" % "jupiter-interface" % JupiterKeys.jupiterVersion.value % Test,
+      "org.assertj" % "assertj-core" % "3.25.1" % Test,
     ),
 
     // OpenAPI generation specs
@@ -85,6 +97,7 @@ lazy val client = (project in file("clients/java"))
     openApiModelPackage := s"$orgName.client.model",
     openApiAdditionalProperties := Map(
       "library" -> "native",
+      "useJakartaEe" -> "true",
       "hideGenerationTimestamp" -> "true"),
     openApiGenerateApiTests := SettingDisabled,
     openApiGenerateModelTests := SettingDisabled,
@@ -123,7 +136,7 @@ lazy val server = (project in file("server"))
     javaCheckstyleSettings(file("dev") / "checkstyle-config.xml"),
     libraryDependencies ++= Seq(
       "com.linecorp.armeria" %  "armeria" % "1.28.4",
-      "javax.annotation" %  "javax.annotation-api" % "1.3.2",
+      "jakarta.annotation" % "jakarta.annotation-api" % "3.0.0" % Provided,
       // Jackson dependencies
       "com.fasterxml.jackson.core" % "jackson-annotations" % jacksonVersion,
       "com.fasterxml.jackson.core" % "jackson-core" % jacksonVersion,
@@ -180,25 +193,23 @@ lazy val server = (project in file("server"))
     // OpenAPI generation configs for generating model codes from the spec
     openApiInputSpec := (file(".") / "api" / "all.yaml").toString,
     openApiGeneratorName := "java",
-    openApiOutputDir := serverOpenApiGenerateTempDir.toString,
+    openApiOutputDir := file("server").toString,
     openApiValidateSpec := SettingEnabled,
     openApiGenerateMetadata := SettingDisabled,
     openApiModelPackage := s"$orgName.server.model",
     openApiAdditionalProperties := Map(
       "library" -> "resteasy",  // resteasy generates the most minimal models
+      "useJakartaEe" -> "true",
       "hideGenerationTimestamp" -> "true"),
     openApiGlobalProperties := Map("models" -> ""),
+    openApiGenerateApiTests := SettingDisabled,
+    openApiGenerateModelTests := SettingDisabled,
+    openApiGenerateApiDocumentation := SettingDisabled,
+    openApiGenerateModelDocumentation := SettingDisabled,
 
-    // Define the simple generate command to generate model codes and copy them into the server dir
+    // Define the simple generate command to generate model codes
     generate := {
       val _ = openApiGenerate.value
-      val srcDir = (file(serverOpenApiGenerateTempDir.toString) / "src" / "main" / "java" / "io" / "unitycatalog" / "server" / "model" )
-      val dstDir = file("server").getAbsoluteFile / "src" / "main" / "java" / "io" / "unitycatalog" / "server" /"model"
-      println(s"Copying model files from $srcDir to $dstDir")
-
-      srcDir.listFiles().foreach { srcFile =>
-        Files.copy(srcFile.toPath, (dstDir / srcFile.getName).toPath, StandardCopyOption.REPLACE_EXISTING)
-      }
     }
   )
 
@@ -240,12 +251,6 @@ lazy val cli = (project in file("examples") / "cli")
       "com.github.sbt" % "junit-interface" % "0.13.3" % Test,
     ),
   )
-
-// Extra functionalities
-lazy val serverOpenApiGenerateTempDir = {
-  import java.nio.file.Files
-  Files.createTempDirectory("some-prefix")
-}
 
 def generateClasspathFile(targetDir: File, classpath: Classpath): Unit = {
   // Generate a classpath file with the entire runtime class path.
