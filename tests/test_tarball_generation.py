@@ -33,7 +33,7 @@ server_process = subprocess.Popen([start_server_cmd], stdout=subprocess.PIPE, st
 with open("server_pid.txt", "w") as f:
     f.write(str(server_process.pid))
 print(f"Server started with PID {server_process.pid}")
-time.sleep(10)  # Give the server some time to start
+time.sleep(60)  # Give the server some time to start
 
 # 4. Verify server is running
 try:
@@ -42,8 +42,10 @@ try:
         print("Server is running.")
     else:
         print(f"Server responded with status code: {response.status_code}")
+        sys.exit(1)
 except requests.RequestException as e:
     print(f"Failed to connect to the server: {e}")
+    sys.exit(1)
 
 # 5. Run and verify CLI
 try:
