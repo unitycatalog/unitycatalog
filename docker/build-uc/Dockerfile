@@ -1,52 +1,44 @@
-FROM eclipse-temurin:17-jdk-jammy AS build_uc
+FROM eclipse-temurin:17-jdk-alpine AS build_uc
 
+# Install any required packages
+RUN <<EOF
+    set -ex;
+    apk update;
+    apk upgrade; 
+    apk add bash git;
+EOF
 
-ARG unitycatalog_uid=185
+# Define the shell used within the container
+SHELL ["/bin/bash", "-i", "-c", "-o", "pipefail"] 
+
 ARG unitycatalog_home="/opt/unitycatalog"
-
-RUN set -ex; \
-    apt-get update; \
-    apt-get install -y bash git; \
-    # Remove temporary files to reduce image size
-    rm -rf /var/lib/apt/lists/*
-
-
-# COPY ../../ /opt/unitycatalog
-# COPY build_uc.sh /opt/unitycatalog/build_uc.sh
-
-
-WORKDIR /opt/unitycatalog
-COPY <<"EOF" /opt/unitycatalog/build_uc.sh
-#!/usr/bin/env bash
-set -ex;
-
-REPO_DIR="${unitycatalog_home}/repo"
-REPO_URL="https://github.com/unitycatalog/unitycatalog.git"
+ARG unitycatalog_repo="${unitycatalog_home}/repo"
+ARG unitycatalog_github="https://github.com/unitycatalog/unitycatalog.git"
+# Specify which version to pull ex.: 0.1.0
+ARG unitycatalog_version="main"
+# Specify any custom parameters necessary to generate
+# the Uber-Jar by SBT. 
+# Note: The default allocated heam memory size is too small
+# and will cause the process to fail when attempting to compile
+# and generate the Uber-Jar. Therefore it is important to choose
+# a size large enough for the compiler to run. 
+ARG sbt_args="-J-Xmx5G"
 
 
-[ ! -d $REPO_DIR ] && mkdir -p $REPO_DIR
-
-cd $REPO_DIR
-
-if [ -d ".git" ]; then
-    echo "Repository already cloned. Pulling latest changes..."
-    git pull
-else
-    echo "Cloning repository..."
-    git clone $REPO_URL .
-fi
-
-
-build/sbt -v -d -J-Xmx5G assembly
-
+# Create temporary directories for initialization files
+RUN <<-EOF 
+    set -ex;
+    mkdir -p "${unitycatalog_repo}";
+    cd "${unitycatalog_repo}";
+    git clone ${unitycatalog_github} --branch ${unitycatalog_version} --single-branch .;
 EOF
 
-RUN <<EOF 
-#!/usr/bin/env bash
-set -ex;
-pwd
-chmod +x build_uc.sh
-. build_uc.sh
+WORKDIR "${unitycatalog_repo}"
+
+RUN <<-EOF
+    #!/usr/bin/env bash
+    set -ex;
+    build/sbt ${sbt_args} assembly
 EOF
 
-CMD ["echo", "Hello"]
+ENTRYPOINT ["/usr/bin/env", "bash"]
