@@ -30,6 +30,8 @@ lazy val commonSettings = Seq(
     case x => MergeStrategy.first
   },
 
+  assembly / Test := {},
+
   // Test configs
   Test / testOptions  := Seq(Tests.Argument(TestFrameworks.JUnit, "-a", "-v", "-q"), Tests.Filter(name => !(name startsWith s"$orgName.server.base"))),
   Test / logLevel := util.Level.Info,
