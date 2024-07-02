@@ -1,4 +1,5 @@
 import java.nio.file.Files
+import java.io.File
 import sbt.util
 
 val orgName = "io.unitycatalog"
@@ -83,6 +84,7 @@ lazy val client = (project in file("clients/java"))
       "junit" %  "junit" % "4.13.2" % Test,
       "org.junit.jupiter" % "junit-jupiter" % "5.9.2" % Test,
       "net.aichler" % "jupiter-interface" % JupiterKeys.jupiterVersion.value % Test,
+      "org.assertj" % "assertj-core" % "3.25.1" % Test,
     ),
 
     // OpenAPI generation specs
@@ -247,7 +249,7 @@ def generateClasspathFile(targetDir: File, classpath: Classpath): Unit = {
   // Generate a classpath file with the entire runtime class path.
   // This is used by the launcher scripts for launching CLI directly with JAR instead of SBT.
   val classpathFile = targetDir / "classpath"
-  Files.write(classpathFile.toPath, classpath.files.mkString(":").getBytes)
+  Files.write(classpathFile.toPath, classpath.files.mkString(File.pathSeparator).getBytes)
   println(s"Generated classpath file '$classpathFile'")
 }
 
