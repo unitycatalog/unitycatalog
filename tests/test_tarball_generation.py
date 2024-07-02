@@ -7,6 +7,7 @@ import requests
 import signal
 import tarfile
 import shutil
+import sys
 
 # 1. Extract the tarball
 tarball_path = "target/unitycatalog-0.1.0.tar.gz"
@@ -54,6 +55,7 @@ try:
     print("CLI command executed successfully.")
 except subprocess.CalledProcessError as e:
     print(f"CLI command failed with error: {e}")
+    sys.exit(1)
 
 # 6. Stop server
 try:
