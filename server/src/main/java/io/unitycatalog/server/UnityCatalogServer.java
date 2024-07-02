@@ -9,6 +9,7 @@ import com.linecorp.armeria.server.ServerBuilder;
 import com.linecorp.armeria.server.annotation.JacksonRequestConverterFunction;
 import com.linecorp.armeria.server.annotation.JacksonResponseConverterFunction;
 import com.linecorp.armeria.server.docs.DocService;
+import io.unitycatalog.server.persist.PropertiesUtil;
 import io.unitycatalog.server.service.*;
 import io.unitycatalog.server.utils.RESTObjectMapper;
 import io.unitycatalog.server.utils.VersionUtils;
@@ -22,8 +23,9 @@ public class UnityCatalogServer {
   private static final Logger LOGGER = LoggerFactory.getLogger(UnityCatalogServer.class);
 
   static {
-    System.setProperty("log4j.configurationFile", "etc/conf/server.log4j2.properties");
-    Configurator.initialize(null, "etc/conf/server.log4j2.properties");
+    String logPropertiesPath = PropertiesUtil.getInstance().getLogPropertiesPath("server");
+    System.setProperty("log4j.configurationFile", logPropertiesPath);
+    Configurator.initialize(null, logPropertiesPath);
   }
 
   Server server;

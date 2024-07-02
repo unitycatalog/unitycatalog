@@ -6,7 +6,6 @@ import lombok.Setter;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.io.FileInputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.net.URI;
@@ -28,10 +27,11 @@ public class PropertiesUtil {
 
     // Load properties from a configuration file
     private void loadProperties() {
-        try (InputStream input = Files.newInputStream(Paths.get("etc/conf/server.properties"))) {
+        String serverPropertiesPath = getServerPropertiesPath();
+        try (InputStream input = Files.newInputStream(Paths.get(serverPropertiesPath))) {
             properties.load(input);
-            LOGGER.debug("Properties loaded successfully");
-            int i=0;
+            LOGGER.debug("Properties loaded successfully, properties-path={}", serverPropertiesPath);
+            int i = 0;
             while (true) {
                 String bucketPath = properties.getProperty("s3.bucketPath." + i);
                 String accessKey = properties.getProperty("s3.accessKey." + i);
@@ -45,8 +45,17 @@ public class PropertiesUtil {
                 i++;
             }
         } catch (IOException ex) {
-            LOGGER.error("Exception during loading properties", ex);
+            LOGGER.error("Exception during loading properties, properties-path=" + serverPropertiesPath, ex);
         }
+    }
+
+    private String getServerPropertiesPath() {
+        String serverPropertiesKey = "SERVER_PROPERTIES_FILE";
+        if (System.getProperty(serverPropertiesKey) != null)
+            return System.getProperty(serverPropertiesKey);
+        if (System.getenv().containsKey(serverPropertiesKey))
+            return System.getenv(serverPropertiesKey);
+        return "etc/conf/server.properties";
     }
 
     // Get a property value by key
@@ -67,6 +76,15 @@ public class PropertiesUtil {
     // Get a property value by key with a default value
     public String getProperty(String key, String defaultValue) {
         return properties.getProperty(key, defaultValue);
+    }
+
+    public String getLogPropertiesPath(String instance) {
+        String getServerPropertiesFile = getProperty(instance.toUpperCase() + "_LOG4J_CONFIGURATION_FILE");
+        if (getServerPropertiesFile != null) {
+            return getServerPropertiesFile;
+        } else {
+            return "etc/conf/" + instance + ".log4j2.properties";
+        }
     }
 
     @Getter
