@@ -13,7 +13,7 @@ This project provides a Dockerised environment for running Unity Catalog. It inc
 The `build_docker.sh` script is responsible for building the Docker image for Unity Catalog. Run it from the project directory:
 
 ```bash
-./build_docker.sh
+./bin/build-uc-server-docker
 ```
 
 This will create an image named `unitycatalog`.
@@ -23,14 +23,19 @@ This will create an image named `unitycatalog`.
 The `run_docker.sh` script starts the Unity Catalog container. It also creates a network named `unitycatalog_network` for the container to use. Run it from the project directory:
 
 ```bash
-./run_docker.sh
+./bin.start-uc-server-in-docker
 ```
 
-This will start the container and make it accessible on port `8080` within the `unitycatalog_network`.
+> [!TIP]
+> You can run the docker container with different settings such as using a different network, volume, or ports.
+> The run script is only for demo and happy path.
+
+This will start the container and make it accessible on port `8081` within the `unitycatalog_network` and create a volume named `unitycatalog_volume`.
 
 ### 3. Adding Custom Startup Code
 
-Place any scripts you want to run during Unity Catalog startup in the `initialise.sh` file located in the project directory. These scripts will be executed automatically when the container starts.
+> [!NOTE]
+> This feature has been removed temportarly until we find out the best way to add customisations to the containerisation process.
 
 ### 4. Testing the Catalog
 
@@ -43,6 +48,19 @@ The examples use a variable `unitycatalog_endpoint` to store the catalog's URL. 
 ```bash
 unitycatalog_endpoint="http://unitycatalog:8080/api/2.1/unity-catalog"
 ```
+
+> [!CAUTION]
+> Make sure you run the above command in your bash session before proceeding to the examples.
+> Otherwise your examples will not run correctly.
+
+> [!IMPORTANT]
+> Because the default run script runs the script on a network called `unitycatalog_network`, 
+> if you want to test the catalog you need to make sure you application is running in the same network.
+> For instance, you will not be able to test the API from your machine directly using Postman,
+> wget or cUrl unless you run them with the catalog on the same network, or you change the catalog's
+> network to run on the Host network.
+> This is OS specific, therefore we opted for the most generic option, which is to create 
+> a docker network, but feel free to change those configurations to suit your needs.
 
 #### 4.2. Create a Catalog
 
