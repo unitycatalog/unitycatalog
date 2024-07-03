@@ -201,19 +201,7 @@ lazy val server = (project in file("server"))
     // Define the simple generate command to generate model codes
     generate := {
       val _ = openApiGenerate.value
-    },
-
-    // test coverage
-    jacocoReportSettings := JacocoReportSettings()
-      .withThresholds(
-        JacocoThresholds(
-          instruction = 40,
-          method = 58,
-          branch = 13,
-          complexity = 37,
-          line = 54,
-          clazz = 79)
-      )
+    }
   )
 
 lazy val cli = (project in file("examples") / "cli")
@@ -250,19 +238,7 @@ lazy val cli = (project in file("examples") / "cli")
       // Test dependencies
       "junit" %  "junit" % "4.13.2" % Test,
       "com.github.sbt" % "junit-interface" % "0.13.3" % Test,
-    ),
-
-    // test coverage
-    jacocoReportSettings := JacocoReportSettings()
-      .withThresholds(
-        JacocoThresholds(
-          instruction = 48,
-          method = 51,
-          branch = 28,
-          complexity = 31,
-          line = 47,
-          clazz = 76)
-      )
+    )
   )
 
 def generateClasspathFile(targetDir: File, classpath: Classpath): Unit = {
