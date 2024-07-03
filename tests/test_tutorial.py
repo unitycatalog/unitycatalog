@@ -74,7 +74,7 @@ def start_server():
         print(f">> Waiting for server to accept connections ...")
         i = 0
         success = False
-        while i < 10 and not success:
+        while i < 30 and not success:
             try:
                 subprocess.run("bin/uc catalog list", shell=True, check=True, text=True, capture_output=True)
                 success = True
@@ -83,7 +83,7 @@ def start_server():
                 time.sleep(1)
             i = i + 1
 
-        if i >= 10:
+        if i >= 30:
             print(">> Server too long to get ready, failing tests.")
             exit(1)
     return process
