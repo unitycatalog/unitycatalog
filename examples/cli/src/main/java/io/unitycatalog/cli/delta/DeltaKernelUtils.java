@@ -76,7 +76,8 @@ public class DeltaKernelUtils {
     }
   }
 
-  public static Configuration getHDFSConfiguration(URI tablePathUri, AwsCredentials awsTempCredentials) {
+  public static Configuration getHDFSConfiguration(URI tablePathUri,
+                                                   AwsCredentials awsTempCredentials) {
     Configuration conf = new Configuration();
     if (tablePathUri.getScheme() != null
         && tablePathUri.getScheme().equals("s3")
@@ -104,15 +105,16 @@ public class DeltaKernelUtils {
       Table table = Table.forPath(engine, substituteSchemeForS3(tablePath));
       Snapshot snapshot = table.getLatestSnapshot(engine);
       StructType readSchema = snapshot.getSchema(engine);
-      Object[] schema = readSchema.fields().stream().map(x -> x.getName() + "(" + x.getDataType().toString() + ")").toArray(String[]::new);
+      Object[] schema = readSchema.fields().stream().map(x -> x.getName() +
+          "(" + x.getDataType().toString() + ")").toArray(String[]::new);
       AsciiTable at = new AsciiTable();
       at.addRule();
       at.addRow(schema);
       at.addRule();
       // might need to prune it later
       ScanBuilder scanBuilder = snapshot.getScanBuilder(engine).withReadSchema(engine, readSchema);
-      List<Row> rowData = DeltaKernelReadUtils.
-          readData(engine, readSchema, scanBuilder.build(), maxResults);
+      List<Row> rowData = DeltaKernelReadUtils
+        .readData(engine, readSchema, scanBuilder.build(), maxResults);
       for (Row row : rowData) {
         Object[] rowValues = IntStream.range(0, schema.length)
             .mapToObj(colOrdinal -> DeltaKernelReadUtils.getValue(row, colOrdinal))
