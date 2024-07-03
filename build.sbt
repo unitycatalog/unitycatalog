@@ -3,6 +3,8 @@ import java.io.File
 import Tarball.createTarballSettings
 import sbt.util
 
+import scala.language.implicitConversions
+
 val orgName = "io.unitycatalog"
 val artifactNamePrefix = "unitycatalog"
 
@@ -278,16 +280,34 @@ lazy val skipReleaseSettings = Seq(
   publish / skip := true
 )
 
+// define getMajorMinorPatch function
+/**
+ * @return tuple of (major, minor, patch) versions extracted from a version string.
+ *         e.g. "1.2.3" would return (1, 2, 3)
+ */
+def getMajorMinorPatch(versionStr: String): (Int, Int, Int) = {
+  implicit def extractInt(str: String): Int = {
+    """\d+""".r.findFirstIn(str).map(java.lang.Integer.parseInt).getOrElse {
+      throw new Exception(s"Could not extract version number from $str in $version")
+    }
+  }
+
+  versionStr.split("\\.").toList match {
+    case majorStr :: minorStr :: patchStr :: _ =>
+      (majorStr, minorStr, patchStr)
+    case _ => throw new Exception(s"Could not parse version for $version.")
+  }
+}
+
 
 // Release settings for artifact that contains only Java source code
 lazy val javaOnlyReleaseSettings = releaseSettings ++ Seq(
   // drop off Scala suffix from artifact names
   crossPaths := false,
-
   // we publish jars for each scalaVersion in crossScalaVersions. however, we only need to publish
   // one java jar. thus, only do so when the current scala version == default scala version
   publishArtifact := {
-    val (expMaj, expMin, _) = getMajorMinorPatch(default_scala_version.value)
+    val (expMaj, expMin, _) = getMajorMinorPatch(scalaVersion.value)
     s"$expMaj.$expMin" == scalaBinaryVersion.value
   },
 
