@@ -62,6 +62,8 @@ ARG unitycatalog_user_home
 ARG unitycatalog_user_basedir
 ARG sbt_args
 
+EXPOSE 8081
+
 RUN <<EOF
     set -ex;
     apk update;

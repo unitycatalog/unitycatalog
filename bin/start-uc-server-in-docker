@@ -20,7 +20,7 @@ if [ -z "$container_details" ]; then
     echo "Container $container_name does not exist. Creating it..."
     
     docker run -v unitycatalog_volume:/opt/unitycatalog \
-       --network unitycatalog_network -p 8080:8080 \
+       --network unitycatalog_network -p 8081:8081 \
        -d --name unitycatalog -t unitycatalog:0.1.0
 
     echo "Container $container_name created."
