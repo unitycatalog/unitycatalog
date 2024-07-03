@@ -27,23 +27,17 @@ public class PropertyDAO {
     @Column(name = "id", updatable = false, nullable = false)
     private UUID id;
 
+    @Column(name = "entity_id", nullable = false)
+    private UUID entityId;
+
+    @Column(name = "entity_type", nullable = false)
+    private String entityType;
+
     @Column(name = "property_key", nullable = false)
     private String key;
 
     @Column(name = "property_value", nullable = false)
     private String value;
-
-    @ManyToOne
-    @JoinColumn(name = "catalog_id", referencedColumnName = "id")
-    private CatalogInfoDAO catalog;
-
-    @ManyToOne
-    @JoinColumn(name = "schema_id", referencedColumnName = "id")
-    private SchemaInfoDAO schema;
-
-    @ManyToOne
-    @JoinColumn(name = "table_id", referencedColumnName = "id")
-    private TableInfoDAO table;
 
     public static List<PropertyDAO> from(Map<String, String> properties) {
         if (properties == null) {

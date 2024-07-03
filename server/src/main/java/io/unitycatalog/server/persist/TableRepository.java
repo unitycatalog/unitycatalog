@@ -3,6 +3,7 @@ package io.unitycatalog.server.persist;
 import io.unitycatalog.server.exception.BaseException;
 import io.unitycatalog.server.exception.ErrorCode;
 import io.unitycatalog.server.model.*;
+import io.unitycatalog.server.persist.dao.PropertyDAO;
 import io.unitycatalog.server.persist.dao.SchemaInfoDAO;
 import io.unitycatalog.server.persist.dao.TableInfoDAO;
 import io.unitycatalog.server.utils.ValidationUtils;
@@ -79,6 +80,14 @@ public class TableRepository {
             }
         }
         return tableInfo;
+    }
+
+    private List<PropertyDAO> findProperties(Session session, UUID tableId) {
+        LOGGER.debug("Getting properties for table: " + tableId);
+        String hql = "FROM PropertyDAO p WHERE p.entityId = :tableId and p.entityType = 'table'";
+        Query<PropertyDAO> query = session.createQuery(hql, PropertyDAO.class);
+        query.setParameter("tableId", tableId);
+        return query.list();
     }
 
     public String getTableUniformMetadataLocation(Session session,  String catalogName, String schemaName, String tableName) {
