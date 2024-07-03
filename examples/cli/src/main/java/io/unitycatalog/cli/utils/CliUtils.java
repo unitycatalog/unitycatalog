@@ -19,6 +19,7 @@ import io.unitycatalog.server.utils.JsonUtils;
 import org.apache.commons.cli.CommandLine;
 import org.apache.commons.cli.Option;
 
+import org.fusesource.jansi.AnsiConsole;
 import org.json.JSONObject;
 
 import java.io.IOException;
@@ -26,6 +27,7 @@ import java.io.InputStream;
 import java.util.*;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 
 public class CliUtils {
@@ -51,7 +53,7 @@ public class CliUtils {
     public static final String AUTH_TOKEN = "auth_token";
     public static final String OUTPUT = "output";
 
-    public static final int TABLE_WIDTH = 190;
+    public static final int TABLE_WIDTH = 120;
 
     public static class CliOptions {
         List<CliParams> necessaryParams;
@@ -152,10 +154,10 @@ public class CliUtils {
         return value;
     }
 
-    public static List<String> getColumns(JsonNode element, AsciiTable at) {
+    public static List<String> getFields(JsonNode element) {
         List<String> columns = new ArrayList<>();
         if (element.isObject()) {
-            (element).fieldNames().forEachRemaining(x-> columns.add(x.toUpperCase()));
+            (element).fieldNames().forEachRemaining(columns::add);
         }
         return columns;
     }
@@ -168,6 +170,7 @@ public class CliUtils {
             System.out.println(output);
         else {
             AsciiTable at = new AsciiTable();
+            int outputWidth = Math.max(TABLE_WIDTH, AnsiConsole.getTerminalWidth());
             try {
                 JsonNode node = objectMapper.readTree(output);
                 if (node.isArray()) {
@@ -175,51 +178,64 @@ public class CliUtils {
                         System.out.println(output);
                         return;
                     } else {
-                        List<String> columns = getColumns(node.get(0),at);
-                        int[] columnWidths = new int[columns.size()];
-                        boolean[] fixedWidthColumns = new boolean[columns.size()];
+                        List<String> fields = getFields(node.get(0));
 
-                        node.forEach(element -> {
-                            ObjectNode objectNode = (ObjectNode) element;
-                            Iterator<String> fieldNames = objectNode.fieldNames();
-                            int columnIndex = 0;
-                            while (fieldNames.hasNext()) {
-                                String fieldName = fieldNames.next();
-                                JsonNode value = element.get(fieldName);
+                        int[] columnWidths = new int[fields.size()];
+                        boolean[] fixedWidthColumns = new boolean[fields.size()];
+                        int maxLineWidth = 0;
+
+                        for (int columnIndex = 0; columnIndex < fields.size(); columnIndex++) {
+                            columnWidths[columnIndex] = fields.get(columnIndex).length();
+                        }
+
+                        for (JsonNode jsonNode : node) {
+                            int lineWidth = 1;
+                            for (int columnIndex = 0; columnIndex < fields.size(); columnIndex++) {
+                                String fieldName = fields.get(columnIndex);
+                                JsonNode value = jsonNode.get(fieldName);
                                 String valueString = value.isTextual() ? value.asText() : value.toString();
 
-                                columnWidths[columnIndex] = Math.max(columnWidths[columnIndex], fieldName.length());
                                 columnWidths[columnIndex] = Math.max(columnWidths[columnIndex], valueString.length());
+                                lineWidth += valueString.length() + 1;
 
                                 String fieldNameLowerCase = fieldName.toLowerCase();
                                 if (fieldNameLowerCase.equals("name") || fieldNameLowerCase.endsWith("id")) {
                                     fixedWidthColumns[columnIndex] = true;
                                 }
 
-                                columnIndex++;
                             }
-                        });
+                            maxLineWidth = Math.max(maxLineWidth, lineWidth);
+                        }
 
-                        int widthRemaining = TABLE_WIDTH;
-                        int fixedWidthColumnCount = 0;
-                        for (int i = 0; i < columns.size(); i++) {
-                            widthRemaining -= fixedWidthColumns[i] ? columnWidths[i]:0;
-                            if (fixedWidthColumns[i]) {
-                                fixedWidthColumnCount++;
+                        if (maxLineWidth >= outputWidth) {
+                            int widthRemaining = outputWidth - fields.size();
+
+                            int fixedWidthColumnCount = 0;
+                            for (int i = 0; i < fields.size(); i++) {
+                                widthRemaining -= fixedWidthColumns[i] ? columnWidths[i] : 0;
+                                if (fixedWidthColumns[i]) {
+                                    fixedWidthColumnCount++;
+                                }
+                            }
+                            int columnWidth = (widthRemaining) / (fields.size() - fixedWidthColumnCount);
+
+                            for (int i = 0; i < fields.size(); i++) {
+                                if (!fixedWidthColumns[i]) {
+                                    columnWidths[i] = columnWidth;
+                                }
                             }
                         }
-                        int columnWidth = (widthRemaining) / (columns.size() - fixedWidthColumnCount);
+
+                        List<String> headers = fields.stream().map(String::toUpperCase).collect(Collectors.toList());
 
                         CWC_FixedWidth cwc = new CWC_FixedWidth();
-                        for (int i = 0; i < columns.size(); i++) {
-                            if (!fixedWidthColumns[i]) {
-                                columnWidths[i] = columnWidth;
-                            }
+                        for (int i = 0; i < fields.size(); i++) {
                             cwc.add(columnWidths[i]);
                         }
+
                         at.getRenderer().setCWC(cwc);
                         at.addRule();
-                        at.addRow(columns.toArray()).setTextAlignment(TextAlignment.CENTER);
+                        at.addRow(headers.toArray()).setTextAlignment(TextAlignment.CENTER);
                         at.addRule();
                         node.forEach(element -> {
                             List<String> row = new ArrayList<>();

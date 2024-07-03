@@ -260,6 +260,7 @@ lazy val cli = (project in file("examples") / "cli")
       "org.apache.hadoop" % "hadoop-client-runtime" % "3.4.0",
       "de.vandermeer" % "asciitable" % "0.3.2",
       // for s3 access
+      "org.fusesource.jansi" % "jansi" % "2.4.1",
       "com.amazonaws" % "aws-java-sdk-core" % "1.12.728",
       "org.apache.hadoop" % "hadoop-aws" % "3.4.0",
       "com.google.guava" % "guava" % "31.0.1-jre",
