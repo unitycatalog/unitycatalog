@@ -1,4 +1,4 @@
-name: Check Docs
+name: Docs Generation Tests
 
 on:
     pull_request:
@@ -7,7 +7,7 @@ on:
       branches: [main]
 
 jobs:
-  check-docs:
+  docs-generate:
     runs-on: ubuntu-22.04
     steps:
       - name: Check out
@@ -18,6 +18,7 @@ jobs:
           python -m venv venv
           . ./venv/bin/activate
           pip install -r requirements-docs.txt
+
       - name: Check documentation
         run: |
           . ./venv/bin/activate
