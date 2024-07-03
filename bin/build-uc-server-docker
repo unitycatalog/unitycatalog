@@ -9,7 +9,7 @@ echo "Changing directory to $docker_dir"
 cd $docker_dir
 
 if [[ -r Dockerfile ]]; then
-    docker buildx build --progress=plain -t unitycatalog:0.1.0 .
+    docker buildx build --progress=plain --no-cache -t unitycatalog:0.1.0 .
 else
     echo "Dockerfile not found."
     exit
