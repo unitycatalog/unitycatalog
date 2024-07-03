@@ -1,4 +1,4 @@
-# CLI Tool for Catalog Management
+# Unity Catalog CLI
 
 ## Introduction
 
