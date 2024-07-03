@@ -49,7 +49,7 @@ RUN build/sbt ${sbt_args} assembly
 # Running the UC server #
 #########################
 
-FROM eclipse-temurin:22-jre-alpine AS run_uc
+FROM eclipse-temurin:22-jre-jammy AS run_uc
 
 ARG unitycatalog_uid
 ARG unitycatalog_home
@@ -64,10 +64,10 @@ ARG sbt_args
 
 RUN <<EOF
     set -ex;
-    apk update;
-    apk upgrade; 
-    apk add bash;
-    rm -R /var/cache/apk/*;
+    apt-get update; \
+    apt-get install -y bash net-tools; \
+    # Remove temporary files to reduce image size
+    rm -rf /var/lib/apt/lists/*
 EOF
 
 # Define the shell used within the container
@@ -97,11 +97,11 @@ EOF
 RUN <<-EOF
     #!/usr/bin/env bash
     set -ex;
-    addgroup --system --gid "${unitycatalog_uid}" "${unitycatalog_user_name}";
-    adduser --system --uid "${unitycatalog_uid}" \
-            --ingroup "${unitycatalog_user_name}" \
-            --home "${unitycatalog_user_basedir}" \
-            --shell "$(/usr/bin/env bash)" \
+    groupadd --system --gid=${unitycatalog_uid} "${unitycatalog_user_name}";
+    useradd --system --uid=${unitycatalog_uid} \
+            --gid="${unitycatalog_user_name}"  \
+            --create-home -b "${unitycatalog_home}/${unitycatalog_user_home}" -d "${unitycatalog_user_basedir}" \
+            --shell "$(which bash)" \
             "${unitycatalog_user_name}";
 EOF
 
