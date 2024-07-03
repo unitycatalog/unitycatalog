@@ -44,7 +44,7 @@ public class CatalogRepository {
                 }
                 session.persist(catalogInfo);
                 tx.commit();
-                System.out.println("Added catalog: " + catalogInfo.getName());
+                LOGGER.info("Added catalog: {}",catalogInfo.getName());
                 return CatalogInfoDAO.toCatalogInfo(catalogInfo);
             } catch (Exception e) {
                 tx.rollback();
