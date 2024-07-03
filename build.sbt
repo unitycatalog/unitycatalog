@@ -1,4 +1,6 @@
 import java.nio.file.Files
+import java.io.File
+import Tarball.createTarballSettings
 import sbt.util
 
 val orgName = "io.unitycatalog"
@@ -81,6 +83,7 @@ lazy val client = (project in file("clients/java"))
       "junit" %  "junit" % "4.13.2" % Test,
       "org.junit.jupiter" % "junit-jupiter" % "5.9.2" % Test,
       "net.aichler" % "jupiter-interface" % JupiterKeys.jupiterVersion.value % Test,
+      "org.assertj" % "assertj-core" % "3.25.1" % Test,
     ),
 
     // OpenAPI generation specs
@@ -140,9 +143,9 @@ lazy val server = (project in file("server"))
       "org.hibernate.orm" % "hibernate-core" % "6.5.0.Final",
       "org.openapitools" % "jackson-databind-nullable" % openApiToolsJacksonBindNullableVersion,
       // logging
-      "org.apache.logging.log4j" % "log4j-api" % "2.23.1",
-      "org.apache.logging.log4j" % "log4j-core" % "2.23.1",
-      "org.apache.logging.log4j" % "log4j-slf4j-impl" % "2.23.1",
+      "org.apache.logging.log4j" % "log4j-api" % log4jVersion,
+      "org.apache.logging.log4j" % "log4j-core" % log4jVersion,
+      "org.apache.logging.log4j" % "log4j-slf4j-impl" % log4jVersion,
 
       "jakarta.activation" % "jakarta.activation-api" % "2.1.3",
       "net.bytebuddy" % "byte-buddy" % "1.14.15",
@@ -221,9 +224,9 @@ lazy val cli = (project in file("examples") / "cli")
       "org.openapitools" % "jackson-databind-nullable" % openApiToolsJacksonBindNullableVersion,
       "org.yaml" % "snakeyaml" % "2.2",
       // logging
-      "org.apache.logging.log4j" % "log4j-api" % "2.23.1",
-      "org.apache.logging.log4j" % "log4j-core" % "2.23.1",
-      "org.apache.logging.log4j" % "log4j-slf4j-impl" % "2.23.1",
+      "org.apache.logging.log4j" % "log4j-api" % log4jVersion,
+      "org.apache.logging.log4j" % "log4j-core" % log4jVersion,
+      "org.apache.logging.log4j" % "log4j-slf4j-impl" % log4jVersion,
 
       "io.delta" % "delta-kernel-api" % "3.2.0",
       "io.delta" % "delta-kernel-defaults" % "3.2.0",
@@ -241,11 +244,18 @@ lazy val cli = (project in file("examples") / "cli")
     )
   )
 
+lazy val root = (project in file("."))
+  .aggregate(client, server, cli)
+  .settings(
+    name := s"$artifactNamePrefix",
+    createTarballSettings()
+  )
+
 def generateClasspathFile(targetDir: File, classpath: Classpath): Unit = {
   // Generate a classpath file with the entire runtime class path.
   // This is used by the launcher scripts for launching CLI directly with JAR instead of SBT.
   val classpathFile = targetDir / "classpath"
-  Files.write(classpathFile.toPath, classpath.files.mkString(":").getBytes)
+  Files.write(classpathFile.toPath, classpath.files.mkString(File.pathSeparator).getBytes)
   println(s"Generated classpath file '$classpathFile'")
 }
 
@@ -254,3 +264,4 @@ val generate = taskKey[Unit]("generate code from APIs")
 // Library versions
 val jacksonVersion = "2.17.0"
 val openApiToolsJacksonBindNullableVersion = "0.2.6"
+val log4jVersion = "2.23.1"
