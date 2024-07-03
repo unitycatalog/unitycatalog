@@ -42,7 +42,7 @@ WORKDIR "${unitycatalog_repo}"
 
 COPY . .
 
-RUN build/sbt ${sbt_args} assembly
+RUN build/sbt ${sbt_args} server/assembly
 
 
 # ###### STAGE 2 ###### #
