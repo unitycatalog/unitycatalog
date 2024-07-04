@@ -22,9 +22,6 @@ jobs:
         distribution: 'temurin'
         cache: 'sbt'
 
-#    - name: Build project
-#      run: sbt clean package
-
     - name: Set up Python
       uses: actions/setup-python@v4
       with:

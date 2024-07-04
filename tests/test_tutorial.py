@@ -83,11 +83,11 @@ def start_server():
                     print("Server is running.")
                     success = True
                 else:
-                    print(f"Server responded with status code: {response.status_code}")
+                    print(f"Waiting... Server responded with status code: {response.status_code}")
                     time.sleep(1)
                     i += 1
             except requests.RequestException as e:
-                print(f"Failed to connect to the server: {e}")
+                print(f"Waiting... Failed to connect to the server: {e}")
                 time.sleep(1)
                 i += 1
 
@@ -95,7 +95,6 @@ def start_server():
             with open(log_file, 'r') as lf:
                 print(f">> Server too long to get ready, failing tests. Log:\n{lf.read()}")
             exit(1)
-    exit(1)
     return process
 
 
