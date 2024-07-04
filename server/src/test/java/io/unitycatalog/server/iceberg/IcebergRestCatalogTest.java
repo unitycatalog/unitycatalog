@@ -203,7 +203,7 @@ public class IcebergRestCatalogTest extends BaseServerTest {
     try (Session session = HibernateUtil.getSessionFactory().openSession()) {
       Transaction tx = session.beginTransaction();
       TableInfoDAO tableInfoDAO = TableInfoDAO.builder().build();
-      assert tableInfo.getTableId() != null;
+      assertThat(tableInfo.getTableId()).isNotNull();
       session.load(tableInfoDAO, UUID.fromString(tableInfo.getTableId()));
       String metadataLocation = Objects.requireNonNull(
         this.getClass().getResource("/metadata.json")).toURI().toString();
