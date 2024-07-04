@@ -402,8 +402,6 @@ public class CliUtils {
         String[] inputParams = json.getString(CliParams.INPUT_PARAMS.getServerParam()).split(",");
         List<FunctionParameterInfo> parameterInfos = new ArrayList<>();
         for (int i = 0; i < inputParams.length; i++) {
-            System.out.println(Arrays.toString(inputParams));
-            System.out.println(Arrays.toString(inputParams[i].trim().split(" ")));
             String name = inputParams[i].trim().split(" ")[0];
             String typeName = (inputParams[i].trim().split(" ")[1]).toUpperCase();
             FunctionParameterInfo param = new FunctionParameterInfo()

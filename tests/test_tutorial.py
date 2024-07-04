@@ -98,11 +98,11 @@ def kill_process(process):
         pass
 
 if __name__ == "__main__":
-#     stdout, search_results = run_command_and_check_output("git status", ["h2db"])
-#     if True in [f for s, f in search_results.items()]:
-#         print()
-#         print(">> Cannot run this with uncommitted modifications in h2db")
-#         exit(1)
+    stdout, search_results = run_command_and_check_output("git status", ["h2db"])
+    if True in [f for s, f in search_results.items()]:
+        print()
+        print(">> Cannot run this with uncommitted modifications in h2db")
+        exit(1)
     server_process = start_server()
     for command, expected_strings in commands_and_expected_output_strings:
         print(f">> Running client command: {command}")
