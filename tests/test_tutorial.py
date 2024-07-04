@@ -79,6 +79,7 @@ def start_server():
                 subprocess.run("bin/uc catalog list", shell=True, check=True, text=True, capture_output=True)
                 success = True
             except subprocess.CalledProcessError:
+                print(f"Error: {e.stderr.strip()}")
                 print(".")
                 time.sleep(1)
             i = i + 1
