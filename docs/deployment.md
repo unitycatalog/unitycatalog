@@ -30,7 +30,7 @@ This guide outlines how to deploy the Unity Catalog server.
   │   └── logs
   └── jars
   ```
-  - The `bin` directory contains the scripts that you can use to start the UC server and run the CLI as explained in the [quickstart section](../README.md).
+  - The `bin` directory contains the scripts that you can use to start the UC server and run the CLI as explained in the [quickstart section](tutorial.md).
   - The `etc` directory contains the configuration, data, database, and logs directories.
   - The `jars` directory contains the jar files required to run the UC server.
 
