@@ -23,7 +23,6 @@ lazy val commonSettings = Seq(
     "-target", "1.8",
     "-g:source,lines,vars"
   ),
-  Compile / logLevel := util.Level.Warn,
   resolvers += Resolver.mavenLocal,
   autoScalaLibrary := false,
   crossPaths := false,  // No scala cross building
@@ -215,7 +214,6 @@ lazy val cli = (project in file("examples") / "cli")
     mainClass := Some(orgName + ".cli.UnityCatalogCli"),
     commonSettings,
     javaCheckstyleSettings(file("dev") / "checkstyle-config.xml"),
-    Compile / logLevel := util.Level.Info,
     libraryDependencies ++= Seq(
       "commons-cli" % "commons-cli" % "1.7.0",
       "org.json" % "json" % "20240303",
