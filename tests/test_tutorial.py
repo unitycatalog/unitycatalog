@@ -84,9 +84,11 @@ def start_server():
                 else:
                     print(f"Server responded with status code: {response.status_code}")
                     time.sleep(1)
+                    i += 1
             except requests.RequestException as e:
                 print(f"Failed to connect to the server: {e}")
                 time.sleep(1)
+                i += 1
 
         if i >= 30:
             with open(log_file, 'r') as lf:
