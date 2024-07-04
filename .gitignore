@@ -10,4 +10,5 @@ etc/logs/
 api/.openapi-generator
 build/sbt-launch-*
 venv
+server_pid.txt
 site

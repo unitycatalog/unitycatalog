@@ -16,6 +16,7 @@ import io.unitycatalog.server.base.schema.SchemaOperations;
 import java.util.Date;
 import java.util.UUID;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.junit.Assert.*;
 import static io.unitycatalog.server.utils.TestUtils.*;
 
@@ -108,7 +109,7 @@ public abstract class BaseVolumeCRUDTest extends BaseCRUDTest {
         System.out.println("Testing list volumes..");
         Iterable<VolumeInfo> volumeInfos = volumeOperations.listVolumes(CATALOG_NAME, SCHEMA_NAME);
         assertTrue(contains(volumeInfos, volumeInfo, (volume) -> {
-            assert volume.getName() != null;
+            assertThat(volume.getName()).isNotNull();
             return volume.getName().equals(VOLUME_NAME);
         }));
 
@@ -170,7 +171,7 @@ public abstract class BaseVolumeCRUDTest extends BaseCRUDTest {
         Iterable<VolumeInfo> volumeInfosManaged = volumeOperations.listVolumes(CATALOG_NAME, SCHEMA_NAME);
         assertEquals(1, getSize(volumeInfosManaged));
         assertTrue(contains(volumeInfosManaged, managedVolumeInfo, (volume) -> {
-            assert volume.getName() != null;
+            assertThat(volume.getName()).isNotNull();
             return volume.getName().equals(VOLUME_NAME);
         }));
 
