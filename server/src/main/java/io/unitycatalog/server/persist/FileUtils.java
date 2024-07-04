@@ -4,6 +4,8 @@ import com.amazonaws.auth.AWSStaticCredentialsProvider;
 import com.amazonaws.auth.BasicSessionCredentials;
 import com.amazonaws.services.s3.AmazonS3;
 import com.amazonaws.services.s3.AmazonS3ClientBuilder;
+import com.amazonaws.services.s3.model.ListObjectsRequest;
+import com.amazonaws.services.s3.model.ObjectListing;
 import com.amazonaws.services.s3.model.ObjectMetadata;
 import com.amazonaws.services.s3.model.PutObjectRequest;
 import io.unitycatalog.server.exception.BaseException;
@@ -148,9 +150,15 @@ public class FileUtils {
                 throw new BaseException(ErrorCode.INTERNAL, "Failed to create directory: " + path, e);
             }
         } else {
-            s3Client.listObjects(bucketName, path).getObjectSummaries().forEach(object -> {
-                s3Client.deleteObject(bucketName, object.getKey());
-            });
+            ObjectListing listing;
+            ListObjectsRequest req = new ListObjectsRequest().withBucketName(bucketName).withPrefix(path);
+            do {
+                listing = s3Client.listObjects(req);
+                listing.getObjectSummaries().forEach(object -> {
+                    s3Client.deleteObject(bucketName, object.getKey());
+                });
+                req.setMarker(listing.getNextMarker());
+            } while (listing.isTruncated());
             return URI.create(String.format("s3://%s/%s", bucketName, path));
         }
     }

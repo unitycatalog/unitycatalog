@@ -46,6 +46,7 @@ public class CatalogRepository {
                 catalogInfoDAO.getProperties().forEach(p -> p.setCatalog(catalogInfoDAO));
                 session.persist(catalogInfoDAO);
                 tx.commit();
+                LOGGER.info("Added catalog: {}",catalogInfo.getName());
                 return catalogInfo;
             } catch (Exception e) {
                 tx.rollback();

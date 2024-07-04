@@ -3,25 +3,15 @@
 SCRIPT_DIR="$(dirname "$(readlink -f "$0")")"
 ROOT_DIR="$(dirname "$SCRIPT_DIR")"
 
-run_sbt() {
-  SBT_COMMAND="$ROOT_DIR/build/sbt -info clean package"
-  echo "Running SBT to generate CLI JAR: $SBT_COMMAND"
-  $SBT_COMMAND || exit
+TARBALL_JAR_DIR="$ROOT_DIR/jars"
+CLI_CLASS_FILE="$ROOT_DIR/examples/cli/src/main/java/io/unitycatalog/cli/UnityCatalogCli.java"
+
+# This function generates the unity catalog jars using sbt
+generate_jar() {
+  GENERATE_JAR_COMMAND="$ROOT_DIR/build/sbt -info clean package"
+  echo "Running SBT to generate CLI JAR: $GENERATE_JAR_COMMAND"
+  $GENERATE_JAR_COMMAND || exit
 }
-
-CLI_TARGET_DIR="$ROOT_DIR/examples/cli/target"
-CLI_JAR=$(find "$CLI_TARGET_DIR" -name "unitycatalog-cli-*.jar" | head -n 1)
-if [ -z "$CLI_JAR" ]; then
-    echo "CLI JAR not found starting with 'unitycatalog-cli-*' in the target directory '$CLI_TARGET_DIR'."
-    run_sbt
-fi
-
-CLI_CLASSPATH_FILE=$(find "$CLI_TARGET_DIR" -name "classpath" | head -n 1)
-if [ -z "$CLI_CLASSPATH_FILE" ]; then
-    echo "No classpath file found in the target directory '$CLI_TARGET_DIR'."
-    run_sbt
-fi
-
 
 # Function to properly quote arguments
 quote_arg() {
@@ -31,18 +21,59 @@ quote_arg() {
     echo "$arg"
 }
 
+# This function runs the java command to run the CLI
+run_cli_java_command() {
+  CLI_JAVA_COMMAND="java -cp $(cat "$1") io.unitycatalog.cli.UnityCatalogCli"
+  shift
+
+  # Print the quoted arguments for debugging
+  # echo "Quoted arguments: $quoted_args_str"
+  # echo "Running command: $CLI_JAVA_COMMAND"
+  eval $CLI_JAVA_COMMAND $@  || exit
+}
+
+# This function runs the CLI using the source code
+run_in_source_code() {
+  CLI_TARGET_DIR="$ROOT_DIR/examples/cli/target"
+  CLI_JAR=$(find "$CLI_TARGET_DIR" -name "unitycatalog-cli-*.jar" | head -n 1)
+  if [ -z "$CLI_JAR" ]; then
+      echo "CLI JAR not found starting with 'unitycatalog-cli-*' in the target directory '$CLI_TARGET_DIR'."
+      generate_jar
+  fi
+
+  CLI_CLASSPATH_FILE=$(find "$CLI_TARGET_DIR" -name "classpath" | head -n 1)
+  if [ -z "$CLI_CLASSPATH_FILE" ]; then
+      echo "No classpath file found in the target directory '$CLI_TARGET_DIR'."
+      generate_jar
+  fi
+
+  run_cli_java_command $CLI_CLASSPATH_FILE $@
+}
+
+# This function runs the CLI using the tarball
+run_in_tarball() {
+  CLI_CLASSPATH_FILE=$(find "$TARBALL_JAR_DIR" -name "classpath" | head -n 1)
+
+  run_cli_java_command $CLI_CLASSPATH_FILE $@
+}
+
 # Iterate over all arguments and quote them properly
 quoted_args=()
 for arg in "$@"; do
-    quoted_args+=("$(quote_arg "$arg")")
-done
+  quoted_args+=("$(quote_arg "$arg")")
 
+done
+IFS=' '
 # Join quoted arguments into a single string
 quoted_args_str="${quoted_args[*]}"
 
-# Print the quoted arguments for debugging
-# echo "Quoted arguments: $quoted_args_str"
-
-CLI_JAVA_COMMAND="java -cp $(cat "$CLI_CLASSPATH_FILE") io.unitycatalog.cli.UnityCatalogCli"
-# echo "Running command: $CLI_JAVA_COMMAND"
-eval $CLI_JAVA_COMMAND $quoted_args_str  || exit
+# Check if TARBALL_JAR_DIR exists, then we are running in the tarball
+if [ -d "$TARBALL_JAR_DIR" ]; then
+  run_in_tarball $quoted_args_str
+# Check if CLI_TARGET_DIR exists, then we are running in the source code
+else if [ -f "$CLI_CLASS_FILE" ]; then
+  run_in_source_code $quoted_args_str
+else
+  echo "Script running neither in source code nor in tarball"
+fi
+fi
