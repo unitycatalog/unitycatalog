@@ -80,7 +80,7 @@ Simply read your table using the Daft `read_delta_lake` method:
 
 ```python
 > df = daft.read_delta_lake(unity_table)
-> df.show(5)
+> df.show()
 
 as_int  as_double
 564     188.755356
