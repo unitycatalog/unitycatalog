@@ -67,10 +67,6 @@ lazy val commonSettings = Seq(
   },
 )
 
-enablePlugins(CoursierPlugin)
-
-useCoursier := true
-
 // Configure resolvers
 resolvers ++= Seq(
   "Sonatype OSS Releases" at "https://oss.sonatype.org/content/repositories/releases/",
