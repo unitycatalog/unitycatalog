@@ -1,37 +1,50 @@
 # Unity Catalog Functions
 
-Let's list the functions.
+This page shows you how to use Unity Catalog to store, access and govern Functions.
+
+Using Unity Catalog to store your Functions is great because it gives you:
+
+1. Efficiency: you only need to write a complex function once and then it can be accessed centrally from many different processes by many different users and teams.
+2. Governance: you can control who has access to which functions.
+
+Let's look at how this works.
+
+## Set Up
+
+We'll use a local Unity Catalog server to get started. This comes with some sample data by default.
+
+Spin up a local UC server by running the following code in a terminal from the root directory of your local `unitycatalog` repository:
+
+```sh
+bin/start-uc-server
+```
+
+Now open a second terminal window to start working with your Unity Catalog instance.
+
+## Inspecting Functions
+
+You can list the functions in your UC namespace using:
 
 ```sh
 bin/uc function list --catalog unity --schema default
 ```
 
-You should see a few functions. Let's get the metadata of one of these functions.
+You should see the following output:
+
+```
+┌────────────┬────────┬────────┬────────┬────────┬────────┬────────┬────────┬────────┬────────┬────────┬────────┬────────┬────────┬────────┬────────┬────────┬────────┬────────┬────────┬────────┬────────┬────────┐
+│    NAME    │CATALOG_│SCHEMA_N│INPUT_PA│DATA_TYP│FULL_DAT│RETURN_P│ROUTINE_│ROUTINE_│ROUTINE_│PARAMETE│IS_DETER│SQL_DATA│IS_NULL_│SECURITY│SPECIFIC│COMMENT │PROPERTI│FULL_NAM│CREATED_│UPDATED_│FUNCTION│EXTERNAL│
+│            │  NAME  │  AME   │  RAMS  │   E    │ A_TYPE │ ARAMS  │  BODY  │DEFINITI│DEPENDEN│R_STYLE │MINISTIC│_ACCESS │  CALL  │ _TYPE  │ _NAME  │        │   ES   │   E    │   AT   │   AT   │  _ID   │_LANGUAG│
+│            │        │        │        │        │        │        │        │   ON   │  CIES  │        │        │        │        │        │        │        │        │        │        │        │        │   E    │
+├────────────┼────────┼────────┼────────┼────────┼────────┼────────┼────────┼────────┼────────┼────────┼────────┼────────┼────────┼────────┼────────┼────────┼────────┼────────┼────────┼────────┼────────┼────────┤
+│sum         │unity   │default │{"par...│INT     │INT     │null    │EXTERNAL│t = x...│null    │S       │true    │NO_SQL  │false   │DEFINER │sum     │Adds ...│null    │unity...│17183...│null    │8e83e...│python  │
+├────────────┼────────┼────────┼────────┼────────┼────────┼────────┼────────┼────────┼────────┼────────┼────────┼────────┼────────┼────────┼────────┼────────┼────────┼────────┼────────┼────────┼────────┼────────┤
+│lowercase   │unity   │default │{"par...│STRING  │STRING  │null    │EXTERNAL│g = s...│null    │S       │true    │NO_SQL  │false   │DEFINER │lower...│Conve...│null    │unity...│17183...│null    │33d81...│python  │
+└────────────┴────────┴────────┴────────┴────────┴────────┴────────┴────────┴────────┴────────┴────────┴────────┴────────┴────────┴────────┴────────┴────────┴────────┴────────┴────────┴────────┴────────┴────────┘
+```
+
+You can get the metadata of one of these functions using:
 
 ```sh
 bin/uc function get --full_name unity.default.sum
 ```
-
-In the printed metadata, pay attention to the columns `input_parameters`, `external_language`, and `routine_definition`.
-
-This seems like a simple python function that takes 3 arguments and returns the sum of them. Let's try calling this function.
-
-Behind the scenes, the invocation of the function is achieved by calling the python script at `etc/data/function/python_engine.py` with the function name and arguments.
-
-```sh
-bin/uc function call --full_name unity.default.sum --input_params "1,2,3"
-```
-
-Voila! You have called a function stored in UC. Let's try and create a new function.
-
-```sh
-bin/uc function create --full_name unity.default.myFunction --data_type INT --input_params "a int, b int" --def "c=a*b\nreturn c"
-```
-
-You can test out the newly created function by invoking it.
-
-```sh
-bin/uc function call --full_name unity.default.myFunction --input_params "2,3"
-```
-
-You should see the result is 6.
