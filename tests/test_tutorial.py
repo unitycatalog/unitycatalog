@@ -6,6 +6,7 @@ import os
 import signal
 import sys
 import time
+import requests
 
 commands_and_expected_output_strings = [
     # catalogs
@@ -76,18 +77,22 @@ def start_server():
         success = False
         while i < 30 and not success:
             try:
-                subprocess.run("bin/uc catalog list", shell=True, check=True, text=True, capture_output=True)
-                success = True
-            except subprocess.CalledProcessError as e:
-                print(f"Error: {e.stderr.strip()}")
-                print(".")
+                response = requests.head("http://localhost:8081", timeout=60)
+                if response.status_code == 200:
+                    print("Server is running.")
+                    success = True
+                else:
+                    print(f"Server responded with status code: {response.status_code}")
+                    time.sleep(1)
+            except requests.RequestException as e:
+                print(f"Failed to connect to the server: {e}")
                 time.sleep(1)
-            i = i + 1
 
         if i >= 30:
             with open(log_file, 'r') as lf:
                 print(f">> Server too long to get ready, failing tests. Log:\n{lf.read()}")
             exit(1)
+    exit(1)
     return process
 
 
