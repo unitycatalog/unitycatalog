@@ -154,6 +154,10 @@ See the full [tutorial](docs/tutorial.md) for more details.
   ```sh
   build/sbt clean test
   ```
+- To execute tests with coverage, run the following:
+  ```sh
+  build/sbt jacoco 
+  ```
 - To update the API specification, just update the `api/all.yaml` and then run the following:
   ```sh
   build/sbt generate
