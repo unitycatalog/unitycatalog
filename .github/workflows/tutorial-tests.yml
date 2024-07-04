@@ -35,6 +35,6 @@ jobs:
 
     - name: Test Tutorial
       run: |
+        chmod -R 755 *
         source venv/bin/activate
-        chmod +x tests/test_tutorial.py
         python tests/test_tutorial.py
