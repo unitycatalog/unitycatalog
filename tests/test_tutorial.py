@@ -61,15 +61,15 @@ def run_command_and_check_output(command, search_strings):
 
 def start_server():
     print(f">> Starting server ...")
-    with open(os.devnull, 'w') as fp:
+    log_file = "/tmp/server_log.txt"
+    with open(log_file, 'w') as fp:
         process = subprocess.Popen("bin/start-uc-server", shell=True, stdout=fp, stderr=fp, preexec_fn=os.setsid)
         print(f">> Started server with PID {os.getpgid(process.pid)}")
         atexit.register(kill_process, process)
-        # Give the process a moment to start and check if it has terminated immediately
         return_code = process.poll()
         if return_code is not None:
-            stdout, stderr = process.communicate()
-            print(f"Error starting process: {stderr.decode().strip()}")
+            with open(log_file, 'r') as lf:
+                print(f"Error starting process:\n{lf.read()}")
             sys.exit(1)
         print(f">> Waiting for server to accept connections ...")
         i = 0
@@ -78,14 +78,15 @@ def start_server():
             try:
                 subprocess.run("bin/uc catalog list", shell=True, check=True, text=True, capture_output=True)
                 success = True
-            except subprocess.CalledProcessError:
+            except subprocess.CalledProcessError as e:
                 print(f"Error: {e.stderr.strip()}")
                 print(".")
                 time.sleep(1)
             i = i + 1
 
         if i >= 30:
-            print(">> Server too long to get ready, failing tests.")
+            with open(log_file, 'r') as lf:
+                print(f">> Server too long to get ready, failing tests. Log:\n{lf.read()}")
             exit(1)
     return process
 
