@@ -45,7 +45,9 @@ public class TableRepository {
                 tx.commit();
                 return tableInfo;
             } catch (Exception e) {
-                tx.rollback();
+               if (tx != null && tx.getStatus().canRollback()) {
+                    tx.rollback();
+                }
                 throw e;
             }
         }
@@ -201,7 +203,7 @@ public class TableRepository {
 
     public static String getNextPageToken(List<TableInfoDAO> tables) {
         if (tables == null || tables.isEmpty()) {
-            return "";
+            return null;
         }
         // Assuming the last item in the list is the least recent based on the query
         return String.valueOf(tables.get(tables.size() - 1).getUpdatedAt().getTime());

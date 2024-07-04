@@ -15,8 +15,7 @@ permissions:
   contents: read
 
 jobs:
-  build:
-
+  test:
     runs-on: ubuntu-latest
 
     steps:
@@ -29,3 +28,5 @@ jobs:
         cache: 'sbt'
     - name: Run tests
       run: sbt test
+    - name: Run license check
+      run: sbt licenseCheck

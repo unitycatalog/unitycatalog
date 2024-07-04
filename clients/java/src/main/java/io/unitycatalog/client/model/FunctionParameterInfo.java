@@ -48,7 +48,7 @@ import com.fasterxml.jackson.annotation.JsonPropertyOrder;
   FunctionParameterInfo.JSON_PROPERTY_PARAMETER_DEFAULT,
   FunctionParameterInfo.JSON_PROPERTY_COMMENT
 })
-@javax.annotation.Generated(value = "org.openapitools.codegen.languages.JavaClientCodegen", comments = "Generator version: 7.5.0")
+@jakarta.annotation.Generated(value = "org.openapitools.codegen.languages.JavaClientCodegen", comments = "Generator version: 7.5.0")
 public class FunctionParameterInfo {
   public static final String JSON_PROPERTY_NAME = "name";
   private String name;
@@ -98,7 +98,7 @@ public class FunctionParameterInfo {
    * Name of parameter.
    * @return name
   **/
-  @javax.annotation.Nonnull
+  @jakarta.annotation.Nonnull
   @JsonProperty(JSON_PROPERTY_NAME)
   @JsonInclude(value = JsonInclude.Include.ALWAYS)
 
@@ -123,7 +123,7 @@ public class FunctionParameterInfo {
    * Full data type spec, SQL/catalogString text.
    * @return typeText
   **/
-  @javax.annotation.Nonnull
+  @jakarta.annotation.Nonnull
   @JsonProperty(JSON_PROPERTY_TYPE_TEXT)
   @JsonInclude(value = JsonInclude.Include.ALWAYS)
 
@@ -148,7 +148,7 @@ public class FunctionParameterInfo {
    * Full data type spec, JSON-serialized.
    * @return typeJson
   **/
-  @javax.annotation.Nonnull
+  @jakarta.annotation.Nonnull
   @JsonProperty(JSON_PROPERTY_TYPE_JSON)
   @JsonInclude(value = JsonInclude.Include.ALWAYS)
 
@@ -173,7 +173,7 @@ public class FunctionParameterInfo {
    * Get typeName
    * @return typeName
   **/
-  @javax.annotation.Nonnull
+  @jakarta.annotation.Nonnull
   @JsonProperty(JSON_PROPERTY_TYPE_NAME)
   @JsonInclude(value = JsonInclude.Include.ALWAYS)
 
@@ -198,7 +198,7 @@ public class FunctionParameterInfo {
    * Digits of precision; required on Create for DecimalTypes.
    * @return typePrecision
   **/
-  @javax.annotation.Nullable
+  @jakarta.annotation.Nullable
   @JsonProperty(JSON_PROPERTY_TYPE_PRECISION)
   @JsonInclude(value = JsonInclude.Include.USE_DEFAULTS)
 
@@ -223,7 +223,7 @@ public class FunctionParameterInfo {
    * Digits to right of decimal; Required on Create for DecimalTypes.
    * @return typeScale
   **/
-  @javax.annotation.Nullable
+  @jakarta.annotation.Nullable
   @JsonProperty(JSON_PROPERTY_TYPE_SCALE)
   @JsonInclude(value = JsonInclude.Include.USE_DEFAULTS)
 
@@ -248,7 +248,7 @@ public class FunctionParameterInfo {
    * Format of IntervalType.
    * @return typeIntervalType
   **/
-  @javax.annotation.Nullable
+  @jakarta.annotation.Nullable
   @JsonProperty(JSON_PROPERTY_TYPE_INTERVAL_TYPE)
   @JsonInclude(value = JsonInclude.Include.USE_DEFAULTS)
 
@@ -273,7 +273,7 @@ public class FunctionParameterInfo {
    * Ordinal position of column (starting at position 0).
    * @return position
   **/
-  @javax.annotation.Nonnull
+  @jakarta.annotation.Nonnull
   @JsonProperty(JSON_PROPERTY_POSITION)
   @JsonInclude(value = JsonInclude.Include.ALWAYS)
 
@@ -298,7 +298,7 @@ public class FunctionParameterInfo {
    * Get parameterMode
    * @return parameterMode
   **/
-  @javax.annotation.Nullable
+  @jakarta.annotation.Nullable
   @JsonProperty(JSON_PROPERTY_PARAMETER_MODE)
   @JsonInclude(value = JsonInclude.Include.USE_DEFAULTS)
 
@@ -323,7 +323,7 @@ public class FunctionParameterInfo {
    * Get parameterType
    * @return parameterType
   **/
-  @javax.annotation.Nullable
+  @jakarta.annotation.Nullable
   @JsonProperty(JSON_PROPERTY_PARAMETER_TYPE)
   @JsonInclude(value = JsonInclude.Include.USE_DEFAULTS)
 
@@ -348,7 +348,7 @@ public class FunctionParameterInfo {
    * Default value of the parameter.
    * @return parameterDefault
   **/
-  @javax.annotation.Nullable
+  @jakarta.annotation.Nullable
   @JsonProperty(JSON_PROPERTY_PARAMETER_DEFAULT)
   @JsonInclude(value = JsonInclude.Include.USE_DEFAULTS)
 
@@ -373,7 +373,7 @@ public class FunctionParameterInfo {
    * User-provided free-form text description.
    * @return comment
   **/
-  @javax.annotation.Nullable
+  @jakarta.annotation.Nullable
   @JsonProperty(JSON_PROPERTY_COMMENT)
   @JsonInclude(value = JsonInclude.Include.USE_DEFAULTS)
 

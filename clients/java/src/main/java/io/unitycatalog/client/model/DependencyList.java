@@ -37,7 +37,7 @@ import com.fasterxml.jackson.annotation.JsonPropertyOrder;
 @JsonPropertyOrder({
   DependencyList.JSON_PROPERTY_DEPENDENCIES
 })
-@javax.annotation.Generated(value = "org.openapitools.codegen.languages.JavaClientCodegen", comments = "Generator version: 7.5.0")
+@jakarta.annotation.Generated(value = "org.openapitools.codegen.languages.JavaClientCodegen", comments = "Generator version: 7.5.0")
 public class DependencyList {
   public static final String JSON_PROPERTY_DEPENDENCIES = "dependencies";
   private List<Dependency> dependencies = new ArrayList<>();
@@ -62,7 +62,7 @@ public class DependencyList {
    * Array of dependencies.
    * @return dependencies
   **/
-  @javax.annotation.Nullable
+  @jakarta.annotation.Nullable
   @JsonProperty(JSON_PROPERTY_DEPENDENCIES)
   @JsonInclude(value = JsonInclude.Include.USE_DEFAULTS)
 
