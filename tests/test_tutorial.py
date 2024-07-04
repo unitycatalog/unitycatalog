@@ -73,6 +73,7 @@ def start_server():
                 print(f"Error starting process:\n{lf.read()}")
             sys.exit(1)
         print(f">> Waiting for server to accept connections ...")
+        time.sleep(60)
         i = 0
         success = False
         while i < 30 and not success:
