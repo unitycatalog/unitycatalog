@@ -33,6 +33,7 @@ run_in_source_code() {
       generate_jar
   fi
   echo "SERVER_TARGET_DIR: $SERVER_TARGET_DIR"
+  chmod -R 755 $SERVER_TARGET_DIR
   ls -lrt $SERVER_TARGET_DIR
   if [ -f "$SERVER_CLASSPATH_FILE" ]; then
       echo "No classpath file found in the target directory '$SERVER_TARGET_DIR'."
