@@ -2,6 +2,7 @@ import java.nio.file.Files
 import java.io.File
 import Tarball.createTarballSettings
 import sbt.util
+import sbtlicensereport.license.{LicenseInfo, LicenseCategory, DepModuleInfo}
 
 import scala.language.implicitConversions
 
@@ -25,7 +26,6 @@ lazy val commonSettings = Seq(
     "-target", "1.8",
     "-g:source,lines,vars"
   ),
-  Compile / logLevel := util.Level.Warn,
   resolvers += Resolver.mavenLocal,
   autoScalaLibrary := false,
   crossPaths := false,  // No scala cross building
@@ -47,7 +47,26 @@ lazy val commonSettings = Seq(
       targetDir = packageFile.getParentFile,
       classpath = (Runtime / dependencyClasspath).value)
     packageFile
-  }
+  },
+
+  licenseOverrides := {
+    case DepModuleInfo("io.unitycatalog", _, _) =>
+      LicenseInfo(LicenseCategory.Apache, "Apache 2.0", "http://www.apache.org/licenses")
+    case DepModuleInfo("org.hibernate.common", "hibernate-commons-annotations", _) =>
+      // Apache 2.0: https://mvnrepository.com/artifact/org.hibernate.common/hibernate-commons-annotations
+      LicenseInfo(LicenseCategory.Apache, "Apache 2.0", "http://www.apache.org/licenses")
+  },
+  licenseDepExclusions := {
+    // LGPL 2.1: https://www.gnu.org/licenses/old-licenses/lgpl-2.1.html
+    // https://en.wikipedia.org/wiki/GNU_Lesser_General_Public_License
+    // We can use and distribute the, but not modify the source code
+    case DepModuleInfo("org.hibernate.orm", _, _) => true
+    // Duo license:
+    //  - Eclipse Public License 2.0
+    //  - GNU General Public License, version 2 with the GNU Classpath Exception
+    // I think we're good with the classpath exception in there.
+    case DepModuleInfo("jakarta.transaction", "jakarta.transaction-api", _) => true
+  },
 )
 
 enablePlugins(CoursierPlugin)
@@ -217,7 +236,6 @@ lazy val cli = (project in file("examples") / "cli")
     mainClass := Some(orgName + ".cli.UnityCatalogCli"),
     commonSettings,
     javaCheckstyleSettings(file("dev") / "checkstyle-config.xml"),
-    Compile / logLevel := util.Level.Info,
     libraryDependencies ++= Seq(
       "commons-cli" % "commons-cli" % "1.7.0",
       "org.json" % "json" % "20240303",
