@@ -14,6 +14,7 @@ nav:
 
 nav:
   - Home: index.md
+  - Tutorial: tutorial.md
   - Usage:
       - CLI: usage/cli.md
       - Tables:
