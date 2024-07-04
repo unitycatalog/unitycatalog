@@ -94,8 +94,6 @@ df.show(5)
 Any subsequent filter operations on the Daft `df` DataFrame object will be correctly optimized to take advantage of Delta Lake features.
 
 ```python
-# HOW DO I SEE PARTITION_KEY OF DELTA TABLE??
-# Filter which takes advantage of partition pruning capabilities of Delta Lake
 df = df.where(df["as_int"] > 500)
 df.show()
 ```
