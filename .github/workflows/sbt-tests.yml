@@ -66,5 +66,7 @@ jobs:
             echo "$SERVER_DIFF"
           fi
           exit 1
+        else
+          echo "No changes to generated files detected."
         fi
       shell: bash
