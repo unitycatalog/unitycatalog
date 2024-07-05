@@ -27,6 +27,8 @@ import com.fasterxml.jackson.annotation.JsonValue;
 public enum DataSourceFormat {
   
   DELTA("DELTA"),
+
+  ICEBERG("ICEBERG"),
   
   CSV("CSV"),
   
