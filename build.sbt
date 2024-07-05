@@ -3,6 +3,7 @@ import java.io.File
 import Tarball.createTarballSettings
 import sbt.util
 import sbtlicensereport.license.{LicenseInfo, LicenseCategory, DepModuleInfo}
+import ReleaseSettings.*
 
 import scala.language.implicitConversions
 
@@ -126,6 +127,7 @@ lazy val client = (project in file("clients/java"))
       val _ = openApiGenerate.value
     }
   )
+  .settings(javaOnlyReleaseSettings *)
 
 lazy val apiDocs = (project in file("api"))
   .enablePlugins(OpenApiGeneratorPlugin)
@@ -227,6 +229,7 @@ lazy val server = (project in file("server"))
       val _ = openApiGenerate.value
     }
   )
+  .settings(javaOnlyReleaseSettings *)
 
 lazy val cli = (project in file("examples") / "cli")
   .dependsOn(server % "compile->compile;test->test")
@@ -263,6 +266,7 @@ lazy val cli = (project in file("examples") / "cli")
       "com.github.sbt" % "junit-interface" % "0.13.3" % Test,
     )
   )
+  .settings(skipReleaseSettings *)
 
 lazy val root = (project in file("."))
   .aggregate(client, server, cli)
@@ -285,124 +289,3 @@ val generate = taskKey[Unit]("generate code from APIs")
 val jacksonVersion = "2.17.0"
 val openApiToolsJacksonBindNullableVersion = "0.2.6"
 val log4jVersion = "2.23.1"
-
-/*
- ********************
- * Release settings *
- ********************
- */
-import ReleaseTransformations._
-
-lazy val skipReleaseSettings = Seq(
-  publishArtifact := false,
-  publish / skip := true
-)
-
-// define getMajorMinorPatch function
-/**
- * @return tuple of (major, minor, patch) versions extracted from a version string.
- *         e.g. "1.2.3" would return (1, 2, 3)
- */
-def getMajorMinorPatch(versionStr: String): (Int, Int, Int) = {
-  implicit def extractInt(str: String): Int = {
-    """\d+""".r.findFirstIn(str).map(java.lang.Integer.parseInt).getOrElse {
-      throw new Exception(s"Could not extract version number from $str in $version")
-    }
-  }
-
-  versionStr.split("\\.").toList match {
-    case majorStr :: minorStr :: patchStr :: _ =>
-      (majorStr, minorStr, patchStr)
-    case _ => throw new Exception(s"Could not parse version for $version.")
-  }
-}
-
-
-// Release settings for artifact that contains only Java source code
-lazy val javaOnlyReleaseSettings = releaseSettings ++ Seq(
-  // drop off Scala suffix from artifact names
-  crossPaths := false,
-  // we publish jars for each scalaVersion in crossScalaVersions. however, we only need to publish
-  // one java jar. thus, only do so when the current scala version == default scala version
-  publishArtifact := {
-    val (expMaj, expMin, _) = getMajorMinorPatch(scalaVersion.value)
-    s"$expMaj.$expMin" == scalaBinaryVersion.value
-  },
-
-  // exclude scala-library from dependencies in generated pom.xml
-  autoScalaLibrary := false,
-)
-
-lazy val releaseSettings = Seq(
-  publishMavenStyle := true,
-  publishArtifact := true,
-  Test / publishArtifact := false,
-  releasePublishArtifactsAction := PgpKeys.publishSigned.value,
-  releaseCrossBuild := true,
-  pgpPassphrase := sys.env.get("PGP_PASSPHRASE").map(_.toArray),
-
-  // TODO: This isn't working yet ...
-  sonatypeProfileName := "io.unitycatalog", // sonatype account domain name prefix / group ID
-  credentials += Credentials(
-    "Sonatype Nexus Repository Manager",
-    "oss.sonatype.org",
-    sys.env.getOrElse("SONATYPE_USERNAME", ""),
-    sys.env.getOrElse("SONATYPE_PASSWORD", "")
-  ),
-  publishTo := {
-    val nexus = "https://oss.sonatype.org/"
-    if (isSnapshot.value) {
-      Some("snapshots" at nexus + "content/repositories/snapshots")
-    } else {
-      Some("releases"  at nexus + "service/local/staging/deploy/maven2")
-    }
-  },
-  licenses += ("Apache-2.0", url("http://www.apache.org/licenses/LICENSE-2.0")),
-  pomExtra :=
-    <url>https://www.unitycatalog.io/</url>
-      <scm>
-        <url>git@github.com:unitycatalog/unitycatalog.git</url>
-        <connection>scm:git:git@github.com:unitycatalog/unitycatalog.git</connection>
-      </scm>
-      <developers>
-        <developer>
-          <id>tdas</id>
-          <name>Tathagata Das</name>
-          <url>https://github.com/tdas</url>
-        </developer>
-      </developers>
-)
-
-// Looks like some of release settings should be set for the root project as well.
-publishArtifact := false  // Don't release the root project
-publish / skip := true
-publishTo := Some("snapshots" at "https://oss.sonatype.org/content/repositories/snapshots")
-releaseCrossBuild := false  // Don't use sbt-release's cross facility
-releaseProcess := Seq[ReleaseStep](
-  checkSnapshotDependencies,
-  inquireVersions,
-  runTest,
-  setReleaseVersion,
-  commitReleaseVersion,
-  tagRelease,
-  releaseStepCommandAndRemaining("+publishSigned"),
-  // Do NOT use `sonatypeBundleRelease` - it will actually release to Maven! We want to do that
-  // manually.
-  //
-  // Do NOT use `sonatypePromote` - it will promote the closed staging repository (i.e. sync to
-  //                                Maven central)
-  //
-  // See https://github.com/xerial/sbt-sonatype#publishing-your-artifact.
-  //
-  // - sonatypePrepare: Drop the existing staging repositories (if exist) and create a new staging
-  //                    repository using sonatypeSessionName as a unique key
-  // - sonatypeBundleUpload: Upload your local staging folder contents to a remote Sonatype
-  //                         repository
-  // - sonatypeClose: closes your staging repository at Sonatype. This step verifies Maven central
-  //                  sync requirement, GPG-signature, javadoc and source code presence, pom.xml
-  //                  settings, etc
-  // TODO: this isn't working yet
-  // releaseStepCommand("sonatypePrepare; sonatypeBundleUpload; sonatypeClose"),
-  setNextVersion,
-  commitNextVersion
-)
