@@ -112,13 +112,13 @@ public class UnityCatalogCli {
         } else {
             String entity = cmd.getArgs()[0];
             if (!CliUtils.cliOptions.containsKey(entity.toLowerCase())) {
-                System.out.println("Invalid entity provided.");
+                System.out.println("Invalid entity provided: " + entity);
                 CliUtils.printHelp();
                 return false;
             }
             String operation = cmd.getArgs()[1];
             if (!CliUtils.cliOptions.get(entity.toLowerCase()).containsKey(operation.toLowerCase())) {
-                System.out.println("Invalid operation provided.");
+                System.out.println("Invalid operation provided: " + operation);
                 CliUtils.printEntityHelp(entity);
                 return false;
             }
