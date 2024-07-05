@@ -30,6 +30,8 @@ addSbtPlugin("org.openapitools" % "sbt-openapi-generator" % "7.5.0")
 
 addSbtPlugin("com.github.sbt" % "sbt-license-report" % "1.6.1")
 
+addSbtPlugin("com.lightbend.sbt" % "sbt-java-formatter" % "0.8.0")
+
 addSbtPlugin("com.etsy" % "sbt-checkstyle-plugin" % "3.1.1")
 // By default, sbt-checkstyle-plugin uses checkstyle version 6.15, but we should set it to use the
 // same version as Spark
