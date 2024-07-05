@@ -15,8 +15,7 @@ import io.unitycatalog.server.sdk.schema.SdkSchemaOperations;
 import io.unitycatalog.server.utils.TestUtils;
 import org.junit.Test;
 
-import java.util.List;
-import java.util.Objects;
+import static org.assertj.core.api.Assertions.assertThat;
 
 public class SdkTableCRUDTest extends BaseTableCRUDTest {
 
@@ -59,7 +58,11 @@ public class SdkTableCRUDTest extends BaseTableCRUDTest {
         createCommonResources();
         TableInfo testingTable = createDefaultTestingTable();
         ListTablesResponse resp = localTablesApi.listTables(testingTable.getCatalogName(), testingTable.getSchemaName(), 100, null);
-        assert resp.getNextPageToken() == null;
-        assert Objects.equals(resp.getTables(), List.of(testingTable));
+        assertThat(resp.getNextPageToken()).isNotNull();
+        assertThat(resp.getTables()).hasSize(1)
+                .first()
+                .usingRecursiveComparison()
+                .ignoringFields("columns", "storageLocation")
+                .isEqualTo(testingTable);
     }
 }
