@@ -9,7 +9,6 @@ on:
   push:
     branches: [ "main" ]
   pull_request:
-    branches: [ "main" ]
 
 permissions:
   contents: read
@@ -28,3 +27,7 @@ jobs:
         cache: 'sbt'
     - name: Run tests
       run: sbt test
+    - name: Run license check
+      run: sbt licenseCheck
+    - name: Run tests with coverage
+      run: sbt jacoco

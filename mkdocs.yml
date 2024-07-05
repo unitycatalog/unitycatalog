@@ -14,6 +14,7 @@ nav:
 
 nav:
   - Home: index.md
+  - Tutorial: tutorial.md
   - Usage:
       - CLI: usage/cli.md
       - Tables:
@@ -25,6 +26,7 @@ nav:
       - Daft: integrations/unity-catalog-daft.md
       - DuckDB: integrations/unity-catalog-duckdb.md
       - Trino: integrations/unity-catalog-trino.md
+  - Deployment: deployment.md
 
 plugins:
   - search
