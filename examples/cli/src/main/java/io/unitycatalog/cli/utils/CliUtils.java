@@ -276,6 +276,16 @@ public class CliUtils {
 
     }
 
+    private static int getOutputWidth() {
+        // TODO: maybe turn this into a command line parameter.
+        String envWidth = System.getenv().get("UC_OUTPUT_WIDTH");
+        if (envWidth != null) {
+            return Integer.parseInt(envWidth);
+        } else {
+            return Math.max(TABLE_WIDTH, AnsiConsole.getTerminalWidth());
+        }
+    }
+
     public static void postProcessAndPrintOutput(CommandLine cmd, String output, String subCommand) {
         boolean jsonFormat = cmd.hasOption(OUTPUT)
                 && ("json".equals(cmd.getOptionValue(OUTPUT))
@@ -284,7 +294,7 @@ public class CliUtils {
             System.out.println(output);
         else {
             AsciiTable at = new AsciiTable();
-            int outputWidth = Math.max(TABLE_WIDTH, AnsiConsole.getTerminalWidth());
+            int outputWidth = getOutputWidth();
             try {
                 JsonNode node = objectMapper.readTree(output);
                 if (node.isArray()) {
