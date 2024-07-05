@@ -8,9 +8,6 @@ on:
   pull_request_review_comment:
     types: [ created ]
 
-
-
-
 jobs:
   automate-updated-prs:
     if: ${{ (github.event.issue.pull_request || github.event.pull_request) &&

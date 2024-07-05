@@ -6,9 +6,6 @@ on:
   issue_comment:
     types: [created]
 
-
-
-
 jobs:
   automate-updated-issues:
     if: ${{ !github.event.issue.pull_request && !contains('tdas ravivijay-db vikrantpuppala', github.event.sender.login) }}
