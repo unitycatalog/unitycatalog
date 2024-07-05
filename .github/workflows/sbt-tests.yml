@@ -45,7 +45,7 @@ jobs:
         distribution: 'temurin'
         cache: 'sbt'
 
-    - name: Generate OpenAPI Client and Model classes
+    - name: Generate OpenAPI Client and Server Model classes
       run: sbt generate
 
     - name: Check Generated Files Differences
@@ -54,7 +54,7 @@ jobs:
         SERVER_DIFF=$(git diff --name-only server/src/main/java/io/unitycatalog/server/model)
         
         if [[ -n $CLIENT_DIFF || -n $SERVER_DIFF ]]; then
-          echo "Making changes to generated files is not allowed."
+          echo "\nThis PR contains changes to generated files. Making changes to generated files is not allowed."
           echo "If this is intended for some reason, please speak to the project maintainers."
           echo "To revert, run 'sbt generate' locally and commit the changes."
           if [[ -n $CLIENT_DIFF ]]; then
