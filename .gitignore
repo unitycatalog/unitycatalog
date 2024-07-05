@@ -1,9 +1,14 @@
 etc/db/h2db.mv.db
 target/
+
+# Intellij IDEA files
 .idea/
+*.iml
+
 .bsp/
 etc/logs/
 api/.openapi-generator
 build/sbt-launch-*
 venv
+server_pid.txt
 site

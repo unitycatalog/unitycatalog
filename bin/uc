@@ -26,18 +26,10 @@ run_cli_java_command() {
   CLI_JAVA_COMMAND="java -cp $(cat "$1") io.unitycatalog.cli.UnityCatalogCli"
   shift
 
-  # Iterate over all arguments and quote them properly
-  quoted_args=()
-  for arg in "$@"; do
-      quoted_args+=("$(quote_arg "$arg")")
-  done
-  # Join quoted arguments into a single string
-  quoted_args_str="${quoted_args[*]}"
-
   # Print the quoted arguments for debugging
   # echo "Quoted arguments: $quoted_args_str"
   # echo "Running command: $CLI_JAVA_COMMAND"
-  eval $CLI_JAVA_COMMAND $quoted_args_str  || exit
+  eval $CLI_JAVA_COMMAND $@  || exit
 }
 
 # This function runs the CLI using the source code
@@ -65,12 +57,22 @@ run_in_tarball() {
   run_cli_java_command $CLI_CLASSPATH_FILE $@
 }
 
+# Iterate over all arguments and quote them properly
+quoted_args=()
+for arg in "$@"; do
+  quoted_args+=("$(quote_arg "$arg")")
+
+done
+IFS=' '
+# Join quoted arguments into a single string
+quoted_args_str="${quoted_args[*]}"
+
 # Check if TARBALL_JAR_DIR exists, then we are running in the tarball
 if [ -d "$TARBALL_JAR_DIR" ]; then
-  run_in_tarball $@
+  run_in_tarball $quoted_args_str
 # Check if CLI_TARGET_DIR exists, then we are running in the source code
 else if [ -f "$CLI_CLASS_FILE" ]; then
-  run_in_source_code $@
+  run_in_source_code $quoted_args_str
 else
   echo "Script running neither in source code nor in tarball"
 fi
