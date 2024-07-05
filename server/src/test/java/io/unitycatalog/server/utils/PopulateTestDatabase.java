@@ -15,6 +15,15 @@ import java.util.*;
 
 import static io.unitycatalog.server.utils.ColumnUtils.*;
 
+/**
+ * This is a utility class to populate the test database with some sample data.
+ * All the quickstart examples in the documentation are based on this sample data.
+ * This class is not part of the main application code and is only used for testing purposes.
+ * To recreate the sample data, first delete the existing database (at /etc/db)
+ * and then run main method of this class.
+ * Any data artifacts which might be referred to by storage location of any table/volume
+ * should be created before creating the table/volume entry in the database or can be a part of the same PR.
+ */
 public class PopulateTestDatabase {
 
     public static void main(String[] args) throws JsonProcessingException {
