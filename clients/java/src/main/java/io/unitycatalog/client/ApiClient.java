@@ -53,7 +53,7 @@ import static java.nio.charset.StandardCharsets.UTF_8;
  */
 @jakarta.annotation.Generated(value = "org.openapitools.codegen.languages.JavaClientCodegen", comments = "Generator version: 7.5.0")
 public class ApiClient {
-  private String masterBlaster;
+
   private HttpClient.Builder builder;
   private ObjectMapper mapper;
   private String scheme;

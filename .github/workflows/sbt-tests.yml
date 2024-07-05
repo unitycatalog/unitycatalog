@@ -54,9 +54,9 @@ jobs:
         SERVER_DIFF=$(git diff --name-only server/src/main/java/io/unitycatalog/server/model)
         
         if [[ -n $CLIENT_DIFF || -n $SERVER_DIFF ]]; then
-          echo "\nThis PR contains changes to generated files. Making changes to generated files is not allowed."
+          echo "This PR contains changes to generated files. Making changes to generated files is not allowed."
           echo "If this is intended for some reason, please speak to the project maintainers."
-          echo "To revert, run 'sbt generate' locally and commit the changes."
+          echo "Please revert or run 'sbt generate' locally and commit the changes."
           if [[ -n $CLIENT_DIFF ]]; then
             echo "Modified client files:"
             echo "$CLIENT_DIFF"
