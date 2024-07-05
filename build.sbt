@@ -93,6 +93,7 @@ lazy val client = (project in file("clients/java"))
   .settings(
     name := s"$artifactNamePrefix-client",
     commonSettings,
+    javaOnlyReleaseSettings,
     libraryDependencies ++= Seq(
       "com.fasterxml.jackson.core" % "jackson-annotations" % jacksonVersion,
       "com.fasterxml.jackson.core" % "jackson-core" % jacksonVersion,
@@ -128,7 +129,6 @@ lazy val client = (project in file("clients/java"))
       val _ = openApiGenerate.value
     }
   )
-  .settings(javaOnlyReleaseSettings: _*)
 
 lazy val apiDocs = (project in file("api"))
   .enablePlugins(OpenApiGeneratorPlugin)
@@ -152,6 +152,7 @@ lazy val server = (project in file("server"))
   .settings (
     name := s"$artifactNamePrefix-server",
     commonSettings,
+    javaOnlyReleaseSettings,
     javaCheckstyleSettings(file("dev") / "checkstyle-config.xml"),
     libraryDependencies ++= Seq(
       "com.linecorp.armeria" %  "armeria" % "1.28.4",
@@ -230,7 +231,6 @@ lazy val server = (project in file("server"))
       val _ = openApiGenerate.value
     }
   )
-  .settings(javaOnlyReleaseSettings: _*)
 
 lazy val cli = (project in file("examples") / "cli")
   .dependsOn(server % "compile->compile;test->test")
@@ -239,6 +239,7 @@ lazy val cli = (project in file("examples") / "cli")
     name := s"$artifactNamePrefix-cli",
     mainClass := Some(orgName + ".cli.UnityCatalogCli"),
     commonSettings,
+    skipReleaseSettings,
     javaCheckstyleSettings(file("dev") / "checkstyle-config.xml"),
     libraryDependencies ++= Seq(
       "commons-cli" % "commons-cli" % "1.7.0",
@@ -267,7 +268,6 @@ lazy val cli = (project in file("examples") / "cli")
       "com.github.sbt" % "junit-interface" % "0.13.3" % Test,
     )
   )
-  .settings(skipReleaseSettings: _*)
 
 lazy val root = (project in file("."))
   .aggregate(client, server, cli)
