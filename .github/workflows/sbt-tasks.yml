@@ -24,13 +24,13 @@ jobs:
       with:
         java-version: '11'
         distribution: 'temurin'
-        cache: 'sbt'
+
     - name: Run tests
-      run: sbt test
+      run: build/sbt test
     - name: Run license check
-      run: sbt licenseCheck
+      run: build/sbt licenseCheck
     - name: Run tests with coverage
-      run: sbt jacoco
+      run: build/sbt jacoco
 
   generated-files-validation:
     runs-on: ubuntu-latest
@@ -43,7 +43,6 @@ jobs:
       with:
         java-version: '11'
         distribution: 'temurin'
-        cache: 'sbt'
 
     - name: Generate OpenAPI Client and Server Model classes
       run: build/sbt generate
