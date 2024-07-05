@@ -3,7 +3,7 @@
 # separate terms of service, privacy policy, and support
 # documentation.
 
-name: SBT Tasks
+name: Unit Tests
 
 on:
   push:
@@ -25,12 +25,10 @@ jobs:
         java-version: '11'
         distribution: 'temurin'
 
-    - name: Run tests
-      run: build/sbt test
-    - name: Run license check
-      run: build/sbt licenseCheck
     - name: Run tests with coverage
       run: build/sbt jacoco
+    - name: Run license check
+      run: build/sbt licenseCheck
 
   generated-files-validation:
     runs-on: ubuntu-latest
