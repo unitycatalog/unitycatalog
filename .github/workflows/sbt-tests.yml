@@ -3,7 +3,7 @@
 # separate terms of service, privacy policy, and support
 # documentation.
 
-name: SBT Tests
+name: SBT Tasks
 
 on:
   push:
@@ -48,22 +48,23 @@ jobs:
     - name: Generate OpenAPI Client and Model classes
       run: sbt generate
 
-    - name: Check Client Differences
+    - name: Check Generated Files Differences
       run: |
-        git diff --name-only clients/java > /tmp/client_diff.txt
-        if [[ -s /tmp/client_diff.txt ]]; then
-          echo "Generated files do not match committed files."
-          cat /tmp/client_diff.txt
-          exit 1
-        fi
-      shell: bash
-
-    - name: Check Server Model Differences
-      run: |
-        git diff --name-only server/src/main/java/io/unitycatalog/server/model > /tmp/server_diff.txt
-        if [[ -s /tmp/server_diff.txt ]]; then
-          echo "Generated files do not match committed files."
-          cat /tmp/server_diff.txt
+        CLIENT_DIFF=$(git diff --name-only clients/java)
+        SERVER_DIFF=$(git diff --name-only server/src/main/java/io/unitycatalog/server/model)
+        
+        if [[ -n $CLIENT_DIFF || -n $SERVER_DIFF ]]; then
+          echo "Making changes to generated files is not allowed."
+          echo "If this is intended for some reason, please speak to the project maintainers."
+          echo "To revert, run 'sbt generate' locally and commit the changes."
+          if [[ -n $CLIENT_DIFF ]]; then
+            echo "Modified client files:"
+            echo "$CLIENT_DIFF"
+          fi
+          if [[ -n $SERVER_DIFF ]]; then
+            echo "Modified server model files:"
+            echo "$SERVER_DIFF"
+          fi
           exit 1
         fi
       shell: bash
