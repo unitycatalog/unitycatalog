@@ -76,7 +76,7 @@ public class CliUtils {
                 put(CREATE, new CliOptions(List.of(CliParams.NAME), List.of(CliParams.COMMENT)));
                 put(LIST, new CliOptions(List.of(), List.of(CliParams.MAX_RESULTS)));
                 put(GET, new CliOptions(List.of(CliParams.NAME), List.of()));
-                put(UPDATE, new CliOptions(List.of(CliParams.NAME, CliParams.NEW_NAME), List.of(CliParams.COMMENT)));
+                put(UPDATE, new CliOptions(List.of(CliParams.NAME), List.of(CliParams.NEW_NAME, CliParams.COMMENT)));
                 put(DELETE, new CliOptions(List.of(CliParams.NAME), List.of()));
             }});
             put(SCHEMA, new HashMap<String, CliOptions>() {{
