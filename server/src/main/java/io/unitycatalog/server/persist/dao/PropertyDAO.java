@@ -12,7 +12,8 @@ import java.util.stream.Collectors;
 
 //Hibernate annotations
 @Entity
-@Table(name = "uc_properties")
+@Table(name = "uc_properties", uniqueConstraints = {
+        @UniqueConstraint(columnNames = {"entity_id", "entity_type", "property_key"})})
 // Lombok annotations
 @Getter
 @Setter

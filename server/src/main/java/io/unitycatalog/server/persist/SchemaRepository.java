@@ -24,13 +24,15 @@ import java.util.UUID;
 import java.util.stream.Collectors;
 
 public class SchemaRepository {
-    @Getter
     public static final SchemaRepository INSTANCE = new SchemaRepository();
-    @Getter
-    public static final CatalogRepository CATALOG_REPOSITORY = CatalogRepository.getINSTANCE();
+    public static final CatalogRepository CATALOG_REPOSITORY = CatalogRepository.getInstance();
     private static final SessionFactory SESSION_FACTORY = HibernateUtils.getSessionFactory();
 
     private SchemaRepository() {}
+
+    public static SchemaRepository getInstance() {
+        return INSTANCE;
+    }
 
     public SchemaInfo createSchema(CreateSchema createSchema) {
         ValidationUtils.validateSqlObjectName(createSchema.getName());

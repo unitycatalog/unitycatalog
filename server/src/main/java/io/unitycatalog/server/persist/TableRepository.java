@@ -22,14 +22,17 @@ import java.util.*;
 import java.util.stream.Collectors;
 
 public class TableRepository {
-    @Getter
     private static final TableRepository INSTANCE = new TableRepository();
     private static final Logger LOGGER = LoggerFactory.getLogger(TableRepository.class);
     private static final SessionFactory SESSION_FACTORY = HibernateUtils.getSessionFactory();
-    private static final CatalogRepository CATALOG_REPOSITORY = CatalogRepository.getINSTANCE();
-    private static final SchemaRepository SCHEMA_REPOSITORY = SchemaRepository.getINSTANCE();
+    private static final CatalogRepository CATALOG_REPOSITORY = CatalogRepository.getInstance();
+    private static final SchemaRepository SCHEMA_REPOSITORY = SchemaRepository.getInstance();
 
     private TableRepository() {}
+
+    public static TableRepository getInstance() {
+        return INSTANCE;
+    }
 
     public TableInfo getTableById(String tableId) {
         LOGGER.debug("Getting table by id: " + tableId);

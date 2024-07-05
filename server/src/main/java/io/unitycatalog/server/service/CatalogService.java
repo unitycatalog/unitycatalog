@@ -10,7 +10,7 @@ import io.unitycatalog.server.model.UpdateCatalog;
 
 @ExceptionHandler(GlobalExceptionHandler.class)
 public class CatalogService {
-    private static final CatalogRepository CATALOG_REPOSITORY = CatalogRepository.getINSTANCE();
+    private static final CatalogRepository CATALOG_REPOSITORY = CatalogRepository.getInstance();
 
     public CatalogService() {}
 

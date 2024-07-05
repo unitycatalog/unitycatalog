@@ -12,7 +12,7 @@ import java.util.Optional;
 
 @ExceptionHandler(GlobalExceptionHandler.class)
 public class SchemaService {
-    private static final SchemaRepository SCHEMA_REPOSITORY = SchemaRepository.getINSTANCE();
+    private static final SchemaRepository SCHEMA_REPOSITORY = SchemaRepository.getInstance();
 
     public SchemaService() {}
 

@@ -12,7 +12,7 @@ import java.util.Optional;
 @ExceptionHandler(GlobalExceptionHandler.class)
 public class FunctionService {
 
-    private static final FunctionRepository FUNCTION_REPOSITORY = FunctionRepository.getINSTANCE();
+    private static final FunctionRepository FUNCTION_REPOSITORY = FunctionRepository.getInstance();
 
     public FunctionService() {}
 

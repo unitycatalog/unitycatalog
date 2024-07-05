@@ -23,13 +23,16 @@ import java.util.stream.Collectors;
 
 public class VolumeRepository {
 
-    @Getter
     public static final VolumeRepository INSTANCE = new VolumeRepository();
-    public static final SchemaRepository SCHEMA_REPOSITORY = SchemaRepository.getINSTANCE();
+    public static final SchemaRepository SCHEMA_REPOSITORY = SchemaRepository.getInstance();
     private static final Logger LOGGER = LoggerFactory.getLogger(VolumeRepository.class);
     private static final SessionFactory SESSION_FACTORY = HibernateUtils.getSessionFactory();
 
     private VolumeRepository() {}
+
+    public static VolumeRepository getInstance() {
+        return INSTANCE;
+    }
 
     public VolumeInfo createVolume(CreateVolumeRequestContent createVolumeRequest) {
         ValidationUtils.validateSqlObjectName(createVolumeRequest.getName());

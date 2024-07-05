@@ -21,13 +21,16 @@ import java.util.UUID;
 import java.util.stream.Collectors;
 
 public class FunctionRepository {
-    @Getter
     private static final FunctionRepository INSTANCE = new FunctionRepository();
-    private static final SchemaRepository SCHEMA_REPOSITORY = SchemaRepository.getINSTANCE();
+    private static final SchemaRepository SCHEMA_REPOSITORY = SchemaRepository.getInstance();
     private static final Logger LOGGER = LoggerFactory.getLogger(FunctionRepository.class);
     private static final SessionFactory SESSION_FACTORY = HibernateUtils.getSessionFactory();
 
     private FunctionRepository() {}
+
+    public static FunctionRepository getInstance() {
+        return INSTANCE;
+    }
 
     public FunctionInfo createFunction(CreateFunctionRequest createFunctionRequest) {
         ValidationUtils.validateSqlObjectName(createFunctionRequest.getFunctionInfo().getName());

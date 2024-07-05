@@ -25,11 +25,14 @@ import java.util.UUID;
 import java.util.stream.Collectors;
 
 public class CatalogRepository {
-    @Getter
     private static final CatalogRepository INSTANCE = new CatalogRepository();
     private static final Logger LOGGER = LoggerFactory.getLogger(CatalogRepository.class);
     private static final SessionFactory SESSION_FACTORY = HibernateUtils.getSessionFactory();
     private CatalogRepository() {}
+
+    public static CatalogRepository getInstance() {
+        return INSTANCE;
+    }
 
     public CatalogInfo addCatalog(CreateCatalog createCatalog) {
         ValidationUtils.validateSqlObjectName(createCatalog.getName());

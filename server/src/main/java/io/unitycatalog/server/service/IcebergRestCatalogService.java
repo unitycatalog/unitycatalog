@@ -39,7 +39,7 @@ public class IcebergRestCatalogService {
   private final CatalogService catalogService;
   private final SchemaService schemaService;
   private final TableService tableService;
-  private final TableRepository tableRepository = TableRepository.getINSTANCE();
+  private final TableRepository tableRepository = TableRepository.getInstance();
   private static final SessionFactory sessionFactory = HibernateUtils.getSessionFactory();
 
   public IcebergRestCatalogService(CatalogService catalogService,

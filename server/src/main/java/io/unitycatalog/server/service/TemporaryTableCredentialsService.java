@@ -13,7 +13,7 @@ import io.unitycatalog.server.utils.TemporaryCredentialUtils;
 @ExceptionHandler(GlobalExceptionHandler.class)
 public class TemporaryTableCredentialsService {
 
-    private static final TableRepository TABLE_REPOSITORY = TableRepository.getINSTANCE();
+    private static final TableRepository TABLE_REPOSITORY = TableRepository.getInstance();
 
     @Post("")
     public HttpResponse generateTemporaryTableCredential(GenerateTemporaryTableCredential generateTemporaryTableCredential) {

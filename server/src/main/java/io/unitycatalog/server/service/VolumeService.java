@@ -12,7 +12,7 @@ import java.util.Optional;
 
 @ExceptionHandler(GlobalExceptionHandler.class)
 public class VolumeService {
-    private static final VolumeRepository VOLUME_REPOSITORY = VolumeRepository.getINSTANCE();
+    private static final VolumeRepository VOLUME_REPOSITORY = VolumeRepository.getInstance();
 
     public VolumeService() {}
 

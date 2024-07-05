@@ -15,7 +15,7 @@ import io.unitycatalog.server.utils.TemporaryCredentialUtils;
 @ExceptionHandler(GlobalExceptionHandler.class)
 public class TemporaryVolumeCredentialsService {
 
-    private static final VolumeRepository VOLUME_REPOSITORY = VolumeRepository.getINSTANCE();
+    private static final VolumeRepository VOLUME_REPOSITORY = VolumeRepository.getInstance();
     @Post("")
     public HttpResponse generateTemporaryTableCredential
             (GenerateTemporaryVolumeCredential generateTemporaryVolumeCredential) {

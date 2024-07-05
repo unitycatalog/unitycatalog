@@ -13,7 +13,7 @@ import java.util.Optional;
 @ExceptionHandler(GlobalExceptionHandler.class)
 public class TableService {
 
-    private static final TableRepository TABLE_REPOSITORY = TableRepository.getINSTANCE();
+    private static final TableRepository TABLE_REPOSITORY = TableRepository.getInstance();
     public TableService() {}
 
     @Post("/tables")
