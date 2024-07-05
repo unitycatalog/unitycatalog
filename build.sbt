@@ -3,7 +3,7 @@ import java.io.File
 import Tarball.createTarballSettings
 import sbt.util
 import sbtlicensereport.license.{LicenseInfo, LicenseCategory, DepModuleInfo}
-import ReleaseSettings.*
+import ReleaseSettings._
 
 import scala.language.implicitConversions
 

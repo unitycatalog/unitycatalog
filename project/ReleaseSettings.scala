@@ -1,9 +1,9 @@
-import com.typesafe.sbt.SbtPgp.autoImportImpl.*
-import sbt.*
-import sbt.Keys.*
-import sbtrelease.ReleasePlugin.autoImport.*
-import sbtrelease.ReleaseStateTransformations.*
-import xerial.sbt.Sonatype.autoImport.*
+import com.typesafe.sbt.SbtPgp.autoImportImpl._
+import sbt._
+import sbt.Keys._
+import sbtrelease.ReleasePlugin.autoImport._
+import sbtrelease.ReleaseStateTransformations._
+import xerial.sbt.Sonatype.autoImport._
 
 import scala.language.implicitConversions
 
