@@ -15,7 +15,7 @@ import io.unitycatalog.server.base.BaseServerTest;
 import io.unitycatalog.server.base.catalog.CatalogOperations;
 import io.unitycatalog.server.base.schema.SchemaOperations;
 import io.unitycatalog.server.base.table.TableOperations;
-import io.unitycatalog.server.persist.HibernateUtil;
+import io.unitycatalog.server.persist.utils.HibernateUtils;
 import io.unitycatalog.server.persist.dao.TableInfoDAO;
 import io.unitycatalog.server.sdk.catalog.SdkCatalogOperations;
 import io.unitycatalog.server.sdk.schema.SdkSchemaOperations;
@@ -96,19 +96,19 @@ public class IcebergRestCatalogTest extends BaseServerTest {
             .comment(TestUtils.COMMENT)
             .properties(TestUtils.PROPERTIES);
     CatalogInfo catalogInfo = catalogOperations.createCatalog(createCatalog);
-    assertEquals(createCatalog.getName(), catalogInfo.getName());
-    assertEquals(createCatalog.getComment(), catalogInfo.getComment());
-    assertEquals(createCatalog.getProperties(), catalogInfo.getProperties());
+    assertThat(catalogInfo.getName()).isEqualTo(createCatalog.getName());
+    assertThat(catalogInfo.getComment()).isEqualTo(createCatalog.getComment());
+    assertThat(catalogInfo.getProperties()).isEqualTo(createCatalog.getProperties());
 
     CreateSchema createSchema = new CreateSchema()
             .catalogName(TestUtils.CATALOG_NAME)
             .name(TestUtils.SCHEMA_NAME)
             .properties(TestUtils.PROPERTIES);
     SchemaInfo schemaInfo = schemaOperations.createSchema(createSchema);
-    assertEquals(createSchema.getName(), schemaInfo.getName());
-    assertEquals(createSchema.getCatalogName(), schemaInfo.getCatalogName());
-    assertEquals(TestUtils.SCHEMA_FULL_NAME, schemaInfo.getFullName());
-    assertEquals(createSchema.getProperties(), schemaInfo.getProperties());
+    assertThat(schemaInfo.getName()).isEqualTo(createSchema.getName());
+    assertThat(schemaInfo.getCatalogName()).isEqualTo(createSchema.getCatalogName());
+    assertThat(schemaInfo.getFullName()).isEqualTo(TestUtils.SCHEMA_FULL_NAME);
+    assertThat(schemaInfo.getProperties()).isEqualTo(createSchema.getProperties());
     // GetNamespace for catalog
     {
       AggregatedHttpResponse resp =
@@ -215,7 +215,7 @@ public class IcebergRestCatalogTest extends BaseServerTest {
     }
 
     // Add the uniform metadata
-    try (Session session = HibernateUtil.getSessionFactory().openSession()) {
+    try (Session session = HibernateUtils.getSessionFactory().openSession()) {
       Transaction tx = session.beginTransaction();
       TableInfoDAO tableInfoDAO = TableInfoDAO.builder().build();
       assert tableInfo.getTableId() != null;

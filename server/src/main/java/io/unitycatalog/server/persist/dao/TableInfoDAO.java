@@ -4,7 +4,7 @@ package io.unitycatalog.server.persist.dao;
 import io.unitycatalog.server.model.DataSourceFormat;
 import io.unitycatalog.server.model.TableInfo;
 import io.unitycatalog.server.model.TableType;
-import io.unitycatalog.server.persist.FileUtils;
+import io.unitycatalog.server.persist.utils.FileUtils;
 import jakarta.persistence.*;
 import lombok.*;
 
@@ -63,9 +63,6 @@ public class TableInfoDAO {
     @Column(name = "uniform_iceberg_metadata_location", columnDefinition = "TEXT")
     private String uniformIcebergMetadataLocation;
 
-    @OneToMany(mappedBy = "table", cascade = CascadeType.ALL, orphanRemoval = true)
-    private List<PropertyDAO> properties;
-
     public static TableInfoDAO from(TableInfo tableInfo) {
         return TableInfoDAO.builder()
                 .id(UUID.fromString(tableInfo.getTableId()))
@@ -79,7 +76,6 @@ public class TableInfoDAO {
                 .dataSourceFormat(tableInfo.getDataSourceFormat().toString())
                 .url(tableInfo.getStorageLocation())
                 .columns(ColumnInfoDAO.fromList(tableInfo.getColumns()))
-                .properties(PropertyDAO.from(tableInfo.getProperties()))
                 .build();
     }
 
@@ -93,7 +89,6 @@ public class TableInfoDAO {
                 .createdAt(createdAt != null ? createdAt.getTime() : null)
                 .updatedAt(updatedAt != null ? updatedAt.getTime() : null)
                 .tableId(id.toString())
-                .columns(ColumnInfoDAO.toList(columns))
-                .properties(PropertyDAO.toMap(properties));
+                .columns(ColumnInfoDAO.toList(columns));
     }
 }

@@ -5,6 +5,7 @@ import io.unitycatalog.server.exception.ErrorCode;
 import io.unitycatalog.server.model.*;
 import io.unitycatalog.server.persist.dao.FunctionInfoDAO;
 import io.unitycatalog.server.persist.dao.SchemaInfoDAO;
+import io.unitycatalog.server.persist.utils.HibernateUtils;
 import io.unitycatalog.server.utils.ValidationUtils;
 import lombok.Getter;
 import org.hibernate.Session;
@@ -21,10 +22,10 @@ import java.util.stream.Collectors;
 
 public class FunctionRepository {
     @Getter
-    private static final FunctionRepository instance = new FunctionRepository();
-    private static final SchemaRepository schemaRepository = SchemaRepository.getInstance();
+    private static final FunctionRepository INSTANCE = new FunctionRepository();
+    private static final SchemaRepository SCHEMA_REPOSITORY = SchemaRepository.getINSTANCE();
     private static final Logger LOGGER = LoggerFactory.getLogger(FunctionRepository.class);
-    private static final SessionFactory SESSION_FACTORY = HibernateUtil.getSessionFactory();
+    private static final SessionFactory SESSION_FACTORY = HibernateUtils.getSessionFactory();
 
     private FunctionRepository() {}
 
@@ -60,7 +61,7 @@ public class FunctionRepository {
             try {
                 String catalogName = createFunction.getCatalogName();
                 String schemaName = createFunction.getSchemaName();
-                SchemaInfoDAO schemaInfo = schemaRepository.getSchemaDAO(session,
+                SchemaInfoDAO schemaInfo = SCHEMA_REPOSITORY.getSchemaDAO(session,
                         catalogName, schemaName);
                 if (schemaInfo == null) {
                     throw new BaseException(ErrorCode.NOT_FOUND, "Schema not found: " + schemaName);
@@ -94,7 +95,7 @@ public class FunctionRepository {
             session.setDefaultReadOnly(true);
             Transaction tx = session.beginTransaction();
             try {
-                SchemaInfoDAO schemaInfo = schemaRepository.getSchemaDAO(session, catalogName + "." + schemaName);
+                SchemaInfoDAO schemaInfo = SCHEMA_REPOSITORY.getSchemaDAO(session, catalogName + "." + schemaName);
                 if (schemaInfo == null) {
                     throw new BaseException(ErrorCode.NOT_FOUND, "Schema not found: " + schemaName);
                 }
@@ -156,7 +157,7 @@ public class FunctionRepository {
     }
 
     public FunctionInfoDAO getFunctionDAO(Session session, String catalogName, String schemaName, String functionName) {
-        SchemaInfoDAO schemaInfo = schemaRepository.getSchemaDAO(session, catalogName, schemaName);
+        SchemaInfoDAO schemaInfo = SCHEMA_REPOSITORY.getSchemaDAO(session, catalogName, schemaName);
         if (schemaInfo == null) {
             throw new BaseException(ErrorCode.NOT_FOUND, "Schema not found: " + schemaName);
         }
@@ -177,7 +178,7 @@ public class FunctionRepository {
                     throw new BaseException(ErrorCode.INVALID_ARGUMENT, "Invalid function name: " + name);
                 }
                 String catalogName = parts[0], schemaName = parts[1], functionName = parts[2];
-                SchemaInfoDAO schemaInfo = schemaRepository.getSchemaDAO(session,
+                SchemaInfoDAO schemaInfo = SCHEMA_REPOSITORY.getSchemaDAO(session,
                         catalogName, schemaName);
                 if (schemaInfo == null) {
                     throw new BaseException(ErrorCode.NOT_FOUND, "Schema not found: " + schemaName);

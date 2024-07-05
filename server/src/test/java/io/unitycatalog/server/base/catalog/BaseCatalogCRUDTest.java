@@ -15,12 +15,6 @@ import static io.unitycatalog.server.utils.TestUtils.*;
 
 public abstract class BaseCatalogCRUDTest extends BaseCRUDTest {
 
-    @Before
-    public void setUp() {
-        super.setUp();
-        cleanUp();
-    }
-
     protected void assertCatalog(CatalogInfo catalogInfo, String name, String comment) {
         Assert.assertEquals(name, catalogInfo.getName());
         Assert.assertEquals(comment, catalogInfo.getComment());

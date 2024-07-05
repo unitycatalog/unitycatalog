@@ -7,14 +7,13 @@ import com.linecorp.armeria.server.annotation.ExceptionHandler;
 import com.linecorp.armeria.server.annotation.Post;
 import io.unitycatalog.server.exception.ErrorCode;
 import io.unitycatalog.server.model.*;
-import io.unitycatalog.server.persist.PropertiesUtil;
 import io.unitycatalog.server.persist.TableRepository;
 import io.unitycatalog.server.utils.TemporaryCredentialUtils;
 
 @ExceptionHandler(GlobalExceptionHandler.class)
 public class TemporaryTableCredentialsService {
 
-    private static final TableRepository tableRepository = TableRepository.getInstance();
+    private static final TableRepository TABLE_REPOSITORY = TableRepository.getINSTANCE();
 
     @Post("")
     public HttpResponse generateTemporaryTableCredential(GenerateTemporaryTableCredential generateTemporaryTableCredential) {
@@ -22,7 +21,7 @@ public class TemporaryTableCredentialsService {
 
         // Check if table exists
         String tableStorageLocation = "";
-        TableInfo tableInfo = tableRepository.getTableById(tableId);
+        TableInfo tableInfo = TABLE_REPOSITORY.getTableById(tableId);
         tableStorageLocation = tableInfo.getStorageLocation();
 
         // Generate temporary credentials

@@ -4,7 +4,10 @@ import io.unitycatalog.server.exception.BaseException;
 import io.unitycatalog.server.exception.ErrorCode;
 import io.unitycatalog.server.model.*;
 import io.unitycatalog.server.persist.dao.CatalogInfoDAO;
+import io.unitycatalog.server.persist.dao.PropertyDAO;
 import io.unitycatalog.server.persist.dao.SchemaInfoDAO;
+import io.unitycatalog.server.persist.utils.HibernateUtils;
+import io.unitycatalog.server.utils.Constants;
 import io.unitycatalog.server.utils.ValidationUtils;
 import lombok.Getter;
 import org.hibernate.query.Query;
@@ -15,30 +18,30 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.util.Date;
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 import java.util.stream.Collectors;
 
 public class SchemaRepository {
     @Getter
-    public static final SchemaRepository instance = new SchemaRepository();
+    public static final SchemaRepository INSTANCE = new SchemaRepository();
     @Getter
-    public static final CatalogRepository catalogRepository = CatalogRepository.getInstance();
-    private static final Logger LOGGER = LoggerFactory.getLogger(SchemaRepository.class);
-    private static final SessionFactory sessionFactory = HibernateUtil.getSessionFactory();
+    public static final CatalogRepository CATALOG_REPOSITORY = CatalogRepository.getINSTANCE();
+    private static final SessionFactory SESSION_FACTORY = HibernateUtils.getSessionFactory();
 
     private SchemaRepository() {}
 
     public SchemaInfo createSchema(CreateSchema createSchema) {
         ValidationUtils.validateSqlObjectName(createSchema.getName());
-        try (Session session = sessionFactory.openSession()) {
+        try (Session session = SESSION_FACTORY.openSession()) {
             Transaction tx = session.beginTransaction();
             try {
                 if (getSchemaDAO(session, createSchema.getCatalogName(), createSchema.getName()) != null) {
                     throw new BaseException(ErrorCode.ALREADY_EXISTS,
                             "Schema already exists: " + createSchema.getName());
                 }
-                CatalogInfoDAO catalogDAO = catalogRepository
+                CatalogInfoDAO catalogDAO = CATALOG_REPOSITORY
                         .getCatalogDAO(session, createSchema.getCatalogName());
                 SchemaInfo schemaInfo = new SchemaInfo()
                         .schemaId(UUID.randomUUID().toString())
@@ -49,7 +52,8 @@ public class SchemaRepository {
                         .properties(createSchema.getProperties());
                 SchemaInfoDAO schemaInfoDAO = SchemaInfoDAO.from(schemaInfo);
                 schemaInfoDAO.setCatalogId(catalogDAO.getId());
-                schemaInfoDAO.getProperties().forEach(p -> p.setSchema(schemaInfoDAO));
+                PropertyDAO.from(schemaInfo.getProperties(), schemaInfoDAO.getId(), Constants.SCHEMA)
+                        .forEach(session::persist);
                 session.persist(schemaInfoDAO);
                 tx.commit();
                 addNamespaceData(schemaInfo, createSchema.getCatalogName());
@@ -83,7 +87,7 @@ public class SchemaRepository {
     }
 
     public SchemaInfoDAO getSchemaDAO(Session session, String catalogName, String schemaName) {
-        CatalogInfoDAO catalog = catalogRepository.getCatalogDAO(session, catalogName);
+        CatalogInfoDAO catalog = CATALOG_REPOSITORY.getCatalogDAO(session, catalogName);
         if (catalog == null) {
             throw new BaseException(ErrorCode.NOT_FOUND, "Catalog not found: " + catalogName);
         }
@@ -97,14 +101,14 @@ public class SchemaRepository {
 
     public ListSchemasResponse listSchemas(String catalogName, Optional<Integer> maxResults,
                                            Optional<String> pageToken) {
-        try (Session session = sessionFactory.openSession()) {
+        try (Session session = SESSION_FACTORY.openSession()) {
             ListSchemasResponse response = new ListSchemasResponse();
             session.setDefaultReadOnly(true);
             Transaction tx = session.beginTransaction();
             // TODO: Implement pagination and filtering if required
             // For now, returning all schemas without pagination
             try {
-                CatalogInfoDAO catalog = catalogRepository.getCatalogDAO(session, catalogName);
+                CatalogInfoDAO catalog = CATALOG_REPOSITORY.getCatalogDAO(session, catalogName);
                 if (catalog == null) {
                     throw new BaseException(ErrorCode.NOT_FOUND, "Catalog not found: " + catalogName);
                 }
@@ -112,40 +116,50 @@ public class SchemaRepository {
                 Query<SchemaInfoDAO> query = session
                         .createQuery("FROM SchemaInfoDAO WHERE catalogId = :value", SchemaInfoDAO.class);
                 query.setParameter("value", catalog.getId());
-                response.setSchemas(query.list().stream().map(SchemaInfoDAO::toSchemaInfo)
+                response.setSchemas(query.list().stream()
+                        .map(SchemaInfoDAO::toSchemaInfo)
                         .peek(x -> addNamespaceData(x, catalogName))
+                        .map(s -> attachProperties(s, session))
                         .collect(Collectors.toList()));
                 tx.commit();
+                return response;
             } catch (Exception e) {
                 tx.rollback();
                 throw e;
             }
-            return response;
         }
     }
 
+    public SchemaInfo attachProperties(SchemaInfo schemaInfo, Session session) {
+        List<PropertyDAO> propertyDAOList = PropertyRepository.findProperties(
+                session, UUID.fromString(schemaInfo.getSchemaId()), Constants.SCHEMA);
+        schemaInfo.setProperties(PropertyDAO.toMap(propertyDAOList));
+        return schemaInfo;
+    }
+
     public SchemaInfo getSchema(String fullName) {
-        try (Session session = sessionFactory.openSession()) {
+        try (Session session = SESSION_FACTORY.openSession()) {
             session.setDefaultReadOnly(true);
             Transaction tx = session.beginTransaction();
-            SchemaInfoDAO schemaInfo = null;
+            SchemaInfoDAO schemaInfoDAO;
             try {
-                schemaInfo = getSchemaDAO(session, fullName);
+                schemaInfoDAO = getSchemaDAO(session, fullName);
+                if (schemaInfoDAO == null) {
+                    throw new BaseException(ErrorCode.NOT_FOUND, "Schema not found: " + fullName);
+                }
                 tx.commit();
+                SchemaInfo schemaInfo = convertFromDAO(schemaInfoDAO, fullName);
+                return attachProperties(schemaInfo, session);
             } catch (Exception e) {
                 tx.rollback();
                 throw e;
             }
-            if (schemaInfo == null) {
-                throw new BaseException(ErrorCode.NOT_FOUND, "Schema not found: " + fullName);
-            }
-            return convertFromDAO(schemaInfo, fullName);
         }
     }
 
     public SchemaInfo updateSchema(String fullName, UpdateSchema updateSchema) {
         ValidationUtils.validateSqlObjectName(updateSchema.getNewName());
-        try (Session session = sessionFactory.openSession()) {
+        try (Session session = SESSION_FACTORY.openSession()) {
             Transaction tx = session.beginTransaction();
             try {
                 SchemaInfoDAO schemaInfo = getSchemaDAO(session, fullName);
@@ -179,12 +193,14 @@ public class SchemaRepository {
     }
 
     public void deleteSchema(String fullName) {
-        try (Session session = sessionFactory.openSession()) {
+        try (Session session = SESSION_FACTORY.openSession()) {
             Transaction tx = session.beginTransaction();
             try {
                 SchemaInfoDAO schemaInfo = getSchemaDAO(session, fullName);
                 if (schemaInfo != null) {
                     session.remove(schemaInfo);
+                    PropertyRepository.findProperties(session, schemaInfo.getId(), Constants.SCHEMA)
+                            .forEach(session::remove);
                     tx.commit();
                 } else {
                     throw new BaseException(ErrorCode.NOT_FOUND,

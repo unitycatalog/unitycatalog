@@ -39,7 +39,7 @@ public class PropertyDAO {
     @Column(name = "property_value", nullable = false)
     private String value;
 
-    public static List<PropertyDAO> from(Map<String, String> properties) {
+    public static List<PropertyDAO> from(Map<String, String> properties, UUID entityId, String entityType) {
         if (properties == null) {
             return new ArrayList<>();
         }
@@ -47,6 +47,8 @@ public class PropertyDAO {
                 .map(entry -> PropertyDAO.builder()
                         .key(entry.getKey())
                         .value(entry.getValue())
+                        .entityId(entityId)
+                        .entityType(entityType)
                         .build())
                 .collect(Collectors.toList());
     }

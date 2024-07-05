@@ -5,8 +5,8 @@ import io.unitycatalog.client.model.*;
 import io.unitycatalog.server.base.BaseCRUDTest;
 import io.unitycatalog.server.base.ServerConfig;
 import io.unitycatalog.server.base.schema.SchemaOperations;
-import io.unitycatalog.server.persist.FileUtils;
-import io.unitycatalog.server.persist.HibernateUtil;
+import io.unitycatalog.server.persist.utils.FileUtils;
+import io.unitycatalog.server.persist.utils.HibernateUtils;
 import io.unitycatalog.server.persist.dao.ColumnInfoDAO;
 import io.unitycatalog.server.persist.dao.TableInfoDAO;
 import io.unitycatalog.server.utils.TestUtils;
@@ -24,46 +24,40 @@ public abstract class BaseTableCRUDTest extends BaseCRUDTest {
     protected TableOperations tableOperations;
     private String schemaId = null;
 
+    protected abstract SchemaOperations createSchemaOperations(ServerConfig serverConfig);
+    protected abstract TableOperations createTableOperations(ServerConfig serverConfig);
+
     @Before
+    @Override
     public void setUp() {
         super.setUp();
         schemaOperations = createSchemaOperations(serverConfig);
         tableOperations = createTableOperations(serverConfig);
-        cleanUp();
     }
-    protected abstract SchemaOperations createSchemaOperations(ServerConfig serverConfig);
-    protected abstract TableOperations createTableOperations(ServerConfig serverConfig);
 
-    protected void cleanUp() {
+    @After
+    @Override
+    public void cleanUp() {
         try {
-            if (tableOperations.getTable(TestUtils.TABLE_FULL_NAME) != null) {
-                tableOperations.deleteTable(TestUtils.TABLE_FULL_NAME);
-            }
+            tableOperations.deleteTable(TestUtils.TABLE_FULL_NAME);
         } catch (Exception e) {
             // Ignore
         }
         try {
-            if (schemaOperations.getSchema(TestUtils.SCHEMA_FULL_NAME) != null) {
-                schemaOperations.deleteSchema(TestUtils.SCHEMA_FULL_NAME);
-            }
+            schemaOperations.deleteSchema(TestUtils.SCHEMA_FULL_NAME);
         } catch (Exception e) {
             // Ignore
         }
         try {
-            if (schemaOperations.getSchema(TestUtils.CATALOG_NEW_NAME + "." + TestUtils.SCHEMA_NEW_NAME) != null) {
-                schemaOperations.deleteSchema(TestUtils.CATALOG_NEW_NAME + "." + TestUtils.SCHEMA_NEW_NAME);
-            }
+            schemaOperations.deleteSchema(TestUtils.CATALOG_NEW_NAME + "." + TestUtils.SCHEMA_NEW_NAME);
         } catch (Exception e) {
             // Ignore
         }
         try {
-            if (schemaOperations.getSchema(TestUtils.CATALOG_NEW_NAME + "." + TestUtils.SCHEMA_NAME) != null) {
-                schemaOperations.deleteSchema(TestUtils.CATALOG_NEW_NAME + "." + TestUtils.SCHEMA_NAME);
-            }
+            schemaOperations.deleteSchema(TestUtils.CATALOG_NEW_NAME + "." + TestUtils.SCHEMA_NAME);
         } catch (Exception e) {
             // Ignore
         }
-
         super.cleanUp();
     }
 
@@ -77,7 +71,6 @@ public abstract class BaseTableCRUDTest extends BaseCRUDTest {
 
     @Test
     public void testTableCRUD() throws IOException, ApiException {
-
         Assert.assertThrows(Exception.class, () -> tableOperations.getTable(TestUtils.TABLE_FULL_NAME));
         createCommonResources();
 
@@ -109,7 +102,7 @@ public abstract class BaseTableCRUDTest extends BaseCRUDTest {
         tableOperations.deleteTable(TestUtils.TABLE_FULL_NAME);
         assertThrows(Exception.class, () -> tableOperations.getTable(TestUtils.TABLE_FULL_NAME));
 
-        try (Session session = HibernateUtil.getSessionFactory().openSession()) {
+        try (Session session = HibernateUtils.getSessionFactory().openSession()) {
             Transaction tx = session.beginTransaction();
 
             UUID tableId =  UUID.randomUUID();

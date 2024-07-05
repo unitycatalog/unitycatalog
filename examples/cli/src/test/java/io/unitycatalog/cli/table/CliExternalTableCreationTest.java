@@ -9,9 +9,9 @@ import io.unitycatalog.server.base.BaseServerTest;
 import io.unitycatalog.server.base.catalog.CatalogOperations;
 import io.unitycatalog.server.base.schema.SchemaOperations;
 import io.unitycatalog.server.base.table.TableOperations;
+import org.junit.After;
 import org.junit.Before;
 import org.junit.Test;
-import org.junit.jupiter.api.AfterEach;
 
 import java.io.IOException;
 import java.nio.file.*;
@@ -29,14 +29,12 @@ public class CliExternalTableCreationTest extends BaseServerTest {
     private SchemaOperations schemaOperations;
     private TableOperations tableOperations;
 
-    private static final String SCHEMA_FULL_NAME = CATALOG_NAME + "." + SCHEMA_NAME;
-    private static final String TABLE_FULL_NAME = CATALOG_NAME + "." + SCHEMA_NAME + "." + TABLE_NAME;
-
     private static final List<ColumnInfo> columns = List.of(
             new ColumnInfo().name("id").typeName(ColumnTypeName.INT).comment("id"),
             new ColumnInfo().name("name").typeName(ColumnTypeName.STRING).comment("name"));
 
     @Before
+    @Override
     public void setUp() {
         super.setUp();
         catalogOperations = new CliCatalogOperations(serverConfig);
@@ -51,26 +49,20 @@ public class CliExternalTableCreationTest extends BaseServerTest {
         }
     }
 
-    @Override
+    @After
     public void cleanUp() {
         try {
-            if (tableOperations.getTable(TABLE_FULL_NAME) != null) {
-                tableOperations.deleteTable(TABLE_FULL_NAME);
-            }
+            tableOperations.deleteTable(TABLE_FULL_NAME);
         } catch (Exception e) {
             // Ignore
         }
         try {
-            if (schemaOperations.getSchema(SCHEMA_FULL_NAME) != null) {
-                schemaOperations.deleteSchema(SCHEMA_FULL_NAME);
-            }
+            schemaOperations.deleteSchema(SCHEMA_FULL_NAME);
         } catch (Exception e) {
             // Ignore
         }
         try {
-            if (catalogOperations.getCatalog(CATALOG_NAME) != null) {
-                catalogOperations.deleteCatalog(CATALOG_NAME);
-            }
+            catalogOperations.deleteCatalog(CATALOG_NAME);
         } catch (Exception e) {
             // Ignore
         }

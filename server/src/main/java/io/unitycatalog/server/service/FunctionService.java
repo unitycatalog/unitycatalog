@@ -2,22 +2,17 @@ package io.unitycatalog.server.service;
 
 import io.unitycatalog.server.exception.GlobalExceptionHandler;
 import io.unitycatalog.server.model.CreateFunctionRequest;
-import io.unitycatalog.server.model.FunctionInfo;
 import io.unitycatalog.server.persist.FunctionRepository;
 import com.linecorp.armeria.common.HttpResponse;
 import com.linecorp.armeria.common.HttpStatus;
 import com.linecorp.armeria.server.annotation.*;
-import io.unitycatalog.server.utils.ValidationUtils;
 
 import java.util.Optional;
-
-import static io.unitycatalog.server.utils.ValidationUtils.FUNCTION;
-import static io.unitycatalog.server.utils.ValidationUtils.SCHEMA;
 
 @ExceptionHandler(GlobalExceptionHandler.class)
 public class FunctionService {
 
-    private static final FunctionRepository FUNCTION_REPOSITORY = FunctionRepository.getInstance();
+    private static final FunctionRepository FUNCTION_REPOSITORY = FunctionRepository.getINSTANCE();
 
     public FunctionService() {}
 

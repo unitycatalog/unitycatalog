@@ -18,7 +18,7 @@ import io.unitycatalog.server.exception.BaseException;
 import io.unitycatalog.server.exception.ErrorCode;
 import io.unitycatalog.server.exception.GlobalExceptionHandler;
 import io.unitycatalog.server.model.*;
-import io.unitycatalog.server.persist.HibernateUtil;
+import io.unitycatalog.server.persist.utils.HibernateUtils;
 import io.unitycatalog.server.persist.TableRepository;
 import io.unitycatalog.server.utils.JsonUtils;
 import org.apache.iceberg.TableMetadata;
@@ -39,8 +39,8 @@ public class IcebergRestCatalogService {
   private final CatalogService catalogService;
   private final SchemaService schemaService;
   private final TableService tableService;
-  private final TableRepository tableRepository = TableRepository.getInstance();
-  private static final SessionFactory sessionFactory = HibernateUtil.getSessionFactory();
+  private final TableRepository tableRepository = TableRepository.getINSTANCE();
+  private static final SessionFactory sessionFactory = HibernateUtils.getSessionFactory();
 
   public IcebergRestCatalogService(CatalogService catalogService,
                                    SchemaService schemaService,

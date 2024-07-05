@@ -2,7 +2,7 @@ package io.unitycatalog.server.persist.dao;
 
 import io.unitycatalog.server.model.VolumeInfo;
 import io.unitycatalog.server.model.VolumeType;
-import io.unitycatalog.server.persist.FileUtils;
+import io.unitycatalog.server.persist.utils.FileUtils;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.Id;

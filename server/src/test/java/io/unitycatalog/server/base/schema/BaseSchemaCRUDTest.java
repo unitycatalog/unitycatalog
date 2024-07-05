@@ -12,40 +12,36 @@ import static org.junit.Assert.*;
 public abstract class BaseSchemaCRUDTest extends BaseCRUDTest {
 
     protected SchemaOperations schemaOperations;
+
+    protected abstract SchemaOperations createSchemaOperations(ServerConfig config);
+
     @Before
+    @Override
     public void setUp() {
         super.setUp();
         schemaOperations = createSchemaOperations(serverConfig);
-        cleanUp();
     }
 
-    protected abstract SchemaOperations createSchemaOperations(ServerConfig config);
-    protected void cleanUp() {
+    @After
+    @Override
+    public void cleanUp() {
         try {
-            if (schemaOperations.getSchema(TestUtils.SCHEMA_FULL_NAME) != null) {
-                schemaOperations.deleteSchema(TestUtils.SCHEMA_FULL_NAME);
-            }
+            schemaOperations.deleteSchema(TestUtils.SCHEMA_FULL_NAME);
         } catch (Exception e) {
             // Ignore
         }
         try {
-            if (schemaOperations.getSchema(TestUtils.SCHEMA_NEW_FULL_NAME) != null) {
-                schemaOperations.deleteSchema(TestUtils.SCHEMA_NEW_FULL_NAME);
-            }
+            schemaOperations.deleteSchema(TestUtils.SCHEMA_NEW_FULL_NAME);
         } catch (Exception e) {
             // Ignore
         }
         try {
-            if (schemaOperations.getSchema(TestUtils.CATALOG_NEW_NAME + "." + TestUtils.SCHEMA_NEW_NAME) != null) {
-                schemaOperations.deleteSchema(TestUtils.CATALOG_NEW_NAME + "." + TestUtils.SCHEMA_NEW_NAME);
-            }
+            schemaOperations.deleteSchema(TestUtils.CATALOG_NEW_NAME + "." + TestUtils.SCHEMA_NEW_NAME);
         } catch (Exception e) {
             // Ignore
         }
         try {
-            if (schemaOperations.getSchema(TestUtils.CATALOG_NEW_NAME + "." + TestUtils.SCHEMA_NAME) != null) {
-                schemaOperations.deleteSchema(TestUtils.CATALOG_NEW_NAME + "." + TestUtils.SCHEMA_NAME);
-            }
+            schemaOperations.deleteSchema(TestUtils.CATALOG_NEW_NAME + "." + TestUtils.SCHEMA_NAME);
         } catch (Exception e) {
                 // Ignore
         }

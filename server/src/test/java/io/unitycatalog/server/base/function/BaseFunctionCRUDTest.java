@@ -18,19 +18,21 @@ public abstract class BaseFunctionCRUDTest extends BaseCRUDTest {
     protected SchemaOperations schemaOperations;
     protected FunctionOperations functionOperations;
 
-    @Before
-    public void setUp() {
-        super.setUp();
-        schemaOperations = createSchemaOperations(serverConfig);
-        functionOperations = createFunctionOperations(serverConfig);
-        cleanUp();
-    }
-
     protected abstract SchemaOperations createSchemaOperations(ServerConfig serverConfig);
 
     protected abstract FunctionOperations createFunctionOperations(ServerConfig serverConfig);
 
-    protected void cleanUp() {
+    @Before
+    @Override
+    public void setUp() {
+        super.setUp();
+        schemaOperations = createSchemaOperations(serverConfig);
+        functionOperations = createFunctionOperations(serverConfig);
+    }
+
+    @After
+    @Override
+    public void cleanUp() {
         try {
             functionOperations.deleteFunction(FUNCTION_FULL_NAME, true);
         } catch (Exception e) {
@@ -42,16 +44,12 @@ public abstract class BaseFunctionCRUDTest extends BaseCRUDTest {
             // Ignore
         }
         try {
-            if (schemaOperations.getSchema(TestUtils.CATALOG_NEW_NAME + "." + TestUtils.SCHEMA_NEW_NAME) != null) {
-                schemaOperations.deleteSchema(TestUtils.CATALOG_NEW_NAME + "." + TestUtils.SCHEMA_NEW_NAME);
-            }
+            schemaOperations.deleteSchema(TestUtils.CATALOG_NEW_NAME + "." + TestUtils.SCHEMA_NEW_NAME);
         } catch (Exception e) {
             // Ignore
         }
         try {
-            if (schemaOperations.getSchema(TestUtils.CATALOG_NEW_NAME + "." + TestUtils.SCHEMA_NAME) != null) {
-                schemaOperations.deleteSchema(TestUtils.CATALOG_NEW_NAME + "." + TestUtils.SCHEMA_NAME);
-            }
+            schemaOperations.deleteSchema(TestUtils.CATALOG_NEW_NAME + "." + TestUtils.SCHEMA_NAME);
         } catch (Exception e) {
             // Ignore
         }
@@ -95,7 +93,6 @@ public abstract class BaseFunctionCRUDTest extends BaseCRUDTest {
                 .sqlDataAccess(CreateFunction.SqlDataAccessEnum.NO_SQL)
                 .inputParams(functionParameterInfos);
         CreateFunctionRequest createFunctionRequest = new CreateFunctionRequest().functionInfo(createFunction);
-
 
         // Create a function
         FunctionInfo functionInfo = functionOperations.createFunction(createFunctionRequest);

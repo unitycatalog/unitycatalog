@@ -34,9 +34,6 @@ public class CatalogInfoDAO {
     @Column(name = "updated_at")
     private Date updatedAt;
 
-    @OneToMany(mappedBy = "catalog", cascade = CascadeType.ALL, orphanRemoval = true)
-    private List<PropertyDAO> properties;
-
     public static CatalogInfoDAO from(CatalogInfo catalogInfo) {
         return CatalogInfoDAO.builder()
             .id(catalogInfo.getId() != null ? UUID.fromString(catalogInfo.getId()) : null)
@@ -46,7 +43,6 @@ public class CatalogInfoDAO {
                     .ofEpochMilli(catalogInfo.getCreatedAt())) : new Date())
             .updatedAt(catalogInfo.getUpdatedAt() != null ? Date.from(Instant
                     .ofEpochMilli(catalogInfo.getUpdatedAt())) : null)
-            .properties(PropertyDAO.from(catalogInfo.getProperties()))
             .build();
     }
 
@@ -56,7 +52,6 @@ public class CatalogInfoDAO {
             .name(name)
             .comment(comment)
             .createdAt(createdAt.getTime())
-            .updatedAt(updatedAt != null ? updatedAt.getTime() : null)
-            .properties(PropertyDAO.toMap(properties));
+            .updatedAt(updatedAt != null ? updatedAt.getTime() : null);
     }
 }
