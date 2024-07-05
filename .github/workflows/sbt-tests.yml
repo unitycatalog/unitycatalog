@@ -50,7 +50,7 @@ jobs:
 
     - name: Check Client Differences
       run: |
-        diff -r clients/java <(git show HEAD:clients/java) > /tmp/client_diff.txt
+        git diff --name-only clients/java > /tmp/client_diff.txt
         if [[ -s /tmp/client_diff.txt ]]; then
           echo "Generated files do not match committed files."
           cat /tmp/client_diff.txt
@@ -60,7 +60,7 @@ jobs:
 
     - name: Check Server Model Differences
       run: |
-        diff -r server/java <(git show HEAD:server/java) > /tmp/server_diff.txt
+        git diff --name-only server/src/main/java/io/unitycatalog/server/model > /tmp/server_diff.txt
         if [[ -s /tmp/server_diff.txt ]]; then
           echo "Generated files do not match committed files."
           cat /tmp/server_diff.txt
