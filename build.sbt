@@ -127,7 +127,7 @@ lazy val client = (project in file("clients/java"))
       val _ = openApiGenerate.value
     }
   )
-  .settings(javaOnlyReleaseSettings *)
+  .settings(javaOnlyReleaseSettings: _*)
 
 lazy val apiDocs = (project in file("api"))
   .enablePlugins(OpenApiGeneratorPlugin)
@@ -229,7 +229,7 @@ lazy val server = (project in file("server"))
       val _ = openApiGenerate.value
     }
   )
-  .settings(javaOnlyReleaseSettings *)
+  .settings(javaOnlyReleaseSettings: _*)
 
 lazy val cli = (project in file("examples") / "cli")
   .dependsOn(server % "compile->compile;test->test")
@@ -266,7 +266,7 @@ lazy val cli = (project in file("examples") / "cli")
       "com.github.sbt" % "junit-interface" % "0.13.3" % Test,
     )
   )
-  .settings(skipReleaseSettings *)
+  .settings(skipReleaseSettings: _*)
 
 lazy val root = (project in file("."))
   .aggregate(client, server, cli)
