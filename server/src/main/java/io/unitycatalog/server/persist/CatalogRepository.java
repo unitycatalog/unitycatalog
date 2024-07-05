@@ -99,7 +99,9 @@ public class CatalogRepository {
     }
 
     public CatalogInfo updateCatalog(String name, UpdateCatalog updateCatalog) {
-        ValidationUtils.validateSqlObjectName(updateCatalog.getNewName());
+        if (updateCatalog.getNewName() != null) {
+            ValidationUtils.validateSqlObjectName(updateCatalog.getNewName());
+        }
         // cna make this just update once we have an identifier that is not the name
         try (Session session = sessionFactory.openSession()) {
             Transaction tx = session.beginTransaction();
@@ -108,11 +110,13 @@ public class CatalogRepository {
                 if (catalogInfo == null) {
                     throw new BaseException(ErrorCode.NOT_FOUND, "Catalog not found: " + name);
                 }
-                if (getCatalogDAO(session, updateCatalog.getNewName()) != null) {
+                if (updateCatalog.getNewName() != null && getCatalogDAO(session, updateCatalog.getNewName()) != null) {
                     throw new BaseException(ErrorCode.ALREADY_EXISTS,
                             "Catalog already exists: " + updateCatalog.getNewName());
                 }
-                catalogInfo.setName(updateCatalog.getNewName());
+                if (updateCatalog.getNewName() != null) {
+                    catalogInfo.setName(updateCatalog.getNewName());
+                }
                 catalogInfo.setComment(updateCatalog.getComment());
                 catalogInfo.setUpdatedAt(new Date());
                 session.merge(catalogInfo);
