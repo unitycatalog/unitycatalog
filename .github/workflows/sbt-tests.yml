@@ -32,7 +32,7 @@ jobs:
     - name: Run tests with coverage
       run: sbt jacoco
 
-  generate-validate:
+  generated-files-validation:
     runs-on: ubuntu-latest
 
     steps:
