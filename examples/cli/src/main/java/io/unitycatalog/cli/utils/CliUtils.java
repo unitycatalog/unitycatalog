@@ -10,15 +10,9 @@ import de.vandermeer.asciitable.AsciiTable;
 import de.vandermeer.asciitable.CWC_FixedWidth;
 import de.vandermeer.asciitable.CWC_LongestLine;
 import de.vandermeer.skb.interfaces.transformers.textformat.TextAlignment;
-import de.vandermeer.skb.interfaces.translators.HtmlElementTranslator;
-import io.delta.kernel.ScanBuilder;
-import io.delta.kernel.data.Row;
-import io.unitycatalog.cli.delta.DeltaKernelReadUtils;
 import io.unitycatalog.client.model.*;
-import io.unitycatalog.server.utils.JsonUtils;
 import org.apache.commons.cli.CommandLine;
 import org.apache.commons.cli.Option;
-
 import org.fusesource.jansi.AnsiConsole;
 import org.json.JSONObject;
 
@@ -28,7 +22,6 @@ import java.util.*;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
-import java.util.stream.IntStream;
 
 public class CliUtils {
     public static final String CATALOG = "catalog";
@@ -162,6 +155,127 @@ public class CliUtils {
         return columns;
     }
 
+    private static int calculateFieldWidths(JsonNode node,
+                                            List<String> fields,
+                                            int[] columnWidths,
+                                            boolean[] fixedWidthColumns) {
+        int maxLineWidth = 0;
+
+        for (int columnIndex = 0; columnIndex < fields.size(); columnIndex++) {
+            columnWidths[columnIndex] = fields.get(columnIndex).length();
+        }
+
+        for (JsonNode jsonNode : node) {
+            int lineWidth = 1;
+            for (int columnIndex = 0; columnIndex < fields.size(); columnIndex++) {
+                String fieldName = fields.get(columnIndex);
+                JsonNode value = jsonNode.get(fieldName);
+                String valueString = value.isTextual() ? value.asText() : value.toString();
+
+                columnWidths[columnIndex] = Math.max(columnWidths[columnIndex], valueString.length());
+                lineWidth += valueString.length() + 1;
+
+                String fieldNameLowerCase = fieldName.toLowerCase();
+                if (fieldNameLowerCase.equals("name") || fieldNameLowerCase.endsWith("id")) {
+                    fixedWidthColumns[columnIndex] = true;
+                }
+
+            }
+            maxLineWidth = Math.max(maxLineWidth, lineWidth);
+        }
+
+        return maxLineWidth;
+    }
+
+    private static void adjustColumnWidths(List<String> fields,
+                                           int outputWidth,
+                                           int[] columnWidths,
+                                           boolean[] fixedWidthColumns) {
+        int widthRemaining = outputWidth - fields.size();
+
+        int fixedWidthColumnCount = 0;
+        for (int i = 0; i < fields.size(); i++) {
+            widthRemaining -= fixedWidthColumns[i] ? columnWidths[i] : 0;
+            if (fixedWidthColumns[i]) {
+                fixedWidthColumnCount++;
+            }
+        }
+        int columnWidth = (widthRemaining) / (fields.size() - fixedWidthColumnCount);
+
+        for (int i = 0; i < fields.size(); i++) {
+            if (!fixedWidthColumns[i]) {
+                columnWidths[i] = columnWidth;
+            }
+        }
+    }
+
+    private static void processOutputAsRows(AsciiTable at, JsonNode node, int outputWidth) {
+        List<String> fields = getFields(node.get(0));
+
+        int[] columnWidths = new int[fields.size()];
+        boolean[] fixedWidthColumns = new boolean[fields.size()];
+        int maxLineWidth = calculateFieldWidths(node, fields, columnWidths, fixedWidthColumns);
+
+        if (maxLineWidth >= outputWidth) {
+            adjustColumnWidths(fields, outputWidth, columnWidths, fixedWidthColumns);
+        }
+
+        List<String> headers = fields.stream().map(String::toUpperCase).collect(Collectors.toList());
+
+        CWC_FixedWidth cwc = new CWC_FixedWidth();
+        for (int i = 0; i < fields.size(); i++) {
+            cwc.add(columnWidths[i]);
+        }
+
+        at.getRenderer().setCWC(cwc);
+        at.addRule();
+        at.addRow(headers.toArray()).setTextAlignment(TextAlignment.CENTER);
+        at.addRule();
+        node.forEach(element -> {
+            List<String> row = new ArrayList<>();
+            ObjectNode objectNode = (ObjectNode) element;
+            Iterator<String> fieldNames = objectNode.fieldNames();
+            int columnIndex = 0;
+            while (fieldNames.hasNext()) {
+                String fieldName = fieldNames.next();
+                JsonNode value = element.get(fieldName);
+                String valueString = value.isTextual() ? value.asText() : value.toString();
+                row.add(preprocess(valueString, columnWidths[columnIndex]));
+                columnIndex++;
+            }
+            at.addRow(row.toArray());
+            at.addRule();
+        });
+    }
+
+    private static void processOutputAsKeysAndValues(AsciiTable at, JsonNode node, int outputWidth) {
+        int minOutputWidth = outputWidth / 2;
+
+        at.getRenderer().setCWC(new CWC_LongestLine()
+                .add(minOutputWidth / 3,outputWidth / 4)
+                .add(2 * minOutputWidth / 3, 3 * outputWidth / 4));
+        at.addRule();
+        at.addRow("KEY", "VALUE").setTextAlignment(TextAlignment.CENTER);
+        at.addRule();
+        node.fields().forEachRemaining(field -> {
+            JsonNode value = field.getValue();
+            StringBuilder valueString = new StringBuilder();
+            if (value.isTextual()) {
+                valueString = new StringBuilder(value.asText());
+            } else if (value.isArray()) {
+                ArrayNode arrayNode = (ArrayNode) value;
+                for (int i = 0; i < arrayNode.size(); i++) {
+                    valueString.append(arrayNode.get(i).toString()).append("\n\n");
+                }
+            } else {
+                valueString = new StringBuilder(value.toString());
+            }
+            at.addRow(field.getKey().toUpperCase(), valueString.toString()).setTextAlignment(TextAlignment.LEFT);
+            at.addRule();
+        });
+
+    }
+
     public static void postProcessAndPrintOutput(CommandLine cmd, String output, String subCommand) {
         boolean jsonFormat = cmd.hasOption(OUTPUT)
                 && ("json".equals(cmd.getOptionValue(OUTPUT))
@@ -178,104 +292,12 @@ public class CliUtils {
                         System.out.println(output);
                         return;
                     } else {
-                        List<String> fields = getFields(node.get(0));
-
-                        int[] columnWidths = new int[fields.size()];
-                        boolean[] fixedWidthColumns = new boolean[fields.size()];
-                        int maxLineWidth = 0;
-
-                        for (int columnIndex = 0; columnIndex < fields.size(); columnIndex++) {
-                            columnWidths[columnIndex] = fields.get(columnIndex).length();
-                        }
-
-                        for (JsonNode jsonNode : node) {
-                            int lineWidth = 1;
-                            for (int columnIndex = 0; columnIndex < fields.size(); columnIndex++) {
-                                String fieldName = fields.get(columnIndex);
-                                JsonNode value = jsonNode.get(fieldName);
-                                String valueString = value.isTextual() ? value.asText() : value.toString();
-
-                                columnWidths[columnIndex] = Math.max(columnWidths[columnIndex], valueString.length());
-                                lineWidth += valueString.length() + 1;
-
-                                String fieldNameLowerCase = fieldName.toLowerCase();
-                                if (fieldNameLowerCase.equals("name") || fieldNameLowerCase.endsWith("id")) {
-                                    fixedWidthColumns[columnIndex] = true;
-                                }
-
-                            }
-                            maxLineWidth = Math.max(maxLineWidth, lineWidth);
-                        }
-
-                        if (maxLineWidth >= outputWidth) {
-                            int widthRemaining = outputWidth - fields.size();
-
-                            int fixedWidthColumnCount = 0;
-                            for (int i = 0; i < fields.size(); i++) {
-                                widthRemaining -= fixedWidthColumns[i] ? columnWidths[i] : 0;
-                                if (fixedWidthColumns[i]) {
-                                    fixedWidthColumnCount++;
-                                }
-                            }
-                            int columnWidth = (widthRemaining) / (fields.size() - fixedWidthColumnCount);
-
-                            for (int i = 0; i < fields.size(); i++) {
-                                if (!fixedWidthColumns[i]) {
-                                    columnWidths[i] = columnWidth;
-                                }
-                            }
-                        }
-
-                        List<String> headers = fields.stream().map(String::toUpperCase).collect(Collectors.toList());
-
-                        CWC_FixedWidth cwc = new CWC_FixedWidth();
-                        for (int i = 0; i < fields.size(); i++) {
-                            cwc.add(columnWidths[i]);
-                        }
-
-                        at.getRenderer().setCWC(cwc);
-                        at.addRule();
-                        at.addRow(headers.toArray()).setTextAlignment(TextAlignment.CENTER);
-                        at.addRule();
-                        node.forEach(element -> {
-                            List<String> row = new ArrayList<>();
-                            ObjectNode objectNode = (ObjectNode) element;
-                            Iterator<String> fieldNames = objectNode.fieldNames();
-                            int columnIndex = 0;
-                            while (fieldNames.hasNext()) {
-                                String fieldName = fieldNames.next();
-                                JsonNode value = element.get(fieldName);
-                                String valueString = value.isTextual() ? value.asText() : value.toString();
-                                row.add(preprocess(valueString, columnWidths[columnIndex]));
-                                columnIndex++;
-                            }
-                            at.addRow(row.toArray());
-                            at.addRule();
-                        });
+                        processOutputAsRows(at, node, outputWidth);
                     }
                 } else {
-                    at.getRenderer().setCWC(new CWC_LongestLine().add(20,50).add(50,100));
-                    at.addRule();
-                    at.addRow("KEY", "VALUE").setTextAlignment(TextAlignment.CENTER);
-                    at.addRule();
-                    node.fields().forEachRemaining(field -> {
-                        JsonNode value = field.getValue();
-                        StringBuilder valueString = new StringBuilder();
-                        if (value.isTextual()) {
-                            valueString = new StringBuilder(value.asText());
-                        } else if (value.isArray()) {
-                            ArrayNode arrayNode = (ArrayNode) value;
-                            for (int i = 0; i < arrayNode.size(); i++) {
-                                valueString.append(arrayNode.get(i).toString()).append("\n\n");
-                            }
-                        } else {
-                            valueString = new StringBuilder(value.toString());
-                        }
-                        at.addRow(field.getKey().toUpperCase(), valueString.toString());
-                        at.addRule();
-                    });
+                    processOutputAsKeysAndValues(at, node, outputWidth);
                 }
-                System.out.println(at.render(200));
+                System.out.println(at.render(outputWidth));
             } catch (Exception e) {
                 System.out.println("Error while printing output as table: " + e.getMessage());
                 System.out.println(output);
