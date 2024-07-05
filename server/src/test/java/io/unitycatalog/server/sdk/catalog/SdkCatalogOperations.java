@@ -34,6 +34,12 @@ public class SdkCatalogOperations implements CatalogOperations {
     }
 
     @Override
+    public CatalogInfo updateCatalog(String name, String comment) throws ApiException {
+        UpdateCatalog updateCatalog = new UpdateCatalog().comment(comment);
+        return catalogsApi.updateCatalog(name, updateCatalog);
+    }
+
+    @Override
     public CatalogInfo updateCatalog(String name, String newName, String comment) throws ApiException {
         UpdateCatalog updateCatalog = new UpdateCatalog().newName(newName).comment(comment);
         return catalogsApi.updateCatalog(name, updateCatalog);
