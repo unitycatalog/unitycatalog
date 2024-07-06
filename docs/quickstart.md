@@ -1,29 +1,38 @@
-# Tutorial
+# Quickstart
 
-Let's take Unity Catalog for spin. In this tutorial, we are going to do the following:
+This quickstat shows how to run Unity Catalog on localhost which is great for experimentation and testing.
 
-- In one terminal, run the UC server.
-- In another terminal, we will explore the contents of the UC server using the UC CLI,
-  which is an example UC connector provided to demonstrate how to use the UC SDK for various assets,
-  as well as provide a convenient way to explore the content of any UC server implementation.
+## How to start the Unity Catalog server
 
-## Prerequisites
+Start by cloning the open source Unity Catalog GitHub repository:
 
-You have to ensure that your local environment has the following:
-
-- Clone this repository.
-- Ensure the `JAVA_HOME` environment variable your terminal is configured to point to JDK11+.
-- Compile the project running `build/sbt package` in the repository root directory.
-
-## Run the UC Server
-
-In a terminal, in the cloned repository root directory, start the UC server.
-
-```sh
-bin/start-uc-server
+```
+git clone git@github.com:unitycatalog/unitycatalog.git
 ```
 
-For the rest of the steps, continue in a different terminal.
+Change into the `unitycatalog` directory and run `bin/start-uc-server` to instantiate the server.  Here is what you should see:
+
+![UC Server](./assets/images/uc_server.png)
+
+Well, that was pretty easy!
+
+To run Unity Catalog, you need Java 11 installed on your machine.  You can always run the `java --version` command to verify that you have the right version of Java installed.
+
+![UC Java Version](./assets/images/uc_java_version.png)
+
+## Verify Unity Catalog server is running
+
+Let’s create a new Terminal window and verify that the Unity Catalog server is running.
+
+Unity Catalog has a few built-in tables that are great for quick experimentation.  Let’s look at all the tables that have a catalog name of “unity” and a schema name of “default” with the `bin/uc table list --catalog unity --schema default` command:
+
+![UC list tables](./assets/images/uc_list_tables.png)
+
+Let’s read the content of the `unity.default.numbers` table:
+
+![UC query table](./assets/images/uc_query_table.png)
+
+We can see it’s straightforward to make queries with the Unity Catalog CLI.
 
 ## List the catalogs and schemas with the CLI
 
@@ -50,7 +59,7 @@ bin/uc schema list --catalog unity
 You should see that there is a schema named `default`. To go deeper into the contents of this schema,
 you have to list different asset types separately. Let's start with tables.
 
-### Operate on Delta tables with the CLI
+## Operate on Delta tables with the CLI
 
 Let's list the tables.
 
@@ -91,5 +100,5 @@ bin/uc table read --full_name unity.default.myTable
 
 ## APIs and Compatibility
 
-- Open API specification: The Unity Catalog Rest API is documented [here](../api).
+- Open API specification: See the Unity Catalog Rest API.
 - Compatibility and stability: The APIs are currently evolving and should not be assumed to be stable.
