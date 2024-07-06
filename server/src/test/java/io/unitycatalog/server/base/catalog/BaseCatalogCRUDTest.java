@@ -53,15 +53,15 @@ public abstract class BaseCatalogCRUDTest extends BaseCRUDTest {
         CatalogInfo catalogInfo2 = catalogOperations.getCatalog(CATALOG_NAME);
         Assert.assertEquals(catalogInfo, catalogInfo2);
 
-        // Update catalog
-        System.out.println("Testing update catalog..");
-        CatalogInfo updatedCatalogInfo = catalogOperations.updateCatalog(CATALOG_NAME, CATALOG_NEW_NAME, CATALOG_NEW_COMMENT);
-        assertCatalog(updatedCatalogInfo, CATALOG_NEW_NAME, CATALOG_NEW_COMMENT);
+        // Update catalog name
+        System.out.println("Testing update catalog: changing name..");
+        CatalogInfo updatedCatalogInfo = catalogOperations.updateCatalog(CATALOG_NAME, CATALOG_NEW_NAME, null);
+        assertCatalog(updatedCatalogInfo, CATALOG_NEW_NAME, COMMENT);
 
-        // Update catalog without changing the name
-        System.out.println("Testing update catalog without changing the name..");
-        CatalogInfo updatedCatalogInfo2 = catalogOperations.updateCatalog(CATALOG_NEW_NAME, COMMENT);
-        assertCatalog(updatedCatalogInfo2, CATALOG_NEW_NAME, COMMENT);
+        // Update catalog comment
+        System.out.println("Testing update catalog: changing comment..");
+        CatalogInfo updatedCatalogInfo2 = catalogOperations.updateCatalog(CATALOG_NEW_NAME, null, CATALOG_NEW_COMMENT);
+        assertCatalog(updatedCatalogInfo2, CATALOG_NEW_NAME, CATALOG_NEW_COMMENT);
 
         // Delete catalog
         System.out.println("Testing delete catalog..");

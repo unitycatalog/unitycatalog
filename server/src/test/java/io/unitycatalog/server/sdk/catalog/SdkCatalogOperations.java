@@ -34,14 +34,14 @@ public class SdkCatalogOperations implements CatalogOperations {
     }
 
     @Override
-    public CatalogInfo updateCatalog(String name, String comment) throws ApiException {
-        UpdateCatalog updateCatalog = new UpdateCatalog().comment(comment);
-        return catalogsApi.updateCatalog(name, updateCatalog);
-    }
-
-    @Override
     public CatalogInfo updateCatalog(String name, String newName, String comment) throws ApiException {
-        UpdateCatalog updateCatalog = new UpdateCatalog().newName(newName).comment(comment);
+        UpdateCatalog updateCatalog = new UpdateCatalog();
+        if (newName != null) {
+            updateCatalog.newName(newName);
+        }
+        if (comment != null) {
+            updateCatalog.comment(comment);
+        }
         return catalogsApi.updateCatalog(name, updateCatalog);
     }
 

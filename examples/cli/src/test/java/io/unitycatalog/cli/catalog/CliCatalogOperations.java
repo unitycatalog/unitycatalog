@@ -48,15 +48,17 @@ public class CliCatalogOperations implements CatalogOperations {
     }
 
     @Override
-    public CatalogInfo updateCatalog(String name, String comment) {
-        String[] args = addServerAndAuthParams(List.of("catalog", "update", "--name", name, "--comment", comment), config);
-        JsonNode updatedCatalogInfo = executeCLICommand(args);
-        return objectMapper.convertValue(updatedCatalogInfo, CatalogInfo.class);
-    }
-
-    @Override
     public CatalogInfo updateCatalog(String name, String newName, String comment) {
-        String[] args = addServerAndAuthParams(List.of("catalog", "update", "--name", name, "--new_name", newName, "--comment", comment), config);
+        List<String> argsList = new ArrayList<>(List.of("catalog", "update", "--name", name));
+        if (newName != null) {
+            argsList.add("--new_name");
+            argsList.add(newName);
+        }
+        if (comment != null) {
+            argsList.add("--comment");
+            argsList.add(comment);
+        }
+        String[] args = addServerAndAuthParams(argsList, config);
         JsonNode updatedCatalogInfo = executeCLICommand(args);
         return objectMapper.convertValue(updatedCatalogInfo, CatalogInfo.class);
     }
