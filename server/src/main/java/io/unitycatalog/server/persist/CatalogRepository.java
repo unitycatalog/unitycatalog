@@ -117,7 +117,9 @@ public class CatalogRepository {
                 if (updateCatalog.getNewName() != null) {
                     catalogInfo.setName(updateCatalog.getNewName());
                 }
-                catalogInfo.setComment(updateCatalog.getComment());
+                if (updateCatalog.getComment() != null) {
+                    catalogInfo.setComment(updateCatalog.getComment());
+                }
                 catalogInfo.setUpdatedAt(new Date());
                 session.merge(catalogInfo);
                 tx.commit();
