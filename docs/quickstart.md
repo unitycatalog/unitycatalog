@@ -1,6 +1,6 @@
 # Quickstart
 
-This quickstat shows how to run Unity Catalog on localhost which is great for experimentation and testing.
+This quickstart shows how to run Unity Catalog on localhost which is great for experimentation and testing.
 
 ## How to start the Unity Catalog server
 
