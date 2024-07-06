@@ -1,6 +1,7 @@
 package io.unitycatalog.cli;
 
 import com.fasterxml.jackson.databind.ObjectWriter;
+import io.unitycatalog.cli.utils.CliException;
 import io.unitycatalog.cli.utils.CliParams;
 import io.unitycatalog.cli.utils.CliUtils;
 import com.fasterxml.jackson.core.JsonProcessingException;
@@ -69,6 +70,9 @@ public class CatalogCli {
     private static String updateCatalog(CatalogsApi apiClient, JSONObject json) throws JsonProcessingException, ApiException {
         String catalogName = json.getString(NAME_PARAM);
         json.remove(NAME_PARAM);
+        if (json.length() == 0) {
+            throw new CliException("Nothing to update.");
+        }
         UpdateCatalog updateCatalog = objectMapper.readValue(json.toString(), UpdateCatalog.class);
         return objectWriter.writeValueAsString(apiClient.updateCatalog(catalogName, updateCatalog));
     }
