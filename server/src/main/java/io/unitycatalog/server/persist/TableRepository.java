@@ -252,12 +252,11 @@ public class TableRepository {
                     if (omitColumns) {
                         tableInfo.setColumns(null);
                     }
-                    if (omitProperties) {
-                        tableInfo.setProperties(null);
+                    if (!omitProperties) {
+                        attachProperties(tableInfo, session);
                     }
                     tableInfo.setCatalogName(catalogName);
                     tableInfo.setSchemaName(schemaName);
-                    attachProperties(tableInfo, session);
                     result.add(tableInfo);
                 }
                 tx.commit();
