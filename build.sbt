@@ -273,7 +273,8 @@ lazy val root = (project in file("."))
   .aggregate(client, server, cli)
   .settings(
     name := s"$artifactNamePrefix",
-    createTarballSettings()
+    createTarballSettings(),
+    rootReleaseSettings
   )
 
 def generateClasspathFile(targetDir: File, classpath: Classpath): Unit = {
