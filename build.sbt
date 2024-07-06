@@ -20,7 +20,7 @@ lazy val commonSettings = Seq(
       sys.props("java.specification.version").toDouble >= 11,
       "Java 11 or above is required to run this project.")
   },
-  javacOptions ++= Seq(
+  Compile / compile / javacOptions ++= Seq(
     "-Xlint:deprecation",
     "-Xlint:unchecked",
     "-source", "1.8",

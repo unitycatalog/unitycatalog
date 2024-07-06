@@ -1,11 +1,12 @@
-import com.typesafe.sbt.SbtPgp.autoImportImpl._
 import sbt._
 import sbt.Keys._
 import sbtrelease.ReleasePlugin.autoImport._
 import sbtrelease.ReleaseStateTransformations._
 import xerial.sbt.Sonatype.autoImport._
+import com.jsuereth.sbtpgp.SbtPgp.autoImport._
 
 import scala.language.implicitConversions
+
 
 object ReleaseSettings {
 
@@ -63,7 +64,7 @@ object ReleaseSettings {
     },
     licenses += ("Apache-2.0", url("http://www.apache.org/licenses/LICENSE-2.0")),
     pomExtra :=
-      <url>https://www.unitycatalog.io/</url>
+      <url>https://unitycatalog.io/</url>
         <scm>
           <url>git@github.com:unitycatalog/unitycatalog.git</url>
           <connection>scm:git:git@github.com:unitycatalog/unitycatalog.git</connection>
