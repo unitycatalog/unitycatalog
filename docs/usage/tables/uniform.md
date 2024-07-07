@@ -1,5 +1,9 @@
 # Unity Catalog with UniForm tables
 
+UniForm tables are Delta tables with both Delta Lake and Iceberg metadata.  UniForm tables can easily be read by Delta or Iceberg clients.
+
+UniForm makes it easy for all engines to read Delta tables, even engines that only have Iceberg connectors and don't have Delta Lake connectors.
+
 ## Read Delta Uniform tables via Iceberg REST Catalog
 
 Delta Tables with Uniform enabled can be accessed via Iceberg REST Catalog. The Iceberg REST Catalog is served at
@@ -7,7 +11,7 @@ Delta Tables with Uniform enabled can be accessed via Iceberg REST Catalog. The 
 
 A pre-populated Delta Uniform table can be prepared by running `cp -r etc/data/external/unity/default/tables/marksheet_uniform /tmp/marksheet_uniform`.
 
-### Setting up REST Catalog with Apache Spark
+## Setting up REST Catalog with Apache Spark
 
 The following is an example of the settings to configure OSS Apache Spark to read UniForm as Iceberg:
 

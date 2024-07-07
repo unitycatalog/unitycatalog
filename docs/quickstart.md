@@ -34,13 +34,27 @@ Let’s read the content of the `unity.default.numbers` table:
 
 We can see it’s straightforward to make queries with the Unity Catalog CLI.
 
-## List the catalogs and schemas with the CLI
+## Unity Catalog structure
 
 Unity Catalog stores all assets in a 3-level namespace:
 
 1. catalog
 2. schema
 3. assets like tables, volumes, functions, etc.
+
+Here's an example Unity Catalog instance:
+
+![UC Example Catalog](./assets/images/uc_example_catalog.png)
+
+This Unity Catalog instance contains a single catalog named `cool_stuff`.
+
+The `cool_stuff` catalog contains two schema: `thing_a` and `thing_b`.
+
+`thing_a` contains a Delta table, a function, and a Lance volume.  `thing_b` contains two Delta tables.
+
+Unity Catalog provides a nice organizational structure for various datasets.
+
+## List the catalogs and schemas with the CLI
 
 The UC server is pre-populated with a few sample catalogs, schemas, Delta tables, etc.
 
@@ -56,7 +70,9 @@ You should see a catalog named `unity`. Let's see what's in this `unity` catalog
 bin/uc schema list --catalog unity
 ```
 
-You should see that there is a schema named `default`. To go deeper into the contents of this schema,
+![UC list schemas](./assets/images/uc_quickstart_schema_list.png)
+
+You should see that there is a schema named `default`.  To go deeper into the contents of this schema,
 you have to list different asset types separately. Let's start with tables.
 
 ## Operate on Delta tables with the CLI
@@ -67,6 +83,8 @@ Let's list the tables.
 bin/uc table list --catalog unity --schema default
 ```
 
+![UC list tables](./assets/images/uc_quickstart_table_list.png)
+
 You should see a few tables. Some details are truncated because of the nested nature of the data.
 To see all the content, you can add `--output jsonPretty` to any command.
 
@@ -76,27 +94,42 @@ Next, let's get the metadata of one those tables.
 bin/uc table get --full_name unity.default.numbers
 ```
 
-You can see that it is a Delta table. Now, specifically for Delta tables, this CLI can
-print a snippet of the contents of a Delta table (powered by the [Delta Kernel Java](https://delta.io/blog/delta-kernel/) project).
-Let's try that.
+![UC table metadata](./assets/images/uc_quickstart_table_metadata.png)
+
+You can see this is a Delta table from the `DATA_SOURCE_FORMAT` metadata.
+
+Here's how to print a snippet of a Delta table (powered by the [Delta Kernel Java](https://delta.io/blog/delta-kernel/) project).
 
 ```sh
 bin/uc table read --full_name unity.default.numbers
 ```
 
+![UC table contents](./assets/images/uc_quickstart_table_contents.png)
+
 Let's try creating a new table.
 
 ```sh
-bin/uc table create --full_name unity.default.myTable --columns "col1 int, col2 double" --storage_location /tmp/uc/myTable
+bin/uc table create --full_name unity.default.my_table \
+--columns "col1 int, col2 double" --storage_location /tmp/uc/my_table
 ```
 
-If you list the tables again, you should see this new table. Next, let's write to the table with
-some randomly generated data (again, powered by [Delta Kernel Java](https://delta.io/blog/delta-kernel/)] and read it back.
+![UC create table](./assets/images/uc_create_table.png)
+
+If you list the tables again, you should see this new table. 
+
+Next, append some randomly generated data to the table.
 
 ```sh
-bin/uc table write --full_name unity.default.myTable
-bin/uc table read --full_name unity.default.myTable
+bin/uc table write --full_name unity.default.my_table
 ```
+
+Read the table to confirm the random data was appended:
+
+```sh
+bin/uc table read --full_name unity.default.my_table
+```
+
+![UC read random table](./assets/images/uc_read_random_table.png)
 
 ## APIs and Compatibility
 
