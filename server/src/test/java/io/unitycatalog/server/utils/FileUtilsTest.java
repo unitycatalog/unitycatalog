@@ -5,6 +5,8 @@ import io.unitycatalog.server.persist.FileUtils;
 import org.junit.Assert;
 import org.junit.Test;
 
+import static org.assertj.core.api.Assertions.assertThat;
+
 public class FileUtilsTest {
 
     @Test
@@ -15,8 +17,8 @@ public class FileUtilsTest {
         String tablePath = FileUtils.createTableDirectory("catalog", "schema", "table");
         String volumePath = FileUtils.createVolumeDirectory("volume");
 
-        assert tablePath.equals("file:///tmp/catalog/schema/tables/table/");
-        assert volumePath.equals("file:///tmp/volume/");
+        assertThat(tablePath).isEqualTo("file:///tmp/catalog/schema/tables/table/");
+        assertThat(volumePath).isEqualTo("file:///tmp/volume/");
 
         FileUtils.deleteDirectory(tablePath);
         FileUtils.deleteDirectory(volumePath);
@@ -26,8 +28,8 @@ public class FileUtilsTest {
         tablePath = FileUtils.createTableDirectory("catalog", "schema", "table");
         volumePath = FileUtils.createVolumeDirectory("volume");
 
-        assert tablePath.equals("file:///tmp/random/catalog/schema/tables/table/");
-        assert volumePath.equals("file:///tmp/random/volume/");
+        assertThat(tablePath).isEqualTo("file:///tmp/random/catalog/schema/tables/table/");
+        assertThat(volumePath).isEqualTo("file:///tmp/random/volume/");
 
         FileUtils.deleteDirectory(tablePath);
         FileUtils.deleteDirectory(volumePath);
