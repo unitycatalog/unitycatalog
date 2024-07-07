@@ -34,7 +34,7 @@ public class PythonInvoker {
                 throw new ApiException("Function parameters not found.");
             }
             if (args.length < parameters.size()) {
-                throw new ApiException("Not enough parameters provided. Given: " + args.length + ", expected: " + parameters.size());
+                throw new ApiException("Not enough parameters provided: " + args.length + ", expected: " + parameters.size());
             }
             List<String> paramNames = new ArrayList<>();
             List<Object> argValues = new ArrayList<>();
