@@ -1,4 +1,3 @@
-etc/db/h2db.mv.db
 target/
 
 # Intellij IDEA files
@@ -12,3 +11,4 @@ build/sbt-launch-*
 venv
 server_pid.txt
 site
+python_engine.log

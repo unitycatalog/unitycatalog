@@ -88,13 +88,17 @@ public class FunctionRepository {
         }
     }
 
-    public ListFunctionsResponse listFunctions(String catalogName, String schemaName, Optional<Integer> maxResults, Optional<String> nextPageToken) {
+    public ListFunctionsResponse listFunctions(
+            String catalogName,
+            String schemaName,
+            Optional<Integer> maxResults,
+            Optional<String> nextPageToken) {
         ListFunctionsResponse response = new ListFunctionsResponse();
         try (Session session = SESSION_FACTORY.openSession()) {
             session.setDefaultReadOnly(true);
             Transaction tx = session.beginTransaction();
             try {
-                SchemaInfoDAO schemaInfo = schemaRepository.getSchemaDAO(session, catalogName + "." + schemaName);
+                SchemaInfoDAO schemaInfo = schemaRepository.getSchemaDAO(session, catalogName, schemaName);
                 if (schemaInfo == null) {
                     throw new BaseException(ErrorCode.NOT_FOUND, "Schema not found: " + schemaName);
                 }
@@ -108,7 +112,8 @@ public class FunctionRepository {
                 }
                 List<FunctionInfoDAO> functions = query.list();
                 response.setFunctions(
-                        functions.stream().map(FunctionInfoDAO::toFunctionInfo)
+                        functions.stream()
+                                .map(FunctionInfoDAO::toFunctionInfo)
                                 .peek(f -> addNamespaceInfo(f, catalogName, schemaName))
                                 .collect(Collectors.toList()));
                 tx.commit();
