@@ -99,6 +99,9 @@ public class CatalogRepository {
     }
 
     public CatalogInfo updateCatalog(String name, UpdateCatalog updateCatalog) {
+        if (updateCatalog.getNewName() == null && updateCatalog.getComment() == null) {
+            throw new BaseException(ErrorCode.INVALID_ARGUMENT, "Nothing provided to update.");
+        }
         if (updateCatalog.getNewName() != null) {
             ValidationUtils.validateSqlObjectName(updateCatalog.getNewName());
         }
