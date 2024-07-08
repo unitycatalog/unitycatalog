@@ -72,7 +72,7 @@ public class CatalogRepository {
                         .createQuery("from CatalogInfoDAO", CatalogInfoDAO.class)
                         .list().stream()
                         .map(CatalogInfoDAO::toCatalogInfo)
-                        .map(c -> RepositoryUtils.attachProperties(c, session))
+                        .map(c -> RepositoryUtils.attachProperties(c, c.getId(), Constants.CATALOG, session))
                         .collect(Collectors.toList()));
                 tx.commit();
                 return response;
@@ -87,14 +87,18 @@ public class CatalogRepository {
         try (Session session = SESSION_FACTORY.openSession()) {
             session.setDefaultReadOnly(true);
             Transaction tx = session.beginTransaction();
-            CatalogInfoDAO catalogInfoDAO;
             try {
-                catalogInfoDAO = getCatalogDAO(session, name);
+                CatalogInfoDAO catalogInfoDAO = getCatalogDAO(session, name);
                 if (catalogInfoDAO == null) {
                     throw new BaseException(ErrorCode.NOT_FOUND, "Catalog not found: " + name);
                 }
                 tx.commit();
-                return RepositoryUtils.attachProperties(catalogInfoDAO.toCatalogInfo(), session);
+                CatalogInfo catalogInfo = catalogInfoDAO.toCatalogInfo();
+                return RepositoryUtils.attachProperties(
+                        catalogInfo,
+                        catalogInfo.getId(),
+                        Constants.CATALOG,
+                        session);
             } catch (Exception e) {
                 tx.rollback();
                 throw e;

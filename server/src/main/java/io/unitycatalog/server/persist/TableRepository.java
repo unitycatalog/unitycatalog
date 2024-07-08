@@ -77,7 +77,11 @@ public class TableRepository {
                 tableInfo = tableInfoDAO.toTableInfo(true);
                 tableInfo.setCatalogName(catalogName);
                 tableInfo.setSchemaName(schemaName);
-                RepositoryUtils.attachProperties(tableInfo, session);
+                RepositoryUtils.attachProperties(
+                        tableInfo,
+                        tableInfo.getTableId(),
+                        Constants.TABLE,
+                        session);
                 tx.commit();
                 return tableInfo;
             } catch (Exception e) {
@@ -243,7 +247,11 @@ public class TableRepository {
                 for (TableInfoDAO tableInfoDAO : tableInfoDAOList) {
                     TableInfo tableInfo = tableInfoDAO.toTableInfo(!omitColumns);
                     if (!omitProperties) {
-                        RepositoryUtils.attachProperties(tableInfo, session);
+                        RepositoryUtils.attachProperties(
+                                tableInfo,
+                                tableInfo.getTableId(),
+                                Constants.TABLE,
+                                session);
                     }
                     tableInfo.setCatalogName(catalogName);
                     tableInfo.setSchemaName(schemaName);

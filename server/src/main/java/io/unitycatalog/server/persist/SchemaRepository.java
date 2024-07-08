@@ -121,7 +121,7 @@ public class SchemaRepository {
                 response.setSchemas(query.list().stream()
                         .map(SchemaInfoDAO::toSchemaInfo)
                         .peek(x -> addNamespaceData(x, catalogName))
-                        .map(s -> RepositoryUtils.attachProperties(s, session))
+                        .map(s -> RepositoryUtils.attachProperties(s, s.getSchemaId(), Constants.SCHEMA, session))
                         .collect(Collectors.toList()));
                 tx.commit();
                 return response;
@@ -144,7 +144,11 @@ public class SchemaRepository {
                 }
                 tx.commit();
                 SchemaInfo schemaInfo = convertFromDAO(schemaInfoDAO, fullName);
-                return RepositoryUtils.attachProperties(schemaInfo, session);
+                return RepositoryUtils.attachProperties(
+                        schemaInfo,
+                        schemaInfo.getSchemaId(),
+                        Constants.SCHEMA,
+                        session);
             } catch (Exception e) {
                 tx.rollback();
                 throw e;

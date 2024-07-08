@@ -12,17 +12,15 @@ import java.util.Map;
 import java.util.UUID;
 
 public class RepositoryUtils {
-    public static <T> T attachProperties(T entityInfo, Session session) {
+    public static <T> T attachProperties(T entityInfo, String uuid, String entityType, Session session) {
         try {
-            Method getIdMethod = entityInfo.getClass().getMethod("getId");
-            String id = (String) getIdMethod.invoke(entityInfo);
             List<PropertyDAO> propertyDAOList = PropertyRepository.findProperties(
-                    session, UUID.fromString(id), Constants.CATALOG);
+                    session, UUID.fromString(uuid), entityType);
             Method setPropertiesMethod = entityInfo.getClass().getMethod("setProperties", Map.class);
             setPropertiesMethod.invoke(entityInfo, PropertyDAO.toMap(propertyDAOList));
             return entityInfo;
         } catch (NoSuchMethodException | IllegalAccessException | InvocationTargetException e) {
-            throw new RuntimeException("Unable to set properties in entity: " + entityInfo.getClass(), e);
+            throw new RuntimeException(e);
         }
     }
 }
