@@ -54,7 +54,7 @@ import com.fasterxml.jackson.annotation.JsonTypeName;
   FunctionInfo.JSON_PROPERTY_FUNCTION_ID,
   FunctionInfo.JSON_PROPERTY_EXTERNAL_LANGUAGE
 })
-@javax.annotation.Generated(value = "org.openapitools.codegen.languages.JavaClientCodegen", comments = "Generator version: 7.5.0")
+@jakarta.annotation.Generated(value = "org.openapitools.codegen.languages.JavaClientCodegen", comments = "Generator version: 7.5.0")
 public class FunctionInfo {
   public static final String JSON_PROPERTY_NAME = "name";
   private String name;
@@ -276,7 +276,7 @@ public class FunctionInfo {
    * Name of function, relative to parent schema.
    * @return name
   **/
-  @javax.annotation.Nullable
+  @jakarta.annotation.Nullable
   @JsonProperty(JSON_PROPERTY_NAME)
   @JsonInclude(value = JsonInclude.Include.USE_DEFAULTS)
 
@@ -302,7 +302,7 @@ public class FunctionInfo {
    * Name of parent catalog.
    * @return catalogName
   **/
-  @javax.annotation.Nullable
+  @jakarta.annotation.Nullable
   @JsonProperty(JSON_PROPERTY_CATALOG_NAME)
   @JsonInclude(value = JsonInclude.Include.USE_DEFAULTS)
 
@@ -328,7 +328,7 @@ public class FunctionInfo {
    * Name of parent schema relative to its parent catalog.
    * @return schemaName
   **/
-  @javax.annotation.Nullable
+  @jakarta.annotation.Nullable
   @JsonProperty(JSON_PROPERTY_SCHEMA_NAME)
   @JsonInclude(value = JsonInclude.Include.USE_DEFAULTS)
 
@@ -354,7 +354,7 @@ public class FunctionInfo {
    * Get inputParams
    * @return inputParams
   **/
-  @javax.annotation.Nullable
+  @jakarta.annotation.Nullable
   @JsonProperty(JSON_PROPERTY_INPUT_PARAMS)
   @JsonInclude(value = JsonInclude.Include.USE_DEFAULTS)
 
@@ -380,7 +380,7 @@ public class FunctionInfo {
    * Get dataType
    * @return dataType
   **/
-  @javax.annotation.Nullable
+  @jakarta.annotation.Nullable
   @JsonProperty(JSON_PROPERTY_DATA_TYPE)
   @JsonInclude(value = JsonInclude.Include.USE_DEFAULTS)
 
@@ -406,7 +406,7 @@ public class FunctionInfo {
    * Pretty printed function data type.
    * @return fullDataType
   **/
-  @javax.annotation.Nullable
+  @jakarta.annotation.Nullable
   @JsonProperty(JSON_PROPERTY_FULL_DATA_TYPE)
   @JsonInclude(value = JsonInclude.Include.USE_DEFAULTS)
 
@@ -432,7 +432,7 @@ public class FunctionInfo {
    * Get returnParams
    * @return returnParams
   **/
-  @javax.annotation.Nullable
+  @jakarta.annotation.Nullable
   @JsonProperty(JSON_PROPERTY_RETURN_PARAMS)
   @JsonInclude(value = JsonInclude.Include.USE_DEFAULTS)
 
@@ -458,7 +458,7 @@ public class FunctionInfo {
    * Function language. When **EXTERNAL** is used, the language of the routine function should be specified in the __external_language__ field,  and the __return_params__ of the function cannot be used (as **TABLE** return type is not supported), and the __sql_data_access__ field must be **NO_SQL**. 
    * @return routineBody
   **/
-  @javax.annotation.Nullable
+  @jakarta.annotation.Nullable
   @JsonProperty(JSON_PROPERTY_ROUTINE_BODY)
   @JsonInclude(value = JsonInclude.Include.USE_DEFAULTS)
 
@@ -484,7 +484,7 @@ public class FunctionInfo {
    * Function body.
    * @return routineDefinition
   **/
-  @javax.annotation.Nullable
+  @jakarta.annotation.Nullable
   @JsonProperty(JSON_PROPERTY_ROUTINE_DEFINITION)
   @JsonInclude(value = JsonInclude.Include.USE_DEFAULTS)
 
@@ -510,7 +510,7 @@ public class FunctionInfo {
    * Get routineDependencies
    * @return routineDependencies
   **/
-  @javax.annotation.Nullable
+  @jakarta.annotation.Nullable
   @JsonProperty(JSON_PROPERTY_ROUTINE_DEPENDENCIES)
   @JsonInclude(value = JsonInclude.Include.USE_DEFAULTS)
 
@@ -536,7 +536,7 @@ public class FunctionInfo {
    * Function parameter style. **S** is the value for SQL.
    * @return parameterStyle
   **/
-  @javax.annotation.Nullable
+  @jakarta.annotation.Nullable
   @JsonProperty(JSON_PROPERTY_PARAMETER_STYLE)
   @JsonInclude(value = JsonInclude.Include.USE_DEFAULTS)
 
@@ -562,7 +562,7 @@ public class FunctionInfo {
    * Whether the function is deterministic.
    * @return isDeterministic
   **/
-  @javax.annotation.Nullable
+  @jakarta.annotation.Nullable
   @JsonProperty(JSON_PROPERTY_IS_DETERMINISTIC)
   @JsonInclude(value = JsonInclude.Include.USE_DEFAULTS)
 
@@ -588,7 +588,7 @@ public class FunctionInfo {
    * Function SQL data access.
    * @return sqlDataAccess
   **/
-  @javax.annotation.Nullable
+  @jakarta.annotation.Nullable
   @JsonProperty(JSON_PROPERTY_SQL_DATA_ACCESS)
   @JsonInclude(value = JsonInclude.Include.USE_DEFAULTS)
 
@@ -614,7 +614,7 @@ public class FunctionInfo {
    * Function null call.
    * @return isNullCall
   **/
-  @javax.annotation.Nullable
+  @jakarta.annotation.Nullable
   @JsonProperty(JSON_PROPERTY_IS_NULL_CALL)
   @JsonInclude(value = JsonInclude.Include.USE_DEFAULTS)
 
@@ -640,7 +640,7 @@ public class FunctionInfo {
    * Function security type.
    * @return securityType
   **/
-  @javax.annotation.Nullable
+  @jakarta.annotation.Nullable
   @JsonProperty(JSON_PROPERTY_SECURITY_TYPE)
   @JsonInclude(value = JsonInclude.Include.USE_DEFAULTS)
 
@@ -666,7 +666,7 @@ public class FunctionInfo {
    * Specific name of the function; Reserved for future use.
    * @return specificName
   **/
-  @javax.annotation.Nullable
+  @jakarta.annotation.Nullable
   @JsonProperty(JSON_PROPERTY_SPECIFIC_NAME)
   @JsonInclude(value = JsonInclude.Include.USE_DEFAULTS)
 
@@ -692,7 +692,7 @@ public class FunctionInfo {
    * User-provided free-form text description.
    * @return comment
   **/
-  @javax.annotation.Nullable
+  @jakarta.annotation.Nullable
   @JsonProperty(JSON_PROPERTY_COMMENT)
   @JsonInclude(value = JsonInclude.Include.USE_DEFAULTS)
 
@@ -718,7 +718,7 @@ public class FunctionInfo {
    * JSON-serialized key-value pair map, encoded (escaped) as a string.
    * @return properties
   **/
-  @javax.annotation.Nullable
+  @jakarta.annotation.Nullable
   @JsonProperty(JSON_PROPERTY_PROPERTIES)
   @JsonInclude(value = JsonInclude.Include.USE_DEFAULTS)
 
@@ -744,7 +744,7 @@ public class FunctionInfo {
    * Full name of function, in form of __catalog_name__.__schema_name__.__function__name__
    * @return fullName
   **/
-  @javax.annotation.Nullable
+  @jakarta.annotation.Nullable
   @JsonProperty(JSON_PROPERTY_FULL_NAME)
   @JsonInclude(value = JsonInclude.Include.USE_DEFAULTS)
 
@@ -770,7 +770,7 @@ public class FunctionInfo {
    * Time at which this function was created, in epoch milliseconds.
    * @return createdAt
   **/
-  @javax.annotation.Nullable
+  @jakarta.annotation.Nullable
   @JsonProperty(JSON_PROPERTY_CREATED_AT)
   @JsonInclude(value = JsonInclude.Include.USE_DEFAULTS)
 
@@ -796,7 +796,7 @@ public class FunctionInfo {
    * Time at which this function was last updated, in epoch milliseconds.
    * @return updatedAt
   **/
-  @javax.annotation.Nullable
+  @jakarta.annotation.Nullable
   @JsonProperty(JSON_PROPERTY_UPDATED_AT)
   @JsonInclude(value = JsonInclude.Include.USE_DEFAULTS)
 
@@ -822,7 +822,7 @@ public class FunctionInfo {
    * Id of Function, relative to parent schema.
    * @return functionId
   **/
-  @javax.annotation.Nullable
+  @jakarta.annotation.Nullable
   @JsonProperty(JSON_PROPERTY_FUNCTION_ID)
   @JsonInclude(value = JsonInclude.Include.USE_DEFAULTS)
 
@@ -848,7 +848,7 @@ public class FunctionInfo {
    * External language of the function.
    * @return externalLanguage
   **/
-  @javax.annotation.Nullable
+  @jakarta.annotation.Nullable
   @JsonProperty(JSON_PROPERTY_EXTERNAL_LANGUAGE)
   @JsonInclude(value = JsonInclude.Include.USE_DEFAULTS)
 

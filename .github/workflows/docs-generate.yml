@@ -1,0 +1,25 @@
+name: Docs Generation Tests
+
+on:
+    pull_request:
+      types: [opened, synchronize, reopened]
+    push:
+      branches: [main]
+
+jobs:
+  docs-generate:
+    runs-on: ubuntu-22.04
+    steps:
+      - name: Check out
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        run: |
+          python -m venv venv
+          . ./venv/bin/activate
+          pip install -r requirements-docs.txt
+
+      - name: Check documentation
+        run: |
+          . ./venv/bin/activate
+          mkdocs build --strict

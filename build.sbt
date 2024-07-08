@@ -1,5 +1,11 @@
-import java.nio.file.{Files, StandardCopyOption}
+import java.nio.file.Files
+import java.io.File
+import Tarball.createTarballSettings
 import sbt.util
+import sbtlicensereport.license.{LicenseInfo, LicenseCategory, DepModuleInfo}
+import ReleaseSettings._
+
+import scala.language.implicitConversions
 
 val orgName = "io.unitycatalog"
 val artifactNamePrefix = "unitycatalog"
@@ -21,7 +27,6 @@ lazy val commonSettings = Seq(
     "-target", "1.8",
     "-g:source,lines,vars"
   ),
-  Compile / logLevel := util.Level.Warn,
   resolvers += Resolver.mavenLocal,
   autoScalaLibrary := false,
   crossPaths := false,  // No scala cross building
@@ -32,6 +37,7 @@ lazy val commonSettings = Seq(
 
   // Test configs
   Test / testOptions  := Seq(Tests.Argument(TestFrameworks.JUnit, "-a", "-v", "-q"), Tests.Filter(name => !(name startsWith s"$orgName.server.base"))),
+  Test / logLevel := util.Level.Info,
   Test / publishArtifact := false,
   fork := true,
   outputStrategy := Some(StdoutOutput),
@@ -42,7 +48,36 @@ lazy val commonSettings = Seq(
       targetDir = packageFile.getParentFile,
       classpath = (Runtime / dependencyClasspath).value)
     packageFile
-  }
+  },
+
+  licenseOverrides := {
+    case DepModuleInfo("io.unitycatalog", _, _) =>
+      LicenseInfo(LicenseCategory.Apache, "Apache 2.0", "http://www.apache.org/licenses")
+    case DepModuleInfo("org.hibernate.common", "hibernate-commons-annotations", _) =>
+      // Apache 2.0: https://mvnrepository.com/artifact/org.hibernate.common/hibernate-commons-annotations
+      LicenseInfo(LicenseCategory.Apache, "Apache 2.0", "http://www.apache.org/licenses")
+  },
+  licenseDepExclusions := {
+    // LGPL 2.1: https://www.gnu.org/licenses/old-licenses/lgpl-2.1.html
+    // https://en.wikipedia.org/wiki/GNU_Lesser_General_Public_License
+    // We can use and distribute the, but not modify the source code
+    case DepModuleInfo("org.hibernate.orm", _, _) => true
+    // Duo license:
+    //  - Eclipse Public License 2.0
+    //  - GNU General Public License, version 2 with the GNU Classpath Exception
+    // I think we're good with the classpath exception in there.
+    case DepModuleInfo("jakarta.transaction", "jakarta.transaction-api", _) => true
+  },
+)
+
+enablePlugins(CoursierPlugin)
+
+useCoursier := true
+
+// Configure resolvers
+resolvers ++= Seq(
+  "Sonatype OSS Releases" at "https://oss.sonatype.org/content/repositories/releases/",
+  "Maven Central" at "https://repo1.maven.org/maven2/"
 )
 
 def javaCheckstyleSettings(configLocation: File) = Seq(
@@ -54,9 +89,11 @@ def javaCheckstyleSettings(configLocation: File) = Seq(
 
 lazy val client = (project in file("clients/java"))
   .enablePlugins(OpenApiGeneratorPlugin)
+  .disablePlugins(JavaFormatterPlugin)
   .settings(
     name := s"$artifactNamePrefix-client",
     commonSettings,
+    javaOnlyReleaseSettings,
     libraryDependencies ++= Seq(
       "com.fasterxml.jackson.core" % "jackson-annotations" % jacksonVersion,
       "com.fasterxml.jackson.core" % "jackson-core" % jacksonVersion,
@@ -64,12 +101,13 @@ lazy val client = (project in file("clients/java"))
       "com.fasterxml.jackson.datatype" % "jackson-datatype-jsr310" % jacksonVersion,
       "org.openapitools" % "jackson-databind-nullable" % openApiToolsJacksonBindNullableVersion,
       "com.google.code.findbugs" % "jsr305" % "3.0.2",
-      "jakarta.annotation" % "jakarta.annotation-api" % "1.3.5" % Provided,
+      "jakarta.annotation" % "jakarta.annotation-api" % "3.0.0" % Provided,
 
       // Test dependencies
       "junit" %  "junit" % "4.13.2" % Test,
       "org.junit.jupiter" % "junit-jupiter" % "5.9.2" % Test,
       "net.aichler" % "jupiter-interface" % JupiterKeys.jupiterVersion.value % Test,
+      "org.assertj" % "assertj-core" % "3.25.1" % Test,
     ),
 
     // OpenAPI generation specs
@@ -80,6 +118,7 @@ lazy val client = (project in file("clients/java"))
     openApiModelPackage := s"$orgName.client.model",
     openApiAdditionalProperties := Map(
       "library" -> "native",
+      "useJakartaEe" -> "true",
       "hideGenerationTimestamp" -> "true"),
     openApiGenerateApiTests := SettingDisabled,
     openApiGenerateModelTests := SettingDisabled,
@@ -113,10 +152,11 @@ lazy val server = (project in file("server"))
   .settings (
     name := s"$artifactNamePrefix-server",
     commonSettings,
+    javaOnlyReleaseSettings,
     javaCheckstyleSettings(file("dev") / "checkstyle-config.xml"),
     libraryDependencies ++= Seq(
       "com.linecorp.armeria" %  "armeria" % "1.28.4",
-      "javax.annotation" %  "javax.annotation-api" % "1.3.2",
+      "jakarta.annotation" % "jakarta.annotation-api" % "3.0.0" % Provided,
       // Jackson dependencies
       "com.fasterxml.jackson.core" % "jackson-annotations" % jacksonVersion,
       "com.fasterxml.jackson.core" % "jackson-core" % jacksonVersion,
@@ -128,9 +168,9 @@ lazy val server = (project in file("server"))
       "org.hibernate.orm" % "hibernate-core" % "6.5.0.Final",
       "org.openapitools" % "jackson-databind-nullable" % openApiToolsJacksonBindNullableVersion,
       // logging
-      "org.apache.logging.log4j" % "log4j-api" % "2.23.1",
-      "org.apache.logging.log4j" % "log4j-core" % "2.23.1",
-      "org.apache.logging.log4j" % "log4j-slf4j-impl" % "2.23.1",
+      "org.apache.logging.log4j" % "log4j-api" % log4jVersion,
+      "org.apache.logging.log4j" % "log4j-core" % log4jVersion,
+      "org.apache.logging.log4j" % "log4j-slf4j-impl" % log4jVersion,
 
       "jakarta.activation" % "jakarta.activation-api" % "2.1.3",
       "net.bytebuddy" % "byte-buddy" % "1.14.15",
@@ -172,25 +212,23 @@ lazy val server = (project in file("server"))
     // OpenAPI generation configs for generating model codes from the spec
     openApiInputSpec := (file(".") / "api" / "all.yaml").toString,
     openApiGeneratorName := "java",
-    openApiOutputDir := serverOpenApiGenerateTempDir.toString,
+    openApiOutputDir := file("server").toString,
     openApiValidateSpec := SettingEnabled,
     openApiGenerateMetadata := SettingDisabled,
     openApiModelPackage := s"$orgName.server.model",
     openApiAdditionalProperties := Map(
       "library" -> "resteasy",  // resteasy generates the most minimal models
+      "useJakartaEe" -> "true",
       "hideGenerationTimestamp" -> "true"),
     openApiGlobalProperties := Map("models" -> ""),
+    openApiGenerateApiTests := SettingDisabled,
+    openApiGenerateModelTests := SettingDisabled,
+    openApiGenerateApiDocumentation := SettingDisabled,
+    openApiGenerateModelDocumentation := SettingDisabled,
 
-    // Define the simple generate command to generate model codes and copy them into the server dir
+    // Define the simple generate command to generate model codes
     generate := {
       val _ = openApiGenerate.value
-      val srcDir = (file(serverOpenApiGenerateTempDir.toString) / "src" / "main" / "java" / "io" / "unitycatalog" / "server" / "model" )
-      val dstDir = file("server").getAbsoluteFile / "src" / "main" / "java" / "io" / "unitycatalog" / "server" /"model"
-      println(s"Copying model files from $srcDir to $dstDir")
-
-      srcDir.listFiles().foreach { srcFile =>
-        Files.copy(srcFile.toPath, (dstDir / srcFile.getName).toPath, StandardCopyOption.REPLACE_EXISTING)
-      }
     }
   )
 
@@ -201,8 +239,8 @@ lazy val cli = (project in file("examples") / "cli")
     name := s"$artifactNamePrefix-cli",
     mainClass := Some(orgName + ".cli.UnityCatalogCli"),
     commonSettings,
+    skipReleaseSettings,
     javaCheckstyleSettings(file("dev") / "checkstyle-config.xml"),
-    Compile / logLevel := util.Level.Info,
     libraryDependencies ++= Seq(
       "commons-cli" % "commons-cli" % "1.7.0",
       "org.json" % "json" % "20240303",
@@ -211,9 +249,9 @@ lazy val cli = (project in file("examples") / "cli")
       "org.openapitools" % "jackson-databind-nullable" % openApiToolsJacksonBindNullableVersion,
       "org.yaml" % "snakeyaml" % "2.2",
       // logging
-      "org.apache.logging.log4j" % "log4j-api" % "2.23.1",
-      "org.apache.logging.log4j" % "log4j-core" % "2.23.1",
-      "org.apache.logging.log4j" % "log4j-slf4j-impl" % "2.23.1",
+      "org.apache.logging.log4j" % "log4j-api" % log4jVersion,
+      "org.apache.logging.log4j" % "log4j-core" % log4jVersion,
+      "org.apache.logging.log4j" % "log4j-slf4j-impl" % log4jVersion,
 
       "io.delta" % "delta-kernel-api" % "3.2.0",
       "io.delta" % "delta-kernel-defaults" % "3.2.0",
@@ -228,20 +266,21 @@ lazy val cli = (project in file("examples") / "cli")
       // Test dependencies
       "junit" %  "junit" % "4.13.2" % Test,
       "com.github.sbt" % "junit-interface" % "0.13.3" % Test,
-    ),
+    )
   )
 
-// Extra functionalities
-lazy val serverOpenApiGenerateTempDir = {
-  import java.nio.file.Files
-  Files.createTempDirectory("some-prefix")
-}
+lazy val root = (project in file("."))
+  .aggregate(client, server, cli)
+  .settings(
+    name := s"$artifactNamePrefix",
+    createTarballSettings()
+  )
 
 def generateClasspathFile(targetDir: File, classpath: Classpath): Unit = {
   // Generate a classpath file with the entire runtime class path.
   // This is used by the launcher scripts for launching CLI directly with JAR instead of SBT.
   val classpathFile = targetDir / "classpath"
-  Files.write(classpathFile.toPath, classpath.files.mkString(":").getBytes)
+  Files.write(classpathFile.toPath, classpath.files.mkString(File.pathSeparator).getBytes)
   println(s"Generated classpath file '$classpathFile'")
 }
 
@@ -250,3 +289,4 @@ val generate = taskKey[Unit]("generate code from APIs")
 // Library versions
 val jacksonVersion = "2.17.0"
 val openApiToolsJacksonBindNullableVersion = "0.2.6"
+val log4jVersion = "2.23.1"

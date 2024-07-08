@@ -3,26 +3,54 @@
 SCRIPT_DIR="$(dirname "$(readlink -f "$0")")"
 ROOT_DIR="$(dirname "$SCRIPT_DIR")"
 
-run_sbt() {
-  SBT_COMMAND="$ROOT_DIR/build/sbt -info clean package"
-  echo "Running SBT to generate Server JAR: $SBT_COMMAND"
-  $SBT_COMMAND || exit
+TARBALL_JAR_DIR="$ROOT_DIR/jars"
+SERVER_CLASS_FILE="$ROOT_DIR/server/src/main/java/io/unitycatalog/server/UnityCatalogServer.java"
+
+# This function generates the unity catalog jars using sbt
+generate_jar() {
+  local GENERATE_JAR_COMMAND="$ROOT_DIR/build/sbt -info clean package"
+  echo "Running SBT to generate Server JAR: $GENERATE_JAR_COMMAND"
+  $GENERATE_JAR_COMMAND || exit
 }
 
-SERVER_TARGET_DIR="$ROOT_DIR/server/target"
-SERVER_JAR=$(find "$SERVER_TARGET_DIR" -name "unitycatalog-server*.jar" | head -n 1)
-if [ -z "$SERVER_JAR" ]; then
-    echo "Server JAR not found starting with 'unitycatalog-server*' in the target directory '$SERVER_TARGET_DIR'."
-    run_sbt
+# This function starts the unity catalog server
+run_uc_server_java_command() {
+  SERVER_JAVA_COMMAND="java -cp $(cat "$1") io.unitycatalog.server.UnityCatalogServer"
+  shift
+  $SERVER_JAVA_COMMAND $@ || exit
+}
+
+# This function runs the server using the source code
+run_in_source_code() {
+  SERVER_TARGET_DIR="$ROOT_DIR/server/target"
+  SERVER_JAR=$(find "$SERVER_TARGET_DIR" -name "unitycatalog-server*.jar" | head -n 1)
+
+  if [ -z "$SERVER_JAR" ]; then
+      echo "Server JAR not found starting with 'unitycatalog-server*' in the target directory '$SERVER_TARGET_DIR'."
+      generate_jar
+  fi
+
+  SERVER_CLASSPATH_FILE=$(find "$SERVER_TARGET_DIR" -name "classpath" | head -n 1)
+  if [ -z "$SERVER_CLASSPATH_FILE" ]; then
+      echo "No classpath file found in the target directory '$SERVER_TARGET_DIR'."
+      generate_jar
+  fi
+
+  run_uc_server_java_command $SERVER_CLASSPATH_FILE $@
+}
+
+# This function runs the server using the tarball
+run_in_tarball() {
+  SERVER_CLASSPATH_FILE=$(find "$TARBALL_JAR_DIR" -name "classpath" | head -n 1)
+  run_uc_server_java_command $SERVER_CLASSPATH_FILE $@
+}
+
+# Check if TARBALL_JAR_DIR exists, then we are running in the tarball
+if [ -d "$TARBALL_JAR_DIR" ]; then
+  run_in_tarball $@
+# Check if SERVER_CLASS_FILE exists, then we are running in the source code
+elif [ -f "$SERVER_CLASS_FILE" ]; then
+  run_in_source_code $@
+else
+  echo "Script running neither in source code nor in tarball"
 fi
-
-SERVER_CLASSPATH_FILE=$(find "$SERVER_TARGET_DIR" -name "classpath" | head -n 1)
-if [ -z "$SERVER_CLASSPATH_FILE" ]; then
-    echo "No classpath file found in the target directory '$SERVER_TARGET_DIR'."
-    run_sbt
-fi
-
-
-SERVER_JAVA_COMMAND="java -cp $(cat "$SERVER_CLASSPATH_FILE") io.unitycatalog.server.UnityCatalogServer"
-
-$SERVER_JAVA_COMMAND "$@" || exit

@@ -135,6 +135,13 @@ See the full [tutorial](docs/tutorial.md) for more details.
 - Open API specification: The Unity Catalog Rest API is documented [here](api).
 - Compatibility and stability: The APIs are currently evolving and should not be assumed to be stable.
 
+## Deployment
+- To create a tarball that can be used to deploy the UC server or run the CLI, run the following:
+  ```sh
+  build/sbt createTarball
+  ```
+  This will create a tarball in the `target` directory. See the full [deployment guide](docs/deployment.md) for more details.
+
 ## Compiling and testing
 - Install JDK 11 by whatever mechanism is appropriate for your system, and
   set that version to be the default Java version (e.g., by setting env variable
@@ -147,13 +154,57 @@ See the full [tutorial](docs/tutorial.md) for more details.
   ```sh
   build/sbt clean test
   ```
+- To execute tests with coverage, run the following:
+  ```sh
+  build/sbt jacoco 
+  ```
 - To update the API specification, just update the `api/all.yaml` and then run the following:
   ```sh
   build/sbt generate
   ``` 
   This will regenerate the OpenAPI data models in the UC server and data models + APIs in the client SDK.
 
+
+## Setting up IDE
+
+Java code adheres to the [Google style](https://google.github.io/styleguide/javaguide.html), which is verified via `build/sbt javafmtCheckAll` during builds.
+In order to automatically fix Java code style issues, please use `build/sbt javafmtAll`.
+
+### Configuring Code Formatter for Eclipse/IntelliJ
+
+Follow the instructions for [Eclipse](https://github.com/google/google-java-format#eclipse) or
+[IntelliJ](https://github.com/google/google-java-format#intellij-android-studio-and-other-jetbrains-ides) to install the **google-java-format** plugin (note the required manual actions for IntelliJ).
+
+
 ### Using more recent JDKs
 
 The build script [checks for a lower bound on the JDK](./build.sbt#L14) but the [current SBT version](./project/build.properties)
 imposes an upper bound. Please check the [JDK compatibility](https://docs.scala-lang.org/overviews/jdk-compatibility/overview.html) documentation for more information
+
+
+### Serving the documentation with mkdocs
+
+Create a virtual environment:
+
+```sh
+# Create virtual environment
+python -m venv uc_docs_venv
+
+# Activate virtual environment (Linux/macOS)
+source uc_docs_venv/bin/activate
+
+# Activate virtual environment (Windows)
+uc_docs_venv\Scripts\activate
+``` 
+
+Install the required dependencies:
+
+```sh
+pip install -r requirements-docs.txt
+```
+
+Then serve the docs with
+
+```sh
+mkdocs serve
+```

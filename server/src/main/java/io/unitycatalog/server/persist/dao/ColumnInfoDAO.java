@@ -4,7 +4,6 @@ import jakarta.persistence.*;
 
 import org.hibernate.annotations.UuidGenerator;
 
-import java.io.Serializable;
 import java.util.UUID;
 
 import lombok.Builder;
@@ -42,7 +41,7 @@ public class ColumnInfoDAO {
     @Column(name = "ordinal_position", nullable = false)
     private short ordinalPosition;
 
-    @Column(name = "name", nullable = false, length = 255)
+    @Column(name = "name", nullable = false)
     private String name;
 
     @Lob
@@ -62,7 +61,7 @@ public class ColumnInfoDAO {
     @Column(name = "type_scale")
     private Integer typeScale;
 
-    @Column(name = "type_interval_type", length = 255)
+    @Column(name = "type_interval_type")
     private String typeIntervalType;
 
     @Column(name = "nullable", nullable = false)

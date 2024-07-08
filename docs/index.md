@@ -19,9 +19,3 @@ Unity Catalog is proud to be hosted by the LF AI & Data Foundation.
 <a href="https://lfaidata.foundation/projects">
   <img src="./assets/images/lfaidata-project-badge-sandbox-color.png" width="200px" />
 </a>
-
-This documentation contains the following
-- [Tutorial for Tables, Volumes, Functions, etc.](./tutorial.md)
-- [UC Server Documentation](./server.md)
-- [UC CLI Documentation](./cli.md)
-- [UC Rest API specification](../api/)

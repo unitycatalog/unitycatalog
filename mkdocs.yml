@@ -1,0 +1,69 @@
+site_name: Unity Catalog
+edit_uri: edit/main/docs/
+repo_name: unitycatalog/unitycatalog
+repo_url: https://github.com/unitycatalog/unitycatalog
+site_url: https://docs.unitycatalog.io
+site_description:  Open, Multi-modal Catalog for Data & AI 
+site_author: unitycatalog
+
+nav:
+  - Home: README.md
+  - Tutorial: tutorial.md
+  - Unity Catalog Server: server.md
+  - CLI Tool for Catalog Management: cli.md
+
+nav:
+  - Home: index.md
+  - Tutorial: tutorial.md
+  - Usage:
+      - CLI: usage/cli.md
+      - Tables:
+        - UniForm: usage/tables/uniform.md
+      - Functions: usage/functions.md
+      - Volumes: usage/volumes.md
+      - Server: usage/server.md
+  - Integrations:
+      - Daft: integrations/unity-catalog-daft.md
+      - DuckDB: integrations/unity-catalog-duckdb.md
+      - Trino: integrations/unity-catalog-trino.md
+  - Deployment: deployment.md
+
+plugins:
+  - search
+
+theme:
+  name: material
+  features:
+    - content.action.edit
+    - content.code.copy
+    - navigation.footer
+    - navigation.expand
+  palette:
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      primary: indigo
+      accent: amber
+      toggle:
+        icon: material/brightness-7
+        name: Switch to dark mode
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      primary: indigo
+      accent: amber
+      toggle:
+        icon: material/brightness-4
+        name: Switch to light mode
+  icon:
+    repo: fontawesome/brands/github
+
+extra:
+  social:
+    - icon: fontawesome/brands/github
+      link: https://github.com/unitycatalog/unitycatalog
+
+markdown_extensions:
+  - admonition
+  - attr_list
+  - md_in_html
+  - toc:
+      permalink: true
