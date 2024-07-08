@@ -15,6 +15,7 @@ import org.apache.commons.cli.CommandLine;
 import org.json.JSONObject;
 
 import java.util.Collections;
+import java.util.List;
 
 import static io.unitycatalog.cli.utils.CliUtils.postProcessAndPrintOutput;
 
@@ -71,7 +72,14 @@ public class CatalogCli {
         String catalogName = json.getString(NAME_PARAM);
         json.remove(NAME_PARAM);
         if (json.length() == 0) {
-            throw new CliException("Nothing to update.");
+            List<CliParams> optionalParams = CliUtils.cliOptions.get(CliUtils.CATALOG)
+                .get(CliUtils.UPDATE)
+                .getOptionalParams();
+            String errorMessage = "No parameters to update, please provide one of:";
+            for (CliParams param : optionalParams) {
+                errorMessage += "\n  --" + param.val();
+            }
+            throw new CliException(errorMessage);
         }
         UpdateCatalog updateCatalog = objectMapper.readValue(json.toString(), UpdateCatalog.class);
         return objectWriter.writeValueAsString(apiClient.updateCatalog(catalogName, updateCatalog));
