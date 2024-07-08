@@ -57,7 +57,7 @@ public class TableInfoDAO {
     @Column(name = "column_count")
     private Integer columnCount;
 
-    @OneToMany(mappedBy = "table", cascade = CascadeType.ALL, orphanRemoval = true)
+    @OneToMany(mappedBy = "table", cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.LAZY)
     private List<ColumnInfoDAO> columns;
 
     @Column(name = "uniform_iceberg_metadata_location", columnDefinition = "TEXT")
@@ -79,8 +79,8 @@ public class TableInfoDAO {
                 .build();
     }
 
-    public TableInfo toTableInfo() {
-        return new TableInfo()
+    public TableInfo toTableInfo(boolean fetchColumns) {
+        TableInfo tableInfo = new TableInfo()
                 .name(name)
                 .tableType(TableType.valueOf(type))
                 .dataSourceFormat(DataSourceFormat.valueOf(dataSourceFormat))
@@ -88,7 +88,10 @@ public class TableInfoDAO {
                 .comment(comment)
                 .createdAt(createdAt != null ? createdAt.getTime() : null)
                 .updatedAt(updatedAt != null ? updatedAt.getTime() : null)
-                .tableId(id.toString())
-                .columns(ColumnInfoDAO.toList(columns));
+                .tableId(id.toString());
+        if (fetchColumns) {
+            tableInfo.columns(ColumnInfoDAO.toList(columns));
+        }
+        return tableInfo;
     }
 }

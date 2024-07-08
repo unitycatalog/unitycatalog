@@ -3,25 +3,23 @@ package io.unitycatalog.server.persist;
 import io.unitycatalog.server.exception.BaseException;
 import io.unitycatalog.server.exception.ErrorCode;
 import io.unitycatalog.server.model.CatalogInfo;
+import io.unitycatalog.server.model.CreateCatalog;
 import io.unitycatalog.server.model.ListCatalogsResponse;
+import io.unitycatalog.server.model.UpdateCatalog;
 import io.unitycatalog.server.persist.dao.CatalogInfoDAO;
 import io.unitycatalog.server.persist.dao.PropertyDAO;
 import io.unitycatalog.server.persist.utils.HibernateUtils;
+import io.unitycatalog.server.persist.utils.RepositoryUtils;
 import io.unitycatalog.server.utils.Constants;
 import io.unitycatalog.server.utils.ValidationUtils;
-import lombok.Getter;
-import org.hibernate.query.Query;
-import io.unitycatalog.server.model.CreateCatalog;
-import io.unitycatalog.server.model.UpdateCatalog;
 import org.hibernate.Session;
 import org.hibernate.SessionFactory;
 import org.hibernate.Transaction;
+import org.hibernate.query.Query;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.util.Date;
-import java.util.List;
-import java.util.UUID;
 import java.util.stream.Collectors;
 
 public class CatalogRepository {
@@ -74,7 +72,7 @@ public class CatalogRepository {
                         .createQuery("from CatalogInfoDAO", CatalogInfoDAO.class)
                         .list().stream()
                         .map(CatalogInfoDAO::toCatalogInfo)
-                        .map(c -> attachProperties(c, session))
+                        .map(c -> RepositoryUtils.attachProperties(c, session))
                         .collect(Collectors.toList()));
                 tx.commit();
                 return response;
@@ -83,13 +81,6 @@ public class CatalogRepository {
                 throw e;
             }
         }
-    }
-
-    public static CatalogInfo attachProperties(CatalogInfo catalogInfo, Session session) {
-        List<PropertyDAO> propertyDAOList = PropertyRepository.findProperties(
-                session, UUID.fromString(catalogInfo.getId()), Constants.CATALOG);
-        catalogInfo.setProperties(PropertyDAO.toMap(propertyDAOList));
-        return catalogInfo;
     }
 
     public CatalogInfo getCatalog(String name) {
@@ -103,7 +94,7 @@ public class CatalogRepository {
                     throw new BaseException(ErrorCode.NOT_FOUND, "Catalog not found: " + name);
                 }
                 tx.commit();
-                return attachProperties(catalogInfoDAO.toCatalogInfo(), session);
+                return RepositoryUtils.attachProperties(catalogInfoDAO.toCatalogInfo(), session);
             } catch (Exception e) {
                 tx.rollback();
                 throw e;

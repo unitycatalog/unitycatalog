@@ -2,23 +2,23 @@ package io.unitycatalog.server.persist;
 
 import io.unitycatalog.server.exception.BaseException;
 import io.unitycatalog.server.exception.ErrorCode;
-import io.unitycatalog.server.model.*;
+import io.unitycatalog.server.model.CreateSchema;
+import io.unitycatalog.server.model.ListSchemasResponse;
+import io.unitycatalog.server.model.SchemaInfo;
+import io.unitycatalog.server.model.UpdateSchema;
 import io.unitycatalog.server.persist.dao.CatalogInfoDAO;
 import io.unitycatalog.server.persist.dao.PropertyDAO;
 import io.unitycatalog.server.persist.dao.SchemaInfoDAO;
 import io.unitycatalog.server.persist.utils.HibernateUtils;
+import io.unitycatalog.server.persist.utils.RepositoryUtils;
 import io.unitycatalog.server.utils.Constants;
 import io.unitycatalog.server.utils.ValidationUtils;
-import lombok.Getter;
-import org.hibernate.query.Query;
 import org.hibernate.Session;
 import org.hibernate.SessionFactory;
 import org.hibernate.Transaction;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import org.hibernate.query.Query;
 
 import java.util.Date;
-import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 import java.util.stream.Collectors;
@@ -121,7 +121,7 @@ public class SchemaRepository {
                 response.setSchemas(query.list().stream()
                         .map(SchemaInfoDAO::toSchemaInfo)
                         .peek(x -> addNamespaceData(x, catalogName))
-                        .map(s -> attachProperties(s, session))
+                        .map(s -> RepositoryUtils.attachProperties(s, session))
                         .collect(Collectors.toList()));
                 tx.commit();
                 return response;
@@ -130,13 +130,6 @@ public class SchemaRepository {
                 throw e;
             }
         }
-    }
-
-    public SchemaInfo attachProperties(SchemaInfo schemaInfo, Session session) {
-        List<PropertyDAO> propertyDAOList = PropertyRepository.findProperties(
-                session, UUID.fromString(schemaInfo.getSchemaId()), Constants.SCHEMA);
-        schemaInfo.setProperties(PropertyDAO.toMap(propertyDAOList));
-        return schemaInfo;
     }
 
     public SchemaInfo getSchema(String fullName) {
@@ -151,7 +144,7 @@ public class SchemaRepository {
                 }
                 tx.commit();
                 SchemaInfo schemaInfo = convertFromDAO(schemaInfoDAO, fullName);
-                return attachProperties(schemaInfo, session);
+                return RepositoryUtils.attachProperties(schemaInfo, session);
             } catch (Exception e) {
                 tx.rollback();
                 throw e;

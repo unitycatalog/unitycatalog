@@ -8,9 +8,9 @@ import io.unitycatalog.server.persist.dao.SchemaInfoDAO;
 import io.unitycatalog.server.persist.dao.TableInfoDAO;
 import io.unitycatalog.server.persist.utils.FileUtils;
 import io.unitycatalog.server.persist.utils.HibernateUtils;
+import io.unitycatalog.server.persist.utils.RepositoryUtils;
 import io.unitycatalog.server.utils.Constants;
 import io.unitycatalog.server.utils.ValidationUtils;
-import lombok.Getter;
 import org.hibernate.Session;
 import org.hibernate.SessionFactory;
 import org.hibernate.Transaction;
@@ -44,7 +44,7 @@ public class TableRepository {
                 if (tableInfoDAO == null) {
                     throw new BaseException(ErrorCode.NOT_FOUND, "Table not found: " + tableId);
                 }
-                TableInfo tableInfo = tableInfoDAO.toTableInfo();
+                TableInfo tableInfo = tableInfoDAO.toTableInfo(true);
                 tx.commit();
                 return tableInfo;
             } catch (Exception e) {
@@ -74,10 +74,10 @@ public class TableRepository {
                 if (tableInfoDAO == null) {
                     throw new BaseException(ErrorCode.NOT_FOUND, "Table not found: " + fullName);
                 }
-                tableInfo = tableInfoDAO.toTableInfo();
+                tableInfo = tableInfoDAO.toTableInfo(true);
                 tableInfo.setCatalogName(catalogName);
                 tableInfo.setSchemaName(schemaName);
-                attachProperties(tableInfo, session);
+                RepositoryUtils.attachProperties(tableInfo, session);
                 tx.commit();
                 return tableInfo;
             } catch (Exception e) {
@@ -87,13 +87,6 @@ public class TableRepository {
                 throw e;
             }
         }
-    }
-
-    public static TableInfo attachProperties(TableInfo tableInfo, Session session) {
-        List<PropertyDAO> propertyDAOList = PropertyRepository.findProperties(
-                session, UUID.fromString(tableInfo.getTableId()), Constants.TABLE);
-        tableInfo.setProperties(PropertyDAO.toMap(propertyDAOList));
-        return tableInfo;
     }
 
     public String getTableUniformMetadataLocation(Session session,  String catalogName, String schemaName, String tableName) {
@@ -248,12 +241,9 @@ public class TableRepository {
                 List<TableInfoDAO> tableInfoDAOList = query.list();
                 returnNextPageToken = getNextPageToken(tableInfoDAOList);
                 for (TableInfoDAO tableInfoDAO : tableInfoDAOList) {
-                    TableInfo tableInfo = tableInfoDAO.toTableInfo();
-                    if (omitColumns) {
-                        tableInfo.setColumns(null);
-                    }
+                    TableInfo tableInfo = tableInfoDAO.toTableInfo(!omitColumns);
                     if (!omitProperties) {
-                        attachProperties(tableInfo, session);
+                        RepositoryUtils.attachProperties(tableInfo, session);
                     }
                     tableInfo.setCatalogName(catalogName);
                     tableInfo.setSchemaName(schemaName);
