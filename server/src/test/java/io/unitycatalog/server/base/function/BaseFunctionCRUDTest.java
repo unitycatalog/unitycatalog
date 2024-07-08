@@ -12,6 +12,7 @@ import io.unitycatalog.server.base.schema.SchemaOperations;
 import java.util.List;
 import java.util.Optional;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.junit.Assert.*;
 import static io.unitycatalog.server.utils.TestUtils.*;
 
@@ -85,7 +86,7 @@ public abstract class BaseFunctionCRUDTest extends BaseCRUDTest {
         // List functions
         Iterable<FunctionInfo> functionInfos = functionOperations.listFunctions(CATALOG_NAME, SCHEMA_NAME);
         assertTrue(contains(functionInfos, functionInfo, f -> {
-            assert f.getFunctionId() != null;
+            assertThat(f.getFunctionId()).isNotNull();
             if (!f.getFunctionId().equals(functionInfo.getFunctionId())) return false;
             if (f.getInputParams() != null && f.getInputParams().getParameters() != null) {
                 return f.getInputParams().getParameters().stream().anyMatch(p -> p.getName().equals("param1"));

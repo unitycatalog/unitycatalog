@@ -12,6 +12,22 @@ nav:
   - Unity Catalog Server: server.md
   - CLI Tool for Catalog Management: cli.md
 
+nav:
+  - Home: index.md
+  - Tutorial: tutorial.md
+  - Usage:
+      - CLI: usage/cli.md
+      - Tables:
+        - UniForm: usage/tables/uniform.md
+      - Functions: usage/functions.md
+      - Volumes: usage/volumes.md
+      - Server: usage/server.md
+  - Integrations:
+      - Daft: integrations/unity-catalog-daft.md
+      - DuckDB: integrations/unity-catalog-duckdb.md
+      - Trino: integrations/unity-catalog-trino.md
+  - Deployment: deployment.md
+
 plugins:
   - search
 
@@ -21,6 +37,7 @@ theme:
     - content.action.edit
     - content.code.copy
     - navigation.footer
+    - navigation.expand
   palette:
     - media: "(prefers-color-scheme: light)"
       scheme: default
