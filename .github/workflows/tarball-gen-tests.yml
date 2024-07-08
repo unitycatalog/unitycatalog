@@ -17,10 +17,9 @@ jobs:
         with:
           java-version: '11'
           distribution: 'temurin'
-          cache: 'sbt'
 
       - name: Build tarball
-        run: sbt createTarball
+        run: build/sbt createTarball
 
       - name: Set up Python
         uses: actions/setup-python@v4

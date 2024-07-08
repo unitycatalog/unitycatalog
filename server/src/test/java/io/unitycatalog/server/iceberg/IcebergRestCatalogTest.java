@@ -1,16 +1,16 @@
 package io.unitycatalog.server.iceberg;
 
-import java.io.IOException;
-import java.net.URISyntaxException;
-import java.util.List;
-import java.util.Objects;
-import java.util.UUID;
-
 import com.linecorp.armeria.client.WebClient;
 import com.linecorp.armeria.common.AggregatedHttpResponse;
 import com.linecorp.armeria.common.auth.AuthToken;
 import io.unitycatalog.client.ApiException;
-import io.unitycatalog.client.model.*;
+import io.unitycatalog.client.model.ColumnInfo;
+import io.unitycatalog.client.model.ColumnTypeName;
+import io.unitycatalog.client.model.CreateSchema;
+import io.unitycatalog.client.model.CreateTable;
+import io.unitycatalog.client.model.DataSourceFormat;
+import io.unitycatalog.client.model.TableInfo;
+import io.unitycatalog.client.model.TableType;
 import io.unitycatalog.server.base.BaseServerTest;
 import io.unitycatalog.server.base.catalog.CatalogOperations;
 import io.unitycatalog.server.base.schema.SchemaOperations;
@@ -24,6 +24,9 @@ import io.unitycatalog.server.utils.RESTObjectMapper;
 import io.unitycatalog.server.utils.TestUtils;
 import org.apache.iceberg.catalog.Namespace;
 import org.apache.iceberg.catalog.TableIdentifier;
+import org.apache.iceberg.exceptions.NoSuchTableException;
+import org.apache.iceberg.rest.responses.ErrorResponse;
+import org.apache.iceberg.rest.responses.ErrorResponseParser;
 import org.apache.iceberg.rest.responses.GetNamespaceResponse;
 import org.apache.iceberg.rest.responses.ListNamespacesResponse;
 import org.apache.iceberg.rest.responses.ListTablesResponse;
@@ -32,6 +35,12 @@ import org.hibernate.Session;
 import org.hibernate.Transaction;
 import org.junit.Before;
 import org.junit.Test;
+
+import java.io.IOException;
+import java.net.URISyntaxException;
+import java.util.List;
+import java.util.Objects;
+import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -197,6 +206,8 @@ public class IcebergRestCatalogTest extends BaseServerTest {
           "/v1/namespaces/" + TestUtils.CATALOG_NAME + "." + TestUtils.SCHEMA_NAME + "/tables/" +
             TestUtils.TABLE_NAME).aggregate().join();
       assertThat(resp.status().code()).isEqualTo(404);
+      ErrorResponse errorResponse = ErrorResponseParser.fromJson(resp.contentUtf8());
+      assertThat(errorResponse.type()).isEqualTo(NoSuchTableException.class.getSimpleName());
     }
 
     // Add the uniform metadata
@@ -249,12 +260,16 @@ public class IcebergRestCatalogTest extends BaseServerTest {
   public void testLoadTablesInvalidNamespace() {
     AggregatedHttpResponse resp = client.get("/v1/namespaces/incomplete_namespace/tables/some_table").aggregate().join();
     assertThat(resp.status().code()).isEqualTo(400);
+    ErrorResponse errorResponse = ErrorResponseParser.fromJson(resp.contentUtf8());
+    assertThat(errorResponse.type()).isEqualTo(IllegalArgumentException.class.getSimpleName());
   }
 
   @Test
   public void testListTablesInvalidNamespace() {
     AggregatedHttpResponse resp = client.get("/v1/namespaces/incomplete_namespace/tables").aggregate().join();
     assertThat(resp.status().code()).isEqualTo(400);
+    ErrorResponse errorResponse = ErrorResponseParser.fromJson(resp.contentUtf8());
+    assertThat(errorResponse.type()).isEqualTo(IllegalArgumentException.class.getSimpleName());
   }
 
   @Test
