@@ -109,6 +109,7 @@ lazy val client = (project in file("clients/java"))
       "net.aichler" % "jupiter-interface" % JupiterKeys.jupiterVersion.value % Test,
       "org.assertj" % "assertj-core" % "3.25.1" % Test,
     ),
+    (Compile / compile) := ((Compile / compile) dependsOn generate).value,
 
     // OpenAPI generation specs
     openApiInputSpec := (file(".") / "api" / "all.yaml").toString,
@@ -208,6 +209,7 @@ lazy val server = (project in file("server"))
            |""".stripMargin)
       Seq(file)
     },
+    (Compile / compile) := ((Compile / compile) dependsOn generate).value,
 
     // OpenAPI generation configs for generating model codes from the spec
     openApiInputSpec := (file(".") / "api" / "all.yaml").toString,

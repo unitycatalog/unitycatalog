@@ -12,3 +12,6 @@ build/sbt-launch-*
 venv
 server_pid.txt
 site
+/clients/java/.openapi-generator/
+/clients/java/src/
+/server/src/main/java/io/unitycatalog/server/model/
