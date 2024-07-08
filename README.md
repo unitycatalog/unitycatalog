@@ -163,6 +163,19 @@ See the full [tutorial](docs/tutorial.md) for more details.
   build/sbt generate
   ``` 
   This will regenerate the OpenAPI data models in the UC server and data models + APIs in the client SDK.
+
+
+## Setting up IDE
+
+Java code adheres to the [Google style](https://google.github.io/styleguide/javaguide.html), which is verified via `build/sbt javafmtCheckAll` during builds.
+In order to automatically fix Java code style issues, please use `build/sbt javafmtAll`.
+
+### Configuring Code Formatter for Eclipse/IntelliJ
+
+Follow the instructions for [Eclipse](https://github.com/google/google-java-format#eclipse) or
+[IntelliJ](https://github.com/google/google-java-format#intellij-android-studio-and-other-jetbrains-ides) to install the **google-java-format** plugin (note the required manual actions for IntelliJ).
+
+
 ### Using more recent JDKs
 
 The build script [checks for a lower bound on the JDK](./build.sbt#L14) but the [current SBT version](./project/build.properties)

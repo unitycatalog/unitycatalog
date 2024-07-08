@@ -3,6 +3,9 @@ import java.io.File
 import Tarball.createTarballSettings
 import sbt.util
 import sbtlicensereport.license.{LicenseInfo, LicenseCategory, DepModuleInfo}
+import ReleaseSettings._
+
+import scala.language.implicitConversions
 
 val orgName = "io.unitycatalog"
 val artifactNamePrefix = "unitycatalog"
@@ -86,9 +89,11 @@ def javaCheckstyleSettings(configLocation: File) = Seq(
 
 lazy val client = (project in file("clients/java"))
   .enablePlugins(OpenApiGeneratorPlugin)
+  .disablePlugins(JavaFormatterPlugin)
   .settings(
     name := s"$artifactNamePrefix-client",
     commonSettings,
+    javaOnlyReleaseSettings,
     libraryDependencies ++= Seq(
       "com.fasterxml.jackson.core" % "jackson-annotations" % jacksonVersion,
       "com.fasterxml.jackson.core" % "jackson-core" % jacksonVersion,
@@ -147,6 +152,7 @@ lazy val server = (project in file("server"))
   .settings (
     name := s"$artifactNamePrefix-server",
     commonSettings,
+    javaOnlyReleaseSettings,
     javaCheckstyleSettings(file("dev") / "checkstyle-config.xml"),
     libraryDependencies ++= Seq(
       "com.linecorp.armeria" %  "armeria" % "1.28.4",
@@ -233,6 +239,7 @@ lazy val cli = (project in file("examples") / "cli")
     name := s"$artifactNamePrefix-cli",
     mainClass := Some(orgName + ".cli.UnityCatalogCli"),
     commonSettings,
+    skipReleaseSettings,
     javaCheckstyleSettings(file("dev") / "checkstyle-config.xml"),
     libraryDependencies ++= Seq(
       "commons-cli" % "commons-cli" % "1.7.0",
