@@ -145,6 +145,8 @@ lazy val apiDocs = (project in file("api"))
     }
   )
 
+// Define the custom task key
+lazy val populateTestDB = taskKey[Unit]("Run PopulateTestDatabase main class from the test folder")
 
 lazy val server = (project in file("server"))
   .dependsOn(client % "test->test")
@@ -229,8 +231,15 @@ lazy val server = (project in file("server"))
     // Define the simple generate command to generate model codes
     generate := {
       val _ = openApiGenerate.value
-    }
-  )
+    },
+
+    populateTestDB := {
+      val log = streams.value.log
+      (Test / runMain).toTask(s" io.unitycatalog.server.utils.PopulateTestDatabase").value
+    },
+
+    Test / javaOptions += s"-Duser.dir=${(ThisBuild / baseDirectory).value.getAbsolutePath}",
+)
 
 lazy val cli = (project in file("examples") / "cli")
   .dependsOn(server % "compile->compile;test->test")
