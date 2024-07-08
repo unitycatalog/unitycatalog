@@ -22,6 +22,7 @@ import java.util.*;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
+import java.util.stream.IntStream;
 
 public class CliUtils {
     public static final String CATALOG = "catalog";
@@ -147,7 +148,7 @@ public class CliUtils {
         return value;
     }
 
-    public static List<String> getFields(JsonNode element) {
+    public static List<String> getFieldNames(JsonNode element) {
         List<String> columns = new ArrayList<>();
         if (element.isObject()) {
             (element).fieldNames().forEachRemaining(columns::add);
@@ -155,20 +156,28 @@ public class CliUtils {
         return columns;
     }
 
+    /**
+     * Generate the maximum lengths of the columns values in the given JSON node.
+     * @param node The JSON node representing a list of nodes.
+     * @param fieldNames The column names.
+     * @param columnWidths Updated with the maximum length of each column.
+     * @param isFixedWidthColumns Updated with whether the column is fixed width or not.
+     * @return the maximum length of the column values.
+     */
     private static int calculateFieldWidths(JsonNode node,
-                                            List<String> fields,
+                                            List<String> fieldNames,
                                             int[] columnWidths,
-                                            boolean[] fixedWidthColumns) {
+                                            boolean[] isFixedWidthColumns) {
         int maxLineWidth = 0;
 
-        for (int columnIndex = 0; columnIndex < fields.size(); columnIndex++) {
-            columnWidths[columnIndex] = fields.get(columnIndex).length();
+        for (int columnIndex = 0; columnIndex < fieldNames.size(); columnIndex++) {
+            columnWidths[columnIndex] = fieldNames.get(columnIndex).length();
         }
 
         for (JsonNode jsonNode : node) {
             int lineWidth = 1;
-            for (int columnIndex = 0; columnIndex < fields.size(); columnIndex++) {
-                String fieldName = fields.get(columnIndex);
+            for (int columnIndex = 0; columnIndex < fieldNames.size(); columnIndex++) {
+                String fieldName = fieldNames.get(columnIndex);
                 JsonNode value = jsonNode.get(fieldName);
                 String valueString = value.isTextual() ? value.asText() : value.toString();
 
@@ -177,7 +186,7 @@ public class CliUtils {
 
                 String fieldNameLowerCase = fieldName.toLowerCase();
                 if (fieldNameLowerCase.equals("name") || fieldNameLowerCase.endsWith("id")) {
-                    fixedWidthColumns[columnIndex] = true;
+                    isFixedWidthColumns[columnIndex] = true;
                 }
 
             }
@@ -187,43 +196,45 @@ public class CliUtils {
         return maxLineWidth;
     }
 
-    private static void adjustColumnWidths(List<String> fields,
+    /**
+     * Adjust the column widths to fit the output width, ignore fixed width columns.
+     * @param fieldNames The column names.
+     * @param outputWidth The output width.
+     * @param columnWidths The column widths, updated with the new widths to fix the output width.
+     * @param isFixedWidthColumns Whether the column is fixed width or not.
+     */
+    private static void adjustColumnWidths(List<String> fieldNames,
                                            int outputWidth,
                                            int[] columnWidths,
-                                           boolean[] fixedWidthColumns) {
-        int widthRemaining = outputWidth - fields.size();
+                                           boolean[] isFixedWidthColumns) {
 
-        int fixedWidthColumnCount = 0;
-        for (int i = 0; i < fields.size(); i++) {
-            widthRemaining -= fixedWidthColumns[i] ? columnWidths[i] : 0;
-            if (fixedWidthColumns[i]) {
-                fixedWidthColumnCount++;
-            }
-        }
-        int columnWidth = (widthRemaining) / (fields.size() - fixedWidthColumnCount);
+        int[] fixedWidthIndices = IntStream.range(0, fieldNames.size())
+                .filter(idx -> isFixedWidthColumns[idx]).toArray();
 
-        for (int i = 0; i < fields.size(); i++) {
-            if (!fixedWidthColumns[i]) {
-                columnWidths[i] = columnWidth;
-            }
-        }
+        int widthRemaining = outputWidth - fieldNames.size() -
+                IntStream.of(fixedWidthIndices).map(idx -> columnWidths[idx]).sum();
+
+        int columnWidth = (widthRemaining) / (fieldNames.size() - fixedWidthIndices.length);
+
+        IntStream.range(0, fieldNames.size()).filter(idx -> !isFixedWidthColumns[idx])
+                .forEach(idx -> columnWidths[idx] = columnWidth);
     }
 
     private static void processOutputAsRows(AsciiTable at, JsonNode node, int outputWidth) {
-        List<String> fields = getFields(node.get(0));
+        List<String> fieldNames = getFieldNames(node.get(0));
 
-        int[] columnWidths = new int[fields.size()];
-        boolean[] fixedWidthColumns = new boolean[fields.size()];
-        int maxLineWidth = calculateFieldWidths(node, fields, columnWidths, fixedWidthColumns);
+        int[] columnWidths = new int[fieldNames.size()];
+        boolean[] isFixedWidthColumns = new boolean[fieldNames.size()];
+        int maxLineWidth = calculateFieldWidths(node, fieldNames, columnWidths, isFixedWidthColumns);
 
         if (maxLineWidth >= outputWidth) {
-            adjustColumnWidths(fields, outputWidth, columnWidths, fixedWidthColumns);
+            adjustColumnWidths(fieldNames, outputWidth, columnWidths, isFixedWidthColumns);
         }
 
-        List<String> headers = fields.stream().map(String::toUpperCase).collect(Collectors.toList());
+        List<String> headers = fieldNames.stream().map(String::toUpperCase).collect(Collectors.toList());
 
         CWC_FixedWidth cwc = new CWC_FixedWidth();
-        for (int i = 0; i < fields.size(); i++) {
+        for (int i = 0; i < fieldNames.size(); i++) {
             cwc.add(columnWidths[i]);
         }
 
@@ -234,11 +245,11 @@ public class CliUtils {
         node.forEach(element -> {
             List<String> row = new ArrayList<>();
             ObjectNode objectNode = (ObjectNode) element;
-            Iterator<String> fieldNames = objectNode.fieldNames();
+            Iterator<String> nodeFieldNames = objectNode.fieldNames();
             int columnIndex = 0;
-            while (fieldNames.hasNext()) {
-                String fieldName = fieldNames.next();
-                JsonNode value = element.get(fieldName);
+            while (nodeFieldNames.hasNext()) {
+                String nodeFieldName = nodeFieldNames.next();
+                JsonNode value = element.get(nodeFieldName);
                 String valueString = value.isTextual() ? value.asText() : value.toString();
                 row.add(preprocess(valueString, columnWidths[columnIndex]));
                 columnIndex++;
