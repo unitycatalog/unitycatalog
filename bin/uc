@@ -49,12 +49,14 @@ run_in_tarball() {
   run_cli_java_command "$CLI_CLASSPATH_FILE" "$@"
 }
 
+quoted_args_str="$(printf ' %q' "$@")"
+
 # Check if TARBALL_JAR_DIR exists, then we are running in the tarball
 if [ -d "$TARBALL_JAR_DIR" ]; then
-  run_in_tarball "$@"
+  run_in_tarball "$quoted_args_str"
 # Check if CLI_TARGET_DIR exists, then we are running in the source code
 elif [ -f "$CLI_CLASS_FILE" ]; then
-  run_in_source_code "$@"
+  run_in_source_code "$quoted_args_str"
 else
   echo "Script running neither in source code nor in tarball"
 fi
