@@ -49,6 +49,8 @@ bin/uc catalog update --name <name> [--new_name <new_name>] [--comment <comment>
 - `new_name` : *[Optional]* The new name of the catalog.
 - `comment` : *[Optional]* The new description of the catalog.
 
+*Note:* at least one of the optional parameters must be specified.
+
 Example:
 ```sh
 bin/uc catalog update --name my_catalog --new_name my_updated_catalog --comment "Updated Catalog"
