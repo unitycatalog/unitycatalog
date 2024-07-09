@@ -8,7 +8,7 @@ import io.unitycatalog.server.base.schema.SchemaOperations;
 import io.unitycatalog.server.base.table.BaseTableCRUDTest;
 import io.unitycatalog.server.base.table.TableOperations;
 
-public class CliTableCRUDTest extends BaseTableCRUDTest  {
+public class CliTableCRUDTest extends BaseTableCRUDTest {
     @Override
     protected CatalogOperations createCatalogOperations(ServerConfig serverConfig) {
         return new CliCatalogOperations(serverConfig);

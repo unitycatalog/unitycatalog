@@ -20,7 +20,7 @@ lazy val commonSettings = Seq(
       sys.props("java.specification.version").toDouble >= 11,
       "Java 11 or above is required to run this project.")
   },
-  javacOptions ++= Seq(
+  Compile / compile / javacOptions ++= Seq(
     "-Xlint:deprecation",
     "-Xlint:unchecked",
     "-source", "1.8",
@@ -145,6 +145,8 @@ lazy val apiDocs = (project in file("api"))
     }
   )
 
+// Define the custom task key
+lazy val populateTestDB = taskKey[Unit]("Run PopulateTestDatabase main class from the test folder")
 
 lazy val server = (project in file("server"))
   .dependsOn(client % "test->test")
@@ -156,6 +158,8 @@ lazy val server = (project in file("server"))
     javaCheckstyleSettings(file("dev") / "checkstyle-config.xml"),
     libraryDependencies ++= Seq(
       "com.linecorp.armeria" %  "armeria" % "1.28.4",
+      // Netty dependencies
+      "io.netty" % "netty-all" % "4.1.111.Final",
       "jakarta.annotation" % "jakarta.annotation-api" % "3.0.0" % Provided,
       // Jackson dependencies
       "com.fasterxml.jackson.core" % "jackson-annotations" % jacksonVersion,
@@ -229,8 +233,15 @@ lazy val server = (project in file("server"))
     // Define the simple generate command to generate model codes
     generate := {
       val _ = openApiGenerate.value
-    }
-  )
+    },
+
+    populateTestDB := {
+      val log = streams.value.log
+      (Test / runMain).toTask(s" io.unitycatalog.server.utils.PopulateTestDatabase").value
+    },
+
+    Test / javaOptions += s"-Duser.dir=${(ThisBuild / baseDirectory).value.getAbsolutePath}",
+)
 
 lazy val cli = (project in file("examples") / "cli")
   .dependsOn(server % "compile->compile;test->test")
@@ -274,7 +285,8 @@ lazy val root = (project in file("."))
   .aggregate(client, server, cli)
   .settings(
     name := s"$artifactNamePrefix",
-    createTarballSettings()
+    createTarballSettings(),
+    rootReleaseSettings
   )
 
 def generateClasspathFile(targetDir: File, classpath: Classpath): Unit = {

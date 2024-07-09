@@ -26,7 +26,7 @@ public class CliTableOperations implements TableOperations  {
     }
 
     @Override
-    public TableInfo createTable(CreateTable createTableRequest) throws IOException {
+    public TableInfo createTable(CreateTable createTableRequest) {
         StringBuilder columns = new StringBuilder();
         for (ColumnInfo column : createTableRequest.getColumns()) {
             columns.append(column.getName()).append(" ").append(column.getTypeName().name()).append(",");

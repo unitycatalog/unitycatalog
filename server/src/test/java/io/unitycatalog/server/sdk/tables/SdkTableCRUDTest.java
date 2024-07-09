@@ -19,16 +19,6 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 public class SdkTableCRUDTest extends BaseTableCRUDTest {
 
-    @BeforeClass
-    public static void setUpClass() {
-        // Any static setup specific to this test class
-    }
-
-    @AfterClass
-    public static void tearDownClass() {
-        // Any static teardown specific to this test class
-    }
-
     @Override
     protected CatalogOperations createCatalogOperations(ServerConfig config) {
         return new SdkCatalogOperations(TestUtils.createApiClient(config));
@@ -58,7 +48,7 @@ public class SdkTableCRUDTest extends BaseTableCRUDTest {
         createCommonResources();
         TableInfo testingTable = createDefaultTestingTable();
         ListTablesResponse resp = localTablesApi.listTables(testingTable.getCatalogName(), testingTable.getSchemaName(), 100, null);
-        assertThat(resp.getNextPageToken()).isNotNull();
+        assertThat(resp.getNextPageToken()).isNull();
         assertThat(resp.getTables()).hasSize(1)
                 .first()
                 .usingRecursiveComparison()

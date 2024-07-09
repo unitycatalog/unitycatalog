@@ -40,7 +40,7 @@ No authorization required
 
 <a name="deleteSchema"></a>
 # **deleteSchema**
-> oas_any_type_not_mapped deleteSchema(full\_name)
+> oas_any_type_not_mapped deleteSchema(full\_name, force)
 
 Delete a schema
 
@@ -51,6 +51,7 @@ Delete a schema
 |Name | Type | Description  | Notes |
 |------------- | ------------- | ------------- | -------------|
 | **full\_name** | **String**| Full name of the schema. | [default to null] |
+| **force** | **Boolean**| Force deletion even if the catalog is not empty. | [optional] [default to null] |
 
 ### Return type
 
