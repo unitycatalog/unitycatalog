@@ -4,10 +4,11 @@ This page shows you how to use Unity Catalog to store, access and govern Functio
 
 Functions are units of saved logic that return a scalar value or a set of rows.
 
-Using Unity Catalog to store your Functions is great because it gives you:
+Using Unity Catalog to store your Functions is great for reusing code and applying permissions or filters.
 
-1. Efficiency: you only need to write a complex function once and then it can be accessed centrally from many different processes by many different users and teams.
-2. Governance: you can control who has access to which functions.
+The following diagram shows an example of a Unity Catalog instance with two functions: sum and my_function:
+
+![UC Functions](../assets/images/uc_functions.png)
 
 Let's look at how this works.
 
@@ -150,6 +151,67 @@ To do so, define a new Function by its full name, specify the data type of the o
 bin/uc function create --full_name unity.default.myFunction --data_type INT --input_params "a int, b int" --def "c=a*b\nreturn c"
 ```
 
+This should output something like:
+
+```sh
+
+┌────────────────────┬────────────────────────────────────────────────────────────────────────────────────────────────────┐
+│        KEY         │                                               VALUE                                                │
+├────────────────────┼────────────────────────────────────────────────────────────────────────────────────────────────────┤
+│NAME                │myFunction                                                                                          │
+├────────────────────┼────────────────────────────────────────────────────────────────────────────────────────────────────┤
+│CATALOG_NAME        │unity                                                                                               │
+├────────────────────┼────────────────────────────────────────────────────────────────────────────────────────────────────┤
+│SCHEMA_NAME         │default                                                                                             │
+├────────────────────┼────────────────────────────────────────────────────────────────────────────────────────────────────┤
+│INPUT_PARAMS        │{"parameters":[{"name":"a","type_text":"int","type_json":"{\"name\":\"a\",\"type\":\"integer\",\"nul│
+│                    │lable\":true,\"metadata\":{}}","type_name":"INT","type_precision":null,"type_scale":null,"type_inter│
+│                    │val_type":null,"position":0,"parameter_mode":null,"parameter_type":null,"parameter_default":null,"co│
+│                    │mment":null},{"name":"b","type_text":"int","type_json":"{\"name\":\"b\",\"type\":\"integer\",\"nulla│
+│                    │ble\":true,\"metadata\":{}}","type_name":"INT","type_precision":null,"type_scale":null,"type_interva│
+│                    │l_type":null,"position":1,"parameter_mode":null,"parameter_type":null,"parameter_default":null,"comm│
+│                    │ent":null}]}                                                                                        │
+├────────────────────┼────────────────────────────────────────────────────────────────────────────────────────────────────┤
+│DATA_TYPE           │INT                                                                                                 │
+├────────────────────┼────────────────────────────────────────────────────────────────────────────────────────────────────┤
+│FULL_DATA_TYPE      │INT                                                                                                 │
+├────────────────────┼────────────────────────────────────────────────────────────────────────────────────────────────────┤
+│RETURN_PARAMS       │null                                                                                                │
+├────────────────────┼────────────────────────────────────────────────────────────────────────────────────────────────────┤
+│ROUTINE_BODY        │EXTERNAL                                                                                            │
+├────────────────────┼────────────────────────────────────────────────────────────────────────────────────────────────────┤
+│ROUTINE_DEFINITION  │c=a*b\nreturn c                                                                                     │
+├────────────────────┼────────────────────────────────────────────────────────────────────────────────────────────────────┤
+│ROUTINE_DEPENDENCIES│null                                                                                                │
+├────────────────────┼────────────────────────────────────────────────────────────────────────────────────────────────────┤
+│PARAMETER_STYLE     │S                                                                                                   │
+├────────────────────┼────────────────────────────────────────────────────────────────────────────────────────────────────┤
+│IS_DETERMINISTIC    │true                                                                                                │
+├────────────────────┼────────────────────────────────────────────────────────────────────────────────────────────────────┤
+│SQL_DATA_ACCESS     │NO_SQL                                                                                              │
+├────────────────────┼────────────────────────────────────────────────────────────────────────────────────────────────────┤
+│IS_NULL_CALL        │true                                                                                                │
+├────────────────────┼────────────────────────────────────────────────────────────────────────────────────────────────────┤
+│SECURITY_TYPE       │DEFINER                                                                                             │
+├────────────────────┼────────────────────────────────────────────────────────────────────────────────────────────────────┤
+│SPECIFIC_NAME       │myFunction                                                                                          │
+├────────────────────┼────────────────────────────────────────────────────────────────────────────────────────────────────┤
+│COMMENT             │null                                                                                                │
+├────────────────────┼────────────────────────────────────────────────────────────────────────────────────────────────────┤
+│PROPERTIES          │null                                                                                                │
+├────────────────────┼────────────────────────────────────────────────────────────────────────────────────────────────────┤
+│FULL_NAME           │unity.default.myFunction                                                                            │
+├────────────────────┼────────────────────────────────────────────────────────────────────────────────────────────────────┤
+│CREATED_AT          │1720516826170                                                                                       │
+├────────────────────┼────────────────────────────────────────────────────────────────────────────────────────────────────┤
+│UPDATED_AT          │null                                                                                                │
+├────────────────────┼────────────────────────────────────────────────────────────────────────────────────────────────────┤
+│FUNCTION_ID         │012545ee-2a89-4534-b8e9-f41b09f4b2eb                                                                │
+├────────────────────┼────────────────────────────────────────────────────────────────────────────────────────────────────┤
+│EXTERNAL_LANGUAGE   │python                                                                                              │
+└────────────────────┴────────────────────────────────────────────────────────────────────────────────────────────────────┘
+```
+
 `function create` takes the following parameters:
 
 Required Parameters:
@@ -163,21 +225,3 @@ Optional Parameters:
 - `--comment`: Comment/Description of the entity.
 - `--def`: The routine definition of the function
 - `--language`: The language of the function
-
-### TO DO
-
-1. wait for [PR](https://github.com/unitycatalog/unitycatalog/pull/102) fix to get `function create` working again
-2. get clarity on native syntax
-3. use a Python function with an import, e.g. numpy
-
-```python
-  import numpy as np
-
-  def roll_die(num_sides):
-    return np.random.randint(num_sides) + 1
-
-  def sum_dice(num_dice,num_sides):
-    return sum([roll_die(num_sides) for x in range(num_dice)])
-
-  return sum_dice(num_dice, num_sides)
-```
