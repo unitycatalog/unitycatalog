@@ -1,11 +1,5 @@
 package io.unitycatalog.server.iceberg;
 
-import java.io.IOException;
-import java.net.URISyntaxException;
-import java.util.List;
-import java.util.Objects;
-import java.util.UUID;
-
 import com.linecorp.armeria.client.WebClient;
 import com.linecorp.armeria.common.AggregatedHttpResponse;
 import com.linecorp.armeria.common.auth.AuthToken;
@@ -15,7 +9,7 @@ import io.unitycatalog.server.base.BaseServerTest;
 import io.unitycatalog.server.base.catalog.CatalogOperations;
 import io.unitycatalog.server.base.schema.SchemaOperations;
 import io.unitycatalog.server.base.table.TableOperations;
-import io.unitycatalog.server.persist.HibernateUtil;
+import io.unitycatalog.server.persist.utils.HibernateUtils;
 import io.unitycatalog.server.persist.dao.TableInfoDAO;
 import io.unitycatalog.server.sdk.catalog.SdkCatalogOperations;
 import io.unitycatalog.server.sdk.schema.SdkSchemaOperations;
@@ -24,6 +18,9 @@ import io.unitycatalog.server.utils.RESTObjectMapper;
 import io.unitycatalog.server.utils.TestUtils;
 import org.apache.iceberg.catalog.Namespace;
 import org.apache.iceberg.catalog.TableIdentifier;
+import org.apache.iceberg.exceptions.NoSuchTableException;
+import org.apache.iceberg.rest.responses.ErrorResponse;
+import org.apache.iceberg.rest.responses.ErrorResponseParser;
 import org.apache.iceberg.rest.responses.GetNamespaceResponse;
 import org.apache.iceberg.rest.responses.ListNamespacesResponse;
 import org.apache.iceberg.rest.responses.ListTablesResponse;
@@ -32,6 +29,13 @@ import org.hibernate.Session;
 import org.hibernate.Transaction;
 import org.junit.Before;
 import org.junit.Test;
+
+import java.io.IOException;
+import java.net.URISyntaxException;
+import java.util.List;
+import java.util.Objects;
+import java.util.Optional;
+import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -58,27 +62,13 @@ public class IcebergRestCatalogTest extends BaseServerTest {
   }
 
     protected void cleanUp() {
-        try {
-          if (catalogOperations.getCatalog(TestUtils.CATALOG_NAME) != null) {
-            catalogOperations.deleteCatalog(TestUtils.CATALOG_NAME);
-          }
-        } catch (Exception e) {
-          // Ignore
+      try {
+        if (catalogOperations.getCatalog(TestUtils.CATALOG_NAME) != null) {
+          catalogOperations.deleteCatalog(TestUtils.CATALOG_NAME, Optional.of(true));
         }
-        try {
-        if (schemaOperations.getSchema(TestUtils.CATALOG_NAME +"." +TestUtils.SCHEMA_NAME) != null) {
-            schemaOperations.deleteSchema(TestUtils.CATALOG_NAME+"."+TestUtils.SCHEMA_NAME);
-        }
-        } catch (Exception e) {
+      } catch (Exception e) {
         // Ignore
-        }
-        try {
-        if (tableOperations.getTable(TestUtils.CATALOG_NAME+ "." + TestUtils.SCHEMA_NAME + "." +TestUtils.TABLE_NAME) != null) {
-            tableOperations.deleteTable(TestUtils.CATALOG_NAME+ "." + TestUtils.SCHEMA_NAME + "." +TestUtils.TABLE_NAME);
-        }
-        } catch (Exception e) {
-        // Ignore
-        }
+      }
     }
 
   @Test
@@ -91,12 +81,24 @@ public class IcebergRestCatalogTest extends BaseServerTest {
   @Test
   public void testNamespaces()
     throws ApiException, IOException {
-    catalogOperations.createCatalog(TestUtils.CATALOG_NAME, "testCatalog");
-    schemaOperations.createSchema(
-      new CreateSchema()
-        .catalogName(TestUtils.CATALOG_NAME)
-        .name(TestUtils.SCHEMA_NAME)
-    );
+    CreateCatalog createCatalog = new CreateCatalog()
+            .name(TestUtils.CATALOG_NAME)
+            .comment(TestUtils.COMMENT)
+            .properties(TestUtils.PROPERTIES);
+    CatalogInfo catalogInfo = catalogOperations.createCatalog(createCatalog);
+    assertThat(catalogInfo.getName()).isEqualTo(createCatalog.getName());
+    assertThat(catalogInfo.getComment()).isEqualTo(createCatalog.getComment());
+    assertThat(catalogInfo.getProperties()).isEqualTo(createCatalog.getProperties());
+
+    CreateSchema createSchema = new CreateSchema()
+            .catalogName(TestUtils.CATALOG_NAME)
+            .name(TestUtils.SCHEMA_NAME)
+            .properties(TestUtils.PROPERTIES);
+    SchemaInfo schemaInfo = schemaOperations.createSchema(createSchema);
+    assertThat(schemaInfo.getName()).isEqualTo(createSchema.getName());
+    assertThat(schemaInfo.getCatalogName()).isEqualTo(createSchema.getCatalogName());
+    assertThat(schemaInfo.getFullName()).isEqualTo(TestUtils.SCHEMA_FULL_NAME);
+    assertThat(schemaInfo.getProperties()).isEqualTo(createSchema.getProperties());
     // GetNamespace for catalog
     {
       AggregatedHttpResponse resp =
@@ -105,6 +107,7 @@ public class IcebergRestCatalogTest extends BaseServerTest {
       assertThat(RESTObjectMapper.mapper().readValue(resp.contentUtf8(), GetNamespaceResponse.class)).asString()
               .isEqualTo(GetNamespaceResponse.builder()
                       .withNamespace(Namespace.of(TestUtils.CATALOG_NAME))
+                      .setProperties(TestUtils.PROPERTIES)
                       .build()
                       .toString());
     }
@@ -117,6 +120,7 @@ public class IcebergRestCatalogTest extends BaseServerTest {
       assertThat(RESTObjectMapper.mapper().readValue(resp.contentUtf8(), GetNamespaceResponse.class)).asString()
               .isEqualTo(GetNamespaceResponse.builder()
                       .withNamespace(Namespace.of(TestUtils.CATALOG_NAME, TestUtils.SCHEMA_NAME))
+                      .setProperties(TestUtils.PROPERTIES)
                       .build()
                       .toString());
     }
@@ -158,7 +162,8 @@ public class IcebergRestCatalogTest extends BaseServerTest {
 
   @Test
   public void testTable() throws ApiException, IOException, URISyntaxException {
-    catalogOperations.createCatalog(TestUtils.CATALOG_NAME, "testCatalog");
+    CreateCatalog createCatalog = new CreateCatalog().name(TestUtils.CATALOG_NAME).comment(TestUtils.COMMENT);
+    catalogOperations.createCatalog(createCatalog);
     schemaOperations.createSchema(
       new CreateSchema()
         .catalogName(TestUtils.CATALOG_NAME)
@@ -197,13 +202,15 @@ public class IcebergRestCatalogTest extends BaseServerTest {
           "/v1/namespaces/" + TestUtils.CATALOG_NAME + "." + TestUtils.SCHEMA_NAME + "/tables/" +
             TestUtils.TABLE_NAME).aggregate().join();
       assertThat(resp.status().code()).isEqualTo(404);
+      ErrorResponse errorResponse = ErrorResponseParser.fromJson(resp.contentUtf8());
+      assertThat(errorResponse.type()).isEqualTo(NoSuchTableException.class.getSimpleName());
     }
 
     // Add the uniform metadata
-    try (Session session = HibernateUtil.getSessionFactory().openSession()) {
+    try (Session session = HibernateUtils.getSessionFactory().openSession()) {
       Transaction tx = session.beginTransaction();
       TableInfoDAO tableInfoDAO = TableInfoDAO.builder().build();
-      assert tableInfo.getTableId() != null;
+      assertThat(tableInfo.getTableId()).isNotNull();
       session.load(tableInfoDAO, UUID.fromString(tableInfo.getTableId()));
       String metadataLocation = Objects.requireNonNull(
         this.getClass().getResource("/metadata.json")).toURI().toString();
@@ -249,12 +256,16 @@ public class IcebergRestCatalogTest extends BaseServerTest {
   public void testLoadTablesInvalidNamespace() {
     AggregatedHttpResponse resp = client.get("/v1/namespaces/incomplete_namespace/tables/some_table").aggregate().join();
     assertThat(resp.status().code()).isEqualTo(400);
+    ErrorResponse errorResponse = ErrorResponseParser.fromJson(resp.contentUtf8());
+    assertThat(errorResponse.type()).isEqualTo(IllegalArgumentException.class.getSimpleName());
   }
 
   @Test
   public void testListTablesInvalidNamespace() {
     AggregatedHttpResponse resp = client.get("/v1/namespaces/incomplete_namespace/tables").aggregate().join();
     assertThat(resp.status().code()).isEqualTo(400);
+    ErrorResponse errorResponse = ErrorResponseParser.fromJson(resp.contentUtf8());
+    assertThat(errorResponse.type()).isEqualTo(IllegalArgumentException.class.getSimpleName());
   }
 
   @Test

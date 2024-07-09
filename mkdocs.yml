@@ -3,29 +3,24 @@ edit_uri: edit/main/docs/
 repo_name: unitycatalog/unitycatalog
 repo_url: https://github.com/unitycatalog/unitycatalog
 site_url: https://docs.unitycatalog.io
-site_description:  Open, Multi-modal Catalog for Data & AI 
+site_description: Open, Multi-modal Catalog for Data & AI
 site_author: unitycatalog
 
 nav:
-  - Home: README.md
-  - Tutorial: tutorial.md
-  - Unity Catalog Server: server.md
-  - CLI Tool for Catalog Management: cli.md
-
-nav:
   - Home: index.md
-  - Tutorial: tutorial.md
+  - Quickstart: quickstart.md
   - Usage:
       - CLI: usage/cli.md
       - Tables:
-        - UniForm: usage/tables/uniform.md
-      - Functions: usage/functions.md
+          - UniForm: usage/tables/uniform.md
       - Volumes: usage/volumes.md
+      - Functions: usage/functions.md
       - Server: usage/server.md
   - Integrations:
       - Daft: integrations/unity-catalog-daft.md
       - DuckDB: integrations/unity-catalog-duckdb.md
       - Trino: integrations/unity-catalog-trino.md
+  - Deployment: deployment.md
 
 plugins:
   - search

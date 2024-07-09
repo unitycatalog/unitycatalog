@@ -2,6 +2,10 @@ import java.nio.file.Files
 import java.io.File
 import Tarball.createTarballSettings
 import sbt.util
+import sbtlicensereport.license.{LicenseInfo, LicenseCategory, DepModuleInfo}
+import ReleaseSettings._
+
+import scala.language.implicitConversions
 
 val orgName = "io.unitycatalog"
 val artifactNamePrefix = "unitycatalog"
@@ -16,7 +20,7 @@ lazy val commonSettings = Seq(
       sys.props("java.specification.version").toDouble >= 11,
       "Java 11 or above is required to run this project.")
   },
-  javacOptions ++= Seq(
+  Compile / compile / javacOptions ++= Seq(
     "-Xlint:deprecation",
     "-Xlint:unchecked",
     "-source", "1.8",
@@ -44,7 +48,26 @@ lazy val commonSettings = Seq(
       targetDir = packageFile.getParentFile,
       classpath = (Runtime / dependencyClasspath).value)
     packageFile
-  }
+  },
+
+  licenseOverrides := {
+    case DepModuleInfo("io.unitycatalog", _, _) =>
+      LicenseInfo(LicenseCategory.Apache, "Apache 2.0", "http://www.apache.org/licenses")
+    case DepModuleInfo("org.hibernate.common", "hibernate-commons-annotations", _) =>
+      // Apache 2.0: https://mvnrepository.com/artifact/org.hibernate.common/hibernate-commons-annotations
+      LicenseInfo(LicenseCategory.Apache, "Apache 2.0", "http://www.apache.org/licenses")
+  },
+  licenseDepExclusions := {
+    // LGPL 2.1: https://www.gnu.org/licenses/old-licenses/lgpl-2.1.html
+    // https://en.wikipedia.org/wiki/GNU_Lesser_General_Public_License
+    // We can use and distribute the, but not modify the source code
+    case DepModuleInfo("org.hibernate.orm", _, _) => true
+    // Duo license:
+    //  - Eclipse Public License 2.0
+    //  - GNU General Public License, version 2 with the GNU Classpath Exception
+    // I think we're good with the classpath exception in there.
+    case DepModuleInfo("jakarta.transaction", "jakarta.transaction-api", _) => true
+  },
 )
 
 enablePlugins(CoursierPlugin)
@@ -66,9 +89,11 @@ def javaCheckstyleSettings(configLocation: File) = Seq(
 
 lazy val client = (project in file("clients/java"))
   .enablePlugins(OpenApiGeneratorPlugin)
+  .disablePlugins(JavaFormatterPlugin)
   .settings(
     name := s"$artifactNamePrefix-client",
     commonSettings,
+    javaOnlyReleaseSettings,
     libraryDependencies ++= Seq(
       "com.fasterxml.jackson.core" % "jackson-annotations" % jacksonVersion,
       "com.fasterxml.jackson.core" % "jackson-core" % jacksonVersion,
@@ -120,6 +145,8 @@ lazy val apiDocs = (project in file("api"))
     }
   )
 
+// Define the custom task key
+lazy val populateTestDB = taskKey[Unit]("Run PopulateTestDatabase main class from the test folder")
 
 lazy val server = (project in file("server"))
   .dependsOn(client % "test->test")
@@ -127,6 +154,7 @@ lazy val server = (project in file("server"))
   .settings (
     name := s"$artifactNamePrefix-server",
     commonSettings,
+    javaOnlyReleaseSettings,
     javaCheckstyleSettings(file("dev") / "checkstyle-config.xml"),
     libraryDependencies ++= Seq(
       "com.linecorp.armeria" %  "armeria" % "1.28.4",
@@ -203,8 +231,15 @@ lazy val server = (project in file("server"))
     // Define the simple generate command to generate model codes
     generate := {
       val _ = openApiGenerate.value
-    }
-  )
+    },
+
+    populateTestDB := {
+      val log = streams.value.log
+      (Test / runMain).toTask(s" io.unitycatalog.server.utils.PopulateTestDatabase").value
+    },
+
+    Test / javaOptions += s"-Duser.dir=${(ThisBuild / baseDirectory).value.getAbsolutePath}",
+)
 
 lazy val cli = (project in file("examples") / "cli")
   .dependsOn(server % "compile->compile;test->test")
@@ -213,6 +248,7 @@ lazy val cli = (project in file("examples") / "cli")
     name := s"$artifactNamePrefix-cli",
     mainClass := Some(orgName + ".cli.UnityCatalogCli"),
     commonSettings,
+    skipReleaseSettings,
     javaCheckstyleSettings(file("dev") / "checkstyle-config.xml"),
     libraryDependencies ++= Seq(
       "commons-cli" % "commons-cli" % "1.7.0",
@@ -239,14 +275,15 @@ lazy val cli = (project in file("examples") / "cli")
       // Test dependencies
       "junit" %  "junit" % "4.13.2" % Test,
       "com.github.sbt" % "junit-interface" % "0.13.3" % Test,
-    ),
+    )
   )
 
 lazy val root = (project in file("."))
   .aggregate(client, server, cli)
   .settings(
     name := s"$artifactNamePrefix",
-    createTarballSettings()
+    createTarballSettings(),
+    rootReleaseSettings
   )
 
 def generateClasspathFile(targetDir: File, classpath: Classpath): Unit = {

@@ -148,7 +148,8 @@ Suppose you want to register the following function to Unity Catalog: `c = a * b
 To do so, define a new Function by its full name, specify the data type of the output, the input parameters and their data types, and
 
 ```sh
-bin/uc function create --full_name unity.default.myFunction --data_type INT --input_params "a int, b int" --def "c=a*b\nreturn c"
+bin/uc function create --full_name unity.default.my_function \
+--data_type INT --input_params "a int, b int" --def "c=a*b\nreturn c"
 ```
 
 This should output something like:
