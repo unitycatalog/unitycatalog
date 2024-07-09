@@ -4,9 +4,12 @@ This page shows you how to use Unity Catalog to store, access and govern Functio
 
 Functions are units of saved logic that return a scalar value or a set of rows.
 
-Using Unity Catalog to store your Functions is great for reusing code and applying permissions or filters.
+Using Unity Catalog to store your Functions is great for:
 
-The following diagram shows an example of a Unity Catalog instance with two functions: sum and my_function:
+1. reusing code, and
+2. applying permissions or filters.
+
+The following diagram shows an example of a Unity Catalog instance with two functions: `sum` and `my_function`:
 
 ![UC Functions](../assets/images/uc_functions.png)
 
@@ -16,7 +19,7 @@ Let's look at how this works.
 
 We'll use a local Unity Catalog server to get started. The default local UC server comes with some sample data.
 
-> If this is your first time spinning up a UC server, you might want to check out the [Tutorial](../tutorial.md) first.
+> If this is your first time spinning up a UC server, you might want to check out the [Quickstart](../quickstart.md) first.
 
 Spin up a local UC server by running the following code in a terminal from the root directory of your local `unitycatalog` repository:
 
@@ -212,6 +215,33 @@ This should output something like:
 │EXTERNAL_LANGUAGE   │python                                                                                              │
 └────────────────────┴────────────────────────────────────────────────────────────────────────────────────────────────────┘
 ```
+
+You can also store more complex functions. For example, you can import Python modules and use them in your function.
+
+Let's take the example below of a function that uses the Numpy library to simulate a random roll of dice:
+
+```python
+def myPythonFunction(n_sides, n_dice):
+    import numpy as np
+    rolls=np.random.randint(1, n_sides + 1, size=n_dice)
+    return print(rolls)"
+```
+
+You can register this function to your Unity Catalog as follows:
+
+```sh
+bin/uc function create --full_name unity.default.myPythonFunction --data_type INT --input_params "n_sides int, n_dice int" --language "python" --def "import numpy as np\nrolls=np.random.randint(1, n_sides + 1, size=n_dice)\nreturn print(rolls)"
+```
+
+And then call it with:
+
+```sh
+bin/uc function call --full_name unity.default.myPythonFunction2 --input_params "6,1"
+```
+
+This will simulate rolling a single die with 6 sides.
+
+### Function Create Parameters
 
 `function create` takes the following parameters:
 
