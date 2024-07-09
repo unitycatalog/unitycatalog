@@ -39,7 +39,6 @@ public class PythonInvoker {
             List<String> paramNames = new ArrayList<>();
             List<Object> argValues = new ArrayList<>();
             for (FunctionParameterInfo param : parameters) {
-                System.out.println(">>> param=" + param);
                 paramNames.add(param.getName());
                 String argument = args[param.getPosition()];
                 if (param.getTypeName().equals(ColumnTypeName.INT)) {
