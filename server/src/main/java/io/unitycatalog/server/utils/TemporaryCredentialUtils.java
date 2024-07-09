@@ -3,13 +3,11 @@ package io.unitycatalog.server.utils;
 import io.unitycatalog.server.exception.BaseException;
 import io.unitycatalog.server.exception.ErrorCode;
 import io.unitycatalog.server.model.AwsCredentials;
-import io.unitycatalog.server.persist.PropertiesUtil;
+import io.unitycatalog.server.persist.utils.ServerPropertiesUtils;
 
 public class TemporaryCredentialUtils {
-
-
     public static AwsCredentials findS3BucketConfig(String storageLocation) {
-        PropertiesUtil.S3BucketConfig s3BucketConfig = PropertiesUtil
+        ServerPropertiesUtils.S3BucketConfig s3BucketConfig = ServerPropertiesUtils
                 .getInstance().getS3BucketConfig(storageLocation);
         if (s3BucketConfig == null) {
             throw new BaseException(ErrorCode.FAILED_PRECONDITION, "S3 bucket configuration not found.");
@@ -19,5 +17,4 @@ public class TemporaryCredentialUtils {
                 .secretAccessKey(s3BucketConfig.getSecretKey())
                 .sessionToken(s3BucketConfig.getSessionToken());
     }
-
 }

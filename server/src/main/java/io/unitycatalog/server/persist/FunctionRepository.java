@@ -5,6 +5,7 @@ import io.unitycatalog.server.exception.ErrorCode;
 import io.unitycatalog.server.model.*;
 import io.unitycatalog.server.persist.dao.FunctionInfoDAO;
 import io.unitycatalog.server.persist.dao.SchemaInfoDAO;
+import io.unitycatalog.server.persist.utils.HibernateUtils;
 import io.unitycatalog.server.utils.ValidationUtils;
 import lombok.Getter;
 import org.hibernate.Session;
@@ -20,13 +21,16 @@ import java.util.UUID;
 import java.util.stream.Collectors;
 
 public class FunctionRepository {
-    @Getter
-    private static final FunctionRepository instance = new FunctionRepository();
-    private static final SchemaRepository schemaRepository = SchemaRepository.getInstance();
+    private static final FunctionRepository INSTANCE = new FunctionRepository();
+    private static final SchemaRepository SCHEMA_REPOSITORY = SchemaRepository.getInstance();
     private static final Logger LOGGER = LoggerFactory.getLogger(FunctionRepository.class);
-    private static final SessionFactory SESSION_FACTORY = HibernateUtil.getSessionFactory();
+    private static final SessionFactory SESSION_FACTORY = HibernateUtils.getSessionFactory();
 
     private FunctionRepository() {}
+
+    public static FunctionRepository getInstance() {
+        return INSTANCE;
+    }
 
     public FunctionInfo createFunction(CreateFunctionRequest createFunctionRequest) {
         ValidationUtils.validateSqlObjectName(createFunctionRequest.getFunctionInfo().getName());
@@ -60,7 +64,7 @@ public class FunctionRepository {
             try {
                 String catalogName = createFunction.getCatalogName();
                 String schemaName = createFunction.getSchemaName();
-                SchemaInfoDAO schemaInfo = schemaRepository.getSchemaDAO(session,
+                SchemaInfoDAO schemaInfo = SCHEMA_REPOSITORY.getSchemaDAO(session,
                         catalogName, schemaName);
                 if (schemaInfo == null) {
                     throw new BaseException(ErrorCode.NOT_FOUND, "Schema not found: " + schemaName);
@@ -93,37 +97,43 @@ public class FunctionRepository {
             String schemaName,
             Optional<Integer> maxResults,
             Optional<String> nextPageToken) {
-        ListFunctionsResponse response = new ListFunctionsResponse();
         try (Session session = SESSION_FACTORY.openSession()) {
             session.setDefaultReadOnly(true);
             Transaction tx = session.beginTransaction();
             try {
-                SchemaInfoDAO schemaInfo = schemaRepository.getSchemaDAO(session, catalogName, schemaName);
+                SchemaInfoDAO schemaInfo = SCHEMA_REPOSITORY.getSchemaDAO(session, catalogName, schemaName);
                 if (schemaInfo == null) {
                     throw new BaseException(ErrorCode.NOT_FOUND, "Schema not found: " + schemaName);
                 }
-                String queryString = "from FunctionInfoDAO f where f.schemaId = :schemaId";
-                Query<FunctionInfoDAO> query = session.createQuery(queryString, FunctionInfoDAO.class);
-                query.setParameter("schemaId", schemaInfo.getId());
-                maxResults.ifPresent(query::setMaxResults);
-                if (nextPageToken.isPresent()) {
-                    // Perform pagination logic here if needed
-                    // Example: query.setFirstResult(startIndex);
-                }
-                List<FunctionInfoDAO> functions = query.list();
-                response.setFunctions(
-                        functions.stream()
-                                .map(FunctionInfoDAO::toFunctionInfo)
-                                .peek(f -> addNamespaceInfo(f, catalogName, schemaName))
-                                .collect(Collectors.toList()));
+                ListFunctionsResponse response = listFunctions(session, schemaInfo.getId(), catalogName,
+                        schemaName, maxResults, nextPageToken);
                 tx.commit();
+                return response;
             } catch (Exception e) {
                 tx.rollback();
                 throw e;
             }
         }
+    }
+
+    public ListFunctionsResponse listFunctions(Session session, UUID schemaId, String catalogName, String schemaName,
+                                               Optional<Integer> maxResults, Optional<String> nextPageToken) {
+        ListFunctionsResponse response = new ListFunctionsResponse();
+        Query<FunctionInfoDAO> query = session.createQuery(
+                "FROM FunctionInfoDAO WHERE schemaId = :schemaId", FunctionInfoDAO.class);
+        query.setParameter("schemaId", schemaId);
+        maxResults.ifPresent(query::setMaxResults);
+        if (nextPageToken.isPresent()) {
+            // Perform pagination logic here if needed
+            // Example: query.setFirstResult(startIndex);
+        }
+        response.setFunctions(
+                query.list().stream().map(FunctionInfoDAO::toFunctionInfo)
+                        .peek(f -> addNamespaceInfo(f, catalogName, schemaName))
+                        .collect(Collectors.toList()));
         return response;
     }
+
 
     public FunctionInfo getFunction(String name) {
         FunctionInfo functionInfo = null;
@@ -161,14 +171,18 @@ public class FunctionRepository {
     }
 
     public FunctionInfoDAO getFunctionDAO(Session session, String catalogName, String schemaName, String functionName) {
-        SchemaInfoDAO schemaInfo = schemaRepository.getSchemaDAO(session, catalogName, schemaName);
+        SchemaInfoDAO schemaInfo = SCHEMA_REPOSITORY.getSchemaDAO(session, catalogName, schemaName);
         if (schemaInfo == null) {
             throw new BaseException(ErrorCode.NOT_FOUND, "Schema not found: " + schemaName);
         }
+        return getFunctionDAO(session, schemaInfo.getId(), functionName);
+    }
+
+    public FunctionInfoDAO getFunctionDAO(Session session, UUID schemaId, String functionName) {
         Query<FunctionInfoDAO> query = session.createQuery(
                 "FROM FunctionInfoDAO WHERE name = :name and schemaId = :schemaId", FunctionInfoDAO.class);
         query.setParameter("name", functionName);
-        query.setParameter("schemaId", schemaInfo.getId());
+        query.setParameter("schemaId", schemaId);
         query.setMaxResults(1);
         return query.uniqueResult();
     }
@@ -182,22 +196,26 @@ public class FunctionRepository {
                     throw new BaseException(ErrorCode.INVALID_ARGUMENT, "Invalid function name: " + name);
                 }
                 String catalogName = parts[0], schemaName = parts[1], functionName = parts[2];
-                SchemaInfoDAO schemaInfo = schemaRepository.getSchemaDAO(session,
+                SchemaInfoDAO schemaInfo = SCHEMA_REPOSITORY.getSchemaDAO(session,
                         catalogName, schemaName);
                 if (schemaInfo == null) {
                     throw new BaseException(ErrorCode.NOT_FOUND, "Schema not found: " + schemaName);
                 }
-                FunctionInfoDAO functionInfoDAO = getFunctionDAO(session, catalogName, schemaName, functionName);
-                if (functionInfoDAO == null) {
-                    throw new BaseException(ErrorCode.NOT_FOUND, "Function not found: " + name);
-                }
-                session.remove(functionInfoDAO);
+                deleteFunction(session, schemaInfo.getId(), functionName);
                 tx.commit();
-                LOGGER.info("Deleted function: {}", functionInfoDAO.getName());
+                LOGGER.info("Deleted function: {}", functionName);
             } catch (Exception e) {
                 tx.rollback();
                 throw e;
             }
         }
+    }
+
+    public void deleteFunction(Session session, UUID schemaId, String functionName) {
+        FunctionInfoDAO functionInfoDAO = getFunctionDAO(session, schemaId, functionName);
+        if (functionInfoDAO == null) {
+            throw new BaseException(ErrorCode.NOT_FOUND, "Function not found: " + functionName);
+        }
+        session.remove(functionInfoDAO);
     }
 }

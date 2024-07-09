@@ -7,20 +7,14 @@ site_description:  Open, Multi-modal Catalog for Data & AI
 site_author: unitycatalog
 
 nav:
-  - Home: README.md
-  - Tutorial: tutorial.md
-  - Unity Catalog Server: server.md
-  - CLI Tool for Catalog Management: cli.md
-
-nav:
   - Home: index.md
-  - Tutorial: tutorial.md
+  - Quickstart: quickstart.md
   - Usage:
       - CLI: usage/cli.md
       - Tables:
         - UniForm: usage/tables/uniform.md
-      - Functions: usage/functions.md
       - Volumes: usage/volumes.md
+      - Functions: usage/functions.md
       - Server: usage/server.md
   - Integrations:
       - Daft: integrations/unity-catalog-daft.md

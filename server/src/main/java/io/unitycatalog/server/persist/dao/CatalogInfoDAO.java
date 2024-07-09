@@ -1,14 +1,12 @@
 package io.unitycatalog.server.persist.dao;
 
 import io.unitycatalog.server.model.CatalogInfo;
-import jakarta.persistence.Column;
-import jakarta.persistence.Entity;
-import jakarta.persistence.Id;
-import jakarta.persistence.Table;
+import jakarta.persistence.*;
 import lombok.*;
 
 import java.time.Instant;
 import java.util.Date;
+import java.util.List;
 import java.util.UUID;
 
 @Entity
@@ -20,7 +18,6 @@ import java.util.UUID;
 @AllArgsConstructor
 @NoArgsConstructor
 public class CatalogInfoDAO {
-
     @Id
     @Column(name = "id", columnDefinition = "BINARY(16)")
     private UUID id;
@@ -37,7 +34,7 @@ public class CatalogInfoDAO {
     @Column(name = "updated_at")
     private Date updatedAt;
 
-    public static CatalogInfoDAO toCatalogInfoDAO(CatalogInfo catalogInfo) {
+    public static CatalogInfoDAO from(CatalogInfo catalogInfo) {
         return CatalogInfoDAO.builder()
             .id(catalogInfo.getId() != null ? UUID.fromString(catalogInfo.getId()) : null)
             .name(catalogInfo.getName())
@@ -45,18 +42,16 @@ public class CatalogInfoDAO {
             .createdAt(catalogInfo.getCreatedAt() != null ? Date.from(Instant
                     .ofEpochMilli(catalogInfo.getCreatedAt())) : new Date())
             .updatedAt(catalogInfo.getUpdatedAt() != null ? Date.from(Instant
-                    .ofEpochMilli(catalogInfo.getUpdatedAt())) : new Date())
+                    .ofEpochMilli(catalogInfo.getUpdatedAt())) : null)
             .build();
     }
 
-    public static CatalogInfo toCatalogInfo(CatalogInfoDAO catalogInfoDAO) {
+    public CatalogInfo toCatalogInfo() {
         return new CatalogInfo()
-            .id(catalogInfoDAO.getId().toString())
-            .name(catalogInfoDAO.getName())
-            .comment(catalogInfoDAO.getComment())
-            .createdAt(catalogInfoDAO.getCreatedAt().getTime())
-            .updatedAt(catalogInfoDAO.getUpdatedAt() != null? catalogInfoDAO.getUpdatedAt().getTime() :null);
+            .id(id.toString())
+            .name(name)
+            .comment(comment)
+            .createdAt(createdAt.getTime())
+            .updatedAt(updatedAt != null ? updatedAt.getTime() : null);
     }
-
-
 }
