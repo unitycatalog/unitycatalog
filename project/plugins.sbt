@@ -14,13 +14,13 @@
  * limitations under the License.
  */
 
-addSbtPlugin("com.github.sbt" % "sbt-release" % "1.0.15")
+addSbtPlugin("com.github.sbt" % "sbt-release" % "1.1.0")
+
+addSbtPlugin("com.github.sbt" % "sbt-pgp" % "2.1.2")
 
 addSbtPlugin("com.eed3si9n" % "sbt-assembly" % "0.14.9")
 
 addSbtPlugin("io.get-coursier" % "sbt-coursier" % "1.0.3")
-
-addSbtPlugin("com.jsuereth" % "sbt-pgp" % "1.1.0")
 
 addSbtPlugin("org.xerial.sbt" % "sbt-sonatype" % "2.3")
 

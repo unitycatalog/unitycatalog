@@ -1,4 +1,4 @@
-package io.unitycatalog.server.persist;
+package io.unitycatalog.server.persist.utils;
 
 import lombok.AllArgsConstructor;
 import lombok.Getter;
@@ -6,7 +6,6 @@ import lombok.Setter;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.io.FileInputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.net.URI;
@@ -14,14 +13,14 @@ import java.nio.file.Files;
 import java.nio.file.Paths;
 import java.util.Properties;
 
-public class PropertiesUtil {
+public class ServerPropertiesUtils {
 
-    private static final Logger LOGGER = LoggerFactory.getLogger(PropertiesUtil.class);
+    private static final Logger LOGGER = LoggerFactory.getLogger(ServerPropertiesUtils.class);
     @Getter
-    private static final PropertiesUtil instance = new PropertiesUtil();
+    private static final ServerPropertiesUtils instance = new ServerPropertiesUtils();
     private final Properties properties;
 
-    private PropertiesUtil() {
+    private ServerPropertiesUtils() {
         properties = new Properties();
         loadProperties();
     }

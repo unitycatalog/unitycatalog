@@ -1,35 +1,29 @@
 # Unity Catalog CLI
 
-## Introduction
-
-This CLI tool allows users to interact with a Unity Catalog server to create and manage catalogs, schemas, tables across different formats (DELTA, UNIFORM, PARQUET, JSON, and CSV), volumes with unstructured data, and functions.
-
-The Unity Catalog server can be a standalone server (see [the server guide](./server.md) for how to start one), or simply configure the CLI to interface with Databricks Unity Catalog.
-
-# Table of Contents
-1. [Catalog Management CLI Usage](#catalog-management-cli-usage)
-2. [Schema Management CLI Usage](#schema-management-cli-usage)
-3. [Table Management CLI Usage](#table-management-cli-usage)
-4. [Volume Management CLI Usage](#volume-management-cli-usage)
-5. [Function Management CLI Usage](#function-management-cli-usage)
+The CLI tool allows users to interact with a Unity Catalog server to create and manage catalogs, schemas, tables across different formats (DELTA, UNIFORM, PARQUET, JSON, and CSV), volumes with unstructured data, and functions.
 
 ## Catalog Management CLI Usage
 
 This section outlines the usage of the `bin/uc` script for managing catalogs within your system. 
 The script supports various operations such as creating, retrieving, listing and updating catalogs.
 
-### List Catalogs
+**List Catalogs**
+
+Here's how to list all the catalogs contained in a Unity Catalog instance.
+
 ```sh
 bin/uc catalog list
 ```
 
-### Get details of a Catalog
+**Get details of a Catalog**
+
 ```sh
 bin/uc catalog get --name <name> 
 ```
 - `name` : The name of the catalog.
 
-### Create a Catalog
+**Create a Catalog**
+
 ```sh
 bin/uc catalog create --name <name> [--comment <comment>]
 ```
@@ -41,7 +35,8 @@ Example:
 bin/uc catalog create --name my_catalog --comment "My First Catalog"
 ```
 
-### Update a Catalog
+**Update a Catalog**
+
 ```sh
 bin/uc catalog update --name <name> [--new_name <new_name>] [--comment <comment>]
 ```
@@ -56,7 +51,8 @@ Example:
 bin/uc catalog update --name my_catalog --new_name my_updated_catalog --comment "Updated Catalog"
 ```
 
-### Delete a Catalog
+**Delete a Catalog**
+
 ```sh
 bin/uc catalog delete --name <name>
 ```
@@ -67,14 +63,16 @@ bin/uc catalog delete --name <name>
 This section outlines the usage of the `bin/uc` script for managing schemas within your system. 
 The script supports various operations such as creating, retrieving, listing, updating and deleting schemas.
 
-### List Schemas
+**List Schemas**
+
 ```sh
 bin/uc schema list --catalog <catalog> [--max_results <max_results>]
 ```
 - `catalog`: The name of the catalog.
 - `max_results`: *[Optional]* The maximum number of results to return.
 
-### Get a Schema
+**Get a Schema**
+
 Retrieve the details of a schema using the full name of the schema.
 ```sh
 bin/uc schema get --full_name <catalog>.<schema>
@@ -82,7 +80,8 @@ bin/uc schema get --full_name <catalog>.<schema>
 - `catalog` : The name of the catalog.
 - `schema` : The name of the schema.
 
-### Create a Schema
+**Create a Schema**
+
 ```sh
 bin/uc schema create --catalog <catalog> --name <name> [--comment <comment>]
 ```
@@ -95,7 +94,8 @@ Example:
 bin/uc schema create --catalog my_catalog --name my_schema --comment "My Schema"
 ```
 
-### Update a Schema
+**Update a Schema**
+
 ```sh
 bin/uc schema update --full_name <full_name> --new_name <new_name> [--comment <comment>]
 ```
@@ -108,13 +108,13 @@ Example:
 bin/uc schema update --full_name my_catalog.my_schema --new_name my_updated_schema --comment "Updated Schema"
 ```
 
-### Delete a Schema
+**Delete a Schema**
+
 ```sh
 bin/uc schema delete --full_name <catalog>.<schema>
 ```
 - `catalog` : The name of the catalog.
 - `schema` : The name of the schema.
-
 
 ## Table Management CLI Usage
 
@@ -122,7 +122,8 @@ This section outlines the usage of the `bin/uc` script for managing tables withi
 The script supports various operations such as creating, retrieving, listing and deleting tables. 
 There's additional functionality to write sample data to a DELTA table and read data from a DELTA table.
 
-### List Tables
+**List Tables**
+
 ```sh
 bin/uc table list --catalog <catalog> --schema <schema> [--max_results <max_results>]
 ```
@@ -130,7 +131,8 @@ bin/uc table list --catalog <catalog> --schema <schema> [--max_results <max_resu
 - `schema` : The name of the schema.
 - `max_results` *[Optional]* : The maximum number of results to return.
 
-###  Retrieve Table Information
+**Retrieve Table Information**
+
 ```sh
 bin/uc table get --full_name <catalog>.<schema>.<table>
 ```
@@ -138,7 +140,7 @@ bin/uc table get --full_name <catalog>.<schema>.<table>
 - `schema` : The name of the schema.
 - `table` : The name of the table.
 
-### Create a Table
+**Create a Table**
 
 ```sh
 bin/uc table create --full_name <full_name> --columns <columns> --storage_location <storage_location> [--format <format>] [--properties <properties>]
@@ -163,12 +165,10 @@ Example:
 bin/uc table create --full_name my_catalog.my_schema.my_table --columns "id INT, name STRING" --storage_location "/path/to/storage"
 ```
 
-When running against UC OSS server, the storage location can be a local path(absolute path) or an S3 path. When S3 path is provided, 
-the [server](./server.md) will vend temporary credentials to access the S3 bucket and server properties must be set up accordingly.
-When running against Databricks Unity Catalog, the storage location for EXTERNAL table can only be an S3 location which
-has been configured as an `external location` in your Databricks workspace.
+When running against UC OSS server, the storage location can be a local path(absolute path) or an S3 path. When S3 path is provided,  the [server](./server.md) will vend temporary credentials to access the S3 bucket and server properties must be set up accordingly.
 
-### Read a DELTA Table
+**Read a DELTA Table**
+
 ```sh
 bin/uc table read --full_name <catalog>.<schema>.<table> [--max_results <max_results>]
 ```
@@ -177,7 +177,8 @@ bin/uc table read --full_name <catalog>.<schema>.<table> [--max_results <max_res
 - `table` : The name of the table.
 - `max_results` : *[Optional]* The maximum number of rows to return.
 
-### Write Sample Data to a DELTA Table
+**Write Sample Data to a DELTA Table**
+
 ```sh
 bin/uc table write --full_name <catalog>.<schema>.<table>
 ```
@@ -187,7 +188,8 @@ bin/uc table write --full_name <catalog>.<schema>.<table>
 
 This is an experimental feature and only some primitive types are supported for writing sample data.
 
-### Delete a Table
+**Delete a Table**
+
 ```sh
 bin/uc table delete --full_name <catalog>.<schema>.<table>
 ```
@@ -200,7 +202,8 @@ bin/uc table delete --full_name <catalog>.<schema>.<table>
 This section outlines the usage of the `bin/uc` script for managing volumes within your system. 
 The script supports various operations such as creating, retrieving, listing and deleting volumes.
 
-### List Volumes
+**List Volumes**
+
 ```sh
 bin/uc volume list --catalog <catalog> --schema <schema> [--max_results <max_results>]
 ```
@@ -208,7 +211,8 @@ bin/uc volume list --catalog <catalog> --schema <schema> [--max_results <max_res
 - `schema` : The name of the schema.
 - `max_results` : *[Optional]* The maximum number of results to return.
 
-### Retrieve Volume Information
+**Retrieve Volume Information**
+
 ```sh
 bin/uc volume get --full_name <catalog>.<schema>.<volume>
 ```
@@ -216,7 +220,7 @@ bin/uc volume get --full_name <catalog>.<schema>.<volume>
 - `schema` : The name of the schema.
 - `volume` : The name of the volume.
 
-### Create a Volume
+**Create a Volume**
 
 ```sh
 bin/uc volume create --full_name <catalog>.<schema>.<volume> --storage_location <storage_location> [--comment <comment>]
@@ -237,7 +241,8 @@ Example:
 bin/uc volume create --full_name my_catalog.my_schema.my_volume --storage_location "/path/to/storage"
 ```
 
-### Update a Volume
+**Update a Volume**
+
 ```sh
 bin/uc volume update --full_name <catalog>.<schema>.<volume> --new_name <new_name> [--comment <comment>]
 ```
@@ -252,7 +257,8 @@ Example:
 bin/uc volume update --full_name my_catalog.my_schema.my_volume --new_name my_updated_volume --comment "Updated Volume"
 ```
 
-### Read a Volume's content
+**Read a Volume's content**
+
 ```sh
 bin/uc volume read --full_name <catalog>.<schema>.<volume> [--path <path>]
 ```
@@ -264,7 +270,8 @@ If no path is provided, the volume root is read.
 If the final path is a directory, the contents of the directory are listed(*ls*). 
 If the final path is a file, the contents of the file are displayed(*cat*).
 
-### Write Sample Data to a Volume
+**Write Sample Data to a Volume**
+
 ```sh
 bin/uc volume write --full_name <catalog>.<schema>.<volume>
 ```
@@ -274,7 +281,8 @@ Writes sample txt data to a randomly generated file name(UUID) in the volume. Th
 - `schema` : The name of the schema.
 - `volume` : The name of the volume.
 
-### Delete a Volume
+**Delete a Volume**
+
 ```sh
 bin/uc volume delete --full_name <catalog>.<schema>.<volume>
 ```
@@ -287,7 +295,8 @@ bin/uc volume delete --full_name <catalog>.<schema>.<volume>
 This section outlines the usage of the `bin/uc` script for managing functions within your catalog. 
 The script supports various operations such as creating, retrieving, listing and deleting functions.
 
-### List Functions
+**List Functions**
+
 ```sh
 bin/uc function list --catalog <catalog> --schema <schema> [--max_results <max_results>]
 ```
@@ -295,7 +304,8 @@ bin/uc function list --catalog <catalog> --schema <schema> [--max_results <max_r
 - `schema` : The name of the schema.
 - `max_results` : *[Optional]* The maximum number of results to return.
 
-### Retrieve Function Information
+**Retrieve Function Information**
+
 ```sh
 bin/uc function get --full_name <catalog>.<schema>.<function_name>
 ```
@@ -303,7 +313,8 @@ bin/uc function get --full_name <catalog>.<schema>.<function_name>
 - `schema` : The name of the schema.
 - `function_name` : The name of the function.
 
-### Create a Function
+**Create a Function**
+
 ```sh
 bin/uc function create --full_name <catalog>.<schema>.<function_name> --input_params <input_params> --data_type <data_type> --def <definition> [--comment <comment>] [--language <language>]
 ```
@@ -321,7 +332,8 @@ Create a python function that takes two integer inputs and returns the sum of th
 bin/uc function create --full_name my_catalog.my_schema.my_function --input_params "param1 INT, param2 INT" --data_type INT --def "return param1 + param2" --comment "Sum Function"
 ```
 
-### Invoke a Function
+**Invoke a Function**
+
 ```sh
 bin/uc function call --full_name <catalog>.<schema>.<function_name> --input_params <input_params>
 ```
@@ -337,7 +349,8 @@ Invoke a python sum function that takes two integer inputs:
 bin/uc function call --full_name my_catalog.my_schema.my_function --input_params "1,2"
 ```
 
-### Delete a Function
+**Delete a Function**
+
 ```sh
 bin/uc function delete --full_name <catalog>.<schema>.<function_name>
 ```
@@ -345,8 +358,7 @@ bin/uc function delete --full_name <catalog>.<schema>.<function_name>
 - `schema` : The name of the schema.
 - `function_name` : The name of the function.
 
-
-## Server Configuration
+## CLI Server Configuration
 
 By default, the CLI tool is configured to interact with a local reference server running at `http://localhost:8080`.
 The CLI can be configured to talk to Databricks Unity Catalog by one of the following methods:

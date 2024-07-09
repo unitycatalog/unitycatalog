@@ -77,14 +77,14 @@ public class CliUtils {
                 put(LIST, new CliOptions(List.of(), List.of(CliParams.MAX_RESULTS)));
                 put(GET, new CliOptions(List.of(CliParams.NAME), List.of()));
                 put(UPDATE, new CliOptions(List.of(CliParams.NAME), List.of(CliParams.NEW_NAME, CliParams.COMMENT)));
-                put(DELETE, new CliOptions(List.of(CliParams.NAME), List.of()));
+                put(DELETE, new CliOptions(List.of(CliParams.NAME), List.of(CliParams.FORCE)));
             }});
             put(SCHEMA, new HashMap<String, CliOptions>() {{
                 put(CREATE, new CliOptions(List.of(CliParams.CATALOG_NAME, CliParams.NAME), List.of(CliParams.COMMENT)));
                 put(LIST, new CliOptions(List.of(CliParams.CATALOG_NAME), List.of(CliParams.MAX_RESULTS)));
                 put(GET, new CliOptions(List.of(CliParams.FULL_NAME), List.of()));
                 put(UPDATE, new CliOptions(List.of(CliParams.FULL_NAME, CliParams.NEW_NAME), List.of(CliParams.COMMENT)));
-                put(DELETE, new CliOptions(List.of(CliParams.FULL_NAME), List.of()));
+                put(DELETE, new CliOptions(List.of(CliParams.FULL_NAME), List.of(CliParams.FORCE)));
             }});
             put(VOLUME, new HashMap<String, CliOptions>() {{
                 put(CREATE, new CliOptions(List.of(CliParams.FULL_NAME, CliParams.STORAGE_LOCATION), List.of(CliParams.COMMENT)));

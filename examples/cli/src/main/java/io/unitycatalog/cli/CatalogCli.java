@@ -87,7 +87,8 @@ public class CatalogCli {
 
     private static String deleteCatalog(CatalogsApi catalogsApi, JSONObject json) throws ApiException {
         String catalogName = json.getString(NAME_PARAM);
-        catalogsApi.deleteCatalog(catalogName,true);
+        catalogsApi.deleteCatalog(catalogName, json.has(CliParams.FORCE.getServerParam()) &&
+                Boolean.parseBoolean(json.getString(CliParams.FORCE.getServerParam())));
         return CliUtils.EMPTY_JSON;
     }
 

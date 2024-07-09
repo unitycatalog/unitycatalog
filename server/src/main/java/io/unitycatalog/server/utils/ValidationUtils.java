@@ -9,10 +9,6 @@ import io.unitycatalog.server.exception.ErrorCode;
 import java.util.regex.Pattern;
 
 public class ValidationUtils {
-    public static final String CATALOG = "Catalog";
-    public static final String SCHEMA = "Schema";
-    public static final String FUNCTION = "Function";
-
     // Regex to reject names containing a period, space, forward-slash, C0 + DEL control characters
     private static final Pattern INVALID_FORMAT = Pattern.compile("[\\.\\ \\/\\x00-\\x1F\\x7F]");
     private static final Integer MAX_NAME_LENGTH = 255;
