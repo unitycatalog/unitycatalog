@@ -7,11 +7,12 @@ import io.unitycatalog.client.model.CreateCatalog;
 import io.unitycatalog.client.model.UpdateCatalog;
 
 import java.util.List;
+import java.util.Optional;
 
 public interface CatalogOperations {
     CatalogInfo createCatalog(CreateCatalog createCatalog) throws ApiException;
     List<CatalogInfo> listCatalogs() throws ApiException;
     CatalogInfo getCatalog(String name) throws ApiException;
     CatalogInfo updateCatalog(String name, UpdateCatalog updateCatalog) throws ApiException;
-    void deleteCatalog(String name) throws ApiException;
+    void deleteCatalog(String name, Optional<Boolean> force) throws ApiException;
 }

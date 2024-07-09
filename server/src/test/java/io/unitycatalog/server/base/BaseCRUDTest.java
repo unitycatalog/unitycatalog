@@ -6,6 +6,8 @@ import org.junit.Before;
 import org.junit.runner.RunWith;
 import org.junit.runners.Parameterized;
 
+import java.util.Optional;
+
 import static io.unitycatalog.server.utils.TestUtils.CATALOG_NAME;
 import static io.unitycatalog.server.utils.TestUtils.CATALOG_NEW_NAME;
 
@@ -17,12 +19,12 @@ public abstract class BaseCRUDTest extends BaseServerTest {
     @After
     public void cleanUp() {
         try {
-            catalogOperations.deleteCatalog(CATALOG_NAME);
+            catalogOperations.deleteCatalog(CATALOG_NAME, Optional.of(true));
         } catch (Exception e) {
             // Ignore
         }
         try {
-            catalogOperations.deleteCatalog(CATALOG_NEW_NAME);
+            catalogOperations.deleteCatalog(CATALOG_NEW_NAME, Optional.of(true));
         } catch (Exception e) {
             // Ignore
         }

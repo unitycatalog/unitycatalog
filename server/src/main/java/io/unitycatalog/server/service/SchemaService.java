@@ -40,8 +40,8 @@ public class SchemaService {
     }
 
     @Delete("/{full_name}")
-    public HttpResponse deleteSchema(@Param("full_name") String fullName) {
-        SCHEMA_REPOSITORY.deleteSchema(fullName);
+    public HttpResponse deleteSchema(@Param("full_name") String fullName, @Param("force") Optional<Boolean> force) {
+        schemaOperations.deleteSchema(fullName, force.orElse(false));
         return HttpResponse.of(HttpStatus.OK);
     }
 }

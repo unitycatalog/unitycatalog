@@ -20,10 +20,13 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.util.Date;
+import java.util.List;
+import java.util.Optional;
 import java.util.stream.Collectors;
 
 public class CatalogRepository {
     private static final CatalogRepository INSTANCE = new CatalogRepository();
+    private static final SchemaRepository schemaRepository = SchemaRepository.getInstance();
     private static final Logger LOGGER = LoggerFactory.getLogger(CatalogRepository.class);
     private static final SessionFactory SESSION_FACTORY = HibernateUtils.getSessionFactory();
     private CatalogRepository() {}
@@ -141,12 +144,31 @@ public class CatalogRepository {
         }
     }
 
-    public void deleteCatalog(String name) {
-        try (Session session = SESSION_FACTORY.openSession()) {
+    public void deleteCatalog(String name, boolean force) {
+        try (Session session = sessionFactory.openSession()) {
             Transaction tx = session.beginTransaction();
             try {
                 CatalogInfoDAO catalogInfo = getCatalogDAO(session, name);
                 if (catalogInfo != null) {
+                    // Check if there are any schemas in the catalog
+                    List<SchemaInfo> schemas = schemaRepository.listSchemas(session, catalogInfo.getId(),
+                            catalogInfo.getName(),  Optional.of(1), Optional.empty()).getSchemas();
+                    if (schemas != null && !schemas.isEmpty()) {
+                        if (!force) {
+                            throw new BaseException(ErrorCode.FAILED_PRECONDITION,
+                                    "Cannot delete catalog with schemas: " + name);
+                        }
+                        String nextToken = null;
+                        do {
+                            ListSchemasResponse listSchemasResponse = schemaRepository.listSchemas(session, catalogInfo.getId(),
+                                    catalogInfo.getName(), Optional.empty(), Optional.ofNullable(nextToken));
+                            for (SchemaInfo schemaInfo : listSchemasResponse.getSchemas()) {
+                                schemaRepository.deleteSchema(session, catalogInfo.getId(), catalogInfo.getName(),
+                                        schemaInfo.getName(), true);
+                            }
+                            nextToken = listSchemasResponse.getNextPageToken();
+                        } while (nextToken != null);
+                    }
                     PropertyRepository.findProperties(session, catalogInfo.getId(), Constants.CATALOG)
                             .forEach(session::remove);
                     session.remove(catalogInfo);

@@ -17,6 +17,7 @@ import java.io.IOException;
 import java.nio.file.*;
 import java.nio.file.attribute.BasicFileAttributes;
 import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 
 import static io.unitycatalog.server.utils.TestUtils.*;
@@ -52,17 +53,7 @@ public class CliExternalTableCreationTest extends BaseServerTest {
     @After
     public void cleanUp() {
         try {
-            tableOperations.deleteTable(TABLE_FULL_NAME);
-        } catch (Exception e) {
-            // Ignore
-        }
-        try {
-            schemaOperations.deleteSchema(SCHEMA_FULL_NAME);
-        } catch (Exception e) {
-            // Ignore
-        }
-        try {
-            catalogOperations.deleteCatalog(CATALOG_NAME);
+            catalogOperations.deleteCatalog(CATALOG_NAME, Optional.of(true));
         } catch (Exception e) {
             // Ignore
         }

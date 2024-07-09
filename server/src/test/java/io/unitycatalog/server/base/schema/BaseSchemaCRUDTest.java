@@ -7,6 +7,9 @@ import io.unitycatalog.server.base.ServerConfig;
 import io.unitycatalog.server.utils.TestUtils;
 import org.junit.*;
 
+import java.util.List;
+import java.util.Optional;
+
 import static org.junit.Assert.*;
 
 public abstract class BaseSchemaCRUDTest extends BaseCRUDTest {
@@ -20,32 +23,6 @@ public abstract class BaseSchemaCRUDTest extends BaseCRUDTest {
     public void setUp() {
         super.setUp();
         schemaOperations = createSchemaOperations(serverConfig);
-    }
-
-    @After
-    @Override
-    public void cleanUp() {
-        try {
-            schemaOperations.deleteSchema(TestUtils.SCHEMA_FULL_NAME);
-        } catch (Exception e) {
-            // Ignore
-        }
-        try {
-            schemaOperations.deleteSchema(TestUtils.SCHEMA_NEW_FULL_NAME);
-        } catch (Exception e) {
-            // Ignore
-        }
-        try {
-            schemaOperations.deleteSchema(TestUtils.CATALOG_NEW_NAME + "." + TestUtils.SCHEMA_NEW_NAME);
-        } catch (Exception e) {
-            // Ignore
-        }
-        try {
-            schemaOperations.deleteSchema(TestUtils.CATALOG_NEW_NAME + "." + TestUtils.SCHEMA_NAME);
-        } catch (Exception e) {
-                // Ignore
-        }
-        super.cleanUp();
     }
 
     @Test
@@ -99,8 +76,26 @@ public abstract class BaseSchemaCRUDTest extends BaseCRUDTest {
 
         // Delete schema
         System.out.println("Testing delete schema..");
-        schemaOperations.deleteSchema(TestUtils.CATALOG_NEW_NAME + "." + TestUtils.SCHEMA_NEW_NAME);
+        schemaOperations.deleteSchema(TestUtils.CATALOG_NEW_NAME + "." + TestUtils.SCHEMA_NEW_NAME, Optional.of(false));
         assertFalse(TestUtils.contains(schemaOperations.listSchemas(TestUtils.CATALOG_NEW_NAME), updatedSchemaInfo, (schema) ->
                 schema.getName().equals(TestUtils.SCHEMA_NEW_NAME)));
+
+        // Delete parent entity when schema exists
+        SchemaInfo schemaInfo2 = schemaOperations.createSchema(new CreateSchema().name(TestUtils.SCHEMA_NAME)
+                .catalogName(TestUtils.CATALOG_NEW_NAME));
+        assertThrows(Exception.class , () ->
+                catalogOperations.deleteCatalog(TestUtils.CATALOG_NEW_NAME, Optional.of(false)));
+        catalogOperations.deleteCatalog(TestUtils.CATALOG_NEW_NAME, Optional.of(true));
+        assertThrows(Exception.class , () ->
+                schemaOperations.getSchema(TestUtils.CATALOG_NEW_NAME + "." + TestUtils.SCHEMA_NAME));
+
+        // Test force delete of parent entity when schema exists
+        catalogOperations.createCatalog(TestUtils.CATALOG_NEW_NAME, "Common catalog for schemas");
+        SchemaInfo schemaInfo3 = schemaOperations.createSchema(new CreateSchema().name(TestUtils.SCHEMA_NAME)
+                .catalogName(TestUtils.CATALOG_NEW_NAME));
+        catalogOperations.deleteCatalog(TestUtils.CATALOG_NEW_NAME, Optional.of(true));
+        assertThrows(Exception.class , () ->
+                schemaOperations.getSchema(TestUtils.CATALOG_NEW_NAME + "." + TestUtils.SCHEMA_NAME));
+
     }
 }

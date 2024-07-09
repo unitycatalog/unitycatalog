@@ -48,7 +48,7 @@ public class SdkTableCRUDTest extends BaseTableCRUDTest {
         createCommonResources();
         TableInfo testingTable = createDefaultTestingTable();
         ListTablesResponse resp = localTablesApi.listTables(testingTable.getCatalogName(), testingTable.getSchemaName(), 100, null);
-        assertThat(resp.getNextPageToken()).isNotNull();
+        assertThat(resp.getNextPageToken()).isNull();
         assertThat(resp.getTables()).hasSize(1)
                 .first()
                 .usingRecursiveComparison()
