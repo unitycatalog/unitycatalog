@@ -76,6 +76,5 @@ public class ServerPropertiesUtils {
         private final String accessKey;
         private final String secretKey;
         private final String sessionToken;
-
     }
 }
