@@ -38,11 +38,13 @@ bin/uc catalog create --name my_catalog --comment "My First Catalog"
 **Update a Catalog**
 
 ```sh
-bin/uc catalog update --name <name> --new_name <new_name> [--comment <comment>]
+bin/uc catalog update --name <name> [--new_name <new_name>] [--comment <comment>]
 ```
 - `name` : The name of the existing catalog.
-- `new_name` : The new name of the catalog.
+- `new_name` : *[Optional]* The new name of the catalog.
 - `comment` : *[Optional]* The new description of the catalog.
+
+*Note:* at least one of the optional parameters must be specified.
 
 Example:
 ```sh

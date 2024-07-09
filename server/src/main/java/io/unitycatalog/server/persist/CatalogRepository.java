@@ -115,7 +115,9 @@ public class CatalogRepository {
     }
 
     public CatalogInfo updateCatalog(String name, UpdateCatalog updateCatalog) {
-        ValidationUtils.validateSqlObjectName(updateCatalog.getNewName());
+        if (updateCatalog.getNewName() != null) {
+            ValidationUtils.validateSqlObjectName(updateCatalog.getNewName());
+        }
         // cna make this just update once we have an identifier that is not the name
         try (Session session = SESSION_FACTORY.openSession()) {
             Transaction tx = session.beginTransaction();
@@ -124,12 +126,20 @@ public class CatalogRepository {
                 if (catalogInfoDAO == null) {
                     throw new BaseException(ErrorCode.NOT_FOUND, "Catalog not found: " + name);
                 }
-                if (getCatalogDAO(session, updateCatalog.getNewName()) != null) {
+                if (updateCatalog.getNewName() == null && updateCatalog.getComment() == null) {
+                    tx.rollback();
+                    return catalogInfoDAO.toCatalogInfo();
+                }
+                if (updateCatalog.getNewName() != null && getCatalogDAO(session, updateCatalog.getNewName()) != null) {
                     throw new BaseException(ErrorCode.ALREADY_EXISTS,
                             "Catalog already exists: " + updateCatalog.getNewName());
                 }
-                catalogInfoDAO.setName(updateCatalog.getNewName());
-                catalogInfoDAO.setComment(updateCatalog.getComment());
+                if (updateCatalog.getNewName() != null) {
+                    catalogInfoDAO.setName(updateCatalog.getNewName());
+                }
+                if (updateCatalog.getComment() != null) {
+                    catalogInfoDAO.setComment(updateCatalog.getComment());
+                }
                 catalogInfoDAO.setUpdatedAt(new Date());
                 session.merge(catalogInfoDAO);
                 tx.commit();
