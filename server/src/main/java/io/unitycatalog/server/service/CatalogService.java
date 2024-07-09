@@ -10,6 +10,8 @@ import io.unitycatalog.server.model.CreateCatalog;
 import io.unitycatalog.server.model.UpdateCatalog;
 import io.unitycatalog.server.utils.ValidationUtils;
 
+import java.util.Optional;
+
 import static io.unitycatalog.server.utils.ValidationUtils.CATALOG;
 
 @ExceptionHandler(GlobalExceptionHandler.class)
@@ -39,8 +41,8 @@ public class CatalogService {
     }
 
     @Delete("/{name}")
-    public HttpResponse deleteCatalog(@Param("name") String name) {
-        catalogOperations.deleteCatalog(name);
+    public HttpResponse deleteCatalog(@Param("name") String name, @Param("force") Optional<Boolean> force) {
+        catalogOperations.deleteCatalog(name, force.orElse(false));
         return HttpResponse.of(HttpStatus.OK);
     }
 }

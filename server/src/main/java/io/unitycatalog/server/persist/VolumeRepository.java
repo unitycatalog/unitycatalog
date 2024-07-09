@@ -16,6 +16,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.util.Date;
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 import java.util.stream.Collectors;
@@ -96,10 +97,14 @@ public class VolumeRepository {
         if (schemaInfo == null) {
             throw new BaseException(ErrorCode.NOT_FOUND, "Schema not found: " + catalogName + "." + schemaName);
         }
+        return  getVolumeDAO(session, schemaInfo.getId(), volumeName);
+    }
+
+    public VolumeInfoDAO getVolumeDAO(Session session, UUID schemaId, String volumeName) {
         Query<VolumeInfoDAO> query = session.createQuery(
                 "FROM VolumeInfoDAO WHERE name = :name and schemaId = :schemaId", VolumeInfoDAO.class);
         query.setParameter("name", volumeName);
-        query.setParameter("schemaId", schemaInfo.getId());
+        query.setParameter("schemaId", schemaId);
         query.setMaxResults(1);
         return query.uniqueResult();
     }
@@ -123,7 +128,6 @@ public class VolumeRepository {
     }
 
     public ListVolumesResponseContent listVolumes(String catalogName, String schemaName, Optional<Integer> maxResults, Optional<String> pageToken, Optional<Boolean> includeBrowse) {
-        ListVolumesResponseContent responseContent = new ListVolumesResponseContent();
         try (Session session = sessionFactory.openSession()) {
             session.setDefaultReadOnly(true);
             Transaction tx = session.beginTransaction();
@@ -132,17 +136,8 @@ public class VolumeRepository {
                 if (schemaInfo == null) {
                     throw new BaseException(ErrorCode.NOT_FOUND, "Schema not found: " + catalogName + "." + schemaName);
                 }
-                String queryString = "from VolumeInfoDAO v where v.schemaId = :schemaId";
-                Query<VolumeInfoDAO> query = session.createQuery(queryString, VolumeInfoDAO.class);
-                query.setParameter("schemaId", schemaInfo.getId());
-                maxResults.ifPresent(query::setMaxResults);
-                if (pageToken.isPresent()) {
-                    // Perform pagination logic here if needed
-                    // Example: query.setFirstResult(startIndex);
-                }
-                responseContent.setVolumes(query.list().stream()
-                        .map(x -> convertFromDAO(x, catalogName, schemaName))
-                        .collect(Collectors.toList()));
+                ListVolumesResponseContent responseContent = listVolumes(session, schemaInfo.getId(),
+                        catalogName, schemaName, maxResults, pageToken);
                 tx.commit();
                 return responseContent;
             } catch (Exception e) {
@@ -150,6 +145,24 @@ public class VolumeRepository {
                 throw e;
             }
         }
+    }
+
+    public ListVolumesResponseContent listVolumes(Session session, UUID schemaId, String catalogName, String schemaName,
+                                                  Optional<Integer> maxResults, Optional<String> pageToken) {
+        ListVolumesResponseContent responseContent = new ListVolumesResponseContent();
+        String queryString = "from VolumeInfoDAO v where v.schemaId = :schemaId";
+        Query<VolumeInfoDAO> query = session.createQuery(queryString, VolumeInfoDAO.class);
+        query.setParameter("schemaId", schemaId);
+        maxResults.ifPresent(query::setMaxResults);
+        if (pageToken.isPresent()) {
+            // Perform pagination logic here if needed
+            // Example: query.setFirstResult(startIndex);
+        }
+        responseContent.setVolumes(query.list()
+                .stream()
+                .map(x -> convertFromDAO(x, catalogName, schemaName))
+                .collect(Collectors.toList()));
+        return responseContent;
     }
 
     private VolumeInfo convertFromDAO(VolumeInfoDAO volumeInfoDAO, String catalogName, String schemaName) {
@@ -206,24 +219,33 @@ public class VolumeRepository {
             String catalog = namespace[0], schema = namespace[1], volume = namespace[2];
             Transaction tx = session.beginTransaction();
             try {
-                VolumeInfoDAO volumeInfoDAO = getVolumeDAO(session, catalog, schema, volume);
-                if (volumeInfoDAO == null) {
-                    throw new BaseException(ErrorCode.NOT_FOUND, "Volume not found: " + name);
+                SchemaInfoDAO schemaInfo = schemaRepository.getSchemaDAO(session, catalog, schema);
+                if (schemaInfo == null) {
+                    throw new BaseException(ErrorCode.NOT_FOUND, "Schema not found: " + catalog + "." + schema);
                 }
-                if (VolumeType.MANAGED.getValue().equals(volumeInfoDAO.getVolumeType())) {
-                    try {
-                        FileUtils.deleteDirectory(volumeInfoDAO.getStorageLocation());
-                    } catch (Exception e) {
-                        LOGGER.error("Error deleting volume directory", e);
-                    }
-                }
-                session.remove(volumeInfoDAO);
+                deleteVolume(session, schemaInfo.getId(), volume);
                 tx.commit();
-                LOGGER.info("Deleted volume: {}", volumeInfoDAO.getName());
             } catch (Exception e) {
                 tx.rollback();
                 throw e;
             }
         }
     }
+
+    public void deleteVolume(Session session, UUID schemaId, String volumeName) {
+        VolumeInfoDAO volumeInfoDAO = getVolumeDAO(session, schemaId, volumeName);
+        if (volumeInfoDAO == null) {
+            throw new BaseException(ErrorCode.NOT_FOUND, "Volume not found: " + volumeName);
+        }
+        if (VolumeType.MANAGED.getValue().equals(volumeInfoDAO.getVolumeType())) {
+            try {
+                FileUtils.deleteDirectory(volumeInfoDAO.getStorageLocation());
+            } catch (Exception e) {
+                LOGGER.error("Error deleting volume directory", e);
+            }
+        }
+        session.remove(volumeInfoDAO);
+        LOGGER.info("Deleted volume: {}", volumeInfoDAO.getName());
+    }
+
 }

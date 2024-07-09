@@ -10,6 +10,7 @@ import io.unitycatalog.server.base.ServerConfig;
 import io.unitycatalog.server.base.schema.SchemaOperations;
 
 import java.util.List;
+import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.junit.Assert.*;
@@ -34,30 +35,6 @@ public abstract class BaseFunctionCRUDTest extends BaseCRUDTest {
     protected abstract FunctionOperations createFunctionOperations(ServerConfig serverConfig);
 
     protected void cleanUp() {
-        try {
-            functionOperations.deleteFunction(FUNCTION_FULL_NAME, true);
-        } catch (Exception e) {
-            // Ignore
-        }
-        try {
-            schemaOperations.deleteSchema(SCHEMA_FULL_NAME);
-        } catch (Exception e) {
-            // Ignore
-        }
-        try {
-            if (schemaOperations.getSchema(TestUtils.CATALOG_NEW_NAME + "." + TestUtils.SCHEMA_NEW_NAME) != null) {
-                schemaOperations.deleteSchema(TestUtils.CATALOG_NEW_NAME + "." + TestUtils.SCHEMA_NEW_NAME);
-            }
-        } catch (Exception e) {
-            // Ignore
-        }
-        try {
-            if (schemaOperations.getSchema(TestUtils.CATALOG_NEW_NAME + "." + TestUtils.SCHEMA_NAME) != null) {
-                schemaOperations.deleteSchema(TestUtils.CATALOG_NEW_NAME + "." + TestUtils.SCHEMA_NAME);
-            }
-        } catch (Exception e) {
-            // Ignore
-        }
         super.cleanUp();
     }
 

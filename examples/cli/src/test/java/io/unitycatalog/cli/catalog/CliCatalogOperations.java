@@ -9,6 +9,7 @@ import io.unitycatalog.server.base.catalog.CatalogOperations;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
 
 import static io.unitycatalog.cli.TestUtils.addServerAndAuthParams;
 import static io.unitycatalog.cli.TestUtils.executeCLICommand;
@@ -55,8 +56,11 @@ public class CliCatalogOperations implements CatalogOperations {
     }
 
     @Override
-    public void deleteCatalog(String name) {
-        String[] args = addServerAndAuthParams(List.of("catalog", "delete", "--name", name), config);
+    public void deleteCatalog(String name, Optional<Boolean> force) {
+        String[] args;
+        args = force.map(aBoolean ->
+                addServerAndAuthParams(List.of("catalog", "delete", "--name", name, "--force", aBoolean.toString()), config))
+                .orElseGet(() -> addServerAndAuthParams(List.of("catalog", "delete", "--name", name), config));
         executeCLICommand(args);
     }
 }
