@@ -1,6 +1,6 @@
 # Unity Catalog Server
 
-This is the open source version of the Unity Catalog server implementation. It can be started locally for local usage (e.g. for testing) without any Databricks account.
+This is the open source version of the Unity Catalog server implementation. It can be started locally.
 
 ## Running the Server
 
