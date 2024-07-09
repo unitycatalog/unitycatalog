@@ -69,6 +69,28 @@ object ReleaseSettings {
           <url>git@github.com:unitycatalog/unitycatalog.git</url>
           <connection>scm:git:git@github.com:unitycatalog/unitycatalog.git</connection>
         </scm>
+        <developers>
+          <developer>
+            <id>rameshchandra</id>
+            <name>Ramesh Chandra</name>
+            <url>https://github.com/rameshchandra</url>
+          </developer>
+          <developer>
+            <id>tdas</id>
+            <name>Tathagata Das</name>
+            <url>https://github.com/tdas</url>
+          </developer>
+          <developer>
+            <id>ravivj-db</id>
+            <name>Ravi Vijay</name>
+            <url>https://github.com/ravivj-db/</url>
+          </developer>
+          <developer>
+            <id>vikrantpuppala</id>
+            <name>Vikrant Puppala</name>
+            <url>https://github.com/vikrantpuppala</url>
+          </developer>
+        </developers>
   )
 
   lazy val rootReleaseSettings = Seq(
