@@ -91,10 +91,7 @@ public class UnityCatalogCli {
             System.out.println("Error occurred while parsing the command. " +
                     "Please check the command and try again. " + e.getMessage());
             CliUtils.printHelp();
-        } catch(CliException e) {
-            System.out.println("Error occurred while executing the command. " + e.getMessage()
-                    + (e.getCause() != null ? e.getCause().getMessage() : ""));
-        } catch (ApiException e) {
+        } catch (CliException | ApiException e) {
             throw new RuntimeException(e);
         }
     }

@@ -79,7 +79,7 @@ public class CatalogCli {
             for (CliParams param : optionalParams) {
                 errorMessage += "\n  --" + param.val();
             }
-            throw new ApiException(errorMessage);
+            throw new CliException(errorMessage);
         }
         UpdateCatalog updateCatalog = objectMapper.readValue(json.toString(), UpdateCatalog.class);
         return objectWriter.writeValueAsString(apiClient.updateCatalog(catalogName, updateCatalog));
