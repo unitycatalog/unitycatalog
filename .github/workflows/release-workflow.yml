@@ -15,9 +15,9 @@ jobs:
         with:
           java-version: '11'
           distribution: 'temurin'
-          cache: 'sbt'
+
       - name: Build tarball
-        run: sbt createTarball
+        run: build/sbt createTarball
       - name: Upload Release Asset
         uses: actions/upload-artifact@v2
         with:
