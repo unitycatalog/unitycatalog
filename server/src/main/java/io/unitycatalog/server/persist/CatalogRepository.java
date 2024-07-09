@@ -115,9 +115,6 @@ public class CatalogRepository {
     }
 
     public CatalogInfo updateCatalog(String name, UpdateCatalog updateCatalog) {
-        if (updateCatalog.getNewName() == null && updateCatalog.getComment() == null) {
-            throw new BaseException(ErrorCode.INVALID_ARGUMENT, "Nothing provided to update.");
-        }
         if (updateCatalog.getNewName() != null) {
             ValidationUtils.validateSqlObjectName(updateCatalog.getNewName());
         }
@@ -128,6 +125,9 @@ public class CatalogRepository {
                 CatalogInfoDAO catalogInfoDAO = getCatalogDAO(session, name);
                 if (catalogInfoDAO == null) {
                     throw new BaseException(ErrorCode.NOT_FOUND, "Catalog not found: " + name);
+                }
+                if (updateCatalog.getNewName() == null && updateCatalog.getComment() == null) {
+                    return catalogInfoDAO.toCatalogInfo();
                 }
                 if (updateCatalog.getNewName() != null && getCatalogDAO(session, updateCatalog.getNewName()) != null) {
                     throw new BaseException(ErrorCode.ALREADY_EXISTS,

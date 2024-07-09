@@ -56,6 +56,13 @@ public abstract class BaseCatalogCRUDTest extends BaseCRUDTest {
         CatalogInfo catalogInfo2 = catalogOperations.getCatalog(CATALOG_NAME);
         Assert.assertEquals(catalogInfo, catalogInfo2);
 
+        // Calling update catalog with nothing to update should not change anything
+        System.out.println("Testing updating catalog with nothing to update..");
+        UpdateCatalog emptyUpdateCatalog = new UpdateCatalog();
+        CatalogInfo emptyUpdateCatalogInfo = catalogOperations.updateCatalog(CATALOG_NAME, emptyUpdateCatalog);
+        CatalogInfo catalogInfo3 = catalogOperations.getCatalog(CATALOG_NAME);
+        Assert.assertEquals(catalogInfo, catalogInfo3);
+
         // Update catalog name without updating comment
         System.out.println("Testing update catalog: changing name..");
         UpdateCatalog updateCatalog = new UpdateCatalog().newName(CATALOG_NEW_NAME);
@@ -67,11 +74,6 @@ public abstract class BaseCatalogCRUDTest extends BaseCRUDTest {
         UpdateCatalog updateCatalog2 = new UpdateCatalog().comment(CATALOG_NEW_COMMENT);
         CatalogInfo updatedCatalogInfo2 = catalogOperations.updateCatalog(CATALOG_NEW_NAME, updateCatalog2);
         assertCatalog(updatedCatalogInfo2, CATALOG_NEW_NAME, CATALOG_NEW_COMMENT);
-
-        // Calling update catalog with nothing to update should throw an exception
-        System.out.println("Testing updating catalog with nothing to update..");
-        UpdateCatalog updateCatalog3 = new UpdateCatalog();
-        Assert.assertThrows(Exception.class, () -> catalogOperations.updateCatalog(CATALOG_NEW_NAME, updateCatalog3));
 
         // Delete catalog
         System.out.println("Testing delete catalog..");
