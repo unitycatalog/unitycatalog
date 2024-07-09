@@ -18,6 +18,8 @@ We are excited to work with the open source communities in the many years to com
 - Specifically, if the goal is to add a new extension, please read the extension policy.
 - Small patches and bug fixes don't need prior communication. If you have identified a bug and have ways to solve it, please create an [issue](https://github.com/unitycatalog/unitycatalog/issues) or create a [pull request](https://github.com/unitycatalog/unitycatalog/pulls).
 
+# Auto-Assigning Issues
+We have implemented a feature that allows users to comment "**take**" on an issue to be auto-assigned the issue without having to depend on or wait for the maintainers to assign the issue before working on it.
 
 # Coding style
 We generally follow the [Apache Spark Scala Style Guide](https://spark.apache.org/contributing.html).
