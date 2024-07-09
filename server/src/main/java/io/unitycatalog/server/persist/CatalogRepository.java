@@ -2,10 +2,7 @@ package io.unitycatalog.server.persist;
 
 import io.unitycatalog.server.exception.BaseException;
 import io.unitycatalog.server.exception.ErrorCode;
-import io.unitycatalog.server.model.CatalogInfo;
-import io.unitycatalog.server.model.CreateCatalog;
-import io.unitycatalog.server.model.ListCatalogsResponse;
-import io.unitycatalog.server.model.UpdateCatalog;
+import io.unitycatalog.server.model.*;
 import io.unitycatalog.server.persist.dao.CatalogInfoDAO;
 import io.unitycatalog.server.persist.dao.PropertyDAO;
 import io.unitycatalog.server.persist.utils.HibernateUtils;
@@ -26,7 +23,7 @@ import java.util.stream.Collectors;
 
 public class CatalogRepository {
     private static final CatalogRepository INSTANCE = new CatalogRepository();
-    private static final SchemaRepository schemaRepository = SchemaRepository.getInstance();
+    private static final SchemaRepository SCHEMA_REPOSITORY = SchemaRepository.getInstance();
     private static final Logger LOGGER = LoggerFactory.getLogger(CatalogRepository.class);
     private static final SessionFactory SESSION_FACTORY = HibernateUtils.getSessionFactory();
     private CatalogRepository() {}
@@ -145,13 +142,13 @@ public class CatalogRepository {
     }
 
     public void deleteCatalog(String name, boolean force) {
-        try (Session session = sessionFactory.openSession()) {
+        try (Session session = SESSION_FACTORY.openSession()) {
             Transaction tx = session.beginTransaction();
             try {
                 CatalogInfoDAO catalogInfo = getCatalogDAO(session, name);
                 if (catalogInfo != null) {
                     // Check if there are any schemas in the catalog
-                    List<SchemaInfo> schemas = schemaRepository.listSchemas(session, catalogInfo.getId(),
+                    List<SchemaInfo> schemas = SCHEMA_REPOSITORY.listSchemas(session, catalogInfo.getId(),
                             catalogInfo.getName(),  Optional.of(1), Optional.empty()).getSchemas();
                     if (schemas != null && !schemas.isEmpty()) {
                         if (!force) {
@@ -160,10 +157,10 @@ public class CatalogRepository {
                         }
                         String nextToken = null;
                         do {
-                            ListSchemasResponse listSchemasResponse = schemaRepository.listSchemas(session, catalogInfo.getId(),
+                            ListSchemasResponse listSchemasResponse = SCHEMA_REPOSITORY.listSchemas(session, catalogInfo.getId(),
                                     catalogInfo.getName(), Optional.empty(), Optional.ofNullable(nextToken));
                             for (SchemaInfo schemaInfo : listSchemasResponse.getSchemas()) {
-                                schemaRepository.deleteSchema(session, catalogInfo.getId(), catalogInfo.getName(),
+                                SCHEMA_REPOSITORY.deleteSchema(session, catalogInfo.getId(), catalogInfo.getName(),
                                         schemaInfo.getName(), true);
                             }
                             nextToken = listSchemasResponse.getNextPageToken();

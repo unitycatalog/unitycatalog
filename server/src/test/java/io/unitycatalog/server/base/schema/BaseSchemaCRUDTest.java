@@ -90,7 +90,9 @@ public abstract class BaseSchemaCRUDTest extends BaseCRUDTest {
                 schemaOperations.getSchema(TestUtils.CATALOG_NEW_NAME + "." + TestUtils.SCHEMA_NAME));
 
         // Test force delete of parent entity when schema exists
-        catalogOperations.createCatalog(TestUtils.CATALOG_NEW_NAME, "Common catalog for schemas");
+
+        catalogOperations.createCatalog(new CreateCatalog().name(TestUtils.CATALOG_NEW_NAME)
+                .comment("Common catalog for schemas"));
         SchemaInfo schemaInfo3 = schemaOperations.createSchema(new CreateSchema().name(TestUtils.SCHEMA_NAME)
                 .catalogName(TestUtils.CATALOG_NEW_NAME));
         catalogOperations.deleteCatalog(TestUtils.CATALOG_NEW_NAME, Optional.of(true));

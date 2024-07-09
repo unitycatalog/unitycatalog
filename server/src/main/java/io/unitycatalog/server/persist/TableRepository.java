@@ -236,7 +236,7 @@ public class TableRepository {
                                          Optional<String> nextPageToken,
                                          Boolean omitProperties,
                                          Boolean omitColumns) {
-        try (Session session = sessionFactory.openSession()) {
+        try (Session session = SESSION_FACTORY.openSession()) {
             session.setDefaultReadOnly(true);
             Transaction tx = session.beginTransaction();
             try {
@@ -284,10 +284,11 @@ public class TableRepository {
             tableInfo.setSchemaName(schemaName);
             result.add(tableInfo);
         }
+        return new ListTablesResponse().tables(result).nextPageToken(returnNextPageToken);
     }
 
     public void deleteTable(String fullName) {
-        try (Session session = sessionFactory.openSession()) {
+        try (Session session = SESSION_FACTORY.openSession()) {
             Transaction tx = session.beginTransaction();
             String[] parts = fullName.split("\\.");
             if (parts.length != 3) {

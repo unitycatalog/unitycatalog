@@ -4,6 +4,7 @@ import io.unitycatalog.client.ApiException;
 import io.unitycatalog.client.model.CreateCatalog;
 import io.unitycatalog.client.model.UpdateCatalog;
 import io.unitycatalog.server.base.BaseCRUDTest;
+import io.unitycatalog.server.persist.PropertyRepository;
 import org.junit.*;
 
 import io.unitycatalog.client.model.CatalogInfo;

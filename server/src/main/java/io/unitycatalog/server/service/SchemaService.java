@@ -1,10 +1,10 @@
 package io.unitycatalog.server.service;
 
-import io.unitycatalog.server.exception.GlobalExceptionHandler;
-import io.unitycatalog.server.model.CreateSchema;
 import com.linecorp.armeria.common.HttpResponse;
 import com.linecorp.armeria.common.HttpStatus;
 import com.linecorp.armeria.server.annotation.*;
+import io.unitycatalog.server.exception.GlobalExceptionHandler;
+import io.unitycatalog.server.model.CreateSchema;
 import io.unitycatalog.server.model.UpdateSchema;
 import io.unitycatalog.server.persist.SchemaRepository;
 
@@ -41,7 +41,7 @@ public class SchemaService {
 
     @Delete("/{full_name}")
     public HttpResponse deleteSchema(@Param("full_name") String fullName, @Param("force") Optional<Boolean> force) {
-        schemaOperations.deleteSchema(fullName, force.orElse(false));
+        SCHEMA_REPOSITORY.deleteSchema(fullName, force.orElse(false));
         return HttpResponse.of(HttpStatus.OK);
     }
 }
