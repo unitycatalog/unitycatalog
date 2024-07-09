@@ -15,7 +15,7 @@ import io.unitycatalog.server.utils.TemporaryCredentialUtils;
 @ExceptionHandler(GlobalExceptionHandler.class)
 public class TemporaryVolumeCredentialsService {
 
-    private static final VolumeRepository volumeRepository = VolumeRepository.getInstance();
+    private static final VolumeRepository VOLUME_REPOSITORY = VolumeRepository.getInstance();
     @Post("")
     public HttpResponse generateTemporaryTableCredential
             (GenerateTemporaryVolumeCredential generateTemporaryVolumeCredential) {
@@ -23,7 +23,7 @@ public class TemporaryVolumeCredentialsService {
         if (volumeId.isEmpty()) {
             throw new BaseException(ErrorCode.INVALID_ARGUMENT, "Volume ID is required.");
         }
-        VolumeInfo volumeInfo = volumeRepository.getVolumeById(volumeId);
+        VolumeInfo volumeInfo = VOLUME_REPOSITORY.getVolumeById(volumeId);
         String volumePath = volumeInfo.getStorageLocation();
         if (volumePath == null || volumePath.isEmpty()) {
             throw new BaseException(ErrorCode.FAILED_PRECONDITION, "Volume storage location not found.");

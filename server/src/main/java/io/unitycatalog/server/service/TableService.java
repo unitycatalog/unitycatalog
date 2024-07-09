@@ -13,20 +13,20 @@ import java.util.Optional;
 @ExceptionHandler(GlobalExceptionHandler.class)
 public class TableService {
 
-    private static final TableRepository databaseOperations = TableRepository.getInstance();
+    private static final TableRepository TABLE_REPOSITORY = TableRepository.getInstance();
     public TableService() {}
 
     @Post("/tables")
     public HttpResponse createTable(CreateTable createTable) {
         assert createTable != null;
-        TableInfo createTableResponse = databaseOperations.createTable(createTable);
+        TableInfo createTableResponse = TABLE_REPOSITORY.createTable(createTable);
         return HttpResponse.ofJson(createTableResponse);
     }
 
     @Get("/tables/{full_name}")
     public HttpResponse getTable(@Param("full_name") String fullName) {
         assert fullName != null;
-        TableInfo tableInfo = databaseOperations.getTable(fullName);
+        TableInfo tableInfo = TABLE_REPOSITORY.getTable(fullName);
         return HttpResponse.ofJson(tableInfo);
     }
 
@@ -39,7 +39,7 @@ public class TableService {
             @Param("omit_properties") Optional<Boolean> omitProperties,
             @Param("omit_columns") Optional<Boolean> omitColumns
     ) {
-        return HttpResponse.ofJson(databaseOperations.
+        return HttpResponse.ofJson(TABLE_REPOSITORY.
                 listTables(catalogName,
                         schemaName,
                         maxResults,
@@ -50,7 +50,7 @@ public class TableService {
 
     @Delete("/tables/{full_name}")
     public HttpResponse deleteTable(@Param("full_name") String fullName) {
-        databaseOperations.deleteTable(fullName);
+        TABLE_REPOSITORY.deleteTable(fullName);
         return HttpResponse.of(HttpStatus.OK);
     }
 }

@@ -4,14 +4,19 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import io.unitycatalog.server.model.*;
 import io.unitycatalog.server.persist.CatalogRepository;
 import io.unitycatalog.server.persist.FunctionRepository;
-import io.unitycatalog.server.persist.HibernateUtil;
 import io.unitycatalog.server.persist.SchemaRepository;
-import io.unitycatalog.server.persist.dao.*;
+import io.unitycatalog.server.persist.dao.ColumnInfoDAO;
+import io.unitycatalog.server.persist.dao.PropertyDAO;
+import io.unitycatalog.server.persist.dao.TableInfoDAO;
+import io.unitycatalog.server.persist.dao.VolumeInfoDAO;
+import io.unitycatalog.server.persist.utils.HibernateUtils;
 import org.hibernate.Session;
 import org.hibernate.SessionFactory;
 import org.hibernate.Transaction;
 
-import java.util.*;
+import java.util.Date;
+import java.util.List;
+import java.util.UUID;
 
 import static io.unitycatalog.server.utils.ColumnUtils.*;
 
@@ -43,7 +48,7 @@ public class PopulateTestDatabase {
         String schemaId = schemaInfo.getSchemaId();
 
 
-        SessionFactory factory = HibernateUtil.getSessionFactory();
+        SessionFactory factory = HibernateUtils.getSessionFactory();
 
         // Create managed table
         ColumnInfoDAO idColumn = ColumnInfoDAO
@@ -96,7 +101,7 @@ public class PopulateTestDatabase {
                 .url(tablePath)
                 .build();
 
-        tableInfoDAO.getColumns().forEach(columnInfoDAO -> columnInfoDAO.setTableId(tableInfoDAO));
+        tableInfoDAO.getColumns().forEach(columnInfoDAO -> columnInfoDAO.setTable(tableInfoDAO));
 
         PropertyDAO p1 = PropertyDAO.builder().key("key1").value("value1").entityId(tableId).entityType("table").build();
         PropertyDAO p2 = PropertyDAO.builder().key("key2").value("value2").entityId(tableId).entityType("table").build();
@@ -155,7 +160,7 @@ public class PopulateTestDatabase {
                 .url(uniformTablePath)
                 .uniformIcebergMetadataLocation(uniformTablePath + "/metadata/00002-5b7aa739-d074-4764-b49d-ad6c63419576.metadata.json")
                 .build();
-        uniformTableInfoDAO.getColumns().forEach(columnInfoDAO -> columnInfoDAO.setTableId(uniformTableInfoDAO));
+        uniformTableInfoDAO.getColumns().forEach(columnInfoDAO -> columnInfoDAO.setTable(uniformTableInfoDAO));
         PropertyDAO p1uniform = PropertyDAO.builder().key("key1").value("value1").entityId(uniformTableId).entityType("table").build();
         PropertyDAO p2uniform = PropertyDAO.builder().key("key2").value("value2").entityId(uniformTableId).entityType("table").build();
         try (Session session = factory.openSession()) {
@@ -206,7 +211,7 @@ public class PopulateTestDatabase {
                 .url(externalTablePath)
                 .build();
 
-        externalTableInfoDAO.getColumns().forEach(columnInfoDAO -> columnInfoDAO.setTableId(externalTableInfoDAO));
+        externalTableInfoDAO.getColumns().forEach(columnInfoDAO -> columnInfoDAO.setTable(externalTableInfoDAO));
 
         PropertyDAO p11 = PropertyDAO.builder().key("key1").value("value1").entityId(externalTableId).entityType("table").build();
         PropertyDAO p21 = PropertyDAO.builder().key("key2").value("value2").entityId(externalTableId).entityType("table").build();

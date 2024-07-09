@@ -3,11 +3,11 @@ package io.unitycatalog.server.persist;
 import io.unitycatalog.server.exception.BaseException;
 import io.unitycatalog.server.exception.ErrorCode;
 import io.unitycatalog.server.model.*;
-import io.unitycatalog.server.persist.converters.VolumeInfoConverter;
 import io.unitycatalog.server.persist.dao.SchemaInfoDAO;
 import io.unitycatalog.server.persist.dao.VolumeInfoDAO;
+import io.unitycatalog.server.persist.utils.FileUtils;
+import io.unitycatalog.server.persist.utils.HibernateUtils;
 import io.unitycatalog.server.utils.ValidationUtils;
-import lombok.Getter;
 import org.hibernate.Session;
 import org.hibernate.SessionFactory;
 import org.hibernate.Transaction;
@@ -16,20 +16,22 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.util.Date;
-import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 import java.util.stream.Collectors;
 
 public class VolumeRepository {
 
-    @Getter
-    public static final VolumeRepository instance = new VolumeRepository();
-    public static final SchemaRepository schemaRepository = SchemaRepository.getInstance();
+    public static final VolumeRepository INSTANCE = new VolumeRepository();
+    public static final SchemaRepository SCHEMA_REPOSITORY = SchemaRepository.getInstance();
     private static final Logger LOGGER = LoggerFactory.getLogger(VolumeRepository.class);
-    private static final SessionFactory sessionFactory = HibernateUtil.getSessionFactory();
+    private static final SessionFactory SESSION_FACTORY = HibernateUtils.getSessionFactory();
 
     private VolumeRepository() {}
+
+    public static VolumeRepository getInstance() {
+        return INSTANCE;
+    }
 
     public VolumeInfo createVolume(CreateVolumeRequestContent createVolumeRequest) {
         ValidationUtils.validateSqlObjectName(createVolumeRequest.getName());
@@ -50,11 +52,11 @@ public class VolumeRepository {
             throw new BaseException(ErrorCode.INVALID_ARGUMENT, "Storage location is required for external volume");
         }
         volumeInfo.setStorageLocation(createVolumeRequest.getStorageLocation());
-        VolumeInfoDAO volumeInfoDAO = VolumeInfoConverter.toDAO(volumeInfo);
-        try (Session session = sessionFactory.openSession()) {
+        VolumeInfoDAO volumeInfoDAO = VolumeInfoDAO.from(volumeInfo);
+        try (Session session = SESSION_FACTORY.openSession()) {
             Transaction tx = session.beginTransaction();
             try {
-                SchemaInfoDAO schemaInfoDAO = schemaRepository.getSchemaDAO(session,
+                SchemaInfoDAO schemaInfoDAO = SCHEMA_REPOSITORY.getSchemaDAO(session,
                         createVolumeRequest.getCatalogName(), createVolumeRequest.getSchemaName());
                 if (schemaInfoDAO == null) {
                     throw new BaseException(ErrorCode.NOT_FOUND,
@@ -76,7 +78,7 @@ public class VolumeRepository {
     }
 
     public VolumeInfo getVolume(String fullName) {
-        try (Session session = sessionFactory.openSession()) {
+        try (Session session = SESSION_FACTORY.openSession()) {
             String[] namespace = fullName.split("\\.");
             if (namespace.length != 3) {
                 throw new BaseException(ErrorCode.INVALID_ARGUMENT, "Invalid volume name: " + fullName);
@@ -93,7 +95,7 @@ public class VolumeRepository {
     }
 
     public VolumeInfoDAO getVolumeDAO(Session session, String catalogName, String schemaName, String volumeName) {
-        SchemaInfoDAO schemaInfo = schemaRepository.getSchemaDAO(session, catalogName, schemaName);
+        SchemaInfoDAO schemaInfo = SCHEMA_REPOSITORY.getSchemaDAO(session, catalogName, schemaName);
         if (schemaInfo == null) {
             throw new BaseException(ErrorCode.NOT_FOUND, "Schema not found: " + catalogName + "." + schemaName);
         }
@@ -110,7 +112,7 @@ public class VolumeRepository {
     }
 
     public VolumeInfo getVolumeById(String volumeId) {
-        try (Session session = sessionFactory.openSession()) {
+        try (Session session = SESSION_FACTORY.openSession()) {
             session.setDefaultReadOnly(true);
             Transaction tx = session.beginTransaction();
             try {
@@ -119,7 +121,7 @@ public class VolumeRepository {
                 query.setMaxResults(1);
                 VolumeInfoDAO volumeInfoDAO = query.uniqueResult();
                 tx.commit();
-                return VolumeInfoConverter.fromDAO(volumeInfoDAO);
+                return volumeInfoDAO.toVolumeInfo();
             } catch (Exception e) {
                 tx.rollback();
                 throw e;
@@ -128,11 +130,11 @@ public class VolumeRepository {
     }
 
     public ListVolumesResponseContent listVolumes(String catalogName, String schemaName, Optional<Integer> maxResults, Optional<String> pageToken, Optional<Boolean> includeBrowse) {
-        try (Session session = sessionFactory.openSession()) {
+        try (Session session = SESSION_FACTORY.openSession()) {
             session.setDefaultReadOnly(true);
             Transaction tx = session.beginTransaction();
             try {
-                SchemaInfoDAO schemaInfo = schemaRepository.getSchemaDAO(session, catalogName, schemaName);
+                SchemaInfoDAO schemaInfo = SCHEMA_REPOSITORY.getSchemaDAO(session, catalogName, schemaName);
                 if (schemaInfo == null) {
                     throw new BaseException(ErrorCode.NOT_FOUND, "Schema not found: " + catalogName + "." + schemaName);
                 }
@@ -166,7 +168,7 @@ public class VolumeRepository {
     }
 
     private VolumeInfo convertFromDAO(VolumeInfoDAO volumeInfoDAO, String catalogName, String schemaName) {
-        VolumeInfo volumeInfo = VolumeInfoConverter.fromDAO(volumeInfoDAO);
+        VolumeInfo volumeInfo = volumeInfoDAO.toVolumeInfo();
         volumeInfo.setCatalogName(catalogName);
         volumeInfo.setSchemaName(schemaName);
         volumeInfo.setFullName(catalogName + "." + schemaName + "." + volumeInfo.getName());
@@ -177,7 +179,7 @@ public class VolumeRepository {
         ValidationUtils.validateSqlObjectName(updateVolumeRequest.getNewName());
         String[] namespace =name.split("\\.");
         String catalog = namespace[0], schema = namespace[1], volume = namespace[2];
-        try (Session session = sessionFactory.openSession()) {
+        try (Session session = SESSION_FACTORY.openSession()) {
             Transaction tx = session.beginTransaction();
             try {
                 VolumeInfoDAO volumeInfo = getVolumeDAO(session, catalog, schema, volume);
@@ -211,7 +213,7 @@ public class VolumeRepository {
     }
 
     public void deleteVolume(String name) {
-        try (Session session = sessionFactory.openSession()) {
+        try (Session session = SESSION_FACTORY.openSession()) {
             String[] namespace = name.split("\\.");
             if (namespace.length != 3) {
                 throw new BaseException(ErrorCode.INVALID_ARGUMENT, "Invalid volume name: " + name);
@@ -219,7 +221,7 @@ public class VolumeRepository {
             String catalog = namespace[0], schema = namespace[1], volume = namespace[2];
             Transaction tx = session.beginTransaction();
             try {
-                SchemaInfoDAO schemaInfo = schemaRepository.getSchemaDAO(session, catalog, schema);
+                SchemaInfoDAO schemaInfo = SCHEMA_REPOSITORY.getSchemaDAO(session, catalog, schema);
                 if (schemaInfo == null) {
                     throw new BaseException(ErrorCode.NOT_FOUND, "Schema not found: " + catalog + "." + schema);
                 }

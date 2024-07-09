@@ -19,27 +19,22 @@ import static io.unitycatalog.server.utils.TestUtils.*;
 public abstract class BaseFunctionCRUDTest extends BaseCRUDTest {
     protected SchemaOperations schemaOperations;
     protected FunctionOperations functionOperations;
-    protected static final String FUNCTION_NAME = "test_function";
-    protected static final String FUNCTION_FULL_NAME = CATALOG_NAME + "." + SCHEMA_NAME + "." + FUNCTION_NAME;
-
-    @Before
-    public void setUp() {
-        super.setUp();
-        schemaOperations = createSchemaOperations(serverConfig);
-        functionOperations = createFunctionOperations(serverConfig);
-        cleanUp();
-    }
 
     protected abstract SchemaOperations createSchemaOperations(ServerConfig serverConfig);
 
     protected abstract FunctionOperations createFunctionOperations(ServerConfig serverConfig);
 
-    protected void cleanUp() {
-        super.cleanUp();
+    @Before
+    @Override
+    public void setUp() {
+        super.setUp();
+        schemaOperations = createSchemaOperations(serverConfig);
+        functionOperations = createFunctionOperations(serverConfig);
     }
 
     protected void createCommonResources() throws ApiException {
-        catalogOperations.createCatalog(CATALOG_NAME, "Common catalog for functions");
+        CreateCatalog createCatalog = new CreateCatalog().name(CATALOG_NAME).comment(COMMENT);
+        catalogOperations.createCatalog(createCatalog);
         schemaOperations.createSchema(new CreateSchema().name(SCHEMA_NAME).catalogName(CATALOG_NAME));
     }
 
@@ -75,7 +70,6 @@ public abstract class BaseFunctionCRUDTest extends BaseCRUDTest {
                 .inputParams(functionParameterInfos);
         CreateFunctionRequest createFunctionRequest = new CreateFunctionRequest().functionInfo(createFunction);
 
-
         // Create a function
         FunctionInfo functionInfo = functionOperations.createFunction(createFunctionRequest);
         assertEquals(FUNCTION_NAME, functionInfo.getName());
@@ -99,7 +93,8 @@ public abstract class BaseFunctionCRUDTest extends BaseCRUDTest {
         assertEquals(functionInfo, retrievedFunctionInfo);
 
         // now update the parent catalog
-        catalogOperations.updateCatalog(CATALOG_NAME, CATALOG_NEW_NAME, "");
+        UpdateCatalog updateCatalog = new UpdateCatalog().newName(CATALOG_NEW_NAME);
+        catalogOperations.updateCatalog(CATALOG_NAME, updateCatalog);
         // get the function again
         FunctionInfo retrievedFunctionInfoAfterCatUpdate = functionOperations.getFunction(
                 CATALOG_NEW_NAME + "." + SCHEMA_NAME + "." + FUNCTION_NAME);

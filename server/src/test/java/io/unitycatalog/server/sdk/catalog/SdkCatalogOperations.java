@@ -19,8 +19,7 @@ public class SdkCatalogOperations implements CatalogOperations {
     }
 
     @Override
-    public CatalogInfo createCatalog(String name, String comment) throws ApiException {
-        CreateCatalog createCatalog = new CreateCatalog().name(name).comment(comment);
+    public CatalogInfo createCatalog(CreateCatalog createCatalog) throws ApiException {
         return catalogsApi.createCatalog(createCatalog);
     }
 
@@ -35,8 +34,7 @@ public class SdkCatalogOperations implements CatalogOperations {
     }
 
     @Override
-    public CatalogInfo updateCatalog(String name, String newName, String comment) throws ApiException {
-        UpdateCatalog updateCatalog = new UpdateCatalog().newName(newName).comment(comment);
+    public CatalogInfo updateCatalog(String name, UpdateCatalog updateCatalog) throws ApiException {
         return catalogsApi.updateCatalog(name, updateCatalog);
     }
 

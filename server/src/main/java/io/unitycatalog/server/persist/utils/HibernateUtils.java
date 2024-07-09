@@ -1,4 +1,4 @@
-package io.unitycatalog.server.persist;
+package io.unitycatalog.server.persist.utils;
 
 import io.unitycatalog.server.persist.dao.*;
 import lombok.Getter;
@@ -9,19 +9,18 @@ import org.hibernate.service.ServiceRegistry;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-public class HibernateUtil {
+public class HibernateUtils {
 
-    private static final Logger LOGGER = LoggerFactory.getLogger(HibernateUtil.class);
+    private static final Logger LOGGER = LoggerFactory.getLogger(HibernateUtils.class);
 
     @Getter
     private static final SessionFactory sessionFactory;
-    private static final PropertiesUtil properties;
+    private static final ServerPropertiesUtils properties;
 
     static {
-        properties = PropertiesUtil.getInstance();
+        properties = ServerPropertiesUtils.getInstance();
         sessionFactory = createSessionFactory();
     }
-
 
     private static SessionFactory createSessionFactory() {
         try {

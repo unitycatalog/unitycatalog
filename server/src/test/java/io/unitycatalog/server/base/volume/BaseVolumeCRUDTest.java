@@ -3,8 +3,8 @@ package io.unitycatalog.server.base.volume;
 import io.unitycatalog.client.ApiException;
 import io.unitycatalog.client.model.*;
 import io.unitycatalog.server.base.BaseCRUDTest;
-import io.unitycatalog.server.persist.FileUtils;
-import io.unitycatalog.server.persist.HibernateUtil;
+import io.unitycatalog.server.persist.utils.FileUtils;
+import io.unitycatalog.server.persist.utils.HibernateUtils;
 import io.unitycatalog.server.persist.dao.VolumeInfoDAO;
 import io.unitycatalog.server.utils.TestUtils;
 import org.hibernate.Session;
@@ -24,28 +24,25 @@ import static io.unitycatalog.server.utils.TestUtils.*;
 public abstract class BaseVolumeCRUDTest extends BaseCRUDTest {
     protected SchemaOperations schemaOperations;
     protected VolumeOperations volumeOperations;
-    @Before
-    public void setUp() {
-        super.setUp();
-        schemaOperations = createSchemaOperations(serverConfig);
-        volumeOperations = createVolumeOperations(serverConfig);
-        cleanUp();
-        //createCommonResources();
-    }
 
     protected abstract SchemaOperations createSchemaOperations(ServerConfig serverConfig);
 
     protected abstract VolumeOperations createVolumeOperations(ServerConfig serverConfig);
 
-    protected void cleanUp() {
-        super.cleanUp();
+    @Before
+    @Override
+    public void setUp() {
+        super.setUp();
+        schemaOperations = createSchemaOperations(serverConfig);
+        volumeOperations = createVolumeOperations(serverConfig);
     }
 
     private SchemaInfo schemaInfo;
 
     protected void createCommonResources() throws ApiException {
         // Common setup operations such as creating a catalog and schema
-        catalogOperations.createCatalog(CATALOG_NAME, "Common catalog for volumes");
+        CreateCatalog createCatalog = new CreateCatalog().name(CATALOG_NAME).comment(COMMENT);
+        catalogOperations.createCatalog(createCatalog);
         schemaInfo = schemaOperations.createSchema(new CreateSchema().name(SCHEMA_NAME).catalogName(CATALOG_NAME));
     }
 
@@ -105,7 +102,7 @@ public abstract class BaseVolumeCRUDTest extends BaseCRUDTest {
         // Testing Managed Volume
         System.out.println("Creating managed volume..");
 
-        SessionFactory sessionFactory = HibernateUtil.getSessionFactory();
+        SessionFactory sessionFactory = HibernateUtils.getSessionFactory();
 
         try (Session session = sessionFactory.openSession()) {
             session.beginTransaction();
