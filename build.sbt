@@ -158,6 +158,8 @@ lazy val server = (project in file("server"))
     javaCheckstyleSettings(file("dev") / "checkstyle-config.xml"),
     libraryDependencies ++= Seq(
       "com.linecorp.armeria" %  "armeria" % "1.28.4",
+      // Netty dependencies
+      "io.netty" % "netty-all" % "4.1.111.Final",
       "jakarta.annotation" % "jakarta.annotation-api" % "3.0.0" % Provided,
       // Jackson dependencies
       "com.fasterxml.jackson.core" % "jackson-annotations" % jacksonVersion,
