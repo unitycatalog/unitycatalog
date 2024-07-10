@@ -2,57 +2,57 @@
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
     <url>
          <loc>https://docs.unitycatalog.io/</loc>
-         <lastmod>2024-07-09</lastmod>
+         <lastmod>2024-07-10</lastmod>
          <changefreq>daily</changefreq>
     </url>
     <url>
          <loc>https://docs.unitycatalog.io/deployment/</loc>
-         <lastmod>2024-07-09</lastmod>
+         <lastmod>2024-07-10</lastmod>
          <changefreq>daily</changefreq>
     </url>
     <url>
          <loc>https://docs.unitycatalog.io/quickstart/</loc>
-         <lastmod>2024-07-09</lastmod>
+         <lastmod>2024-07-10</lastmod>
          <changefreq>daily</changefreq>
     </url>
     <url>
          <loc>https://docs.unitycatalog.io/integrations/unity-catalog-daft/</loc>
-         <lastmod>2024-07-09</lastmod>
+         <lastmod>2024-07-10</lastmod>
          <changefreq>daily</changefreq>
     </url>
     <url>
          <loc>https://docs.unitycatalog.io/integrations/unity-catalog-duckdb/</loc>
-         <lastmod>2024-07-09</lastmod>
+         <lastmod>2024-07-10</lastmod>
          <changefreq>daily</changefreq>
     </url>
     <url>
          <loc>https://docs.unitycatalog.io/integrations/unity-catalog-trino/</loc>
-         <lastmod>2024-07-09</lastmod>
+         <lastmod>2024-07-10</lastmod>
          <changefreq>daily</changefreq>
     </url>
     <url>
          <loc>https://docs.unitycatalog.io/usage/cli/</loc>
-         <lastmod>2024-07-09</lastmod>
+         <lastmod>2024-07-10</lastmod>
          <changefreq>daily</changefreq>
     </url>
     <url>
          <loc>https://docs.unitycatalog.io/usage/functions/</loc>
-         <lastmod>2024-07-09</lastmod>
+         <lastmod>2024-07-10</lastmod>
          <changefreq>daily</changefreq>
     </url>
     <url>
          <loc>https://docs.unitycatalog.io/usage/server/</loc>
-         <lastmod>2024-07-09</lastmod>
+         <lastmod>2024-07-10</lastmod>
          <changefreq>daily</changefreq>
     </url>
     <url>
          <loc>https://docs.unitycatalog.io/usage/volumes/</loc>
-         <lastmod>2024-07-09</lastmod>
+         <lastmod>2024-07-10</lastmod>
          <changefreq>daily</changefreq>
     </url>
     <url>
          <loc>https://docs.unitycatalog.io/usage/tables/uniform/</loc>
-         <lastmod>2024-07-09</lastmod>
+         <lastmod>2024-07-10</lastmod>
          <changefreq>daily</changefreq>
     </url>
 </urlset>
