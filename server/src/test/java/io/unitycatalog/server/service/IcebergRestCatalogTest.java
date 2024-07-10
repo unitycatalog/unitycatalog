@@ -1,4 +1,4 @@
-package io.unitycatalog.server.iceberg;
+package io.unitycatalog.server.service;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -287,7 +287,7 @@ public class IcebergRestCatalogTest extends BaseServerTest {
       LoadTableResponse loadTableResponse =
           RESTObjectMapper.mapper().readValue(resp.contentUtf8(), LoadTableResponse.class);
       assertThat(loadTableResponse.tableMetadata().metadataFileLocation())
-          .isEqualTo(this.getClass().getResource("/metadata.json").toURI().toString());
+              .isEqualTo(Objects.requireNonNull(this.getClass().getResource("/metadata.json")).toURI().toString());
     }
 
     // List uniform tables

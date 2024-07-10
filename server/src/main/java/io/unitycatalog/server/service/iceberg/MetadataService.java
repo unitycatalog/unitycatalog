@@ -13,8 +13,8 @@ public class MetadataService {
 
   private final FileIOFactory fileIOFactory;
 
-  public MetadataService() {
-    fileIOFactory = new FileIOFactory();
+  public MetadataService(FileIOFactory fileIOFactory) {
+    this.fileIOFactory = fileIOFactory;
   }
 
   public TableMetadata readTableMetadata(String metadataLocation) throws IOException {

@@ -10,12 +10,10 @@ import io.unitycatalog.server.model.*;
 import io.unitycatalog.server.model.ListTablesResponse;
 import io.unitycatalog.server.persist.TableRepository;
 import io.unitycatalog.server.persist.utils.HibernateUtils;
+import io.unitycatalog.server.service.iceberg.FileIOFactory;
 import io.unitycatalog.server.service.iceberg.MetadataService;
 import io.unitycatalog.server.utils.JsonUtils;
 import java.io.IOException;
-import java.net.URI;
-import java.nio.file.Files;
-import java.nio.file.Paths;
 import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
@@ -45,7 +43,7 @@ public class IcebergRestCatalogService {
     this.catalogService = catalogService;
     this.schemaService = schemaService;
     this.tableService = tableService;
-    this.metadataService = new MetadataService();
+    this.metadataService = new MetadataService(new FileIOFactory());
   }
 
   // Config APIs
