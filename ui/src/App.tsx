@@ -1,25 +1,92 @@
 import React from 'react';
-import logo from './logo.svg';
-import './App.scss';
+import { Layout, Menu } from 'antd';
+import { createBrowserRouter, RouterProvider } from 'react-router-dom';
+
+import CatalogDetails from './components/CatalogDetails';
+import SchemaDetails from './components/SchemaDetails';
+import TableDetails from './components/TableDetails';
+import VolumeDetails from './components/VolumeDetails';
+import FunctionDetails from './components/FunctionDetails';
+import SchemaBrowser from './components/SchemaBrowser';
+
+const router = createBrowserRouter([
+  {
+    path: '/',
+    Component() {
+      return <>home</>;
+    },
+  },
+  {
+    path: '/data/:catalog',
+    Component() {
+      return <CatalogDetails />;
+    },
+  },
+  {
+    path: '/data/:catalog/:schema',
+    Component() {
+      return <SchemaDetails />;
+    },
+  },
+  {
+    path: '/data/:catalog/:schema/:table',
+    Component() {
+      return <TableDetails />;
+    },
+  },
+  {
+    path: '/volumes/:catalog/:schema/:volume',
+    Component() {
+      return <VolumeDetails />;
+    },
+  },
+  {
+    path: '/functions/:catalog/:schema/:ucFunction',
+    Component() {
+      return <FunctionDetails />;
+    },
+  },
+]);
 
 function App() {
   return (
-    <div className="App">
-      <header className="App-header">
-        <img src={logo} className="App-logo" alt="logo" />
-        <p>
-          Edit <code>src/App.tsx</code> and save to reload.
-        </p>
-        <a
-          className="App-link"
-          href="https://reactjs.org"
-          target="_blank"
-          rel="noopener noreferrer"
+    <Layout>
+      {/* Header */}
+      <Layout.Header style={{ display: 'flex', alignItems: 'center' }}>
+        <div></div>
+        <Menu
+          theme="dark"
+          mode="horizontal"
+          defaultSelectedKeys={['catalogs']}
+          items={[{ key: 'catalogs', label: 'Catalogs' }]}
+          style={{ flex: 1, minWidth: 0 }}
+        />
+      </Layout.Header>
+      {/* Content */}
+      <Layout.Content
+        style={{
+          height: 'calc(100vh - 64px)',
+          backgroundColor: '#fff',
+          display: 'flex',
+        }}
+      >
+        {/* Left: Schema Browser */}
+        <div
+          style={{
+            width: '30%',
+            minWidth: 260,
+            maxWidth: 400,
+            borderRight: '1px solid lightgrey',
+          }}
         >
-          Learn React
-        </a>
-      </header>
-    </div>
+          <SchemaBrowser />
+        </div>
+        {/* Right: Main details content */}
+        <div style={{ overflowY: 'scroll', flex: 1, padding: 16 }}>
+          <RouterProvider router={router} fallbackElement={<p>Loading...</p>} />
+        </div>
+      </Layout.Content>
+    </Layout>
   );
 }
 
