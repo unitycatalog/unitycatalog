@@ -2,9 +2,10 @@ import java.nio.file.Files
 import java.io.File
 import Tarball.createTarballSettings
 import sbt.util
-import sbtlicensereport.license.{LicenseInfo, LicenseCategory, DepModuleInfo}
-import ReleaseSettings._
+import sbtlicensereport.license.{DepModuleInfo, LicenseCategory, LicenseInfo}
+import ReleaseSettings.*
 
+import scala.jdk.CollectionConverters.asJavaIterableConverter
 import scala.language.implicitConversions
 
 val orgName = "io.unitycatalog"
@@ -87,7 +88,7 @@ def javaCheckstyleSettings(configLocation: File) = Seq(
   // (Test / test) := ((Test / test) dependsOn (Test / checkstyle)).value,
 )
 
-lazy val client = (project in file("clients/java"))
+lazy val client = (project in file("target/clients/java"))
   .enablePlugins(OpenApiGeneratorPlugin)
   .disablePlugins(JavaFormatterPlugin)
   .settings(
@@ -114,7 +115,7 @@ lazy val client = (project in file("clients/java"))
     // OpenAPI generation specs
     openApiInputSpec := (file(".") / "api" / "all.yaml").toString,
     openApiGeneratorName := "java",
-    openApiOutputDir := (file("clients") / "java").toString,
+    openApiOutputDir := (file("target") / "clients" / "java").toString,
     openApiApiPackage := s"$orgName.client.api",
     openApiModelPackage := s"$orgName.client.model",
     openApiAdditionalProperties := Map(
@@ -128,6 +129,12 @@ lazy val client = (project in file("clients/java"))
     // Define the simple generate command to generate full client codes
     generate := {
       val _ = openApiGenerate.value
+
+      // Delete the generated build.sbt file so that it is not used for our sbt config
+      val buildSbtFile = file(openApiOutputDir.value) / "build.sbt"
+      if (buildSbtFile.exists()) {
+        buildSbtFile.delete()
+      }
     }
   )
 
@@ -151,7 +158,7 @@ lazy val populateTestDB = taskKey[Unit]("Run PopulateTestDatabase main class fro
 
 lazy val server = (project in file("server"))
   .dependsOn(client % "test->test")
-  .enablePlugins(OpenApiGeneratorPlugin)
+  .dependsOn(serverModels)
   .settings (
     name := s"$artifactNamePrefix-server",
     commonSettings,
@@ -213,25 +220,33 @@ lazy val server = (project in file("server"))
            |""".stripMargin)
       Seq(file)
     },
-    (Compile / compile) := ((Compile / compile) dependsOn generate).value,
+    (Compile / compile) := ((Compile / compile) dependsOn (serverModels / generate)).value,
+  )
 
+lazy val serverModels = (project in file("server") / "target" / "models")
+  .enablePlugins(OpenApiGeneratorPlugin)
+  .settings(
+    libraryDependencies ++= Seq(
+      "jakarta.annotation" % "jakarta.annotation-api" % "3.0.0" % Provided,
+      "com.fasterxml.jackson.core" % "jackson-annotations" % jacksonVersion,
+    ),
     // OpenAPI generation configs for generating model codes from the spec
     openApiInputSpec := (file(".") / "api" / "all.yaml").toString,
     openApiGeneratorName := "java",
-    openApiOutputDir := file("server").toString,
+    openApiOutputDir := (file("server") / "target" / "models").toString,
     openApiValidateSpec := SettingEnabled,
     openApiGenerateMetadata := SettingDisabled,
     openApiModelPackage := s"$orgName.server.model",
     openApiAdditionalProperties := Map(
-      "library" -> "resteasy",  // resteasy generates the most minimal models
+      "library" -> "resteasy", // resteasy generates the most minimal models
       "useJakartaEe" -> "true",
-      "hideGenerationTimestamp" -> "true"),
+      "hideGenerationTimestamp" -> "true"
+    ),
     openApiGlobalProperties := Map("models" -> ""),
     openApiGenerateApiTests := SettingDisabled,
     openApiGenerateModelTests := SettingDisabled,
     openApiGenerateApiDocumentation := SettingDisabled,
     openApiGenerateModelDocumentation := SettingDisabled,
-
     // Define the simple generate command to generate model codes
     generate := {
       val _ = openApiGenerate.value
