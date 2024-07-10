@@ -2,7 +2,7 @@ package io.unitycatalog.server.service.iceberg;
 
 import io.unitycatalog.server.exception.BaseException;
 import io.unitycatalog.server.model.AwsCredentials;
-import io.unitycatalog.server.persist.PropertiesUtil;
+import io.unitycatalog.server.persist.utils.ServerPropertiesUtils;
 import io.unitycatalog.server.utils.TemporaryCredentialUtils;
 import org.apache.iceberg.aws.s3.S3FileIO;
 import org.apache.iceberg.io.FileIO;
@@ -32,7 +32,7 @@ public class FileIOFactory {
   }
 
   protected S3FileIO getS3FileIO(URI tableLocationUri) {
-    String region = PropertiesUtil.getInstance().getProperty("aws.region", System.getenv("AWS_REGION"));
+    String region = ServerPropertiesUtils.getInstance().getProperty("aws.region", System.getenv("AWS_REGION"));
 
     // FIXME!! - proper credential vending and region settings
     S3FileIO s3FileIO = new S3FileIO(() -> getS3Client(getAwsCredentialsProvider(tableLocationUri), region));
