@@ -24,7 +24,8 @@ public class MetadataServiceTest {
   public static final S3MockExtension S3_MOCK = S3MockExtension.builder().silent().build();
 
   public static final String TEST_BUCKET = "test-bucket";
-  public static final String TEST_LOCATION = "testLocation";
+  public static final String TEST_LOCATION = "test-bucket";
+  public static final String TEST_SIMPLE_ICEBERG_V1_METADATA_FILE_NAME = "simple-v1-iceberg.metadata.json";
 
   private MetadataService metadataService;
   private S3Client mockS3Client;
@@ -43,12 +44,12 @@ public class MetadataServiceTest {
   public void testGetTableMetadataFromS3() {
     mockS3Client.createBucket(builder -> builder.bucket(TEST_BUCKET).build());
     String simpleMetadataJson = IOUtils.toString(
-      Objects.requireNonNull(this.getClass().getResourceAsStream("/simple-v1-iceberg.metadata.json")));
+      Objects.requireNonNull(this.getClass().getResourceAsStream("/" + TEST_SIMPLE_ICEBERG_V1_METADATA_FILE_NAME)));
     mockS3Client.putObject(
-      builder -> builder.bucket(TEST_BUCKET).key(TEST_LOCATION + "/simple-v1-iceberg.metadata.json").build(),
+      builder -> builder.bucket(TEST_BUCKET).key(TEST_LOCATION + "/" + TEST_SIMPLE_ICEBERG_V1_METADATA_FILE_NAME).build(),
       RequestBody.fromString(simpleMetadataJson));
 
-    String metadataLocation = "s3://" + TEST_BUCKET + "/" + TEST_LOCATION + "/simple-v1-iceberg.metadata.json";
+    String metadataLocation = "s3://" + TEST_BUCKET + "/" + TEST_LOCATION + "/" + TEST_SIMPLE_ICEBERG_V1_METADATA_FILE_NAME;
     TableMetadata tableMetadata = metadataService.readTableMetadata(metadataLocation);
     assertThat(tableMetadata.uuid()).isEqualTo("11111111-2222-3333-4444-555555555555");
   }
