@@ -25,7 +25,7 @@ lazy val commonSettings = Seq(
     "-Xlint:unchecked",
     "-source", "1.8",
     "-target", "1.8",
-    "-g:source,lines,vars"
+    "-g:source,lines,vars",
   ),
   resolvers += Resolver.mavenLocal,
   autoScalaLibrary := false,
@@ -158,6 +158,8 @@ lazy val server = (project in file("server"))
     javaCheckstyleSettings(file("dev") / "checkstyle-config.xml"),
     libraryDependencies ++= Seq(
       "com.linecorp.armeria" %  "armeria" % "1.28.4",
+      // Netty dependencies
+      "io.netty" % "netty-all" % "4.1.111.Final",
       "jakarta.annotation" % "jakarta.annotation-api" % "3.0.0" % Provided,
       // Jackson dependencies
       "com.fasterxml.jackson.core" % "jackson-annotations" % jacksonVersion,
@@ -269,6 +271,7 @@ lazy val cli = (project in file("examples") / "cli")
       "org.apache.hadoop" % "hadoop-client-runtime" % "3.4.0",
       "de.vandermeer" % "asciitable" % "0.3.2",
       // for s3 access
+      "org.fusesource.jansi" % "jansi" % "2.4.1",
       "com.amazonaws" % "aws-java-sdk-core" % "1.12.728",
       "org.apache.hadoop" % "hadoop-aws" % "3.4.0",
       "com.google.guava" % "guava" % "31.0.1-jre",
@@ -284,6 +287,26 @@ lazy val root = (project in file("."))
     name := s"$artifactNamePrefix",
     createTarballSettings(),
     rootReleaseSettings
+  )
+
+lazy val spark = (project in file("connectors/spark"))
+  .dependsOn(client % "compile->compile;test->test")
+  .dependsOn(server % "test->test")
+  .settings(
+    name := s"$artifactNamePrefix-spark",
+    scalaVersion := "2.13.14",
+    commonSettings,
+    javaOptions ++= Seq(
+      "--add-opens=java.base/sun.nio.ch=ALL-UNNAMED",
+    ),
+    javaCheckstyleSettings(file("dev") / "checkstyle-config.xml"),
+    libraryDependencies ++= Seq(
+      "org.apache.spark" %% "spark-sql" % "4.0.0-preview1",
+      // Test dependencies
+      "junit" %  "junit" % "4.13.2" % Test,
+      "com.github.sbt" % "junit-interface" % "0.13.3" % Test,
+      "io.delta" %% "delta-spark" % "4.0.0rc1" % Test,
+    ),
   )
 
 def generateClasspathFile(targetDir: File, classpath: Classpath): Unit = {

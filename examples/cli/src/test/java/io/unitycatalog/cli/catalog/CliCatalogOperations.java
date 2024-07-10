@@ -52,8 +52,11 @@ public class CliCatalogOperations implements CatalogOperations {
 
     @Override
     public CatalogInfo updateCatalog(String name, UpdateCatalog updateCatalog) {
-        List<String> argsList = new ArrayList<>(List.of("catalog", "update", "--name", name,
-                "--new_name", updateCatalog.getNewName()));
+        List<String> argsList = new ArrayList<>(List.of("catalog", "update", "--name", name));
+        if (updateCatalog.getNewName() != null) {
+            argsList.add("--new_name");
+            argsList.add(updateCatalog.getNewName());
+        }
         if (updateCatalog.getComment() != null) {
             argsList.add("--comment");
             argsList.add(updateCatalog.getComment());

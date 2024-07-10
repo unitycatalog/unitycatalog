@@ -6,11 +6,19 @@ import com.linecorp.armeria.common.HttpResponse;
 import com.linecorp.armeria.common.HttpStatus;
 import com.linecorp.armeria.server.annotation.*;
 import io.unitycatalog.server.exception.IcebergRestExceptionHandler;
-import io.unitycatalog.server.model.ListTablesResponse;
 import io.unitycatalog.server.model.*;
+import io.unitycatalog.server.model.ListTablesResponse;
 import io.unitycatalog.server.persist.TableRepository;
 import io.unitycatalog.server.persist.utils.HibernateUtils;
 import io.unitycatalog.server.utils.JsonUtils;
+import java.io.IOException;
+import java.net.URI;
+import java.nio.file.Files;
+import java.nio.file.Paths;
+import java.util.List;
+import java.util.Objects;
+import java.util.Optional;
+import java.util.stream.Collectors;
 import org.apache.iceberg.TableMetadata;
 import org.apache.iceberg.TableMetadataParser;
 import org.apache.iceberg.catalog.Namespace;
@@ -22,15 +30,6 @@ import org.apache.iceberg.rest.responses.*;
 import org.hibernate.Session;
 import org.hibernate.SessionFactory;
 
-import java.io.IOException;
-import java.net.URI;
-import java.nio.file.Files;
-import java.nio.file.Paths;
-import java.util.List;
-import java.util.Objects;
-import java.util.Optional;
-import java.util.stream.Collectors;
-
 @ExceptionHandler(IcebergRestExceptionHandler.class)
 public class IcebergRestCatalogService {
 
@@ -40,9 +39,8 @@ public class IcebergRestCatalogService {
   private final TableRepository tableRepository = TableRepository.getInstance();
   private static final SessionFactory sessionFactory = HibernateUtils.getSessionFactory();
 
-  public IcebergRestCatalogService(CatalogService catalogService,
-                                   SchemaService schemaService,
-                                   TableService tableService) {
+  public IcebergRestCatalogService(
+      CatalogService catalogService, SchemaService schemaService, TableService tableService) {
     this.catalogService = catalogService;
     this.schemaService = schemaService;
     this.tableService = tableService;
@@ -61,19 +59,18 @@ public class IcebergRestCatalogService {
   @Get("/v1/namespaces")
   @ProducesJson
   public ListNamespacesResponse listNamespaces(@Param("parent") Optional<String> parent)
-    throws JsonProcessingException {
+      throws JsonProcessingException {
     // List catalogs if the parent is not present
     if (!parent.isPresent()) {
       String respContent = catalogService.listCatalogs().aggregate().join().contentUtf8();
       ListCatalogsResponse resp =
-        JsonUtils.getInstance().readValue(respContent, ListCatalogsResponse.class);
+          JsonUtils.getInstance().readValue(respContent, ListCatalogsResponse.class);
       assert resp.getCatalogs() != null;
-      List<Namespace> namespaces = resp.getCatalogs().stream()
-        .map(catalogInfo -> Namespace.of(catalogInfo.getName()))
-        .collect(Collectors.toList());
-      return ListNamespacesResponse.builder()
-        .addAll(namespaces)
-        .build();
+      List<Namespace> namespaces =
+          resp.getCatalogs().stream()
+              .map(catalogInfo -> Namespace.of(catalogInfo.getName()))
+              .collect(Collectors.toList());
+      return ListNamespacesResponse.builder().addAll(namespaces).build();
     }
 
     List<String> parentParts = Splitter.on(".").splitToList(parent.get());
@@ -82,18 +79,19 @@ public class IcebergRestCatalogService {
     if (parentParts.size() == 1) {
       String catalogName = parentParts.get(0);
       String respContent =
-        schemaService.listSchemas(
-          catalogName, Optional.of(Integer.MAX_VALUE), Optional.empty())
-                .aggregate().join().contentUtf8();
+          schemaService
+              .listSchemas(catalogName, Optional.of(Integer.MAX_VALUE), Optional.empty())
+              .aggregate()
+              .join()
+              .contentUtf8();
       ListSchemasResponse resp =
-        JsonUtils.getInstance().readValue(respContent, ListSchemasResponse.class);
+          JsonUtils.getInstance().readValue(respContent, ListSchemasResponse.class);
       assert resp.getSchemas() != null;
-      List<Namespace> namespaces = resp.getSchemas().stream()
-        .map(schemaInfo -> Namespace.of(schemaInfo.getCatalogName(), schemaInfo.getName()))
-        .collect(Collectors.toList());
-      return ListNamespacesResponse.builder()
-        .addAll(namespaces)
-        .build();
+      List<Namespace> namespaces =
+          resp.getSchemas().stream()
+              .map(schemaInfo -> Namespace.of(schemaInfo.getCatalogName(), schemaInfo.getName()))
+              .collect(Collectors.toList());
+      return ListNamespacesResponse.builder().addAll(namespaces).build();
     }
 
     // If the parent is a schema, then return an empty list of namespaces
@@ -109,7 +107,7 @@ public class IcebergRestCatalogService {
   @Get("/v1/namespaces/{namespace}")
   @ProducesJson
   public GetNamespaceResponse getNamespace(@Param("namespace") String namespace)
-    throws JsonProcessingException {
+      throws JsonProcessingException {
     List<String> namespaceParts = Splitter.on(".").splitToList(namespace);
 
     // If namespace length is 1, then it is a catalog
@@ -118,9 +116,9 @@ public class IcebergRestCatalogService {
       String resp = catalogService.getCatalog(catalogName).aggregate().join().contentUtf8();
       CatalogInfo catalog = JsonUtils.getInstance().readValue(resp, CatalogInfo.class);
       return GetNamespaceResponse.builder()
-        .withNamespace(Namespace.of(catalogName))
-        .setProperties(catalog.getProperties())
-        .build();
+          .withNamespace(Namespace.of(catalogName))
+          .setProperties(catalog.getProperties())
+          .build();
     }
 
     // If namespace length is 2, then it is a schema
@@ -128,12 +126,11 @@ public class IcebergRestCatalogService {
       String catalogName = namespaceParts.get(0);
       String schemaName = namespaceParts.get(1);
       String schemaFullName = String.join(".", catalogName, schemaName);
-      String resp =
-        schemaService.getSchema(schemaFullName).aggregate().join().contentUtf8();
+      String resp = schemaService.getSchema(schemaFullName).aggregate().join().contentUtf8();
       return GetNamespaceResponse.builder()
-        .withNamespace(Namespace.of(catalogName, schemaName))
-        .setProperties(JsonUtils.getInstance().readValue(resp, SchemaInfo.class).getProperties())
-        .build();
+          .withNamespace(Namespace.of(catalogName, schemaName))
+          .setProperties(JsonUtils.getInstance().readValue(resp, SchemaInfo.class).getProperties())
+          .build();
     }
 
     // Else it's an invalid parameter
@@ -143,15 +140,15 @@ public class IcebergRestCatalogService {
   // Table APIs
 
   @Head("/v1/namespaces/{namespace}/tables/{table}")
-  public HttpResponse tableExists(@Param("namespace") String namespace,
-                                  @Param("table") String table) {
+  public HttpResponse tableExists(
+      @Param("namespace") String namespace, @Param("table") String table) {
     List<String> namespaceParts = splitTwoPartNamespace(namespace);
     String catalog = namespaceParts.get(0);
     String schema = namespaceParts.get(1);
     try (Session session = sessionFactory.openSession()) {
       tableRepository.getTable(namespace + "." + table);
       String metadataLocation =
-        tableRepository.getTableUniformMetadataLocation(session, catalog, schema, table);
+          tableRepository.getTableUniformMetadataLocation(session, catalog, schema, table);
       if (metadataLocation == null) {
         throw new NoSuchTableException("Table does not exist: %s", namespace + "." + table);
       } else {
@@ -162,8 +159,8 @@ public class IcebergRestCatalogService {
 
   @Get("/v1/namespaces/{namespace}/tables/{table}")
   @ProducesJson
-  public LoadTableResponse loadTable(@Param("namespace") String namespace,
-                                     @Param("table") String table) throws IOException {
+  public LoadTableResponse loadTable(
+      @Param("namespace") String namespace, @Param("table") String table) throws IOException {
     List<String> namespaceParts = splitTwoPartNamespace(namespace);
     String catalog = namespaceParts.get(0);
     String schema = namespaceParts.get(1);
@@ -171,7 +168,7 @@ public class IcebergRestCatalogService {
     try (Session session = sessionFactory.openSession()) {
       tableRepository.getTable(namespace + "." + table);
       metadataLocation =
-        tableRepository.getTableUniformMetadataLocation(session, catalog, schema, table);
+          tableRepository.getTableUniformMetadataLocation(session, catalog, schema, table);
     }
 
     if (metadataLocation == null) {
@@ -181,15 +178,13 @@ public class IcebergRestCatalogService {
     String metadataJson = new String(Files.readAllBytes(Paths.get(URI.create(metadataLocation))));
     TableMetadata tableMetadata = TableMetadataParser.fromJson(metadataLocation, metadataJson);
 
-    return LoadTableResponse.builder()
-      .withTableMetadata(tableMetadata)
-      .build();
+    return LoadTableResponse.builder().withTableMetadata(tableMetadata).build();
   }
 
   @Get("/v1/namespaces/{namespace}/views/{view}")
   @ProducesJson
-  public LoadViewResponse loadView(@Param("namespace") String namespace,
-                                   @Param("view") String view) {
+  public LoadViewResponse loadView(
+      @Param("namespace") String namespace, @Param("view") String view) {
     // this is not supported yet, but Iceberg REST client tries to load
     // a table with given path name and then tries to load a view with that
     // name if it didn't find a table, so for now, let's just return a 404
@@ -198,43 +193,56 @@ public class IcebergRestCatalogService {
   }
 
   @Post("/v1/namespaces/{namespace}/tables/{table}/metrics")
-  public HttpResponse reportMetrics(@Param("namespace") String namespace,
-                                    @Param("table") String table) {
+  public HttpResponse reportMetrics(
+      @Param("namespace") String namespace, @Param("table") String table) {
     return HttpResponse.of(HttpStatus.OK);
   }
 
   @Get("/v1/namespaces/{namespace}/tables")
   @ProducesJson
   public org.apache.iceberg.rest.responses.ListTablesResponse listTables(
-    @Param("namespace") String namespace)
-    throws JsonProcessingException {
+      @Param("namespace") String namespace) throws JsonProcessingException {
     List<String> namespaceParts = splitTwoPartNamespace(namespace);
     String catalog = namespaceParts.get(0);
     String schema = namespaceParts.get(1);
     AggregatedHttpResponse resp =
-      tableService.listTables(catalog, schema, Optional.of(Integer.MAX_VALUE), Optional.empty(),
-        Optional.empty(), Optional.empty()).aggregate().join();
+        tableService
+            .listTables(
+                catalog,
+                schema,
+                Optional.of(Integer.MAX_VALUE),
+                Optional.empty(),
+                Optional.empty(),
+                Optional.empty())
+            .aggregate()
+            .join();
     List<TableIdentifier> filteredTables;
     try (Session session = sessionFactory.openSession()) {
-      filteredTables = Objects.requireNonNull(JsonUtils.getInstance()
-          .readValue(resp.contentUtf8(), ListTablesResponse.class)
-          .getTables())
-        .stream()
-        .filter(tableInfo -> {
-          String metadataLocation =
-            tableRepository.getTableUniformMetadataLocation(session, catalog, schema,
-              tableInfo.getName());
-          return metadataLocation != null;
-        })
-        .map(tableInfo -> TableIdentifier.of(tableInfo.getCatalogName(), tableInfo.getSchemaName(),
-          tableInfo.getName()))
-        .collect(Collectors.toList());
+      filteredTables =
+          Objects.requireNonNull(
+                  JsonUtils.getInstance()
+                      .readValue(resp.contentUtf8(), ListTablesResponse.class)
+                      .getTables())
+              .stream()
+              .filter(
+                  tableInfo -> {
+                    String metadataLocation =
+                        tableRepository.getTableUniformMetadataLocation(
+                            session, catalog, schema, tableInfo.getName());
+                    return metadataLocation != null;
+                  })
+              .map(
+                  tableInfo ->
+                      TableIdentifier.of(
+                          tableInfo.getCatalogName(),
+                          tableInfo.getSchemaName(),
+                          tableInfo.getName()))
+              .collect(Collectors.toList());
     }
 
-    return org.apache.iceberg.rest.responses.ListTablesResponse
-      .builder()
-      .addAll(filteredTables)
-      .build();
+    return org.apache.iceberg.rest.responses.ListTablesResponse.builder()
+        .addAll(filteredTables)
+        .build();
   }
 
   private List<String> splitTwoPartNamespace(String namespace) {

@@ -7,8 +7,8 @@ import io.unitycatalog.server.utils.TestUtils;
 
 public class SdkCatalogCRUDTest extends BaseCatalogCRUDTest {
 
-    @Override
-    protected CatalogOperations createCatalogOperations(ServerConfig config) {
-        return new SdkCatalogOperations(TestUtils.createApiClient(config));
-    }
+  @Override
+  protected CatalogOperations createCatalogOperations(ServerConfig config) {
+    return new SdkCatalogOperations(TestUtils.createApiClient(config));
+  }
 }
