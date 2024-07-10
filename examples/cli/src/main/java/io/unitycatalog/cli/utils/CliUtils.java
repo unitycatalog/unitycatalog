@@ -10,15 +10,10 @@ import de.vandermeer.asciitable.AsciiTable;
 import de.vandermeer.asciitable.CWC_FixedWidth;
 import de.vandermeer.asciitable.CWC_LongestLine;
 import de.vandermeer.skb.interfaces.transformers.textformat.TextAlignment;
-import de.vandermeer.skb.interfaces.translators.HtmlElementTranslator;
-import io.delta.kernel.ScanBuilder;
-import io.delta.kernel.data.Row;
-import io.unitycatalog.cli.delta.DeltaKernelReadUtils;
 import io.unitycatalog.client.model.*;
-import io.unitycatalog.server.utils.JsonUtils;
 import org.apache.commons.cli.CommandLine;
 import org.apache.commons.cli.Option;
-
+import org.fusesource.jansi.AnsiConsole;
 import org.json.JSONObject;
 
 import java.io.IOException;
@@ -26,6 +21,7 @@ import java.io.InputStream;
 import java.util.*;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 
 public class CliUtils {
@@ -51,6 +47,7 @@ public class CliUtils {
     public static final String AUTH_TOKEN = "auth_token";
     public static final String OUTPUT = "output";
 
+    public static final int TABLE_WIDTH = 120;
 
     public static class CliOptions {
         List<CliParams> necessaryParams;
@@ -151,14 +148,155 @@ public class CliUtils {
         return value;
     }
 
-    public static List<String> getColumns(JsonNode element, AsciiTable at) {
+    public static List<String> getFieldNames(JsonNode element) {
         List<String> columns = new ArrayList<>();
         if (element.isObject()) {
-            (element).fieldNames().forEachRemaining(x-> columns.add(x.toUpperCase()));
+            (element).fieldNames().forEachRemaining(columns::add);
         }
         return columns;
     }
-    
+
+    /**
+     * Generate the maximum lengths of the columns values in the given JSON node.
+     * @param node The JSON node representing a list of nodes.
+     * @param fieldNames The column names.
+     * @param columnWidths Updated with the maximum length of each column.
+     * @param isFixedWidthColumns Updated with whether the column is fixed width or not.
+     * @return the maximum length of the column values.
+     */
+    private static int calculateFieldWidths(JsonNode node,
+                                            List<String> fieldNames,
+                                            int[] columnWidths,
+                                            boolean[] isFixedWidthColumns) {
+        int maxLineWidth = 0;
+
+        for (int columnIndex = 0; columnIndex < fieldNames.size(); columnIndex++) {
+            columnWidths[columnIndex] = fieldNames.get(columnIndex).length();
+        }
+
+        for (JsonNode jsonNode : node) {
+            int lineWidth = 1;
+            for (int columnIndex = 0; columnIndex < fieldNames.size(); columnIndex++) {
+                String fieldName = fieldNames.get(columnIndex);
+                JsonNode value = jsonNode.get(fieldName);
+                String valueString = value.isTextual() ? value.asText() : value.toString();
+
+                columnWidths[columnIndex] = Math.max(columnWidths[columnIndex], valueString.length());
+                lineWidth += valueString.length() + 1;
+
+                String fieldNameLowerCase = fieldName.toLowerCase();
+                if (fieldNameLowerCase.equals("name") || fieldNameLowerCase.endsWith("id")) {
+                    isFixedWidthColumns[columnIndex] = true;
+                }
+
+            }
+            maxLineWidth = Math.max(maxLineWidth, lineWidth);
+        }
+
+        return maxLineWidth;
+    }
+
+    /**
+     * Adjust the column widths to fit the output width, ignore fixed width columns.
+     * @param fieldNames The column names.
+     * @param outputWidth The output width.
+     * @param columnWidths The column widths, updated with the new widths to fix the output width.
+     * @param isFixedWidthColumns Whether the column is fixed width or not.
+     */
+    private static void adjustColumnWidths(List<String> fieldNames,
+                                           int outputWidth,
+                                           int[] columnWidths,
+                                           boolean[] isFixedWidthColumns) {
+
+        int[] fixedWidthIndices = IntStream.range(0, fieldNames.size())
+                .filter(idx -> isFixedWidthColumns[idx]).toArray();
+
+        int widthRemaining = outputWidth - fieldNames.size() -
+                IntStream.of(fixedWidthIndices).map(idx -> columnWidths[idx]).sum();
+
+        int columnWidth = (widthRemaining) / (fieldNames.size() - fixedWidthIndices.length);
+
+        IntStream.range(0, fieldNames.size()).filter(idx -> !isFixedWidthColumns[idx])
+                .forEach(idx -> columnWidths[idx] = columnWidth);
+    }
+
+    private static void processOutputAsRows(AsciiTable at, JsonNode node, int outputWidth) {
+        List<String> fieldNames = getFieldNames(node.get(0));
+
+        int[] columnWidths = new int[fieldNames.size()];
+        boolean[] isFixedWidthColumns = new boolean[fieldNames.size()];
+        int maxLineWidth = calculateFieldWidths(node, fieldNames, columnWidths, isFixedWidthColumns);
+
+        if (maxLineWidth >= outputWidth) {
+            adjustColumnWidths(fieldNames, outputWidth, columnWidths, isFixedWidthColumns);
+        }
+
+        List<String> headers = fieldNames.stream().map(String::toUpperCase).collect(Collectors.toList());
+
+        CWC_FixedWidth cwc = new CWC_FixedWidth();
+        for (int i = 0; i < fieldNames.size(); i++) {
+            cwc.add(columnWidths[i]);
+        }
+
+        at.getRenderer().setCWC(cwc);
+        at.addRule();
+        at.addRow(headers.toArray()).setTextAlignment(TextAlignment.CENTER);
+        at.addRule();
+        node.forEach(element -> {
+            List<String> row = new ArrayList<>();
+            ObjectNode objectNode = (ObjectNode) element;
+            Iterator<String> nodeFieldNames = objectNode.fieldNames();
+            int columnIndex = 0;
+            while (nodeFieldNames.hasNext()) {
+                String nodeFieldName = nodeFieldNames.next();
+                JsonNode value = element.get(nodeFieldName);
+                String valueString = value.isTextual() ? value.asText() : value.toString();
+                row.add(preprocess(valueString, columnWidths[columnIndex]));
+                columnIndex++;
+            }
+            at.addRow(row.toArray());
+            at.addRule();
+        });
+    }
+
+    private static void processOutputAsKeysAndValues(AsciiTable at, JsonNode node, int outputWidth) {
+        int minOutputWidth = outputWidth / 2;
+
+        at.getRenderer().setCWC(new CWC_LongestLine()
+                .add(minOutputWidth / 3,outputWidth / 4)
+                .add(2 * minOutputWidth / 3, 3 * outputWidth / 4));
+        at.addRule();
+        at.addRow("KEY", "VALUE").setTextAlignment(TextAlignment.CENTER);
+        at.addRule();
+        node.fields().forEachRemaining(field -> {
+            JsonNode value = field.getValue();
+            StringBuilder valueString = new StringBuilder();
+            if (value.isTextual()) {
+                valueString = new StringBuilder(value.asText());
+            } else if (value.isArray()) {
+                ArrayNode arrayNode = (ArrayNode) value;
+                for (int i = 0; i < arrayNode.size(); i++) {
+                    valueString.append(arrayNode.get(i).toString()).append("\n\n");
+                }
+            } else {
+                valueString = new StringBuilder(value.toString());
+            }
+            at.addRow(field.getKey().toUpperCase(), valueString.toString()).setTextAlignment(TextAlignment.LEFT);
+            at.addRule();
+        });
+
+    }
+
+    private static int getOutputWidth() {
+        // TODO: maybe turn this into a command line parameter.
+        String envWidth = System.getenv().get("UC_OUTPUT_WIDTH");
+        if (envWidth != null) {
+            return Integer.parseInt(envWidth);
+        } else {
+            return Math.max(TABLE_WIDTH, AnsiConsole.getTerminalWidth());
+        }
+    }
+
     public static void postProcessAndPrintOutput(CommandLine cmd, String output, String subCommand) {
         boolean jsonFormat = cmd.hasOption(OUTPUT)
                 && ("json".equals(cmd.getOptionValue(OUTPUT))
@@ -167,6 +305,7 @@ public class CliUtils {
             System.out.println(output);
         else {
             AsciiTable at = new AsciiTable();
+            int outputWidth = getOutputWidth();
             try {
                 JsonNode node = objectMapper.readTree(output);
                 if (node.isArray()) {
@@ -174,56 +313,12 @@ public class CliUtils {
                         System.out.println(output);
                         return;
                     } else {
-                        List<String> columns = getColumns(node.get(0),at);
-                        int totalWidth = 190;
-                        int nameColumnWidth = 12;
-                        int columnWidth = (totalWidth-nameColumnWidth)/(columns.size() - 1);
-                        CWC_FixedWidth cwc = new CWC_FixedWidth();
-                        cwc.add(nameColumnWidth);
-                        for (int i = 1; i < columns.size(); i++) {
-                            cwc.add(columnWidth);
-                        }
-                        at.getRenderer().setCWC(cwc);
-                        at.addRule();
-                        at.addRow(columns.toArray()).setTextAlignment(TextAlignment.CENTER);
-                        at.addRule();
-                        node.forEach(element -> {
-                            List<String> row = new ArrayList<>();
-                            ObjectNode objectNode = (ObjectNode) element;
-                            Iterator<String> fieldNames = objectNode.fieldNames();
-                            while (fieldNames.hasNext()) {
-                                String fieldName = fieldNames.next();
-                                JsonNode value = element.get(fieldName);
-                                String valueString = value.isTextual() ? value.asText() : value.toString();
-                                row.add(preprocess(valueString, fieldName.equalsIgnoreCase("name") ? nameColumnWidth: columnWidth));
-                            }
-                            at.addRow(row.toArray());
-                            at.addRule();
-                        });
+                        processOutputAsRows(at, node, outputWidth);
                     }
                 } else {
-                    at.getRenderer().setCWC(new CWC_LongestLine().add(20,50).add(50,100));
-                    at.addRule();
-                    at.addRow("KEY", "VALUE").setTextAlignment(TextAlignment.CENTER);
-                    at.addRule();
-                    node.fields().forEachRemaining(field -> {
-                        JsonNode value = field.getValue();
-                        StringBuilder valueString = new StringBuilder();
-                        if (value.isTextual()) {
-                            valueString = new StringBuilder(value.asText());
-                        } else if (value.isArray()) {
-                            ArrayNode arrayNode = (ArrayNode) value;
-                            for (int i = 0; i < arrayNode.size(); i++) {
-                                valueString.append(arrayNode.get(i).toString()).append("\n\n");
-                            }
-                        } else {
-                            valueString = new StringBuilder(value.toString());
-                        }
-                        at.addRow(field.getKey().toUpperCase(), valueString.toString());
-                        at.addRule();
-                    });
+                    processOutputAsKeysAndValues(at, node, outputWidth);
                 }
-                System.out.println(at.render(200));
+                System.out.println(at.render(outputWidth));
             } catch (Exception e) {
                 System.out.println("Error while printing output as table: " + e.getMessage());
                 System.out.println(output);
