@@ -140,12 +140,15 @@ COPY <<-"EOF" "${UC_CLI_BIN}"
     relative_path_to_jar="${CLI_JAR//"$ROOT_DIR/"/}"
 
     # Prepare the command to be executed
-    SERVER_JAVA_COMMAND="java -jar $relative_path_to_jar"
+    SERVER_JAVA_COMMAND="java -jar $relative_path_to_jar $@"
 
     cd $ROOT_DIR
 
-    # Execute the jar / ie Run the server
-    exec $SERVER_JAVA_COMMAND
+    # alias
+    alias uc-cli="$SERVER_JAVA_COMMAND"
+    alias >> ~/.bashrc
+    echo 'echo "Use uc-cli to query the Unity Catalog. ex: uc-cli catalog list"' >> ~/.bashrc
+    exec /usr/bin/env bash
 EOF
 
 

@@ -22,7 +22,8 @@ if [ -z "$container_details" ]; then
     
     docker run --rm \
        --network unitycatalog_network \
-       -d --name "$container_name" -t "$container_name:$container_version"
+       --name "$container_name" -it "$container_name:$container_version" --server http://unitycatalog:8081
+
 
     echo "Container $container_name created."
 else
@@ -30,9 +31,6 @@ else
         echo "Container $container_name already running, skipping."
     else
         echo "Container $container_name already exists, starting it."
-        docker start $container_name
+        docker start -i $container_name
     fi
 fi
- 
-echo "The container $container_name is running with the following parameters:"
-docker ps --format '{{json .}}' | jq -r --arg CONTAINER_NAME "$container_name" 'select(.Names == $CONTAINER_NAME)'
