@@ -42,9 +42,9 @@ public class UnityCatalogServer {
 
   private void addServices(ServerBuilder sb) {
     ObjectMapper unityMapper =
-      JsonMapper.builder().disable(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES).build();
+        JsonMapper.builder().disable(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES).build();
     JacksonRequestConverterFunction unityConverterFunction =
-      new JacksonRequestConverterFunction(unityMapper);
+        new JacksonRequestConverterFunction(unityMapper);
 
     // Add support for Unity Catalog APIs
     CatalogService catalogService = new CatalogService();
@@ -52,26 +52,32 @@ public class UnityCatalogServer {
     VolumeService volumeService = new VolumeService();
     TableService tableService = new TableService();
     FunctionService functionService = new FunctionService();
-    TemporaryTableCredentialsService temporaryTableCredentialsService = new TemporaryTableCredentialsService();
-    TemporaryVolumeCredentialsService temporaryVolumeCredentialsService = new TemporaryVolumeCredentialsService();
+    TemporaryTableCredentialsService temporaryTableCredentialsService =
+        new TemporaryTableCredentialsService();
+    TemporaryVolumeCredentialsService temporaryVolumeCredentialsService =
+        new TemporaryVolumeCredentialsService();
     sb.service("/", (ctx, req) -> HttpResponse.of("Hello, Unity Catalog!"))
-      .annotatedService(basePath + "catalogs", catalogService, unityConverterFunction)
-      .annotatedService(basePath + "schemas", schemaService, unityConverterFunction)
-      .annotatedService(basePath + "volumes", volumeService, unityConverterFunction)
-      .annotatedService(basePath, tableService, unityConverterFunction)
-      .annotatedService(basePath + "functions", functionService, unityConverterFunction)
-      .annotatedService(basePath + "temporary-table-credentials", temporaryTableCredentialsService)
-      .annotatedService(basePath + "temporary-volume-credentials", temporaryVolumeCredentialsService);
+        .annotatedService(basePath + "catalogs", catalogService, unityConverterFunction)
+        .annotatedService(basePath + "schemas", schemaService, unityConverterFunction)
+        .annotatedService(basePath + "volumes", volumeService, unityConverterFunction)
+        .annotatedService(basePath, tableService, unityConverterFunction)
+        .annotatedService(basePath + "functions", functionService, unityConverterFunction)
+        .annotatedService(
+            basePath + "temporary-table-credentials", temporaryTableCredentialsService)
+        .annotatedService(
+            basePath + "temporary-volume-credentials", temporaryVolumeCredentialsService);
 
     // Add support for Iceberg REST APIs
     ObjectMapper icebergMapper = RESTObjectMapper.mapper();
     JacksonRequestConverterFunction icebergRequestConverter =
-      new JacksonRequestConverterFunction(icebergMapper);
+        new JacksonRequestConverterFunction(icebergMapper);
     JacksonResponseConverterFunction icebergResponseConverter =
-      new JacksonResponseConverterFunction(icebergMapper);
-    sb.annotatedService(basePath + "iceberg",
-      new IcebergRestCatalogService(catalogService, schemaService, tableService),
-      icebergRequestConverter, icebergResponseConverter);
+        new JacksonResponseConverterFunction(icebergMapper);
+    sb.annotatedService(
+        basePath + "iceberg",
+        new IcebergRestCatalogService(catalogService, schemaService, tableService),
+        icebergRequestConverter,
+        icebergResponseConverter);
   }
 
   public static void main(String[] args) {
@@ -101,16 +107,18 @@ public class UnityCatalogServer {
 
   private void printArt() {
     String art =
-      "################################################################### \n" +
-        "#  _    _       _ _            _____      _        _              #\n" +
-        "# | |  | |     (_) |          / ____|    | |      | |             #\n" +
-        "# | |  | |_ __  _| |_ _   _  | |     __ _| |_ __ _| | ___   __ _  #\n" +
-        "# | |  | | '_ \\| | __| | | | | |    / _` | __/ _` | |/ _ \\ / _` | #\n" +
-        "# | |__| | | | | | |_| |_| | | |___| (_| | || (_| | | (_) | (_| | #\n" +
-        "#  \\____/|_| |_|_|\\__|\\__, |  \\_____\\__,_|\\__\\__,_|_|\\___/ \\__, | #\n" +
-        "#                      __/ |                                __/ | #\n" +
-        "#                     |___/               " + String.format("%15s", ("v" + VersionUtils.VERSION)) + "  |___/  #\n" +
-        "###################################################################\n";
+        "################################################################### \n"
+            + "#  _    _       _ _            _____      _        _              #\n"
+            + "# | |  | |     (_) |          / ____|    | |      | |             #\n"
+            + "# | |  | |_ __  _| |_ _   _  | |     __ _| |_ __ _| | ___   __ _  #\n"
+            + "# | |  | | '_ \\| | __| | | | | |    / _` | __/ _` | |/ _ \\ / _` | #\n"
+            + "# | |__| | | | | | |_| |_| | | |___| (_| | || (_| | | (_) | (_| | #\n"
+            + "#  \\____/|_| |_|_|\\__|\\__, |  \\_____\\__,_|\\__\\__,_|_|\\___/ \\__, | #\n"
+            + "#                      __/ |                                __/ | #\n"
+            + "#                     |___/               "
+            + String.format("%15s", ("v" + VersionUtils.VERSION))
+            + "  |___/  #\n"
+            + "###################################################################\n";
     System.out.println(art);
   }
 }
