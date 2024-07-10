@@ -1,4 +1,4 @@
-package io.unitycatalog.server.persist;
+package io.unitycatalog.server.persist.utils;
 
 import com.amazonaws.auth.AWSStaticCredentialsProvider;
 import com.amazonaws.auth.BasicSessionCredentials;
@@ -25,7 +25,7 @@ import java.util.stream.Stream;
 
 public class FileUtils {
     private static final Logger LOGGER = LoggerFactory.getLogger(FileUtils.class);
-    private static final PropertiesUtil properties = PropertiesUtil.getInstance();
+    private static final ServerPropertiesUtils properties = ServerPropertiesUtils.getInstance();
 
     private FileUtils() {}
 
@@ -116,10 +116,10 @@ public class FileUtils {
     private static URI modifyS3Directory(URI parsedUri, boolean createOrDelete) {
         String bucketName = parsedUri.getHost();
         String path = parsedUri.getPath().substring(1); // Remove leading '/'
-        String accessKey = PropertiesUtil.getInstance().getProperty("aws.s3.accessKey");
-        String secretKey = PropertiesUtil.getInstance().getProperty("aws.s3.secretKey");
-        String sessionToken = PropertiesUtil.getInstance().getProperty("aws.s3.sessionToken");
-        String region = PropertiesUtil.getInstance().getProperty("aws.region");
+        String accessKey = ServerPropertiesUtils.getInstance().getProperty("aws.s3.accessKey");
+        String secretKey = ServerPropertiesUtils.getInstance().getProperty("aws.s3.secretKey");
+        String sessionToken = ServerPropertiesUtils.getInstance().getProperty("aws.s3.sessionToken");
+        String region = ServerPropertiesUtils.getInstance().getProperty("aws.region");
 
         BasicSessionCredentials sessionCredentials = new BasicSessionCredentials(accessKey, secretKey, sessionToken);
         AmazonS3 s3Client = AmazonS3ClientBuilder.standard()
@@ -173,6 +173,9 @@ public class FileUtils {
     }
 
     public static String convertRelativePathToURI(String url) {
+        if (url == null) {
+            return null;
+        }
         if (url.startsWith("s3://")) {
             return url;
         } else {

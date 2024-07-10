@@ -16,8 +16,8 @@ import org.junit.runners.Parameterized;
 public abstract class BaseServerTest {
 
     @Parameterized.Parameter
-    public ServerConfig serverConfig;
-    protected UnityCatalogServer unityCatalogServer;
+    public static ServerConfig serverConfig;
+    private static UnityCatalogServer unityCatalogServer;
 
     /**
      * To test against UC server, add
@@ -31,20 +31,6 @@ public abstract class BaseServerTest {
         return List.of(
                 new ServerConfig("http://localhost", "")
         );
-    }
-
-    @BeforeClass
-    public static void globalSetUp() {
-        // Global setup if needed
-    }
-
-    @AfterClass
-    public static void globalTearDown() {
-        // Global teardown if needed
-    }
-
-    protected void cleanUp() {
-
     }
 
     @Before
@@ -71,7 +57,6 @@ public abstract class BaseServerTest {
 
     @After
     public void tearDown() {
-        cleanUp();
         if (unityCatalogServer != null) {
             unityCatalogServer.stop();
         }

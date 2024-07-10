@@ -4,20 +4,12 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.linecorp.armeria.common.AggregatedHttpResponse;
 import com.linecorp.armeria.common.HttpResponse;
 import com.linecorp.armeria.common.HttpStatus;
-import com.linecorp.armeria.server.annotation.ExceptionHandler;
-import com.linecorp.armeria.server.annotation.Get;
-import com.linecorp.armeria.server.annotation.Head;
-import com.linecorp.armeria.server.annotation.Param;
-import com.linecorp.armeria.server.annotation.Post;
-import com.linecorp.armeria.server.annotation.ProducesJson;
+import com.linecorp.armeria.server.annotation.*;
 import io.unitycatalog.server.exception.IcebergRestExceptionHandler;
-import io.unitycatalog.server.model.CatalogInfo;
-import io.unitycatalog.server.model.ListCatalogsResponse;
-import io.unitycatalog.server.model.ListSchemasResponse;
 import io.unitycatalog.server.model.ListTablesResponse;
-import io.unitycatalog.server.model.SchemaInfo;
-import io.unitycatalog.server.persist.HibernateUtil;
+import io.unitycatalog.server.model.*;
 import io.unitycatalog.server.persist.TableRepository;
+import io.unitycatalog.server.persist.utils.HibernateUtils;
 import io.unitycatalog.server.utils.JsonUtils;
 import org.apache.iceberg.TableMetadata;
 import org.apache.iceberg.TableMetadataParser;
@@ -26,11 +18,7 @@ import org.apache.iceberg.catalog.TableIdentifier;
 import org.apache.iceberg.exceptions.NoSuchTableException;
 import org.apache.iceberg.exceptions.NoSuchViewException;
 import org.apache.iceberg.relocated.com.google.common.base.Splitter;
-import org.apache.iceberg.rest.responses.ConfigResponse;
-import org.apache.iceberg.rest.responses.GetNamespaceResponse;
-import org.apache.iceberg.rest.responses.ListNamespacesResponse;
-import org.apache.iceberg.rest.responses.LoadTableResponse;
-import org.apache.iceberg.rest.responses.LoadViewResponse;
+import org.apache.iceberg.rest.responses.*;
 import org.hibernate.Session;
 import org.hibernate.SessionFactory;
 
@@ -50,7 +38,7 @@ public class IcebergRestCatalogService {
   private final SchemaService schemaService;
   private final TableService tableService;
   private final TableRepository tableRepository = TableRepository.getInstance();
-  private static final SessionFactory sessionFactory = HibernateUtil.getSessionFactory();
+  private static final SessionFactory sessionFactory = HibernateUtils.getSessionFactory();
 
   public IcebergRestCatalogService(CatalogService catalogService,
                                    SchemaService schemaService,

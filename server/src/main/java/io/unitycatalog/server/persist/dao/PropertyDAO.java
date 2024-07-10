@@ -4,7 +4,11 @@ import jakarta.persistence.*;
 import lombok.*;
 import org.hibernate.annotations.UuidGenerator;
 
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Map;
 import java.util.UUID;
+import java.util.stream.Collectors;
 
 //Hibernate annotations
 @Entity
@@ -19,7 +23,6 @@ import java.util.UUID;
 @ToString
 @Builder
 public class PropertyDAO {
-
     @Id
     @UuidGenerator
     @Column(name = "id", updatable = false, nullable = false)
@@ -37,4 +40,22 @@ public class PropertyDAO {
     @Column(name = "property_value", nullable = false)
     private String value;
 
+    public static List<PropertyDAO> from(Map<String, String> properties, UUID entityId, String entityType) {
+        if (properties == null) {
+            return new ArrayList<>();
+        }
+        return properties.entrySet().stream()
+                .map(entry -> PropertyDAO.builder()
+                        .key(entry.getKey())
+                        .value(entry.getValue())
+                        .entityId(entityId)
+                        .entityType(entityType)
+                        .build())
+                .collect(Collectors.toList());
+    }
+
+    public static Map<String, String> toMap(List<PropertyDAO> propertyDAOList) {
+        return propertyDAOList.stream()
+                .collect(Collectors.toMap(PropertyDAO::getKey, PropertyDAO::getValue));
+    }
 }

@@ -1,7 +1,7 @@
 package io.unitycatalog.server.utils;
 
 import io.unitycatalog.server.exception.BaseException;
-import io.unitycatalog.server.persist.FileUtils;
+import io.unitycatalog.server.persist.utils.FileUtils;
 import org.junit.Assert;
 import org.junit.Test;
 

@@ -12,6 +12,7 @@ import io.unitycatalog.server.base.schema.SchemaOperations;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
 
 import static io.unitycatalog.cli.TestUtils.addServerAndAuthParams;
 import static io.unitycatalog.cli.TestUtils.executeCLICommand;
@@ -73,10 +74,15 @@ public class CliSchemaOperations implements SchemaOperations {
     }
 
     @Override
-    public void deleteSchema(String schemaFullName) {
-        String[] args = addServerAndAuthParams(List.of(
+    public void deleteSchema(String schemaFullName, Optional<Boolean> force) {
+        List<String> argsList = new ArrayList<>(List.of(
                 "schema", "delete"
-                , "--full_name", schemaFullName)
+                , "--full_name", schemaFullName));
+        if (force.isPresent() && force.get()) {
+            argsList.add("--force");
+            argsList.add("true");
+        }
+        String[] args = addServerAndAuthParams(argsList
                 , config);
         executeCLICommand(args);
     }
