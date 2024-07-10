@@ -74,7 +74,8 @@ public class SchemaCli {
 
     private static String deleteSchema(SchemasApi schemasApi, JSONObject json) throws ApiException {
         String schemaFullName = json.getString(CliParams.FULL_NAME.getServerParam());
-        schemasApi.deleteSchema(schemaFullName);
+        schemasApi.deleteSchema(schemaFullName, json.has(CliParams.FORCE.getServerParam()) &&
+                Boolean.parseBoolean(json.getString(CliParams.FORCE.getServerParam())));
         return CliUtils.EMPTY;
     }
 }

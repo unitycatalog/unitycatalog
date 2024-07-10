@@ -1,6 +1,7 @@
 package io.unitycatalog.server.sdk.catalog;
 
 import java.util.List;
+import java.util.Optional;
 
 import io.unitycatalog.client.ApiClient;
 import io.unitycatalog.client.ApiException;
@@ -18,8 +19,7 @@ public class SdkCatalogOperations implements CatalogOperations {
     }
 
     @Override
-    public CatalogInfo createCatalog(String name, String comment) throws ApiException {
-        CreateCatalog createCatalog = new CreateCatalog().name(name).comment(comment);
+    public CatalogInfo createCatalog(CreateCatalog createCatalog) throws ApiException {
         return catalogsApi.createCatalog(createCatalog);
     }
 
@@ -34,14 +34,13 @@ public class SdkCatalogOperations implements CatalogOperations {
     }
 
     @Override
-    public CatalogInfo updateCatalog(String name, String newName, String comment) throws ApiException {
-        UpdateCatalog updateCatalog = new UpdateCatalog().newName(newName).comment(comment);
+    public CatalogInfo updateCatalog(String name, UpdateCatalog updateCatalog) throws ApiException {
         return catalogsApi.updateCatalog(name, updateCatalog);
     }
 
     @Override
-    public void deleteCatalog(String name) throws ApiException {
-        catalogsApi.deleteCatalog(name, true);
+    public void deleteCatalog(String name, Optional<Boolean> force) throws ApiException {
+        catalogsApi.deleteCatalog(name, force.orElse(false));
     }
 
 }

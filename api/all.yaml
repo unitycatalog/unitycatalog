@@ -246,6 +246,13 @@ paths:
       summary: Delete a schema
       description: |
         Deletes the specified schema from the parent catalog.
+      parameters:
+        - name: force
+          in: query
+          description: Force deletion even if the catalog is not empty.
+          required: false
+          schema:
+            type: boolean
       responses:
         '200':
           description: The schema was successfully deleted.

@@ -1,11 +1,12 @@
-import com.typesafe.sbt.SbtPgp.autoImportImpl._
 import sbt._
 import sbt.Keys._
 import sbtrelease.ReleasePlugin.autoImport._
 import sbtrelease.ReleaseStateTransformations._
 import xerial.sbt.Sonatype.autoImport._
+import com.jsuereth.sbtpgp.SbtPgp.autoImport._
 
 import scala.language.implicitConversions
+
 
 object ReleaseSettings {
 
@@ -49,12 +50,12 @@ object ReleaseSettings {
     sonatypeProfileName := "io.unitycatalog",
     credentials += Credentials(
       "Sonatype Nexus Repository Manager",
-      "oss.sonatype.org",
+      "s01.oss.sonatype.org",
       sys.env.getOrElse("SONATYPE_USERNAME", ""),
       sys.env.getOrElse("SONATYPE_PASSWORD", "")
     ),
     publishTo := {
-      val nexus = "https://oss.sonatype.org/"
+      val nexus = "https://s01.oss.sonatype.org/"
       if (isSnapshot.value) {
         Some("snapshots" at nexus + "content/repositories/snapshots")
       } else {
@@ -63,11 +64,33 @@ object ReleaseSettings {
     },
     licenses += ("Apache-2.0", url("http://www.apache.org/licenses/LICENSE-2.0")),
     pomExtra :=
-      <url>https://www.unitycatalog.io/</url>
+      <url>https://unitycatalog.io/</url>
         <scm>
           <url>git@github.com:unitycatalog/unitycatalog.git</url>
           <connection>scm:git:git@github.com:unitycatalog/unitycatalog.git</connection>
         </scm>
+        <developers>
+          <developer>
+            <id>rameshchandra</id>
+            <name>Ramesh Chandra</name>
+            <url>https://github.com/rameshchandra</url>
+          </developer>
+          <developer>
+            <id>tdas</id>
+            <name>Tathagata Das</name>
+            <url>https://github.com/tdas</url>
+          </developer>
+          <developer>
+            <id>ravivj-db</id>
+            <name>Ravi Vijay</name>
+            <url>https://github.com/ravivj-db/</url>
+          </developer>
+          <developer>
+            <id>vikrantpuppala</id>
+            <name>Vikrant Puppala</name>
+            <url>https://github.com/vikrantpuppala</url>
+          </developer>
+        </developers>
   )
 
   lazy val rootReleaseSettings = Seq(
