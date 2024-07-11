@@ -1,4 +1,4 @@
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, UseQueryOptions } from '@tanstack/react-query';
 import { UC_API_PREFIX } from '../utils/constants';
 
 interface SchemaInterface {
@@ -15,9 +15,10 @@ interface ListSchemasResponse {
 
 interface ListSchemasParams {
   catalog: string;
+  options?: Omit<UseQueryOptions<ListSchemasResponse>, 'queryKey' | 'queryFn'>;
 }
 
-export function useListSchemas({ catalog }: ListSchemasParams) {
+export function useListSchemas({ catalog, options }: ListSchemasParams) {
   return useQuery<ListSchemasResponse>({
     queryKey: ['listSchemas', catalog],
     queryFn: async () => {
@@ -28,5 +29,6 @@ export function useListSchemas({ catalog }: ListSchemasParams) {
       );
       return response.json();
     },
+    ...options,
   });
 }
