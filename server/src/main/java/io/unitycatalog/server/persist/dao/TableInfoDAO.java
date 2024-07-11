@@ -15,7 +15,7 @@ import lombok.*;
 @Table(
     name = "uc_tables",
     indexes = {
-      @Index(name = "idx_updated_at", columnList = "updated_at"),
+      @Index(name = "idx_name", columnList = "name"),
     })
 // Lombok annotations
 @Getter
