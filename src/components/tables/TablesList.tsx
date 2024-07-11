@@ -4,6 +4,7 @@ import { formatTimestamp } from '../../utils/formatTimestamp';
 import { useNavigate } from 'react-router-dom';
 import { useListTables } from '../../hooks/tables';
 import { ReactNode } from 'react';
+import { TableOutlined } from '@ant-design/icons';
 
 interface TablesListProps {
   catalog: string;
@@ -36,6 +37,11 @@ export default function TablesList({
           dataIndex: 'name',
           key: 'name',
           width: '60%',
+          render: (name) => (
+            <>
+              <TableOutlined /> {name}
+            </>
+          ),
         },
         {
           title: 'Created At',

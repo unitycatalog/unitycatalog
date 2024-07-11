@@ -4,6 +4,7 @@ import { formatTimestamp } from '../../utils/formatTimestamp';
 import { useNavigate } from 'react-router-dom';
 import { ReactNode } from 'react';
 import { useListFunctions } from '../../hooks/functions';
+import { FunctionOutlined } from '@ant-design/icons';
 
 interface FunctionsListProps {
   catalog: string;
@@ -36,6 +37,11 @@ export default function FunctionsList({
           dataIndex: 'name',
           key: 'name',
           width: '60%',
+          render: (name) => (
+            <>
+              <FunctionOutlined /> {name}
+            </>
+          ),
         },
         {
           title: 'Created At',

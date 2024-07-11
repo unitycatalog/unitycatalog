@@ -6,6 +6,7 @@ import { useGetCatalog } from '../hooks/catalog';
 import SchemasList from '../components/schemas/SchemasList';
 import DescriptionBox from '../components/DescriptionBox';
 import CatalogSidebar from '../components/catalogs/CatalogSidebar';
+import { ProductOutlined } from '@ant-design/icons';
 
 export default function CatalogDetails() {
   const { catalog } = useParams();
@@ -17,7 +18,11 @@ export default function CatalogDetails() {
 
   return (
     <DetailsLayout
-      title={<Typography.Title level={3}>{catalog}</Typography.Title>}
+      title={
+        <Typography.Title level={3}>
+          <ProductOutlined /> {catalog}
+        </Typography.Title>
+      }
       breadcrumbs={[
         { title: <Link to="/">Catalogs</Link>, key: '_home' },
         { title: catalog, key: '_catalog' },
