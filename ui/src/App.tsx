@@ -3,13 +3,13 @@ import { ConfigProvider, Layout, Menu } from 'antd';
 import { createBrowserRouter, Outlet, RouterProvider } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 
-import SchemaDetails from './components/SchemaDetails';
 import TableDetails from './components/TableDetails';
 import VolumeDetails from './components/VolumeDetails';
 import FunctionDetails from './components/FunctionDetails';
 import SchemaBrowser from './components/SchemaBrowser';
 import CatalogsList from './pages/CatalogsList';
 import CatalogDetails from './pages/CatalogDetails';
+import SchemaDetails from './pages/SchemaDetails';
 
 const router = createBrowserRouter([
   {
@@ -56,7 +56,9 @@ const router = createBrowserRouter([
 ]);
 
 function AppProvider() {
-  const queryClient = new QueryClient();
+  const queryClient = new QueryClient({
+    defaultOptions: { queries: { staleTime: 1000 * 5 * 60 } },
+  });
   return (
     <QueryClientProvider client={queryClient}>
       <ConfigProvider

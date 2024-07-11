@@ -10,6 +10,7 @@ interface ListLayoutProps<T> {
   title: ReactNode;
   onRowClick?: (record: T) => void;
   loading?: boolean;
+  filters?: ReactNode;
 }
 
 export default function ListLayout<T extends AnyObject = AnyObject>({
@@ -18,6 +19,7 @@ export default function ListLayout<T extends AnyObject = AnyObject>({
   title,
   onRowClick,
   loading,
+  filters,
 }: ListLayoutProps<T>) {
   const [filterValue, setFilterValue] = useState('');
 
@@ -34,7 +36,7 @@ export default function ListLayout<T extends AnyObject = AnyObject>({
   return (
     <Flex gap="middle" vertical style={{ flexGrow: 1 }}>
       {title}
-      <Row>
+      <Row gutter={[8, 8]}>
         <Col
           span={8}
           xs={{ span: 12 }}
@@ -49,6 +51,7 @@ export default function ListLayout<T extends AnyObject = AnyObject>({
             onChange={(e) => setFilterValue(e.target.value)}
           />
         </Col>
+        {filters && <Col flex={1}>{filters}</Col>}
       </Row>
       <Table
         loading={loading}
