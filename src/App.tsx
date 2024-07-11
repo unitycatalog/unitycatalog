@@ -72,7 +72,13 @@ function AppProvider() {
         <Layout>
           {/* Header */}
           <Layout.Header style={{ display: 'flex', alignItems: 'center' }}>
-            <div></div>
+            <div style={{ marginRight: 24 }}>
+              <img
+                src="/uc-logo-reverse.png"
+                height={32}
+                alt="uc-logo-reverse"
+              />
+            </div>
             <Menu
               theme="dark"
               mode="horizontal"
