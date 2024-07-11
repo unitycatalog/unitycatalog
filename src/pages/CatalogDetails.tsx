@@ -5,6 +5,7 @@ import { Flex, Typography } from 'antd';
 import { useGetCatalog } from '../hooks/catalog';
 import SchemasList from '../components/schemas/SchemasList';
 import DescriptionBox from '../components/DescriptionBox';
+import CatalogSidebar from '../components/catalogs/CatalogSidebar';
 
 export default function CatalogDetails() {
   const { catalog } = useParams();
@@ -29,8 +30,7 @@ export default function CatalogDetails() {
         </Flex>
       </DetailsLayout.Content>
       <DetailsLayout.Aside>
-        <Typography.Title level={5}>Catalog Details</Typography.Title>
-        <Typography.Text>Details will go here...</Typography.Text>
+        <CatalogSidebar catalog={catalog} />
       </DetailsLayout.Aside>
     </DetailsLayout>
   );
