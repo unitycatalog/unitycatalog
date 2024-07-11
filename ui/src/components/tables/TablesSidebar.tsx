@@ -1,14 +1,15 @@
 import { Typography } from 'antd';
 import { formatTimestamp } from '../../utils/formatTimestamp';
 import MetadataList, { MetadataListType } from '../MetadataList';
-import { SchemaInterface, useGetSchema } from '../../hooks/schemas';
+import { TableInterface, useGetTable } from '../../hooks/tables';
 
-interface SchemaSidebarProps {
+interface TableSidebarProps {
   catalog: string;
   schema: string;
+  table: string;
 }
 
-const SCHEMA_METADATA: MetadataListType<SchemaInterface> = [
+const TABLE_METADATA: MetadataListType<Omit<TableInterface, 'columns'>> = [
   {
     key: 'created_at',
     label: 'Created at',
@@ -25,18 +26,30 @@ const SCHEMA_METADATA: MetadataListType<SchemaInterface> = [
       <Typography.Text>{formatTimestamp(value)}</Typography.Text>
     ),
   },
+  {
+    key: 'data_source_format',
+    label: 'Data source format',
+    dataIndex: 'data_source_format',
+    render: (value) => <Typography.Text code>{value}</Typography.Text>,
+  },
 ];
 
-export default function SchemaSidebar({ catalog, schema }: SchemaSidebarProps) {
-  const { data } = useGetSchema({ catalog, schema });
+export default function TableSidebar({
+  catalog,
+  schema,
+  table,
+}: TableSidebarProps) {
+  const { data } = useGetTable({ catalog, schema, table });
 
   if (!data) return null;
 
+  const { columns, ...metadata } = data;
+
   return (
     <MetadataList
-      data={data}
-      metadata={SCHEMA_METADATA}
-      title="Schema details"
+      data={metadata}
+      metadata={TABLE_METADATA}
+      title="Table details"
     />
   );
 }
