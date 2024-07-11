@@ -25,7 +25,7 @@ lazy val commonSettings = Seq(
     "-Xlint:unchecked",
     "-source", "1.8",
     "-target", "1.8",
-    "-g:source,lines,vars"
+    "-g:source,lines,vars",
   ),
   resolvers += Resolver.mavenLocal,
   autoScalaLibrary := false,
@@ -287,6 +287,26 @@ lazy val root = (project in file("."))
     name := s"$artifactNamePrefix",
     createTarballSettings(),
     rootReleaseSettings
+  )
+
+lazy val spark = (project in file("connectors/spark"))
+  .dependsOn(client % "compile->compile;test->test")
+  .dependsOn(server % "test->test")
+  .settings(
+    name := s"$artifactNamePrefix-spark",
+    scalaVersion := "2.13.14",
+    commonSettings,
+    javaOptions ++= Seq(
+      "--add-opens=java.base/sun.nio.ch=ALL-UNNAMED",
+    ),
+    javaCheckstyleSettings(file("dev") / "checkstyle-config.xml"),
+    libraryDependencies ++= Seq(
+      "org.apache.spark" %% "spark-sql" % "4.0.0-preview1",
+      // Test dependencies
+      "junit" %  "junit" % "4.13.2" % Test,
+      "com.github.sbt" % "junit-interface" % "0.13.3" % Test,
+      "io.delta" %% "delta-spark" % "4.0.0rc1" % Test,
+    ),
   )
 
 def generateClasspathFile(targetDir: File, classpath: Classpath): Unit = {
