@@ -6,6 +6,7 @@ import { Flex, Typography } from 'antd';
 import DescriptionBox from '../components/DescriptionBox';
 import ColumnsList from '../components/tables/ColumnsList';
 import TableSidebar from '../components/tables/TablesSidebar';
+import { TableOutlined } from '@ant-design/icons';
 
 export default function TableDetails() {
   const { catalog, schema, table } = useParams();
@@ -20,7 +21,11 @@ export default function TableDetails() {
   const tableFullName = [catalog, schema, table].join('.');
   return (
     <DetailsLayout
-      title={<Typography.Title level={3}>{tableFullName}</Typography.Title>}
+      title={
+        <Typography.Title level={3}>
+          <TableOutlined /> {tableFullName}
+        </Typography.Title>
+      }
       breadcrumbs={[
         { title: <Link to="/">Catalogs</Link>, key: '_home' },
         {

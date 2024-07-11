@@ -8,6 +8,7 @@ import SchemaSidebar from '../components/schemas/SchemaSidebar';
 import TablesList from '../components/tables/TablesList';
 import VolumesList from '../components/volumes/VolumesList';
 import FunctionsList from '../components/functions/FunctionsList';
+import { DatabaseOutlined } from '@ant-design/icons';
 
 export default function SchemaDetails() {
   const { catalog, schema } = useParams();
@@ -21,7 +22,11 @@ export default function SchemaDetails() {
   const schemaFullName = [catalog, schema].join('.');
   return (
     <DetailsLayout
-      title={<Typography.Title level={3}>{schemaFullName}</Typography.Title>}
+      title={
+        <Typography.Title level={3}>
+          <DatabaseOutlined /> {schemaFullName}
+        </Typography.Title>
+      }
       breadcrumbs={[
         { title: <Link to="/">Catalogs</Link>, key: '_home' },
         {

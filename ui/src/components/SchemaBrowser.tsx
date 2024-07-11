@@ -1,7 +1,11 @@
 import React, { useEffect, useState } from 'react';
 import { useListCatalogs } from '../hooks/catalog';
 import { Tree, TreeDataNode, Typography } from 'antd';
-import { DatabaseOutlined, DownOutlined } from '@ant-design/icons';
+import {
+  DatabaseOutlined,
+  DownOutlined,
+  ProductOutlined,
+} from '@ant-design/icons';
 import { useListSchemas } from '../hooks/schemas';
 import { useNavigate } from 'react-router-dom';
 
@@ -20,7 +24,11 @@ export default function SchemaBrowser() {
     setTreeData(
       listCatalogsRequest.data?.catalogs.map((catalog) => {
         const catalogNode: TreeDataNode = {
-          title: catalog.name,
+          title: (
+            <>
+              <ProductOutlined /> {catalog.name}
+            </>
+          ),
           key: catalog.name,
           children: [
             {
