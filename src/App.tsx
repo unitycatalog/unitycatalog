@@ -1,6 +1,6 @@
 import React from 'react';
 import { ConfigProvider, Layout, Menu } from 'antd';
-import { createBrowserRouter, RouterProvider } from 'react-router-dom';
+import { createBrowserRouter, Outlet, RouterProvider } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 
 import SchemaDetails from './components/SchemaDetails';
@@ -13,44 +13,49 @@ import CatalogDetails from './pages/CatalogDetails';
 
 const router = createBrowserRouter([
   {
-    path: '/',
-    Component() {
-      return <CatalogsList />;
-    },
-  },
-  {
-    path: '/data/:catalog',
-    Component() {
-      return <CatalogDetails />;
-    },
-  },
-  {
-    path: '/data/:catalog/:schema',
-    Component() {
-      return <SchemaDetails />;
-    },
-  },
-  {
-    path: '/data/:catalog/:schema/:table',
-    Component() {
-      return <TableDetails />;
-    },
-  },
-  {
-    path: '/volumes/:catalog/:schema/:volume',
-    Component() {
-      return <VolumeDetails />;
-    },
-  },
-  {
-    path: '/functions/:catalog/:schema/:ucFunction',
-    Component() {
-      return <FunctionDetails />;
-    },
+    element: <AppProvider />,
+    children: [
+      {
+        path: '/',
+        Component() {
+          return <CatalogsList />;
+        },
+      },
+      {
+        path: '/data/:catalog',
+        Component() {
+          return <CatalogDetails />;
+        },
+      },
+      {
+        path: '/data/:catalog/:schema',
+        Component() {
+          return <SchemaDetails />;
+        },
+      },
+      {
+        path: '/data/:catalog/:schema/:table',
+        Component() {
+          return <TableDetails />;
+        },
+      },
+      {
+        path: '/volumes/:catalog/:schema/:volume',
+        Component() {
+          return <VolumeDetails />;
+        },
+      },
+      {
+        path: '/functions/:catalog/:schema/:ucFunction',
+        Component() {
+          return <FunctionDetails />;
+        },
+      },
+    ],
   },
 ]);
 
-function App() {
+function AppProvider() {
   const queryClient = new QueryClient();
   return (
     <QueryClientProvider client={queryClient}>
@@ -105,16 +110,17 @@ function App() {
                 display: 'flex',
               }}
             >
-              <RouterProvider
-                router={router}
-                fallbackElement={<p>Loading...</p>}
-              />
+              <Outlet />
             </div>
           </Layout.Content>
         </Layout>
       </ConfigProvider>
     </QueryClientProvider>
   );
+}
+
+function App() {
+  return <RouterProvider router={router} fallbackElement={<p>Loading...</p>} />;
 }
 
 export default App;
