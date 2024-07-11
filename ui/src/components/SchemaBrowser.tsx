@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { useListCatalogs } from '../hooks/catalog';
+import { useNavigate } from 'react-router-dom';
 import { Tree, TreeDataNode, Typography } from 'antd';
 import {
   DatabaseOutlined,
@@ -7,18 +7,62 @@ import {
   LoadingOutlined,
   ProductOutlined,
 } from '@ant-design/icons';
+
+import { updateEntityTreeData } from '../utils/schemaBrowser';
+import { useListCatalogs } from '../hooks/catalog';
 import { useListSchemas } from '../hooks/schemas';
-import { useNavigate } from 'react-router-dom';
+import { useListTables } from '../hooks/tables';
+import { useListVolumes } from '../hooks/volumes';
+import { useListFunctions } from '../hooks/functions';
 
 export default function SchemaBrowser() {
   const navigate = useNavigate();
   const [catalogToExpand, setCatalogToExpand] = useState<string>();
+  const [entityToExpand, setEntityToExpand] = useState<{
+    catalog: string;
+    schema: string;
+    type: string;
+  }>({ catalog: '', schema: '', type: '' });
+
   const [treeData, setTreeData] = useState<TreeDataNode[]>([]);
 
   const listCatalogsRequest = useListCatalogs();
   const listSchemasRequest = useListSchemas({
     catalog: catalogToExpand!,
     options: { enabled: !!catalogToExpand },
+  });
+
+  const listTablesRequest = useListTables({
+    catalog: entityToExpand.catalog,
+    schema: entityToExpand.schema,
+    options: {
+      enabled:
+        !!entityToExpand.catalog &&
+        !!entityToExpand.schema &&
+        entityToExpand.type === 'tables',
+    },
+  });
+
+  const listVolumesRequest = useListVolumes({
+    catalog: entityToExpand.catalog,
+    schema: entityToExpand.schema,
+    options: {
+      enabled:
+        !!entityToExpand.catalog &&
+        !!entityToExpand.schema &&
+        entityToExpand.type === 'volumes',
+    },
+  });
+
+  const listFunctionsRequest = useListFunctions({
+    catalog: entityToExpand.catalog,
+    schema: entityToExpand.schema,
+    options: {
+      enabled:
+        !!entityToExpand.catalog &&
+        !!entityToExpand.schema &&
+        entityToExpand.type === 'functions',
+    },
   });
 
   useEffect(() => {
@@ -94,6 +138,36 @@ export default function SchemaBrowser() {
     });
   }, [catalogToExpand, listSchemasRequest.data?.schemas]);
 
+  useEffect(() => {
+    setTreeData((treeData) => {
+      return updateEntityTreeData({
+        treeData,
+        entityToExpand,
+        entityList: listTablesRequest.data?.tables ?? [],
+      });
+    });
+  }, [entityToExpand, listTablesRequest.data?.tables]);
+
+  useEffect(() => {
+    setTreeData((treeData) => {
+      return updateEntityTreeData({
+        treeData,
+        entityToExpand,
+        entityList: listVolumesRequest.data?.volumes ?? [],
+      });
+    });
+  }, [entityToExpand, listVolumesRequest.data?.volumes]);
+
+  useEffect(() => {
+    setTreeData((treeData) => {
+      return updateEntityTreeData({
+        treeData,
+        entityToExpand,
+        entityList: listFunctionsRequest.data?.functions ?? [],
+      });
+    });
+  }, [entityToExpand, listFunctionsRequest.data?.functions]);
+
   return (
     <div>
       <Typography.Title
@@ -115,19 +189,38 @@ export default function SchemaBrowser() {
             const [entityName, entityType] = (node.key as string)?.split(':');
             const [catalogName, schemaName] = entityName?.split('.');
             if (entityType) {
-              // TODO: expand entity
-            } else if (schemaName) {
-              // TODO: expand schema
-            } else if (catalogName) {
+              if (schemaName && catalogName) {
+                setEntityToExpand({
+                  catalog: catalogName,
+                  schema: schemaName,
+                  type: entityType,
+                });
+              }
+            } else if (!schemaName && catalogName) {
               setCatalogToExpand(catalogName);
             }
           }}
           onClick={(_, { key }) => {
-            const [entityName, entityType] = (key as string)?.split(':');
+            const [entityFullName, entityType] = (key as string)?.split(':');
             if (entityType === 'no-data') return;
-            const [catalogName, schemaName] = entityName?.split('.');
+            const [catalogName, schemaName, entityName] =
+              entityFullName?.split('.');
             if (entityType) {
-              // TODO: navigate to entity
+              switch (entityType) {
+                case 'tables':
+                  navigate(`/data/${catalogName}/${schemaName}/${entityName}`);
+                  break;
+                case 'volumes':
+                  navigate(
+                    `/volumes/${catalogName}/${schemaName}/${entityName}`
+                  );
+                  break;
+                case 'functions':
+                  navigate(
+                    `/functions/${catalogName}/${schemaName}/${entityName}`
+                  );
+                  break;
+              }
             } else if (schemaName) {
               navigate(`/data/${catalogName}/${schemaName}`);
             } else if (catalogName) {

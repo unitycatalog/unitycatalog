@@ -1,4 +1,4 @@
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, UseQueryOptions } from '@tanstack/react-query';
 import { UC_API_PREFIX } from '../utils/constants';
 
 export interface VolumeInterface {
@@ -18,9 +18,14 @@ interface ListVolumesResponse {
 interface ListVolumesParams {
   catalog: string;
   schema: string;
+  options?: Omit<UseQueryOptions<ListVolumesResponse>, 'queryKey' | 'queryFn'>;
 }
 
-export function useListVolumes({ catalog, schema }: ListVolumesParams) {
+export function useListVolumes({
+  catalog,
+  schema,
+  options,
+}: ListVolumesParams) {
   return useQuery<ListVolumesResponse>({
     queryKey: ['listVolumes', catalog, schema],
     queryFn: async () => {
@@ -34,5 +39,6 @@ export function useListVolumes({ catalog, schema }: ListVolumesParams) {
       );
       return response.json();
     },
+    ...options,
   });
 }
