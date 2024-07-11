@@ -3,6 +3,7 @@ import { useListSchemas } from '../../hooks/schemas';
 import ListLayout from '../layouts/ListLayout';
 import { formatTimestamp } from '../../utils/formatTimestamp';
 import { useNavigate } from 'react-router-dom';
+import { DatabaseOutlined } from '@ant-design/icons';
 
 interface SchemasListProps {
   catalog: string;
@@ -24,6 +25,11 @@ export default function SchemasList({ catalog }: SchemasListProps) {
           dataIndex: 'name',
           key: 'name',
           width: '60%',
+          render: (name) => (
+            <>
+              <DatabaseOutlined /> {name}
+            </>
+          ),
         },
         {
           title: 'Created At',
