@@ -3,13 +3,13 @@ import { ConfigProvider, Layout, Menu } from 'antd';
 import { createBrowserRouter, RouterProvider } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 
-import CatalogDetails from './components/CatalogDetails';
 import SchemaDetails from './components/SchemaDetails';
 import TableDetails from './components/TableDetails';
 import VolumeDetails from './components/VolumeDetails';
 import FunctionDetails from './components/FunctionDetails';
 import SchemaBrowser from './components/SchemaBrowser';
 import CatalogsList from './pages/CatalogsList';
+import CatalogDetails from './pages/CatalogDetails';
 
 const router = createBrowserRouter([
   {
@@ -97,7 +97,14 @@ function App() {
             </div>
 
             {/* Right: Main details content */}
-            <div style={{ overflowY: 'scroll', flex: 1, padding: 16 }}>
+            <div
+              style={{
+                overflowY: 'auto',
+                flex: 1,
+                padding: 16,
+                display: 'flex',
+              }}
+            >
               <RouterProvider
                 router={router}
                 fallbackElement={<p>Loading...</p>}
