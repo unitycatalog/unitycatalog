@@ -21,7 +21,7 @@ jobs:
         id: check-assignee
         run: |
           # Check if the user is already assigned to the issue
-          RESPONSE=$(curl -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" -LI https://api.github.com/repos/${{ github.repository }}/issues/${{ github.event.issue.number }}/assignees/${{ github.event.comment.user.login }} -o /dev/null -w '%{http_code}' -s)
+          RESPONSE=$(curl -LI https://api.github.com/repos/${{ github.repository }}/issues/${{ github.event.issue.number }}/assignees/${{ github.event.comment.user.login }} -o /dev/null -w '%{http_code}' -s)
           echo "HTTP_CODE=$RESPONSE" >> $GITHUB_ENV
 
       - name: Assign issue to commenter
@@ -29,7 +29,7 @@ jobs:
         run: |
           # Assign the issue to the user who commented 'take'
           echo "Assigning issue #${{ github.event.issue.number }} to @${{ github.event.comment.user.login }}"
-          curl -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" -d '{"assignees": ["${{ github.event.comment.user.login }}"]}' https://api.github.com/repos/${{ github.repository }}/issues/${{ github.event.issue.number }}/assignees
+          curl -d '{"assignees": ["${{ github.event.comment.user.login }}"]}' https://api.github.com/repos/${{ github.repository }}/issues/${{ github.event.issue.number }}/assignees
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
