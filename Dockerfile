@@ -145,7 +145,7 @@ COPY <<-"EOF" "${UC_SERVER_BIN}"
     cd $ROOT_DIR
 
     # Execute the jar / ie Run the server
-    exec "$SERVER_JAVA_COMMAND"
+    exec $SERVER_JAVA_COMMAND
 EOF
 
 
