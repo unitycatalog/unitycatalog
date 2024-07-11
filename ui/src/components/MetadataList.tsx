@@ -4,6 +4,7 @@ import { ReactNode } from 'react';
 export type MetadataListType<T> = Array<{
   key: string;
   dataIndex: keyof T;
+  label?: string;
   render?: (value: any) => ReactNode;
 }>;
 
@@ -20,13 +21,13 @@ export default function MetadataList<
   return (
     <Flex vertical gap="middle">
       <Typography.Title level={5}>{title}</Typography.Title>
-      {metadata.map(({ key, dataIndex, render }) => {
+      {metadata.map(({ key, label, dataIndex, render }) => {
         const value = data[dataIndex];
         if (!value) return null;
 
         return (
           <div key={key}>
-            <Typography.Text strong>{key}: </Typography.Text>
+            <Typography.Text strong>{label ?? key}: </Typography.Text>
             {render?.(value) ?? value}
           </div>
         );
