@@ -27,19 +27,14 @@ public class HibernateUtils {
         throw new RuntimeException("PropertiesUtil instance is null in createSessionFactory");
       }
 
-      Configuration configuration = new Configuration();
-      configuration.setProperty("hibernate.connection.driver_class", "org.h2.Driver");
-
-      if ("test".equals(properties.getProperty("server.env"))) {
-        configuration.setProperty(
-            "hibernate.connection.url", "jdbc:h2:mem:testdb;DB_CLOSE_DELAY=-1");
-        configuration.setProperty("hibernate.hbm2ddl.auto", "create-drop");
-        LOGGER.debug("Hibernate configuration set for testing");
-      } else {
-        configuration.setProperty(
-            "hibernate.connection.url", "jdbc:h2:file:./etc/db/h2db;DB_CLOSE_DELAY=-1");
-        configuration.setProperty("hibernate.hbm2ddl.auto", "update");
-        LOGGER.debug("Hibernate configuration set for production");
+      Configuration configuration;
+      switch (properties.getProperty("server.database.type")) {
+        case "h2":
+          configuration = getH2Configuration();
+          break;
+        case "mysql":
+        default:
+          configuration = getMysqlConfiguration();
       }
       configuration.setProperty("hibernate.show_sql", "false");
       configuration.setProperty("hibernate.archive.autodetection", "class");
@@ -66,5 +61,33 @@ public class HibernateUtils {
     } catch (Exception e) {
       throw new RuntimeException("Exception during creation of SessionFactory", e);
     }
+  }
+
+  private static Configuration getH2Configuration() {
+    Configuration configuration = new Configuration();
+    configuration.setProperty("hibernate.connection.driver_class", "org.h2.Driver");
+
+    if ("test".equals(properties.getProperty("server.env"))) {
+      configuration.setProperty("hibernate.connection.url", "jdbc:h2:mem:testdb;DB_CLOSE_DELAY=-1");
+      configuration.setProperty("hibernate.hbm2ddl.auto", "create-drop");
+      LOGGER.debug("Hibernate configuration set for testing");
+    } else {
+      configuration.setProperty(
+          "hibernate.connection.url", "jdbc:h2:file:./etc/db/h2db;DB_CLOSE_DELAY=-1");
+      configuration.setProperty("hibernate.hbm2ddl.auto", "update");
+      LOGGER.debug("Hibernate configuration set for production");
+    }
+
+    return configuration;
+  }
+
+  private static Configuration getMysqlConfiguration() {
+    Configuration configuration = new Configuration();
+    configuration.setProperty("hibernate.connection.driver_class", "com.mysql.cj.jdbc.Driver");
+    configuration.setProperty("hibernate.connection.url", "jdbc:mysql://localhost:3306/ucdb");
+    configuration.setProperty("hibernate.connection.user", "uc_default_user");
+    configuration.setProperty("hibernate.connection.password", "uc_default_password");
+    configuration.setProperty("hibernate.hbm2ddl.auto", "update");
+    return configuration;
   }
 }

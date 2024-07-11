@@ -3,9 +3,12 @@
 This is the open source version of the Unity Catalog server implementation. It can be started locally.
 
 ## Running the Server
+First start the Mysql by issuing the below command from the project root directory:
+```sh
+docker-compose -f etc/db/docker-compose.yml up -d
+```
 
-The server can be started by issuing the below command from the project root directory:
-
+Then the UC server can be started 
 ```sh
 bin/start-uc-server
 ```

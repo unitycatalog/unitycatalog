@@ -10,7 +10,9 @@ Start by cloning the open source Unity Catalog GitHub repository:
 git clone git@github.com:unitycatalog/unitycatalog.git
 ```
 
-Change into the `unitycatalog` directory and run `bin/start-uc-server` to instantiate the server.  Here is what you should see:
+Change into the `unitycatalog` directory and run `docker-compose -f etc/db/docker-compose.yml up -d` to start Mysql.
+
+Then run `bin/start-uc-server` to instantiate the server.  Here is what you should see:
 
 ![UC Server](./assets/images/uc_server.png)
 
