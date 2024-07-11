@@ -3,7 +3,7 @@ import { ConfigProvider, Layout, Menu } from 'antd';
 import { createBrowserRouter, Outlet, RouterProvider } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 
-import TableDetails from './components/TableDetails';
+import TableDetails from './pages/TableDetails';
 import VolumeDetails from './components/VolumeDetails';
 import FunctionDetails from './components/FunctionDetails';
 import SchemaBrowser from './components/SchemaBrowser';
