@@ -6,7 +6,8 @@ interface SchemaInterface {
   catalog_name: string;
   name: string;
   comment: string;
-  created_at: string;
+  created_at: number;
+  updated_at: number | null;
 }
 interface ListSchemasResponse {
   schemas: SchemaInterface[];
