@@ -1,4 +1,4 @@
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, UseQueryOptions } from '@tanstack/react-query';
 import { UC_API_PREFIX } from '../utils/constants';
 
 interface ColumnInterface {
@@ -28,9 +28,10 @@ interface ListTablesResponse {
 interface ListTablesParams {
   catalog: string;
   schema: string;
+  options?: Omit<UseQueryOptions<ListTablesResponse>, 'queryKey' | 'queryFn'>;
 }
 
-export function useListTables({ catalog, schema }: ListTablesParams) {
+export function useListTables({ catalog, schema, options }: ListTablesParams) {
   return useQuery<ListTablesResponse>({
     queryKey: ['listTables', catalog, schema],
     queryFn: async () => {
@@ -44,6 +45,7 @@ export function useListTables({ catalog, schema }: ListTablesParams) {
       );
       return response.json();
     },
+    ...options,
   });
 }
 
