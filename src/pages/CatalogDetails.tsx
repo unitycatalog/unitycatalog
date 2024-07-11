@@ -20,7 +20,7 @@ export default function CatalogDetails() {
       title={<Typography.Title level={3}>{catalog}</Typography.Title>}
       breadcrumbs={[
         { title: <Link to="/">Catalogs</Link>, key: '_home' },
-        { title: catalog, key: catalog },
+        { title: catalog, key: '_catalog' },
       ]}
     >
       <DetailsLayout.Content>
