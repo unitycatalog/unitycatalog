@@ -22,12 +22,16 @@ public class IcebergRestExceptionHandler implements ExceptionHandlerFunction {
     try {
       if (cause instanceof BaseException) {
         // FIXME!! we should probably translate BaseException -> Iceberg REST exception somewhere
-        return handleBaseException((BaseException)cause);
-      } else if(cause instanceof NoSuchNamespaceException || cause instanceof NoSuchTableException || cause instanceof NoSuchViewException) {
+        return handleBaseException((BaseException) cause);
+      } else if (cause instanceof NoSuchNamespaceException
+          || cause instanceof NoSuchTableException
+          || cause instanceof NoSuchViewException) {
         return createErrorResponse(HttpStatus.NOT_FOUND, cause);
-      } else if(cause instanceof AlreadyExistsException || cause instanceof NamespaceNotEmptyException || cause instanceof CommitFailedException) {
+      } else if (cause instanceof AlreadyExistsException
+          || cause instanceof NamespaceNotEmptyException
+          || cause instanceof CommitFailedException) {
         return createErrorResponse(HttpStatus.CONFLICT, cause);
-      } else if(cause instanceof IllegalArgumentException) {
+      } else if (cause instanceof IllegalArgumentException) {
         return createErrorResponse(HttpStatus.BAD_REQUEST, cause);
       } else {
         return createErrorResponse(HttpStatus.INTERNAL_SERVER_ERROR, cause);
@@ -43,13 +47,15 @@ public class IcebergRestExceptionHandler implements ExceptionHandlerFunction {
 
   @SneakyThrows
   private HttpResponse createErrorResponse(HttpStatus status, Throwable cause) {
-    return HttpResponse.of(status, MediaType.JSON, RESTObjectMapper.mapper().writeValueAsString(
-      ErrorResponse.builder()
-        .responseCode(status.code())
-        .withType(cause.getClass().getSimpleName())
-        .withMessage(cause.getMessage())
-        .build()
-    ));
+    return HttpResponse.of(
+        status,
+        MediaType.JSON,
+        RESTObjectMapper.mapper()
+            .writeValueAsString(
+                ErrorResponse.builder()
+                    .responseCode(status.code())
+                    .withType(cause.getClass().getSimpleName())
+                    .withMessage(cause.getMessage())
+                    .build()));
   }
-
 }
