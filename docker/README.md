@@ -10,7 +10,7 @@ This project provides a Dockerised environment for running Unity Catalog. It inc
 
 ### 1. Building the Image
 
-The `build_docker.sh` script is responsible for building the Docker image for Unity Catalog. Run it from the project directory:
+The `build-uc-server-docker` script is responsible for building the Docker image for Unity Catalog. Run it from the project directory:
 
 ```bash
 ./bin/build-uc-server-docker
@@ -20,10 +20,10 @@ This will create an image named `unitycatalog`.
 
 ### 2. Running the Catalog
 
-The `run_docker.sh` script starts the Unity Catalog container. It also creates a network named `unitycatalog_network` for the container to use. Run it from the project directory:
+The `start-uc-server-in-docker` script starts the Unity Catalog container. It also creates a network named `unitycatalog_network` for the container to use. Run it from the project directory:
 
 ```bash
-./bin.start-uc-server-in-docker
+./bin/start-uc-server-in-docker
 ```
 
 > [!TIP]
