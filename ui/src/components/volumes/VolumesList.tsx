@@ -4,6 +4,7 @@ import { formatTimestamp } from '../../utils/formatTimestamp';
 import { useNavigate } from 'react-router-dom';
 import { useListVolumes } from '../../hooks/volumes';
 import { ReactNode } from 'react';
+import { FolderOutlined } from '@ant-design/icons';
 
 interface VolumesListProps {
   catalog: string;
@@ -36,6 +37,11 @@ export default function VolumesList({
           dataIndex: 'name',
           key: 'name',
           width: '60%',
+          render: (name) => (
+            <>
+              <FolderOutlined /> {name}
+            </>
+          ),
         },
         {
           title: 'Created At',
