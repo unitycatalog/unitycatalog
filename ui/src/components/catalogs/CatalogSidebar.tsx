@@ -10,6 +10,7 @@ interface CatalogSidebarProps {
 const CATALOG_METADATA: MetadataListType<CatalogInterface> = [
   {
     key: 'created_at',
+    label: 'Created at',
     dataIndex: 'created_at',
     render: (value) => (
       <Typography.Text>{formatTimestamp(value)}</Typography.Text>
@@ -17,6 +18,7 @@ const CATALOG_METADATA: MetadataListType<CatalogInterface> = [
   },
   {
     key: 'updated_at',
+    label: 'Updated at',
     dataIndex: 'updated_at',
     render: (value) => (
       <Typography.Text>{formatTimestamp(value)}</Typography.Text>
