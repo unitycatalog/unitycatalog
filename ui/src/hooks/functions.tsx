@@ -1,4 +1,4 @@
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, UseQueryOptions } from '@tanstack/react-query';
 import { UC_API_PREFIX } from '../utils/constants';
 
 export interface FunctionInterface {
@@ -18,9 +18,17 @@ interface ListFunctionsResponse {
 interface ListFunctionsParams {
   catalog: string;
   schema: string;
+  options?: Omit<
+    UseQueryOptions<ListFunctionsResponse>,
+    'queryKey' | 'queryFn'
+  >;
 }
 
-export function useListFunctions({ catalog, schema }: ListFunctionsParams) {
+export function useListFunctions({
+  catalog,
+  schema,
+  options,
+}: ListFunctionsParams) {
   return useQuery<ListFunctionsResponse>({
     queryKey: ['listFunctions', catalog, schema],
     queryFn: async () => {
@@ -34,5 +42,6 @@ export function useListFunctions({ catalog, schema }: ListFunctionsParams) {
       );
       return response.json();
     },
+    ...options,
   });
 }
