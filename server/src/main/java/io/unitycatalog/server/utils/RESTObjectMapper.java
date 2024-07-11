@@ -17,7 +17,8 @@
  * under the License.
  */
 
-// This file is ported from core/src/main/java/org/apache/iceberg/rest/RESTObjectMapper.java in apache/iceberg.
+// This file is ported from core/src/main/java/org/apache/iceberg/rest/RESTObjectMapper.java in
+// apache/iceberg.
 package io.unitycatalog.server.utils;
 
 import com.fasterxml.jackson.annotation.JsonAutoDetect;
@@ -33,8 +34,7 @@ public class RESTObjectMapper {
   private static final ObjectMapper MAPPER = new ObjectMapper(FACTORY);
   private static volatile boolean isInitialized = false;
 
-  private RESTObjectMapper() {
-  }
+  private RESTObjectMapper() {}
 
   public static ObjectMapper mapper() {
     if (!isInitialized) {
