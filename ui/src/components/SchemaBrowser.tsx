@@ -4,6 +4,7 @@ import { Tree, TreeDataNode, Typography } from 'antd';
 import {
   DatabaseOutlined,
   DownOutlined,
+  LoadingOutlined,
   ProductOutlined,
 } from '@ant-design/icons';
 import { useListSchemas } from '../hooks/schemas';
@@ -32,9 +33,10 @@ export default function SchemaBrowser() {
           key: catalog.name,
           children: [
             {
-              title: 'Loading...',
-              key: `${catalog.id}-no-data`,
+              title: <LoadingOutlined />,
+              key: `${catalog.id}:no-data`,
               isLeaf: true,
+              style: { color: 'gray' },
             },
           ],
         };
@@ -47,43 +49,46 @@ export default function SchemaBrowser() {
     setTreeData((treeData) => {
       const catalogNode = treeData.find(({ key }) => key === catalogToExpand);
       if (catalogNode) {
-        catalogNode.children = listSchemasRequest.data?.schemas.map(
-          ({ catalog_name, name }) => ({
-            title: (
-              <>
-                <DatabaseOutlined /> {name}
-              </>
-            ),
-            key: `${catalog_name}.${name}`,
-            isLeaf: false,
-            children: [
+        const schemas = listSchemasRequest.data?.schemas;
+        catalogNode.children = schemas?.length
+          ? schemas.map(({ catalog_name, name }) => ({
+              title: (
+                <>
+                  <DatabaseOutlined /> {name}
+                </>
+              ),
+              key: `${catalog_name}.${name}`,
+              isLeaf: false,
+              children: [
+                {
+                  title: 'Tables',
+                  key: `${catalog_name}.${name}:tables`,
+                  isLeaf: false,
+                  selectable: false,
+                },
+                {
+                  title: 'Volumes',
+                  key: `${catalog_name}.${name}:volumes`,
+                  isLeaf: false,
+                  selectable: false,
+                },
+                {
+                  title: 'Functions',
+                  key: `${catalog_name}.${name}:functions`,
+                  isLeaf: false,
+                  selectable: false,
+                },
+              ],
+            }))
+          : [
               {
-                title: 'Tables',
-                key: `${catalog_name}.${name}:tables`,
-                isLeaf: false,
+                title: 'No schemas found',
+                key: `${catalogToExpand}:no-data`,
+                isLeaf: true,
+                style: { color: 'gray' },
                 selectable: false,
               },
-              {
-                title: 'Volumes',
-                key: `${catalog_name}.${name}:volumes`,
-                isLeaf: false,
-                selectable: false,
-              },
-              {
-                title: 'Functions',
-                key: `${catalog_name}.${name}:functions`,
-                isLeaf: false,
-                selectable: false,
-              },
-            ],
-          })
-        ) ?? [
-          {
-            title: 'No schemas found',
-            key: `${catalogToExpand}-no-schemas`,
-            isLeaf: true,
-          },
-        ];
+            ];
       }
       return [...treeData];
     });
@@ -119,6 +124,7 @@ export default function SchemaBrowser() {
           }}
           onClick={(_, { key }) => {
             const [entityName, entityType] = (key as string)?.split(':');
+            if (entityType === 'no-data') return;
             const [catalogName, schemaName] = entityName?.split('.');
             if (entityType) {
               // TODO: navigate to entity
