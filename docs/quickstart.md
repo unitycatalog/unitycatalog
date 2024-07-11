@@ -42,6 +42,8 @@ Unity Catalog stores all assets in a 3-level namespace:
 2. schema
 3. assets like tables, volumes, functions, etc.
 
+![UC 3 Level](./assets/images/uc-3-level.png)
+
 Here's an example Unity Catalog instance:
 
 ![UC Example Catalog](./assets/images/uc_example_catalog.png)

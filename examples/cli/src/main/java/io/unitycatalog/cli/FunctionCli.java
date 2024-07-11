@@ -25,7 +25,9 @@ public class FunctionCli {
     private static final ObjectMapper objectMapper = CliUtils.getObjectMapper();
     private static ObjectWriter objectWriter;
 
-    public static void handle(CommandLine cmd, ApiClient apiClient) throws JsonProcessingException, ApiException {
+    public static void handle(
+            CommandLine cmd,
+            ApiClient apiClient) throws JsonProcessingException, ApiException {
         FunctionsApi functionsApi = new FunctionsApi(apiClient);
         String[] subArgs = cmd.getArgs();
         objectWriter = CliUtils.getObjectWriter(cmd);

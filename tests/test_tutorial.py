@@ -51,7 +51,9 @@ commands_and_expected_output_strings = [
 def run_command_and_check_output(command, search_strings):
     try:
         # Run the command and capture the output
-        result = subprocess.run(command, shell=True, check=True, text=True, capture_output=True)
+        my_env = os.environ.copy()
+        my_env["UC_OUTPUT_WIDTH"] = "190"
+        result = subprocess.run(command, shell=True, check=True, text=True, capture_output=True, env=my_env)
         output = result.stdout
         search_results = {s: s in output for s in search_strings}
         return output, search_results
