@@ -5,6 +5,9 @@ import { Flex, Radio, Typography } from 'antd';
 import DescriptionBox from '../components/DescriptionBox';
 import { useGetSchema } from '../hooks/schemas';
 import SchemaSidebar from '../components/schemas/SchemaSidebar';
+import TablesList from '../components/tables/TablesList';
+import VolumesList from '../components/volumes/VolumesList';
+import FunctionsList from '../components/functions/FunctionsList';
 
 export default function SchemaDetails() {
   const { catalog, schema } = useParams();
@@ -48,9 +51,9 @@ enum SchemaTabs {
 }
 
 const SCHEMA_TABS_MAP = {
-  [SchemaTabs.Tables]: ({ catalog, schema, filters }: any) => null,
-  [SchemaTabs.Volumes]: ({ catalog, schema, filters }: any) => null,
-  [SchemaTabs.Functions]: ({ catalog, schema, filters }: any) => null,
+  [SchemaTabs.Tables]: TablesList,
+  [SchemaTabs.Volumes]: VolumesList,
+  [SchemaTabs.Functions]: FunctionsList,
 };
 
 interface SchemaDetailsTabsProps {
