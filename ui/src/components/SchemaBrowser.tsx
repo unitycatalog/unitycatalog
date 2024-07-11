@@ -1,21 +1,30 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useListCatalogs } from '../hooks/catalog';
 import { Tree, TreeDataNode, Typography } from 'antd';
-import { DownOutlined } from '@ant-design/icons';
+import { DatabaseOutlined, DownOutlined } from '@ant-design/icons';
+import { useListSchemas } from '../hooks/schemas';
+import { useNavigate } from 'react-router-dom';
 
 export default function SchemaBrowser() {
-  const listCatalogsRequest = useListCatalogs();
+  const navigate = useNavigate();
+  const [catalogToExpand, setCatalogToExpand] = useState<string>();
   const [treeData, setTreeData] = useState<TreeDataNode[]>([]);
+
+  const listCatalogsRequest = useListCatalogs();
+  const listSchemasRequest = useListSchemas({
+    catalog: catalogToExpand!,
+    options: { enabled: !!catalogToExpand },
+  });
 
   useEffect(() => {
     setTreeData(
       listCatalogsRequest.data?.catalogs.map((catalog) => {
         const catalogNode: TreeDataNode = {
           title: catalog.name,
-          key: catalog.id,
+          key: catalog.name,
           children: [
             {
-              title: 'TODO',
+              title: 'Loading...',
               key: `${catalog.id}-no-data`,
               isLeaf: true,
             },
@@ -25,6 +34,54 @@ export default function SchemaBrowser() {
       }) ?? []
     );
   }, [listCatalogsRequest.data?.catalogs]);
+
+  useEffect(() => {
+    setTreeData((treeData) => {
+      const catalogNode = treeData.find(
+        ({ title }) => title === catalogToExpand
+      );
+      if (catalogNode) {
+        catalogNode.children = listSchemasRequest.data?.schemas.map(
+          ({ catalog_name, name }) => ({
+            title: (
+              <>
+                <DatabaseOutlined /> {name}
+              </>
+            ),
+            key: `${catalog_name}.${name}`,
+            isLeaf: false,
+            children: [
+              {
+                title: 'Tables',
+                key: `${catalog_name}.${name}:tables`,
+                isLeaf: false,
+                selectable: false,
+              },
+              {
+                title: 'Volumes',
+                key: `${catalog_name}.${name}:volumes`,
+                isLeaf: false,
+                selectable: false,
+              },
+              {
+                title: 'Functions',
+                key: `${catalog_name}.${name}:functions`,
+                isLeaf: false,
+                selectable: false,
+              },
+            ],
+          })
+        ) ?? [
+          {
+            title: 'No schemas found',
+            key: `${catalogToExpand}-no-schemas`,
+            isLeaf: true,
+          },
+        ];
+      }
+      return [...treeData];
+    });
+  }, [catalogToExpand, listSchemasRequest.data?.schemas]);
 
   return (
     <div>
@@ -38,7 +95,34 @@ export default function SchemaBrowser() {
       </Typography.Title>
 
       <div style={{ margin: '0 12px' }}>
-        <Tree showLine switcherIcon={<DownOutlined />} treeData={treeData} />
+        <Tree
+          showLine
+          switcherIcon={<DownOutlined />}
+          treeData={treeData}
+          onExpand={(_, { expanded, node }) => {
+            if (!expanded) return;
+            const [entityName, entityType] = (node.key as string)?.split(':');
+            const [catalogName, schemaName] = entityName?.split('.');
+            if (entityType) {
+              // TODO: expand entity
+            } else if (schemaName) {
+              // TODO: expand schema
+            } else if (catalogName) {
+              setCatalogToExpand(catalogName);
+            }
+          }}
+          onClick={(_, { key }) => {
+            const [entityName, entityType] = (key as string)?.split(':');
+            const [catalogName, schemaName] = entityName?.split('.');
+            if (entityType) {
+              // TODO: navigate to entity
+            } else if (schemaName) {
+              navigate(`/data/${catalogName}/${schemaName}`);
+            } else if (catalogName) {
+              navigate(`/data/${catalogName}`);
+            }
+          }}
+        />
       </div>
     </div>
   );
