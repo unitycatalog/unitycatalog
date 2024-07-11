@@ -55,23 +55,29 @@ public abstract class BaseCatalogCRUDTest extends BaseCRUDTest {
     // Calling update catalog with nothing to update should not change anything
     System.out.println("Testing updating catalog with nothing to update..");
     UpdateCatalog emptyUpdateCatalog = new UpdateCatalog();
-    CatalogInfo emptyUpdateCatalogInfo =
-        catalogOperations.updateCatalog(CATALOG_NAME, emptyUpdateCatalog);
+    catalogOperations.updateCatalog(CATALOG_NAME, emptyUpdateCatalog);
     CatalogInfo catalogInfo3 = catalogOperations.getCatalog(CATALOG_NAME);
     Assert.assertEquals(catalogInfo, catalogInfo3);
 
-    // Update catalog name without updating comment
+    // Update catalog name without updating comment and properties
     System.out.println("Testing update catalog: changing name..");
     UpdateCatalog updateCatalog = new UpdateCatalog().newName(CATALOG_NEW_NAME);
     CatalogInfo updatedCatalogInfo = catalogOperations.updateCatalog(CATALOG_NAME, updateCatalog);
     assertCatalog(updatedCatalogInfo, CATALOG_NEW_NAME, COMMENT);
 
-    // Update catalog comment without updating name
+    // Update catalog comment without updating name and properties
     System.out.println("Testing update catalog: changing comment..");
     UpdateCatalog updateCatalog2 = new UpdateCatalog().comment(CATALOG_NEW_COMMENT);
     CatalogInfo updatedCatalogInfo2 =
         catalogOperations.updateCatalog(CATALOG_NEW_NAME, updateCatalog2);
     assertCatalog(updatedCatalogInfo2, CATALOG_NEW_NAME, CATALOG_NEW_COMMENT);
+
+    // Update catalog properties without updating name and comment
+    System.out.println("Testing update catalog: changing properties..");
+    UpdateCatalog updateCatalog3 = new UpdateCatalog().properties(NEW_PROPERTIES);
+    catalogOperations.updateCatalog(CATALOG_NEW_NAME, updateCatalog3);
+    CatalogInfo updatedCatalogInfo3 = catalogOperations.getCatalog(CATALOG_NEW_NAME);
+    assertCatalog(updatedCatalogInfo3, CATALOG_NEW_NAME, CATALOG_NEW_COMMENT);
 
     // Delete catalog
     System.out.println("Testing delete catalog..");

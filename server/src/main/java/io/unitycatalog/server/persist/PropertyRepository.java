@@ -11,9 +11,8 @@ import org.slf4j.LoggerFactory;
 public class PropertyRepository {
   private static final Logger LOGGER = LoggerFactory.getLogger(PropertyRepository.class);
 
-  public static List<PropertyDAO> findProperties(
-      Session session, UUID entityId, String entityType) {
-    LOGGER.debug("Getting properties for " + entityType + ": " + entityId);
+  public static List<PropertyDAO> findProperties(Session session, UUID entityId, String entityType) {
+    LOGGER.debug("Getting properties for {}: {}", entityType, entityId);
     String hql = "FROM PropertyDAO p WHERE p.entityId = :entityId and p.entityType = :entityType";
     Query<PropertyDAO> query = session.createQuery(hql, PropertyDAO.class);
     query.setParameter("entityId", entityId);
