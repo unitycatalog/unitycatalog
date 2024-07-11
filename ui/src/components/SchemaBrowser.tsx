@@ -45,9 +45,7 @@ export default function SchemaBrowser() {
 
   useEffect(() => {
     setTreeData((treeData) => {
-      const catalogNode = treeData.find(
-        ({ title }) => title === catalogToExpand
-      );
+      const catalogNode = treeData.find(({ key }) => key === catalogToExpand);
       if (catalogNode) {
         catalogNode.children = listSchemasRequest.data?.schemas.map(
           ({ catalog_name, name }) => ({
