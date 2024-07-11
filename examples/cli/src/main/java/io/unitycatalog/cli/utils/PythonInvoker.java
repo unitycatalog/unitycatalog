@@ -12,6 +12,7 @@ import java.io.InputStreamReader;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
+import java.util.stream.Collectors;
 
 public class PythonInvoker {
 
@@ -27,17 +28,26 @@ public class PythonInvoker {
             argsList.add(function.getRoutineDefinition());
 
             // Retrieve and add parameters as arguments
-            List<FunctionParameterInfo> parameters = function.getInputParams()
+            List<FunctionParameterInfo> parameters = function
+                    .getInputParams()
                     .getParameters();
             if (parameters == null || parameters.isEmpty()) {
                 throw new ApiException("Function parameters not found.");
             }
+            if (args.length < parameters.size()) {
+                List<String> names = parameters
+                    .stream()
+                    .skip(args.length)
+                    .map(FunctionParameterInfo::getName)
+                    .collect(Collectors.toList());
+                throw new ApiException(
+                    "Not enough parameters provided: " + args.length + ", expected: " + parameters.size() + ", missing: " + names);
+            }
             List<String> paramNames = new ArrayList<>();
             List<Object> argValues = new ArrayList<>();
-            int index = 0;
             for (FunctionParameterInfo param : parameters) {
                 paramNames.add(param.getName());
-                String argument = args[index++];
+                String argument = args[param.getPosition()];
                 if (param.getTypeName().equals(ColumnTypeName.INT)) {
                     argValues.add(Integer.parseInt(argument));
                 } else if (param.getTypeName().equals(ColumnTypeName.DOUBLE)) {

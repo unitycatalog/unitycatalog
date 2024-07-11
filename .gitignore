@@ -12,3 +12,4 @@ build/sbt-launch-*
 venv
 server_pid.txt
 site
+python_engine.log
