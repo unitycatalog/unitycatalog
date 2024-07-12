@@ -1,6 +1,5 @@
 import { Typography } from 'antd';
 import ListLayout from '../layouts/ListLayout';
-import { formatTimestamp } from '../../utils/formatTimestamp';
 import { useGetTable } from '../../hooks/tables';
 
 interface ColumnsListProps {
