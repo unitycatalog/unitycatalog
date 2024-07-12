@@ -8,10 +8,10 @@ import {
 } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 
-import TableDetails from './pages/TableDetails';
-import VolumeDetails from './components/VolumeDetails';
-import FunctionDetails from './pages/FunctionDetails';
 import SchemaBrowser from './components/SchemaBrowser';
+import TableDetails from './pages/TableDetails';
+import FunctionDetails from './pages/FunctionDetails';
+import VolumeDetails from './pages/VolumeDetails';
 import CatalogsList from './pages/CatalogsList';
 import CatalogDetails from './pages/CatalogDetails';
 import SchemaDetails from './pages/SchemaDetails';
