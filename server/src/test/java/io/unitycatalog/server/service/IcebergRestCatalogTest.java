@@ -1,12 +1,19 @@
 package io.unitycatalog.server.service;
 
-import static org.assertj.core.api.Assertions.assertThat;
-
 import com.linecorp.armeria.client.WebClient;
 import com.linecorp.armeria.common.AggregatedHttpResponse;
 import com.linecorp.armeria.common.auth.AuthToken;
 import io.unitycatalog.client.ApiException;
-import io.unitycatalog.client.model.*;
+import io.unitycatalog.client.model.CatalogInfo;
+import io.unitycatalog.client.model.ColumnInfo;
+import io.unitycatalog.client.model.ColumnTypeName;
+import io.unitycatalog.client.model.CreateCatalog;
+import io.unitycatalog.client.model.CreateSchema;
+import io.unitycatalog.client.model.CreateTable;
+import io.unitycatalog.client.model.DataSourceFormat;
+import io.unitycatalog.client.model.SchemaInfo;
+import io.unitycatalog.client.model.TableInfo;
+import io.unitycatalog.client.model.TableType;
 import io.unitycatalog.server.base.BaseServerTest;
 import io.unitycatalog.server.base.catalog.CatalogOperations;
 import io.unitycatalog.server.base.schema.SchemaOperations;
@@ -18,12 +25,6 @@ import io.unitycatalog.server.sdk.schema.SdkSchemaOperations;
 import io.unitycatalog.server.sdk.tables.SdkTableOperations;
 import io.unitycatalog.server.utils.RESTObjectMapper;
 import io.unitycatalog.server.utils.TestUtils;
-import java.io.IOException;
-import java.net.URISyntaxException;
-import java.util.List;
-import java.util.Objects;
-import java.util.Optional;
-import java.util.UUID;
 import org.apache.iceberg.catalog.Namespace;
 import org.apache.iceberg.catalog.TableIdentifier;
 import org.apache.iceberg.exceptions.NoSuchTableException;
@@ -37,6 +38,15 @@ import org.hibernate.Session;
 import org.hibernate.Transaction;
 import org.junit.Before;
 import org.junit.Test;
+
+import java.io.IOException;
+import java.net.URISyntaxException;
+import java.util.List;
+import java.util.Objects;
+import java.util.Optional;
+import java.util.UUID;
+
+import static org.assertj.core.api.Assertions.assertThat;
 
 public class IcebergRestCatalogTest extends BaseServerTest {
 
@@ -287,7 +297,7 @@ public class IcebergRestCatalogTest extends BaseServerTest {
       LoadTableResponse loadTableResponse =
           RESTObjectMapper.mapper().readValue(resp.contentUtf8(), LoadTableResponse.class);
       assertThat(loadTableResponse.tableMetadata().metadataFileLocation())
-              .isEqualTo(Objects.requireNonNull(this.getClass().getResource("/iceberg.metadata.json")).toURI().toString());
+              .isEqualTo(Objects.requireNonNull(this.getClass().getResource("/iceberg.metadata.json")).getPath());
     }
 
     // List uniform tables
