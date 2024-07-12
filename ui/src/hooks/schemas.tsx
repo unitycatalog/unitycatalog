@@ -1,4 +1,9 @@
-import { useQuery, UseQueryOptions } from '@tanstack/react-query';
+import {
+  useMutation,
+  useQuery,
+  useQueryClient,
+  UseQueryOptions,
+} from '@tanstack/react-query';
 import { UC_API_PREFIX } from '../utils/constants';
 
 export interface SchemaInterface {
@@ -46,6 +51,42 @@ export function useGetSchema({ catalog, schema }: GetSchemaParams) {
 
       const response = await fetch(`${UC_API_PREFIX}/schemas/${fullName}`);
       return response.json();
+    },
+  });
+}
+
+export interface CreateSchemaMutationParams
+  extends Pick<SchemaInterface, 'name' | 'catalog_name' | 'comment'> {}
+
+interface CreateSchemaParams {
+  onSuccessCallback?: (catalog: SchemaInterface) => void;
+}
+
+export function useCreateSchema({
+  onSuccessCallback,
+}: CreateSchemaParams = {}) {
+  const queryClient = useQueryClient();
+
+  return useMutation<SchemaInterface, unknown, CreateSchemaMutationParams>({
+    mutationFn: async (params: CreateSchemaMutationParams) => {
+      const response = await fetch(`${UC_API_PREFIX}/schemas`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(params),
+      });
+      if (!response.ok) {
+        // TODO: Expose error message
+        throw new Error('Failed to create schema');
+      }
+      return response.json();
+    },
+    onSuccess: (catalog) => {
+      queryClient.invalidateQueries({
+        queryKey: ['listSchemas', catalog.catalog_name],
+      });
+      onSuccessCallback?.(catalog);
     },
   });
 }
