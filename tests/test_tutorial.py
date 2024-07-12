@@ -13,7 +13,7 @@ commands_and_expected_output_strings = [
     # catalogs
     ("bin/uc catalog list", ["unity"]),
 
-    # tables
+    # schemas
     ("bin/uc schema list --catalog unity", ["default"]),
 
     # tables
@@ -110,7 +110,7 @@ def start_server():
 
         if i >= 30:
             with open(log_file, 'r') as lf:
-                print(f">> Server too long to get ready, failing tests. Log:\n{lf.read()}")
+                print(f">> Server is taking too long to get ready, failing tests. Log:\n{lf.read()}")
             exit(1)
     return process
 
@@ -143,7 +143,7 @@ if __name__ == "__main__":
         for string, found in search_results.items():
             if not found:
                 kill_process(server_process)
-                print(f">> Output of {command} did not contain '{string}'")
+                print(f">> Output of '{command}' did not contain '{string}'")
                 print(">> Output:\n" + stdout)
                 print("FAILED: EXPECTED OUTPUT NOT FOUND")
                 exit(1)
