@@ -62,13 +62,19 @@ public class CliSchemaOperations implements SchemaOperations {
     }
 
     @Override
-    public SchemaInfo updateSchema(String schemaName, UpdateSchema updateSchema) {
-        String[] args = addServerAndAuthParams(List.of(
+    public SchemaInfo updateSchema(String schemaFullName, UpdateSchema updateSchema) {
+        List<String> argsList = new ArrayList<>(List.of(
                 "schema", "update"
-                , "--full_name",schemaName
-                , "--new_name", updateSchema.getNewName()
-                , "--comment", updateSchema.getComment())
-                , config);
+                , "--full_name", schemaFullName));
+        if (updateSchema.getNewName() != null) {
+            argsList.add("--new_name");
+            argsList.add(updateSchema.getNewName());
+        }
+        if (updateSchema.getComment() != null) {
+            argsList.add("--comment");
+            argsList.add(updateSchema.getComment());
+        }
+        String[] args = addServerAndAuthParams(argsList, config);
         JsonNode updatedSchemaInfo = executeCLICommand(args);
         return objectMapper.convertValue(updatedSchemaInfo, SchemaInfo.class);
     }

@@ -1,6 +1,7 @@
 package io.unitycatalog.cli;
 
 import com.fasterxml.jackson.databind.ObjectWriter;
+import io.unitycatalog.cli.utils.CliException;
 import io.unitycatalog.cli.utils.CliParams;
 import io.unitycatalog.cli.utils.CliUtils;
 import com.fasterxml.jackson.core.JsonProcessingException;
@@ -65,11 +66,20 @@ public class SchemaCli {
     }
 
     private static String updateSchema(SchemasApi schemasApi, JSONObject json) throws JsonProcessingException, ApiException {
-        UpdateSchema updateSchema = new UpdateSchema()
-                .newName(json.optString(CliParams.NEW_NAME.getServerParam()))
-                .comment(json.optString(CliParams.COMMENT.getServerParam()));
-        return objectWriter.writeValueAsString(schemasApi
-                .updateSchema(json.getString(CliParams.FULL_NAME.getServerParam()), updateSchema));
+        String schemaFullName = json.getString(CliParams.FULL_NAME.getServerParam());
+        json.remove(CliParams.FULL_NAME.getServerParam());
+        if (json.length() == 0) {
+            List<CliParams> optionalParams = CliUtils.cliOptions.get(CliUtils.SCHEMA)
+                .get(CliUtils.UPDATE)
+                .getOptionalParams();
+            String errorMessage = "No parameters to update, please provide one of:";
+            for (CliParams param : optionalParams) {
+                errorMessage += "\n  --" + param.val();
+            }
+            throw new CliException(errorMessage);
+        }
+        UpdateSchema updateSchema = objectMapper.readValue(json.toString(), UpdateSchema.class);
+        return objectWriter.writeValueAsString(schemasApi.updateSchema(schemaFullName, updateSchema));
     }
 
     private static String deleteSchema(SchemasApi schemasApi, JSONObject json) throws ApiException {
