@@ -7,6 +7,7 @@ import {
   LoadingOutlined,
   ProductOutlined,
 } from '@ant-design/icons';
+import { Key } from 'antd/es/table/interface';
 
 import { updateEntityTreeData } from '../utils/schemaBrowser';
 import { useListCatalogs } from '../hooks/catalog';
@@ -17,6 +18,7 @@ import { useListFunctions } from '../hooks/functions';
 
 export default function SchemaBrowser() {
   const navigate = useNavigate();
+  const [expendedKeys, setExpendedKeys] = useState<Key[]>([]);
   const [catalogToExpand, setCatalogToExpand] = useState<string>();
   const [entityToExpand, setEntityToExpand] = useState<{
     catalog: string;
@@ -66,6 +68,7 @@ export default function SchemaBrowser() {
   });
 
   useEffect(() => {
+    setExpendedKeys([]); // Collapse all nodes when list catalog updates
     setTreeData(
       listCatalogsRequest.data?.catalogs.map((catalog) => {
         const catalogNode: TreeDataNode = {
@@ -139,41 +142,42 @@ export default function SchemaBrowser() {
   }, [catalogToExpand, listSchemasRequest.data?.schemas]);
 
   useEffect(() => {
-    setTreeData((treeData) => {
-      return updateEntityTreeData({
-        treeData,
-        entityToExpand,
-        entityList: listTablesRequest.data?.tables ?? [],
-      });
-    });
+    if (entityToExpand.type === 'tables') {
+      const entityList = listTablesRequest.data?.tables ?? [];
+      setTreeData((treeData) =>
+        updateEntityTreeData({ treeData, entityToExpand, entityList })
+      );
+    }
   }, [entityToExpand, listTablesRequest.data?.tables]);
 
   useEffect(() => {
-    setTreeData((treeData) => {
-      return updateEntityTreeData({
-        treeData,
-        entityToExpand,
-        entityList: listVolumesRequest.data?.volumes ?? [],
-      });
-    });
+    if (entityToExpand.type === 'volumes') {
+      const entityList = listVolumesRequest.data?.volumes ?? [];
+      setTreeData((treeData) =>
+        updateEntityTreeData({ treeData, entityToExpand, entityList })
+      );
+    }
   }, [entityToExpand, listVolumesRequest.data?.volumes]);
 
   useEffect(() => {
-    setTreeData((treeData) => {
-      return updateEntityTreeData({
-        treeData,
-        entityToExpand,
-        entityList: listFunctionsRequest.data?.functions ?? [],
-      });
-    });
+    if (entityToExpand.type === 'functions') {
+      const entityList = listFunctionsRequest.data?.functions ?? [];
+      setTreeData((treeData) =>
+        updateEntityTreeData({ treeData, entityToExpand, entityList })
+      );
+    }
   }, [entityToExpand, listFunctionsRequest.data?.functions]);
 
   return (
-    <div>
+    <div style={{ height: '100%', overflowY: 'auto' }}>
       <Typography.Title
         level={4}
         style={{
           padding: '8px 12px',
+          position: 'sticky',
+          top: 0,
+          background: 'white',
+          zIndex: 1,
         }}
       >
         Browse
@@ -184,47 +188,37 @@ export default function SchemaBrowser() {
           showLine
           switcherIcon={<DownOutlined />}
           treeData={treeData}
-          onExpand={(_, { expanded, node }) => {
+          expandedKeys={expendedKeys}
+          onExpand={(keys, { expanded, node }) => {
+            setExpendedKeys(keys);
             if (!expanded) return;
-            const [entityName, entityType] = (node.key as string)?.split(':');
-            const [catalogName, schemaName] = entityName?.split('.');
-            if (entityType) {
-              if (schemaName && catalogName) {
-                setEntityToExpand({
-                  catalog: catalogName,
-                  schema: schemaName,
-                  type: entityType,
-                });
+            const [fullName, type] = (node.key as string)?.split(':');
+            const [catalog, schema] = fullName?.split('.');
+            if (type) {
+              if (schema && catalog) {
+                setEntityToExpand({ catalog, schema, type });
               }
-            } else if (!schemaName && catalogName) {
-              setCatalogToExpand(catalogName);
+            } else if (!schema && catalog) {
+              setCatalogToExpand(catalog);
             }
           }}
           onClick={(_, { key }) => {
-            const [entityFullName, entityType] = (key as string)?.split(':');
-            if (entityType === 'no-data') return;
-            const [catalogName, schemaName, entityName] =
-              entityFullName?.split('.');
-            if (entityType) {
-              switch (entityType) {
+            const [entityFullName, type] = (key as string)?.split(':');
+            if (type === 'no-data') return;
+            const [catalog, schema, entity] = entityFullName?.split('.');
+            if (type && entity) {
+              switch (type) {
                 case 'tables':
-                  navigate(`/data/${catalogName}/${schemaName}/${entityName}`);
-                  break;
+                  return navigate(`/data/${catalog}/${schema}/${entity}`);
                 case 'volumes':
-                  navigate(
-                    `/volumes/${catalogName}/${schemaName}/${entityName}`
-                  );
-                  break;
+                  return navigate(`/volumes/${catalog}/${schema}/${entity}`);
                 case 'functions':
-                  navigate(
-                    `/functions/${catalogName}/${schemaName}/${entityName}`
-                  );
-                  break;
+                  return navigate(`/functions/${catalog}/${schema}/${entity}`);
               }
-            } else if (schemaName) {
-              navigate(`/data/${catalogName}/${schemaName}`);
-            } else if (catalogName) {
-              navigate(`/data/${catalogName}`);
+            } else if (schema) {
+              navigate(`/data/${catalog}/${schema}`);
+            } else if (catalog) {
+              navigate(`/data/${catalog}`);
             }
           }}
         />
