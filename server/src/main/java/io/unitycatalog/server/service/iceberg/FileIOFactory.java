@@ -27,7 +27,8 @@ public class FileIOFactory {
   public FileIO getFileIO(URI tableLocationUri) {
     switch (tableLocationUri.getScheme()) {
       case S3: return getS3FileIO(tableLocationUri);
-      default: return null;
+      // TODO: should we default/fallback to HadoopFileIO ?
+      default: return new SimpleLocalFileIO();
     }
   }
 

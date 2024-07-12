@@ -249,7 +249,7 @@ public class IcebergRestCatalogTest extends BaseServerTest {
       assertThat(tableInfo.getTableId()).isNotNull();
       session.load(tableInfoDAO, UUID.fromString(tableInfo.getTableId()));
       String metadataLocation =
-          Objects.requireNonNull(this.getClass().getResource("/metadata.json")).toURI().toString();
+          Objects.requireNonNull(this.getClass().getResource("/iceberg.metadata.json")).toURI().toString();
       tableInfoDAO.setUniformIcebergMetadataLocation(metadataLocation);
       session.merge(tableInfoDAO);
       tx.commit();
@@ -287,7 +287,7 @@ public class IcebergRestCatalogTest extends BaseServerTest {
       LoadTableResponse loadTableResponse =
           RESTObjectMapper.mapper().readValue(resp.contentUtf8(), LoadTableResponse.class);
       assertThat(loadTableResponse.tableMetadata().metadataFileLocation())
-              .isEqualTo(Objects.requireNonNull(this.getClass().getResource("/metadata.json")).toURI().toString());
+              .isEqualTo(Objects.requireNonNull(this.getClass().getResource("/iceberg.metadata.json")).toURI().toString());
     }
 
     // List uniform tables

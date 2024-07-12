@@ -4,6 +4,7 @@ import com.adobe.testing.s3mock.junit5.S3MockExtension;
 import com.amazonaws.util.IOUtils;
 import lombok.SneakyThrows;
 import org.apache.iceberg.TableMetadata;
+import org.apache.iceberg.aws.s3.S3FileIO;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -15,8 +16,8 @@ import java.util.Objects;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.Mockito.doReturn;
-import static org.mockito.Mockito.spy;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.when;
 
 @ExtendWith(S3MockExtension.class)
 public class MetadataServiceTest {
@@ -27,21 +28,21 @@ public class MetadataServiceTest {
   public static final String TEST_LOCATION = "test-bucket";
   public static final String TEST_SIMPLE_ICEBERG_V1_METADATA_FILE_NAME = "simple-v1-iceberg.metadata.json";
 
+  private final FileIOFactory mockFileIOFactory = mock();
+  private final S3Client mockS3Client = S3_MOCK.createS3ClientV2();
+
   private MetadataService metadataService;
-  private S3Client mockS3Client;
 
   @SneakyThrows
   @BeforeEach
   public void setUp() {
-    mockS3Client = S3_MOCK.createS3ClientV2();
-    FileIOFactory fileIOFactory = spy(new FileIOFactory());
-    doReturn(mockS3Client).when(fileIOFactory).getS3Client(any(), any());
-    metadataService = new MetadataService(fileIOFactory);
+    metadataService = new MetadataService(mockFileIOFactory);
   }
 
   @SneakyThrows
   @Test
   public void testGetTableMetadataFromS3() {
+    when(mockFileIOFactory.getFileIO(any())).thenReturn(new S3FileIO(() -> mockS3Client));
     mockS3Client.createBucket(builder -> builder.bucket(TEST_BUCKET).build());
     String simpleMetadataJson = IOUtils.toString(
       Objects.requireNonNull(this.getClass().getResourceAsStream("/" + TEST_SIMPLE_ICEBERG_V1_METADATA_FILE_NAME)));
@@ -57,8 +58,9 @@ public class MetadataServiceTest {
   @SneakyThrows
   @Test
   public void testGetTableMetadataFromLocalFS() {
+    when(mockFileIOFactory.getFileIO(any())).thenReturn(new SimpleLocalFileIO());
     String metadataLocation = Objects.requireNonNull(
-      this.getClass().getResource("/metadata.json")).toURI().toString();
+      this.getClass().getResource("/iceberg.metadata.json")).toURI().toString();
     TableMetadata tableMetadata = metadataService.readTableMetadata(metadataLocation);
     assertThat(tableMetadata.uuid()).isEqualTo("55d4dc69-5b14-4483-bfc8-f33b80f99f99");
   }
