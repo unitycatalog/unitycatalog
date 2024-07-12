@@ -1,9 +1,10 @@
 import React from 'react';
 import { useListCatalogs } from '../hooks/catalog';
 import ListLayout from '../components/layouts/ListLayout';
-import { Typography } from 'antd';
+import { Flex, Typography } from 'antd';
 import { formatTimestamp } from '../utils/formatTimestamp';
 import { useNavigate } from 'react-router-dom';
+import CreateCatalogAction from '../components/catalogs/CreateCatalogAction';
 
 export default function CatalogsList() {
   const { data, isLoading } = useListCatalogs();
@@ -12,7 +13,12 @@ export default function CatalogsList() {
   return (
     <ListLayout
       loading={isLoading}
-      title={<Typography.Title level={2}>Catalogs</Typography.Title>}
+      title={
+        <Flex justify="space-between" align="flex-start">
+          <Typography.Title level={2}>Catalogs</Typography.Title>
+          <CreateCatalogAction />
+        </Flex>
+      }
       data={data?.catalogs}
       onRowClick={(record) => navigate(`/data/${record.name}`)}
       columns={[
