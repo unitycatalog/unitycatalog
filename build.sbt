@@ -50,6 +50,7 @@ lazy val commonSettings = Seq(
     packageFile
   },
 
+  licenseConfigurations := Set("compile"),
   licenseOverrides := {
     case DepModuleInfo("io.unitycatalog", _, _) =>
       LicenseInfo(LicenseCategory.Apache, "Apache 2.0", "http://www.apache.org/licenses")
