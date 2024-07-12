@@ -1,6 +1,11 @@
 import React from 'react';
 import { ConfigProvider, Layout, Menu } from 'antd';
-import { createBrowserRouter, Outlet, RouterProvider } from 'react-router-dom';
+import {
+  createBrowserRouter,
+  Outlet,
+  RouterProvider,
+  useNavigate,
+} from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 
 import TableDetails from './pages/TableDetails';
@@ -56,9 +61,11 @@ const router = createBrowserRouter([
 ]);
 
 function AppProvider() {
+  const navigate = useNavigate();
   const queryClient = new QueryClient({
     defaultOptions: { queries: { staleTime: 1000 * 5 * 60 } },
   });
+
   return (
     <QueryClientProvider client={queryClient}>
       <ConfigProvider
@@ -74,7 +81,7 @@ function AppProvider() {
         <Layout>
           {/* Header */}
           <Layout.Header style={{ display: 'flex', alignItems: 'center' }}>
-            <div style={{ marginRight: 24 }}>
+            <div style={{ marginRight: 24 }} onClick={() => navigate('/')}>
               <img
                 src="/uc-logo-reverse.png"
                 height={32}
@@ -85,7 +92,13 @@ function AppProvider() {
               theme="dark"
               mode="horizontal"
               defaultSelectedKeys={['catalogs']}
-              items={[{ key: 'catalogs', label: 'Catalogs' }]}
+              items={[
+                {
+                  key: 'catalogs',
+                  label: 'Catalogs',
+                  onClick: () => navigate('/'),
+                },
+              ]}
               style={{ flex: 1, minWidth: 0 }}
             />
           </Layout.Header>
