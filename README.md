@@ -125,11 +125,11 @@ SELECT * from unity.default.numbers;
 You should see the tables listed and the contents of the `numbers` table printed.
 To quit DuckDB, run the command `Ctrl+D` or type `.exit` in the DuckDB shell.
 
-## Full Tutorial
+## CLI tutorial
 
-You can read Delta Uniform tables from Spark via Iceberg REST Catalog APIs,
+You can interact with a Unity Catalog server to create and manage catalogs, schemas and tables, 
 operate on volumes and functions from the CLI, and much more.
-See the full [tutorial](docs/tutorial.md) for more details.
+See the [cli usage](docs/usage/cli.md) for more details.
 
 ## APIs and Compatibility
 - Open API specification: The Unity Catalog Rest API is documented [here](api).
