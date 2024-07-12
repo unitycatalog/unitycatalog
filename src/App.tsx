@@ -5,7 +5,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 
 import TableDetails from './pages/TableDetails';
 import VolumeDetails from './components/VolumeDetails';
-import FunctionDetails from './components/FunctionDetails';
+import FunctionDetails from './pages/FunctionDetails';
 import SchemaBrowser from './components/SchemaBrowser';
 import CatalogsList from './pages/CatalogsList';
 import CatalogDetails from './pages/CatalogDetails';
