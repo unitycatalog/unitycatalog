@@ -2,11 +2,13 @@ import { useQuery, UseQueryOptions } from '@tanstack/react-query';
 import { UC_API_PREFIX } from '../utils/constants';
 
 export interface FunctionInterface {
-  table_id: string;
+  function_id: string;
   catalog_name: string;
   schema_name: string;
   name: string;
   comment: string;
+  external_language: string;
+  routine_definition: string;
   created_at: number;
   updated_at: number | null;
 }
@@ -43,5 +45,29 @@ export function useListFunctions({
       return response.json();
     },
     ...options,
+  });
+}
+
+interface GetFunctionParams {
+  catalog: string;
+  schema: string;
+  ucFunction: string;
+}
+
+export function useGetFunction({
+  catalog,
+  schema,
+  ucFunction,
+}: GetFunctionParams) {
+  return useQuery<FunctionInterface>({
+    queryKey: ['getFunction', catalog, schema, ucFunction],
+    queryFn: async () => {
+      const fullFunctionName = [catalog, schema, ucFunction].join('.');
+
+      const response = await fetch(
+        `${UC_API_PREFIX}/functions/${fullFunctionName}`
+      );
+      return response.json();
+    },
   });
 }
