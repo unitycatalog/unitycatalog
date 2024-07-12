@@ -14,17 +14,17 @@ lazy val commonSettings = Seq(
   organization := orgName,
   // Compilation configs
   initialize := {
-    // Assert that the JVM is at least Java 11
+    // Assert that the JVM is at least Java 17
     val _ = initialize.value  // ensure previous initializations are run
     assert(
-      sys.props("java.specification.version").toDouble >= 11,
-      "Java 11 or above is required to run this project.")
+      sys.props("java.specification.version").toDouble >= 17,
+      "Java 17 or above is required to run this project.")
   },
   Compile / compile / javacOptions ++= Seq(
     "-Xlint:deprecation",
     "-Xlint:unchecked",
-    "-source", "1.8",
-    "-target", "1.8",
+    "-source", "17",
+    "-target", "17",
     "-g:source,lines,vars",
   ),
   resolvers += Resolver.mavenLocal,
