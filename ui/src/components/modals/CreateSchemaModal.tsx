@@ -1,25 +1,27 @@
 import { Button, Form, Input, Modal, Typography } from 'antd';
-import {
-  CreateCatalogMutationParams,
-  useCreateCatalog,
-} from '../../hooks/catalog';
 import { useCallback, useRef } from 'react';
 import TextArea from 'antd/es/input/TextArea';
 import { useNavigate } from 'react-router-dom';
+import {
+  CreateSchemaMutationParams,
+  useCreateSchema,
+} from '../../hooks/schemas';
 
-interface CreateCatalogModalProps {
+interface CreateSchemaModalProps {
   open: boolean;
   closeModal: () => void;
+  catalog: string;
 }
 
-export function CreateCatalogModal({
+export default function CreateSchemaModal({
   open,
   closeModal,
-}: CreateCatalogModalProps) {
+  catalog,
+}: CreateSchemaModalProps) {
   const navigate = useNavigate();
-  const mutation = useCreateCatalog({
-    onSuccessCallback: (catalog) => {
-      navigate(`/data/${catalog.name}`);
+  const mutation = useCreateSchema({
+    onSuccessCallback: (schema) => {
+      navigate(`/data/${schema.catalog_name}/${schema.name}`);
     },
   });
   const submitRef = useRef<HTMLButtonElement>(null);
@@ -30,7 +32,7 @@ export function CreateCatalogModal({
 
   return (
     <Modal
-      title={<Typography.Title level={4}>Create catalog</Typography.Title>}
+      title={<Typography.Title level={4}>Create schema</Typography.Title>}
       okText="Create"
       cancelText="Cancel"
       open={open}
@@ -40,14 +42,15 @@ export function CreateCatalogModal({
       okButtonProps={{ loading: mutation.isPending }}
     >
       <Typography.Paragraph type="secondary">
-        Create catalog description
+        Create schema description
       </Typography.Paragraph>
-      <Form<CreateCatalogMutationParams>
+      <Form<CreateSchemaMutationParams>
         layout="vertical"
         onFinish={(values) => {
           mutation.mutate(values);
         }}
-        name="Create catalog form"
+        name="Create schema form"
+        initialValues={{ catalog_name: catalog }}
       >
         <Form.Item
           required
@@ -61,6 +64,9 @@ export function CreateCatalogModal({
           name="comment"
         >
           <TextArea />
+        </Form.Item>
+        <Form.Item name="catalog_name" hidden>
+          <Input />
         </Form.Item>
         <Form.Item hidden>
           <Button type="primary" htmlType="submit" ref={submitRef}>
