@@ -31,6 +31,7 @@ jobs:
         python -m venv venv
         source venv/bin/activate
         pip install requests
+        pip install duckdb
 
     - name: Test Tutorial
       run: |

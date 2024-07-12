@@ -7,6 +7,7 @@ import signal
 import sys
 import time
 import requests
+import duckdb
 
 commands_and_expected_output_strings = [
     # catalogs
@@ -46,15 +47,29 @@ commands_and_expected_output_strings = [
     ("bin/uc function call --full_name unity.default.sum --input_params \"1,2,3\"", ["6"]),
     ("bin/uc function create --full_name unity.default.myFunction --data_type INT --input_params \"a int, b int\" --def \"c=a*b\\nreturn c\" --output jsonPretty", ["myFunction", "a*b"]),
     ("bin/uc function call --full_name unity.default.myFunction --input_params \"2,3\"", ["6"]),
+
+    # duckdb
+    ("duckdb:install uc_catalog from core_nightly;", []),
+    ("duckdb:load uc_catalog;", []),
+    ("duckdb:install delta;", []),
+    ("duckdb:load delta;", []),
+    ("duckdb:CREATE SECRET (TYPE UC, TOKEN 'not-used', ENDPOINT 'http://127.0.0.1:8080', AWS_REGION 'us-east-2');", ["True"]),
+    ("duckdb:ATTACH 'unity' AS unity (TYPE UC_CATALOG);", []),
+    ("duckdb:SHOW ALL TABLES;", ["marksheet", "marksheet_uniform", "numbers", "as_int"]),
+    ("duckdb:SELECT * FROM unity.default.numbers;", ["564"]),
 ]
 
-def run_command_and_check_output(command, search_strings):
+def run_command_and_check_output(command, search_strings, duckdb_cursor=None):
     try:
         # Run the command and capture the output
-        my_env = os.environ.copy()
-        my_env["UC_OUTPUT_WIDTH"] = "190"
-        result = subprocess.run(command, shell=True, check=True, text=True, capture_output=True, env=my_env)
-        output = result.stdout
+        if duckdb_cursor:
+            duckdb_cursor.execute(command)
+            output = str(duckdb_cursor.fetchall())
+        else:
+            my_env = os.environ.copy()
+            my_env["UC_OUTPUT_WIDTH"] = "190"
+            result = subprocess.run(command, shell=True, check=True, text=True, capture_output=True, env=my_env)
+            output = result.stdout
         search_results = {s: s in output for s in search_strings}
         return output, search_results
     except subprocess.CalledProcessError as e:
@@ -115,9 +130,15 @@ if __name__ == "__main__":
         print(">> Cannot run this with uncommitted modifications in h2db")
         exit(1)
     server_process = start_server()
+    duckdb_conn = duckdb.connect()
+    duckdb_cursor = duckdb_conn.cursor()
     for command, expected_strings in commands_and_expected_output_strings:
         print(f">> Running client command: {command}")
-        stdout, search_results = run_command_and_check_output(command, expected_strings)
+        if command.startswith("duckdb:"):
+            command = command[len('duckdb:'):]
+            stdout, search_results = run_command_and_check_output(command, expected_strings, duckdb_cursor)
+        else:
+            stdout, search_results = run_command_and_check_output(command, expected_strings)
         print(stdout)
         for string, found in search_results.items():
             if not found:
