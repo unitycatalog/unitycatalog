@@ -169,7 +169,7 @@ lazy val server = (project in file("server"))
 
       "com.google.code.findbugs" % "jsr305" % "3.0.2",
       "com.h2database" %  "h2" % "2.2.224",
-      "com.mysql" % "mysql-connector-j" % "8.4.0",
+      "com.mysql" % "mysql-connector-j" % "9.0.0",
 
       "org.hibernate.orm" % "hibernate-core" % "6.5.0.Final",
       "org.openapitools" % "jackson-databind-nullable" % openApiToolsJacksonBindNullableVersion,

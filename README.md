@@ -56,15 +56,10 @@ You have to ensure that your local environment has the following:
 - Clone this repository.
 - Ensure the `JAVA_HOME` environment variable your terminal is configured to point to JDK11+.
 - Compile the project using `build/sbt package`
-- Install `docker`
 
 ### Run the UC Server
-In a terminal, in the cloned repository root directory, start Mysql server.
-```sh
-docker-compose -f etc/db/docker-compose.yml up -d
-```
+In a terminal, in the cloned repository root directory, start the UC server.
 
-start the UC server
 ```sh
 bin/start-uc-server
 ```

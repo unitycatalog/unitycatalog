@@ -28,7 +28,7 @@ public class HibernateUtils {
       }
 
       Configuration configuration;
-      switch (properties.getProperty("server.database.type")) {
+      switch (properties.getProperty("db.type")) {
         case "h2":
           configuration = getH2Configuration();
           break;
@@ -84,9 +84,10 @@ public class HibernateUtils {
   private static Configuration getMysqlConfiguration() {
     Configuration configuration = new Configuration();
     configuration.setProperty("hibernate.connection.driver_class", "com.mysql.cj.jdbc.Driver");
-    configuration.setProperty("hibernate.connection.url", "jdbc:mysql://localhost:3306/ucdb");
-    configuration.setProperty("hibernate.connection.user", "uc_default_user");
-    configuration.setProperty("hibernate.connection.password", "uc_default_password");
+    configuration.setProperty("hibernate.connection.url", properties.getProperty("jdbc.url"));
+    configuration.setProperty("hibernate.connection.user", properties.getProperty("jdbc.user"));
+    configuration.setProperty(
+        "hibernate.connection.password", properties.getProperty("jdbc.password"));
     configuration.setProperty("hibernate.hbm2ddl.auto", "update");
     return configuration;
   }
