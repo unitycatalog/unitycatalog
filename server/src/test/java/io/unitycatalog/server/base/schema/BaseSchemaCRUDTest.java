@@ -63,8 +63,7 @@ public abstract class BaseSchemaCRUDTest extends BaseCRUDTest {
 
     // Update schema name without updating comment
     System.out.println("Testing update schema: changing name..");
-    UpdateSchema updateSchema =
-        new UpdateSchema().newName(TestUtils.SCHEMA_NEW_NAME);
+    UpdateSchema updateSchema = new UpdateSchema().newName(TestUtils.SCHEMA_NEW_NAME);
     SchemaInfo updatedSchemaInfo =
         schemaOperations.updateSchema(TestUtils.SCHEMA_FULL_NAME, updateSchema);
     assertEquals(updateSchema.getNewName(), updatedSchemaInfo.getName());
@@ -74,8 +73,7 @@ public abstract class BaseSchemaCRUDTest extends BaseCRUDTest {
 
     // Update schema comment without updating name
     System.out.println("Testing update schema: changing comment..");
-    UpdateSchema updateSchema2 =
-        new UpdateSchema().comment(TestUtils.SCHEMA_COMMENT);
+    UpdateSchema updateSchema2 = new UpdateSchema().comment(TestUtils.SCHEMA_COMMENT);
     SchemaInfo updatedSchemaInfo2 =
         schemaOperations.updateSchema(TestUtils.SCHEMA_NEW_FULL_NAME, updateSchema2);
     assertEquals(TestUtils.SCHEMA_NEW_NAME, updatedSchemaInfo2.getName());
