@@ -12,6 +12,7 @@ import io.unitycatalog.server.base.catalog.CatalogOperations;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
+import org.json.JSONObject;
 
 import static io.unitycatalog.cli.TestUtils.addServerAndAuthParams;
 import static io.unitycatalog.cli.TestUtils.executeCLICommand;
@@ -31,6 +32,12 @@ public class CliCatalogOperations implements CatalogOperations {
             argsList.add("--comment");
             argsList.add(createCatalog.getComment());
         }
+        if (createCatalog.getProperties() != null) {
+            String jsonString = new JSONObject(createCatalog.getProperties()).toString();
+            argsList.add("--properties");
+            argsList.add(jsonString);
+        }
+
         String[] args = addServerAndAuthParams(argsList, config);
         JsonNode catalogInfoJson = executeCLICommand(args);
         return objectMapper.convertValue(catalogInfoJson, CatalogInfo.class);
@@ -60,6 +67,11 @@ public class CliCatalogOperations implements CatalogOperations {
         if (updateCatalog.getComment() != null) {
             argsList.add("--comment");
             argsList.add(updateCatalog.getComment());
+        }
+        if (updateCatalog.getProperties() != null) {
+            argsList.add("--properties");
+            String catalogPropertyString = new JSONObject(updateCatalog.getProperties()).toString();
+            argsList.add(catalogPropertyString);
         }
         String[] args = addServerAndAuthParams(argsList, config);
         JsonNode updatedCatalogInfo = executeCLICommand(args);

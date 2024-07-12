@@ -13,6 +13,7 @@ import io.unitycatalog.server.base.schema.SchemaOperations;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
+import org.json.JSONObject;
 
 import static io.unitycatalog.cli.TestUtils.addServerAndAuthParams;
 import static io.unitycatalog.cli.TestUtils.executeCLICommand;
@@ -34,6 +35,11 @@ public class CliSchemaOperations implements SchemaOperations {
         if (createSchema.getComment() != null) {
             argsList.add("--comment");
             argsList.add(createSchema.getComment());
+        }
+        if (createSchema.getProperties() != null) {
+            String jsonString = new JSONObject(createSchema.getProperties()).toString();
+            argsList.add("--properties");
+            argsList.add(jsonString);
         }
         String[] args = addServerAndAuthParams(argsList, config);
         JsonNode schemaInfoJson =  executeCLICommand(args);
@@ -63,11 +69,15 @@ public class CliSchemaOperations implements SchemaOperations {
 
     @Override
     public SchemaInfo updateSchema(String schemaName, UpdateSchema updateSchema) {
+
+        String catalogPropertyString = new JSONObject(updateSchema.getProperties()).toString();
+        
         String[] args = addServerAndAuthParams(List.of(
                 "schema", "update"
                 , "--full_name",schemaName
                 , "--new_name", updateSchema.getNewName()
-                , "--comment", updateSchema.getComment())
+                , "--comment", updateSchema.getComment()
+                , "--properties", catalogPropertyString)
                 , config);
         JsonNode updatedSchemaInfo = executeCLICommand(args);
         return objectMapper.convertValue(updatedSchemaInfo, SchemaInfo.class);

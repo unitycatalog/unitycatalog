@@ -54,7 +54,12 @@ public class CatalogCli {
 
     private static String createCatalog(CatalogsApi catalogsApi, JSONObject json) throws JsonProcessingException, ApiException {
         CreateCatalog createCatalog;
-        createCatalog = objectMapper.readValue(json.toString(), CreateCatalog.class);
+
+        JSONObject jsonWithoutProperties = new JSONObject(json, JSONObject.getNames(json));
+        jsonWithoutProperties.remove("properties");
+
+        createCatalog = objectMapper.readValue(jsonWithoutProperties.toString(), CreateCatalog.class).properties(CliUtils.extractProperties(objectMapper, json));
+        
         return objectWriter.writeValueAsString(catalogsApi.createCatalog(createCatalog));
     }
 
@@ -80,7 +85,13 @@ public class CatalogCli {
             }
             throw new CliException(errorMessage);
         }
-        UpdateCatalog updateCatalog = objectMapper.readValue(json.toString(), UpdateCatalog.class);
+
+        JSONObject jsonWithoutProperties = new JSONObject(json, JSONObject.getNames(json));
+        jsonWithoutProperties.remove("properties");
+
+        UpdateCatalog updateCatalog = objectMapper.readValue(jsonWithoutProperties.toString(), UpdateCatalog.class);
+        updateCatalog.properties(CliUtils.extractProperties(objectMapper, json));
+
         return objectWriter.writeValueAsString(apiClient.updateCatalog(catalogName, updateCatalog));
     }
 

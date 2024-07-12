@@ -50,7 +50,12 @@ public class SchemaCli {
 
     private static String createSchema(SchemasApi schemasApi, JSONObject json) throws JsonProcessingException, ApiException {
         CreateSchema createSchema;
-        createSchema = objectMapper.readValue(json.toString(), CreateSchema.class);
+        
+        JSONObject jsonWithoutProperties = new JSONObject(json, JSONObject.getNames(json));
+        jsonWithoutProperties.remove("properties");
+
+        createSchema = objectMapper.readValue(jsonWithoutProperties.toString(), CreateSchema.class).properties(CliUtils.extractProperties(objectMapper, json));
+
         return objectWriter.writeValueAsString(schemasApi.createSchema(createSchema));
     }
 
@@ -67,7 +72,8 @@ public class SchemaCli {
     private static String updateSchema(SchemasApi schemasApi, JSONObject json) throws JsonProcessingException, ApiException {
         UpdateSchema updateSchema = new UpdateSchema()
                 .newName(json.optString(CliParams.NEW_NAME.getServerParam()))
-                .comment(json.optString(CliParams.COMMENT.getServerParam()));
+                .comment(json.optString(CliParams.COMMENT.getServerParam()))
+                .properties(CliUtils.extractProperties(objectMapper, json));
         return objectWriter.writeValueAsString(schemasApi
                 .updateSchema(json.getString(CliParams.FULL_NAME.getServerParam()), updateSchema));
     }
