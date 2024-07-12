@@ -2,7 +2,8 @@ import { useQuery, UseQueryOptions } from '@tanstack/react-query';
 import { UC_API_PREFIX } from '../utils/constants';
 
 export interface VolumeInterface {
-  table_id: string;
+  volume_id: string;
+  volume_type: string;
   catalog_name: string;
   schema_name: string;
   name: string;
@@ -40,5 +41,25 @@ export function useListVolumes({
       return response.json();
     },
     ...options,
+  });
+}
+
+interface GetVolumeParams {
+  catalog: string;
+  schema: string;
+  volume: string;
+}
+
+export function useGetVolume({ catalog, schema, volume }: GetVolumeParams) {
+  return useQuery<VolumeInterface>({
+    queryKey: ['getVolume', catalog, schema, volume],
+    queryFn: async () => {
+      const fullVolumeName = [catalog, schema, volume].join('.');
+
+      const response = await fetch(
+        `${UC_API_PREFIX}/volumes/${fullVolumeName}`
+      );
+      return response.json();
+    },
   });
 }
