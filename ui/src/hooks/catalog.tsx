@@ -1,4 +1,4 @@
-import { useQuery } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { UC_API_PREFIX } from '../utils/constants';
 
 export interface CatalogInterface {
@@ -33,6 +33,42 @@ export function useGetCatalog({ catalog }: GetCatalogParams) {
     queryFn: async () => {
       const response = await fetch(`${UC_API_PREFIX}/catalogs/${catalog}`);
       return response.json();
+    },
+  });
+}
+
+export interface CreateCatalogMutationParams
+  extends Pick<CatalogInterface, 'name' | 'comment'> {}
+
+interface CreateCatalogParams {
+  onSuccessCallback?: (catalog: CatalogInterface) => void;
+}
+
+export function useCreateCatalog({
+  onSuccessCallback,
+}: CreateCatalogParams = {}) {
+  const queryClient = useQueryClient();
+
+  return useMutation<CatalogInterface, unknown, CreateCatalogMutationParams>({
+    mutationFn: async (params: CreateCatalogMutationParams) => {
+      const response = await fetch(`${UC_API_PREFIX}/catalogs`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(params),
+      });
+      if (!response.ok) {
+        // TODO: Expose error message
+        throw new Error('Failed to create catalog');
+      }
+      return response.json();
+    },
+    onSuccess: (catalog) => {
+      queryClient.invalidateQueries({
+        queryKey: ['listCatalogs'],
+      });
+      onSuccessCallback?.(catalog);
     },
   });
 }

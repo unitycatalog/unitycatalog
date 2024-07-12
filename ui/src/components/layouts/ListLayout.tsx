@@ -58,7 +58,10 @@ export default function ListLayout<T extends AnyObject = AnyObject>({
         className={onRowClick ? styles.clickableListLayout : undefined}
         dataSource={filteredData}
         columns={columns}
-        pagination={{ hideOnSinglePage: true }}
+        pagination={{
+          hideOnSinglePage: true,
+          pageSize: 10,
+        }}
         onRow={(row) => {
           return {
             onClick: () => onRowClick?.(row),
