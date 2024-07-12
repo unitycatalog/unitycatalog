@@ -14,7 +14,7 @@ export default function CatalogsList() {
     <ListLayout
       loading={isLoading}
       title={
-        <Flex justify="space-between" align="flex-start">
+        <Flex justify="space-between" align="flex-start" gap="middle">
           <Typography.Title level={2}>Catalogs</Typography.Title>
           <CreateCatalogAction />
         </Flex>
