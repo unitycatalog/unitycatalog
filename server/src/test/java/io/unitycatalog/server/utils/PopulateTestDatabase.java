@@ -7,6 +7,7 @@ import io.unitycatalog.server.model.*;
 import io.unitycatalog.server.persist.CatalogRepository;
 import io.unitycatalog.server.persist.FunctionRepository;
 import io.unitycatalog.server.persist.SchemaRepository;
+import io.unitycatalog.server.persist.TableRepository;
 import io.unitycatalog.server.persist.dao.ColumnInfoDAO;
 import io.unitycatalog.server.persist.dao.PropertyDAO;
 import io.unitycatalog.server.persist.dao.TableInfoDAO;
@@ -278,59 +279,53 @@ public class PopulateTestDatabase {
     // Partition column has three unique values / partitions.
     // Data is stored in DELTA format.
     System.out.println("Create external partitioned table...");
-    ColumnInfoDAO firstName =
-        ColumnInfoDAO.builder()
-            .name("first_name")
-            .typeName(ColumnTypeName.STRING.getValue())
-            .comment("string column")
-            .ordinalPosition((short) 0)
-            .build();
-    addTypeTextAndJsonText(firstName);
-    ColumnInfoDAO age =
-        ColumnInfoDAO.builder()
-            .name("age")
-            .typeName(ColumnTypeName.LONG.getValue())
-            .comment("long column")
-            .ordinalPosition((short) 1)
-            .build();
-    addTypeTextAndJsonText(age);
-    ColumnInfoDAO country =
-        ColumnInfoDAO.builder()
-            .name("country")
-            .typeName(ColumnTypeName.STRUCT.getValue())
-            .comment("partition column")
-            .ordinalPosition((short) 2)
-            .partitionIndex((short) 0)
-            .build();
-    addTypeTextAndJsonText(country);
+
     String partitionedTableName = "user_countries";
     String partitionedStorageRoot = "etc/data/external/";
     String partitionedTablePath = partitionedStorageRoot + catalogName + "/" + schemaName + "/tables/" + partitionedTableName;
-    UUID partitionedTableId = UUID.randomUUID();
 
-    TableInfoDAO partitionedTableInfoDAO =
-        TableInfoDAO.builder()
-            .id(partitionedTableId)
-            .name(partitionedTableName)
-            .schemaId(UUID.fromString(schemaId))
-            .comment("Partitioned table")
-            .columns(List.of(firstName, age, country))
-            .dataSourceFormat(DataSourceFormat.DELTA.getValue())
-            .type(TableType.EXTERNAL.getValue())
-            .createdAt(new Date())
-            .updatedAt(new Date())
-            .url(partitionedTablePath)
-            .build();
-    partitionedTableInfoDAO
-        .getColumns()
-        .forEach(columnInfoDAO -> columnInfoDAO.setTable(partitionedTableInfoDAO));
+    TableRepository tableRepository = TableRepository.getInstance();
 
-    try (Session session = factory.openSession()) {
-      Transaction tx = session.beginTransaction();
-      session.persist(partitionedTableInfoDAO);
-      tx.commit();
-    }
+    CreateTable createExternalPartitionedTable = new CreateTable();
+    createExternalPartitionedTable.setName("user_countries");
+    createExternalPartitionedTable.setComment("Partitioned table");
+    createExternalPartitionedTable.setTableType(TableType.EXTERNAL);
+    createExternalPartitionedTable.setDataSourceFormat(DataSourceFormat.DELTA);
+    createExternalPartitionedTable.setStorageLocation(partitionedTablePath);
+    createExternalPartitionedTable.setCatalogName("unity");
+    createExternalPartitionedTable.setSchemaName("default");
 
+    // Add columns
+    ColumnInfo firstName = new ColumnInfo();
+    firstName.setName("first_name");
+    firstName.setTypeName(ColumnTypeName.STRING);
+    firstName.setTypeText(ColumnTypeName.STRING.getValue());
+    firstName.setTypeJson(ColumnTypeName.STRUCT.getValue());
+    firstName.setComment("string column");
+    firstName.setPosition(0);
+    createExternalPartitionedTable.addColumnsItem(firstName);
+
+    ColumnInfo age = new ColumnInfo();
+    age.setName("age");
+    age.setTypeName(ColumnTypeName.LONG);
+    age.setTypeText(ColumnTypeName.LONG.getValue());
+    age.setTypeJson(ColumnTypeName.LONG.getValue());
+    age.setComment("long column");
+    age.setPosition(1);
+    createExternalPartitionedTable.addColumnsItem(age);
+
+    ColumnInfo country = new ColumnInfo();
+    country.setName("country");
+    country.setTypeName(ColumnTypeName.STRING);
+    country.setTypeText(ColumnTypeName.STRING.getValue());
+    country.setTypeJson(ColumnTypeName.STRING.getValue());
+    country.setComment("partition column");
+    country.setPosition(2);
+    country.setPartitionIndex(0);
+    createExternalPartitionedTable.addColumnsItem(country);
+
+    // Create table
+    tableRepository.createTable(createExternalPartitionedTable);
 
     System.out.println("Creating managed/external Volume...");
     VolumeInfoDAO managedVolume =
