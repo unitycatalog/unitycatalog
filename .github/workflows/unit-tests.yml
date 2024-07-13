@@ -1,0 +1,69 @@
+# This workflow uses actions that are not certified by GitHub.
+# They are provided by a third-party and are governed by
+# separate terms of service, privacy policy, and support
+# documentation.
+
+name: Unit Tests
+
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v4
+    - name: Set up JDK 17
+      uses: actions/setup-java@v4
+      with:
+        java-version: '17'
+        distribution: 'temurin'
+
+    - name: Run tests with coverage
+      run: build/sbt jacoco
+    - name: Run license check
+      run: build/sbt licenseCheck
+
+  generated-files-validation:
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Set up JDK 17
+      uses: actions/setup-java@v4
+      with:
+        java-version: '17'
+        distribution: 'temurin'
+
+    - name: Generate OpenAPI Client and Server Model classes
+      run: build/sbt generate
+
+    - name: Check Generated Files Differences
+      run: |
+        CLIENT_DIFF=$(git diff --name-only clients/java)
+        SERVER_DIFF=$(git diff --name-only server/src/main/java/io/unitycatalog/server/model)
+        
+        if [[ -n $CLIENT_DIFF || -n $SERVER_DIFF ]]; then
+          echo "This PR contains changes to generated files that will be overridden when build/sbt generate is run again."
+          echo "If you have changed the UC REST APIs such that changes to generated files are expected, then please make sure all generated files have been properly updated in this PR."
+          echo "Otherwise, without changes to UC REST APIs, manual changes to the generated files are not acceptable."
+          if [[ -n $CLIENT_DIFF ]]; then
+            echo "Modified client files:"
+            echo "$CLIENT_DIFF"
+          fi
+          if [[ -n $SERVER_DIFF ]]; then
+            echo "Modified server model files:"
+            echo "$SERVER_DIFF"
+          fi
+          exit 1
+        else
+          echo "No changes to generated files detected."
+        fi
+      shell: bash

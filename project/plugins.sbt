@@ -14,13 +14,13 @@
  * limitations under the License.
  */
 
-addSbtPlugin("com.github.sbt" % "sbt-release" % "1.0.15")
+addSbtPlugin("com.github.sbt" % "sbt-release" % "1.1.0")
+
+addSbtPlugin("com.github.sbt" % "sbt-pgp" % "2.1.2")
 
 addSbtPlugin("com.eed3si9n" % "sbt-assembly" % "0.14.9")
 
 addSbtPlugin("io.get-coursier" % "sbt-coursier" % "1.0.3")
-
-addSbtPlugin("com.jsuereth" % "sbt-pgp" % "1.1.0")
 
 addSbtPlugin("org.xerial.sbt" % "sbt-sonatype" % "2.3")
 
@@ -29,6 +29,8 @@ addSbtPlugin("net.aichler" % "sbt-jupiter-interface" % "0.11.1")
 addSbtPlugin("org.openapitools" % "sbt-openapi-generator" % "7.5.0")
 
 addSbtPlugin("com.github.sbt" % "sbt-license-report" % "1.6.1")
+
+addSbtPlugin("com.lightbend.sbt" % "sbt-java-formatter" % "0.8.0")
 
 addSbtPlugin("com.etsy" % "sbt-checkstyle-plugin" % "3.1.1")
 // By default, sbt-checkstyle-plugin uses checkstyle version 6.15, but we should set it to use the

@@ -1,6 +1,7 @@
 package io.unitycatalog.cli;
 
 import com.fasterxml.jackson.databind.ObjectWriter;
+import io.unitycatalog.cli.utils.CliException;
 import io.unitycatalog.cli.utils.CliParams;
 import io.unitycatalog.cli.utils.CliUtils;
 import com.fasterxml.jackson.core.JsonProcessingException;
@@ -13,7 +14,7 @@ import io.unitycatalog.client.model.UpdateCatalog;
 import org.apache.commons.cli.CommandLine;
 import org.json.JSONObject;
 
-import java.util.Collections;
+import java.util.List;
 
 import static io.unitycatalog.cli.utils.CliUtils.postProcessAndPrintOutput;
 
@@ -69,13 +70,24 @@ public class CatalogCli {
     private static String updateCatalog(CatalogsApi apiClient, JSONObject json) throws JsonProcessingException, ApiException {
         String catalogName = json.getString(NAME_PARAM);
         json.remove(NAME_PARAM);
+        if (json.length() == 0) {
+            List<CliParams> optionalParams = CliUtils.cliOptions.get(CliUtils.CATALOG)
+                .get(CliUtils.UPDATE)
+                .getOptionalParams();
+            String errorMessage = "No parameters to update, please provide one of:";
+            for (CliParams param : optionalParams) {
+                errorMessage += "\n  --" + param.val();
+            }
+            throw new CliException(errorMessage);
+        }
         UpdateCatalog updateCatalog = objectMapper.readValue(json.toString(), UpdateCatalog.class);
         return objectWriter.writeValueAsString(apiClient.updateCatalog(catalogName, updateCatalog));
     }
 
     private static String deleteCatalog(CatalogsApi catalogsApi, JSONObject json) throws ApiException {
         String catalogName = json.getString(NAME_PARAM);
-        catalogsApi.deleteCatalog(catalogName,true);
+        catalogsApi.deleteCatalog(catalogName, json.has(CliParams.FORCE.getServerParam()) &&
+                Boolean.parseBoolean(json.getString(CliParams.FORCE.getServerParam())));
         return CliUtils.EMPTY_JSON;
     }
 
