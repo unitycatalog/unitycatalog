@@ -299,7 +299,7 @@ lazy val cli = (project in file("examples") / "cli")
   )
 
 lazy val root = (project in file("."))
-  .aggregate(client, server, cli)
+  .aggregate(client, server, cli, spark)
   .settings(
     name := s"$artifactNamePrefix",
     createTarballSettings(),
