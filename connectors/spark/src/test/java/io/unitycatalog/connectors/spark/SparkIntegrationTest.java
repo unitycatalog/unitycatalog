@@ -23,6 +23,7 @@ import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
+import java.util.Optional;
 
 public class SparkIntegrationTest extends BaseCRUDTest {
 
@@ -130,9 +131,9 @@ public class SparkIntegrationTest extends BaseCRUDTest {
 
     private void createCommonResources() throws ApiException {
         // Common setup operations such as creating a catalog and schema
-        catalogOperations.createCatalog(CATALOG_NAME, "Common catalog for tables");
+        catalogOperations.createCatalog(new CreateCatalog().name(CATALOG_NAME).comment("Common catalog for tables"));
         schemaOperations.createSchema(new CreateSchema().name(SCHEMA_NAME).catalogName(CATALOG_NAME));
-        catalogOperations.createCatalog(SPARK_CATALOG, "Spark catalog");
+        catalogOperations.createCatalog(new CreateCatalog().name(SPARK_CATALOG).comment("Spark catalog"));
         schemaOperations.createSchema(new CreateSchema().name(SCHEMA_NAME).catalogName(SPARK_CATALOG));
     }
 
@@ -225,7 +226,7 @@ public class SparkIntegrationTest extends BaseCRUDTest {
     }
 
     @Override
-    protected void cleanUp() {
+    public void cleanUp() {
         deleteCatalog(CATALOG_NAME);
         deleteCatalog(SPARK_CATALOG);
         try {
@@ -241,12 +242,12 @@ public class SparkIntegrationTest extends BaseCRUDTest {
         deleteTable(schemaFullName + "." + PARQUET_TABLE);
         deleteTable(schemaFullName + "." + DELTA_TABLE);
         try {
-            schemaOperations.deleteSchema(schemaFullName);
+            schemaOperations.deleteSchema(schemaFullName, Optional.of(true));
         } catch (Exception e) {
             // Ignore
         }
         try {
-            catalogOperations.deleteCatalog(catalogName);
+            catalogOperations.deleteCatalog(catalogName, Optional.of(true));
         } catch (Exception e) {
             // Ignore
         }
