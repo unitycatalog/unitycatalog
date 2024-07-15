@@ -187,13 +187,30 @@ lazy val server = (project in file("server"))
 
       // Iceberg REST Catalog dependencies
       "org.apache.iceberg" % "iceberg-core" % "1.5.2",
+      "org.apache.iceberg" % "iceberg-aws" % "1.5.2",
+      "software.amazon.awssdk" % "s3" % "2.24.0",
       "io.vertx" % "vertx-core" % "4.3.5",
       "io.vertx" % "vertx-web" % "4.3.5",
       "io.vertx" % "vertx-web-client" % "4.3.5",
 
       // Test dependencies
-      "junit" %  "junit" % "4.13.2" % Test,
+      "junit" %  "junit" % "4.13.2" % Test, // TODO: update tests to junit5 and remove this
+      "org.junit.jupiter" %  "junit-jupiter" % "5.10.1" % Test,
+      "org.mockito" % "mockito-core" % "4.11.0" % Test,
+      "org.mockito" % "mockito-inline" % "4.11.0" % Test,
+      "org.mockito" % "mockito-junit-jupiter" % "4.11.0" % Test,
       "com.github.sbt" % "junit-interface" % "0.13.3" % Test,
+      "com.adobe.testing" % "s3mock-junit5" % "2.11.0" % Test
+        exclude("ch.qos.logback", "logback-classic")
+        exclude("org.apache.logging.log4j", "log4j-to-slf4j")
+        // the following are runtime test dependencies we exclude here
+        // in order to not to set off the licences check, but then
+        // add back below as provided
+        exclude("jakarta.annotation", "jakarta.annotation-api")
+        exclude("jakarta.servlet", "jakarta.servlet-api")
+        exclude("jakarta.websocket", "jakarta.websocket-api"),
+      "jakarta.servlet" % "jakarta.servlet-api" % "4.0.4" % Provided,
+      "javax.xml.bind" % "jaxb-api" % "2.3.1" % Provided
     ),
 
     Compile / compile / javacOptions ++= Seq(
