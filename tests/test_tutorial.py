@@ -16,9 +16,15 @@ commands_and_expected_output_strings = [
     ("bin/uc schema list --catalog unity", ["default"]),
 
     # tables
-    ("bin/uc table list --catalog unity --schema default", ["numbers", "marksheet", "MANAGED", "EXTERNAL"]),
+    ## all tables
+    ("bin/uc table list --catalog unity --schema default", ["numbers", "marksheet", "user_countries", "MANAGED", "EXTERNAL", "EXTERNAL"]),
+    ## numbers
     ("bin/uc table get --full_name unity.default.numbers --output json", ["numbers", "as_int", "EXTERNAL"]),
-    ("bin/uc table read --full_name unity.default.numbers ", ["as_int"]),
+    ("bin/uc table read --full_name unity.default.numbers", ["as_int"]),
+    ## user_countries
+    ("bin/uc table get --full_name unity.default.user_countries --output json", ["partition_index", "user_countries", "EXTERNAL"]),
+    ("bin/uc table read --full_name unity.default.user_countries", ["first_name(string)", "age(long)", "country(string)"]),
+    ## read/write of the new table
     (f"rm -rf /tmp/uc/myTable", []),
     (f"bin/uc table create --full_name unity.default.myTable --columns \"col1 int, col2 double\" --storage_location /tmp/uc/myTable", ["myTable", "col"]),
     ("bin/uc table write --full_name unity.default.myTable", [""]),
