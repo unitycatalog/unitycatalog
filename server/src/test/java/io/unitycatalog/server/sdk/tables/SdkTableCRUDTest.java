@@ -67,5 +67,14 @@ public class SdkTableCRUDTest extends BaseTableCRUDTest {
             testingTables.get(0).getCatalogName(), testingTables.get(0).getSchemaName(), 10, null);
     assertThat(resp.getNextPageToken()).isNotNull();
     assertThat(resp.getTables()).hasSize(10);
+    // Check the next page has the last table
+    ListTablesResponse nextPageResp =
+        localTablesApi.listTables(
+            testingTables.get(0).getCatalogName(),
+            testingTables.get(0).getSchemaName(),
+            10,
+            resp.getNextPageToken());
+    assertThat(nextPageResp.getNextPageToken()).isNull();
+    assertThat(nextPageResp.getTables()).hasSize(1);
   }
 }
