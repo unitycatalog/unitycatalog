@@ -300,16 +300,20 @@ public class PopulateTestDatabase {
     firstName.setName("first_name");
     firstName.setTypeName(ColumnTypeName.STRING);
     firstName.setTypeText(ColumnTypeName.STRING.getValue());
-    firstName.setTypeJson(ColumnTypeName.STRUCT.getValue());
+    firstName.setTypeJson(getTypeJson(ColumnTypeName.STRING, ColumnTypeName.STRING.getValue(), true, null));
     firstName.setComment("string column");
     firstName.setPosition(0);
+    firstName.setTypePrecision(0);
+    firstName.setTypeScale(0);
     createExternalPartitionedTable.addColumnsItem(firstName);
 
     ColumnInfo age = new ColumnInfo();
     age.setName("age");
     age.setTypeName(ColumnTypeName.LONG);
     age.setTypeText(ColumnTypeName.LONG.getValue());
-    age.setTypeJson(ColumnTypeName.LONG.getValue());
+    age.setTypeJson(getTypeJson(ColumnTypeName.LONG, ColumnTypeName.LONG.getValue(), true, null));
+    age.setTypePrecision(0);
+    age.setTypeScale(0);
     age.setComment("long column");
     age.setPosition(1);
     createExternalPartitionedTable.addColumnsItem(age);
@@ -318,7 +322,9 @@ public class PopulateTestDatabase {
     country.setName("country");
     country.setTypeName(ColumnTypeName.STRING);
     country.setTypeText(ColumnTypeName.STRING.getValue());
-    country.setTypeJson(ColumnTypeName.STRING.getValue());
+    country.setTypeJson(getTypeJson(ColumnTypeName.STRING, ColumnTypeName.STRING.getValue(), false, null));
+    country.setTypePrecision(0);
+    country.setTypeScale(0);
     country.setComment("partition column");
     country.setPosition(2);
     country.setPartitionIndex(0);
