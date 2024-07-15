@@ -280,7 +280,8 @@ lazy val cli = (project in file("examples") / "cli")
       // Test dependencies
       "junit" %  "junit" % "4.13.2" % Test,
       "com.github.sbt" % "junit-interface" % "0.13.3" % Test,
-    )
+    ),
+    Test / javaOptions += s"-Duser.dir=${(ThisBuild / baseDirectory).value.getAbsolutePath}",
   )
 
 lazy val root = (project in file("."))
