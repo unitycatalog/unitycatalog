@@ -3,7 +3,7 @@ edit_uri: edit/main/docs/
 repo_name: unitycatalog/unitycatalog
 repo_url: https://github.com/unitycatalog/unitycatalog
 site_url: https://docs.unitycatalog.io
-site_description:  Open, Multi-modal Catalog for Data & AI 
+site_description: Open, Multi-modal Catalog for Data & AI
 site_author: unitycatalog
 
 nav:
@@ -12,7 +12,7 @@ nav:
   - Usage:
       - CLI: usage/cli.md
       - Tables:
-        - UniForm: usage/tables/uniform.md
+          - UniForm: usage/tables/uniform.md
       - Volumes: usage/volumes.md
       - Functions: usage/functions.md
       - Server: usage/server.md
