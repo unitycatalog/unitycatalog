@@ -292,8 +292,8 @@ public class PopulateTestDatabase {
     createExternalPartitionedTable.setTableType(TableType.EXTERNAL);
     createExternalPartitionedTable.setDataSourceFormat(DataSourceFormat.DELTA);
     createExternalPartitionedTable.setStorageLocation(partitionedTablePath);
-    createExternalPartitionedTable.setCatalogName("unity");
-    createExternalPartitionedTable.setSchemaName("default");
+    createExternalPartitionedTable.setCatalogName(catalogName);
+    createExternalPartitionedTable.setSchemaName(schemaName);
 
     // Add columns
     ColumnInfo firstName = new ColumnInfo();
