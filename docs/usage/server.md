@@ -3,7 +3,6 @@
 This is the open source version of the Unity Catalog server implementation. It can be started locally.
 
 ## Running the Server
-## Running the Server
 
 The server can be started by issuing the below command from the project root directory:
 
