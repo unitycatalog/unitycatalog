@@ -203,15 +203,8 @@ lazy val server = (project in file("server"))
       "com.github.sbt" % "junit-interface" % "0.13.3" % Test,
       "com.adobe.testing" % "s3mock-junit5" % "2.11.0" % Test
         exclude("ch.qos.logback", "logback-classic")
-        exclude("org.apache.logging.log4j", "log4j-to-slf4j")
-        // the following are runtime test dependencies we exclude here
-        // in order to not to set off the licences check, but then
-        // add back below as provided
-        exclude("jakarta.annotation", "jakarta.annotation-api")
-        exclude("jakarta.servlet", "jakarta.servlet-api")
-        exclude("jakarta.websocket", "jakarta.websocket-api"),
-      "jakarta.servlet" % "jakarta.servlet-api" % "4.0.4" % Provided,
-      "javax.xml.bind" % "jaxb-api" % "2.3.1" % Provided
+        exclude("org.apache.logging.log4j", "log4j-to-slf4j"),
+      "javax.xml.bind" % "jaxb-api" % "2.3.1" % Test
     ),
 
     Compile / compile / javacOptions ++= Seq(
