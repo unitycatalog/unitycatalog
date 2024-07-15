@@ -9,7 +9,16 @@ import com.linecorp.armeria.server.ServerBuilder;
 import com.linecorp.armeria.server.annotation.JacksonRequestConverterFunction;
 import com.linecorp.armeria.server.annotation.JacksonResponseConverterFunction;
 import com.linecorp.armeria.server.docs.DocService;
-import io.unitycatalog.server.service.*;
+import io.unitycatalog.server.service.CatalogService;
+import io.unitycatalog.server.service.FunctionService;
+import io.unitycatalog.server.service.IcebergRestCatalogService;
+import io.unitycatalog.server.service.SchemaService;
+import io.unitycatalog.server.service.TableService;
+import io.unitycatalog.server.service.TemporaryTableCredentialsService;
+import io.unitycatalog.server.service.TemporaryVolumeCredentialsService;
+import io.unitycatalog.server.service.VolumeService;
+import io.unitycatalog.server.service.iceberg.FileIOFactory;
+import io.unitycatalog.server.service.iceberg.MetadataService;
 import io.unitycatalog.server.utils.RESTObjectMapper;
 import io.unitycatalog.server.utils.VersionUtils;
 import io.vertx.core.Verticle;
@@ -73,9 +82,10 @@ public class UnityCatalogServer {
         new JacksonRequestConverterFunction(icebergMapper);
     JacksonResponseConverterFunction icebergResponseConverter =
         new JacksonResponseConverterFunction(icebergMapper);
+    MetadataService metadataService = new MetadataService(new FileIOFactory());
     sb.annotatedService(
         basePath + "iceberg",
-        new IcebergRestCatalogService(catalogService, schemaService, tableService),
+        new IcebergRestCatalogService(catalogService, schemaService, tableService, metadataService),
         icebergRequestConverter,
         icebergResponseConverter);
   }
