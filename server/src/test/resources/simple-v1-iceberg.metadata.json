@@ -1,0 +1,42 @@
+{
+  "format-version": 1,
+  "table-uuid": "11111111-2222-3333-4444-555555555555",
+  "location": "s3://test-bucket/testLocation",
+  "last-updated-ms": 1720620264000,
+  "last-column-id": 3,
+  "schema": {
+    "type": "struct",
+    "fields": [
+      {
+        "id": 1,
+        "name": "id",
+        "required": true,
+        "type": "string"
+      },
+      {
+        "id": 2,
+        "name": "cat",
+        "required": true,
+        "type": "string",
+        "doc": "comment"
+      },
+      {
+        "id": 3,
+        "name": "z",
+        "required": true,
+        "type": "long"
+      }
+    ]
+  },
+  "partition-spec": [
+    {
+      "name": "id",
+      "transform": "identity",
+      "source-id": 1,
+      "field-id": 1000
+    }
+  ],
+  "properties": {},
+  "current-snapshot-id": -1,
+  "snapshots": []
+}

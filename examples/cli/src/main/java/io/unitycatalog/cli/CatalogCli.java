@@ -14,7 +14,6 @@ import io.unitycatalog.client.model.UpdateCatalog;
 import org.apache.commons.cli.CommandLine;
 import org.json.JSONObject;
 
-import java.util.Collections;
 import java.util.List;
 
 import static io.unitycatalog.cli.utils.CliUtils.postProcessAndPrintOutput;
