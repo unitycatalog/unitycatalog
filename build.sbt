@@ -243,6 +243,8 @@ lazy val server = (project in file("server"))
 lazy val serverModels = (project in file("server") / "target" / "models")
   .enablePlugins(OpenApiGeneratorPlugin)
   .settings(
+    name := s"$artifactNamePrefix-servermodels",
+    commonSettings,
     libraryDependencies ++= Seq(
       "jakarta.annotation" % "jakarta.annotation-api" % "3.0.0" % Provided,
       "com.fasterxml.jackson.core" % "jackson-annotations" % jacksonVersion,

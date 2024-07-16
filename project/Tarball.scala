@@ -18,7 +18,8 @@ object Tarball {
         val projectJarFiles = Seq(
           (LocalProject("server") / Compile / packageBin).value.getAbsoluteFile,
           (LocalProject("cli") / Compile / packageBin).value.getAbsoluteFile,
-          (LocalProject("client") / Compile / packageBin).value.getAbsoluteFile
+          (LocalProject("client") / Compile / packageBin).value.getAbsoluteFile,
+          (LocalProject("serverModels") / Compile / packageBin).value.getAbsoluteFile,
         )
         val scriptsDir = baseDirectory.value / "bin"
         val etcDir = baseDirectory.value / "etc"
