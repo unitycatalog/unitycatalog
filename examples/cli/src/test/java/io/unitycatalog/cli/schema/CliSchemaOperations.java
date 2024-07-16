@@ -60,23 +60,22 @@ public class CliSchemaOperations implements SchemaOperations {
     return objectMapper.convertValue(schemaInfoJson, SchemaInfo.class);
   }
 
-    @Override
-    public SchemaInfo updateSchema(String schemaFullName, UpdateSchema updateSchema) {
-        List<String> argsList = new ArrayList<>(List.of(
-                "schema", "update"
-                , "--full_name", schemaFullName));
-        if (updateSchema.getNewName() != null) {
-            argsList.add("--new_name");
-            argsList.add(updateSchema.getNewName());
-        }
-        if (updateSchema.getComment() != null) {
-            argsList.add("--comment");
-            argsList.add(updateSchema.getComment());
-        }
-        String[] args = addServerAndAuthParams(argsList, config);
-        JsonNode updatedSchemaInfo = executeCLICommand(args);
-        return objectMapper.convertValue(updatedSchemaInfo, SchemaInfo.class);
+  @Override
+  public SchemaInfo updateSchema(String schemaFullName, UpdateSchema updateSchema) {
+    List<String> argsList =
+        new ArrayList<>(List.of("schema", "update", "--full_name", schemaFullName));
+    if (updateSchema.getNewName() != null) {
+      argsList.add("--new_name");
+      argsList.add(updateSchema.getNewName());
     }
+    if (updateSchema.getComment() != null) {
+      argsList.add("--comment");
+      argsList.add(updateSchema.getComment());
+    }
+    String[] args = addServerAndAuthParams(argsList, config);
+    JsonNode updatedSchemaInfo = executeCLICommand(args);
+    return objectMapper.convertValue(updatedSchemaInfo, SchemaInfo.class);
+  }
 
   @Override
   public void deleteSchema(String schemaFullName, Optional<Boolean> force) {
