@@ -1,5 +1,7 @@
 package io.unitycatalog.cli.delta;
 
+import static io.unitycatalog.cli.utils.CliUtils.EMPTY;
+
 import de.vandermeer.asciitable.AsciiTable;
 import io.delta.kernel.*;
 import io.delta.kernel.data.Row;
@@ -9,26 +11,24 @@ import io.delta.kernel.types.*;
 import io.delta.kernel.utils.CloseableIterable;
 import io.unitycatalog.client.model.AwsCredentials;
 import io.unitycatalog.client.model.ColumnInfo;
-import org.apache.hadoop.conf.Configuration;
-import org.apache.hadoop.fs.FileSystem;
-
 import java.net.URI;
 import java.util.*;
 import java.util.stream.IntStream;
-
-import static io.unitycatalog.cli.utils.CliUtils.EMPTY;
+import org.apache.hadoop.conf.Configuration;
+import org.apache.hadoop.fs.FileSystem;
 
 /**
- * Utility class to create and read Delta tables.
- * The create method creates a Delta table with the given schema at the given path.
- * The create method just initializes the delta log and does not write any data to the table.
- * The read method reads the data from the Delta table
- * The code has evolved from examples provided in <a href="https://github.com/delta-io/delta/tree/master/kernel/examples/kernel-examples/src/main/java/io/delta/kernel/examples">Delta examples</a>
+ * Utility class to create and read Delta tables. The create method creates a Delta table with the
+ * given schema at the given path. The create method just initializes the delta log and does not
+ * write any data to the table. The read method reads the data from the Delta table The code has
+ * evolved from examples provided in <a
+ * href="https://github.com/delta-io/delta/tree/master/kernel/examples/kernel-examples/src/main/java/io/delta/kernel/examples">Delta
+ * examples</a>
  */
 public class DeltaKernelUtils {
 
-  public static String createDeltaTable(String tablePath, List<ColumnInfo> columns,
-                                        AwsCredentials awsTempCredentials) {
+  public static String createDeltaTable(
+      String tablePath, List<ColumnInfo> columns, AwsCredentials awsTempCredentials) {
     try {
       URI tablePathUri = URI.create(tablePath);
       Engine engine = getEngine(tablePathUri, awsTempCredentials);
@@ -36,19 +36,13 @@ public class DeltaKernelUtils {
       // construct the schema
       StructType tableSchema = getSchema(columns);
       TransactionBuilder txnBuilder =
-          table.createTransactionBuilder(
-              engine,
-              "UnityCatalogCli",
-              Operation.CREATE_TABLE);
+          table.createTransactionBuilder(engine, "UnityCatalogCli", Operation.CREATE_TABLE);
       // Set the schema of the new table on the transaction builder
       txnBuilder = txnBuilder.withSchema(engine, tableSchema);
       // Build the transaction
       Transaction txn = txnBuilder.build(engine);
       // create an empty table
-      TransactionCommitResult commitResult =
-          txn.commit(
-              engine,
-              CloseableIterable.emptyIterable());
+      TransactionCommitResult commitResult = txn.commit(engine, CloseableIterable.emptyIterable());
       if (commitResult.getVersion() >= 0) {
         System.out.println("Table created successfully at: " + tablePath);
       } else {
@@ -76,8 +70,8 @@ public class DeltaKernelUtils {
     }
   }
 
-  public static Configuration getHDFSConfiguration(URI tablePathUri,
-                                                   AwsCredentials awsTempCredentials) {
+  public static Configuration getHDFSConfiguration(
+      URI tablePathUri, AwsCredentials awsTempCredentials) {
     Configuration conf = new Configuration();
     if (tablePathUri.getScheme() != null
         && tablePathUri.getScheme().equals("s3")
@@ -98,27 +92,30 @@ public class DeltaKernelUtils {
     return conf;
   }
 
-  public static String readDeltaTable(String tablePath,
-                                      AwsCredentials awsCredentials, int maxResults) {
+  public static String readDeltaTable(
+      String tablePath, AwsCredentials awsCredentials, int maxResults) {
     Engine engine = getEngine(URI.create(tablePath), awsCredentials);
     try {
       Table table = Table.forPath(engine, substituteSchemeForS3(tablePath));
       Snapshot snapshot = table.getLatestSnapshot(engine);
       StructType readSchema = snapshot.getSchema(engine);
-      Object[] schema = readSchema.fields().stream().map(x -> x.getName() +
-          "(" + x.getDataType().toString() + ")").toArray(String[]::new);
+      Object[] schema =
+          readSchema.fields().stream()
+              .map(x -> x.getName() + "(" + x.getDataType().toString() + ")")
+              .toArray(String[]::new);
       AsciiTable at = new AsciiTable();
       at.addRule();
       at.addRow(schema);
       at.addRule();
       // might need to prune it later
       ScanBuilder scanBuilder = snapshot.getScanBuilder(engine).withReadSchema(engine, readSchema);
-      List<Row> rowData = DeltaKernelReadUtils
-        .readData(engine, readSchema, scanBuilder.build(), maxResults);
+      List<Row> rowData =
+          DeltaKernelReadUtils.readData(engine, readSchema, scanBuilder.build(), maxResults);
       for (Row row : rowData) {
-        Object[] rowValues = IntStream.range(0, schema.length)
-            .mapToObj(colOrdinal -> DeltaKernelReadUtils.getValue(row, colOrdinal))
-            .toArray();
+        Object[] rowValues =
+            IntStream.range(0, schema.length)
+                .mapToObj(colOrdinal -> DeltaKernelReadUtils.getValue(row, colOrdinal))
+                .toArray();
         at.addRow(rowValues);
         at.addRule();
       }
@@ -170,5 +167,4 @@ public class DeltaKernelUtils {
     }
     return dataType;
   }
-
 }
