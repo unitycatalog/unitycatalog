@@ -5,6 +5,7 @@ import java.io.InputStream;
 import java.net.URI;
 import java.nio.file.Files;
 import java.nio.file.Paths;
+import java.util.Optional;
 import java.util.Properties;
 import lombok.AllArgsConstructor;
 import lombok.Getter;
@@ -14,6 +15,8 @@ import org.slf4j.LoggerFactory;
 
 public class ServerPropertiesUtils {
 
+  public static final String SERVER_PROPS_PATH = "etc/conf/server.properties";
+  public static final String SERVER_PROPS_SYSTEM_PROPERTY = "uc.server.props";
   private static final Logger LOGGER = LoggerFactory.getLogger(ServerPropertiesUtils.class);
   @Getter private static final ServerPropertiesUtils instance = new ServerPropertiesUtils();
   private final Properties properties;
@@ -25,9 +28,13 @@ public class ServerPropertiesUtils {
 
   // Load properties from a configuration file
   private void loadProperties() {
-    try (InputStream input = Files.newInputStream(Paths.get("etc/conf/server.properties"))) {
+    String serverProps = Optional
+            .ofNullable(System.getProperty(SERVER_PROPS_SYSTEM_PROPERTY))
+            .orElse(SERVER_PROPS_PATH);
+    System.out.println(">>> serverProps: " + serverProps);
+    try (InputStream input = Files.newInputStream(Paths.get(serverProps))) {
       properties.load(input);
-      LOGGER.debug("Properties loaded successfully");
+      LOGGER.debug("Properties loaded successfully (path={})", serverProps);
       int i = 0;
       while (true) {
         String bucketPath = properties.getProperty("s3.bucketPath." + i);

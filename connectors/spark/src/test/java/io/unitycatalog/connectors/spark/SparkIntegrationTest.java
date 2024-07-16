@@ -49,7 +49,7 @@ public class SparkIntegrationTest extends BaseCRUDTest {
         setupParquetTable(PARQUET_TABLE, new ArrayList<>(0), session);
         testTableReadWrite(SPARK_CATALOG + "." + SCHEMA_NAME + "." + PARQUET_TABLE, session);
 
-        setupParquetTable(PARQUET_TABLE_PARTITIONED, Arrays.asList("s"), session);
+        setupParquetTable(PARQUET_TABLE_PARTITIONED, List.of("s"), session);
         testTableReadWrite(SPARK_CATALOG + "." + SCHEMA_NAME + "." + PARQUET_TABLE_PARTITIONED, session);
 
         session.stop();

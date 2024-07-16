@@ -313,8 +313,9 @@ lazy val spark = (project in file("connectors/spark"))
     name := s"$artifactNamePrefix-spark",
     scalaVersion := "2.13.14",
     commonSettings,
-    javaOptions ++= Seq(
+    Test / javaOptions ++= Seq(
       "--add-opens=java.base/sun.nio.ch=ALL-UNNAMED",
+      "-Duc.server.props=../../etc/conf/server.properties",
     ),
     javaCheckstyleSettings(file("dev") / "checkstyle-config.xml"),
     libraryDependencies ++= Seq(

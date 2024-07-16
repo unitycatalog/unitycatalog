@@ -2,6 +2,8 @@ package io.unitycatalog.server.base;
 
 import io.unitycatalog.server.UnityCatalogServer;
 import io.unitycatalog.server.utils.TestUtils;
+
+import java.nio.file.Paths;
 import java.util.Collection;
 import java.util.List;
 import org.junit.After;
@@ -39,7 +41,8 @@ public abstract class BaseServerTest {
       throw new IllegalArgumentException("Auth token is required");
     }
     if (serverConfig.getServerUrl().contains("localhost")) {
-      System.out.println("Running tests on localhost..");
+      System.out.println("Running tests on localhost");
+      System.out.println("CWD: " + Paths.get(".").toAbsolutePath().normalize());
       // start the server on a random port
       int port = TestUtils.getRandomPort();
       System.setProperty("server.env", "test");
