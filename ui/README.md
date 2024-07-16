@@ -6,7 +6,9 @@ Yarn: https://classic.yarnpkg.com/lang/en/docs/install
 
 ## Get started
 
-In the project directory, you can run:
+Spin up a localhost Unity Catalog server, see https://github.com/unitycatalog/unitycatalog/blob/main/README.md#run-the-uc-server
+
+Then in the project directory, you can run:
 
 ### `yarn`
 
