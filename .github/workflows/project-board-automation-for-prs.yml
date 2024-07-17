@@ -19,4 +19,4 @@ jobs:
         with:
           project: PRs and Issues Board
           column: Needs Review
-          repo-token: ${{ secrets.PROJECT_BOARD_AUTOMATION_TOKEN }}
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
