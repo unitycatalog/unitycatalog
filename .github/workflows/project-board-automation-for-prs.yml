@@ -11,7 +11,7 @@ on:
 jobs:
   automate-updated-prs:
     if: ${{ (github.event.issue.pull_request || github.event.pull_request) &&
-      !contains('tdas ravivijay-db vikrantpuppala', github.event.sender.login) &&
+      !contains('tdas ravivijay-db', github.event.sender.login) &&
       (github.event.pull_request.state == 'open' || github.event.issue.state == 'open') }}
     runs-on: ubuntu-latest
     steps:
