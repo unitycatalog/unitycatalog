@@ -20,6 +20,7 @@ nav:
       - Daft: integrations/unity-catalog-daft.md
       - DuckDB: integrations/unity-catalog-duckdb.md
   - Deployment: deployment.md
+  - Delta Lake: deltalake.md
 
 plugins:
   - search
