@@ -9,20 +9,22 @@ import io.unitycatalog.server.persist.dao.VolumeInfoDAO;
 import io.unitycatalog.server.utils.TestUtils;
 import org.hibernate.Session;
 import org.hibernate.SessionFactory;
-import org.junit.*;
 import io.unitycatalog.server.base.ServerConfig;
 import io.unitycatalog.server.base.schema.SchemaOperations;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
 
 import java.util.Date;
 import java.util.UUID;
 
-import static org.junit.Assert.*;
 import static io.unitycatalog.server.utils.TestUtils.*;
+import static org.junit.jupiter.api.Assertions.*;
 
 public abstract class BaseVolumeCRUDTest extends BaseCRUDTest {
     protected SchemaOperations schemaOperations;
     protected VolumeOperations volumeOperations;
-    @Before
+
+    @BeforeEach
     public void setUp() {
         super.setUp();
         schemaOperations = createSchemaOperations(serverConfig);

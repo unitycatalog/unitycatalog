@@ -5,17 +5,11 @@ import java.util.List;
 
 import io.unitycatalog.server.UnityCatalogServer;
 import io.unitycatalog.server.utils.TestUtils;
-import org.junit.After;
-import org.junit.AfterClass;
-import org.junit.Before;
-import org.junit.BeforeClass;
-import org.junit.runner.RunWith;
-import org.junit.runners.Parameterized;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
 
-@RunWith(Parameterized.class)
 public abstract class BaseServerTest {
 
-    @Parameterized.Parameter
     public ServerConfig serverConfig;
     protected UnityCatalogServer unityCatalogServer;
 
@@ -26,29 +20,19 @@ public abstract class BaseServerTest {
      * Multiple server configurations can be added to test against multiple servers
      * @return
      */
-    @Parameterized.Parameters
     public static Collection<ServerConfig> data() {
         return List.of(
                 new ServerConfig("http://localhost", "")
         );
     }
 
-    @BeforeClass
-    public static void globalSetUp() {
-        // Global setup if needed
-    }
-
-    @AfterClass
-    public static void globalTearDown() {
-        // Global teardown if needed
-    }
-
     protected void cleanUp() {
 
     }
 
-    @Before
+    @BeforeEach
     public void setUp() {
+        serverConfig = data().iterator().next();
         if (serverConfig == null) {
             throw new IllegalArgumentException("Server config is required");
         }
@@ -69,7 +53,7 @@ public abstract class BaseServerTest {
         }
     }
 
-    @After
+    @AfterEach
     public void tearDown() {
         cleanUp();
         if (unityCatalogServer != null) {

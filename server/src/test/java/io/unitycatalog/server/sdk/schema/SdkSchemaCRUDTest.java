@@ -3,20 +3,20 @@ package io.unitycatalog.server.sdk.schema;
 import io.unitycatalog.server.base.ServerConfig;
 import io.unitycatalog.server.base.catalog.CatalogOperations;
 import io.unitycatalog.server.sdk.catalog.SdkCatalogOperations;
-import org.junit.AfterClass;
-import org.junit.BeforeClass;
 import io.unitycatalog.server.base.schema.BaseSchemaCRUDTest;
 import io.unitycatalog.server.base.schema.SchemaOperations;
 import io.unitycatalog.server.utils.TestUtils;
+import org.junit.jupiter.api.AfterAll;
+import org.junit.jupiter.api.BeforeAll;
 
 public class SdkSchemaCRUDTest extends BaseSchemaCRUDTest {
 
-    @BeforeClass
+    @BeforeAll
     public static void setUpClass() {
         // Any static setup specific to this test class
     }
 
-    @AfterClass
+    @AfterAll
     public static void tearDownClass() {
         // Any static teardown specific to this test class
     }

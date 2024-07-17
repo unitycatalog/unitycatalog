@@ -78,8 +78,8 @@ lazy val client = (project in file("clients/java"))
       "jakarta.annotation" % "jakarta.annotation-api" % "3.0.0" % Provided,
 
       // Test dependencies
-      "junit" %  "junit" % "4.13.2" % Test,
-      "org.junit.jupiter" % "junit-jupiter" % "5.9.2" % Test,
+      "org.junit.jupiter" % "junit-jupiter-api" % "5.10.3" % Test,
+      "org.junit.jupiter" % "junit-jupiter-engine" % "5.10.2" % Test,
       "net.aichler" % "jupiter-interface" % JupiterKeys.jupiterVersion.value % Test,
       "org.assertj" % "assertj-core" % "3.25.1" % Test,
     ),
@@ -161,8 +161,8 @@ lazy val server = (project in file("server"))
       "io.vertx" % "vertx-web-client" % "4.3.5",
 
       // Test dependencies
-      "junit" %  "junit" % "4.13.2" % Test,
-      "com.github.sbt" % "junit-interface" % "0.13.3" % Test,
+      "org.junit.jupiter" % "junit-jupiter-api" % "5.10.3" % Test,
+      "org.junit.jupiter" % "junit-jupiter-engine" % "5.10.2" % Test
     ),
 
     Compile / compile / javacOptions ++= Seq(
@@ -237,8 +237,8 @@ lazy val cli = (project in file("examples") / "cli")
       "org.apache.hadoop" % "hadoop-aws" % "3.4.0",
       "com.google.guava" % "guava" % "31.0.1-jre",
       // Test dependencies
-      "junit" %  "junit" % "4.13.2" % Test,
-      "com.github.sbt" % "junit-interface" % "0.13.3" % Test,
+      "org.junit.jupiter" % "junit-jupiter-api" % "5.10.3" % Test,
+      "org.junit.jupiter" % "junit-jupiter-engine" % "5.10.2" % Test
     ),
   )
 

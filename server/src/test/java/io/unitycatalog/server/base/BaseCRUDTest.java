@@ -1,14 +1,11 @@
 package io.unitycatalog.server.base;
 
 import io.unitycatalog.server.base.catalog.CatalogOperations;
-import org.junit.Before;
-import org.junit.runner.RunWith;
-import org.junit.runners.Parameterized;
+import org.junit.jupiter.api.BeforeEach;
 
 import static io.unitycatalog.server.utils.TestUtils.CATALOG_NAME;
 import static io.unitycatalog.server.utils.TestUtils.CATALOG_NEW_NAME;
 
-@RunWith(Parameterized.class)
 public abstract class BaseCRUDTest extends BaseServerTest {
 
     protected CatalogOperations catalogOperations;
@@ -30,7 +27,7 @@ public abstract class BaseCRUDTest extends BaseServerTest {
         }
     }
 
-    @Before
+    @BeforeEach
     public void setUp() {
         super.setUp();
         catalogOperations = createCatalogOperations(serverConfig);

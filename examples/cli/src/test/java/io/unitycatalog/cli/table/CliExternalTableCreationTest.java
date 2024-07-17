@@ -9,9 +9,8 @@ import io.unitycatalog.server.base.BaseServerTest;
 import io.unitycatalog.server.base.catalog.CatalogOperations;
 import io.unitycatalog.server.base.schema.SchemaOperations;
 import io.unitycatalog.server.base.table.TableOperations;
-import org.junit.Before;
-import org.junit.Test;
-import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
 
 import java.io.IOException;
 import java.nio.file.*;
@@ -20,8 +19,7 @@ import java.util.List;
 import java.util.UUID;
 
 import static io.unitycatalog.server.utils.TestUtils.*;
-import static org.junit.Assert.*;
-import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
+import static org.junit.jupiter.api.Assertions.*;
 
 public class CliExternalTableCreationTest extends BaseServerTest {
 
@@ -37,7 +35,7 @@ public class CliExternalTableCreationTest extends BaseServerTest {
             new ColumnInfo().name("id").typeName(ColumnTypeName.INT).comment("id"),
             new ColumnInfo().name("name").typeName(ColumnTypeName.STRING).comment("name"));
 
-    @Before
+    @BeforeEach
     public void setUp() {
         super.setUp();
         catalogOperations = new CliCatalogOperations(serverConfig);

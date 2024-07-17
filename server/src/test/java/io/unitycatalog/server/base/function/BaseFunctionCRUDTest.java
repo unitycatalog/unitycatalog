@@ -4,15 +4,16 @@ import io.unitycatalog.client.ApiException;
 import io.unitycatalog.client.model.*;
 import io.unitycatalog.server.base.BaseCRUDTest;
 import io.unitycatalog.server.utils.TestUtils;
-import org.junit.*;
 
 import io.unitycatalog.server.base.ServerConfig;
 import io.unitycatalog.server.base.schema.SchemaOperations;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
 
 import java.util.List;
 
-import static org.junit.Assert.*;
 import static io.unitycatalog.server.utils.TestUtils.*;
+import static org.junit.jupiter.api.Assertions.*;
 
 public abstract class BaseFunctionCRUDTest extends BaseCRUDTest {
     protected SchemaOperations schemaOperations;
@@ -20,7 +21,7 @@ public abstract class BaseFunctionCRUDTest extends BaseCRUDTest {
     protected static final String FUNCTION_NAME = "test_function";
     protected static final String FUNCTION_FULL_NAME = CATALOG_NAME + "." + SCHEMA_NAME + "." + FUNCTION_NAME;
 
-    @Before
+    @BeforeEach
     public void setUp() {
         super.setUp();
         schemaOperations = createSchemaOperations(serverConfig);
@@ -67,7 +68,7 @@ public abstract class BaseFunctionCRUDTest extends BaseCRUDTest {
 
     @Test
     public void testFunctionCRUD() throws ApiException {
-        Assert.assertThrows(Exception.class, () -> functionOperations.getFunction(FUNCTION_FULL_NAME));
+        assertThrows(Exception.class, () -> functionOperations.getFunction(FUNCTION_FULL_NAME));
         // Create a catalog
         createCommonResources();
 

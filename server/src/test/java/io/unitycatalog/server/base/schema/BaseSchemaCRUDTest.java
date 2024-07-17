@@ -5,14 +5,15 @@ import io.unitycatalog.client.model.*;
 import io.unitycatalog.server.base.BaseCRUDTest;
 import io.unitycatalog.server.base.ServerConfig;
 import io.unitycatalog.server.utils.TestUtils;
-import org.junit.*;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
 
-import static org.junit.Assert.*;
+import static org.junit.jupiter.api.Assertions.*;
 
 public abstract class BaseSchemaCRUDTest extends BaseCRUDTest {
 
     protected SchemaOperations schemaOperations;
-    @Before
+    @BeforeEach
     public void setUp() {
         super.setUp();
         schemaOperations = createSchemaOperations(serverConfig);
@@ -70,7 +71,7 @@ public abstract class BaseSchemaCRUDTest extends BaseCRUDTest {
         SchemaInfo schemaInfo = schemaOperations.createSchema(createSchema);
         assertEquals(createSchema.getName(), schemaInfo.getName());
         assertEquals(createSchema.getCatalogName(), schemaInfo.getCatalogName());
-        Assert.assertEquals(TestUtils.SCHEMA_FULL_NAME, schemaInfo.getFullName());
+        assertEquals(TestUtils.SCHEMA_FULL_NAME, schemaInfo.getFullName());
         assertNotNull(schemaInfo.getCreatedAt());
 
         // List schemas
@@ -93,7 +94,7 @@ public abstract class BaseSchemaCRUDTest extends BaseCRUDTest {
         SchemaInfo updatedSchemaInfo = schemaOperations.updateSchema(TestUtils.SCHEMA_FULL_NAME, updateSchema);
         assertEquals(updateSchema.getNewName(), updatedSchemaInfo.getName());
         assertEquals(updateSchema.getComment(), updatedSchemaInfo.getComment());
-        Assert.assertEquals(TestUtils.SCHEMA_NEW_FULL_NAME, updatedSchemaInfo.getFullName());
+        assertEquals(TestUtils.SCHEMA_NEW_FULL_NAME, updatedSchemaInfo.getFullName());
         assertNotNull(updatedSchemaInfo.getUpdatedAt());
 
         //Now update the parent catalog name
