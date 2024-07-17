@@ -282,7 +282,7 @@ public class PopulateTestDatabase {
     // Add columns
     ColumnInfoDAO firstName = ColumnInfoDAO.builder()
         .name("first_name")
-        .typeName(ColumnTypeName.STRUCT.getValue())
+        .typeName(ColumnTypeName.STRING.getValue())
         .comment("string column")
         .ordinalPosition((short) 0)
         .build();
