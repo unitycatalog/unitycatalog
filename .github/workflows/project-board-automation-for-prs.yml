@@ -2,7 +2,7 @@ name: Move PR to "Needs review"
 
 on:
   pull_request:
-    types: [opened, reopened, edited]
+    types: [opened, reopened, review_requested, ready_for_review]
   issue_comment:
     types: [created]
   pull_request_review:
@@ -16,7 +16,7 @@ jobs:
         uses: actions/github-script@v6
         with:
           script: |
-            const projectBoardName = 'YOUR_PROJECT_BOARD_NAME';
+            const projectBoardName = 'PRs and Issues Board';
             const columnName = 'Needs review';
             const prNumber = context.payload.pull_request ? context.payload.pull_request.number : context.payload.issue.number;
             const { data: projects } = await github.projects.listForRepo({
