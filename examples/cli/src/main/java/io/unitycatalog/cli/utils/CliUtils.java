@@ -100,8 +100,8 @@ public class CliUtils {
                   put(
                       UPDATE,
                       new CliOptions(
-                          List.of(CliParams.FULL_NAME, CliParams.NEW_NAME),
-                          List.of(CliParams.COMMENT)));
+                          List.of(CliParams.FULL_NAME),
+                          List.of(CliParams.NEW_NAME, CliParams.COMMENT)));
                   put(
                       DELETE,
                       new CliOptions(List.of(CliParams.FULL_NAME), List.of(CliParams.FORCE)));
