@@ -1,22 +1,60 @@
-name: Mark PR as 'Needs Review'
+name: Move PR to "Needs review"
 
 on:
   pull_request:
-    types: [ opened, reopened, review_requested, ready_for_review ]
+    types: [opened, reopened, edited]
   issue_comment:
-    types: [ created ]
-  pull_request_review_comment:
-    types: [ created ]
+    types: [created]
+  pull_request_review:
+    types: [submitted]
 
 jobs:
-  automate-updated-prs:
-    if: ${{ (github.event.issue.pull_request || github.event.pull_request) &&
-      !contains('tdas ravivijay-db', github.event.sender.login) &&
-      (github.event.pull_request.state == 'open' || github.event.issue.state == 'open') }}
+  move-pr:
     runs-on: ubuntu-latest
     steps:
-      - uses: alex-page/github-project-automation-plus@v0.8.3
+      - name: Move PR to "Needs review"
+        uses: actions/github-script@v6
         with:
-          project: PRs and Issues Board
-          column: Needs Review
-          repo-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const projectBoardName = 'YOUR_PROJECT_BOARD_NAME';
+            const columnName = 'Needs review';
+            const prNumber = context.payload.pull_request ? context.payload.pull_request.number : context.payload.issue.number;
+            const { data: projects } = await github.projects.listForRepo({
+              owner: context.repo.owner,
+              repo: context.repo.repo
+            });
+            
+            const project = projects.find(proj => proj.name === projectBoardName);
+            if (!project) {
+              throw new Error(`Project ${projectBoardName} not found`);
+            }
+            
+            const { data: columns } = await github.projects.listColumns({
+              project_id: project.id
+            });
+            
+            const column = columns.find(col => col.name === columnName);
+            if (!column) {
+              throw new Error(`Column ${columnName} not found`);
+            }
+            
+            const { data: cards } = await github.projects.listCards({
+              column_id: column.id
+            });
+            
+            const card = cards.find(c => c.content_url && c.content_url.includes(`/pull/${prNumber}`));
+            if (card) {
+              await github.projects.moveCard({
+                card_id: card.id,
+                position: 'top',
+                column_id: column.id
+              });
+            } else {
+              await github.projects.createCard({
+                column_id: column.id,
+                content_id: context.payload.pull_request ? context.payload.pull_request.id : context.payload.issue.id,
+                content_type: 'PullRequest'
+              });
+            }
+          env:
+            GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
