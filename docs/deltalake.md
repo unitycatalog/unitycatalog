@@ -76,7 +76,7 @@ When your data structure evolves and you need more flexibility in your schema, D
 
 ## How to with Unity Catalog
 
-Here is an example of how you can use Delta Lake’s powerful features from Unity Catalog using [Daft](www.getdaft.io)
+Here is an example of how you can use Delta Lake’s powerful features from Unity Catalog using [Daft](https://getdaft.io)
 
 ### Delta Lake with Daft
 
