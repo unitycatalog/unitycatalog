@@ -1,8 +1,8 @@
 package io.unitycatalog.connectors.spark
 
 import io.unitycatalog.client.{ApiClient, ApiException}
-import io.unitycatalog.client.api.TablesApi
-import io.unitycatalog.client.model.TableType
+import io.unitycatalog.client.api.{TablesApi, TemporaryTableCredentialsApi}
+import io.unitycatalog.client.model.{AwsCredentials, GenerateTemporaryTableCredential, TableOperation, TableType}
 
 import java.net.URI
 import java.util
@@ -64,6 +64,7 @@ class UCSingleCatalog extends TableCatalog {
 private class UCProxy extends TableCatalog {
   private[this] var name: String = null
   private[this] var tablesApi: TablesApi = null
+  private[this] var temporaryTableCredentialsApi: TemporaryTableCredentialsApi = null
 
   override def initialize(name: String, options: CaseInsensitiveStringMap): Unit = {
     this.name = name
@@ -83,6 +84,7 @@ private class UCProxy extends TableCatalog {
       }
     }
     tablesApi = new TablesApi(client)
+    temporaryTableCredentialsApi = new TemporaryTableCredentialsApi(client);
   }
 
   override def name(): String = {
@@ -109,6 +111,27 @@ private class UCProxy extends TableCatalog {
       StructField(col.getName, DataType.fromDDL(col.getTypeText), col.getNullable)
         .withComment(col.getComment)
     }.toArray
+    val uri = CatalogUtils.stringToURI(t.getStorageLocation)
+    val tableId = t.getTableId
+    val credential: AwsCredentials = temporaryTableCredentialsApi
+      .generateTemporaryTableCredentials(
+        // TODO: at this time, we don't know if the table will be read or written. We should get
+        //       credential in a later phase.
+        new GenerateTemporaryTableCredential().tableId(tableId).operation(TableOperation.READ_WRITE)
+      )
+      .getAwsTempCredentials
+    val extraSerdeProps = if (uri.getScheme == "s3") {
+      Map(
+        "fs.s3a.access.key" -> credential.getAccessKeyId,
+        "fs.s3a.secret.key" -> credential.getSecretAccessKey,
+        "fs.s3a.session.token" -> credential.getSessionToken,
+        // TODO: how to support s3:// properly?
+        "fs.s3a.impl" -> "org.apache.hadoop.fs.s3a.S3AFileSystem",
+        "fs.s3a.path.style.access" -> "true"
+      )
+    } else {
+      Map.empty
+    }
     val sparkTable = CatalogTable(
       identifier,
       tableType = if (t.getTableType == TableType.MANAGED) {
@@ -117,8 +140,8 @@ private class UCProxy extends TableCatalog {
         CatalogTableType.EXTERNAL
       },
       storage = CatalogStorageFormat.empty.copy(
-        locationUri = Some(CatalogUtils.stringToURI(t.getStorageLocation)),
-        properties = t.getProperties.asScala.toMap
+        locationUri = Some(uri),
+        properties = t.getProperties.asScala.toMap ++ extraSerdeProps
       ),
       schema = StructType(fields),
       provider = Some(t.getDataSourceFormat.getValue),

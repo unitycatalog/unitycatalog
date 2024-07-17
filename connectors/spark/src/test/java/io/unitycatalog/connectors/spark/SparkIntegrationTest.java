@@ -7,22 +7,35 @@ import io.unitycatalog.server.base.ServerConfig;
 import io.unitycatalog.server.base.catalog.CatalogOperations;
 import io.unitycatalog.server.base.schema.SchemaOperations;
 import io.unitycatalog.server.base.table.TableOperations;
+import io.unitycatalog.server.persist.dao.ColumnInfoDAO;
+import io.unitycatalog.server.persist.dao.TableInfoDAO;
+import io.unitycatalog.server.persist.utils.HibernateUtils;
 import io.unitycatalog.server.sdk.catalog.SdkCatalogOperations;
 import io.unitycatalog.server.sdk.schema.SdkSchemaOperations;
 import io.unitycatalog.server.sdk.tables.SdkTableOperations;
-import static io.unitycatalog.server.utils.TestUtils.*;
+import io.unitycatalog.server.utils.TestUtils;
+import org.apache.hadoop.fs.RawLocalFileSystem;
 import org.apache.spark.network.util.JavaUtils;
+import org.apache.spark.sql.Dataset;
 import org.apache.spark.sql.Row;
 import org.apache.spark.sql.SparkSession;
+import org.apache.spark.sql.catalyst.QueryPlanningTracker;
+import org.apache.spark.sql.catalyst.parser.ParseException;
+import org.apache.spark.sql.execution.*;
+import org.apache.spark.sql.execution.command.DataWritingCommandExec;
+import org.apache.spark.sql.execution.datasources.InsertIntoHadoopFsRelationCommand;
+import org.hibernate.Session;
+import org.hibernate.Transaction;
 import org.junit.Assert;
 import org.junit.Before;
 import org.junit.Test;
 
 import java.io.File;
 import java.io.IOException;
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.List;
+import java.net.URI;
+import java.util.*;
+
+import static io.unitycatalog.server.utils.TestUtils.*;
 
 public class SparkIntegrationTest extends BaseCRUDTest {
 
@@ -38,17 +51,12 @@ public class SparkIntegrationTest extends BaseCRUDTest {
     @Test
     public void testParquetReadWrite() throws IOException, ApiException {
         createCommonResources();
-        String catalogConf = "spark.sql.catalog." + SPARK_CATALOG;
-        SparkSession session = SparkSession.builder().appName("test").master("local[*]")
-                .config(catalogConf, UCSingleCatalog.class.getName())
-                .config(catalogConf + ".uri", serverConfig.getServerUrl())
-                .config(catalogConf + ".token", serverConfig.getAuthToken())
-                .getOrCreate();
+        SparkSession session = createSparkSessionWithCatalogs(SPARK_CATALOG);
         // Spark only allow `spark_catalog` to return built-in file source tables.
-        setupParquetTable(PARQUET_TABLE, new ArrayList<>(0), session);
+        setupExternalParquetTable(PARQUET_TABLE, new ArrayList<>(0), session);
         testTableReadWrite(SPARK_CATALOG + "." + SCHEMA_NAME + "." + PARQUET_TABLE, session);
 
-        setupParquetTable(PARQUET_TABLE_PARTITIONED, Arrays.asList("s"), session);
+        setupExternalParquetTable(PARQUET_TABLE_PARTITIONED, Arrays.asList("s"), session);
         testTableReadWrite(SPARK_CATALOG + "." + SCHEMA_NAME + "." + PARQUET_TABLE_PARTITIONED, session);
 
         session.stop();
@@ -58,28 +66,18 @@ public class SparkIntegrationTest extends BaseCRUDTest {
     public void testDeltaReadWrite() throws IOException, ApiException {
         createCommonResources();
         // Test both `spark_catalog` and other catalog names.
-        String catalogConf1 = "spark.sql.catalog." + SPARK_CATALOG;
-        String catalogConf2 = "spark.sql.catalog." + CATALOG_NAME;
-        SparkSession session = SparkSession.builder().appName("test").master("local[*]")
-                .config("spark.sql.extensions", "io.delta.sql.DeltaSparkSessionExtension")
-                .config(catalogConf1, UCSingleCatalog.class.getName())
-                .config(catalogConf1 + ".uri", serverConfig.getServerUrl())
-                .config(catalogConf1 + ".token", serverConfig.getAuthToken())
-                .config(catalogConf2, UCSingleCatalog.class.getName())
-                .config(catalogConf2 + ".uri", serverConfig.getServerUrl())
-                .config(catalogConf2 + ".token", serverConfig.getAuthToken())
-                .getOrCreate();
+        SparkSession session = createSparkSessionWithCatalogs(SPARK_CATALOG, CATALOG_NAME);
 
-        setupDeltaTable(SPARK_CATALOG, DELTA_TABLE, new ArrayList<>(0), session);
+        setupExternalDeltaTable(SPARK_CATALOG, DELTA_TABLE, new ArrayList<>(0), session);
         testTableReadWrite(SPARK_CATALOG + "." + SCHEMA_NAME + "." + DELTA_TABLE, session);
 
-        setupDeltaTable(SPARK_CATALOG, DELTA_TABLE_PARTITIONED, Arrays.asList("s"), session);
+        setupExternalDeltaTable(SPARK_CATALOG, DELTA_TABLE_PARTITIONED, Arrays.asList("s"), session);
         testTableReadWrite(SPARK_CATALOG + "." + SCHEMA_NAME + "." + DELTA_TABLE_PARTITIONED, session);
 
-        setupDeltaTable(CATALOG_NAME, DELTA_TABLE, new ArrayList<>(0), session);
+        setupExternalDeltaTable(CATALOG_NAME, DELTA_TABLE, new ArrayList<>(0), session);
         testTableReadWrite(CATALOG_NAME + "." + SCHEMA_NAME + "." + DELTA_TABLE, session);
 
-        setupDeltaTable(CATALOG_NAME, DELTA_TABLE_PARTITIONED, Arrays.asList("s"), session);
+        setupExternalDeltaTable(CATALOG_NAME, DELTA_TABLE_PARTITIONED, Arrays.asList("s"), session);
         testTableReadWrite(CATALOG_NAME + "." + SCHEMA_NAME + "." + DELTA_TABLE_PARTITIONED, session);
 
         session.stop();
@@ -89,13 +87,7 @@ public class SparkIntegrationTest extends BaseCRUDTest {
     public void testDeltaPathTable() throws IOException, ApiException {
         createCommonResources();
         // We must replace the `spark_catalog` in order to support Delta path tables.
-        String catalogConf = "spark.sql.catalog." + SPARK_CATALOG;
-        SparkSession session = SparkSession.builder().appName("test").master("local[*]")
-                .config("spark.sql.extensions", "io.delta.sql.DeltaSparkSessionExtension")
-                .config(catalogConf, UCSingleCatalog.class.getName())
-                .config(catalogConf + ".uri", serverConfig.getServerUrl())
-                .config(catalogConf + ".token", serverConfig.getAuthToken())
-                .getOrCreate();
+        SparkSession session = createSparkSessionWithCatalogs(SPARK_CATALOG);
 
         String path1 = new File(dataDir, "test_delta_path1").getCanonicalPath();
         String tableName1 = String.format("delta.`%s`", path1);
@@ -116,6 +108,66 @@ public class SparkIntegrationTest extends BaseCRUDTest {
         session.stop();
     }
 
+    @Test
+    public void testManagedParquetTable() throws ApiException, IOException, ParseException {
+        createCommonResources();
+        SparkSession session = createSparkSessionWithCatalogs(SPARK_CATALOG);
+        // Spark only allow `spark_catalog` to return built-in file source tables.
+        setupManagedParquetTable(PARQUET_TABLE, new ArrayList<>(0), session);
+        String tableFullName = SPARK_CATALOG + "." + SCHEMA_NAME + "." + PARQUET_TABLE;
+
+        Dataset<Row> df = session.sql("SELECT * FROM " + tableFullName);
+        FileSourceScanExec scan = (FileSourceScanExec) df.queryExecution().executedPlan().collectLeaves().head();
+        Assert.assertEquals("test1", scan.relation().options().apply("fs.s3a.access.key"));
+        Assert.assertEquals("test2", scan.relation().options().apply("fs.s3a.secret.key"));
+        Assert.assertEquals("test3", scan.relation().options().apply("fs.s3a.session.token"));
+
+        DataWritingCommandExec cmdExec = (DataWritingCommandExec) new QueryExecution(
+                session,
+                session.sessionState().sqlParser().parsePlan("INSERT INTO " + tableFullName + " SELECT 1, 'a'"),
+                new QueryPlanningTracker(scala.Option.apply(null)),
+                CommandExecutionMode.NON_ROOT(),
+                DoNotCleanup$.MODULE$
+        ).executedPlan();
+        InsertIntoHadoopFsRelationCommand cmd = (InsertIntoHadoopFsRelationCommand) cmdExec.cmd();
+        Assert.assertEquals("test1", cmd.options().apply("fs.s3a.access.key"));
+        Assert.assertEquals("test2", cmd.options().apply("fs.s3a.secret.key"));
+        Assert.assertEquals("test3", cmd.options().apply("fs.s3a.session.token"));
+
+        session.stop();
+    }
+
+    // TODO: enable the Delta Lake test once UC server supports managed table. We have to disable it
+    //       for now as we can only test with a fake table location but Delta table needs a real
+    //       Delta path.
+    // @Test
+    public void testManagedDeltaTable() throws ApiException, IOException, ParseException {
+        createCommonResources();
+        SparkSession session = createSparkSessionWithCatalogs(SPARK_CATALOG, CATALOG_NAME);
+        setupManagedDeltaTable(CATALOG_NAME, DELTA_TABLE, new ArrayList<>(0), session);
+        String tableFullName = CATALOG_NAME + "." + SCHEMA_NAME + "." + DELTA_TABLE;
+
+        Dataset<Row> df = session.sql("SELECT * FROM " + tableFullName);
+        FileSourceScanExec scan = (FileSourceScanExec) df.queryExecution().executedPlan().collectLeaves().head();
+        Assert.assertEquals("test1", scan.relation().options().apply("fs.s3a.access.key"));
+        Assert.assertEquals("test2", scan.relation().options().apply("fs.s3a.secret.key"));
+        Assert.assertEquals("test3", scan.relation().options().apply("fs.s3a.session.token"));
+
+        DataWritingCommandExec cmdExec = (DataWritingCommandExec) new QueryExecution(
+                session,
+                session.sessionState().sqlParser().parsePlan("INSERT INTO " + tableFullName + " SELECT 1, 'a'"),
+                new QueryPlanningTracker(scala.Option.apply(null)),
+                CommandExecutionMode.NON_ROOT(),
+                DoNotCleanup$.MODULE$
+        ).executedPlan();
+        InsertIntoHadoopFsRelationCommand cmd = (InsertIntoHadoopFsRelationCommand) cmdExec.cmd();
+        Assert.assertEquals("test1", cmd.options().apply("fs.s3a.access.key"));
+        Assert.assertEquals("test2", cmd.options().apply("fs.s3a.secret.key"));
+        Assert.assertEquals("test3", cmd.options().apply("fs.s3a.session.token"));
+
+        session.stop();
+    }
+
     private void testTableReadWrite(String tableFullName, SparkSession session) {
         Assert.assertTrue(
                 session.sql("SELECT * FROM " + tableFullName).collectAsList().isEmpty());
@@ -127,58 +179,177 @@ public class SparkIntegrationTest extends BaseCRUDTest {
 
     private SchemaOperations schemaOperations;
     private TableOperations tableOperations;
+    private String schemaId1 = null;
+    private String schemaId2 = null;
 
     private void createCommonResources() throws ApiException {
         // Common setup operations such as creating a catalog and schema
-        catalogOperations.createCatalog(CATALOG_NAME, "Common catalog for tables");
-        schemaOperations.createSchema(new CreateSchema().name(SCHEMA_NAME).catalogName(CATALOG_NAME));
-        catalogOperations.createCatalog(SPARK_CATALOG, "Spark catalog");
-        schemaOperations.createSchema(new CreateSchema().name(SCHEMA_NAME).catalogName(SPARK_CATALOG));
+        catalogOperations.createCatalog(new CreateCatalog()
+                .name(TestUtils.CATALOG_NAME)
+                .comment(TestUtils.COMMENT));
+        SchemaInfo schemaInfo1 = schemaOperations.createSchema(
+                new CreateSchema().name(SCHEMA_NAME).catalogName(CATALOG_NAME));
+        schemaId1 = schemaInfo1.getSchemaId();
+        catalogOperations.createCatalog(new CreateCatalog()
+                .name(SPARK_CATALOG)
+                .comment("Spark catalog"));
+        SchemaInfo schemaInfo2 = schemaOperations.createSchema(
+                new CreateSchema().name(SCHEMA_NAME).catalogName(SPARK_CATALOG));
+        schemaId2 = schemaInfo2.getSchemaId();
+    }
+
+    private SparkSession createSparkSessionWithCatalogs(String... catalogs) {
+        SparkSession.Builder builder = SparkSession.builder().appName("test").master("local[*]")
+                .config("spark.sql.extensions", "io.delta.sql.DeltaSparkSessionExtension");
+        for (String catalog : catalogs) {
+            String catalogConf = "spark.sql.catalog." + catalog;
+            builder = builder.config(catalogConf, UCSingleCatalog.class.getName())
+                    .config(catalogConf + ".uri", serverConfig.getServerUrl())
+                    .config(catalogConf + ".token", serverConfig.getAuthToken());
+        }
+        // Use fake file system for s3:// so that test can run.
+        builder.config("fs.s3.impl", FakeFileSystem.class.getName());
+        return builder.getOrCreate();
+    }
+
+    private void setupExternalParquetTable(
+            String tableName,
+            List<String> partitionColumns,
+            SparkSession session) throws IOException, ApiException {
+        setupParquetTable(tableName, partitionColumns, false, session);
+    }
+
+    private void setupManagedParquetTable(
+            String tableName,
+            List<String> partitionColumns,
+            SparkSession session) throws IOException, ApiException {
+        setupParquetTable(tableName, partitionColumns, true, session);
     }
 
     private void setupParquetTable(
             String tableName,
             List<String> partitionColumns,
+            boolean isManaged,
             SparkSession session) throws IOException, ApiException {
         setupTables(
                 SPARK_CATALOG,
-                SCHEMA_NAME,
                 tableName,
                 DataSourceFormat.PARQUET,
                 partitionColumns,
+                isManaged,
                 session);
+    }
+
+    private void setupExternalDeltaTable(
+            String catalogName,
+            String tableName,
+            List<String> partitionColumns,
+            SparkSession session) throws IOException, ApiException {
+        setupDeltaTable(catalogName, tableName, partitionColumns, false, session);
+    }
+
+    private void setupManagedDeltaTable(
+            String catalogName,
+            String tableName,
+            List<String> partitionColumns,
+            SparkSession session) throws IOException, ApiException {
+        setupDeltaTable(catalogName, tableName, partitionColumns, true, session);
     }
 
     private void setupDeltaTable(
             String catalogName,
             String tableName,
             List<String> partitionColumns,
+            boolean isManaged,
             SparkSession session) throws IOException, ApiException {
         setupTables(
                 catalogName,
-                SCHEMA_NAME,
                 tableName,
                 DataSourceFormat.DELTA,
                 partitionColumns,
+                isManaged,
                 session);
     }
     private void setupTables(
             String catalogName,
-            String schemaName,
             String tableName,
             DataSourceFormat format,
             List<String> partitionColumns,
+            boolean isManaged,
             SparkSession session) throws IOException, ApiException {
         Integer partitionIndex1 = partitionColumns.indexOf("i");
         if (partitionIndex1 == -1) partitionIndex1 = null;
+        Integer partitionIndex2 = partitionColumns.indexOf("s");
+        if (partitionIndex2 == -1) partitionIndex2 = null;
+
+        // TODO: remove this when managed table is officially supported.
+        if (isManaged) {
+            Session s = HibernateUtils.getSessionFactory().openSession();
+            Transaction tx = s.beginTransaction();
+
+            UUID tableId = UUID.randomUUID();
+            String schemaId;
+            if (catalogName.equals(CATALOG_NAME)) {
+                schemaId = schemaId1;
+            } else {
+                schemaId = schemaId2;
+            }
+
+            TableInfoDAO managedTableInfo =
+                    TableInfoDAO.builder()
+                            .name(tableName)
+                            .schemaId(UUID.fromString(schemaId))
+                            .comment(TestUtils.COMMENT)
+                            .url("s3://test-bucket")
+                            .type(TableType.MANAGED.name())
+                            .dataSourceFormat(format.name())
+                            .id(tableId)
+                            .createdAt(new Date())
+                            .updatedAt(new Date())
+                            .build();
+
+            ColumnInfoDAO columnInfoDAO1 =
+                    ColumnInfoDAO.builder()
+                            .name("i")
+                            .typeText("INTEGER")
+                            .typeJson("{\"type\": \"integer\"}")
+                            .typeName(ColumnTypeName.INT.name())
+                            .typePrecision(10)
+                            .typeScale(0)
+                            .ordinalPosition((short) 0)
+                            .comment("Integer column")
+                            .nullable(true)
+                            .table(managedTableInfo)
+                            .build();
+
+            ColumnInfoDAO columnInfoDAO2 =
+                    ColumnInfoDAO.builder()
+                            .name("s")
+                            .typeText("STRING")
+                            .typeJson("{\"type\": \"string\"}")
+                            .typeName(ColumnTypeName.STRING.name())
+                            .ordinalPosition((short) 1)
+                            .comment("String column")
+                            .nullable(true)
+                            .table(managedTableInfo)
+                            .build();
+
+            managedTableInfo.setColumns(Arrays.asList(columnInfoDAO1, columnInfoDAO2));
+
+            s.persist(managedTableInfo);
+            s.flush();
+            tx.commit();
+
+            return;
+        }
+
         ColumnInfo c1 = new ColumnInfo().name("i").typeText("INTEGER")
                 .typeJson("{\"type\": \"integer\"}")
                 .typeName(ColumnTypeName.INT).typePrecision(10).typeScale(0).position(0)
                 .partitionIndex(partitionIndex1)
                 .comment("Integer column")
                 .nullable(true);
-        Integer partitionIndex2 = partitionColumns.indexOf("s");
-        if (partitionIndex2 == -1) partitionIndex2 = null;
+
         ColumnInfo c2 = new ColumnInfo().name("s").typeText("STRING")
                 .typeJson("{\"type\": \"string\"}")
                 .typeName(ColumnTypeName.STRING).position(1)
@@ -186,7 +357,7 @@ public class SparkIntegrationTest extends BaseCRUDTest {
                 .comment("String column")
                 .nullable(true);
         String location = new File(new File(dataDir, catalogName), tableName).getCanonicalPath();
-        if (format == DataSourceFormat.DELTA) {
+        if (!isManaged && format == DataSourceFormat.DELTA) {
             // The Delta path can't be empty, need to set up here.
             String partitionClause;
             if (partitionColumns.isEmpty()) {
@@ -198,15 +369,23 @@ public class SparkIntegrationTest extends BaseCRUDTest {
             }
             session.sql(String.format("CREATE TABLE delta.`%s`(i INT, s STRING) USING delta", location) + partitionClause);
         }
+        TableType tableType;
+        if (isManaged) {
+            tableType = TableType.MANAGED;
+        } else {
+            tableType = TableType.EXTERNAL;
+        }
         CreateTable createTableRequest = new CreateTable()
                 .name(tableName)
                 .catalogName(catalogName)
-                .schemaName(schemaName)
+                .schemaName(SCHEMA_NAME)
                 .columns(Arrays.asList(c1, c2))
                 .comment(COMMENT)
-                .storageLocation(location)
-                .tableType(TableType.EXTERNAL)
+                .tableType(tableType)
                 .dataSourceFormat(format);
+        if (!isManaged) {
+            createTableRequest = createTableRequest.storageLocation(location);
+        }
         tableOperations.createTable(createTableRequest);
     }
 
@@ -225,38 +404,24 @@ public class SparkIntegrationTest extends BaseCRUDTest {
     }
 
     @Override
-    protected void cleanUp() {
-        deleteCatalog(CATALOG_NAME);
-        deleteCatalog(SPARK_CATALOG);
+    public void cleanUp() {
+        try {
+            catalogOperations.deleteCatalog(SPARK_CATALOG, Optional.of(true));
+        } catch (Exception e) {
+            // Ignore
+        }
+        super.cleanUp();
         try {
             JavaUtils.deleteRecursively(dataDir);
         } catch (IOException e) {
             throw new RuntimeException(e);
         }
-        super.cleanUp();
     }
+}
 
-    private void deleteCatalog(String catalogName) {
-        String schemaFullName = catalogName + "." + SCHEMA_NAME;
-        deleteTable(schemaFullName + "." + PARQUET_TABLE);
-        deleteTable(schemaFullName + "." + DELTA_TABLE);
-        try {
-            schemaOperations.deleteSchema(schemaFullName);
-        } catch (Exception e) {
-            // Ignore
-        }
-        try {
-            catalogOperations.deleteCatalog(catalogName);
-        } catch (Exception e) {
-            // Ignore
-        }
-    }
-
-    private void deleteTable(String tableFullName) {
-        try {
-            tableOperations.deleteTable(tableFullName);
-        } catch (Exception e) {
-            // Ignore
-        }
+class FakeFileSystem extends RawLocalFileSystem {
+    @Override
+    public URI getUri() {
+        return URI.create("s3://test-bucket");
     }
 }
