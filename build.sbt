@@ -237,7 +237,12 @@ lazy val server = (project in file("server"))
            |""".stripMargin)
       Seq(file)
     },
-    (Compile / compile) := ((Compile / compile) dependsOn (serverModels / generate)).value,
+    (Compile / compile) := ((Compile / compile) dependsOn (serverModels / generate, serverModels / Compile / compile)).value,
+    populateTestDB := {
+      val log = streams.value.log
+      (Test / runMain).toTask(s" io.unitycatalog.server.utils.PopulateTestDatabase").value
+    },
+    Test / javaOptions += s"-Duser.dir=${(ThisBuild / baseDirectory).value.getAbsolutePath}"
   )
 
 lazy val serverModels = (project in file("server") / "target" / "models")
@@ -269,15 +274,8 @@ lazy val serverModels = (project in file("server") / "target" / "models")
     // Define the simple generate command to generate model codes
     generate := {
       val _ = openApiGenerate.value
-    },
-
-    populateTestDB := {
-      val log = streams.value.log
-      (Test / runMain).toTask(s" io.unitycatalog.server.utils.PopulateTestDatabase").value
-    },
-
-    Test / javaOptions += s"-Duser.dir=${(ThisBuild / baseDirectory).value.getAbsolutePath}",
-)
+    }
+  )
 
 lazy val cli = (project in file("examples") / "cli")
   .dependsOn(server % "compile->compile;test->test")
@@ -318,7 +316,7 @@ lazy val cli = (project in file("examples") / "cli")
   )
 
 lazy val root = (project in file("."))
-  .aggregate(client, server, cli)
+  .aggregate(client, serverModels, server, cli)
   .settings(
     name := s"$artifactNamePrefix",
     createTarballSettings(),
