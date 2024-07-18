@@ -9,6 +9,7 @@ import TablesList from '../components/tables/TablesList';
 import VolumesList from '../components/volumes/VolumesList';
 import FunctionsList from '../components/functions/FunctionsList';
 import { DatabaseOutlined } from '@ant-design/icons';
+import CreateAssetsDropdown from '../components/schemas/CreateAssetsDropdown';
 
 export default function SchemaDetails() {
   const { catalog, schema } = useParams();
@@ -23,9 +24,12 @@ export default function SchemaDetails() {
   return (
     <DetailsLayout
       title={
-        <Typography.Title level={3}>
-          <DatabaseOutlined /> {schemaFullName}
-        </Typography.Title>
+        <Flex justify="space-between" align="flex-start" gap="middle">
+          <Typography.Title level={3}>
+            <DatabaseOutlined /> {schemaFullName}
+          </Typography.Title>
+          <CreateAssetsDropdown catalog={catalog} schema={schema} />
+        </Flex>
       }
       breadcrumbs={[
         { title: <Link to="/">Catalogs</Link>, key: '_home' },
