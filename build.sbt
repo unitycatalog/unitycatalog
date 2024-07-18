@@ -85,7 +85,7 @@ useCoursier := true
 // Configure resolvers
 resolvers ++= Seq(
   "Sonatype OSS Releases" at "https://oss.sonatype.org/content/repositories/releases/",
-  "Maven Central" at "https://repo1.maven.org/maven2/"
+  "Maven Central" at "https://repo1.maven.org/maven2/",
 )
 
 def javaCheckstyleSettings(configLocation: File) = Seq(
@@ -189,7 +189,7 @@ lazy val server = (project in file("server"))
 
       "jakarta.activation" % "jakarta.activation-api" % "2.1.3",
       "net.bytebuddy" % "byte-buddy" % "1.14.15",
-      "org.projectlombok" % "lombok" % "1.18.32" % "provided",
+      "org.projectlombok" % "lombok" % "1.18.32" % Provided,
 
       //For s3 access
       "com.amazonaws" % "aws-java-sdk-s3" % "1.12.728",
@@ -214,9 +214,12 @@ lazy val server = (project in file("server"))
         exclude("ch.qos.logback", "logback-classic")
         exclude("org.apache.logging.log4j", "log4j-to-slf4j"),
       "javax.xml.bind" % "jaxb-api" % "2.3.1" % Test,
+<<<<<<< HEAD
 
       // CLI dependencies
       "commons-cli" % "commons-cli" % "1.7.0"
+=======
+>>>>>>> 5a999bd (FileSystem level credential test)
     ),
 
     Compile / compile / javacOptions ++= Seq(
@@ -310,15 +313,6 @@ lazy val cli = (project in file("examples") / "cli")
     Test / javaOptions += s"-Duser.dir=${(ThisBuild / baseDirectory).value.getAbsolutePath}",
   )
 
-lazy val root = (project in file("."))
-  .aggregate(serverModels, client, server, cli)
-  .settings(
-    name := s"$artifactNamePrefix",
-    createTarballSettings(),
-    commonSettings,
-    rootReleaseSettings
-  )
-
 lazy val spark = (project in file("connectors/spark"))
   .dependsOn(client % "compile->compile;test->test")
   .dependsOn(server % "test->test")
@@ -337,6 +331,18 @@ lazy val spark = (project in file("connectors/spark"))
       "net.aichler" % "jupiter-interface" % JupiterKeys.jupiterVersion.value % Test,
       "io.delta" %% "delta-spark" % "4.0.0rc1" % Test,
     ),
+    excludeDependencies ++= Seq(
+      ExclusionRule("com.adobe.testing", "s3mock-junit5")
+    ),
+  )
+
+lazy val root = (project in file("."))
+  .aggregate(serverModels, client, server, cli, spark)
+  .settings(
+    name := s"$artifactNamePrefix",
+    createTarballSettings(),
+    commonSettings,
+    rootReleaseSettings
   )
 
 def generateClasspathFile(targetDir: File, classpath: Classpath): Unit = {
