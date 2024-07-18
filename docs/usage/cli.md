@@ -251,8 +251,10 @@ bin/uc volume update --full_name <catalog>.<schema>.<volume> --new_name <new_nam
 - `catalog` : The name of the catalog.
 - `schema` : The name of the schema.
 - `volume` : The name of the volume.
-- `new_name` : The new name of the volume.
+- `new_name` : *[Optional]* The new name of the volume.
 - `comment` : *[Optional]* The new description of the volume.
+
+*Note:* at least one of the optional parameters must be specified.
 
 Example:
 ```sh

@@ -213,7 +213,9 @@ public class VolumeRepository {
   }
 
   public VolumeInfo updateVolume(String name, UpdateVolumeRequestContent updateVolumeRequest) {
-    ValidationUtils.validateSqlObjectName(updateVolumeRequest.getNewName());
+    if (updateVolumeRequest.getNewName() != null) {
+      ValidationUtils.validateSqlObjectName(updateVolumeRequest.getNewName());
+    }
     String[] namespace = name.split("\\.");
     String catalog = namespace[0], schema = namespace[1], volume = namespace[2];
     try (Session session = SESSION_FACTORY.openSession()) {
@@ -231,6 +233,10 @@ public class VolumeRepository {
                 ErrorCode.ALREADY_EXISTS,
                 "Volume already exists: " + updateVolumeRequest.getNewName());
           }
+        }
+        if (updateVolumeRequest.getNewName() == null && updateVolumeRequest.getComment() == null) {
+          tx.rollback();
+          return convertFromDAO(volumeInfo, catalog, schema);
         }
         if (updateVolumeRequest.getNewName() != null) {
           volumeInfo.setName(updateVolumeRequest.getNewName());

@@ -125,8 +125,8 @@ public class CliUtils {
                   put(
                       UPDATE,
                       new CliOptions(
-                          List.of(CliParams.FULL_NAME, CliParams.NEW_NAME),
-                          List.of(CliParams.COMMENT)));
+                          List.of(CliParams.FULL_NAME),
+                          List.of(CliParams.COMMENT, CliParams.NEW_NAME)));
                   put(DELETE, new CliOptions(List.of(CliParams.FULL_NAME), List.of()));
                   put(READ, new CliOptions(List.of(CliParams.FULL_NAME), List.of(CliParams.PATH)));
                   put(WRITE, new CliOptions(List.of(CliParams.FULL_NAME), List.of(CliParams.PATH)));
@@ -453,7 +453,8 @@ public class CliUtils {
         "By default, the client will connect to UC running locally at http://localhost:8080\n");
     System.out.println("To connect to specific UC server, use --server https://<host>\n");
     System.out.println(
-        "Currently, auth using bearer token is supported. Please specify the token via --auth_token <PAT Token>\n");
+        "Currently, auth using bearer token is supported. Please specify the token via --auth_token"
+            + " <PAT Token>\n");
     System.out.println(
         "For detailed help on entity specific operations, use bin/uc <entity> --help");
   }
