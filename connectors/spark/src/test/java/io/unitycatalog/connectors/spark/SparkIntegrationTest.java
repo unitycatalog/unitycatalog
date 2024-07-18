@@ -27,8 +27,8 @@ import org.apache.spark.sql.execution.datasources.InsertIntoHadoopFsRelationComm
 import org.hibernate.Session;
 import org.hibernate.Transaction;
 import org.junit.Assert;
-import org.junit.Before;
-import org.junit.Test;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
 
 import java.io.File;
 import java.io.IOException;
@@ -389,7 +389,7 @@ public class SparkIntegrationTest extends BaseCRUDTest {
         tableOperations.createTable(createTableRequest);
     }
 
-    @Before
+    @BeforeEach
     @Override
     public void setUp() {
         super.setUp();

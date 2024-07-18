@@ -11,6 +11,8 @@ import io.unitycatalog.server.base.ServerConfig;
 import io.unitycatalog.server.base.schema.SchemaOperations;
 import java.util.List;
 import org.junit.*;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
 
 public abstract class BaseFunctionCRUDTest extends BaseCRUDTest {
   protected SchemaOperations schemaOperations;
@@ -20,7 +22,7 @@ public abstract class BaseFunctionCRUDTest extends BaseCRUDTest {
 
   protected abstract FunctionOperations createFunctionOperations(ServerConfig serverConfig);
 
-  @Before
+  @BeforeEach
   @Override
   public void setUp() {
     super.setUp();

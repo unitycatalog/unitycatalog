@@ -11,6 +11,7 @@ import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
 import org.junit.*;
+import org.junit.jupiter.api.Test;
 
 public abstract class BaseCatalogCRUDTest extends BaseCRUDTest {
 

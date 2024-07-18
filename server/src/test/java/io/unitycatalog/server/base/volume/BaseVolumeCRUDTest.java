@@ -17,7 +17,8 @@ import java.util.Optional;
 import java.util.UUID;
 import org.hibernate.Session;
 import org.hibernate.SessionFactory;
-import org.junit.*;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
 
 public abstract class BaseVolumeCRUDTest extends BaseCRUDTest {
   protected SchemaOperations schemaOperations;
@@ -27,7 +28,7 @@ public abstract class BaseVolumeCRUDTest extends BaseCRUDTest {
 
   protected abstract VolumeOperations createVolumeOperations(ServerConfig serverConfig);
 
-  @Before
+  @BeforeEach
   @Override
   public void setUp() {
     super.setUp();

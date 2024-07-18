@@ -2,7 +2,7 @@ package io.unitycatalog.server.utils;
 
 import io.unitycatalog.server.exception.BaseException;
 import org.junit.Assert;
-import org.junit.Test;
+import org.junit.jupiter.api.Test;
 
 public class SqlNameValidationTest {
 

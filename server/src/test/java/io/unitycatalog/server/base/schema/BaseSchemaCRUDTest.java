@@ -9,6 +9,8 @@ import io.unitycatalog.server.base.ServerConfig;
 import io.unitycatalog.server.utils.TestUtils;
 import java.util.Optional;
 import org.junit.*;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
 
 public abstract class BaseSchemaCRUDTest extends BaseCRUDTest {
 
@@ -16,7 +18,7 @@ public abstract class BaseSchemaCRUDTest extends BaseCRUDTest {
 
   protected abstract SchemaOperations createSchemaOperations(ServerConfig config);
 
-  @Before
+  @BeforeEach
   @Override
   public void setUp() {
     super.setUp();

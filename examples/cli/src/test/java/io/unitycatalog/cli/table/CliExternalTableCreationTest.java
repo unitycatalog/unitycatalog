@@ -19,9 +19,9 @@ import java.nio.file.attribute.BasicFileAttributes;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
-import org.junit.After;
-import org.junit.Before;
-import org.junit.Test;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
 
 public class CliExternalTableCreationTest extends BaseServerTest {
 
@@ -34,7 +34,7 @@ public class CliExternalTableCreationTest extends BaseServerTest {
           new ColumnInfo().name("id").typeName(ColumnTypeName.INT).comment("id"),
           new ColumnInfo().name("name").typeName(ColumnTypeName.STRING).comment("name"));
 
-  @Before
+  @BeforeEach
   @Override
   public void setUp() {
     super.setUp();
@@ -51,7 +51,7 @@ public class CliExternalTableCreationTest extends BaseServerTest {
     }
   }
 
-  @After
+  @AfterEach
   public void cleanUp() {
     try {
       catalogOperations.deleteCatalog(CATALOG_NAME, Optional.of(true));

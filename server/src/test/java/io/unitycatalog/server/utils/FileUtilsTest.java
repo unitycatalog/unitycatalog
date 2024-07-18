@@ -5,7 +5,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import io.unitycatalog.server.exception.BaseException;
 import io.unitycatalog.server.persist.utils.FileUtils;
 import org.junit.Assert;
-import org.junit.Test;
+import org.junit.jupiter.api.Test;
 
 public class FileUtilsTest {
 

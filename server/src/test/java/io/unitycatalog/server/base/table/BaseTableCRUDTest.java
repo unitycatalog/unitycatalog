@@ -17,6 +17,8 @@ import java.util.*;
 import org.hibernate.Session;
 import org.hibernate.Transaction;
 import org.junit.*;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
 
 public abstract class BaseTableCRUDTest extends BaseCRUDTest {
   protected SchemaOperations schemaOperations;
@@ -27,7 +29,7 @@ public abstract class BaseTableCRUDTest extends BaseCRUDTest {
 
   protected abstract TableOperations createTableOperations(ServerConfig serverConfig);
 
-  @Before
+  @BeforeEach
   @Override
   public void setUp() {
     super.setUp();
