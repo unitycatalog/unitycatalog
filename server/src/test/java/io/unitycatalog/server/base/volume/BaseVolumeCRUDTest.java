@@ -2,7 +2,10 @@ package io.unitycatalog.server.base.volume;
 
 import static io.unitycatalog.server.utils.TestUtils.*;
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.junit.Assert.*;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import io.unitycatalog.client.ApiException;
 import io.unitycatalog.client.model.*;

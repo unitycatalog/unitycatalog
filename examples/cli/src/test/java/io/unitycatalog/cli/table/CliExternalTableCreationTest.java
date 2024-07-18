@@ -1,8 +1,10 @@
 package io.unitycatalog.cli.table;
 
 import static io.unitycatalog.server.utils.TestUtils.*;
-import static org.junit.Assert.*;
+import static org.assertj.core.api.Assertions.fail;
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 
 import io.unitycatalog.cli.catalog.CliCatalogOperations;
 import io.unitycatalog.cli.delta.DeltaKernelUtils;

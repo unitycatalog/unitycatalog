@@ -26,7 +26,6 @@ import org.apache.spark.sql.execution.command.DataWritingCommandExec;
 import org.apache.spark.sql.execution.datasources.InsertIntoHadoopFsRelationCommand;
 import org.hibernate.Session;
 import org.hibernate.Transaction;
-import org.junit.Assert;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
@@ -36,6 +35,8 @@ import java.net.URI;
 import java.util.*;
 
 import static io.unitycatalog.server.utils.TestUtils.*;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 public class SparkIntegrationTest extends BaseCRUDTest {
 
@@ -92,17 +93,17 @@ public class SparkIntegrationTest extends BaseCRUDTest {
         String path1 = new File(dataDir, "test_delta_path1").getCanonicalPath();
         String tableName1 = String.format("delta.`%s`", path1);
         session.sql(String.format("CREATE TABLE %s(i INT) USING delta", tableName1));
-        Assert.assertTrue(
+        assertTrue(
                 session.sql("SELECT * FROM " + tableName1).collectAsList().isEmpty());
         session.sql("INSERT INTO " + tableName1 + " SELECT 1");
-        Assert.assertEquals(1,
+        assertEquals(1,
                 session.sql("SELECT * FROM " + tableName1).collectAsList().get(0).getInt(0));
 
         // Test CTAS
         String path2 = new File(dataDir, "test_delta_path2").getCanonicalPath();
         String tableName2 = String.format("delta.`%s`", path2);
         session.sql(String.format("CREATE TABLE %s USING delta AS SELECT 1 AS i", tableName2));
-        Assert.assertEquals(1,
+        assertEquals(1,
                 session.sql("SELECT * FROM " + tableName2).collectAsList().get(0).getInt(0));
 
         session.stop();
@@ -118,9 +119,9 @@ public class SparkIntegrationTest extends BaseCRUDTest {
 
         Dataset<Row> df = session.sql("SELECT * FROM " + tableFullName);
         FileSourceScanExec scan = (FileSourceScanExec) df.queryExecution().executedPlan().collectLeaves().head();
-        Assert.assertEquals("test1", scan.relation().options().apply("fs.s3a.access.key"));
-        Assert.assertEquals("test2", scan.relation().options().apply("fs.s3a.secret.key"));
-        Assert.assertEquals("test3", scan.relation().options().apply("fs.s3a.session.token"));
+        assertEquals("test1", scan.relation().options().apply("fs.s3a.access.key"));
+        assertEquals("test2", scan.relation().options().apply("fs.s3a.secret.key"));
+        assertEquals("test3", scan.relation().options().apply("fs.s3a.session.token"));
 
         DataWritingCommandExec cmdExec = (DataWritingCommandExec) new QueryExecution(
                 session,
@@ -130,9 +131,9 @@ public class SparkIntegrationTest extends BaseCRUDTest {
                 DoNotCleanup$.MODULE$
         ).executedPlan();
         InsertIntoHadoopFsRelationCommand cmd = (InsertIntoHadoopFsRelationCommand) cmdExec.cmd();
-        Assert.assertEquals("test1", cmd.options().apply("fs.s3a.access.key"));
-        Assert.assertEquals("test2", cmd.options().apply("fs.s3a.secret.key"));
-        Assert.assertEquals("test3", cmd.options().apply("fs.s3a.session.token"));
+        assertEquals("test1", cmd.options().apply("fs.s3a.access.key"));
+        assertEquals("test2", cmd.options().apply("fs.s3a.secret.key"));
+        assertEquals("test3", cmd.options().apply("fs.s3a.session.token"));
 
         session.stop();
     }
@@ -149,9 +150,9 @@ public class SparkIntegrationTest extends BaseCRUDTest {
 
         Dataset<Row> df = session.sql("SELECT * FROM " + tableFullName);
         FileSourceScanExec scan = (FileSourceScanExec) df.queryExecution().executedPlan().collectLeaves().head();
-        Assert.assertEquals("test1", scan.relation().options().apply("fs.s3a.access.key"));
-        Assert.assertEquals("test2", scan.relation().options().apply("fs.s3a.secret.key"));
-        Assert.assertEquals("test3", scan.relation().options().apply("fs.s3a.session.token"));
+        assertEquals("test1", scan.relation().options().apply("fs.s3a.access.key"));
+        assertEquals("test2", scan.relation().options().apply("fs.s3a.secret.key"));
+        assertEquals("test3", scan.relation().options().apply("fs.s3a.session.token"));
 
         DataWritingCommandExec cmdExec = (DataWritingCommandExec) new QueryExecution(
                 session,
@@ -161,20 +162,20 @@ public class SparkIntegrationTest extends BaseCRUDTest {
                 DoNotCleanup$.MODULE$
         ).executedPlan();
         InsertIntoHadoopFsRelationCommand cmd = (InsertIntoHadoopFsRelationCommand) cmdExec.cmd();
-        Assert.assertEquals("test1", cmd.options().apply("fs.s3a.access.key"));
-        Assert.assertEquals("test2", cmd.options().apply("fs.s3a.secret.key"));
-        Assert.assertEquals("test3", cmd.options().apply("fs.s3a.session.token"));
+        assertEquals("test1", cmd.options().apply("fs.s3a.access.key"));
+        assertEquals("test2", cmd.options().apply("fs.s3a.secret.key"));
+        assertEquals("test3", cmd.options().apply("fs.s3a.session.token"));
 
         session.stop();
     }
 
     private void testTableReadWrite(String tableFullName, SparkSession session) {
-        Assert.assertTrue(
+        assertTrue(
                 session.sql("SELECT * FROM " + tableFullName).collectAsList().isEmpty());
         session.sql("INSERT INTO " + tableFullName + " SELECT 1, 'a'");
         Row row = session.sql("SELECT * FROM " + tableFullName).collectAsList().get(0);
-        Assert.assertEquals(1, row.getInt(0));
-        Assert.assertEquals("a", row.getString(1));
+        assertEquals(1, row.getInt(0));
+        assertEquals("a", row.getString(1));
     }
 
     private SchemaOperations schemaOperations;

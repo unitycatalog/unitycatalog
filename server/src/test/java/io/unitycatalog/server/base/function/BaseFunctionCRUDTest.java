@@ -2,7 +2,11 @@ package io.unitycatalog.server.base.function;
 
 import static io.unitycatalog.server.utils.TestUtils.*;
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.junit.Assert.*;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import io.unitycatalog.client.ApiException;
 import io.unitycatalog.client.model.*;
@@ -10,7 +14,6 @@ import io.unitycatalog.server.base.BaseCRUDTest;
 import io.unitycatalog.server.base.ServerConfig;
 import io.unitycatalog.server.base.schema.SchemaOperations;
 import java.util.List;
-import org.junit.*;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
@@ -38,7 +41,7 @@ public abstract class BaseFunctionCRUDTest extends BaseCRUDTest {
 
   @Test
   public void testFunctionCRUD() throws ApiException {
-    Assert.assertThrows(Exception.class, () -> functionOperations.getFunction(FUNCTION_FULL_NAME));
+    assertThrows(Exception.class, () -> functionOperations.getFunction(FUNCTION_FULL_NAME));
     // Create a catalog
     createCommonResources();
 
