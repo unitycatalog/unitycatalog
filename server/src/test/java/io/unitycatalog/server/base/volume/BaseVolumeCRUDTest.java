@@ -88,17 +88,35 @@ public abstract class BaseVolumeCRUDTest extends BaseCRUDTest {
     VolumeInfo retrievedVolumeInfo = volumeOperations.getVolume(VOLUME_FULL_NAME);
     assertEquals(volumeInfo, retrievedVolumeInfo);
 
-    // Update volume
-    System.out.println("Testing update volume..");
+    // Calling update volume with nothing to update should not change anything
+    System.out.println("Testing updating volume with nothing to update..");
+    UpdateVolumeRequestContent emptyUpdateVolumeRequest = new UpdateVolumeRequestContent();
+    VolumeInfo emptyUpdatedVolumeInfo =
+        volumeOperations.updateVolume(VOLUME_FULL_NAME, emptyUpdateVolumeRequest);
+    VolumeInfo retrievedVolumeInfo2 = volumeOperations.getVolume(VOLUME_FULL_NAME);
+    assertEquals(volumeInfo, retrievedVolumeInfo2);
+
+    // Update volume name without updating comment
+    System.out.println("Testing update volume: changing name..");
     UpdateVolumeRequestContent updateVolumeRequest =
-        new UpdateVolumeRequestContent().newName(VOLUME_NEW_NAME).comment(COMMENT);
-    // Set update details
+        new UpdateVolumeRequestContent().newName(VOLUME_NEW_NAME);
     VolumeInfo updatedVolumeInfo =
         volumeOperations.updateVolume(VOLUME_FULL_NAME, updateVolumeRequest);
     assertEquals(updateVolumeRequest.getNewName(), updatedVolumeInfo.getName());
     assertEquals(updateVolumeRequest.getComment(), updatedVolumeInfo.getComment());
     assertEquals(VOLUME_NEW_FULL_NAME, updatedVolumeInfo.getFullName());
     assertNotNull(updatedVolumeInfo.getUpdatedAt());
+
+    // Update volume comment without updating name
+    System.out.println("Testing update volume: changing comment..");
+    UpdateVolumeRequestContent updateVolumeRequest2 =
+        new UpdateVolumeRequestContent().comment(COMMENT);
+    VolumeInfo updatedVolumeInfo2 =
+        volumeOperations.updateVolume(VOLUME_NEW_FULL_NAME, updateVolumeRequest2);
+    assertEquals(VOLUME_NEW_NAME, updatedVolumeInfo2.getName());
+    assertEquals(updateVolumeRequest2.getComment(), updatedVolumeInfo2.getComment());
+    assertEquals(VOLUME_NEW_FULL_NAME, updatedVolumeInfo2.getFullName());
+    assertNotNull(updatedVolumeInfo2.getUpdatedAt());
 
     // Delete volume
     System.out.println("Testing delete volume..");
