@@ -20,13 +20,13 @@ import org.hibernate.annotations.SQLRestriction;
 @Builder
 public class FunctionInfoDAO {
   @Id
-  @Column(name = "id", columnDefinition = "BINARY(16)")
+  @Column(name = "id")
   private UUID id;
 
   @Column(name = "name", nullable = false)
   private String name;
 
-  @Column(name = "schema_id", columnDefinition = "BINARY(16)")
+  @Column(name = "schema_id")
   private UUID schemaId;
 
   @Column(name = "comment")

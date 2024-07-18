@@ -21,13 +21,13 @@ import lombok.*;
 @Builder
 public class VolumeInfoDAO {
   @Id
-  @Column(name = "id", columnDefinition = "BINARY(16)")
+  @Column(name = "id")
   private UUID id;
 
   @Column(name = "name")
   private String name;
 
-  @Column(name = "schema_id", columnDefinition = "BINARY(16)")
+  @Column(name = "schema_id")
   private UUID schemaId;
 
   @Column(name = "comment")

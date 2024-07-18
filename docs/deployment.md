@@ -37,33 +37,59 @@ This guide outlines how to deploy the Unity Catalog server.
 ### Configuring the UC server
 
 - The UC server can be configured by modifying the files in `etc/conf/`. This includes properties related to logging, server environment and the s3 configuration.
+  - Setting the server environment to `dev` will use properties located in `etc/conf/hibernate.properties` to configure the backend database whereas `test` will spin up an in-memory database.
 - The `etc/data/` directory contains the data files that are used by the UC server. This includes the tables and volumes that are created.
 - The `etc/db/` directory contains the backend database that is used by the UC server.
 
 ### Configuring the database
 
-- The backend database can be configured by modifying the `etc/conf/server.property` file.
-- Choose the database type (`db.type`) to configure the backend database.
-- For H2 Database:
-  - Setting the server environment to `dev` will use the local file system for storing the backend database whereas `test` will spin up an in-memory database.
-- For MySQL Database:
-  - You need to provide the connection details to connect to your MySQL server. The following is how to quickstart a MySQL connection: 
+- The backend database can be configured by modifying the `etc/conf/hibernate.properties` file.
+- You need to provide the connection details to connect to your database server. 
+
+### Example MySQL Connection
 
 #### Prerequisites
-- install docker
+- Install docker.
+- Download JDBC driver for [MySQL](https://dev.mysql.com/downloads/connector/j/).
 
-#### Start MySQL server.
+#### Start MySQL server
 
-- In a terminal, navigate to the cloned repository root directory
-- Modify `etc/db/docker-compose.yml` to configure MySQL server. Then start MySQL using Docker:
+- In a terminal, navigate to the cloned repository root directory.
+- Modify `etc/db/mysql-example.yml` to configure MySQL server. Then start MySQL using Docker:
 ```sh
-docker-compose -f etc/db/docker-compose.yml up -d
+docker-compose -f etc/db/mysql-example.yml up -d
 ```
 
-- Modify the `etc/conf/server.properties` file with your MySQL connection details:
+- Modify the `etc/conf/hibernate.properties` file with your MySQL connection details:
 ```properties
-db.type=mysql
-jdbc.url=jdbc:mysql://localhost:3306/ucdb
-jdbc.user=uc_default_user
-jdbc.password=uc_default_password
+hibernate.connection.driver_class=com.mysql.cj.jdbc.Driver
+hibernate.connection.url=jdbc:mysql://localhost:3306/ucdb
+hibernate.connection.user=uc_default_user
+hibernate.connection.password=uc_default_password
 ```
+
+- Modify the `jars/classpath` file and add path to your jdbc driver.
+
+### Example PostgreSQL Connection
+
+#### Prerequisites
+- Install docker.
+- Download JDBC driver for [PostgreSQL](https://jdbc.postgresql.org/download/).
+
+#### Start PostgreSQL server
+
+- In a terminal, navigate to the cloned repository root directory.
+- Modify `etc/db/postgres-example.yml` to configure PostgreSQL server. Then start PostgreSQL using Docker:
+```sh
+docker-compose -f etc/db/postgres-example.yml up -d
+```
+
+- Modify the `etc/conf/hibernate.properties` file with your PostgreSQL connection details:
+```properties
+hibernate.connection.driver_class=org.postgresql.Driver
+hibernate.connection.url=jdbc:postgresql://localhost:5432/ucdb
+hibernate.connection.user=uc_default_user
+hibernate.connection.password=uc_default_password
+```
+
+- Modify the `jars/classpath` file and add path to your jdbc driver.

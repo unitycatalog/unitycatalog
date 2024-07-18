@@ -284,7 +284,7 @@ public class TableRepository {
     Integer pageSize = getPageSize(maxResults);
     String hql =
         "FROM TableInfoDAO t WHERE t.schemaId = :schemaId and "
-            + "(t.updatedAt < :pageToken OR :pageToken is null) order by t.updatedAt desc";
+            + "(t.updatedAt < :pageToken OR CAST(:pageToken AS timestamp) is null) order by t.updatedAt desc";
     Query<TableInfoDAO> query = session.createQuery(hql, TableInfoDAO.class);
     query.setParameter("schemaId", schemaId);
     query.setParameter("pageToken", convertMillisToDate(nextPageToken));
@@ -336,7 +336,7 @@ public class TableRepository {
       try {
         FileUtils.deleteDirectory(tableInfoDAO.getUrl());
       } catch (Throwable e) {
-        LOGGER.error("Error deleting table directory: {}" ,tableInfoDAO.getUrl(), e);
+        LOGGER.error("Error deleting table directory: {}", tableInfoDAO.getUrl(), e);
       }
     }
     PropertyRepository.findProperties(session, tableInfoDAO.getId(), Constants.TABLE)
