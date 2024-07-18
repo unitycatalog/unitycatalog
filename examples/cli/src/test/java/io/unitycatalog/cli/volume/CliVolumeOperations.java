@@ -67,18 +67,17 @@ public class CliVolumeOperations implements VolumeOperations {
   @Override
   public VolumeInfo updateVolume(
       String volumeFullName, UpdateVolumeRequestContent updateVolumeRequest) {
-    String[] args =
-        addServerAndAuthParams(
-            List.of(
-                "volume",
-                "update",
-                "--full_name",
-                volumeFullName,
-                "--new_name",
-                updateVolumeRequest.getNewName(),
-                "--comment",
-                updateVolumeRequest.getComment()),
-            config);
+    List<String> argsList =
+        new ArrayList<>(List.of("volume", "update", "--full_name", volumeFullName));
+    if (updateVolumeRequest.getNewName() != null) {
+      argsList.add("--new_name");
+      argsList.add(updateVolumeRequest.getNewName());
+    }
+    if (updateVolumeRequest.getComment() != null) {
+      argsList.add("--comment");
+      argsList.add(updateVolumeRequest.getComment());
+    }
+    String[] args = addServerAndAuthParams(argsList, config);
     JsonNode updatedVolumeInfo = executeCLICommand(args);
     return objectMapper.convertValue(updatedVolumeInfo, VolumeInfo.class);
   }
