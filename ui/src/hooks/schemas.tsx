@@ -82,11 +82,11 @@ export function useCreateSchema({
       }
       return response.json();
     },
-    onSuccess: (catalog) => {
+    onSuccess: (schema) => {
       queryClient.invalidateQueries({
-        queryKey: ['listSchemas', catalog.catalog_name],
+        queryKey: ['listSchemas', schema.catalog_name],
       });
-      onSuccessCallback?.(catalog);
+      onSuccessCallback?.(schema);
     },
   });
 }
