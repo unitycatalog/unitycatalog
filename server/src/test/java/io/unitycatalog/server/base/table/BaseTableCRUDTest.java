@@ -53,7 +53,7 @@ public abstract class BaseTableCRUDTest extends BaseCRUDTest {
 
     // Create a table
     System.out.println("Testing create table..");
-    TableInfo tableInfo = createDefaultTestingTable();
+    TableInfo tableInfo = createTestingTable(TestUtils.TABLE_NAME, TestUtils.STORAGE_LOCATION);
     assertEquals(TestUtils.TABLE_NAME, tableInfo.getName());
     Assert.assertEquals(TestUtils.CATALOG_NAME, tableInfo.getCatalogName());
     Assert.assertEquals(TestUtils.SCHEMA_NAME, tableInfo.getSchemaName());
@@ -69,11 +69,32 @@ public abstract class BaseTableCRUDTest extends BaseCRUDTest {
     assertEquals(1, columnInfos2.stream().filter(c -> c.getName().equals("as_int")).count());
     assertEquals(1, columnInfos2.stream().filter(c -> c.getName().equals("as_string")).count());
 
-    // List tables
-    System.out.println("Testing list tables..");
-    Iterable<TableInfo> tableInfos =
+    // Create multiple tables
+    List<TableInfo> createdTables = createMultipleTestingTables(111);
+
+    // List tables with pagination - default is 100 tables per page
+    System.out.println("Testing list tables with pagination..");
+    Iterable<TableInfo> tableInfosWithPagination =
         tableOperations.listTables(TestUtils.CATALOG_NAME, TestUtils.SCHEMA_NAME);
-    assertTrue(TestUtils.contains(tableInfos, tableInfo2, table -> table.equals(tableInfo2)));
+    assertEquals(100, TestUtils.getSize(tableInfosWithPagination));
+
+    // List tables with result sorted by name
+    System.out.println("Testing list tables sorted by name");
+    Iterable<TableInfo> tableInfosSortedByName =
+        tableOperations.listTables(TestUtils.CATALOG_NAME, TestUtils.SCHEMA_NAME);
+    List<TableInfo> sortedTableList = new ArrayList<>();
+    tableInfosSortedByName.forEach(sortedTableList::add);
+    for (int i = 1; i < sortedTableList.size(); i++) {
+      assertTrue(
+          sortedTableList.get(i - 1).getName().compareTo(sortedTableList.get(i).getName()) <= 0);
+    }
+
+    // Clean up created tables
+    System.out.println("Cleaning up created tables..");
+    for (TableInfo table : createdTables) {
+      tableOperations.deleteTable(
+          TestUtils.CATALOG_NAME + "." + TestUtils.SCHEMA_NAME + "." + table.getName());
+    }
 
     // Delete table
     System.out.println("Testing delete table..");
@@ -189,7 +210,8 @@ public abstract class BaseTableCRUDTest extends BaseCRUDTest {
         () -> schemaOperations.getSchema(TestUtils.CATALOG_NAME + "." + TestUtils.SCHEMA_NEW_NAME));
   }
 
-  protected TableInfo createDefaultTestingTable() throws IOException, ApiException {
+  protected TableInfo createTestingTable(String tableName, String storageLocation)
+      throws IOException, ApiException {
     ColumnInfo columnInfo1 =
         new ColumnInfo()
             .name("as_int")
@@ -213,16 +235,27 @@ public abstract class BaseTableCRUDTest extends BaseCRUDTest {
 
     CreateTable createTableRequest =
         new CreateTable()
-            .name(TestUtils.TABLE_NAME)
+            .name(tableName)
             .catalogName(TestUtils.CATALOG_NAME)
             .schemaName(TestUtils.SCHEMA_NAME)
             .columns(List.of(columnInfo1, columnInfo2))
             .properties(TestUtils.PROPERTIES)
             .comment(TestUtils.COMMENT)
-            .storageLocation("/tmp/stagingLocation")
+            .storageLocation(storageLocation)
             .tableType(TableType.EXTERNAL)
             .dataSourceFormat(DataSourceFormat.DELTA);
 
     return tableOperations.createTable(createTableRequest);
+  }
+
+  protected List<TableInfo> createMultipleTestingTables(int numberOfTables)
+      throws IOException, ApiException {
+    List<TableInfo> createdTables = new ArrayList<>();
+    for (int i = numberOfTables; i > 0; i--) {
+      String tableName = TestUtils.TABLE_NAME + "_" + i;
+      String storageLocation = TestUtils.STORAGE_LOCATION + "/" + tableName;
+      createdTables.add(createTestingTable(tableName, storageLocation));
+    }
+    return createdTables;
   }
 }

@@ -7,18 +7,25 @@ import signal
 import sys
 import time
 import requests
+import duckdb
 
 commands_and_expected_output_strings = [
     # catalogs
     ("bin/uc catalog list", ["unity"]),
 
-    # tables
+    # schemas
     ("bin/uc schema list --catalog unity", ["default"]),
 
     # tables
-    ("bin/uc table list --catalog unity --schema default", ["numbers", "marksheet", "MANAGED", "EXTERNAL"]),
+    ## all tables
+    ("bin/uc table list --catalog unity --schema default", ["numbers", "marksheet", "user_countries", "MANAGED", "EXTERNAL", "EXTERNAL"]),
+    ## numbers
     ("bin/uc table get --full_name unity.default.numbers --output json", ["numbers", "as_int", "EXTERNAL"]),
-    ("bin/uc table read --full_name unity.default.numbers ", ["as_int"]),
+    ("bin/uc table read --full_name unity.default.numbers", ["as_int"]),
+    ## user_countries
+    ("bin/uc table get --full_name unity.default.user_countries --output json", ["partition_index", "user_countries", "EXTERNAL"]),
+    ("bin/uc table read --full_name unity.default.user_countries", ["first_name(string)", "age(long)", "country(string)"]),
+    ## read/write of the new table
     (f"rm -rf /tmp/uc/myTable", []),
     (f"bin/uc table create --full_name unity.default.myTable --columns \"col1 int, col2 double\" --storage_location /tmp/uc/myTable", ["myTable", "col"]),
     ("bin/uc table write --full_name unity.default.myTable", [""]),
@@ -49,15 +56,29 @@ commands_and_expected_output_strings = [
     ("bin/uc function create --full_name unity.default.myFunction --data_type INT --input_params \"a int, b int\" --def \"c=a*b\\nreturn c\" --output jsonPretty", ["myFunction", "a*b"]),
     ("bin/uc function call --full_name unity.default.myFunction --input_params \"2,3\"", ["6"]),
     ("bin/uc function delete --full_name unity.default.myFunction", [""]),
+
+    # duckdb
+    ("duckdb:install uc_catalog from core_nightly;", []),
+    ("duckdb:load uc_catalog;", []),
+    ("duckdb:install delta;", []),
+    ("duckdb:load delta;", []),
+    ("duckdb:CREATE SECRET (TYPE UC, TOKEN 'not-used', ENDPOINT 'http://127.0.0.1:8080', AWS_REGION 'us-east-2');", ["True"]),
+    ("duckdb:ATTACH 'unity' AS unity (TYPE UC_CATALOG);", []),
+    ("duckdb:SHOW ALL TABLES;", ["marksheet", "marksheet_uniform", "numbers", "as_int"]),
+    ("duckdb:SELECT * FROM unity.default.numbers;", ["564"]),
 ]
 
-def run_command_and_check_output(command, search_strings):
+def run_command_and_check_output(command, search_strings, duckdb_cursor=None):
     try:
         # Run the command and capture the output
-        my_env = os.environ.copy()
-        my_env["UC_OUTPUT_WIDTH"] = "190"
-        result = subprocess.run(command, shell=True, check=True, text=True, capture_output=True, env=my_env)
-        output = result.stdout
+        if duckdb_cursor:
+            duckdb_cursor.execute(command)
+            output = str(duckdb_cursor.fetchall())
+        else:
+            my_env = os.environ.copy()
+            my_env["UC_OUTPUT_WIDTH"] = "190"
+            result = subprocess.run(command, shell=True, check=True, text=True, capture_output=True, env=my_env)
+            output = result.stdout
         search_results = {s: s in output for s in search_strings}
         return output, search_results
     except subprocess.CalledProcessError as e:
@@ -98,7 +119,7 @@ def start_server():
 
         if i >= 30:
             with open(log_file, 'r') as lf:
-                print(f">> Server too long to get ready, failing tests. Log:\n{lf.read()}")
+                print(f">> Server is taking too long to get ready, failing tests. Log:\n{lf.read()}")
             exit(1)
     return process
 
@@ -118,14 +139,20 @@ if __name__ == "__main__":
         print(">> Cannot run this with uncommitted modifications in h2db")
         exit(1)
     server_process = start_server()
+    duckdb_conn = duckdb.connect()
+    duckdb_cursor = duckdb_conn.cursor()
     for command, expected_strings in commands_and_expected_output_strings:
         print(f">> Running client command: {command}")
-        stdout, search_results = run_command_and_check_output(command, expected_strings)
+        if command.startswith("duckdb:"):
+            command = command[len('duckdb:'):]
+            stdout, search_results = run_command_and_check_output(command, expected_strings, duckdb_cursor)
+        else:
+            stdout, search_results = run_command_and_check_output(command, expected_strings)
         print(stdout)
         for string, found in search_results.items():
             if not found:
                 kill_process(server_process)
-                print(f">> Output of {command} did not contain '{string}'")
+                print(f">> Output of '{command}' did not contain '{string}'")
                 print(">> Output:\n" + stdout)
                 print("FAILED: EXPECTED OUTPUT NOT FOUND")
                 exit(1)

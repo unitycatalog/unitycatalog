@@ -191,28 +191,12 @@ public class TableRepository {
     return schemaInfo.getId().toString();
   }
 
-  public static Date convertMillisToDate(Optional<String> millisString) {
-    if (millisString.isEmpty()) {
-      return null;
-    }
-    try {
-      long millis = Long.parseLong(millisString.get());
-      return new Date(millis);
-    } catch (NumberFormatException e) {
-      throw new BaseException(
-          ErrorCode.INVALID_ARGUMENT, "Unable to interpret page token: " + millisString);
-    }
-  }
-
   public static String getNextPageToken(List<TableInfoDAO> tables, Integer pageSize) {
     if (tables == null || tables.isEmpty() || tables.size() < pageSize) {
       return null;
     }
-    // Assuming the last item in the list is the least recent based on the query
-    long time = tables.get(tables.size() - 1).getCreatedAt().getTime();
-    if (tables.get(tables.size() - 1).getUpdatedAt() != null)
-      time = tables.get(tables.size() - 1).getUpdatedAt().getTime();
-    return String.valueOf(time);
+    // return the last table name
+    return tables.get(tables.size() - 1).getName();
   }
 
   public static Integer getPageSize(Optional<Integer> maxResults) {
@@ -223,7 +207,7 @@ public class TableRepository {
   }
 
   /**
-   * Return the most recently updated tables first in descending order of updated time
+   * Return the list of tables in ascending order of table name.
    *
    * @param catalogName
    * @param schemaName
@@ -284,10 +268,10 @@ public class TableRepository {
     Integer pageSize = getPageSize(maxResults);
     String hql =
         "FROM TableInfoDAO t WHERE t.schemaId = :schemaId and "
-            + "(t.updatedAt < :pageToken OR CAST(:pageToken AS timestamp) is null) order by t.updatedAt desc";
+            + "(t.name > :pageToken OR :pageToken is null) order by t.name asc";  
     Query<TableInfoDAO> query = session.createQuery(hql, TableInfoDAO.class);
     query.setParameter("schemaId", schemaId);
-    query.setParameter("pageToken", convertMillisToDate(nextPageToken));
+    query.setParameter("pageToken", nextPageToken.orElse(null));
     query.setMaxResults(pageSize);
     List<TableInfoDAO> tableInfoDAOList = query.list();
     returnNextPageToken = getNextPageToken(tableInfoDAOList, pageSize);

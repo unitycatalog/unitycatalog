@@ -16,7 +16,7 @@ Change into the `unitycatalog` directory and run `bin/start-uc-server` to instan
 
 Well, that was pretty easy!
 
-To run Unity Catalog, you need Java 11 installed on your machine.  You can always run the `java --version` command to verify that you have the right version of Java installed.
+To run Unity Catalog, you need Java 17 installed on your machine.  You can always run the `java --version` command to verify that you have the right version of Java installed.
 
 ![UC Java Version](./assets/images/uc_java_version.png)
 
