@@ -195,11 +195,11 @@ lazy val server = (project in file("server"))
 
       // Test dependencies
       "org.junit.jupiter" %  "junit-jupiter" % "5.10.3" % Test,
-      "org.mockito" % "mockito-core" % "4.11.0" % Test,
-      "org.mockito" % "mockito-inline" % "4.11.0" % Test,
-      "org.mockito" % "mockito-junit-jupiter" % "4.11.0" % Test,
+      "org.mockito" % "mockito-core" % "5.11.0" % Test,
+      "org.mockito" % "mockito-inline" % "5.2.0" % Test,
+      "org.mockito" % "mockito-junit-jupiter" % "5.12.0" % Test,
       "net.aichler" % "jupiter-interface" % JupiterKeys.jupiterVersion.value % Test,
-      "com.adobe.testing" % "s3mock-junit5" % "2.11.0" % Test
+      "com.adobe.testing" % "s3mock-junit5" % "3.9.1" % Test
         exclude("ch.qos.logback", "logback-classic")
         exclude("org.apache.logging.log4j", "log4j-to-slf4j"),
       "javax.xml.bind" % "jaxb-api" % "2.3.1" % Test
