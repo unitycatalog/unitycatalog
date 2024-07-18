@@ -21,7 +21,7 @@ jobs:
         with:
           project: PRs and Issues Board
           column: Needs review
-          token: ${{ secrets.PROJECT_BOARD_AUTOMATION_TOKEN }}
+          repo-token: ${{ secrets.PROJECT_BOARD_AUTOMATION_TOKEN }}
 
   automate-new-issues:
     if: ${{ github.event.issue && github.event.action == 'opened' }}
