@@ -47,7 +47,7 @@ public class TableInfoDAO {
   @Column(name = "data_source_format")
   private String dataSourceFormat;
 
-  @Column(name = "comment", length = 2048)
+  @Column(name = "comment", length = 65535)
   private String comment;
 
   @Column(name = "url", length = 2048)
@@ -63,7 +63,7 @@ public class TableInfoDAO {
       fetch = FetchType.LAZY)
   private List<ColumnInfoDAO> columns;
 
-  @Column(name = "uniform_iceberg_metadata_location", length = 2048)
+  @Column(name = "uniform_iceberg_metadata_location", length = 65535)
   private String uniformIcebergMetadataLocation;
 
   public static TableInfoDAO from(TableInfo tableInfo) {

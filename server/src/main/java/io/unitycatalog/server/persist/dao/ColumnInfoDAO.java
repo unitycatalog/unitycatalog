@@ -41,10 +41,10 @@ public class ColumnInfoDAO {
   @Column(name = "name", nullable = false)
   private String name;
 
-  @Column(name = "type_text", nullable = false, length = 2048)
+  @Column(name = "type_text", nullable = false, length = 16777215)
   private String typeText;
 
-  @Column(name = "type_json", nullable = false, length = 2048)
+  @Column(name = "type_json", nullable = false, length = 16777215)
   private String typeJson;
 
   @Column(name = "type_name", nullable = false, length = 32)
@@ -62,7 +62,7 @@ public class ColumnInfoDAO {
   @Column(name = "nullable", nullable = false)
   private boolean nullable;
 
-  @Column(name = "comment", length = 2048)
+  @Column(name = "comment", length = 65535)
   private String comment;
 
   @Column(name = "partition_index")
