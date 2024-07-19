@@ -1,61 +1,22 @@
-name: Move PR to Needs Review
+name: Mark PR as 'Needs Review'
 
 on:
-  push:
-    branches: [ main ]
-  pull_request:
-    types: [opened, reopened, review_requested, ready_for_review, review_request_removed, synchronize]
-    branches: [ main ]
+  pull_request_target:
+    types: [ opened, reopened, review_requested, ready_for_review, review_request_removed ]
+  issue_comment:
+    types: [ created ]
+  pull_request_review_comment:
+    types: [ created ]
 
 jobs:
-  move_pr_to_needs_review:
+  automate-updated-prs:
+    if: ${{ (github.event.issue.pull_request || github.event.pull_request) &&
+      !contains('tdas ravivijay-db', github.event.sender.login) &&
+      (github.event.pull_request.state == 'open' || github.event.issue.state == 'open') }}
     runs-on: ubuntu-latest
-
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v3
-
-      - name: Move PR to Needs Review column
-        env:
-          GITHUB_TOKEN: ${{ secrets.PROJECT_BOARD_AUTOMATION_TOKEN }}
-        run: |
-          PR_NUMBER=$(jq -r .pull_request.number < "$GITHUB_EVENT_PATH")
-          PROJECT_NAME="PRs Board"
-          COLUMN_NAME="Needs review"
-          ORG_NAME="vikrantpuppala"
-          REPO_NAME="unitycatalog"
-          
-          # Get the project board ID
-          PROJECT_ID=$(gh api graphql -f query='
-          query($login: String!, $name: String!) {
-            organization(login: $login) {
-              projectV2(name: $name) {
-                id
-              }
-            }
-          }' -F login="$ORG_NAME" -F name="$PROJECT_NAME" -q '.data.organization.projectV2.id')
-          
-          # Get the column ID
-          COLUMN_ID=$(gh api graphql -f query='
-          query($id: ID!) {
-            node(id: $id) {
-              ... on ProjectV2 {
-                fields(first: 20) {
-                  nodes {
-                    ... on ProjectV2Field {
-                      name
-                      id
-                    }
-                  }
-                }
-              }
-            }
-          }' -F id="$PROJECT_ID" -q ".data.node.fields.nodes[] | select(.name == \"$COLUMN_NAME\") | .id")
-          
-          # Add the PR to the column
-          gh api graphql -f query='
-          mutation($projectId: ID!, $itemId: ID!, $fieldId: ID!) {
-            updateProjectV2ItemField(input: {projectId: $projectId, itemId: $itemId, fieldId: $fieldId, value: "Needs review"}) {
-              clientMutationId
-            }
-          }' -F projectId="$PROJECT_ID" -F itemId="$PR_NUMBER" -F fieldId="$COLUMN_ID"
+      - uses: alex-page/github-project-automation-plus@v0.8.3
+        with:
+          project: PRs and Issues Board
+          column: Needs Review
+          repo-token: ${{ secrets.PROJECT_BOARD_AUTOMATION_TOKEN }}
