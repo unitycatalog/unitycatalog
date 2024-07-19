@@ -1,6 +1,8 @@
 name: Move PR to Needs Review
 
 on:
+  push:
+    branches: [ "main" ]
   pull_request:
     types: [opened, reopened, review_requested, ready_for_review, review_request_removed]
 
