@@ -12,7 +12,6 @@ import io.unitycatalog.server.persist.dao.PropertyDAO;
 import io.unitycatalog.server.persist.dao.TableInfoDAO;
 import io.unitycatalog.server.persist.dao.VolumeInfoDAO;
 import io.unitycatalog.server.persist.utils.HibernateUtils;
-
 import java.util.Date;
 import java.util.List;
 import java.util.UUID;
@@ -280,35 +279,39 @@ public class PopulateTestDatabase {
     System.out.println("Create external partitioned table...");
 
     // Add columns
-    ColumnInfoDAO firstName = ColumnInfoDAO.builder()
-        .name("first_name")
-        .typeName(ColumnTypeName.STRING.getValue())
-        .comment("string column")
-        .ordinalPosition((short) 0)
-        .build();
+    ColumnInfoDAO firstName =
+        ColumnInfoDAO.builder()
+            .name("first_name")
+            .typeName(ColumnTypeName.STRING.getValue())
+            .comment("string column")
+            .ordinalPosition((short) 0)
+            .build();
     addTypeTextAndJsonText(firstName);
 
-    ColumnInfoDAO age = ColumnInfoDAO.builder()
-        .name("age")
-        .typeName(ColumnTypeName.LONG.getValue())
-        .comment("long column")
-        .ordinalPosition((short) 1)
-        .build();
+    ColumnInfoDAO age =
+        ColumnInfoDAO.builder()
+            .name("age")
+            .typeName(ColumnTypeName.LONG.getValue())
+            .comment("long column")
+            .ordinalPosition((short) 1)
+            .build();
     addTypeTextAndJsonText(age);
 
-    ColumnInfoDAO country = ColumnInfoDAO.builder()
-        .name("country")
-        .typeName(ColumnTypeName.STRING.getValue())
-        .comment("partition column")
-        .ordinalPosition((short) 2)
-        .partitionIndex((short) 0)
-        .build();
+    ColumnInfoDAO country =
+        ColumnInfoDAO.builder()
+            .name("country")
+            .typeName(ColumnTypeName.STRING.getValue())
+            .comment("partition column")
+            .ordinalPosition((short) 2)
+            .partitionIndex((short) 0)
+            .build();
     addTypeTextAndJsonText(country);
 
     // Create table
     String partitionedTableName = "user_countries";
     String partitionedStorageRoot = "etc/data/external/";
-    String partitionedTablePath = partitionedStorageRoot + catalogName + "/" + schemaName + "/tables/" + partitionedTableName;
+    String partitionedTablePath =
+        partitionedStorageRoot + catalogName + "/" + schemaName + "/tables/" + partitionedTableName;
     UUID partitionedTableId = UUID.randomUUID();
 
     TableInfoDAO partitionedTableInfoDAO =

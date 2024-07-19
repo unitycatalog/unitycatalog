@@ -1,5 +1,11 @@
 package io.unitycatalog.server.base.schema;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+
 import io.unitycatalog.client.ApiException;
 import io.unitycatalog.client.model.*;
 import io.unitycatalog.server.base.BaseCRUDTest;
@@ -8,12 +14,6 @@ import io.unitycatalog.server.utils.TestUtils;
 import java.util.Optional;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
-
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertFalse;
-import static org.junit.jupiter.api.Assertions.assertNotNull;
-import static org.junit.jupiter.api.Assertions.assertThrows;
-import static org.junit.jupiter.api.Assertions.assertTrue;
 
 public abstract class BaseSchemaCRUDTest extends BaseCRUDTest {
 

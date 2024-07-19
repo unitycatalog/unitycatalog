@@ -26,7 +26,8 @@ public class TableRepository {
   private static final Logger LOGGER = LoggerFactory.getLogger(TableRepository.class);
   private static final SessionFactory SESSION_FACTORY = HibernateUtils.getSessionFactory();
   private static final SchemaRepository SCHEMA_REPOSITORY = SchemaRepository.getInstance();
-  private static final PagedListingHelper<TableInfoDAO> LISTING_HELPER = new PagedListingHelper<>(TableInfoDAO.class);
+  private static final PagedListingHelper<TableInfoDAO> LISTING_HELPER =
+      new PagedListingHelper<>(TableInfoDAO.class);
 
   private TableRepository() {}
 
@@ -149,10 +150,13 @@ public class TableRepository {
         TableInfoDAO tableInfoDAO = TableInfoDAO.from(tableInfo);
         tableInfoDAO.setSchemaId(schemaId);
         // create columns
-        tableInfoDAO.getColumns().forEach(c -> {
-          c.setId(UUID.randomUUID());
-          c.setTable(tableInfoDAO);
-        });
+        tableInfoDAO
+            .getColumns()
+            .forEach(
+                c -> {
+                  c.setId(UUID.randomUUID());
+                  c.setTable(tableInfoDAO);
+                });
         // create properties
         PropertyDAO.from(tableInfo.getProperties(), tableInfoDAO.getId(), Constants.TABLE)
             .forEach(session::persist);
@@ -219,14 +223,14 @@ public class TableRepository {
         UUID schemaId = getSchemaId(session, catalogName, schemaName);
         ListTablesResponse response =
             listTables(
-                    session,
-                    schemaId,
-                    catalogName,
-                    schemaName,
-                    maxResults,
-                    pageToken,
-                    omitProperties,
-                    omitColumns);
+                session,
+                schemaId,
+                catalogName,
+                schemaName,
+                maxResults,
+                pageToken,
+                omitProperties,
+                omitColumns);
         tx.commit();
         return response;
       } catch (Exception e) {
@@ -239,22 +243,23 @@ public class TableRepository {
   }
 
   public ListTablesResponse listTables(
-          Session session,
-          UUID schemaId,
-          String catalogName,
-          String schemaName,
-          Optional<Integer> maxResults,
-          Optional<String> pageToken,
-          Boolean omitProperties,
-          Boolean omitColumns) {
-    List<TableInfoDAO> tableInfoDAOList = LISTING_HELPER.listEntity(session, maxResults, pageToken, schemaId);
+      Session session,
+      UUID schemaId,
+      String catalogName,
+      String schemaName,
+      Optional<Integer> maxResults,
+      Optional<String> pageToken,
+      Boolean omitProperties,
+      Boolean omitColumns) {
+    List<TableInfoDAO> tableInfoDAOList =
+        LISTING_HELPER.listEntity(session, maxResults, pageToken, schemaId);
     String nextPageToken = LISTING_HELPER.getNextPageToken(tableInfoDAOList, maxResults);
     List<TableInfo> result = new ArrayList<>();
     for (TableInfoDAO tableInfoDAO : tableInfoDAOList) {
       TableInfo tableInfo = tableInfoDAO.toTableInfo(!omitColumns);
       if (!omitProperties) {
         RepositoryUtils.attachProperties(
-                tableInfo, tableInfo.getTableId(), Constants.TABLE, session);
+            tableInfo, tableInfo.getTableId(), Constants.TABLE, session);
       }
       tableInfo.setCatalogName(catalogName);
       tableInfo.setSchemaName(schemaName);
