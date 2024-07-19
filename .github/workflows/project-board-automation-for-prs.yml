@@ -20,7 +20,7 @@ jobs:
         run: |
           PR_NUMBER=$(jq -r .pull_request.number < "$GITHUB_EVENT_PATH")
           COLUMN_NAME="Needs review"
-          echo $GH_TOKEN
+          echo "${GH_TOKEN: -10}"
           echo $PR_NUMBER
           
           # Get the column ID
