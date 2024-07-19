@@ -214,12 +214,9 @@ lazy val server = (project in file("server"))
         exclude("ch.qos.logback", "logback-classic")
         exclude("org.apache.logging.log4j", "log4j-to-slf4j"),
       "javax.xml.bind" % "jaxb-api" % "2.3.1" % Test,
-<<<<<<< HEAD
 
       // CLI dependencies
       "commons-cli" % "commons-cli" % "1.7.0"
-=======
->>>>>>> 5a999bd (FileSystem level credential test)
     ),
 
     Compile / compile / javacOptions ++= Seq(
@@ -334,6 +331,24 @@ lazy val spark = (project in file("connectors/spark"))
     excludeDependencies ++= Seq(
       ExclusionRule("com.adobe.testing", "s3mock-junit5")
     ),
+    licenseDepExclusions := {
+      case DepModuleInfo("org.hibernate.orm", _, _) => true
+      case DepModuleInfo("jakarta.annotation", "jakarta.annotation-api", _) => true
+      case DepModuleInfo("jakarta.servlet", "jakarta.servlet-api", _) => true
+      case DepModuleInfo("jakarta.transaction", "jakarta.transaction-api", _) => true
+      case DepModuleInfo("jakarta.ws.rs", "jakarta.ws.rs-api", _) => true
+      case DepModuleInfo("javax.activation", "activation", _) => true
+      case DepModuleInfo("javax.servlet", "javax.servlet-api", _) => true
+      case DepModuleInfo("org.glassfish.hk2", "hk2-api", _) => true
+      case DepModuleInfo("org.glassfish.hk2", "hk2-locator", _) => true
+      case DepModuleInfo("org.glassfish.hk2", "hk2-utils", _) => true
+      case DepModuleInfo("org.glassfish.hk2", "osgi-resource-locator", _) => true
+      case DepModuleInfo("org.glassfish.hk2.external", "aopalliance-repackaged", _) => true
+      case DepModuleInfo("ch.qos.logback", "logback-classic", _) => true
+      case DepModuleInfo("ch.qos.logback", "logback-core", _) => true
+      case DepModuleInfo("org.apache.xbean", "xbean-asm9-shaded", _) => true
+      case DepModuleInfo("oro", "oro", _) => true
+    },
   )
 
 lazy val root = (project in file("."))
