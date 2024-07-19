@@ -1,6 +1,4 @@
 name: Move PR to Needs Review
-env:
-  GH_TOKEN: ${{ secrets.PROJECT_BOARD_AUTOMATION_TOKEN }}
 
 on:
   pull_request:
@@ -16,12 +14,23 @@ jobs:
 
       - name: Move PR to Needs Review column
         env:
-          PROJECT_ID: 1
+          GITHUB_TOKEN: ${{ secrets.PROJECT_BOARD_AUTOMATION_TOKEN }}
         run: |
           PR_NUMBER=$(jq -r .pull_request.number < "$GITHUB_EVENT_PATH")
+          PROJECT_NAME="PRs Board"
           COLUMN_NAME="Needs review"
-          echo "${GH_TOKEN: -10}"
-          echo $PR_NUMBER
+          ORG_NAME="vikrantpuppala"
+          REPO_NAME="unitycatalog"
+          
+          # Get the project board ID
+          PROJECT_ID=$(gh api graphql -f query='
+          query($login: String!, $name: String!) {
+            organization(login: $login) {
+              projectV2(name: $name) {
+                id
+              }
+            }
+          }' -F login="$ORG_NAME" -F name="$PROJECT_NAME" -q '.data.organization.projectV2.id')
           
           # Get the column ID
           COLUMN_ID=$(gh api graphql -f query='
