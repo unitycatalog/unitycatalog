@@ -14,7 +14,7 @@ jobs:
 
       - name: Move PR to Needs Review column
         env:
-          GITHUB_TOKEN: ${{ secrets.PROJECT_BOARD_AUTOMATION_TOKEN }}
+          GH_TOKEN: ${{ secrets.PROJECT_BOARD_AUTOMATION_TOKEN }}
           PROJECT_ID: 1
         run: |
           PR_NUMBER=$(jq -r .pull_request.number < "$GITHUB_EVENT_PATH")
