@@ -237,7 +237,6 @@ lazy val server = (project in file("server"))
            |""".stripMargin)
       Seq(file)
     },
-    (Compile / compile) := ((Compile / compile) dependsOn (serverModels / generate, serverModels / Compile / compile)).value,
     populateTestDB := {
       val log = streams.value.log
       (Test / runMain).toTask(s" io.unitycatalog.server.utils.PopulateTestDatabase").value
@@ -316,7 +315,7 @@ lazy val cli = (project in file("examples") / "cli")
   )
 
 lazy val root = (project in file("."))
-  .aggregate(client, serverModels, server, cli)
+  .aggregate(serverModels, client, server, cli)
   .settings(
     name := s"$artifactNamePrefix",
     createTarballSettings(),
