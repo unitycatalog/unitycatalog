@@ -1,4 +1,6 @@
 name: Move PR to Needs Review
+env:
+  GH_TOKEN: ${{ secrets.PROJECT_BOARD_AUTOMATION_TOKEN }}
 
 on:
   pull_request:
@@ -14,7 +16,6 @@ jobs:
 
       - name: Move PR to Needs Review column
         env:
-          GH_TOKEN: ${{ secrets.PROJECT_BOARD_AUTOMATION_TOKEN }}
           PROJECT_ID: 1
         run: |
           PR_NUMBER=$(jq -r .pull_request.number < "$GITHUB_EVENT_PATH")
