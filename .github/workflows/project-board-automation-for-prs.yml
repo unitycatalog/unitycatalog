@@ -19,6 +19,8 @@ jobs:
         run: |
           PR_NUMBER=$(jq -r .pull_request.number < "$GITHUB_EVENT_PATH")
           COLUMN_NAME="Needs review"
+          echo $GH_TOKEN
+          echo $PR_NUMBER
           
           # Get the column ID
           COLUMN_ID=$(gh api graphql -f query='
