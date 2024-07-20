@@ -56,12 +56,11 @@ public abstract class BaseSchemaCRUDTest extends BaseCRUDTest {
     // Calling update schema with nothing to update should not change anything
     System.out.println("Testing updating schema with nothing to update..");
     UpdateSchema emptyUpdateSchema = new UpdateSchema();
-    SchemaInfo emptyUpdateSchemaInfo =
-        schemaOperations.updateSchema(TestUtils.SCHEMA_FULL_NAME, emptyUpdateSchema);
+    schemaOperations.updateSchema(TestUtils.SCHEMA_FULL_NAME, emptyUpdateSchema);
     SchemaInfo retrievedSchemaInfo2 = schemaOperations.getSchema(TestUtils.SCHEMA_FULL_NAME);
     Assert.assertEquals(schemaInfo, retrievedSchemaInfo2);
 
-    // Update schema name without updating comment
+    // Update schema name without updating comment and properties
     System.out.println("Testing update schema: changing name..");
     UpdateSchema updateSchema = new UpdateSchema().newName(TestUtils.SCHEMA_NEW_NAME);
     SchemaInfo updatedSchemaInfo =
@@ -71,7 +70,7 @@ public abstract class BaseSchemaCRUDTest extends BaseCRUDTest {
     Assert.assertEquals(TestUtils.SCHEMA_NEW_FULL_NAME, updatedSchemaInfo.getFullName());
     assertNotNull(updatedSchemaInfo.getUpdatedAt());
 
-    // Update schema comment without updating name
+    // Update schema comment without updating name and properties
     System.out.println("Testing update schema: changing comment..");
     UpdateSchema updateSchema2 = new UpdateSchema().comment(TestUtils.SCHEMA_COMMENT);
     SchemaInfo updatedSchemaInfo2 =
@@ -80,6 +79,16 @@ public abstract class BaseSchemaCRUDTest extends BaseCRUDTest {
     assertEquals(updateSchema2.getComment(), updatedSchemaInfo2.getComment());
     Assert.assertEquals(TestUtils.SCHEMA_NEW_FULL_NAME, updatedSchemaInfo2.getFullName());
     assertNotNull(updatedSchemaInfo2.getUpdatedAt());
+
+    // Update schema properties without updating name and comment
+    System.out.println("Testing update schema: changing properties..");
+    UpdateSchema updateSchema3 = new UpdateSchema().properties(TestUtils.NEW_PROPERTIES);
+    schemaOperations.updateSchema(TestUtils.SCHEMA_NEW_FULL_NAME, updateSchema3);
+    SchemaInfo retrievedSchemaInfo3 = schemaOperations.getSchema(TestUtils.SCHEMA_NEW_FULL_NAME);
+    assertEquals(TestUtils.SCHEMA_NEW_NAME, retrievedSchemaInfo3.getName());
+    assertEquals(TestUtils.SCHEMA_COMMENT, retrievedSchemaInfo3.getComment());
+    Assert.assertEquals(TestUtils.SCHEMA_NEW_FULL_NAME, retrievedSchemaInfo3.getFullName());
+    assertNotNull(retrievedSchemaInfo3.getUpdatedAt());
 
     // Now update the parent catalog name
     UpdateCatalog updateCatalog = new UpdateCatalog().newName(TestUtils.CATALOG_NEW_NAME);

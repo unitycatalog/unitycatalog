@@ -187,7 +187,9 @@ public class SchemaRepository {
                 ErrorCode.ALREADY_EXISTS, "Schema already exists: " + updateSchema.getNewName());
           }
         }
-        if (updateSchema.getComment() == null && updateSchema.getNewName() == null) {
+        if (updateSchema.getComment() == null
+            && updateSchema.getNewName() == null
+            && (updateSchema.getProperties() == null || updateSchema.getProperties().isEmpty())) {
           tx.rollback();
           return convertFromDAO(schemaInfo, fullName);
         }
@@ -197,6 +199,13 @@ public class SchemaRepository {
         }
         if (updateSchema.getNewName() != null) {
           schemaInfo.setName(updateSchema.getNewName());
+        }
+        if (!updateSchema.getProperties().isEmpty()) {
+          PropertyRepository.findProperties(session, schemaInfo.getId(), Constants.SCHEMA)
+              .forEach(session::remove);
+          session.flush();
+          PropertyDAO.from(updateSchema.getProperties(), schemaInfo.getId(), Constants.SCHEMA)
+              .forEach(session::persist);
         }
         schemaInfo.setUpdatedAt(new Date());
         session.merge(schemaInfo);
