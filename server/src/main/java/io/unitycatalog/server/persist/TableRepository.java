@@ -217,21 +217,18 @@ public class TableRepository {
       Transaction tx = session.beginTransaction();
       try {
         UUID schemaId = getSchemaId(session, catalogName, schemaName);
-        List<TableInfoDAO> tableInfoDAOList = ENTITY_LISTER.listEntity(session, maxResults, pageToken, schemaId);
-        String nextPageToken = ENTITY_LISTER.getNextPageToken(tableInfoDAOList, maxResults);
-        List<TableInfo> result = new ArrayList<>();
-        for (TableInfoDAO tableInfoDAO : tableInfoDAOList) {
-          TableInfo tableInfo = tableInfoDAO.toTableInfo(!omitColumns);
-          if (!omitProperties) {
-            RepositoryUtils.attachProperties(
-                    tableInfo, tableInfo.getTableId(), Constants.TABLE, session);
-          }
-          tableInfo.setCatalogName(catalogName);
-          tableInfo.setSchemaName(schemaName);
-          result.add(tableInfo);
-        }
+        ListTablesResponse response =
+            listTables(
+                    session,
+                    schemaId,
+                    catalogName,
+                    schemaName,
+                    maxResults,
+                    pageToken,
+                    omitProperties,
+                    omitColumns);
         tx.commit();
-        return new ListTablesResponse().tables(result).nextPageToken(nextPageToken);
+        return response;
       } catch (Exception e) {
         if (tx != null && tx.getStatus().canRollback()) {
           tx.rollback();
@@ -239,6 +236,31 @@ public class TableRepository {
         throw e;
       }
     }
+  }
+
+  public ListTablesResponse listTables(
+          Session session,
+          UUID schemaId,
+          String catalogName,
+          String schemaName,
+          Optional<Integer> maxResults,
+          Optional<String> pageToken,
+          Boolean omitProperties,
+          Boolean omitColumns) {
+    List<TableInfoDAO> tableInfoDAOList = ENTITY_LISTER.listEntity(session, maxResults, pageToken, schemaId);
+    String nextPageToken = ENTITY_LISTER.getNextPageToken(tableInfoDAOList, maxResults);
+    List<TableInfo> result = new ArrayList<>();
+    for (TableInfoDAO tableInfoDAO : tableInfoDAOList) {
+      TableInfo tableInfo = tableInfoDAO.toTableInfo(!omitColumns);
+      if (!omitProperties) {
+        RepositoryUtils.attachProperties(
+                tableInfo, tableInfo.getTableId(), Constants.TABLE, session);
+      }
+      tableInfo.setCatalogName(catalogName);
+      tableInfo.setSchemaName(schemaName);
+      result.add(tableInfo);
+    }
+    return new ListTablesResponse().tables(result).nextPageToken(nextPageToken);
   }
 
   public void deleteTable(String fullName) {
@@ -265,7 +287,7 @@ public class TableRepository {
   }
 
   public void deleteTable(Session session, UUID schemaId, String tableName) {
-    TableInfoDAO tableInfoDAO = findBySchemaIdAndName(session, schemaId.toString(), tableName);
+    TableInfoDAO tableInfoDAO = findBySchemaIdAndName(session, schemaId, tableName);
     if (tableInfoDAO == null) {
       throw new BaseException(ErrorCode.NOT_FOUND, "Table not found: " + tableName);
     }
