@@ -241,17 +241,6 @@ public class TableRepository {
     }
   }
 
-  public ListTablesResponse listTables(
-      Session session,
-      UUID schemaId,
-      String catalogName,
-      String schemaName,
-      Optional<Integer> maxResults,
-      Optional<String> pageToken,
-      Boolean omitProperties,
-      Boolean omitColumns) {
-  }
-
   public void deleteTable(String fullName) {
     try (Session session = SESSION_FACTORY.openSession()) {
       Transaction tx = session.beginTransaction();
