@@ -13,6 +13,7 @@ nav:
       - CLI: usage/cli.md
       - Tables:
           - UniForm: usage/tables/uniform.md
+          - Delta Lake: usage/tables/deltalake.md
       - Volumes: usage/volumes.md
       - Functions: usage/functions.md
       - Server: usage/server.md
