@@ -3,13 +3,13 @@ package io.unitycatalog.server.persist.dao;
 import io.unitycatalog.server.model.ColumnInfo;
 import io.unitycatalog.server.model.ColumnTypeName;
 import jakarta.persistence.*;
+import lombok.*;
+import lombok.experimental.SuperBuilder;
+
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
-import java.util.UUID;
 import java.util.stream.Collectors;
-import lombok.*;
-import org.hibernate.annotations.UuidGenerator;
 
 // Hibernate annotations
 @Entity
@@ -21,25 +21,16 @@ import org.hibernate.annotations.UuidGenerator;
 @Setter
 @NoArgsConstructor
 @AllArgsConstructor
-@EqualsAndHashCode
+@EqualsAndHashCode(callSuper = true)
 @ToString
-@Builder
-public class ColumnInfoDAO {
-
-  @Id
-  @UuidGenerator
-  @Column(name = "id", updatable = false, nullable = false)
-  private UUID id;
-
+@SuperBuilder
+public class ColumnInfoDAO extends IdentifiableDAO {
   @ManyToOne
   @JoinColumn(name = "table_id", nullable = false, referencedColumnName = "id")
   private TableInfoDAO table;
 
   @Column(name = "ordinal_position", nullable = false)
   private short ordinalPosition;
-
-  @Column(name = "name", nullable = false)
-  private String name;
 
   @Lob
   @Column(name = "type_text", nullable = false, columnDefinition = "MEDIUMTEXT")
@@ -93,7 +84,7 @@ public class ColumnInfoDAO {
 
   public ColumnInfo toColumnInfo() {
     return new ColumnInfo()
-        .name(name)
+        .name(super.getName())
         .typeText(typeText)
         .typeJson(typeJson)
         .typeName(ColumnTypeName.valueOf(typeName))

@@ -6,6 +6,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.stream.Collectors;
 import lombok.*;
+import lombok.experimental.SuperBuilder;
 
 @Entity
 @Table(name = "uc_function_params")
@@ -14,17 +15,13 @@ import lombok.*;
 @Setter
 @NoArgsConstructor
 @AllArgsConstructor
-@EqualsAndHashCode
-@Builder
-public class FunctionParameterInfoDAO {
+@EqualsAndHashCode(callSuper = true)
+@SuperBuilder
+public class FunctionParameterInfoDAO extends IdentifiableDAO {
   public enum InputOrReturnEnum {
     INPUT,
     RETURN
   }
-
-  @Id
-  @Column(name = "id")
-  private String id;
 
   @ManyToOne
   @JoinColumn(name = "function_id", referencedColumnName = "id")
@@ -33,9 +30,6 @@ public class FunctionParameterInfoDAO {
   // Whether the parameter is an input or return parameter
   @Column(name = "input_or_return", nullable = false)
   private InputOrReturnEnum inputOrReturn;
-
-  @Column(name = "name", nullable = false)
-  private String name;
 
   @Column(name = "type_text", nullable = false)
   private String typeText;
@@ -91,7 +85,7 @@ public class FunctionParameterInfoDAO {
 
   public FunctionParameterInfo toFunctionParameterInfo() {
     return new FunctionParameterInfo()
-        .name(name)
+        .name(super.getName())
         .typeText(typeText)
         .typeJson(typeJson)
         .typeName(typeName)

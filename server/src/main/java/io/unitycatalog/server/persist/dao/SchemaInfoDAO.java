@@ -6,23 +6,18 @@ import java.time.Instant;
 import java.util.Date;
 import java.util.UUID;
 import lombok.*;
+import lombok.experimental.SuperBuilder;
 
 @Entity
 @Table(name = "uc_schemas")
 // Lombok
 @Getter
 @Setter
-@Builder
+@SuperBuilder
 @AllArgsConstructor
 @NoArgsConstructor
-public class SchemaInfoDAO {
-  @Id
-  @Column(name = "id", columnDefinition = "BINARY(16)")
-  private UUID id;
-
-  @Column(name = "name")
-  private String name;
-
+@EqualsAndHashCode(callSuper = true)
+public class SchemaInfoDAO extends IdentifiableDAO {
   @Column(name = "catalog_id", columnDefinition = "BINARY(16)")
   private UUID catalogId;
 

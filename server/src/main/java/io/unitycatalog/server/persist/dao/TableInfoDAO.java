@@ -9,6 +9,7 @@ import java.util.Date;
 import java.util.List;
 import java.util.UUID;
 import lombok.*;
+import lombok.experimental.SuperBuilder;
 
 // Hibernate annotations
 @Entity
@@ -22,18 +23,11 @@ import lombok.*;
 @Setter
 @NoArgsConstructor
 @AllArgsConstructor
-@EqualsAndHashCode
-@Builder
-public class TableInfoDAO {
-  @Id
-  @Column(name = "id", columnDefinition = "BINARY(16)")
-  private UUID id;
-
+@EqualsAndHashCode(callSuper = true)
+@SuperBuilder
+public class TableInfoDAO extends IdentifiableDAO {
   @Column(name = "schema_id", columnDefinition = "BINARY(16)")
   private UUID schemaId;
-
-  @Column(name = "name")
-  private String name;
 
   @Column(name = "type")
   private String type;
@@ -86,14 +80,14 @@ public class TableInfoDAO {
   public TableInfo toTableInfo(boolean fetchColumns) {
     TableInfo tableInfo =
         new TableInfo()
-            .name(name)
+            .tableId(super.getId().toString())
+            .name(super.getName())
             .tableType(TableType.valueOf(type))
             .dataSourceFormat(DataSourceFormat.valueOf(dataSourceFormat))
             .storageLocation(FileUtils.convertRelativePathToURI(url))
             .comment(comment)
             .createdAt(createdAt != null ? createdAt.getTime() : null)
-            .updatedAt(updatedAt != null ? updatedAt.getTime() : null)
-            .tableId(id.toString());
+            .updatedAt(updatedAt != null ? updatedAt.getTime() : null);
     if (fetchColumns) {
       tableInfo.columns(ColumnInfoDAO.toList(columns));
     }

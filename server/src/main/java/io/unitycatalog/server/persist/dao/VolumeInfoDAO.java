@@ -10,6 +10,7 @@ import jakarta.persistence.Table;
 import java.util.Date;
 import java.util.UUID;
 import lombok.*;
+import lombok.experimental.SuperBuilder;
 
 @Entity
 @Table(name = "uc_volumes")
@@ -18,15 +19,9 @@ import lombok.*;
 @Setter
 @NoArgsConstructor
 @AllArgsConstructor
-@Builder
-public class VolumeInfoDAO {
-  @Id
-  @Column(name = "id", columnDefinition = "BINARY(16)")
-  private UUID id;
-
-  @Column(name = "name")
-  private String name;
-
+@SuperBuilder
+@EqualsAndHashCode(callSuper = true)
+public class VolumeInfoDAO extends IdentifiableDAO {
   @Column(name = "schema_id", columnDefinition = "BINARY(16)")
   private UUID schemaId;
 
@@ -47,8 +42,8 @@ public class VolumeInfoDAO {
 
   public VolumeInfo toVolumeInfo() {
     return new VolumeInfo()
-        .volumeId(id.toString())
-        .name(name)
+        .volumeId(super.getId().toString())
+        .name(super.getName())
         .comment(comment)
         .storageLocation(FileUtils.convertRelativePathToURI(storageLocation))
         .createdAt(createdAt.getTime())

@@ -121,6 +121,7 @@ public abstract class BaseTableCRUDTest extends BaseCRUDTest {
 
       ColumnInfoDAO columnInfoDAO1 =
           ColumnInfoDAO.builder()
+              .id(UUID.randomUUID())
               .name("as_int")
               .typeText("INTEGER")
               .typeJson("{\"type\": \"integer\"}")
@@ -135,6 +136,7 @@ public abstract class BaseTableCRUDTest extends BaseCRUDTest {
 
       ColumnInfoDAO columnInfoDAO2 =
           ColumnInfoDAO.builder()
+              .id(UUID.randomUUID())
               .name("as_string")
               .typeText("VARCHAR(255)")
               .typeJson("{\"type\": \"string\", \"length\": \"255\"}")

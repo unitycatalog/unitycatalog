@@ -6,6 +6,7 @@ import jakarta.persistence.*;
 import java.util.List;
 import java.util.UUID;
 import lombok.*;
+import lombok.experimental.SuperBuilder;
 import org.hibernate.annotations.SQLRestriction;
 
 // Hibernate annotations
@@ -16,16 +17,9 @@ import org.hibernate.annotations.SQLRestriction;
 @Setter
 @NoArgsConstructor
 @AllArgsConstructor
-@EqualsAndHashCode
-@Builder
-public class FunctionInfoDAO {
-  @Id
-  @Column(name = "id", columnDefinition = "BINARY(16)")
-  private UUID id;
-
-  @Column(name = "name", nullable = false)
-  private String name;
-
+@EqualsAndHashCode(callSuper = true)
+@SuperBuilder
+public class FunctionInfoDAO extends IdentifiableDAO {
   @Column(name = "schema_id", columnDefinition = "BINARY(16)")
   private UUID schemaId;
 
@@ -122,8 +116,8 @@ public class FunctionInfoDAO {
   public FunctionInfo toFunctionInfo() {
     FunctionInfo functionInfo =
         new FunctionInfo()
-            .functionId(id.toString())
-            .name(name)
+            .functionId(super.getId().toString())
+            .name(super.getName())
             .comment(comment)
             .createdAt(createdAt)
             .updatedAt(updatedAt)
