@@ -17,7 +17,7 @@ import lombok.*;
 @NoArgsConstructor
 public class CatalogInfoDAO {
   @Id
-  @Column(name = "id", columnDefinition = "BINARY(16)")
+  @Column(name = "id")
   private UUID id;
 
   @Column(name = "name")

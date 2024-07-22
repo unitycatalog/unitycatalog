@@ -320,7 +320,7 @@ public class TableRepository {
       try {
         FileUtils.deleteDirectory(tableInfoDAO.getUrl());
       } catch (Throwable e) {
-        LOGGER.error("Error deleting table directory: {}" ,tableInfoDAO.getUrl(), e);
+        LOGGER.error("Error deleting table directory: {}", tableInfoDAO.getUrl(), e);
       }
     }
     PropertyRepository.findProperties(session, tableInfoDAO.getId(), Constants.TABLE)
