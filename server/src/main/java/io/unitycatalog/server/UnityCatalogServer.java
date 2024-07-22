@@ -26,6 +26,7 @@ import io.vertx.core.Vertx;
 import org.apache.logging.log4j.core.config.Configurator;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.apache.commons.cli.*;
 
 public class UnityCatalogServer {
   private static final Logger LOGGER = LoggerFactory.getLogger(UnityCatalogServer.class);
@@ -92,23 +93,32 @@ public class UnityCatalogServer {
 
   public static void main(String[] args) {
     int port = 8080;
-    if (args.length > 0) {
-      if ("-p".equals(args[0]) || "--port".equals(args[0])) {
-        if (args.length > 1) {
-          try {
-            port = Integer.parseInt(args[1]);
-          } catch (NumberFormatException e) {
-            System.err.println("Invalid port number: " + args[1]);
-            return;
-          }
-        } else {
-          System.err.println("No port number provided after " + args[0]);
-          return;
-        }
-      } else {
-        System.err.println("Invalid argument: " + args[0] + ". Please use -p or --port to specify the port number.");
-        return;
+    // Create Options object
+    Options options = new Options();
+
+    // Add port option
+    options.addOption("p", "port", true, "Port number to run the server on. Default is 8080.");
+    CommandLineParser parser = new DefaultParser();
+    try {
+      // Parse the command line arguments
+      CommandLine cmd = parser.parse(options, args);
+
+      // Check if port option is provided
+      if (cmd.hasOption("p")) {
+        port = Integer.parseInt(cmd.getOptionValue("p"));
       }
+    } catch (ParseException e) {
+      System.out.println();
+      System.out.println("Error parsing command line arguments: " + e.getMessage());
+      System.out.println();
+
+      // Automatically generate the help statement
+      HelpFormatter formatter = new HelpFormatter();
+      formatter.printHelp("bin/start-uc-server", options);
+      return;
+    } catch (NumberFormatException e) {
+      System.out.println("Invalid port number: " + e.getMessage() + ". Please enter a valid integer.");
+      return;
     }
     // Start Unity Catalog server
     UnityCatalogServer unityCatalogServer = new UnityCatalogServer(port + 1);

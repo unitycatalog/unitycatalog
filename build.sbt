@@ -204,7 +204,10 @@ lazy val server = (project in file("server"))
       "com.adobe.testing" % "s3mock-junit5" % "2.11.0" % Test
         exclude("ch.qos.logback", "logback-classic")
         exclude("org.apache.logging.log4j", "log4j-to-slf4j"),
-      "javax.xml.bind" % "jaxb-api" % "2.3.1" % Test
+      "javax.xml.bind" % "jaxb-api" % "2.3.1" % Test,
+
+      // CLI dependencies
+      "commons-cli" % "commons-cli" % "1.7.0"
     ),
 
     Compile / compile / javacOptions ++= Seq(
