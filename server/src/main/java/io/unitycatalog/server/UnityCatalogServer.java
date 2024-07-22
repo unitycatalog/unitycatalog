@@ -105,6 +105,9 @@ public class UnityCatalogServer {
           System.err.println("No port number provided after " + args[0]);
           return;
         }
+      } else {
+        System.err.println("Invalid argument: " + args[0] + ". Please use -p or --port to specify the port number.");
+        return;
       }
     }
     // Start Unity Catalog server
