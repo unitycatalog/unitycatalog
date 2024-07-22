@@ -94,22 +94,25 @@ public class UnityCatalogServer {
   public static void main(String[] args) {
     int port = 8080;
     Options options = new Options();
-    options.addOption("p", "port", true, "Port number to run the server on. Default is 8080.");
+    options.addOption(
+            Option.builder("p")
+                    .longOpt("port")
+                    .hasArg()
+                    .desc("Port number to run the server on. Default is 8080.")
+                    .type(Integer.class)
+                    .build());
     CommandLineParser parser = new DefaultParser();
     try {
       CommandLine cmd = parser.parse(options, args);
       if (cmd.hasOption("p")) {
-        port = Integer.parseInt(cmd.getOptionValue("p"));
+        port = cmd.getParsedOptionValue("p");
       }
     } catch (ParseException e) {
       System.out.println();
-      System.out.println("Error parsing command line arguments: " + e.getMessage());
+      System.out.println("Parsing Failed. Reason: " + e.getMessage());
       System.out.println();
       HelpFormatter formatter = new HelpFormatter();
       formatter.printHelp("bin/start-uc-server", options);
-      return;
-    } catch (NumberFormatException e) {
-      System.out.println("Invalid port number: " + e.getMessage() + ". Please enter a valid integer.");
       return;
     }
     // Start Unity Catalog server
