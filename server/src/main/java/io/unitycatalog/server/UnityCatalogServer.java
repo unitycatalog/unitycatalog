@@ -93,17 +93,11 @@ public class UnityCatalogServer {
 
   public static void main(String[] args) {
     int port = 8080;
-    // Create Options object
     Options options = new Options();
-
-    // Add port option
     options.addOption("p", "port", true, "Port number to run the server on. Default is 8080.");
     CommandLineParser parser = new DefaultParser();
     try {
-      // Parse the command line arguments
       CommandLine cmd = parser.parse(options, args);
-
-      // Check if port option is provided
       if (cmd.hasOption("p")) {
         port = Integer.parseInt(cmd.getOptionValue("p"));
       }
@@ -111,8 +105,6 @@ public class UnityCatalogServer {
       System.out.println();
       System.out.println("Error parsing command line arguments: " + e.getMessage());
       System.out.println();
-
-      // Automatically generate the help statement
       HelpFormatter formatter = new HelpFormatter();
       formatter.printHelp("bin/start-uc-server", options);
       return;
