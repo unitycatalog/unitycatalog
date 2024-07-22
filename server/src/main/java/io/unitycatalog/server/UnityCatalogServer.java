@@ -93,7 +93,19 @@ public class UnityCatalogServer {
   public static void main(String[] args) {
     int port = 8080;
     if (args.length > 0) {
-      port = Integer.parseInt(args[0]);
+      if ("-p".equals(args[0]) || "--port".equals(args[0])) {
+        if (args.length > 1) {
+          try {
+            port = Integer.parseInt(args[1]);
+          } catch (NumberFormatException e) {
+            System.err.println("Invalid port number: " + args[1]);
+            return;
+          }
+        } else {
+          System.err.println("No port number provided after " + args[0]);
+          return;
+        }
+      }
     }
     // Start Unity Catalog server
     UnityCatalogServer unityCatalogServer = new UnityCatalogServer(port + 1);
