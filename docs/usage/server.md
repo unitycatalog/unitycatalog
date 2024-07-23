@@ -20,7 +20,7 @@ bin/start-uc-server -p <port_number>
 
 or
 
-```commandline
+```sh
 bin/start-uc-server --port <port_number>
 ```
 
