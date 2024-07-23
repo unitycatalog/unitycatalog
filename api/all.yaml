@@ -1704,10 +1704,10 @@ components:
             __page_token__ should be set to this value for the next request (for the next page of results).
     GenerateTemporaryModelCredential:
       example:
-        table_id: model_id
+        model_id: model_id
         operation: null
       properties:
-        table_id:
+        model_id:
           description: |
             Model id for which temporary credentials are generated. 
             Can be obtained from models/{full_name} (get model info) API.
@@ -1716,7 +1716,7 @@ components:
           $ref: '#/components/schemas/ModelOperation'
       type: object
       required:
-        - table_id
+        - model_id
         - operation
     GenerateTemporaryModelCredentialResponse:
       properties:
