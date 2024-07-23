@@ -10,6 +10,22 @@ The server can be started by issuing the below command from the project root dir
 bin/start-uc-server
 ```
 
+### Running the Server on a Specific Port
+
+To run the server on a specific port, use the `-p` or `--port` option followed by the port number:
+
+```sh
+bin/start-uc-server -p <port_number>
+```
+
+or
+
+```commandline
+bin/start-uc-server --port <port_number>
+```
+
+If no port is specified, the server defaults to port **8080**.
+
 ## Configuration
 
 The server config file is at the location `etc/conf/server.properties` (relative to the project root).
