@@ -28,7 +28,7 @@ public class IdentifiableDAO {
     @Column(name = "name", nullable = false)
     private String name;
 
-    public static <T> Optional<String> getParentIdColumnName(Class<T> entityClass) {
+    public static <T extends IdentifiableDAO> Optional<String> getParentIdColumnName(Class<T> entityClass) {
         if (TableInfoDAO.class == entityClass
             || VolumeInfoDAO.class == entityClass
             || FunctionInfoDAO.class == entityClass) {
