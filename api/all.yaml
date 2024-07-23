@@ -23,7 +23,7 @@ tags:
       In Unity Catalog, a function resides at the same level as a table, so it can be referenced with the form __catalog_name__.__schema_name__.__function_name__.
   - name: Models
     description: |
-      Models are machine learned models that are stored within Unity Catalog.  They are comprised of all versions of a single model that a user wishes to keep.
+      Models are machine learning models that are stored within Unity Catalog.  They are comprised of all versions of a single model that a user wishes to keep.
       A model resides in the third layer of Unity Catalog’s three-level namespace, and can be referenced with the form __catalog_name__.__schema_name__.__model_name__.
   - name: ModelVersions
     description: |
