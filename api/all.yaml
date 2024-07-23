@@ -1731,7 +1731,7 @@ components:
       type: object
     ModelOperation:
       enum:
-        - UNKNOWN_TABLE_OPERATION
+        - UNKNOWN_MODEL_OPERATION
         - READ
         - READ_WRITE
       type: string
