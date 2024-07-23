@@ -63,6 +63,15 @@ public class PagedListingHelper<T extends IdentifiableDAO> {
         return entities.get(entities.size() - 1).getName();
     }
 
+    /**
+     * This function builds a query to fetch the next page of entities. The query fetches entities
+     * whose name is greater than the page token.
+     *
+     * @param session The Hibernate session
+     * @param parentEntityId The parent entity id
+     * @param pageToken The page token
+     * @return The query to fetch the next page of entities
+     */
     public Query<T> buildListQuery(Session session, UUID parentEntityId, String pageToken) {
         CriteriaBuilder cb = session.getCriteriaBuilder();
         CriteriaQuery<T> cr = cb.createQuery(entityClass);
@@ -82,6 +91,17 @@ public class PagedListingHelper<T extends IdentifiableDAO> {
         return session.createQuery(cr);
     }
 
+    /**
+     * This function lists entities in a paged manner. The entities are listed in ascending order of
+     * their name. The name of the last entity in the list can be used as a page token to fetch the
+     * next page.
+     *
+     * @param session The Hibernate session
+     * @param maxResultsOpt The maximum number of results to return
+     * @param nextPageTokenOpt The page token to use to fetch the next page of entities
+     * @param parentEntityId The parent entity id
+     * @return the list of entities based on the input parameters
+     */
     public List<T> listEntity(
             Session session,
             Optional<Integer> maxResultsOpt,
