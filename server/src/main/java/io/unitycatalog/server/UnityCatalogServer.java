@@ -9,6 +9,13 @@ import com.linecorp.armeria.server.ServerBuilder;
 import com.linecorp.armeria.server.annotation.JacksonRequestConverterFunction;
 import com.linecorp.armeria.server.annotation.JacksonResponseConverterFunction;
 import com.linecorp.armeria.server.docs.DocService;
+import io.unitycatalog.server.exception.ExceptionHandlingDecorator;
+import io.unitycatalog.server.exception.GlobalExceptionHandler;
+import io.unitycatalog.server.persist.utils.ServerPropertiesUtils;
+import io.unitycatalog.server.security.SecurityConfiguration;
+import io.unitycatalog.server.security.SecurityContext;
+import io.unitycatalog.server.service.AuthDecorator;
+import io.unitycatalog.server.service.AuthService;
 import io.unitycatalog.server.service.CatalogService;
 import io.unitycatalog.server.service.FunctionService;
 import io.unitycatalog.server.service.IcebergRestCatalogService;
@@ -27,8 +34,15 @@ import org.apache.logging.log4j.core.config.Configurator;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.nio.file.Path;
+
+import static io.unitycatalog.server.security.SecurityContext.Issuers.INTERNAL;
+
 public class UnityCatalogServer {
   private static final Logger LOGGER = LoggerFactory.getLogger(UnityCatalogServer.class);
+
+  private SecurityConfiguration securityConfiguration;
+  private SecurityContext securityContext;
 
   static {
     System.setProperty("log4j.configurationFile", "etc/conf/server.log4j2.properties");
@@ -43,6 +57,14 @@ public class UnityCatalogServer {
   }
 
   public UnityCatalogServer(int port) {
+
+    Path configurationFolder = Path.of("etc", "conf");
+
+    securityConfiguration = new SecurityConfiguration(configurationFolder);
+    securityContext = new SecurityContext(configurationFolder, securityConfiguration, "server", INTERNAL);
+    securityContext.createInternalCertsFile();
+    securityContext.createServiceTokenFile();
+
     ServerBuilder sb = Server.builder().serviceUnder("/docs", new DocService()).http(port);
     addServices(sb);
 
@@ -51,43 +73,63 @@ public class UnityCatalogServer {
 
   private void addServices(ServerBuilder sb) {
     ObjectMapper unityMapper =
-        JsonMapper.builder().disable(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES).build();
+            JsonMapper.builder().disable(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES).build();
     JacksonRequestConverterFunction unityConverterFunction =
-        new JacksonRequestConverterFunction(unityMapper);
+            new JacksonRequestConverterFunction(unityMapper);
 
     // Add support for Unity Catalog APIs
+    AuthService authService = new AuthService(securityContext);
     CatalogService catalogService = new CatalogService();
     SchemaService schemaService = new SchemaService();
     VolumeService volumeService = new VolumeService();
     TableService tableService = new TableService();
     FunctionService functionService = new FunctionService();
     TemporaryTableCredentialsService temporaryTableCredentialsService =
-        new TemporaryTableCredentialsService();
+            new TemporaryTableCredentialsService();
     TemporaryVolumeCredentialsService temporaryVolumeCredentialsService =
-        new TemporaryVolumeCredentialsService();
+            new TemporaryVolumeCredentialsService();
     sb.service("/", (ctx, req) -> HttpResponse.of("Hello, Unity Catalog!"))
-        .annotatedService(basePath + "catalogs", catalogService, unityConverterFunction)
-        .annotatedService(basePath + "schemas", schemaService, unityConverterFunction)
-        .annotatedService(basePath + "volumes", volumeService, unityConverterFunction)
-        .annotatedService(basePath + "tables", tableService, unityConverterFunction)
-        .annotatedService(basePath + "functions", functionService, unityConverterFunction)
-        .annotatedService(
-            basePath + "temporary-table-credentials", temporaryTableCredentialsService)
-        .annotatedService(
-            basePath + "temporary-volume-credentials", temporaryVolumeCredentialsService);
+            .annotatedService(basePath + "auth", authService, unityConverterFunction)
+            .annotatedService(basePath + "catalogs", catalogService, unityConverterFunction)
+            .annotatedService(basePath + "schemas", schemaService, unityConverterFunction)
+            .annotatedService(basePath + "volumes", volumeService, unityConverterFunction)
+            .annotatedService(basePath + "tables", tableService, unityConverterFunction)
+            .annotatedService(basePath + "functions", functionService, unityConverterFunction)
+            .annotatedService(
+                    basePath + "temporary-table-credentials", temporaryTableCredentialsService)
+            .annotatedService(
+                    basePath + "temporary-volume-credentials", temporaryVolumeCredentialsService);
 
     // Add support for Iceberg REST APIs
     ObjectMapper icebergMapper = RESTObjectMapper.mapper();
     JacksonRequestConverterFunction icebergRequestConverter =
-        new JacksonRequestConverterFunction(icebergMapper);
+            new JacksonRequestConverterFunction(icebergMapper);
     JacksonResponseConverterFunction icebergResponseConverter =
-        new JacksonResponseConverterFunction(icebergMapper);
+            new JacksonResponseConverterFunction(icebergMapper);
     MetadataService metadataService = new MetadataService(new FileIOFactory());
     sb.annotatedService(
-        basePath + "iceberg",
-        new IcebergRestCatalogService(catalogService, schemaService, tableService, metadataService),
-        icebergRequestConverter,
-        icebergResponseConverter);
+            basePath + "iceberg",
+            new IcebergRestCatalogService(catalogService, schemaService, tableService, metadataService),
+            icebergRequestConverter,
+            icebergResponseConverter);
+
+    ServerPropertiesUtils serverPropertiesUtils = ServerPropertiesUtils.getInstance();
+    String authentication = serverPropertiesUtils.getProperty("server.authentication");
+    // TODO: eventually might want to make this secure-by-default.
+    if (authentication != null && authentication.equalsIgnoreCase("enable")) {
+      LOGGER.info("Authentication enabled.");
+      AuthDecorator authDecorator = new AuthDecorator();
+      ExceptionHandlingDecorator exceptionDecorator = new ExceptionHandlingDecorator(new GlobalExceptionHandler());
+      sb.decorator(basePath + "catalogs", authDecorator)
+              .decorator(basePath + "schemas", authDecorator)
+              .decorator(basePath + "volumes", authDecorator)
+              .decorator(basePath + "tables", authDecorator)
+              .decorator(basePath + "functions", authDecorator)
+              .decorator(basePath + "temporary-table-credentials", authDecorator)
+              .decorator(basePath + "temporary-volume-credentials", authDecorator)
+              .decorator(basePath + "iceberg", authDecorator)
+              .decorator(exceptionDecorator);
+    }
   }
 
   public static void main(String[] args) {
@@ -117,18 +159,18 @@ public class UnityCatalogServer {
 
   private void printArt() {
     String art =
-        "################################################################### \n"
-            + "#  _    _       _ _            _____      _        _              #\n"
-            + "# | |  | |     (_) |          / ____|    | |      | |             #\n"
-            + "# | |  | |_ __  _| |_ _   _  | |     __ _| |_ __ _| | ___   __ _  #\n"
-            + "# | |  | | '_ \\| | __| | | | | |    / _` | __/ _` | |/ _ \\ / _` | #\n"
-            + "# | |__| | | | | | |_| |_| | | |___| (_| | || (_| | | (_) | (_| | #\n"
-            + "#  \\____/|_| |_|_|\\__|\\__, |  \\_____\\__,_|\\__\\__,_|_|\\___/ \\__, | #\n"
-            + "#                      __/ |                                __/ | #\n"
-            + "#                     |___/               "
-            + String.format("%15s", ("v" + VersionUtils.VERSION))
-            + "  |___/  #\n"
-            + "###################################################################\n";
+            "################################################################### \n"
+                    + "#  _    _       _ _            _____      _        _              #\n"
+                    + "# | |  | |     (_) |          / ____|    | |      | |             #\n"
+                    + "# | |  | |_ __  _| |_ _   _  | |     __ _| |_ __ _| | ___   __ _  #\n"
+                    + "# | |  | | '_ \\| | __| | | | | |    / _` | __/ _` | |/ _ \\ / _` | #\n"
+                    + "# | |__| | | | | | |_| |_| | | |___| (_| | || (_| | | (_) | (_| | #\n"
+                    + "#  \\____/|_| |_|_|\\__|\\__, |  \\_____\\__,_|\\__\\__,_|_|\\___/ \\__, | #\n"
+                    + "#                      __/ |                                __/ | #\n"
+                    + "#                     |___/               "
+                    + String.format("%15s", ("v" + VersionUtils.VERSION))
+                    + "  |___/  #\n"
+                    + "###################################################################\n";
     System.out.println(art);
   }
 }
