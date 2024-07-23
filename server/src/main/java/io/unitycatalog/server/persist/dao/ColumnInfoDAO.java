@@ -33,7 +33,7 @@ public class ColumnInfoDAO extends IdentifiableDAO {
   private short ordinalPosition;
 
   @Lob
-  @Column(name = "type_text", nullable = false, columnDefinition = "MEDIUMTEXT")
+  @Column(name = "type_text", nullable = false, length = 16777215)
   private String typeText;
 
   @Column(name = "type_json", nullable = false, length = 16777215)

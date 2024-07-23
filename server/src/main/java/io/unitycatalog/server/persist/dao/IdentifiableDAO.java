@@ -29,13 +29,13 @@ public class IdentifiableDAO {
     private String name;
 
     public static <T> Optional<String> getParentIdColumnName(Class<T> entityClass) {
-        if (TableInfoDAO.class.isAssignableFrom(entityClass)
-            || VolumeInfoDAO.class.isAssignableFrom(entityClass)
-            || FunctionInfoDAO.class.isAssignableFrom(entityClass)) {
-            return Optional.of("schema_id");
+        if (TableInfoDAO.class == entityClass
+            || VolumeInfoDAO.class == entityClass
+            || FunctionInfoDAO.class == entityClass) {
+            return Optional.of("schemaId");
         }
-        if (SchemaInfoDAO.class.isAssignableFrom(entityClass)) {
-            return Optional.of("catalog_id");
+        if (SchemaInfoDAO.class == entityClass) {
+            return Optional.of("catalogId");
         }
         return Optional.empty();
     }
