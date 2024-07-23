@@ -23,7 +23,7 @@ import lombok.experimental.SuperBuilder;
 @SuperBuilder
 @EqualsAndHashCode(callSuper = true)
 public class VolumeInfoDAO extends IdentifiableDAO {
-  @Column(name = "schema_id", columnDefinition = "BINARY(16)")
+  @Column(name = "schema_id")
   private UUID schemaId;
 
   @Column(name = "comment")

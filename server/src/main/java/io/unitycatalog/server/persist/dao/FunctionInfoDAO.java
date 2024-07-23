@@ -21,7 +21,7 @@ import org.hibernate.annotations.SQLRestriction;
 @EqualsAndHashCode(callSuper = true)
 @SuperBuilder
 public class FunctionInfoDAO extends IdentifiableDAO {
-  @Column(name = "schema_id", columnDefinition = "BINARY(16)")
+  @Column(name = "schema_id")
   private UUID schemaId;
 
   @Column(name = "comment")

@@ -36,8 +36,7 @@ public class ColumnInfoDAO extends IdentifiableDAO {
   @Column(name = "type_text", nullable = false, columnDefinition = "MEDIUMTEXT")
   private String typeText;
 
-  @Lob
-  @Column(name = "type_json", nullable = false, columnDefinition = "MEDIUMTEXT")
+  @Column(name = "type_json", nullable = false, length = 16777215)
   private String typeJson;
 
   @Column(name = "type_name", nullable = false, length = 32)
@@ -55,8 +54,7 @@ public class ColumnInfoDAO extends IdentifiableDAO {
   @Column(name = "nullable", nullable = false)
   private boolean nullable;
 
-  @Lob
-  @Column(name = "comment")
+  @Column(name = "comment", length = 65535)
   private String comment;
 
   @Column(name = "partition_index")

@@ -27,7 +27,7 @@ import lombok.experimental.SuperBuilder;
 @EqualsAndHashCode(callSuper = true)
 @SuperBuilder
 public class TableInfoDAO extends IdentifiableDAO {
-  @Column(name = "schema_id", columnDefinition = "BINARY(16)")
+  @Column(name = "schema_id")
   private UUID schemaId;
 
   @Column(name = "type")
@@ -42,7 +42,7 @@ public class TableInfoDAO extends IdentifiableDAO {
   @Column(name = "data_source_format")
   private String dataSourceFormat;
 
-  @Column(name = "comment", columnDefinition = "TEXT")
+  @Column(name = "comment", length = 65535)
   private String comment;
 
   @Column(name = "url", length = 2048)
@@ -58,7 +58,7 @@ public class TableInfoDAO extends IdentifiableDAO {
       fetch = FetchType.LAZY)
   private List<ColumnInfoDAO> columns;
 
-  @Column(name = "uniform_iceberg_metadata_location", columnDefinition = "TEXT")
+  @Column(name = "uniform_iceberg_metadata_location", length = 65535)
   private String uniformIcebergMetadataLocation;
 
   public static TableInfoDAO from(TableInfo tableInfo) {

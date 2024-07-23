@@ -19,7 +19,7 @@ import lombok.experimental.SuperBuilder;
 @NoArgsConstructor
 @EqualsAndHashCode(callSuper = true)
 public class SchemaInfoDAO extends IdentifiableDAO {
-  @Column(name = "catalog_id", columnDefinition = "BINARY(16)")
+  @Column(name = "catalog_id")
   private UUID catalogId;
 
   @Column(name = "comment")

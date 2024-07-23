@@ -1,6 +1,10 @@
 package io.unitycatalog.server.base.table;
 
-import static org.junit.Assert.*;
+import static org.assertj.core.api.Assertions.fail;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import io.unitycatalog.client.ApiException;
 import io.unitycatalog.client.model.*;
@@ -14,7 +18,8 @@ import io.unitycatalog.server.persist.utils.HibernateUtils;
 import io.unitycatalog.server.utils.TestUtils;
 import org.hibernate.Session;
 import org.hibernate.Transaction;
-import org.junit.*;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
 
 import java.io.IOException;
 import java.util.*;
@@ -30,7 +35,7 @@ public abstract class BaseTableCRUDTest extends BaseCRUDTest {
 
   protected abstract TableOperations createTableOperations(ServerConfig serverConfig);
 
-  @Before
+  @BeforeEach
   @Override
   public void setUp() {
     super.setUp();
