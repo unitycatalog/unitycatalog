@@ -69,6 +69,12 @@ lazy val commonSettings = Seq(
     // I think we're good with the classpath exception in there.
     case DepModuleInfo("jakarta.transaction", "jakarta.transaction-api", _) => true
   },
+  libraryDependencies ++= Seq(
+    "org.slf4j" % "slf4j-api" % "2.0.13",
+    "org.slf4j" % "slf4j-log4j12" % "2.0.13" % Test,
+    "org.apache.logging.log4j" % "log4j-slf4j2-impl" % "2.23.1",
+    "org.apache.logging.log4j" % "log4j-api" % "2.23.1",
+  ),
 )
 
 enablePlugins(CoursierPlugin)
