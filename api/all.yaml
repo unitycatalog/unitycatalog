@@ -21,6 +21,14 @@ tags:
       Functions implement User-Defined Functions (UDFs) in Unity Catalog.
       The function implementation can be a SQL expression/query or a python function, and it can be invoked wherever a table reference is allowed in a query.
       In Unity Catalog, a function resides at the same level as a table, so it can be referenced with the form __catalog_name__.__schema_name__.__function_name__.
+  - name: Models
+    description: |
+      Models are machine learned models that are stored within Unity Catalog.  They are comprised of all versions of a single model that a user wishes to keep.
+      A model resides in the third layer of Unity Catalog’s three-level namespace, and can be referenced with the form __catalog_name__.__schema_name__.__model_name__.
+  - name: ModelVersions
+    description: |
+      Model versions contain all artifact files associated with an individual machine learned model.  They are associated with a single parent model and have an integer identifier, indicating the version number of the model.
+      Model versions are referenced via model URI's using the Unity Catalog three-level namespace of the registered model and the version identifier.
 paths:
   /catalogs:
     post:
@@ -582,6 +590,24 @@ paths:
           content:
             application/json:
               schema: {}
+  /temporary-model-credentials:
+    post:
+      operationId: generateTemporaryModelCredentials
+      tags:
+        - TemporaryModelCredentials
+      summary: Generate temporary model credentials.
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/GenerateTemporaryModelCredential'
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GenerateTemporaryModelCredentialResponse'
   /temporary-table-credentials:
     post:
       operationId: generateTemporaryTableCredentials
@@ -722,6 +748,268 @@ paths:
           content:
             application/json:
               schema: {}
+  /models:
+    post:
+      operationId: createModel
+      summary: |
+        Create a model.
+        WARNING: This API is experimental and will change in future versions.
+      tags:
+        - Models
+      description: |
+        Creates a new model instance.
+        WARNING: This API is experimental and will change in future versions.
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateModel'
+      responses:
+        '200':
+          description: The new model was successfully created.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ModelInfo'
+    get:
+      tags:
+        - Models
+      parameters:
+        - name: catalog_name
+          in: query
+          description: Name of parent catalog for models of interest.
+          required: true
+          schema:
+            type: string
+        - name: schema_name
+          in: query
+          description: Parent schema of model.
+          required: true
+          schema:
+            type: string
+        - name: max_results
+          in: query
+          description: |
+            Maximum number of models to return.
+            - when set to a value greater than 0, the page length is the minimum of this value and a server configured value;
+            - when set to 0, the page length is set to a server configured value;
+            - when set to a value less than 0, an invalid parameter error is returned;
+          required: false
+          schema:
+            type: integer
+            format: int32
+            maximum: 50
+        - name: page_token
+          in: query
+          description: Opaque token to send for the next page of results (pagination).
+          required: false
+          schema:
+            type: string
+      operationId: listModels
+      summary: List models
+      description: |
+        Gets the list of all available models under the parent catalog and schema.
+        There is no guarantee of a specific ordering of the elements in the array.
+      responses:
+        '200':
+          description: The models list was successfully retrieved.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ListModelsResponse'
+  /models/{full_name}:
+    parameters:
+      - name: full_name
+        in: path
+        description: Full name of the model.
+        required: true
+        schema:
+          type: string
+    get:
+      tags:
+        - Models
+      operationId: getModel
+      summary: Get a model
+      description: |
+        Gets a model for a specific catalog and schema.
+      responses:
+        '200':
+          description: The model was successfully retrieved.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ModelInfo'
+    patch:
+      tags:
+        - Models
+      operationId: updateModel
+      summary: Update a model
+      description: |
+        Updates the model that matches the supplied name.
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateModel'
+      responses:
+        '200':
+          description: The model was successfully updated.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ModelInfo'
+    delete:
+      tags:
+        - Model
+      operationId: deleteModel
+      summary: Delete a model
+      description: |
+        Deletes a model from the specified parent catalog and schema. All versions of the model must have already been deleted.
+      responses:
+        '200':
+          description: The model was successfully deleted.
+          content:
+            application/json:
+              schema: {}
+  /models/versions:
+    post:
+      operationId: createModelVersion
+      summary: |
+        Create a model version.
+        WARNING: This API is experimental and will change in future versions.
+      tags:
+        - ModelVersions
+      description: |
+        Creates a new model version instance.
+        WARNING: This API is experimental and will change in future versions.
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateModelVersion'
+      responses:
+        '200':
+          description: The new model version was successfully created.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ModelVersionInfo'
+  /models/{full_name}/versions:
+    parameters:
+      - name: full_name
+        in: path
+        description: Full name of the model.
+        required: true
+        schema:
+          type: string
+    get:
+      tags:
+        - ModelVersions
+      operationId: listModelVersions
+      summary: List model versions
+      description: |
+        Gets the list of all available model versions under the model.
+        There is no guarantee of a specific ordering of the elements in the array.
+      responses:
+        '200':
+          description: The model versions list was successfully retrieved.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ListModelVersionsResponse'
+  /models/{full_name}/versions/{version}:
+    parameters:
+      - name: full_name
+        in: path
+        description: Full name of the model.
+        required: true
+        schema:
+          type: string
+      - name: version
+        in: path
+        description: Version number of the model version.
+        required: true
+        schema:
+          type: string
+    get:
+      tags:
+        - ModelVersions
+      operationId: getModelVersion
+      summary: Get a model version
+      description: |
+        Gets a specific model version for a specific model.
+      responses:
+        '200':
+          description: The model version was successfully retrieved.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ModelVersionInfo'
+    patch:
+      tags:
+        - ModelVersions
+      operationId: updateModelVersion
+      summary: Update a model version
+      description: |
+        Updates the model version that matches the supplied name.
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateModelVersion'
+      responses:
+        '200':
+          description: The model version was successfully updated.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ModelVersionInfo'
+    delete:
+      tags:
+        - ModelVersions
+      operationId: deleteModelVersion
+      summary: Delete a model version
+      description: |
+        Deletes a model version from the specified model.
+      responses:
+        '200':
+          description: The model was successfully deleted.
+          content:
+            application/json:
+              schema: {}
+  /models/{full_name}/versions/{version}/finalize:
+    parameters:
+      - name: full_name
+        in: path
+        description: Full name of the model.
+        required: true
+        schema:
+          type: string
+      - name: version
+        in: path
+        description: Version number of the model version.
+        required: true
+        schema:
+          type: string
+    patch:
+      tags:
+        - ModelVersions
+      operationId: finalizeModelVersion
+      summary: Finalize a model version
+      description: |
+        Finalizes the status of the model version that matches the supplied model name and version.
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/FinalizeModelVersion'
+      responses:
+        '200':
+          description: The model version was successfully finalized.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ModelVersionInfo'
 components:
   schemas:
     SecurablePropertiesMap:
@@ -1414,6 +1702,39 @@ components:
           description: |
             Opaque token to retrieve the next page of results. Absent if there are no more pages.
             __page_token__ should be set to this value for the next request (for the next page of results).
+    GenerateTemporaryModelCredential:
+      example:
+        table_id: model_id
+        operation: null
+      properties:
+        table_id:
+          description: |
+            Model id for which temporary credentials are generated. 
+            Can be obtained from models/{full_name} (get model info) API.
+          type: string
+        operation:
+          $ref: '#/components/schemas/ModelOperation'
+      type: object
+      required:
+        - table_id
+        - operation
+    GenerateTemporaryModelCredentialResponse:
+      properties:
+        aws_temp_credentials:
+          $ref: '#/components/schemas/AwsCredentials'
+        expiration_time:
+          description: |
+            Server time when the credential will expire, in epoch milliseconds.
+            The API client is advised to cache the credential given this expiration time.
+          type: integer
+          format: int64
+      type: object
+    ModelOperation:
+      enum:
+        - UNKNOWN_TABLE_OPERATION
+        - READ
+        - READ_WRITE
+      type: string
     GenerateTemporaryTableCredential:
       example:
         table_id: table_id
@@ -1490,6 +1811,202 @@ components:
         - READ_VOLUME
         - WRITE_VOLUME
       type: string
+    ModelInfo:
+      type: object
+      properties:
+        name:
+          description: Name of model, relative to parent schema.
+          type: string
+        catalog_name:
+          description: Name of parent catalog.
+          type: string
+        schema_name:
+          description: Name of parent schema relative to its parent catalog.
+          type: string
+        storage_location:
+          description: Storage root URL for model (for **MANAGED**, **EXTERNAL** tables)
+          type: string
+        comment:
+          description: User-provided free-form text description.
+          type: string
+        created_at:
+          description: Time at which this model was created, in epoch milliseconds.
+          type: integer
+          format: int64
+        updated_at:
+          description: Time at which this model was last modified, in epoch milliseconds.
+          type: integer
+          format: int64
+        model_id:
+          description: Unique identifier for the model.
+          type: string
+    ModelVersionInfo:
+      type: object
+      properties:
+        model_name:
+          description: Name of model, relative to parent schema.
+          type: string
+        catalog_name:
+          description: Name of parent catalog.
+          type: string
+        schema_name:
+          description: Name of parent schema relative to its parent catalog.
+          type: string
+        version:
+          description: The version number of the model version
+          type: integer
+          format: int64
+        source:
+          description: URI indicating the location of the source model artifacts.
+          type: string
+        run_id:
+          description: The run id used by the ML package that generated the model.
+          type: string
+        status:
+          $ref: '#/components/schemas/ModelVersionStatus'
+        storage_location:
+          description: Storage root URL for model version (for **MANAGED**, **EXTERNAL** tables)
+          type: string
+        comment:
+          description: User-provided free-form text description.
+          type: string
+        created_at:
+          description: Time at which this model version was created, in epoch milliseconds.
+          type: integer
+          format: int64
+        updated_at:
+          description: Time at which this model version was last modified, in epoch milliseconds.
+          type: integer
+          format: int64
+        model_version_id:
+          description: Unique identifier for the model version.
+          type: string
+    ModelVersionStatus:
+      description: All possible model version statuses
+      type: string
+      enum:
+        - UNKNOWN
+        - PENDING
+        - FAILED
+        - READY
+    CreateModel:
+      type: object
+      properties:
+        model_name:
+          description: Name of model, relative to parent schema.
+          type: string
+        catalog_name:
+          description: Name of parent catalog.
+          type: string
+        schema_name:
+          description: Name of parent schema relative to its parent catalog.
+          type: string
+        storage_location:
+          description: Storage root URL for table (for **MANAGED**, **EXTERNAL** tables)
+          type: string
+        comment:
+          description: User-provided free-form text description.
+          type: string
+      required:
+        - model_name
+        - catalog_name
+        - schema_name
+    UpdateModel:
+      type: object
+      properties:
+        comment:
+          description: User-provided free-form text description.
+          type: string
+        new_name:
+          description: New name for the model.
+          type: string
+    ListModelsResponse:
+      type: object
+      properties:
+        model_versions:
+          description: An array of model information objects.
+          type: array
+          items:
+            "$ref": "#/components/schemas/ModelInfo"
+        next_page_token:
+          type: string
+          description: |
+            Opaque token to retrieve the next page of results. Absent if there are no more pages.
+            __page_token__ should be set to this value for the next request (for the next page of results).
+    CreateModelVersion:
+      type: object
+      properties:
+        model_name:
+          description: Name of model, relative to parent schema.
+          type: string
+        catalog_name:
+          description: Name of parent catalog.
+          type: string
+        schema_name:
+          description: Name of parent schema relative to its parent catalog.
+          type: string
+        source:
+          description: URI indicating the location of the source model artifacts.
+          type: string
+        run_id:
+          description: The run id used by the ML package that generated the model.
+          type: string
+        storage_location:
+          description: Storage root URL for table (for **MANAGED**, **EXTERNAL** tables)
+          type: string
+        comment:
+          description: User-provided free-form text description.
+          type: string
+      required:
+        - model_name
+        - catalog_name
+        - schema_name
+    UpdateModelVersion:
+      type: object
+      properties:
+        source:
+          description: URI indicating the location of the source model artifacts.
+          type: string
+        run_id:
+          description: The run id used by the ML package that generated the model.
+          type: string
+        comment:
+          description: User-provided free-form text description.
+          type: string
+    ListModelVersionsResponse:
+      type: object
+      properties:
+        model_versions:
+          description: An array of model version information objects.
+          type: array
+          items:
+            "$ref": "#/components/schemas/ModelVersionInfo"
+        next_page_token:
+          type: string
+          description: |
+            Opaque token to retrieve the next page of results. Absent if there are no more pages.
+            __page_token__ should be set to this value for the next request (for the next page of results).
+    FinalizeModelVersion:
+      type: object
+      properties:
+        model_name:
+          description: Name of model, relative to parent schema.
+          type: string
+        catalog_name:
+          description: Name of parent catalog.
+          type: string
+        schema_name:
+          description: Name of parent schema relative to its parent catalog.
+          type: string
+        version:
+          description: Version number of the version to finalize
+          type: integer
+          format:  int64
+      required:
+        - model_name
+        - catalog_name
+        - schema_name
+        - version
 info:
   title: Unity Catalog API
   version: '0.1'
