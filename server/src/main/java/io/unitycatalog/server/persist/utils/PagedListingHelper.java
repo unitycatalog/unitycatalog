@@ -10,21 +10,35 @@ import jakarta.persistence.criteria.Root;
 import org.hibernate.Session;
 import org.hibernate.query.Query;
 
+import java.lang.reflect.InvocationTargetException;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
-public class PagedEntityLister<T extends IdentifiableDAO> {
+/**
+ * Helper class to list entities in a paged manner. Entities are listed in ascending order of their
+ * name. The name of the last entity in the list can be used as a page token to fetch the next page.
+ *
+ * @param <T> The DAO class of the entity to be listed
+ */
+public class PagedListingHelper<T extends IdentifiableDAO> {
 
     private final Class<T> entityClass;
 
-    public PagedEntityLister(Class<T> entityClass) {
+    public PagedListingHelper(Class<T> entityClass) {
         this.entityClass = entityClass;
     }
 
     public static final Integer DEFAULT_PAGE_SIZE = 100;
 
+    /**
+     * Get the page size to use for listing entities. The page size is the minimum of the maxResults
+     * and the default page size.
+     *
+     * @param maxResults The maximum number of results to return.
+     * @return The page size to use for listing entities.
+     */
     public static Integer getPageSize(Optional<Integer> maxResults) {
         return maxResults
                 .filter(x -> (x > 0))
@@ -32,6 +46,15 @@ public class PagedEntityLister<T extends IdentifiableDAO> {
                 .orElse(DEFAULT_PAGE_SIZE);
     }
 
+    /**
+     * This function returns the next page token to use to fetch the next page of entities. The next
+     * page token is the name of the last entity in the list.
+     *
+     * @param entities The list of entities to check
+     * @param maxResults The maximum number of results to return
+     * @return The next page token to use to fetch the next page of entities. Returns null if there
+     * are no more entities to fetch.
+     */
     public String getNextPageToken(List<T> entities, Optional<Integer> maxResults) {
         if (entities == null || entities.isEmpty() || entities.size() < getPageSize(maxResults)) {
             return null;
@@ -40,28 +63,14 @@ public class PagedEntityLister<T extends IdentifiableDAO> {
         return entities.get(entities.size() - 1).getName();
     }
 
-    public String getParentEntity() {
-        if (entityClass == TableInfoDAO.class) {
-            return "schemaId";
-        } else if (entityClass == SchemaInfoDAO.class) {
-            return "catalogId";
-        } else if (entityClass == CatalogInfoDAO.class) {
-            return null;
-        } else {
-            throw new BaseException(ErrorCode.INVALID_ARGUMENT, "Invalid entity type");
-        }
-    }
-
     public Query<T> buildListQuery(Session session, UUID parentEntityId, String pageToken) {
         CriteriaBuilder cb = session.getCriteriaBuilder();
         CriteriaQuery<T> cr = cb.createQuery(entityClass);
         Root<T> root = cr.from(entityClass);
 
         List<Predicate> predicates = new ArrayList<>();
-        String parentEntity = getParentEntity();
-        if (parentEntity != null) {
-            predicates.add(cb.equal(root.get(parentEntity), parentEntityId));
-        }
+        Optional<String> parentEntityIdColumn = IdentifiableDAO.getParentIdColumnName(entityClass);
+        parentEntityIdColumn.ifPresent(s -> predicates.add(cb.equal(root.get(s), parentEntityId)));
         predicates.add(cb.or(
                 cb.greaterThan(root.get("name"), pageToken),
                 cb.isNull(cb.literal(pageToken))

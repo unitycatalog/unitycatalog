@@ -7,6 +7,7 @@ import io.unitycatalog.server.persist.utils.FileUtils;
 import jakarta.persistence.*;
 import java.util.Date;
 import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 import lombok.*;
 import lombok.experimental.SuperBuilder;
@@ -80,8 +81,8 @@ public class TableInfoDAO extends IdentifiableDAO {
   public TableInfo toTableInfo(boolean fetchColumns) {
     TableInfo tableInfo =
         new TableInfo()
-            .tableId(super.getId().toString())
-            .name(super.getName())
+            .tableId(getId().toString())
+            .name(getName())
             .tableType(TableType.valueOf(type))
             .dataSourceFormat(DataSourceFormat.valueOf(dataSourceFormat))
             .storageLocation(FileUtils.convertRelativePathToURI(url))

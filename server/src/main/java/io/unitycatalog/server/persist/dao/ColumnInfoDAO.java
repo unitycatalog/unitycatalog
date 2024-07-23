@@ -84,7 +84,7 @@ public class ColumnInfoDAO extends IdentifiableDAO {
 
   public ColumnInfo toColumnInfo() {
     return new ColumnInfo()
-        .name(super.getName())
+        .name(getName())
         .typeText(typeText)
         .typeJson(typeJson)
         .typeName(ColumnTypeName.valueOf(typeName))

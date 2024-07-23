@@ -8,6 +8,7 @@ import jakarta.persistence.Entity;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
 import java.util.Date;
+import java.util.Optional;
 import java.util.UUID;
 import lombok.*;
 import lombok.experimental.SuperBuilder;
@@ -42,8 +43,8 @@ public class VolumeInfoDAO extends IdentifiableDAO {
 
   public VolumeInfo toVolumeInfo() {
     return new VolumeInfo()
-        .volumeId(super.getId().toString())
-        .name(super.getName())
+        .volumeId(getId().toString())
+        .name(getName())
         .comment(comment)
         .storageLocation(FileUtils.convertRelativePathToURI(storageLocation))
         .createdAt(createdAt.getTime())

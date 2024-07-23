@@ -45,8 +45,8 @@ public class CatalogInfoDAO extends IdentifiableDAO {
 
   public CatalogInfo toCatalogInfo() {
     return new CatalogInfo()
-        .id(super.getId().toString())
-        .name(super.getName())
+        .id(getId().toString())
+        .name(getName())
         .comment(comment)
         .createdAt(createdAt.getTime())
         .updatedAt(updatedAt != null ? updatedAt.getTime() : null);

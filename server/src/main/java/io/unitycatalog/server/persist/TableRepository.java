@@ -8,7 +8,7 @@ import io.unitycatalog.server.persist.dao.SchemaInfoDAO;
 import io.unitycatalog.server.persist.dao.TableInfoDAO;
 import io.unitycatalog.server.persist.utils.FileUtils;
 import io.unitycatalog.server.persist.utils.HibernateUtils;
-import io.unitycatalog.server.persist.utils.PagedEntityLister;
+import io.unitycatalog.server.persist.utils.PagedListingHelper;
 import io.unitycatalog.server.persist.utils.RepositoryUtils;
 import io.unitycatalog.server.utils.Constants;
 import io.unitycatalog.server.utils.ValidationUtils;
@@ -26,7 +26,7 @@ public class TableRepository {
   private static final Logger LOGGER = LoggerFactory.getLogger(TableRepository.class);
   private static final SessionFactory SESSION_FACTORY = HibernateUtils.getSessionFactory();
   private static final SchemaRepository SCHEMA_REPOSITORY = SchemaRepository.getInstance();
-  private static final PagedEntityLister<TableInfoDAO> ENTITY_LISTER = new PagedEntityLister<>(TableInfoDAO.class);
+  private static final PagedListingHelper<TableInfoDAO> LISTING_HELPER = new PagedListingHelper<>(TableInfoDAO.class);
 
   private TableRepository() {}
 
@@ -247,8 +247,8 @@ public class TableRepository {
           Optional<String> pageToken,
           Boolean omitProperties,
           Boolean omitColumns) {
-    List<TableInfoDAO> tableInfoDAOList = ENTITY_LISTER.listEntity(session, maxResults, pageToken, schemaId);
-    String nextPageToken = ENTITY_LISTER.getNextPageToken(tableInfoDAOList, maxResults);
+    List<TableInfoDAO> tableInfoDAOList = LISTING_HELPER.listEntity(session, maxResults, pageToken, schemaId);
+    String nextPageToken = LISTING_HELPER.getNextPageToken(tableInfoDAOList, maxResults);
     List<TableInfo> result = new ArrayList<>();
     for (TableInfoDAO tableInfoDAO : tableInfoDAOList) {
       TableInfo tableInfo = tableInfoDAO.toTableInfo(!omitColumns);

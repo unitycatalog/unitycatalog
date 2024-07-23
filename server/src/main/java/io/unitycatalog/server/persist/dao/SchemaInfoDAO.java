@@ -4,6 +4,7 @@ import io.unitycatalog.server.model.SchemaInfo;
 import jakarta.persistence.*;
 import java.time.Instant;
 import java.util.Date;
+import java.util.Optional;
 import java.util.UUID;
 import lombok.*;
 import lombok.experimental.SuperBuilder;
@@ -46,13 +47,12 @@ public class SchemaInfoDAO extends IdentifiableDAO {
         .build();
   }
 
-  public static SchemaInfo toSchemaInfo(SchemaInfoDAO schemaInfoDAO) {
+  public SchemaInfo toSchemaInfo() {
     return new SchemaInfo()
-        .schemaId(schemaInfoDAO.getId().toString())
-        .name(schemaInfoDAO.getName())
-        .comment(schemaInfoDAO.getComment())
-        .createdAt(schemaInfoDAO.getCreatedAt().getTime())
-        .updatedAt(
-            (schemaInfoDAO.getUpdatedAt() != null) ? schemaInfoDAO.getUpdatedAt().getTime() : null);
+        .schemaId(getId().toString())
+        .name(getName())
+        .comment(getComment())
+        .createdAt(getCreatedAt().getTime())
+        .updatedAt(getUpdatedAt() != null ? getUpdatedAt().getTime() : null);
   }
 }

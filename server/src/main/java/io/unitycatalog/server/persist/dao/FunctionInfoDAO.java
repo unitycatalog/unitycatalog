@@ -4,6 +4,7 @@ import io.unitycatalog.server.model.ColumnTypeName;
 import io.unitycatalog.server.model.FunctionInfo;
 import jakarta.persistence.*;
 import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 import lombok.*;
 import lombok.experimental.SuperBuilder;
@@ -116,8 +117,8 @@ public class FunctionInfoDAO extends IdentifiableDAO {
   public FunctionInfo toFunctionInfo() {
     FunctionInfo functionInfo =
         new FunctionInfo()
-            .functionId(super.getId().toString())
-            .name(super.getName())
+            .functionId(getId().toString())
+            .name(getName())
             .comment(comment)
             .createdAt(createdAt)
             .updatedAt(updatedAt)

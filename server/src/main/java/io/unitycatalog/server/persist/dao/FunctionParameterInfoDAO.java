@@ -85,7 +85,7 @@ public class FunctionParameterInfoDAO extends IdentifiableDAO {
 
   public FunctionParameterInfo toFunctionParameterInfo() {
     return new FunctionParameterInfo()
-        .name(super.getName())
+        .name(getName())
         .typeText(typeText)
         .typeJson(typeJson)
         .typeName(typeName)
