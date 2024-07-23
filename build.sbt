@@ -14,18 +14,18 @@ lazy val commonSettings = Seq(
   organization := orgName,
   // Compilation configs
   initialize := {
-    // Assert that the JVM is at least Java 11
+    // Assert that the JVM is at least Java 17
     val _ = initialize.value  // ensure previous initializations are run
     assert(
-      sys.props("java.specification.version").toDouble >= 11,
-      "Java 11 or above is required to run this project.")
+      sys.props("java.specification.version").toDouble >= 17,
+      "Java 17 or above is required to run this project.")
   },
-  javacOptions ++= Seq(
+  Compile / compile / javacOptions ++= Seq(
     "-Xlint:deprecation",
     "-Xlint:unchecked",
-    "-source", "1.8",
-    "-target", "1.8",
-    "-g:source,lines,vars"
+    "-source", "17",
+    "-target", "17",
+    "-g:source,lines,vars",
   ),
   resolvers += Resolver.mavenLocal,
   autoScalaLibrary := false,
@@ -50,6 +50,7 @@ lazy val commonSettings = Seq(
     packageFile
   },
 
+  licenseConfigurations := Set("compile"),
   licenseOverrides := {
     case DepModuleInfo("io.unitycatalog", _, _) =>
       LicenseInfo(LicenseCategory.Apache, "Apache 2.0", "http://www.apache.org/licenses")
@@ -104,10 +105,9 @@ lazy val client = (project in file("clients/java"))
       "jakarta.annotation" % "jakarta.annotation-api" % "3.0.0" % Provided,
 
       // Test dependencies
-      "junit" %  "junit" % "4.13.2" % Test,
-      "org.junit.jupiter" % "junit-jupiter" % "5.9.2" % Test,
+      "org.junit.jupiter" % "junit-jupiter" % "5.10.3" % Test,
       "net.aichler" % "jupiter-interface" % JupiterKeys.jupiterVersion.value % Test,
-      "org.assertj" % "assertj-core" % "3.25.1" % Test,
+      "org.assertj" % "assertj-core" % "3.26.3" % Test,
     ),
 
     // OpenAPI generation specs
@@ -145,6 +145,8 @@ lazy val apiDocs = (project in file("api"))
     }
   )
 
+// Define the custom task key
+lazy val populateTestDB = taskKey[Unit]("Run PopulateTestDatabase main class from the test folder")
 
 lazy val server = (project in file("server"))
   .dependsOn(client % "test->test")
@@ -156,6 +158,8 @@ lazy val server = (project in file("server"))
     javaCheckstyleSettings(file("dev") / "checkstyle-config.xml"),
     libraryDependencies ++= Seq(
       "com.linecorp.armeria" %  "armeria" % "1.28.4",
+      // Netty dependencies
+      "io.netty" % "netty-all" % "4.1.111.Final",
       "jakarta.annotation" % "jakarta.annotation-api" % "3.0.0" % Provided,
       // Jackson dependencies
       "com.fasterxml.jackson.core" % "jackson-annotations" % jacksonVersion,
@@ -165,6 +169,7 @@ lazy val server = (project in file("server"))
 
       "com.google.code.findbugs" % "jsr305" % "3.0.2",
       "com.h2database" %  "h2" % "2.2.224",
+
       "org.hibernate.orm" % "hibernate-core" % "6.5.0.Final",
       "org.openapitools" % "jackson-databind-nullable" % openApiToolsJacksonBindNullableVersion,
       // logging
@@ -183,13 +188,22 @@ lazy val server = (project in file("server"))
 
       // Iceberg REST Catalog dependencies
       "org.apache.iceberg" % "iceberg-core" % "1.5.2",
+      "org.apache.iceberg" % "iceberg-aws" % "1.5.2",
+      "software.amazon.awssdk" % "s3" % "2.24.0",
       "io.vertx" % "vertx-core" % "4.3.5",
       "io.vertx" % "vertx-web" % "4.3.5",
       "io.vertx" % "vertx-web-client" % "4.3.5",
 
       // Test dependencies
-      "junit" %  "junit" % "4.13.2" % Test,
-      "com.github.sbt" % "junit-interface" % "0.13.3" % Test,
+      "org.junit.jupiter" %  "junit-jupiter" % "5.10.3" % Test,
+      "org.mockito" % "mockito-core" % "5.11.0" % Test,
+      "org.mockito" % "mockito-inline" % "5.2.0" % Test,
+      "org.mockito" % "mockito-junit-jupiter" % "5.12.0" % Test,
+      "net.aichler" % "jupiter-interface" % JupiterKeys.jupiterVersion.value % Test,
+      "com.adobe.testing" % "s3mock-junit5" % "3.9.1" % Test
+        exclude("ch.qos.logback", "logback-classic")
+        exclude("org.apache.logging.log4j", "log4j-to-slf4j"),
+      "javax.xml.bind" % "jaxb-api" % "2.3.1" % Test
     ),
 
     Compile / compile / javacOptions ++= Seq(
@@ -229,8 +243,15 @@ lazy val server = (project in file("server"))
     // Define the simple generate command to generate model codes
     generate := {
       val _ = openApiGenerate.value
-    }
-  )
+    },
+
+    populateTestDB := {
+      val log = streams.value.log
+      (Test / runMain).toTask(s" io.unitycatalog.server.utils.PopulateTestDatabase").value
+    },
+
+    Test / javaOptions += s"-Duser.dir=${(ThisBuild / baseDirectory).value.getAbsolutePath}",
+)
 
 lazy val cli = (project in file("examples") / "cli")
   .dependsOn(server % "compile->compile;test->test")
@@ -260,20 +281,43 @@ lazy val cli = (project in file("examples") / "cli")
       "org.apache.hadoop" % "hadoop-client-runtime" % "3.4.0",
       "de.vandermeer" % "asciitable" % "0.3.2",
       // for s3 access
+      "org.fusesource.jansi" % "jansi" % "2.4.1",
       "com.amazonaws" % "aws-java-sdk-core" % "1.12.728",
       "org.apache.hadoop" % "hadoop-aws" % "3.4.0",
       "com.google.guava" % "guava" % "31.0.1-jre",
       // Test dependencies
-      "junit" %  "junit" % "4.13.2" % Test,
-      "com.github.sbt" % "junit-interface" % "0.13.3" % Test,
-    )
+      "org.junit.jupiter" % "junit-jupiter" % "5.10.3" % Test,
+      "net.aichler" % "jupiter-interface" % JupiterKeys.jupiterVersion.value % Test,
+    ),
+    Test / javaOptions += s"-Duser.dir=${(ThisBuild / baseDirectory).value.getAbsolutePath}",
   )
 
 lazy val root = (project in file("."))
   .aggregate(client, server, cli)
   .settings(
     name := s"$artifactNamePrefix",
-    createTarballSettings()
+    createTarballSettings(),
+    rootReleaseSettings
+  )
+
+lazy val spark = (project in file("connectors/spark"))
+  .dependsOn(client % "compile->compile;test->test")
+  .dependsOn(server % "test->test")
+  .settings(
+    name := s"$artifactNamePrefix-spark",
+    scalaVersion := "2.13.14",
+    commonSettings,
+    javaOptions ++= Seq(
+      "--add-opens=java.base/sun.nio.ch=ALL-UNNAMED",
+    ),
+    javaCheckstyleSettings(file("dev") / "checkstyle-config.xml"),
+    libraryDependencies ++= Seq(
+      "org.apache.spark" %% "spark-sql" % "4.0.0-preview1",
+      // Test dependencies
+      "org.junit.jupiter" % "junit-jupiter" % "5.10.3" % Test,
+      "net.aichler" % "jupiter-interface" % JupiterKeys.jupiterVersion.value % Test,
+      "io.delta" %% "delta-spark" % "4.0.0rc1" % Test,
+    ),
   )
 
 def generateClasspathFile(targetDir: File, classpath: Classpath): Unit = {

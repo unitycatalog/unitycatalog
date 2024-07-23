@@ -8,13 +8,13 @@ import io.unitycatalog.server.base.schema.SchemaOperations;
 
 public class CliSchemaCRUDTest extends BaseSchemaCRUDTest {
 
-    @Override
-    protected SchemaOperations createSchemaOperations(ServerConfig config) {
-        return new CliSchemaOperations(config);
-    }
+  @Override
+  protected SchemaOperations createSchemaOperations(ServerConfig config) {
+    return new CliSchemaOperations(config);
+  }
 
-    @Override
-    protected CatalogOperations createCatalogOperations(ServerConfig serverConfig) {
-        return new CliCatalogOperations(serverConfig);
-    }
+  @Override
+  protected CatalogOperations createCatalogOperations(ServerConfig serverConfig) {
+    return new CliCatalogOperations(serverConfig);
+  }
 }

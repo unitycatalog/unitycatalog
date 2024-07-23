@@ -4,194 +4,344 @@ import io.unitycatalog.server.exception.BaseException;
 import io.unitycatalog.server.exception.ErrorCode;
 import io.unitycatalog.server.model.*;
 import io.unitycatalog.server.persist.dao.CatalogInfoDAO;
+import io.unitycatalog.server.persist.dao.PropertyDAO;
 import io.unitycatalog.server.persist.dao.SchemaInfoDAO;
+import io.unitycatalog.server.persist.utils.HibernateUtils;
+import io.unitycatalog.server.persist.utils.RepositoryUtils;
+import io.unitycatalog.server.utils.Constants;
 import io.unitycatalog.server.utils.ValidationUtils;
-import lombok.Getter;
-import org.hibernate.query.Query;
-import org.hibernate.Session;
-import org.hibernate.SessionFactory;
-import org.hibernate.Transaction;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-
 import java.util.Date;
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 import java.util.stream.Collectors;
+import org.hibernate.Session;
+import org.hibernate.SessionFactory;
+import org.hibernate.Transaction;
+import org.hibernate.query.Query;
 
 public class SchemaRepository {
-    @Getter
-    public static final SchemaRepository instance = new SchemaRepository();
-    @Getter
-    public static final CatalogRepository catalogRepository = CatalogRepository.getInstance();
-    private static final Logger LOGGER = LoggerFactory.getLogger(SchemaRepository.class);
-    private static final SessionFactory sessionFactory = HibernateUtil.getSessionFactory();
+  public static final SchemaRepository INSTANCE = new SchemaRepository();
+  public static final CatalogRepository CATALOG_REPOSITORY = CatalogRepository.getInstance();
+  private static final TableRepository TABLE_REPOSITORY = TableRepository.getInstance();
+  private static final VolumeRepository VOLUME_REPOSITORY = VolumeRepository.getInstance();
+  private static final FunctionRepository FUNCTION_REPOSITORY = FunctionRepository.getInstance();
+  private static final SessionFactory SESSION_FACTORY = HibernateUtils.getSessionFactory();
 
-    private SchemaRepository() {}
+  private SchemaRepository() {}
 
-    public SchemaInfo createSchema(CreateSchema createSchema) {
-        ValidationUtils.validateSqlObjectName(createSchema.getName());
-        try (Session session = sessionFactory.openSession()) {
-            Transaction tx = session.beginTransaction();
-            try {
-                if (getSchemaDAO(session, createSchema.getCatalogName(), createSchema.getName()) != null) {
-                    throw new BaseException(ErrorCode.ALREADY_EXISTS,
-                            "Schema already exists: " + createSchema.getName());
-                }
-                CatalogInfoDAO catalogDAO = catalogRepository
-                        .getCatalogDAO(session, createSchema.getCatalogName());
-                SchemaInfoDAO schemaInfo = new SchemaInfoDAO();
-                schemaInfo.setId(UUID.randomUUID());
-                schemaInfo.setName(createSchema.getName());
-                schemaInfo.setCatalogId(catalogDAO.getId());
-                schemaInfo.setComment(createSchema.getComment());
-                schemaInfo.setCreatedAt(new Date());
-                schemaInfo.setUpdatedAt(null);
-                session.persist(schemaInfo);
-                tx.commit();
-                SchemaInfo toReturn = SchemaInfoDAO.toSchemaInfo(schemaInfo);
-                addNamespaceData(toReturn, createSchema.getCatalogName());
-                return toReturn;
-            } catch (Exception e) {
-                tx.rollback();
-                throw e;
-            }
+  public static SchemaRepository getInstance() {
+    return INSTANCE;
+  }
+
+  public SchemaInfo createSchema(CreateSchema createSchema) {
+    ValidationUtils.validateSqlObjectName(createSchema.getName());
+    try (Session session = SESSION_FACTORY.openSession()) {
+      Transaction tx = session.beginTransaction();
+      try {
+        if (getSchemaDAO(session, createSchema.getCatalogName(), createSchema.getName()) != null) {
+          throw new BaseException(
+              ErrorCode.ALREADY_EXISTS, "Schema already exists: " + createSchema.getName());
         }
-    }
-
-    private void addNamespaceData(SchemaInfo schemaInfo, String catalogName) {
-        schemaInfo.setCatalogName(catalogName);
-        schemaInfo.setFullName(catalogName + "." + schemaInfo.getName());
-    }
-
-    private SchemaInfo convertFromDAO(SchemaInfoDAO schemaInfoDAO, String fullName) {
-        String catalogName = fullName.split("\\.")[0];
-        SchemaInfo schemaInfo = SchemaInfoDAO.toSchemaInfo(schemaInfoDAO);
-        addNamespaceData(schemaInfo, catalogName);
+        CatalogInfoDAO catalogDAO =
+            CATALOG_REPOSITORY.getCatalogDAO(session, createSchema.getCatalogName());
+        SchemaInfo schemaInfo =
+            new SchemaInfo()
+                .schemaId(UUID.randomUUID().toString())
+                .name(createSchema.getName())
+                .catalogName(createSchema.getCatalogName())
+                .comment(createSchema.getComment())
+                .createdAt(System.currentTimeMillis())
+                .properties(createSchema.getProperties());
+        SchemaInfoDAO schemaInfoDAO = SchemaInfoDAO.from(schemaInfo);
+        schemaInfoDAO.setCatalogId(catalogDAO.getId());
+        PropertyDAO.from(schemaInfo.getProperties(), schemaInfoDAO.getId(), Constants.SCHEMA)
+            .forEach(session::persist);
+        session.persist(schemaInfoDAO);
+        tx.commit();
+        addNamespaceData(schemaInfo, createSchema.getCatalogName());
         return schemaInfo;
+      } catch (Exception e) {
+        tx.rollback();
+        throw e;
+      }
     }
+  }
 
-    public SchemaInfoDAO getSchemaDAO(Session session, UUID catalogId, String schemaName) {
-        Query<SchemaInfoDAO> query = session
-                .createQuery("FROM SchemaInfoDAO WHERE name = :name and catalogId = :catalogId", SchemaInfoDAO.class);
-        query.setParameter("name", schemaName);
-        query.setParameter("catalogId", catalogId);
-        query.setMaxResults(1);
-        return query.uniqueResult();
+  private void addNamespaceData(SchemaInfo schemaInfo, String catalogName) {
+    schemaInfo.setCatalogName(catalogName);
+    schemaInfo.setFullName(catalogName + "." + schemaInfo.getName());
+  }
+
+  private SchemaInfo convertFromDAO(SchemaInfoDAO schemaInfoDAO, String fullName) {
+    String catalogName = fullName.split("\\.")[0];
+    SchemaInfo schemaInfo = SchemaInfoDAO.toSchemaInfo(schemaInfoDAO);
+    addNamespaceData(schemaInfo, catalogName);
+    return schemaInfo;
+  }
+
+  public SchemaInfoDAO getSchemaDAO(Session session, UUID catalogId, String schemaName) {
+    Query<SchemaInfoDAO> query =
+        session.createQuery(
+            "FROM SchemaInfoDAO WHERE name = :name and catalogId = :catalogId",
+            SchemaInfoDAO.class);
+    query.setParameter("name", schemaName);
+    query.setParameter("catalogId", catalogId);
+    query.setMaxResults(1);
+    return query.uniqueResult();
+  }
+
+  public SchemaInfoDAO getSchemaDAO(Session session, String catalogName, String schemaName) {
+    CatalogInfoDAO catalog = CATALOG_REPOSITORY.getCatalogDAO(session, catalogName);
+    if (catalog == null) {
+      throw new BaseException(ErrorCode.NOT_FOUND, "Catalog not found: " + catalogName);
     }
+    return getSchemaDAO(session, catalog.getId(), schemaName);
+  }
 
-    public SchemaInfoDAO getSchemaDAO(Session session, String catalogName, String schemaName) {
-        CatalogInfoDAO catalog = catalogRepository.getCatalogDAO(session, catalogName);
+  public SchemaInfoDAO getSchemaDAO(Session session, String fullName) {
+    String[] namespace = fullName.split("\\.");
+    return getSchemaDAO(session, namespace[0], namespace[1]);
+  }
+
+  public ListSchemasResponse listSchemas(
+      String catalogName, Optional<Integer> maxResults, Optional<String> pageToken) {
+    try (Session session = SESSION_FACTORY.openSession()) {
+      session.setDefaultReadOnly(true);
+      Transaction tx = session.beginTransaction();
+      // TODO: Implement pagination and filtering if required
+      // For now, returning all schemas without pagination
+      try {
+        CatalogInfoDAO catalog = CATALOG_REPOSITORY.getCatalogDAO(session, catalogName);
         if (catalog == null) {
-            throw new BaseException(ErrorCode.NOT_FOUND, "Catalog not found: " + catalogName);
+          throw new BaseException(ErrorCode.NOT_FOUND, "Catalog not found: " + catalogName);
         }
-        return getSchemaDAO(session, catalog.getId(), schemaName);
+        ListSchemasResponse response =
+            listSchemas(session, catalog.getId(), catalogName, maxResults, pageToken);
+        tx.commit();
+        return response;
+      } catch (Exception e) {
+        tx.rollback();
+        throw e;
+      }
     }
+  }
 
-    public SchemaInfoDAO getSchemaDAO(Session session, String fullName) {
-        String[] namespace = fullName.split("\\.");
-        return getSchemaDAO(session, namespace[0], namespace[1]);
-    }
+  public ListSchemasResponse listSchemas(
+      Session session,
+      UUID catalogId,
+      String catalogName,
+      Optional<Integer> maxResults,
+      Optional<String> pageToken) {
+    ListSchemasResponse response = new ListSchemasResponse();
+    Query<SchemaInfoDAO> query =
+        session.createQuery("FROM SchemaInfoDAO WHERE catalogId = :value", SchemaInfoDAO.class);
+    maxResults.ifPresent(query::setMaxResults);
+    query.setParameter("value", catalogId);
+    response.setSchemas(
+        query.list().stream()
+            .map(SchemaInfoDAO::toSchemaInfo)
+            .peek(x -> addNamespaceData(x, catalogName))
+            .map(
+                s ->
+                    RepositoryUtils.attachProperties(s, s.getSchemaId(), Constants.SCHEMA, session))
+            .collect(Collectors.toList()));
+    return response;
+  }
 
-    public ListSchemasResponse listSchemas(String catalogName, Optional<Integer> maxResults,
-                                           Optional<String> pageToken) {
-        try (Session session = sessionFactory.openSession()) {
-            ListSchemasResponse response = new ListSchemasResponse();
-            session.setDefaultReadOnly(true);
-            Transaction tx = session.beginTransaction();
-            // TODO: Implement pagination and filtering if required
-            // For now, returning all schemas without pagination
-            try {
-                CatalogInfoDAO catalog = catalogRepository.getCatalogDAO(session, catalogName);
-                if (catalog == null) {
-                    throw new BaseException(ErrorCode.NOT_FOUND, "Catalog not found: " + catalogName);
-                }
-
-                Query<SchemaInfoDAO> query = session
-                        .createQuery("FROM SchemaInfoDAO WHERE catalogId = :value", SchemaInfoDAO.class);
-                query.setParameter("value", catalog.getId());
-                response.setSchemas(query.list().stream().map(SchemaInfoDAO::toSchemaInfo)
-                        .peek(x -> addNamespaceData(x, catalogName))
-                        .collect(Collectors.toList()));
-                tx.commit();
-            } catch (Exception e) {
-                tx.rollback();
-                throw e;
-            }
-            return response;
+  public SchemaInfo getSchema(String fullName) {
+    try (Session session = SESSION_FACTORY.openSession()) {
+      session.setDefaultReadOnly(true);
+      Transaction tx = session.beginTransaction();
+      SchemaInfoDAO schemaInfoDAO;
+      try {
+        schemaInfoDAO = getSchemaDAO(session, fullName);
+        if (schemaInfoDAO == null) {
+          throw new BaseException(ErrorCode.NOT_FOUND, "Schema not found: " + fullName);
         }
+        tx.commit();
+        SchemaInfo schemaInfo = convertFromDAO(schemaInfoDAO, fullName);
+        return RepositoryUtils.attachProperties(
+            schemaInfo, schemaInfo.getSchemaId(), Constants.SCHEMA, session);
+      } catch (Exception e) {
+        tx.rollback();
+        throw e;
+      }
     }
+  }
 
-    public SchemaInfo getSchema(String fullName) {
-        try (Session session = sessionFactory.openSession()) {
-            session.setDefaultReadOnly(true);
-            Transaction tx = session.beginTransaction();
-            SchemaInfoDAO schemaInfo = null;
-            try {
-                schemaInfo = getSchemaDAO(session, fullName);
-                tx.commit();
-            } catch (Exception e) {
-                tx.rollback();
-                throw e;
-            }
-            if (schemaInfo == null) {
-                throw new BaseException(ErrorCode.NOT_FOUND, "Schema not found: " + fullName);
-            }
-            return convertFromDAO(schemaInfo, fullName);
-        }
+  public SchemaInfo updateSchema(String fullName, UpdateSchema updateSchema) {
+    if (updateSchema.getNewName() != null) {
+      ValidationUtils.validateSqlObjectName(updateSchema.getNewName());
     }
+    try (Session session = SESSION_FACTORY.openSession()) {
+      Transaction tx = session.beginTransaction();
+      try {
+        SchemaInfoDAO schemaInfo = getSchemaDAO(session, fullName);
+        if (schemaInfo == null) {
+          throw new BaseException(ErrorCode.NOT_FOUND, "Schema not found: " + fullName);
+        }
+        if (updateSchema.getNewName() != null) {
+          if (getSchemaDAO(session, fullName.split("\\.")[0], updateSchema.getNewName()) != null) {
+            throw new BaseException(
+                ErrorCode.ALREADY_EXISTS, "Schema already exists: " + updateSchema.getNewName());
+          }
+        }
+        if (updateSchema.getComment() == null && updateSchema.getNewName() == null) {
+          tx.rollback();
+          return convertFromDAO(schemaInfo, fullName);
+        }
+        // Update the schema with new values
+        if (updateSchema.getComment() != null) {
+          schemaInfo.setComment(updateSchema.getComment());
+        }
+        if (updateSchema.getNewName() != null) {
+          schemaInfo.setName(updateSchema.getNewName());
+        }
+        schemaInfo.setUpdatedAt(new Date());
+        session.merge(schemaInfo);
+        tx.commit();
+        return convertFromDAO(schemaInfo, fullName);
+      } catch (Exception e) {
+        tx.rollback();
+        throw e;
+      }
+    }
+  }
 
-    public SchemaInfo updateSchema(String fullName, UpdateSchema updateSchema) {
-        ValidationUtils.validateSqlObjectName(updateSchema.getNewName());
-        try (Session session = sessionFactory.openSession()) {
-            Transaction tx = session.beginTransaction();
-            try {
-                SchemaInfoDAO schemaInfo = getSchemaDAO(session, fullName);
-                if (schemaInfo == null) {
-                    throw new BaseException(ErrorCode.NOT_FOUND,
-                            "Schema not found: " + fullName);
-                }
-                if (updateSchema.getNewName() != null) {
-                    if (getSchemaDAO(session, fullName.split("\\.")[0], updateSchema
-                            .getNewName()) != null) {
-                        throw new BaseException(ErrorCode.ALREADY_EXISTS,
-                                "Schema already exists: " + updateSchema.getNewName());
-                    }
-                }
-                // Update the schema with new values
-                if (updateSchema.getComment() != null) {
-                    schemaInfo.setComment(updateSchema.getComment());
-                }
-                if (updateSchema.getNewName() != null) {
-                    schemaInfo.setName(updateSchema.getNewName());
-                }
-                schemaInfo.setUpdatedAt(new Date());
-                session.merge(schemaInfo);
-                tx.commit();
-                return convertFromDAO(schemaInfo, fullName);
-            } catch (Exception e) {
-                tx.rollback();
-                throw e;
-            }
-        }
+  public void deleteSchema(String fullName, boolean force) {
+    try (Session session = SESSION_FACTORY.openSession()) {
+      String[] namespace = fullName.split("\\.");
+      if (namespace.length != 2) {
+        throw new BaseException(ErrorCode.INVALID_ARGUMENT, "Invalid schema name: " + fullName);
+      }
+      CatalogInfoDAO catalog = CATALOG_REPOSITORY.getCatalogDAO(session, namespace[0]);
+      if (catalog == null) {
+        throw new BaseException(ErrorCode.NOT_FOUND, "Catalog not found: " + namespace[0]);
+      }
+      Transaction tx = session.beginTransaction();
+      try {
+        deleteSchema(session, catalog.getId(), namespace[0], namespace[1], force);
+        tx.commit();
+      } catch (Exception e) {
+        tx.rollback();
+        throw e;
+      }
     }
+  }
 
-    public void deleteSchema(String fullName) {
-        try (Session session = sessionFactory.openSession()) {
-            Transaction tx = session.beginTransaction();
-            try {
-                SchemaInfoDAO schemaInfo = getSchemaDAO(session, fullName);
-                if (schemaInfo != null) {
-                    session.remove(schemaInfo);
-                    tx.commit();
-                } else {
-                    throw new BaseException(ErrorCode.NOT_FOUND,
-                            "Schema not found: " + fullName);
-                }
-            } catch (Exception e) {
-                tx.rollback();
-                throw e;
-            }
+  public void processChildTables(
+      Session session, UUID schemaId, String catalogName, String schemaName, boolean force) {
+    // first check if there are any child tables
+    List<TableInfo> tables =
+        TABLE_REPOSITORY
+            .listTables(
+                session,
+                schemaId,
+                catalogName,
+                schemaName,
+                Optional.of(1),
+                Optional.empty(),
+                true,
+                true)
+            .getTables();
+    if (tables != null && !tables.isEmpty()) {
+      if (!force) {
+        throw new BaseException(ErrorCode.FAILED_PRECONDITION, "Cannot delete schema with tables");
+      }
+      String nextToken = null;
+      do {
+        ListTablesResponse listTablesResponse =
+            TABLE_REPOSITORY.listTables(
+                session,
+                schemaId,
+                catalogName,
+                schemaName,
+                Optional.empty(),
+                Optional.ofNullable(nextToken),
+                true,
+                true);
+        for (TableInfo tableInfo : listTablesResponse.getTables()) {
+          TABLE_REPOSITORY.deleteTable(session, schemaId, tableInfo.getName());
         }
+        nextToken = listTablesResponse.getNextPageToken();
+      } while (nextToken != null);
     }
+  }
+
+  public void processChildVolumes(
+      Session session, UUID schemaId, String catalogName, String schemaName, boolean force) {
+    // first check if there are any child volumes
+    List<VolumeInfo> volumes =
+        VOLUME_REPOSITORY
+            .listVolumes(
+                session, schemaId, catalogName, schemaName, Optional.of(1), Optional.empty())
+            .getVolumes();
+    if (volumes != null && !volumes.isEmpty()) {
+      if (!force) {
+        throw new BaseException(ErrorCode.FAILED_PRECONDITION, "Cannot delete schema with volumes");
+      }
+      String nextToken = null;
+      do {
+        ListVolumesResponseContent listVolumesResponse =
+            VOLUME_REPOSITORY.listVolumes(
+                session,
+                schemaId,
+                catalogName,
+                schemaName,
+                Optional.empty(),
+                Optional.ofNullable(nextToken));
+        for (VolumeInfo volumeInfo : listVolumesResponse.getVolumes()) {
+          VOLUME_REPOSITORY.deleteVolume(session, schemaId, volumeInfo.getName());
+        }
+        nextToken = listVolumesResponse.getNextPageToken();
+      } while (nextToken != null);
+    }
+  }
+
+  public void processChildFunctions(
+      Session session, UUID schemaId, String catalogName, String schemaName, boolean force) {
+    // first check if there are any child functions
+    List<FunctionInfo> functions =
+        FUNCTION_REPOSITORY
+            .listFunctions(
+                session, schemaId, catalogName, schemaName, Optional.of(1), Optional.empty())
+            .getFunctions();
+    if (functions != null && !functions.isEmpty()) {
+      if (!force) {
+        throw new BaseException(
+            ErrorCode.FAILED_PRECONDITION, "Cannot delete schema with functions");
+      }
+      String nextToken = null;
+      do {
+        ListFunctionsResponse listFunctionsResponse =
+            FUNCTION_REPOSITORY.listFunctions(
+                session,
+                schemaId,
+                catalogName,
+                schemaName,
+                Optional.empty(),
+                Optional.ofNullable(nextToken));
+        for (FunctionInfo functionInfo : listFunctionsResponse.getFunctions()) {
+          FUNCTION_REPOSITORY.deleteFunction(session, schemaId, functionInfo.getName());
+        }
+        nextToken = listFunctionsResponse.getNextPageToken();
+      } while (nextToken != null);
+    }
+  }
+
+  public void deleteSchema(
+      Session session, UUID catalogId, String catalogName, String schemaName, boolean force) {
+    SchemaInfoDAO schemaInfo = getSchemaDAO(session, catalogId, schemaName);
+    if (schemaInfo != null) {
+      processChildTables(session, schemaInfo.getId(), catalogName, schemaName, force);
+      processChildVolumes(session, schemaInfo.getId(), catalogName, schemaName, force);
+      processChildFunctions(session, schemaInfo.getId(), catalogName, schemaName, force);
+      session.remove(schemaInfo);
+      PropertyRepository.findProperties(session, schemaInfo.getId(), Constants.SCHEMA)
+          .forEach(session::remove);
+    } else {
+      throw new BaseException(ErrorCode.NOT_FOUND, "Schema not found: " + schemaName);
+    }
+  }
 }
