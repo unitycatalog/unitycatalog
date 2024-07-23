@@ -21,7 +21,7 @@ run_cli_java_command() {
   # Print the quoted arguments for debugging
   # echo "Quoted arguments: $quoted_args_str"
   # echo "Running command: $CLI_JAVA_COMMAND"
-  eval "$CLI_JAVA_COMMAND" "$@"  || exit
+  $CLI_JAVA_COMMAND "$@"  || exit
 }
 
 # This function runs the CLI using the source code
