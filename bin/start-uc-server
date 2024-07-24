@@ -15,8 +15,6 @@ generate_jar() {
 
 # This function starts the unity catalog server
 run_uc_server_java_command() {
-  echo $(cat "$1")
-  ls -l server/target/classes/io/unitycatalog/server/
   SERVER_JAVA_COMMAND="java -cp $(cat "$1") io.unitycatalog.server.UnityCatalogServer"
   shift
   $SERVER_JAVA_COMMAND $@ || exit
