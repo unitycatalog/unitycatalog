@@ -5,7 +5,7 @@ import lombok.Getter;
 
 @Getter
 @Builder
-public class ALDSStorageConfig {
+public class ADLSStorageConfig {
   private String containerPath;
   private String tenantId;
   private String clientId;

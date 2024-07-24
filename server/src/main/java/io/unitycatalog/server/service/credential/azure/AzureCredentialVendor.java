@@ -19,14 +19,14 @@ import java.util.Set;
 
 public class AzureCredentialVendor {
 
-  private final Map<String, ALDSStorageConfig> adlsConfigurations;
+  private final Map<String, ADLSStorageConfig> adlsConfigurations;
 
   public AzureCredentialVendor() {
     this.adlsConfigurations = ServerPropertiesUtils.getInstance().getAdlsConfigurations();
   }
 
   public AzureCredential vendAzureCredential(CredentialContext context) {
-    ALDSStorageConfig config = adlsConfigurations.get(context.getStorageBasePath());
+    ADLSStorageConfig config = adlsConfigurations.get(context.getStorageBasePath());
     ADLSLocationUtils.ADLSLocationParts locationParts = ADLSLocationUtils.parseLocation(context.getStorageBasePath());
 
     // FIXME!! azure sas token expiration hardcoded to an hour

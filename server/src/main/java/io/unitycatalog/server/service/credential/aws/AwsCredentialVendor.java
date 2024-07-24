@@ -10,7 +10,7 @@ import java.util.Map;
 
 public class AwsCredentialVendor {
 
-  private final Map<String, ServerPropertiesUtils.S3BucketConfig> s3Configurations;
+  private final Map<String, S3StorageConfig> s3Configurations;
 
   public AwsCredentialVendor() {
     this.s3Configurations = ServerPropertiesUtils.getInstance().getS3Configurations();
@@ -18,11 +18,11 @@ public class AwsCredentialVendor {
 
   // TODO: proper downscoping
   public AwsSessionCredentials vendAwsCredentials(CredentialContext context) {
-    ServerPropertiesUtils.S3BucketConfig s3BucketConfig = s3Configurations.get(context.getStorageBasePath());
-    if (s3BucketConfig == null) {
+    S3StorageConfig s3StorageConfig = s3Configurations.get(context.getStorageBasePath());
+    if (s3StorageConfig == null) {
       throw new BaseException(ErrorCode.FAILED_PRECONDITION, "S3 bucket configuration not found.");
     }
     return AwsSessionCredentials.create(
-      s3BucketConfig.getAccessKey(),s3BucketConfig.getSecretKey(),s3BucketConfig.getSessionToken());
+      s3StorageConfig.getAccessKey(),s3StorageConfig.getSecretKey(),s3StorageConfig.getSessionToken());
   }
 }

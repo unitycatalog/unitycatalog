@@ -5,8 +5,12 @@ import io.unitycatalog.server.exception.BaseException;
 import io.unitycatalog.server.persist.utils.ServerPropertiesUtils;
 import io.unitycatalog.server.service.credential.CredentialContext;
 import io.unitycatalog.server.service.credential.CredentialOperations;
+import io.unitycatalog.server.service.credential.azure.ADLSLocationUtils;
+import io.unitycatalog.server.service.credential.azure.AzureCredential;
 import lombok.SneakyThrows;
 import org.apache.iceberg.aws.s3.S3FileIO;
+import org.apache.iceberg.azure.AzureProperties;
+import org.apache.iceberg.azure.adlsv2.ADLSFileIO;
 import org.apache.iceberg.gcp.GCPProperties;
 import org.apache.iceberg.gcp.gcs.GCSFileIO;
 import org.apache.iceberg.io.FileIO;
@@ -22,12 +26,14 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
+import static io.unitycatalog.server.utils.Constants.URI_SCHEME_ABFS;
+import static io.unitycatalog.server.utils.Constants.URI_SCHEME_ABFSS;
 import static io.unitycatalog.server.utils.Constants.URI_SCHEME_GS;
 import static io.unitycatalog.server.utils.Constants.URI_SCHEME_S3;
 
 public class FileIOFactory {
 
-  private CredentialOperations credentialOps;
+  private final CredentialOperations credentialOps;
 
   public FileIOFactory(CredentialOperations credentialOps) {
     this.credentialOps = credentialOps;
@@ -36,11 +42,26 @@ public class FileIOFactory {
   // TODO: Cache fileIOs
   public FileIO getFileIO(URI tableLocationUri) {
     return switch (tableLocationUri.getScheme()) {
+      case URI_SCHEME_ABFS, URI_SCHEME_ABFSS -> getADLSFileIO(tableLocationUri);
       case URI_SCHEME_GS -> getGCSFileIO(tableLocationUri);
       case URI_SCHEME_S3 -> getS3FileIO(tableLocationUri);
       // TODO: should we default/fallback to HadoopFileIO ?
       default -> new SimpleLocalFileIO();
     };
+  }
+
+  protected ADLSFileIO getADLSFileIO(URI tableLocationUri) {
+    CredentialContext credentialContext = getCredentialContextFromTableLocation(tableLocationUri);
+    AzureCredential credential = credentialOps.vendAzureCredential(credentialContext);
+    ADLSLocationUtils.ADLSLocationParts locationParts = ADLSLocationUtils.parseLocation(tableLocationUri.toString());
+
+    // NOTE: when fileio caching is implemented, need to set/deal with expiry here
+    Map<String, String> properties =
+      Map.of(AzureProperties.ADLS_SAS_TOKEN_PREFIX + locationParts.account(), credential.sasToken());
+
+    ADLSFileIO result = new ADLSFileIO();
+    result.initialize(properties);
+    return result;
   }
 
   @SneakyThrows

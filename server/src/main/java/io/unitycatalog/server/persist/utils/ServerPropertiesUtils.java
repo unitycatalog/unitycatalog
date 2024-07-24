@@ -1,6 +1,7 @@
 package io.unitycatalog.server.persist.utils;
 
-import io.unitycatalog.server.service.credential.azure.ALDSStorageConfig;
+import io.unitycatalog.server.service.credential.aws.S3StorageConfig;
+import io.unitycatalog.server.service.credential.azure.ADLSStorageConfig;
 import lombok.AllArgsConstructor;
 import lombok.Getter;
 import lombok.Setter;
@@ -44,20 +45,21 @@ public class ServerPropertiesUtils {
     return properties.getProperty(key);
   }
 
-  public Map<String, S3BucketConfig> getS3Configurations() {
-    Map<String, S3BucketConfig> s3BucketConfigMap = new HashMap<>();
+  public Map<String, S3StorageConfig> getS3Configurations() {
+    Map<String, S3StorageConfig> s3BucketConfigMap = new HashMap<>();
     int i = 0;
     while (true) {
       String bucketPath = properties.getProperty("s3.bucketPath." + i);
+      String region = properties.getProperty("s3.region." + i);
       String accessKey = properties.getProperty("s3.accessKey." + i);
       String secretKey = properties.getProperty("s3.secretKey." + i);
       String sessionToken = properties.getProperty("s3.sessionToken." + i);
       if (bucketPath == null || accessKey == null || secretKey == null || sessionToken == null) {
         break;
       }
-      S3BucketConfig s3BucketConfig =
-        new S3BucketConfig(bucketPath, accessKey, secretKey, sessionToken);
-      s3BucketConfigMap.put(bucketPath, s3BucketConfig);
+      S3StorageConfig s3StorageConfig = S3StorageConfig.builder().bucketPath(bucketPath)
+        .region(region).accessKey(accessKey).secretKey(secretKey).sessionToken(sessionToken).build();
+      s3BucketConfigMap.put(bucketPath, s3StorageConfig);
       i++;
     }
 
@@ -80,8 +82,8 @@ public class ServerPropertiesUtils {
     return gcsConfigMap;
   }
 
-  public Map<String, ALDSStorageConfig> getAdlsConfigurations() {
-    Map<String, ALDSStorageConfig> gcsConfigMap = new HashMap<>();
+  public Map<String, ADLSStorageConfig> getAdlsConfigurations() {
+    Map<String, ADLSStorageConfig> gcsConfigMap = new HashMap<>();
     int i = 0;
     while (true) {
       String containerPath = properties.getProperty("adls.containerPath." + i);
@@ -91,7 +93,7 @@ public class ServerPropertiesUtils {
       if (containerPath == null || tenantId == null || clientId == null || clientSecret == null) {
         break;
       }
-      gcsConfigMap.put(containerPath, ALDSStorageConfig.builder().containerPath(containerPath)
+      gcsConfigMap.put(containerPath, ADLSStorageConfig.builder().containerPath(containerPath)
         .tenantId(tenantId).clientId(clientId).clientSecret(clientSecret).build());
       i++;
     }
@@ -99,27 +101,17 @@ public class ServerPropertiesUtils {
     return gcsConfigMap;
   }
 
-  public S3BucketConfig getS3BucketConfig(String s3Path) {
+  /*public S3BucketConfig getS3BucketConfig(String s3Path) {
     return getS3BucketConfig(URI.create(s3Path));
   }
 
   public S3BucketConfig getS3BucketConfig(URI s3Uri) {
     String bucketPath = s3Uri.getScheme() + "://" + s3Uri.getHost();
     return (S3BucketConfig) properties.get(bucketPath);
-  }
+  }*/
 
   // Get a property value by key with a default value
   public String getProperty(String key, String defaultValue) {
     return properties.getProperty(key, defaultValue);
-  }
-
-  @Getter
-  @Setter
-  @AllArgsConstructor
-  public static class S3BucketConfig {
-    private final String bucketPath;
-    private final String accessKey;
-    private final String secretKey;
-    private final String sessionToken;
   }
 }
