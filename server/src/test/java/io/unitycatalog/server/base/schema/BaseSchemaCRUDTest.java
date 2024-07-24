@@ -13,7 +13,6 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
-import static org.junit.jupiter.api.Assertions.assertTrue;
 
 public abstract class BaseSchemaCRUDTest extends BaseCRUDTest {
 
@@ -97,11 +96,9 @@ public abstract class BaseSchemaCRUDTest extends BaseCRUDTest {
     System.out.println("Testing delete schema..");
     schemaOperations.deleteSchema(
         TestUtils.CATALOG_NEW_NAME + "." + TestUtils.SCHEMA_NEW_NAME, Optional.of(false));
-    assertFalse(
-        TestUtils.contains(
-            schemaOperations.listSchemas(TestUtils.CATALOG_NEW_NAME),
-            updatedSchemaInfo,
-            (schema) -> schema.getName().equals(TestUtils.SCHEMA_NEW_NAME)));
+    assertThat(schemaOperations.listSchemas(TestUtils.CATALOG_NEW_NAME))
+        .as("Schema with schema name '%s' exists", TestUtils.CATALOG_NEW_COMMENT)
+        .noneSatisfy(schema -> assertThat(schema.getName()).isEqualTo(TestUtils.SCHEMA_NEW_NAME));
 
     // Delete parent entity when schema exists
     SchemaInfo schemaInfo2 =

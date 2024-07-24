@@ -5,7 +5,6 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
-import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import io.unitycatalog.client.ApiException;
 import io.unitycatalog.client.model.*;
@@ -78,14 +77,9 @@ public abstract class BaseVolumeCRUDTest extends BaseCRUDTest {
     // List volumes
     System.out.println("Testing list volumes..");
     Iterable<VolumeInfo> volumeInfos = volumeOperations.listVolumes(CATALOG_NAME, SCHEMA_NAME);
-    assertTrue(
-        contains(
-            volumeInfos,
-            volumeInfo,
-            (volume) -> {
-              assertThat(volume.getName()).isNotNull();
-              return volume.getName().equals(VOLUME_NAME);
-            }));
+    assertThat(volumeInfos)
+        .as("Volume with name '%s' should exist", VOLUME_NAME)
+        .anySatisfy(volume -> assertThat(volume.getName()).isNotNull().isEqualTo(VOLUME_NAME));
 
     // Get volume
     System.out.println("Testing get volume..");
@@ -165,14 +159,9 @@ public abstract class BaseVolumeCRUDTest extends BaseCRUDTest {
     Iterable<VolumeInfo> volumeInfosManaged =
         volumeOperations.listVolumes(CATALOG_NAME, SCHEMA_NAME);
     assertEquals(1, getSize(volumeInfosManaged));
-    assertTrue(
-        contains(
-            volumeInfosManaged,
-            managedVolumeInfo,
-            (volume) -> {
-              assertThat(volume.getName()).isNotNull();
-              return volume.getName().equals(VOLUME_NAME);
-            }));
+    assertThat(volumeInfosManaged)
+        .as("Volume with name '%s' should exist", VOLUME_NAME)
+        .anySatisfy(volume -> assertThat(volume.getName()).isNotNull().isEqualTo(VOLUME_NAME));
 
     // NOW Update the schema name
     schemaOperations.updateSchema(
