@@ -12,6 +12,8 @@ import io.unitycatalog.server.model.VolumeInfo;
 import io.unitycatalog.server.persist.VolumeRepository;
 import io.unitycatalog.server.utils.TemporaryCredentialUtils;
 
+import java.net.URI;
+
 @ExceptionHandler(GlobalExceptionHandler.class)
 public class TemporaryVolumeCredentialsService {
 
@@ -32,7 +34,7 @@ public class TemporaryVolumeCredentialsService {
     if (volumePath.startsWith("s3://")) {
       return HttpResponse.ofJson(
           new GenerateTemporaryVolumeCredentialResponse()
-              .awsTempCredentials(TemporaryCredentialUtils.findS3BucketConfig(volumePath)));
+              .awsTempCredentials(TemporaryCredentialUtils.findS3BucketConfig(URI.create(volumePath))));
     } else {
       // return empty credentials for local file system
       return HttpResponse.ofJson(new GenerateTemporaryVolumeCredential());

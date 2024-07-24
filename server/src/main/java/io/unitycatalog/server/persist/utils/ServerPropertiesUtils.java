@@ -1,16 +1,20 @@
 package io.unitycatalog.server.persist.utils;
 
-import java.io.IOException;
-import java.io.InputStream;
-import java.net.URI;
-import java.nio.file.Files;
-import java.nio.file.Paths;
-import java.util.Properties;
+import io.unitycatalog.server.service.credential.azure.ALDSStorageConfig;
 import lombok.AllArgsConstructor;
 import lombok.Getter;
 import lombok.Setter;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+
+import java.io.IOException;
+import java.io.InputStream;
+import java.net.URI;
+import java.nio.file.Files;
+import java.nio.file.Paths;
+import java.util.HashMap;
+import java.util.Map;
+import java.util.Properties;
 
 public class ServerPropertiesUtils {
 
@@ -28,20 +32,6 @@ public class ServerPropertiesUtils {
     try (InputStream input = Files.newInputStream(Paths.get("etc/conf/server.properties"))) {
       properties.load(input);
       LOGGER.debug("Properties loaded successfully");
-      int i = 0;
-      while (true) {
-        String bucketPath = properties.getProperty("s3.bucketPath." + i);
-        String accessKey = properties.getProperty("s3.accessKey." + i);
-        String secretKey = properties.getProperty("s3.secretKey." + i);
-        String sessionToken = properties.getProperty("s3.sessionToken." + i);
-        if (bucketPath == null || accessKey == null || secretKey == null || sessionToken == null) {
-          break;
-        }
-        S3BucketConfig s3BucketConfig =
-            new S3BucketConfig(bucketPath, accessKey, secretKey, sessionToken);
-        properties.put(bucketPath, s3BucketConfig);
-        i++;
-      }
     } catch (IOException ex) {
       LOGGER.error("Exception during loading properties", ex);
     }
@@ -54,9 +44,67 @@ public class ServerPropertiesUtils {
     return properties.getProperty(key);
   }
 
+  public Map<String, S3BucketConfig> getS3Configurations() {
+    Map<String, S3BucketConfig> s3BucketConfigMap = new HashMap<>();
+    int i = 0;
+    while (true) {
+      String bucketPath = properties.getProperty("s3.bucketPath." + i);
+      String accessKey = properties.getProperty("s3.accessKey." + i);
+      String secretKey = properties.getProperty("s3.secretKey." + i);
+      String sessionToken = properties.getProperty("s3.sessionToken." + i);
+      if (bucketPath == null || accessKey == null || secretKey == null || sessionToken == null) {
+        break;
+      }
+      S3BucketConfig s3BucketConfig =
+        new S3BucketConfig(bucketPath, accessKey, secretKey, sessionToken);
+      s3BucketConfigMap.put(bucketPath, s3BucketConfig);
+      i++;
+    }
+
+    return s3BucketConfigMap;
+  }
+
+  public Map<String, String> getGcsConfigurations() {
+    Map<String, String> gcsConfigMap = new HashMap<>();
+    int i = 0;
+    while (true) {
+      String bucketPath = properties.getProperty("gcs.bucketPath." + i);
+      String jsonKeyFilePath = properties.getProperty("gcs.jsonKeyFilePath." + i);
+      if (bucketPath == null || jsonKeyFilePath == null) {
+        break;
+      }
+      gcsConfigMap.put(bucketPath, jsonKeyFilePath);
+      i++;
+    }
+
+    return gcsConfigMap;
+  }
+
+  public Map<String, ALDSStorageConfig> getAdlsConfigurations() {
+    Map<String, ALDSStorageConfig> gcsConfigMap = new HashMap<>();
+    int i = 0;
+    while (true) {
+      String containerPath = properties.getProperty("adls.containerPath." + i);
+      String tenantId = properties.getProperty("adls.tenantId." + i);
+      String clientId = properties.getProperty("adls.clientId." + i);
+      String clientSecret = properties.getProperty("adls.clientSecret." + i);
+      if (containerPath == null || tenantId == null || clientId == null || clientSecret == null) {
+        break;
+      }
+      gcsConfigMap.put(containerPath, ALDSStorageConfig.builder().containerPath(containerPath)
+        .tenantId(tenantId).clientId(clientId).clientSecret(clientSecret).build());
+      i++;
+    }
+
+    return gcsConfigMap;
+  }
+
   public S3BucketConfig getS3BucketConfig(String s3Path) {
-    URI uri = URI.create(s3Path);
-    String bucketPath = uri.getScheme() + "://" + uri.getHost();
+    return getS3BucketConfig(URI.create(s3Path));
+  }
+
+  public S3BucketConfig getS3BucketConfig(URI s3Uri) {
+    String bucketPath = s3Uri.getScheme() + "://" + s3Uri.getHost();
     return (S3BucketConfig) properties.get(bucketPath);
   }
 

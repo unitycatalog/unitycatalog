@@ -1,12 +1,14 @@
 package io.unitycatalog.server.service.iceberg;
 
+import com.google.auth.oauth2.AccessToken;
 import io.unitycatalog.server.exception.BaseException;
-import io.unitycatalog.server.model.AwsCredentials;
 import io.unitycatalog.server.persist.utils.ServerPropertiesUtils;
-import io.unitycatalog.server.utils.TemporaryCredentialUtils;
-import java.net.URI;
-import java.util.Map;
+import io.unitycatalog.server.service.credential.CredentialContext;
+import io.unitycatalog.server.service.credential.CredentialOperations;
+import lombok.SneakyThrows;
 import org.apache.iceberg.aws.s3.S3FileIO;
+import org.apache.iceberg.gcp.GCPProperties;
+import org.apache.iceberg.gcp.gcs.GCSFileIO;
 import org.apache.iceberg.io.FileIO;
 import software.amazon.awssdk.auth.credentials.AwsCredentialsProvider;
 import software.amazon.awssdk.auth.credentials.AwsSessionCredentials;
@@ -15,21 +17,45 @@ import software.amazon.awssdk.auth.credentials.StaticCredentialsProvider;
 import software.amazon.awssdk.regions.Region;
 import software.amazon.awssdk.services.s3.S3Client;
 
+import java.net.URI;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
+
+import static io.unitycatalog.server.utils.Constants.URI_SCHEME_GS;
+import static io.unitycatalog.server.utils.Constants.URI_SCHEME_S3;
+
 public class FileIOFactory {
 
-  private static final String S3 = "s3";
+  private CredentialOperations credentialOps;
 
-  public FileIOFactory() {}
+  public FileIOFactory(CredentialOperations credentialOps) {
+    this.credentialOps = credentialOps;
+  }
 
   // TODO: Cache fileIOs
   public FileIO getFileIO(URI tableLocationUri) {
-    switch (tableLocationUri.getScheme()) {
-      case S3:
-        return getS3FileIO(tableLocationUri);
-        // TODO: should we default/fallback to HadoopFileIO ?
-      default:
-        return new SimpleLocalFileIO();
-    }
+    return switch (tableLocationUri.getScheme()) {
+      case URI_SCHEME_GS -> getGCSFileIO(tableLocationUri);
+      case URI_SCHEME_S3 -> getS3FileIO(tableLocationUri);
+      // TODO: should we default/fallback to HadoopFileIO ?
+      default -> new SimpleLocalFileIO();
+    };
+  }
+
+  @SneakyThrows
+  protected GCSFileIO getGCSFileIO(URI tableLocationUri) {
+    CredentialContext credentialContext = getCredentialContextFromTableLocation(tableLocationUri);
+    AccessToken gcpToken = credentialOps.vendGcpToken(credentialContext);
+
+    // NOTE: when fileio caching is implemented, need to set/deal with expiry here
+    Map<String, String> properties =
+      Map.of(
+        GCPProperties.GCS_OAUTH2_TOKEN, gcpToken.getTokenValue());
+
+    GCSFileIO result = new GCSFileIO();
+    result.initialize(properties);
+    return result;
   }
 
   protected S3FileIO getS3FileIO(URI tableLocationUri) {
@@ -55,15 +81,17 @@ public class FileIOFactory {
 
   private AwsCredentialsProvider getAwsCredentialsProvider(URI tableLocationUri) {
     try {
-      AwsCredentials credentials =
-          TemporaryCredentialUtils.findS3BucketConfig(tableLocationUri.toString());
-      return StaticCredentialsProvider.create(
-          AwsSessionCredentials.create(
-              credentials.getAccessKeyId(),
-              credentials.getSecretAccessKey(),
-              credentials.getSessionToken()));
+      CredentialContext context = getCredentialContextFromTableLocation(tableLocationUri);
+      AwsSessionCredentials credential = credentialOps.vendAwsCredential(context);
+      return StaticCredentialsProvider.create(credential);
     } catch (BaseException e) {
       return DefaultCredentialsProvider.create();
     }
+  }
+
+  private CredentialContext getCredentialContextFromTableLocation(URI tableLocationUri) {
+    // FIXME!! privileges are just defaulted to READ only here
+    return CredentialContext.builder().storageBasePath(tableLocationUri.getPath())
+      .privileges(Set.of(CredentialContext.Privilege.SELECT)).locations(List.of(tableLocationUri.getRawPath())).build();
   }
 }
