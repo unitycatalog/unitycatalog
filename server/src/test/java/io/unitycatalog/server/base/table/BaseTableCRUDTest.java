@@ -16,17 +16,20 @@ import io.unitycatalog.server.persist.dao.TableInfoDAO;
 import io.unitycatalog.server.persist.utils.FileUtils;
 import io.unitycatalog.server.persist.utils.HibernateUtils;
 import io.unitycatalog.server.utils.TestUtils;
-import java.io.IOException;
-import java.util.*;
 import org.hibernate.Session;
 import org.hibernate.Transaction;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
+import java.io.IOException;
+import java.util.*;
+import java.util.stream.Collectors;
+
 public abstract class BaseTableCRUDTest extends BaseCRUDTest {
+
   protected SchemaOperations schemaOperations;
   protected TableOperations tableOperations;
-  private String schemaId = null;
+  private String schemaId;
 
   protected abstract SchemaOperations createSchemaOperations(ServerConfig serverConfig);
 
@@ -41,13 +44,15 @@ public abstract class BaseTableCRUDTest extends BaseCRUDTest {
   }
 
   protected void createCommonResources() throws ApiException {
-    // Common setup operations such as creating a catalog and schema
-    CreateCatalog createCatalog =
-        new CreateCatalog().name(TestUtils.CATALOG_NAME).comment(TestUtils.COMMENT);
+    CreateCatalog createCatalog = new CreateCatalog()
+            .name(TestUtils.CATALOG_NAME)
+            .comment(TestUtils.COMMENT);
     catalogOperations.createCatalog(createCatalog);
-    SchemaInfo schemaInfo =
-        schemaOperations.createSchema(
-            new CreateSchema().name(TestUtils.SCHEMA_NAME).catalogName(TestUtils.CATALOG_NAME));
+
+    SchemaInfo schemaInfo = schemaOperations.createSchema(
+            new CreateSchema()
+                    .name(TestUtils.SCHEMA_NAME)
+                    .catalogName(TestUtils.CATALOG_NAME));
     schemaId = schemaInfo.getSchemaId();
   }
 
@@ -56,167 +61,165 @@ public abstract class BaseTableCRUDTest extends BaseCRUDTest {
     assertThrows(Exception.class, () -> tableOperations.getTable(TestUtils.TABLE_FULL_NAME));
     createCommonResources();
 
-    // Create a table
-    System.out.println("Testing create table..");
+    // Create and verify a table
+    TableInfo createdTable = createAndVerifyTable();
+
+    // Get table and verify columns
+    TableInfo retrievedTable = tableOperations.getTable(TestUtils.TABLE_FULL_NAME);
+    verifyTableInfo(retrievedTable, createdTable);
+
+    // Create multiple tables and verify pagination
+    List<TableInfo> createdTables = createMultipleTestingTables(111);
+    verifyTablePagination();
+    // Sort and verify tables
+    verifyTableSorting();
+    // Clean up list tables
+    cleanUpTables(createdTables);
+
+    // Test delete table functionality
+    testDeleteTable();
+
+    // Test managed table retrieval
+    testManagedTableRetrieval();
+
+    // Test schema update and deletion scenarios
+    testTableAfterSchemaUpdateAndDeletion();
+  }
+
+  private TableInfo createAndVerifyTable() throws IOException, ApiException {
     TableInfo tableInfo = createTestingTable(TestUtils.TABLE_NAME, TestUtils.STORAGE_LOCATION);
     assertEquals(TestUtils.TABLE_NAME, tableInfo.getName());
     assertEquals(TestUtils.CATALOG_NAME, tableInfo.getCatalogName());
     assertEquals(TestUtils.SCHEMA_NAME, tableInfo.getSchemaName());
     assertNotNull(tableInfo.getTableId());
+    return tableInfo;
+  }
 
-    // Get table
-    System.out.println("Testing get table..");
-    TableInfo tableInfo2 = tableOperations.getTable(TestUtils.TABLE_FULL_NAME);
-    assertEquals(tableInfo, tableInfo2);
-
-    Collection<ColumnInfo> columnInfos2 = tableInfo2.getColumns();
-    assertThat(columnInfos2).hasSize(2)
+  private void verifyTableInfo(TableInfo retrievedTable, TableInfo expectedTable) {
+    assertEquals(expectedTable, retrievedTable);
+    Collection<ColumnInfo> columns = retrievedTable.getColumns();
+    assertThat(columns).hasSize(2)
         .extracting(ColumnInfo::getName)
         .as("Table should contain two colums with names '%s' and '%s'", "as_int", "as_string")
         .containsOnlyOnce("as_int", "as_string");
+  }
 
-    // Create multiple tables
-    List<TableInfo> createdTables = createMultipleTestingTables(111);
+  private void verifyTablePagination() throws ApiException {
+    Iterable<TableInfo> tables = tableOperations.listTables(TestUtils.CATALOG_NAME, TestUtils.SCHEMA_NAME);
+    assertThat(tables).hasSize(100);
+  }
 
-    // List tables with pagination - default is 100 tables per page
-    System.out.println("Testing list tables with pagination..");
-    Iterable<TableInfo> tableInfosWithPagination =
-        tableOperations.listTables(TestUtils.CATALOG_NAME, TestUtils.SCHEMA_NAME);
-    assertThat(tableInfosWithPagination).hasSize(100);
+  private void verifyTableSorting() throws ApiException {
+    Iterable<TableInfo> tables = tableOperations.listTables(TestUtils.CATALOG_NAME, TestUtils.SCHEMA_NAME);
+    List<TableInfo> sortedTables = new ArrayList<>();
+    tables.forEach(sortedTables::add);
+    assertThat(sortedTables).isSortedAccordingTo(Comparator.comparing(TableInfo::getName));
+  }
 
-    // List tables with result sorted by name
-    System.out.println("Testing list tables sorted by name");
-    Iterable<TableInfo> tableInfosSortedByName =
-        tableOperations.listTables(TestUtils.CATALOG_NAME, TestUtils.SCHEMA_NAME);
-    List<TableInfo> sortedTableList = new ArrayList<>();
-    tableInfosSortedByName.forEach(sortedTableList::add);
-    assertThat(sortedTableList).isSortedAccordingTo(Comparator.comparing(TableInfo::getName));
+  private void cleanUpTables(List<TableInfo> tables) {
+    tables.forEach(table -> {
+      try {
+        tableOperations.deleteTable(TestUtils.CATALOG_NAME + "." + TestUtils.SCHEMA_NAME + "." + table.getName());
+      } catch (ApiException e) {
+        fail("Failed to delete table: " + e.getMessage());
+      }
+    });
+  }
 
-    // Clean up created tables
-    System.out.println("Cleaning up created tables..");
-    for (TableInfo table : createdTables) {
-      tableOperations.deleteTable(
-          TestUtils.CATALOG_NAME + "." + TestUtils.SCHEMA_NAME + "." + table.getName());
-    }
-
-    // Delete table
-    System.out.println("Testing delete table..");
+  private void testDeleteTable() throws ApiException {
     tableOperations.deleteTable(TestUtils.TABLE_FULL_NAME);
     assertThrows(Exception.class, () -> tableOperations.getTable(TestUtils.TABLE_FULL_NAME));
+  }
 
+  private void testManagedTableRetrieval() throws ApiException {
     try (Session session = HibernateUtils.getSessionFactory().openSession()) {
       Transaction tx = session.beginTransaction();
-
       UUID tableId = UUID.randomUUID();
 
-      TableInfoDAO managedTableInfo =
-          TableInfoDAO.builder()
-              .name(TestUtils.TABLE_NAME)
-              .schemaId(UUID.fromString(schemaId))
-              .comment(TestUtils.COMMENT)
-              .url("/tmp/managedStagingLocation")
-              .type(TableType.MANAGED.name())
-              .dataSourceFormat(DataSourceFormat.DELTA.name())
-              .id(tableId)
-              .createdAt(new Date())
-              .updatedAt(new Date())
-              .build();
-
-      ColumnInfoDAO columnInfoDAO1 =
-          ColumnInfoDAO.builder()
-              .name("as_int")
-              .typeText("INTEGER")
-              .typeJson("{\"type\": \"integer\"}")
-              .typeName(ColumnTypeName.INT.name())
-              .typePrecision(10)
-              .typeScale(0)
-              .ordinalPosition((short) 0)
-              .comment("Integer column")
-              .nullable(true)
-              .table(managedTableInfo)
-              .build();
-
-      ColumnInfoDAO columnInfoDAO2 =
-          ColumnInfoDAO.builder()
-              .name("as_string")
-              .typeText("VARCHAR(255)")
-              .typeJson("{\"type\": \"string\", \"length\": \"255\"}")
-              .typeName(ColumnTypeName.STRING.name())
-              .ordinalPosition((short) 1)
-              .comment("String column")
-              .nullable(true)
-              .table(managedTableInfo)
-              .build();
-
-      managedTableInfo.setColumns(List.of(columnInfoDAO1, columnInfoDAO2));
-
-      session.persist(managedTableInfo);
+      TableInfoDAO tableInfoDAO = createManagedTableDAO(tableId);
+      session.persist(tableInfoDAO);
       session.flush();
       tx.commit();
     } catch (Exception e) {
-      fail(e.getMessage());
+      fail("Failed to set up managed table: " + e.getMessage());
     }
 
-    System.out.println("Testing get managed table..");
     TableInfo managedTable = tableOperations.getTable(TestUtils.TABLE_FULL_NAME);
     assertEquals(TestUtils.TABLE_NAME, managedTable.getName());
     assertEquals(TestUtils.CATALOG_NAME, managedTable.getCatalogName());
     assertEquals(TestUtils.SCHEMA_NAME, managedTable.getSchemaName());
-    assertEquals(
-        FileUtils.convertRelativePathToURI("/tmp/managedStagingLocation"),
-        managedTable.getStorageLocation());
+    assertEquals(FileUtils.convertRelativePathToURI("/tmp/managedStagingLocation"), managedTable.getStorageLocation());
     assertEquals(TableType.MANAGED, managedTable.getTableType());
     assertEquals(DataSourceFormat.DELTA, managedTable.getDataSourceFormat());
     assertNotNull(managedTable.getCreatedAt());
     assertNotNull(managedTable.getTableId());
+  }
 
-    System.out.println("Testing list managed tables..");
-    List<TableInfo> managedTables =
-        tableOperations.listTables(TestUtils.CATALOG_NAME, TestUtils.SCHEMA_NAME);
-    TableInfo managedListTable = managedTables.get(0);
-    assertEquals(TestUtils.TABLE_NAME, managedListTable.getName());
-    assertEquals(TestUtils.CATALOG_NAME, managedListTable.getCatalogName());
-    assertEquals(TestUtils.SCHEMA_NAME, managedListTable.getSchemaName());
-    assertEquals(
-        FileUtils.convertRelativePathToURI("/tmp/managedStagingLocation"),
-        managedListTable.getStorageLocation());
-    assertEquals(TableType.MANAGED, managedListTable.getTableType());
-    assertEquals(DataSourceFormat.DELTA, managedListTable.getDataSourceFormat());
-    assertNotNull(managedListTable.getCreatedAt());
-    assertNotNull(managedListTable.getTableId());
+  private TableInfoDAO createManagedTableDAO(UUID tableId) {
+    TableInfoDAO tableInfoDAO = TableInfoDAO.builder()
+            .name(TestUtils.TABLE_NAME)
+            .schemaId(UUID.fromString(schemaId))
+            .comment(TestUtils.COMMENT)
+            .url("/tmp/managedStagingLocation")
+            .type(TableType.MANAGED.name())
+            .dataSourceFormat(DataSourceFormat.DELTA.name())
+            .id(tableId)
+            .createdAt(new Date())
+            .updatedAt(new Date())
+            .build();
 
-    // Now update the parent schema name
+    ColumnInfoDAO columnInfoDAO1 = ColumnInfoDAO.builder()
+            .id(UUID.randomUUID())
+            .name("as_int")
+            .typeText("INTEGER")
+            .typeJson("{\"type\": \"integer\"}")
+            .typeName(ColumnTypeName.INT.name())
+            .typePrecision(10)
+            .typeScale(0)
+            .ordinalPosition((short) 0)
+            .comment("Integer column")
+            .nullable(true)
+            .table(tableInfoDAO)
+            .build();
+
+    ColumnInfoDAO columnInfoDAO2 = ColumnInfoDAO.builder()
+            .id(UUID.randomUUID())
+            .name("as_string")
+            .typeText("VARCHAR(255)")
+            .typeJson("{\"type\": \"string\", \"length\": \"255\"}")
+            .typeName(ColumnTypeName.STRING.name())
+            .ordinalPosition((short) 1)
+            .comment("String column")
+            .nullable(true)
+            .table(tableInfoDAO)
+            .build();
+
+    tableInfoDAO.setColumns(List.of(columnInfoDAO1, columnInfoDAO2));
+    return tableInfoDAO;
+  }
+
+  private void testTableAfterSchemaUpdateAndDeletion() throws ApiException {
     schemaOperations.updateSchema(
-        TestUtils.SCHEMA_FULL_NAME,
-        new UpdateSchema().newName(TestUtils.SCHEMA_NEW_NAME).comment(TestUtils.SCHEMA_COMMENT));
-    // now fetch the table again
-    TableInfo managedTableAfterSchemaUpdate =
-        tableOperations.getTable(
+            TestUtils.SCHEMA_FULL_NAME,
+            new UpdateSchema().newName(TestUtils.SCHEMA_NEW_NAME).comment(TestUtils.SCHEMA_COMMENT));
+
+    TableInfo tableAfterSchemaUpdate = tableOperations.getTable(
             TestUtils.CATALOG_NAME + "." + TestUtils.SCHEMA_NEW_NAME + "." + TestUtils.TABLE_NAME);
-    assertEquals(managedTable.getTableId(), managedTableAfterSchemaUpdate.getTableId());
+    assertEquals(tableAfterSchemaUpdate.getTableId(), tableAfterSchemaUpdate.getTableId());
 
-    // test delete parent schema when table exists
-    assertThrows(
-        Exception.class,
-        () ->
+    assertThrows(Exception.class, () ->
             schemaOperations.deleteSchema(
-                TestUtils.CATALOG_NAME + "." + TestUtils.SCHEMA_NEW_NAME, Optional.of(false)));
+                    TestUtils.CATALOG_NAME + "." + TestUtils.SCHEMA_NEW_NAME, Optional.of(false)));
 
-    // test force delete parent schema when table exists
-    String newTableFullName =
-        TestUtils.CATALOG_NAME + "." + TestUtils.SCHEMA_NEW_NAME + "." + TestUtils.TABLE_NAME;
-    schemaOperations.deleteSchema(
-        TestUtils.CATALOG_NAME + "." + TestUtils.SCHEMA_NEW_NAME, Optional.of(true));
+    String newTableFullName = TestUtils.CATALOG_NAME + "." + TestUtils.SCHEMA_NEW_NAME + "." + TestUtils.TABLE_NAME;
+    schemaOperations.deleteSchema(TestUtils.CATALOG_NAME + "." + TestUtils.SCHEMA_NEW_NAME, Optional.of(true));
     assertThrows(Exception.class, () -> tableOperations.getTable(newTableFullName));
-    assertThrows(
-        Exception.class,
-        () -> schemaOperations.getSchema(TestUtils.CATALOG_NAME + "." + TestUtils.SCHEMA_NEW_NAME));
+    assertThrows(Exception.class, () -> schemaOperations.getSchema(TestUtils.CATALOG_NAME + "." + TestUtils.SCHEMA_NEW_NAME));
   }
 
   protected TableInfo createTestingTable(String tableName, String storageLocation)
-      throws IOException, ApiException {
-    ColumnInfo columnInfo1 =
-        new ColumnInfo()
+          throws IOException, ApiException {
+    ColumnInfo columnInfo1 = new ColumnInfo()
             .name("as_int")
             .typeText("INTEGER")
             .typeJson("{\"type\": \"integer\"}")
@@ -226,8 +229,8 @@ public abstract class BaseTableCRUDTest extends BaseCRUDTest {
             .position(0)
             .comment("Integer column")
             .nullable(true);
-    ColumnInfo columnInfo2 =
-        new ColumnInfo()
+
+    ColumnInfo columnInfo2 = new ColumnInfo()
             .name("as_string")
             .typeText("VARCHAR(255)")
             .typeJson("{\"type\": \"string\", \"length\": \"255\"}")
@@ -236,8 +239,7 @@ public abstract class BaseTableCRUDTest extends BaseCRUDTest {
             .comment("String column")
             .nullable(true);
 
-    CreateTable createTableRequest =
-        new CreateTable()
+    CreateTable createTableRequest = new CreateTable()
             .name(tableName)
             .catalogName(TestUtils.CATALOG_NAME)
             .schemaName(TestUtils.SCHEMA_NAME)
@@ -252,7 +254,7 @@ public abstract class BaseTableCRUDTest extends BaseCRUDTest {
   }
 
   protected List<TableInfo> createMultipleTestingTables(int numberOfTables)
-      throws IOException, ApiException {
+          throws IOException, ApiException {
     List<TableInfo> createdTables = new ArrayList<>();
     for (int i = numberOfTables; i > 0; i--) {
       String tableName = TestUtils.TABLE_NAME + "_" + i;
