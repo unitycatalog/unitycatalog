@@ -75,7 +75,7 @@ public class SchemaRepository {
 
   private SchemaInfo convertFromDAO(SchemaInfoDAO schemaInfoDAO, String fullName) {
     String catalogName = fullName.split("\\.")[0];
-    SchemaInfo schemaInfo = SchemaInfoDAO.toSchemaInfo(schemaInfoDAO);
+    SchemaInfo schemaInfo = schemaInfoDAO.toSchemaInfo();
     addNamespaceData(schemaInfo, catalogName);
     return schemaInfo;
   }
