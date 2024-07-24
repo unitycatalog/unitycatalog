@@ -6,8 +6,8 @@ import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpHandler;
 import com.sun.net.httpserver.HttpServer;
 import io.unitycatalog.server.persist.utils.ServerPropertiesUtils;
+import org.apache.commons.codec.binary.Hex;
 
-import java.io.BufferedInputStream;
 import java.io.BufferedOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
@@ -19,6 +19,7 @@ import java.net.ServerSocket;
 import java.net.URL;
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
+import java.security.SecureRandom;
 import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
@@ -36,7 +37,6 @@ import static java.util.stream.Collectors.toList;
 
 /**
  * Simple OAuth2 authentication flow for the CLI.
- *
  */
 public class Outh2CliExchange {
 
@@ -80,11 +80,15 @@ public class Outh2CliExchange {
 
     String redirectUrl = "http://localhost:" + port;
 
-    String authUrl = String.format("%s?client_id=%s&redirect_uri=%s&response_type=code&scope=%s",
+    byte[] stateBytes = new byte[16];
+    new SecureRandom().nextBytes(stateBytes);
+
+    String authUrl = String.format("%s?client_id=%s&redirect_uri=%s&response_type=code&scope=%s&state=%s",
             authorizationUrl,
             URLEncoder.encode(clientId, StandardCharsets.UTF_8),
             URLEncoder.encode(redirectUrl, StandardCharsets.UTF_8),
-            URLEncoder.encode("openid profile email", StandardCharsets.UTF_8));
+            URLEncoder.encode("openid profile email", StandardCharsets.UTF_8),
+            Hex.encodeHexString(stateBytes));
 
     System.out.println("Attempting to open the authorization page in your default browser.");
     System.out.println("If the browser does not open, you can manually open the following URL:");
@@ -121,14 +125,6 @@ public class Outh2CliExchange {
 
     server.stop(0);
 
-    // TODO: Replace this with a more modern web-client
-    HttpURLConnection urlConnection = (HttpURLConnection) new URL(tokenUrl).openConnection();
-    urlConnection.setRequestMethod("POST");
-    urlConnection.setDoInput(true);
-    urlConnection.setDoOutput(true);
-    urlConnection.setUseCaches(false);
-    urlConnection.setRequestProperty("Content-Type", "application/json");
-    PrintStream printStream = new PrintStream(new BufferedOutputStream(urlConnection.getOutputStream()));
     Map<String, String> tokenParams = new HashMap<>();
     tokenParams.put("code", authCode);
     tokenParams.put(Fields.CLIENT_ID, clientId);
@@ -136,6 +132,16 @@ public class Outh2CliExchange {
     tokenParams.put(Fields.GRANT_TYPE, "authorization_code");
     tokenParams.put(Fields.REDIRECT_URL, redirectUrl);
     String tokenBody = mapper.writeValueAsString(tokenParams);
+
+    // TODO: Replace this with a more modern web-client
+    HttpURLConnection urlConnection = (HttpURLConnection) new URL(tokenUrl).openConnection();
+    urlConnection.setRequestMethod("POST");
+    urlConnection.setDoInput(true);
+    urlConnection.setDoOutput(true);
+    urlConnection.setUseCaches(false);
+    urlConnection.setRequestProperty("content-type", "application/json");
+    urlConnection.setRequestProperty("accept", "application/json");
+    PrintStream printStream = new PrintStream(new BufferedOutputStream(urlConnection.getOutputStream()));
     printStream.print(tokenBody);
     printStream.close();
     urlConnection.connect();
