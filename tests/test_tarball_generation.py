@@ -106,7 +106,7 @@ except requests.RequestException as e:
 
 # 5. Run and verify CLI
 try:
-    cli_cmd = [os.path.join(bin_dir, "uc"), "catalog", "create", "--name", "Test Catalog"]
+    cli_cmd = [os.path.join(bin_dir, "uc"), "catalog", "create", "--name", "Test_Catalog"]
     subprocess.run(cli_cmd, check=True, shell=True, stderr=subprocess.PIPE, stdout=subprocess.PIPE)
     print("CLI command executed successfully.")
 except subprocess.CalledProcessError as e:
