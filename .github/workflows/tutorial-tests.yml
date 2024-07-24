@@ -21,6 +21,9 @@ jobs:
         java-version: '17'
         distribution: 'temurin'
 
+    - name: Build project
+      run: build/sbt package
+
     - name: Set up Python
       uses: actions/setup-python@v4
       with:
