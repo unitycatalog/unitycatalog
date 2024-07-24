@@ -96,15 +96,19 @@ public class SparkIntegrationTest extends BaseCRUDTest {
         session.sql(String.format("CREATE TABLE %s(i INT) USING delta", tableName1));
         assertThat(session.sql("SELECT * FROM " + tableName1).collectAsList()).isEmpty();
         session.sql("INSERT INTO " + tableName1 + " SELECT 1");
-        assertEquals(1,
-                session.sql("SELECT * FROM " + tableName1).collectAsList().get(0).getInt(0));
+        assertThat(session.sql("SELECT * FROM " + tableName1).collectAsList())
+            .first()
+            .extracting(row -> row.get(0))
+            .isEqualTo(1);
 
         // Test CTAS
         String path2 = new File(dataDir, "test_delta_path2").getCanonicalPath();
         String tableName2 = String.format("delta.`%s`", path2);
         session.sql(String.format("CREATE TABLE %s USING delta AS SELECT 1 AS i", tableName2));
-        assertEquals(1,
-                session.sql("SELECT * FROM " + tableName2).collectAsList().get(0).getInt(0));
+        assertThat(session.sql("SELECT * FROM " + tableName2).collectAsList())
+            .first()
+            .extracting(row -> row.get(0))
+            .isEqualTo(1);
 
         session.stop();
     }
