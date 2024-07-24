@@ -29,20 +29,20 @@ import com.fasterxml.jackson.annotation.JsonPropertyOrder;
 
 
 /**
- * ModelInfo
+ * RegisteredModelInfo
  */
 @JsonPropertyOrder({
-  ModelInfo.JSON_PROPERTY_NAME,
-  ModelInfo.JSON_PROPERTY_CATALOG_NAME,
-  ModelInfo.JSON_PROPERTY_SCHEMA_NAME,
-  ModelInfo.JSON_PROPERTY_STORAGE_LOCATION,
-  ModelInfo.JSON_PROPERTY_COMMENT,
-  ModelInfo.JSON_PROPERTY_CREATED_AT,
-  ModelInfo.JSON_PROPERTY_UPDATED_AT,
-  ModelInfo.JSON_PROPERTY_MODEL_ID
+  RegisteredModelInfo.JSON_PROPERTY_NAME,
+  RegisteredModelInfo.JSON_PROPERTY_CATALOG_NAME,
+  RegisteredModelInfo.JSON_PROPERTY_SCHEMA_NAME,
+  RegisteredModelInfo.JSON_PROPERTY_STORAGE_LOCATION,
+  RegisteredModelInfo.JSON_PROPERTY_COMMENT,
+  RegisteredModelInfo.JSON_PROPERTY_CREATED_AT,
+  RegisteredModelInfo.JSON_PROPERTY_UPDATED_AT,
+  RegisteredModelInfo.JSON_PROPERTY_MODEL_ID
 })
 @jakarta.annotation.Generated(value = "org.openapitools.codegen.languages.JavaClientCodegen", comments = "Generator version: 7.5.0")
-public class ModelInfo {
+public class RegisteredModelInfo {
   public static final String JSON_PROPERTY_NAME = "name";
   private String name;
 
@@ -67,10 +67,10 @@ public class ModelInfo {
   public static final String JSON_PROPERTY_MODEL_ID = "model_id";
   private String modelId;
 
-  public ModelInfo() { 
+  public RegisteredModelInfo() { 
   }
 
-  public ModelInfo name(String name) {
+  public RegisteredModelInfo name(String name) {
     this.name = name;
     return this;
   }
@@ -95,7 +95,7 @@ public class ModelInfo {
   }
 
 
-  public ModelInfo catalogName(String catalogName) {
+  public RegisteredModelInfo catalogName(String catalogName) {
     this.catalogName = catalogName;
     return this;
   }
@@ -120,7 +120,7 @@ public class ModelInfo {
   }
 
 
-  public ModelInfo schemaName(String schemaName) {
+  public RegisteredModelInfo schemaName(String schemaName) {
     this.schemaName = schemaName;
     return this;
   }
@@ -145,13 +145,13 @@ public class ModelInfo {
   }
 
 
-  public ModelInfo storageLocation(String storageLocation) {
+  public RegisteredModelInfo storageLocation(String storageLocation) {
     this.storageLocation = storageLocation;
     return this;
   }
 
    /**
-   * Storage root URL for model (for **MANAGED**, **EXTERNAL** tables)
+   * Storage root URL for model (for **MANAGED**, **EXTERNAL** models)
    * @return storageLocation
   **/
   @jakarta.annotation.Nullable
@@ -170,7 +170,7 @@ public class ModelInfo {
   }
 
 
-  public ModelInfo comment(String comment) {
+  public RegisteredModelInfo comment(String comment) {
     this.comment = comment;
     return this;
   }
@@ -195,7 +195,7 @@ public class ModelInfo {
   }
 
 
-  public ModelInfo createdAt(Long createdAt) {
+  public RegisteredModelInfo createdAt(Long createdAt) {
     this.createdAt = createdAt;
     return this;
   }
@@ -220,7 +220,7 @@ public class ModelInfo {
   }
 
 
-  public ModelInfo updatedAt(Long updatedAt) {
+  public RegisteredModelInfo updatedAt(Long updatedAt) {
     this.updatedAt = updatedAt;
     return this;
   }
@@ -245,7 +245,7 @@ public class ModelInfo {
   }
 
 
-  public ModelInfo modelId(String modelId) {
+  public RegisteredModelInfo modelId(String modelId) {
     this.modelId = modelId;
     return this;
   }
@@ -271,7 +271,7 @@ public class ModelInfo {
 
 
   /**
-   * Return true if this ModelInfo object is equal to o.
+   * Return true if this RegisteredModelInfo object is equal to o.
    */
   @Override
   public boolean equals(Object o) {
@@ -281,15 +281,15 @@ public class ModelInfo {
     if (o == null || getClass() != o.getClass()) {
       return false;
     }
-    ModelInfo modelInfo = (ModelInfo) o;
-    return Objects.equals(this.name, modelInfo.name) &&
-        Objects.equals(this.catalogName, modelInfo.catalogName) &&
-        Objects.equals(this.schemaName, modelInfo.schemaName) &&
-        Objects.equals(this.storageLocation, modelInfo.storageLocation) &&
-        Objects.equals(this.comment, modelInfo.comment) &&
-        Objects.equals(this.createdAt, modelInfo.createdAt) &&
-        Objects.equals(this.updatedAt, modelInfo.updatedAt) &&
-        Objects.equals(this.modelId, modelInfo.modelId);
+    RegisteredModelInfo registeredModelInfo = (RegisteredModelInfo) o;
+    return Objects.equals(this.name, registeredModelInfo.name) &&
+        Objects.equals(this.catalogName, registeredModelInfo.catalogName) &&
+        Objects.equals(this.schemaName, registeredModelInfo.schemaName) &&
+        Objects.equals(this.storageLocation, registeredModelInfo.storageLocation) &&
+        Objects.equals(this.comment, registeredModelInfo.comment) &&
+        Objects.equals(this.createdAt, registeredModelInfo.createdAt) &&
+        Objects.equals(this.updatedAt, registeredModelInfo.updatedAt) &&
+        Objects.equals(this.modelId, registeredModelInfo.modelId);
   }
 
   @Override
@@ -300,7 +300,7 @@ public class ModelInfo {
   @Override
   public String toString() {
     StringBuilder sb = new StringBuilder();
-    sb.append("class ModelInfo {\n");
+    sb.append("class RegisteredModelInfo {\n");
     sb.append("    name: ").append(toIndentedString(name)).append("\n");
     sb.append("    catalogName: ").append(toIndentedString(catalogName)).append("\n");
     sb.append("    schemaName: ").append(toIndentedString(schemaName)).append("\n");

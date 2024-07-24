@@ -11,39 +11,43 @@
  */
 
 
-package io.unitycatalog.server.model;
+package io.unitycatalog.client.model;
 
+import java.net.URLEncoder;
+import java.nio.charset.StandardCharsets;
+import java.util.StringJoiner;
 import java.util.Objects;
-import java.util.Arrays;
+import java.util.Map;
+import java.util.HashMap;
 import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.fasterxml.jackson.annotation.JsonCreator;
 import com.fasterxml.jackson.annotation.JsonTypeName;
 import com.fasterxml.jackson.annotation.JsonValue;
-import io.unitycatalog.server.model.AwsCredentials;
+import io.unitycatalog.client.model.AwsCredentials;
+import java.util.Arrays;
 import com.fasterxml.jackson.annotation.JsonPropertyOrder;
-import com.fasterxml.jackson.annotation.JsonTypeName;
+
 
 /**
- * GenerateTemporaryModelCredentialResponse
+ * GenerateTemporaryModelVersionCredentialResponse
  */
 @JsonPropertyOrder({
-  GenerateTemporaryModelCredentialResponse.JSON_PROPERTY_AWS_TEMP_CREDENTIALS,
-  GenerateTemporaryModelCredentialResponse.JSON_PROPERTY_EXPIRATION_TIME
+  GenerateTemporaryModelVersionCredentialResponse.JSON_PROPERTY_AWS_TEMP_CREDENTIALS,
+  GenerateTemporaryModelVersionCredentialResponse.JSON_PROPERTY_EXPIRATION_TIME
 })
 @jakarta.annotation.Generated(value = "org.openapitools.codegen.languages.JavaClientCodegen", comments = "Generator version: 7.5.0")
-public class GenerateTemporaryModelCredentialResponse {
+public class GenerateTemporaryModelVersionCredentialResponse {
   public static final String JSON_PROPERTY_AWS_TEMP_CREDENTIALS = "aws_temp_credentials";
   private AwsCredentials awsTempCredentials;
 
   public static final String JSON_PROPERTY_EXPIRATION_TIME = "expiration_time";
   private Long expirationTime;
 
-  public GenerateTemporaryModelCredentialResponse() {
+  public GenerateTemporaryModelVersionCredentialResponse() { 
   }
 
-  public GenerateTemporaryModelCredentialResponse awsTempCredentials(AwsCredentials awsTempCredentials) {
-    
+  public GenerateTemporaryModelVersionCredentialResponse awsTempCredentials(AwsCredentials awsTempCredentials) {
     this.awsTempCredentials = awsTempCredentials;
     return this;
   }
@@ -68,8 +72,7 @@ public class GenerateTemporaryModelCredentialResponse {
   }
 
 
-  public GenerateTemporaryModelCredentialResponse expirationTime(Long expirationTime) {
-    
+  public GenerateTemporaryModelVersionCredentialResponse expirationTime(Long expirationTime) {
     this.expirationTime = expirationTime;
     return this;
   }
@@ -93,6 +96,10 @@ public class GenerateTemporaryModelCredentialResponse {
     this.expirationTime = expirationTime;
   }
 
+
+  /**
+   * Return true if this GenerateTemporaryModelVersionCredentialResponse object is equal to o.
+   */
   @Override
   public boolean equals(Object o) {
     if (this == o) {
@@ -101,9 +108,9 @@ public class GenerateTemporaryModelCredentialResponse {
     if (o == null || getClass() != o.getClass()) {
       return false;
     }
-    GenerateTemporaryModelCredentialResponse generateTemporaryModelCredentialResponse = (GenerateTemporaryModelCredentialResponse) o;
-    return Objects.equals(this.awsTempCredentials, generateTemporaryModelCredentialResponse.awsTempCredentials) &&
-        Objects.equals(this.expirationTime, generateTemporaryModelCredentialResponse.expirationTime);
+    GenerateTemporaryModelVersionCredentialResponse generateTemporaryModelVersionCredentialResponse = (GenerateTemporaryModelVersionCredentialResponse) o;
+    return Objects.equals(this.awsTempCredentials, generateTemporaryModelVersionCredentialResponse.awsTempCredentials) &&
+        Objects.equals(this.expirationTime, generateTemporaryModelVersionCredentialResponse.expirationTime);
   }
 
   @Override
@@ -114,7 +121,7 @@ public class GenerateTemporaryModelCredentialResponse {
   @Override
   public String toString() {
     StringBuilder sb = new StringBuilder();
-    sb.append("class GenerateTemporaryModelCredentialResponse {\n");
+    sb.append("class GenerateTemporaryModelVersionCredentialResponse {\n");
     sb.append("    awsTempCredentials: ").append(toIndentedString(awsTempCredentials)).append("\n");
     sb.append("    expirationTime: ").append(toIndentedString(expirationTime)).append("\n");
     sb.append("}");
@@ -132,5 +139,49 @@ public class GenerateTemporaryModelCredentialResponse {
     return o.toString().replace("\n", "\n    ");
   }
 
+  /**
+   * Convert the instance into URL query string.
+   *
+   * @return URL query string
+   */
+  public String toUrlQueryString() {
+    return toUrlQueryString(null);
+  }
+
+  /**
+   * Convert the instance into URL query string.
+   *
+   * @param prefix prefix of the query string
+   * @return URL query string
+   */
+  public String toUrlQueryString(String prefix) {
+    String suffix = "";
+    String containerSuffix = "";
+    String containerPrefix = "";
+    if (prefix == null) {
+      // style=form, explode=true, e.g. /pet?name=cat&type=manx
+      prefix = "";
+    } else {
+      // deepObject style e.g. /pet?id[name]=cat&id[type]=manx
+      prefix = prefix + "[";
+      suffix = "]";
+      containerSuffix = "]";
+      containerPrefix = "[";
+    }
+
+    StringJoiner joiner = new StringJoiner("&");
+
+    // add `aws_temp_credentials` to the URL query string
+    if (getAwsTempCredentials() != null) {
+      joiner.add(getAwsTempCredentials().toUrlQueryString(prefix + "aws_temp_credentials" + suffix));
+    }
+
+    // add `expiration_time` to the URL query string
+    if (getExpirationTime() != null) {
+      joiner.add(String.format("%sexpiration_time%s=%s", prefix, suffix, URLEncoder.encode(String.valueOf(getExpirationTime()), StandardCharsets.UTF_8).replaceAll("\\+", "%20")));
+    }
+
+    return joiner.toString();
+  }
 }
 

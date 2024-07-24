@@ -24,24 +24,24 @@ import com.fasterxml.jackson.annotation.JsonPropertyOrder;
 import com.fasterxml.jackson.annotation.JsonTypeName;
 
 /**
- * UpdateModel
+ * UpdateRegisteredModel
  */
 @JsonPropertyOrder({
-  UpdateModel.JSON_PROPERTY_COMMENT,
-  UpdateModel.JSON_PROPERTY_NEW_NAME
+  UpdateRegisteredModel.JSON_PROPERTY_COMMENT,
+  UpdateRegisteredModel.JSON_PROPERTY_NEW_NAME
 })
 @jakarta.annotation.Generated(value = "org.openapitools.codegen.languages.JavaClientCodegen", comments = "Generator version: 7.5.0")
-public class UpdateModel {
+public class UpdateRegisteredModel {
   public static final String JSON_PROPERTY_COMMENT = "comment";
   private String comment;
 
   public static final String JSON_PROPERTY_NEW_NAME = "new_name";
   private String newName;
 
-  public UpdateModel() {
+  public UpdateRegisteredModel() {
   }
 
-  public UpdateModel comment(String comment) {
+  public UpdateRegisteredModel comment(String comment) {
     
     this.comment = comment;
     return this;
@@ -67,7 +67,7 @@ public class UpdateModel {
   }
 
 
-  public UpdateModel newName(String newName) {
+  public UpdateRegisteredModel newName(String newName) {
     
     this.newName = newName;
     return this;
@@ -100,9 +100,9 @@ public class UpdateModel {
     if (o == null || getClass() != o.getClass()) {
       return false;
     }
-    UpdateModel updateModel = (UpdateModel) o;
-    return Objects.equals(this.comment, updateModel.comment) &&
-        Objects.equals(this.newName, updateModel.newName);
+    UpdateRegisteredModel updateRegisteredModel = (UpdateRegisteredModel) o;
+    return Objects.equals(this.comment, updateRegisteredModel.comment) &&
+        Objects.equals(this.newName, updateRegisteredModel.newName);
   }
 
   @Override
@@ -113,7 +113,7 @@ public class UpdateModel {
   @Override
   public String toString() {
     StringBuilder sb = new StringBuilder();
-    sb.append("class UpdateModel {\n");
+    sb.append("class UpdateRegisteredModel {\n");
     sb.append("    comment: ").append(toIndentedString(comment)).append("\n");
     sb.append("    newName: ").append(toIndentedString(newName)).append("\n");
     sb.append("}");

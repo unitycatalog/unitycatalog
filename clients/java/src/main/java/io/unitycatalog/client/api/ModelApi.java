@@ -87,8 +87,8 @@ public class ModelApi {
    * @return Object
    * @throws ApiException if fails to make API call
    */
-  public Object deleteModel(String fullName) throws ApiException {
-    ApiResponse<Object> localVarResponse = deleteModelWithHttpInfo(fullName);
+  public Object deleteRegisteredModel(String fullName) throws ApiException {
+    ApiResponse<Object> localVarResponse = deleteRegisteredModelWithHttpInfo(fullName);
     return localVarResponse.getData();
   }
 
@@ -99,8 +99,8 @@ public class ModelApi {
    * @return ApiResponse&lt;Object&gt;
    * @throws ApiException if fails to make API call
    */
-  public ApiResponse<Object> deleteModelWithHttpInfo(String fullName) throws ApiException {
-    HttpRequest.Builder localVarRequestBuilder = deleteModelRequestBuilder(fullName);
+  public ApiResponse<Object> deleteRegisteredModelWithHttpInfo(String fullName) throws ApiException {
+    HttpRequest.Builder localVarRequestBuilder = deleteRegisteredModelRequestBuilder(fullName);
     try {
       HttpResponse<InputStream> localVarResponse = memberVarHttpClient.send(
           localVarRequestBuilder.build(),
@@ -110,7 +110,7 @@ public class ModelApi {
       }
       try {
         if (localVarResponse.statusCode()/ 100 != 2) {
-          throw getApiException("deleteModel", localVarResponse);
+          throw getApiException("deleteRegisteredModel", localVarResponse);
         }
         return new ApiResponse<Object>(
           localVarResponse.statusCode(),
@@ -128,10 +128,10 @@ public class ModelApi {
     }
   }
 
-  private HttpRequest.Builder deleteModelRequestBuilder(String fullName) throws ApiException {
+  private HttpRequest.Builder deleteRegisteredModelRequestBuilder(String fullName) throws ApiException {
     // verify the required parameter 'fullName' is set
     if (fullName == null) {
-      throw new ApiException(400, "Missing the required parameter 'fullName' when calling deleteModel");
+      throw new ApiException(400, "Missing the required parameter 'fullName' when calling deleteRegisteredModel");
     }
 
     HttpRequest.Builder localVarRequestBuilder = HttpRequest.newBuilder();

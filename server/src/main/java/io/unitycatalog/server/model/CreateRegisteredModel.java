@@ -24,17 +24,17 @@ import com.fasterxml.jackson.annotation.JsonPropertyOrder;
 import com.fasterxml.jackson.annotation.JsonTypeName;
 
 /**
- * CreateModel
+ * CreateRegisteredModel
  */
 @JsonPropertyOrder({
-  CreateModel.JSON_PROPERTY_MODEL_NAME,
-  CreateModel.JSON_PROPERTY_CATALOG_NAME,
-  CreateModel.JSON_PROPERTY_SCHEMA_NAME,
-  CreateModel.JSON_PROPERTY_STORAGE_LOCATION,
-  CreateModel.JSON_PROPERTY_COMMENT
+  CreateRegisteredModel.JSON_PROPERTY_MODEL_NAME,
+  CreateRegisteredModel.JSON_PROPERTY_CATALOG_NAME,
+  CreateRegisteredModel.JSON_PROPERTY_SCHEMA_NAME,
+  CreateRegisteredModel.JSON_PROPERTY_STORAGE_LOCATION,
+  CreateRegisteredModel.JSON_PROPERTY_COMMENT
 })
 @jakarta.annotation.Generated(value = "org.openapitools.codegen.languages.JavaClientCodegen", comments = "Generator version: 7.5.0")
-public class CreateModel {
+public class CreateRegisteredModel {
   public static final String JSON_PROPERTY_MODEL_NAME = "model_name";
   private String modelName;
 
@@ -50,10 +50,10 @@ public class CreateModel {
   public static final String JSON_PROPERTY_COMMENT = "comment";
   private String comment;
 
-  public CreateModel() {
+  public CreateRegisteredModel() {
   }
 
-  public CreateModel modelName(String modelName) {
+  public CreateRegisteredModel modelName(String modelName) {
     
     this.modelName = modelName;
     return this;
@@ -79,7 +79,7 @@ public class CreateModel {
   }
 
 
-  public CreateModel catalogName(String catalogName) {
+  public CreateRegisteredModel catalogName(String catalogName) {
     
     this.catalogName = catalogName;
     return this;
@@ -105,7 +105,7 @@ public class CreateModel {
   }
 
 
-  public CreateModel schemaName(String schemaName) {
+  public CreateRegisteredModel schemaName(String schemaName) {
     
     this.schemaName = schemaName;
     return this;
@@ -131,14 +131,14 @@ public class CreateModel {
   }
 
 
-  public CreateModel storageLocation(String storageLocation) {
+  public CreateRegisteredModel storageLocation(String storageLocation) {
     
     this.storageLocation = storageLocation;
     return this;
   }
 
    /**
-   * Storage root URL for table (for **MANAGED**, **EXTERNAL** tables)
+   * Storage root URL for registered model (for **MANAGED**, **EXTERNAL** regisetered models)
    * @return storageLocation
   **/
   @jakarta.annotation.Nullable
@@ -157,7 +157,7 @@ public class CreateModel {
   }
 
 
-  public CreateModel comment(String comment) {
+  public CreateRegisteredModel comment(String comment) {
     
     this.comment = comment;
     return this;
@@ -190,12 +190,12 @@ public class CreateModel {
     if (o == null || getClass() != o.getClass()) {
       return false;
     }
-    CreateModel createModel = (CreateModel) o;
-    return Objects.equals(this.modelName, createModel.modelName) &&
-        Objects.equals(this.catalogName, createModel.catalogName) &&
-        Objects.equals(this.schemaName, createModel.schemaName) &&
-        Objects.equals(this.storageLocation, createModel.storageLocation) &&
-        Objects.equals(this.comment, createModel.comment);
+    CreateRegisteredModel createRegisteredModel = (CreateRegisteredModel) o;
+    return Objects.equals(this.modelName, createRegisteredModel.modelName) &&
+        Objects.equals(this.catalogName, createRegisteredModel.catalogName) &&
+        Objects.equals(this.schemaName, createRegisteredModel.schemaName) &&
+        Objects.equals(this.storageLocation, createRegisteredModel.storageLocation) &&
+        Objects.equals(this.comment, createRegisteredModel.comment);
   }
 
   @Override
@@ -206,7 +206,7 @@ public class CreateModel {
   @Override
   public String toString() {
     StringBuilder sb = new StringBuilder();
-    sb.append("class CreateModel {\n");
+    sb.append("class CreateRegisteredModel {\n");
     sb.append("    modelName: ").append(toIndentedString(modelName)).append("\n");
     sb.append("    catalogName: ").append(toIndentedString(catalogName)).append("\n");
     sb.append("    schemaName: ").append(toIndentedString(schemaName)).append("\n");

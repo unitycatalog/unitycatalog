@@ -11,50 +11,47 @@
  */
 
 
-package io.unitycatalog.client.model;
+package io.unitycatalog.server.model;
 
-import java.net.URLEncoder;
-import java.nio.charset.StandardCharsets;
-import java.util.StringJoiner;
 import java.util.Objects;
-import java.util.Map;
-import java.util.HashMap;
+import java.util.Arrays;
 import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.fasterxml.jackson.annotation.JsonCreator;
 import com.fasterxml.jackson.annotation.JsonTypeName;
 import com.fasterxml.jackson.annotation.JsonValue;
-import io.unitycatalog.client.model.ModelInfo;
+import io.unitycatalog.server.model.RegisteredModelInfo;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import com.fasterxml.jackson.annotation.JsonPropertyOrder;
-
+import com.fasterxml.jackson.annotation.JsonTypeName;
 
 /**
- * ListModelsResponse
+ * ListRegisteredModelsResponse
  */
 @JsonPropertyOrder({
-  ListModelsResponse.JSON_PROPERTY_MODEL_VERSIONS,
-  ListModelsResponse.JSON_PROPERTY_NEXT_PAGE_TOKEN
+  ListRegisteredModelsResponse.JSON_PROPERTY_MODEL_VERSIONS,
+  ListRegisteredModelsResponse.JSON_PROPERTY_NEXT_PAGE_TOKEN
 })
 @jakarta.annotation.Generated(value = "org.openapitools.codegen.languages.JavaClientCodegen", comments = "Generator version: 7.5.0")
-public class ListModelsResponse {
+public class ListRegisteredModelsResponse {
   public static final String JSON_PROPERTY_MODEL_VERSIONS = "model_versions";
-  private List<ModelInfo> modelVersions = new ArrayList<>();
+  private List<RegisteredModelInfo> modelVersions = new ArrayList<>();
 
   public static final String JSON_PROPERTY_NEXT_PAGE_TOKEN = "next_page_token";
   private String nextPageToken;
 
-  public ListModelsResponse() { 
+  public ListRegisteredModelsResponse() {
   }
 
-  public ListModelsResponse modelVersions(List<ModelInfo> modelVersions) {
+  public ListRegisteredModelsResponse modelVersions(List<RegisteredModelInfo> modelVersions) {
+    
     this.modelVersions = modelVersions;
     return this;
   }
 
-  public ListModelsResponse addModelVersionsItem(ModelInfo modelVersionsItem) {
+  public ListRegisteredModelsResponse addModelVersionsItem(RegisteredModelInfo modelVersionsItem) {
     if (this.modelVersions == null) {
       this.modelVersions = new ArrayList<>();
     }
@@ -70,19 +67,20 @@ public class ListModelsResponse {
   @JsonProperty(JSON_PROPERTY_MODEL_VERSIONS)
   @JsonInclude(value = JsonInclude.Include.USE_DEFAULTS)
 
-  public List<ModelInfo> getModelVersions() {
+  public List<RegisteredModelInfo> getModelVersions() {
     return modelVersions;
   }
 
 
   @JsonProperty(JSON_PROPERTY_MODEL_VERSIONS)
   @JsonInclude(value = JsonInclude.Include.USE_DEFAULTS)
-  public void setModelVersions(List<ModelInfo> modelVersions) {
+  public void setModelVersions(List<RegisteredModelInfo> modelVersions) {
     this.modelVersions = modelVersions;
   }
 
 
-  public ListModelsResponse nextPageToken(String nextPageToken) {
+  public ListRegisteredModelsResponse nextPageToken(String nextPageToken) {
+    
     this.nextPageToken = nextPageToken;
     return this;
   }
@@ -106,10 +104,6 @@ public class ListModelsResponse {
     this.nextPageToken = nextPageToken;
   }
 
-
-  /**
-   * Return true if this ListModelsResponse object is equal to o.
-   */
   @Override
   public boolean equals(Object o) {
     if (this == o) {
@@ -118,9 +112,9 @@ public class ListModelsResponse {
     if (o == null || getClass() != o.getClass()) {
       return false;
     }
-    ListModelsResponse listModelsResponse = (ListModelsResponse) o;
-    return Objects.equals(this.modelVersions, listModelsResponse.modelVersions) &&
-        Objects.equals(this.nextPageToken, listModelsResponse.nextPageToken);
+    ListRegisteredModelsResponse listRegisteredModelsResponse = (ListRegisteredModelsResponse) o;
+    return Objects.equals(this.modelVersions, listRegisteredModelsResponse.modelVersions) &&
+        Objects.equals(this.nextPageToken, listRegisteredModelsResponse.nextPageToken);
   }
 
   @Override
@@ -131,7 +125,7 @@ public class ListModelsResponse {
   @Override
   public String toString() {
     StringBuilder sb = new StringBuilder();
-    sb.append("class ListModelsResponse {\n");
+    sb.append("class ListRegisteredModelsResponse {\n");
     sb.append("    modelVersions: ").append(toIndentedString(modelVersions)).append("\n");
     sb.append("    nextPageToken: ").append(toIndentedString(nextPageToken)).append("\n");
     sb.append("}");
@@ -149,54 +143,5 @@ public class ListModelsResponse {
     return o.toString().replace("\n", "\n    ");
   }
 
-  /**
-   * Convert the instance into URL query string.
-   *
-   * @return URL query string
-   */
-  public String toUrlQueryString() {
-    return toUrlQueryString(null);
-  }
-
-  /**
-   * Convert the instance into URL query string.
-   *
-   * @param prefix prefix of the query string
-   * @return URL query string
-   */
-  public String toUrlQueryString(String prefix) {
-    String suffix = "";
-    String containerSuffix = "";
-    String containerPrefix = "";
-    if (prefix == null) {
-      // style=form, explode=true, e.g. /pet?name=cat&type=manx
-      prefix = "";
-    } else {
-      // deepObject style e.g. /pet?id[name]=cat&id[type]=manx
-      prefix = prefix + "[";
-      suffix = "]";
-      containerSuffix = "]";
-      containerPrefix = "[";
-    }
-
-    StringJoiner joiner = new StringJoiner("&");
-
-    // add `model_versions` to the URL query string
-    if (getModelVersions() != null) {
-      for (int i = 0; i < getModelVersions().size(); i++) {
-        if (getModelVersions().get(i) != null) {
-          joiner.add(getModelVersions().get(i).toUrlQueryString(String.format("%smodel_versions%s%s", prefix, suffix,
-          "".equals(suffix) ? "" : String.format("%s%d%s", containerPrefix, i, containerSuffix))));
-        }
-      }
-    }
-
-    // add `next_page_token` to the URL query string
-    if (getNextPageToken() != null) {
-      joiner.add(String.format("%snext_page_token%s=%s", prefix, suffix, URLEncoder.encode(String.valueOf(getNextPageToken()), StandardCharsets.UTF_8).replaceAll("\\+", "%20")));
-    }
-
-    return joiner.toString();
-  }
 }
 

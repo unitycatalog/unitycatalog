@@ -22,7 +22,7 @@ import com.fasterxml.jackson.annotation.JsonCreator;
 import com.fasterxml.jackson.annotation.JsonValue;
 
 /**
- * All possible model version statuses
+ * All possible model version statuses (UNKNOWN, PENDING, FAILED, READY). PENDING status indicates that the client has not completely written all model artifacts to external storage. FAILED status indicates that the client has failed to write all model artifacts to external storage. READY status indicates that the client has successfully written all model artifacts to external storage. 
  */
 public enum ModelVersionStatus {
   

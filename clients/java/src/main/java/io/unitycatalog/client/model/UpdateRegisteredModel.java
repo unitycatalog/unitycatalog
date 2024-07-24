@@ -24,81 +24,80 @@ import com.fasterxml.jackson.annotation.JsonProperty;
 import com.fasterxml.jackson.annotation.JsonCreator;
 import com.fasterxml.jackson.annotation.JsonTypeName;
 import com.fasterxml.jackson.annotation.JsonValue;
-import io.unitycatalog.client.model.AwsCredentials;
 import java.util.Arrays;
 import com.fasterxml.jackson.annotation.JsonPropertyOrder;
 
 
 /**
- * GenerateTemporaryModelCredentialResponse
+ * UpdateRegisteredModel
  */
 @JsonPropertyOrder({
-  GenerateTemporaryModelCredentialResponse.JSON_PROPERTY_AWS_TEMP_CREDENTIALS,
-  GenerateTemporaryModelCredentialResponse.JSON_PROPERTY_EXPIRATION_TIME
+  UpdateRegisteredModel.JSON_PROPERTY_COMMENT,
+  UpdateRegisteredModel.JSON_PROPERTY_NEW_NAME
 })
 @jakarta.annotation.Generated(value = "org.openapitools.codegen.languages.JavaClientCodegen", comments = "Generator version: 7.5.0")
-public class GenerateTemporaryModelCredentialResponse {
-  public static final String JSON_PROPERTY_AWS_TEMP_CREDENTIALS = "aws_temp_credentials";
-  private AwsCredentials awsTempCredentials;
+public class UpdateRegisteredModel {
+  public static final String JSON_PROPERTY_COMMENT = "comment";
+  private String comment;
 
-  public static final String JSON_PROPERTY_EXPIRATION_TIME = "expiration_time";
-  private Long expirationTime;
+  public static final String JSON_PROPERTY_NEW_NAME = "new_name";
+  private String newName;
 
-  public GenerateTemporaryModelCredentialResponse() { 
+  public UpdateRegisteredModel() { 
   }
 
-  public GenerateTemporaryModelCredentialResponse awsTempCredentials(AwsCredentials awsTempCredentials) {
-    this.awsTempCredentials = awsTempCredentials;
+  public UpdateRegisteredModel comment(String comment) {
+    this.comment = comment;
     return this;
   }
 
    /**
-   * Get awsTempCredentials
-   * @return awsTempCredentials
+   * User-provided free-form text description.
+   * @return comment
   **/
   @jakarta.annotation.Nullable
-  @JsonProperty(JSON_PROPERTY_AWS_TEMP_CREDENTIALS)
+  @JsonProperty(JSON_PROPERTY_COMMENT)
   @JsonInclude(value = JsonInclude.Include.USE_DEFAULTS)
 
-  public AwsCredentials getAwsTempCredentials() {
-    return awsTempCredentials;
+  public String getComment() {
+    return comment;
   }
 
 
-  @JsonProperty(JSON_PROPERTY_AWS_TEMP_CREDENTIALS)
+  @JsonProperty(JSON_PROPERTY_COMMENT)
   @JsonInclude(value = JsonInclude.Include.USE_DEFAULTS)
-  public void setAwsTempCredentials(AwsCredentials awsTempCredentials) {
-    this.awsTempCredentials = awsTempCredentials;
+  public void setComment(String comment) {
+    this.comment = comment;
   }
 
 
-  public GenerateTemporaryModelCredentialResponse expirationTime(Long expirationTime) {
-    this.expirationTime = expirationTime;
+  public UpdateRegisteredModel newName(String newName) {
+    this.newName = newName;
     return this;
   }
 
    /**
-   * Server time when the credential will expire, in epoch milliseconds. The API client is advised to cache the credential given this expiration time. 
-   * @return expirationTime
+   * New name for the model.
+   * @return newName
   **/
   @jakarta.annotation.Nullable
-  @JsonProperty(JSON_PROPERTY_EXPIRATION_TIME)
+  @JsonProperty(JSON_PROPERTY_NEW_NAME)
   @JsonInclude(value = JsonInclude.Include.USE_DEFAULTS)
 
-  public Long getExpirationTime() {
-    return expirationTime;
+  public String getNewName() {
+    return newName;
   }
 
 
-  @JsonProperty(JSON_PROPERTY_EXPIRATION_TIME)
+  @JsonProperty(JSON_PROPERTY_NEW_NAME)
   @JsonInclude(value = JsonInclude.Include.USE_DEFAULTS)
-  public void setExpirationTime(Long expirationTime) {
-    this.expirationTime = expirationTime;
+  public void setNewName(String newName) {
+    this.newName = newName;
   }
 
 
   /**
-   * Return true if this GenerateTemporaryModelCredentialResponse object is equal to o.
+   * Return true if this UpdateRegisteredModel object is equal to o.
    */
   @Override
   public boolean equals(Object o) {
@@ -108,22 +107,22 @@ public class GenerateTemporaryModelCredentialResponse {
     if (o == null || getClass() != o.getClass()) {
       return false;
     }
-    GenerateTemporaryModelCredentialResponse generateTemporaryModelCredentialResponse = (GenerateTemporaryModelCredentialResponse) o;
-    return Objects.equals(this.awsTempCredentials, generateTemporaryModelCredentialResponse.awsTempCredentials) &&
-        Objects.equals(this.expirationTime, generateTemporaryModelCredentialResponse.expirationTime);
+    UpdateRegisteredModel updateRegisteredModel = (UpdateRegisteredModel) o;
+    return Objects.equals(this.comment, updateRegisteredModel.comment) &&
+        Objects.equals(this.newName, updateRegisteredModel.newName);
   }
 
   @Override
   public int hashCode() {
-    return Objects.hash(awsTempCredentials, expirationTime);
+    return Objects.hash(comment, newName);
   }
 
   @Override
   public String toString() {
     StringBuilder sb = new StringBuilder();
-    sb.append("class GenerateTemporaryModelCredentialResponse {\n");
-    sb.append("    awsTempCredentials: ").append(toIndentedString(awsTempCredentials)).append("\n");
-    sb.append("    expirationTime: ").append(toIndentedString(expirationTime)).append("\n");
+    sb.append("class UpdateRegisteredModel {\n");
+    sb.append("    comment: ").append(toIndentedString(comment)).append("\n");
+    sb.append("    newName: ").append(toIndentedString(newName)).append("\n");
     sb.append("}");
     return sb.toString();
   }
@@ -171,14 +170,14 @@ public class GenerateTemporaryModelCredentialResponse {
 
     StringJoiner joiner = new StringJoiner("&");
 
-    // add `aws_temp_credentials` to the URL query string
-    if (getAwsTempCredentials() != null) {
-      joiner.add(getAwsTempCredentials().toUrlQueryString(prefix + "aws_temp_credentials" + suffix));
+    // add `comment` to the URL query string
+    if (getComment() != null) {
+      joiner.add(String.format("%scomment%s=%s", prefix, suffix, URLEncoder.encode(String.valueOf(getComment()), StandardCharsets.UTF_8).replaceAll("\\+", "%20")));
     }
 
-    // add `expiration_time` to the URL query string
-    if (getExpirationTime() != null) {
-      joiner.add(String.format("%sexpiration_time%s=%s", prefix, suffix, URLEncoder.encode(String.valueOf(getExpirationTime()), StandardCharsets.UTF_8).replaceAll("\\+", "%20")));
+    // add `new_name` to the URL query string
+    if (getNewName() != null) {
+      joiner.add(String.format("%snew_name%s=%s", prefix, suffix, URLEncoder.encode(String.valueOf(getNewName()), StandardCharsets.UTF_8).replaceAll("\\+", "%20")));
     }
 
     return joiner.toString();

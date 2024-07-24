@@ -590,24 +590,24 @@ paths:
           content:
             application/json:
               schema: {}
-  /temporary-model-credentials:
+  /temporary-model-version-credentials:
     post:
-      operationId: generateTemporaryModelCredentials
+      operationId: generateTemporaryModelVersionCredential
       tags:
-        - TemporaryModelCredentials
-      summary: Generate temporary model credentials.
+        - TemporaryModelVersionCredential
+      summary: Generate temporary model version credentials.  These credentials are used by clients to write and retrieve model artifacts from the model versions external storage location.
       requestBody:
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/GenerateTemporaryModelCredential'
+              $ref: '#/components/schemas/GenerateTemporaryModelVersionCredential'
       responses:
         '200':
           description: Successful response
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/GenerateTemporaryModelCredentialResponse'
+                $ref: '#/components/schemas/GenerateTemporaryModelVersionCredentialResponse'
   /temporary-table-credentials:
     post:
       operationId: generateTemporaryTableCredentials
@@ -750,7 +750,7 @@ paths:
               schema: {}
   /models:
     post:
-      operationId: createModel
+      operationId: createRegisteredModel
       summary: |
         Create a model.
         WARNING: This API is experimental and will change in future versions.
@@ -763,14 +763,14 @@ paths:
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/CreateModel'
+              $ref: '#/components/schemas/CreateRegisteredModel'
       responses:
         '200':
-          description: The new model was successfully created.
+          description: The new registered model was successfully created.
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ModelInfo'
+                $ref: '#/components/schemas/RegisteredModelInfo'
     get:
       tags:
         - Models
@@ -783,7 +783,7 @@ paths:
             type: string
         - name: schema_name
           in: query
-          description: Parent schema of model.
+          description: Name of parent schema for models of interest.
           required: true
           schema:
             type: string
@@ -805,7 +805,7 @@ paths:
           required: false
           schema:
             type: string
-      operationId: listModels
+      operationId: listRegisteredModels
       summary: List models
       description: |
         Gets the list of all available models under the parent catalog and schema.
@@ -816,7 +816,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ListModelsResponse'
+                $ref: '#/components/schemas/ListRegisteredModelsResponse'
   /models/{full_name}:
     parameters:
       - name: full_name
@@ -828,7 +828,7 @@ paths:
     get:
       tags:
         - Models
-      operationId: getModel
+      operationId: getRegisteredModel
       summary: Get a model
       description: |
         Gets a model for a specific catalog and schema.
@@ -838,11 +838,11 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ModelInfo'
+                $ref: '#/components/schemas/RegisteredModelInfo'
     patch:
       tags:
         - Models
-      operationId: updateModel
+      operationId: updateRegisteredModel
       summary: Update a model
       description: |
         Updates the model that matches the supplied name.
@@ -850,18 +850,18 @@ paths:
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/UpdateModel'
+              $ref: '#/components/schemas/UpdateRegisteredModel'
       responses:
         '200':
           description: The model was successfully updated.
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ModelInfo'
+                $ref: '#/components/schemas/RegisteredModelInfo'
     delete:
       tags:
         - Model
-      operationId: deleteModel
+      operationId: deleteRegisteredModel
       summary: Delete a model
       description: |
         Deletes a model from the specified parent catalog and schema. All versions of the model must have already been deleted.
@@ -1702,23 +1702,44 @@ components:
           description: |
             Opaque token to retrieve the next page of results. Absent if there are no more pages.
             __page_token__ should be set to this value for the next request (for the next page of results).
-    GenerateTemporaryModelCredential:
+    GenerateTemporaryModelVersionCredential:
       example:
-        model_id: model_id
+        catalog_name: catalog_name
+        schema_name: schema_name
+        model_name: model_name
+        version: version
         operation: null
       properties:
-        model_id:
+        catalog_name:
           description: |
-            Model id for which temporary credentials are generated. 
+            Catalog name for which temporary credentials are generated. 
             Can be obtained from models/{full_name} (get model info) API.
           type: string
+        schema_name:
+          description: |
+            Schema name for which temporary credentials are generated. 
+            Can be obtained from models/{full_name} (get model info) API.
+          type: string
+        model_name:
+          description: |
+            Model name for which temporary credentials are generated. 
+            Can be obtained from models/{full_name} (get model info) API.
+          type: string
+        version:
+          description: |
+            Model version for which temporary credentials are generated.
+          type: integer
+          format: int64
         operation:
           $ref: '#/components/schemas/ModelOperation'
       type: object
       required:
-        - model_id
+        - catalog_name
+        - schema_name
+        - model_name
+        - version
         - operation
-    GenerateTemporaryModelCredentialResponse:
+    GenerateTemporaryModelVersionCredentialResponse:
       properties:
         aws_temp_credentials:
           $ref: '#/components/schemas/AwsCredentials'
@@ -1811,7 +1832,7 @@ components:
         - READ_VOLUME
         - WRITE_VOLUME
       type: string
-    ModelInfo:
+    RegisteredModelInfo:
       type: object
       properties:
         name:
@@ -1824,7 +1845,7 @@ components:
           description: Name of parent schema relative to its parent catalog.
           type: string
         storage_location:
-          description: Storage root URL for model (for **MANAGED**, **EXTERNAL** tables)
+          description: Storage root URL for model (for **MANAGED**, **EXTERNAL** models)
           type: string
         comment:
           description: User-provided free-form text description.
@@ -1853,7 +1874,7 @@ components:
           description: Name of parent schema relative to its parent catalog.
           type: string
         version:
-          description: The version number of the model version
+          description: The version number of the model version.
           type: integer
           format: int64
         source:
@@ -1865,7 +1886,7 @@ components:
         status:
           $ref: '#/components/schemas/ModelVersionStatus'
         storage_location:
-          description: Storage root URL for model version (for **MANAGED**, **EXTERNAL** tables)
+          description: Storage root URL for model version (for **MANAGED**, **EXTERNAL** model versions)
           type: string
         comment:
           description: User-provided free-form text description.
@@ -1882,14 +1903,18 @@ components:
           description: Unique identifier for the model version.
           type: string
     ModelVersionStatus:
-      description: All possible model version statuses
+      description: |
+        All possible model version statuses (UNKNOWN, PENDING, FAILED, READY).
+        PENDING status indicates that the client has not completely written all model artifacts to external storage.
+        FAILED status indicates that the client has failed to write all model artifacts to external storage.
+        READY status indicates that the client has successfully written all model artifacts to external storage.
       type: string
       enum:
         - UNKNOWN
         - PENDING
         - FAILED
         - READY
-    CreateModel:
+    CreateRegisteredModel:
       type: object
       properties:
         model_name:
@@ -1902,7 +1927,7 @@ components:
           description: Name of parent schema relative to its parent catalog.
           type: string
         storage_location:
-          description: Storage root URL for table (for **MANAGED**, **EXTERNAL** tables)
+          description: Storage root URL for registered model (for **MANAGED**, **EXTERNAL** regisetered models)
           type: string
         comment:
           description: User-provided free-form text description.
@@ -1911,7 +1936,7 @@ components:
         - model_name
         - catalog_name
         - schema_name
-    UpdateModel:
+    UpdateRegisteredModel:
       type: object
       properties:
         comment:
@@ -1920,14 +1945,14 @@ components:
         new_name:
           description: New name for the model.
           type: string
-    ListModelsResponse:
+    ListRegisteredModelsResponse:
       type: object
       properties:
         model_versions:
           description: An array of model information objects.
           type: array
           items:
-            "$ref": "#/components/schemas/ModelInfo"
+            "$ref": "#/components/schemas/RegisteredModelInfo"
         next_page_token:
           type: string
           description: |
@@ -1952,7 +1977,7 @@ components:
           description: The run id used by the ML package that generated the model.
           type: string
         storage_location:
-          description: Storage root URL for table (for **MANAGED**, **EXTERNAL** tables)
+          description: Storage root URL for model (for **MANAGED**, **EXTERNAL** models)
           type: string
         comment:
           description: User-provided free-form text description.

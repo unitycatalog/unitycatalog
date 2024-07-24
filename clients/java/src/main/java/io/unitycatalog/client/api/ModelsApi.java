@@ -17,10 +17,10 @@ import io.unitycatalog.client.ApiException;
 import io.unitycatalog.client.ApiResponse;
 import io.unitycatalog.client.Pair;
 
-import io.unitycatalog.client.model.CreateModel;
-import io.unitycatalog.client.model.ListModelsResponse;
-import io.unitycatalog.client.model.ModelInfo;
-import io.unitycatalog.client.model.UpdateModel;
+import io.unitycatalog.client.model.CreateRegisteredModel;
+import io.unitycatalog.client.model.ListRegisteredModelsResponse;
+import io.unitycatalog.client.model.RegisteredModelInfo;
+import io.unitycatalog.client.model.UpdateRegisteredModel;
 
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -87,24 +87,24 @@ public class ModelsApi {
   /**
    * Create a model. WARNING: This API is experimental and will change in future versions. 
    * Creates a new model instance. WARNING: This API is experimental and will change in future versions. 
-   * @param createModel  (optional)
-   * @return ModelInfo
+   * @param createRegisteredModel  (optional)
+   * @return RegisteredModelInfo
    * @throws ApiException if fails to make API call
    */
-  public ModelInfo createModel(CreateModel createModel) throws ApiException {
-    ApiResponse<ModelInfo> localVarResponse = createModelWithHttpInfo(createModel);
+  public RegisteredModelInfo createRegisteredModel(CreateRegisteredModel createRegisteredModel) throws ApiException {
+    ApiResponse<RegisteredModelInfo> localVarResponse = createRegisteredModelWithHttpInfo(createRegisteredModel);
     return localVarResponse.getData();
   }
 
   /**
    * Create a model. WARNING: This API is experimental and will change in future versions. 
    * Creates a new model instance. WARNING: This API is experimental and will change in future versions. 
-   * @param createModel  (optional)
-   * @return ApiResponse&lt;ModelInfo&gt;
+   * @param createRegisteredModel  (optional)
+   * @return ApiResponse&lt;RegisteredModelInfo&gt;
    * @throws ApiException if fails to make API call
    */
-  public ApiResponse<ModelInfo> createModelWithHttpInfo(CreateModel createModel) throws ApiException {
-    HttpRequest.Builder localVarRequestBuilder = createModelRequestBuilder(createModel);
+  public ApiResponse<RegisteredModelInfo> createRegisteredModelWithHttpInfo(CreateRegisteredModel createRegisteredModel) throws ApiException {
+    HttpRequest.Builder localVarRequestBuilder = createRegisteredModelRequestBuilder(createRegisteredModel);
     try {
       HttpResponse<InputStream> localVarResponse = memberVarHttpClient.send(
           localVarRequestBuilder.build(),
@@ -114,12 +114,12 @@ public class ModelsApi {
       }
       try {
         if (localVarResponse.statusCode()/ 100 != 2) {
-          throw getApiException("createModel", localVarResponse);
+          throw getApiException("createRegisteredModel", localVarResponse);
         }
-        return new ApiResponse<ModelInfo>(
+        return new ApiResponse<RegisteredModelInfo>(
           localVarResponse.statusCode(),
           localVarResponse.headers().map(),
-          localVarResponse.body() == null ? null : memberVarObjectMapper.readValue(localVarResponse.body(), new TypeReference<ModelInfo>() {}) // closes the InputStream
+          localVarResponse.body() == null ? null : memberVarObjectMapper.readValue(localVarResponse.body(), new TypeReference<RegisteredModelInfo>() {}) // closes the InputStream
         );
       } finally {
       }
@@ -132,7 +132,7 @@ public class ModelsApi {
     }
   }
 
-  private HttpRequest.Builder createModelRequestBuilder(CreateModel createModel) throws ApiException {
+  private HttpRequest.Builder createRegisteredModelRequestBuilder(CreateRegisteredModel createRegisteredModel) throws ApiException {
 
     HttpRequest.Builder localVarRequestBuilder = HttpRequest.newBuilder();
 
@@ -144,7 +144,7 @@ public class ModelsApi {
     localVarRequestBuilder.header("Accept", "application/json");
 
     try {
-      byte[] localVarPostBody = memberVarObjectMapper.writeValueAsBytes(createModel);
+      byte[] localVarPostBody = memberVarObjectMapper.writeValueAsBytes(createRegisteredModel);
       localVarRequestBuilder.method("POST", HttpRequest.BodyPublishers.ofByteArray(localVarPostBody));
     } catch (IOException e) {
       throw new ApiException(e);
@@ -162,11 +162,11 @@ public class ModelsApi {
    * Get a model
    * Gets a model for a specific catalog and schema. 
    * @param fullName Full name of the model. (required)
-   * @return ModelInfo
+   * @return RegisteredModelInfo
    * @throws ApiException if fails to make API call
    */
-  public ModelInfo getModel(String fullName) throws ApiException {
-    ApiResponse<ModelInfo> localVarResponse = getModelWithHttpInfo(fullName);
+  public RegisteredModelInfo getRegisteredModel(String fullName) throws ApiException {
+    ApiResponse<RegisteredModelInfo> localVarResponse = getRegisteredModelWithHttpInfo(fullName);
     return localVarResponse.getData();
   }
 
@@ -174,11 +174,11 @@ public class ModelsApi {
    * Get a model
    * Gets a model for a specific catalog and schema. 
    * @param fullName Full name of the model. (required)
-   * @return ApiResponse&lt;ModelInfo&gt;
+   * @return ApiResponse&lt;RegisteredModelInfo&gt;
    * @throws ApiException if fails to make API call
    */
-  public ApiResponse<ModelInfo> getModelWithHttpInfo(String fullName) throws ApiException {
-    HttpRequest.Builder localVarRequestBuilder = getModelRequestBuilder(fullName);
+  public ApiResponse<RegisteredModelInfo> getRegisteredModelWithHttpInfo(String fullName) throws ApiException {
+    HttpRequest.Builder localVarRequestBuilder = getRegisteredModelRequestBuilder(fullName);
     try {
       HttpResponse<InputStream> localVarResponse = memberVarHttpClient.send(
           localVarRequestBuilder.build(),
@@ -188,12 +188,12 @@ public class ModelsApi {
       }
       try {
         if (localVarResponse.statusCode()/ 100 != 2) {
-          throw getApiException("getModel", localVarResponse);
+          throw getApiException("getRegisteredModel", localVarResponse);
         }
-        return new ApiResponse<ModelInfo>(
+        return new ApiResponse<RegisteredModelInfo>(
           localVarResponse.statusCode(),
           localVarResponse.headers().map(),
-          localVarResponse.body() == null ? null : memberVarObjectMapper.readValue(localVarResponse.body(), new TypeReference<ModelInfo>() {}) // closes the InputStream
+          localVarResponse.body() == null ? null : memberVarObjectMapper.readValue(localVarResponse.body(), new TypeReference<RegisteredModelInfo>() {}) // closes the InputStream
         );
       } finally {
       }
@@ -206,10 +206,10 @@ public class ModelsApi {
     }
   }
 
-  private HttpRequest.Builder getModelRequestBuilder(String fullName) throws ApiException {
+  private HttpRequest.Builder getRegisteredModelRequestBuilder(String fullName) throws ApiException {
     // verify the required parameter 'fullName' is set
     if (fullName == null) {
-      throw new ApiException(400, "Missing the required parameter 'fullName' when calling getModel");
+      throw new ApiException(400, "Missing the required parameter 'fullName' when calling getRegisteredModel");
     }
 
     HttpRequest.Builder localVarRequestBuilder = HttpRequest.newBuilder();
@@ -235,14 +235,14 @@ public class ModelsApi {
    * List models
    * Gets the list of all available models under the parent catalog and schema. There is no guarantee of a specific ordering of the elements in the array. 
    * @param catalogName Name of parent catalog for models of interest. (required)
-   * @param schemaName Parent schema of model. (required)
+   * @param schemaName Name of parent schema for models of interest. (required)
    * @param maxResults Maximum number of models to return. - when set to a value greater than 0, the page length is the minimum of this value and a server configured value; - when set to 0, the page length is set to a server configured value; - when set to a value less than 0, an invalid parameter error is returned;  (optional)
    * @param pageToken Opaque token to send for the next page of results (pagination). (optional)
-   * @return ListModelsResponse
+   * @return ListRegisteredModelsResponse
    * @throws ApiException if fails to make API call
    */
-  public ListModelsResponse listModels(String catalogName, String schemaName, Integer maxResults, String pageToken) throws ApiException {
-    ApiResponse<ListModelsResponse> localVarResponse = listModelsWithHttpInfo(catalogName, schemaName, maxResults, pageToken);
+  public ListRegisteredModelsResponse listRegisteredModels(String catalogName, String schemaName, Integer maxResults, String pageToken) throws ApiException {
+    ApiResponse<ListRegisteredModelsResponse> localVarResponse = listRegisteredModelsWithHttpInfo(catalogName, schemaName, maxResults, pageToken);
     return localVarResponse.getData();
   }
 
@@ -250,14 +250,14 @@ public class ModelsApi {
    * List models
    * Gets the list of all available models under the parent catalog and schema. There is no guarantee of a specific ordering of the elements in the array. 
    * @param catalogName Name of parent catalog for models of interest. (required)
-   * @param schemaName Parent schema of model. (required)
+   * @param schemaName Name of parent schema for models of interest. (required)
    * @param maxResults Maximum number of models to return. - when set to a value greater than 0, the page length is the minimum of this value and a server configured value; - when set to 0, the page length is set to a server configured value; - when set to a value less than 0, an invalid parameter error is returned;  (optional)
    * @param pageToken Opaque token to send for the next page of results (pagination). (optional)
-   * @return ApiResponse&lt;ListModelsResponse&gt;
+   * @return ApiResponse&lt;ListRegisteredModelsResponse&gt;
    * @throws ApiException if fails to make API call
    */
-  public ApiResponse<ListModelsResponse> listModelsWithHttpInfo(String catalogName, String schemaName, Integer maxResults, String pageToken) throws ApiException {
-    HttpRequest.Builder localVarRequestBuilder = listModelsRequestBuilder(catalogName, schemaName, maxResults, pageToken);
+  public ApiResponse<ListRegisteredModelsResponse> listRegisteredModelsWithHttpInfo(String catalogName, String schemaName, Integer maxResults, String pageToken) throws ApiException {
+    HttpRequest.Builder localVarRequestBuilder = listRegisteredModelsRequestBuilder(catalogName, schemaName, maxResults, pageToken);
     try {
       HttpResponse<InputStream> localVarResponse = memberVarHttpClient.send(
           localVarRequestBuilder.build(),
@@ -267,12 +267,12 @@ public class ModelsApi {
       }
       try {
         if (localVarResponse.statusCode()/ 100 != 2) {
-          throw getApiException("listModels", localVarResponse);
+          throw getApiException("listRegisteredModels", localVarResponse);
         }
-        return new ApiResponse<ListModelsResponse>(
+        return new ApiResponse<ListRegisteredModelsResponse>(
           localVarResponse.statusCode(),
           localVarResponse.headers().map(),
-          localVarResponse.body() == null ? null : memberVarObjectMapper.readValue(localVarResponse.body(), new TypeReference<ListModelsResponse>() {}) // closes the InputStream
+          localVarResponse.body() == null ? null : memberVarObjectMapper.readValue(localVarResponse.body(), new TypeReference<ListRegisteredModelsResponse>() {}) // closes the InputStream
         );
       } finally {
       }
@@ -285,14 +285,14 @@ public class ModelsApi {
     }
   }
 
-  private HttpRequest.Builder listModelsRequestBuilder(String catalogName, String schemaName, Integer maxResults, String pageToken) throws ApiException {
+  private HttpRequest.Builder listRegisteredModelsRequestBuilder(String catalogName, String schemaName, Integer maxResults, String pageToken) throws ApiException {
     // verify the required parameter 'catalogName' is set
     if (catalogName == null) {
-      throw new ApiException(400, "Missing the required parameter 'catalogName' when calling listModels");
+      throw new ApiException(400, "Missing the required parameter 'catalogName' when calling listRegisteredModels");
     }
     // verify the required parameter 'schemaName' is set
     if (schemaName == null) {
-      throw new ApiException(400, "Missing the required parameter 'schemaName' when calling listModels");
+      throw new ApiException(400, "Missing the required parameter 'schemaName' when calling listRegisteredModels");
     }
 
     HttpRequest.Builder localVarRequestBuilder = HttpRequest.newBuilder();
@@ -338,12 +338,12 @@ public class ModelsApi {
    * Update a model
    * Updates the model that matches the supplied name. 
    * @param fullName Full name of the model. (required)
-   * @param updateModel  (optional)
-   * @return ModelInfo
+   * @param updateRegisteredModel  (optional)
+   * @return RegisteredModelInfo
    * @throws ApiException if fails to make API call
    */
-  public ModelInfo updateModel(String fullName, UpdateModel updateModel) throws ApiException {
-    ApiResponse<ModelInfo> localVarResponse = updateModelWithHttpInfo(fullName, updateModel);
+  public RegisteredModelInfo updateRegisteredModel(String fullName, UpdateRegisteredModel updateRegisteredModel) throws ApiException {
+    ApiResponse<RegisteredModelInfo> localVarResponse = updateRegisteredModelWithHttpInfo(fullName, updateRegisteredModel);
     return localVarResponse.getData();
   }
 
@@ -351,12 +351,12 @@ public class ModelsApi {
    * Update a model
    * Updates the model that matches the supplied name. 
    * @param fullName Full name of the model. (required)
-   * @param updateModel  (optional)
-   * @return ApiResponse&lt;ModelInfo&gt;
+   * @param updateRegisteredModel  (optional)
+   * @return ApiResponse&lt;RegisteredModelInfo&gt;
    * @throws ApiException if fails to make API call
    */
-  public ApiResponse<ModelInfo> updateModelWithHttpInfo(String fullName, UpdateModel updateModel) throws ApiException {
-    HttpRequest.Builder localVarRequestBuilder = updateModelRequestBuilder(fullName, updateModel);
+  public ApiResponse<RegisteredModelInfo> updateRegisteredModelWithHttpInfo(String fullName, UpdateRegisteredModel updateRegisteredModel) throws ApiException {
+    HttpRequest.Builder localVarRequestBuilder = updateRegisteredModelRequestBuilder(fullName, updateRegisteredModel);
     try {
       HttpResponse<InputStream> localVarResponse = memberVarHttpClient.send(
           localVarRequestBuilder.build(),
@@ -366,12 +366,12 @@ public class ModelsApi {
       }
       try {
         if (localVarResponse.statusCode()/ 100 != 2) {
-          throw getApiException("updateModel", localVarResponse);
+          throw getApiException("updateRegisteredModel", localVarResponse);
         }
-        return new ApiResponse<ModelInfo>(
+        return new ApiResponse<RegisteredModelInfo>(
           localVarResponse.statusCode(),
           localVarResponse.headers().map(),
-          localVarResponse.body() == null ? null : memberVarObjectMapper.readValue(localVarResponse.body(), new TypeReference<ModelInfo>() {}) // closes the InputStream
+          localVarResponse.body() == null ? null : memberVarObjectMapper.readValue(localVarResponse.body(), new TypeReference<RegisteredModelInfo>() {}) // closes the InputStream
         );
       } finally {
       }
@@ -384,10 +384,10 @@ public class ModelsApi {
     }
   }
 
-  private HttpRequest.Builder updateModelRequestBuilder(String fullName, UpdateModel updateModel) throws ApiException {
+  private HttpRequest.Builder updateRegisteredModelRequestBuilder(String fullName, UpdateRegisteredModel updateRegisteredModel) throws ApiException {
     // verify the required parameter 'fullName' is set
     if (fullName == null) {
-      throw new ApiException(400, "Missing the required parameter 'fullName' when calling updateModel");
+      throw new ApiException(400, "Missing the required parameter 'fullName' when calling updateRegisteredModel");
     }
 
     HttpRequest.Builder localVarRequestBuilder = HttpRequest.newBuilder();
@@ -401,7 +401,7 @@ public class ModelsApi {
     localVarRequestBuilder.header("Accept", "application/json");
 
     try {
-      byte[] localVarPostBody = memberVarObjectMapper.writeValueAsBytes(updateModel);
+      byte[] localVarPostBody = memberVarObjectMapper.writeValueAsBytes(updateRegisteredModel);
       localVarRequestBuilder.method("PATCH", HttpRequest.BodyPublishers.ofByteArray(localVarPostBody));
     } catch (IOException e) {
       throw new ApiException(e);

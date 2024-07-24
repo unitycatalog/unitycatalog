@@ -30,7 +30,7 @@ import com.fasterxml.jackson.annotation.JsonValue;
  */
 public enum ModelOperation {
   
-  UNKNOWN_TABLE_OPERATION("UNKNOWN_TABLE_OPERATION"),
+  UNKNOWN_MODEL_OPERATION("UNKNOWN_MODEL_OPERATION"),
   
   READ("READ"),
   

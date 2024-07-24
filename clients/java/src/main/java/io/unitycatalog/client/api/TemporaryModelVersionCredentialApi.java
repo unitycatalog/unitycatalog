@@ -17,8 +17,8 @@ import io.unitycatalog.client.ApiException;
 import io.unitycatalog.client.ApiResponse;
 import io.unitycatalog.client.Pair;
 
-import io.unitycatalog.client.model.GenerateTemporaryModelCredential;
-import io.unitycatalog.client.model.GenerateTemporaryModelCredentialResponse;
+import io.unitycatalog.client.model.GenerateTemporaryModelVersionCredential;
+import io.unitycatalog.client.model.GenerateTemporaryModelVersionCredentialResponse;
 
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -46,7 +46,7 @@ import java.util.Set;
 import java.util.function.Consumer;
 
 @jakarta.annotation.Generated(value = "org.openapitools.codegen.languages.JavaClientCodegen", comments = "Generator version: 7.5.0")
-public class TemporaryModelCredentialsApi {
+public class TemporaryModelVersionCredentialApi {
   private final HttpClient memberVarHttpClient;
   private final ObjectMapper memberVarObjectMapper;
   private final String memberVarBaseUri;
@@ -55,11 +55,11 @@ public class TemporaryModelCredentialsApi {
   private final Consumer<HttpResponse<InputStream>> memberVarResponseInterceptor;
   private final Consumer<HttpResponse<String>> memberVarAsyncResponseInterceptor;
 
-  public TemporaryModelCredentialsApi() {
+  public TemporaryModelVersionCredentialApi() {
     this(new ApiClient());
   }
 
-  public TemporaryModelCredentialsApi(ApiClient apiClient) {
+  public TemporaryModelVersionCredentialApi(ApiClient apiClient) {
     memberVarHttpClient = apiClient.getHttpClient();
     memberVarObjectMapper = apiClient.getObjectMapper();
     memberVarBaseUri = apiClient.getBaseUri();
@@ -83,26 +83,26 @@ public class TemporaryModelCredentialsApi {
   }
 
   /**
-   * Generate temporary model credentials.
+   * Generate temporary model version credentials.  These credentials are used by clients to write and retrieve model artifacts from the model versions external storage location.
    * 
-   * @param generateTemporaryModelCredential  (optional)
-   * @return GenerateTemporaryModelCredentialResponse
+   * @param generateTemporaryModelVersionCredential  (optional)
+   * @return GenerateTemporaryModelVersionCredentialResponse
    * @throws ApiException if fails to make API call
    */
-  public GenerateTemporaryModelCredentialResponse generateTemporaryModelCredentials(GenerateTemporaryModelCredential generateTemporaryModelCredential) throws ApiException {
-    ApiResponse<GenerateTemporaryModelCredentialResponse> localVarResponse = generateTemporaryModelCredentialsWithHttpInfo(generateTemporaryModelCredential);
+  public GenerateTemporaryModelVersionCredentialResponse generateTemporaryModelVersionCredential(GenerateTemporaryModelVersionCredential generateTemporaryModelVersionCredential) throws ApiException {
+    ApiResponse<GenerateTemporaryModelVersionCredentialResponse> localVarResponse = generateTemporaryModelVersionCredentialWithHttpInfo(generateTemporaryModelVersionCredential);
     return localVarResponse.getData();
   }
 
   /**
-   * Generate temporary model credentials.
+   * Generate temporary model version credentials.  These credentials are used by clients to write and retrieve model artifacts from the model versions external storage location.
    * 
-   * @param generateTemporaryModelCredential  (optional)
-   * @return ApiResponse&lt;GenerateTemporaryModelCredentialResponse&gt;
+   * @param generateTemporaryModelVersionCredential  (optional)
+   * @return ApiResponse&lt;GenerateTemporaryModelVersionCredentialResponse&gt;
    * @throws ApiException if fails to make API call
    */
-  public ApiResponse<GenerateTemporaryModelCredentialResponse> generateTemporaryModelCredentialsWithHttpInfo(GenerateTemporaryModelCredential generateTemporaryModelCredential) throws ApiException {
-    HttpRequest.Builder localVarRequestBuilder = generateTemporaryModelCredentialsRequestBuilder(generateTemporaryModelCredential);
+  public ApiResponse<GenerateTemporaryModelVersionCredentialResponse> generateTemporaryModelVersionCredentialWithHttpInfo(GenerateTemporaryModelVersionCredential generateTemporaryModelVersionCredential) throws ApiException {
+    HttpRequest.Builder localVarRequestBuilder = generateTemporaryModelVersionCredentialRequestBuilder(generateTemporaryModelVersionCredential);
     try {
       HttpResponse<InputStream> localVarResponse = memberVarHttpClient.send(
           localVarRequestBuilder.build(),
@@ -112,12 +112,12 @@ public class TemporaryModelCredentialsApi {
       }
       try {
         if (localVarResponse.statusCode()/ 100 != 2) {
-          throw getApiException("generateTemporaryModelCredentials", localVarResponse);
+          throw getApiException("generateTemporaryModelVersionCredential", localVarResponse);
         }
-        return new ApiResponse<GenerateTemporaryModelCredentialResponse>(
+        return new ApiResponse<GenerateTemporaryModelVersionCredentialResponse>(
           localVarResponse.statusCode(),
           localVarResponse.headers().map(),
-          localVarResponse.body() == null ? null : memberVarObjectMapper.readValue(localVarResponse.body(), new TypeReference<GenerateTemporaryModelCredentialResponse>() {}) // closes the InputStream
+          localVarResponse.body() == null ? null : memberVarObjectMapper.readValue(localVarResponse.body(), new TypeReference<GenerateTemporaryModelVersionCredentialResponse>() {}) // closes the InputStream
         );
       } finally {
       }
@@ -130,11 +130,11 @@ public class TemporaryModelCredentialsApi {
     }
   }
 
-  private HttpRequest.Builder generateTemporaryModelCredentialsRequestBuilder(GenerateTemporaryModelCredential generateTemporaryModelCredential) throws ApiException {
+  private HttpRequest.Builder generateTemporaryModelVersionCredentialRequestBuilder(GenerateTemporaryModelVersionCredential generateTemporaryModelVersionCredential) throws ApiException {
 
     HttpRequest.Builder localVarRequestBuilder = HttpRequest.newBuilder();
 
-    String localVarPath = "/temporary-model-credentials";
+    String localVarPath = "/temporary-model-version-credentials";
 
     localVarRequestBuilder.uri(URI.create(memberVarBaseUri + localVarPath));
 
@@ -142,7 +142,7 @@ public class TemporaryModelCredentialsApi {
     localVarRequestBuilder.header("Accept", "application/json");
 
     try {
-      byte[] localVarPostBody = memberVarObjectMapper.writeValueAsBytes(generateTemporaryModelCredential);
+      byte[] localVarPostBody = memberVarObjectMapper.writeValueAsBytes(generateTemporaryModelVersionCredential);
       localVarRequestBuilder.method("POST", HttpRequest.BodyPublishers.ofByteArray(localVarPostBody));
     } catch (IOException e) {
       throw new ApiException(e);

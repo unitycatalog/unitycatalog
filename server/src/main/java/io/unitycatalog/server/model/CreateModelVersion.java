@@ -198,7 +198,7 @@ public class CreateModelVersion {
   }
 
    /**
-   * Storage root URL for table (for **MANAGED**, **EXTERNAL** tables)
+   * Storage root URL for model (for **MANAGED**, **EXTERNAL** models)
    * @return storageLocation
   **/
   @jakarta.annotation.Nullable

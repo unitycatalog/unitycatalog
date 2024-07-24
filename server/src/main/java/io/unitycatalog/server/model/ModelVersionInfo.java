@@ -167,7 +167,7 @@ public class ModelVersionInfo {
   }
 
    /**
-   * The version number of the model version
+   * The version number of the model version.
    * @return version
   **/
   @jakarta.annotation.Nullable
@@ -271,7 +271,7 @@ public class ModelVersionInfo {
   }
 
    /**
-   * Storage root URL for model version (for **MANAGED**, **EXTERNAL** tables)
+   * Storage root URL for model version (for **MANAGED**, **EXTERNAL** model versions)
    * @return storageLocation
   **/
   @jakarta.annotation.Nullable
