@@ -312,6 +312,7 @@ lazy val root = (project in file("."))
   .settings(
     name := s"$artifactNamePrefix",
     createTarballSettings(),
+    commonSettings,
     rootReleaseSettings
   )
 
