@@ -11,34 +11,30 @@
  */
 
 
-package io.unitycatalog.client.model;
+package io.unitycatalog.server.model;
 
-import java.net.URLEncoder;
-import java.nio.charset.StandardCharsets;
-import java.util.StringJoiner;
 import java.util.Objects;
-import java.util.Map;
-import java.util.HashMap;
+import java.util.Arrays;
 import com.fasterxml.jackson.annotation.JsonPropertyOrder;
-
+import com.fasterxml.jackson.annotation.JsonTypeName;
 
 import com.fasterxml.jackson.annotation.JsonCreator;
 import com.fasterxml.jackson.annotation.JsonValue;
 
 /**
- * Gets or Sets ModelOperation
+ * Gets or Sets ModelVersionOperation
  */
-public enum ModelOperation {
+public enum ModelVersionOperation {
   
-  UNKNOWN_MODEL_OPERATION("UNKNOWN_MODEL_OPERATION"),
+  UNKNOWN_MODEL_VERSION_OPERATION("UNKNOWN_MODEL_VERSION_OPERATION"),
   
-  READ("READ"),
+  READ_MODEL_VERSION("READ_MODEL_VERSION"),
   
-  READ_WRITE("READ_WRITE");
+  READ_WRITE_MODEL_VERSION("READ_WRITE_MODEL_VERSION");
 
   private String value;
 
-  ModelOperation(String value) {
+  ModelVersionOperation(String value) {
     this.value = value;
   }
 
@@ -53,28 +49,13 @@ public enum ModelOperation {
   }
 
   @JsonCreator
-  public static ModelOperation fromValue(String value) {
-    for (ModelOperation b : ModelOperation.values()) {
+  public static ModelVersionOperation fromValue(String value) {
+    for (ModelVersionOperation b : ModelVersionOperation.values()) {
       if (b.value.equals(value)) {
         return b;
       }
     }
     throw new IllegalArgumentException("Unexpected value '" + value + "'");
   }
-
-  /**
-   * Convert the instance into URL query string.
-   *
-   * @param prefix prefix of the query string
-   * @return URL query string
-   */
-  public String toUrlQueryString(String prefix) {
-    if (prefix == null) {
-      prefix = "";
-    }
-
-    return String.format("%s=%s", prefix, this.toString());
-  }
-
 }
 

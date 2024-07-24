@@ -48,7 +48,7 @@ import java.util.Set;
 import java.util.function.Consumer;
 
 @jakarta.annotation.Generated(value = "org.openapitools.codegen.languages.JavaClientCodegen", comments = "Generator version: 7.5.0")
-public class ModelsApi {
+public class RegisteredModelsApi {
   private final HttpClient memberVarHttpClient;
   private final ObjectMapper memberVarObjectMapper;
   private final String memberVarBaseUri;
@@ -57,11 +57,11 @@ public class ModelsApi {
   private final Consumer<HttpResponse<InputStream>> memberVarResponseInterceptor;
   private final Consumer<HttpResponse<String>> memberVarAsyncResponseInterceptor;
 
-  public ModelsApi() {
+  public RegisteredModelsApi() {
     this(new ApiClient());
   }
 
-  public ModelsApi(ApiClient apiClient) {
+  public RegisteredModelsApi(ApiClient apiClient) {
     memberVarHttpClient = apiClient.getHttpClient();
     memberVarObjectMapper = apiClient.getObjectMapper();
     memberVarBaseUri = apiClient.getBaseUri();
@@ -149,6 +149,79 @@ public class ModelsApi {
     } catch (IOException e) {
       throw new ApiException(e);
     }
+    if (memberVarReadTimeout != null) {
+      localVarRequestBuilder.timeout(memberVarReadTimeout);
+    }
+    if (memberVarInterceptor != null) {
+      memberVarInterceptor.accept(localVarRequestBuilder);
+    }
+    return localVarRequestBuilder;
+  }
+
+  /**
+   * Delete a model
+   * Deletes a model from the specified parent catalog and schema. All versions of the model must have already been deleted. 
+   * @param fullName Full name of the model. (required)
+   * @return Object
+   * @throws ApiException if fails to make API call
+   */
+  public Object deleteRegisteredModel(String fullName) throws ApiException {
+    ApiResponse<Object> localVarResponse = deleteRegisteredModelWithHttpInfo(fullName);
+    return localVarResponse.getData();
+  }
+
+  /**
+   * Delete a model
+   * Deletes a model from the specified parent catalog and schema. All versions of the model must have already been deleted. 
+   * @param fullName Full name of the model. (required)
+   * @return ApiResponse&lt;Object&gt;
+   * @throws ApiException if fails to make API call
+   */
+  public ApiResponse<Object> deleteRegisteredModelWithHttpInfo(String fullName) throws ApiException {
+    HttpRequest.Builder localVarRequestBuilder = deleteRegisteredModelRequestBuilder(fullName);
+    try {
+      HttpResponse<InputStream> localVarResponse = memberVarHttpClient.send(
+          localVarRequestBuilder.build(),
+          HttpResponse.BodyHandlers.ofInputStream());
+      if (memberVarResponseInterceptor != null) {
+        memberVarResponseInterceptor.accept(localVarResponse);
+      }
+      try {
+        if (localVarResponse.statusCode()/ 100 != 2) {
+          throw getApiException("deleteRegisteredModel", localVarResponse);
+        }
+        return new ApiResponse<Object>(
+          localVarResponse.statusCode(),
+          localVarResponse.headers().map(),
+          localVarResponse.body() == null ? null : memberVarObjectMapper.readValue(localVarResponse.body(), new TypeReference<Object>() {}) // closes the InputStream
+        );
+      } finally {
+      }
+    } catch (IOException e) {
+      throw new ApiException(e);
+    }
+    catch (InterruptedException e) {
+      Thread.currentThread().interrupt();
+      throw new ApiException(e);
+    }
+  }
+
+  private HttpRequest.Builder deleteRegisteredModelRequestBuilder(String fullName) throws ApiException {
+    // verify the required parameter 'fullName' is set
+    if (fullName == null) {
+      throw new ApiException(400, "Missing the required parameter 'fullName' when calling deleteRegisteredModel");
+    }
+
+    HttpRequest.Builder localVarRequestBuilder = HttpRequest.newBuilder();
+
+    String localVarPath = "/models/{full_name}"
+        .replace("{full_name}", ApiClient.urlEncode(fullName.toString()));
+
+    localVarRequestBuilder.uri(URI.create(memberVarBaseUri + localVarPath));
+
+    localVarRequestBuilder.header("Accept", "application/json");
+
+    localVarRequestBuilder.method("DELETE", HttpRequest.BodyPublishers.noBody());
     if (memberVarReadTimeout != null) {
       localVarRequestBuilder.timeout(memberVarReadTimeout);
     }

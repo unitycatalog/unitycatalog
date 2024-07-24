@@ -9,9 +9,8 @@ src/main/java/io/unitycatalog/client/ServerConfiguration.java
 src/main/java/io/unitycatalog/client/ServerVariable.java
 src/main/java/io/unitycatalog/client/api/CatalogsApi.java
 src/main/java/io/unitycatalog/client/api/FunctionsApi.java
-src/main/java/io/unitycatalog/client/api/ModelApi.java
 src/main/java/io/unitycatalog/client/api/ModelVersionsApi.java
-src/main/java/io/unitycatalog/client/api/ModelsApi.java
+src/main/java/io/unitycatalog/client/api/RegisteredModelsApi.java
 src/main/java/io/unitycatalog/client/api/SchemasApi.java
 src/main/java/io/unitycatalog/client/api/TablesApi.java
 src/main/java/io/unitycatalog/client/api/TemporaryModelVersionCredentialApi.java
@@ -54,8 +53,8 @@ src/main/java/io/unitycatalog/client/model/ListRegisteredModelsResponse.java
 src/main/java/io/unitycatalog/client/model/ListSchemasResponse.java
 src/main/java/io/unitycatalog/client/model/ListTablesResponse.java
 src/main/java/io/unitycatalog/client/model/ListVolumesResponseContent.java
-src/main/java/io/unitycatalog/client/model/ModelOperation.java
 src/main/java/io/unitycatalog/client/model/ModelVersionInfo.java
+src/main/java/io/unitycatalog/client/model/ModelVersionOperation.java
 src/main/java/io/unitycatalog/client/model/ModelVersionStatus.java
 src/main/java/io/unitycatalog/client/model/RegisteredModelInfo.java
 src/main/java/io/unitycatalog/client/model/SchemaInfo.java

@@ -24,7 +24,7 @@ import com.fasterxml.jackson.annotation.JsonProperty;
 import com.fasterxml.jackson.annotation.JsonCreator;
 import com.fasterxml.jackson.annotation.JsonTypeName;
 import com.fasterxml.jackson.annotation.JsonValue;
-import io.unitycatalog.client.model.ModelOperation;
+import io.unitycatalog.client.model.ModelVersionOperation;
 import java.util.Arrays;
 import com.fasterxml.jackson.annotation.JsonPropertyOrder;
 
@@ -54,7 +54,7 @@ public class GenerateTemporaryModelVersionCredential {
   private Long version;
 
   public static final String JSON_PROPERTY_OPERATION = "operation";
-  private ModelOperation operation;
+  private ModelVersionOperation operation;
 
   public GenerateTemporaryModelVersionCredential() { 
   }
@@ -159,7 +159,7 @@ public class GenerateTemporaryModelVersionCredential {
   }
 
 
-  public GenerateTemporaryModelVersionCredential operation(ModelOperation operation) {
+  public GenerateTemporaryModelVersionCredential operation(ModelVersionOperation operation) {
     this.operation = operation;
     return this;
   }
@@ -172,14 +172,14 @@ public class GenerateTemporaryModelVersionCredential {
   @JsonProperty(JSON_PROPERTY_OPERATION)
   @JsonInclude(value = JsonInclude.Include.ALWAYS)
 
-  public ModelOperation getOperation() {
+  public ModelVersionOperation getOperation() {
     return operation;
   }
 
 
   @JsonProperty(JSON_PROPERTY_OPERATION)
   @JsonInclude(value = JsonInclude.Include.ALWAYS)
-  public void setOperation(ModelOperation operation) {
+  public void setOperation(ModelVersionOperation operation) {
     this.operation = operation;
   }
 

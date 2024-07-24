@@ -21,10 +21,10 @@ tags:
       Functions implement User-Defined Functions (UDFs) in Unity Catalog.
       The function implementation can be a SQL expression/query or a python function, and it can be invoked wherever a table reference is allowed in a query.
       In Unity Catalog, a function resides at the same level as a table, so it can be referenced with the form __catalog_name__.__schema_name__.__function_name__.
-  - name: Models
+  - name: RegisteredModels
     description: |
-      Models are machine learning models that are stored within Unity Catalog.  They are comprised of all versions of a single model that a user wishes to keep.
-      A model resides in the third layer of Unity Catalog’s three-level namespace, and can be referenced with the form __catalog_name__.__schema_name__.__model_name__.
+      Registered models are machine learning models that are stored within the Unity Catalog model registry.  They are comprised of all versions of a single model that a user wishes to keep.
+      A registered model resides in the third layer of Unity Catalog’s three-level namespace, and can be referenced with the form __catalog_name__.__schema_name__.__model_name__.
   - name: ModelVersions
     description: |
       Model versions contain all artifact files associated with an individual machine learned model.  They are associated with a single parent model and have an integer identifier, indicating the version number of the model.
@@ -755,7 +755,7 @@ paths:
         Create a model.
         WARNING: This API is experimental and will change in future versions.
       tags:
-        - Models
+        - RegisteredModels
       description: |
         Creates a new model instance.
         WARNING: This API is experimental and will change in future versions.
@@ -773,7 +773,7 @@ paths:
                 $ref: '#/components/schemas/RegisteredModelInfo'
     get:
       tags:
-        - Models
+        - RegisteredModels
       parameters:
         - name: catalog_name
           in: query
@@ -827,7 +827,7 @@ paths:
           type: string
     get:
       tags:
-        - Models
+        - RegisteredModels
       operationId: getRegisteredModel
       summary: Get a model
       description: |
@@ -841,7 +841,7 @@ paths:
                 $ref: '#/components/schemas/RegisteredModelInfo'
     patch:
       tags:
-        - Models
+        - RegisteredModels
       operationId: updateRegisteredModel
       summary: Update a model
       description: |
@@ -860,7 +860,7 @@ paths:
                 $ref: '#/components/schemas/RegisteredModelInfo'
     delete:
       tags:
-        - Model
+        - RegisteredModels
       operationId: deleteRegisteredModel
       summary: Delete a model
       description: |
@@ -1731,7 +1731,7 @@ components:
           type: integer
           format: int64
         operation:
-          $ref: '#/components/schemas/ModelOperation'
+          $ref: '#/components/schemas/ModelVersionOperation'
       type: object
       required:
         - catalog_name
@@ -1750,11 +1750,11 @@ components:
           type: integer
           format: int64
       type: object
-    ModelOperation:
+    ModelVersionOperation:
       enum:
-        - UNKNOWN_MODEL_OPERATION
-        - READ
-        - READ_WRITE
+        - UNKNOWN_MODEL_VERSION_OPERATION
+        - READ_MODEL_VERSION
+        - READ_WRITE_MODEL_VERSION
       type: string
     GenerateTemporaryTableCredential:
       example:
