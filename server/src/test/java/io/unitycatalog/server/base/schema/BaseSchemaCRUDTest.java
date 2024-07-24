@@ -9,8 +9,8 @@ import java.util.Optional;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -51,7 +51,7 @@ public abstract class BaseSchemaCRUDTest extends BaseCRUDTest {
     // List schemas
     System.out.println("Testing list schemas..");
     Iterable<SchemaInfo> schemaList = schemaOperations.listSchemas(TestUtils.CATALOG_NAME);
-    assertTrue(TestUtils.contains(schemaList, schemaInfo, (schema) -> schema.equals(schemaInfo)));
+    assertThat(schemaList).contains(schemaInfo);
 
     // Get schema
     System.out.println("Testing get schema..");

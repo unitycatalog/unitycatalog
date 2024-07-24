@@ -35,6 +35,7 @@ import java.net.URI;
 import java.util.*;
 
 import static io.unitycatalog.server.utils.TestUtils.*;
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -93,8 +94,7 @@ public class SparkIntegrationTest extends BaseCRUDTest {
         String path1 = new File(dataDir, "test_delta_path1").getCanonicalPath();
         String tableName1 = String.format("delta.`%s`", path1);
         session.sql(String.format("CREATE TABLE %s(i INT) USING delta", tableName1));
-        assertTrue(
-                session.sql("SELECT * FROM " + tableName1).collectAsList().isEmpty());
+        assertThat(session.sql("SELECT * FROM " + tableName1).collectAsList()).isEmpty();
         session.sql("INSERT INTO " + tableName1 + " SELECT 1");
         assertEquals(1,
                 session.sql("SELECT * FROM " + tableName1).collectAsList().get(0).getInt(0));

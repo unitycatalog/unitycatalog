@@ -1,10 +1,10 @@
 package io.unitycatalog.server.base.table;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.fail;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
-import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import io.unitycatalog.client.ApiException;
 import io.unitycatalog.client.model.*;
@@ -89,10 +89,7 @@ public abstract class BaseTableCRUDTest extends BaseCRUDTest {
         tableOperations.listTables(TestUtils.CATALOG_NAME, TestUtils.SCHEMA_NAME);
     List<TableInfo> sortedTableList = new ArrayList<>();
     tableInfosSortedByName.forEach(sortedTableList::add);
-    for (int i = 1; i < sortedTableList.size(); i++) {
-      assertTrue(
-          sortedTableList.get(i - 1).getName().compareTo(sortedTableList.get(i).getName()) <= 0);
-    }
+    assertThat(sortedTableList).isSortedAccordingTo(Comparator.comparing(TableInfo::getName));
 
     // Clean up created tables
     System.out.println("Cleaning up created tables..");
