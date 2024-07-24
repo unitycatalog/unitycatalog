@@ -1,5 +1,7 @@
 package io.unitycatalog.cli.utils;
 
+import com.amazonaws.util.Base64;
+import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.sun.net.httpserver.HttpExchange;
@@ -47,12 +49,12 @@ public class Outh2CliExchange {
     String REDIRECT_URL = "redirect_uri";
   }
 
+  ServerPropertiesUtils serverProperties = ServerPropertiesUtils.getInstance();
+
   private static final ObjectMapper mapper = new ObjectMapper();
 
   // TODO: Some of this should probably be done server side.
   public String authenticate() throws IOException {
-
-    ServerPropertiesUtils serverProperties = ServerPropertiesUtils.getInstance();
 
     // TODO: These properties, especially client-secret should probably be server side.
     String authorizationUrl = serverProperties.getProperty("server.authorization-url");
@@ -131,7 +133,9 @@ public class Outh2CliExchange {
     tokenParams.put(Fields.CLIENT_SECRET, clientSecret);
     tokenParams.put(Fields.GRANT_TYPE, "authorization_code");
     tokenParams.put(Fields.REDIRECT_URL, redirectUrl);
-    String tokenBody = mapper.writeValueAsString(tokenParams);
+
+    String tokenBody = buildTokenBody(tokenParams);
+    String authorization = buildAuthorization(tokenParams);
 
     // TODO: Replace this with a more modern web-client
     HttpURLConnection urlConnection = (HttpURLConnection) new URL(tokenUrl).openConnection();
@@ -139,8 +143,9 @@ public class Outh2CliExchange {
     urlConnection.setDoInput(true);
     urlConnection.setDoOutput(true);
     urlConnection.setUseCaches(false);
-    urlConnection.setRequestProperty("content-type", "application/json");
     urlConnection.setRequestProperty("accept", "application/json");
+    urlConnection.setRequestProperty("content-type", "application/x-www-form-urlencoded");
+    urlConnection.setRequestProperty("authorization", authorization);
     PrintStream printStream = new PrintStream(new BufferedOutputStream(urlConnection.getOutputStream()));
     printStream.print(tokenBody);
     printStream.close();
@@ -152,7 +157,7 @@ public class Outh2CliExchange {
         tokenResponse = new String(inputStream.readAllBytes());
       }
       System.out.println("Received token response.");
-      Map<String, String> tokenResponseParams = mapper.readValue(tokenResponse, new TypeReference<Map<String, String>>() {
+      Map<String, String> tokenResponseParams = mapper.readValue(tokenResponse, new TypeReference<>() {
       });
       urlConnection.disconnect();
       return tokenResponseParams.get("id_token");
@@ -167,10 +172,30 @@ public class Outh2CliExchange {
     }
   }
 
-  private static int findAvailablePort() throws IOException {
-    try (ServerSocket serverSocket = new ServerSocket(0)) {
-      return serverSocket.getLocalPort();
+  private int findAvailablePort() throws IOException {
+    String port = serverProperties.getProperty("server.redirect-port");
+    if (port != null && !port.isBlank()) {
+      return Integer.parseInt(port);
+    } else {
+      try (ServerSocket serverSocket = new ServerSocket(0)) {
+        return serverSocket.getLocalPort();
+      }
     }
+  }
+
+  private String buildTokenBody(Map<String, String> tokenParams) throws JsonProcessingException {
+    return tokenParams.entrySet().stream()
+            .filter(p -> !p.getKey().equals(Fields.CLIENT_ID) && !p.getKey().equals(Fields.CLIENT_SECRET))
+            .map(p -> URLEncoder.encode(p.getKey(), StandardCharsets.UTF_8) +
+                    "=" +
+                    URLEncoder.encode(p.getValue(), StandardCharsets.UTF_8))
+            .reduce((p1, p2) -> p1 + "&" + p2)
+            .orElse("");
+  }
+
+  private String buildAuthorization(Map<String, String> tokenParams) {
+    String authorizationValue = tokenParams.get(Fields.CLIENT_ID) + ":" + tokenParams.get(Fields.CLIENT_SECRET);
+    return "Basic " + new String(Base64.encode(authorizationValue.getBytes()));
   }
 
   static class AuthCallbackHandler implements HttpHandler {
