@@ -30,7 +30,7 @@ run_in_source_code() {
       generate_jar
   fi
 
-  SERVER_CLASSPATH_FILE=$(find "$SERVER_TARGET_DIR" -name "classpath" | head -n 1)
+  SERVER_CLASSPATH_FILE="$SERVER_TARGET_DIR/classpath"
   if [ -z "$SERVER_CLASSPATH_FILE" ]; then
       echo "No classpath file found in the target directory '$SERVER_TARGET_DIR'."
       generate_jar
