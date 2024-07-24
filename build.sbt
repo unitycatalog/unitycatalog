@@ -3,7 +3,7 @@ import java.io.File
 import Tarball.createTarballSettings
 import sbt.util
 import sbtlicensereport.license.{DepModuleInfo, LicenseCategory, LicenseInfo}
-import ReleaseSettings.*
+import ReleaseSettings.{javaOnlyReleaseSettings, rootReleaseSettings, skipReleaseSettings}
 
 import scala.jdk.CollectionConverters.asJavaIterableConverter
 import scala.language.implicitConversions
@@ -27,6 +27,12 @@ lazy val commonSettings = Seq(
     "-source", "17",
     "-target", "17",
     "-g:source,lines,vars",
+  ),
+  libraryDependencies ++= Seq(
+    "org.slf4j" % "slf4j-api" % "2.0.13",
+    "org.slf4j" % "slf4j-log4j12" % "2.0.13" % Test,
+    "org.apache.logging.log4j" % "log4j-slf4j2-impl" % "2.23.1",
+    "org.apache.logging.log4j" % "log4j-api" % "2.23.1"
   ),
   resolvers += Resolver.mavenLocal,
   autoScalaLibrary := false,
@@ -180,10 +186,6 @@ lazy val server = (project in file("server"))
 
       "org.hibernate.orm" % "hibernate-core" % "6.5.0.Final",
       "org.openapitools" % "jackson-databind-nullable" % openApiToolsJacksonBindNullableVersion,
-      // logging
-      "org.apache.logging.log4j" % "log4j-api" % log4jVersion,
-      "org.apache.logging.log4j" % "log4j-core" % log4jVersion,
-      "org.apache.logging.log4j" % "log4j-slf4j-impl" % log4jVersion,
 
       "jakarta.activation" % "jakarta.activation-api" % "2.1.3",
       "net.bytebuddy" % "byte-buddy" % "1.14.15",
@@ -242,6 +244,7 @@ lazy val serverModels = (project in file("server") / "target" / "models")
   .settings(
     name := s"$artifactNamePrefix-servermodels",
     commonSettings,
+    (Compile / compile) := ((Compile / compile) dependsOn generate).value,
     libraryDependencies ++= Seq(
       "jakarta.annotation" % "jakarta.annotation-api" % "3.0.0" % Provided,
       "com.fasterxml.jackson.core" % "jackson-annotations" % jacksonVersion,
@@ -285,10 +288,6 @@ lazy val cli = (project in file("examples") / "cli")
       "com.fasterxml.jackson.datatype" % "jackson-datatype-jsr310" % jacksonVersion,
       "org.openapitools" % "jackson-databind-nullable" % openApiToolsJacksonBindNullableVersion,
       "org.yaml" % "snakeyaml" % "2.2",
-      // logging
-      "org.apache.logging.log4j" % "log4j-api" % log4jVersion,
-      "org.apache.logging.log4j" % "log4j-core" % log4jVersion,
-      "org.apache.logging.log4j" % "log4j-slf4j-impl" % log4jVersion,
 
       "io.delta" % "delta-kernel-api" % "3.2.0",
       "io.delta" % "delta-kernel-defaults" % "3.2.0",

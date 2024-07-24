@@ -12,6 +12,15 @@ import time
 import threading
 
 
+def stopServer():
+    try:
+        with open("server_pid.txt", "r") as f:
+            pid = int(f.read().strip())
+            os.killpg(os.getpgid(pid), signal.SIGTERM)  # Send SIGTERM to the process group
+            print(f"Stopped server with PID {pid}.")
+    except Exception as e:
+        print(f"Failed to stop the server: {e}")
+
 # 1. Extract the tarball
 tarball_path = "target/unitycatalog-{version}.tar.gz"
 extract_path = "target/dist"
@@ -69,8 +78,8 @@ stderr_thread = threading.Thread(target=read_output, args=(server_process.stderr
 stdout_thread.start()
 stderr_thread.start()
 time.sleep(15)
-stdout_thread.join(timeout=1)
-stderr_thread.join(timeout=1)
+stdout_thread.join(timeout=5)
+stderr_thread.join(timeout=5)
 
 if not stderr_lines:
     print("Server started successfully.")
@@ -78,6 +87,7 @@ if not stderr_lines:
 else:
     print("Server failed to start.")
     print("".join(stderr_lines))
+    stopServer()
     exit(1)
 
 # 4. Verify server is running
@@ -87,9 +97,11 @@ try:
         print("Server is running.")
     else:
         print(f"Server responded with status code: {response.status_code}")
+        stopServer()
         sys.exit(1)
 except requests.RequestException as e:
     print(f"Failed to connect to the server: {e}")
+    stopServer()
     sys.exit(1)
 
 # 5. Run and verify CLI
@@ -99,16 +111,11 @@ try:
     print("CLI command executed successfully.")
 except subprocess.CalledProcessError as e:
     print(f"CLI command failed with error: {e}")
+    stopServer()
     sys.exit(1)
 
 # 6. Stop server
-try:
-    with open("server_pid.txt", "r") as f:
-        pid = int(f.read().strip())
-        os.killpg(os.getpgid(pid), signal.SIGTERM)  # Send SIGTERM to the process group
-        print(f"Stopped server with PID {pid}.")
-except Exception as e:
-    print(f"Failed to stop the server: {e}")
+stopServer()
 
 # 7. Cleanup temp directory
 try:
