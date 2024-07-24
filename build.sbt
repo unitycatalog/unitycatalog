@@ -2,9 +2,10 @@ import java.nio.file.Files
 import java.io.File
 import Tarball.createTarballSettings
 import sbt.util
-import sbtlicensereport.license.{LicenseInfo, LicenseCategory, DepModuleInfo}
-import ReleaseSettings._
+import sbtlicensereport.license.{DepModuleInfo, LicenseCategory, LicenseInfo}
+import ReleaseSettings.{javaOnlyReleaseSettings, rootReleaseSettings, skipReleaseSettings}
 
+import scala.jdk.CollectionConverters.asJavaIterableConverter
 import scala.language.implicitConversions
 
 val orgName = "io.unitycatalog"
@@ -26,6 +27,12 @@ lazy val commonSettings = Seq(
     "-source", "17",
     "-target", "17",
     "-g:source,lines,vars",
+  ),
+  libraryDependencies ++= Seq(
+    "org.slf4j" % "slf4j-api" % "2.0.13",
+    "org.slf4j" % "slf4j-log4j12" % "2.0.13" % Test,
+    "org.apache.logging.log4j" % "log4j-slf4j2-impl" % "2.23.1",
+    "org.apache.logging.log4j" % "log4j-api" % "2.23.1"
   ),
   resolvers += Resolver.mavenLocal,
   autoScalaLibrary := false,
@@ -88,7 +95,7 @@ def javaCheckstyleSettings(configLocation: File) = Seq(
   // (Test / test) := ((Test / test) dependsOn (Test / checkstyle)).value,
 )
 
-lazy val client = (project in file("clients/java"))
+lazy val client = (project in file("target/clients/java"))
   .enablePlugins(OpenApiGeneratorPlugin)
   .disablePlugins(JavaFormatterPlugin)
   .settings(
@@ -109,11 +116,12 @@ lazy val client = (project in file("clients/java"))
       "net.aichler" % "jupiter-interface" % JupiterKeys.jupiterVersion.value % Test,
       "org.assertj" % "assertj-core" % "3.26.3" % Test,
     ),
+    (Compile / compile) := ((Compile / compile) dependsOn generate).value,
 
     // OpenAPI generation specs
     openApiInputSpec := (file(".") / "api" / "all.yaml").toString,
     openApiGeneratorName := "java",
-    openApiOutputDir := (file("clients") / "java").toString,
+    openApiOutputDir := (file("target") / "clients" / "java").toString,
     openApiApiPackage := s"$orgName.client.api",
     openApiModelPackage := s"$orgName.client.model",
     openApiAdditionalProperties := Map(
@@ -127,6 +135,12 @@ lazy val client = (project in file("clients/java"))
     // Define the simple generate command to generate full client codes
     generate := {
       val _ = openApiGenerate.value
+
+      // Delete the generated build.sbt file so that it is not used for our sbt config
+      val buildSbtFile = file(openApiOutputDir.value) / "build.sbt"
+      if (buildSbtFile.exists()) {
+        buildSbtFile.delete()
+      }
     }
   )
 
@@ -150,7 +164,7 @@ lazy val populateTestDB = taskKey[Unit]("Run PopulateTestDatabase main class fro
 
 lazy val server = (project in file("server"))
   .dependsOn(client % "test->test")
-  .enablePlugins(OpenApiGeneratorPlugin)
+  .dependsOn(serverModels)
   .settings (
     name := s"$artifactNamePrefix-server",
     commonSettings,
@@ -174,10 +188,6 @@ lazy val server = (project in file("server"))
 
       "org.hibernate.orm" % "hibernate-core" % "6.5.0.Final",
       "org.openapitools" % "jackson-databind-nullable" % openApiToolsJacksonBindNullableVersion,
-      // logging
-      "org.apache.logging.log4j" % "log4j-api" % log4jVersion,
-      "org.apache.logging.log4j" % "log4j-core" % log4jVersion,
-      "org.apache.logging.log4j" % "log4j-slf4j-impl" % log4jVersion,
 
       "jakarta.activation" % "jakarta.activation-api" % "2.1.3",
       "net.bytebuddy" % "byte-buddy" % "1.14.15",
@@ -205,7 +215,10 @@ lazy val server = (project in file("server"))
       "com.adobe.testing" % "s3mock-junit5" % "3.9.1" % Test
         exclude("ch.qos.logback", "logback-classic")
         exclude("org.apache.logging.log4j", "log4j-to-slf4j"),
-      "javax.xml.bind" % "jaxb-api" % "2.3.1" % Test
+      "javax.xml.bind" % "jaxb-api" % "2.3.1" % Test,
+
+      // CLI dependencies
+      "commons-cli" % "commons-cli" % "1.7.0"
     ),
 
     Compile / compile / javacOptions ++= Seq(
@@ -224,36 +237,45 @@ lazy val server = (project in file("server"))
            |""".stripMargin)
       Seq(file)
     },
+    populateTestDB := {
+      val log = streams.value.log
+      (Test / runMain).toTask(s" io.unitycatalog.server.utils.PopulateTestDatabase").value
+    },
+    Test / javaOptions += s"-Duser.dir=${(ThisBuild / baseDirectory).value.getAbsolutePath}"
+  )
 
+lazy val serverModels = (project in file("server") / "target" / "models")
+  .enablePlugins(OpenApiGeneratorPlugin)
+  .settings(
+    name := s"$artifactNamePrefix-servermodels",
+    commonSettings,
+    (Compile / compile) := ((Compile / compile) dependsOn generate).value,
+    libraryDependencies ++= Seq(
+      "jakarta.annotation" % "jakarta.annotation-api" % "3.0.0" % Provided,
+      "com.fasterxml.jackson.core" % "jackson-annotations" % jacksonVersion,
+    ),
     // OpenAPI generation configs for generating model codes from the spec
     openApiInputSpec := (file(".") / "api" / "all.yaml").toString,
     openApiGeneratorName := "java",
-    openApiOutputDir := file("server").toString,
+    openApiOutputDir := (file("server") / "target" / "models").toString,
     openApiValidateSpec := SettingEnabled,
     openApiGenerateMetadata := SettingDisabled,
     openApiModelPackage := s"$orgName.server.model",
     openApiAdditionalProperties := Map(
-      "library" -> "resteasy",  // resteasy generates the most minimal models
+      "library" -> "resteasy", // resteasy generates the most minimal models
       "useJakartaEe" -> "true",
-      "hideGenerationTimestamp" -> "true"),
+      "hideGenerationTimestamp" -> "true"
+    ),
     openApiGlobalProperties := Map("models" -> ""),
     openApiGenerateApiTests := SettingDisabled,
     openApiGenerateModelTests := SettingDisabled,
     openApiGenerateApiDocumentation := SettingDisabled,
     openApiGenerateModelDocumentation := SettingDisabled,
-
     // Define the simple generate command to generate model codes
     generate := {
       val _ = openApiGenerate.value
-    },
-
-    populateTestDB := {
-      val log = streams.value.log
-      (Test / runMain).toTask(s" io.unitycatalog.server.utils.PopulateTestDatabase").value
-    },
-
-    Test / javaOptions += s"-Duser.dir=${(ThisBuild / baseDirectory).value.getAbsolutePath}",
-)
+    }
+  )
 
 lazy val cli = (project in file("examples") / "cli")
   .dependsOn(server % "compile->compile;test->test")
@@ -271,10 +293,6 @@ lazy val cli = (project in file("examples") / "cli")
       "com.fasterxml.jackson.datatype" % "jackson-datatype-jsr310" % jacksonVersion,
       "org.openapitools" % "jackson-databind-nullable" % openApiToolsJacksonBindNullableVersion,
       "org.yaml" % "snakeyaml" % "2.2",
-      // logging
-      "org.apache.logging.log4j" % "log4j-api" % log4jVersion,
-      "org.apache.logging.log4j" % "log4j-core" % log4jVersion,
-      "org.apache.logging.log4j" % "log4j-slf4j-impl" % log4jVersion,
 
       "io.delta" % "delta-kernel-api" % "3.2.0",
       "io.delta" % "delta-kernel-defaults" % "3.2.0",
@@ -295,10 +313,11 @@ lazy val cli = (project in file("examples") / "cli")
   )
 
 lazy val root = (project in file("."))
-  .aggregate(client, server, cli)
+  .aggregate(serverModels, client, server, cli)
   .settings(
     name := s"$artifactNamePrefix",
     createTarballSettings(),
+    commonSettings,
     rootReleaseSettings
   )
 
