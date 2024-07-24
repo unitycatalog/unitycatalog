@@ -1,6 +1,10 @@
 package io.unitycatalog.server.base.table;
 
-import static org.junit.Assert.*;
+import static org.assertj.core.api.Assertions.fail;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import io.unitycatalog.client.ApiException;
 import io.unitycatalog.client.model.*;
@@ -16,7 +20,8 @@ import java.io.IOException;
 import java.util.*;
 import org.hibernate.Session;
 import org.hibernate.Transaction;
-import org.junit.*;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
 
 public abstract class BaseTableCRUDTest extends BaseCRUDTest {
   protected SchemaOperations schemaOperations;
@@ -27,7 +32,7 @@ public abstract class BaseTableCRUDTest extends BaseCRUDTest {
 
   protected abstract TableOperations createTableOperations(ServerConfig serverConfig);
 
-  @Before
+  @BeforeEach
   @Override
   public void setUp() {
     super.setUp();
@@ -48,15 +53,15 @@ public abstract class BaseTableCRUDTest extends BaseCRUDTest {
 
   @Test
   public void testTableCRUD() throws IOException, ApiException {
-    Assert.assertThrows(Exception.class, () -> tableOperations.getTable(TestUtils.TABLE_FULL_NAME));
+    assertThrows(Exception.class, () -> tableOperations.getTable(TestUtils.TABLE_FULL_NAME));
     createCommonResources();
 
     // Create a table
     System.out.println("Testing create table..");
-    TableInfo tableInfo = createDefaultTestingTable();
+    TableInfo tableInfo = createTestingTable(TestUtils.TABLE_NAME, TestUtils.STORAGE_LOCATION);
     assertEquals(TestUtils.TABLE_NAME, tableInfo.getName());
-    Assert.assertEquals(TestUtils.CATALOG_NAME, tableInfo.getCatalogName());
-    Assert.assertEquals(TestUtils.SCHEMA_NAME, tableInfo.getSchemaName());
+    assertEquals(TestUtils.CATALOG_NAME, tableInfo.getCatalogName());
+    assertEquals(TestUtils.SCHEMA_NAME, tableInfo.getSchemaName());
     assertNotNull(tableInfo.getTableId());
 
     // Get table
@@ -69,11 +74,32 @@ public abstract class BaseTableCRUDTest extends BaseCRUDTest {
     assertEquals(1, columnInfos2.stream().filter(c -> c.getName().equals("as_int")).count());
     assertEquals(1, columnInfos2.stream().filter(c -> c.getName().equals("as_string")).count());
 
-    // List tables
-    System.out.println("Testing list tables..");
-    Iterable<TableInfo> tableInfos =
+    // Create multiple tables
+    List<TableInfo> createdTables = createMultipleTestingTables(111);
+
+    // List tables with pagination - default is 100 tables per page
+    System.out.println("Testing list tables with pagination..");
+    Iterable<TableInfo> tableInfosWithPagination =
         tableOperations.listTables(TestUtils.CATALOG_NAME, TestUtils.SCHEMA_NAME);
-    assertTrue(TestUtils.contains(tableInfos, tableInfo2, table -> table.equals(tableInfo2)));
+    assertEquals(100, TestUtils.getSize(tableInfosWithPagination));
+
+    // List tables with result sorted by name
+    System.out.println("Testing list tables sorted by name");
+    Iterable<TableInfo> tableInfosSortedByName =
+        tableOperations.listTables(TestUtils.CATALOG_NAME, TestUtils.SCHEMA_NAME);
+    List<TableInfo> sortedTableList = new ArrayList<>();
+    tableInfosSortedByName.forEach(sortedTableList::add);
+    for (int i = 1; i < sortedTableList.size(); i++) {
+      assertTrue(
+          sortedTableList.get(i - 1).getName().compareTo(sortedTableList.get(i).getName()) <= 0);
+    }
+
+    // Clean up created tables
+    System.out.println("Cleaning up created tables..");
+    for (TableInfo table : createdTables) {
+      tableOperations.deleteTable(
+          TestUtils.CATALOG_NAME + "." + TestUtils.SCHEMA_NAME + "." + table.getName());
+    }
 
     // Delete table
     System.out.println("Testing delete table..");
@@ -136,13 +162,13 @@ public abstract class BaseTableCRUDTest extends BaseCRUDTest {
     System.out.println("Testing get managed table..");
     TableInfo managedTable = tableOperations.getTable(TestUtils.TABLE_FULL_NAME);
     assertEquals(TestUtils.TABLE_NAME, managedTable.getName());
-    Assert.assertEquals(TestUtils.CATALOG_NAME, managedTable.getCatalogName());
-    Assert.assertEquals(TestUtils.SCHEMA_NAME, managedTable.getSchemaName());
-    Assert.assertEquals(
+    assertEquals(TestUtils.CATALOG_NAME, managedTable.getCatalogName());
+    assertEquals(TestUtils.SCHEMA_NAME, managedTable.getSchemaName());
+    assertEquals(
         FileUtils.convertRelativePathToURI("/tmp/managedStagingLocation"),
         managedTable.getStorageLocation());
-    Assert.assertEquals(TableType.MANAGED, managedTable.getTableType());
-    Assert.assertEquals(DataSourceFormat.DELTA, managedTable.getDataSourceFormat());
+    assertEquals(TableType.MANAGED, managedTable.getTableType());
+    assertEquals(DataSourceFormat.DELTA, managedTable.getDataSourceFormat());
     assertNotNull(managedTable.getCreatedAt());
     assertNotNull(managedTable.getTableId());
 
@@ -151,13 +177,13 @@ public abstract class BaseTableCRUDTest extends BaseCRUDTest {
         tableOperations.listTables(TestUtils.CATALOG_NAME, TestUtils.SCHEMA_NAME);
     TableInfo managedListTable = managedTables.get(0);
     assertEquals(TestUtils.TABLE_NAME, managedListTable.getName());
-    Assert.assertEquals(TestUtils.CATALOG_NAME, managedListTable.getCatalogName());
-    Assert.assertEquals(TestUtils.SCHEMA_NAME, managedListTable.getSchemaName());
-    Assert.assertEquals(
+    assertEquals(TestUtils.CATALOG_NAME, managedListTable.getCatalogName());
+    assertEquals(TestUtils.SCHEMA_NAME, managedListTable.getSchemaName());
+    assertEquals(
         FileUtils.convertRelativePathToURI("/tmp/managedStagingLocation"),
         managedListTable.getStorageLocation());
-    Assert.assertEquals(TableType.MANAGED, managedListTable.getTableType());
-    Assert.assertEquals(DataSourceFormat.DELTA, managedListTable.getDataSourceFormat());
+    assertEquals(TableType.MANAGED, managedListTable.getTableType());
+    assertEquals(DataSourceFormat.DELTA, managedListTable.getDataSourceFormat());
     assertNotNull(managedListTable.getCreatedAt());
     assertNotNull(managedListTable.getTableId());
 
@@ -189,7 +215,8 @@ public abstract class BaseTableCRUDTest extends BaseCRUDTest {
         () -> schemaOperations.getSchema(TestUtils.CATALOG_NAME + "." + TestUtils.SCHEMA_NEW_NAME));
   }
 
-  protected TableInfo createDefaultTestingTable() throws IOException, ApiException {
+  protected TableInfo createTestingTable(String tableName, String storageLocation)
+      throws IOException, ApiException {
     ColumnInfo columnInfo1 =
         new ColumnInfo()
             .name("as_int")
@@ -213,16 +240,27 @@ public abstract class BaseTableCRUDTest extends BaseCRUDTest {
 
     CreateTable createTableRequest =
         new CreateTable()
-            .name(TestUtils.TABLE_NAME)
+            .name(tableName)
             .catalogName(TestUtils.CATALOG_NAME)
             .schemaName(TestUtils.SCHEMA_NAME)
             .columns(List.of(columnInfo1, columnInfo2))
             .properties(TestUtils.PROPERTIES)
             .comment(TestUtils.COMMENT)
-            .storageLocation("/tmp/stagingLocation")
+            .storageLocation(storageLocation)
             .tableType(TableType.EXTERNAL)
             .dataSourceFormat(DataSourceFormat.DELTA);
 
     return tableOperations.createTable(createTableRequest);
+  }
+
+  protected List<TableInfo> createMultipleTestingTables(int numberOfTables)
+      throws IOException, ApiException {
+    List<TableInfo> createdTables = new ArrayList<>();
+    for (int i = numberOfTables; i > 0; i--) {
+      String tableName = TestUtils.TABLE_NAME + "_" + i;
+      String storageLocation = TestUtils.STORAGE_LOCATION + "/" + tableName;
+      createdTables.add(createTestingTable(tableName, storageLocation));
+    }
+    return createdTables;
   }
 }

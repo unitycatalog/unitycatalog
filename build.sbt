@@ -51,6 +51,7 @@ lazy val commonSettings = Seq(
     packageFile
   },
 
+  licenseConfigurations := Set("compile"),
   licenseOverrides := {
     case DepModuleInfo("io.unitycatalog", _, _) =>
       LicenseInfo(LicenseCategory.Apache, "Apache 2.0", "http://www.apache.org/licenses")
@@ -105,10 +106,9 @@ lazy val client = (project in file("target/clients/java"))
       "jakarta.annotation" % "jakarta.annotation-api" % "3.0.0" % Provided,
 
       // Test dependencies
-      "junit" %  "junit" % "4.13.2" % Test,
-      "org.junit.jupiter" % "junit-jupiter" % "5.9.2" % Test,
+      "org.junit.jupiter" % "junit-jupiter" % "5.10.3" % Test,
       "net.aichler" % "jupiter-interface" % JupiterKeys.jupiterVersion.value % Test,
-      "org.assertj" % "assertj-core" % "3.25.1" % Test,
+      "org.assertj" % "assertj-core" % "3.26.3" % Test,
     ),
     (Compile / compile) := ((Compile / compile) dependsOn generate).value,
 
@@ -177,6 +177,7 @@ lazy val server = (project in file("server"))
 
       "com.google.code.findbugs" % "jsr305" % "3.0.2",
       "com.h2database" %  "h2" % "2.2.224",
+
       "org.hibernate.orm" % "hibernate-core" % "6.5.0.Final",
       "org.openapitools" % "jackson-databind-nullable" % openApiToolsJacksonBindNullableVersion,
       // logging
@@ -202,23 +203,15 @@ lazy val server = (project in file("server"))
       "io.vertx" % "vertx-web-client" % "4.3.5",
 
       // Test dependencies
-      "junit" %  "junit" % "4.13.2" % Test, // TODO: update tests to junit5 and remove this
-      "org.junit.jupiter" %  "junit-jupiter" % "5.10.1" % Test,
-      "org.mockito" % "mockito-core" % "4.11.0" % Test,
-      "org.mockito" % "mockito-inline" % "4.11.0" % Test,
-      "org.mockito" % "mockito-junit-jupiter" % "4.11.0" % Test,
-      "com.github.sbt" % "junit-interface" % "0.13.3" % Test,
-      "com.adobe.testing" % "s3mock-junit5" % "2.11.0" % Test
+      "org.junit.jupiter" %  "junit-jupiter" % "5.10.3" % Test,
+      "org.mockito" % "mockito-core" % "5.11.0" % Test,
+      "org.mockito" % "mockito-inline" % "5.2.0" % Test,
+      "org.mockito" % "mockito-junit-jupiter" % "5.12.0" % Test,
+      "net.aichler" % "jupiter-interface" % JupiterKeys.jupiterVersion.value % Test,
+      "com.adobe.testing" % "s3mock-junit5" % "3.9.1" % Test
         exclude("ch.qos.logback", "logback-classic")
-        exclude("org.apache.logging.log4j", "log4j-to-slf4j")
-        // the following are runtime test dependencies we exclude here
-        // in order to not to set off the licences check, but then
-        // add back below as provided
-        exclude("jakarta.annotation", "jakarta.annotation-api")
-        exclude("jakarta.servlet", "jakarta.servlet-api")
-        exclude("jakarta.websocket", "jakarta.websocket-api"),
-      "jakarta.servlet" % "jakarta.servlet-api" % "4.0.4" % Provided,
-      "javax.xml.bind" % "jaxb-api" % "2.3.1" % Provided
+        exclude("org.apache.logging.log4j", "log4j-to-slf4j"),
+      "javax.xml.bind" % "jaxb-api" % "2.3.1" % Test
     ),
 
     Compile / compile / javacOptions ++= Seq(
@@ -309,9 +302,10 @@ lazy val cli = (project in file("examples") / "cli")
       "org.apache.hadoop" % "hadoop-aws" % "3.4.0",
       "com.google.guava" % "guava" % "31.0.1-jre",
       // Test dependencies
-      "junit" %  "junit" % "4.13.2" % Test,
-      "com.github.sbt" % "junit-interface" % "0.13.3" % Test,
-    )
+      "org.junit.jupiter" % "junit-jupiter" % "5.10.3" % Test,
+      "net.aichler" % "jupiter-interface" % JupiterKeys.jupiterVersion.value % Test,
+    ),
+    Test / javaOptions += s"-Duser.dir=${(ThisBuild / baseDirectory).value.getAbsolutePath}",
   )
 
 lazy val root = (project in file("."))
@@ -336,8 +330,8 @@ lazy val spark = (project in file("connectors/spark"))
     libraryDependencies ++= Seq(
       "org.apache.spark" %% "spark-sql" % "4.0.0-preview1",
       // Test dependencies
-      "junit" %  "junit" % "4.13.2" % Test,
-      "com.github.sbt" % "junit-interface" % "0.13.3" % Test,
+      "org.junit.jupiter" % "junit-jupiter" % "5.10.3" % Test,
+      "net.aichler" % "jupiter-interface" % JupiterKeys.jupiterVersion.value % Test,
       "io.delta" %% "delta-spark" % "4.0.0rc1" % Test,
     ),
   )
