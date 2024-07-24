@@ -17,13 +17,13 @@ import lombok.*;
 @NoArgsConstructor
 public class SchemaInfoDAO {
   @Id
-  @Column(name = "id", columnDefinition = "BINARY(16)")
+  @Column(name = "id")
   private UUID id;
 
   @Column(name = "name")
   private String name;
 
-  @Column(name = "catalog_id", columnDefinition = "BINARY(16)")
+  @Column(name = "catalog_id")
   private UUID catalogId;
 
   @Column(name = "comment")

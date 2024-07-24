@@ -36,8 +36,8 @@ import org.apache.iceberg.rest.responses.ListTablesResponse;
 import org.apache.iceberg.rest.responses.LoadTableResponse;
 import org.hibernate.Session;
 import org.hibernate.Transaction;
-import org.junit.Before;
-import org.junit.Test;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
 
 import java.io.IOException;
 import java.net.URISyntaxException;
@@ -55,7 +55,7 @@ public class IcebergRestCatalogTest extends BaseServerTest {
   protected TableOperations tableOperations;
   private WebClient client;
 
-  @Before
+  @BeforeEach
   public void setUp() {
     super.setUp();
     String uri = serverConfig.getServerUrl() + "/api/2.1/unity-catalog/iceberg";

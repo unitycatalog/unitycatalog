@@ -1,6 +1,10 @@
 package io.unitycatalog.server.persist.utils;
 
 import io.unitycatalog.server.persist.dao.*;
+import java.io.InputStream;
+import java.nio.file.Files;
+import java.nio.file.Paths;
+import java.util.Properties;
 import lombok.Getter;
 import org.hibernate.SessionFactory;
 import org.hibernate.boot.registry.StandardServiceRegistryBuilder;
@@ -27,27 +31,18 @@ public class HibernateUtils {
         throw new RuntimeException("PropertiesUtil instance is null in createSessionFactory");
       }
 
-      Configuration configuration = new Configuration();
-      configuration.setProperty("hibernate.connection.driver_class", "org.h2.Driver");
-
+      Properties hibernateProperties = new Properties();
+      try (InputStream input = Files.newInputStream(Paths.get("etc/conf/hibernate.properties"))) {
+        hibernateProperties.load(input);
+      }
+      Configuration configuration = new Configuration().setProperties(hibernateProperties);
       if ("test".equals(properties.getProperty("server.env"))) {
+        configuration.setProperty("hibernate.connection.driver_class", "org.h2.Driver");
         configuration.setProperty(
             "hibernate.connection.url", "jdbc:h2:mem:testdb;DB_CLOSE_DELAY=-1");
         configuration.setProperty("hibernate.hbm2ddl.auto", "create-drop");
         LOGGER.debug("Hibernate configuration set for testing");
-      } else {
-        configuration.setProperty(
-            "hibernate.connection.url", "jdbc:h2:file:./etc/db/h2db;DB_CLOSE_DELAY=-1");
-        configuration.setProperty("hibernate.hbm2ddl.auto", "update");
-        LOGGER.debug("Hibernate configuration set for production");
       }
-      configuration.setProperty("hibernate.show_sql", "false");
-      configuration.setProperty("hibernate.archive.autodetection", "class");
-      configuration.setProperty(
-          "hibernate.archive.scan.packages", "com.databricks.unitycatalog.persist.dao");
-      configuration.setProperty("hibernate.use_sql_comments", "true");
-      configuration.setProperty("org.hibernate.SQL", "INFO");
-      configuration.setProperty("org.hibernate.type.descriptor.sql.BasicBinder", "TRACE");
 
       // Add annotated classes
       configuration.addAnnotatedClass(CatalogInfoDAO.class);
