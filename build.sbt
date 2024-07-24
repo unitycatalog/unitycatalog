@@ -72,8 +72,8 @@ lazy val commonSettings = Seq(
   libraryDependencies ++= Seq(
     "org.slf4j" % "slf4j-api" % "2.0.13",
     "org.slf4j" % "slf4j-log4j12" % "2.0.13" % Test,
-    "org.apache.logging.log4j" % "log4j-slf4j2-impl" % "2.23.1",
-    "org.apache.logging.log4j" % "log4j-api" % "2.23.1",
+    "org.apache.logging.log4j" % "log4j-slf4j2-impl" % log4jVersion,
+    "org.apache.logging.log4j" % "log4j-api" % log4jVersion,
   ),
 )
 
@@ -178,10 +178,6 @@ lazy val server = (project in file("server"))
 
       "org.hibernate.orm" % "hibernate-core" % "6.5.0.Final",
       "org.openapitools" % "jackson-databind-nullable" % openApiToolsJacksonBindNullableVersion,
-      // logging
-      "org.apache.logging.log4j" % "log4j-api" % log4jVersion,
-      "org.apache.logging.log4j" % "log4j-core" % log4jVersion,
-      "org.apache.logging.log4j" % "log4j-slf4j-impl" % log4jVersion,
 
       "jakarta.activation" % "jakarta.activation-api" % "2.1.3",
       "net.bytebuddy" % "byte-buddy" % "1.14.15",
@@ -275,10 +271,6 @@ lazy val cli = (project in file("examples") / "cli")
       "com.fasterxml.jackson.datatype" % "jackson-datatype-jsr310" % jacksonVersion,
       "org.openapitools" % "jackson-databind-nullable" % openApiToolsJacksonBindNullableVersion,
       "org.yaml" % "snakeyaml" % "2.2",
-      // logging
-      "org.apache.logging.log4j" % "log4j-api" % log4jVersion,
-      "org.apache.logging.log4j" % "log4j-core" % log4jVersion,
-      "org.apache.logging.log4j" % "log4j-slf4j-impl" % log4jVersion,
 
       "io.delta" % "delta-kernel-api" % "3.2.0",
       "io.delta" % "delta-kernel-defaults" % "3.2.0",
