@@ -114,10 +114,10 @@ public class UnityCatalogServer {
             icebergResponseConverter);
 
     ServerPropertiesUtils serverPropertiesUtils = ServerPropertiesUtils.getInstance();
-    String authentication = serverPropertiesUtils.getProperty("server.authentication");
+    String authorization = serverPropertiesUtils.getProperty("server.authorization");
     // TODO: eventually might want to make this secure-by-default.
-    if (authentication != null && authentication.equalsIgnoreCase("enable")) {
-      LOGGER.info("Authentication enabled.");
+    if (authorization != null && authorization.equalsIgnoreCase("enable")) {
+      LOGGER.info("Authorization enabled.");
       AuthDecorator authDecorator = new AuthDecorator();
       ExceptionHandlingDecorator exceptionDecorator = new ExceptionHandlingDecorator(new GlobalExceptionHandler());
       sb.decorator(basePath + "catalogs", authDecorator)

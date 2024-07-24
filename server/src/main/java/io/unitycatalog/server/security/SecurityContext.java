@@ -59,7 +59,7 @@ public class SecurityContext {
     this.localIssuer = localIssuer;
 
     certsFile = configurationFolder.resolve("certs.json");
-    serviceTokenFile = configurationFolder.resolve("token.json");
+    serviceTokenFile = configurationFolder.resolve("token.txt");
 
     rsaPublicKey = securityConfiguration.rsaPublicKey();
     rsaPrivateKey = securityConfiguration.rsaPrivateKey();
