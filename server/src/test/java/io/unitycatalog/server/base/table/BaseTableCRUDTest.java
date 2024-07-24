@@ -70,9 +70,10 @@ public abstract class BaseTableCRUDTest extends BaseCRUDTest {
     assertEquals(tableInfo, tableInfo2);
 
     Collection<ColumnInfo> columnInfos2 = tableInfo2.getColumns();
-    assertEquals(2, columnInfos2.size());
-    assertEquals(1, columnInfos2.stream().filter(c -> c.getName().equals("as_int")).count());
-    assertEquals(1, columnInfos2.stream().filter(c -> c.getName().equals("as_string")).count());
+    assertThat(columnInfos2).hasSize(2)
+        .extracting(ColumnInfo::getName)
+        .as("Table should contain two colums with names '%s' and '%s'", "as_int", "as_string")
+        .containsOnlyOnce("as_int", "as_string");
 
     // Create multiple tables
     List<TableInfo> createdTables = createMultipleTestingTables(111);
@@ -81,7 +82,7 @@ public abstract class BaseTableCRUDTest extends BaseCRUDTest {
     System.out.println("Testing list tables with pagination..");
     Iterable<TableInfo> tableInfosWithPagination =
         tableOperations.listTables(TestUtils.CATALOG_NAME, TestUtils.SCHEMA_NAME);
-    assertEquals(100, TestUtils.getSize(tableInfosWithPagination));
+    assertThat(tableInfosWithPagination).hasSize(100);
 
     // List tables with result sorted by name
     System.out.println("Testing list tables sorted by name");
