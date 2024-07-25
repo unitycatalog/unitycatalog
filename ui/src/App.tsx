@@ -15,6 +15,7 @@ import VolumeDetails from './pages/VolumeDetails';
 import CatalogsList from './pages/CatalogsList';
 import CatalogDetails from './pages/CatalogDetails';
 import SchemaDetails from './pages/SchemaDetails';
+import { NotificationProvider } from './utils/NotificationContext';
 
 const router = createBrowserRouter([
   {
@@ -141,7 +142,7 @@ function AppProvider() {
 }
 
 function App() {
-  return <RouterProvider router={router} fallbackElement={<p>Loading...</p>} />;
+  return <NotificationProvider><RouterProvider router={router} fallbackElement={<p>Loading...</p>} /></NotificationProvider>;
 }
 
 export default App;
