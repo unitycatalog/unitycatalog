@@ -217,7 +217,7 @@ public class Outh2CliExchange {
       // Get the authorization flow code
       String value = parameters.get("code").get(0);
 
-      // Prepare response
+      // Prepare response send to browser.
       String response = "Authentication to UC successful.";
       exchange.sendResponseHeaders(HTTP_OK, response.getBytes().length);
       OutputStream os = exchange.getResponseBody();
