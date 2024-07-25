@@ -17,10 +17,10 @@ export default function SchemaDetails() {
   if (!schema) throw new Error('Schema name is required');
 
   const { data } = useGetSchema({ catalog, schema });
+  const schemaFullName = [catalog, schema].join('.');
 
   if (!data) return null;
 
-  const schemaFullName = [catalog, schema].join('.');
   return (
     <DetailsLayout
       title={
