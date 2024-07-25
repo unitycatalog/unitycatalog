@@ -1,6 +1,5 @@
 package io.unitycatalog.cli.utils;
 
-import com.amazonaws.util.Base64;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -23,6 +22,7 @@ import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
 import java.security.SecureRandom;
 import java.util.Arrays;
+import java.util.Base64;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -195,7 +195,7 @@ public class Outh2CliExchange {
 
   private String buildAuthorization(Map<String, String> tokenParams) {
     String authorizationValue = tokenParams.get(Fields.CLIENT_ID) + ":" + tokenParams.get(Fields.CLIENT_SECRET);
-    return "Basic " + new String(Base64.encode(authorizationValue.getBytes()));
+    return "Basic " + Base64.getEncoder().encodeToString(authorizationValue.getBytes());
   }
 
   static class AuthCallbackHandler implements HttpHandler {
