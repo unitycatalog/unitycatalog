@@ -66,6 +66,8 @@ public class SecurityContext {
     algorithm = securityConfiguration.algorithmRSA();
     keyId = securityConfiguration.getKeyId();
 
+    // Do this every time because the SecurityConfiguration parameters
+    // might have changed since last started.
     serviceToken = JWT.create()
             .withSubject(serviceName)
             .withIssuer(localIssuer)
@@ -75,6 +77,9 @@ public class SecurityContext {
             .withClaim(JwtClaim.TOKEN_TYPE.key(), JwtTokenType.SERVICE.name())
             .withClaim(JwtClaim.SUBJECT.key(), "admin")
             .sign(algorithm);
+
+    createInternalCertsFile();
+    createServiceTokenFile();
 
     LOGGER.info("--- Internal Certs Configuration --");
     LOGGER.info(getInternalCertsFile());

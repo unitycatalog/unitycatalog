@@ -63,8 +63,6 @@ public class UnityCatalogServer {
 
     securityConfiguration = new SecurityConfiguration(configurationFolder);
     securityContext = new SecurityContext(configurationFolder, securityConfiguration, "server", INTERNAL);
-    securityContext.createInternalCertsFile();
-    securityContext.createServiceTokenFile();
 
     ServerBuilder sb = Server.builder().serviceUnder("/docs", new DocService()).http(port);
     addServices(sb);
