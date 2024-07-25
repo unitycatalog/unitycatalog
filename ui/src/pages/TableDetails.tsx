@@ -7,6 +7,7 @@ import DescriptionBox from '../components/DescriptionBox';
 import ColumnsList from '../components/tables/ColumnsList';
 import TableSidebar from '../components/tables/TablesSidebar';
 import { TableOutlined } from '@ant-design/icons';
+import TableActionsDropdown from '../components/tables/TableActionsDropdown';
 
 export default function TableDetails() {
   const { catalog, schema, table } = useParams();
@@ -22,9 +23,12 @@ export default function TableDetails() {
   return (
     <DetailsLayout
       title={
+        <Flex justify="space-between" align="flex-start" gap="middle">
         <Typography.Title level={3}>
           <TableOutlined /> {tableFullName}
         </Typography.Title>
+          <TableActionsDropdown catalog={catalog} schema={schema} table={table}  />
+        </Flex>
       }
       breadcrumbs={[
         { title: <Link to="/">Catalogs</Link>, key: '_home' },
