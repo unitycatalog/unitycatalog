@@ -68,15 +68,7 @@ public class SecurityContext {
 
     // Do this every time because the SecurityConfiguration parameters
     // might have changed since last started.
-    serviceToken = JWT.create()
-            .withSubject(serviceName)
-            .withIssuer(localIssuer)
-            .withIssuedAt(new Date())
-            .withKeyId(keyId)
-            .withJWTId(UUID.randomUUID().toString())
-            .withClaim(JwtClaim.TOKEN_TYPE.key(), JwtTokenType.SERVICE.name())
-            .withClaim(JwtClaim.SUBJECT.key(), "admin")
-            .sign(algorithm);
+    serviceToken = createServiceToken();
 
     createInternalCertsFile();
     createServiceTokenFile();
@@ -96,6 +88,18 @@ public class SecurityContext {
             .withClaim(JwtClaim.SUBJECT.key(), decodedJWT.getClaim("email").asString())
             .sign(algorithm);
 
+  }
+
+  public String createServiceToken() {
+    return JWT.create()
+            .withSubject(serviceName)
+            .withIssuer(localIssuer)
+            .withIssuedAt(new Date())
+            .withKeyId(keyId)
+            .withJWTId(UUID.randomUUID().toString())
+            .withClaim(JwtClaim.TOKEN_TYPE.key(), JwtTokenType.SERVICE.name())
+            .withClaim(JwtClaim.SUBJECT.key(), "admin")
+            .sign(algorithm);
   }
 
   @SneakyThrows
