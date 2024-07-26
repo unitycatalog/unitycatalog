@@ -41,7 +41,7 @@ public class CliUtils {
   public static final String DELETE = "delete";
   public static final String LOGIN = "login";
 
-    public static final String EMPTY = "";
+  public static final String EMPTY = "";
   public static final String EMPTY_JSON = "{}";
 
   public static final String SERVER = "server";

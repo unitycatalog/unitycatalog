@@ -84,9 +84,9 @@ public class UnityCatalogCli {
 
       String command = subArgs[0];
       switch (command) {
-          case CliUtils.AUTH:
-              AuthCli.handle(cmd, apiClient);
-              break;
+        case CliUtils.AUTH:
+          AuthCli.handle(cmd, apiClient);
+          break;
         case CliUtils.CATALOG:
           CatalogCli.handle(cmd, apiClient);
           break;
