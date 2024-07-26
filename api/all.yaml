@@ -1848,6 +1848,10 @@ components:
       properties:
         aws_temp_credentials:
           $ref: '#/components/schemas/AwsCredentials'
+        azure_user_delegation_sas:
+          $ref: '#/components/schemas/AzureUserDelegationSAS'
+        gcp_oauth_token:
+          $ref: '#/components/schemas/GcpOauthToken'
         expiration_time:
           description: |
             Server time when the credential will expire, in epoch milliseconds.

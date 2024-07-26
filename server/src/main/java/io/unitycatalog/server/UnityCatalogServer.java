@@ -71,7 +71,7 @@ public class UnityCatalogServer {
     TemporaryTableCredentialsService temporaryTableCredentialsService =
         new TemporaryTableCredentialsService(credentialOperations);
     TemporaryVolumeCredentialsService temporaryVolumeCredentialsService =
-        new TemporaryVolumeCredentialsService();
+        new TemporaryVolumeCredentialsService(credentialOperations);
     sb.service("/", (ctx, req) -> HttpResponse.of("Hello, Unity Catalog!"))
         .annotatedService(basePath + "catalogs", catalogService, unityConverterFunction)
         .annotatedService(basePath + "schemas", schemaService, unityConverterFunction)
