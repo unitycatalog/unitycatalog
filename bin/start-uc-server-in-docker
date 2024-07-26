@@ -5,7 +5,7 @@ container_name="unitycatalog"
 network_name="unitycatalog_network"
 network_details=$(docker network ls --format '{{json .}}' | jq -r --arg NETWORK_NAME "$network_name" 'select(.Name == $NETWORK_NAME) | .Name')
 container_details=$(docker container ls --format '{{json .}}' | jq -r --arg CONTAINER_NAME "$container_name" 'select(.Names == $CONTAINER_NAME) | .Names')
-container_runing=$(docker ps --format '{{json .}}' | jq -r --arg CONTAINER_NAME "$container_name" 'select(.Names == $CONTAINER_NAME) | .Names')
+container_running=$(docker ps --format '{{json .}}' | jq -r --arg CONTAINER_NAME "$container_name" 'select(.Names == $CONTAINER_NAME) | .Names')
 
 # Create the network if it doesn't exist
 if [ -z "$network_details" ]; then
@@ -25,7 +25,7 @@ if [ -z "$container_details" ]; then
 
     echo "Container $container_name created."
 else
-    if [ -n "$container_runing" ]; then
+    if [ -n "$container_running" ]; then
         echo "Container $container_name already running, skipping."
     else
         echo "Container $container_name already exists, starting it."
