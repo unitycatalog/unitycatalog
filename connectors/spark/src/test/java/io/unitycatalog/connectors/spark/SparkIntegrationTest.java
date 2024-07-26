@@ -180,7 +180,7 @@ public class SparkIntegrationTest extends BaseCRUDTest {
                     .config(catalogConf + ".token", serverConfig.getAuthToken());
         }
         // Use fake file system for s3:// so that we can test credentials.
-        builder.config("fs.s3.impl", FakeFileSystem.class.getName());
+        builder.config("fs.s3.impl", CredentialTestFileSystem.class.getName());
         return builder.getOrCreate();
     }
 

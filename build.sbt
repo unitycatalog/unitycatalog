@@ -329,6 +329,8 @@ lazy val spark = (project in file("connectors/spark"))
       "io.delta" %% "delta-spark" % "4.0.0rc1" % Test,
     ),
     excludeDependencies ++= Seq(
+      // This is a transitive dependency from the `server` module and we have to exclude it here
+      // as it introduces some conflicts with the dependencies from Spark.
       ExclusionRule("com.adobe.testing", "s3mock-junit5")
     ),
     licenseDepExclusions := {

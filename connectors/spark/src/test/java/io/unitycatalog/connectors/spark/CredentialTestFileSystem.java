@@ -6,7 +6,8 @@ import org.apache.hadoop.util.Progressable;
 
 import java.io.IOException;
 
-public class FakeFileSystem extends RawLocalFileSystem {
+// A wrapper over the local file system to test UC table credentials.
+public class CredentialTestFileSystem extends RawLocalFileSystem {
 
     @Override
     protected void checkPath(Path path) {
