@@ -4,7 +4,6 @@ import io.unitycatalog.server.model.SchemaInfo;
 import jakarta.persistence.*;
 import java.time.Instant;
 import java.util.Date;
-import java.util.Optional;
 import java.util.UUID;
 import lombok.*;
 import lombok.experimental.SuperBuilder;
