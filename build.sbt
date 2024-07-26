@@ -95,6 +95,11 @@ def javaCheckstyleSettings(configLocation: File) = Seq(
   // (Test / test) := ((Test / test) dependsOn (Test / checkstyle)).value,
 )
 
+// enforce java code style
+def javafmtCheckSettings() = Seq(
+  (Compile / compile) := ((Compile / compile) dependsOn (Compile / javafmtCheckAll)).value
+)
+
 lazy val client = (project in file("target/clients/java"))
   .enablePlugins(OpenApiGeneratorPlugin)
   .disablePlugins(JavaFormatterPlugin)
@@ -169,6 +174,7 @@ lazy val server = (project in file("server"))
     name := s"$artifactNamePrefix-server",
     commonSettings,
     javaOnlyReleaseSettings,
+    javafmtCheckSettings,
     javaCheckstyleSettings(file("dev") / "checkstyle-config.xml"),
     libraryDependencies ++= Seq(
       "com.linecorp.armeria" %  "armeria" % "1.28.4",
@@ -244,6 +250,7 @@ lazy val server = (project in file("server"))
 
 lazy val serverModels = (project in file("server") / "target" / "models")
   .enablePlugins(OpenApiGeneratorPlugin)
+  .disablePlugins(JavaFormatterPlugin)
   .settings(
     name := s"$artifactNamePrefix-servermodels",
     commonSettings,
@@ -283,6 +290,7 @@ lazy val cli = (project in file("examples") / "cli")
     mainClass := Some(orgName + ".cli.UnityCatalogCli"),
     commonSettings,
     skipReleaseSettings,
+    javafmtCheckSettings,
     javaCheckstyleSettings(file("dev") / "checkstyle-config.xml"),
     libraryDependencies ++= Seq(
       "commons-cli" % "commons-cli" % "1.7.0",

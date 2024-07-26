@@ -4,7 +4,6 @@ import io.unitycatalog.client.ApiException;
 import io.unitycatalog.client.model.ColumnTypeName;
 import io.unitycatalog.client.model.FunctionInfo;
 import io.unitycatalog.client.model.FunctionParameterInfo;
-import io.unitycatalog.client.model.FunctionParameterInfos;
 import java.io.BufferedReader;
 import java.io.InputStreamReader;
 import java.util.ArrayList;
