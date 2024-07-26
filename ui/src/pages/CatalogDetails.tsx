@@ -8,6 +8,7 @@ import DescriptionBox from '../components/DescriptionBox';
 import CatalogSidebar from '../components/catalogs/CatalogSidebar';
 import { ProductOutlined } from '@ant-design/icons';
 import CreateSchemaAction from '../components/schemas/CreateSchemaAction';
+import CatalogActionDropdown from '../components/catalogs/CatalogActionDropdown'
 
 export default function CatalogDetails() {
   const { catalog } = useParams();
@@ -24,7 +25,10 @@ export default function CatalogDetails() {
           <Typography.Title level={3}>
             <ProductOutlined /> {catalog}
           </Typography.Title>
-          <CreateSchemaAction catalog={catalog} />
+          <Flex gap="middle">
+            <CatalogActionDropdown catalog={catalog} />
+            <CreateSchemaAction catalog={catalog} />
+          </Flex>
         </Flex>
       }
       breadcrumbs={[
