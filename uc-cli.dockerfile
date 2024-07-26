@@ -9,7 +9,7 @@ ARG unitycatalog_user_home="home"
 ARG unitycatalog_user_basedir="${unitycatalog_home}/${unitycatalog_user_home}"
 # Specify any custom parameters necessary to generate
 # the Uber-Jar by SBT. 
-# Note: The default allocated heam memory size is too small
+# Note: The default allocated heap memory size is too small
 # and will cause the process to fail when attempting to compile
 # and generate the Uber-Jar. Therefore it is important to choose
 # a size large enough for the compiler to run. 
