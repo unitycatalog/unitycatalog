@@ -33,6 +33,7 @@ theme:
     - content.code.copy
     - navigation.footer
     - navigation.expand
+    - navigation.indexes
   palette:
     - media: "(prefers-color-scheme: light)"
       scheme: default
