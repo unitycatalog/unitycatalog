@@ -4,7 +4,6 @@ import static io.unitycatalog.server.utils.TestUtils.*;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.fail;
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
-import static org.junit.jupiter.api.Assertions.assertEquals;
 
 import io.unitycatalog.cli.catalog.CliCatalogOperations;
 import io.unitycatalog.cli.delta.DeltaKernelUtils;
@@ -101,7 +100,8 @@ public class CliExternalTableCreationTest extends BaseServerTest {
                 .columns(columns));
     assertThat(tableInfo).isNotNull();
     assertThat(tableInfo.getTableId()).isNotNull();
-    assertEquals(tableInfo.getTableId(), tableOperations.getTable(TABLE_FULL_NAME).getTableId());
+    assertThat(tableOperations.getTable(TABLE_FULL_NAME).getTableId())
+        .isEqualTo(tableInfo.getTableId());
     assertDoesNotThrow(
         () ->
             DeltaKernelUtils.readDeltaTable(

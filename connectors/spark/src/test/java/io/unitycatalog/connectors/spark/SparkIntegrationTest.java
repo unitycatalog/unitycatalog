@@ -2,7 +2,6 @@ package io.unitycatalog.connectors.spark;
 
 import static io.unitycatalog.server.utils.TestUtils.*;
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import io.unitycatalog.client.ApiException;
@@ -120,7 +119,7 @@ public class SparkIntegrationTest extends BaseCRUDTest {
             .sql(String.format("SELECT l.i FROM %s l JOIN %s r ON l.i = r.i", t1, t2))
             .collectAsList()
             .get(0);
-    assertEquals(1, row.getInt(0));
+    assertThat(row.getInt(0)).isEqualTo(1);
 
     session.stop();
   }
@@ -145,7 +144,7 @@ public class SparkIntegrationTest extends BaseCRUDTest {
             .sql(String.format("SELECT l.i FROM %s l JOIN %s r ON l.i = r.i", t1, t2))
             .collectAsList()
             .get(0);
-    assertEquals(1, row.getInt(0));
+    assertThat(row.getInt(0)).isEqualTo(1);
 
     session.stop();
   }
@@ -158,8 +157,8 @@ public class SparkIntegrationTest extends BaseCRUDTest {
     assertTrue(session.sql("SELECT * FROM " + tableFullName).collectAsList().isEmpty());
     session.sql("INSERT INTO " + tableFullName + " SELECT 1, 'a'");
     Row row = session.sql("SELECT * FROM " + tableFullName).collectAsList().get(0);
-    assertEquals(1, row.getInt(0));
-    assertEquals("a", row.getString(1));
+    assertThat(row.getInt(0)).isEqualTo(1);
+    assertThat(row.getString(1)).isEqualTo("a");
   }
 
   private SchemaOperations schemaOperations;

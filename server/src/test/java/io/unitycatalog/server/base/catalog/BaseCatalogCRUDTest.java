@@ -3,7 +3,6 @@ package io.unitycatalog.server.base.catalog;
 import static io.unitycatalog.server.utils.TestUtils.*;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.tuple;
-import static org.junit.jupiter.api.Assertions.assertEquals;
 
 import io.unitycatalog.client.ApiException;
 import io.unitycatalog.client.model.CatalogInfo;
@@ -17,8 +16,8 @@ import org.junit.jupiter.api.Test;
 public abstract class BaseCatalogCRUDTest extends BaseCRUDTest {
 
   protected void assertCatalog(CatalogInfo catalogInfo, String name, String comment) {
-    assertEquals(name, catalogInfo.getName());
-    assertEquals(comment, catalogInfo.getComment());
+    assertThat(catalogInfo.getName()).isEqualTo(name);
+    assertThat(catalogInfo.getComment()).isEqualTo(comment);
     assertThat(catalogInfo.getCreatedAt()).isNotNull();
     // TODO: Also assert properties once CLI supports it
   }
@@ -55,7 +54,7 @@ public abstract class BaseCatalogCRUDTest extends BaseCRUDTest {
     // Get catalog
     System.out.println("Testing get catalog..");
     CatalogInfo catalogInfo2 = catalogOperations.getCatalog(CATALOG_NAME);
-    assertEquals(catalogInfo, catalogInfo2);
+    assertThat(catalogInfo2).isEqualTo(catalogInfo);
 
     // Calling update catalog with nothing to update should not change anything
     System.out.println("Testing updating catalog with nothing to update..");
@@ -63,7 +62,7 @@ public abstract class BaseCatalogCRUDTest extends BaseCRUDTest {
     CatalogInfo emptyUpdateCatalogInfo =
         catalogOperations.updateCatalog(CATALOG_NAME, emptyUpdateCatalog);
     CatalogInfo catalogInfo3 = catalogOperations.getCatalog(CATALOG_NAME);
-    assertEquals(catalogInfo, catalogInfo3);
+    assertThat(catalogInfo3).isEqualTo(catalogInfo);
 
     // Update catalog name without updating comment
     System.out.println("Testing update catalog: changing name..");

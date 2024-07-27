@@ -2,7 +2,6 @@ package io.unitycatalog.server.base.function;
 
 import static io.unitycatalog.server.utils.TestUtils.*;
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
 import io.unitycatalog.client.ApiException;
@@ -77,9 +76,9 @@ public abstract class BaseFunctionCRUDTest extends BaseCRUDTest {
 
     // Create a function
     FunctionInfo functionInfo = functionOperations.createFunction(createFunctionRequest);
-    assertEquals(FUNCTION_NAME, functionInfo.getName());
-    assertEquals(CATALOG_NAME, functionInfo.getCatalogName());
-    assertEquals(SCHEMA_NAME, functionInfo.getSchemaName());
+    assertThat(functionInfo.getName()).isEqualTo(FUNCTION_NAME);
+    assertThat(functionInfo.getCatalogName()).isEqualTo(CATALOG_NAME);
+    assertThat(functionInfo.getSchemaName()).isEqualTo(SCHEMA_NAME);
     assertThat(functionInfo.getFunctionId()).isNotNull();
 
     // List functions
@@ -103,7 +102,7 @@ public abstract class BaseFunctionCRUDTest extends BaseCRUDTest {
 
     // Get function
     FunctionInfo retrievedFunctionInfo = functionOperations.getFunction(FUNCTION_FULL_NAME);
-    assertEquals(functionInfo, retrievedFunctionInfo);
+    assertThat(retrievedFunctionInfo).isEqualTo(functionInfo);
 
     // now update the parent catalog
     UpdateCatalog updateCatalog = new UpdateCatalog().newName(CATALOG_NEW_NAME);
@@ -111,8 +110,8 @@ public abstract class BaseFunctionCRUDTest extends BaseCRUDTest {
     // get the function again
     FunctionInfo retrievedFunctionInfoAfterCatUpdate =
         functionOperations.getFunction(CATALOG_NEW_NAME + "." + SCHEMA_NAME + "." + FUNCTION_NAME);
-    assertEquals(
-        retrievedFunctionInfo.getFunctionId(), retrievedFunctionInfoAfterCatUpdate.getFunctionId());
+    assertThat(retrievedFunctionInfoAfterCatUpdate.getFunctionId())
+        .isEqualTo(retrievedFunctionInfo.getFunctionId());
 
     // Delete function
     functionOperations.deleteFunction(

@@ -2,7 +2,6 @@ package io.unitycatalog.server.base.table;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.fail;
-import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
 import io.unitycatalog.client.ApiException;
@@ -15,11 +14,6 @@ import io.unitycatalog.server.persist.dao.TableInfoDAO;
 import io.unitycatalog.server.persist.utils.FileUtils;
 import io.unitycatalog.server.persist.utils.HibernateUtils;
 import io.unitycatalog.server.utils.TestUtils;
-import org.hibernate.Session;
-import org.hibernate.Transaction;
-import org.junit.jupiter.api.BeforeEach;
-import org.junit.jupiter.api.Test;
-
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Collection;
@@ -28,6 +22,10 @@ import java.util.Date;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
+import org.hibernate.Session;
+import org.hibernate.Transaction;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
 
 public abstract class BaseTableCRUDTest extends BaseCRUDTest {
 
@@ -90,15 +88,15 @@ public abstract class BaseTableCRUDTest extends BaseCRUDTest {
 
   private TableInfo createAndVerifyTable() throws IOException, ApiException {
     TableInfo tableInfo = createTestingTable(TestUtils.TABLE_NAME, TestUtils.STORAGE_LOCATION);
-    assertEquals(TestUtils.TABLE_NAME, tableInfo.getName());
-    assertEquals(TestUtils.CATALOG_NAME, tableInfo.getCatalogName());
-    assertEquals(TestUtils.SCHEMA_NAME, tableInfo.getSchemaName());
+    assertThat(tableInfo.getName()).isEqualTo(TestUtils.TABLE_NAME);
+    assertThat(tableInfo.getCatalogName()).isEqualTo(TestUtils.CATALOG_NAME);
+    assertThat(tableInfo.getSchemaName()).isEqualTo(TestUtils.SCHEMA_NAME);
     assertThat(tableInfo.getTableId()).isNotNull();
     return tableInfo;
   }
 
   private void verifyTableInfo(TableInfo retrievedTable, TableInfo expectedTable) {
-    assertEquals(expectedTable, retrievedTable);
+    assertThat(retrievedTable).isEqualTo(expectedTable);
     Collection<ColumnInfo> columns = retrievedTable.getColumns();
     assertThat(columns)
         .hasSize(2)
@@ -152,14 +150,13 @@ public abstract class BaseTableCRUDTest extends BaseCRUDTest {
     }
 
     TableInfo managedTable = tableOperations.getTable(TestUtils.TABLE_FULL_NAME);
-    assertEquals(TestUtils.TABLE_NAME, managedTable.getName());
-    assertEquals(TestUtils.CATALOG_NAME, managedTable.getCatalogName());
-    assertEquals(TestUtils.SCHEMA_NAME, managedTable.getSchemaName());
-    assertEquals(
-        FileUtils.convertRelativePathToURI("/tmp/managedStagingLocation"),
-        managedTable.getStorageLocation());
-    assertEquals(TableType.MANAGED, managedTable.getTableType());
-    assertEquals(DataSourceFormat.DELTA, managedTable.getDataSourceFormat());
+    assertThat(managedTable.getName()).isEqualTo(TestUtils.TABLE_NAME);
+    assertThat(managedTable.getCatalogName()).isEqualTo(TestUtils.CATALOG_NAME);
+    assertThat(managedTable.getSchemaName()).isEqualTo(TestUtils.SCHEMA_NAME);
+    assertThat(managedTable.getStorageLocation())
+        .isEqualTo(FileUtils.convertRelativePathToURI("/tmp/managedStagingLocation"));
+    assertThat(managedTable.getTableType()).isEqualTo(TableType.MANAGED);
+    assertThat(managedTable.getDataSourceFormat()).isEqualTo(DataSourceFormat.DELTA);
     assertThat(managedTable.getCreatedAt()).isNotNull();
     assertThat(managedTable.getTableId()).isNotNull();
   }
@@ -218,7 +215,7 @@ public abstract class BaseTableCRUDTest extends BaseCRUDTest {
     TableInfo tableAfterSchemaUpdate =
         tableOperations.getTable(
             TestUtils.CATALOG_NAME + "." + TestUtils.SCHEMA_NEW_NAME + "." + TestUtils.TABLE_NAME);
-    assertEquals(tableAfterSchemaUpdate.getTableId(), tableAfterSchemaUpdate.getTableId());
+    assertThat(tableAfterSchemaUpdate.getTableId()).isEqualTo(tableAfterSchemaUpdate.getTableId());
 
     assertThrows(
         Exception.class,
