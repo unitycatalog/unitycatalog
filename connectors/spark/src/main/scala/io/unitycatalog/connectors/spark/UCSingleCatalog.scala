@@ -99,7 +99,6 @@ private class UCProxy extends TableCatalog {
       tablesApi.getTable(name + "." + ident.toString)
     } catch {
       case e: ApiException if e.getCode == 404 =>
-        e.printStackTrace()
         throw new NoSuchTableException(ident)
     }
     val identifier = TableIdentifier(t.getName, Some(t.getSchemaName), Some(t.getCatalogName))
@@ -122,11 +121,10 @@ private class UCProxy extends TableCatalog {
       .getAwsTempCredentials
     val extraSerdeProps = if (uri.getScheme == "s3") {
       Map(
+        // TODO: how to support s3:// properly?
         "fs.s3a.access.key" -> credential.getAccessKeyId,
         "fs.s3a.secret.key" -> credential.getSecretAccessKey,
         "fs.s3a.session.token" -> credential.getSessionToken,
-        // TODO: how to support s3:// properly?
-        "fs.s3a.impl" -> "org.apache.hadoop.fs.s3a.S3AFileSystem",
         "fs.s3a.path.style.access" -> "true"
       )
     } else {

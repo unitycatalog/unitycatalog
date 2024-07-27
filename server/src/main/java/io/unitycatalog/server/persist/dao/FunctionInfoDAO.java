@@ -4,7 +4,6 @@ import io.unitycatalog.server.model.ColumnTypeName;
 import io.unitycatalog.server.model.FunctionInfo;
 import jakarta.persistence.*;
 import java.util.List;
-import java.util.Optional;
 import java.util.UUID;
 import lombok.*;
 import lombok.experimental.SuperBuilder;
