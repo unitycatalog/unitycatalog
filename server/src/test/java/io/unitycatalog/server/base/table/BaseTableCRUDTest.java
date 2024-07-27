@@ -208,6 +208,7 @@ public abstract class BaseTableCRUDTest extends BaseCRUDTest {
   }
 
   private void testTableAfterSchemaUpdateAndDeletion() throws ApiException {
+    TableInfo tableBeforeSchemaUpdate = tableOperations.getTable(TestUtils.TABLE_FULL_NAME);
     schemaOperations.updateSchema(
         TestUtils.SCHEMA_FULL_NAME,
         new UpdateSchema().newName(TestUtils.SCHEMA_NEW_NAME).comment(TestUtils.SCHEMA_COMMENT));
@@ -215,7 +216,7 @@ public abstract class BaseTableCRUDTest extends BaseCRUDTest {
     TableInfo tableAfterSchemaUpdate =
         tableOperations.getTable(
             TestUtils.CATALOG_NAME + "." + TestUtils.SCHEMA_NEW_NAME + "." + TestUtils.TABLE_NAME);
-    assertThat(tableAfterSchemaUpdate.getTableId()).isEqualTo(tableAfterSchemaUpdate.getTableId());
+    assertThat(tableAfterSchemaUpdate.getTableId()).isEqualTo(tableBeforeSchemaUpdate.getTableId());
 
     assertThrows(
         Exception.class,
