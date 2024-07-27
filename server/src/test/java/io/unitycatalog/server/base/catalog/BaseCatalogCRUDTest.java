@@ -11,10 +11,8 @@ import io.unitycatalog.client.model.CatalogInfo;
 import io.unitycatalog.client.model.CreateCatalog;
 import io.unitycatalog.client.model.UpdateCatalog;
 import io.unitycatalog.server.base.BaseCRUDTest;
-
 import java.util.List;
 import java.util.Optional;
-
 import org.junit.jupiter.api.Test;
 
 public abstract class BaseCatalogCRUDTest extends BaseCRUDTest {

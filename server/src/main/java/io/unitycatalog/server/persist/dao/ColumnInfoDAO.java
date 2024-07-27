@@ -3,13 +3,12 @@ package io.unitycatalog.server.persist.dao;
 import io.unitycatalog.server.model.ColumnInfo;
 import io.unitycatalog.server.model.ColumnTypeName;
 import jakarta.persistence.*;
-import lombok.*;
-import lombok.experimental.SuperBuilder;
-
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 import java.util.stream.Collectors;
+import lombok.*;
+import lombok.experimental.SuperBuilder;
 
 // Hibernate annotations
 @Entity

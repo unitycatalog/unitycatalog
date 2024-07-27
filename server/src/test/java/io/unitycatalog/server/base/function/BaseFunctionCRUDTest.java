@@ -12,7 +12,6 @@ import io.unitycatalog.server.base.BaseCRUDTest;
 import io.unitycatalog.server.base.ServerConfig;
 import io.unitycatalog.server.base.schema.SchemaOperations;
 import java.util.List;
-
 import org.assertj.core.api.Assertions;
 import org.assertj.core.api.InstanceOfAssertFactories;
 import org.junit.jupiter.api.BeforeEach;
@@ -88,18 +87,20 @@ public abstract class BaseFunctionCRUDTest extends BaseCRUDTest {
     Iterable<FunctionInfo> functionInfos =
         functionOperations.listFunctions(CATALOG_NAME, SCHEMA_NAME);
     assertThat(functionInfos)
-        .as("Function with ID '%s' and parameter '%s' does not exist", functionInfo.getFunctionId(), "param1")
-        .anySatisfy(f -> {
-          assertThat(f.getFunctionId())
-              .isNotNull()
-              .isEqualTo(functionInfo.getFunctionId());
-          assertThat(f.getInputParams())
-              .isNotNull()
-              .extracting(FunctionParameterInfos::getParameters,
-                  Assertions.as(InstanceOfAssertFactories.list(FunctionParameterInfo.class)))
-              .isNotNull()
-              .anySatisfy(parameter -> assertThat(parameter.getName()).isEqualTo("param1"));
-        });
+        .as(
+            "Function with ID '%s' and parameter '%s' does not exist",
+            functionInfo.getFunctionId(), "param1")
+        .anySatisfy(
+            f -> {
+              assertThat(f.getFunctionId()).isNotNull().isEqualTo(functionInfo.getFunctionId());
+              assertThat(f.getInputParams())
+                  .isNotNull()
+                  .extracting(
+                      FunctionParameterInfos::getParameters,
+                      Assertions.as(InstanceOfAssertFactories.list(FunctionParameterInfo.class)))
+                  .isNotNull()
+                  .anySatisfy(parameter -> assertThat(parameter.getName()).isEqualTo("param1"));
+            });
 
     // Get function
     FunctionInfo retrievedFunctionInfo = functionOperations.getFunction(FUNCTION_FULL_NAME);

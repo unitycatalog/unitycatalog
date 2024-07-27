@@ -6,9 +6,9 @@ import io.unitycatalog.server.persist.*;
 import java.util.regex.Pattern;
 
 public class ValidationUtils {
-    // Regex to allow only alphanumeric characters, underscores, hyphens, and @ signs
-    private static final Pattern VALID_FORMAT = Pattern.compile("[a-zA-Z0-9_@-]+");
-    private static final Integer MAX_NAME_LENGTH = 255;
+  // Regex to allow only alphanumeric characters, underscores, hyphens, and @ signs
+  private static final Pattern VALID_FORMAT = Pattern.compile("[a-zA-Z0-9_@-]+");
+  private static final Integer MAX_NAME_LENGTH = 255;
 
   public static void validateSqlObjectName(String name) {
     if (name == null || name.isEmpty()) {

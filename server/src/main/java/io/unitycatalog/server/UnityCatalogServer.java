@@ -23,10 +23,10 @@ import io.unitycatalog.server.utils.RESTObjectMapper;
 import io.unitycatalog.server.utils.VersionUtils;
 import io.vertx.core.Verticle;
 import io.vertx.core.Vertx;
+import org.apache.commons.cli.*;
 import org.apache.logging.log4j.core.config.Configurator;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.apache.commons.cli.*;
 
 public class UnityCatalogServer {
   private static final Logger LOGGER = LoggerFactory.getLogger(UnityCatalogServer.class);
@@ -95,12 +95,12 @@ public class UnityCatalogServer {
     int port = 8080;
     Options options = new Options();
     options.addOption(
-            Option.builder("p")
-                    .longOpt("port")
-                    .hasArg()
-                    .desc("Port number to run the server on. Default is 8080.")
-                    .type(Integer.class)
-                    .build());
+        Option.builder("p")
+            .longOpt("port")
+            .hasArg()
+            .desc("Port number to run the server on. Default is 8080.")
+            .type(Integer.class)
+            .build());
     CommandLineParser parser = new DefaultParser();
     try {
       CommandLine cmd = parser.parse(options, args);
