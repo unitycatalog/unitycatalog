@@ -2,11 +2,10 @@ package io.unitycatalog.connectors.spark
 
 import io.unitycatalog.client.{ApiClient, ApiException}
 import io.unitycatalog.client.api.{TablesApi, TemporaryTableCredentialsApi}
-import io.unitycatalog.client.model.{AwsCredentials, GenerateTemporaryTableCredential, TableOperation, TableType}
+import io.unitycatalog.client.model.{AwsCredentials, GenerateTemporaryTableCredential, ListTablesResponse, TableOperation, TableType}
 
 import java.net.URI
 import java.util
-
 import org.apache.spark.sql.catalyst.TableIdentifier
 import org.apache.spark.sql.catalyst.analysis.NoSuchTableException
 import org.apache.spark.sql.catalyst.catalog.{CatalogStorageFormat, CatalogTable, CatalogTableType, CatalogUtils}
@@ -15,6 +14,7 @@ import org.apache.spark.sql.connector.expressions.Transform
 import org.apache.spark.sql.types.{DataType, StructField, StructType}
 import org.apache.spark.sql.util.CaseInsensitiveStringMap
 
+import scala.collection.convert.ImplicitConversions._
 import scala.jdk.CollectionConverters._
 
 /**
@@ -34,7 +34,7 @@ class UCSingleCatalog extends TableCatalog {
 
   override def name(): String = deltaCatalog.name()
 
-  override def listTables(namespace: Array[String]): Array[Identifier] = ???
+  override def listTables(namespace: Array[String]): Array[Identifier] = deltaCatalog.listTables(namespace)
 
   override def loadTable(ident: Identifier): Table = deltaCatalog.loadTable(ident)
 
@@ -92,7 +92,13 @@ private class UCProxy extends TableCatalog {
     this.name
   }
 
-  override def listTables(namespace: Array[String]): Array[Identifier] = ???
+  override def listTables(namespace: Array[String]): Array[Identifier] = {
+    if (namespace.length > 1) {
+      throw new ApiException("Unity Catalog does not support nested namespace.")
+    }
+    val response: ListTablesResponse = tablesApi.listTables(this.name, namespace.head, 0, null)
+    response.getTables.toSeq.map(table => Identifier.of(namespace, table.getName)).toArray
+  }
 
   override def loadTable(ident: Identifier): Table = {
     val t = try {
