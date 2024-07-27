@@ -3,7 +3,6 @@ package io.unitycatalog.server.base.table;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.fail;
 import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
 import io.unitycatalog.client.ApiException;
@@ -20,6 +19,15 @@ import org.hibernate.Session;
 import org.hibernate.Transaction;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+
+import java.io.IOException;
+import java.util.ArrayList;
+import java.util.Collection;
+import java.util.Comparator;
+import java.util.Date;
+import java.util.List;
+import java.util.Optional;
+import java.util.UUID;
 
 public abstract class BaseTableCRUDTest extends BaseCRUDTest {
 
@@ -85,7 +93,7 @@ public abstract class BaseTableCRUDTest extends BaseCRUDTest {
     assertEquals(TestUtils.TABLE_NAME, tableInfo.getName());
     assertEquals(TestUtils.CATALOG_NAME, tableInfo.getCatalogName());
     assertEquals(TestUtils.SCHEMA_NAME, tableInfo.getSchemaName());
-    assertNotNull(tableInfo.getTableId());
+    assertThat(tableInfo.getTableId()).isNotNull();
     return tableInfo;
   }
 
@@ -152,8 +160,8 @@ public abstract class BaseTableCRUDTest extends BaseCRUDTest {
         managedTable.getStorageLocation());
     assertEquals(TableType.MANAGED, managedTable.getTableType());
     assertEquals(DataSourceFormat.DELTA, managedTable.getDataSourceFormat());
-    assertNotNull(managedTable.getCreatedAt());
-    assertNotNull(managedTable.getTableId());
+    assertThat(managedTable.getCreatedAt()).isNotNull();
+    assertThat(managedTable.getTableId()).isNotNull();
   }
 
   private TableInfoDAO createManagedTableDAO(UUID tableId) {

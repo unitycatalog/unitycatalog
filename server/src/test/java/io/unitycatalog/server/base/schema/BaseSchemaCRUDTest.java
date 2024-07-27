@@ -2,7 +2,6 @@ package io.unitycatalog.server.base.schema;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
 import io.unitycatalog.client.ApiException;
@@ -45,7 +44,7 @@ public abstract class BaseSchemaCRUDTest extends BaseCRUDTest {
     assertEquals(createSchema.getCatalogName(), schemaInfo.getCatalogName());
     assertEquals(TestUtils.SCHEMA_FULL_NAME, schemaInfo.getFullName());
     // TODO: Assert properties once CLI supports it
-    assertNotNull(schemaInfo.getCreatedAt());
+    assertThat(schemaInfo.getCreatedAt()).isNotNull();
 
     // List schemas
     System.out.println("Testing list schemas..");
@@ -73,7 +72,7 @@ public abstract class BaseSchemaCRUDTest extends BaseCRUDTest {
     assertEquals(updateSchema.getNewName(), updatedSchemaInfo.getName());
     assertEquals(updateSchema.getComment(), updatedSchemaInfo.getComment());
     assertEquals(TestUtils.SCHEMA_NEW_FULL_NAME, updatedSchemaInfo.getFullName());
-    assertNotNull(updatedSchemaInfo.getUpdatedAt());
+    assertThat(updatedSchemaInfo.getUpdatedAt()).isNotNull();
 
     // Update schema comment without updating name
     System.out.println("Testing update schema: changing comment..");
@@ -83,7 +82,7 @@ public abstract class BaseSchemaCRUDTest extends BaseCRUDTest {
     assertEquals(TestUtils.SCHEMA_NEW_NAME, updatedSchemaInfo2.getName());
     assertEquals(updateSchema2.getComment(), updatedSchemaInfo2.getComment());
     assertEquals(TestUtils.SCHEMA_NEW_FULL_NAME, updatedSchemaInfo2.getFullName());
-    assertNotNull(updatedSchemaInfo2.getUpdatedAt());
+    assertThat(updatedSchemaInfo2.getUpdatedAt()).isNotNull();
 
     // Now update the parent catalog name
     UpdateCatalog updateCatalog = new UpdateCatalog().newName(TestUtils.CATALOG_NEW_NAME);

@@ -3,7 +3,6 @@ package io.unitycatalog.server.base.function;
 import static io.unitycatalog.server.utils.TestUtils.*;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
 import io.unitycatalog.client.ApiException;
@@ -81,7 +80,7 @@ public abstract class BaseFunctionCRUDTest extends BaseCRUDTest {
     assertEquals(FUNCTION_NAME, functionInfo.getName());
     assertEquals(CATALOG_NAME, functionInfo.getCatalogName());
     assertEquals(SCHEMA_NAME, functionInfo.getSchemaName());
-    assertNotNull(functionInfo.getFunctionId());
+    assertThat(functionInfo.getFunctionId()).isNotNull();
 
     // List functions
     Iterable<FunctionInfo> functionInfos =

@@ -1,10 +1,10 @@
 package io.unitycatalog.cli.table;
 
 import static io.unitycatalog.server.utils.TestUtils.*;
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.fail;
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertNotNull;
 
 import io.unitycatalog.cli.catalog.CliCatalogOperations;
 import io.unitycatalog.cli.delta.DeltaKernelUtils;
@@ -99,8 +99,8 @@ public class CliExternalTableCreationTest extends BaseServerTest {
                 .name(TABLE_NAME)
                 .storageLocation(tablePath)
                 .columns(columns));
-    assertNotNull(tableInfo);
-    assertNotNull(tableInfo.getTableId());
+    assertThat(tableInfo).isNotNull();
+    assertThat(tableInfo.getTableId()).isNotNull();
     assertEquals(tableInfo.getTableId(), tableOperations.getTable(TABLE_FULL_NAME).getTableId());
     assertDoesNotThrow(
         () ->

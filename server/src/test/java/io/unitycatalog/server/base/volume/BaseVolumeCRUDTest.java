@@ -3,7 +3,6 @@ package io.unitycatalog.server.base.volume;
 import static io.unitycatalog.server.utils.TestUtils.*;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
 import io.unitycatalog.client.ApiException;
@@ -72,7 +71,7 @@ public abstract class BaseVolumeCRUDTest extends BaseCRUDTest {
         FileUtils.convertRelativePathToURI(createVolumeRequest.getStorageLocation()),
         volumeInfo.getStorageLocation());
     assertEquals(VOLUME_FULL_NAME, volumeInfo.getFullName());
-    assertNotNull(volumeInfo.getCreatedAt());
+    assertThat(volumeInfo.getCreatedAt()).isNotNull();
 
     // List volumes
     System.out.println("Testing list volumes..");
@@ -103,7 +102,7 @@ public abstract class BaseVolumeCRUDTest extends BaseCRUDTest {
     assertEquals(updateVolumeRequest.getNewName(), updatedVolumeInfo.getName());
     assertEquals(updateVolumeRequest.getComment(), updatedVolumeInfo.getComment());
     assertEquals(VOLUME_NEW_FULL_NAME, updatedVolumeInfo.getFullName());
-    assertNotNull(updatedVolumeInfo.getUpdatedAt());
+    assertThat(updatedVolumeInfo.getUpdatedAt()).isNotNull();
 
     // Update volume comment without updating name
     System.out.println("Testing update volume: changing comment..");
@@ -114,7 +113,7 @@ public abstract class BaseVolumeCRUDTest extends BaseCRUDTest {
     assertEquals(VOLUME_NEW_NAME, updatedVolumeInfo2.getName());
     assertEquals(updateVolumeRequest2.getComment(), updatedVolumeInfo2.getComment());
     assertEquals(VOLUME_NEW_FULL_NAME, updatedVolumeInfo2.getFullName());
-    assertNotNull(updatedVolumeInfo2.getUpdatedAt());
+    assertThat(updatedVolumeInfo2.getUpdatedAt()).isNotNull();
 
     // Delete volume
     System.out.println("Testing delete volume..");
@@ -151,8 +150,8 @@ public abstract class BaseVolumeCRUDTest extends BaseCRUDTest {
     assertEquals(VOLUME_NAME, managedVolumeInfo.getName());
     assertEquals(CATALOG_NAME, managedVolumeInfo.getCatalogName());
     assertEquals(SCHEMA_NAME, managedVolumeInfo.getSchemaName());
-    assertNotNull(managedVolumeInfo.getCreatedAt());
-    assertNotNull(managedVolumeInfo.getUpdatedAt());
+    assertThat(managedVolumeInfo.getCreatedAt()).isNotNull();
+    assertThat(managedVolumeInfo.getUpdatedAt()).isNotNull();
 
     // List volumes
     System.out.println("Testing list managed volumes..");

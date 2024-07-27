@@ -4,7 +4,6 @@ import static io.unitycatalog.server.utils.TestUtils.*;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.tuple;
 import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertNotNull;
 
 import io.unitycatalog.client.ApiException;
 import io.unitycatalog.client.model.CatalogInfo;
@@ -20,7 +19,7 @@ public abstract class BaseCatalogCRUDTest extends BaseCRUDTest {
   protected void assertCatalog(CatalogInfo catalogInfo, String name, String comment) {
     assertEquals(name, catalogInfo.getName());
     assertEquals(comment, catalogInfo.getComment());
-    assertNotNull(catalogInfo.getCreatedAt());
+    assertThat(catalogInfo.getCreatedAt()).isNotNull();
     // TODO: Also assert properties once CLI supports it
   }
 
@@ -50,7 +49,7 @@ public abstract class BaseCatalogCRUDTest extends BaseCRUDTest {
     // List catalogs
     System.out.println("Testing list catalogs..");
     List<CatalogInfo> catalogList = catalogOperations.listCatalogs();
-    assertNotNull(catalogList);
+    assertThat(catalogList).isNotNull();
     assertCatalogExists(catalogList, CATALOG_NAME, COMMENT);
 
     // Get catalog
@@ -83,7 +82,7 @@ public abstract class BaseCatalogCRUDTest extends BaseCRUDTest {
     System.out.println("Testing delete catalog..");
     catalogOperations.deleteCatalog(CATALOG_NEW_NAME, Optional.of(false));
     catalogList = catalogOperations.listCatalogs();
-    assertNotNull(catalogList);
+    assertThat(catalogList).isNotNull();
     assertCatalogNotExists(catalogList, CATALOG_NEW_NAME);
   }
 }
