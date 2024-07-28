@@ -7,14 +7,11 @@ import io.unitycatalog.server.persist.dao.CatalogInfoDAO;
 import io.unitycatalog.server.persist.dao.PropertyDAO;
 import io.unitycatalog.server.persist.dao.SchemaInfoDAO;
 import io.unitycatalog.server.persist.utils.HibernateUtils;
+import io.unitycatalog.server.persist.utils.PagedListingHelper;
 import io.unitycatalog.server.persist.utils.RepositoryUtils;
 import io.unitycatalog.server.utils.Constants;
 import io.unitycatalog.server.utils.ValidationUtils;
-import java.util.Date;
-import java.util.List;
-import java.util.Optional;
-import java.util.UUID;
-import java.util.stream.Collectors;
+import java.util.*;
 import org.hibernate.Session;
 import org.hibernate.SessionFactory;
 import org.hibernate.Transaction;
@@ -27,6 +24,8 @@ public class SchemaRepository {
   private static final VolumeRepository VOLUME_REPOSITORY = VolumeRepository.getInstance();
   private static final FunctionRepository FUNCTION_REPOSITORY = FunctionRepository.getInstance();
   private static final SessionFactory SESSION_FACTORY = HibernateUtils.getSessionFactory();
+  private static final PagedListingHelper<SchemaInfoDAO> LISTING_HELPER =
+      new PagedListingHelper<>(SchemaInfoDAO.class);
 
   private SchemaRepository() {}
 
@@ -104,6 +103,22 @@ public class SchemaRepository {
     return getSchemaDAO(session, namespace[0], namespace[1]);
   }
 
+  public UUID getCatalogId(Session session, String catalogName) {
+    CatalogInfoDAO catalogInfo = CATALOG_REPOSITORY.getCatalogDAO(session, catalogName);
+    if (catalogInfo == null) {
+      throw new BaseException(ErrorCode.NOT_FOUND, "Catalog not found: " + catalogName);
+    }
+    return catalogInfo.getId();
+  }
+
+  /**
+   * Return the list of schemas in ascending order of schema name.
+   *
+   * @param catalogName
+   * @param maxResults
+   * @param pageToken
+   * @return
+   */
   public ListSchemasResponse listSchemas(
       String catalogName, Optional<Integer> maxResults, Optional<String> pageToken) {
     try (Session session = SESSION_FACTORY.openSession()) {
@@ -112,12 +127,9 @@ public class SchemaRepository {
       // TODO: Implement pagination and filtering if required
       // For now, returning all schemas without pagination
       try {
-        CatalogInfoDAO catalog = CATALOG_REPOSITORY.getCatalogDAO(session, catalogName);
-        if (catalog == null) {
-          throw new BaseException(ErrorCode.NOT_FOUND, "Catalog not found: " + catalogName);
-        }
+        UUID catalogId = getCatalogId(session, catalogName);
         ListSchemasResponse response =
-            listSchemas(session, catalog.getId(), catalogName, maxResults, pageToken);
+            listSchemas(session, catalogId, catalogName, maxResults, pageToken);
         tx.commit();
         return response;
       } catch (Exception e) {
@@ -133,20 +145,17 @@ public class SchemaRepository {
       String catalogName,
       Optional<Integer> maxResults,
       Optional<String> pageToken) {
-    ListSchemasResponse response = new ListSchemasResponse();
-    Query<SchemaInfoDAO> query =
-        session.createQuery("FROM SchemaInfoDAO WHERE catalogId = :value", SchemaInfoDAO.class);
-    maxResults.ifPresent(query::setMaxResults);
-    query.setParameter("value", catalogId);
-    response.setSchemas(
-        query.list().stream()
-            .map(SchemaInfoDAO::toSchemaInfo)
-            .peek(x -> addNamespaceData(x, catalogName))
-            .map(
-                s ->
-                    RepositoryUtils.attachProperties(s, s.getSchemaId(), Constants.SCHEMA, session))
-            .collect(Collectors.toList()));
-    return response;
+    List<SchemaInfoDAO> schemaInfoDAOList =
+        LISTING_HELPER.listEntity(session, maxResults, pageToken, catalogId);
+    String nextPageToken = LISTING_HELPER.getNextPageToken(schemaInfoDAOList, maxResults);
+    List<SchemaInfo> result = new ArrayList<>();
+    for (SchemaInfoDAO schemaInfoDAO : schemaInfoDAOList) {
+      SchemaInfo schemaInfo = schemaInfoDAO.toSchemaInfo();
+      RepositoryUtils.attachProperties(
+          schemaInfo, schemaInfo.getSchemaId(), Constants.SCHEMA, session);
+      result.add(schemaInfo);
+    }
+    return new ListSchemasResponse().schemas(result).nextPageToken(nextPageToken);
   }
 
   public SchemaInfo getSchema(String fullName) {
