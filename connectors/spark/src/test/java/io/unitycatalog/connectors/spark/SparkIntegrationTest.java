@@ -159,8 +159,8 @@ public class SparkIntegrationTest extends BaseCRUDTest {
 
     Row[] tables = (Row[]) session.sql("SHOW TABLES in " + SCHEMA_NAME).collect();
     assertThat(tables).hasSize(1);
-    assertThat(SCHEMA_NAME).isEqualTo(tables[0].getString(0));
-    assertThat(PARQUET_TABLE).isEqualTo(tables[0].getString(1));
+    assertThat(tables[0].getString(0)).isEqualTo(SCHEMA_NAME);
+    assertThat(tables[0].getString(1)).isEqualTo(PARQUET_TABLE);
 
     assertThatThrownBy(() -> session.sql("SHOW TABLES in a.b.c").collect())
         .isInstanceOf(AnalysisException.class)
