@@ -2,8 +2,8 @@ package io.unitycatalog.cli.table;
 
 import static io.unitycatalog.server.utils.TestUtils.*;
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.Assertions.fail;
-import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 
 import io.unitycatalog.cli.catalog.CliCatalogOperations;
 import io.unitycatalog.cli.delta.DeltaKernelUtils;
@@ -80,10 +80,11 @@ public class CliExternalTableCreationTest extends BaseServerTest {
   public void testCreateTableLocalDirectoryExistsWithDeltaLog() throws ApiException, IOException {
     // First create a table with delta log
     String tablePath = "/tmp/" + UUID.randomUUID();
-    assertDoesNotThrow(
-        () ->
-            DeltaKernelUtils.createDeltaTable(
-                Paths.get(tablePath).toUri().toString(), columns, null));
+    assertThatCode(
+            () ->
+                DeltaKernelUtils.createDeltaTable(
+                    Paths.get(tablePath).toUri().toString(), columns, null))
+        .doesNotThrowAnyException();
     assert (Files.exists(Paths.get(tablePath + "/_delta_log")));
     createTableAndAssertReadTableSucceeds(tablePath, columns);
   }
@@ -102,12 +103,13 @@ public class CliExternalTableCreationTest extends BaseServerTest {
     assertThat(tableInfo.getTableId()).isNotNull();
     assertThat(tableOperations.getTable(TABLE_FULL_NAME).getTableId())
         .isEqualTo(tableInfo.getTableId());
-    assertDoesNotThrow(
-        () ->
-            DeltaKernelUtils.readDeltaTable(
-                tableOperations.getTable(TABLE_FULL_NAME).getStorageLocation(), null, 100));
-    assertDoesNotThrow(() -> deleteDirectory(Paths.get(tablePath)));
-    assertDoesNotThrow(() -> tableOperations.deleteTable(TABLE_FULL_NAME));
+    assertThatCode(
+            () ->
+                DeltaKernelUtils.readDeltaTable(
+                    tableOperations.getTable(TABLE_FULL_NAME).getStorageLocation(), null, 100))
+        .doesNotThrowAnyException();
+    assertThatCode(() -> deleteDirectory(Paths.get(tablePath))).doesNotThrowAnyException();
+    assertThatCode(() -> tableOperations.deleteTable(TABLE_FULL_NAME)).doesNotThrowAnyException();
   }
 
   public static void deleteDirectory(Path path) throws IOException {
