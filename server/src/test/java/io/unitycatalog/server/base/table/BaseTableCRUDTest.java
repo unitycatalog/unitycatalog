@@ -103,7 +103,7 @@ public abstract class BaseTableCRUDTest extends BaseCRUDTest {
         .hasSize(2)
         .extracting(ColumnInfo::getName)
         .as("Table should contain two colums with names '%s' and '%s'", "as_int", "as_string")
-        .containsOnlyOnce("as_int", "as_string");
+        .contains("as_int", "as_string");
   }
 
   private void verifyTablePagination() throws ApiException {
