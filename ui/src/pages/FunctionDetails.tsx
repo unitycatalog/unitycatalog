@@ -7,6 +7,7 @@ import DescriptionBox from '../components/DescriptionBox';
 import { Flex, Typography } from 'antd';
 import { FunctionOutlined } from '@ant-design/icons';
 import CodeBox from '../components/CodeBox';
+import FunctionActionsDropdown from '../components/functions/FunctionActionsDropdown';
 
 export default function FunctionDetails() {
   const { catalog, schema, ucFunction } = useParams();
@@ -21,9 +22,16 @@ export default function FunctionDetails() {
   return (
     <DetailsLayout
       title={
-        <Typography.Title level={3}>
-          <FunctionOutlined /> {ucFunction}
-        </Typography.Title>
+        <Flex justify="space-between" align="flex-start" gap="middle">
+          <Typography.Title level={3}>
+            <FunctionOutlined /> {ucFunction}
+          </Typography.Title>
+          <FunctionActionsDropdown
+            catalog={catalog}
+            schema={schema}
+            ucFunction={ucFunction}
+          />
+        </Flex>
       }
       breadcrumbs={[
         { title: <Link to="/">Catalogs</Link>, key: '_home' },
