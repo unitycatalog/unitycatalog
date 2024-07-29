@@ -187,40 +187,5 @@
 
         <module name="LeftCurly"/>
         <module name="RightCurly"/>
-
-        <!--
-        We use the following import order:
-        import java.*
-        import javax.*
-        <blank line>
-        import all other imports
-        <blank line>
-        org.opencatalog
-	-->
-        <module name="ImportOrder">
-            <property name="separated" value="true"/>
-            <property name="ordered" value="true"/>
-            <property name="groups"
-                      value="java,javax,*,org.opencatalog"/>
-            <property name="option" value="under"/>
-        </module>
-
-        <!--
-        As per https://checkstyle.sourceforge.io/config_imports.html, "There is no flexibility to
-        enforce empty lines between some groups and no empty lines between other groups." However,
-        sometimes we want import X to come before import Y, yet we do not want them to be separated
-        by a blank line. This suppression is how we achieve that.
-        -->
-        <!-- org.opencatalog -->
-        <module name="SuppressionXpathSingleFilter">
-            <property name="checks" value="ImportOrder"/>
-            <property name="message" value="^'org.opencatalog\..*'.*"/>
-        </module>
-
-        <!-- java and javax -->
-        <module name="SuppressionXpathSingleFilter">
-            <property name="checks" value="ImportOrder"/>
-            <property name="message" value="^'javax\..*'.*"/>
-        </module>
     </module>
 </module>
