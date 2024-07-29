@@ -171,7 +171,7 @@ public class SparkIntegrationTest extends BaseCRUDTest {
     session.sql("DROP TABLE " + fullName).collect();
     assertFalse(session.catalog().tableExists(fullName));
     AnalysisException exception =
-      assertThrows(AnalysisException.class, () -> session.sql("DROP TABLE a.b.c.d").collect());
+        assertThrows(AnalysisException.class, () -> session.sql("DROP TABLE a.b.c.d").collect());
     session.stop();
   }
 
