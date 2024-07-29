@@ -158,7 +158,7 @@ public class SparkIntegrationTest extends BaseCRUDTest {
     setupExternalParquetTable(PARQUET_TABLE, new ArrayList<>(0));
 
     Row[] tables = (Row[]) session.sql("SHOW TABLES in " + SCHEMA_NAME).collect();
-    assertThat(1).isEqualTo(tables.length);
+    assertThat(tables).hasSize(1);
     assertThat(SCHEMA_NAME).isEqualTo(tables[0].getString(0));
     assertThat(PARQUET_TABLE).isEqualTo(tables[0].getString(1));
 
