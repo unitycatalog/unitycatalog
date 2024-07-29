@@ -34,10 +34,7 @@ public class FileUtilsTest {
     FileUtils.deleteDirectory(tablePath);
     FileUtils.deleteDirectory(volumePath);
 
-    assertThatThrownBy(
-            () -> {
-              FileUtils.createTableDirectory("..", "schema", "table");
-            })
+    assertThatThrownBy(() -> FileUtils.createTableDirectory("..", "schema", "table"))
         .isInstanceOf(BaseException.class);
 
     assertThatThrownBy(
