@@ -75,9 +75,7 @@ public abstract class BaseVolumeCRUDTest extends BaseCRUDTest {
     // List volumes
     System.out.println("Testing list volumes..");
     Iterable<VolumeInfo> volumeInfos = volumeOperations.listVolumes(CATALOG_NAME, SCHEMA_NAME);
-    assertThat(volumeInfos)
-        .as("Volume with name '%s' should exist", VOLUME_NAME)
-        .anySatisfy(volume -> assertThat(volume.getName()).isNotNull().isEqualTo(VOLUME_NAME));
+    assertThat(volumeInfos).contains(volumeInfo);
 
     // Get volume
     System.out.println("Testing get volume..");
@@ -155,10 +153,7 @@ public abstract class BaseVolumeCRUDTest extends BaseCRUDTest {
     System.out.println("Testing list managed volumes..");
     Iterable<VolumeInfo> volumeInfosManaged =
         volumeOperations.listVolumes(CATALOG_NAME, SCHEMA_NAME);
-    assertThat(getSize(volumeInfosManaged)).isEqualTo(1);
-    assertThat(volumeInfosManaged)
-        .as("Volume with name '%s' should exist", VOLUME_NAME)
-        .anySatisfy(volume -> assertThat(volume.getName()).isNotNull().isEqualTo(VOLUME_NAME));
+    assertThat(volumeInfosManaged).hasSize(1).contains(managedVolumeInfo);
 
     // NOW Update the schema name
     schemaOperations.updateSchema(
