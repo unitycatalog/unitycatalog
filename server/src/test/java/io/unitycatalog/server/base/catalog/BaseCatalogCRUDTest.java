@@ -2,7 +2,6 @@ package io.unitycatalog.server.base.catalog;
 
 import static io.unitycatalog.server.utils.TestUtils.*;
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.tuple;
 
 import io.unitycatalog.client.ApiException;
 import io.unitycatalog.client.model.CatalogInfo;
@@ -10,6 +9,7 @@ import io.unitycatalog.client.model.CreateCatalog;
 import io.unitycatalog.client.model.UpdateCatalog;
 import io.unitycatalog.server.base.BaseCRUDTest;
 import java.util.List;
+import java.util.Objects;
 import java.util.Optional;
 import org.junit.jupiter.api.Test;
 
@@ -24,16 +24,12 @@ public abstract class BaseCatalogCRUDTest extends BaseCRUDTest {
 
   protected void assertCatalogExists(List<CatalogInfo> catalogList, String name, String comment) {
     assertThat(catalogList)
-        .extracting(CatalogInfo::getName, CatalogInfo::getComment)
-        .as("Catalog list should contain a catalog with name '%s' and comment '%s'", name, comment)
-        .containsAnyOf(tuple(name, comment));
+        .anyMatch(
+            c -> Objects.equals(c.getName(), name) && Objects.equals(c.getComment(), comment));
   }
 
   protected void assertCatalogNotExists(List<CatalogInfo> catalogList, String name) {
-    assertThat(catalogList)
-        .as("Catalog with name '%s' should not exist", name)
-        .extracting(CatalogInfo::getName)
-        .doesNotContain(name);
+    assertThat(catalogList).noneMatch(c -> Objects.equals(c.getName(), name));
   }
 
   @Test
