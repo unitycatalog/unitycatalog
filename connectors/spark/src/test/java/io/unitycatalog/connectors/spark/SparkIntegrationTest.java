@@ -1,8 +1,7 @@
 package io.unitycatalog.connectors.spark;
 
 import static io.unitycatalog.server.utils.TestUtils.*;
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.*;
 
 import io.unitycatalog.client.ApiException;
 import io.unitycatalog.client.model.*;
@@ -19,6 +18,7 @@ import java.io.File;
 import java.io.IOException;
 import java.util.*;
 import org.apache.spark.network.util.JavaUtils;
+import org.apache.spark.sql.AnalysisException;
 import org.apache.spark.sql.Row;
 import org.apache.spark.sql.SparkSession;
 import org.junit.jupiter.api.BeforeEach;
@@ -139,6 +139,24 @@ public class SparkIntegrationTest extends BaseCRUDTest {
             .collectAsList()
             .get(0);
     assertEquals(1, row.getInt(0));
+
+    session.stop();
+  }
+
+  @Test
+  public void testShowTables() throws ApiException, IOException {
+    createCommonResources();
+    SparkSession session = createSparkSessionWithCatalogs(SPARK_CATALOG);
+    setupExternalParquetTable(PARQUET_TABLE, new ArrayList<>(0));
+
+    Row[] tables = (Row[]) session.sql("SHOW TABLES in " + SCHEMA_NAME).collect();
+    assertEquals(tables.length, 1);
+    assertEquals(tables[0].getString(0), SCHEMA_NAME);
+    assertEquals(tables[0].getString(1), PARQUET_TABLE);
+
+    AnalysisException exception =
+        assertThrows(AnalysisException.class, () -> session.sql("SHOW TABLES in a.b.c").collect());
+    assertTrue(exception.getMessage().contains("a.b.c"));
 
     session.stop();
   }
