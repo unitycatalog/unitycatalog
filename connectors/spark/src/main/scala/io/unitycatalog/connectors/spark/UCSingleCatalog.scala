@@ -6,7 +6,6 @@ import io.unitycatalog.client.model.{AwsCredentials, GenerateTemporaryTableCrede
 
 import java.net.URI
 import java.util
-
 import org.apache.spark.sql.catalyst.TableIdentifier
 import org.apache.spark.sql.catalyst.analysis.NoSuchTableException
 import org.apache.spark.sql.catalyst.catalog.{CatalogStorageFormat, CatalogTable, CatalogTableType, CatalogUtils}
