@@ -3,6 +3,7 @@ package io.unitycatalog.cli.table;
 import static io.unitycatalog.server.utils.TestUtils.*;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatCode;
+import static org.assertj.core.api.Assertions.assertThatPath;
 import static org.assertj.core.api.Assertions.fail;
 
 import io.unitycatalog.cli.catalog.CliCatalogOperations;
@@ -85,7 +86,7 @@ public class CliExternalTableCreationTest extends BaseServerTest {
                 DeltaKernelUtils.createDeltaTable(
                     Paths.get(tablePath).toUri().toString(), columns, null))
         .doesNotThrowAnyException();
-    assert (Files.exists(Paths.get(tablePath + "/_delta_log")));
+    assertThatPath(Paths.get(tablePath + "/_delta_log")).isDirectory();
     createTableAndAssertReadTableSucceeds(tablePath, columns);
   }
 
