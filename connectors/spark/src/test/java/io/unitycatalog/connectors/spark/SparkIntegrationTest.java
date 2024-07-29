@@ -161,6 +161,20 @@ public class SparkIntegrationTest extends BaseCRUDTest {
     session.stop();
   }
 
+  @Test
+  public void testDropTable() throws ApiException, IOException {
+    createCommonResources();
+    SparkSession session = createSparkSessionWithCatalogs(SPARK_CATALOG);
+    setupExternalParquetTable(PARQUET_TABLE, new ArrayList<>(0));
+    String fullName = String.join(".", SPARK_CATALOG, SCHEMA_NAME, PARQUET_TABLE);
+    assertTrue(session.catalog().tableExists(fullName));
+    session.sql("DROP TABLE " + fullName).collect();
+    assertFalse(session.catalog().tableExists(fullName));
+    AnalysisException exception =
+        assertThrows(AnalysisException.class, () -> session.sql("DROP TABLE a.b.c.d").collect());
+    session.stop();
+  }
+
   private String generateTableLocation(String catalogName, String tableName) throws IOException {
     return new File(new File(dataDir, catalogName), tableName).getCanonicalPath();
   }
