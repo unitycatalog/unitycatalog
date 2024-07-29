@@ -94,9 +94,13 @@ private class UCProxy extends TableCatalog {
 
   override def listTables(namespace: Array[String]): Array[Identifier] = {
     if (namespace.length > 1) {
-      throw new ApiException("Unity Catalog does not support nested namespace.")
+      throw new ApiException("Nested namespaces are not supported:  " + namespace.mkString("."))
     }
-    val response: ListTablesResponse = tablesApi.listTables(this.name, namespace.head, 0, null)
+    val catalogName = this.name
+    val schemaName = namespace.head
+    val maxResults = 0
+    val pageToken = null
+    val response: ListTablesResponse = tablesApi.listTables(catalogName, schemaName, maxResults, pageToken)
     response.getTables.toSeq.map(table => Identifier.of(namespace, table.getName)).toArray
   }
 
