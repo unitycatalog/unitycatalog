@@ -2,7 +2,7 @@ package io.unitycatalog.server.base.volume;
 
 import static io.unitycatalog.server.utils.TestUtils.*;
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import io.unitycatalog.client.ApiException;
 import io.unitycatalog.client.model.*;
@@ -58,7 +58,8 @@ public abstract class BaseVolumeCRUDTest extends BaseCRUDTest {
             .schemaName(SCHEMA_NAME)
             .volumeType(VolumeType.EXTERNAL)
             .storageLocation("/tmp/volume1");
-    assertThrows(Exception.class, () -> volumeOperations.createVolume(createVolumeRequest));
+    assertThatThrownBy(() -> volumeOperations.createVolume(createVolumeRequest))
+        .isInstanceOf(Exception.class);
 
     createCommonResources();
     VolumeInfo volumeInfo = volumeOperations.createVolume(createVolumeRequest);
@@ -168,19 +169,21 @@ public abstract class BaseVolumeCRUDTest extends BaseCRUDTest {
     assertThat(managedVolumeInfo.getVolumeId()).isEqualTo(volumePostSchemaNameChange.getVolumeId());
 
     // test delete parent schema when volume exists
-    assertThrows(
-        Exception.class,
-        () ->
-            schemaOperations.deleteSchema(
-                CATALOG_NAME + "." + SCHEMA_NEW_NAME, Optional.of(false)));
+    assertThatThrownBy(
+            () ->
+                schemaOperations.deleteSchema(
+                    CATALOG_NAME + "." + SCHEMA_NEW_NAME, Optional.of(false)))
+        .isInstanceOf(Exception.class);
 
     // test force delete parent schema when volume exists
     schemaOperations.deleteSchema(CATALOG_NAME + "." + SCHEMA_NEW_NAME, Optional.of(true));
     // both schema and volume should be deleted
-    assertThrows(
-        Exception.class,
-        () -> volumeOperations.getVolume(CATALOG_NAME + "." + SCHEMA_NEW_NAME + "." + VOLUME_NAME));
-    assertThrows(
-        Exception.class, () -> schemaOperations.getSchema(CATALOG_NAME + "." + SCHEMA_NEW_NAME));
+    assertThatThrownBy(
+            () ->
+                volumeOperations.getVolume(
+                    CATALOG_NAME + "." + SCHEMA_NEW_NAME + "." + VOLUME_NAME))
+        .isInstanceOf(Exception.class);
+    assertThatThrownBy(() -> schemaOperations.getSchema(CATALOG_NAME + "." + SCHEMA_NEW_NAME))
+        .isInstanceOf(Exception.class);
   }
 }

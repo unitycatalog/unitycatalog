@@ -1,8 +1,8 @@
 package io.unitycatalog.server.base.table;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.assertj.core.api.Assertions.fail;
-import static org.junit.jupiter.api.Assertions.assertThrows;
 
 import io.unitycatalog.client.ApiException;
 import io.unitycatalog.client.model.*;
@@ -58,7 +58,8 @@ public abstract class BaseTableCRUDTest extends BaseCRUDTest {
 
   @Test
   public void testTableCRUD() throws IOException, ApiException {
-    assertThrows(Exception.class, () -> tableOperations.getTable(TestUtils.TABLE_FULL_NAME));
+    assertThatThrownBy(() -> tableOperations.getTable(TestUtils.TABLE_FULL_NAME))
+        .isInstanceOf(Exception.class);
     createCommonResources();
 
     // Create and verify a table
@@ -133,7 +134,8 @@ public abstract class BaseTableCRUDTest extends BaseCRUDTest {
 
   private void testDeleteTable() throws ApiException {
     tableOperations.deleteTable(TestUtils.TABLE_FULL_NAME);
-    assertThrows(Exception.class, () -> tableOperations.getTable(TestUtils.TABLE_FULL_NAME));
+    assertThatThrownBy(() -> tableOperations.getTable(TestUtils.TABLE_FULL_NAME))
+        .isInstanceOf(Exception.class);
   }
 
   private void testManagedTableRetrieval() throws ApiException {
@@ -218,20 +220,23 @@ public abstract class BaseTableCRUDTest extends BaseCRUDTest {
             TestUtils.CATALOG_NAME + "." + TestUtils.SCHEMA_NEW_NAME + "." + TestUtils.TABLE_NAME);
     assertThat(tableAfterSchemaUpdate.getTableId()).isEqualTo(tableBeforeSchemaUpdate.getTableId());
 
-    assertThrows(
-        Exception.class,
-        () ->
-            schemaOperations.deleteSchema(
-                TestUtils.CATALOG_NAME + "." + TestUtils.SCHEMA_NEW_NAME, Optional.of(false)));
+    assertThatThrownBy(
+            () ->
+                schemaOperations.deleteSchema(
+                    TestUtils.CATALOG_NAME + "." + TestUtils.SCHEMA_NEW_NAME, Optional.of(false)))
+        .isInstanceOf(Exception.class);
 
     String newTableFullName =
         TestUtils.CATALOG_NAME + "." + TestUtils.SCHEMA_NEW_NAME + "." + TestUtils.TABLE_NAME;
     schemaOperations.deleteSchema(
         TestUtils.CATALOG_NAME + "." + TestUtils.SCHEMA_NEW_NAME, Optional.of(true));
-    assertThrows(Exception.class, () -> tableOperations.getTable(newTableFullName));
-    assertThrows(
-        Exception.class,
-        () -> schemaOperations.getSchema(TestUtils.CATALOG_NAME + "." + TestUtils.SCHEMA_NEW_NAME));
+    assertThatThrownBy(() -> tableOperations.getTable(newTableFullName))
+        .isInstanceOf(Exception.class);
+    assertThatThrownBy(
+            () ->
+                schemaOperations.getSchema(
+                    TestUtils.CATALOG_NAME + "." + TestUtils.SCHEMA_NEW_NAME))
+        .isInstanceOf(Exception.class);
   }
 
   protected TableInfo createTestingTable(String tableName, String storageLocation)

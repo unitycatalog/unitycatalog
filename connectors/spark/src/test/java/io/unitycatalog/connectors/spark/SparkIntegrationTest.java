@@ -2,7 +2,7 @@ package io.unitycatalog.connectors.spark;
 
 import static io.unitycatalog.server.utils.TestUtils.*;
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import io.unitycatalog.client.ApiException;
@@ -162,9 +162,9 @@ public class SparkIntegrationTest extends BaseCRUDTest {
     assertThat(SCHEMA_NAME).isEqualTo(tables[0].getString(0));
     assertThat(PARQUET_TABLE).isEqualTo(tables[0].getString(1));
 
-    AnalysisException exception =
-        assertThrows(AnalysisException.class, () -> session.sql("SHOW TABLES in a.b.c").collect());
-    assertTrue(exception.getMessage().contains("a.b.c"));
+    assertThatThrownBy(() -> session.sql("SHOW TABLES in a.b.c").collect())
+        .isInstanceOf(AnalysisException.class)
+        .hasMessageContaining("a.b.c");
 
     session.stop();
   }

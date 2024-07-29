@@ -1,7 +1,7 @@
 package io.unitycatalog.server.base.schema;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import io.unitycatalog.client.ApiException;
 import io.unitycatalog.client.model.*;
@@ -34,7 +34,8 @@ public abstract class BaseSchemaCRUDTest extends BaseCRUDTest {
             .name(TestUtils.SCHEMA_NAME)
             .catalogName(TestUtils.CATALOG_NAME)
             .properties(TestUtils.PROPERTIES);
-    assertThrows(Exception.class, () -> schemaOperations.createSchema(createSchema));
+    assertThatThrownBy(() -> schemaOperations.createSchema(createSchema))
+        .isInstanceOf(Exception.class);
 
     CreateCatalog createCatalog = new CreateCatalog().name(TestUtils.CATALOG_NAME);
     catalogOperations.createCatalog(createCatalog);
@@ -102,13 +103,15 @@ public abstract class BaseSchemaCRUDTest extends BaseCRUDTest {
     SchemaInfo schemaInfo2 =
         schemaOperations.createSchema(
             new CreateSchema().name(TestUtils.SCHEMA_NAME).catalogName(TestUtils.CATALOG_NEW_NAME));
-    assertThrows(
-        Exception.class,
-        () -> catalogOperations.deleteCatalog(TestUtils.CATALOG_NEW_NAME, Optional.of(false)));
+    assertThatThrownBy(
+            () -> catalogOperations.deleteCatalog(TestUtils.CATALOG_NEW_NAME, Optional.of(false)))
+        .isInstanceOf(Exception.class);
     catalogOperations.deleteCatalog(TestUtils.CATALOG_NEW_NAME, Optional.of(true));
-    assertThrows(
-        Exception.class,
-        () -> schemaOperations.getSchema(TestUtils.CATALOG_NEW_NAME + "." + TestUtils.SCHEMA_NAME));
+    assertThatThrownBy(
+            () ->
+                schemaOperations.getSchema(
+                    TestUtils.CATALOG_NEW_NAME + "." + TestUtils.SCHEMA_NAME))
+        .isInstanceOf(Exception.class);
 
     // Test force delete of parent entity when schema exists
 
@@ -118,8 +121,10 @@ public abstract class BaseSchemaCRUDTest extends BaseCRUDTest {
         schemaOperations.createSchema(
             new CreateSchema().name(TestUtils.SCHEMA_NAME).catalogName(TestUtils.CATALOG_NEW_NAME));
     catalogOperations.deleteCatalog(TestUtils.CATALOG_NEW_NAME, Optional.of(true));
-    assertThrows(
-        Exception.class,
-        () -> schemaOperations.getSchema(TestUtils.CATALOG_NEW_NAME + "." + TestUtils.SCHEMA_NAME));
+    assertThatThrownBy(
+            () ->
+                schemaOperations.getSchema(
+                    TestUtils.CATALOG_NEW_NAME + "." + TestUtils.SCHEMA_NAME))
+        .isInstanceOf(Exception.class);
   }
 }
