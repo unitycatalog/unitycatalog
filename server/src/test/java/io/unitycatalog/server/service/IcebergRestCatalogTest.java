@@ -1,5 +1,7 @@
 package io.unitycatalog.server.service;
 
+import static org.assertj.core.api.Assertions.assertThat;
+
 import com.linecorp.armeria.client.WebClient;
 import com.linecorp.armeria.common.AggregatedHttpResponse;
 import com.linecorp.armeria.common.auth.AuthToken;
@@ -25,6 +27,12 @@ import io.unitycatalog.server.sdk.schema.SdkSchemaOperations;
 import io.unitycatalog.server.sdk.tables.SdkTableOperations;
 import io.unitycatalog.server.utils.RESTObjectMapper;
 import io.unitycatalog.server.utils.TestUtils;
+import java.io.IOException;
+import java.net.URISyntaxException;
+import java.util.List;
+import java.util.Objects;
+import java.util.Optional;
+import java.util.UUID;
 import org.apache.iceberg.catalog.Namespace;
 import org.apache.iceberg.catalog.TableIdentifier;
 import org.apache.iceberg.exceptions.NoSuchTableException;
@@ -36,17 +44,8 @@ import org.apache.iceberg.rest.responses.ListTablesResponse;
 import org.apache.iceberg.rest.responses.LoadTableResponse;
 import org.hibernate.Session;
 import org.hibernate.Transaction;
-import org.junit.Before;
-import org.junit.Test;
-
-import java.io.IOException;
-import java.net.URISyntaxException;
-import java.util.List;
-import java.util.Objects;
-import java.util.Optional;
-import java.util.UUID;
-
-import static org.assertj.core.api.Assertions.assertThat;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
 
 public class IcebergRestCatalogTest extends BaseServerTest {
 
@@ -55,7 +54,7 @@ public class IcebergRestCatalogTest extends BaseServerTest {
   protected TableOperations tableOperations;
   private WebClient client;
 
-  @Before
+  @BeforeEach
   public void setUp() {
     super.setUp();
     String uri = serverConfig.getServerUrl() + "/api/2.1/unity-catalog/iceberg";
@@ -259,7 +258,9 @@ public class IcebergRestCatalogTest extends BaseServerTest {
       assertThat(tableInfo.getTableId()).isNotNull();
       session.load(tableInfoDAO, UUID.fromString(tableInfo.getTableId()));
       String metadataLocation =
-          Objects.requireNonNull(this.getClass().getResource("/iceberg.metadata.json")).toURI().toString();
+          Objects.requireNonNull(this.getClass().getResource("/iceberg.metadata.json"))
+              .toURI()
+              .toString();
       tableInfoDAO.setUniformIcebergMetadataLocation(metadataLocation);
       session.merge(tableInfoDAO);
       tx.commit();
@@ -297,7 +298,9 @@ public class IcebergRestCatalogTest extends BaseServerTest {
       LoadTableResponse loadTableResponse =
           RESTObjectMapper.mapper().readValue(resp.contentUtf8(), LoadTableResponse.class);
       assertThat(loadTableResponse.tableMetadata().metadataFileLocation())
-              .isEqualTo(Objects.requireNonNull(this.getClass().getResource("/iceberg.metadata.json")).getPath());
+          .isEqualTo(
+              Objects.requireNonNull(this.getClass().getResource("/iceberg.metadata.json"))
+                  .getPath());
     }
 
     // List uniform tables

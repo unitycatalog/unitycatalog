@@ -30,6 +30,7 @@ commands_and_expected_output_strings = [
     (f"bin/uc table create --full_name unity.default.myTable --columns \"col1 int, col2 double\" --storage_location /tmp/uc/myTable", ["myTable", "col"]),
     ("bin/uc table write --full_name unity.default.myTable", [""]),
     ("bin/uc table read --full_name unity.default.myTable", ["col1", "col2"]),
+    ("bin/uc table delete --full_name unity.default.myTable", [""]),
 
     # volumes
     ("bin/uc volume list --catalog unity --schema default --output jsonPretty", ["txt_files", "json_files"]),
@@ -45,6 +46,7 @@ commands_and_expected_output_strings = [
     ("bin/uc volume read --full_name unity.default.myVolume", ["c.json"]),
     ("bin/uc volume read --full_name unity.default.myVolume --path c.json", ["marks"]),
     (f"rm -rf /tmp/uc/myVolume", []),
+    ("bin/uc volume delete --full_name unity.default.myVolume", [""]),
 
     # functions
     ("bin/uc function list --catalog unity --schema default --output jsonPretty", ["sum", "lowercase"]),
@@ -53,6 +55,7 @@ commands_and_expected_output_strings = [
     ("bin/uc function call --full_name unity.default.sum --input_params \"1,2,3\"", ["6"]),
     ("bin/uc function create --full_name unity.default.myFunction --data_type INT --input_params \"a int, b int\" --def \"c=a*b\\nreturn c\" --output jsonPretty", ["myFunction", "a*b"]),
     ("bin/uc function call --full_name unity.default.myFunction --input_params \"2,3\"", ["6"]),
+    ("bin/uc function delete --full_name unity.default.myFunction", [""]),
 
     # duckdb
     ("duckdb:install uc_catalog from core_nightly;", []),

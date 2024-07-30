@@ -1,6 +1,10 @@
 package io.unitycatalog.server.base.schema;
 
-import static org.junit.Assert.*;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import io.unitycatalog.client.ApiException;
 import io.unitycatalog.client.model.*;
@@ -8,7 +12,8 @@ import io.unitycatalog.server.base.BaseCRUDTest;
 import io.unitycatalog.server.base.ServerConfig;
 import io.unitycatalog.server.utils.TestUtils;
 import java.util.Optional;
-import org.junit.*;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
 
 public abstract class BaseSchemaCRUDTest extends BaseCRUDTest {
 
@@ -16,7 +21,7 @@ public abstract class BaseSchemaCRUDTest extends BaseCRUDTest {
 
   protected abstract SchemaOperations createSchemaOperations(ServerConfig config);
 
-  @Before
+  @BeforeEach
   @Override
   public void setUp() {
     super.setUp();
@@ -59,7 +64,7 @@ public abstract class BaseSchemaCRUDTest extends BaseCRUDTest {
     SchemaInfo emptyUpdateSchemaInfo =
         schemaOperations.updateSchema(TestUtils.SCHEMA_FULL_NAME, emptyUpdateSchema);
     SchemaInfo retrievedSchemaInfo2 = schemaOperations.getSchema(TestUtils.SCHEMA_FULL_NAME);
-    Assert.assertEquals(schemaInfo, retrievedSchemaInfo2);
+    assertEquals(schemaInfo, retrievedSchemaInfo2);
 
     // Update schema name without updating comment
     System.out.println("Testing update schema: changing name..");
@@ -68,7 +73,7 @@ public abstract class BaseSchemaCRUDTest extends BaseCRUDTest {
         schemaOperations.updateSchema(TestUtils.SCHEMA_FULL_NAME, updateSchema);
     assertEquals(updateSchema.getNewName(), updatedSchemaInfo.getName());
     assertEquals(updateSchema.getComment(), updatedSchemaInfo.getComment());
-    Assert.assertEquals(TestUtils.SCHEMA_NEW_FULL_NAME, updatedSchemaInfo.getFullName());
+    assertEquals(TestUtils.SCHEMA_NEW_FULL_NAME, updatedSchemaInfo.getFullName());
     assertNotNull(updatedSchemaInfo.getUpdatedAt());
 
     // Update schema comment without updating name
@@ -78,7 +83,7 @@ public abstract class BaseSchemaCRUDTest extends BaseCRUDTest {
         schemaOperations.updateSchema(TestUtils.SCHEMA_NEW_FULL_NAME, updateSchema2);
     assertEquals(TestUtils.SCHEMA_NEW_NAME, updatedSchemaInfo2.getName());
     assertEquals(updateSchema2.getComment(), updatedSchemaInfo2.getComment());
-    Assert.assertEquals(TestUtils.SCHEMA_NEW_FULL_NAME, updatedSchemaInfo2.getFullName());
+    assertEquals(TestUtils.SCHEMA_NEW_FULL_NAME, updatedSchemaInfo2.getFullName());
     assertNotNull(updatedSchemaInfo2.getUpdatedAt());
 
     // Now update the parent catalog name

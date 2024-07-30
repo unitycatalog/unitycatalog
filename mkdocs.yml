@@ -12,8 +12,10 @@ nav:
   - Usage:
       - CLI: usage/cli.md
       - Tables:
-          - UniForm: usage/tables/uniform.md
+          - usage/tables/index.md
+          - Delta Lake: usage/tables/deltalake.md
           - Parquet: usage/tables/parquet.md
+          - UniForm: usage/tables/uniform.md
       - Volumes: usage/volumes.md
       - Functions: usage/functions.md
       - Server: usage/server.md
@@ -33,6 +35,7 @@ theme:
     - content.code.copy
     - navigation.footer
     - navigation.expand
+    - navigation.indexes
   palette:
     - media: "(prefers-color-scheme: light)"
       scheme: default

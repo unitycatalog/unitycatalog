@@ -134,12 +134,16 @@ public class TableCli {
 
   private static String listTables(TablesApi tablesApi, JSONObject json)
       throws JsonProcessingException, ApiException {
+    int maxResults = 100;
+    if (json.has(CliParams.MAX_RESULTS.getServerParam())) {
+      maxResults = json.getInt(CliParams.MAX_RESULTS.getServerParam());
+    }
     return objectWriter.writeValueAsString(
         tablesApi
             .listTables(
                 json.getString(CliParams.CATALOG_NAME.getServerParam()),
                 json.getString(CliParams.SCHEMA_NAME.getServerParam()),
-                100,
+                maxResults,
                 null)
             .getTables());
   }
