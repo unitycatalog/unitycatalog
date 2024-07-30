@@ -808,7 +808,7 @@ paths:
       operationId: listRegisteredModels
       summary: List models
       description: |
-        Gets the list of all available models under the parent catalog and schema.
+        Gets a paginated list of all available models either under the specified parent catalog and schema, or all models stored in UC.
         There is no guarantee of a specific ordering of the elements in the array.
       responses:
         '200':
@@ -817,9 +817,9 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ListRegisteredModelsResponse'
-  /models/{full_name}:
+  /models/{full_name_arg}:
     parameters:
-      - name: full_name
+      - name: full_name_arg
         in: path
         description: Full name of the model.
         required: true
@@ -829,12 +829,12 @@ paths:
       tags:
         - RegisteredModels
       operationId: getRegisteredModel
-      summary: Get a model
+      summary: Get a specified registered model
       description: |
-        Gets a model for a specific catalog and schema.
+        Gets a fully specified registered model.
       responses:
         '200':
-          description: The model was successfully retrieved.
+          description: The registered model was successfully retrieved.
           content:
             application/json:
               schema:
@@ -843,9 +843,9 @@ paths:
       tags:
         - RegisteredModels
       operationId: updateRegisteredModel
-      summary: Update a model
+      summary: Update a registered model
       description: |
-        Updates the model that matches the supplied name.
+        Updates the specified registered model.
       requestBody:
         content:
           application/json:
@@ -853,7 +853,7 @@ paths:
               $ref: '#/components/schemas/UpdateRegisteredModel'
       responses:
         '200':
-          description: The model was successfully updated.
+          description: The registered model was successfully updated.
           content:
             application/json:
               schema:
@@ -862,12 +862,12 @@ paths:
       tags:
         - RegisteredModels
       operationId: deleteRegisteredModel
-      summary: Delete a model
+      summary: Delete a specified registered model.
       description: |
-        Deletes a model from the specified parent catalog and schema. All versions of the model must have already been deleted.
+        Deletes a fully specified registered model. All versions of the model must have already been deleted.
       responses:
         '200':
-          description: The model was successfully deleted.
+          description: The registered model was successfully deleted.
           content:
             application/json:
               schema: {}
@@ -876,12 +876,10 @@ paths:
       operationId: createModelVersion
       summary: |
         Create a model version.
-        WARNING: This API is experimental and will change in future versions.
       tags:
         - ModelVersions
       description: |
         Creates a new model version instance.
-        WARNING: This API is experimental and will change in future versions.
       requestBody:
         content:
           application/json:
@@ -894,21 +892,27 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ModelVersionInfo'
-  /models/{full_name}/versions:
+  /models/{full_name_arg}/versions:
     parameters:
-      - name: full_name
+      - name: full_name_arg
         in: path
-        description: Full name of the model.
+        description: Full name of the registered model.
         required: true
+        schema:
+          type: string
+      - name: page_token
+        in: query
+        description: Opaque token to send for the next page of results (pagination).
+        required: false
         schema:
           type: string
     get:
       tags:
         - ModelVersions
       operationId: listModelVersions
-      summary: List model versions
+      summary: List model versions of the specified registered model.
       description: |
-        Gets the list of all available model versions under the model.
+        Gets the paginated list of all available model versions under the specified registered model.
         There is no guarantee of a specific ordering of the elements in the array.
       responses:
         '200':
@@ -917,9 +921,9 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ListModelVersionsResponse'
-  /models/{full_name}/versions/{version}:
+  /models/{full_name_arg}/versions/{version}:
     parameters:
-      - name: full_name
+      - name: full_name_arg
         in: path
         description: Full name of the model.
         required: true
@@ -930,7 +934,8 @@ paths:
         description: Version number of the model version.
         required: true
         schema:
-          type: string
+          type: integer
+          format: int64
     get:
       tags:
         - ModelVersions
@@ -951,7 +956,7 @@ paths:
       operationId: updateModelVersion
       summary: Update a model version
       description: |
-        Updates the model version that matches the supplied name.
+        Updates the specified model version.
       requestBody:
         content:
           application/json:
@@ -970,16 +975,16 @@ paths:
       operationId: deleteModelVersion
       summary: Delete a model version
       description: |
-        Deletes a model version from the specified model.
+        Deletes the specified model version.
       responses:
         '200':
-          description: The model was successfully deleted.
+          description: The model version was successfully deleted.
           content:
             application/json:
               schema: {}
-  /models/{full_name}/versions/{version}/finalize:
+  /models/{full_name_arg}/versions/{version}/finalize:
     parameters:
-      - name: full_name
+      - name: full_name_arg
         in: path
         description: Full name of the model.
         required: true
@@ -990,14 +995,15 @@ paths:
         description: Version number of the model version.
         required: true
         schema:
-          type: string
+          type: integer
+          format: int64
     patch:
       tags:
         - ModelVersions
       operationId: finalizeModelVersion
       summary: Finalize a model version
       description: |
-        Finalizes the status of the model version that matches the supplied model name and version.
+        Finalizes the status of the specified model version.
       requestBody:
         content:
           application/json:
@@ -1836,7 +1842,7 @@ components:
       type: object
       properties:
         name:
-          description: Name of model, relative to parent schema.
+          description: Name of registered model, relative to parent schema.
           type: string
         catalog_name:
           description: Name of parent catalog.
@@ -1845,27 +1851,30 @@ components:
           description: Name of parent schema relative to its parent catalog.
           type: string
         storage_location:
-          description: Storage root URL for model (for **MANAGED**, **EXTERNAL** models)
+          description: The storage location on the cloud under which registered model data files are stored.
+          type: string
+        full_name:
+          description: The full 3 tiered UC identifier for this registered model.
           type: string
         comment:
           description: User-provided free-form text description.
           type: string
         created_at:
-          description: Time at which this model was created, in epoch milliseconds.
+          description: Time at which this registered model was created, in epoch milliseconds.
           type: integer
           format: int64
         updated_at:
-          description: Time at which this model was last modified, in epoch milliseconds.
+          description: Time at which this registered model was last modified, in epoch milliseconds.
           type: integer
           format: int64
         model_id:
-          description: Unique identifier for the model.
+          description: Unique identifier for the registered model.
           type: string
     ModelVersionInfo:
       type: object
       properties:
         model_name:
-          description: Name of model, relative to parent schema.
+          description: Name of registered model, relative to parent schema.
           type: string
         catalog_name:
           description: Name of parent catalog.
@@ -1886,7 +1895,7 @@ components:
         status:
           $ref: '#/components/schemas/ModelVersionStatus'
         storage_location:
-          description: Storage root URL for model version (for **MANAGED**, **EXTERNAL** model versions)
+          description: The storage location on the cloud under which model version data files are stored.
           type: string
         comment:
           description: User-provided free-form text description.
@@ -1926,9 +1935,6 @@ components:
         schema_name:
           description: Name of parent schema relative to its parent catalog.
           type: string
-        storage_location:
-          description: Storage root URL for registered model (for **MANAGED**, **EXTERNAL** regisetered models)
-          type: string
         comment:
           description: User-provided free-form text description.
           type: string
@@ -1939,6 +1945,9 @@ components:
     UpdateRegisteredModel:
       type: object
       properties:
+        full_name_arg:
+          description: The full name of the registered model to update.
+          type: string
         comment:
           description: User-provided free-form text description.
           type: string
@@ -1962,7 +1971,7 @@ components:
       type: object
       properties:
         model_name:
-          description: Name of model, relative to parent schema.
+          description: Name of registered model, relative to parent schema.
           type: string
         catalog_name:
           description: Name of parent catalog.
@@ -1976,9 +1985,6 @@ components:
         run_id:
           description: The run id used by the ML package that generated the model.
           type: string
-        storage_location:
-          description: Storage root URL for model (for **MANAGED**, **EXTERNAL** models)
-          type: string
         comment:
           description: User-provided free-form text description.
           type: string
@@ -1989,12 +1995,6 @@ components:
     UpdateModelVersion:
       type: object
       properties:
-        source:
-          description: URI indicating the location of the source model artifacts.
-          type: string
-        run_id:
-          description: The run id used by the ML package that generated the model.
-          type: string
         comment:
           description: User-provided free-form text description.
           type: string
