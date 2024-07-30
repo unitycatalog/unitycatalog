@@ -175,6 +175,19 @@ public class SparkIntegrationTest extends BaseCRUDTest {
     session.stop();
   }
 
+  @Test
+  public void testSetCurrentDB() throws ApiException {
+    createCommonResources();
+    SparkSession session = createSparkSessionWithCatalogs(SPARK_CATALOG, TestUtils.CATALOG_NAME);
+    session.catalog().setCurrentCatalog(TestUtils.CATALOG_NAME);
+    session.catalog().setCurrentDatabase(SCHEMA_NAME);
+    session.catalog().setCurrentCatalog(SPARK_CATALOG);
+    // TODO: We need to apply a fix on Spark side to use v2 session catalog handle
+    // `setCurrentDatabase` when the catalog name is `spark_catalog`.
+    // session.catalog().setCurrentDatabase(SCHEMA_NAME);
+    session.stop();
+  }
+
   private String generateTableLocation(String catalogName, String tableName) throws IOException {
     return new File(new File(dataDir, catalogName), tableName).getCanonicalPath();
   }
