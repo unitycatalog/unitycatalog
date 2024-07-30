@@ -182,8 +182,8 @@ public class SparkIntegrationTest extends BaseCRUDTest {
     session.catalog().setCurrentCatalog(TestUtils.CATALOG_NAME);
     session.catalog().setCurrentDatabase(SCHEMA_NAME);
     session.catalog().setCurrentCatalog(SPARK_CATALOG);
-    // TODO: We need to apply a fix on Spark side to used v2 session catalog handle
-    // set current database when the catalog name is "spark_catalog".
+    // TODO: We need to apply a fix on Spark side to use v2 session catalog handle
+    // `setCurrentDatabase` when the catalog name is `spark_catalog`.
     // session.catalog().setCurrentDatabase(SCHEMA_NAME);
     session.stop();
   }
