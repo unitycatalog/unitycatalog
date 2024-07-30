@@ -84,13 +84,13 @@ public class FunctionRepository {
         dao.getInputParams()
             .forEach(
                 p -> {
-                  p.setId(UUID.randomUUID().toString());
+                  p.setId(UUID.randomUUID());
                   p.setFunction(dao);
                 });
         dao.getReturnParams()
             .forEach(
                 p -> {
-                  p.setId(UUID.randomUUID().toString());
+                  p.setId(UUID.randomUUID());
                   p.setFunction(dao);
                 });
         session.persist(dao);

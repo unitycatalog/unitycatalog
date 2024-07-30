@@ -13,7 +13,8 @@ import io.unitycatalog.server.base.table.TableOperations;
 import io.unitycatalog.server.sdk.catalog.SdkCatalogOperations;
 import io.unitycatalog.server.sdk.schema.SdkSchemaOperations;
 import io.unitycatalog.server.utils.TestUtils;
-import org.junit.Test;
+import java.util.List;
+import org.junit.jupiter.api.Test;
 
 public class SdkTableCRUDTest extends BaseTableCRUDTest {
 
@@ -44,7 +45,7 @@ public class SdkTableCRUDTest extends BaseTableCRUDTest {
   @Test
   public void testListTablesWithNoNextPageTokenShouldReturnNull() throws Exception {
     createCommonResources();
-    TableInfo testingTable = createDefaultTestingTable();
+    TableInfo testingTable = createTestingTable(TestUtils.TABLE_NAME, TestUtils.STORAGE_LOCATION);
     ListTablesResponse resp =
         localTablesApi.listTables(
             testingTable.getCatalogName(), testingTable.getSchemaName(), 100, null);
@@ -55,5 +56,25 @@ public class SdkTableCRUDTest extends BaseTableCRUDTest {
         .usingRecursiveComparison()
         .ignoringFields("columns", "storageLocation")
         .isEqualTo(testingTable);
+  }
+
+  @Test
+  public void testListTablesWithNextPageTokenShouldReturnNextPageToken() throws Exception {
+    createCommonResources();
+    List<TableInfo> testingTables = createMultipleTestingTables(11);
+    ListTablesResponse resp =
+        localTablesApi.listTables(
+            testingTables.get(0).getCatalogName(), testingTables.get(0).getSchemaName(), 10, null);
+    assertThat(resp.getNextPageToken()).isNotNull();
+    assertThat(resp.getTables()).hasSize(10);
+    // Check the next page has the last table
+    ListTablesResponse nextPageResp =
+        localTablesApi.listTables(
+            testingTables.get(0).getCatalogName(),
+            testingTables.get(0).getSchemaName(),
+            10,
+            resp.getNextPageToken());
+    assertThat(nextPageResp.getNextPageToken()).isNull();
+    assertThat(nextPageResp.getTables()).hasSize(1);
   }
 }

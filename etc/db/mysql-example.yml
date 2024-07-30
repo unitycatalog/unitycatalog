@@ -1,0 +1,17 @@
+
+services:
+  db:
+    image: mysql:8.4.1
+    restart: always
+    environment:
+      MYSQL_ROOT_PASSWORD: root
+      MYSQL_DATABASE: ucdb
+      MYSQL_USER: uc_default_user
+      MYSQL_PASSWORD: uc_default_password
+    volumes:
+      - mysql_data:/var/lib/mysql
+    ports:
+      - '3306:3306'
+
+volumes:
+  mysql_data:

@@ -1,11 +1,9 @@
 package io.unitycatalog.server.service.iceberg;
 
+import java.net.URI;
 import org.apache.iceberg.TableMetadata;
 import org.apache.iceberg.TableMetadataParser;
 import org.apache.iceberg.io.FileIO;
-
-import java.io.IOException;
-import java.net.URI;
 
 public class MetadataService {
 

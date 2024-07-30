@@ -1,11 +1,11 @@
 package io.unitycatalog.server.utils;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 
 import io.unitycatalog.server.exception.BaseException;
 import io.unitycatalog.server.persist.utils.FileUtils;
-import org.junit.Assert;
-import org.junit.Test;
+import org.junit.jupiter.api.Test;
 
 public class FileUtilsTest {
 
@@ -34,13 +34,13 @@ public class FileUtilsTest {
     FileUtils.deleteDirectory(tablePath);
     FileUtils.deleteDirectory(volumePath);
 
-    Assert.assertThrows(
+    assertThrows(
         BaseException.class,
         () -> {
           FileUtils.createTableDirectory("..", "schema", "table");
         });
 
-    Assert.assertThrows(
+    assertThrows(
         BaseException.class,
         () -> {
           FileUtils.createVolumeDirectory("..");

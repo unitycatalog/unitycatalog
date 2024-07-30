@@ -16,21 +16,21 @@ public class TableService {
 
   public TableService() {}
 
-  @Post("/tables")
+  @Post("")
   public HttpResponse createTable(CreateTable createTable) {
     assert createTable != null;
     TableInfo createTableResponse = TABLE_REPOSITORY.createTable(createTable);
     return HttpResponse.ofJson(createTableResponse);
   }
 
-  @Get("/tables/{full_name}")
+  @Get("/{full_name}")
   public HttpResponse getTable(@Param("full_name") String fullName) {
     assert fullName != null;
     TableInfo tableInfo = TABLE_REPOSITORY.getTable(fullName);
     return HttpResponse.ofJson(tableInfo);
   }
 
-  @Get("/tables")
+  @Get("")
   public HttpResponse listTables(
       @Param("catalog_name") String catalogName,
       @Param("schema_name") String schemaName,
@@ -48,7 +48,7 @@ public class TableService {
             omitColumns.orElse(false)));
   }
 
-  @Delete("/tables/{full_name}")
+  @Delete("/{full_name}")
   public HttpResponse deleteTable(@Param("full_name") String fullName) {
     TABLE_REPOSITORY.deleteTable(fullName);
     return HttpResponse.of(HttpStatus.OK);
