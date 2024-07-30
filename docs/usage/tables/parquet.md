@@ -2,6 +2,8 @@
 
 This page explains how you can work with Parquet tables in your Unity Catalog. It will also explain the advantages and drawbacks of working with Parquet.
 
+## Set up Unity Catalog
+
 To follow along, make sure you have a local instance of Unity Catalog running by launching the following command from a terminal window:
 
 ```sh
@@ -113,30 +115,6 @@ Here are some of the challenges of working with Parquet tables:
 - Expensive footer reads to gather statistics for file skipping
 - There is no way to rename, reorder, or drop columns without rewriting the whole table
 
-Open table formats like Delta Lake and Apache Iceberg were specifically designed to overcome these limitations. Storing your data in one of those formats is almost always more advantageous than storing it in Parquet files.
+Open table formats like Apache Iceberg and Delta Lake were specifically designed to overcome these limitations. Storing your data in one of those formats is almost always more advantageous than storing it in Parquet files.
 
 You can read a detailed comparison of [Delta Lake vs Parquet](https://delta.io/blog/delta-lake-vs-parquet-comparison/) for more information.
-
-## Using Parquet Tables with Spark
-
-ref: https://books.japila.pl/unity-catalog-internals/spark-integration/#spark_catalog
-
-1. Build Spark integration module: `build/sbt clean package publishLocal spark/publishLocal`
-2. Launch a Spark shell `bin/spark-shell` from Spark directory or `pyspark` in venv with pyspark installed from pip
-
-### PySpark
-
-3. spark.catalog.listCatalogs()
-   output: `[CatalogMetadata(name='spark_catalog', description=None)]`
-4. spark.catalog.currentCatalog()
-   `'spark_catalog'`
-5. create `spark_catalog` in Unity Catalog
-   ./bin/uc catalog create --name spark_catalog
-   ./bin/uc schema create --catalog spark_catalog --name default
-6. create a table
-   ./bin/uc table create --full_name spark_catalog.default.uc_demo --columns 'id INT' --storage_location /tmp/uc_demo --format delta
-7. !! Spark doesn't recognize the table we've created in UC
-   ?? maybe version issue, spark==3.5.0 on my system and 3.5.1 in the docs
-   > > actually probably because i haven't installed the right jars etc
-   > > mmm installing the right conf + jars broke the `listCatalogs()` call
-   > > maybe just Scala and not pyspark yet
