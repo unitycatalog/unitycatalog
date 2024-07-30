@@ -101,7 +101,7 @@ This should output something like:
 
 ## Pros and Cons of Using Parquet
 
-Parquet is a popular file format for tabular data. It is an efficient data storage format and offers great features like predicate pushdown, column pruning and partition skipping.
+[Apache Parquet](https://parquet.apache.org/) is a popular file format for tabular data. It is an efficient data storage format and offers great features like predicate pushdown, column pruning and partition skipping.
 
 Parquet also has some important drawbacks you should be aware of compared to open table formats like Delta Lake and Apache Iceberg.
 
