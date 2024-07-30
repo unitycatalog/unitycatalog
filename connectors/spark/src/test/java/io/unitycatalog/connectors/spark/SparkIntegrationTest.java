@@ -3,6 +3,8 @@ package io.unitycatalog.connectors.spark;
 import static io.unitycatalog.server.utils.TestUtils.*;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import io.unitycatalog.client.ApiException;
 import io.unitycatalog.client.model.*;
@@ -177,8 +179,8 @@ public class SparkIntegrationTest extends BaseCRUDTest {
     assertTrue(session.catalog().tableExists(fullName));
     session.sql("DROP TABLE " + fullName).collect();
     assertFalse(session.catalog().tableExists(fullName));
-    AnalysisException exception =
-        assertThrows(AnalysisException.class, () -> session.sql("DROP TABLE a.b.c.d").collect());
+    assertThatThrownBy(() -> session.sql("DROP TABLE a.b.c.d").collect())
+        .isInstanceOf(AnalysisException.class);
     session.stop();
   }
 
