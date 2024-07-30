@@ -40,6 +40,17 @@ public class SparkIntegrationTest extends BaseCRUDTest {
   private final File dataDir = new File(System.getProperty("java.io.tmpdir"), "spark_test");
 
   @Test
+  public void testCreateSchema() throws ApiException {
+    createCommonResources();
+    SparkSession session = createSparkSessionWithCatalogs(CATALOG_NAME);
+    session.sql("CREATE DATABASE my_test_database;").collect();
+    assertTrue(session.catalog().databaseExists("my_test_database"));
+    session.sql("DROP DATABASE my_test_database;").collect();
+    assertFalse(session.catalog().databaseExists("my_test_database"));
+    session.stop();
+  }
+
+  @Test
   public void testParquetReadWrite() throws IOException, ApiException {
     createCommonResources();
     SparkSession session = createSparkSessionWithCatalogs(SPARK_CATALOG);
