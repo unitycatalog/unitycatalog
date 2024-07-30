@@ -155,6 +155,18 @@ public class SparkIntegrationTest extends BaseCRUDTest {
   }
 
   @Test
+  public void testShowDatabases() throws ApiException, IOException {
+    createCommonResources();
+    SparkSession session = createSparkSessionWithCatalogs(CATALOG_NAME);
+    session.catalog().setCurrentCatalog(CATALOG_NAME);
+    session.sql("CREATE DATABASE my_test_database1").collect();
+    session.sql("CREATE DATABASE my_test_database2").collect();
+    Row[] tables = (Row[]) session.sql("SHOW DATABASES").collect();
+    assertEquals(tables.length, 3);
+
+  }
+
+  @Test
   public void testShowTables() throws ApiException, IOException {
     createCommonResources();
     SparkSession session = createSparkSessionWithCatalogs(SPARK_CATALOG);
