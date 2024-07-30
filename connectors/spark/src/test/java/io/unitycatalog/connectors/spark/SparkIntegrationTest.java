@@ -19,6 +19,8 @@ import io.unitycatalog.server.sdk.tables.SdkTableOperations;
 import io.unitycatalog.server.utils.TestUtils;
 import java.io.File;
 import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.*;
 import org.apache.spark.network.util.JavaUtils;
 import org.apache.spark.sql.AnalysisException;
@@ -228,7 +230,6 @@ public class SparkIntegrationTest extends BaseCRUDTest {
     List<Row> rows = session.sql("SELECT * FROM " + t1).collectAsList();
     assertThat(1 == rows.size());
     assertThat(2 == rows.get(0).getInt(0));
-    session.stop();
   }
 
   @Test
@@ -303,6 +304,26 @@ public class SparkIntegrationTest extends BaseCRUDTest {
     assertThatThrownBy(() -> session.sql("DESC NAMESPACE NonExist").collect())
         .isInstanceOf(NoSuchNamespaceException.class);
 
+    session.stop();
+  }
+
+  @Test
+  public void testCreateExternalParquetTable() throws ApiException, IOException {
+    createCommonResources();
+    SparkSession session = createSparkSessionWithCatalogs(CATALOG_NAME);
+    Path tempDirectory = Files.createTempDirectory("testCreateExternalTable");
+    session.catalog().setCurrentCatalog(CATALOG_NAME);
+    session.catalog().setCurrentDatabase(SCHEMA_NAME);
+    session
+        .sql(
+            "CREATE TABLE "
+                + PARQUET_TABLE
+                + "(name STRING) USING PARQUET LOCATION '"
+                + tempDirectory.toString()
+                + "'")
+        .collect();
+    assertTrue(session.catalog().tableExists(PARQUET_TABLE));
+    List<Row> rows = session.sql("select * from " + PARQUET_TABLE).collectAsList();
     session.stop();
   }
 
