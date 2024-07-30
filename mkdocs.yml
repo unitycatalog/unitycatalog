@@ -13,6 +13,7 @@ nav:
       - CLI: usage/cli.md
       - Tables:
           - UniForm: usage/tables/uniform.md
+          - Parquet: usage/tables/parquet.md
       - Volumes: usage/volumes.md
       - Functions: usage/functions.md
       - Server: usage/server.md
