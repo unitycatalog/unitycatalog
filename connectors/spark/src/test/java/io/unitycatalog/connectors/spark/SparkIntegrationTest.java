@@ -168,6 +168,33 @@ public class SparkIntegrationTest extends BaseCRUDTest {
     session.stop();
   }
 
+  @Test
+  public void testDropTable() throws ApiException, IOException {
+    createCommonResources();
+    SparkSession session = createSparkSessionWithCatalogs(SPARK_CATALOG);
+    setupExternalParquetTable(PARQUET_TABLE, new ArrayList<>(0));
+    String fullName = String.join(".", SPARK_CATALOG, SCHEMA_NAME, PARQUET_TABLE);
+    assertTrue(session.catalog().tableExists(fullName));
+    session.sql("DROP TABLE " + fullName).collect();
+    assertFalse(session.catalog().tableExists(fullName));
+    AnalysisException exception =
+        assertThrows(AnalysisException.class, () -> session.sql("DROP TABLE a.b.c.d").collect());
+    session.stop();
+  }
+
+  @Test
+  public void testSetCurrentDB() throws ApiException {
+    createCommonResources();
+    SparkSession session = createSparkSessionWithCatalogs(SPARK_CATALOG, TestUtils.CATALOG_NAME);
+    session.catalog().setCurrentCatalog(TestUtils.CATALOG_NAME);
+    session.catalog().setCurrentDatabase(SCHEMA_NAME);
+    session.catalog().setCurrentCatalog(SPARK_CATALOG);
+    // TODO: We need to apply a fix on Spark side to use v2 session catalog handle
+    // `setCurrentDatabase` when the catalog name is `spark_catalog`.
+    // session.catalog().setCurrentDatabase(SCHEMA_NAME);
+    session.stop();
+  }
+
   private String generateTableLocation(String catalogName, String tableName) throws IOException {
     return new File(new File(dataDir, catalogName), tableName).getCanonicalPath();
   }
