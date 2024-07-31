@@ -43,11 +43,11 @@ public class SparkIntegrationTest extends BaseCRUDTest {
   public void testCreateSchema() throws ApiException {
     createCommonResources();
     SparkSession session = createSparkSessionWithCatalogs(CATALOG_NAME);
-    session.sql("CREATE DATABASE uc_testcatalog.my_test_database;");
-    // TODO: UC has a bug that getSchema throws 505 for an existing scehma thus we cannot test this for now.
-//    assertTrue(session.catalog().databaseExists("uc_testcatalog.my_test_databasese"));
+    session.catalog().setCurrentCatalog(CATALOG_NAME);
+    session.sql("CREATE DATABASE my_test_database;");
+    assertTrue(session.catalog().databaseExists("my_test_databasese"));
     session.sql("DROP DATABASE uc_testcatalog.my_test_database;");
-    assertFalse(session.catalog().databaseExists("uc_testcatalog.my_test_database"));
+    assertFalse(session.catalog().databaseExists("my_test_database"));
     session.stop();
   }
 
