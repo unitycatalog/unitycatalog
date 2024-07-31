@@ -59,8 +59,12 @@ public class SchemaCli {
   private static String listSchemas(SchemasApi schemasApi, JSONObject json)
       throws JsonProcessingException, ApiException {
     String catalogName = json.getString(CliParams.CATALOG_NAME.getServerParam());
+    int maxResults = 100;
+    if (json.has(CliParams.MAX_RESULTS.getServerParam())) {
+      maxResults = json.getInt(CliParams.MAX_RESULTS.getServerParam());
+    }
     return objectWriter.writeValueAsString(
-        schemasApi.listSchemas(catalogName, 100, null).getSchemas());
+        schemasApi.listSchemas(catalogName, maxResults, null).getSchemas());
   }
 
   private static String getSchema(SchemasApi schemasApi, JSONObject json)

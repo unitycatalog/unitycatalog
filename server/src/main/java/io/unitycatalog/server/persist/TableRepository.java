@@ -172,7 +172,8 @@ public class TableRepository {
       if (e instanceof BaseException) {
         throw e;
       }
-      throw new BaseException(ErrorCode.INTERNAL, "Error creating table: " + fullName, e);
+      throw new BaseException(
+          ErrorCode.INTERNAL, "Error creating table: " + fullName + ". " + e.getMessage(), e);
     }
     return tableInfo;
   }
