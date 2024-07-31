@@ -1,8 +1,15 @@
 #!/usr/bin/env bash
 set -ex;
 
-container_version="0.1.0"
+current_dir=$(pwd)
+script_dir=$(dirname $0)
+project_dir=$(dirname $(dirname $(realpath $script_dir)))
+
+
+
 container_name="unitycatalog-cli"
+container_version=$(cat "$project_dir/version.sbt" | cut -d '"' -f2)
+
 network_name="unitycatalog_network"
 network_details=$(docker network ls -q --filter "name=$network_name")
 container_details=$(docker container ls -a -q --filter "name=$container_name")
@@ -22,7 +29,7 @@ if [ -z "$container_details" ]; then
     echo "Container $container_name does not exist. Creating it..."
     
     docker run --rm \
-       --network unitycatalog_network \
+       --network "$network_name" \
        --name "$container_name" -it "$container_name:$container_version" --server http://unitycatalog:8081
 
 
