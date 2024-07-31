@@ -6,13 +6,14 @@ import io.unitycatalog.server.model.*;
 import io.unitycatalog.server.persist.dao.CatalogInfoDAO;
 import io.unitycatalog.server.persist.dao.PropertyDAO;
 import io.unitycatalog.server.persist.utils.HibernateUtils;
+import io.unitycatalog.server.persist.utils.PagedListingHelper;
 import io.unitycatalog.server.persist.utils.RepositoryUtils;
 import io.unitycatalog.server.utils.Constants;
 import io.unitycatalog.server.utils.ValidationUtils;
+import java.util.ArrayList;
 import java.util.Date;
 import java.util.List;
 import java.util.Optional;
-import java.util.stream.Collectors;
 import org.hibernate.Session;
 import org.hibernate.SessionFactory;
 import org.hibernate.Transaction;
@@ -25,6 +26,8 @@ public class CatalogRepository {
   private static final SchemaRepository SCHEMA_REPOSITORY = SchemaRepository.getInstance();
   private static final Logger LOGGER = LoggerFactory.getLogger(CatalogRepository.class);
   private static final SessionFactory SESSION_FACTORY = HibernateUtils.getSessionFactory();
+  private static final PagedListingHelper<CatalogInfoDAO> LISTING_HELPER =
+      new PagedListingHelper<>(CatalogInfoDAO.class);
 
   private CatalogRepository() {}
 
@@ -63,18 +66,20 @@ public class CatalogRepository {
     }
   }
 
-  public ListCatalogsResponse listCatalogs() {
-    ListCatalogsResponse response = new ListCatalogsResponse();
+  /**
+   * Return the list of catalogs in ascending order of catalog name.
+   *
+   * @param maxResults
+   * @param pageToken
+   * @return
+   */
+  public ListCatalogsResponse listCatalogs(
+      Optional<Integer> maxResults, Optional<String> pageToken) {
     try (Session session = SESSION_FACTORY.openSession()) {
       session.setDefaultReadOnly(true);
       Transaction tx = session.beginTransaction();
       try {
-        response.setCatalogs(
-            session.createQuery("from CatalogInfoDAO", CatalogInfoDAO.class).list().stream()
-                .map(CatalogInfoDAO::toCatalogInfo)
-                .map(
-                    c -> RepositoryUtils.attachProperties(c, c.getId(), Constants.CATALOG, session))
-                .collect(Collectors.toList()));
+        ListCatalogsResponse response = listCatalogs(session, maxResults, pageToken);
         tx.commit();
         return response;
       } catch (Exception e) {
@@ -82,6 +87,21 @@ public class CatalogRepository {
         throw e;
       }
     }
+  }
+
+  public ListCatalogsResponse listCatalogs(
+      Session session, Optional<Integer> maxResults, Optional<String> pageToken) {
+    List<CatalogInfoDAO> catalogInfoDAOList =
+        LISTING_HELPER.listEntity(session, maxResults, pageToken, null);
+    String nextPageToken = LISTING_HELPER.getNextPageToken(catalogInfoDAOList, maxResults);
+    List<CatalogInfo> result = new ArrayList<>();
+    for (CatalogInfoDAO catalogInfoDAO : catalogInfoDAOList) {
+      CatalogInfo catalogInfo = catalogInfoDAO.toCatalogInfo();
+      RepositoryUtils.attachProperties(
+          catalogInfo, catalogInfo.getId(), Constants.CATALOG, session);
+      result.add(catalogInfo);
+    }
+    return new ListCatalogsResponse().catalogs(result).nextPageToken(nextPageToken);
   }
 
   public CatalogInfo getCatalog(String name) {
