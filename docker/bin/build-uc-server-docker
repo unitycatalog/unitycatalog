@@ -3,15 +3,18 @@ set -ex;
 
 current_dir=$(pwd)
 script_dir=$(dirname $0)
-docker_dir=$(dirname $(dirname $(realpath $script_dir)))
+project_dir=$(dirname $(dirname $(realpath $script_dir)))
+container_name="unitycatalog"
+container_version=$(cat "$project_dir/version.sbt" | cut -d '"' -f2)
 
-echo "Changing directory to $docker_dir"
-cd $docker_dir
+echo "Changing directory to $project_dir"
+cd $project_dir
 
 if [[ -r Dockerfile ]]; then
-    docker buildx build --progress=plain --no-cache -t unitycatalog:0.1.0 .
+    echo "Building docker container $container_name:$container_version"
+    docker buildx build --progress=plain --no-cache -t "$container_name:$container_version" .
 else
-    echo "Dockerfile not found."
+    echo "Dockerfile not found in the project's root directory."
     exit
 fi
 
