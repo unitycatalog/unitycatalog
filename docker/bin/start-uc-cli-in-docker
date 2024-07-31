@@ -4,9 +4,10 @@ set -ex;
 container_version="0.1.0"
 container_name="unitycatalog-cli"
 network_name="unitycatalog_network"
-network_details=$(docker network ls --format '{{json .}}' | jq -r --arg NETWORK_NAME "$network_name" 'select(.Name == $NETWORK_NAME) | .Name')
-container_details=$(docker container ls --format '{{json .}}' | jq -r --arg CONTAINER_NAME "$container_name" 'select(.Names == $CONTAINER_NAME) | .Names')
-container_running=$(docker ps --format '{{json .}}' | jq -r --arg CONTAINER_NAME "$container_name" 'select(.Names == $CONTAINER_NAME) | .Names')
+network_details=$(docker network ls -q --filter "name=$network_name")
+container_details=$(docker container ls -a -q --filter "name=$container_name")
+container_running=$(docker ps -q --filter "name=$container_name")
+
 
 # Create the network if it doesn't exist
 if [ -z "$network_details" ]; then
