@@ -153,6 +153,7 @@ public class SchemaRepository {
       SchemaInfo schemaInfo = schemaInfoDAO.toSchemaInfo();
       RepositoryUtils.attachProperties(
           schemaInfo, schemaInfo.getSchemaId(), Constants.SCHEMA, session);
+      addNamespaceData(schemaInfo, catalogName);
       result.add(schemaInfo);
     }
     return new ListSchemasResponse().schemas(result).nextPageToken(nextPageToken);
