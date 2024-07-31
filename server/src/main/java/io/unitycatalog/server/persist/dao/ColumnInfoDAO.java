@@ -6,10 +6,9 @@ import jakarta.persistence.*;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
-import java.util.UUID;
 import java.util.stream.Collectors;
 import lombok.*;
-import org.hibernate.annotations.UuidGenerator;
+import lombok.experimental.SuperBuilder;
 
 // Hibernate annotations
 @Entity
@@ -21,16 +20,10 @@ import org.hibernate.annotations.UuidGenerator;
 @Setter
 @NoArgsConstructor
 @AllArgsConstructor
-@EqualsAndHashCode
+@EqualsAndHashCode(callSuper = true)
 @ToString
-@Builder
-public class ColumnInfoDAO {
-
-  @Id
-  @UuidGenerator
-  @Column(name = "id", updatable = false, nullable = false)
-  private UUID id;
-
+@SuperBuilder
+public class ColumnInfoDAO extends IdentifiableDAO {
   @ManyToOne
   @JoinColumn(name = "table_id", nullable = false, referencedColumnName = "id")
   private TableInfoDAO table;
@@ -38,15 +31,11 @@ public class ColumnInfoDAO {
   @Column(name = "ordinal_position", nullable = false)
   private short ordinalPosition;
 
-  @Column(name = "name", nullable = false)
-  private String name;
-
   @Lob
-  @Column(name = "type_text", nullable = false, columnDefinition = "MEDIUMTEXT")
+  @Column(name = "type_text", nullable = false, length = 16777215)
   private String typeText;
 
-  @Lob
-  @Column(name = "type_json", nullable = false, columnDefinition = "MEDIUMTEXT")
+  @Column(name = "type_json", nullable = false, length = 16777215)
   private String typeJson;
 
   @Column(name = "type_name", nullable = false, length = 32)
@@ -64,8 +53,7 @@ public class ColumnInfoDAO {
   @Column(name = "nullable", nullable = false)
   private boolean nullable;
 
-  @Lob
-  @Column(name = "comment")
+  @Column(name = "comment", length = 65535)
   private String comment;
 
   @Column(name = "partition_index")
@@ -93,7 +81,7 @@ public class ColumnInfoDAO {
 
   public ColumnInfo toColumnInfo() {
     return new ColumnInfo()
-        .name(name)
+        .name(getName())
         .typeText(typeText)
         .typeJson(typeJson)
         .typeName(ColumnTypeName.valueOf(typeName))

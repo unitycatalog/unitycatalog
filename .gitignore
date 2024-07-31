@@ -13,3 +13,4 @@ venv
 .DS_Store
 server_pid.txt
 site
+python_engine.log

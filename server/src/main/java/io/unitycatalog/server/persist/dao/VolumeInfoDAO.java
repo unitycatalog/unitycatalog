@@ -5,11 +5,11 @@ import io.unitycatalog.server.model.VolumeType;
 import io.unitycatalog.server.persist.utils.FileUtils;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
-import jakarta.persistence.Id;
 import jakarta.persistence.Table;
 import java.util.Date;
 import java.util.UUID;
 import lombok.*;
+import lombok.experimental.SuperBuilder;
 
 @Entity
 @Table(name = "uc_volumes")
@@ -18,16 +18,10 @@ import lombok.*;
 @Setter
 @NoArgsConstructor
 @AllArgsConstructor
-@Builder
-public class VolumeInfoDAO {
-  @Id
-  @Column(name = "id", columnDefinition = "BINARY(16)")
-  private UUID id;
-
-  @Column(name = "name")
-  private String name;
-
-  @Column(name = "schema_id", columnDefinition = "BINARY(16)")
+@SuperBuilder
+@EqualsAndHashCode(callSuper = true)
+public class VolumeInfoDAO extends IdentifiableDAO {
+  @Column(name = "schema_id")
   private UUID schemaId;
 
   @Column(name = "comment")
@@ -47,8 +41,8 @@ public class VolumeInfoDAO {
 
   public VolumeInfo toVolumeInfo() {
     return new VolumeInfo()
-        .volumeId(id.toString())
-        .name(name)
+        .volumeId(getId().toString())
+        .name(getName())
         .comment(comment)
         .storageLocation(FileUtils.convertRelativePathToURI(storageLocation))
         .createdAt(createdAt.getTime())

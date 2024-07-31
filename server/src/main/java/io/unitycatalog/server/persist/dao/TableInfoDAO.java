@@ -9,31 +9,25 @@ import java.util.Date;
 import java.util.List;
 import java.util.UUID;
 import lombok.*;
+import lombok.experimental.SuperBuilder;
 
 // Hibernate annotations
 @Entity
 @Table(
     name = "uc_tables",
     indexes = {
-      @Index(name = "idx_updated_at", columnList = "updated_at"),
+      @Index(name = "idx_name", columnList = "name"),
     })
 // Lombok annotations
 @Getter
 @Setter
 @NoArgsConstructor
 @AllArgsConstructor
-@EqualsAndHashCode
-@Builder
-public class TableInfoDAO {
-  @Id
-  @Column(name = "id", columnDefinition = "BINARY(16)")
-  private UUID id;
-
-  @Column(name = "schema_id", columnDefinition = "BINARY(16)")
+@EqualsAndHashCode(callSuper = true)
+@SuperBuilder
+public class TableInfoDAO extends IdentifiableDAO {
+  @Column(name = "schema_id")
   private UUID schemaId;
-
-  @Column(name = "name")
-  private String name;
 
   @Column(name = "type")
   private String type;
@@ -47,7 +41,7 @@ public class TableInfoDAO {
   @Column(name = "data_source_format")
   private String dataSourceFormat;
 
-  @Column(name = "comment", columnDefinition = "TEXT")
+  @Column(name = "comment", length = 65535)
   private String comment;
 
   @Column(name = "url", length = 2048)
@@ -63,7 +57,7 @@ public class TableInfoDAO {
       fetch = FetchType.LAZY)
   private List<ColumnInfoDAO> columns;
 
-  @Column(name = "uniform_iceberg_metadata_location", columnDefinition = "TEXT")
+  @Column(name = "uniform_iceberg_metadata_location", length = 65535)
   private String uniformIcebergMetadataLocation;
 
   public static TableInfoDAO from(TableInfo tableInfo) {
@@ -86,14 +80,14 @@ public class TableInfoDAO {
   public TableInfo toTableInfo(boolean fetchColumns) {
     TableInfo tableInfo =
         new TableInfo()
-            .name(name)
+            .tableId(getId().toString())
+            .name(getName())
             .tableType(TableType.valueOf(type))
             .dataSourceFormat(DataSourceFormat.valueOf(dataSourceFormat))
             .storageLocation(FileUtils.convertRelativePathToURI(url))
             .comment(comment)
             .createdAt(createdAt != null ? createdAt.getTime() : null)
-            .updatedAt(updatedAt != null ? updatedAt.getTime() : null)
-            .tableId(id.toString());
+            .updatedAt(updatedAt != null ? updatedAt.getTime() : null);
     if (fetchColumns) {
       tableInfo.columns(ColumnInfoDAO.toList(columns));
     }

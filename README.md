@@ -54,7 +54,7 @@ Let's take Unity Catalog for spin. In this guide, we are going to do the followi
 ### Prerequisites
 You have to ensure that your local environment has the following:
 - Clone this repository.
-- Ensure the `JAVA_HOME` environment variable your terminal is configured to point to JDK11+.
+- Ensure the `JAVA_HOME` environment variable your terminal is configured to point to JDK17+.
 - Compile the project using `build/sbt package`
 
 ### Run the UC Server
@@ -125,11 +125,11 @@ SELECT * from unity.default.numbers;
 You should see the tables listed and the contents of the `numbers` table printed.
 To quit DuckDB, run the command `Ctrl+D` or type `.exit` in the DuckDB shell.
 
-## Full Tutorial
+## CLI tutorial
 
-You can read Delta Uniform tables from Spark via Iceberg REST Catalog APIs,
+You can interact with a Unity Catalog server to create and manage catalogs, schemas and tables, 
 operate on volumes and functions from the CLI, and much more.
-See the full [tutorial](docs/tutorial.md) for more details.
+See the [cli usage](docs/usage/cli.md) for more details.
 
 ## APIs and Compatibility
 - Open API specification: The Unity Catalog Rest API is documented [here](api).
@@ -143,7 +143,7 @@ See the full [tutorial](docs/tutorial.md) for more details.
   This will create a tarball in the `target` directory. See the full [deployment guide](docs/deployment.md) for more details.
 
 ## Compiling and testing
-- Install JDK 11 by whatever mechanism is appropriate for your system, and
+- Install JDK 17 by whatever mechanism is appropriate for your system, and
   set that version to be the default Java version (e.g., by setting env variable
   JAVA_HOME)
 - To compile all the code without running tests, run the following:
