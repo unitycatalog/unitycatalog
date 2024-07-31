@@ -43,10 +43,10 @@ public class SparkIntegrationTest extends BaseCRUDTest {
   public void testCreateSchema() throws ApiException {
     createCommonResources();
     SparkSession session = createSparkSessionWithCatalogs(CATALOG_NAME);
-    session.sql("CREATE DATABASE my_test_database;").collect();
-    assertTrue(session.catalog().databaseExists("my_test_database"));
-    session.sql("DROP DATABASE my_test_database;").collect();
-    assertFalse(session.catalog().databaseExists("my_test_database"));
+    session.sql("CREATE DATABASE uc_testcatalog.my_test_database;");
+    assertTrue(session.catalog().databaseExists("uc_testcatalog.my_test_database"));
+    session.sql("DROP DATABASE uc_testcatalog.my_test_database;");
+    assertFalse(session.catalog().databaseExists("uc_testcatalog.my_test_database"));
     session.stop();
   }
 

@@ -15,6 +15,7 @@ import org.apache.spark.sql.types.{DataType, StructField, StructType}
 import org.apache.spark.sql.util.CaseInsensitiveStringMap
 
 import scala.collection.convert.ImplicitConversions._
+import scala.collection.immutable.HashMap
 import scala.jdk.CollectionConverters._
 
 /**
@@ -88,6 +89,7 @@ class UCSingleCatalog extends TableCatalog with SupportsNamespaces {
 private class UCProxy extends TableCatalog with SupportsNamespaces {
   private[this] var name: String = null
   private[this] var tablesApi: TablesApi = null
+  private[this] var schemasApi: SchemasApi = null
   private[this] var temporaryTableCredentialsApi: TemporaryTableCredentialsApi = null
   private[this] var schemasApi: SchemasApi = null
 
@@ -246,8 +248,14 @@ private class UCProxy extends TableCatalog with SupportsNamespaces {
     metadata.asJava
   }
 
-  override def createNamespace(namespace: Array[String], metadata: util.Map[String, String]): Unit = ???
-
+  override def createNamespace(namespace: Array[String], metadata: util.Map[String, String]): Unit = {
+    checkUnsupportedNestedNamespace(namespace)
+    val createSchema = new CreateSchema()
+    createSchema.setCatalogName(this.name)
+    createSchema.setName(namespace.head)
+    createSchema.setProperties(metadata)
+    schemasApi.createSchema(createSchema)
+  }
   override def alterNamespace(namespace: Array[String], changes: NamespaceChange*): Unit = ???
 
   override def dropNamespace(namespace: Array[String], cascade: Boolean): Boolean = ???
