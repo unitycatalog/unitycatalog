@@ -2,11 +2,10 @@ package io.unitycatalog.connectors.spark
 
 import io.unitycatalog.client.{ApiClient, ApiException}
 import io.unitycatalog.client.api.{TablesApi, TemporaryTableCredentialsApi}
-import io.unitycatalog.client.model.{AwsCredentials, GenerateTemporaryTableCredential, TableOperation, TableType}
+import io.unitycatalog.client.model.{AwsCredentials, GenerateTemporaryTableCredential, ListTablesResponse, TableOperation, TableType}
 
 import java.net.URI
 import java.util
-
 import org.apache.spark.sql.catalyst.TableIdentifier
 import org.apache.spark.sql.catalyst.analysis.NoSuchTableException
 import org.apache.spark.sql.catalyst.catalog.{CatalogStorageFormat, CatalogTable, CatalogTableType, CatalogUtils}
@@ -15,6 +14,7 @@ import org.apache.spark.sql.connector.expressions.Transform
 import org.apache.spark.sql.types.{DataType, StructField, StructType}
 import org.apache.spark.sql.util.CaseInsensitiveStringMap
 
+import scala.collection.convert.ImplicitConversions._
 import scala.jdk.CollectionConverters._
 
 /**
@@ -34,7 +34,7 @@ class UCSingleCatalog extends TableCatalog {
 
   override def name(): String = deltaCatalog.name()
 
-  override def listTables(namespace: Array[String]): Array[Identifier] = ???
+  override def listTables(namespace: Array[String]): Array[Identifier] = deltaCatalog.listTables(namespace)
 
   override def loadTable(ident: Identifier): Table = deltaCatalog.loadTable(ident)
 
@@ -55,7 +55,7 @@ class UCSingleCatalog extends TableCatalog {
   }
   override def alterTable(ident: Identifier, changes: TableChange*): Table = ???
 
-  override def dropTable(ident: Identifier): Boolean = ???
+  override def dropTable(ident: Identifier): Boolean = deltaCatalog.dropTable(ident)
 
   override def renameTable(oldIdent: Identifier, newIdent: Identifier): Unit = ???
 }
@@ -92,14 +92,23 @@ private class UCProxy extends TableCatalog {
     this.name
   }
 
-  override def listTables(namespace: Array[String]): Array[Identifier] = ???
+  override def listTables(namespace: Array[String]): Array[Identifier] = {
+    checkUnsupportedNestedNamespace(namespace)
+
+    val catalogName = this.name
+    val schemaName = namespace.head
+    val maxResults = 0
+    val pageToken = null
+    val response: ListTablesResponse = tablesApi.listTables(catalogName, schemaName, maxResults, pageToken)
+    response.getTables.toSeq.map(table => Identifier.of(namespace, table.getName)).toArray
+  }
+
 
   override def loadTable(ident: Identifier): Table = {
     val t = try {
       tablesApi.getTable(name + "." + ident.toString)
     } catch {
       case e: ApiException if e.getCode == 404 =>
-        e.printStackTrace()
         throw new NoSuchTableException(ident)
     }
     val identifier = TableIdentifier(t.getName, Some(t.getSchemaName), Some(t.getCatalogName))
@@ -122,11 +131,10 @@ private class UCProxy extends TableCatalog {
       .getAwsTempCredentials
     val extraSerdeProps = if (uri.getScheme == "s3") {
       Map(
+        // TODO: how to support s3:// properly?
         "fs.s3a.access.key" -> credential.getAccessKeyId,
         "fs.s3a.secret.key" -> credential.getSecretAccessKey,
         "fs.s3a.session.token" -> credential.getSessionToken,
-        // TODO: how to support s3:// properly?
-        "fs.s3a.impl" -> "org.apache.hadoop.fs.s3a.S3AFileSystem",
         "fs.s3a.path.style.access" -> "true"
       )
     } else {
@@ -165,8 +173,18 @@ private class UCProxy extends TableCatalog {
 
   override def alterTable(ident: Identifier, changes: TableChange*): Table = ???
 
-  override def dropTable(ident: Identifier): Boolean = ???
+  override def dropTable(ident: Identifier): Boolean = {
+    checkUnsupportedNestedNamespace(ident.namespace())
+    val ret =
+      tablesApi.deleteTable(Seq(this.name, ident.namespace()(0), ident.name()).mkString("."))
+    if (ret == 200) true else false
+  }
 
   override def renameTable(oldIdent: Identifier, newIdent: Identifier): Unit = ???
 
+  private def checkUnsupportedNestedNamespace(namespace: Array[String]): Unit = {
+    if (namespace.length > 1) {
+      throw new ApiException("Nested namespaces are not supported:  " + namespace.mkString("."))
+    }
+  }
 }
