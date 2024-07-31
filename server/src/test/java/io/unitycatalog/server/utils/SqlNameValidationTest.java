@@ -1,8 +1,9 @@
 package io.unitycatalog.server.utils;
 
+import static org.junit.jupiter.api.Assertions.assertThrows;
+
 import io.unitycatalog.server.exception.BaseException;
-import org.junit.Assert;
-import org.junit.Test;
+import org.junit.jupiter.api.Test;
 
 public class SqlNameValidationTest {
 
@@ -10,12 +11,10 @@ public class SqlNameValidationTest {
   public void testValidateSqlObjectName() {
     ValidationUtils.validateSqlObjectName("test");
     ValidationUtils.validateSqlObjectName("sample_volume_name");
-    Assert.assertThrows(BaseException.class, () -> ValidationUtils.validateSqlObjectName("test."));
-    Assert.assertThrows(BaseException.class, () -> ValidationUtils.validateSqlObjectName("test "));
-    Assert.assertThrows(
-        BaseException.class, () -> ValidationUtils.validateSqlObjectName("test/test"));
+    assertThrows(BaseException.class, () -> ValidationUtils.validateSqlObjectName("test."));
+    assertThrows(BaseException.class, () -> ValidationUtils.validateSqlObjectName("test "));
+    assertThrows(BaseException.class, () -> ValidationUtils.validateSqlObjectName("test/test"));
     char ctrlC = 3; // ASCII value for Control-C
-    Assert.assertThrows(
-        BaseException.class, () -> ValidationUtils.validateSqlObjectName("test" + ctrlC));
+    assertThrows(BaseException.class, () -> ValidationUtils.validateSqlObjectName("test" + ctrlC));
   }
 }

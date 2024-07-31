@@ -6,23 +6,18 @@ import java.time.Instant;
 import java.util.Date;
 import java.util.UUID;
 import lombok.*;
+import lombok.experimental.SuperBuilder;
 
 @Entity
 @Table(name = "uc_catalogs")
 // Lombok
 @Getter
 @Setter
-@Builder
 @AllArgsConstructor
 @NoArgsConstructor
-public class CatalogInfoDAO {
-  @Id
-  @Column(name = "id", columnDefinition = "BINARY(16)")
-  private UUID id;
-
-  @Column(name = "name")
-  private String name;
-
+@SuperBuilder
+@EqualsAndHashCode(callSuper = true)
+public class CatalogInfoDAO extends IdentifiableDAO {
   @Column(name = "comment")
   private String comment;
 
@@ -50,8 +45,8 @@ public class CatalogInfoDAO {
 
   public CatalogInfo toCatalogInfo() {
     return new CatalogInfo()
-        .id(id.toString())
-        .name(name)
+        .id(getId().toString())
+        .name(getName())
         .comment(comment)
         .createdAt(createdAt.getTime())
         .updatedAt(updatedAt != null ? updatedAt.getTime() : null);

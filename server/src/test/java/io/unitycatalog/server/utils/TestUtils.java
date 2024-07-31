@@ -15,6 +15,7 @@ public class TestUtils {
   public static final String CATALOG_NAME = "uc_testcatalog";
   public static final String SCHEMA_NAME = "uc_testschema";
   public static final String TABLE_NAME = "uc_testtable";
+  public static final String STORAGE_LOCATION = "/tmp/stagingLocation";
   public static final String VOLUME_NAME = "uc_testvolume";
   public static final String FUNCTION_NAME = "uc_testfunction";
   public static final String SCHEMA_FULL_NAME = CATALOG_NAME + "." + SCHEMA_NAME;

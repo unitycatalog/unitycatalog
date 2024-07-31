@@ -16,7 +16,7 @@ Change into the `unitycatalog` directory and run `bin/start-uc-server` to instan
 
 Well, that was pretty easy!
 
-To run Unity Catalog, you need Java 11 installed on your machine.  You can always run the `java --version` command to verify that you have the right version of Java installed.
+To run Unity Catalog, you need Java 17 installed on your machine.  You can always run the `java --version` command to verify that you have the right version of Java installed.
 
 ![UC Java Version](./assets/images/uc_java_version.png)
 
@@ -41,6 +41,8 @@ Unity Catalog stores all assets in a 3-level namespace:
 1. catalog
 2. schema
 3. assets like tables, volumes, functions, etc.
+
+![UC 3 Level](./assets/images/uc-3-level.png)
 
 Here's an example Unity Catalog instance:
 

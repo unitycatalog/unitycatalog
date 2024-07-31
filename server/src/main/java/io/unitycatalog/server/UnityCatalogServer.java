@@ -9,11 +9,21 @@ import com.linecorp.armeria.server.ServerBuilder;
 import com.linecorp.armeria.server.annotation.JacksonRequestConverterFunction;
 import com.linecorp.armeria.server.annotation.JacksonResponseConverterFunction;
 import com.linecorp.armeria.server.docs.DocService;
-import io.unitycatalog.server.service.*;
+import io.unitycatalog.server.service.CatalogService;
+import io.unitycatalog.server.service.FunctionService;
+import io.unitycatalog.server.service.IcebergRestCatalogService;
+import io.unitycatalog.server.service.SchemaService;
+import io.unitycatalog.server.service.TableService;
+import io.unitycatalog.server.service.TemporaryTableCredentialsService;
+import io.unitycatalog.server.service.TemporaryVolumeCredentialsService;
+import io.unitycatalog.server.service.VolumeService;
+import io.unitycatalog.server.service.iceberg.FileIOFactory;
+import io.unitycatalog.server.service.iceberg.MetadataService;
 import io.unitycatalog.server.utils.RESTObjectMapper;
 import io.unitycatalog.server.utils.VersionUtils;
 import io.vertx.core.Verticle;
 import io.vertx.core.Vertx;
+import org.apache.commons.cli.*;
 import org.apache.logging.log4j.core.config.Configurator;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -60,7 +70,7 @@ public class UnityCatalogServer {
         .annotatedService(basePath + "catalogs", catalogService, unityConverterFunction)
         .annotatedService(basePath + "schemas", schemaService, unityConverterFunction)
         .annotatedService(basePath + "volumes", volumeService, unityConverterFunction)
-        .annotatedService(basePath, tableService, unityConverterFunction)
+        .annotatedService(basePath + "tables", tableService, unityConverterFunction)
         .annotatedService(basePath + "functions", functionService, unityConverterFunction)
         .annotatedService(
             basePath + "temporary-table-credentials", temporaryTableCredentialsService)
@@ -73,17 +83,37 @@ public class UnityCatalogServer {
         new JacksonRequestConverterFunction(icebergMapper);
     JacksonResponseConverterFunction icebergResponseConverter =
         new JacksonResponseConverterFunction(icebergMapper);
+    MetadataService metadataService = new MetadataService(new FileIOFactory());
     sb.annotatedService(
         basePath + "iceberg",
-        new IcebergRestCatalogService(catalogService, schemaService, tableService),
+        new IcebergRestCatalogService(catalogService, schemaService, tableService, metadataService),
         icebergRequestConverter,
         icebergResponseConverter);
   }
 
   public static void main(String[] args) {
     int port = 8080;
-    if (args.length > 0) {
-      port = Integer.parseInt(args[0]);
+    Options options = new Options();
+    options.addOption(
+        Option.builder("p")
+            .longOpt("port")
+            .hasArg()
+            .desc("Port number to run the server on. Default is 8080.")
+            .type(Integer.class)
+            .build());
+    CommandLineParser parser = new DefaultParser();
+    try {
+      CommandLine cmd = parser.parse(options, args);
+      if (cmd.hasOption("p")) {
+        port = cmd.getParsedOptionValue("p");
+      }
+    } catch (ParseException e) {
+      System.out.println();
+      System.out.println("Parsing Failed. Reason: " + e.getMessage());
+      System.out.println();
+      HelpFormatter formatter = new HelpFormatter();
+      formatter.printHelp("bin/start-uc-server", options);
+      return;
     }
     // Start Unity Catalog server
     UnityCatalogServer unityCatalogServer = new UnityCatalogServer(port + 1);

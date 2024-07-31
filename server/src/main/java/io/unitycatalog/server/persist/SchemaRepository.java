@@ -75,7 +75,7 @@ public class SchemaRepository {
 
   private SchemaInfo convertFromDAO(SchemaInfoDAO schemaInfoDAO, String fullName) {
     String catalogName = fullName.split("\\.")[0];
-    SchemaInfo schemaInfo = SchemaInfoDAO.toSchemaInfo(schemaInfoDAO);
+    SchemaInfo schemaInfo = schemaInfoDAO.toSchemaInfo();
     addNamespaceData(schemaInfo, catalogName);
     return schemaInfo;
   }
@@ -171,7 +171,9 @@ public class SchemaRepository {
   }
 
   public SchemaInfo updateSchema(String fullName, UpdateSchema updateSchema) {
-    ValidationUtils.validateSqlObjectName(updateSchema.getNewName());
+    if (updateSchema.getNewName() != null) {
+      ValidationUtils.validateSqlObjectName(updateSchema.getNewName());
+    }
     try (Session session = SESSION_FACTORY.openSession()) {
       Transaction tx = session.beginTransaction();
       try {
@@ -184,6 +186,10 @@ public class SchemaRepository {
             throw new BaseException(
                 ErrorCode.ALREADY_EXISTS, "Schema already exists: " + updateSchema.getNewName());
           }
+        }
+        if (updateSchema.getComment() == null && updateSchema.getNewName() == null) {
+          tx.rollback();
+          return convertFromDAO(schemaInfo, fullName);
         }
         // Update the schema with new values
         if (updateSchema.getComment() != null) {

@@ -5,17 +5,14 @@ import static io.unitycatalog.server.utils.TestUtils.CATALOG_NEW_NAME;
 
 import io.unitycatalog.server.base.catalog.CatalogOperations;
 import java.util.Optional;
-import org.junit.After;
-import org.junit.Before;
-import org.junit.runner.RunWith;
-import org.junit.runners.Parameterized;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
 
-@RunWith(Parameterized.class)
 public abstract class BaseCRUDTest extends BaseServerTest {
 
   protected CatalogOperations catalogOperations;
 
-  @After
+  @AfterEach
   public void cleanUp() {
     try {
       catalogOperations.deleteCatalog(CATALOG_NAME, Optional.of(true));
@@ -29,7 +26,7 @@ public abstract class BaseCRUDTest extends BaseServerTest {
     }
   }
 
-  @Before
+  @BeforeEach
   @Override
   public void setUp() {
     super.setUp();

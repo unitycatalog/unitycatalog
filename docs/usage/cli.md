@@ -97,11 +97,13 @@ bin/uc schema create --catalog my_catalog --name my_schema --comment "My Schema"
 **Update a Schema**
 
 ```sh
-bin/uc schema update --full_name <full_name> --new_name <new_name> [--comment <comment>]
+bin/uc schema update --full_name <full_name> [--new_name <new_name>] [--comment <comment>]
 ```
 - `full_name`: The full name of the existing schema. The full name is the concatenation of the catalog name and schema name separated by a dot (e.g., `catalog_name.schema_name`).
-- `new_name`: The new name of the schema.
+- `new_name`: *[Optional]* The new name of the schema.
 - `comment`: *[Optional]* The new description of the schema.
+
+*Note:* at least one of the optional parameters must be specified.
 
 Example:
 ```sh
@@ -249,8 +251,10 @@ bin/uc volume update --full_name <catalog>.<schema>.<volume> --new_name <new_nam
 - `catalog` : The name of the catalog.
 - `schema` : The name of the schema.
 - `volume` : The name of the volume.
-- `new_name` : The new name of the volume.
+- `new_name` : *[Optional]* The new name of the volume.
 - `comment` : *[Optional]* The new description of the volume.
+
+*Note:* at least one of the optional parameters must be specified.
 
 Example:
 ```sh
