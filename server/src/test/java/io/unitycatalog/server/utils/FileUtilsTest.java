@@ -1,7 +1,7 @@
 package io.unitycatalog.server.utils;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import io.unitycatalog.server.exception.BaseException;
 import io.unitycatalog.server.persist.utils.FileUtils;
@@ -34,16 +34,13 @@ public class FileUtilsTest {
     FileUtils.deleteDirectory(tablePath);
     FileUtils.deleteDirectory(volumePath);
 
-    assertThrows(
-        BaseException.class,
-        () -> {
-          FileUtils.createTableDirectory("..", "schema", "table");
-        });
+    assertThatThrownBy(() -> FileUtils.createTableDirectory("..", "schema", "table"))
+        .isInstanceOf(BaseException.class);
 
-    assertThrows(
-        BaseException.class,
-        () -> {
-          FileUtils.createVolumeDirectory("..");
-        });
+    assertThatThrownBy(
+            () -> {
+              FileUtils.createVolumeDirectory("..");
+            })
+        .isInstanceOf(BaseException.class);
   }
 }
