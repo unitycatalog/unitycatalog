@@ -16,6 +16,8 @@ import io.unitycatalog.server.sdk.tables.SdkTableOperations;
 import io.unitycatalog.server.utils.TestUtils;
 import java.io.File;
 import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.*;
 import org.apache.spark.network.util.JavaUtils;
 import org.apache.spark.sql.AnalysisException;
@@ -134,11 +136,31 @@ public class SparkIntegrationTest extends BaseCRUDTest {
     testTableReadWrite(t2, session);
 
     Row row =
-        session
-            .sql(String.format("SELECT l.i FROM %s l JOIN %s r ON l.i = r.i", t1, t2))
-            .collectAsList()
-            .get(0);
+      session
+        .sql(String.format("SELECT l.i FROM %s l JOIN %s r ON l.i = r.i", t1, t2))
+        .collectAsList()
+        .get(0);
     assertEquals(1, row.getInt(0));
+
+    session.stop();
+  }
+
+  @Test
+  public void testDeleteDeltaTable() throws ApiException, IOException {
+    createCommonResources();
+    SparkSession session = createSparkSessionWithCatalogs(SPARK_CATALOG, CATALOG_NAME);
+    Path tempDirectory = Files.createTempDirectory("testCredentialDelta");
+
+    String loc0 = tempDirectory.toString() + generateTableLocation(SPARK_CATALOG, DELTA_TABLE);
+    setupExternalDeltaTable(SPARK_CATALOG, DELTA_TABLE, loc0, new ArrayList<>(0), session);
+    String t1 = SPARK_CATALOG + "." + SCHEMA_NAME + "." + DELTA_TABLE;
+    testTableReadWrite(t1, session);
+
+    List<Row> ret =
+      session
+        .sql(String.format("DELETE FROM %s WHERE %s.i == 1", t1, t1))
+        .collectAsList();
+    assertEquals(0, ret.size());
 
     session.stop();
   }
