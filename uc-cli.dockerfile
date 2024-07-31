@@ -68,7 +68,7 @@ RUN <<EOF
     set -ex;
     apk update;
     apk upgrade; 
-    apk add bash;
+    apk add bash libc6-compat;
     rm -R /var/cache/apk/*;
 EOF
 
