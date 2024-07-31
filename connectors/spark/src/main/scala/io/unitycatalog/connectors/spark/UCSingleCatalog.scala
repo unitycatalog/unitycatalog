@@ -55,7 +55,7 @@ class UCSingleCatalog extends TableCatalog {
   }
   override def alterTable(ident: Identifier, changes: TableChange*): Table = ???
 
-  override def dropTable(ident: Identifier): Boolean = ???
+  override def dropTable(ident: Identifier): Boolean = deltaCatalog.dropTable(ident)
 
   override def renameTable(oldIdent: Identifier, newIdent: Identifier): Unit = ???
 }
@@ -93,9 +93,8 @@ private class UCProxy extends TableCatalog {
   }
 
   override def listTables(namespace: Array[String]): Array[Identifier] = {
-    if (namespace.length > 1) {
-      throw new ApiException("Nested namespaces are not supported:  " + namespace.mkString("."))
-    }
+    checkUnsupportedNestedNamespace(namespace)
+
     val catalogName = this.name
     val schemaName = namespace.head
     val maxResults = 0
@@ -174,8 +173,18 @@ private class UCProxy extends TableCatalog {
 
   override def alterTable(ident: Identifier, changes: TableChange*): Table = ???
 
-  override def dropTable(ident: Identifier): Boolean = ???
+  override def dropTable(ident: Identifier): Boolean = {
+    checkUnsupportedNestedNamespace(ident.namespace())
+    val ret =
+      tablesApi.deleteTable(Seq(this.name, ident.namespace()(0), ident.name()).mkString("."))
+    if (ret == 200) true else false
+  }
 
   override def renameTable(oldIdent: Identifier, newIdent: Identifier): Unit = ???
 
+  private def checkUnsupportedNestedNamespace(namespace: Array[String]): Unit = {
+    if (namespace.length > 1) {
+      throw new ApiException("Nested namespaces are not supported:  " + namespace.mkString("."))
+    }
+  }
 }
