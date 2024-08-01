@@ -88,7 +88,7 @@ export default function SchemaBrowser() {
           ],
         };
         return catalogNode;
-      }) ?? []
+      }) ?? [],
     );
   }, [listCatalogsRequest.data?.catalogs]);
 
@@ -145,7 +145,7 @@ export default function SchemaBrowser() {
     if (entityToExpand.type === 'tables') {
       const entityList = listTablesRequest.data?.tables ?? [];
       setTreeData((treeData) =>
-        updateEntityTreeData({ treeData, entityToExpand, entityList })
+        updateEntityTreeData({ treeData, entityToExpand, entityList }),
       );
     }
   }, [entityToExpand, listTablesRequest.data?.tables]);
@@ -154,7 +154,7 @@ export default function SchemaBrowser() {
     if (entityToExpand.type === 'volumes') {
       const entityList = listVolumesRequest.data?.volumes ?? [];
       setTreeData((treeData) =>
-        updateEntityTreeData({ treeData, entityToExpand, entityList })
+        updateEntityTreeData({ treeData, entityToExpand, entityList }),
       );
     }
   }, [entityToExpand, listVolumesRequest.data?.volumes]);
@@ -163,7 +163,7 @@ export default function SchemaBrowser() {
     if (entityToExpand.type === 'functions') {
       const entityList = listFunctionsRequest.data?.functions ?? [];
       setTreeData((treeData) =>
-        updateEntityTreeData({ treeData, entityToExpand, entityList })
+        updateEntityTreeData({ treeData, entityToExpand, entityList }),
       );
     }
   }, [entityToExpand, listFunctionsRequest.data?.functions]);
