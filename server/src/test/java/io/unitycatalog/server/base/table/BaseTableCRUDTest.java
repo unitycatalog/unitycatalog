@@ -1,10 +1,8 @@
 package io.unitycatalog.server.base.table;
 
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.assertj.core.api.Assertions.fail;
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertNotNull;
-import static org.junit.jupiter.api.Assertions.assertThrows;
-import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import io.unitycatalog.client.ApiException;
 import io.unitycatalog.client.model.*;
@@ -17,8 +15,13 @@ import io.unitycatalog.server.persist.utils.FileUtils;
 import io.unitycatalog.server.persist.utils.HibernateUtils;
 import io.unitycatalog.server.utils.TestUtils;
 import java.io.IOException;
-import java.util.*;
-import java.util.stream.Collectors;
+import java.util.ArrayList;
+import java.util.Collection;
+import java.util.Comparator;
+import java.util.Date;
+import java.util.List;
+import java.util.Optional;
+import java.util.UUID;
 import org.hibernate.Session;
 import org.hibernate.Transaction;
 import org.junit.jupiter.api.BeforeEach;
@@ -55,7 +58,8 @@ public abstract class BaseTableCRUDTest extends BaseCRUDTest {
 
   @Test
   public void testTableCRUD() throws IOException, ApiException {
-    assertThrows(Exception.class, () -> tableOperations.getTable(TestUtils.TABLE_FULL_NAME));
+    assertThatThrownBy(() -> tableOperations.getTable(TestUtils.TABLE_FULL_NAME))
+        .isInstanceOf(Exception.class);
     createCommonResources();
 
     // Create and verify a table
@@ -85,25 +89,27 @@ public abstract class BaseTableCRUDTest extends BaseCRUDTest {
 
   private TableInfo createAndVerifyTable() throws IOException, ApiException {
     TableInfo tableInfo = createTestingTable(TestUtils.TABLE_NAME, TestUtils.STORAGE_LOCATION);
-    assertEquals(TestUtils.TABLE_NAME, tableInfo.getName());
-    assertEquals(TestUtils.CATALOG_NAME, tableInfo.getCatalogName());
-    assertEquals(TestUtils.SCHEMA_NAME, tableInfo.getSchemaName());
-    assertNotNull(tableInfo.getTableId());
+    assertThat(tableInfo.getName()).isEqualTo(TestUtils.TABLE_NAME);
+    assertThat(tableInfo.getCatalogName()).isEqualTo(TestUtils.CATALOG_NAME);
+    assertThat(tableInfo.getSchemaName()).isEqualTo(TestUtils.SCHEMA_NAME);
+    assertThat(tableInfo.getTableId()).isNotNull();
     return tableInfo;
   }
 
   private void verifyTableInfo(TableInfo retrievedTable, TableInfo expectedTable) {
-    assertEquals(expectedTable, retrievedTable);
+    assertThat(retrievedTable).isEqualTo(expectedTable);
     Collection<ColumnInfo> columns = retrievedTable.getColumns();
-    assertEquals(2, columns.size());
-    assertTrue(columns.stream().anyMatch(c -> c.getName().equals("as_int")));
-    assertTrue(columns.stream().anyMatch(c -> c.getName().equals("as_string")));
+    assertThat(columns)
+        .hasSize(2)
+        .extracting(ColumnInfo::getName)
+        .as("Table should contain two colums with names '%s' and '%s'", "as_int", "as_string")
+        .contains("as_int", "as_string");
   }
 
   private void verifyTablePagination() throws ApiException {
     Iterable<TableInfo> tables =
         tableOperations.listTables(TestUtils.CATALOG_NAME, TestUtils.SCHEMA_NAME);
-    assertEquals(100, TestUtils.getSize(tables));
+    assertThat(tables).hasSize(100);
   }
 
   private void verifyTableSorting() throws ApiException {
@@ -111,14 +117,7 @@ public abstract class BaseTableCRUDTest extends BaseCRUDTest {
         tableOperations.listTables(TestUtils.CATALOG_NAME, TestUtils.SCHEMA_NAME);
     List<TableInfo> sortedTables = new ArrayList<>();
     tables.forEach(sortedTables::add);
-
-    List<String> tableNames =
-        sortedTables.stream().map(TableInfo::getName).collect(Collectors.toList());
-
-    List<String> sortedTableNames = new ArrayList<>(tableNames);
-    Collections.sort(sortedTableNames);
-
-    assertEquals(sortedTableNames, tableNames);
+    assertThat(sortedTables).isSortedAccordingTo(Comparator.comparing(TableInfo::getName));
   }
 
   private void cleanUpTables(List<TableInfo> tables) {
@@ -135,7 +134,8 @@ public abstract class BaseTableCRUDTest extends BaseCRUDTest {
 
   private void testDeleteTable() throws ApiException {
     tableOperations.deleteTable(TestUtils.TABLE_FULL_NAME);
-    assertThrows(Exception.class, () -> tableOperations.getTable(TestUtils.TABLE_FULL_NAME));
+    assertThatThrownBy(() -> tableOperations.getTable(TestUtils.TABLE_FULL_NAME))
+        .isInstanceOf(Exception.class);
   }
 
   private void testManagedTableRetrieval() throws ApiException {
@@ -152,16 +152,15 @@ public abstract class BaseTableCRUDTest extends BaseCRUDTest {
     }
 
     TableInfo managedTable = tableOperations.getTable(TestUtils.TABLE_FULL_NAME);
-    assertEquals(TestUtils.TABLE_NAME, managedTable.getName());
-    assertEquals(TestUtils.CATALOG_NAME, managedTable.getCatalogName());
-    assertEquals(TestUtils.SCHEMA_NAME, managedTable.getSchemaName());
-    assertEquals(
-        FileUtils.convertRelativePathToURI("/tmp/managedStagingLocation"),
-        managedTable.getStorageLocation());
-    assertEquals(TableType.MANAGED, managedTable.getTableType());
-    assertEquals(DataSourceFormat.DELTA, managedTable.getDataSourceFormat());
-    assertNotNull(managedTable.getCreatedAt());
-    assertNotNull(managedTable.getTableId());
+    assertThat(managedTable.getName()).isEqualTo(TestUtils.TABLE_NAME);
+    assertThat(managedTable.getCatalogName()).isEqualTo(TestUtils.CATALOG_NAME);
+    assertThat(managedTable.getSchemaName()).isEqualTo(TestUtils.SCHEMA_NAME);
+    assertThat(managedTable.getStorageLocation())
+        .isEqualTo(FileUtils.convertRelativePathToURI("/tmp/managedStagingLocation"));
+    assertThat(managedTable.getTableType()).isEqualTo(TableType.MANAGED);
+    assertThat(managedTable.getDataSourceFormat()).isEqualTo(DataSourceFormat.DELTA);
+    assertThat(managedTable.getCreatedAt()).isNotNull();
+    assertThat(managedTable.getTableId()).isNotNull();
   }
 
   private TableInfoDAO createManagedTableDAO(UUID tableId) {
@@ -211,6 +210,7 @@ public abstract class BaseTableCRUDTest extends BaseCRUDTest {
   }
 
   private void testTableAfterSchemaUpdateAndDeletion() throws ApiException {
+    TableInfo tableBeforeSchemaUpdate = tableOperations.getTable(TestUtils.TABLE_FULL_NAME);
     schemaOperations.updateSchema(
         TestUtils.SCHEMA_FULL_NAME,
         new UpdateSchema().newName(TestUtils.SCHEMA_NEW_NAME).comment(TestUtils.SCHEMA_COMMENT));
@@ -218,22 +218,25 @@ public abstract class BaseTableCRUDTest extends BaseCRUDTest {
     TableInfo tableAfterSchemaUpdate =
         tableOperations.getTable(
             TestUtils.CATALOG_NAME + "." + TestUtils.SCHEMA_NEW_NAME + "." + TestUtils.TABLE_NAME);
-    assertEquals(tableAfterSchemaUpdate.getTableId(), tableAfterSchemaUpdate.getTableId());
+    assertThat(tableAfterSchemaUpdate.getTableId()).isEqualTo(tableBeforeSchemaUpdate.getTableId());
 
-    assertThrows(
-        Exception.class,
-        () ->
-            schemaOperations.deleteSchema(
-                TestUtils.CATALOG_NAME + "." + TestUtils.SCHEMA_NEW_NAME, Optional.of(false)));
+    assertThatThrownBy(
+            () ->
+                schemaOperations.deleteSchema(
+                    TestUtils.CATALOG_NAME + "." + TestUtils.SCHEMA_NEW_NAME, Optional.of(false)))
+        .isInstanceOf(Exception.class);
 
     String newTableFullName =
         TestUtils.CATALOG_NAME + "." + TestUtils.SCHEMA_NEW_NAME + "." + TestUtils.TABLE_NAME;
     schemaOperations.deleteSchema(
         TestUtils.CATALOG_NAME + "." + TestUtils.SCHEMA_NEW_NAME, Optional.of(true));
-    assertThrows(Exception.class, () -> tableOperations.getTable(newTableFullName));
-    assertThrows(
-        Exception.class,
-        () -> schemaOperations.getSchema(TestUtils.CATALOG_NAME + "." + TestUtils.SCHEMA_NEW_NAME));
+    assertThatThrownBy(() -> tableOperations.getTable(newTableFullName))
+        .isInstanceOf(Exception.class);
+    assertThatThrownBy(
+            () ->
+                schemaOperations.getSchema(
+                    TestUtils.CATALOG_NAME + "." + TestUtils.SCHEMA_NEW_NAME))
+        .isInstanceOf(Exception.class);
   }
 
   protected TableInfo createTestingTable(String tableName, String storageLocation)
