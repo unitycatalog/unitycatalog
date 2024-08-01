@@ -45,7 +45,7 @@ public class SparkIntegrationTest extends BaseCRUDTest {
     SparkSession session = createSparkSessionWithCatalogs(CATALOG_NAME);
     session.catalog().setCurrentCatalog(CATALOG_NAME);
     session.sql("CREATE DATABASE my_test_database;");
-    assertTrue(session.catalog().databaseExists("my_test_databasese"));
+    assertTrue(session.catalog().databaseExists("my_test_database"));
     session.sql("DROP DATABASE uc_testcatalog.my_test_database;");
     assertFalse(session.catalog().databaseExists("my_test_database"));
     session.stop();
