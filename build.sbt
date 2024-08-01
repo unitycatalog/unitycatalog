@@ -254,45 +254,28 @@ val assemblyAndPublishLocal = taskKey[Unit]("Builds the assembly and publishes i
 lazy val serverShaded = (project in file("serverShaded"))
   .settings(
     name := s"${artifactNamePrefix}-server-shaded",
+    organization := "io.unitycatalog", // Add organization
+    version := "0.2.0-SNAPSHOT", // Add version
     commonSettings,
     skipReleaseSettings,
-    libraryDependencies ++= Seq(
-      "com.fasterxml.jackson.core" % "jackson-annotations" % "2.15.0",
-      "com.fasterxml.jackson.core" % "jackson-core" % "2.15.0",
-      "com.fasterxml.jackson.core" % "jackson-databind" % "2.15.0",
-      "com.fasterxml.jackson.module" %% "jackson-module-scala" % "2.15.0"
-    ),
-    dependencyOverrides ++= Seq(
-      "com.fasterxml.jackson.core" % "jackson-annotations" % "2.15.0",
-      "com.fasterxml.jackson.core" % "jackson-core" % "2.15.0",
-      "com.fasterxml.jackson.core" % "jackson-databind" % "2.15.0",
-      "com.fasterxml.jackson.module" %% "jackson-module-scala" % "2.15.0"
-    ),
     Compile / packageBin := assembly.value,
-    Compile / fullClasspath := (Compile / fullClasspath).value ++ (server / assembly / fullClasspath).value,
-    Compile / fullClasspath := (Compile / fullClasspath).value ++ (serverModels / assembly  / fullClasspath).value,
-    Compile / fullClasspath := (Compile / fullClasspath).value ++ (client / Compile / fullClasspath).value,
-    assembly / assemblyJarName := s"${name.value}_${scalaBinaryVersion.value}-${version.value}.jar",
-    assembly / logLevel := Level.Debug,
+    assembly / logLevel := Level.Info,
     assembly / test := {},
     assembly / assemblyShadeRules := Seq(
       ShadeRule.rename("com.fasterxml.jackson.**" -> "shadedForDelta.jackson.@0").inAll,
-      ShadeRule.rename("com.linecorp.armeria.**" -> "shadedForDelta.armeria.@0").inAll,
-      ShadeRule.rename("io.netty.**" -> "shadedForDelta.netty.@0").inAll,
-      ShadeRule.rename("jakarta.annotation.**" -> "shadedForDelta.jakarta.@0").inAll,
-      ShadeRule.rename("org.hibernate.orm.**" -> "shadedForDelta.hibernate.@0").inAll,
-      ShadeRule.rename("com.amazonaws.**" -> "shadedForDelta.aws.@0").inAll,
-      ShadeRule.rename("software.amazon.awssdk.**" -> "shadedForDelta.awssdk.@0").inAll,
-      ShadeRule.rename("io.vertx.**" -> "shadedForDelta.vertx.@0").inAll
     ),
     assemblyPackageScala / assembleArtifact := false,
     assembly / assemblyMergeStrategy := {
       case PathList("META-INF", xs @ _*) => MergeStrategy.discard
       case x => MergeStrategy.first
     },
-    assembly / fullClasspath ++= (Test / fullClasspath).value
+    publishMavenStyle := true, // Enable Maven style publishing
+    publishTo := Some(Resolver.file("file", new File(Path.userHome.absolutePath + "/.m2/repository"))),
+    publishArtifact in (Compile, packageBin) := true,
+    publishArtifact in (Compile, packageDoc) := false,
+    publishArtifact in (Compile, packageSrc) := false
   )
-  .dependsOn(server % "compile->compile;test->test" , serverModels % "compile->compile" , client % "compile->compile;test->test")
+  .dependsOn(server % "compile->compile;test->test")
   .settings(
     // Add specific settings or tasks if needed
   )
@@ -332,7 +315,6 @@ lazy val serverModels = (project in file("server") / "target" / "models")
   )
 
 lazy val cli = (project in file("examples") / "cli")
-  .dependsOn(server % "compile->compile;test->test")
   .dependsOn(client % "compile->compile;test->test")
   .settings(
     name := s"$artifactNamePrefix-cli",
@@ -369,7 +351,6 @@ lazy val cli = (project in file("examples") / "cli")
 
 lazy val spark = (project in file("connectors/spark"))
   .dependsOn(client % "compile->compile;test->test")
-  .dependsOn(serverShaded % "test->test")
   .settings(
     name := s"$artifactNamePrefix-spark",
     scalaVersion := "2.12.6",
@@ -379,6 +360,7 @@ lazy val spark = (project in file("connectors/spark"))
     ),
     javaCheckstyleSettings(file("dev/checkstyle-config.xml")),
     libraryDependencies ++= Seq(
+      orgName % s"${artifactNamePrefix}-server-shaded" % version.value,
       "org.apache.spark" %% "spark-sql" % "3.5.1",
       "com.fasterxml.jackson.module" %% "jackson-module-scala" % "2.12.5",
       "com.fasterxml.jackson.core" % "jackson-annotations" % "2.12.5",

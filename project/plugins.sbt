@@ -38,3 +38,7 @@ addSbtPlugin("com.etsy" % "sbt-checkstyle-plugin" % "3.1.1")
 dependencyOverrides += "com.puppycrawl.tools" % "checkstyle" % "8.43"
 
 addSbtPlugin("com.github.sbt" % "sbt-jacoco" % "3.4.0")
+
+addSbtPlugin("com.jsuereth" % "sbt-pgp" % "2.1.1")
+
+addSbtPlugin("com.typesafe.sbt" % "sbt-native-packager" % "1.7.6")
