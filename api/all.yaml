@@ -1957,7 +1957,7 @@ components:
     ListRegisteredModelsResponse:
       type: object
       properties:
-        model_versions:
+        registered_models:
           description: An array of model information objects.
           type: array
           items:
