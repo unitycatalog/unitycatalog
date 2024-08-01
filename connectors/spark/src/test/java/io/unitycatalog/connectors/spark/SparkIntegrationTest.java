@@ -16,8 +16,6 @@ import io.unitycatalog.server.sdk.tables.SdkTableOperations;
 import io.unitycatalog.server.utils.TestUtils;
 import java.io.File;
 import java.io.IOException;
-import java.nio.file.Files;
-import java.nio.file.Path;
 import java.util.*;
 import org.apache.spark.network.util.JavaUtils;
 import org.apache.spark.sql.AnalysisException;
@@ -136,10 +134,10 @@ public class SparkIntegrationTest extends BaseCRUDTest {
     testTableReadWrite(t2, session);
 
     Row row =
-      session
-        .sql(String.format("SELECT l.i FROM %s l JOIN %s r ON l.i = r.i", t1, t2))
-        .collectAsList()
-        .get(0);
+        session
+            .sql(String.format("SELECT l.i FROM %s l JOIN %s r ON l.i = r.i", t1, t2))
+            .collectAsList()
+            .get(0);
     assertEquals(1, row.getInt(0));
 
     session.stop();
@@ -149,19 +147,59 @@ public class SparkIntegrationTest extends BaseCRUDTest {
   public void testDeleteDeltaTable() throws ApiException, IOException {
     createCommonResources();
     SparkSession session = createSparkSessionWithCatalogs(SPARK_CATALOG, CATALOG_NAME);
-    Path tempDirectory = Files.createTempDirectory("testCredentialDelta");
 
-    String loc0 = tempDirectory.toString() + generateTableLocation(SPARK_CATALOG, DELTA_TABLE);
+    String loc0 = "s3://test-bucket0" + generateTableLocation(SPARK_CATALOG, DELTA_TABLE);
     setupExternalDeltaTable(SPARK_CATALOG, DELTA_TABLE, loc0, new ArrayList<>(0), session);
     String t1 = SPARK_CATALOG + "." + SCHEMA_NAME + "." + DELTA_TABLE;
     testTableReadWrite(t1, session);
 
-    List<Row> ret =
-      session
-        .sql(String.format("DELETE FROM %s WHERE %s.i == 1", t1, t1))
-        .collectAsList();
-    assertEquals(0, ret.size());
+    session.sql(String.format("DELETE FROM %s WHERE i = 1", t1));
+    List<Row> rows = session.sql("SELECT * FROM " + t1).collectAsList();
+    assertEquals(0, rows.size());
 
+    session.stop();
+  }
+
+  @Test
+  public void testMergeDeltaTable() throws ApiException, IOException {
+    createCommonResources();
+    SparkSession session = createSparkSessionWithCatalogs(SPARK_CATALOG, CATALOG_NAME);
+
+    String loc0 = "s3://test-bucket0" + generateTableLocation(SPARK_CATALOG, DELTA_TABLE);
+    setupExternalDeltaTable(SPARK_CATALOG, DELTA_TABLE, loc0, new ArrayList<>(0), session);
+    String t1 = SPARK_CATALOG + "." + SCHEMA_NAME + "." + DELTA_TABLE;
+    session.sql("INSERT INTO " + t1 + " SELECT 1, 'a'");
+
+    String table2 = DELTA_TABLE + "2";
+    String loc1 = "s3://test-bucket1" + generateTableLocation(CATALOG_NAME, table2);
+    setupExternalDeltaTable(CATALOG_NAME, table2, loc1, new ArrayList<>(0), session);
+    String t2 = CATALOG_NAME + "." + SCHEMA_NAME + "." + table2;
+    session.sql("INSERT INTO " + t2 + " SELECT 2, 'b'");
+
+    session.sql(
+        String.format(
+            "MERGE INTO %s USING %s ON %s.i = %s.i WHEN NOT MATCHED THEN INSERT *",
+            t1, t2, t1, t2));
+    List<Row> rows = session.sql("SELECT * FROM " + t1).collectAsList();
+    assertEquals(2, rows.size());
+
+    session.stop();
+  }
+
+  @Test
+  public void testUpdateDeltaTable() throws ApiException, IOException {
+    createCommonResources();
+    SparkSession session = createSparkSessionWithCatalogs(SPARK_CATALOG, CATALOG_NAME);
+
+    String loc0 = "s3://test-bucket0" + generateTableLocation(SPARK_CATALOG, DELTA_TABLE);
+    setupExternalDeltaTable(SPARK_CATALOG, DELTA_TABLE, loc0, new ArrayList<>(0), session);
+    String t1 = SPARK_CATALOG + "." + SCHEMA_NAME + "." + DELTA_TABLE;
+    session.sql("INSERT INTO " + t1 + " SELECT 1, 'a'");
+
+    session.sql(String.format("UPDATE %s SET i = 2 WHERE i = 1", t1));
+    List<Row> rows = session.sql("SELECT * FROM " + t1).collectAsList();
+    assertEquals(1, rows.size());
+    assertEquals(2, rows.get(0).getInt(0));
     session.stop();
   }
 
