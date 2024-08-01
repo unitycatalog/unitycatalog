@@ -4,9 +4,6 @@ import Tarball.createTarballSettings
 import sbt.util
 import sbtlicensereport.license.{DepModuleInfo, LicenseCategory, LicenseInfo}
 import ReleaseSettings.{javaOnlyReleaseSettings, rootReleaseSettings, skipReleaseSettings}
-import sbtassembly.AssemblyPlugin.autoImport._
-import scala.jdk.CollectionConverters.asJavaIterableConverter
-import scala.language.implicitConversions
 
 import scala.jdk.CollectionConverters.asJavaIterableConverter
 import scala.language.implicitConversions
@@ -251,6 +248,49 @@ lazy val server = (project in file("server"))
     Test / javaOptions += s"-Duser.dir=${(ThisBuild / baseDirectory).value.getAbsolutePath}"
   )
 
+lazy val serverShaded = (project in file("serverShaded"))
+  .dependsOn(server % "provided")
+  .settings(
+    name := s"${artifactNamePrefix}-server-shaded",
+    commonSettings,
+    skipReleaseSettings,
+    libraryDependencies ++= Seq(
+      "com.fasterxml.jackson.core" % "jackson-annotations" % "2.15.0",
+      "com.fasterxml.jackson.core" % "jackson-core" % "2.15.0",
+      "com.fasterxml.jackson.core" % "jackson-databind" % "2.15.0",
+      "com.fasterxml.jackson.module" %% "jackson-module-scala" % "2.15.0"
+    ),
+    dependencyOverrides ++= Seq(
+      "com.fasterxml.jackson.core" % "jackson-annotations" % "2.15.0",
+      "com.fasterxml.jackson.core" % "jackson-core" % "2.15.0",
+      "com.fasterxml.jackson.core" % "jackson-databind" % "2.15.0",
+      "com.fasterxml.jackson.module" %% "jackson-module-scala" % "2.15.0"
+    ),
+    assembly / assemblyJarName := s"${name.value}_${scalaBinaryVersion.value}-${version.value}.jar",
+    assembly / logLevel := Level.Info,
+    assembly / test := {},
+    assembly / assemblyShadeRules := Seq(
+      ShadeRule.rename("com.fasterxml.jackson.**" -> "shadedForDelta.jackson.@0").inAll,
+      ShadeRule.rename("com.linecorp.armeria.**" -> "shadedForDelta.armeria.@0").inAll,
+      ShadeRule.rename("io.netty.**" -> "shadedForDelta.netty.@0").inAll,
+      ShadeRule.rename("jakarta.annotation.**" -> "shadedForDelta.jakarta.@0").inAll,
+      ShadeRule.rename("org.hibernate.orm.**" -> "shadedForDelta.hibernate.@0").inAll,
+      ShadeRule.rename("com.amazonaws.**" -> "shadedForDelta.aws.@0").inAll,
+      ShadeRule.rename("software.amazon.awssdk.**" -> "shadedForDelta.awssdk.@0").inAll,
+      ShadeRule.rename("io.vertx.**" -> "shadedForDelta.vertx.@0").inAll
+    ),
+    assemblyPackageScala / assembleArtifact := false,
+    assembly / assemblyMergeStrategy := {
+      case PathList("META-INF", xs @ _*) => MergeStrategy.discard
+      case x => MergeStrategy.first
+    },
+    assembly / fullClasspath ++= (Test / fullClasspath).value
+  )
+  .dependsOn(server % "compile->compile;test->test")
+  .settings(
+    // Add specific settings or tasks if needed
+  )
+
 lazy val serverModels = (project in file("server") / "target" / "models")
   .enablePlugins(OpenApiGeneratorPlugin)
   .disablePlugins(JavaFormatterPlugin)
@@ -322,7 +362,7 @@ lazy val cli = (project in file("examples") / "cli")
   )
 
 lazy val spark = (project in file("connectors/spark"))
-  .dependsOn(client % "compile->compile;test->test", server % "test->test")
+  .dependsOn(client % "compile->compile;test->test", serverShaded % "test->test")
   .settings(
     name := s"$artifactNamePrefix-spark",
     scalaVersion := "2.12.6",
@@ -364,52 +404,17 @@ lazy val spark = (project in file("connectors/spark"))
       case DepModuleInfo("ch.qos.logback", "logback-core", _) => true
       case DepModuleInfo("org.apache.xbean", "xbean-asm9-shaded", _) => true
       case DepModuleInfo("oro", "oro", _) => true
-    },
-    assembly / assemblyMergeStrategy := {
-      case PathList("META-INF", xs @ _*) => MergeStrategy.discard
-      case "module-info.class" => MergeStrategy.discard
-      case x if x.endsWith("module-info.class") => MergeStrategy.discard
-      case x if x.endsWith(".html") => MergeStrategy.discard
-      case x if x.endsWith(".class") => MergeStrategy.first
-      case x => MergeStrategy.first
-    },
-    assembly / assemblyShadeRules ++= Seq(
-      ShadeRule.rename("com.fasterxml.jackson.**" -> "shade.jackson.@1").inAll,
-      ShadeRule.rename("org.apache.logging.log4j.**" -> "shade.log4j.@1").inAll,
-      ShadeRule.rename("io.netty.**" -> "shade.netty.@1").inAll
-    ),
-    Test / assembly / assemblyMergeStrategy := {
-      case PathList("META-INF", xs @ _*) => MergeStrategy.discard
-      case "module-info.class" => MergeStrategy.discard
-      case x if x.endsWith("module-info.class") => MergeStrategy.discard
-      case x if x.endsWith(".html") => MergeStrategy.discard
-      case x if x.endsWith(".class") => MergeStrategy.first
-      case x => MergeStrategy.first
-    },
-    Test / assembly / assemblyShadeRules ++= Seq(
-      ShadeRule.rename("com.fasterxml.jackson.**" -> "shade.jackson.@1").inAll,
-      ShadeRule.rename("org.apache.logging.log4j.**" -> "shade.log4j.@1").inAll,
-      ShadeRule.rename("io.netty.**" -> "shade.netty.@1").inAll
-    )
+    }
   )
 
 lazy val root = (project in file("."))
-  .aggregate(serverModels, client, server, cli, spark)
+  .aggregate(serverModels, client, server, cli, spark, serverShaded)
   .settings(
     name := s"$artifactNamePrefix",
     createTarballSettings(),
     commonSettings,
     rootReleaseSettings
   )
-
-lazy val assembleAndTest = taskKey[Unit]("Assemble and run tests")
-
-assembleAndTest := Def.taskDyn {
-  val _ = (spark/ Test / assembly).value
-  Def.task {
-    (spark / Test / test).value
-  }
-}.value
 
 def generateClasspathFile(targetDir: File, classpath: Classpath): Unit = {
   // Generate a classpath file with the entire runtime class path.
