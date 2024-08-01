@@ -76,6 +76,8 @@ lazy val commonSettings = Seq(
     // I think we're good with the classpath exception in there.
     case DepModuleInfo("jakarta.transaction", "jakarta.transaction-api", _) => true
   },
+  
+  assembly / test := {}
 )
 
 enablePlugins(CoursierPlugin)
