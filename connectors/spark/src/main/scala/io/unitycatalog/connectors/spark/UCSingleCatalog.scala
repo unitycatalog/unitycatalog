@@ -2,7 +2,7 @@ package io.unitycatalog.connectors.spark
 
 import io.unitycatalog.client.{ApiClient, ApiException}
 import io.unitycatalog.client.api.{SchemasApi, TablesApi, TemporaryTableCredentialsApi}
-import io.unitycatalog.client.model.{AwsCredentials, GenerateTemporaryTableCredential, SchemaInfo, ListTablesResponse, TableOperation, TableType}
+import io.unitycatalog.client.model.{AwsCredentials, CreateSchema, GenerateTemporaryTableCredential, ListTablesResponse, SchemaInfo, TableOperation, TableType}
 
 import java.net.URI
 import java.util
@@ -91,7 +91,6 @@ private class UCProxy extends TableCatalog with SupportsNamespaces {
   private[this] var tablesApi: TablesApi = null
   private[this] var schemasApi: SchemasApi = null
   private[this] var temporaryTableCredentialsApi: TemporaryTableCredentialsApi = null
-  private[this] var schemasApi: SchemasApi = null
 
   override def initialize(name: String, options: CaseInsensitiveStringMap): Unit = {
     this.name = name
@@ -258,5 +257,9 @@ private class UCProxy extends TableCatalog with SupportsNamespaces {
   }
   override def alterNamespace(namespace: Array[String], changes: NamespaceChange*): Unit = ???
 
-  override def dropNamespace(namespace: Array[String], cascade: Boolean): Boolean = ???
+  override def dropNamespace(namespace: Array[String], cascade: Boolean): Boolean = {
+    checkUnsupportedNestedNamespace(namespace)
+    schemasApi.deleteSchema(name + "." + namespace.head, cascade)
+    true
+  }
 }

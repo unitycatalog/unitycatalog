@@ -22,9 +22,9 @@ import java.io.IOException;
 import java.util.*;
 import org.apache.spark.network.util.JavaUtils;
 import org.apache.spark.sql.AnalysisException;
-import org.apache.spark.sql.catalyst.analysis.NoSuchNamespaceException;
 import org.apache.spark.sql.Row;
 import org.apache.spark.sql.SparkSession;
+import org.apache.spark.sql.catalyst.analysis.NoSuchNamespaceException;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
@@ -235,7 +235,7 @@ public class SparkIntegrationTest extends BaseCRUDTest {
     assertThat(rows[1].getString(1)).isEqualTo(SCHEMA_NAME);
 
     assertThatThrownBy(() -> session.sql("DESC NAMESPACE NonExist").collect())
-            .isInstanceOf(NoSuchNamespaceException.class);
+        .isInstanceOf(NoSuchNamespaceException.class);
 
     session.stop();
   }
