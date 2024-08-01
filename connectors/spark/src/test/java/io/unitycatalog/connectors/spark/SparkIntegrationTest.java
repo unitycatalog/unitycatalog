@@ -22,6 +22,7 @@ import java.io.IOException;
 import java.util.*;
 import org.apache.spark.network.util.JavaUtils;
 import org.apache.spark.sql.AnalysisException;
+import org.apache.spark.sql.catalyst.analysis.NoSuchNamespaceException;
 import org.apache.spark.sql.Row;
 import org.apache.spark.sql.SparkSession;
 import org.junit.jupiter.api.BeforeEach;
@@ -194,6 +195,36 @@ public class SparkIntegrationTest extends BaseCRUDTest {
     // TODO: We need to apply a fix on Spark side to use v2 session catalog handle
     // `setCurrentDatabase` when the catalog name is `spark_catalog`.
     // session.catalog().setCurrentDatabase(SCHEMA_NAME);
+    session.stop();
+  }
+
+  @Test
+  public void testListNamespace() throws IOException, ApiException {
+    SparkSession session = createSparkSessionWithCatalogs(SPARK_CATALOG);
+    createCommonResources();
+    Row row = session.sql("SHOW NAMESPACES").collectAsList().get(0);
+    assertThat(row.getString(0)).isEqualTo(SCHEMA_NAME);
+    assertThatThrownBy(() -> session.sql("SHOW NAMESPACES IN a.b.c").collect())
+        .isInstanceOf(UnsupportedOperationException.class)
+        .hasMessageContaining("Multi-layer namespace is not supported in Unity Catalog");
+    session.stop();
+  }
+
+  @Test
+  public void testLoadNamespace() throws IOException, ApiException {
+    SparkSession session = createSparkSessionWithCatalogs(SPARK_CATALOG);
+    createCommonResources();
+
+    Row[] rows = (Row[]) session.sql("DESC NAMESPACE " + SCHEMA_NAME).collect();
+    assertThat(rows).hasSize(2);
+    assertThat(rows[0].getString(0)).isEqualTo("Catalog Name");
+    assertThat(rows[0].getString(1)).isEqualTo(SPARK_CATALOG);
+    assertThat(rows[1].getString(0)).isEqualTo("Namespace Name");
+    assertThat(rows[1].getString(1)).isEqualTo(SCHEMA_NAME);
+
+    assertThatThrownBy(() -> session.sql("DESC NAMESPACE NonExist").collect())
+            .isInstanceOf(NoSuchNamespaceException.class);
+
     session.stop();
   }
 
