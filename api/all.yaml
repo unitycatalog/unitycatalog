@@ -1863,6 +1863,7 @@ components:
           description: Time at which this registered model was created, in epoch milliseconds.
           type: integer
           format: int64
+        created
         updated_at:
           description: Time at which this registered model was last modified, in epoch milliseconds.
           type: integer
