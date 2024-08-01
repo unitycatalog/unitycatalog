@@ -1863,11 +1863,16 @@ components:
           description: Time at which this registered model was created, in epoch milliseconds.
           type: integer
           format: int64
-        created
+        created_by:
+          description: The user that created the model
+          type: string
         updated_at:
           description: Time at which this registered model was last modified, in epoch milliseconds.
           type: integer
           format: int64
+        updated_by:
+          description: The user that last updated the model
+          type: string
         model_id:
           description: Unique identifier for the registered model.
           type: string
@@ -1905,10 +1910,16 @@ components:
           description: Time at which this model version was created, in epoch milliseconds.
           type: integer
           format: int64
+        created_by:
+          description: The user that created the model version
+          type: string
         updated_at:
           description: Time at which this model version was last modified, in epoch milliseconds.
           type: integer
           format: int64
+        updated_by:
+          description: The user that last updated the model version
+          type: string
         model_version_id:
           description: Unique identifier for the model version.
           type: string
