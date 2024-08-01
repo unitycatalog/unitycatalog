@@ -1,10 +1,7 @@
 package io.unitycatalog.server.base.schema;
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertFalse;
-import static org.junit.jupiter.api.Assertions.assertNotNull;
-import static org.junit.jupiter.api.Assertions.assertThrows;
-import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import io.unitycatalog.client.ApiException;
 import io.unitycatalog.client.model.*;
@@ -37,26 +34,27 @@ public abstract class BaseSchemaCRUDTest extends BaseCRUDTest {
             .name(TestUtils.SCHEMA_NAME)
             .catalogName(TestUtils.CATALOG_NAME)
             .properties(TestUtils.PROPERTIES);
-    assertThrows(Exception.class, () -> schemaOperations.createSchema(createSchema));
+    assertThatThrownBy(() -> schemaOperations.createSchema(createSchema))
+        .isInstanceOf(Exception.class);
 
     CreateCatalog createCatalog = new CreateCatalog().name(TestUtils.CATALOG_NAME);
     catalogOperations.createCatalog(createCatalog);
     SchemaInfo schemaInfo = schemaOperations.createSchema(createSchema);
-    assertEquals(createSchema.getName(), schemaInfo.getName());
-    assertEquals(createSchema.getCatalogName(), schemaInfo.getCatalogName());
-    assertEquals(TestUtils.SCHEMA_FULL_NAME, schemaInfo.getFullName());
+    assertThat(schemaInfo.getName()).isEqualTo(createSchema.getName());
+    assertThat(schemaInfo.getCatalogName()).isEqualTo(createSchema.getCatalogName());
+    assertThat(schemaInfo.getFullName()).isEqualTo(TestUtils.SCHEMA_FULL_NAME);
     // TODO: Assert properties once CLI supports it
-    assertNotNull(schemaInfo.getCreatedAt());
+    assertThat(schemaInfo.getCreatedAt()).isNotNull();
 
     // List schemas
     System.out.println("Testing list schemas..");
     Iterable<SchemaInfo> schemaList = schemaOperations.listSchemas(TestUtils.CATALOG_NAME);
-    assertTrue(TestUtils.contains(schemaList, schemaInfo, (schema) -> schema.equals(schemaInfo)));
+    assertThat(schemaList).contains(schemaInfo);
 
     // Get schema
     System.out.println("Testing get schema..");
     SchemaInfo retrievedSchemaInfo = schemaOperations.getSchema(TestUtils.SCHEMA_FULL_NAME);
-    assertEquals(schemaInfo, retrievedSchemaInfo);
+    assertThat(retrievedSchemaInfo).isEqualTo(schemaInfo);
 
     // Calling update schema with nothing to update should not change anything
     System.out.println("Testing updating schema with nothing to update..");
@@ -64,56 +62,56 @@ public abstract class BaseSchemaCRUDTest extends BaseCRUDTest {
     SchemaInfo emptyUpdateSchemaInfo =
         schemaOperations.updateSchema(TestUtils.SCHEMA_FULL_NAME, emptyUpdateSchema);
     SchemaInfo retrievedSchemaInfo2 = schemaOperations.getSchema(TestUtils.SCHEMA_FULL_NAME);
-    assertEquals(schemaInfo, retrievedSchemaInfo2);
+    assertThat(retrievedSchemaInfo2).isEqualTo(schemaInfo);
 
     // Update schema name without updating comment
     System.out.println("Testing update schema: changing name..");
     UpdateSchema updateSchema = new UpdateSchema().newName(TestUtils.SCHEMA_NEW_NAME);
     SchemaInfo updatedSchemaInfo =
         schemaOperations.updateSchema(TestUtils.SCHEMA_FULL_NAME, updateSchema);
-    assertEquals(updateSchema.getNewName(), updatedSchemaInfo.getName());
-    assertEquals(updateSchema.getComment(), updatedSchemaInfo.getComment());
-    assertEquals(TestUtils.SCHEMA_NEW_FULL_NAME, updatedSchemaInfo.getFullName());
-    assertNotNull(updatedSchemaInfo.getUpdatedAt());
+    assertThat(updatedSchemaInfo.getName()).isEqualTo(updateSchema.getNewName());
+    assertThat(updatedSchemaInfo.getComment()).isEqualTo(updateSchema.getComment());
+    assertThat(updatedSchemaInfo.getFullName()).isEqualTo(TestUtils.SCHEMA_NEW_FULL_NAME);
+    assertThat(updatedSchemaInfo.getUpdatedAt()).isNotNull();
 
     // Update schema comment without updating name
     System.out.println("Testing update schema: changing comment..");
     UpdateSchema updateSchema2 = new UpdateSchema().comment(TestUtils.SCHEMA_COMMENT);
     SchemaInfo updatedSchemaInfo2 =
         schemaOperations.updateSchema(TestUtils.SCHEMA_NEW_FULL_NAME, updateSchema2);
-    assertEquals(TestUtils.SCHEMA_NEW_NAME, updatedSchemaInfo2.getName());
-    assertEquals(updateSchema2.getComment(), updatedSchemaInfo2.getComment());
-    assertEquals(TestUtils.SCHEMA_NEW_FULL_NAME, updatedSchemaInfo2.getFullName());
-    assertNotNull(updatedSchemaInfo2.getUpdatedAt());
+    assertThat(updatedSchemaInfo2.getName()).isEqualTo(TestUtils.SCHEMA_NEW_NAME);
+    assertThat(updatedSchemaInfo2.getComment()).isEqualTo(updateSchema2.getComment());
+    assertThat(updatedSchemaInfo2.getFullName()).isEqualTo(TestUtils.SCHEMA_NEW_FULL_NAME);
+    assertThat(updatedSchemaInfo2.getUpdatedAt()).isNotNull();
 
     // Now update the parent catalog name
     UpdateCatalog updateCatalog = new UpdateCatalog().newName(TestUtils.CATALOG_NEW_NAME);
     catalogOperations.updateCatalog(TestUtils.CATALOG_NAME, updateCatalog);
     SchemaInfo updatedSchemaInfo3 =
         schemaOperations.getSchema(TestUtils.CATALOG_NEW_NAME + "." + TestUtils.SCHEMA_NEW_NAME);
-    assertEquals(retrievedSchemaInfo.getSchemaId(), updatedSchemaInfo3.getSchemaId());
+    assertThat(updatedSchemaInfo3.getSchemaId()).isEqualTo(retrievedSchemaInfo.getSchemaId());
 
     // Delete schema
     System.out.println("Testing delete schema..");
     schemaOperations.deleteSchema(
         TestUtils.CATALOG_NEW_NAME + "." + TestUtils.SCHEMA_NEW_NAME, Optional.of(false));
-    assertFalse(
-        TestUtils.contains(
-            schemaOperations.listSchemas(TestUtils.CATALOG_NEW_NAME),
-            updatedSchemaInfo,
-            (schema) -> schema.getName().equals(TestUtils.SCHEMA_NEW_NAME)));
+    assertThat(schemaOperations.listSchemas(TestUtils.CATALOG_NEW_NAME))
+        .as("Schema with schema name '%s' exists", TestUtils.CATALOG_NEW_COMMENT)
+        .noneSatisfy(schema -> assertThat(schema.getName()).isEqualTo(TestUtils.SCHEMA_NEW_NAME));
 
     // Delete parent entity when schema exists
     SchemaInfo schemaInfo2 =
         schemaOperations.createSchema(
             new CreateSchema().name(TestUtils.SCHEMA_NAME).catalogName(TestUtils.CATALOG_NEW_NAME));
-    assertThrows(
-        Exception.class,
-        () -> catalogOperations.deleteCatalog(TestUtils.CATALOG_NEW_NAME, Optional.of(false)));
+    assertThatThrownBy(
+            () -> catalogOperations.deleteCatalog(TestUtils.CATALOG_NEW_NAME, Optional.of(false)))
+        .isInstanceOf(Exception.class);
     catalogOperations.deleteCatalog(TestUtils.CATALOG_NEW_NAME, Optional.of(true));
-    assertThrows(
-        Exception.class,
-        () -> schemaOperations.getSchema(TestUtils.CATALOG_NEW_NAME + "." + TestUtils.SCHEMA_NAME));
+    assertThatThrownBy(
+            () ->
+                schemaOperations.getSchema(
+                    TestUtils.CATALOG_NEW_NAME + "." + TestUtils.SCHEMA_NAME))
+        .isInstanceOf(Exception.class);
 
     // Test force delete of parent entity when schema exists
 
@@ -123,8 +121,10 @@ public abstract class BaseSchemaCRUDTest extends BaseCRUDTest {
         schemaOperations.createSchema(
             new CreateSchema().name(TestUtils.SCHEMA_NAME).catalogName(TestUtils.CATALOG_NEW_NAME));
     catalogOperations.deleteCatalog(TestUtils.CATALOG_NEW_NAME, Optional.of(true));
-    assertThrows(
-        Exception.class,
-        () -> schemaOperations.getSchema(TestUtils.CATALOG_NEW_NAME + "." + TestUtils.SCHEMA_NAME));
+    assertThatThrownBy(
+            () ->
+                schemaOperations.getSchema(
+                    TestUtils.CATALOG_NEW_NAME + "." + TestUtils.SCHEMA_NAME))
+        .isInstanceOf(Exception.class);
   }
 }
