@@ -21,8 +21,10 @@ public class CatalogService {
   }
 
   @Get("")
-  public HttpResponse listCatalogs() {
-    return HttpResponse.ofJson(CATALOG_REPOSITORY.listCatalogs());
+  public HttpResponse listCatalogs(
+      @Param("max_results") Optional<Integer> maxResults,
+      @Param("page_token") Optional<String> pageToken) {
+    return HttpResponse.ofJson(CATALOG_REPOSITORY.listCatalogs(maxResults, pageToken));
   }
 
   @Get("/{name}")

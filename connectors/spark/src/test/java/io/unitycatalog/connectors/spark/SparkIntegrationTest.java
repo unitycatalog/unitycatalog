@@ -1,7 +1,10 @@
 package io.unitycatalog.connectors.spark;
 
 import static io.unitycatalog.server.utils.TestUtils.*;
-import static org.junit.jupiter.api.Assertions.*;
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import io.unitycatalog.client.ApiException;
 import io.unitycatalog.client.model.*;
@@ -80,15 +83,21 @@ public class SparkIntegrationTest extends BaseCRUDTest {
     String path1 = new File(dataDir, "test_delta_path1").getCanonicalPath();
     String tableName1 = String.format("delta.`%s`", path1);
     session.sql(String.format("CREATE TABLE %s(i INT) USING delta", tableName1));
-    assertTrue(session.sql("SELECT * FROM " + tableName1).collectAsList().isEmpty());
+    assertThat(session.sql("SELECT * FROM " + tableName1).collectAsList()).isEmpty();
     session.sql("INSERT INTO " + tableName1 + " SELECT 1");
-    assertEquals(1, session.sql("SELECT * FROM " + tableName1).collectAsList().get(0).getInt(0));
+    assertThat(session.sql("SELECT * FROM " + tableName1).collectAsList())
+        .first()
+        .extracting(row -> row.get(0))
+        .isEqualTo(1);
 
     // Test CTAS
     String path2 = new File(dataDir, "test_delta_path2").getCanonicalPath();
     String tableName2 = String.format("delta.`%s`", path2);
     session.sql(String.format("CREATE TABLE %s USING delta AS SELECT 1 AS i", tableName2));
-    assertEquals(1, session.sql("SELECT * FROM " + tableName2).collectAsList().get(0).getInt(0));
+    assertThat(session.sql("SELECT * FROM " + tableName2).collectAsList())
+        .first()
+        .extracting(row -> row.get(0))
+        .isEqualTo(1);
 
     session.stop();
   }
@@ -113,7 +122,7 @@ public class SparkIntegrationTest extends BaseCRUDTest {
             .sql(String.format("SELECT l.i FROM %s l JOIN %s r ON l.i = r.i", t1, t2))
             .collectAsList()
             .get(0);
-    assertEquals(1, row.getInt(0));
+    assertThat(row.getInt(0)).isEqualTo(1);
 
     session.stop();
   }
@@ -138,7 +147,7 @@ public class SparkIntegrationTest extends BaseCRUDTest {
             .sql(String.format("SELECT l.i FROM %s l JOIN %s r ON l.i = r.i", t1, t2))
             .collectAsList()
             .get(0);
-    assertEquals(1, row.getInt(0));
+    assertThat(row.getInt(0)).isEqualTo(1);
 
     session.stop();
   }
@@ -210,13 +219,13 @@ public class SparkIntegrationTest extends BaseCRUDTest {
     setupExternalParquetTable(PARQUET_TABLE, new ArrayList<>(0));
 
     Row[] tables = (Row[]) session.sql("SHOW TABLES in " + SCHEMA_NAME).collect();
-    assertEquals(tables.length, 1);
-    assertEquals(tables[0].getString(0), SCHEMA_NAME);
-    assertEquals(tables[0].getString(1), PARQUET_TABLE);
+    assertThat(tables).hasSize(1);
+    assertThat(tables[0].getString(0)).isEqualTo(SCHEMA_NAME);
+    assertThat(tables[0].getString(1)).isEqualTo(PARQUET_TABLE);
 
-    AnalysisException exception =
-        assertThrows(AnalysisException.class, () -> session.sql("SHOW TABLES in a.b.c").collect());
-    assertTrue(exception.getMessage().contains("a.b.c"));
+    assertThatThrownBy(() -> session.sql("SHOW TABLES in a.b.c").collect())
+        .isInstanceOf(AnalysisException.class)
+        .hasMessageContaining("a.b.c");
 
     session.stop();
   }
@@ -230,8 +239,8 @@ public class SparkIntegrationTest extends BaseCRUDTest {
     assertTrue(session.catalog().tableExists(fullName));
     session.sql("DROP TABLE " + fullName).collect();
     assertFalse(session.catalog().tableExists(fullName));
-    AnalysisException exception =
-        assertThrows(AnalysisException.class, () -> session.sql("DROP TABLE a.b.c.d").collect());
+    assertThatThrownBy(() -> session.sql("DROP TABLE a.b.c.d").collect())
+        .isInstanceOf(AnalysisException.class);
     session.stop();
   }
 
@@ -253,11 +262,11 @@ public class SparkIntegrationTest extends BaseCRUDTest {
   }
 
   private void testTableReadWrite(String tableFullName, SparkSession session) {
-    assertTrue(session.sql("SELECT * FROM " + tableFullName).collectAsList().isEmpty());
+    assertThat(session.sql("SELECT * FROM " + tableFullName).collectAsList()).isEmpty();
     session.sql("INSERT INTO " + tableFullName + " SELECT 1, 'a'");
     Row row = session.sql("SELECT * FROM " + tableFullName).collectAsList().get(0);
-    assertEquals(1, row.getInt(0));
-    assertEquals("a", row.getString(1));
+    assertThat(row.getInt(0)).isEqualTo(1);
+    assertThat(row.getString(1)).isEqualTo("a");
   }
 
   private SchemaOperations schemaOperations;
