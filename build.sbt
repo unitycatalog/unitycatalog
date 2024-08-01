@@ -248,8 +248,10 @@ lazy val server = (project in file("server"))
     Test / javaOptions += s"-Duser.dir=${(ThisBuild / baseDirectory).value.getAbsolutePath}"
   )
 
+
+val assemblyAndPublishLocal = taskKey[Unit]("Builds the assembly and publishes it locally")
+
 lazy val serverShaded = (project in file("serverShaded"))
-  .dependsOn(server % "provided")
   .settings(
     name := s"${artifactNamePrefix}-server-shaded",
     commonSettings,
@@ -266,8 +268,12 @@ lazy val serverShaded = (project in file("serverShaded"))
       "com.fasterxml.jackson.core" % "jackson-databind" % "2.15.0",
       "com.fasterxml.jackson.module" %% "jackson-module-scala" % "2.15.0"
     ),
+    Compile / packageBin := assembly.value,
+    Compile / fullClasspath := (Compile / fullClasspath).value ++ (server / assembly / fullClasspath).value,
+    Compile / fullClasspath := (Compile / fullClasspath).value ++ (serverModels / assembly  / fullClasspath).value,
+    Compile / fullClasspath := (Compile / fullClasspath).value ++ (client / Compile / fullClasspath).value,
     assembly / assemblyJarName := s"${name.value}_${scalaBinaryVersion.value}-${version.value}.jar",
-    assembly / logLevel := Level.Info,
+    assembly / logLevel := Level.Debug,
     assembly / test := {},
     assembly / assemblyShadeRules := Seq(
       ShadeRule.rename("com.fasterxml.jackson.**" -> "shadedForDelta.jackson.@0").inAll,
@@ -286,7 +292,7 @@ lazy val serverShaded = (project in file("serverShaded"))
     },
     assembly / fullClasspath ++= (Test / fullClasspath).value
   )
-  .dependsOn(server % "compile->compile;test->test")
+  .dependsOn(server % "compile->compile;test->test" , serverModels % "compile->compile" , client % "compile->compile;test->test")
   .settings(
     // Add specific settings or tasks if needed
   )
@@ -362,7 +368,8 @@ lazy val cli = (project in file("examples") / "cli")
   )
 
 lazy val spark = (project in file("connectors/spark"))
-  .dependsOn(client % "compile->compile;test->test", serverShaded % "test->test")
+  .dependsOn(client % "compile->compile;test->test")
+  .dependsOn(serverShaded % "test->test")
   .settings(
     name := s"$artifactNamePrefix-spark",
     scalaVersion := "2.12.6",
