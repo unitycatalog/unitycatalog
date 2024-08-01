@@ -34,6 +34,7 @@ public class SparkIntegrationTest extends BaseCRUDTest {
   private static final String ANOTHER_PARQUET_TABLE = "test_parquet_another";
   private static final String PARQUET_TABLE_PARTITIONED = "test_parquet_partitioned";
   private static final String DELTA_TABLE = "test_delta";
+  private static final String ANOTHER_DELTA_TABLE = "test_delta_another";
   private static final String DELTA_TABLE_PARTITIONED = "test_delta_partitioned";
 
   private final File dataDir = new File(System.getProperty("java.io.tmpdir"), "spark_test");
@@ -107,13 +108,13 @@ public class SparkIntegrationTest extends BaseCRUDTest {
     createCommonResources();
     SparkSession session = createSparkSessionWithCatalogs(SPARK_CATALOG);
 
-    String loc0 = "s3://test-bucket0" + generateTableLocation(SPARK_CATALOG, PARQUET_TABLE);
-    setupExternalParquetTable(PARQUET_TABLE, loc0, new ArrayList<>(0));
+    String loc1 = "s3://test-bucket0" + generateTableLocation(SPARK_CATALOG, PARQUET_TABLE);
+    setupExternalParquetTable(PARQUET_TABLE, loc1, new ArrayList<>(0));
     String t1 = SPARK_CATALOG + "." + SCHEMA_NAME + "." + PARQUET_TABLE;
     testTableReadWrite(t1, session);
 
-    String loc1 = "s3://test-bucket1" + generateTableLocation(SPARK_CATALOG, ANOTHER_PARQUET_TABLE);
-    setupExternalParquetTable(ANOTHER_PARQUET_TABLE, loc1, new ArrayList<>(0));
+    String loc2 = "s3://test-bucket1" + generateTableLocation(SPARK_CATALOG, ANOTHER_PARQUET_TABLE);
+    setupExternalParquetTable(ANOTHER_PARQUET_TABLE, loc2, new ArrayList<>(0));
     String t2 = SPARK_CATALOG + "." + SCHEMA_NAME + "." + ANOTHER_PARQUET_TABLE;
     testTableReadWrite(t2, session);
 
@@ -155,7 +156,7 @@ public class SparkIntegrationTest extends BaseCRUDTest {
   @Test
   public void testDeleteDeltaTable() throws ApiException, IOException {
     createCommonResources();
-    SparkSession session = createSparkSessionWithCatalogs(SPARK_CATALOG, CATALOG_NAME);
+    SparkSession session = createSparkSessionWithCatalogs(SPARK_CATALOG);
 
     String loc0 = "s3://test-bucket0" + generateTableLocation(SPARK_CATALOG, DELTA_TABLE);
     setupExternalDeltaTable(SPARK_CATALOG, DELTA_TABLE, loc0, new ArrayList<>(0), session);
@@ -172,17 +173,16 @@ public class SparkIntegrationTest extends BaseCRUDTest {
   @Test
   public void testMergeDeltaTable() throws ApiException, IOException {
     createCommonResources();
-    SparkSession session = createSparkSessionWithCatalogs(SPARK_CATALOG, CATALOG_NAME);
+    SparkSession session = createSparkSessionWithCatalogs(SPARK_CATALOG);
 
     String loc0 = "s3://test-bucket0" + generateTableLocation(SPARK_CATALOG, DELTA_TABLE);
     setupExternalDeltaTable(SPARK_CATALOG, DELTA_TABLE, loc0, new ArrayList<>(0), session);
     String t1 = SPARK_CATALOG + "." + SCHEMA_NAME + "." + DELTA_TABLE;
     session.sql("INSERT INTO " + t1 + " SELECT 1, 'a'");
 
-    String table2 = DELTA_TABLE + "2";
-    String loc1 = "s3://test-bucket1" + generateTableLocation(CATALOG_NAME, table2);
-    setupExternalDeltaTable(CATALOG_NAME, table2, loc1, new ArrayList<>(0), session);
-    String t2 = CATALOG_NAME + "." + SCHEMA_NAME + "." + table2;
+    String loc1 = "s3://test-bucket1" + generateTableLocation(CATALOG_NAME, ANOTHER_DELTA_TABLE);
+    setupExternalDeltaTable(CATALOG_NAME, ANOTHER_DELTA_TABLE, loc1, new ArrayList<>(0), session);
+    String t2 = CATALOG_NAME + "." + SCHEMA_NAME + "." + ANOTHER_DELTA_TABLE;
     session.sql("INSERT INTO " + t2 + " SELECT 2, 'b'");
 
     session.sql(
@@ -198,7 +198,7 @@ public class SparkIntegrationTest extends BaseCRUDTest {
   @Test
   public void testUpdateDeltaTable() throws ApiException, IOException {
     createCommonResources();
-    SparkSession session = createSparkSessionWithCatalogs(SPARK_CATALOG, CATALOG_NAME);
+    SparkSession session = createSparkSessionWithCatalogs(SPARK_CATALOG);
 
     String loc0 = "s3://test-bucket0" + generateTableLocation(SPARK_CATALOG, DELTA_TABLE);
     setupExternalDeltaTable(SPARK_CATALOG, DELTA_TABLE, loc0, new ArrayList<>(0), session);
