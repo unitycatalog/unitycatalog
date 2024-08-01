@@ -72,7 +72,7 @@ interface SchemaDetailsTabsProps {
 
 function SchemaDetailsTabs({ catalog, schema }: SchemaDetailsTabsProps) {
   const [activeTab, setActiveTab] = React.useState<SchemaTabs>(
-    SchemaTabs.Tables
+    SchemaTabs.Tables,
   );
   const Component = SCHEMA_TABS_MAP[activeTab];
 
