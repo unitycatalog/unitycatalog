@@ -37,7 +37,7 @@ export default function CreateAssetsDropdown({
         onClick: () => setOpenModal(CreateItemsEnum.Function),
       },
     ],
-    []
+    [],
   );
 
   return (

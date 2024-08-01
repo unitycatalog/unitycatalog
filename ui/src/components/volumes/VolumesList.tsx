@@ -28,7 +28,7 @@ export default function VolumesList({
       filters={filters}
       onRowClick={(record) =>
         navigate(
-          `/volumes/${record.catalog_name}/${record.schema_name}/${record.name}`
+          `/volumes/${record.catalog_name}/${record.schema_name}/${record.name}`,
         )
       }
       columns={[

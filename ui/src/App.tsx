@@ -142,7 +142,11 @@ function AppProvider() {
 }
 
 function App() {
-  return <NotificationProvider><RouterProvider router={router} fallbackElement={<p>Loading...</p>} /></NotificationProvider>;
+  return (
+    <NotificationProvider>
+      <RouterProvider router={router} fallbackElement={<p>Loading...</p>} />
+    </NotificationProvider>
+  );
 }
 
 export default App;

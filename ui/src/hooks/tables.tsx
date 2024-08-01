@@ -1,4 +1,9 @@
-import { useMutation, useQuery, useQueryClient, UseQueryOptions } from '@tanstack/react-query';
+import {
+  useMutation,
+  useQuery,
+  useQueryClient,
+  UseQueryOptions,
+} from '@tanstack/react-query';
 import { UC_API_PREFIX } from '../utils/constants';
 
 interface ColumnInterface {
@@ -41,7 +46,7 @@ export function useListTables({ catalog, schema, options }: ListTablesParams) {
       });
 
       const response = await fetch(
-        `${UC_API_PREFIX}/tables?${searchParams.toString()}`
+        `${UC_API_PREFIX}/tables?${searchParams.toString()}`,
       );
       return response.json();
     },
@@ -67,7 +72,8 @@ export function useGetTable({ catalog, schema, table }: GetTableParams) {
   });
 }
 
-export interface DeleteTableMutationParams extends Pick<TableInterface, 'catalog_name' | 'schema_name' | 'name'> {}
+export interface DeleteTableMutationParams
+  extends Pick<TableInterface, 'catalog_name' | 'schema_name' | 'name'> {}
 
 interface DeleteTableParams {
   onSuccessCallback?: () => void;
@@ -75,23 +81,36 @@ interface DeleteTableParams {
   schema: string;
 }
 
-export function useDeleteTable({ onSuccessCallback, catalog, schema }: DeleteTableParams) {
+export function useDeleteTable({
+  onSuccessCallback,
+  catalog,
+  schema,
+}: DeleteTableParams) {
   const queryClient = useQueryClient();
 
   return useMutation<void, unknown, DeleteTableMutationParams>({
-    mutationFn: async ({ catalog_name, schema_name, name}: DeleteTableMutationParams) : Promise<void> => {
-      const response = await fetch(`${UC_API_PREFIX}/tables/${catalog_name}.${schema_name}.${name}`, {
-        method: 'DELETE',
-        headers: {
-          'Content-Type': 'application/json'
+    mutationFn: async ({
+      catalog_name,
+      schema_name,
+      name,
+    }: DeleteTableMutationParams): Promise<void> => {
+      const response = await fetch(
+        `${UC_API_PREFIX}/tables/${catalog_name}.${schema_name}.${name}`,
+        {
+          method: 'DELETE',
+          headers: {
+            'Content-Type': 'application/json',
+          },
         },
-      });
+      );
       if (!response.ok) {
         throw new Error('Failed to delete table');
       }
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['listTables', catalog, schema] });
+      queryClient.invalidateQueries({
+        queryKey: ['listTables', catalog, schema],
+      });
       onSuccessCallback?.();
     },
   });
