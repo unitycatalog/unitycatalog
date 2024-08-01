@@ -230,12 +230,11 @@ private class UCProxy extends TableCatalog with SupportsNamespaces {
       schemasApi.getSchema(name + "." + namespace(0))
     } catch {
       case e: ApiException if e.getCode == 404 =>
-        e.printStackTrace()
         throw new NoSuchNamespaceException(namespace)
     }
     // flatten the schema properties to a map, with the key prefixed by "properties:"
     val metadata = schema.getProperties.asScala.map {
-        case (k, v) =>  SchemaInfo.JSON_PROPERTY_PROPERTIES + ":" + k -> v
+      case (k, v) =>  SchemaInfo.JSON_PROPERTY_PROPERTIES + ":" + k -> v
     }
     metadata(SchemaInfo.JSON_PROPERTY_NAME) = schema.getName
     metadata(SchemaInfo.JSON_PROPERTY_CATALOG_NAME) = schema.getCatalogName
