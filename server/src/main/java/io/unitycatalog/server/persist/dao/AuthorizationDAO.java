@@ -1,5 +1,9 @@
 package io.unitycatalog.server.persist.dao;
 
+import io.unitycatalog.server.model.Authorization;
+import io.unitycatalog.server.model.PrincipalType;
+import io.unitycatalog.server.model.Privilege;
+import io.unitycatalog.server.model.ResourceType;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.Id;
@@ -41,4 +45,27 @@ public class AuthorizationDAO {
 
     @Column(name = "created_at")
     private Date createdAt;
+
+    public static AuthorizationDAO from(Authorization authorization) {
+        return AuthorizationDAO.builder()
+                .id(UUID.fromString(authorization.getId()))
+                .principalId(UUID.fromString(authorization.getPrincipalId()))
+                .principalType(authorization.getPrincipalType().toString())
+                .privilege(authorization.getPrivilege().toString())
+                .resourceId(UUID.fromString(authorization.getResourceId()))
+                .resourceType(authorization.getResourceType().toString())
+                .createdAt(new Date(authorization.getCreatedAt()))
+                .build();
+    }
+
+    public Authorization toAuthorization() {
+        return new Authorization()
+                .id(getId().toString())
+                .principalId(getPrincipalId().toString())
+                .principalType(PrincipalType.fromValue(getPrincipalType()))
+                .privilege(Privilege.fromValue(getPrivilege()))
+                .resourceId(getResourceId().toString())
+                .resourceType(ResourceType.fromValue(getResourceType()))
+                .createdAt(getCreatedAt().getTime());
+    }
 }

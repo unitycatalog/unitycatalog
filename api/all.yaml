@@ -1490,6 +1490,30 @@ components:
         - READ_VOLUME
         - WRITE_VOLUME
       type: string
+    CreateUser:
+      properties:
+        name:
+          description: The name of the user.
+          type: string
+        email:
+          description: The email address of the user.
+          type: string
+        external_id:
+          description: The external identifier of the user.
+          type: string
+      type: object
+    UpdateUser:
+      properties:
+        new_name:
+          description: The new name of the user.
+          type: string
+        email:
+          description: The new email address of the user.
+          type: string
+        external_id:
+          description: The new external identifier of the user.
+          type: string
+      type: object
     User:
       properties:
         id:
@@ -1512,14 +1536,46 @@ components:
               - DISABLED
         created_at:
           description: The time the user was created.
-          type: string
+          type: integer
           format: int64
         updated_at:
           description: The time the user was last updated.
-          type: string
+          type: integer
           format: int64
       type: object
+    PrincipalType:
+      type: string
+      enum:
+        - USER
+        - GROUP
+      description: The type of the principal.
+    ResourceType:
+      type: string
+      enum:
+        - CATALOG
+        - SCHEMA
+        - TABLE
+        - FUNCTION
+        - VOLUME
+      description: The type of the resource.
+    Privilege:
+      type: string
+      enum:
+        - CREATE CATALOG
+        - USE CATALOG
+        - CREATE SCHEMA
+        - USE SCHEMA
+        - CREATE TABLE
+        - CREATE FUNCTION
+        - CREATE VOLUME
+        - READ VOLUME
+        - WRITE VOLUME
+        - SELECT
+        - MODIFY
+        - EXECUTE
+      description: The privilege to grant.
     Authorization:
+      type: object
       properties:
         id:
           description: The unique identifier of the authorization.
@@ -1528,48 +1584,75 @@ components:
           description: The subject of the authorization.
           type: string
         principal_type:
-          description: The type of the subject.
-          type: string
-          enum:
-              - USER
-              - GROUP
+          $ref: '#/components/schemas/PrincipalType'
         privilege:
-          description: The privilege to grant.
-          type: string
-          enum:
-              - CREATE CATALOG
-              - USE CATALOG
-              - CREATE SCHEMA
-              - USE SCHEMA
-              - CREATE TABLE
-              - CREATE FUNCTION
-              - CREATE VOLUME
-              - READ VOLUME
-              - WRITE VOLUME
-              - SELECT
-              - MODIFY
-              - EXECUTE
+          $ref: '#/components/schemas/Privilege'
         resource_id:
           description: The resource to give the privilege to.
           type: string
         resource_type:
-          description: The type of the resource.
-          type: string
-          enum:
-              - CATALOG
-              - SCHEMA
-              - TABLE
-              - FUNCTION
-              - VOLUME
+          $ref: '#/components/schemas/ResourceType'
         created_at:
           description: The time the authorization was created.
-          type: string
+          type: integer
           format: int64
         updated_at:
           description: The time the authorization was last updated.
-          type: string
+          type: integer
           format: int64
+      required:
+        - id
+        - principal_id
+        - principal_type
+        - privilege
+        - resource_id
+        - resource_type
+    CreateAuthorization:
       type: object
+      properties:
+        principal_id:
+          description: The subject of the authorization.
+          type: string
+        principal_type:
+          $ref: '#/components/schemas/PrincipalType'
+        privilege:
+          $ref: '#/components/schemas/Privilege'
+        resource_id:
+          description: The resource to give the privilege to.
+          type: string
+        resource_type:
+          $ref: '#/components/schemas/ResourceType'
+        created_at:
+          description: The time the authorization was created.
+          type: integer
+          format: int64
+      required:
+        - principal_id
+        - principal_type
+        - privilege
+        - resource_id
+        - resource_type
+    UpdateAuthorization:
+      type: object
+      properties:
+        principal_id:
+          description: The subject of the authorization.
+          type: string
+        principal_type:
+          $ref: '#/components/schemas/PrincipalType'
+        privilege:
+          $ref: '#/components/schemas/Privilege'
+        resource_id:
+          description: The resource to give the privilege to.
+          type: string
+        resource_type:
+          $ref: '#/components/schemas/ResourceType'
+        updated_at:
+          description: The time the authorization was last updated.
+          type: integer
+          format: int64
+      required:
+        - id
 info:
   title: Unity Catalog API
   version: '0.1'

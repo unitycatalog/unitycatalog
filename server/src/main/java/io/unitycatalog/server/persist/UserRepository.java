@@ -2,9 +2,11 @@ package io.unitycatalog.server.persist;
 
 import io.unitycatalog.server.exception.BaseException;
 import io.unitycatalog.server.exception.ErrorCode;
+import io.unitycatalog.server.model.CreateUser;
+import io.unitycatalog.server.model.UpdateUser;
+import io.unitycatalog.server.model.User;
 import io.unitycatalog.server.persist.dao.UserDAO;
 import io.unitycatalog.server.persist.utils.HibernateUtils;
-import io.unitycatalog.server.utils.ValidationUtils;
 import org.hibernate.Session;
 import org.hibernate.SessionFactory;
 import org.hibernate.Transaction;
@@ -12,8 +14,7 @@ import org.hibernate.query.Query;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.util.Date;
-import java.util.Optional;
+import java.util.UUID;
 
 public class UserRepository {
     private static final UserRepository INSTANCE = new UserRepository();
@@ -26,25 +27,24 @@ public class UserRepository {
         return INSTANCE;
     }
 
-    public User createUser(User ) {
-        User userDAO = UserDAO.builder()
-                .email(email)
-                .externalId(externalId)
-                .state(state)
-                .createdAt(new Date())
-                .updatedAt(new Date())
-                .build();
+    public User createUser(CreateUser createUser) {
+        User user = new User()
+            .id(UUID.randomUUID().toString())
+            .name(createUser.getName())
+            .email(createUser.getEmail())
+            .externalId(createUser.getExternalId())
+            .state(User.StateEnum.ENABLED)
+            .createdAt(System.currentTimeMillis());
 
         try (Session session = SESSION_FACTORY.openSession()) {
             Transaction tx = session.beginTransaction();
             try {
-                if (getUserByEmail(session, email) != null) {
-                    throw new BaseException(ErrorCode.ALREADY_EXISTS, "User already exists: " + email);
+                if (getUserByName(session, user.getName()) != null) {
+                    throw new BaseException(ErrorCode.ALREADY_EXISTS, "User already exists: " + user.getName());
                 }
-                session.persist(userDAO);
+                session.persist(UserDAO.from(user));
                 tx.commit();
-                LOGGER.info("Added user: {}", email);
-                return userDAO;
+                return user;
             } catch (Exception e) {
                 tx.rollback();
                 throw e;
@@ -52,17 +52,17 @@ public class UserRepository {
         }
     }
 
-    public UserDAO getUserByEmail(String email) {
+    public User getUser(String name) {
         try (Session session = SESSION_FACTORY.openSession()) {
             session.setDefaultReadOnly(true);
             Transaction tx = session.beginTransaction();
             try {
-                UserDAO userDAO = getUserByEmail(session, email);
+                UserDAO userDAO = getUserByName(session, name);
                 if (userDAO == null) {
-                    throw new BaseException(ErrorCode.NOT_FOUND, "User not found: " + email);
+                    throw new BaseException(ErrorCode.NOT_FOUND, "User not found: " + name);
                 }
                 tx.commit();
-                return userDAO;
+                return userDAO.toUser();
             } catch (Exception e) {
                 tx.rollback();
                 throw e;
@@ -70,27 +70,30 @@ public class UserRepository {
         }
     }
 
-    public UserDAO getUserByEmail(Session session, String email) {
-        Query<UserDAO> query = session.createQuery("FROM UserDAO WHERE email = :email", UserDAO.class);
-        query.setParameter("email", email);
+    public UserDAO getUserByName(Session session, String name) {
+        Query<UserDAO> query = session.createQuery("FROM UserDAO WHERE name = :name", UserDAO.class);
+        query.setParameter("name", name);
         query.setMaxResults(1);
         return query.uniqueResult();
     }
 
-    public UserDAO updateUser(String email, Optional<String> newEmail, Optional<String> externalId, Optional<String> state) {
-        newEmail.ifPresent(ValidationUtils::validateEmail);
-
+    public UserDAO updateUser(String name, UpdateUser updateUser) {
         try (Session session = SESSION_FACTORY.openSession()) {
             Transaction tx = session.beginTransaction();
             try {
-                UserDAO userDAO = getUserByEmail(session, email);
+                UserDAO userDAO = getUserByName(session, name);
                 if (userDAO == null) {
-                    throw new BaseException(ErrorCode.NOT_FOUND, "User not found: " + email);
+                    throw new BaseException(ErrorCode.NOT_FOUND, "User not found: " + name);
                 }
-                newEmail.ifPresent(userDAO::setEmail);
-                externalId.ifPresent(userDAO::setExternalId);
-                state.ifPresent(userDAO::setState);
-                userDAO.setUpdatedAt(new Date());
+                if (updateUser.getNewName() != null) {
+                    userDAO.setName(updateUser.getNewName());
+                }
+                if (updateUser.getEmail() != null) {
+                    userDAO.setEmail(updateUser.getEmail());
+                }
+                if (updateUser.getExternalId() != null) {
+                    userDAO.setExternalId(updateUser.getExternalId());
+                }
                 session.merge(userDAO);
                 tx.commit();
                 return userDAO;
@@ -105,9 +108,10 @@ public class UserRepository {
         try (Session session = SESSION_FACTORY.openSession()) {
             Transaction tx = session.beginTransaction();
             try {
-                UserDAO userDAO = getUserByEmail(session, email);
+                UserDAO userDAO = getUserByName(session, email);
                 if (userDAO != null) {
-                    session.remove(userDAO);
+                    userDAO.setState(User.StateEnum.DISABLED.toString());
+                    session.merge(userDAO);
                     tx.commit();
                     LOGGER.info("Deleted user: {}", email);
                 } else {
