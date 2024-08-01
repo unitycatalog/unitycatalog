@@ -31,7 +31,7 @@ export function DeleteCatalogModal({
         onError: (error: Error) => {
           setNotification(error.message, 'error');
         },
-      }
+      },
     );
   }, [mutation, catalog, setNotification]);
 
@@ -54,13 +54,8 @@ export function DeleteCatalogModal({
       <Typography.Text>
         Are you sure you want to delete the catalog
       </Typography.Text>
-      <Typography.Text strong>
-        {` ${catalog}`}
-      </Typography.Text>
-      <Typography.Text>
-        ? This operation cannot be undone.
-      </Typography.Text>
-
+      <Typography.Text strong>{` ${catalog}`}</Typography.Text>
+      <Typography.Text>? This operation cannot be undone.</Typography.Text>
     </Modal>
   );
 }

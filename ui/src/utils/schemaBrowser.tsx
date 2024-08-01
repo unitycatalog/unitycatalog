@@ -20,10 +20,10 @@ export function updateEntityTreeData({
   const { catalog, schema, type } = entityToExpand;
   const catalogNode = treeData.find(({ key }) => key === catalog);
   const schemaNode = catalogNode?.children?.find(
-    ({ key }) => key === [catalog, schema].join('.')
+    ({ key }) => key === [catalog, schema].join('.'),
   );
   const entitiesNode = schemaNode?.children?.find(
-    ({ key }) => key === `${[catalog, schema].join('.')}:${type}`
+    ({ key }) => key === `${[catalog, schema].join('.')}:${type}`,
   );
 
   if (entitiesNode) {

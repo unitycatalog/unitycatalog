@@ -31,7 +31,7 @@ export function useListSchemas({ catalog, options }: ListSchemasParams) {
       const searchParams = new URLSearchParams({ catalog_name: catalog });
 
       const response = await fetch(
-        `${UC_API_PREFIX}/schemas?${searchParams.toString()}`
+        `${UC_API_PREFIX}/schemas?${searchParams.toString()}`,
       );
       return response.json();
     },
