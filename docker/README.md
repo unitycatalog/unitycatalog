@@ -60,6 +60,10 @@ This will start the container and make it accessible on port `8081` within the `
 
 This project provides several examples using `curl` commands to interact with the Unity Catalog API and demonstrate basic functionalities.
 
+> [!NOTE]
+> If you wish to use the CLI to test the catalog, run a docker CLI instance and follow the instructions
+> from the repositories main readme.
+
 #### 4.1. Store the Catalog Endpoint
 
 The examples use a variable `unitycatalog_endpoint` to store the catalog's URL. Update this variable with the actual address based on your network configuration.
