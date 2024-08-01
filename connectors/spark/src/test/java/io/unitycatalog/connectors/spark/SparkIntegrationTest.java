@@ -164,7 +164,7 @@ public class SparkIntegrationTest extends BaseCRUDTest {
 
     session.sql(String.format("DELETE FROM %s WHERE i = 1", t1));
     List<Row> rows = session.sql("SELECT * FROM " + t1).collectAsList();
-    assertEquals(0, rows.size());
+    assertThat(0 == rows.size());
 
     session.stop();
   }
@@ -190,7 +190,7 @@ public class SparkIntegrationTest extends BaseCRUDTest {
             "MERGE INTO %s USING %s ON %s.i = %s.i WHEN NOT MATCHED THEN INSERT *",
             t1, t2, t1, t2));
     List<Row> rows = session.sql("SELECT * FROM " + t1).collectAsList();
-    assertEquals(2, rows.size());
+    assertThat(2 == rows.size());
 
     session.stop();
   }
@@ -207,8 +207,8 @@ public class SparkIntegrationTest extends BaseCRUDTest {
 
     session.sql(String.format("UPDATE %s SET i = 2 WHERE i = 1", t1));
     List<Row> rows = session.sql("SELECT * FROM " + t1).collectAsList();
-    assertEquals(1, rows.size());
-    assertEquals(2, rows.get(0).getInt(0));
+    assertThat(1 == rows.size());
+    assertThat(2 == rows.get(0).getInt(0));
     session.stop();
   }
 
