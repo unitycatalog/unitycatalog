@@ -11,9 +11,8 @@ interface TableActionDropdownProps {
 
 enum TableActionsEnum {
   Delete,
-  Rename
+  Rename,
 }
-
 
 export default function TableActionsDropdown({
   catalog,
@@ -30,10 +29,10 @@ export default function TableActionsDropdown({
         label: 'Delete Table',
         onClick: () => setAction(TableActionsEnum.Delete),
         icon: <DeleteOutlined />,
-        danger: true
+        danger: true,
       },
     ],
-    []
+    [],
   );
 
   return (
@@ -41,21 +40,25 @@ export default function TableActionsDropdown({
       <Dropdown
         menu={{ items: menuItems }}
         trigger={['click']}
-        onOpenChange={() => setDropdownVisible(!dropdownVisible)}>
+        onOpenChange={() => setDropdownVisible(!dropdownVisible)}
+      >
         <Button
           type="text"
           icon={
-          <MoreOutlined
-            rotate={dropdownVisible ? 90 : 0}
-            style={{ transition: 'transform 0.5s' }}
-          />}  />
+            <MoreOutlined
+              rotate={dropdownVisible ? 90 : 0}
+              style={{ transition: 'transform 0.5s' }}
+            />
+          }
+        />
       </Dropdown>
       <DeleteTableModal
         open={action === TableActionsEnum.Delete}
         closeModal={() => setAction(null)}
         catalog={catalog}
         schema={schema}
-        table={table} />
+        table={table}
+      />
     </>
   );
 }

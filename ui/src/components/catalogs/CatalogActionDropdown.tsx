@@ -8,7 +8,7 @@ interface CatalogActionDropdownProps {
 }
 
 enum CatalogActionsEnum {
-  Delete
+  Delete,
 }
 
 export default function CatalogActionsDropdown({
@@ -24,10 +24,10 @@ export default function CatalogActionsDropdown({
         label: 'Delete Catalog',
         onClick: () => setAction(CatalogActionsEnum.Delete),
         icon: <DeleteOutlined />,
-        danger: true
+        danger: true,
       },
     ],
-    []
+    [],
   );
 
   return (
@@ -35,19 +35,23 @@ export default function CatalogActionsDropdown({
       <Dropdown
         menu={{ items: menuItems }}
         trigger={['click']}
-        onOpenChange={() => setDropdownVisible(!dropdownVisible)}>
+        onOpenChange={() => setDropdownVisible(!dropdownVisible)}
+      >
         <Button
           type="text"
           icon={
-          <MoreOutlined
-            rotate={dropdownVisible ? 90 : 0}
-            style={{ transition: 'transform 0.5s' }}
-          />}  />
+            <MoreOutlined
+              rotate={dropdownVisible ? 90 : 0}
+              style={{ transition: 'transform 0.5s' }}
+            />
+          }
+        />
       </Dropdown>
       <DeleteCatalogModal
         open={action === CatalogActionsEnum.Delete}
         closeModal={() => setAction(null)}
-        catalog={catalog} />
+        catalog={catalog}
+      />
     </>
   );
 }

@@ -28,8 +28,8 @@ export default function ListLayout<T extends AnyObject = AnyObject>({
     return data?.filter((item) =>
       Object.values<string | boolean | number | null | undefined>(item).some(
         (value) =>
-          String(value).toLowerCase().includes(filterValue.toLowerCase())
-      )
+          String(value).toLowerCase().includes(filterValue.toLowerCase()),
+      ),
     );
   }, [data, filterValue]);
 

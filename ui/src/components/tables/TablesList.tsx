@@ -28,7 +28,7 @@ export default function TablesList({
       data={data?.tables}
       onRowClick={(record) =>
         navigate(
-          `/data/${record.catalog_name}/${record.schema_name}/${record.name}`
+          `/data/${record.catalog_name}/${record.schema_name}/${record.name}`,
         )
       }
       columns={[

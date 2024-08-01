@@ -27,16 +27,27 @@ export function DeleteTableModal({
       navigate(`/data/${catalog}/${schema}`);
     },
     catalog,
-    schema
+    schema,
   });
-  const tableFullName = useMemo(() => [catalog, schema, table].join('.'), [catalog, schema, table]);
+  const tableFullName = useMemo(
+    () => [catalog, schema, table].join('.'),
+    [catalog, schema, table],
+  );
   const handleSubmit = useCallback(() => {
-    mutation.mutate({ catalog_name: catalog, schema_name: schema, name: table } );
+    mutation.mutate({
+      catalog_name: catalog,
+      schema_name: schema,
+      name: table,
+    });
   }, [mutation, catalog, schema, table]);
 
   return (
     <Modal
-      title={<Typography.Title type={'danger'} level={4}>Delete table</Typography.Title>}
+      title={
+        <Typography.Title type={'danger'} level={4}>
+          Delete table
+        </Typography.Title>
+      }
       okText="Delete"
       okType="danger"
       cancelText="Cancel"
@@ -49,13 +60,8 @@ export function DeleteTableModal({
       <Typography.Text>
         Are you sure you want to delete the table
       </Typography.Text>
-      <Typography.Text strong>
-        {` ${tableFullName}`}
-      </Typography.Text>
-      <Typography.Text>
-        ? This operation cannot be undone.
-      </Typography.Text>
-
+      <Typography.Text strong>{` ${tableFullName}`}</Typography.Text>
+      <Typography.Text>? This operation cannot be undone.</Typography.Text>
     </Modal>
   );
 }

@@ -91,7 +91,9 @@ interface DeleteCatalogParams {
 }
 
 // Delete a catalog
-export function useDeleteCatalog({ onSuccessCallback }: DeleteCatalogParams = {}) {
+export function useDeleteCatalog({
+  onSuccessCallback,
+}: DeleteCatalogParams = {}) {
   const queryClient = useQueryClient();
 
   return useMutation<void, Error, DeleteCatalogMutationParams>({

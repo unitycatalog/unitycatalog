@@ -24,10 +24,14 @@ export default function TableDetails() {
     <DetailsLayout
       title={
         <Flex justify="space-between" align="flex-start" gap="middle">
-        <Typography.Title level={3}>
-          <TableOutlined /> {tableFullName}
-        </Typography.Title>
-          <TableActionsDropdown catalog={catalog} schema={schema} table={table}  />
+          <Typography.Title level={3}>
+            <TableOutlined /> {tableFullName}
+          </Typography.Title>
+          <TableActionsDropdown
+            catalog={catalog}
+            schema={schema}
+            table={table}
+          />
         </Flex>
       }
       breadcrumbs={[
