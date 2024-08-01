@@ -15,7 +15,6 @@ import org.apache.spark.sql.types.{DataType, StructField, StructType}
 import org.apache.spark.sql.util.CaseInsensitiveStringMap
 
 import scala.collection.convert.ImplicitConversions._
-import scala.collection.immutable.HashMap
 import scala.jdk.CollectionConverters._
 
 /**
