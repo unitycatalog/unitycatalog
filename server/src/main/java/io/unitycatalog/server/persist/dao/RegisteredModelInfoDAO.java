@@ -29,29 +29,23 @@ public class RegisteredModelInfoDAO extends IdentifiableDAO {
     @Column(name = "schema_id")
     private UUID schemaId;
 
-    @Column(name = "type")
-    private String type;
-
     @Column(name = "created_at")
     private Date createdAt;
+
+    @Column(name = "created_by")
+    private String createdBy;
 
     @Column(name = "updated_at")
     private Date updatedAt;
 
-    @Column(name = "data_source_format")
-    private String dataSourceFormat;
+    @Column(name = "updated_by")
+    private String updatedBy;
 
     @Column(name = "comment", length = 65535)
     private String comment;
 
     @Column(name = "url", length = 2048)
     private String url;
-
-    @Column(name = "column_count")
-    private Integer columnCount;
-
-    @Column(name = "uniform_iceberg_metadata_location", length = 65535)
-    private String uniformIcebergMetadataLocation;
 
     public static RegisteredModelInfoDAO from(RegisteredModelInfo registeredModelInfo) {
         return RegisteredModelInfoDAO.builder()
@@ -60,8 +54,9 @@ public class RegisteredModelInfoDAO extends IdentifiableDAO {
                 .comment(registeredModelInfo.getComment())
                 .createdAt(
                         registeredModelInfo.getCreatedAt() != null ? new Date(registeredModelInfo.getCreatedAt()) : new Date())
-                .updatedAt(registeredModelInfo.getUpdatedAt() != null ? new Date(registeredModelInfo.getUpdatedAt()) : null)
-                .url(registeredModelInfo.getStorageLocation() != null ? registeredModelInfo.getStorageLocation() : null)
+                .createdBy(registeredModelInfo.getCretedBy())
+                .updatedAt(registeredModelInfo.getUpdatedAt() != null ? new Date(registeredModelInfo.getUpdatedAt()) : new Date())
+                .createdBy(registeredModelInfo.getUpdatedBy())
                 .url(registeredModelInfo.getStorageLocation())
                 .build();
     }

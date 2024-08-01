@@ -73,7 +73,7 @@ public class ModelRepository {
                 String registeredModelName = parts[2];
                 RegisteredModelInfoDAO registeredModelInfoDAO = findRegisteredModel(session, catalogName, schemaName, registeredModelName);
                 if (registeredModelInfoDAO == null) {
-                    throw new BaseException(ErrorCode.NOT_FOUND, "Table not found: " + fullName);
+                    throw new BaseException(ErrorCode.NOT_FOUND, "Registered model not found: " + fullName);
                 }
                 registeredModelInfo = registeredModelInfoDAO.toRegisteredModelInfo();
                 registeredModelInfo.setCatalogName(catalogName);
