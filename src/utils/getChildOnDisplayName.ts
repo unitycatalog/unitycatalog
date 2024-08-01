@@ -2,7 +2,7 @@ import React from 'react';
 
 export function getChildOnDisplayName(
   children: React.ReactNode[] | React.ReactNode,
-  displayName: string
+  displayName: string,
 ) {
   return React.Children.toArray(children).find((child) => {
     if (React.isValidElement(child)) {

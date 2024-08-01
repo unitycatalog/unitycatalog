@@ -8,7 +8,7 @@ import DescriptionBox from '../components/DescriptionBox';
 import CatalogSidebar from '../components/catalogs/CatalogSidebar';
 import { ProductOutlined } from '@ant-design/icons';
 import CreateSchemaAction from '../components/schemas/CreateSchemaAction';
-import CatalogActionDropdown from '../components/catalogs/CatalogActionDropdown'
+import CatalogActionDropdown from '../components/catalogs/CatalogActionDropdown';
 
 export default function CatalogDetails() {
   const { catalog } = useParams();

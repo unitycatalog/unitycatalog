@@ -28,7 +28,7 @@ export default function FunctionsList({
       filters={filters}
       onRowClick={(record) =>
         navigate(
-          `/functions/${record.catalog_name}/${record.schema_name}/${record.name}`
+          `/functions/${record.catalog_name}/${record.schema_name}/${record.name}`,
         )
       }
       columns={[

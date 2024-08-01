@@ -16,7 +16,7 @@ interface MetadataListProps<T> {
 
 export default function MetadataList<
   T extends Record<K, string | number | null>,
-  K extends keyof T
+  K extends keyof T,
 >({ data, metadata, title }: MetadataListProps<T>) {
   return (
     <Flex vertical gap="middle">
