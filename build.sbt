@@ -4,6 +4,9 @@ import Tarball.createTarballSettings
 import sbt.util
 import sbtlicensereport.license.{DepModuleInfo, LicenseCategory, LicenseInfo}
 import ReleaseSettings.{javaOnlyReleaseSettings, rootReleaseSettings, skipReleaseSettings}
+import sbtassembly.AssemblyPlugin.autoImport._
+import scala.jdk.CollectionConverters.asJavaIterableConverter
+import scala.language.implicitConversions
 
 import scala.jdk.CollectionConverters.asJavaIterableConverter
 import scala.language.implicitConversions
@@ -319,22 +322,25 @@ lazy val cli = (project in file("examples") / "cli")
   )
 
 lazy val spark = (project in file("connectors/spark"))
-  .dependsOn(client % "compile->compile;test->test")
-  .dependsOn(server % "test->test")
+  .dependsOn(client % "compile->compile;test->test", server % "test->test")
   .settings(
     name := s"$artifactNamePrefix-spark",
-    scalaVersion := "2.13.14",
+    scalaVersion := "2.12.6",
     commonSettings,
     javaOptions ++= Seq(
       "--add-opens=java.base/sun.nio.ch=ALL-UNNAMED",
     ),
-    javaCheckstyleSettings(file("dev") / "checkstyle-config.xml"),
+    javaCheckstyleSettings(file("dev/checkstyle-config.xml")),
     libraryDependencies ++= Seq(
-      "org.apache.spark" %% "spark-sql" % "4.0.0-preview1",
+      "org.apache.spark" %% "spark-sql" % "3.5.1",
+      "com.fasterxml.jackson.module" %% "jackson-module-scala" % "2.12.5",
+      "com.fasterxml.jackson.core" % "jackson-annotations" % "2.12.5",
+      "com.fasterxml.jackson.core" % "jackson-core" % "2.12.5",
+      "com.fasterxml.jackson.core" % "jackson-databind" % "2.12.5",
       // Test dependencies
       "org.junit.jupiter" % "junit-jupiter" % "5.10.3" % Test,
       "net.aichler" % "jupiter-interface" % JupiterKeys.jupiterVersion.value % Test,
-      "io.delta" %% "delta-spark" % "4.0.0rc1" % Test,
+      "io.delta" %% "delta-spark" % "3.2.0" % Test
     ),
     excludeDependencies ++= Seq(
       // This is a transitive dependency from the `server` module and we have to exclude it here
@@ -359,6 +365,32 @@ lazy val spark = (project in file("connectors/spark"))
       case DepModuleInfo("org.apache.xbean", "xbean-asm9-shaded", _) => true
       case DepModuleInfo("oro", "oro", _) => true
     },
+    assembly / assemblyMergeStrategy := {
+      case PathList("META-INF", xs @ _*) => MergeStrategy.discard
+      case "module-info.class" => MergeStrategy.discard
+      case x if x.endsWith("module-info.class") => MergeStrategy.discard
+      case x if x.endsWith(".html") => MergeStrategy.discard
+      case x if x.endsWith(".class") => MergeStrategy.first
+      case x => MergeStrategy.first
+    },
+    assembly / assemblyShadeRules ++= Seq(
+      ShadeRule.rename("com.fasterxml.jackson.**" -> "shade.jackson.@1").inAll,
+      ShadeRule.rename("org.apache.logging.log4j.**" -> "shade.log4j.@1").inAll,
+      ShadeRule.rename("io.netty.**" -> "shade.netty.@1").inAll
+    ),
+    Test / assembly / assemblyMergeStrategy := {
+      case PathList("META-INF", xs @ _*) => MergeStrategy.discard
+      case "module-info.class" => MergeStrategy.discard
+      case x if x.endsWith("module-info.class") => MergeStrategy.discard
+      case x if x.endsWith(".html") => MergeStrategy.discard
+      case x if x.endsWith(".class") => MergeStrategy.first
+      case x => MergeStrategy.first
+    },
+    Test / assembly / assemblyShadeRules ++= Seq(
+      ShadeRule.rename("com.fasterxml.jackson.**" -> "shade.jackson.@1").inAll,
+      ShadeRule.rename("org.apache.logging.log4j.**" -> "shade.log4j.@1").inAll,
+      ShadeRule.rename("io.netty.**" -> "shade.netty.@1").inAll
+    )
   )
 
 lazy val root = (project in file("."))
@@ -369,6 +401,15 @@ lazy val root = (project in file("."))
     commonSettings,
     rootReleaseSettings
   )
+
+lazy val assembleAndTest = taskKey[Unit]("Assemble and run tests")
+
+assembleAndTest := Def.taskDyn {
+  val _ = (spark/ Test / assembly).value
+  Def.task {
+    (spark / Test / test).value
+  }
+}.value
 
 def generateClasspathFile(targetDir: File, classpath: Classpath): Unit = {
   // Generate a classpath file with the entire runtime class path.
