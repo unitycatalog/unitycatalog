@@ -35,7 +35,7 @@ public class CatalogCli {
         output = createCatalog(catalogsApi, json);
         break;
       case CliUtils.LIST:
-        output = listCatalogs(catalogsApi);
+        output = listCatalogs(catalogsApi, json);
         break;
       case CliUtils.GET:
         output = getCatalog(catalogsApi, json);
@@ -59,9 +59,14 @@ public class CatalogCli {
     return objectWriter.writeValueAsString(catalogsApi.createCatalog(createCatalog));
   }
 
-  private static String listCatalogs(CatalogsApi catalogsApi)
+  private static String listCatalogs(CatalogsApi catalogsApi, JSONObject json)
       throws JsonProcessingException, ApiException {
-    return objectWriter.writeValueAsString(catalogsApi.listCatalogs(null, 100).getCatalogs());
+    int maxResults = 100;
+    if (json.has(CliParams.MAX_RESULTS.getServerParam())) {
+      maxResults = json.getInt(CliParams.MAX_RESULTS.getServerParam());
+    }
+    return objectWriter.writeValueAsString(
+        catalogsApi.listCatalogs(null, maxResults).getCatalogs());
   }
 
   private static String getCatalog(CatalogsApi catalogsApi, JSONObject json)

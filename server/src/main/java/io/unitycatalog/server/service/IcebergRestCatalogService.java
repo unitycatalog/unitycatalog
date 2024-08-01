@@ -76,7 +76,12 @@ public class IcebergRestCatalogService {
       throws JsonProcessingException {
     // List catalogs if the parent is not present
     if (!parent.isPresent()) {
-      String respContent = catalogService.listCatalogs().aggregate().join().contentUtf8();
+      String respContent =
+          catalogService
+              .listCatalogs(Optional.empty(), Optional.empty())
+              .aggregate()
+              .join()
+              .contentUtf8();
       ListCatalogsResponse resp =
           JsonUtils.getInstance().readValue(respContent, ListCatalogsResponse.class);
       assert resp.getCatalogs() != null;
