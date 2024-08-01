@@ -1490,6 +1490,86 @@ components:
         - READ_VOLUME
         - WRITE_VOLUME
       type: string
+    User:
+      properties:
+        id:
+          description: The unique identifier of the user.
+          type: string
+        name:
+          description: The name of the user.
+          type: string
+        email:
+          description: The email address of the user.
+          type: string
+        external_id:
+          description: The external identifier of the user.
+          type: string
+        state:
+          description: The state of the account.
+          type: string
+          enum:
+              - ENABLED
+              - DISABLED
+        created_at:
+          description: The time the user was created.
+          type: string
+          format: int64
+        updated_at:
+          description: The time the user was last updated.
+          type: string
+          format: int64
+      type: object
+    Authorization:
+      properties:
+        id:
+          description: The unique identifier of the authorization.
+          type: string
+        principal_id:
+          description: The subject of the authorization.
+          type: string
+        principal_type:
+          description: The type of the subject.
+          type: string
+          enum:
+              - USER
+              - GROUP
+        privilege:
+          description: The privilege to grant.
+          type: string
+          enum:
+              - CREATE CATALOG
+              - USE CATALOG
+              - CREATE SCHEMA
+              - USE SCHEMA
+              - CREATE TABLE
+              - CREATE FUNCTION
+              - CREATE VOLUME
+              - READ VOLUME
+              - WRITE VOLUME
+              - SELECT
+              - MODIFY
+              - EXECUTE
+        resource_id:
+          description: The resource to give the privilege to.
+          type: string
+        resource_type:
+          description: The type of the resource.
+          type: string
+          enum:
+              - CATALOG
+              - SCHEMA
+              - TABLE
+              - FUNCTION
+              - VOLUME
+        created_at:
+          description: The time the authorization was created.
+          type: string
+          format: int64
+        updated_at:
+          description: The time the authorization was last updated.
+          type: string
+          format: int64
+      type: object
 info:
   title: Unity Catalog API
   version: '0.1'
