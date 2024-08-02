@@ -30,14 +30,14 @@ configuration = unitycatalog.Configuration(
 
 
 # Enter a context with an instance of the API client
-async with unitycatalog.ApiClient(configuration) as api_client:
+with unitycatalog.ApiClient(configuration) as api_client:
     # Create an instance of the API class
     api_instance = unitycatalog.TemporaryTableCredentialsApi(api_client)
     generate_temporary_table_credential = unitycatalog.GenerateTemporaryTableCredential() # GenerateTemporaryTableCredential |  (optional)
 
     try:
         # Generate temporary table credentials.
-        api_response = await api_instance.generate_temporary_table_credentials(generate_temporary_table_credential=generate_temporary_table_credential)
+        api_response = api_instance.generate_temporary_table_credentials(generate_temporary_table_credential=generate_temporary_table_credential)
         print("The response of TemporaryTableCredentialsApi->generate_temporary_table_credentials:\n")
         pprint(api_response)
     except Exception as e:

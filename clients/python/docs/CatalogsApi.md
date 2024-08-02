@@ -36,14 +36,14 @@ configuration = unitycatalog.Configuration(
 
 
 # Enter a context with an instance of the API client
-async with unitycatalog.ApiClient(configuration) as api_client:
+with unitycatalog.ApiClient(configuration) as api_client:
     # Create an instance of the API class
     api_instance = unitycatalog.CatalogsApi(api_client)
     create_catalog = unitycatalog.CreateCatalog() # CreateCatalog |  (optional)
 
     try:
         # Create a catalog
-        api_response = await api_instance.create_catalog(create_catalog=create_catalog)
+        api_response = api_instance.create_catalog(create_catalog=create_catalog)
         print("The response of CatalogsApi->create_catalog:\n")
         pprint(api_response)
     except Exception as e:
@@ -103,7 +103,7 @@ configuration = unitycatalog.Configuration(
 
 
 # Enter a context with an instance of the API client
-async with unitycatalog.ApiClient(configuration) as api_client:
+with unitycatalog.ApiClient(configuration) as api_client:
     # Create an instance of the API class
     api_instance = unitycatalog.CatalogsApi(api_client)
     name = 'name_example' # str | The name of the catalog.
@@ -111,7 +111,7 @@ async with unitycatalog.ApiClient(configuration) as api_client:
 
     try:
         # Delete a catalog
-        api_response = await api_instance.delete_catalog(name, force=force)
+        api_response = api_instance.delete_catalog(name, force=force)
         print("The response of CatalogsApi->delete_catalog:\n")
         pprint(api_response)
     except Exception as e:
@@ -173,14 +173,14 @@ configuration = unitycatalog.Configuration(
 
 
 # Enter a context with an instance of the API client
-async with unitycatalog.ApiClient(configuration) as api_client:
+with unitycatalog.ApiClient(configuration) as api_client:
     # Create an instance of the API class
     api_instance = unitycatalog.CatalogsApi(api_client)
     name = 'name_example' # str | The name of the catalog.
 
     try:
         # Get a catalog
-        api_response = await api_instance.get_catalog(name)
+        api_response = api_instance.get_catalog(name)
         print("The response of CatalogsApi->get_catalog:\n")
         pprint(api_response)
     except Exception as e:
@@ -241,7 +241,7 @@ configuration = unitycatalog.Configuration(
 
 
 # Enter a context with an instance of the API client
-async with unitycatalog.ApiClient(configuration) as api_client:
+with unitycatalog.ApiClient(configuration) as api_client:
     # Create an instance of the API class
     api_instance = unitycatalog.CatalogsApi(api_client)
     page_token = 'page_token_example' # str | Opaque pagination token to go to next page based on previous query.  (optional)
@@ -249,7 +249,7 @@ async with unitycatalog.ApiClient(configuration) as api_client:
 
     try:
         # List catalogs
-        api_response = await api_instance.list_catalogs(page_token=page_token, max_results=max_results)
+        api_response = api_instance.list_catalogs(page_token=page_token, max_results=max_results)
         print("The response of CatalogsApi->list_catalogs:\n")
         pprint(api_response)
     except Exception as e:
@@ -312,7 +312,7 @@ configuration = unitycatalog.Configuration(
 
 
 # Enter a context with an instance of the API client
-async with unitycatalog.ApiClient(configuration) as api_client:
+with unitycatalog.ApiClient(configuration) as api_client:
     # Create an instance of the API class
     api_instance = unitycatalog.CatalogsApi(api_client)
     name = 'name_example' # str | The name of the catalog.
@@ -320,7 +320,7 @@ async with unitycatalog.ApiClient(configuration) as api_client:
 
     try:
         # Update a catalog
-        api_response = await api_instance.update_catalog(name, update_catalog=update_catalog)
+        api_response = api_instance.update_catalog(name, update_catalog=update_catalog)
         print("The response of CatalogsApi->update_catalog:\n")
         pprint(api_response)
     except Exception as e:

@@ -42,7 +42,7 @@ class FunctionsApi:
 
 
     @validate_call
-    async def create_function(
+    def create_function(
         self,
         create_function_request: Optional[CreateFunctionRequest] = None,
         _request_timeout: Union[
@@ -97,11 +97,11 @@ class FunctionsApi:
         _response_types_map: Dict[str, Optional[str]] = {
             '200': "FunctionInfo",
         }
-        response_data = await self.api_client.call_api(
+        response_data = self.api_client.call_api(
             *_param,
             _request_timeout=_request_timeout
         )
-        await response_data.read()
+        response_data.read()
         return self.api_client.response_deserialize(
             response_data=response_data,
             response_types_map=_response_types_map,
@@ -109,7 +109,7 @@ class FunctionsApi:
 
 
     @validate_call
-    async def create_function_with_http_info(
+    def create_function_with_http_info(
         self,
         create_function_request: Optional[CreateFunctionRequest] = None,
         _request_timeout: Union[
@@ -164,11 +164,11 @@ class FunctionsApi:
         _response_types_map: Dict[str, Optional[str]] = {
             '200': "FunctionInfo",
         }
-        response_data = await self.api_client.call_api(
+        response_data = self.api_client.call_api(
             *_param,
             _request_timeout=_request_timeout
         )
-        await response_data.read()
+        response_data.read()
         return self.api_client.response_deserialize(
             response_data=response_data,
             response_types_map=_response_types_map,
@@ -176,7 +176,7 @@ class FunctionsApi:
 
 
     @validate_call
-    async def create_function_without_preload_content(
+    def create_function_without_preload_content(
         self,
         create_function_request: Optional[CreateFunctionRequest] = None,
         _request_timeout: Union[
@@ -231,7 +231,7 @@ class FunctionsApi:
         _response_types_map: Dict[str, Optional[str]] = {
             '200': "FunctionInfo",
         }
-        response_data = await self.api_client.call_api(
+        response_data = self.api_client.call_api(
             *_param,
             _request_timeout=_request_timeout
         )
@@ -313,7 +313,7 @@ class FunctionsApi:
 
 
     @validate_call
-    async def delete_function(
+    def delete_function(
         self,
         name: Annotated[StrictStr, Field(description="The fully-qualified name of the function (of the form __catalog_name__.__schema_name__.__function__name__).")],
         _request_timeout: Union[
@@ -368,11 +368,11 @@ class FunctionsApi:
         _response_types_map: Dict[str, Optional[str]] = {
             '200': "object",
         }
-        response_data = await self.api_client.call_api(
+        response_data = self.api_client.call_api(
             *_param,
             _request_timeout=_request_timeout
         )
-        await response_data.read()
+        response_data.read()
         return self.api_client.response_deserialize(
             response_data=response_data,
             response_types_map=_response_types_map,
@@ -380,7 +380,7 @@ class FunctionsApi:
 
 
     @validate_call
-    async def delete_function_with_http_info(
+    def delete_function_with_http_info(
         self,
         name: Annotated[StrictStr, Field(description="The fully-qualified name of the function (of the form __catalog_name__.__schema_name__.__function__name__).")],
         _request_timeout: Union[
@@ -435,11 +435,11 @@ class FunctionsApi:
         _response_types_map: Dict[str, Optional[str]] = {
             '200': "object",
         }
-        response_data = await self.api_client.call_api(
+        response_data = self.api_client.call_api(
             *_param,
             _request_timeout=_request_timeout
         )
-        await response_data.read()
+        response_data.read()
         return self.api_client.response_deserialize(
             response_data=response_data,
             response_types_map=_response_types_map,
@@ -447,7 +447,7 @@ class FunctionsApi:
 
 
     @validate_call
-    async def delete_function_without_preload_content(
+    def delete_function_without_preload_content(
         self,
         name: Annotated[StrictStr, Field(description="The fully-qualified name of the function (of the form __catalog_name__.__schema_name__.__function__name__).")],
         _request_timeout: Union[
@@ -502,7 +502,7 @@ class FunctionsApi:
         _response_types_map: Dict[str, Optional[str]] = {
             '200': "object",
         }
-        response_data = await self.api_client.call_api(
+        response_data = self.api_client.call_api(
             *_param,
             _request_timeout=_request_timeout
         )
@@ -571,7 +571,7 @@ class FunctionsApi:
 
 
     @validate_call
-    async def get_function(
+    def get_function(
         self,
         name: Annotated[StrictStr, Field(description="The fully-qualified name of the function (of the form __catalog_name__.__schema_name__.__function__name__).")],
         _request_timeout: Union[
@@ -626,11 +626,11 @@ class FunctionsApi:
         _response_types_map: Dict[str, Optional[str]] = {
             '200': "FunctionInfo",
         }
-        response_data = await self.api_client.call_api(
+        response_data = self.api_client.call_api(
             *_param,
             _request_timeout=_request_timeout
         )
-        await response_data.read()
+        response_data.read()
         return self.api_client.response_deserialize(
             response_data=response_data,
             response_types_map=_response_types_map,
@@ -638,7 +638,7 @@ class FunctionsApi:
 
 
     @validate_call
-    async def get_function_with_http_info(
+    def get_function_with_http_info(
         self,
         name: Annotated[StrictStr, Field(description="The fully-qualified name of the function (of the form __catalog_name__.__schema_name__.__function__name__).")],
         _request_timeout: Union[
@@ -693,11 +693,11 @@ class FunctionsApi:
         _response_types_map: Dict[str, Optional[str]] = {
             '200': "FunctionInfo",
         }
-        response_data = await self.api_client.call_api(
+        response_data = self.api_client.call_api(
             *_param,
             _request_timeout=_request_timeout
         )
-        await response_data.read()
+        response_data.read()
         return self.api_client.response_deserialize(
             response_data=response_data,
             response_types_map=_response_types_map,
@@ -705,7 +705,7 @@ class FunctionsApi:
 
 
     @validate_call
-    async def get_function_without_preload_content(
+    def get_function_without_preload_content(
         self,
         name: Annotated[StrictStr, Field(description="The fully-qualified name of the function (of the form __catalog_name__.__schema_name__.__function__name__).")],
         _request_timeout: Union[
@@ -760,7 +760,7 @@ class FunctionsApi:
         _response_types_map: Dict[str, Optional[str]] = {
             '200': "FunctionInfo",
         }
-        response_data = await self.api_client.call_api(
+        response_data = self.api_client.call_api(
             *_param,
             _request_timeout=_request_timeout
         )
@@ -829,7 +829,7 @@ class FunctionsApi:
 
 
     @validate_call
-    async def list_functions(
+    def list_functions(
         self,
         catalog_name: Annotated[StrictStr, Field(description="Name of parent catalog for functions of interest.")],
         schema_name: Annotated[StrictStr, Field(description="Parent schema of functions.")],
@@ -896,11 +896,11 @@ class FunctionsApi:
         _response_types_map: Dict[str, Optional[str]] = {
             '200': "ListFunctionsResponse",
         }
-        response_data = await self.api_client.call_api(
+        response_data = self.api_client.call_api(
             *_param,
             _request_timeout=_request_timeout
         )
-        await response_data.read()
+        response_data.read()
         return self.api_client.response_deserialize(
             response_data=response_data,
             response_types_map=_response_types_map,
@@ -908,7 +908,7 @@ class FunctionsApi:
 
 
     @validate_call
-    async def list_functions_with_http_info(
+    def list_functions_with_http_info(
         self,
         catalog_name: Annotated[StrictStr, Field(description="Name of parent catalog for functions of interest.")],
         schema_name: Annotated[StrictStr, Field(description="Parent schema of functions.")],
@@ -975,11 +975,11 @@ class FunctionsApi:
         _response_types_map: Dict[str, Optional[str]] = {
             '200': "ListFunctionsResponse",
         }
-        response_data = await self.api_client.call_api(
+        response_data = self.api_client.call_api(
             *_param,
             _request_timeout=_request_timeout
         )
-        await response_data.read()
+        response_data.read()
         return self.api_client.response_deserialize(
             response_data=response_data,
             response_types_map=_response_types_map,
@@ -987,7 +987,7 @@ class FunctionsApi:
 
 
     @validate_call
-    async def list_functions_without_preload_content(
+    def list_functions_without_preload_content(
         self,
         catalog_name: Annotated[StrictStr, Field(description="Name of parent catalog for functions of interest.")],
         schema_name: Annotated[StrictStr, Field(description="Parent schema of functions.")],
@@ -1054,7 +1054,7 @@ class FunctionsApi:
         _response_types_map: Dict[str, Optional[str]] = {
             '200': "ListFunctionsResponse",
         }
-        response_data = await self.api_client.call_api(
+        response_data = self.api_client.call_api(
             *_param,
             _request_timeout=_request_timeout
         )

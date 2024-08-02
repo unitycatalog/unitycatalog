@@ -30,14 +30,14 @@ configuration = unitycatalog.Configuration(
 
 
 # Enter a context with an instance of the API client
-async with unitycatalog.ApiClient(configuration) as api_client:
+with unitycatalog.ApiClient(configuration) as api_client:
     # Create an instance of the API class
     api_instance = unitycatalog.TemporaryVolumeCredentialsApi(api_client)
     generate_temporary_volume_credential = unitycatalog.GenerateTemporaryVolumeCredential() # GenerateTemporaryVolumeCredential |  (optional)
 
     try:
         # Generate temporary volume credentials.
-        api_response = await api_instance.generate_temporary_volume_credentials(generate_temporary_volume_credential=generate_temporary_volume_credential)
+        api_response = api_instance.generate_temporary_volume_credentials(generate_temporary_volume_credential=generate_temporary_volume_credential)
         print("The response of TemporaryVolumeCredentialsApi->generate_temporary_volume_credentials:\n")
         pprint(api_response)
     except Exception as e:

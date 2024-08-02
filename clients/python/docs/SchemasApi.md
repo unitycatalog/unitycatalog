@@ -36,14 +36,14 @@ configuration = unitycatalog.Configuration(
 
 
 # Enter a context with an instance of the API client
-async with unitycatalog.ApiClient(configuration) as api_client:
+with unitycatalog.ApiClient(configuration) as api_client:
     # Create an instance of the API class
     api_instance = unitycatalog.SchemasApi(api_client)
     create_schema = unitycatalog.CreateSchema() # CreateSchema |  (optional)
 
     try:
         # Create a schema
-        api_response = await api_instance.create_schema(create_schema=create_schema)
+        api_response = api_instance.create_schema(create_schema=create_schema)
         print("The response of SchemasApi->create_schema:\n")
         pprint(api_response)
     except Exception as e:
@@ -103,7 +103,7 @@ configuration = unitycatalog.Configuration(
 
 
 # Enter a context with an instance of the API client
-async with unitycatalog.ApiClient(configuration) as api_client:
+with unitycatalog.ApiClient(configuration) as api_client:
     # Create an instance of the API class
     api_instance = unitycatalog.SchemasApi(api_client)
     full_name = 'full_name_example' # str | Full name of the schema.
@@ -111,7 +111,7 @@ async with unitycatalog.ApiClient(configuration) as api_client:
 
     try:
         # Delete a schema
-        api_response = await api_instance.delete_schema(full_name, force=force)
+        api_response = api_instance.delete_schema(full_name, force=force)
         print("The response of SchemasApi->delete_schema:\n")
         pprint(api_response)
     except Exception as e:
@@ -173,14 +173,14 @@ configuration = unitycatalog.Configuration(
 
 
 # Enter a context with an instance of the API client
-async with unitycatalog.ApiClient(configuration) as api_client:
+with unitycatalog.ApiClient(configuration) as api_client:
     # Create an instance of the API class
     api_instance = unitycatalog.SchemasApi(api_client)
     full_name = 'full_name_example' # str | Full name of the schema.
 
     try:
         # Get a schema
-        api_response = await api_instance.get_schema(full_name)
+        api_response = api_instance.get_schema(full_name)
         print("The response of SchemasApi->get_schema:\n")
         pprint(api_response)
     except Exception as e:
@@ -241,7 +241,7 @@ configuration = unitycatalog.Configuration(
 
 
 # Enter a context with an instance of the API client
-async with unitycatalog.ApiClient(configuration) as api_client:
+with unitycatalog.ApiClient(configuration) as api_client:
     # Create an instance of the API class
     api_instance = unitycatalog.SchemasApi(api_client)
     catalog_name = 'catalog_name_example' # str | Parent catalog for schemas of interest.
@@ -250,7 +250,7 @@ async with unitycatalog.ApiClient(configuration) as api_client:
 
     try:
         # List schemas
-        api_response = await api_instance.list_schemas(catalog_name, max_results=max_results, page_token=page_token)
+        api_response = api_instance.list_schemas(catalog_name, max_results=max_results, page_token=page_token)
         print("The response of SchemasApi->list_schemas:\n")
         pprint(api_response)
     except Exception as e:
@@ -314,7 +314,7 @@ configuration = unitycatalog.Configuration(
 
 
 # Enter a context with an instance of the API client
-async with unitycatalog.ApiClient(configuration) as api_client:
+with unitycatalog.ApiClient(configuration) as api_client:
     # Create an instance of the API class
     api_instance = unitycatalog.SchemasApi(api_client)
     full_name = 'full_name_example' # str | Full name of the schema.
@@ -322,7 +322,7 @@ async with unitycatalog.ApiClient(configuration) as api_client:
 
     try:
         # Update a schema
-        api_response = await api_instance.update_schema(full_name, update_schema=update_schema)
+        api_response = api_instance.update_schema(full_name, update_schema=update_schema)
         print("The response of SchemasApi->update_schema:\n")
         pprint(api_response)
     except Exception as e:

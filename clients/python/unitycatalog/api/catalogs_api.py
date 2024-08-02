@@ -43,7 +43,7 @@ class CatalogsApi:
 
 
     @validate_call
-    async def create_catalog(
+    def create_catalog(
         self,
         create_catalog: Optional[CreateCatalog] = None,
         _request_timeout: Union[
@@ -98,11 +98,11 @@ class CatalogsApi:
         _response_types_map: Dict[str, Optional[str]] = {
             '200': "CatalogInfo",
         }
-        response_data = await self.api_client.call_api(
+        response_data = self.api_client.call_api(
             *_param,
             _request_timeout=_request_timeout
         )
-        await response_data.read()
+        response_data.read()
         return self.api_client.response_deserialize(
             response_data=response_data,
             response_types_map=_response_types_map,
@@ -110,7 +110,7 @@ class CatalogsApi:
 
 
     @validate_call
-    async def create_catalog_with_http_info(
+    def create_catalog_with_http_info(
         self,
         create_catalog: Optional[CreateCatalog] = None,
         _request_timeout: Union[
@@ -165,11 +165,11 @@ class CatalogsApi:
         _response_types_map: Dict[str, Optional[str]] = {
             '200': "CatalogInfo",
         }
-        response_data = await self.api_client.call_api(
+        response_data = self.api_client.call_api(
             *_param,
             _request_timeout=_request_timeout
         )
-        await response_data.read()
+        response_data.read()
         return self.api_client.response_deserialize(
             response_data=response_data,
             response_types_map=_response_types_map,
@@ -177,7 +177,7 @@ class CatalogsApi:
 
 
     @validate_call
-    async def create_catalog_without_preload_content(
+    def create_catalog_without_preload_content(
         self,
         create_catalog: Optional[CreateCatalog] = None,
         _request_timeout: Union[
@@ -232,7 +232,7 @@ class CatalogsApi:
         _response_types_map: Dict[str, Optional[str]] = {
             '200': "CatalogInfo",
         }
-        response_data = await self.api_client.call_api(
+        response_data = self.api_client.call_api(
             *_param,
             _request_timeout=_request_timeout
         )
@@ -314,7 +314,7 @@ class CatalogsApi:
 
 
     @validate_call
-    async def delete_catalog(
+    def delete_catalog(
         self,
         name: Annotated[StrictStr, Field(description="The name of the catalog.")],
         force: Annotated[Optional[StrictBool], Field(description="Force deletion even if the catalog is not empty.")] = None,
@@ -373,11 +373,11 @@ class CatalogsApi:
         _response_types_map: Dict[str, Optional[str]] = {
             '200': "object",
         }
-        response_data = await self.api_client.call_api(
+        response_data = self.api_client.call_api(
             *_param,
             _request_timeout=_request_timeout
         )
-        await response_data.read()
+        response_data.read()
         return self.api_client.response_deserialize(
             response_data=response_data,
             response_types_map=_response_types_map,
@@ -385,7 +385,7 @@ class CatalogsApi:
 
 
     @validate_call
-    async def delete_catalog_with_http_info(
+    def delete_catalog_with_http_info(
         self,
         name: Annotated[StrictStr, Field(description="The name of the catalog.")],
         force: Annotated[Optional[StrictBool], Field(description="Force deletion even if the catalog is not empty.")] = None,
@@ -444,11 +444,11 @@ class CatalogsApi:
         _response_types_map: Dict[str, Optional[str]] = {
             '200': "object",
         }
-        response_data = await self.api_client.call_api(
+        response_data = self.api_client.call_api(
             *_param,
             _request_timeout=_request_timeout
         )
-        await response_data.read()
+        response_data.read()
         return self.api_client.response_deserialize(
             response_data=response_data,
             response_types_map=_response_types_map,
@@ -456,7 +456,7 @@ class CatalogsApi:
 
 
     @validate_call
-    async def delete_catalog_without_preload_content(
+    def delete_catalog_without_preload_content(
         self,
         name: Annotated[StrictStr, Field(description="The name of the catalog.")],
         force: Annotated[Optional[StrictBool], Field(description="Force deletion even if the catalog is not empty.")] = None,
@@ -515,7 +515,7 @@ class CatalogsApi:
         _response_types_map: Dict[str, Optional[str]] = {
             '200': "object",
         }
-        response_data = await self.api_client.call_api(
+        response_data = self.api_client.call_api(
             *_param,
             _request_timeout=_request_timeout
         )
@@ -589,7 +589,7 @@ class CatalogsApi:
 
 
     @validate_call
-    async def get_catalog(
+    def get_catalog(
         self,
         name: Annotated[StrictStr, Field(description="The name of the catalog.")],
         _request_timeout: Union[
@@ -644,11 +644,11 @@ class CatalogsApi:
         _response_types_map: Dict[str, Optional[str]] = {
             '200': "CatalogInfo",
         }
-        response_data = await self.api_client.call_api(
+        response_data = self.api_client.call_api(
             *_param,
             _request_timeout=_request_timeout
         )
-        await response_data.read()
+        response_data.read()
         return self.api_client.response_deserialize(
             response_data=response_data,
             response_types_map=_response_types_map,
@@ -656,7 +656,7 @@ class CatalogsApi:
 
 
     @validate_call
-    async def get_catalog_with_http_info(
+    def get_catalog_with_http_info(
         self,
         name: Annotated[StrictStr, Field(description="The name of the catalog.")],
         _request_timeout: Union[
@@ -711,11 +711,11 @@ class CatalogsApi:
         _response_types_map: Dict[str, Optional[str]] = {
             '200': "CatalogInfo",
         }
-        response_data = await self.api_client.call_api(
+        response_data = self.api_client.call_api(
             *_param,
             _request_timeout=_request_timeout
         )
-        await response_data.read()
+        response_data.read()
         return self.api_client.response_deserialize(
             response_data=response_data,
             response_types_map=_response_types_map,
@@ -723,7 +723,7 @@ class CatalogsApi:
 
 
     @validate_call
-    async def get_catalog_without_preload_content(
+    def get_catalog_without_preload_content(
         self,
         name: Annotated[StrictStr, Field(description="The name of the catalog.")],
         _request_timeout: Union[
@@ -778,7 +778,7 @@ class CatalogsApi:
         _response_types_map: Dict[str, Optional[str]] = {
             '200': "CatalogInfo",
         }
-        response_data = await self.api_client.call_api(
+        response_data = self.api_client.call_api(
             *_param,
             _request_timeout=_request_timeout
         )
@@ -847,7 +847,7 @@ class CatalogsApi:
 
 
     @validate_call
-    async def list_catalogs(
+    def list_catalogs(
         self,
         page_token: Annotated[Optional[StrictStr], Field(description="Opaque pagination token to go to next page based on previous query. ")] = None,
         max_results: Annotated[Optional[Annotated[int, Field(le=1000, strict=True)]], Field(description="Maximum number of catalogs to return. - when set to a value greater than 0, the page length is the minimum of this value and a server configured value; - when set to 0, the page length is set to a server configured value; - when set to a value less than 0, an invalid parameter error is returned; ")] = None,
@@ -906,11 +906,11 @@ class CatalogsApi:
         _response_types_map: Dict[str, Optional[str]] = {
             '200': "ListCatalogsResponse",
         }
-        response_data = await self.api_client.call_api(
+        response_data = self.api_client.call_api(
             *_param,
             _request_timeout=_request_timeout
         )
-        await response_data.read()
+        response_data.read()
         return self.api_client.response_deserialize(
             response_data=response_data,
             response_types_map=_response_types_map,
@@ -918,7 +918,7 @@ class CatalogsApi:
 
 
     @validate_call
-    async def list_catalogs_with_http_info(
+    def list_catalogs_with_http_info(
         self,
         page_token: Annotated[Optional[StrictStr], Field(description="Opaque pagination token to go to next page based on previous query. ")] = None,
         max_results: Annotated[Optional[Annotated[int, Field(le=1000, strict=True)]], Field(description="Maximum number of catalogs to return. - when set to a value greater than 0, the page length is the minimum of this value and a server configured value; - when set to 0, the page length is set to a server configured value; - when set to a value less than 0, an invalid parameter error is returned; ")] = None,
@@ -977,11 +977,11 @@ class CatalogsApi:
         _response_types_map: Dict[str, Optional[str]] = {
             '200': "ListCatalogsResponse",
         }
-        response_data = await self.api_client.call_api(
+        response_data = self.api_client.call_api(
             *_param,
             _request_timeout=_request_timeout
         )
-        await response_data.read()
+        response_data.read()
         return self.api_client.response_deserialize(
             response_data=response_data,
             response_types_map=_response_types_map,
@@ -989,7 +989,7 @@ class CatalogsApi:
 
 
     @validate_call
-    async def list_catalogs_without_preload_content(
+    def list_catalogs_without_preload_content(
         self,
         page_token: Annotated[Optional[StrictStr], Field(description="Opaque pagination token to go to next page based on previous query. ")] = None,
         max_results: Annotated[Optional[Annotated[int, Field(le=1000, strict=True)]], Field(description="Maximum number of catalogs to return. - when set to a value greater than 0, the page length is the minimum of this value and a server configured value; - when set to 0, the page length is set to a server configured value; - when set to a value less than 0, an invalid parameter error is returned; ")] = None,
@@ -1048,7 +1048,7 @@ class CatalogsApi:
         _response_types_map: Dict[str, Optional[str]] = {
             '200': "ListCatalogsResponse",
         }
-        response_data = await self.api_client.call_api(
+        response_data = self.api_client.call_api(
             *_param,
             _request_timeout=_request_timeout
         )
@@ -1124,7 +1124,7 @@ class CatalogsApi:
 
 
     @validate_call
-    async def update_catalog(
+    def update_catalog(
         self,
         name: Annotated[StrictStr, Field(description="The name of the catalog.")],
         update_catalog: Optional[UpdateCatalog] = None,
@@ -1183,11 +1183,11 @@ class CatalogsApi:
         _response_types_map: Dict[str, Optional[str]] = {
             '200': "CatalogInfo",
         }
-        response_data = await self.api_client.call_api(
+        response_data = self.api_client.call_api(
             *_param,
             _request_timeout=_request_timeout
         )
-        await response_data.read()
+        response_data.read()
         return self.api_client.response_deserialize(
             response_data=response_data,
             response_types_map=_response_types_map,
@@ -1195,7 +1195,7 @@ class CatalogsApi:
 
 
     @validate_call
-    async def update_catalog_with_http_info(
+    def update_catalog_with_http_info(
         self,
         name: Annotated[StrictStr, Field(description="The name of the catalog.")],
         update_catalog: Optional[UpdateCatalog] = None,
@@ -1254,11 +1254,11 @@ class CatalogsApi:
         _response_types_map: Dict[str, Optional[str]] = {
             '200': "CatalogInfo",
         }
-        response_data = await self.api_client.call_api(
+        response_data = self.api_client.call_api(
             *_param,
             _request_timeout=_request_timeout
         )
-        await response_data.read()
+        response_data.read()
         return self.api_client.response_deserialize(
             response_data=response_data,
             response_types_map=_response_types_map,
@@ -1266,7 +1266,7 @@ class CatalogsApi:
 
 
     @validate_call
-    async def update_catalog_without_preload_content(
+    def update_catalog_without_preload_content(
         self,
         name: Annotated[StrictStr, Field(description="The name of the catalog.")],
         update_catalog: Optional[UpdateCatalog] = None,
@@ -1325,7 +1325,7 @@ class CatalogsApi:
         _response_types_map: Dict[str, Optional[str]] = {
             '200': "CatalogInfo",
         }
-        response_data = await self.api_client.call_api(
+        response_data = self.api_client.call_api(
             *_param,
             _request_timeout=_request_timeout
         )

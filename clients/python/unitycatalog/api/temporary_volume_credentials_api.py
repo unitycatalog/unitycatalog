@@ -39,7 +39,7 @@ class TemporaryVolumeCredentialsApi:
 
 
     @validate_call
-    async def generate_temporary_volume_credentials(
+    def generate_temporary_volume_credentials(
         self,
         generate_temporary_volume_credential: Optional[GenerateTemporaryVolumeCredential] = None,
         _request_timeout: Union[
@@ -93,11 +93,11 @@ class TemporaryVolumeCredentialsApi:
         _response_types_map: Dict[str, Optional[str]] = {
             '200': "GenerateTemporaryVolumeCredentialResponse",
         }
-        response_data = await self.api_client.call_api(
+        response_data = self.api_client.call_api(
             *_param,
             _request_timeout=_request_timeout
         )
-        await response_data.read()
+        response_data.read()
         return self.api_client.response_deserialize(
             response_data=response_data,
             response_types_map=_response_types_map,
@@ -105,7 +105,7 @@ class TemporaryVolumeCredentialsApi:
 
 
     @validate_call
-    async def generate_temporary_volume_credentials_with_http_info(
+    def generate_temporary_volume_credentials_with_http_info(
         self,
         generate_temporary_volume_credential: Optional[GenerateTemporaryVolumeCredential] = None,
         _request_timeout: Union[
@@ -159,11 +159,11 @@ class TemporaryVolumeCredentialsApi:
         _response_types_map: Dict[str, Optional[str]] = {
             '200': "GenerateTemporaryVolumeCredentialResponse",
         }
-        response_data = await self.api_client.call_api(
+        response_data = self.api_client.call_api(
             *_param,
             _request_timeout=_request_timeout
         )
-        await response_data.read()
+        response_data.read()
         return self.api_client.response_deserialize(
             response_data=response_data,
             response_types_map=_response_types_map,
@@ -171,7 +171,7 @@ class TemporaryVolumeCredentialsApi:
 
 
     @validate_call
-    async def generate_temporary_volume_credentials_without_preload_content(
+    def generate_temporary_volume_credentials_without_preload_content(
         self,
         generate_temporary_volume_credential: Optional[GenerateTemporaryVolumeCredential] = None,
         _request_timeout: Union[
@@ -225,7 +225,7 @@ class TemporaryVolumeCredentialsApi:
         _response_types_map: Dict[str, Optional[str]] = {
             '200': "GenerateTemporaryVolumeCredentialResponse",
         }
-        response_data = await self.api_client.call_api(
+        response_data = self.api_client.call_api(
             *_param,
             _request_timeout=_request_timeout
         )

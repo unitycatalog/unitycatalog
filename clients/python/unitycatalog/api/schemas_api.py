@@ -43,7 +43,7 @@ class SchemasApi:
 
 
     @validate_call
-    async def create_schema(
+    def create_schema(
         self,
         create_schema: Optional[CreateSchema] = None,
         _request_timeout: Union[
@@ -98,11 +98,11 @@ class SchemasApi:
         _response_types_map: Dict[str, Optional[str]] = {
             '200': "SchemaInfo",
         }
-        response_data = await self.api_client.call_api(
+        response_data = self.api_client.call_api(
             *_param,
             _request_timeout=_request_timeout
         )
-        await response_data.read()
+        response_data.read()
         return self.api_client.response_deserialize(
             response_data=response_data,
             response_types_map=_response_types_map,
@@ -110,7 +110,7 @@ class SchemasApi:
 
 
     @validate_call
-    async def create_schema_with_http_info(
+    def create_schema_with_http_info(
         self,
         create_schema: Optional[CreateSchema] = None,
         _request_timeout: Union[
@@ -165,11 +165,11 @@ class SchemasApi:
         _response_types_map: Dict[str, Optional[str]] = {
             '200': "SchemaInfo",
         }
-        response_data = await self.api_client.call_api(
+        response_data = self.api_client.call_api(
             *_param,
             _request_timeout=_request_timeout
         )
-        await response_data.read()
+        response_data.read()
         return self.api_client.response_deserialize(
             response_data=response_data,
             response_types_map=_response_types_map,
@@ -177,7 +177,7 @@ class SchemasApi:
 
 
     @validate_call
-    async def create_schema_without_preload_content(
+    def create_schema_without_preload_content(
         self,
         create_schema: Optional[CreateSchema] = None,
         _request_timeout: Union[
@@ -232,7 +232,7 @@ class SchemasApi:
         _response_types_map: Dict[str, Optional[str]] = {
             '200': "SchemaInfo",
         }
-        response_data = await self.api_client.call_api(
+        response_data = self.api_client.call_api(
             *_param,
             _request_timeout=_request_timeout
         )
@@ -314,7 +314,7 @@ class SchemasApi:
 
 
     @validate_call
-    async def delete_schema(
+    def delete_schema(
         self,
         full_name: Annotated[StrictStr, Field(description="Full name of the schema.")],
         force: Annotated[Optional[StrictBool], Field(description="Force deletion even if the catalog is not empty.")] = None,
@@ -373,11 +373,11 @@ class SchemasApi:
         _response_types_map: Dict[str, Optional[str]] = {
             '200': "object",
         }
-        response_data = await self.api_client.call_api(
+        response_data = self.api_client.call_api(
             *_param,
             _request_timeout=_request_timeout
         )
-        await response_data.read()
+        response_data.read()
         return self.api_client.response_deserialize(
             response_data=response_data,
             response_types_map=_response_types_map,
@@ -385,7 +385,7 @@ class SchemasApi:
 
 
     @validate_call
-    async def delete_schema_with_http_info(
+    def delete_schema_with_http_info(
         self,
         full_name: Annotated[StrictStr, Field(description="Full name of the schema.")],
         force: Annotated[Optional[StrictBool], Field(description="Force deletion even if the catalog is not empty.")] = None,
@@ -444,11 +444,11 @@ class SchemasApi:
         _response_types_map: Dict[str, Optional[str]] = {
             '200': "object",
         }
-        response_data = await self.api_client.call_api(
+        response_data = self.api_client.call_api(
             *_param,
             _request_timeout=_request_timeout
         )
-        await response_data.read()
+        response_data.read()
         return self.api_client.response_deserialize(
             response_data=response_data,
             response_types_map=_response_types_map,
@@ -456,7 +456,7 @@ class SchemasApi:
 
 
     @validate_call
-    async def delete_schema_without_preload_content(
+    def delete_schema_without_preload_content(
         self,
         full_name: Annotated[StrictStr, Field(description="Full name of the schema.")],
         force: Annotated[Optional[StrictBool], Field(description="Force deletion even if the catalog is not empty.")] = None,
@@ -515,7 +515,7 @@ class SchemasApi:
         _response_types_map: Dict[str, Optional[str]] = {
             '200': "object",
         }
-        response_data = await self.api_client.call_api(
+        response_data = self.api_client.call_api(
             *_param,
             _request_timeout=_request_timeout
         )
@@ -589,7 +589,7 @@ class SchemasApi:
 
 
     @validate_call
-    async def get_schema(
+    def get_schema(
         self,
         full_name: Annotated[StrictStr, Field(description="Full name of the schema.")],
         _request_timeout: Union[
@@ -644,11 +644,11 @@ class SchemasApi:
         _response_types_map: Dict[str, Optional[str]] = {
             '200': "SchemaInfo",
         }
-        response_data = await self.api_client.call_api(
+        response_data = self.api_client.call_api(
             *_param,
             _request_timeout=_request_timeout
         )
-        await response_data.read()
+        response_data.read()
         return self.api_client.response_deserialize(
             response_data=response_data,
             response_types_map=_response_types_map,
@@ -656,7 +656,7 @@ class SchemasApi:
 
 
     @validate_call
-    async def get_schema_with_http_info(
+    def get_schema_with_http_info(
         self,
         full_name: Annotated[StrictStr, Field(description="Full name of the schema.")],
         _request_timeout: Union[
@@ -711,11 +711,11 @@ class SchemasApi:
         _response_types_map: Dict[str, Optional[str]] = {
             '200': "SchemaInfo",
         }
-        response_data = await self.api_client.call_api(
+        response_data = self.api_client.call_api(
             *_param,
             _request_timeout=_request_timeout
         )
-        await response_data.read()
+        response_data.read()
         return self.api_client.response_deserialize(
             response_data=response_data,
             response_types_map=_response_types_map,
@@ -723,7 +723,7 @@ class SchemasApi:
 
 
     @validate_call
-    async def get_schema_without_preload_content(
+    def get_schema_without_preload_content(
         self,
         full_name: Annotated[StrictStr, Field(description="Full name of the schema.")],
         _request_timeout: Union[
@@ -778,7 +778,7 @@ class SchemasApi:
         _response_types_map: Dict[str, Optional[str]] = {
             '200': "SchemaInfo",
         }
-        response_data = await self.api_client.call_api(
+        response_data = self.api_client.call_api(
             *_param,
             _request_timeout=_request_timeout
         )
@@ -847,7 +847,7 @@ class SchemasApi:
 
 
     @validate_call
-    async def list_schemas(
+    def list_schemas(
         self,
         catalog_name: Annotated[StrictStr, Field(description="Parent catalog for schemas of interest.")],
         max_results: Annotated[Optional[Annotated[int, Field(le=1000, strict=True)]], Field(description="Maximum number of schemas to return. - when set to a value greater than 0, the page length is the minimum of this value and a server configured value; - when set to 0, the page length is set to a server configured value; - when set to a value less than 0, an invalid parameter error is returned; ")] = None,
@@ -910,11 +910,11 @@ class SchemasApi:
         _response_types_map: Dict[str, Optional[str]] = {
             '200': "ListSchemasResponse",
         }
-        response_data = await self.api_client.call_api(
+        response_data = self.api_client.call_api(
             *_param,
             _request_timeout=_request_timeout
         )
-        await response_data.read()
+        response_data.read()
         return self.api_client.response_deserialize(
             response_data=response_data,
             response_types_map=_response_types_map,
@@ -922,7 +922,7 @@ class SchemasApi:
 
 
     @validate_call
-    async def list_schemas_with_http_info(
+    def list_schemas_with_http_info(
         self,
         catalog_name: Annotated[StrictStr, Field(description="Parent catalog for schemas of interest.")],
         max_results: Annotated[Optional[Annotated[int, Field(le=1000, strict=True)]], Field(description="Maximum number of schemas to return. - when set to a value greater than 0, the page length is the minimum of this value and a server configured value; - when set to 0, the page length is set to a server configured value; - when set to a value less than 0, an invalid parameter error is returned; ")] = None,
@@ -985,11 +985,11 @@ class SchemasApi:
         _response_types_map: Dict[str, Optional[str]] = {
             '200': "ListSchemasResponse",
         }
-        response_data = await self.api_client.call_api(
+        response_data = self.api_client.call_api(
             *_param,
             _request_timeout=_request_timeout
         )
-        await response_data.read()
+        response_data.read()
         return self.api_client.response_deserialize(
             response_data=response_data,
             response_types_map=_response_types_map,
@@ -997,7 +997,7 @@ class SchemasApi:
 
 
     @validate_call
-    async def list_schemas_without_preload_content(
+    def list_schemas_without_preload_content(
         self,
         catalog_name: Annotated[StrictStr, Field(description="Parent catalog for schemas of interest.")],
         max_results: Annotated[Optional[Annotated[int, Field(le=1000, strict=True)]], Field(description="Maximum number of schemas to return. - when set to a value greater than 0, the page length is the minimum of this value and a server configured value; - when set to 0, the page length is set to a server configured value; - when set to a value less than 0, an invalid parameter error is returned; ")] = None,
@@ -1060,7 +1060,7 @@ class SchemasApi:
         _response_types_map: Dict[str, Optional[str]] = {
             '200': "ListSchemasResponse",
         }
-        response_data = await self.api_client.call_api(
+        response_data = self.api_client.call_api(
             *_param,
             _request_timeout=_request_timeout
         )
@@ -1141,7 +1141,7 @@ class SchemasApi:
 
 
     @validate_call
-    async def update_schema(
+    def update_schema(
         self,
         full_name: Annotated[StrictStr, Field(description="Full name of the schema.")],
         update_schema: Optional[UpdateSchema] = None,
@@ -1200,11 +1200,11 @@ class SchemasApi:
         _response_types_map: Dict[str, Optional[str]] = {
             '200': "SchemaInfo",
         }
-        response_data = await self.api_client.call_api(
+        response_data = self.api_client.call_api(
             *_param,
             _request_timeout=_request_timeout
         )
-        await response_data.read()
+        response_data.read()
         return self.api_client.response_deserialize(
             response_data=response_data,
             response_types_map=_response_types_map,
@@ -1212,7 +1212,7 @@ class SchemasApi:
 
 
     @validate_call
-    async def update_schema_with_http_info(
+    def update_schema_with_http_info(
         self,
         full_name: Annotated[StrictStr, Field(description="Full name of the schema.")],
         update_schema: Optional[UpdateSchema] = None,
@@ -1271,11 +1271,11 @@ class SchemasApi:
         _response_types_map: Dict[str, Optional[str]] = {
             '200': "SchemaInfo",
         }
-        response_data = await self.api_client.call_api(
+        response_data = self.api_client.call_api(
             *_param,
             _request_timeout=_request_timeout
         )
-        await response_data.read()
+        response_data.read()
         return self.api_client.response_deserialize(
             response_data=response_data,
             response_types_map=_response_types_map,
@@ -1283,7 +1283,7 @@ class SchemasApi:
 
 
     @validate_call
-    async def update_schema_without_preload_content(
+    def update_schema_without_preload_content(
         self,
         full_name: Annotated[StrictStr, Field(description="Full name of the schema.")],
         update_schema: Optional[UpdateSchema] = None,
@@ -1342,7 +1342,7 @@ class SchemasApi:
         _response_types_map: Dict[str, Optional[str]] = {
             '200': "SchemaInfo",
         }
-        response_data = await self.api_client.call_api(
+        response_data = self.api_client.call_api(
             *_param,
             _request_timeout=_request_timeout
         )

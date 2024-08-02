@@ -36,14 +36,14 @@ configuration = unitycatalog.Configuration(
 
 
 # Enter a context with an instance of the API client
-async with unitycatalog.ApiClient(configuration) as api_client:
+with unitycatalog.ApiClient(configuration) as api_client:
     # Create an instance of the API class
     api_instance = unitycatalog.VolumesApi(api_client)
     create_volume_request_content = {"catalog_name":"main","schema_name":"default","name":"my_volume","volume_type":"EXTERNAL","comment":"This is my first volume"} # CreateVolumeRequestContent | 
 
     try:
         # Create a Volume
-        api_response = await api_instance.create_volume(create_volume_request_content)
+        api_response = api_instance.create_volume(create_volume_request_content)
         print("The response of VolumesApi->create_volume:\n")
         pprint(api_response)
     except Exception as e:
@@ -103,14 +103,14 @@ configuration = unitycatalog.Configuration(
 
 
 # Enter a context with an instance of the API client
-async with unitycatalog.ApiClient(configuration) as api_client:
+with unitycatalog.ApiClient(configuration) as api_client:
     # Create an instance of the API class
     api_instance = unitycatalog.VolumesApi(api_client)
     name = 'main.default.my_volume' # str | The three-level (fully qualified) name of the volume
 
     try:
         # Delete a Volume
-        api_response = await api_instance.delete_volume(name)
+        api_response = api_instance.delete_volume(name)
         print("The response of VolumesApi->delete_volume:\n")
         pprint(api_response)
     except Exception as e:
@@ -171,14 +171,14 @@ configuration = unitycatalog.Configuration(
 
 
 # Enter a context with an instance of the API client
-async with unitycatalog.ApiClient(configuration) as api_client:
+with unitycatalog.ApiClient(configuration) as api_client:
     # Create an instance of the API class
     api_instance = unitycatalog.VolumesApi(api_client)
     name = 'main.default.my_volume' # str | The three-level (fully qualified) name of the volume
 
     try:
         # Get a Volume
-        api_response = await api_instance.get_volume(name)
+        api_response = api_instance.get_volume(name)
         print("The response of VolumesApi->get_volume:\n")
         pprint(api_response)
     except Exception as e:
@@ -239,7 +239,7 @@ configuration = unitycatalog.Configuration(
 
 
 # Enter a context with an instance of the API client
-async with unitycatalog.ApiClient(configuration) as api_client:
+with unitycatalog.ApiClient(configuration) as api_client:
     # Create an instance of the API class
     api_instance = unitycatalog.VolumesApi(api_client)
     catalog_name = 'main' # str | The identifier of the catalog
@@ -249,7 +249,7 @@ async with unitycatalog.ApiClient(configuration) as api_client:
 
     try:
         # List Volumes
-        api_response = await api_instance.list_volumes(catalog_name, schema_name, max_results=max_results, page_token=page_token)
+        api_response = api_instance.list_volumes(catalog_name, schema_name, max_results=max_results, page_token=page_token)
         print("The response of VolumesApi->list_volumes:\n")
         pprint(api_response)
     except Exception as e:
@@ -314,7 +314,7 @@ configuration = unitycatalog.Configuration(
 
 
 # Enter a context with an instance of the API client
-async with unitycatalog.ApiClient(configuration) as api_client:
+with unitycatalog.ApiClient(configuration) as api_client:
     # Create an instance of the API class
     api_instance = unitycatalog.VolumesApi(api_client)
     name = 'main.default.my_volume' # str | The three-level (fully qualified) name of the volume
@@ -322,7 +322,7 @@ async with unitycatalog.ApiClient(configuration) as api_client:
 
     try:
         # Update a Volume
-        api_response = await api_instance.update_volume(name, update_volume_request_content=update_volume_request_content)
+        api_response = api_instance.update_volume(name, update_volume_request_content=update_volume_request_content)
         print("The response of VolumesApi->update_volume:\n")
         pprint(api_response)
     except Exception as e:

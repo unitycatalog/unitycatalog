@@ -43,7 +43,7 @@ class VolumesApi:
 
 
     @validate_call
-    async def create_volume(
+    def create_volume(
         self,
         create_volume_request_content: CreateVolumeRequestContent,
         _request_timeout: Union[
@@ -98,11 +98,11 @@ class VolumesApi:
         _response_types_map: Dict[str, Optional[str]] = {
             '200': "VolumeInfo",
         }
-        response_data = await self.api_client.call_api(
+        response_data = self.api_client.call_api(
             *_param,
             _request_timeout=_request_timeout
         )
-        await response_data.read()
+        response_data.read()
         return self.api_client.response_deserialize(
             response_data=response_data,
             response_types_map=_response_types_map,
@@ -110,7 +110,7 @@ class VolumesApi:
 
 
     @validate_call
-    async def create_volume_with_http_info(
+    def create_volume_with_http_info(
         self,
         create_volume_request_content: CreateVolumeRequestContent,
         _request_timeout: Union[
@@ -165,11 +165,11 @@ class VolumesApi:
         _response_types_map: Dict[str, Optional[str]] = {
             '200': "VolumeInfo",
         }
-        response_data = await self.api_client.call_api(
+        response_data = self.api_client.call_api(
             *_param,
             _request_timeout=_request_timeout
         )
-        await response_data.read()
+        response_data.read()
         return self.api_client.response_deserialize(
             response_data=response_data,
             response_types_map=_response_types_map,
@@ -177,7 +177,7 @@ class VolumesApi:
 
 
     @validate_call
-    async def create_volume_without_preload_content(
+    def create_volume_without_preload_content(
         self,
         create_volume_request_content: CreateVolumeRequestContent,
         _request_timeout: Union[
@@ -232,7 +232,7 @@ class VolumesApi:
         _response_types_map: Dict[str, Optional[str]] = {
             '200': "VolumeInfo",
         }
-        response_data = await self.api_client.call_api(
+        response_data = self.api_client.call_api(
             *_param,
             _request_timeout=_request_timeout
         )
@@ -314,7 +314,7 @@ class VolumesApi:
 
 
     @validate_call
-    async def delete_volume(
+    def delete_volume(
         self,
         name: Annotated[StrictStr, Field(description="The three-level (fully qualified) name of the volume")],
         _request_timeout: Union[
@@ -369,11 +369,11 @@ class VolumesApi:
         _response_types_map: Dict[str, Optional[str]] = {
             '200': "object",
         }
-        response_data = await self.api_client.call_api(
+        response_data = self.api_client.call_api(
             *_param,
             _request_timeout=_request_timeout
         )
-        await response_data.read()
+        response_data.read()
         return self.api_client.response_deserialize(
             response_data=response_data,
             response_types_map=_response_types_map,
@@ -381,7 +381,7 @@ class VolumesApi:
 
 
     @validate_call
-    async def delete_volume_with_http_info(
+    def delete_volume_with_http_info(
         self,
         name: Annotated[StrictStr, Field(description="The three-level (fully qualified) name of the volume")],
         _request_timeout: Union[
@@ -436,11 +436,11 @@ class VolumesApi:
         _response_types_map: Dict[str, Optional[str]] = {
             '200': "object",
         }
-        response_data = await self.api_client.call_api(
+        response_data = self.api_client.call_api(
             *_param,
             _request_timeout=_request_timeout
         )
-        await response_data.read()
+        response_data.read()
         return self.api_client.response_deserialize(
             response_data=response_data,
             response_types_map=_response_types_map,
@@ -448,7 +448,7 @@ class VolumesApi:
 
 
     @validate_call
-    async def delete_volume_without_preload_content(
+    def delete_volume_without_preload_content(
         self,
         name: Annotated[StrictStr, Field(description="The three-level (fully qualified) name of the volume")],
         _request_timeout: Union[
@@ -503,7 +503,7 @@ class VolumesApi:
         _response_types_map: Dict[str, Optional[str]] = {
             '200': "object",
         }
-        response_data = await self.api_client.call_api(
+        response_data = self.api_client.call_api(
             *_param,
             _request_timeout=_request_timeout
         )
@@ -572,7 +572,7 @@ class VolumesApi:
 
 
     @validate_call
-    async def get_volume(
+    def get_volume(
         self,
         name: Annotated[StrictStr, Field(description="The three-level (fully qualified) name of the volume")],
         _request_timeout: Union[
@@ -627,11 +627,11 @@ class VolumesApi:
         _response_types_map: Dict[str, Optional[str]] = {
             '200': "VolumeInfo",
         }
-        response_data = await self.api_client.call_api(
+        response_data = self.api_client.call_api(
             *_param,
             _request_timeout=_request_timeout
         )
-        await response_data.read()
+        response_data.read()
         return self.api_client.response_deserialize(
             response_data=response_data,
             response_types_map=_response_types_map,
@@ -639,7 +639,7 @@ class VolumesApi:
 
 
     @validate_call
-    async def get_volume_with_http_info(
+    def get_volume_with_http_info(
         self,
         name: Annotated[StrictStr, Field(description="The three-level (fully qualified) name of the volume")],
         _request_timeout: Union[
@@ -694,11 +694,11 @@ class VolumesApi:
         _response_types_map: Dict[str, Optional[str]] = {
             '200': "VolumeInfo",
         }
-        response_data = await self.api_client.call_api(
+        response_data = self.api_client.call_api(
             *_param,
             _request_timeout=_request_timeout
         )
-        await response_data.read()
+        response_data.read()
         return self.api_client.response_deserialize(
             response_data=response_data,
             response_types_map=_response_types_map,
@@ -706,7 +706,7 @@ class VolumesApi:
 
 
     @validate_call
-    async def get_volume_without_preload_content(
+    def get_volume_without_preload_content(
         self,
         name: Annotated[StrictStr, Field(description="The three-level (fully qualified) name of the volume")],
         _request_timeout: Union[
@@ -761,7 +761,7 @@ class VolumesApi:
         _response_types_map: Dict[str, Optional[str]] = {
             '200': "VolumeInfo",
         }
-        response_data = await self.api_client.call_api(
+        response_data = self.api_client.call_api(
             *_param,
             _request_timeout=_request_timeout
         )
@@ -830,7 +830,7 @@ class VolumesApi:
 
 
     @validate_call
-    async def list_volumes(
+    def list_volumes(
         self,
         catalog_name: Annotated[StrictStr, Field(description="The identifier of the catalog")],
         schema_name: Annotated[StrictStr, Field(description="The identifier of the schema")],
@@ -897,11 +897,11 @@ class VolumesApi:
         _response_types_map: Dict[str, Optional[str]] = {
             '200': "ListVolumesResponseContent",
         }
-        response_data = await self.api_client.call_api(
+        response_data = self.api_client.call_api(
             *_param,
             _request_timeout=_request_timeout
         )
-        await response_data.read()
+        response_data.read()
         return self.api_client.response_deserialize(
             response_data=response_data,
             response_types_map=_response_types_map,
@@ -909,7 +909,7 @@ class VolumesApi:
 
 
     @validate_call
-    async def list_volumes_with_http_info(
+    def list_volumes_with_http_info(
         self,
         catalog_name: Annotated[StrictStr, Field(description="The identifier of the catalog")],
         schema_name: Annotated[StrictStr, Field(description="The identifier of the schema")],
@@ -976,11 +976,11 @@ class VolumesApi:
         _response_types_map: Dict[str, Optional[str]] = {
             '200': "ListVolumesResponseContent",
         }
-        response_data = await self.api_client.call_api(
+        response_data = self.api_client.call_api(
             *_param,
             _request_timeout=_request_timeout
         )
-        await response_data.read()
+        response_data.read()
         return self.api_client.response_deserialize(
             response_data=response_data,
             response_types_map=_response_types_map,
@@ -988,7 +988,7 @@ class VolumesApi:
 
 
     @validate_call
-    async def list_volumes_without_preload_content(
+    def list_volumes_without_preload_content(
         self,
         catalog_name: Annotated[StrictStr, Field(description="The identifier of the catalog")],
         schema_name: Annotated[StrictStr, Field(description="The identifier of the schema")],
@@ -1055,7 +1055,7 @@ class VolumesApi:
         _response_types_map: Dict[str, Optional[str]] = {
             '200': "ListVolumesResponseContent",
         }
-        response_data = await self.api_client.call_api(
+        response_data = self.api_client.call_api(
             *_param,
             _request_timeout=_request_timeout
         )
@@ -1141,7 +1141,7 @@ class VolumesApi:
 
 
     @validate_call
-    async def update_volume(
+    def update_volume(
         self,
         name: Annotated[StrictStr, Field(description="The three-level (fully qualified) name of the volume")],
         update_volume_request_content: Optional[UpdateVolumeRequestContent] = None,
@@ -1200,11 +1200,11 @@ class VolumesApi:
         _response_types_map: Dict[str, Optional[str]] = {
             '200': "VolumeInfo",
         }
-        response_data = await self.api_client.call_api(
+        response_data = self.api_client.call_api(
             *_param,
             _request_timeout=_request_timeout
         )
-        await response_data.read()
+        response_data.read()
         return self.api_client.response_deserialize(
             response_data=response_data,
             response_types_map=_response_types_map,
@@ -1212,7 +1212,7 @@ class VolumesApi:
 
 
     @validate_call
-    async def update_volume_with_http_info(
+    def update_volume_with_http_info(
         self,
         name: Annotated[StrictStr, Field(description="The three-level (fully qualified) name of the volume")],
         update_volume_request_content: Optional[UpdateVolumeRequestContent] = None,
@@ -1271,11 +1271,11 @@ class VolumesApi:
         _response_types_map: Dict[str, Optional[str]] = {
             '200': "VolumeInfo",
         }
-        response_data = await self.api_client.call_api(
+        response_data = self.api_client.call_api(
             *_param,
             _request_timeout=_request_timeout
         )
-        await response_data.read()
+        response_data.read()
         return self.api_client.response_deserialize(
             response_data=response_data,
             response_types_map=_response_types_map,
@@ -1283,7 +1283,7 @@ class VolumesApi:
 
 
     @validate_call
-    async def update_volume_without_preload_content(
+    def update_volume_without_preload_content(
         self,
         name: Annotated[StrictStr, Field(description="The three-level (fully qualified) name of the volume")],
         update_volume_request_content: Optional[UpdateVolumeRequestContent] = None,
@@ -1342,7 +1342,7 @@ class VolumesApi:
         _response_types_map: Dict[str, Optional[str]] = {
             '200': "VolumeInfo",
         }
-        response_data = await self.api_client.call_api(
+        response_data = self.api_client.call_api(
             *_param,
             _request_timeout=_request_timeout
         )

@@ -42,7 +42,7 @@ class TablesApi:
 
 
     @validate_call
-    async def create_table(
+    def create_table(
         self,
         create_table: Optional[CreateTable] = None,
         _request_timeout: Union[
@@ -97,11 +97,11 @@ class TablesApi:
         _response_types_map: Dict[str, Optional[str]] = {
             '200': "TableInfo",
         }
-        response_data = await self.api_client.call_api(
+        response_data = self.api_client.call_api(
             *_param,
             _request_timeout=_request_timeout
         )
-        await response_data.read()
+        response_data.read()
         return self.api_client.response_deserialize(
             response_data=response_data,
             response_types_map=_response_types_map,
@@ -109,7 +109,7 @@ class TablesApi:
 
 
     @validate_call
-    async def create_table_with_http_info(
+    def create_table_with_http_info(
         self,
         create_table: Optional[CreateTable] = None,
         _request_timeout: Union[
@@ -164,11 +164,11 @@ class TablesApi:
         _response_types_map: Dict[str, Optional[str]] = {
             '200': "TableInfo",
         }
-        response_data = await self.api_client.call_api(
+        response_data = self.api_client.call_api(
             *_param,
             _request_timeout=_request_timeout
         )
-        await response_data.read()
+        response_data.read()
         return self.api_client.response_deserialize(
             response_data=response_data,
             response_types_map=_response_types_map,
@@ -176,7 +176,7 @@ class TablesApi:
 
 
     @validate_call
-    async def create_table_without_preload_content(
+    def create_table_without_preload_content(
         self,
         create_table: Optional[CreateTable] = None,
         _request_timeout: Union[
@@ -231,7 +231,7 @@ class TablesApi:
         _response_types_map: Dict[str, Optional[str]] = {
             '200': "TableInfo",
         }
-        response_data = await self.api_client.call_api(
+        response_data = self.api_client.call_api(
             *_param,
             _request_timeout=_request_timeout
         )
@@ -313,7 +313,7 @@ class TablesApi:
 
 
     @validate_call
-    async def delete_table(
+    def delete_table(
         self,
         full_name: Annotated[StrictStr, Field(description="Full name of the table.")],
         _request_timeout: Union[
@@ -368,11 +368,11 @@ class TablesApi:
         _response_types_map: Dict[str, Optional[str]] = {
             '200': "object",
         }
-        response_data = await self.api_client.call_api(
+        response_data = self.api_client.call_api(
             *_param,
             _request_timeout=_request_timeout
         )
-        await response_data.read()
+        response_data.read()
         return self.api_client.response_deserialize(
             response_data=response_data,
             response_types_map=_response_types_map,
@@ -380,7 +380,7 @@ class TablesApi:
 
 
     @validate_call
-    async def delete_table_with_http_info(
+    def delete_table_with_http_info(
         self,
         full_name: Annotated[StrictStr, Field(description="Full name of the table.")],
         _request_timeout: Union[
@@ -435,11 +435,11 @@ class TablesApi:
         _response_types_map: Dict[str, Optional[str]] = {
             '200': "object",
         }
-        response_data = await self.api_client.call_api(
+        response_data = self.api_client.call_api(
             *_param,
             _request_timeout=_request_timeout
         )
-        await response_data.read()
+        response_data.read()
         return self.api_client.response_deserialize(
             response_data=response_data,
             response_types_map=_response_types_map,
@@ -447,7 +447,7 @@ class TablesApi:
 
 
     @validate_call
-    async def delete_table_without_preload_content(
+    def delete_table_without_preload_content(
         self,
         full_name: Annotated[StrictStr, Field(description="Full name of the table.")],
         _request_timeout: Union[
@@ -502,7 +502,7 @@ class TablesApi:
         _response_types_map: Dict[str, Optional[str]] = {
             '200': "object",
         }
-        response_data = await self.api_client.call_api(
+        response_data = self.api_client.call_api(
             *_param,
             _request_timeout=_request_timeout
         )
@@ -571,7 +571,7 @@ class TablesApi:
 
 
     @validate_call
-    async def get_table(
+    def get_table(
         self,
         full_name: Annotated[StrictStr, Field(description="Full name of the table.")],
         _request_timeout: Union[
@@ -626,11 +626,11 @@ class TablesApi:
         _response_types_map: Dict[str, Optional[str]] = {
             '200': "TableInfo",
         }
-        response_data = await self.api_client.call_api(
+        response_data = self.api_client.call_api(
             *_param,
             _request_timeout=_request_timeout
         )
-        await response_data.read()
+        response_data.read()
         return self.api_client.response_deserialize(
             response_data=response_data,
             response_types_map=_response_types_map,
@@ -638,7 +638,7 @@ class TablesApi:
 
 
     @validate_call
-    async def get_table_with_http_info(
+    def get_table_with_http_info(
         self,
         full_name: Annotated[StrictStr, Field(description="Full name of the table.")],
         _request_timeout: Union[
@@ -693,11 +693,11 @@ class TablesApi:
         _response_types_map: Dict[str, Optional[str]] = {
             '200': "TableInfo",
         }
-        response_data = await self.api_client.call_api(
+        response_data = self.api_client.call_api(
             *_param,
             _request_timeout=_request_timeout
         )
-        await response_data.read()
+        response_data.read()
         return self.api_client.response_deserialize(
             response_data=response_data,
             response_types_map=_response_types_map,
@@ -705,7 +705,7 @@ class TablesApi:
 
 
     @validate_call
-    async def get_table_without_preload_content(
+    def get_table_without_preload_content(
         self,
         full_name: Annotated[StrictStr, Field(description="Full name of the table.")],
         _request_timeout: Union[
@@ -760,7 +760,7 @@ class TablesApi:
         _response_types_map: Dict[str, Optional[str]] = {
             '200': "TableInfo",
         }
-        response_data = await self.api_client.call_api(
+        response_data = self.api_client.call_api(
             *_param,
             _request_timeout=_request_timeout
         )
@@ -829,7 +829,7 @@ class TablesApi:
 
 
     @validate_call
-    async def list_tables(
+    def list_tables(
         self,
         catalog_name: Annotated[StrictStr, Field(description="Name of parent catalog for tables of interest.")],
         schema_name: Annotated[StrictStr, Field(description="Parent schema of tables.")],
@@ -896,11 +896,11 @@ class TablesApi:
         _response_types_map: Dict[str, Optional[str]] = {
             '200': "ListTablesResponse",
         }
-        response_data = await self.api_client.call_api(
+        response_data = self.api_client.call_api(
             *_param,
             _request_timeout=_request_timeout
         )
-        await response_data.read()
+        response_data.read()
         return self.api_client.response_deserialize(
             response_data=response_data,
             response_types_map=_response_types_map,
@@ -908,7 +908,7 @@ class TablesApi:
 
 
     @validate_call
-    async def list_tables_with_http_info(
+    def list_tables_with_http_info(
         self,
         catalog_name: Annotated[StrictStr, Field(description="Name of parent catalog for tables of interest.")],
         schema_name: Annotated[StrictStr, Field(description="Parent schema of tables.")],
@@ -975,11 +975,11 @@ class TablesApi:
         _response_types_map: Dict[str, Optional[str]] = {
             '200': "ListTablesResponse",
         }
-        response_data = await self.api_client.call_api(
+        response_data = self.api_client.call_api(
             *_param,
             _request_timeout=_request_timeout
         )
-        await response_data.read()
+        response_data.read()
         return self.api_client.response_deserialize(
             response_data=response_data,
             response_types_map=_response_types_map,
@@ -987,7 +987,7 @@ class TablesApi:
 
 
     @validate_call
-    async def list_tables_without_preload_content(
+    def list_tables_without_preload_content(
         self,
         catalog_name: Annotated[StrictStr, Field(description="Name of parent catalog for tables of interest.")],
         schema_name: Annotated[StrictStr, Field(description="Parent schema of tables.")],
@@ -1054,7 +1054,7 @@ class TablesApi:
         _response_types_map: Dict[str, Optional[str]] = {
             '200': "ListTablesResponse",
         }
-        response_data = await self.api_client.call_api(
+        response_data = self.api_client.call_api(
             *_param,
             _request_timeout=_request_timeout
         )

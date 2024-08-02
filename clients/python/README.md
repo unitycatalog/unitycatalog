@@ -64,14 +64,14 @@ configuration = unitycatalog.Configuration(
 
 
 # Enter a context with an instance of the API client
-async with unitycatalog.ApiClient(configuration) as api_client:
+with unitycatalog.ApiClient(configuration) as api_client:
     # Create an instance of the API class
     api_instance = unitycatalog.CatalogsApi(api_client)
     create_catalog = unitycatalog.CreateCatalog() # CreateCatalog |  (optional)
 
     try:
         # Create a catalog
-        api_response = await api_instance.create_catalog(create_catalog=create_catalog)
+        api_response = api_instance.create_catalog(create_catalog=create_catalog)
         print("The response of CatalogsApi->create_catalog:\n")
         pprint(api_response)
     except ApiException as e:

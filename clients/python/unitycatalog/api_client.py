@@ -91,14 +91,11 @@ class ApiClient:
         self.user_agent = 'OpenAPI-Generator/0.1.0/python'
         self.client_side_validation = configuration.client_side_validation
 
-    async def __aenter__(self):
+    def __enter__(self):
         return self
 
-    async def __aexit__(self, exc_type, exc_value, traceback):
-        await self.close()
-
-    async def close(self):
-        await self.rest_client.close()
+    def __exit__(self, exc_type, exc_value, traceback):
+        pass
 
     @property
     def user_agent(self):
@@ -248,7 +245,7 @@ class ApiClient:
         return method, url, header_params, body, post_params
 
 
-    async def call_api(
+    def call_api(
         self,
         method,
         url,
@@ -271,7 +268,7 @@ class ApiClient:
 
         try:
             # perform request and return response
-            response_data = await self.rest_client.request(
+            response_data = self.rest_client.request(
                 method, url,
                 headers=header_params,
                 body=body, post_params=post_params,

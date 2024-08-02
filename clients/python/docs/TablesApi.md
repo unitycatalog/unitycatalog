@@ -35,14 +35,14 @@ configuration = unitycatalog.Configuration(
 
 
 # Enter a context with an instance of the API client
-async with unitycatalog.ApiClient(configuration) as api_client:
+with unitycatalog.ApiClient(configuration) as api_client:
     # Create an instance of the API class
     api_instance = unitycatalog.TablesApi(api_client)
     create_table = unitycatalog.CreateTable() # CreateTable |  (optional)
 
     try:
         # Create a table. WARNING: This API is experimental and will change in future versions. 
-        api_response = await api_instance.create_table(create_table=create_table)
+        api_response = api_instance.create_table(create_table=create_table)
         print("The response of TablesApi->create_table:\n")
         pprint(api_response)
     except Exception as e:
@@ -102,14 +102,14 @@ configuration = unitycatalog.Configuration(
 
 
 # Enter a context with an instance of the API client
-async with unitycatalog.ApiClient(configuration) as api_client:
+with unitycatalog.ApiClient(configuration) as api_client:
     # Create an instance of the API class
     api_instance = unitycatalog.TablesApi(api_client)
     full_name = 'full_name_example' # str | Full name of the table.
 
     try:
         # Delete a table
-        api_response = await api_instance.delete_table(full_name)
+        api_response = api_instance.delete_table(full_name)
         print("The response of TablesApi->delete_table:\n")
         pprint(api_response)
     except Exception as e:
@@ -170,14 +170,14 @@ configuration = unitycatalog.Configuration(
 
 
 # Enter a context with an instance of the API client
-async with unitycatalog.ApiClient(configuration) as api_client:
+with unitycatalog.ApiClient(configuration) as api_client:
     # Create an instance of the API class
     api_instance = unitycatalog.TablesApi(api_client)
     full_name = 'full_name_example' # str | Full name of the table.
 
     try:
         # Get a table
-        api_response = await api_instance.get_table(full_name)
+        api_response = api_instance.get_table(full_name)
         print("The response of TablesApi->get_table:\n")
         pprint(api_response)
     except Exception as e:
@@ -238,7 +238,7 @@ configuration = unitycatalog.Configuration(
 
 
 # Enter a context with an instance of the API client
-async with unitycatalog.ApiClient(configuration) as api_client:
+with unitycatalog.ApiClient(configuration) as api_client:
     # Create an instance of the API class
     api_instance = unitycatalog.TablesApi(api_client)
     catalog_name = 'catalog_name_example' # str | Name of parent catalog for tables of interest.
@@ -248,7 +248,7 @@ async with unitycatalog.ApiClient(configuration) as api_client:
 
     try:
         # List tables
-        api_response = await api_instance.list_tables(catalog_name, schema_name, max_results=max_results, page_token=page_token)
+        api_response = api_instance.list_tables(catalog_name, schema_name, max_results=max_results, page_token=page_token)
         print("The response of TablesApi->list_tables:\n")
         pprint(api_response)
     except Exception as e:

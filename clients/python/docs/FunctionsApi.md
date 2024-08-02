@@ -35,14 +35,14 @@ configuration = unitycatalog.Configuration(
 
 
 # Enter a context with an instance of the API client
-async with unitycatalog.ApiClient(configuration) as api_client:
+with unitycatalog.ApiClient(configuration) as api_client:
     # Create an instance of the API class
     api_instance = unitycatalog.FunctionsApi(api_client)
     create_function_request = unitycatalog.CreateFunctionRequest() # CreateFunctionRequest |  (optional)
 
     try:
         # Create a function. WARNING: This API is experimental and will change in future versions. 
-        api_response = await api_instance.create_function(create_function_request=create_function_request)
+        api_response = api_instance.create_function(create_function_request=create_function_request)
         print("The response of FunctionsApi->create_function:\n")
         pprint(api_response)
     except Exception as e:
@@ -102,14 +102,14 @@ configuration = unitycatalog.Configuration(
 
 
 # Enter a context with an instance of the API client
-async with unitycatalog.ApiClient(configuration) as api_client:
+with unitycatalog.ApiClient(configuration) as api_client:
     # Create an instance of the API class
     api_instance = unitycatalog.FunctionsApi(api_client)
     name = 'name_example' # str | The fully-qualified name of the function (of the form __catalog_name__.__schema_name__.__function__name__).
 
     try:
         # Delete a function
-        api_response = await api_instance.delete_function(name)
+        api_response = api_instance.delete_function(name)
         print("The response of FunctionsApi->delete_function:\n")
         pprint(api_response)
     except Exception as e:
@@ -170,14 +170,14 @@ configuration = unitycatalog.Configuration(
 
 
 # Enter a context with an instance of the API client
-async with unitycatalog.ApiClient(configuration) as api_client:
+with unitycatalog.ApiClient(configuration) as api_client:
     # Create an instance of the API class
     api_instance = unitycatalog.FunctionsApi(api_client)
     name = 'name_example' # str | The fully-qualified name of the function (of the form __catalog_name__.__schema_name__.__function__name__).
 
     try:
         # Get a function
-        api_response = await api_instance.get_function(name)
+        api_response = api_instance.get_function(name)
         print("The response of FunctionsApi->get_function:\n")
         pprint(api_response)
     except Exception as e:
@@ -238,7 +238,7 @@ configuration = unitycatalog.Configuration(
 
 
 # Enter a context with an instance of the API client
-async with unitycatalog.ApiClient(configuration) as api_client:
+with unitycatalog.ApiClient(configuration) as api_client:
     # Create an instance of the API class
     api_instance = unitycatalog.FunctionsApi(api_client)
     catalog_name = 'catalog_name_example' # str | Name of parent catalog for functions of interest.
@@ -248,7 +248,7 @@ async with unitycatalog.ApiClient(configuration) as api_client:
 
     try:
         # List functions
-        api_response = await api_instance.list_functions(catalog_name, schema_name, max_results=max_results, page_token=page_token)
+        api_response = api_instance.list_functions(catalog_name, schema_name, max_results=max_results, page_token=page_token)
         print("The response of FunctionsApi->list_functions:\n")
         pprint(api_response)
     except Exception as e:
