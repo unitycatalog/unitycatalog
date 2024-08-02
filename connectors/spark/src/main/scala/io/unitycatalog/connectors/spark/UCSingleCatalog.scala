@@ -254,6 +254,7 @@ private class UCProxy extends TableCatalog with SupportsNamespaces {
     createSchema.setProperties(metadata)
     schemasApi.createSchema(createSchema)
   }
+
   override def alterNamespace(namespace: Array[String], changes: NamespaceChange*): Unit = ???
 
   override def dropNamespace(namespace: Array[String], cascade: Boolean): Boolean = {
