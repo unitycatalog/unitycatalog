@@ -251,35 +251,6 @@ lazy val server = (project in file("server"))
 
 val assemblyAndPublishLocal = taskKey[Unit]("Builds the assembly and publishes it locally")
 
-lazy val serverShaded = (project in file("serverShaded"))
-  .settings(
-    name := s"${artifactNamePrefix}-server-shaded",
-    organization := "io.unitycatalog", // Add organization
-    version := "0.2.0-SNAPSHOT", // Add version
-    commonSettings,
-    skipReleaseSettings,
-    Compile / packageBin := assembly.value,
-    assembly / logLevel := Level.Info,
-    assembly / test := {},
-    assembly / assemblyShadeRules := Seq(
-      ShadeRule.rename("com.fasterxml.jackson.**" -> "shadedForDelta.jackson.@0").inAll,
-    ),
-    assemblyPackageScala / assembleArtifact := false,
-    assembly / assemblyMergeStrategy := {
-      case PathList("META-INF", xs @ _*) => MergeStrategy.discard
-      case x => MergeStrategy.first
-    },
-    publishMavenStyle := true, // Enable Maven style publishing
-    publishTo := Some(Resolver.file("file", new File(Path.userHome.absolutePath + "/.m2/repository"))),
-    publishArtifact in (Compile, packageBin) := true,
-    publishArtifact in (Compile, packageDoc) := false,
-    publishArtifact in (Compile, packageSrc) := false
-  )
-  .dependsOn(server % "compile->compile;test->test")
-  .settings(
-    // Add specific settings or tasks if needed
-  )
-
 lazy val serverModels = (project in file("server") / "target" / "models")
   .enablePlugins(OpenApiGeneratorPlugin)
   .disablePlugins(JavaFormatterPlugin)
@@ -315,6 +286,7 @@ lazy val serverModels = (project in file("server") / "target" / "models")
   )
 
 lazy val cli = (project in file("examples") / "cli")
+  .dependsOn(server % "test->test")
   .dependsOn(client % "compile->compile;test->test")
   .settings(
     name := s"$artifactNamePrefix-cli",
@@ -349,6 +321,38 @@ lazy val cli = (project in file("examples") / "cli")
     Test / javaOptions += s"-Duser.dir=${(ThisBuild / baseDirectory).value.getAbsolutePath}",
   )
 
+lazy val serverShaded = (project in file("serverShaded"))
+  .dependsOn(server % "compile->compile, test->compile")
+  .settings(
+    name := s"${artifactNamePrefix}-server-shaded",
+    commonSettings,
+    skipReleaseSettings,
+    Compile / packageBin := assembly.value,
+    /*
+
+    Compile / fullClasspath := (Compile / fullClasspath).value ++ (serverModels / assembly  / fullClasspath).value,
+    Compile / fullClasspath := (Compile / fullClasspath).value ++ (client / Compile / fullClasspath).value,
+    assembly / assemblyJarName := s"${name.value}_${scalaBinaryVersion.value}-${version.value}.jar",
+     */
+    assembly / logLevel := Level.Debug,
+    assembly / test := {},
+    assembly / assemblyShadeRules := Seq(
+      ShadeRule.rename("com.fasterxml.**" -> "shaded.@0").inAll
+    ),
+    assemblyPackageScala / assembleArtifact := false,
+
+    assembly / assemblyMergeStrategy := {
+      case PathList("META-INF", xs@_*) => MergeStrategy.discard
+      case _ => MergeStrategy.first
+    },
+    assembly / fullClasspath := {
+      val compileClasspath = (server / Compile / fullClasspath).value
+      val testClasses = (server / Test / products).value
+      compileClasspath ++ testClasses.map(Attributed.blank)
+    }
+  )
+
+val sparkVersion = "3.5.1"
 lazy val spark = (project in file("connectors/spark"))
   .dependsOn(client % "compile->compile;test->test")
   .settings(
@@ -360,21 +364,28 @@ lazy val spark = (project in file("connectors/spark"))
     ),
     javaCheckstyleSettings(file("dev/checkstyle-config.xml")),
     libraryDependencies ++= Seq(
-      orgName % s"${artifactNamePrefix}-server-shaded" % version.value,
-      "org.apache.spark" %% "spark-sql" % "3.5.1",
+      "org.apache.spark" %% "spark-sql" % sparkVersion % "provided",
+      /*
       "com.fasterxml.jackson.module" %% "jackson-module-scala" % "2.12.5",
       "com.fasterxml.jackson.core" % "jackson-annotations" % "2.12.5",
       "com.fasterxml.jackson.core" % "jackson-core" % "2.12.5",
       "com.fasterxml.jackson.core" % "jackson-databind" % "2.12.5",
+      */
       // Test dependencies
       "org.junit.jupiter" % "junit-jupiter" % "5.10.3" % Test,
+      "org.mockito" % "mockito-core" % "5.11.0" % Test,
+      "org.mockito" % "mockito-inline" % "5.2.0" % Test,
+      "org.mockito" % "mockito-junit-jupiter" % "5.12.0" % Test,
       "net.aichler" % "jupiter-interface" % JupiterKeys.jupiterVersion.value % Test,
-      "io.delta" %% "delta-spark" % "3.2.0" % Test
+      "org.apache.spark" %% "spark-core" % sparkVersion % Test classifier "tests",
+      "org.apache.hadoop" % "hadoop-client-runtime" % "3.4.0",
+      "io.delta" %% "delta-spark" % "3.2.0" % Test,
     ),
-    excludeDependencies ++= Seq(
+    Test / unmanagedJars += (serverShaded / assembly).value,
+    Test / excludeDependencies ++= Seq(
       // This is a transitive dependency from the `server` module and we have to exclude it here
       // as it introduces some conflicts with the dependencies from Spark.
-      ExclusionRule("com.adobe.testing", "s3mock-junit5")
+      // ExclusionRule("com.adobe.testing", "s3mock-junit5")
     ),
     licenseDepExclusions := {
       case DepModuleInfo("org.hibernate.orm", _, _) => true
