@@ -200,8 +200,8 @@ public class SparkIntegrationTest extends BaseCRUDTest {
     createCommonResources();
     SparkSession session = createSparkSessionWithCatalogs(SPARK_CATALOG);
 
-    String loc0 = "s3://test-bucket0" + generateTableLocation(SPARK_CATALOG, DELTA_TABLE);
-    setupExternalDeltaTable(SPARK_CATALOG, DELTA_TABLE, loc0, new ArrayList<>(0), session);
+    String loc1 = "s3://test-bucket0" + generateTableLocation(SPARK_CATALOG, DELTA_TABLE);
+    setupExternalDeltaTable(SPARK_CATALOG, DELTA_TABLE, loc1, new ArrayList<>(0), session);
     String t1 = SPARK_CATALOG + "." + SCHEMA_NAME + "." + DELTA_TABLE;
     session.sql("INSERT INTO " + t1 + " SELECT 1, 'a'");
 
