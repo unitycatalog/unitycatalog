@@ -158,8 +158,8 @@ public class SparkIntegrationTest extends BaseCRUDTest {
     createCommonResources();
     SparkSession session = createSparkSessionWithCatalogs(SPARK_CATALOG);
 
-    String loc0 = "s3://test-bucket0" + generateTableLocation(SPARK_CATALOG, DELTA_TABLE);
-    setupExternalDeltaTable(SPARK_CATALOG, DELTA_TABLE, loc0, new ArrayList<>(0), session);
+    String loc1 = "s3://test-bucket0" + generateTableLocation(SPARK_CATALOG, DELTA_TABLE);
+    setupExternalDeltaTable(SPARK_CATALOG, DELTA_TABLE, loc1, new ArrayList<>(0), session);
     String t1 = SPARK_CATALOG + "." + SCHEMA_NAME + "." + DELTA_TABLE;
     testTableReadWrite(t1, session);
 
@@ -173,15 +173,15 @@ public class SparkIntegrationTest extends BaseCRUDTest {
   @Test
   public void testMergeDeltaTable() throws ApiException, IOException {
     createCommonResources();
-    SparkSession session = createSparkSessionWithCatalogs(SPARK_CATALOG);
+    SparkSession session = createSparkSessionWithCatalogs(SPARK_CATALOG, CATALOG_NAME);
 
-    String loc0 = "s3://test-bucket0" + generateTableLocation(SPARK_CATALOG, DELTA_TABLE);
-    setupExternalDeltaTable(SPARK_CATALOG, DELTA_TABLE, loc0, new ArrayList<>(0), session);
+    String loc1 = "s3://test-bucket0" + generateTableLocation(SPARK_CATALOG, DELTA_TABLE);
+    setupExternalDeltaTable(SPARK_CATALOG, DELTA_TABLE, loc1, new ArrayList<>(0), session);
     String t1 = SPARK_CATALOG + "." + SCHEMA_NAME + "." + DELTA_TABLE;
     session.sql("INSERT INTO " + t1 + " SELECT 1, 'a'");
 
-    String loc1 = "s3://test-bucket1" + generateTableLocation(CATALOG_NAME, ANOTHER_DELTA_TABLE);
-    setupExternalDeltaTable(CATALOG_NAME, ANOTHER_DELTA_TABLE, loc1, new ArrayList<>(0), session);
+    String loc2 = "s3://test-bucket1" + generateTableLocation(CATALOG_NAME, ANOTHER_DELTA_TABLE);
+    setupExternalDeltaTable(CATALOG_NAME, ANOTHER_DELTA_TABLE, loc2, new ArrayList<>(0), session);
     String t2 = CATALOG_NAME + "." + SCHEMA_NAME + "." + ANOTHER_DELTA_TABLE;
     session.sql("INSERT INTO " + t2 + " SELECT 2, 'b'");
 
