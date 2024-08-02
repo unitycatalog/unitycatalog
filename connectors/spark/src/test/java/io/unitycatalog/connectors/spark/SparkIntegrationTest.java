@@ -22,9 +22,9 @@ import java.io.IOException;
 import java.util.*;
 import org.apache.spark.network.util.JavaUtils;
 import org.apache.spark.sql.AnalysisException;
-import org.apache.spark.sql.catalyst.analysis.NoSuchNamespaceException;
 import org.apache.spark.sql.Row;
 import org.apache.spark.sql.SparkSession;
+import org.apache.spark.sql.catalyst.analysis.NoSuchNamespaceException;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
@@ -39,6 +39,24 @@ public class SparkIntegrationTest extends BaseCRUDTest {
   private static final String DELTA_TABLE_PARTITIONED = "test_delta_partitioned";
 
   private final File dataDir = new File(System.getProperty("java.io.tmpdir"), "spark_test");
+
+  @Test
+  public void testCreateSchema() throws ApiException {
+    createCommonResources();
+    SparkSession session = createSparkSessionWithCatalogs(CATALOG_NAME, SPARK_CATALOG);
+    session.catalog().setCurrentCatalog(CATALOG_NAME);
+    session.sql("CREATE DATABASE my_test_database;");
+    assertTrue(session.catalog().databaseExists("my_test_database"));
+    session.sql(String.format("DROP DATABASE %s.my_test_database;", CATALOG_NAME));
+    assertFalse(session.catalog().databaseExists("my_test_database"));
+
+    session.catalog().setCurrentCatalog(SPARK_CATALOG);
+    session.sql("CREATE DATABASE my_test_database;");
+    assertTrue(session.catalog().databaseExists("my_test_database"));
+    session.sql(String.format("DROP DATABASE %s.my_test_database;", SPARK_CATALOG));
+    assertFalse(session.catalog().databaseExists("my_test_database"));
+    session.stop();
+  }
 
   @Test
   public void testParquetReadWrite() throws IOException, ApiException {
@@ -283,7 +301,7 @@ public class SparkIntegrationTest extends BaseCRUDTest {
     assertThat(rows[1].getString(1)).isEqualTo(SCHEMA_NAME);
 
     assertThatThrownBy(() -> session.sql("DESC NAMESPACE NonExist").collect())
-            .isInstanceOf(NoSuchNamespaceException.class);
+        .isInstanceOf(NoSuchNamespaceException.class);
 
     session.stop();
   }
