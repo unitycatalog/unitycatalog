@@ -1,0 +1,19 @@
+fail_fast: true
+
+exclude: |
+  (?x)(
+      ^.venv/
+      ^venv/
+  )
+
+repos:
+  # Markdown formatter
+  - repo: https://github.com/executablebooks/mdformat
+    rev: 0.7.17
+    hooks:
+      - id: mdformat
+        args: [
+          --number,
+          --check, README.md
+        ]
+        require_serial: true
