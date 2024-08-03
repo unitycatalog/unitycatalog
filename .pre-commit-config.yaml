@@ -12,8 +12,8 @@ repos:
     rev: 0.7.17
     hooks:
       - id: mdformat
-        args: [
-          --number,
-          --check, README.md
-        ]
+        args: [ --number ]
+        exclude: "api"
         require_serial: true
+        additional_dependencies:
+          - mdformat_frontmatter
