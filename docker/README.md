@@ -1,6 +1,6 @@
-# Unity Catalog Dockerised Environment
+# Unity Catalog Dockerized Environment
 
-This project provides a Dockerised environment for running Unity Catalog. It includes everything needed to set up and interact with the catalog for testing purposes.
+This project provides a Dockerized environment for running Unity Catalog. It includes everything needed to set up and interact with the catalog for testing purposes.
 
 ## Prerequisites
 
@@ -22,7 +22,7 @@ This will create an image named `unitycatalog` and the version of the image woul
 
 #### 1.1 Unity Catalog CLI
 
-If you have an instance of Unity Catalog already running and you want only the CLI to interact with it, you can use the `build-uc-cli-docker` script which is responsible for building the Docker image for Unity Catalog CLI only.
+If you have an instance of Unity Catalog already running, and you want only the CLI to interact with it, you can use the `build-uc-cli-docker` script which is responsible for building the Docker image for Unity Catalog CLI only.
 
 Run the build script from the project directory:
 
@@ -57,7 +57,7 @@ This will start the container and make it accessible on port `8081` within the `
 ### 3. Adding Custom Startup Code
 
 > \[!NOTE\]
-> This feature has been removed temportarly until we find out the best way to add customisations to the containerisation process.
+> This feature has been removed temporarily until we find out the best way to add customisations to the containerisation process.
 
 ### 4. Testing the Catalog
 
