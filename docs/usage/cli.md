@@ -30,7 +30,7 @@ bin/uc catalog create --name <name> [--comment <comment>]
 ```
 
 - `name`: The name of the catalog.
-- `comment`: *[Optional]* The description of the catalog.
+- `comment`: *\[Optional\]* The description of the catalog.
 
 Example:
 
@@ -45,8 +45,8 @@ bin/uc catalog update --name <name> [--new_name <new_name>] [--comment <comment>
 ```
 
 - `name` : The name of the existing catalog.
-- `new_name` : *[Optional]* The new name of the catalog.
-- `comment` : *[Optional]* The new description of the catalog.
+- `new_name` : *\[Optional\]* The new name of the catalog.
+- `comment` : *\[Optional\]* The new description of the catalog.
 
 *Note:* at least one of the optional parameters must be specified.
 
@@ -76,7 +76,7 @@ bin/uc schema list --catalog <catalog> [--max_results <max_results>]
 ```
 
 - `catalog`: The name of the catalog.
-- `max_results`: *[Optional]* The maximum number of results to return.
+- `max_results`: *\[Optional\]* The maximum number of results to return.
 
 **Get a Schema**
 
@@ -97,7 +97,7 @@ bin/uc schema create --catalog <catalog> --name <name> [--comment <comment>]
 
 - `catalog`: The name of the catalog.
 - `name`: The name of the schema.
-- `comment`: *[Optional]*  The description of the schema.
+- `comment`: *\[Optional\]*  The description of the schema.
 
 Example:
 
@@ -112,8 +112,8 @@ bin/uc schema update --full_name <full_name> [--new_name <new_name>] [--comment 
 ```
 
 - `full_name`: The full name of the existing schema. The full name is the concatenation of the catalog name and schema name separated by a dot (e.g., `catalog_name.schema_name`).
-- `new_name`: *[Optional]* The new name of the schema.
-- `comment`: *[Optional]* The new description of the schema.
+- `new_name`: *\[Optional\]* The new name of the schema.
+- `comment`: *\[Optional\]* The new description of the schema.
 
 *Note:* at least one of the optional parameters must be specified.
 
@@ -146,7 +146,7 @@ bin/uc table list --catalog <catalog> --schema <schema> [--max_results <max_resu
 
 - `catalog` : The name of the catalog.
 - `schema` : The name of the schema.
-- `max_results` *[Optional]* : The maximum number of results to return.
+- `max_results` *\[Optional\]* : The maximum number of results to return.
 
 **Retrieve Table Information**
 
@@ -170,10 +170,10 @@ bin/uc table create --full_name <full_name> --columns <columns> --storage_locati
   Supported data types include `BOOLEAN`, `BYTE`, `SHORT`, `INT`, `LONG`, `FLOAT`, `DOUBLE`, `DATE`, `TIMESTAMP`,
   `TIMESTAMP_NTZ`, `STRING`, `BINARY`, `DECIMAL`. Separate multiple columns with a comma
   (e.g., `"id INT, name STRING"`).
-- `format`: *[Optional]* The format of the data source. Supported values are `DELTA`, `PARQUET`, `ORC`, `JSON`, `CSV`, `AVRO`, and `TEXT`.
-If not specified the default format is `DELTA`.
+- `format`: *\[Optional\]* The format of the data source. Supported values are `DELTA`, `PARQUET`, `ORC`, `JSON`, `CSV`, `AVRO`, and `TEXT`.
+  If not specified the default format is `DELTA`.
 - `storage_location`: The storage location associated with the table. It is a mandatory field for `EXTERNAL` tables.
-- `properties`:  *[Optional]* The properties of the entity in JSON format (e.g., `'{"key1": "value1", "key2": "value2"}'`).
+- `properties`:  *\[Optional\]* The properties of the entity in JSON format (e.g., `'{"key1": "value1", "key2": "value2"}'`).
   Make sure to either escape the double quotes(`\"`) inside the properties string or just use single quotes(`''`) around the same.
 
 Example:
@@ -195,7 +195,7 @@ bin/uc table read --full_name <catalog>.<schema>.<table> [--max_results <max_res
 - `catalog` : The name of the catalog.
 - `schema` : The name of the schema.
 - `table` : The name of the table.
-- `max_results` : *[Optional]* The maximum number of rows to return.
+- `max_results` : *\[Optional\]* The maximum number of rows to return.
 
 **Write Sample Data to a DELTA Table**
 
@@ -232,7 +232,7 @@ bin/uc volume list --catalog <catalog> --schema <schema> [--max_results <max_res
 
 - `catalog` : The name of the catalog.
 - `schema` : The name of the schema.
-- `max_results` : *[Optional]* The maximum number of results to return.
+- `max_results` : *\[Optional\]* The maximum number of results to return.
 
 **Retrieve Volume Information**
 
@@ -258,7 +258,7 @@ bin/uc volume create --full_name <catalog>.<schema>.<volume> --storage_location 
   When S3 path is provided, the [server](./server.md) will vend temporary credentials to access the S3 bucket and server properties must be set up accordingly.
   When running against Databricks Unity Catalog, the storage location for EXTERNAL volume can only be an S3 location which
   has been configured as an `external location` in your Databricks workspace.
-- `comment` : *[Optional]* The description of the volume.
+- `comment` : *\[Optional\]* The description of the volume.
 
 Example:
 
@@ -277,8 +277,8 @@ bin/uc volume update --full_name <catalog>.<schema>.<volume> --new_name <new_nam
 - `catalog` : The name of the catalog.
 - `schema` : The name of the schema.
 - `volume` : The name of the volume.
-- `new_name` : *[Optional]* The new name of the volume.
-- `comment` : *[Optional]* The new description of the volume.
+- `new_name` : *\[Optional\]* The new name of the volume.
+- `comment` : *\[Optional\]* The new description of the volume.
 
 *Note:* at least one of the optional parameters must be specified.
 
@@ -297,7 +297,7 @@ bin/uc volume read --full_name <catalog>.<schema>.<volume> [--path <path>]
 - `catalog` : The name of the catalog.
 - `schema` : The name of the schema.
 - `volume` : The name of the volume.
-- `path` : *[Optional]* The path relative to the volume root.
+- `path` : *\[Optional\]* The path relative to the volume root.
   If no path is provided, the volume root is read.
   If the final path is a directory, the contents of the directory are listed(*ls*).
   If the final path is a file, the contents of the file are displayed(*cat*).
@@ -337,7 +337,7 @@ bin/uc function list --catalog <catalog> --schema <schema> [--max_results <max_r
 
 - `catalog` : The name of the catalog.
 - `schema` : The name of the schema.
-- `max_results` : *[Optional]* The maximum number of results to return.
+- `max_results` : *\[Optional\]* The maximum number of results to return.
 
 **Retrieve Function Information**
 
@@ -360,8 +360,8 @@ bin/uc function create --full_name <catalog>.<schema>.<function_name> --input_pa
   Multiple input parameters should be separated by a comma (e.g., `"param1 INT, param2 STRING"`).
 - `data_type`: The data type of the function. Either a type_name(for e.g. `INT`,`DOUBLE`, `BOOLEAN`, `DATE`), or `TABLE_TYPE` if this is a table valued function.
 - `def`: The definition of the function. The definition should be a valid SQL statement or a python routine with the function logic and return statement.
-- `comment`: *[Optional]* The description of the function.
-- `language`: *[Optional]*  The language of the function. If not specified, the default value is `PYTHON`.
+- `comment`: *\[Optional\]* The description of the function.
+- `language`: *\[Optional\]*  The language of the function. If not specified, the default value is `PYTHON`.
 
 Example:
 Create a python function that takes two integer inputs and returns the sum of the inputs:
