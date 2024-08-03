@@ -44,11 +44,12 @@ This guide outlines how to deploy the Unity Catalog server.
 ### Configuring the database
 
 - The backend database can be configured by modifying the `etc/conf/hibernate.properties` file.
-- You need to provide the connection details to connect to your database server. 
+- You need to provide the connection details to connect to your database server.
 
 ### Example MySQL Connection
 
 #### Prerequisites
+
 - Install docker.
 - Download JDBC driver for [MySQL](https://dev.mysql.com/downloads/connector/j/).
 
@@ -56,11 +57,13 @@ This guide outlines how to deploy the Unity Catalog server.
 
 - In a terminal, navigate to the cloned repository root directory.
 - Modify `etc/db/mysql-example.yml` to configure MySQL server. Then start MySQL using Docker:
+
 ```sh
 docker-compose -f etc/db/mysql-example.yml up -d
 ```
 
 - Modify the `etc/conf/hibernate.properties` file with your MySQL connection details:
+
 ```properties
 hibernate.connection.driver_class=com.mysql.cj.jdbc.Driver
 hibernate.connection.url=jdbc:mysql://localhost:3306/ucdb
@@ -73,6 +76,7 @@ hibernate.connection.password=uc_default_password
 ### Example PostgreSQL Connection
 
 #### Prerequisites
+
 - Install docker.
 - Download JDBC driver for [PostgreSQL](https://jdbc.postgresql.org/download/).
 
@@ -80,11 +84,13 @@ hibernate.connection.password=uc_default_password
 
 - In a terminal, navigate to the cloned repository root directory.
 - Modify `etc/db/postgres-example.yml` to configure PostgreSQL server. Then start PostgreSQL using Docker:
+
 ```sh
 docker-compose -f etc/db/postgres-example.yml up -d
 ```
 
 - Modify the `etc/conf/hibernate.properties` file with your PostgreSQL connection details:
+
 ```properties
 hibernate.connection.driver_class=org.postgresql.Driver
 hibernate.connection.url=jdbc:postgresql://localhost:5432/ucdb

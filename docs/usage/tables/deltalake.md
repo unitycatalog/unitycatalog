@@ -10,7 +10,7 @@ bin/start-uc-server
 
 This local UC server will come with some sample data pre-loaded.
 
-You can list all of the tables in your Unity Catalog using:
+You can list all the tables in your Unity Catalog using:
 
 ```sh
 bin/uc table list --catalog unity --schema default
@@ -119,7 +119,7 @@ This command has multiple parameters:
 - `storage_location`: The storage location associated with the table. It is a mandatory field for EXTERNAL tables.
 - `properties`: [Optional] The properties of the entity in JSON format (e.g., '{"key1": "value1", "key2": "value2"}'). Make sure to either escape the double quotes(\") inside the properties string or just use single quotes('') around the same.
 
-Run the command below with the correct `path/to/storage` to create a new DELTA table with 2 colummns: `some_numbers` and `some_letters`.
+Run the command below with the correct `path/to/storage` to create a new DELTA table with 2 columns: `some_numbers` and `some_letters`.
 You can get the storage location from the `STORAGE_LOCATION` field of your `bin/uc table get ...` call above.
 
 ```sh
@@ -185,7 +185,7 @@ Now use the following command to write some sample data to this table.
 bin/uc table write --full_name <catalog>.<schema>.<table>
 ```
 
-This is an experimental feature. Currently this will only write sample data and supports only some primitive data types.
+This is an experimental feature. Currently, this will only write sample data and supports only some primitive data types.
 
 ## How to Delete a Delta Table
 
