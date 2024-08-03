@@ -4,9 +4,8 @@ import io.unitycatalog.server.exception.BaseException;
 import io.unitycatalog.server.exception.ErrorCode;
 import io.unitycatalog.server.persist.utils.ServerPropertiesUtils;
 import io.unitycatalog.server.service.credential.CredentialContext;
-import software.amazon.awssdk.auth.credentials.AwsSessionCredentials;
-
 import java.util.Map;
+import software.amazon.awssdk.auth.credentials.AwsSessionCredentials;
 
 public class AwsCredentialVendor {
 
@@ -23,6 +22,8 @@ public class AwsCredentialVendor {
       throw new BaseException(ErrorCode.FAILED_PRECONDITION, "S3 bucket configuration not found.");
     }
     return AwsSessionCredentials.create(
-      s3StorageConfig.getAccessKey(),s3StorageConfig.getSecretKey(),s3StorageConfig.getSessionToken());
+        s3StorageConfig.getAccessKey(),
+        s3StorageConfig.getSecretKey(),
+        s3StorageConfig.getSessionToken());
   }
 }

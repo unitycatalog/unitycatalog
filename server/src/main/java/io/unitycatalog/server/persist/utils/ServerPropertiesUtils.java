@@ -2,20 +2,16 @@ package io.unitycatalog.server.persist.utils;
 
 import io.unitycatalog.server.service.credential.aws.S3StorageConfig;
 import io.unitycatalog.server.service.credential.azure.ADLSStorageConfig;
-import lombok.AllArgsConstructor;
-import lombok.Getter;
-import lombok.Setter;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-
 import java.io.IOException;
 import java.io.InputStream;
-import java.net.URI;
 import java.nio.file.Files;
 import java.nio.file.Paths;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Properties;
+import lombok.Getter;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 public class ServerPropertiesUtils {
 
@@ -57,8 +53,14 @@ public class ServerPropertiesUtils {
       if (bucketPath == null || accessKey == null || secretKey == null || sessionToken == null) {
         break;
       }
-      S3StorageConfig s3StorageConfig = S3StorageConfig.builder().bucketPath(bucketPath)
-        .region(region).accessKey(accessKey).secretKey(secretKey).sessionToken(sessionToken).build();
+      S3StorageConfig s3StorageConfig =
+          S3StorageConfig.builder()
+              .bucketPath(bucketPath)
+              .region(region)
+              .accessKey(accessKey)
+              .secretKey(secretKey)
+              .sessionToken(sessionToken)
+              .build();
       s3BucketConfigMap.put(bucketPath, s3StorageConfig);
       i++;
     }
@@ -93,8 +95,14 @@ public class ServerPropertiesUtils {
       if (containerPath == null || tenantId == null || clientId == null || clientSecret == null) {
         break;
       }
-      gcsConfigMap.put(containerPath, ADLSStorageConfig.builder().containerPath(containerPath)
-        .tenantId(tenantId).clientId(clientId).clientSecret(clientSecret).build());
+      gcsConfigMap.put(
+          containerPath,
+          ADLSStorageConfig.builder()
+              .containerPath(containerPath)
+              .tenantId(tenantId)
+              .clientId(clientId)
+              .clientSecret(clientSecret)
+              .build());
       i++;
     }
 

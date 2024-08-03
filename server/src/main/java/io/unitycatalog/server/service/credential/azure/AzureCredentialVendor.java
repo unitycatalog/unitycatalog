@@ -12,7 +12,6 @@ import com.azure.storage.file.datalake.sas.DataLakeServiceSasSignatureValues;
 import com.azure.storage.file.datalake.sas.PathSasPermission;
 import io.unitycatalog.server.persist.utils.ServerPropertiesUtils;
 import io.unitycatalog.server.service.credential.CredentialContext;
-
 import java.time.OffsetDateTime;
 import java.util.Map;
 import java.util.Set;
@@ -27,22 +26,38 @@ public class AzureCredentialVendor {
 
   public AzureCredential vendAzureCredential(CredentialContext context) {
     ADLSStorageConfig config = adlsConfigurations.get(context.getStorageBasePath());
-    ADLSLocationUtils.ADLSLocationParts locationParts = ADLSLocationUtils.parseLocation(context.getStorageBasePath());
+    ADLSLocationUtils.ADLSLocationParts locationParts =
+        ADLSLocationUtils.parseLocation(context.getStorageBasePath());
 
     // FIXME!! azure sas token expiration hardcoded to an hour
     OffsetDateTime start = OffsetDateTime.now();
     OffsetDateTime expiry = start.plusHours(1);
 
-    TokenCredential tokenCredential = new ClientSecretCredentialBuilder().tenantId(config.getTenantId()).clientId(config.getClientId()).clientSecret(config.getClientSecret()).build();
-    DataLakeServiceAsyncClient serviceClient = new DataLakeServiceClientBuilder().httpClient(HttpClient.createDefault()).endpoint("https://" + locationParts.account())
-      .credential(tokenCredential).buildAsyncClient();
+    TokenCredential tokenCredential =
+        new ClientSecretCredentialBuilder()
+            .tenantId(config.getTenantId())
+            .clientId(config.getClientId())
+            .clientSecret(config.getClientSecret())
+            .build();
+    DataLakeServiceAsyncClient serviceClient =
+        new DataLakeServiceClientBuilder()
+            .httpClient(HttpClient.createDefault())
+            .endpoint("https://" + locationParts.account())
+            .credential(tokenCredential)
+            .buildAsyncClient();
     UserDelegationKey key = serviceClient.getUserDelegationKey(start, expiry).toFuture().join();
 
     PathSasPermission perms = resolvePrivileges(context.getPrivileges());
-    DataLakeServiceSasSignatureValues sasSignatureValues = new DataLakeServiceSasSignatureValues(expiry, perms).setStartTime(start);
+    DataLakeServiceSasSignatureValues sasSignatureValues =
+        new DataLakeServiceSasSignatureValues(expiry, perms).setStartTime(start);
 
-    String sasToken = new DataLakeSasImplUtil(sasSignatureValues, locationParts.container(), context.getStorageBasePath().substring(1), true)
-      .generateUserDelegationSas(key, locationParts.accountName(), Context.NONE);
+    String sasToken =
+        new DataLakeSasImplUtil(
+                sasSignatureValues,
+                locationParts.container(),
+                context.getStorageBasePath().substring(1),
+                true)
+            .generateUserDelegationSas(key, locationParts.accountName(), Context.NONE);
     return new AzureCredential(sasToken, expiry.toInstant().toEpochMilli());
   }
 

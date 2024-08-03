@@ -17,12 +17,18 @@ public class CredentialResponse {
   private Long expirationTime;
 
   public GenerateTemporaryTableCredentialResponse toTableCredentialResponse() {
-    return new GenerateTemporaryTableCredentialResponse().awsTempCredentials(awsTempCredentials)
-      .azureUserDelegationSas(azureUserDelegationSas).gcpOauthToken(gcpOauthToken).expirationTime(expirationTime);
+    return new GenerateTemporaryTableCredentialResponse()
+        .awsTempCredentials(awsTempCredentials)
+        .azureUserDelegationSas(azureUserDelegationSas)
+        .gcpOauthToken(gcpOauthToken)
+        .expirationTime(expirationTime);
   }
 
   public GenerateTemporaryVolumeCredentialResponse toVolumeCredentialResponse() {
-    return new GenerateTemporaryVolumeCredentialResponse().awsTempCredentials(awsTempCredentials)
-      .azureUserDelegationSas(azureUserDelegationSas).gcpOauthToken(gcpOauthToken).expirationTime(expirationTime);
+    return new GenerateTemporaryVolumeCredentialResponse()
+        .awsTempCredentials(awsTempCredentials)
+        .azureUserDelegationSas(azureUserDelegationSas)
+        .gcpOauthToken(gcpOauthToken)
+        .expirationTime(expirationTime);
   }
 }
