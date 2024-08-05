@@ -338,7 +338,8 @@ lazy val serverShaded = (project in file("serverShaded"))
     assembly / logLevel := Level.Debug,
     assembly / test := {},
     assembly / assemblyShadeRules := Seq(
-      ShadeRule.rename("com.fasterxml.**" -> "shaded.@0").inAll
+      ShadeRule.rename("com.fasterxml.**" -> "shaded.@0").inAll,
+      ShadeRule.rename("org.antlr.**" -> "shaded.@0").inAll,
     ),
     assemblyPackageScala / assembleArtifact := false,
 
@@ -365,12 +366,20 @@ lazy val spark = (project in file("connectors/spark"))
     javaCheckstyleSettings(file("dev/checkstyle-config.xml")),
     libraryDependencies ++= Seq(
       "org.apache.spark" %% "spark-sql" % sparkVersion,
-      // Jackson dependencies with explicit exclusion of shaded versions
       "com.fasterxml.jackson.core" % "jackson-databind" % "2.12.5",
       "com.fasterxml.jackson.module" %% "jackson-module-scala" % "2.12.5",
       "com.fasterxml.jackson.core" % "jackson-annotations" % "2.12.5",
-      "com.fasterxml.jackson.core" % "jackson-core" % "2.12.5"
-    ).map(_.exclude("shaded.com.fasterxml", "jackson-*")),
+      "com.fasterxml.jackson.core" % "jackson-core" % "2.12.5",
+      "org.antlr" % "antlr4-runtime" % "4.9.3",
+      "org.antlr" % "antlr4" % "4.9.3",
+    ).map(_.excludeAll(
+      ExclusionRule("com.fasterxml.jackson.core", "jackson-databind"),
+      ExclusionRule("com.fasterxml.jackson.module", "jackson-module-scala"),
+      ExclusionRule("com.fasterxml.jackson.core", "jackson-annotations"),
+      ExclusionRule("com.fasterxml.jackson.core", "jackson-core"),
+      ExclusionRule("org.antlr", "antlr4-runtime"),
+      ExclusionRule("org.antlr", "antlr4")
+    )),
     libraryDependencies ++= Seq(
       // Test dependencies
       "org.junit.jupiter" % "junit-jupiter" % "5.10.3" % Test,
@@ -381,6 +390,14 @@ lazy val spark = (project in file("connectors/spark"))
       "org.apache.spark" %% "spark-core" % sparkVersion % Test classifier "tests",
       "org.apache.hadoop" % "hadoop-client-runtime" % "3.4.0",
       "io.delta" %% "delta-spark" % "3.2.0" % Test,
+    ),
+    dependencyOverrides ++= Seq(
+      "com.fasterxml.jackson.core" % "jackson-databind" % "2.12.5",
+      "com.fasterxml.jackson.module" %% "jackson-module-scala" % "2.12.5",
+      "com.fasterxml.jackson.core" % "jackson-annotations" % "2.12.5",
+      "com.fasterxml.jackson.core" % "jackson-core" % "2.12.5",
+      "org.antlr" % "antlr4-runtime" % "4.9.3",
+      "org.antlr" % "antlr4" % "4.9.3",
     ),
     Compile / unmanagedJars += (serverShaded / assembly).value,
     Test / unmanagedJars += (serverShaded / assembly).value,
