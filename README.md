@@ -57,6 +57,8 @@ You have to ensure that your local environment has the following:
 - Ensure the `JAVA_HOME` environment variable your terminal is configured to point to JDK17+.
 - Compile the project using `build/sbt package`
 
+> If you prefer to run this using the Unity Catalog Dockerized Environment, please refer to the Docker [README.md](./docker/readme.md)
+
 ### Run the UC Server
 In a terminal, in the cloned repository root directory, start the UC server.
 
@@ -123,7 +125,7 @@ SELECT * from unity.default.numbers;
 ```
 
 You should see the tables listed and the contents of the `numbers` table printed.
-To quit DuckDB, run the command `Ctrl+D` or type `.exit` in the DuckDB shell.
+To quit DuckDB, press `Ctrl`+`D` (if your platform supports it), press `Ctrl`+`C`, or use the `.exit` command in the DuckDB shell.
 
 ## CLI tutorial
 
