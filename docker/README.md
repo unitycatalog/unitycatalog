@@ -5,6 +5,8 @@ This project provides a Dockerised environment for running Unity Catalog. It inc
 ## Prerequisites
 
 * Docker installed on your system.
+* `jq` is installed on your system
+  * e.g., on MacOS, install `jq` using HomeBrew, `brew install jq` 
 
 ## Usage
 
