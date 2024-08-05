@@ -364,12 +364,15 @@ lazy val spark = (project in file("connectors/spark"))
     ),
     javaCheckstyleSettings(file("dev/checkstyle-config.xml")),
     libraryDependencies ++= Seq(
-      "org.apache.spark" %% "spark-sql" % sparkVersion % "provided",
+      "org.apache.spark" %% "spark-sql" % sparkVersion,
+      // Jackson dependencies with explicit exclusion of shaded versions
+      "com.fasterxml.jackson.core" % "jackson-databind" % "2.12.5",
+      "com.fasterxml.jackson.module" %% "jackson-module-scala" % "2.12.5",
+      "com.fasterxml.jackson.core" % "jackson-annotations" % "2.12.5",
+      "com.fasterxml.jackson.core" % "jackson-core" % "2.12.5"
+    ).map(_.exclude("shaded.com.fasterxml", "jackson-*")),
+    libraryDependencies ++= Seq(
       // Test dependencies
-      "com.fasterxml.jackson.core" % "jackson-databind" % "2.12.5" % Test,
-      "com.fasterxml.jackson.module" %% "jackson-module-scala" % "2.12.5" % Test,
-      "com.fasterxml.jackson.core" % "jackson-annotations" % "2.12.5" % Test,
-      "com.fasterxml.jackson.core" % "jackson-core" % "2.12.5" % Test,
       "org.junit.jupiter" % "junit-jupiter" % "5.10.3" % Test,
       "org.mockito" % "mockito-core" % "5.11.0" % Test,
       "org.mockito" % "mockito-inline" % "5.2.0" % Test,
