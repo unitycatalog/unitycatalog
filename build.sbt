@@ -323,6 +323,7 @@ lazy val cli = (project in file("examples") / "cli")
 
 lazy val serverShaded = (project in file("serverShaded"))
   .dependsOn(server % "compile->compile, test->compile")
+  .dependsOn(client % "compile->compile")
   .settings(
     name := s"${artifactNamePrefix}-server-shaded",
     commonSettings,
@@ -346,7 +347,7 @@ lazy val serverShaded = (project in file("serverShaded"))
       case _ => MergeStrategy.first
     },
     assembly / fullClasspath := {
-      val compileClasspath = (server / Compile / fullClasspath).value
+      val compileClasspath = (server / Compile / fullClasspath).value ++ (client / Compile / fullClasspath).value
       val testClasses = (server / Test / products).value
       compileClasspath ++ testClasses.map(Attributed.blank)
     }
@@ -354,7 +355,6 @@ lazy val serverShaded = (project in file("serverShaded"))
 
 val sparkVersion = "3.5.1"
 lazy val spark = (project in file("connectors/spark"))
-  .dependsOn(client % "compile->compile;test->test")
   .settings(
     name := s"$artifactNamePrefix-spark",
     scalaVersion := "2.12.6",
@@ -365,13 +365,11 @@ lazy val spark = (project in file("connectors/spark"))
     javaCheckstyleSettings(file("dev/checkstyle-config.xml")),
     libraryDependencies ++= Seq(
       "org.apache.spark" %% "spark-sql" % sparkVersion % "provided",
-      /*
-      "com.fasterxml.jackson.module" %% "jackson-module-scala" % "2.12.5",
-      "com.fasterxml.jackson.core" % "jackson-annotations" % "2.12.5",
-      "com.fasterxml.jackson.core" % "jackson-core" % "2.12.5",
-      "com.fasterxml.jackson.core" % "jackson-databind" % "2.12.5",
-      */
       // Test dependencies
+      "com.fasterxml.jackson.core" % "jackson-databind" % "2.12.5" % Test,
+      "com.fasterxml.jackson.module" %% "jackson-module-scala" % "2.12.5" % Test,
+      "com.fasterxml.jackson.core" % "jackson-annotations" % "2.12.5" % Test,
+      "com.fasterxml.jackson.core" % "jackson-core" % "2.12.5" % Test,
       "org.junit.jupiter" % "junit-jupiter" % "5.10.3" % Test,
       "org.mockito" % "mockito-core" % "5.11.0" % Test,
       "org.mockito" % "mockito-inline" % "5.2.0" % Test,
@@ -381,6 +379,7 @@ lazy val spark = (project in file("connectors/spark"))
       "org.apache.hadoop" % "hadoop-client-runtime" % "3.4.0",
       "io.delta" %% "delta-spark" % "3.2.0" % Test,
     ),
+    Compile / unmanagedJars += (serverShaded / assembly).value,
     Test / unmanagedJars += (serverShaded / assembly).value,
     Test / excludeDependencies ++= Seq(
       // This is a transitive dependency from the `server` module and we have to exclude it here
