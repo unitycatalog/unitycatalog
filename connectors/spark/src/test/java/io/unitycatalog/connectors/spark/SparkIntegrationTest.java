@@ -230,7 +230,7 @@ public class SparkIntegrationTest extends BaseCRUDTest {
     List<Row> rows = session.sql("SELECT * FROM " + t1).collectAsList();
     assertThat(1 == rows.size());
     assertThat(2 == rows.get(0).getInt(0));
-    session.close();
+    session.stop();
   }
 
   @Test
