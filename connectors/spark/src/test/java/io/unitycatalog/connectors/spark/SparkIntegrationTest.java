@@ -312,18 +312,20 @@ public class SparkIntegrationTest extends BaseCRUDTest {
     createCommonResources();
     SparkSession session = createSparkSessionWithCatalogs(CATALOG_NAME);
     Path tempDirectory = Files.createTempDirectory("testCreateExternalTable");
-    session.catalog().setCurrentCatalog(CATALOG_NAME);
-    session.catalog().setCurrentDatabase(SCHEMA_NAME);
+    String fullTableName = CATALOG_NAME + "." + SCHEMA_NAME + "." + PARQUET_TABLE;
     session
         .sql(
             "CREATE TABLE "
-                + PARQUET_TABLE
+                + fullTableName
                 + "(name STRING) USING PARQUET LOCATION '"
                 + tempDirectory.toString()
                 + "'")
         .collect();
-    assertTrue(session.catalog().tableExists(PARQUET_TABLE));
-    List<Row> rows = session.sql("select * from " + PARQUET_TABLE).collectAsList();
+    assertTrue(session.catalog().tableExists(fullTableName));
+    TableInfo tableInfo = tableOperations.getTable(fullTableName);
+    assertThat(tableInfo.getColumns().size() == 1);
+    assertThat(tableInfo.getColumns().get(0).getName() == "name");
+    assertThat(tableInfo.getColumns().get(0).getTypeText() == "STRING");
     session.stop();
   }
 
