@@ -366,10 +366,10 @@ lazy val spark = (project in file("connectors/spark"))
     javaCheckstyleSettings(file("dev/checkstyle-config.xml")),
     libraryDependencies ++= Seq(
       "org.apache.spark" %% "spark-sql" % sparkVersion,
-      "com.fasterxml.jackson.core" % "jackson-databind" % "2.12.5",
-      "com.fasterxml.jackson.module" %% "jackson-module-scala" % "2.12.5",
-      "com.fasterxml.jackson.core" % "jackson-annotations" % "2.12.5",
-      "com.fasterxml.jackson.core" % "jackson-core" % "2.12.5",
+      "com.fasterxml.jackson.core" % "jackson-databind" % "2.15.0",
+      "com.fasterxml.jackson.module" %% "jackson-module-scala" % "2.15.0",
+      "com.fasterxml.jackson.core" % "jackson-annotations" % "2.15.0",
+      "com.fasterxml.jackson.core" % "jackson-core" % "2.15.0",
       "org.antlr" % "antlr4-runtime" % "4.9.3",
       "org.antlr" % "antlr4" % "4.9.3",
     ).map(_.excludeAll(
@@ -392,15 +392,20 @@ lazy val spark = (project in file("connectors/spark"))
       "io.delta" %% "delta-spark" % "3.2.0" % Test,
     ),
     dependencyOverrides ++= Seq(
-      "com.fasterxml.jackson.core" % "jackson-databind" % "2.12.5",
-      "com.fasterxml.jackson.module" %% "jackson-module-scala" % "2.12.5",
-      "com.fasterxml.jackson.core" % "jackson-annotations" % "2.12.5",
-      "com.fasterxml.jackson.core" % "jackson-core" % "2.12.5",
+      "com.fasterxml.jackson.core" % "jackson-databind" % "2.15.0",
+      "com.fasterxml.jackson.module" %% "jackson-module-scala" % "2.15.0",
+      "com.fasterxml.jackson.core" % "jackson-annotations" % "2.15.0",
+      "com.fasterxml.jackson.core" % "jackson-core" % "2.15.0",
       "org.antlr" % "antlr4-runtime" % "4.9.3",
       "org.antlr" % "antlr4" % "4.9.3",
     ),
     Compile / unmanagedJars += (serverShaded / assembly).value,
     Test / unmanagedJars += (serverShaded / assembly).value,
+    // Set Java version for tests to 8
+    Compile / javacOptions ++= Seq("--source", "8"),
+    Compile / javacOptions ++= Seq("--target", "8"),
+    Test / javacOptions ++= Seq("--source", "8"),
+    Test / javacOptions ++= Seq("--target", "8"),
     Test / excludeDependencies ++= Seq(
       // This is a transitive dependency from the `server` module and we have to exclude it here
       // as it introduces some conflicts with the dependencies from Spark.
