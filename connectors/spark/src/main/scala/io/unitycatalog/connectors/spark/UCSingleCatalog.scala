@@ -1,13 +1,13 @@
 package io.unitycatalog.connectors.spark
 
 import io.unitycatalog.client.{ApiClient, ApiException}
-import io.unitycatalog.client.api.{TablesApi, TemporaryTableCredentialsApi}
-import io.unitycatalog.client.model.{AwsCredentials, GenerateTemporaryTableCredential, ListTablesResponse, TableOperation, TableType}
+import io.unitycatalog.client.api.{SchemasApi, TablesApi, TemporaryTableCredentialsApi}
+import io.unitycatalog.client.model.{AwsCredentials, CreateSchema, GenerateTemporaryTableCredential, ListTablesResponse, SchemaInfo, TableOperation, TableType}
 
 import java.net.URI
 import java.util
 import org.apache.spark.sql.catalyst.TableIdentifier
-import org.apache.spark.sql.catalyst.analysis.NoSuchTableException
+import org.apache.spark.sql.catalyst.analysis.{NoSuchNamespaceException, NoSuchTableException}
 import org.apache.spark.sql.catalyst.catalog.{CatalogStorageFormat, CatalogTable, CatalogTableType, CatalogUtils}
 import org.apache.spark.sql.connector.catalog._
 import org.apache.spark.sql.connector.expressions.Transform
@@ -20,7 +20,7 @@ import scala.jdk.CollectionConverters._
 /**
  * A Spark catalog plugin to get/manage tables in Unity Catalog.
  */
-class UCSingleCatalog extends TableCatalog {
+class UCSingleCatalog extends TableCatalog with SupportsNamespaces {
 
   private var deltaCatalog: TableCatalog = null
 
@@ -58,12 +58,37 @@ class UCSingleCatalog extends TableCatalog {
   override def dropTable(ident: Identifier): Boolean = deltaCatalog.dropTable(ident)
 
   override def renameTable(oldIdent: Identifier, newIdent: Identifier): Unit = ???
+
+  override def listNamespaces(): Array[Array[String]] = {
+    deltaCatalog.asInstanceOf[DelegatingCatalogExtension].listNamespaces()
+  }
+
+  override def listNamespaces(namespace: Array[String]): Array[Array[String]] = {
+    deltaCatalog.asInstanceOf[DelegatingCatalogExtension].listNamespaces(namespace)
+  }
+
+  override def loadNamespaceMetadata(namespace: Array[String]): util.Map[String, String] = {
+    deltaCatalog.asInstanceOf[DelegatingCatalogExtension].loadNamespaceMetadata(namespace)
+  }
+
+  override def createNamespace(namespace: Array[String], metadata: util.Map[String, String]): Unit = {
+    deltaCatalog.asInstanceOf[DelegatingCatalogExtension].createNamespace(namespace, metadata)
+  }
+
+  override def alterNamespace(namespace: Array[String], changes: NamespaceChange*): Unit = {
+    deltaCatalog.asInstanceOf[DelegatingCatalogExtension].alterNamespace(namespace, changes: _*)
+  }
+
+  override def dropNamespace(namespace: Array[String], cascade: Boolean): Boolean = {
+    deltaCatalog.asInstanceOf[DelegatingCatalogExtension].dropNamespace(namespace, cascade)
+  }
 }
 
 // An internal proxy to talk to the UC client.
-private class UCProxy extends TableCatalog {
+private class UCProxy extends TableCatalog with SupportsNamespaces {
   private[this] var name: String = null
   private[this] var tablesApi: TablesApi = null
+  private[this] var schemasApi: SchemasApi = null
   private[this] var temporaryTableCredentialsApi: TemporaryTableCredentialsApi = null
 
   override def initialize(name: String, options: CaseInsensitiveStringMap): Unit = {
@@ -84,7 +109,8 @@ private class UCProxy extends TableCatalog {
       }
     }
     tablesApi = new TablesApi(client)
-    temporaryTableCredentialsApi = new TemporaryTableCredentialsApi(client);
+    temporaryTableCredentialsApi = new TemporaryTableCredentialsApi(client)
+    schemasApi = new SchemasApi(client)
   }
 
   override def name(): String = {
@@ -186,5 +212,54 @@ private class UCProxy extends TableCatalog {
     if (namespace.length > 1) {
       throw new ApiException("Nested namespaces are not supported:  " + namespace.mkString("."))
     }
+  }
+
+  override def listNamespaces(): Array[Array[String]] = {
+    schemasApi.listSchemas(name, 0, null).getSchemas.asScala.map { schema =>
+      Array(schema.getName)
+    }.toArray
+  }
+
+  override def listNamespaces(namespace: Array[String]): Array[Array[String]] = {
+    throw new UnsupportedOperationException("Multi-layer namespace is not supported in Unity Catalog")
+  }
+
+  override def loadNamespaceMetadata(namespace: Array[String]): util.Map[String, String] = {
+    checkUnsupportedNestedNamespace(namespace)
+    val schema = try {
+      schemasApi.getSchema(name + "." + namespace(0))
+    } catch {
+      case e: ApiException if e.getCode == 404 =>
+        throw new NoSuchNamespaceException(namespace)
+    }
+    // flatten the schema properties to a map, with the key prefixed by "properties:"
+    val metadata = schema.getProperties.asScala.map {
+      case (k, v) =>  SchemaInfo.JSON_PROPERTY_PROPERTIES + ":" + k -> v
+    }
+    metadata(SchemaInfo.JSON_PROPERTY_NAME) = schema.getName
+    metadata(SchemaInfo.JSON_PROPERTY_CATALOG_NAME) = schema.getCatalogName
+    metadata(SchemaInfo.JSON_PROPERTY_COMMENT) = schema.getComment
+    metadata(SchemaInfo.JSON_PROPERTY_FULL_NAME) = schema.getFullName
+    metadata(SchemaInfo.JSON_PROPERTY_CREATED_AT) = if (schema.getCreatedAt != null) {schema.getCreatedAt.toString} else {"null"}
+    metadata(SchemaInfo.JSON_PROPERTY_UPDATED_AT) = if (schema.getUpdatedAt != null) {schema.getUpdatedAt.toString} else {"null"}
+    metadata(SchemaInfo.JSON_PROPERTY_SCHEMA_ID) = schema.getSchemaId
+    metadata.asJava
+  }
+
+  override def createNamespace(namespace: Array[String], metadata: util.Map[String, String]): Unit = {
+    checkUnsupportedNestedNamespace(namespace)
+    val createSchema = new CreateSchema()
+    createSchema.setCatalogName(this.name)
+    createSchema.setName(namespace.head)
+    createSchema.setProperties(metadata)
+    schemasApi.createSchema(createSchema)
+  }
+
+  override def alterNamespace(namespace: Array[String], changes: NamespaceChange*): Unit = ???
+
+  override def dropNamespace(namespace: Array[String], cascade: Boolean): Boolean = {
+    checkUnsupportedNestedNamespace(namespace)
+    schemasApi.deleteSchema(name + "." + namespace.head, cascade)
+    true
   }
 }
