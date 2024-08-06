@@ -210,6 +210,9 @@ lazy val server = (project in file("server"))
       "io.vertx" % "vertx-web" % "4.3.5",
       "io.vertx" % "vertx-web-client" % "4.3.5",
 
+      // For auth
+      "org.casbin" % "jcasbin" % "1.21.0",
+
       // Test dependencies
       "org.junit.jupiter" %  "junit-jupiter" % "5.10.3" % Test,
       "org.mockito" % "mockito-core" % "5.11.0" % Test,
