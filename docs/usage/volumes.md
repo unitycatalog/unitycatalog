@@ -42,7 +42,7 @@ bin/uc volume read --full_name unity.default.json_files --path c.json
 
 ![UC Volume read file](../assets/images/uc_volume_read_file.png)
 
-Voila! You have read the content of a file stored in a volume. We can also list the contents of any subdirectory. For example:
+Voilà! You have read the content of a file stored in a volume. We can also list the contents of any subdirectory. For example:
 
 ```sh
 bin/uc volume read --full_name unity.default.json_files --path dir1
