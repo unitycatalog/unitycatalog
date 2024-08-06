@@ -9,10 +9,12 @@ import com.linecorp.armeria.server.ServerBuilder;
 import com.linecorp.armeria.server.annotation.JacksonRequestConverterFunction;
 import com.linecorp.armeria.server.annotation.JacksonResponseConverterFunction;
 import com.linecorp.armeria.server.docs.DocService;
+import io.unitycatalog.server.service.AuthService;
 import io.unitycatalog.server.service.CatalogService;
 import io.unitycatalog.server.service.FunctionService;
 import io.unitycatalog.server.service.IcebergRestCatalogService;
 import io.unitycatalog.server.service.SchemaService;
+import io.unitycatalog.server.service.Scim2UserService;
 import io.unitycatalog.server.service.TableService;
 import io.unitycatalog.server.service.TemporaryTableCredentialsService;
 import io.unitycatalog.server.service.TemporaryVolumeCredentialsService;
@@ -66,6 +68,8 @@ public class UnityCatalogServer {
         new TemporaryTableCredentialsService();
     TemporaryVolumeCredentialsService temporaryVolumeCredentialsService =
         new TemporaryVolumeCredentialsService();
+    Scim2UserService Scim2UserService = new Scim2UserService();
+    AuthService authService = new AuthService();
     sb.service("/", (ctx, req) -> HttpResponse.of("Hello, Unity Catalog!"))
         .annotatedService(basePath + "catalogs", catalogService, unityConverterFunction)
         .annotatedService(basePath + "schemas", schemaService, unityConverterFunction)
@@ -75,7 +79,9 @@ public class UnityCatalogServer {
         .annotatedService(
             basePath + "temporary-table-credentials", temporaryTableCredentialsService)
         .annotatedService(
-            basePath + "temporary-volume-credentials", temporaryVolumeCredentialsService);
+            basePath + "temporary-volume-credentials", temporaryVolumeCredentialsService)
+        .annotatedService(basePath + "unity-control/scim2/Users", Scim2UserService)
+        .annotatedService(basePath + "unity-control/authorizations", authService);
 
     // Add support for Iceberg REST APIs
     ObjectMapper icebergMapper = RESTObjectMapper.mapper();

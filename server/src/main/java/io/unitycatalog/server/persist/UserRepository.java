@@ -100,7 +100,7 @@ public class UserRepository {
     return query.uniqueResult();
   }
 
-  public UserDAO updateUser(String name, UpdateUser updateUser) {
+  public User updateUser(String name, UpdateUser updateUser) {
     try (Session session = SESSION_FACTORY.openSession()) {
       Transaction tx = session.beginTransaction();
       try {
@@ -119,7 +119,7 @@ public class UserRepository {
         }
         session.merge(userDAO);
         tx.commit();
-        return userDAO;
+        return userDAO.toUser();
       } catch (Exception e) {
         tx.rollback();
         throw e;
