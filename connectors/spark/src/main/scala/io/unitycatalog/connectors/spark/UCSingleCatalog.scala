@@ -1,8 +1,10 @@
 package io.unitycatalog.connectors.spark
 
+import com.google.gson.internal.bind.DefaultDateTypeAdapter.DateType
 import io.unitycatalog.client.{ApiClient, ApiException}
 import io.unitycatalog.client.api.{SchemasApi, TablesApi, TemporaryTableCredentialsApi}
 import io.unitycatalog.client.model.{AwsCredentials, ColumnInfo, ColumnTypeName, CreateSchema, CreateTable, DataSourceFormat, GenerateTemporaryTableCredential, ListTablesResponse, SchemaInfo, TableOperation, TableType}
+import org.apache.arrow.vector.types.pojo.ArrowType.Timestamp
 
 import java.net.URI
 import java.util
@@ -11,7 +13,7 @@ import org.apache.spark.sql.catalyst.analysis.{NoSuchNamespaceException, NoSuchT
 import org.apache.spark.sql.catalyst.catalog.{CatalogStorageFormat, CatalogTable, CatalogTableType, CatalogUtils}
 import org.apache.spark.sql.connector.catalog._
 import org.apache.spark.sql.connector.expressions.Transform
-import org.apache.spark.sql.types.{DataType, StringType, StructField, StructType}
+import org.apache.spark.sql.types.{BinaryType, BooleanType, ByteType, DataType, DoubleType, FloatType, IntegerType, LongType, ShortType, StringType, StructField, StructType, TimestampNTZType, TimestampType}
 import org.apache.spark.sql.util.CaseInsensitiveStringMap
 
 import scala.collection.convert.ImplicitConversions._
@@ -216,11 +218,7 @@ private class UCProxy extends TableCatalog with SupportsNamespaces {
       }
       column.setNullable(field.nullable)
       column.setTypeText(field.dataType.simpleString)
-      // TODO: Spark do not need this field to persist DataType of a column but
-      // UC requires this field to be set. Thus we only set a fixed value here
-      // as a holder and do not use this for loadTable. We will ask UC to allow
-      // this field as optional.
-      column.setTypeName(ColumnTypeName.STRING)
+      column.setTypeName(convertDataTypeToTypeName(field.dataType))
       // TODO: UC requires to set this value. Ideally this should be optional.
       column.setTypeJson(field.dataType.json)
       column.setPosition(i)
@@ -243,6 +241,24 @@ private class UCProxy extends TableCatalog with SupportsNamespaces {
       case "TEXT" => DataSourceFormat.TEXT
       case "AVRO" => DataSourceFormat.AVRO
       case _ => throw new ApiException("DataSourceFormat not supported: " + format)
+    }
+  }
+
+  private def convertDataTypeToTypeName(dataType: DataType): ColumnTypeName = {
+    dataType match {
+      case StringType => ColumnTypeName.STRING
+      case BooleanType => ColumnTypeName.BOOLEAN
+      case ShortType => ColumnTypeName.SHORT
+      case IntegerType => ColumnTypeName.INT
+      case LongType => ColumnTypeName.LONG
+      case FloatType => ColumnTypeName.FLOAT
+      case DoubleType => ColumnTypeName.DOUBLE
+      case ByteType => ColumnTypeName.BYTE
+      case DateType => ColumnTypeName.DATE
+      case BinaryType => ColumnTypeName.BINARY
+      case TimestampNTZType => ColumnTypeName.TIMESTAMP_NTZ
+      case TimestampType => ColumnTypeName.TIMESTAMP
+      case _ => throw new ApiException("DataType not supported: " + dataType.simpleString)
     }
   }
 
