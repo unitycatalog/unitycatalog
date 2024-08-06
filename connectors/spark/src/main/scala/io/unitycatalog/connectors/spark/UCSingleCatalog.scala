@@ -216,7 +216,11 @@ private class UCProxy extends TableCatalog with SupportsNamespaces {
       }
       column.setNullable(field.nullable)
       column.setTypeText(field.dataType.sql)
-      column.setTypeName(convertColumnType(field.dataType))
+      // TODO: Spark do not need this field to persist DataType of a column but
+      // UC requires this field to be set. Thus we only set a fixed value here
+      // as a holder and do not use this for loadTable. We will ask UC to allow
+      // this field as optional.
+      column.setTypeName(ColumnTypeName.STRING)
       // TODO: UC requires to set this value. Ideally this should be optional.
       column.setTypeJson("")
       column.setPosition(i)
@@ -240,14 +244,6 @@ private class UCProxy extends TableCatalog with SupportsNamespaces {
       case "TEXT" => DataSourceFormat.TEXT
       case "AVRO" => DataSourceFormat.AVRO
       case _ => throw new ApiException("DataSourceFormat not supported: " + format)
-    }
-  }
-
-  private def convertColumnType(data: DataType): ColumnTypeName = {
-    data match {
-      case StringType => ColumnTypeName.STRING
-      // TODO: support all the data types
-      case _ => throw new ApiException("DataType not supported: " + data.simpleString)
     }
   }
 
