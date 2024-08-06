@@ -254,7 +254,6 @@ private class UCProxy extends TableCatalog with SupportsNamespaces {
       case FloatType => ColumnTypeName.FLOAT
       case DoubleType => ColumnTypeName.DOUBLE
       case ByteType => ColumnTypeName.BYTE
-      case DateType => ColumnTypeName.DATE
       case BinaryType => ColumnTypeName.BINARY
       case TimestampNTZType => ColumnTypeName.TIMESTAMP_NTZ
       case TimestampType => ColumnTypeName.TIMESTAMP
