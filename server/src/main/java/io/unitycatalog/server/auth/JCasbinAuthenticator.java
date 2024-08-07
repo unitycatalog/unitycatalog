@@ -66,7 +66,7 @@ public class JCasbinAuthenticator implements UnityCatalogAuthenticator {
     public List<Privilege> listAuthorizations(UUID principal, UUID resource) {
         return enforcer.getPermissionsForUserInDomain(principal.toString(), resource.toString())
                 .stream()
-                .flatMap(List::stream)
+                .map(l -> l.get(1))
                 .map(Privilege::valueOf)
                 .collect(Collectors.toList());
     }
