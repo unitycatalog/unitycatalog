@@ -60,9 +60,9 @@ public class AzureCredentialVendor {
             .generateUserDelegationSas(key, locationParts.accountName(), Context.NONE);
 
     return AzureCredential.builder()
-      .sasToken(sasToken)
-      .expirationTimeInEpochMillis(expiry.toInstant().toEpochMilli())
-      .build();
+        .sasToken(sasToken)
+        .expirationTimeInEpochMillis(expiry.toInstant().toEpochMilli())
+        .build();
   }
 
   private PathSasPermission resolvePrivileges(Set<CredentialContext.Privilege> privileges) {

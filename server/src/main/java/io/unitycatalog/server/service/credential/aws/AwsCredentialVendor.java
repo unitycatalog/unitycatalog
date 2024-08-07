@@ -49,14 +49,14 @@ public class AwsCredentialVendor {
   private StsClient getStsClientForStorageConfig(S3StorageConfig s3StorageConfig) {
     AwsCredentialsProvider credentialsProvider;
     if (s3StorageConfig.getSecretKey() != null && !s3StorageConfig.getAccessKey().isEmpty()) {
-      credentialsProvider = StaticCredentialsProvider.create(
-        AwsBasicCredentials.create(s3StorageConfig.getAccessKey(), s3StorageConfig.getSecretKey()));
+      credentialsProvider =
+          StaticCredentialsProvider.create(
+              AwsBasicCredentials.create(
+                  s3StorageConfig.getAccessKey(), s3StorageConfig.getSecretKey()));
     } else {
       credentialsProvider = DefaultCredentialsProvider.create();
     }
 
-    return StsClient.builder()
-        .credentialsProvider(credentialsProvider)
-        .build();
+    return StsClient.builder().credentialsProvider(credentialsProvider).build();
   }
 }
