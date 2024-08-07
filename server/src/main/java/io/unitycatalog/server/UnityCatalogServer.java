@@ -119,15 +119,8 @@ public class UnityCatalogServer {
       LOGGER.info("Authorization enabled.");
       AuthDecorator authDecorator = new AuthDecorator();
       ExceptionHandlingDecorator exceptionDecorator = new ExceptionHandlingDecorator(new GlobalExceptionHandler());
-      sb.decorator(basePath + "catalogs", authDecorator)
-              .decorator(basePath + "schemas", authDecorator)
-              .decorator(basePath + "volumes", authDecorator)
-              .decorator(basePath + "tables", authDecorator)
-              .decorator(basePath + "functions", authDecorator)
-              .decorator(basePath + "temporary-table-credentials", authDecorator)
-              .decorator(basePath + "temporary-volume-credentials", authDecorator)
-              .decorator(basePath + "iceberg", authDecorator)
-              .decorator(exceptionDecorator);
+      sb.routeDecorator().pathPrefix(basePath).exclude(basePath + "auth/tokens").build(authDecorator);
+      sb.decorator(exceptionDecorator);
     }
   }
 
