@@ -53,7 +53,10 @@ public class AuthDecorator implements DecoratingHttpServiceFunction {
     }
 
     String[] parts = authorization.split(" ");
-    if (parts.length == 2 && parts[0].equals("Bearer")) {
+
+    if (parts.length != 2 || !parts[0].equals("Bearer")) {
+      throw new AuthorizationException(ErrorCode.UNAUTHENTICATED, "No Bearer found.");
+    } else {
       String token = parts[1];
       DecodedJWT decodedJWT = JWT.decode(token);
 
