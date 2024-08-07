@@ -321,7 +321,7 @@ lazy val cli = (project in file("examples") / "cli")
     Test / javaOptions += s"-Duser.dir=${(ThisBuild / baseDirectory).value.getAbsolutePath}",
   )
 
-lazy val serverShaded = (project in file("serverShaded"))
+lazy val serverAndClientShaded = (project in file("server-and-client-shaded"))
   .dependsOn(server % "compile->compile, test->compile")
   .dependsOn(client % "compile->compile")
   .settings(
@@ -329,13 +329,7 @@ lazy val serverShaded = (project in file("serverShaded"))
     commonSettings,
     skipReleaseSettings,
     Compile / packageBin := assembly.value,
-    /*
-
-    Compile / fullClasspath := (Compile / fullClasspath).value ++ (serverModels / assembly  / fullClasspath).value,
-    Compile / fullClasspath := (Compile / fullClasspath).value ++ (client / Compile / fullClasspath).value,
-    assembly / assemblyJarName := s"${name.value}_${scalaBinaryVersion.value}-${version.value}.jar",
-     */
-    assembly / logLevel := Level.Debug,
+    assembly / logLevel := Level.Warn,
     assembly / test := {},
     assembly / assemblyShadeRules := Seq(
       ShadeRule.rename("com.fasterxml.**" -> "shaded.@0").inAll,
@@ -358,7 +352,7 @@ val sparkVersion = "3.5.1"
 lazy val spark = (project in file("connectors/spark"))
   .settings(
     name := s"$artifactNamePrefix-spark",
-    scalaVersion := "2.12.6",
+    scalaVersion := "2.12.15",
     commonSettings,
     javaOptions ++= Seq(
       "--add-opens=java.base/sun.nio.ch=ALL-UNNAMED",
@@ -372,14 +366,7 @@ lazy val spark = (project in file("connectors/spark"))
       "com.fasterxml.jackson.core" % "jackson-core" % "2.15.0",
       "org.antlr" % "antlr4-runtime" % "4.9.3",
       "org.antlr" % "antlr4" % "4.9.3",
-    ).map(_.excludeAll(
-      ExclusionRule("com.fasterxml.jackson.core", "jackson-databind"),
-      ExclusionRule("com.fasterxml.jackson.module", "jackson-module-scala"),
-      ExclusionRule("com.fasterxml.jackson.core", "jackson-annotations"),
-      ExclusionRule("com.fasterxml.jackson.core", "jackson-core"),
-      ExclusionRule("org.antlr", "antlr4-runtime"),
-      ExclusionRule("org.antlr", "antlr4")
-    )),
+    ),
     libraryDependencies ++= Seq(
       // Test dependencies
       "org.junit.jupiter" % "junit-jupiter" % "5.10.3" % Test,
@@ -387,7 +374,6 @@ lazy val spark = (project in file("connectors/spark"))
       "org.mockito" % "mockito-inline" % "5.2.0" % Test,
       "org.mockito" % "mockito-junit-jupiter" % "5.12.0" % Test,
       "net.aichler" % "jupiter-interface" % JupiterKeys.jupiterVersion.value % Test,
-      "org.apache.spark" %% "spark-core" % sparkVersion % Test classifier "tests",
       "org.apache.hadoop" % "hadoop-client-runtime" % "3.4.0",
       "io.delta" %% "delta-spark" % "3.2.0" % Test,
     ),
@@ -399,13 +385,8 @@ lazy val spark = (project in file("connectors/spark"))
       "org.antlr" % "antlr4-runtime" % "4.9.3",
       "org.antlr" % "antlr4" % "4.9.3",
     ),
-    Compile / unmanagedJars += (serverShaded / assembly).value,
-    Test / unmanagedJars += (serverShaded / assembly).value,
-    // Set Java version for tests to 8
-    Compile / javacOptions ++= Seq("--source", "8"),
-    Compile / javacOptions ++= Seq("--target", "8"),
-    Test / javacOptions ++= Seq("--source", "8"),
-    Test / javacOptions ++= Seq("--target", "8"),
+    Compile / unmanagedJars += (serverAndClientShaded / assembly).value,
+    Test / unmanagedJars += (serverAndClientShaded / assembly).value,
     Test / excludeDependencies ++= Seq(
       // This is a transitive dependency from the `server` module and we have to exclude it here
       // as it introduces some conflicts with the dependencies from Spark.
@@ -432,7 +413,7 @@ lazy val spark = (project in file("connectors/spark"))
   )
 
 lazy val root = (project in file("."))
-  .aggregate(serverModels, client, server, cli, spark, serverShaded)
+  .aggregate(serverModels, client, server, cli, spark, serverAndClientShaded)
   .settings(
     name := s"$artifactNamePrefix",
     createTarballSettings(),
