@@ -55,8 +55,7 @@ public class CliSchemaOperations implements SchemaOperations {
   @Override
   public SchemaInfo getSchema(String schemaFullName) {
     String[] args =
-        addServerAndAuthParams(
-            List.of("schema", "get", "--schema_full_name", schemaFullName), config);
+        addServerAndAuthParams(List.of("schema", "get", "--full_name", schemaFullName), config);
     JsonNode schemaInfoJson = executeCLICommand(args);
     return objectMapper.convertValue(schemaInfoJson, SchemaInfo.class);
   }
@@ -64,7 +63,7 @@ public class CliSchemaOperations implements SchemaOperations {
   @Override
   public SchemaInfo updateSchema(String schemaFullName, UpdateSchema updateSchema) {
     List<String> argsList =
-        new ArrayList<>(List.of("schema", "update", "--schema_full_name", schemaFullName));
+        new ArrayList<>(List.of("schema", "update", "--full_name", schemaFullName));
     if (updateSchema.getNewName() != null) {
       argsList.add("--new_name");
       argsList.add(updateSchema.getNewName());
@@ -81,7 +80,7 @@ public class CliSchemaOperations implements SchemaOperations {
   @Override
   public void deleteSchema(String schemaFullName, Optional<Boolean> force) {
     List<String> argsList =
-        new ArrayList<>(List.of("schema", "delete", "--schema_full_name", schemaFullName));
+        new ArrayList<>(List.of("schema", "delete", "--full_name", schemaFullName));
     if (force.isPresent() && force.get()) {
       argsList.add("--force");
       argsList.add("true");

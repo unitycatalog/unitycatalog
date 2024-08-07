@@ -8,13 +8,9 @@ public enum CliParams {
       "properties",
       "The properties of the entity. Need to be in json format. For example: \"{\"key1\": \"value1\", \"key2\": \"value2\"}\".",
       "properties"),
-  SCHEMA_FULL_NAME(
-      "schema_full_name",
-      "The full name of the schema. For example, catalog_name.schema_name",
-      "schema_full_name"),
   FULL_NAME(
       "full_name",
-      "The full name of table/function/volume. For example, catalog_name.schema_name.table_name.",
+      "The full name in the format catalog_name.schema_name for schema, or catalog_name.schema_name.table_name for table/function/volume",
       "full_name"),
   STORAGE_LOCATION(
       "storage_location",

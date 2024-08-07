@@ -69,14 +69,14 @@ public class SchemaCli {
 
   private static String getSchema(SchemasApi schemasApi, JSONObject json)
       throws JsonProcessingException, ApiException {
-    String schemaFullName = json.getString(CliParams.SCHEMA_FULL_NAME.getServerParam());
+    String schemaFullName = json.getString(CliParams.FULL_NAME.getServerParam());
     return objectWriter.writeValueAsString(schemasApi.getSchema(schemaFullName));
   }
 
   private static String updateSchema(SchemasApi schemasApi, JSONObject json)
       throws JsonProcessingException, ApiException {
-    String schemaFullName = json.getString(CliParams.SCHEMA_FULL_NAME.getServerParam());
-    json.remove(CliParams.SCHEMA_FULL_NAME.getServerParam());
+    String schemaFullName = json.getString(CliParams.FULL_NAME.getServerParam());
+    json.remove(CliParams.FULL_NAME.getServerParam());
     if (json.length() == 0) {
       List<CliParams> optionalParams =
           CliUtils.cliOptions.get(CliUtils.SCHEMA).get(CliUtils.UPDATE).getOptionalParams();
@@ -91,7 +91,7 @@ public class SchemaCli {
   }
 
   private static String deleteSchema(SchemasApi schemasApi, JSONObject json) throws ApiException {
-    String schemaFullName = json.getString(CliParams.SCHEMA_FULL_NAME.getServerParam());
+    String schemaFullName = json.getString(CliParams.FULL_NAME.getServerParam());
     schemasApi.deleteSchema(
         schemaFullName,
         json.has(CliParams.FORCE.getServerParam())

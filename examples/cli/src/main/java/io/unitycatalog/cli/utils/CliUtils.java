@@ -96,16 +96,15 @@ public class CliUtils {
                       LIST,
                       new CliOptions(
                           List.of(CliParams.CATALOG_NAME), List.of(CliParams.MAX_RESULTS)));
-                  put(GET, new CliOptions(List.of(CliParams.SCHEMA_FULL_NAME), List.of()));
+                  put(GET, new CliOptions(List.of(CliParams.FULL_NAME), List.of()));
                   put(
                       UPDATE,
                       new CliOptions(
-                          List.of(CliParams.SCHEMA_FULL_NAME),
+                          List.of(CliParams.FULL_NAME),
                           List.of(CliParams.NEW_NAME, CliParams.COMMENT)));
                   put(
                       DELETE,
-                      new CliOptions(
-                          List.of(CliParams.SCHEMA_FULL_NAME), List.of(CliParams.FORCE)));
+                      new CliOptions(List.of(CliParams.FULL_NAME), List.of(CliParams.FORCE)));
                 }
               });
           put(
