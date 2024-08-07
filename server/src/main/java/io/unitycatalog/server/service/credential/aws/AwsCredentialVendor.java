@@ -8,6 +8,8 @@ import java.time.Duration;
 import java.util.Map;
 import java.util.UUID;
 import software.amazon.awssdk.auth.credentials.AwsBasicCredentials;
+import software.amazon.awssdk.auth.credentials.AwsCredentialsProvider;
+import software.amazon.awssdk.auth.credentials.DefaultCredentialsProvider;
 import software.amazon.awssdk.auth.credentials.StaticCredentialsProvider;
 import software.amazon.awssdk.services.sts.StsClient;
 import software.amazon.awssdk.services.sts.model.Credentials;
@@ -26,6 +28,7 @@ public class AwsCredentialVendor {
       throw new BaseException(ErrorCode.FAILED_PRECONDITION, "S3 bucket configuration not found.");
     }
 
+    // TODO: cache sts client
     StsClient stsClient = getStsClientForStorageConfig(s3StorageConfig);
 
     // TODO: Update this with relevant user/role type info once available
@@ -37,7 +40,6 @@ public class AwsCredentialVendor {
         .assumeRole(
             r ->
                 r.roleArn(s3StorageConfig.getAwsRoleArn())
-                    // .externalId(warehouse.getStorageProfile().getExternalId())
                     .policy(awsPolicy)
                     .roleSessionName(roleSessionName)
                     .durationSeconds((int) Duration.ofHours(1).toSeconds()))
@@ -45,11 +47,16 @@ public class AwsCredentialVendor {
   }
 
   private StsClient getStsClientForStorageConfig(S3StorageConfig s3StorageConfig) {
+    AwsCredentialsProvider credentialsProvider;
+    if (s3StorageConfig.getSecretKey() != null && !s3StorageConfig.getAccessKey().isEmpty()) {
+      credentialsProvider = StaticCredentialsProvider.create(
+        AwsBasicCredentials.create(s3StorageConfig.getAccessKey(), s3StorageConfig.getSecretKey()));
+    } else {
+      credentialsProvider = DefaultCredentialsProvider.create();
+    }
+
     return StsClient.builder()
-        .credentialsProvider(
-            StaticCredentialsProvider.create(
-                AwsBasicCredentials.create(
-                    s3StorageConfig.getAccessKey(), s3StorageConfig.getSecretKey())))
+        .credentialsProvider(credentialsProvider)
         .build();
   }
 }
