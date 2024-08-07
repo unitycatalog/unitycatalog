@@ -31,7 +31,7 @@ bin/start-uc-server
 
 Use the `UnityCatalog` abstraction to point Daft to your UC server.
 
-This object requires an `endpoint` and a `token`. If you launched the UC server locally using the command above then you can use the values below. Otherwise substitute the `endpoint` and `token` values with the corresponding values for your UC server.
+This object requires an `endpoint` and a `token`. If you launched the UC server locally using the command above then you can use the values below. Otherwise, substitute the `endpoint` and `token` values with the corresponding values for your UC server.
 
 ```python
 # point Daft to your UC server
