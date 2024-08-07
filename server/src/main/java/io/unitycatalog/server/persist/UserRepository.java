@@ -7,7 +7,11 @@ import io.unitycatalog.server.model.UpdateUser;
 import io.unitycatalog.server.model.User;
 import io.unitycatalog.server.persist.dao.UserDAO;
 import io.unitycatalog.server.persist.utils.HibernateUtils;
+
+import java.util.List;
 import java.util.UUID;
+import java.util.stream.Collectors;
+
 import org.hibernate.Session;
 import org.hibernate.SessionFactory;
 import org.hibernate.Transaction;
@@ -46,6 +50,22 @@ public class UserRepository {
         session.persist(UserDAO.from(user));
         tx.commit();
         return user;
+      } catch (Exception e) {
+        tx.rollback();
+        throw e;
+      }
+    }
+  }
+
+  public List<User> listUsers() {
+    try (Session session = SESSION_FACTORY.openSession()) {
+      session.setDefaultReadOnly(true);
+      Transaction tx = session.beginTransaction();
+      try {
+        Query<UserDAO> query = session.createQuery("FROM UserDAO", UserDAO.class);
+        List<UserDAO> userDAOs = query.list();
+        tx.commit();
+        return userDAOs.stream().map(UserDAO::toUser).collect(Collectors.toList());
       } catch (Exception e) {
         tx.rollback();
         throw e;
