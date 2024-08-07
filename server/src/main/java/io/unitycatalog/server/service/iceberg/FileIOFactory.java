@@ -14,12 +14,14 @@ import org.apache.iceberg.azure.adlsv2.ADLSFileIO;
 import org.apache.iceberg.gcp.GCPProperties;
 import org.apache.iceberg.gcp.gcs.GCSFileIO;
 import org.apache.iceberg.io.FileIO;
+import software.amazon.awssdk.auth.credentials.AwsBasicCredentials;
 import software.amazon.awssdk.auth.credentials.AwsCredentialsProvider;
 import software.amazon.awssdk.auth.credentials.AwsSessionCredentials;
 import software.amazon.awssdk.auth.credentials.DefaultCredentialsProvider;
 import software.amazon.awssdk.auth.credentials.StaticCredentialsProvider;
 import software.amazon.awssdk.regions.Region;
 import software.amazon.awssdk.services.s3.S3Client;
+import software.amazon.awssdk.services.sts.model.Credentials;
 
 import java.net.URI;
 import java.util.List;
@@ -57,7 +59,7 @@ public class FileIOFactory {
 
     // NOTE: when fileio caching is implemented, need to set/deal with expiry here
     Map<String, String> properties =
-      Map.of(AzureProperties.ADLS_SAS_TOKEN_PREFIX + locationParts.account(), credential.sasToken());
+      Map.of(AzureProperties.ADLS_SAS_TOKEN_PREFIX + locationParts.account(), credential.getSasToken());
 
     ADLSFileIO result = new ADLSFileIO();
     result.initialize(properties);
@@ -103,8 +105,9 @@ public class FileIOFactory {
   private AwsCredentialsProvider getAwsCredentialsProvider(URI tableLocationUri) {
     try {
       CredentialContext context = getCredentialContextFromTableLocation(tableLocationUri);
-      AwsSessionCredentials credential = credentialOps.vendAwsCredential(context);
-      return StaticCredentialsProvider.create(credential);
+      Credentials awsSessionCredentials = credentialOps.vendAwsCredential(context);
+      return StaticCredentialsProvider.create(
+        AwsSessionCredentials.create(awsSessionCredentials.accessKeyId(), awsSessionCredentials.secretAccessKey(), awsSessionCredentials.sessionToken()));
     } catch (BaseException e) {
       return DefaultCredentialsProvider.create();
     }

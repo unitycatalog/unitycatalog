@@ -4,8 +4,13 @@ import io.unitycatalog.server.exception.BaseException;
 import io.unitycatalog.server.exception.ErrorCode;
 import io.unitycatalog.server.persist.utils.ServerPropertiesUtils;
 import io.unitycatalog.server.service.credential.CredentialContext;
+import java.time.Duration;
 import java.util.Map;
-import software.amazon.awssdk.auth.credentials.AwsSessionCredentials;
+import java.util.UUID;
+import software.amazon.awssdk.auth.credentials.AwsBasicCredentials;
+import software.amazon.awssdk.auth.credentials.StaticCredentialsProvider;
+import software.amazon.awssdk.services.sts.StsClient;
+import software.amazon.awssdk.services.sts.model.Credentials;
 
 public class AwsCredentialVendor {
 
@@ -15,15 +20,36 @@ public class AwsCredentialVendor {
     this.s3Configurations = ServerPropertiesUtils.getInstance().getS3Configurations();
   }
 
-  // TODO: proper downscoping
-  public AwsSessionCredentials vendAwsCredentials(CredentialContext context) {
+  public Credentials vendAwsCredentials(CredentialContext context) {
     S3StorageConfig s3StorageConfig = s3Configurations.get(context.getStorageBasePath());
     if (s3StorageConfig == null) {
       throw new BaseException(ErrorCode.FAILED_PRECONDITION, "S3 bucket configuration not found.");
     }
-    return AwsSessionCredentials.create(
-        s3StorageConfig.getAccessKey(),
-        s3StorageConfig.getSecretKey(),
-        s3StorageConfig.getSessionToken());
+
+    StsClient stsClient = getStsClientForStorageConfig(s3StorageConfig);
+
+    // TODO: Update this with relevant user/role type info once available
+    String roleSessionName = "uc-%s".formatted(UUID.randomUUID());
+    String awsPolicy =
+        AwsPolicyGenerator.generatePolicy(context.getPrivileges(), context.getLocations());
+
+    return stsClient
+        .assumeRole(
+            r ->
+                r.roleArn(s3StorageConfig.getAwsRoleArn())
+                    // .externalId(warehouse.getStorageProfile().getExternalId())
+                    .policy(awsPolicy)
+                    .roleSessionName(roleSessionName)
+                    .durationSeconds((int) Duration.ofHours(1).toSeconds()))
+        .credentials();
+  }
+
+  private StsClient getStsClientForStorageConfig(S3StorageConfig s3StorageConfig) {
+    return StsClient.builder()
+        .credentialsProvider(
+            StaticCredentialsProvider.create(
+                AwsBasicCredentials.create(
+                    s3StorageConfig.getAccessKey(), s3StorageConfig.getSecretKey())))
+        .build();
   }
 }

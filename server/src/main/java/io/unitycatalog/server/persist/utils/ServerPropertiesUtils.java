@@ -47,19 +47,19 @@ public class ServerPropertiesUtils {
     while (true) {
       String bucketPath = properties.getProperty("s3.bucketPath." + i);
       String region = properties.getProperty("s3.region." + i);
+      String awsRoleArn = properties.getProperty("s3.awsRoleArn." + i);
       String accessKey = properties.getProperty("s3.accessKey." + i);
       String secretKey = properties.getProperty("s3.secretKey." + i);
-      String sessionToken = properties.getProperty("s3.sessionToken." + i);
-      if (bucketPath == null || accessKey == null || secretKey == null || sessionToken == null) {
+      if (bucketPath == null || region == null || awsRoleArn == null) {
         break;
       }
       S3StorageConfig s3StorageConfig =
           S3StorageConfig.builder()
               .bucketPath(bucketPath)
               .region(region)
+              .awsRoleArn(awsRoleArn)
               .accessKey(accessKey)
               .secretKey(secretKey)
-              .sessionToken(sessionToken)
               .build();
       s3BucketConfigMap.put(bucketPath, s3StorageConfig);
       i++;

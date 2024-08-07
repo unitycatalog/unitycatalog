@@ -1,5 +1,11 @@
 package io.unitycatalog.server.service.credential.azure;
 
-public record AzureCredential(String sasToken, long expirationTimeInEpochMillis) {
+import lombok.Builder;
+import lombok.Getter;
 
+@Getter
+@Builder
+public class AzureCredential {
+  private String sasToken;
+  private long expirationTimeInEpochMillis;
 }

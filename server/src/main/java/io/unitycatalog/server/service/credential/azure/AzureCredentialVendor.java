@@ -58,7 +58,11 @@ public class AzureCredentialVendor {
                 context.getStorageBasePath().substring(1),
                 true)
             .generateUserDelegationSas(key, locationParts.accountName(), Context.NONE);
-    return new AzureCredential(sasToken, expiry.toInstant().toEpochMilli());
+
+    return AzureCredential.builder()
+      .sasToken(sasToken)
+      .expirationTimeInEpochMillis(expiry.toInstant().toEpochMilli())
+      .build();
   }
 
   private PathSasPermission resolvePrivileges(Set<CredentialContext.Privilege> privileges) {

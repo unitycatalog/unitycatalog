@@ -200,6 +200,7 @@ lazy val server = (project in file("server"))
       "com.fasterxml.jackson.core" % "jackson-annotations" % jacksonVersion,
       "com.fasterxml.jackson.core" % "jackson-core" % jacksonVersion,
       "com.fasterxml.jackson.core" % "jackson-databind" % jacksonVersion,
+      "com.fasterxml.jackson.dataformat" % "jackson-dataformat-yaml" % jacksonVersion,
       "com.fasterxml.jackson.datatype" % "jackson-datatype-jsr310" % jacksonVersion,
 
       "com.google.code.findbugs" % "jsr305" % "3.0.2",
@@ -230,6 +231,7 @@ lazy val server = (project in file("server"))
       "org.apache.iceberg" % "iceberg-azure" % "1.5.2",
       "org.apache.iceberg" % "iceberg-gcp" % "1.5.2",
       "software.amazon.awssdk" % "s3" % "2.24.0",
+      "software.amazon.awssdk" % "sts" % "2.24.0",
       "io.vertx" % "vertx-core" % "4.3.5",
       "io.vertx" % "vertx-web" % "4.3.5",
       "io.vertx" % "vertx-web-client" % "4.3.5",

@@ -15,6 +15,7 @@ import io.unitycatalog.server.service.credential.azure.AzureCredential;
 import io.unitycatalog.server.service.credential.azure.AzureCredentialVendor;
 import io.unitycatalog.server.service.credential.gcp.GcpCredentialVendor;
 import software.amazon.awssdk.auth.credentials.AwsSessionCredentials;
+import software.amazon.awssdk.services.sts.model.Credentials;
 
 import java.net.URI;
 import java.util.List;
@@ -73,8 +74,8 @@ public class CredentialOperations {
     switch (context.storageScheme) {
       case URI_SCHEME_ABFS, URI_SCHEME_ABFSS -> {
         AzureCredential azureCredential = vendAzureCredential(context);
-        builder.azureUserDelegationSas(new AzureUserDelegationSAS().sasToken(azureCredential.sasToken()))
-          .expirationTime(azureCredential.expirationTimeInEpochMillis());
+        builder.azureUserDelegationSas(new AzureUserDelegationSAS().sasToken(azureCredential.getSasToken()))
+          .expirationTime(azureCredential.getExpirationTimeInEpochMillis());
       }
       case URI_SCHEME_GS -> {
         AccessToken gcpToken = vendGcpToken(context);
@@ -82,7 +83,7 @@ public class CredentialOperations {
           .expirationTime(gcpToken.getExpirationTime().getTime());
       }
       case URI_SCHEME_S3 -> {
-        AwsSessionCredentials awsSessionCredentials = vendAwsCredential(context);
+        Credentials awsSessionCredentials = vendAwsCredential(context);
         builder.awsTempCredentials(new AwsCredentials()
           .accessKeyId(awsSessionCredentials.accessKeyId())
           .secretAccessKey(awsSessionCredentials.secretAccessKey())
@@ -93,7 +94,7 @@ public class CredentialOperations {
     return builder.build();
   }
 
-  public AwsSessionCredentials vendAwsCredential(CredentialContext context) {
+  public Credentials vendAwsCredential(CredentialContext context) {
     return awsCredentialVendor.vendAwsCredentials(context);
   }
 
