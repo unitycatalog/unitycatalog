@@ -219,7 +219,6 @@ private class UCProxy extends TableCatalog with SupportsNamespaces {
       column.setNullable(field.nullable)
       column.setTypeText(field.dataType.simpleString)
       column.setTypeName(convertDataTypeToTypeName(field.dataType))
-      // TODO: UC requires to set this value. Ideally this should be optional.
       column.setTypeJson(field.dataType.json)
       column.setPosition(i)
       column
