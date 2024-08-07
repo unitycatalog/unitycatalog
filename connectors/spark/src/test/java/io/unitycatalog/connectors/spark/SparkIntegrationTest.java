@@ -59,6 +59,22 @@ public class SparkIntegrationTest extends BaseCRUDTest {
   }
 
   @Test
+  public void testAlterSchema() throws ApiException {
+    createCommonResources();
+    SparkSession session = createSparkSessionWithCatalogs(CATALOG_NAME);
+    session.catalog().setCurrentCatalog(CATALOG_NAME);
+    session.sql("CREATE DATABASE my_test_database;");
+    session.sql(
+        "ALTER DATABASE my_test_database SET DBPROPERTIES ('Edited-by' = 'John', 'Edit-date' = '01/01/2001')");
+    List<Row> rows = session.sql("DESC NAMESPACE " + SCHEMA_NAME).collectAsList();
+
+    //    session.sql(String.format("DROP DATABASE %s.my_test_database;", CATALOG_NAME));
+    //    assertFalse(session.catalog().databaseExists("my_test_database"));
+
+    session.stop();
+  }
+
+  @Test
   public void testParquetReadWrite() throws IOException, ApiException {
     createCommonResources();
     SparkSession session = createSparkSessionWithCatalogs(SPARK_CATALOG);

@@ -3,7 +3,7 @@ package io.unitycatalog.connectors.spark
 import com.google.gson.internal.bind.DefaultDateTypeAdapter.DateType
 import io.unitycatalog.client.{ApiClient, ApiException}
 import io.unitycatalog.client.api.{SchemasApi, TablesApi, TemporaryTableCredentialsApi}
-import io.unitycatalog.client.model.{AwsCredentials, ColumnInfo, ColumnTypeName, CreateSchema, CreateTable, DataSourceFormat, GenerateTemporaryTableCredential, ListTablesResponse, SchemaInfo, TableOperation, TableType}
+import io.unitycatalog.client.model.{AwsCredentials, CreateSchema, GenerateTemporaryTableCredential, ListTablesResponse, SchemaInfo, TableOperation, TableType, UpdateSchema}
 import org.apache.arrow.vector.types.pojo.ArrowType.Timestamp
 
 import java.net.URI
@@ -11,6 +11,7 @@ import java.util
 import org.apache.spark.sql.catalyst.TableIdentifier
 import org.apache.spark.sql.catalyst.analysis.{NoSuchNamespaceException, NoSuchTableException}
 import org.apache.spark.sql.catalyst.catalog.{CatalogStorageFormat, CatalogTable, CatalogTableType, CatalogUtils}
+import org.apache.spark.sql.connector.catalog.NamespaceChange.SetProperty
 import org.apache.spark.sql.connector.catalog._
 import org.apache.spark.sql.connector.expressions.Transform
 import org.apache.spark.sql.types.{BinaryType, BooleanType, ByteType, DataType, DoubleType, FloatType, IntegerType, LongType, ShortType, StringType, StructField, StructType, TimestampNTZType, TimestampType}
@@ -318,7 +319,16 @@ private class UCProxy extends TableCatalog with SupportsNamespaces {
     schemasApi.createSchema(createSchema)
   }
 
-  override def alterNamespace(namespace: Array[String], changes: NamespaceChange*): Unit = ???
+  override def alterNamespace(namespace: Array[String], changes: NamespaceChange*): Unit = {
+    checkUnsupportedNestedNamespace(namespace)
+    val updateSchema = new UpdateSchema()
+    changes.foreach {
+      case setProperty: SetProperty =>
+        updateSchema.putPropertiesItem(setProperty.property(), setProperty.value())
+      case p => throw new ApiException("UC does not support namespace change operation: " + p.toString)
+    }
+    schemasApi.updateSchema(name + "." + namespace.head, updateSchema)
+  }
 
   override def dropNamespace(namespace: Array[String], cascade: Boolean): Boolean = {
     checkUnsupportedNestedNamespace(namespace)
