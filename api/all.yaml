@@ -1653,6 +1653,60 @@ components:
           format: int64
       required:
         - id
+    UpdateAuthorizationRequest:
+      type: object
+      properties:
+        changes:
+          description: Array of permissions change objects.
+          type: array
+          items:
+            $ref: '#/components/schemas/UpdateAuthorizationChange'
+      required:
+        - changes
+    UpdateAuthorizationChange:
+      type: object
+      properties:
+        principal:
+          description: The principal whose privileges we are changing.
+          type: string
+        add:
+          description: The set of privileges to add.
+          type: array
+          items:
+            $ref: '#/components/schemas/Privilege'
+        remove:
+          description: The set of privileges to remove.
+          type: array
+          items:
+            $ref: '#/components/schemas/Privilege'
+      required:
+        - principal
+        - add
+        - remove
+    UpdateAuthorizationResponse:
+      type: object
+      properties:
+        privilege_assignments:
+          description: The privileges assigned to each principal.
+          type: array
+          items:
+            $ref: '#/components/schemas/PrivilegeAssignment'
+      required:
+        - privilege_assignments
+    PrivilegeAssignment:
+      type: object
+      properties:
+        principal:
+          description: The principal (user email address or group name).
+          type: string
+        privileges:
+          description: The privileges assigned to the principal.
+          type: array
+          items:
+            $ref: '#/components/schemas/Privilege'
+      required:
+        - principal
+        - privileges
 info:
   title: Unity Catalog API
   version: '0.1'

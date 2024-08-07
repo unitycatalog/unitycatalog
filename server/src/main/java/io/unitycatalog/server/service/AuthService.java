@@ -7,7 +7,11 @@ import io.unitycatalog.server.exception.ErrorCode;
 import io.unitycatalog.server.exception.GlobalExceptionHandler;
 import io.unitycatalog.server.model.CatalogInfo;
 import io.unitycatalog.server.model.Privilege;
+import io.unitycatalog.server.model.PrivilegeAssignment;
 import io.unitycatalog.server.model.ResourceType;
+import io.unitycatalog.server.model.UpdateAuthorizationChange;
+import io.unitycatalog.server.model.UpdateAuthorizationRequest;
+import io.unitycatalog.server.model.UpdateAuthorizationResponse;
 import io.unitycatalog.server.model.User;
 import io.unitycatalog.server.persist.CatalogRepository;
 import io.unitycatalog.server.persist.UserRepository;
@@ -47,14 +51,17 @@ public class AuthService {
     List<PrivilegeAssignment> privilegeAssignments =
         authorizations.entrySet().stream()
             .map(
-                entry ->
-                    PrivilegeAssignment.builder()
-                        .principal(entry.getKey().toString())
-                        .privileges(entry.getValue())
-                        .build())
+                entry -> {
+                  PrivilegeAssignment privilegeAssignment = new PrivilegeAssignment();
+                  privilegeAssignment.setPrincipal(entry.getKey().toString());
+                  privilegeAssignment.setPrivileges(entry.getValue());
+                  return privilegeAssignment;
+                })
             .collect(Collectors.toList());
-    return HttpResponse.ofJson(
-        UpdateAuthorizationResponse.builder().privilege_assignments(privilegeAssignments).build());
+
+    UpdateAuthorizationResponse response = new UpdateAuthorizationResponse();
+    response.setPrivilegeAssignments(privilegeAssignments);
+    return HttpResponse.ofJson(response);
   }
 
   @Patch("/{resource_type}/{name}")
@@ -63,7 +70,7 @@ public class AuthService {
       @Param("name") String name,
       UpdateAuthorizationRequest request) {
     UUID resourceId = getResourceId(resourceType, name);
-    List<UpdateAuthorization> changes = request.getChanges();
+    List<UpdateAuthorizationChange> changes = request.getChanges();
     Set<UUID> principleIds = new HashSet<>();
     changes.forEach(
         change -> {
@@ -88,15 +95,17 @@ public class AuthService {
         authorizations.entrySet().stream()
             .filter(entry -> principleIds.contains(entry.getKey()))
             .map(
-                entry ->
-                    PrivilegeAssignment.builder()
-                        .principal(entry.getKey().toString())
-                        .privileges(entry.getValue())
-                        .build())
+                entry -> {
+                  PrivilegeAssignment privilegeAssignment = new PrivilegeAssignment();
+                  privilegeAssignment.setPrincipal(entry.getKey().toString());
+                  privilegeAssignment.setPrivileges(entry.getValue());
+                  return privilegeAssignment;
+                })
             .collect(Collectors.toList());
 
-    return HttpResponse.ofJson(
-        UpdateAuthorizationResponse.builder().privilege_assignments(privilegeAssignments).build());
+    UpdateAuthorizationResponse response = new UpdateAuthorizationResponse();
+    response.setPrivilegeAssignments(privilegeAssignments);
+    return HttpResponse.ofJson(response);
   }
 
   private UUID getResourceId(ResourceType resourceType, String name) {
