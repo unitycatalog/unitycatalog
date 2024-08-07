@@ -3,6 +3,7 @@ package io.unitycatalog.server.persist.utils;
 import io.unitycatalog.server.persist.dao.*;
 import java.io.InputStream;
 import java.nio.file.Files;
+import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.Properties;
 import lombok.Getter;
@@ -32,16 +33,20 @@ public class HibernateUtils {
       }
 
       Properties hibernateProperties = new Properties();
-      try (InputStream input = Files.newInputStream(Paths.get("etc/conf/hibernate.properties"))) {
-        hibernateProperties.load(input);
-      }
-      Configuration configuration = new Configuration().setProperties(hibernateProperties);
-      if ("test".equals(properties.getProperty("server.env"))) {
+      Configuration configuration = new Configuration();
+      Path hibernatePropertiesPath = Paths.get("etc/conf/hibernate.properties");
+      if ("test".equals(properties.getProperty("server.env"))
+          || !hibernatePropertiesPath.toFile().exists()) {
         configuration.setProperty("hibernate.connection.driver_class", "org.h2.Driver");
         configuration.setProperty(
             "hibernate.connection.url", "jdbc:h2:mem:testdb;DB_CLOSE_DELAY=-1");
         configuration.setProperty("hibernate.hbm2ddl.auto", "create-drop");
         LOGGER.debug("Hibernate configuration set for testing");
+      } else {
+        try (InputStream input = Files.newInputStream(hibernatePropertiesPath)) {
+          hibernateProperties.load(input);
+        }
+        configuration.setProperties(hibernateProperties);
       }
 
       // Add annotated classes

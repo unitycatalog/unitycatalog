@@ -4,6 +4,7 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.net.URI;
 import java.nio.file.Files;
+import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.Properties;
 import lombok.AllArgsConstructor;
@@ -25,7 +26,12 @@ public class ServerPropertiesUtils {
 
   // Load properties from a configuration file
   private void loadProperties() {
-    try (InputStream input = Files.newInputStream(Paths.get("etc/conf/server.properties"))) {
+    Path path = Paths.get("etc/conf/server.properties");
+    if (!path.toFile().exists()) {
+      LOGGER.error("Properties file not found: {}", path);
+      return;
+    }
+    try (InputStream input = Files.newInputStream(path)) {
       properties.load(input);
       LOGGER.debug("Properties loaded successfully");
       int i = 0;
