@@ -306,6 +306,24 @@ public class SparkIntegrationTest extends BaseCRUDTest {
     session.stop();
   }
 
+  @Test
+  public void testCreateExternalParquetTable() throws ApiException, IOException {
+    createCommonResources();
+    SparkSession session = createSparkSessionWithCatalogs(CATALOG_NAME);
+    String path = generateTableLocation(CATALOG_NAME, PARQUET_TABLE);
+    String fullTableName = CATALOG_NAME + "." + SCHEMA_NAME + "." + PARQUET_TABLE;
+    session
+        .sql(
+            "CREATE TABLE " + fullTableName + "(name STRING) USING PARQUET LOCATION '" + path + "'")
+        .collect();
+    assertTrue(session.catalog().tableExists(fullTableName));
+    TableInfo tableInfo = tableOperations.getTable(fullTableName);
+    assertThat(tableInfo.getColumns().size() == 1);
+    assertThat(tableInfo.getColumns().get(0).getName() == "name");
+    assertThat(tableInfo.getColumns().get(0).getTypeText() == "STRING");
+    session.stop();
+  }
+
   private String generateTableLocation(String catalogName, String tableName) throws IOException {
     return new File(new File(dataDir, catalogName), tableName).getCanonicalPath();
   }
