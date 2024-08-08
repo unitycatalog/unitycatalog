@@ -21,7 +21,7 @@ public abstract class BaseSparkIntegrationTest extends BaseCRUDTest {
 
   private SchemaOperations schemaOperations;
 
-  private void createCommonResources() throws ApiException {
+  protected void createCommonResources() throws ApiException {
     // Common setup operations such as creating a catalog and schema
     catalogOperations.createCatalog(
         new CreateCatalog().name(TestUtils.CATALOG_NAME).comment(TestUtils.COMMENT));

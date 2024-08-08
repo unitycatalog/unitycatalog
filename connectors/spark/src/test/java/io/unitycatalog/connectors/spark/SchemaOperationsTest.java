@@ -58,7 +58,7 @@ public class SchemaOperationsTest extends BaseSparkIntegrationTest {
   public void testLoadSchema() {
     SparkSession session = createSparkSessionWithCatalogs(SPARK_CATALOG);
 
-    Row[] rows = session.sql("DESC NAMESPACE " + SCHEMA_NAME).collect();
+    Row[] rows = (Row[]) session.sql("DESC NAMESPACE " + SCHEMA_NAME).collect();
     assertThat(rows).hasSize(2);
     assertThat(rows[0].getString(0)).isEqualTo("Catalog Name");
     assertThat(rows[0].getString(1)).isEqualTo(SPARK_CATALOG);
