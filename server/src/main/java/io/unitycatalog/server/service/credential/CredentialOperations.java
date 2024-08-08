@@ -14,7 +14,6 @@ import io.unitycatalog.server.service.credential.aws.AwsCredentialVendor;
 import io.unitycatalog.server.service.credential.azure.AzureCredential;
 import io.unitycatalog.server.service.credential.azure.AzureCredentialVendor;
 import io.unitycatalog.server.service.credential.gcp.GcpCredentialVendor;
-import software.amazon.awssdk.auth.credentials.AwsSessionCredentials;
 import software.amazon.awssdk.services.sts.model.Credentials;
 
 import java.net.URI;
@@ -47,7 +46,7 @@ public class CredentialOperations {
     URI storageLocationUri = URI.create(tableStorageLocation);
 
     // FIXME!! Update privileges when access controls are implemented
-    CredentialContext credentialContext = CredentialContext.builder().storageScheme(storageLocationUri.getScheme()).storageBasePath(storageLocationUri.getPath())
+    CredentialContext credentialContext = CredentialContext.builder().storageScheme(storageLocationUri.getScheme()).storageBase(storageLocationUri.getPath())
       .privileges(Set.of(CredentialContext.Privilege.SELECT, CredentialContext.Privilege.UPDATE)).locations(List.of(table.getStorageLocation())).build();
 
     return vendCredential(credentialContext).toTableCredentialResponse();
@@ -62,7 +61,7 @@ public class CredentialOperations {
     URI storageLocationUri = URI.create(volumePath);
 
     // FIXME!! Update privileges when access controls are implemented
-    CredentialContext credentialContext = CredentialContext.builder().storageScheme(storageLocationUri.getScheme()).storageBasePath(storageLocationUri.getPath())
+    CredentialContext credentialContext = CredentialContext.builder().storageScheme(storageLocationUri.getScheme()).storageBase(storageLocationUri.getPath())
       .privileges(Set.of(CredentialContext.Privilege.SELECT, CredentialContext.Privilege.UPDATE)).locations(List.of(volume.getStorageLocation())).build();
 
     return vendCredential(credentialContext).toVolumeCredentialResponse();

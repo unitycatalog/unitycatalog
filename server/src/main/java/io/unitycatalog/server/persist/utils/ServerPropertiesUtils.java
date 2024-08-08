@@ -85,20 +85,24 @@ public class ServerPropertiesUtils {
   }
 
   public Map<String, ADLSStorageConfig> getAdlsConfigurations() {
-    Map<String, ADLSStorageConfig> gcsConfigMap = new HashMap<>();
+    Map<String, ADLSStorageConfig> adlsConfigMap = new HashMap<>();
+
     int i = 0;
     while (true) {
-      String containerPath = properties.getProperty("adls.containerPath." + i);
+      String storageAccountName = properties.getProperty("adls.storageAccountName." + i);
       String tenantId = properties.getProperty("adls.tenantId." + i);
       String clientId = properties.getProperty("adls.clientId." + i);
       String clientSecret = properties.getProperty("adls.clientSecret." + i);
-      if (containerPath == null || tenantId == null || clientId == null || clientSecret == null) {
+      if (storageAccountName == null
+          || tenantId == null
+          || clientId == null
+          || clientSecret == null) {
         break;
       }
-      gcsConfigMap.put(
-          containerPath,
+      adlsConfigMap.put(
+          storageAccountName,
           ADLSStorageConfig.builder()
-              .containerPath(containerPath)
+              .storageAccountName(storageAccountName)
               .tenantId(tenantId)
               .clientId(clientId)
               .clientSecret(clientSecret)
@@ -106,17 +110,8 @@ public class ServerPropertiesUtils {
       i++;
     }
 
-    return gcsConfigMap;
+    return adlsConfigMap;
   }
-
-  /*public S3BucketConfig getS3BucketConfig(String s3Path) {
-    return getS3BucketConfig(URI.create(s3Path));
-  }
-
-  public S3BucketConfig getS3BucketConfig(URI s3Uri) {
-    String bucketPath = s3Uri.getScheme() + "://" + s3Uri.getHost();
-    return (S3BucketConfig) properties.get(bucketPath);
-  }*/
 
   // Get a property value by key with a default value
   public String getProperty(String key, String defaultValue) {

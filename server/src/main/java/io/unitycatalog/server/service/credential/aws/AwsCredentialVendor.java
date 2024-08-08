@@ -23,7 +23,7 @@ public class AwsCredentialVendor {
   }
 
   public Credentials vendAwsCredentials(CredentialContext context) {
-    S3StorageConfig s3StorageConfig = s3Configurations.get(context.getStorageBasePath());
+    S3StorageConfig s3StorageConfig = s3Configurations.get(context.getStorageBase());
     if (s3StorageConfig == null) {
       throw new BaseException(ErrorCode.FAILED_PRECONDITION, "S3 bucket configuration not found.");
     }

@@ -14,7 +14,7 @@ public class CredentialContext {
   }
 
   String storageScheme;
-  String storageBasePath;
+  String storageBase;
   Set<Privilege> privileges;
   List<String> locations;
 }

@@ -25,9 +25,9 @@ public class AzureCredentialVendor {
   }
 
   public AzureCredential vendAzureCredential(CredentialContext context) {
-    ADLSStorageConfig config = adlsConfigurations.get(context.getStorageBasePath());
     ADLSLocationUtils.ADLSLocationParts locationParts =
-        ADLSLocationUtils.parseLocation(context.getStorageBasePath());
+        ADLSLocationUtils.parseLocation(context.getStorageBase());
+    ADLSStorageConfig config = adlsConfigurations.get(locationParts.accountName());
 
     // FIXME!! azure sas token expiration hardcoded to an hour
     OffsetDateTime start = OffsetDateTime.now();
@@ -55,7 +55,7 @@ public class AzureCredentialVendor {
         new DataLakeSasImplUtil(
                 sasSignatureValues,
                 locationParts.container(),
-                context.getStorageBasePath().substring(1),
+                context.getLocations().get(0).substring(1),
                 true)
             .generateUserDelegationSas(key, locationParts.accountName(), Context.NONE);
 

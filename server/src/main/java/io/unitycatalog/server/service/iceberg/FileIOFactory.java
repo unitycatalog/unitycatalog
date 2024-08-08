@@ -14,7 +14,6 @@ import org.apache.iceberg.azure.adlsv2.ADLSFileIO;
 import org.apache.iceberg.gcp.GCPProperties;
 import org.apache.iceberg.gcp.gcs.GCSFileIO;
 import org.apache.iceberg.io.FileIO;
-import software.amazon.awssdk.auth.credentials.AwsBasicCredentials;
 import software.amazon.awssdk.auth.credentials.AwsCredentialsProvider;
 import software.amazon.awssdk.auth.credentials.AwsSessionCredentials;
 import software.amazon.awssdk.auth.credentials.DefaultCredentialsProvider;
@@ -115,7 +114,7 @@ public class FileIOFactory {
 
   private CredentialContext getCredentialContextFromTableLocation(URI tableLocationUri) {
     // FIXME!! privileges are just defaulted to READ only here
-    return CredentialContext.builder().storageBasePath(tableLocationUri.getPath())
+    return CredentialContext.builder().storageBase(tableLocationUri.getScheme() + "://" + tableLocationUri.getRawAuthority())
       .privileges(Set.of(CredentialContext.Privilege.SELECT)).locations(List.of(tableLocationUri.getRawPath())).build();
   }
 }

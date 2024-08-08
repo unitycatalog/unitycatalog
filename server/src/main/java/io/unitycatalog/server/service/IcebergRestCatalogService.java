@@ -16,16 +16,25 @@ import io.unitycatalog.server.model.ListCatalogsResponse;
 import io.unitycatalog.server.model.ListSchemasResponse;
 import io.unitycatalog.server.model.ListTablesResponse;
 import io.unitycatalog.server.model.SchemaInfo;
+import io.unitycatalog.server.model.TableInfo;
 import io.unitycatalog.server.persist.TableRepository;
 import io.unitycatalog.server.persist.utils.HibernateUtils;
+import io.unitycatalog.server.service.credential.CredentialContext;
+import io.unitycatalog.server.service.credential.CredentialOperations;
+import io.unitycatalog.server.service.credential.CredentialResponse;
 import io.unitycatalog.server.service.iceberg.MetadataService;
 import io.unitycatalog.server.utils.JsonUtils;
 import java.io.IOException;
+import java.net.URI;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.Set;
 import java.util.stream.Collectors;
 import org.apache.iceberg.TableMetadata;
+import org.apache.iceberg.aws.s3.S3FileIOProperties;
+import org.apache.iceberg.azure.AzureProperties;
 import org.apache.iceberg.catalog.Namespace;
 import org.apache.iceberg.catalog.TableIdentifier;
 import org.apache.iceberg.exceptions.NoSuchTableException;
@@ -38,6 +47,8 @@ import org.apache.iceberg.rest.responses.LoadTableResponse;
 import org.apache.iceberg.rest.responses.LoadViewResponse;
 import org.hibernate.Session;
 import org.hibernate.SessionFactory;
+
+import static io.unitycatalog.server.service.credential.CredentialContext.Privilege.SELECT;
 
 @ExceptionHandler(IcebergRestExceptionHandler.class)
 public class IcebergRestCatalogService {
@@ -185,7 +196,7 @@ public class IcebergRestCatalogService {
     String schema = namespaceParts.get(1);
     String metadataLocation;
     try (Session session = sessionFactory.openSession()) {
-      tableRepository.getTable(namespace + "." + table);
+      TableInfo tableInfo = tableRepository.getTable(namespace + "." + table);
       metadataLocation =
           tableRepository.getTableUniformMetadataLocation(session, catalog, schema, table);
     }
@@ -196,7 +207,26 @@ public class IcebergRestCatalogService {
 
     TableMetadata tableMetadata = metadataService.readTableMetadata(metadataLocation);
 
-    return LoadTableResponse.builder().withTableMetadata(tableMetadata).build();
+    URI locationURI = URI.create(tableMetadata.location());
+    String scheme = locationURI.getScheme();
+
+    CredentialOperations credentialOperations = new CredentialOperations();
+    CredentialResponse resp = credentialOperations.vendCredential(CredentialContext.builder().privileges(Set.of(SELECT)).storageScheme(scheme).storageBase(scheme + "://" + locationURI.getRawAuthority()).locations(List.of(locationURI.getRawPath())).build());
+
+    Map<String, String> config = switch(scheme) {
+      case "s3" -> Map.of(S3FileIOProperties.ACCESS_KEY_ID, resp.getAwsTempCredentials().getAccessKeyId(),
+        S3FileIOProperties.SECRET_ACCESS_KEY, resp.getAwsTempCredentials().getSecretAccessKey(),
+        S3FileIOProperties.SESSION_TOKEN, resp.getAwsTempCredentials().getSessionToken());
+      case "abfs", "abfss" -> Map.of(AzureProperties.ADLS_SAS_TOKEN_PREFIX + "alextestdevuswest.dfs.core.windows.net", resp.getAzureUserDelegationSas().getSasToken());
+      case "gcs" -> Map.of(
+        "gcs.oauth2.token",
+        resp.getGcpOauthToken().getOauthToken(),
+        "gcs.oauth2.token-expires-at",
+        Long.toString(resp.getExpirationTime()));
+      default -> Map.of();
+    };
+
+    return LoadTableResponse.builder().withTableMetadata(tableMetadata).addAllConfig(config).build();
   }
 
   @Get("/v1/namespaces/{namespace}/views/{view}")
