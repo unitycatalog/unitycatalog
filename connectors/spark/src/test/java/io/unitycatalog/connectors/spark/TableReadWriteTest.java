@@ -28,6 +28,7 @@ public class TableReadWriteTest extends BaseSparkIntegrationTest {
   private static final String ANOTHER_PARQUET_TABLE = "test_parquet_another";
   private static final String PARQUET_TABLE_PARTITIONED = "test_parquet_partitioned";
   private static final String DELTA_TABLE = "test_delta";
+  private static final String PARQUET_TABLE = "test_parquet";
   private static final String ANOTHER_DELTA_TABLE = "test_delta_another";
   private static final String DELTA_TABLE_PARTITIONED = "test_delta_partitioned";
 
@@ -70,7 +71,7 @@ public class TableReadWriteTest extends BaseSparkIntegrationTest {
   }
 
   @Test
-  public void testDeltaPathTable() throws IOException, ApiException {
+  public void testDeltaPathTable() throws IOException {
     // We must replace the `spark_catalog` in order to support Delta path tables.
     SparkSession session = createSparkSessionWithCatalogs(SPARK_CATALOG);
 
