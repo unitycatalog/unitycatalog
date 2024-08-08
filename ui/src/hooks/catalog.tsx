@@ -49,17 +49,11 @@ export function useGetCatalog({ catalog }: GetCatalogParams) {
 export interface CreateCatalogMutationParams
   extends Pick<CatalogInterface, 'name' | 'comment'> {}
 
-interface CreateCatalogParams {
-  onSuccessCallback?: (catalog: CatalogInterface) => void;
-}
-
 // Create a new catalog
-export function useCreateCatalog({
-  onSuccessCallback,
-}: CreateCatalogParams = {}) {
+export function useCreateCatalog() {
   const queryClient = useQueryClient();
 
-  return useMutation<CatalogInterface, unknown, CreateCatalogMutationParams>({
+  return useMutation<CatalogInterface, Error, CreateCatalogMutationParams>({
     mutationFn: async (params: CreateCatalogMutationParams) => {
       const response = await fetch(`${UC_API_PREFIX}/catalogs`, {
         method: 'POST',
@@ -74,11 +68,10 @@ export function useCreateCatalog({
       }
       return response.json();
     },
-    onSuccess: (catalog) => {
+    onSuccess: () => {
       queryClient.invalidateQueries({
         queryKey: ['listCatalogs'],
       });
-      onSuccessCallback?.(catalog);
     },
   });
 }
@@ -86,14 +79,8 @@ export function useCreateCatalog({
 export interface DeleteCatalogMutationParams
   extends Pick<CatalogInterface, 'name'> {}
 
-interface DeleteCatalogParams {
-  onSuccessCallback?: () => void;
-}
-
 // Delete a catalog
-export function useDeleteCatalog({
-  onSuccessCallback,
-}: DeleteCatalogParams = {}) {
+export function useDeleteCatalog() {
   const queryClient = useQueryClient();
 
   return useMutation<void, Error, DeleteCatalogMutationParams>({
@@ -110,7 +97,6 @@ export function useDeleteCatalog({
       queryClient.invalidateQueries({
         queryKey: ['listCatalogs'],
       });
-      onSuccessCallback?.();
     },
   });
 }
