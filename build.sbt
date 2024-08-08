@@ -390,11 +390,6 @@ lazy val spark = (project in file("connectors/spark"))
     ),
     Compile / unmanagedJars += (serverAndClientShaded / assembly).value,
     Test / unmanagedJars += (serverAndClientShaded / assembly).value,
-    Test / excludeDependencies ++= Seq(
-      // This is a transitive dependency from the `server` module and we have to exclude it here
-      // as it introduces some conflicts with the dependencies from Spark.
-      // ExclusionRule("com.adobe.testing", "s3mock-junit5")
-    ),
     licenseDepExclusions := {
       case DepModuleInfo("org.hibernate.orm", _, _) => true
       case DepModuleInfo("jakarta.annotation", "jakarta.annotation-api", _) => true
@@ -411,7 +406,10 @@ lazy val spark = (project in file("connectors/spark"))
       case DepModuleInfo("ch.qos.logback", "logback-classic", _) => true
       case DepModuleInfo("ch.qos.logback", "logback-core", _) => true
       case DepModuleInfo("org.apache.xbean", "xbean-asm9-shaded", _) => true
-      case DepModuleInfo("oro", "oro", _) => true
+      case DepModuleInfo("oro", "oro", _) => true,
+      case DepModuleInfo("org.glassfish", "javax.json", _) => true
+      case DepModuleInfo("org.glassfish.hk2.external", "jakarta.inject", _) => true
+      case DepModuleInfo("org.antlr", "ST4", _) => true
     }
   )
 
