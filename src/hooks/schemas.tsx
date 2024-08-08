@@ -58,16 +58,10 @@ export function useGetSchema({ catalog, schema }: GetSchemaParams) {
 export interface CreateSchemaMutationParams
   extends Pick<SchemaInterface, 'name' | 'catalog_name' | 'comment'> {}
 
-interface CreateSchemaParams {
-  onSuccessCallback?: (catalog: SchemaInterface) => void;
-}
-
-export function useCreateSchema({
-  onSuccessCallback,
-}: CreateSchemaParams = {}) {
+export function useCreateSchema() {
   const queryClient = useQueryClient();
 
-  return useMutation<SchemaInterface, unknown, CreateSchemaMutationParams>({
+  return useMutation<SchemaInterface, Error, CreateSchemaMutationParams>({
     mutationFn: async (params: CreateSchemaMutationParams) => {
       const response = await fetch(`${UC_API_PREFIX}/schemas`, {
         method: 'POST',
@@ -86,7 +80,6 @@ export function useCreateSchema({
       queryClient.invalidateQueries({
         queryKey: ['listSchemas', schema.catalog_name],
       });
-      onSuccessCallback?.(schema);
     },
   });
 }
@@ -95,14 +88,10 @@ export interface DeleteSchemaMutationParams
   extends Pick<SchemaInterface, 'catalog_name' | 'name'> {}
 
 interface DeleteSchemaParams {
-  onSuccessCallback?: () => void;
   catalog: string;
 }
 
-export function useDeleteSchema({
-  onSuccessCallback,
-  catalog,
-}: DeleteSchemaParams) {
+export function useDeleteSchema({ catalog }: DeleteSchemaParams) {
   const queryClient = useQueryClient();
 
   return useMutation<void, Error, DeleteSchemaMutationParams>({
@@ -122,7 +111,6 @@ export function useDeleteSchema({
       queryClient.invalidateQueries({
         queryKey: ['listSchemas', catalog],
       });
-      onSuccessCallback?.();
     },
   });
 }

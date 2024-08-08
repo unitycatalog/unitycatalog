@@ -22,10 +22,6 @@ export function DeleteFunctionModal({
   const navigate = useNavigate();
   const { setNotification } = useNotification();
   const mutation = useDeleteFunction({
-    onSuccessCallback: () => {
-      setNotification(`${ucFunction} function successfully deleted`, 'success');
-      navigate(`/data/${catalog}/${schema}`);
-    },
     catalog,
     schema,
   });
@@ -37,9 +33,16 @@ export function DeleteFunctionModal({
         onError: (error: Error) => {
           setNotification(error.message, 'error');
         },
+        onSuccess: () => {
+          setNotification(
+            `${ucFunction} function successfully deleted`,
+            'success',
+          );
+          navigate(`/data/${catalog}/${schema}`);
+        },
       },
     );
-  }, [mutation, ucFunction, setNotification]);
+  }, [mutation, ucFunction, setNotification, navigate]);
 
   return (
     <Modal
