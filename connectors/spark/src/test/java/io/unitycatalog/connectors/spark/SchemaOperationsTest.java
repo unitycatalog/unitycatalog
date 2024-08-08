@@ -46,9 +46,9 @@ public class SchemaOperationsTest extends BaseSparkIntegrationTest {
   @Test
   public void testListSchema() {
     SparkSession session = createSparkSessionWithCatalogs(SPARK_CATALOG);
-    Row row = session.sql("SHOW NAMESPACES").collectAsList().get(0);
+    Row row = session.sql("SHOW SCHEMAS").collectAsList().get(0);
     assertThat(row.getString(0)).isEqualTo(SCHEMA_NAME);
-    assertThatThrownBy(() -> session.sql("SHOW NAMESPACES IN a.b.c").collect())
+    assertThatThrownBy(() -> session.sql("SHOW SCHEMAS IN a.b.c").collect())
         .isInstanceOf(UnsupportedOperationException.class)
         .hasMessageContaining("Multi-layer namespace is not supported in Unity Catalog");
     session.stop();
@@ -58,7 +58,7 @@ public class SchemaOperationsTest extends BaseSparkIntegrationTest {
   public void testLoadSchema() {
     SparkSession session = createSparkSessionWithCatalogs(SPARK_CATALOG);
 
-    Row[] rows = (Row[]) session.sql("DESC NAMESPACE " + SCHEMA_NAME).collect();
+    Row[] rows = (Row[]) session.sql("DESC SCHEMA " + SCHEMA_NAME).collect();
     assertThat(rows).hasSize(2);
     assertThat(rows[0].getString(0)).isEqualTo("Catalog Name");
     assertThat(rows[0].getString(1)).isEqualTo(SPARK_CATALOG);
