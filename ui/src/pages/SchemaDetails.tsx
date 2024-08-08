@@ -10,6 +10,7 @@ import VolumesList from '../components/volumes/VolumesList';
 import FunctionsList from '../components/functions/FunctionsList';
 import { DatabaseOutlined } from '@ant-design/icons';
 import CreateAssetsDropdown from '../components/schemas/CreateAssetsDropdown';
+import SchemaActionsDropdown from '../components/schemas/SchemaActionDropdown';
 
 export default function SchemaDetails() {
   const { catalog, schema } = useParams();
@@ -28,7 +29,10 @@ export default function SchemaDetails() {
           <Typography.Title level={3}>
             <DatabaseOutlined /> {schemaFullName}
           </Typography.Title>
-          <CreateAssetsDropdown catalog={catalog} schema={schema} />
+          <Flex gap="middle">
+            <SchemaActionsDropdown catalog={catalog} schema={schema} />
+            <CreateAssetsDropdown catalog={catalog} schema={schema} />
+          </Flex>
         </Flex>
       }
       breadcrumbs={[
