@@ -38,6 +38,7 @@ This is a community effort. Unity Catalog is supported by
 - [PuppyGraph](https://www.puppygraph.com/)
 - [Salesforce](https://www.salesforce.com/)
 - [StarRocks (CelerData)](https://celerdata.com/)
+- [Spice AI](https://github.com/spiceai/spiceai)
 - [Tecton](https://www.tecton.ai/)
 - [Unstructured](https://unstructured.io/)
 
