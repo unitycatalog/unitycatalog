@@ -95,6 +95,7 @@ public class AwsPolicyGenerator {
               conditionalPrefixes.add(sanitizedPath + "/*");
 
               operationsResource.add("arn:aws:s3:::%s/%s/*".formatted(bucketName, sanitizedPath));
+              operationsResource.add("arn:aws:s3:::%s/%s".formatted(bucketName, sanitizedPath));
             }
           });
       });

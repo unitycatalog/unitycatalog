@@ -13,8 +13,8 @@ public class CredentialContext {
     UPDATE
   }
 
-  String storageScheme;
-  String storageBase;
-  Set<Privilege> privileges;
-  List<String> locations;
+  private String storageScheme;
+  private String storageBase;
+  private Set<Privilege> privileges;
+  private List<String> locations;
 }

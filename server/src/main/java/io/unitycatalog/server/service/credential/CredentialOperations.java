@@ -70,7 +70,7 @@ public class CredentialOperations {
   public CredentialResponse vendCredential(CredentialContext context) {
     CredentialResponse.CredentialResponseBuilder builder = new CredentialResponse.CredentialResponseBuilder();
 
-    switch (context.storageScheme) {
+    switch (context.getStorageScheme()) {
       case URI_SCHEME_ABFS, URI_SCHEME_ABFSS -> {
         AzureCredential azureCredential = vendAzureCredential(context);
         builder.azureUserDelegationSas(new AzureUserDelegationSAS().sasToken(azureCredential.getSasToken()))

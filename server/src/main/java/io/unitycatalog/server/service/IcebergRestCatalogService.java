@@ -19,22 +19,16 @@ import io.unitycatalog.server.model.SchemaInfo;
 import io.unitycatalog.server.model.TableInfo;
 import io.unitycatalog.server.persist.TableRepository;
 import io.unitycatalog.server.persist.utils.HibernateUtils;
-import io.unitycatalog.server.service.credential.CredentialContext;
-import io.unitycatalog.server.service.credential.CredentialOperations;
-import io.unitycatalog.server.service.credential.CredentialResponse;
 import io.unitycatalog.server.service.iceberg.MetadataService;
+import io.unitycatalog.server.service.iceberg.TableConfigService;
 import io.unitycatalog.server.utils.JsonUtils;
 import java.io.IOException;
-import java.net.URI;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
-import java.util.Set;
 import java.util.stream.Collectors;
 import org.apache.iceberg.TableMetadata;
-import org.apache.iceberg.aws.s3.S3FileIOProperties;
-import org.apache.iceberg.azure.AzureProperties;
 import org.apache.iceberg.catalog.Namespace;
 import org.apache.iceberg.catalog.TableIdentifier;
 import org.apache.iceberg.exceptions.NoSuchTableException;
@@ -48,14 +42,13 @@ import org.apache.iceberg.rest.responses.LoadViewResponse;
 import org.hibernate.Session;
 import org.hibernate.SessionFactory;
 
-import static io.unitycatalog.server.service.credential.CredentialContext.Privilege.SELECT;
-
 @ExceptionHandler(IcebergRestExceptionHandler.class)
 public class IcebergRestCatalogService {
 
   private final CatalogService catalogService;
   private final SchemaService schemaService;
   private final TableService tableService;
+  private final TableConfigService tableConfigService;
   private final MetadataService metadataService;
   private final TableRepository tableRepository = TableRepository.getInstance();
   private static final SessionFactory sessionFactory = HibernateUtils.getSessionFactory();
@@ -64,10 +57,12 @@ public class IcebergRestCatalogService {
       CatalogService catalogService,
       SchemaService schemaService,
       TableService tableService,
+      TableConfigService tableConfigService,
       MetadataService metadataService) {
     this.catalogService = catalogService;
     this.schemaService = schemaService;
     this.tableService = tableService;
+    this.tableConfigService = tableConfigService;
     this.metadataService = metadataService;
   }
 
@@ -206,27 +201,12 @@ public class IcebergRestCatalogService {
     }
 
     TableMetadata tableMetadata = metadataService.readTableMetadata(metadataLocation);
+    Map<String, String> config = tableConfigService.getTableConfig(tableMetadata);
 
-    URI locationURI = URI.create(tableMetadata.location());
-    String scheme = locationURI.getScheme();
-
-    CredentialOperations credentialOperations = new CredentialOperations();
-    CredentialResponse resp = credentialOperations.vendCredential(CredentialContext.builder().privileges(Set.of(SELECT)).storageScheme(scheme).storageBase(scheme + "://" + locationURI.getRawAuthority()).locations(List.of(locationURI.getRawPath())).build());
-
-    Map<String, String> config = switch(scheme) {
-      case "s3" -> Map.of(S3FileIOProperties.ACCESS_KEY_ID, resp.getAwsTempCredentials().getAccessKeyId(),
-        S3FileIOProperties.SECRET_ACCESS_KEY, resp.getAwsTempCredentials().getSecretAccessKey(),
-        S3FileIOProperties.SESSION_TOKEN, resp.getAwsTempCredentials().getSessionToken());
-      case "abfs", "abfss" -> Map.of(AzureProperties.ADLS_SAS_TOKEN_PREFIX + "alextestdevuswest.dfs.core.windows.net", resp.getAzureUserDelegationSas().getSasToken());
-      case "gcs" -> Map.of(
-        "gcs.oauth2.token",
-        resp.getGcpOauthToken().getOauthToken(),
-        "gcs.oauth2.token-expires-at",
-        Long.toString(resp.getExpirationTime()));
-      default -> Map.of();
-    };
-
-    return LoadTableResponse.builder().withTableMetadata(tableMetadata).addAllConfig(config).build();
+    return LoadTableResponse.builder()
+        .withTableMetadata(tableMetadata)
+        .addAllConfig(config)
+        .build();
   }
 
   @Get("/v1/namespaces/{namespace}/views/{view}")

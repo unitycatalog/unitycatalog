@@ -5,6 +5,7 @@ import io.unitycatalog.server.exception.BaseException;
 import io.unitycatalog.server.persist.utils.ServerPropertiesUtils;
 import io.unitycatalog.server.service.credential.CredentialContext;
 import io.unitycatalog.server.service.credential.CredentialOperations;
+import io.unitycatalog.server.service.credential.aws.S3StorageConfig;
 import io.unitycatalog.server.service.credential.azure.ADLSLocationUtils;
 import io.unitycatalog.server.service.credential.azure.AzureCredential;
 import lombok.SneakyThrows;
@@ -81,12 +82,12 @@ public class FileIOFactory {
   }
 
   protected S3FileIO getS3FileIO(URI tableLocationUri) {
-    String region =
-        ServerPropertiesUtils.getInstance().getProperty("aws.region", System.getenv("AWS_REGION"));
+    CredentialContext context = getCredentialContextFromTableLocation(tableLocationUri);
+    S3StorageConfig s3StorageConfig =
+      ServerPropertiesUtils.getInstance().getS3Configurations().get(context.getStorageBase());
 
-    // FIXME!! - proper credential vending and region settings
     S3FileIO s3FileIO =
-        new S3FileIO(() -> getS3Client(getAwsCredentialsProvider(tableLocationUri), region));
+        new S3FileIO(() -> getS3Client(getAwsCredentialsProvider(context), s3StorageConfig.getRegion()));
 
     s3FileIO.initialize(Map.of());
 
@@ -101,9 +102,8 @@ public class FileIOFactory {
         .build();
   }
 
-  private AwsCredentialsProvider getAwsCredentialsProvider(URI tableLocationUri) {
+  private AwsCredentialsProvider getAwsCredentialsProvider(CredentialContext context) {
     try {
-      CredentialContext context = getCredentialContextFromTableLocation(tableLocationUri);
       Credentials awsSessionCredentials = credentialOps.vendAwsCredential(context);
       return StaticCredentialsProvider.create(
         AwsSessionCredentials.create(awsSessionCredentials.accessKeyId(), awsSessionCredentials.secretAccessKey(), awsSessionCredentials.sessionToken()));
@@ -114,7 +114,7 @@ public class FileIOFactory {
 
   private CredentialContext getCredentialContextFromTableLocation(URI tableLocationUri) {
     // FIXME!! privileges are just defaulted to READ only here
-    return CredentialContext.builder().storageBase(tableLocationUri.getScheme() + "://" + tableLocationUri.getRawAuthority())
-      .privileges(Set.of(CredentialContext.Privilege.SELECT)).locations(List.of(tableLocationUri.getRawPath())).build();
+    return CredentialContext.builder().storageBase(tableLocationUri.getScheme() + "://" + tableLocationUri.getAuthority())
+      .privileges(Set.of(CredentialContext.Privilege.SELECT)).locations(List.of(tableLocationUri.toString())).build();
   }
 }

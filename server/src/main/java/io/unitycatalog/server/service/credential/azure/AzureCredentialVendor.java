@@ -12,6 +12,7 @@ import com.azure.storage.file.datalake.sas.DataLakeServiceSasSignatureValues;
 import com.azure.storage.file.datalake.sas.PathSasPermission;
 import io.unitycatalog.server.persist.utils.ServerPropertiesUtils;
 import io.unitycatalog.server.service.credential.CredentialContext;
+import java.net.URI;
 import java.time.OffsetDateTime;
 import java.util.Map;
 import java.util.Set;
@@ -51,12 +52,12 @@ public class AzureCredentialVendor {
     DataLakeServiceSasSignatureValues sasSignatureValues =
         new DataLakeServiceSasSignatureValues(expiry, perms).setStartTime(start);
 
+    // azure supports only downscoping to a single location for now
+    // azure wants only the path
+    String path = URI.create(context.getLocations().get(0)).getPath().substring(1);
+
     String sasToken =
-        new DataLakeSasImplUtil(
-                sasSignatureValues,
-                locationParts.container(),
-                context.getLocations().get(0).substring(1),
-                true)
+        new DataLakeSasImplUtil(sasSignatureValues, locationParts.container(), path, true)
             .generateUserDelegationSas(key, locationParts.accountName(), Context.NONE);
 
     return AzureCredential.builder()

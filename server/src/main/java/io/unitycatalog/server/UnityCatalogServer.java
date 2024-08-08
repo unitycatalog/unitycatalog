@@ -21,6 +21,7 @@ import io.unitycatalog.server.service.VolumeService;
 import io.unitycatalog.server.service.credential.CredentialOperations;
 import io.unitycatalog.server.service.iceberg.FileIOFactory;
 import io.unitycatalog.server.service.iceberg.MetadataService;
+import io.unitycatalog.server.service.iceberg.TableConfigService;
 import io.unitycatalog.server.utils.RESTObjectMapper;
 import io.unitycatalog.server.utils.VersionUtils;
 import io.vertx.core.Verticle;
@@ -91,9 +92,11 @@ public class UnityCatalogServer {
     JacksonResponseConverterFunction icebergResponseConverter =
         new JacksonResponseConverterFunction(icebergMapper);
     MetadataService metadataService = new MetadataService(new FileIOFactory(credentialOperations));
+    TableConfigService tableConfigService = new TableConfigService(credentialOperations);
     sb.annotatedService(
         basePath + "iceberg",
-        new IcebergRestCatalogService(catalogService, schemaService, tableService, metadataService),
+        new IcebergRestCatalogService(
+            catalogService, schemaService, tableService, tableConfigService, metadataService),
         icebergRequestConverter,
         icebergResponseConverter);
   }

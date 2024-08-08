@@ -11,6 +11,7 @@ import software.amazon.awssdk.auth.credentials.AwsBasicCredentials;
 import software.amazon.awssdk.auth.credentials.AwsCredentialsProvider;
 import software.amazon.awssdk.auth.credentials.DefaultCredentialsProvider;
 import software.amazon.awssdk.auth.credentials.StaticCredentialsProvider;
+import software.amazon.awssdk.regions.Region;
 import software.amazon.awssdk.services.sts.StsClient;
 import software.amazon.awssdk.services.sts.model.Credentials;
 
@@ -23,8 +24,7 @@ public class AwsCredentialVendor {
   }
 
   public Credentials vendAwsCredentials(CredentialContext context) {
-    S3StorageConfig s3StorageConfig =
-        s3Configurations.get(context.getStorageScheme() + "://" + context.getStorageBase());
+    S3StorageConfig s3StorageConfig = s3Configurations.get(context.getStorageBase());
     if (s3StorageConfig == null) {
       throw new BaseException(ErrorCode.FAILED_PRECONDITION, "S3 bucket configuration not found.");
     }
@@ -67,6 +67,9 @@ public class AwsCredentialVendor {
       credentialsProvider = DefaultCredentialsProvider.create();
     }
 
-    return StsClient.builder().credentialsProvider(credentialsProvider).build();
+    return StsClient.builder()
+        .credentialsProvider(credentialsProvider)
+        .region(Region.US_EAST_1)
+        .build();
   }
 }
