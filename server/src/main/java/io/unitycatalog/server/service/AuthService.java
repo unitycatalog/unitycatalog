@@ -2,6 +2,7 @@ package io.unitycatalog.server.service;
 
 import com.linecorp.armeria.common.HttpResponse;
 import com.linecorp.armeria.server.annotation.*;
+import io.unitycatalog.server.auth.JCasbinAuthenticator;
 import io.unitycatalog.server.exception.BaseException;
 import io.unitycatalog.server.exception.ErrorCode;
 import io.unitycatalog.server.exception.GlobalExceptionHandler;
@@ -43,7 +44,8 @@ public class AuthService {
     if (principle.isPresent()) {
       User user = USER_REPOSITORY.getUser(principle.get());
       UUID principleId = UUID.fromString(Objects.requireNonNull(user.getId()));
-      authorizations = jCasbinAuthenticator.listAuthorizations(principleId, resourceId);
+      authorizations =
+          Map.of(principleId, jCasbinAuthenticator.listAuthorizations(principleId, resourceId));
     } else {
       authorizations = jCasbinAuthenticator.listAuthorizations(resourceId);
     }
@@ -51,17 +53,14 @@ public class AuthService {
     List<PrivilegeAssignment> privilegeAssignments =
         authorizations.entrySet().stream()
             .map(
-                entry -> {
-                  PrivilegeAssignment privilegeAssignment = new PrivilegeAssignment();
-                  privilegeAssignment.setPrincipal(entry.getKey().toString());
-                  privilegeAssignment.setPrivileges(entry.getValue());
-                  return privilegeAssignment;
-                })
+                entry ->
+                    new PrivilegeAssignment()
+                        .principal(entry.getKey().toString())
+                        .privileges(entry.getValue()))
             .collect(Collectors.toList());
 
-    UpdateAuthorizationResponse response = new UpdateAuthorizationResponse();
-    response.setPrivilegeAssignments(privilegeAssignments);
-    return HttpResponse.ofJson(response);
+    return HttpResponse.ofJson(
+        new UpdateAuthorizationResponse().privilegeAssignments(privilegeAssignments));
   }
 
   @Patch("/{resource_type}/{name}")
@@ -95,17 +94,14 @@ public class AuthService {
         authorizations.entrySet().stream()
             .filter(entry -> principleIds.contains(entry.getKey()))
             .map(
-                entry -> {
-                  PrivilegeAssignment privilegeAssignment = new PrivilegeAssignment();
-                  privilegeAssignment.setPrincipal(entry.getKey().toString());
-                  privilegeAssignment.setPrivileges(entry.getValue());
-                  return privilegeAssignment;
-                })
+                entry ->
+                    new PrivilegeAssignment()
+                        .principal(entry.getKey().toString())
+                        .privileges(entry.getValue()))
             .collect(Collectors.toList());
 
-    UpdateAuthorizationResponse response = new UpdateAuthorizationResponse();
-    response.setPrivilegeAssignments(privilegeAssignments);
-    return HttpResponse.ofJson(response);
+    return HttpResponse.ofJson(
+        new UpdateAuthorizationResponse().privilegeAssignments(privilegeAssignments));
   }
 
   private UUID getResourceId(ResourceType resourceType, String name) {
