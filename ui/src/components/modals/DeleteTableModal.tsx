@@ -22,10 +22,6 @@ export function DeleteTableModal({
   const navigate = useNavigate();
   const { setNotification } = useNotification();
   const mutation = useDeleteTable({
-    onSuccessCallback: () => {
-      setNotification(`${table} table successfully deleted`, 'success');
-      navigate(`/data/${catalog}/${schema}`);
-    },
     catalog,
     schema,
   });
@@ -34,11 +30,22 @@ export function DeleteTableModal({
     [catalog, schema, table],
   );
   const handleSubmit = useCallback(() => {
-    mutation.mutate({
-      catalog_name: catalog,
-      schema_name: schema,
-      name: table,
-    });
+    mutation.mutate(
+      {
+        catalog_name: catalog,
+        schema_name: schema,
+        name: table,
+      },
+      {
+        onError: (error: Error) => {
+          setNotification(error.message, 'error');
+        },
+        onSuccess: () => {
+          setNotification(`${table} table successfully deleted`, 'success');
+          navigate(`/data/${catalog}/${schema}`);
+        },
+      },
+    );
   }, [mutation, catalog, schema, table]);
 
   return (

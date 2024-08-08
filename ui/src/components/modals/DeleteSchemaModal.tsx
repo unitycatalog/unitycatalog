@@ -20,10 +20,6 @@ export function DeleteSchemaModal({
   const navigate = useNavigate();
   const { setNotification } = useNotification();
   const mutation = useDeleteSchema({
-    onSuccessCallback: () => {
-      setNotification(`${schema} schema successfully deleted`, 'success');
-      navigate(`/data/${catalog}`);
-    },
     catalog,
   });
 
@@ -34,9 +30,13 @@ export function DeleteSchemaModal({
         onError: (error: Error) => {
           setNotification(error.message, 'error');
         },
+        onSuccess: () => {
+          setNotification(`${schema} schema successfully deleted`, 'success');
+          navigate(`/data/${catalog}`);
+        },
       },
     );
-  }, [mutation, catalog, schema, setNotification]);
+  }, [mutation, catalog, schema, setNotification, navigate]);
 
   return (
     <Modal

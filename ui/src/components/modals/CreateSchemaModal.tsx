@@ -6,6 +6,7 @@ import {
   CreateSchemaMutationParams,
   useCreateSchema,
 } from '../../hooks/schemas';
+import { useNotification } from '../../utils/NotificationContext';
 
 interface CreateSchemaModalProps {
   open: boolean;
@@ -19,11 +20,8 @@ export default function CreateSchemaModal({
   catalog,
 }: CreateSchemaModalProps) {
   const navigate = useNavigate();
-  const mutation = useCreateSchema({
-    onSuccessCallback: (schema) => {
-      navigate(`/data/${schema.catalog_name}/${schema.name}`);
-    },
-  });
+  const mutation = useCreateSchema();
+  const { setNotification } = useNotification();
   const submitRef = useRef<HTMLButtonElement>(null);
 
   const handleSubmit = useCallback(() => {
@@ -47,7 +45,14 @@ export default function CreateSchemaModal({
       <Form<CreateSchemaMutationParams>
         layout="vertical"
         onFinish={(values) => {
-          mutation.mutate(values);
+          mutation.mutate(values, {
+            onError: (error) => {
+              setNotification(error.message, 'error');
+            },
+            onSuccess: (schema) => {
+              navigate(`/data/${schema.catalog_name}/${schema.name}`);
+            },
+          });
         }}
         name="Create schema form"
         initialValues={{ catalog_name: catalog }}
