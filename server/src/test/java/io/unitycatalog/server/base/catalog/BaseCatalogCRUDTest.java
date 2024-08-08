@@ -26,8 +26,10 @@ public abstract class BaseCatalogCRUDTest extends BaseCRUDTest {
   }
 
   protected void assertCatalogExists(List<CatalogInfo> catalogList, String name, String comment) {
-    assertTrue(catalogList.stream()
-        .anyMatch(c -> Objects.equals(c.getName(), name) && Objects.equals(c.getComment(), comment)));
+    assertTrue(
+        catalogList.stream()
+            .anyMatch(
+                c -> Objects.equals(c.getName(), name) && Objects.equals(c.getComment(), comment)));
   }
 
   protected void assertCatalogNotExists(List<CatalogInfo> catalogList, String name) {

@@ -85,7 +85,7 @@ useCoursier := true
 // Configure resolvers
 resolvers ++= Seq(
   "Sonatype OSS Releases" at "https://oss.sonatype.org/content/repositories/releases/",
-  "Maven Central" at "https://repo1.maven.org/maven2/"
+  "Maven Central" at "https://repo1.maven.org/maven2/",
 )
 
 def javaCheckstyleSettings(configLocation: File) = Seq(
@@ -93,6 +93,11 @@ def javaCheckstyleSettings(configLocation: File) = Seq(
   checkstyleSeverityLevel := Some(CheckstyleSeverityLevel.Error),
   // (Compile / compile) := ((Compile / compile) dependsOn (Compile / checkstyle)).value,
   // (Test / test) := ((Test / test) dependsOn (Test / checkstyle)).value,
+)
+
+// enforce java code style
+def javafmtCheckSettings() = Seq(
+  (Compile / compile) := ((Compile / compile) dependsOn (Compile / javafmtCheckAll)).value
 )
 
 lazy val client = (project in file("target/clients/java"))
@@ -169,6 +174,7 @@ lazy val server = (project in file("server"))
     name := s"$artifactNamePrefix-server",
     commonSettings,
     javaOnlyReleaseSettings,
+    javafmtCheckSettings,
     javaCheckstyleSettings(file("dev") / "checkstyle-config.xml"),
     libraryDependencies ++= Seq(
       "com.linecorp.armeria" %  "armeria" % "1.28.4",
@@ -191,7 +197,7 @@ lazy val server = (project in file("server"))
 
       "jakarta.activation" % "jakarta.activation-api" % "2.1.3",
       "net.bytebuddy" % "byte-buddy" % "1.14.15",
-      "org.projectlombok" % "lombok" % "1.18.32" % "provided",
+      "org.projectlombok" % "lombok" % "1.18.32" % Provided,
 
       //For s3 access
       "com.amazonaws" % "aws-java-sdk-s3" % "1.12.728",
@@ -246,6 +252,7 @@ lazy val server = (project in file("server"))
 
 lazy val serverModels = (project in file("server") / "target" / "models")
   .enablePlugins(OpenApiGeneratorPlugin)
+  .disablePlugins(JavaFormatterPlugin)
   .settings(
     name := s"$artifactNamePrefix-servermodels",
     commonSettings,
@@ -285,6 +292,7 @@ lazy val cli = (project in file("examples") / "cli")
     mainClass := Some(orgName + ".cli.UnityCatalogCli"),
     commonSettings,
     skipReleaseSettings,
+    javafmtCheckSettings,
     javaCheckstyleSettings(file("dev") / "checkstyle-config.xml"),
     libraryDependencies ++= Seq(
       "commons-cli" % "commons-cli" % "1.7.0",
@@ -312,15 +320,6 @@ lazy val cli = (project in file("examples") / "cli")
     Test / javaOptions += s"-Duser.dir=${(ThisBuild / baseDirectory).value.getAbsolutePath}",
   )
 
-lazy val root = (project in file("."))
-  .aggregate(serverModels, client, server, cli)
-  .settings(
-    name := s"$artifactNamePrefix",
-    createTarballSettings(),
-    commonSettings,
-    rootReleaseSettings
-  )
-
 lazy val spark = (project in file("connectors/spark"))
   .dependsOn(client % "compile->compile;test->test")
   .dependsOn(server % "test->test")
@@ -339,6 +338,38 @@ lazy val spark = (project in file("connectors/spark"))
       "net.aichler" % "jupiter-interface" % JupiterKeys.jupiterVersion.value % Test,
       "io.delta" %% "delta-spark" % "4.0.0rc1" % Test,
     ),
+    excludeDependencies ++= Seq(
+      // This is a transitive dependency from the `server` module and we have to exclude it here
+      // as it introduces some conflicts with the dependencies from Spark.
+      ExclusionRule("com.adobe.testing", "s3mock-junit5")
+    ),
+    licenseDepExclusions := {
+      case DepModuleInfo("org.hibernate.orm", _, _) => true
+      case DepModuleInfo("jakarta.annotation", "jakarta.annotation-api", _) => true
+      case DepModuleInfo("jakarta.servlet", "jakarta.servlet-api", _) => true
+      case DepModuleInfo("jakarta.transaction", "jakarta.transaction-api", _) => true
+      case DepModuleInfo("jakarta.ws.rs", "jakarta.ws.rs-api", _) => true
+      case DepModuleInfo("javax.activation", "activation", _) => true
+      case DepModuleInfo("javax.servlet", "javax.servlet-api", _) => true
+      case DepModuleInfo("org.glassfish.hk2", "hk2-api", _) => true
+      case DepModuleInfo("org.glassfish.hk2", "hk2-locator", _) => true
+      case DepModuleInfo("org.glassfish.hk2", "hk2-utils", _) => true
+      case DepModuleInfo("org.glassfish.hk2", "osgi-resource-locator", _) => true
+      case DepModuleInfo("org.glassfish.hk2.external", "aopalliance-repackaged", _) => true
+      case DepModuleInfo("ch.qos.logback", "logback-classic", _) => true
+      case DepModuleInfo("ch.qos.logback", "logback-core", _) => true
+      case DepModuleInfo("org.apache.xbean", "xbean-asm9-shaded", _) => true
+      case DepModuleInfo("oro", "oro", _) => true
+    },
+  )
+
+lazy val root = (project in file("."))
+  .aggregate(serverModels, client, server, cli, spark)
+  .settings(
+    name := s"$artifactNamePrefix",
+    createTarballSettings(),
+    commonSettings,
+    rootReleaseSettings
   )
 
 def generateClasspathFile(targetDir: File, classpath: Classpath): Unit = {
