@@ -68,10 +68,10 @@ public class FunctionRepository {
             .securityType(
                 FunctionInfo.SecurityTypeEnum.valueOf(createFunction.getSecurityType().name()))
             .specificName(createFunction.getSpecificName());
-    if (createFunction.getSqlDataAccess() != null)
+    if (createFunction.getSqlDataAccess() != null) {
       functionInfo.setSqlDataAccess(
           FunctionInfo.SqlDataAccessEnum.valueOf(createFunction.getSqlDataAccess().toString()));
-
+    }
     try (Session session = SESSION_FACTORY.openSession()) {
       Transaction tx = session.beginTransaction();
       try {
