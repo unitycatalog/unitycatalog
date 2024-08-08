@@ -406,10 +406,10 @@ lazy val spark = (project in file("connectors/spark"))
       case DepModuleInfo("ch.qos.logback", "logback-classic", _) => true
       case DepModuleInfo("ch.qos.logback", "logback-core", _) => true
       case DepModuleInfo("org.apache.xbean", "xbean-asm9-shaded", _) => true
-      case DepModuleInfo("oro", "oro", _) => true,
+      case DepModuleInfo("oro", "oro", _) => true
       case DepModuleInfo("org.glassfish", "javax.json", _) => true
       case DepModuleInfo("org.glassfish.hk2.external", "jakarta.inject", _) => true
-      case DepModuleInfo("org.antlr", "ST4", _) => true
+      case DepModuleInfo("org.antlr", "ST4", _) => true,
     }
   )
 
