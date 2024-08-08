@@ -7,6 +7,7 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.ObjectWriter;
+import com.linecorp.armeria.common.HttpStatus;
 import io.unitycatalog.cli.utils.CliParams;
 import io.unitycatalog.cli.utils.CliUtils;
 import io.unitycatalog.cli.utils.Outh2CliExchange;
@@ -100,11 +101,15 @@ public class AuthCli {
     try {
       HttpResponse<String> response =
           apiClient.getHttpClient().send(request, HttpResponse.BodyHandlers.ofString());
-      Map<String, String> responseMap =
-          objectMapper.readValue(response.body(), new TypeReference<Map<String, String>>() {});
-      LoginInfo loginInfo = new LoginInfo();
-      loginInfo.setAccessToken(responseMap.get("access_token"));
-      return objectWriter.writeValueAsString(loginInfo);
+      if (response.statusCode() != HttpStatus.OK.code()) {
+        throw new ApiException("Error authenticating - " + response.body());
+      } else {
+        Map<String, String> responseMap =
+            objectMapper.readValue(response.body(), new TypeReference<Map<String, String>>() {});
+        LoginInfo loginInfo = new LoginInfo();
+        loginInfo.setAccessToken(responseMap.get("access_token"));
+        return objectWriter.writeValueAsString(loginInfo);
+      }
     } catch (InterruptedException | IOException e) {
       throw new ApiException(e);
     }
