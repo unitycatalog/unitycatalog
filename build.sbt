@@ -213,8 +213,8 @@ lazy val server = (project in file("server"))
       "org.projectlombok" % "lombok" % "1.18.32" % Provided,
 
       // For ALDS access
-      "com.azure" % "azure-identity" % "1.11.1",
-      "com.azure" % "azure-storage-file-datalake" % "12.18.1",
+      "com.azure" % "azure-identity" % "1.13.2",
+      "com.azure" % "azure-storage-file-datalake" % "12.20.0",
 
       // For GCS Access
       "com.google.cloud" % "google-cloud-storage" % "2.30.1",
