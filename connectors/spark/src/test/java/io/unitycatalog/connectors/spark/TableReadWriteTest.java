@@ -43,7 +43,8 @@ public class TableReadWriteTest extends BaseSparkIntegrationTest {
     testTableReadWrite(SPARK_CATALOG + "." + SCHEMA_NAME + "." + PARQUET_TABLE, session);
 
     setupExternalParquetTable(PARQUET_TABLE_PARTITIONED, Arrays.asList("s"));
-    testTableReadWrite(SPARK_CATALOG + "." + SCHEMA_NAME + "." + PARQUET_TABLE_PARTITIONED, session);
+    testTableReadWrite(
+        SPARK_CATALOG + "." + SCHEMA_NAME + "." + PARQUET_TABLE_PARTITIONED, session);
 
     session.stop();
   }
@@ -79,18 +80,18 @@ public class TableReadWriteTest extends BaseSparkIntegrationTest {
     assertThat(session.sql("SELECT * FROM " + tableName1).collectAsList()).isEmpty();
     session.sql("INSERT INTO " + tableName1 + " SELECT 1");
     assertThat(session.sql("SELECT * FROM " + tableName1).collectAsList())
-            .first()
-            .extracting(row -> row.get(0))
-            .isEqualTo(1);
+        .first()
+        .extracting(row -> row.get(0))
+        .isEqualTo(1);
 
     // Test CTAS
     String path2 = new File(dataDir, "test_delta_path2").getCanonicalPath();
     String tableName2 = String.format("delta.`%s`", path2);
     session.sql(String.format("CREATE TABLE %s USING delta AS SELECT 1 AS i", tableName2));
     assertThat(session.sql("SELECT * FROM " + tableName2).collectAsList())
-            .first()
-            .extracting(row -> row.get(0))
-            .isEqualTo(1);
+        .first()
+        .extracting(row -> row.get(0))
+        .isEqualTo(1);
 
     session.stop();
   }
@@ -110,10 +111,10 @@ public class TableReadWriteTest extends BaseSparkIntegrationTest {
     testTableReadWrite(t2, session);
 
     Row row =
-            session
-                    .sql(String.format("SELECT l.i FROM %s l JOIN %s r ON l.i = r.i", t1, t2))
-                    .collectAsList()
-                    .get(0);
+        session
+            .sql(String.format("SELECT l.i FROM %s l JOIN %s r ON l.i = r.i", t1, t2))
+            .collectAsList()
+            .get(0);
     assertThat(row.getInt(0)).isEqualTo(1);
 
     session.stop();
@@ -133,7 +134,11 @@ public class TableReadWriteTest extends BaseSparkIntegrationTest {
     String t2 = CATALOG_NAME + "." + SCHEMA_NAME + "." + DELTA_TABLE;
     testTableReadWrite(t2, session);
 
-    Row row = session.sql(String.format("SELECT l.i FROM %s l JOIN %s r ON l.i = r.i", t1, t2)).collectAsList().get(0);
+    Row row =
+        session
+            .sql(String.format("SELECT l.i FROM %s l JOIN %s r ON l.i = r.i", t1, t2))
+            .collectAsList()
+            .get(0);
     assertThat(row.getInt(0)).isEqualTo(1);
 
     session.stop();
@@ -170,9 +175,9 @@ public class TableReadWriteTest extends BaseSparkIntegrationTest {
     session.sql("INSERT INTO " + t2 + " SELECT 2, 'b'");
 
     session.sql(
-            String.format(
-                    "MERGE INTO %s USING %s ON %s.i = %s.i WHEN NOT MATCHED THEN INSERT *",
-                    t1, t2, t1, t2));
+        String.format(
+            "MERGE INTO %s USING %s ON %s.i = %s.i WHEN NOT MATCHED THEN INSERT *",
+            t1, t2, t1, t2));
     List<Row> rows = session.sql("SELECT * FROM " + t1).collectAsList();
     assertThat(2 == rows.size());
 
@@ -206,8 +211,8 @@ public class TableReadWriteTest extends BaseSparkIntegrationTest {
     assertThat(tables[0].getString(1)).isEqualTo(PARQUET_TABLE);
 
     assertThatThrownBy(() -> session.sql("SHOW TABLES in a.b.c").collect())
-            .isInstanceOf(AnalysisException.class)
-            .hasMessageContaining("a.b.c");
+        .isInstanceOf(AnalysisException.class)
+        .hasMessageContaining("a.b.c");
 
     session.stop();
   }
@@ -221,26 +226,26 @@ public class TableReadWriteTest extends BaseSparkIntegrationTest {
     session.sql("DROP TABLE " + fullName).collect();
     assertFalse(session.catalog().tableExists(fullName));
     assertThatThrownBy(() -> session.sql("DROP TABLE a.b.c.d").collect())
-            .isInstanceOf(AnalysisException.class);
+        .isInstanceOf(AnalysisException.class);
     session.stop();
   }
 
   private void setupExternalParquetTable(String tableName, List<String> partitionColumns)
-          throws IOException, ApiException {
+      throws IOException, ApiException {
     String location = generateTableLocation(SPARK_CATALOG, tableName);
     setupExternalParquetTable(tableName, location, partitionColumns);
   }
 
   private void setupExternalParquetTable(
-          String tableName, String location, List<String> partitionColumns)
-          throws IOException, ApiException {
+      String tableName, String location, List<String> partitionColumns)
+      throws IOException, ApiException {
     setupTables(
-            SPARK_CATALOG, tableName, DataSourceFormat.PARQUET, location, partitionColumns, false);
+        SPARK_CATALOG, tableName, DataSourceFormat.PARQUET, location, partitionColumns, false);
   }
 
   private void setupExternalDeltaTable(
-          String catalogName, String tableName, List<String> partitionColumns, SparkSession session)
-          throws IOException, ApiException {
+      String catalogName, String tableName, List<String> partitionColumns, SparkSession session)
+      throws IOException, ApiException {
     String location = generateTableLocation(catalogName, tableName);
     setupExternalDeltaTable(catalogName, tableName, location, partitionColumns, session);
   }
@@ -268,12 +273,12 @@ public class TableReadWriteTest extends BaseSparkIntegrationTest {
   }
 
   private void setupExternalDeltaTable(
-          String catalogName,
-          String tableName,
-          String location,
-          List<String> partitionColumns,
-          SparkSession session)
-          throws IOException, ApiException {
+      String catalogName,
+      String tableName,
+      String location,
+      List<String> partitionColumns,
+      SparkSession session)
+      throws IOException, ApiException {
     // The Delta path can't be empty, need to initialize before read.
     String partitionClause;
     if (partitionColumns.isEmpty()) {
@@ -282,8 +287,8 @@ public class TableReadWriteTest extends BaseSparkIntegrationTest {
       partitionClause = String.format(" PARTITIONED BY (%s)", String.join(", ", partitionColumns));
     }
     session.sql(
-            String.format("CREATE TABLE delta.`%s`(i INT, s STRING) USING delta", location)
-                    + partitionClause);
+        String.format("CREATE TABLE delta.`%s`(i INT, s STRING) USING delta", location)
+            + partitionClause);
 
     setupTables(catalogName, tableName, DataSourceFormat.DELTA, location, partitionColumns, false);
   }
@@ -296,43 +301,42 @@ public class TableReadWriteTest extends BaseSparkIntegrationTest {
     assertThat(row.getString(1)).isEqualTo("a");
   }
 
-
   private void setupTables(
-          String catalogName,
-          String tableName,
-          DataSourceFormat format,
-          String location,
-          List<String> partitionColumns,
-          boolean isManaged)
-          throws IOException, ApiException {
+      String catalogName,
+      String tableName,
+      DataSourceFormat format,
+      String location,
+      List<String> partitionColumns,
+      boolean isManaged)
+      throws IOException, ApiException {
     Integer partitionIndex1 = partitionColumns.indexOf("i");
     if (partitionIndex1 == -1) partitionIndex1 = null;
     Integer partitionIndex2 = partitionColumns.indexOf("s");
     if (partitionIndex2 == -1) partitionIndex2 = null;
 
     ColumnInfo c1 =
-            new ColumnInfo()
-                    .name("i")
-                    .typeText("INTEGER")
-                    .typeJson("{\"type\": \"integer\"}")
-                    .typeName(ColumnTypeName.INT)
-                    .typePrecision(10)
-                    .typeScale(0)
-                    .position(0)
-                    .partitionIndex(partitionIndex1)
-                    .comment("Integer column")
-                    .nullable(true);
+        new ColumnInfo()
+            .name("i")
+            .typeText("INTEGER")
+            .typeJson("{\"type\": \"integer\"}")
+            .typeName(ColumnTypeName.INT)
+            .typePrecision(10)
+            .typeScale(0)
+            .position(0)
+            .partitionIndex(partitionIndex1)
+            .comment("Integer column")
+            .nullable(true);
 
     ColumnInfo c2 =
-            new ColumnInfo()
-                    .name("s")
-                    .typeText("STRING")
-                    .typeJson("{\"type\": \"string\"}")
-                    .typeName(ColumnTypeName.STRING)
-                    .position(1)
-                    .partitionIndex(partitionIndex2)
-                    .comment("String column")
-                    .nullable(true);
+        new ColumnInfo()
+            .name("s")
+            .typeText("STRING")
+            .typeJson("{\"type\": \"string\"}")
+            .typeName(ColumnTypeName.STRING)
+            .position(1)
+            .partitionIndex(partitionIndex2)
+            .comment("String column")
+            .nullable(true);
     TableType tableType;
     if (isManaged) {
       tableType = TableType.MANAGED;
@@ -340,14 +344,14 @@ public class TableReadWriteTest extends BaseSparkIntegrationTest {
       tableType = TableType.EXTERNAL;
     }
     CreateTable createTableRequest =
-            new CreateTable()
-                    .name(tableName)
-                    .catalogName(catalogName)
-                    .schemaName(SCHEMA_NAME)
-                    .columns(Arrays.asList(c1, c2))
-                    .comment(COMMENT)
-                    .tableType(tableType)
-                    .dataSourceFormat(format);
+        new CreateTable()
+            .name(tableName)
+            .catalogName(catalogName)
+            .schemaName(SCHEMA_NAME)
+            .columns(Arrays.asList(c1, c2))
+            .comment(COMMENT)
+            .tableType(tableType)
+            .dataSourceFormat(format);
     if (!isManaged) {
       createTableRequest = createTableRequest.storageLocation(location);
     }
