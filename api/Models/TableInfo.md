@@ -15,6 +15,7 @@
 | **created\_at** | **Long** | Time at which this table was created, in epoch milliseconds. | [optional] [default to null] |
 | **updated\_at** | **Long** | Time at which this table was last modified, in epoch milliseconds. | [optional] [default to null] |
 | **table\_id** | **String** | Unique identifier for the table. | [optional] [default to null] |
+| **uniform_iceberg_metadata_location** | **String** | Path of icebegrg metadata location. | [optional] [default to null] |
 
 [[Back to Model list]](../README.md#documentation-for-models) [[Back to API list]](../README.md#documentation-for-api-endpoints) [[Back to README]](../README.md)
 
