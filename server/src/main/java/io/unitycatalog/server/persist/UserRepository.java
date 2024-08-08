@@ -7,7 +7,11 @@ import io.unitycatalog.server.model.UpdateUser;
 import io.unitycatalog.server.model.User;
 import io.unitycatalog.server.persist.dao.UserDAO;
 import io.unitycatalog.server.persist.utils.HibernateUtils;
+import io.unitycatalog.server.persist.utils.PagedListingHelper;
+import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
+import java.util.stream.Collectors;
 import org.hibernate.Session;
 import org.hibernate.SessionFactory;
 import org.hibernate.Transaction;
@@ -19,6 +23,8 @@ public class UserRepository {
   private static final UserRepository INSTANCE = new UserRepository();
   private static final Logger LOGGER = LoggerFactory.getLogger(UserRepository.class);
   private static final SessionFactory SESSION_FACTORY = HibernateUtils.getSessionFactory();
+  private static final PagedListingHelper<UserDAO> LISTING_HELPER =
+      new PagedListingHelper<>(UserDAO.class);
 
   private UserRepository() {}
 
@@ -46,6 +52,22 @@ public class UserRepository {
         session.persist(UserDAO.from(user));
         tx.commit();
         return user;
+      } catch (Exception e) {
+        tx.rollback();
+        throw e;
+      }
+    }
+  }
+
+  public List<User> listUsers() {
+    try (Session session = SESSION_FACTORY.openSession()) {
+      session.setDefaultReadOnly(true);
+      Transaction tx = session.beginTransaction();
+      try {
+        List<UserDAO> userDAOs =
+            LISTING_HELPER.listEntity(session, Optional.empty(), Optional.empty(), null);
+        tx.commit();
+        return userDAOs.stream().map(UserDAO::toUser).collect(Collectors.toList());
       } catch (Exception e) {
         tx.rollback();
         throw e;
