@@ -253,7 +253,6 @@ public class TableReadWriteTest extends BaseSparkIntegrationTest {
 
   @Test
   public void testCreateExternalParquetTable() throws ApiException, IOException {
-    createCommonResources();
     SparkSession session = createSparkSessionWithCatalogs(CATALOG_NAME);
     String path = generateTableLocation(CATALOG_NAME, PARQUET_TABLE);
     String fullTableName = CATALOG_NAME + "." + SCHEMA_NAME + "." + PARQUET_TABLE;
