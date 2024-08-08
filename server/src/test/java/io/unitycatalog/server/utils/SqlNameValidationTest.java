@@ -1,6 +1,6 @@
 package io.unitycatalog.server.utils;
 
-import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import io.unitycatalog.server.exception.BaseException;
 import org.junit.jupiter.api.Test;
@@ -11,10 +11,14 @@ public class SqlNameValidationTest {
   public void testValidateSqlObjectName() {
     ValidationUtils.validateSqlObjectName("test");
     ValidationUtils.validateSqlObjectName("sample_volume_name");
-    assertThrows(BaseException.class, () -> ValidationUtils.validateSqlObjectName("test."));
-    assertThrows(BaseException.class, () -> ValidationUtils.validateSqlObjectName("test "));
-    assertThrows(BaseException.class, () -> ValidationUtils.validateSqlObjectName("test/test"));
+    assertThatThrownBy(() -> ValidationUtils.validateSqlObjectName("test."))
+        .isInstanceOf(BaseException.class);
+    assertThatThrownBy(() -> ValidationUtils.validateSqlObjectName("test "))
+        .isInstanceOf(BaseException.class);
+    assertThatThrownBy(() -> ValidationUtils.validateSqlObjectName("test/test"))
+        .isInstanceOf(BaseException.class);
     char ctrlC = 3; // ASCII value for Control-C
-    assertThrows(BaseException.class, () -> ValidationUtils.validateSqlObjectName("test" + ctrlC));
+    assertThatThrownBy(() -> ValidationUtils.validateSqlObjectName("test" + ctrlC))
+        .isInstanceOf(BaseException.class);
   }
 }

@@ -11,7 +11,7 @@ public enum CliParams {
       "properties"),
   FULL_NAME(
       "full_name",
-      "The full name of the table. The full name is the concatenation of the catalog name, schema name, and table/volume name separated by a dot. For example, catalog_name.schema_name.table_name.",
+      "The full name in the format catalog_name.schema_name for schema, or catalog_name.schema_name.table_name for table/function/volume",
       "full_name"),
   STORAGE_LOCATION(
       "storage_location",
@@ -42,8 +42,11 @@ public enum CliParams {
   LANGUAGE("language", "The language of the function", "external_language"),
   COMMENT("comment", "Comment/Description of the entity.", "comment"),
   SERVER("server", "UC Server to connect to. Default is reference server.", "server"),
-  AUTH_TOKEN("auth_token", "PAT token to authorize uc requests", "auth_token"),
-  OUTPUT("output", "To indicate CLI output format preference", "output"),
+  AUTH_TOKEN("auth_token", "PAT token to authorize uc requests.", "auth_token"),
+  OUTPUT(
+      "output",
+      "To indicate CLI output format preference. Supported values are json and jsonPretty.",
+      "output"),
   FORCE("force", "To force delete the entity", "force");
   private final String value;
   private final String helpMessage;
