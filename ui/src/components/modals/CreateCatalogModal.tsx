@@ -6,6 +6,7 @@ import {
 import { useCallback, useRef } from 'react';
 import TextArea from 'antd/es/input/TextArea';
 import { useNavigate } from 'react-router-dom';
+import { useNotification } from '../../utils/NotificationContext';
 
 interface CreateCatalogModalProps {
   open: boolean;
@@ -17,11 +18,8 @@ export function CreateCatalogModal({
   closeModal,
 }: CreateCatalogModalProps) {
   const navigate = useNavigate();
-  const mutation = useCreateCatalog({
-    onSuccessCallback: (catalog) => {
-      navigate(`/data/${catalog.name}`);
-    },
-  });
+  const mutation = useCreateCatalog();
+  const { setNotification } = useNotification();
   const submitRef = useRef<HTMLButtonElement>(null);
 
   const handleSubmit = useCallback(() => {
@@ -45,7 +43,14 @@ export function CreateCatalogModal({
       <Form<CreateCatalogMutationParams>
         layout="vertical"
         onFinish={(values) => {
-          mutation.mutate(values);
+          mutation.mutate(values, {
+            onError: (error: Error) => {
+              setNotification(error.message, 'error');
+            },
+            onSuccess: (catalog) => {
+              navigate(`/data/${catalog.name}`);
+            },
+          });
         }}
         name="Create catalog form"
       >
