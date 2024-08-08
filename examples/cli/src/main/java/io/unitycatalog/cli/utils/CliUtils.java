@@ -381,9 +381,9 @@ public class CliUtils {
         cmd.hasOption(OUTPUT)
             && ("json".equals(cmd.getOptionValue(OUTPUT))
                 || "jsonPretty".equals(cmd.getOptionValue(OUTPUT)));
-    if (jsonFormat || READ.equals(subCommand) || EXECUTE.equals(subCommand))
+    if (jsonFormat || READ.equals(subCommand) || EXECUTE.equals(subCommand)) {
       System.out.println(output);
-    else {
+    } else {
       AsciiTable at = new AsciiTable();
       int outputWidth = getOutputWidth();
       try {
