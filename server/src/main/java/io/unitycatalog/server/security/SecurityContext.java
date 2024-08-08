@@ -5,11 +5,6 @@ import com.auth0.jwt.algorithms.Algorithm;
 import com.auth0.jwt.interfaces.DecodedJWT;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.unitycatalog.server.UnityCatalogServer;
-import lombok.Getter;
-import lombok.SneakyThrows;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.security.interfaces.RSAPrivateKey;
@@ -22,6 +17,10 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import lombok.Getter;
+import lombok.SneakyThrows;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 public class SecurityContext {
 
@@ -35,26 +34,20 @@ public class SecurityContext {
   private final Path certsFile;
   private final Path serviceTokenFile;
 
-  @Getter
-  private final RSAPublicKey rsaPublicKey;
-  @Getter
-  private final RSAPrivateKey rsaPrivateKey;
-  @Getter
-  private final Algorithm algorithm;
-  @Getter
-  private final String serviceToken;
-  @Getter
-  private final String keyId;
-  @Getter
-  private final String serviceName;
-  @Getter
-  private final String localIssuer;
+  @Getter private final RSAPublicKey rsaPublicKey;
+  @Getter private final RSAPrivateKey rsaPrivateKey;
+  @Getter private final Algorithm algorithm;
+  @Getter private final String serviceToken;
+  @Getter private final String keyId;
+  @Getter private final String serviceName;
+  @Getter private final String localIssuer;
 
   @SneakyThrows
-  public SecurityContext(Path configurationFolder,
-                         SecurityConfiguration securityConfiguration,
-                         String serviceName,
-                         String localIssuer) {
+  public SecurityContext(
+      Path configurationFolder,
+      SecurityConfiguration securityConfiguration,
+      String serviceName,
+      String localIssuer) {
     this.serviceName = serviceName;
     this.localIssuer = localIssuer;
 
@@ -79,27 +72,26 @@ public class SecurityContext {
 
   public String createAccessToken(DecodedJWT decodedJWT) {
     return JWT.create()
-            .withSubject(serviceName)
-            .withIssuer(localIssuer)
-            .withIssuedAt(new Date())
-            .withKeyId(keyId)
-            .withJWTId(UUID.randomUUID().toString())
-            .withClaim(JwtClaim.TOKEN_TYPE.key(), JwtTokenType.ACCESS.name())
-            .withClaim(JwtClaim.SUBJECT.key(), decodedJWT.getClaim("email").asString())
-            .sign(algorithm);
-
+        .withSubject(serviceName)
+        .withIssuer(localIssuer)
+        .withIssuedAt(new Date())
+        .withKeyId(keyId)
+        .withJWTId(UUID.randomUUID().toString())
+        .withClaim(JwtClaim.TOKEN_TYPE.key(), JwtTokenType.ACCESS.name())
+        .withClaim(JwtClaim.SUBJECT.key(), decodedJWT.getClaim("email").asString())
+        .sign(algorithm);
   }
 
   public String createServiceToken() {
     return JWT.create()
-            .withSubject(serviceName)
-            .withIssuer(localIssuer)
-            .withIssuedAt(new Date())
-            .withKeyId(keyId)
-            .withJWTId(UUID.randomUUID().toString())
-            .withClaim(JwtClaim.TOKEN_TYPE.key(), JwtTokenType.SERVICE.name())
-            .withClaim(JwtClaim.SUBJECT.key(), "admin")
-            .sign(algorithm);
+        .withSubject(serviceName)
+        .withIssuer(localIssuer)
+        .withIssuedAt(new Date())
+        .withKeyId(keyId)
+        .withJWTId(UUID.randomUUID().toString())
+        .withClaim(JwtClaim.TOKEN_TYPE.key(), JwtTokenType.SERVICE.name())
+        .withClaim(JwtClaim.SUBJECT.key(), "admin")
+        .sign(algorithm);
   }
 
   @SneakyThrows
@@ -109,7 +101,8 @@ public class SecurityContext {
     key.put("use", "sig");
     key.put("kty", rsaPublicKey.getAlgorithm());
     key.put("alg", algorithm.getName());
-    key.put("e", Base64.getUrlEncoder().encodeToString(rsaPublicKey.getPublicExponent().toByteArray()));
+    key.put(
+        "e", Base64.getUrlEncoder().encodeToString(rsaPublicKey.getPublicExponent().toByteArray()));
     key.put("n", Base64.getUrlEncoder().encodeToString(rsaPublicKey.getModulus().toByteArray()));
 
     List<Map> keyList = new ArrayList<>();
@@ -117,7 +110,8 @@ public class SecurityContext {
 
     Map<String, Object> keyMap = new HashMap<>();
     keyMap.put("keys", keyList);
-    Files.writeString(certsFile, mapper.writerWithDefaultPrettyPrinter().writeValueAsString(keyMap));
+    Files.writeString(
+        certsFile, mapper.writerWithDefaultPrettyPrinter().writeValueAsString(keyMap));
   }
 
   @SneakyThrows

@@ -9,31 +9,30 @@ import com.linecorp.armeria.server.annotation.ExceptionHandlerFunction;
 
 /**
  * Catch exceptions and send response
- * <p>
- * The normal ExceptionHandler annotations do not catch exceptions from Decorators. This can be
+ *
+ * <p>The normal ExceptionHandler annotations do not catch exceptions from Decorators. This can be
  * used to catch those and return the desired response.
- * <p>
- * This should be set at the bottom of the decorator chain to ensure that it will catch exceptions
- * from upstream decorators.
- * <p>
- * .decorator(decorator1)
- * .decorator(decorator2)
- * .decorator(new ExceptionHandlingDecorator())
+ *
+ * <p>This should be set at the bottom of the decorator chain to ensure that it will catch
+ * exceptions from upstream decorators.
+ *
+ * <p>.decorator(decorator1) .decorator(decorator2) .decorator(new ExceptionHandlingDecorator())
  */
 public class ExceptionHandlingDecorator implements DecoratingHttpServiceFunction {
 
-    private final ExceptionHandlerFunction exceptionHandlerFunction;
+  private final ExceptionHandlerFunction exceptionHandlerFunction;
 
-    public ExceptionHandlingDecorator(ExceptionHandlerFunction exceptionHandlerFunction) {
-        this.exceptionHandlerFunction = exceptionHandlerFunction;
-    }
+  public ExceptionHandlingDecorator(ExceptionHandlerFunction exceptionHandlerFunction) {
+    this.exceptionHandlerFunction = exceptionHandlerFunction;
+  }
 
-    @Override
-    public HttpResponse serve(HttpService delegate, ServiceRequestContext ctx, HttpRequest req) throws Exception {
-        try {
-            return delegate.serve(ctx, req);
-        } catch (Exception e) {
-            return exceptionHandlerFunction.handleException(ctx, req, e);
-        }
+  @Override
+  public HttpResponse serve(HttpService delegate, ServiceRequestContext ctx, HttpRequest req)
+      throws Exception {
+    try {
+      return delegate.serve(ctx, req);
+    } catch (Exception e) {
+      return exceptionHandlerFunction.handleException(ctx, req, e);
     }
+  }
 }

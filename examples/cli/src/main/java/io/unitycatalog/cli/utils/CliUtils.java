@@ -71,9 +71,13 @@ public class CliUtils {
   public static final Map<String, Map<String, CliOptions>> cliOptions =
       new HashMap<String, Map<String, CliOptions>>() {
         {
-          put(AUTH, new HashMap<String, CliOptions>() {{
-              put(LOGIN, new CliOptions(List.of(), List.of(CliParams.IDENTITY_TOKEN)));
-          }});
+          put(
+              AUTH,
+              new HashMap<String, CliOptions>() {
+                {
+                  put(LOGIN, new CliOptions(List.of(), List.of(CliParams.IDENTITY_TOKEN)));
+                }
+              });
           put(
               CATALOG,
               new HashMap<String, CliOptions>() {

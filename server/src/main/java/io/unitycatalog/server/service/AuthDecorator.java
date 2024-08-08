@@ -1,5 +1,7 @@
 package io.unitycatalog.server.service;
 
+import static io.unitycatalog.server.security.SecurityContext.Issuers.INTERNAL;
+
 import com.auth0.jwt.JWT;
 import com.auth0.jwt.JWTVerifier;
 import com.auth0.jwt.interfaces.DecodedJWT;
@@ -13,24 +15,20 @@ import io.netty.util.AttributeKey;
 import io.unitycatalog.server.exception.AuthorizationException;
 import io.unitycatalog.server.exception.ErrorCode;
 import io.unitycatalog.server.security.JwtClaim;
-import io.unitycatalog.server.security.SecurityContext;
 import io.unitycatalog.server.utils.JwksOperations;
+import java.util.Map;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.util.Map;
-
-import static io.unitycatalog.server.security.SecurityContext.Issuers.INTERNAL;
-
 /**
  * Simple JWT access-token authorization decorator.
- * <p>
- * This decorator implements simple authorization. It requires an Authorization header in the
- * request with a Bearer token. The token is verified to be from the "internal" issuer and
- * the token signature is checked against the internal issuer key. If all these checks pass, the
- * request is allowed to continue.
- * <p>
- * The decoded token is also added to the request attributes so it can be referenced by the
+ *
+ * <p>This decorator implements simple authorization. It requires an Authorization header in the
+ * request with a Bearer token. The token is verified to be from the "internal" issuer and the token
+ * signature is checked against the internal issuer key. If all these checks pass, the request is
+ * allowed to continue.
+ *
+ * <p>The decoded token is also added to the request attributes so it can be referenced by the
  * request if needed.
  */
 public class AuthDecorator implements DecoratingHttpServiceFunction {
@@ -38,14 +36,17 @@ public class AuthDecorator implements DecoratingHttpServiceFunction {
   private static final Logger LOGGER = LoggerFactory.getLogger(AuthDecorator.class);
 
   public static final AttributeKey<DecodedJWT> DECODED_JWT_ATTR =
-          AttributeKey.valueOf(DecodedJWT.class, "DECODED_JWT_ATTR");
+      AttributeKey.valueOf(DecodedJWT.class, "DECODED_JWT_ATTR");
 
   @Override
-  public HttpResponse serve(HttpService delegate, ServiceRequestContext ctx, HttpRequest req) throws Exception {
+  public HttpResponse serve(HttpService delegate, ServiceRequestContext ctx, HttpRequest req)
+      throws Exception {
     LOGGER.debug("AuthDecorator checking {}", req.path());
-    String authorization = req.headers().stream()
+    String authorization =
+        req.headers().stream()
             .filter(h -> h.getKey().equals(HttpHeaderNames.AUTHORIZATION))
-            .map(Map.Entry::getValue).findFirst()
+            .map(Map.Entry::getValue)
+            .findFirst()
             .orElse(null);
 
     if (authorization == null) {

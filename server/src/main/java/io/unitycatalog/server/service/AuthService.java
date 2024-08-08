@@ -15,6 +15,7 @@ import io.unitycatalog.server.exception.GlobalExceptionHandler;
 import io.unitycatalog.server.exception.OAuthInvalidRequestException;
 import io.unitycatalog.server.security.SecurityContext;
 import io.unitycatalog.server.utils.JwksOperations;
+import java.util.Optional;
 import lombok.Builder;
 import lombok.Getter;
 import lombok.NonNull;
@@ -22,8 +23,6 @@ import lombok.ToString;
 import lombok.extern.jackson.Jacksonized;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-
-import java.util.Optional;
 
 @ExceptionHandler(GlobalExceptionHandler.class)
 public class AuthService {
@@ -66,31 +65,32 @@ public class AuthService {
   /**
    * OAuth token exchange.
    *
-   * Performs an OAuth token exchange for an access-token.
+   * <p>Performs an OAuth token exchange for an access-token.
    *
-   * TODO: This could probably be integrated into the OpenAPI spec.
+   * <p>TODO: This could probably be integrated into the OpenAPI spec.
+   *
    * @param request The token exchange parameters
-   *
    * @return The token exchange response
    */
   @Post("/tokens")
   public HttpResponse grantToken(OAuthTokenExchangeRequest request) {
     LOGGER.debug("Got token: {}", request);
 
-    if (request.getGrantType() != null && !TokenTypes.ACCESS.equals(request.getRequestedTokenType())) {
-      throw new OAuthInvalidRequestException(ErrorCode.INVALID_ARGUMENT,
-              "Unsupported requested token type: " + request.getRequestedTokenType());
+    if (request.getGrantType() != null
+        && !TokenTypes.ACCESS.equals(request.getRequestedTokenType())) {
+      throw new OAuthInvalidRequestException(
+          ErrorCode.INVALID_ARGUMENT,
+          "Unsupported requested token type: " + request.getRequestedTokenType());
     }
 
     if (request.getSubjectTokenType() == null) {
-      throw new OAuthInvalidRequestException(ErrorCode.INVALID_ARGUMENT,
-              "Subject token type is required but was not specified");
+      throw new OAuthInvalidRequestException(
+          ErrorCode.INVALID_ARGUMENT, "Subject token type is required but was not specified");
     }
 
     if (request.getActorTokenType().isPresent()) {
-      throw new OAuthInvalidRequestException(ErrorCode.INVALID_ARGUMENT,
-              "Actor tokens not currently supported");
-
+      throw new OAuthInvalidRequestException(
+          ErrorCode.INVALID_ARGUMENT, "Actor tokens not currently supported");
     }
 
     DecodedJWT decodedJWT = JWT.decode(request.getSubjectToken());
@@ -104,8 +104,11 @@ public class AuthService {
 
     String accessToken = securityContext.createAccessToken(decodedJWT);
 
-    OAuthTokenExchangeResponse response = OAuthTokenExchangeResponse.builder()
-            .accessToken(accessToken).issuedTokenType(TokenTypes.ACCESS).tokenType(AuthTypes.BEARER)
+    OAuthTokenExchangeResponse response =
+        OAuthTokenExchangeResponse.builder()
+            .accessToken(accessToken)
+            .issuedTokenType(TokenTypes.ACCESS)
+            .tokenType(AuthTypes.BEARER)
             .build();
 
     return HttpResponse.ofJson(response);
@@ -146,13 +149,11 @@ public class AuthService {
   @Builder
   @Getter
   public static class OAuthTokenExchangeResponse {
-    @NonNull
-    private String accessToken;
+    @NonNull private String accessToken;
     @NonNull private String issuedTokenType;
     @NonNull private String tokenType;
     private Long expiresIn;
     private String scope;
     private String refreshToken;
   }
-
 }

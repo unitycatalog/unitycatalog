@@ -1,5 +1,7 @@
 package io.unitycatalog.server;
 
+import static io.unitycatalog.server.security.SecurityContext.Issuers.INTERNAL;
+
 import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.json.JsonMapper;
@@ -30,14 +32,11 @@ import io.unitycatalog.server.utils.RESTObjectMapper;
 import io.unitycatalog.server.utils.VersionUtils;
 import io.vertx.core.Verticle;
 import io.vertx.core.Vertx;
+import java.nio.file.Path;
 import org.apache.commons.cli.*;
 import org.apache.logging.log4j.core.config.Configurator;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-
-import java.nio.file.Path;
-
-import static io.unitycatalog.server.security.SecurityContext.Issuers.INTERNAL;
 
 public class UnityCatalogServer {
   private static final Logger LOGGER = LoggerFactory.getLogger(UnityCatalogServer.class);
@@ -62,7 +61,8 @@ public class UnityCatalogServer {
     Path configurationFolder = Path.of("etc", "conf");
 
     securityConfiguration = new SecurityConfiguration(configurationFolder);
-    securityContext = new SecurityContext(configurationFolder, securityConfiguration, "server", INTERNAL);
+    securityContext =
+        new SecurityContext(configurationFolder, securityConfiguration, "server", INTERNAL);
 
     ServerBuilder sb = Server.builder().serviceUnder("/docs", new DocService()).http(port);
     addServices(sb);
@@ -118,8 +118,12 @@ public class UnityCatalogServer {
     if (authorization != null && authorization.equalsIgnoreCase("enable")) {
       LOGGER.info("Authorization enabled.");
       AuthDecorator authDecorator = new AuthDecorator();
-      ExceptionHandlingDecorator exceptionDecorator = new ExceptionHandlingDecorator(new GlobalExceptionHandler());
-      sb.routeDecorator().pathPrefix(basePath).exclude(basePath + "auth/tokens").build(authDecorator);
+      ExceptionHandlingDecorator exceptionDecorator =
+          new ExceptionHandlingDecorator(new GlobalExceptionHandler());
+      sb.routeDecorator()
+          .pathPrefix(basePath)
+          .exclude(basePath + "auth/tokens")
+          .build(authDecorator);
       sb.decorator(exceptionDecorator);
     }
   }

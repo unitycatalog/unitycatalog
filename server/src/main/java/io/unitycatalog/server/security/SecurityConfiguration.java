@@ -1,11 +1,6 @@
 package io.unitycatalog.server.security;
 
 import com.auth0.jwt.algorithms.Algorithm;
-import lombok.SneakyThrows;
-import org.apache.commons.codec.binary.Hex;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -21,17 +16,19 @@ import java.security.spec.InvalidKeySpecException;
 import java.security.spec.PKCS8EncodedKeySpec;
 import java.security.spec.X509EncodedKeySpec;
 import java.util.Base64;
+import lombok.SneakyThrows;
+import org.apache.commons.codec.binary.Hex;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * Security settings for the Authnz framework.
- * <p>
- * The settings are loaded from files persisted in the UC configuration folder.
- * If no settings files exist, they will be generated for reuse across restarts.
- * Equivalent openssl commands are
- * 	- openssl genrsa -out private_key.pem 2048
- * 	- openssl rsa -in private_key.pem -pubout -outform DER -out public_key.der
- * 	- openssl pkcs8 -topk8 -inform PEM -outform DER -in private_key.pem -out private_key.der -nocrypt
- * 	- openssl rand -hex -out key_id.txt 32
+ *
+ * <p>The settings are loaded from files persisted in the UC configuration folder. If no settings
+ * files exist, they will be generated for reuse across restarts. Equivalent openssl commands are -
+ * openssl genrsa -out private_key.pem 2048 - openssl rsa -in private_key.pem -pubout -outform DER
+ * -out public_key.der - openssl pkcs8 -topk8 -inform PEM -outform DER -in private_key.pem -out
+ * private_key.der -nocrypt - openssl rand -hex -out key_id.txt 32
  */
 public class SecurityConfiguration {
 
@@ -58,7 +55,9 @@ public class SecurityConfiguration {
 
   @SneakyThrows
   public void initializeIfMissing() {
-    if (Files.notExists(rsa512PublicKey) || Files.notExists(rsa512PrivateKey) || Files.notExists(keyId)) {
+    if (Files.notExists(rsa512PublicKey)
+        || Files.notExists(rsa512PrivateKey)
+        || Files.notExists(keyId)) {
       log.info("Initializing security configuration.");
       KeyPairGenerator keyPairGenerator = KeyPairGenerator.getInstance("RSA");
       keyPairGenerator.initialize(2048);
@@ -73,12 +72,13 @@ public class SecurityConfiguration {
     }
   }
 
-  public Algorithm algorithmRSA() throws NoSuchAlgorithmException, InvalidKeySpecException, IOException {
+  public Algorithm algorithmRSA()
+      throws NoSuchAlgorithmException, InvalidKeySpecException, IOException {
     return Algorithm.RSA512(rsaPublicKey(), rsaPrivateKey());
   }
 
   public RSAPublicKey rsaPublicKey()
-          throws NoSuchAlgorithmException, InvalidKeySpecException, IOException {
+      throws NoSuchAlgorithmException, InvalidKeySpecException, IOException {
     byte[] keyBytes;
     if (rsa512PublicKeyEncoded != null) {
       keyBytes = Base64.getDecoder().decode(rsa512PublicKeyEncoded);
@@ -96,7 +96,7 @@ public class SecurityConfiguration {
   }
 
   public RSAPrivateKey rsaPrivateKey()
-          throws NoSuchAlgorithmException, InvalidKeySpecException, IOException {
+      throws NoSuchAlgorithmException, InvalidKeySpecException, IOException {
     byte[] keyBytes;
     if (rsa512PrivateKeyEncoded != null) {
       keyBytes = Base64.getDecoder().decode(rsa512PrivateKeyEncoded);

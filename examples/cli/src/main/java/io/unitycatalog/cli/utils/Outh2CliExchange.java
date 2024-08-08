@@ -1,5 +1,11 @@
 package io.unitycatalog.cli.utils;
 
+import static java.net.HttpURLConnection.HTTP_OK;
+import static java.net.URLDecoder.decode;
+import static java.util.stream.Collectors.groupingBy;
+import static java.util.stream.Collectors.mapping;
+import static java.util.stream.Collectors.toList;
+
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -7,8 +13,6 @@ import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpHandler;
 import com.sun.net.httpserver.HttpServer;
 import io.unitycatalog.server.persist.utils.ServerPropertiesUtils;
-import org.apache.commons.codec.binary.Hex;
-
 import java.io.BufferedOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
@@ -30,16 +34,9 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Future;
 import java.util.regex.Pattern;
+import org.apache.commons.codec.binary.Hex;
 
-import static java.net.HttpURLConnection.HTTP_OK;
-import static java.net.URLDecoder.decode;
-import static java.util.stream.Collectors.groupingBy;
-import static java.util.stream.Collectors.mapping;
-import static java.util.stream.Collectors.toList;
-
-/**
- * Simple OAuth2 authentication flow for the CLI.
- */
+/** Simple OAuth2 authentication flow for the CLI. */
 public class Outh2CliExchange {
 
   interface Fields {
@@ -85,7 +82,9 @@ public class Outh2CliExchange {
     byte[] stateBytes = new byte[16];
     new SecureRandom().nextBytes(stateBytes);
 
-    String authUrl = String.format("%s?client_id=%s&redirect_uri=%s&response_type=code&scope=%s&state=%s",
+    String authUrl =
+        String.format(
+            "%s?client_id=%s&redirect_uri=%s&response_type=code&scope=%s&state=%s",
             authorizationUrl,
             URLEncoder.encode(clientId, StandardCharsets.UTF_8),
             URLEncoder.encode(redirectUrl, StandardCharsets.UTF_8),
@@ -105,16 +104,16 @@ public class Outh2CliExchange {
       Process exec = runtime.exec("/usr/bin/open " + authUrl);
       exec.waitFor();
 
-//      try (BufferedInputStream errorStream = new BufferedInputStream(exec.getErrorStream())) {
-//        String errorResponse = new String(errorStream.readAllBytes());
-//        if (!errorResponse.isEmpty()) {
-//          System.out.println(errorResponse);
-//        }
-//      }
+      //      try (BufferedInputStream errorStream = new BufferedInputStream(exec.getErrorStream()))
+      // {
+      //        String errorResponse = new String(errorStream.readAllBytes());
+      //        if (!errorResponse.isEmpty()) {
+      //          System.out.println(errorResponse);
+      //        }
+      //      }
     } catch (InterruptedException e) {
       // IGNORE - we couldn't automatically open a browser tab.
     }
-
 
     String authCode;
     try {
@@ -146,7 +145,8 @@ public class Outh2CliExchange {
     urlConnection.setRequestProperty("accept", "application/json");
     urlConnection.setRequestProperty("content-type", "application/x-www-form-urlencoded");
     urlConnection.setRequestProperty("authorization", authorization);
-    PrintStream printStream = new PrintStream(new BufferedOutputStream(urlConnection.getOutputStream()));
+    PrintStream printStream =
+        new PrintStream(new BufferedOutputStream(urlConnection.getOutputStream()));
     printStream.print(tokenBody);
     printStream.close();
     urlConnection.connect();
@@ -157,8 +157,8 @@ public class Outh2CliExchange {
         tokenResponse = new String(inputStream.readAllBytes());
       }
       System.out.println("Received token response.");
-      Map<String, String> tokenResponseParams = mapper.readValue(tokenResponse, new TypeReference<>() {
-      });
+      Map<String, String> tokenResponseParams =
+          mapper.readValue(tokenResponse, new TypeReference<>() {});
       urlConnection.disconnect();
       return tokenResponseParams.get("id_token");
     } else {
@@ -185,16 +185,20 @@ public class Outh2CliExchange {
 
   private String buildTokenBody(Map<String, String> tokenParams) throws JsonProcessingException {
     return tokenParams.entrySet().stream()
-            .filter(p -> !p.getKey().equals(Fields.CLIENT_ID) && !p.getKey().equals(Fields.CLIENT_SECRET))
-            .map(p -> URLEncoder.encode(p.getKey(), StandardCharsets.UTF_8) +
-                    "=" +
-                    URLEncoder.encode(p.getValue(), StandardCharsets.UTF_8))
-            .reduce((p1, p2) -> p1 + "&" + p2)
-            .orElse("");
+        .filter(
+            p -> !p.getKey().equals(Fields.CLIENT_ID) && !p.getKey().equals(Fields.CLIENT_SECRET))
+        .map(
+            p ->
+                URLEncoder.encode(p.getKey(), StandardCharsets.UTF_8)
+                    + "="
+                    + URLEncoder.encode(p.getValue(), StandardCharsets.UTF_8))
+        .reduce((p1, p2) -> p1 + "&" + p2)
+        .orElse("");
   }
 
   private String buildAuthorization(Map<String, String> tokenParams) {
-    String authorizationValue = tokenParams.get(Fields.CLIENT_ID) + ":" + tokenParams.get(Fields.CLIENT_SECRET);
+    String authorizationValue =
+        tokenParams.get(Fields.CLIENT_ID) + ":" + tokenParams.get(Fields.CLIENT_SECRET);
     return "Basic " + Base64.getEncoder().encodeToString(authorizationValue.getBytes());
   }
 
@@ -206,13 +210,14 @@ public class Outh2CliExchange {
     public void handle(HttpExchange exchange) throws IOException {
 
       // Get request query parameters
-      Map<String, List<String>> parameters = Pattern.compile("&")
+      Map<String, List<String>> parameters =
+          Pattern.compile("&")
               .splitAsStream(exchange.getRequestURI().getQuery())
               .map(s -> Arrays.copyOf(s.split("=", 2), 2))
-              .collect(groupingBy(s ->
-                              decode(s[0], StandardCharsets.UTF_8),
-                      mapping(s -> decode(s[1], StandardCharsets.UTF_8),
-                              toList())));
+              .collect(
+                  groupingBy(
+                      s -> decode(s[0], StandardCharsets.UTF_8),
+                      mapping(s -> decode(s[1], StandardCharsets.UTF_8), toList())));
 
       // Get the authorization flow code
       String value = parameters.get("code").get(0);
