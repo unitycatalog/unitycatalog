@@ -74,17 +74,12 @@ export interface DeleteVolumeMutationParams
   extends Pick<VolumeInterface, 'catalog_name' | 'schema_name' | 'name'> {}
 
 interface DeleteVolumeParams {
-  onSuccessCallback?: () => void;
   catalog: string;
   schema: string;
 }
 
 // Delete a volume
-export function useDeleteVolume({
-  onSuccessCallback,
-  catalog,
-  schema,
-}: DeleteVolumeParams) {
+export function useDeleteVolume({ catalog, schema }: DeleteVolumeParams) {
   const queryClient = useQueryClient();
 
   return useMutation<void, Error, DeleteVolumeMutationParams>({
@@ -111,7 +106,6 @@ export function useDeleteVolume({
       queryClient.invalidateQueries({
         queryKey: ['listVolumes', catalog, schema],
       });
-      onSuccessCallback?.();
     },
   });
 }

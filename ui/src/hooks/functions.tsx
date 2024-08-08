@@ -81,17 +81,12 @@ export interface DeleteFunctionMutationParams
   extends Pick<FunctionInterface, 'catalog_name' | 'schema_name' | 'name'> {}
 
 interface DeleteFunctionParams {
-  onSuccessCallback?: () => void;
   catalog: string;
   schema: string;
 }
 
 // Delete a function
-export function useDeleteFunction({
-  onSuccessCallback,
-  catalog,
-  schema,
-}: DeleteFunctionParams) {
+export function useDeleteFunction({ catalog, schema }: DeleteFunctionParams) {
   const queryClient = useQueryClient();
 
   return useMutation<void, Error, DeleteFunctionMutationParams>({
@@ -118,7 +113,6 @@ export function useDeleteFunction({
       queryClient.invalidateQueries({
         queryKey: ['listFunctions', catalog, schema],
       });
-      onSuccessCallback?.();
     },
   });
 }

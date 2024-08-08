@@ -17,12 +17,7 @@ export function DeleteCatalogModal({
 }: DeleteCatalogModalProps) {
   const navigate = useNavigate();
   const { setNotification } = useNotification();
-  const mutation = useDeleteCatalog({
-    onSuccessCallback: () => {
-      setNotification(`${catalog} catalog successfully deleted`, 'success');
-      navigate(`/`);
-    },
-  });
+  const mutation = useDeleteCatalog();
 
   const handleSubmit = useCallback(() => {
     mutation.mutate(
@@ -31,9 +26,13 @@ export function DeleteCatalogModal({
         onError: (error: Error) => {
           setNotification(error.message, 'error');
         },
+        onSuccess: () => {
+          setNotification(`${catalog} catalog successfully deleted`, 'success');
+          navigate(`/`);
+        },
       },
     );
-  }, [mutation, catalog, setNotification]);
+  }, [mutation, catalog, setNotification, navigate]);
 
   return (
     <Modal

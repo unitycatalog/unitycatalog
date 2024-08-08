@@ -22,10 +22,6 @@ export function DeleteVolumeModal({
   const navigate = useNavigate();
   const { setNotification } = useNotification();
   const mutation = useDeleteVolume({
-    onSuccessCallback: () => {
-      setNotification(`${volume} volume successfully deleted`, 'success');
-      navigate(`/data/${catalog}/${schema}`);
-    },
     catalog,
     schema,
   });
@@ -37,9 +33,13 @@ export function DeleteVolumeModal({
         onError: (error: Error) => {
           setNotification(error.message, 'error');
         },
+        onSuccess: () => {
+          setNotification(`${volume} volume successfully deleted`, 'success');
+          navigate(`/data/${catalog}/${schema}`);
+        },
       },
     );
-  }, [mutation, volume, setNotification]);
+  }, [mutation, volume, setNotification, navigate]);
 
   return (
     <Modal

@@ -76,19 +76,14 @@ export interface DeleteTableMutationParams
   extends Pick<TableInterface, 'catalog_name' | 'schema_name' | 'name'> {}
 
 interface DeleteTableParams {
-  onSuccessCallback?: () => void;
   catalog: string;
   schema: string;
 }
 
-export function useDeleteTable({
-  onSuccessCallback,
-  catalog,
-  schema,
-}: DeleteTableParams) {
+export function useDeleteTable({ catalog, schema }: DeleteTableParams) {
   const queryClient = useQueryClient();
 
-  return useMutation<void, unknown, DeleteTableMutationParams>({
+  return useMutation<void, Error, DeleteTableMutationParams>({
     mutationFn: async ({
       catalog_name,
       schema_name,
@@ -111,7 +106,6 @@ export function useDeleteTable({
       queryClient.invalidateQueries({
         queryKey: ['listTables', catalog, schema],
       });
-      onSuccessCallback?.();
     },
   });
 }
