@@ -27,6 +27,11 @@ jobs:
     needs: scala-java-build  # This ensures python-tests runs only after scala-java-build succeeds
     steps:
       - uses: actions/checkout@v4
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'temurin'
       - name: Set up Python
         uses: actions/setup-python@v4
         with:
