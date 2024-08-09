@@ -8,6 +8,7 @@ import io.unitycatalog.server.persist.dao.SchemaInfoDAO;
 import io.unitycatalog.server.persist.utils.FileUtils;
 import io.unitycatalog.server.persist.utils.HibernateUtils;
 import io.unitycatalog.server.persist.utils.PagedListingHelper;
+import io.unitycatalog.server.persist.utils.RepositoryUtils;
 import io.unitycatalog.server.utils.ValidationUtils;
 import java.util.*;
 import org.hibernate.Session;
@@ -62,11 +63,7 @@ public class ModelRepository {
       session.setDefaultReadOnly(true);
       Transaction tx = session.beginTransaction();
       try {
-        String[] parts = fullName.split("\\.");
-        if (parts.length != 3) {
-          throw new BaseException(
-              ErrorCode.INVALID_ARGUMENT, "Invalid registered model name: " + fullName);
-        }
+        String[] parts = RepositoryUtils.parseFullName(fullName);
         String catalogName = parts[0];
         String schemaName = parts[1];
         String registeredModelName = parts[2];
@@ -97,15 +94,18 @@ public class ModelRepository {
 
   public RegisteredModelInfo createRegisteredModel(CreateRegisteredModel createRegisteredModel) {
     ValidationUtils.validateSqlObjectName(createRegisteredModel.getModelName());
+    long createTime = System.currentTimeMillis();
     RegisteredModelInfo registeredModelInfo =
         new RegisteredModelInfo()
             .modelId(UUID.randomUUID().toString())
             .name(createRegisteredModel.getModelName())
             .catalogName(createRegisteredModel.getCatalogName())
             .schemaName(createRegisteredModel.getSchemaName())
+            // Sort this out....it should come from the schema
             .storageLocation(FileUtils.convertRelativePathToURI("test"))
             .comment(createRegisteredModel.getComment())
-            .createdAt(System.currentTimeMillis());
+            .createdAt(createTime)
+            .updatedAt(createTime);
     String fullName = getRegisteredModelFullName(registeredModelInfo);
     LOGGER.debug("Creating Registered Model: " + fullName);
 
@@ -155,11 +155,15 @@ public class ModelRepository {
   }
 
   private String getRegisteredModelFullName(RegisteredModelInfo registeredModelInfo) {
-    return registeredModelInfo.getCatalogName()
-        + "."
-        + registeredModelInfo.getSchemaName()
-        + "."
-        + registeredModelInfo.getName();
+    return getRegisteredModelFullName(
+            registeredModelInfo.getCatalogName(),
+            registeredModelInfo.getSchemaName(),
+            registeredModelInfo.getName()
+    );
+  }
+
+  private String getRegisteredModelFullName(String catalogName, String schemaName, String modelName) {
+    return STR."\{catalogName}.\{schemaName}.\{modelName}";
   }
 
   public UUID getSchemaId(Session session, String catalogName, String schemaName) {
@@ -170,15 +174,6 @@ public class ModelRepository {
     return schemaInfo.getId();
   }
 
-  /**
-   * Return the list of tables in ascending order of table name.
-   *
-   * @param catalogName
-   * @param schemaName
-   * @param maxResults
-   * @param pageToken
-   * @return
-   */
   public ListRegisteredModelsResponse listRegisteredModels(
       String catalogName,
       String schemaName,
@@ -220,6 +215,70 @@ public class ModelRepository {
       result.add(registeredModelInfo);
     }
     return new ListRegisteredModelsResponse().registeredModels(result).nextPageToken(nextPageToken);
+  }
+
+  public RegisteredModelInfo updateRegisteredModel(UpdateRegisteredModel updateRegisteredModel) {
+    if (updateRegisteredModel.getNewName() != null) {
+      ValidationUtils.validateSqlObjectName(updateRegisteredModel.getNewName());
+    }
+    if (updateRegisteredModel.getNewName() == null && updateRegisteredModel.getComment() == null) {
+      throw new BaseException(ErrorCode.INVALID_ARGUMENT, "No updated fields defined.");
+    }
+
+    String fullName = updateRegisteredModel.getFullNameArg();
+    LOGGER.debug("Updating Registered Model: " + fullName);
+    RegisteredModelInfo registeredModelInfo;
+
+    Transaction tx;
+    try (Session session = SESSION_FACTORY.openSession()) {
+      String[] parts = RepositoryUtils.parseFullName(fullName);
+      String catalogName = parts[0];
+      String schemaName = parts[1];
+      String registeredModelName = parts[2];
+      tx = session.beginTransaction();
+      try {
+        // Verify that the new model name does not already exist in the database
+        if (updateRegisteredModel.getNewName() != null) {
+          String newFullName = getRegisteredModelFullName(catalogName, schemaName, updateRegisteredModel.getNewName());
+          RegisteredModelInfoDAO newRegisteredModelInfoDAO =
+                  findRegisteredModel(session, catalogName, schemaName, updateRegisteredModel.getNewName());
+          if (newRegisteredModelInfoDAO != null) {
+            throw new BaseException(ErrorCode.ALREADY_EXISTS, "Registered model already exists: " + newFullName);
+          }
+        }
+        // Get the record from the database
+        RegisteredModelInfoDAO origRegisteredModelInfoDAO =
+                findRegisteredModel(session, catalogName, schemaName, registeredModelName);
+        if (origRegisteredModelInfoDAO == null) {
+          throw new BaseException(ErrorCode.NOT_FOUND, "Registered model not found: " + fullName);
+        }
+        registeredModelInfo = origRegisteredModelInfoDAO.toRegisteredModelInfo();
+        if (updateRegisteredModel.getNewName() != null) {
+          registeredModelInfo.setName(updateRegisteredModel.getNewName());
+        }
+        if (updateRegisteredModel.getComment() != null) {
+          registeredModelInfo.setComment(updateRegisteredModel.getComment());
+        }
+        long updatedTime = System.currentTimeMillis();
+        registeredModelInfo.setUpdatedAt(updatedTime);
+        RegisteredModelInfoDAO toPersistRegisteredModelInfoDAO =
+                RegisteredModelInfoDAO.from(registeredModelInfo);
+        session.persist(toPersistRegisteredModelInfoDAO);
+        tx.commit();
+      } catch (RuntimeException e) {
+        if (tx != null && tx.getStatus().canRollback()) {
+          tx.rollback();
+        }
+        throw e;
+      }
+    } catch (RuntimeException e) {
+      if (e instanceof BaseException) {
+        throw e;
+      }
+      throw new BaseException(
+              ErrorCode.INTERNAL, "Error updating registered model: " + fullName, e);
+    }
+    return registeredModelInfo;
   }
 
   public void deleteRegisteredModel(String fullName) {

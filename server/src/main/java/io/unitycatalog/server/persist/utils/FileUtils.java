@@ -47,6 +47,18 @@ public class FileUtils {
     return createDirectory(absoluteUri).toString();
   }
 
+  public static String createRegisteredModelDirectory(
+          String catalogName, String schemaName, String modelName) {
+    String absoluteUri = getDirectoryURI(STR."\{catalogName}.\{schemaName}.models.\{modelName}");
+    return createDirectory(absoluteUri).toString();
+  }
+
+  public static String createModelVersionDirectory(
+          String catalogName, String schemaName, String modelName) {
+    String absoluteUri = getDirectoryURI(STR."\{catalogName}.\{schemaName}.models.\{modelName}.versions");
+    return createDirectory(absoluteUri).toString();
+  }
+
   private static URI createDirectory(String uri) {
     URI parsedUri = createURI(uri);
     validateURI(parsedUri);

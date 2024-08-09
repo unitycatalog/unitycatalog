@@ -58,7 +58,7 @@ public class RegisteredModelInfoDAO extends IdentifiableDAO {
             registeredModelInfo.getUpdatedAt() != null
                 ? new Date(registeredModelInfo.getUpdatedAt())
                 : new Date())
-        .createdBy(registeredModelInfo.getUpdatedBy())
+        .updatedBy(registeredModelInfo.getUpdatedBy())
         .url(registeredModelInfo.getStorageLocation())
         .build();
   }
@@ -71,7 +71,9 @@ public class RegisteredModelInfoDAO extends IdentifiableDAO {
             .storageLocation(FileUtils.convertRelativePathToURI(url))
             .comment(comment)
             .createdAt(createdAt != null ? createdAt.getTime() : null)
-            .updatedAt(updatedAt != null ? updatedAt.getTime() : null);
+            .createdBy(createdBy)
+            .updatedAt(updatedAt != null ? updatedAt.getTime() : null)
+            .updatedBy(updatedBy);
     return registeredModelInfo;
   }
 }
