@@ -74,7 +74,7 @@ In a terminal, in the cloned repository root directory, start the UC server.
 bin/start-uc-server
 ```
 
-For the remaning steps, continue in a different terminal.
+For the remaining steps, continue in a different terminal.
 
 ### Operate on Delta tables with the CLI
 
