@@ -16,7 +16,6 @@ import io.unitycatalog.client.ApiException;
 import io.unitycatalog.client.api.TablesApi;
 import io.unitycatalog.client.api.TemporaryTableCredentialsApi;
 import io.unitycatalog.client.model.*;
-import java.io.*;
 import java.net.URI;
 import java.nio.file.Path;
 import java.nio.file.Paths;

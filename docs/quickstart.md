@@ -117,7 +117,7 @@ bin/uc table create --full_name unity.default.my_table \
 
 ![UC create table](./assets/images/uc_create_table.png)
 
-If you list the tables again, you should see this new table. 
+If you list the tables again, you should see this new table.
 
 Next, append some randomly generated data to the table.
 

@@ -132,10 +132,12 @@ public class FunctionInfoDAO extends IdentifiableDAO {
             .sqlDataAccess(sqlDataAccess)
             .securityType(securityType)
             .specificName(specificName);
-    if (!inputParams.isEmpty())
+    if (!inputParams.isEmpty()) {
       functionInfo.inputParams(FunctionParameterInfoDAO.toFunctionParameterInfos(inputParams));
-    if (!returnParams.isEmpty())
+    }
+    if (!returnParams.isEmpty()) {
       functionInfo.returnParams(FunctionParameterInfoDAO.toFunctionParameterInfos(returnParams));
+    }
     return functionInfo;
   }
 }
