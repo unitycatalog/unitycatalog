@@ -311,7 +311,7 @@ lazy val serverModels = (project in file("server") / "target" / "models")
   )
 
 lazy val cli = (project in file("examples") / "cli")
-  .dependsOn(server % "compile->compile;test->test")
+  .dependsOn(server % "test->test")
   .dependsOn(client % "compile->compile;test->test")
   .settings(
     name := s"$artifactNamePrefix-cli",
@@ -346,29 +346,80 @@ lazy val cli = (project in file("examples") / "cli")
     Test / javaOptions += s"-Duser.dir=${(ThisBuild / baseDirectory).value.getAbsolutePath}",
   )
 
+/*
+  * This project is a combination of the server and client projects, shaded into a single JAR.
+  * It also includes the test classes from the server project.
+  * It is used for the Spark connector project(the client is required as a compile dependency,
+  * and the server(with tests) is required as a test dependency)
+  * This was necessary because Spark 3.5 has a dependency on Jackson 2.15, which conflicts with the Jackson 2.17
+ */
+lazy val serverAndClientShaded = (project in file("server-and-client-shaded"))
+  .dependsOn(server % "compile->compile, test->compile")
+  .dependsOn(client % "compile->compile")
+  .settings(
+    name := s"${artifactNamePrefix}-server-shaded",
+    commonSettings,
+    skipReleaseSettings,
+    Compile / packageBin := assembly.value,
+    assembly / logLevel := Level.Warn,
+    assembly / test := {},
+    assembly / assemblyShadeRules := Seq(
+      ShadeRule.rename("com.fasterxml.**" -> "shaded.@0").inAll,
+      ShadeRule.rename("org.antlr.**" -> "shaded.@0").inAll,
+    ),
+    assemblyPackageScala / assembleArtifact := false,
+
+    assembly / assemblyMergeStrategy := {
+      case PathList("META-INF", xs@_*) => MergeStrategy.discard
+      case _ => MergeStrategy.first
+    },
+    assembly / fullClasspath := {
+      val compileClasspath = (server / Compile / fullClasspath).value ++ (client / Compile / fullClasspath).value
+      val testClasses = (server / Test / products).value
+      compileClasspath ++ testClasses.map(Attributed.blank)
+    }
+  )
+
+val sparkVersion = "3.5.1"
 lazy val spark = (project in file("connectors/spark"))
-  .dependsOn(client % "compile->compile;test->test")
-  .dependsOn(server % "test->test")
   .settings(
     name := s"$artifactNamePrefix-spark",
-    scalaVersion := "2.13.14",
+    scalaVersion := "2.12.15",
     commonSettings,
     javaOptions ++= Seq(
       "--add-opens=java.base/sun.nio.ch=ALL-UNNAMED",
     ),
-    javaCheckstyleSettings(file("dev") / "checkstyle-config.xml"),
+    javaCheckstyleSettings(file("dev/checkstyle-config.xml")),
     libraryDependencies ++= Seq(
-      "org.apache.spark" %% "spark-sql" % "4.0.0-preview1",
+      "org.apache.spark" %% "spark-sql" % sparkVersion,
+      "com.fasterxml.jackson.core" % "jackson-databind" % "2.15.0",
+      "com.fasterxml.jackson.module" %% "jackson-module-scala" % "2.15.0",
+      "com.fasterxml.jackson.core" % "jackson-annotations" % "2.15.0",
+      "com.fasterxml.jackson.core" % "jackson-core" % "2.15.0",
+      "org.antlr" % "antlr4-runtime" % "4.9.3",
+      "org.antlr" % "antlr4" % "4.9.3",
+    ),
+    libraryDependencies ++= Seq(
       // Test dependencies
       "org.junit.jupiter" % "junit-jupiter" % "5.10.3" % Test,
+      "org.assertj" % "assertj-core" % "3.26.3" % Test,
+      "org.mockito" % "mockito-core" % "5.11.0" % Test,
+      "org.mockito" % "mockito-inline" % "5.2.0" % Test,
+      "org.mockito" % "mockito-junit-jupiter" % "5.12.0" % Test,
       "net.aichler" % "jupiter-interface" % JupiterKeys.jupiterVersion.value % Test,
-      "io.delta" %% "delta-spark" % "4.0.0rc1" % Test,
+      "org.apache.hadoop" % "hadoop-client-runtime" % "3.4.0",
+      "io.delta" %% "delta-spark" % "3.2.0" % Test,
     ),
-    excludeDependencies ++= Seq(
-      // This is a transitive dependency from the `server` module and we have to exclude it here
-      // as it introduces some conflicts with the dependencies from Spark.
-      ExclusionRule("com.adobe.testing", "s3mock-junit5")
+    dependencyOverrides ++= Seq(
+      "com.fasterxml.jackson.core" % "jackson-databind" % "2.15.0",
+      "com.fasterxml.jackson.module" %% "jackson-module-scala" % "2.15.0",
+      "com.fasterxml.jackson.core" % "jackson-annotations" % "2.15.0",
+      "com.fasterxml.jackson.core" % "jackson-core" % "2.15.0",
+      "org.antlr" % "antlr4-runtime" % "4.9.3",
+      "org.antlr" % "antlr4" % "4.9.3",
     ),
+    Compile / unmanagedJars += (serverAndClientShaded / assembly).value,
+    Test / unmanagedJars += (serverAndClientShaded / assembly).value,
     licenseDepExclusions := {
       case DepModuleInfo("org.hibernate.orm", _, _) => true
       case DepModuleInfo("jakarta.annotation", "jakarta.annotation-api", _) => true
@@ -386,7 +437,10 @@ lazy val spark = (project in file("connectors/spark"))
       case DepModuleInfo("ch.qos.logback", "logback-core", _) => true
       case DepModuleInfo("org.apache.xbean", "xbean-asm9-shaded", _) => true
       case DepModuleInfo("oro", "oro", _) => true
-    },
+      case DepModuleInfo("org.glassfish", "javax.json", _) => true
+      case DepModuleInfo("org.glassfish.hk2.external", "jakarta.inject", _) => true
+      case DepModuleInfo("org.antlr", "ST4", _) => true,
+    }
   )
 
 lazy val root = (project in file("."))
