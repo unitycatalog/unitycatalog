@@ -1,10 +1,8 @@
 package io.unitycatalog.connectors.spark
 
-import com.google.gson.internal.bind.DefaultDateTypeAdapter.DateType
 import io.unitycatalog.client.{ApiClient, ApiException}
 import io.unitycatalog.client.api.{SchemasApi, TablesApi, TemporaryTableCredentialsApi}
 import io.unitycatalog.client.model.{AwsCredentials, ColumnInfo, ColumnTypeName, CreateSchema, CreateTable, DataSourceFormat, GenerateTemporaryTableCredential, ListTablesResponse, SchemaInfo, TableOperation, TableType}
-import org.apache.arrow.vector.types.pojo.ArrowType.Timestamp
 
 import java.net.URI
 import java.util
@@ -195,7 +193,6 @@ private class UCProxy extends TableCatalog with SupportsNamespaces {
 
   override def createTable(ident: Identifier, schema: StructType, partitions: Array[Transform], properties: util.Map[String, String]): Table = {
     checkUnsupportedNestedNamespace(ident.namespace())
-    assert(properties.get(TableCatalog.PROP_EXTERNAL) == null)
     assert(properties.get("provider") != null)
 
     val createTable = new CreateTable()
