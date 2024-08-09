@@ -117,7 +117,7 @@ def start_server():
                 time.sleep(1)
                 i += 1
 
-        if i >= 30:
+        if i >= 60:
             with open(log_file, 'r') as lf:
                 print(f">> Server is taking too long to get ready, failing tests. Log:\n{lf.read()}")
             exit(1)
