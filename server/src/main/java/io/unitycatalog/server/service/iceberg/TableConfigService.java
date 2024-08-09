@@ -39,11 +39,7 @@ public class TableConfigService {
     URI locationURI = URI.create(tableMetadata.location());
     String scheme = locationURI.getScheme();
 
-    CredentialContext context = CredentialContext.builder()
-      .privileges(Set.of(SELECT))
-      .storageScheme(scheme)
-      .storageBase(scheme + "://" + locationURI.getAuthority())
-      .locations(List.of(locationURI.toString())).build();
+    CredentialContext context = CredentialContext.create(locationURI, Set.of(SELECT));
 
     return switch(scheme) {
       case URI_SCHEME_ABFS, URI_SCHEME_ABFSS -> getADLSConfig(context);
