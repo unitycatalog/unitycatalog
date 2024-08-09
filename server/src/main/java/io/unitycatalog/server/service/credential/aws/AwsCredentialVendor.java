@@ -1,7 +1,5 @@
 package io.unitycatalog.server.service.credential.aws;
 
-import com.amazonaws.SdkClientException;
-import com.amazonaws.regions.DefaultAwsRegionProviderChain;
 import io.unitycatalog.server.exception.BaseException;
 import io.unitycatalog.server.exception.ErrorCode;
 import io.unitycatalog.server.persist.utils.ServerPropertiesUtils;
@@ -24,23 +22,9 @@ public class AwsCredentialVendor {
   private static final Logger LOGGER = LoggerFactory.getLogger(AwsCredentialVendor.class);
 
   private final Map<String, S3StorageConfig> s3Configurations;
-  private final String serverRegion;
 
   public AwsCredentialVendor() {
-    ServerPropertiesUtils utils = ServerPropertiesUtils.getInstance();
-    this.s3Configurations = utils.getS3Configurations();
-
-    String awsRegion = utils.getProperty("aws.region");
-
-    if (awsRegion == null || awsRegion.isEmpty()) {
-      try {
-        awsRegion = new DefaultAwsRegionProviderChain().getRegion();
-      } catch (SdkClientException e) {
-        LOGGER.warn(e.getMessage());
-      }
-    }
-
-    this.serverRegion = awsRegion;
+    this.s3Configurations = ServerPropertiesUtils.getInstance().getS3Configurations();
   }
 
   public Credentials vendAwsCredentials(CredentialContext context) {
@@ -87,18 +71,11 @@ public class AwsCredentialVendor {
       credentialsProvider = DefaultCredentialsProvider.create();
     }
 
+    // TODO: should we try and set the region to something configurable or specific to the server
+    // instead?
     return StsClient.builder()
         .credentialsProvider(credentialsProvider)
-        .region(resolveRegion(s3StorageConfig))
+        .region(Region.of(s3StorageConfig.getRegion()))
         .build();
-  }
-
-  private Region resolveRegion(S3StorageConfig s3StorageConfig) {
-    if (serverRegion == null) {
-      // couldn't determine uc server region, falling back to what the storage region is
-      return Region.of(s3StorageConfig.getRegion());
-    } else {
-      return Region.of(serverRegion);
-    }
   }
 }
