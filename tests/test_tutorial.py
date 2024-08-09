@@ -102,7 +102,7 @@ def start_server():
         time.sleep(60)
         i = 0
         success = False
-        while i < 30 and not success:
+        while i < 60 and not success:
             try:
                 response = requests.head("http://localhost:8081", timeout=60)
                 if response.status_code == 200:
@@ -110,11 +110,11 @@ def start_server():
                     success = True
                 else:
                     print(f"Waiting... Server responded with status code: {response.status_code}")
-                    time.sleep(1)
+                    time.sleep(2)
                     i += 1
             except requests.RequestException as e:
                 print(f"Waiting... Failed to connect to the server: {e}")
-                time.sleep(1)
+                time.sleep(2)
                 i += 1
 
         if i >= 60:
