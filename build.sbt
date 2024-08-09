@@ -250,9 +250,6 @@ lazy val server = (project in file("server"))
     Test / javaOptions += s"-Duser.dir=${(ThisBuild / baseDirectory).value.getAbsolutePath}"
   )
 
-
-val assemblyAndPublishLocal = taskKey[Unit]("Builds the assembly and publishes it locally")
-
 lazy val serverModels = (project in file("server") / "target" / "models")
   .enablePlugins(OpenApiGeneratorPlugin)
   .disablePlugins(JavaFormatterPlugin)
@@ -323,6 +320,13 @@ lazy val cli = (project in file("examples") / "cli")
     Test / javaOptions += s"-Duser.dir=${(ThisBuild / baseDirectory).value.getAbsolutePath}",
   )
 
+/*
+  * This project is a combination of the server and client projects, shaded into a single JAR.
+  * It also includes the test classes from the server project.
+  * It is used for the Spark connector project(the client is required as a compile dependency,
+  * and the server(with tests) is required as a test dependency)
+  * This was necessary because Spark 3.5 has a dependency on Jackson 2.15, which conflicts with the Jackson 2.17
+ */
 lazy val serverAndClientShaded = (project in file("server-and-client-shaded"))
   .dependsOn(server % "compile->compile, test->compile")
   .dependsOn(client % "compile->compile")
@@ -414,7 +418,7 @@ lazy val spark = (project in file("connectors/spark"))
   )
 
 lazy val root = (project in file("."))
-  .aggregate(serverModels, client, server, cli, spark, serverAndClientShaded)
+  .aggregate(serverModels, client, server, cli, spark)
   .settings(
     name := s"$artifactNamePrefix",
     createTarballSettings(),
