@@ -121,6 +121,7 @@ public class TableRepository {
             .storageLocation(FileUtils.convertRelativePathToURI(createTable.getStorageLocation()))
             .comment(createTable.getComment())
             .properties(createTable.getProperties())
+            .uniformIcebergMetadataLocation(createTable.getUniformIcebergMetadataLocation())
             .createdAt(System.currentTimeMillis());
     String fullName = getTableFullName(tableInfo);
     LOGGER.debug("Creating table: " + fullName);

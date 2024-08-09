@@ -74,6 +74,10 @@ public class TableInfoDAO extends IdentifiableDAO {
         .dataSourceFormat(tableInfo.getDataSourceFormat().toString())
         .url(tableInfo.getStorageLocation())
         .columns(ColumnInfoDAO.fromList(tableInfo.getColumns()))
+        .uniformIcebergMetadataLocation(
+            tableInfo.getUniformIcebergMetadataLocation() != null
+                ? tableInfo.getUniformIcebergMetadataLocation()
+                : null)
         .build();
   }
 
@@ -86,6 +90,7 @@ public class TableInfoDAO extends IdentifiableDAO {
             .dataSourceFormat(DataSourceFormat.valueOf(dataSourceFormat))
             .storageLocation(FileUtils.convertRelativePathToURI(url))
             .comment(comment)
+            .uniformIcebergMetadataLocation(uniformIcebergMetadataLocation)
             .createdAt(createdAt != null ? createdAt.getTime() : null)
             .updatedAt(updatedAt != null ? updatedAt.getTime() : null);
     if (fetchColumns) {
