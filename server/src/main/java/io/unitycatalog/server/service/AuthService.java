@@ -42,7 +42,7 @@ public class AuthService {
     UUID resourceId = getResourceId(resourceType, name);
     Map<UUID, List<Privilege>> authorizations;
     if (principle.isPresent()) {
-      User user = USER_REPOSITORY.getUser(principle.get());
+      User user = USER_REPOSITORY.getUserByEmail(principle.get());
       UUID principleId = UUID.fromString(Objects.requireNonNull(user.getId()));
       authorizations =
           Map.of(principleId, jCasbinAuthenticator.listAuthorizations(principleId, resourceId));
@@ -74,7 +74,7 @@ public class AuthService {
     changes.forEach(
         change -> {
           String principle = change.getPrincipal();
-          User user = USER_REPOSITORY.getUser(principle);
+          User user = USER_REPOSITORY.getUserByEmail(principle);
           UUID principleId = UUID.fromString(Objects.requireNonNull(user.getId()));
           principleIds.add(principleId);
           change
