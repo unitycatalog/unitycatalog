@@ -2,8 +2,6 @@ package io.unitycatalog.server.service.credential.aws;
 
 import com.amazonaws.SdkClientException;
 import com.amazonaws.regions.DefaultAwsRegionProviderChain;
-import com.amazonaws.regions.Regions;
-import io.unitycatalog.server.UnityCatalogServer;
 import io.unitycatalog.server.exception.BaseException;
 import io.unitycatalog.server.exception.ErrorCode;
 import io.unitycatalog.server.persist.utils.ServerPropertiesUtils;
@@ -11,7 +9,6 @@ import io.unitycatalog.server.service.credential.CredentialContext;
 import java.time.Duration;
 import java.util.Map;
 import java.util.UUID;
-
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import software.amazon.awssdk.auth.credentials.AwsBasicCredentials;
