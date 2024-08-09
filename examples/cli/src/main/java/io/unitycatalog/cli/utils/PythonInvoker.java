@@ -4,7 +4,6 @@ import io.unitycatalog.client.ApiException;
 import io.unitycatalog.client.model.ColumnTypeName;
 import io.unitycatalog.client.model.FunctionInfo;
 import io.unitycatalog.client.model.FunctionParameterInfo;
-import io.unitycatalog.client.model.FunctionParameterInfos;
 import java.io.BufferedReader;
 import java.io.InputStreamReader;
 import java.util.ArrayList;
@@ -83,26 +82,5 @@ public class PythonInvoker {
       e.printStackTrace();
       throw new ApiException("Error invoking Python script: " + e.getMessage());
     }
-  }
-
-  public static void main(String[] args) throws ApiException {
-    // Example usage
-    FunctionInfo function = new FunctionInfo();
-    function.setName("lowercase");
-    function.setRoutineDefinition("return x.lower()");
-    FunctionParameterInfo param1 = new FunctionParameterInfo();
-    param1.setName("x");
-    param1.setTypeName(ColumnTypeName.STRING);
-    List<FunctionParameterInfo> params = new ArrayList<>();
-    params.add(param1);
-
-    /*
-            FunctionParameterInfo param2 = new FunctionParameterInfo();
-            param2.setName("y");
-            param2.setTypeName(ColumnTypeName.INT);
-            params.add(param2);
-    */
-    function.setInputParams(new FunctionParameterInfos().parameters(params));
-    System.out.println(invokePython(function, "etc/data/function/python_engine.py", args));
   }
 }

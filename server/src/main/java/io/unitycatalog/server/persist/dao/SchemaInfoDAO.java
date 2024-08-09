@@ -6,24 +6,19 @@ import java.time.Instant;
 import java.util.Date;
 import java.util.UUID;
 import lombok.*;
+import lombok.experimental.SuperBuilder;
 
 @Entity
 @Table(name = "uc_schemas")
 // Lombok
 @Getter
 @Setter
-@Builder
+@SuperBuilder
 @AllArgsConstructor
 @NoArgsConstructor
-public class SchemaInfoDAO {
-  @Id
-  @Column(name = "id", columnDefinition = "BINARY(16)")
-  private UUID id;
-
-  @Column(name = "name")
-  private String name;
-
-  @Column(name = "catalog_id", columnDefinition = "BINARY(16)")
+@EqualsAndHashCode(callSuper = true)
+public class SchemaInfoDAO extends IdentifiableDAO {
+  @Column(name = "catalog_id")
   private UUID catalogId;
 
   @Column(name = "comment")
@@ -51,13 +46,12 @@ public class SchemaInfoDAO {
         .build();
   }
 
-  public static SchemaInfo toSchemaInfo(SchemaInfoDAO schemaInfoDAO) {
+  public SchemaInfo toSchemaInfo() {
     return new SchemaInfo()
-        .schemaId(schemaInfoDAO.getId().toString())
-        .name(schemaInfoDAO.getName())
-        .comment(schemaInfoDAO.getComment())
-        .createdAt(schemaInfoDAO.getCreatedAt().getTime())
-        .updatedAt(
-            (schemaInfoDAO.getUpdatedAt() != null) ? schemaInfoDAO.getUpdatedAt().getTime() : null);
+        .schemaId(getId().toString())
+        .name(getName())
+        .comment(getComment())
+        .createdAt(getCreatedAt().getTime())
+        .updatedAt(getUpdatedAt() != null ? getUpdatedAt().getTime() : null);
   }
 }

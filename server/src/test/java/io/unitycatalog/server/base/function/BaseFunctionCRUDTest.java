@@ -2,7 +2,7 @@ package io.unitycatalog.server.base.function;
 
 import static io.unitycatalog.server.utils.TestUtils.*;
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.junit.Assert.*;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import io.unitycatalog.client.ApiException;
 import io.unitycatalog.client.model.*;
@@ -10,7 +10,10 @@ import io.unitycatalog.server.base.BaseCRUDTest;
 import io.unitycatalog.server.base.ServerConfig;
 import io.unitycatalog.server.base.schema.SchemaOperations;
 import java.util.List;
-import org.junit.*;
+import org.assertj.core.api.Assertions;
+import org.assertj.core.api.InstanceOfAssertFactories;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
 
 public abstract class BaseFunctionCRUDTest extends BaseCRUDTest {
   protected SchemaOperations schemaOperations;
@@ -20,7 +23,7 @@ public abstract class BaseFunctionCRUDTest extends BaseCRUDTest {
 
   protected abstract FunctionOperations createFunctionOperations(ServerConfig serverConfig);
 
-  @Before
+  @BeforeEach
   @Override
   public void setUp() {
     super.setUp();
@@ -36,7 +39,8 @@ public abstract class BaseFunctionCRUDTest extends BaseCRUDTest {
 
   @Test
   public void testFunctionCRUD() throws ApiException {
-    Assert.assertThrows(Exception.class, () -> functionOperations.getFunction(FUNCTION_FULL_NAME));
+    assertThatThrownBy(() -> functionOperations.getFunction(FUNCTION_FULL_NAME))
+        .isInstanceOf(Exception.class);
     // Create a catalog
     createCommonResources();
 
@@ -73,31 +77,33 @@ public abstract class BaseFunctionCRUDTest extends BaseCRUDTest {
 
     // Create a function
     FunctionInfo functionInfo = functionOperations.createFunction(createFunctionRequest);
-    assertEquals(FUNCTION_NAME, functionInfo.getName());
-    assertEquals(CATALOG_NAME, functionInfo.getCatalogName());
-    assertEquals(SCHEMA_NAME, functionInfo.getSchemaName());
-    assertNotNull(functionInfo.getFunctionId());
+    assertThat(functionInfo.getName()).isEqualTo(FUNCTION_NAME);
+    assertThat(functionInfo.getCatalogName()).isEqualTo(CATALOG_NAME);
+    assertThat(functionInfo.getSchemaName()).isEqualTo(SCHEMA_NAME);
+    assertThat(functionInfo.getFunctionId()).isNotNull();
 
     // List functions
     Iterable<FunctionInfo> functionInfos =
         functionOperations.listFunctions(CATALOG_NAME, SCHEMA_NAME);
-    assertTrue(
-        contains(
-            functionInfos,
-            functionInfo,
+    assertThat(functionInfos)
+        .as(
+            "Function with ID '%s' and parameter '%s' does not exist",
+            functionInfo.getFunctionId(), "param1")
+        .anySatisfy(
             f -> {
-              assertThat(f.getFunctionId()).isNotNull();
-              if (!f.getFunctionId().equals(functionInfo.getFunctionId())) return false;
-              if (f.getInputParams() != null && f.getInputParams().getParameters() != null) {
-                return f.getInputParams().getParameters().stream()
-                    .anyMatch(p -> p.getName().equals("param1"));
-              }
-              return true;
-            }));
+              assertThat(f.getFunctionId()).isNotNull().isEqualTo(functionInfo.getFunctionId());
+              assertThat(f.getInputParams())
+                  .isNotNull()
+                  .extracting(
+                      FunctionParameterInfos::getParameters,
+                      Assertions.as(InstanceOfAssertFactories.list(FunctionParameterInfo.class)))
+                  .isNotNull()
+                  .anySatisfy(parameter -> assertThat(parameter.getName()).isEqualTo("param1"));
+            });
 
     // Get function
     FunctionInfo retrievedFunctionInfo = functionOperations.getFunction(FUNCTION_FULL_NAME);
-    assertEquals(functionInfo, retrievedFunctionInfo);
+    assertThat(retrievedFunctionInfo).isEqualTo(functionInfo);
 
     // now update the parent catalog
     UpdateCatalog updateCatalog = new UpdateCatalog().newName(CATALOG_NEW_NAME);
@@ -105,16 +111,14 @@ public abstract class BaseFunctionCRUDTest extends BaseCRUDTest {
     // get the function again
     FunctionInfo retrievedFunctionInfoAfterCatUpdate =
         functionOperations.getFunction(CATALOG_NEW_NAME + "." + SCHEMA_NAME + "." + FUNCTION_NAME);
-    assertEquals(
-        retrievedFunctionInfo.getFunctionId(), retrievedFunctionInfoAfterCatUpdate.getFunctionId());
+    assertThat(retrievedFunctionInfoAfterCatUpdate.getFunctionId())
+        .isEqualTo(retrievedFunctionInfo.getFunctionId());
 
     // Delete function
     functionOperations.deleteFunction(
         CATALOG_NEW_NAME + "." + SCHEMA_NAME + "." + FUNCTION_NAME, true);
-    assertFalse(
-        contains(
-            functionOperations.listFunctions(CATALOG_NEW_NAME, SCHEMA_NAME),
-            functionInfo,
-            f -> f.getFunctionId().equals(functionInfo.getFunctionId())));
+    assertThat(functionOperations.listFunctions(CATALOG_NEW_NAME, SCHEMA_NAME))
+        .as("Function with ID '%s' exists", functionInfo.getFunctionId())
+        .noneSatisfy(f -> assertThat(f.getFunctionId()).isEqualTo(functionInfo.getFunctionId()));
   }
 }

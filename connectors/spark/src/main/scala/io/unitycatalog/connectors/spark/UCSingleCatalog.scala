@@ -1,26 +1,28 @@
 package io.unitycatalog.connectors.spark
 
+import com.google.gson.internal.bind.DefaultDateTypeAdapter.DateType
 import io.unitycatalog.client.{ApiClient, ApiException}
-import io.unitycatalog.client.api.{TablesApi, TemporaryTableCredentialsApi}
-import io.unitycatalog.client.model.{AwsCredentials, GenerateTemporaryTableCredential, TableOperation, TableType}
+import io.unitycatalog.client.api.{SchemasApi, TablesApi, TemporaryTableCredentialsApi}
+import io.unitycatalog.client.model.{AwsCredentials, ColumnInfo, ColumnTypeName, CreateSchema, CreateTable, DataSourceFormat, GenerateTemporaryTableCredential, ListTablesResponse, SchemaInfo, TableOperation, TableType}
+import org.apache.arrow.vector.types.pojo.ArrowType.Timestamp
 
 import java.net.URI
 import java.util
-
 import org.apache.spark.sql.catalyst.TableIdentifier
-import org.apache.spark.sql.catalyst.analysis.NoSuchTableException
+import org.apache.spark.sql.catalyst.analysis.{NoSuchNamespaceException, NoSuchTableException}
 import org.apache.spark.sql.catalyst.catalog.{CatalogStorageFormat, CatalogTable, CatalogTableType, CatalogUtils}
 import org.apache.spark.sql.connector.catalog._
 import org.apache.spark.sql.connector.expressions.Transform
-import org.apache.spark.sql.types.{DataType, StructField, StructType}
+import org.apache.spark.sql.types.{BinaryType, BooleanType, ByteType, DataType, DoubleType, FloatType, IntegerType, LongType, ShortType, StringType, StructField, StructType, TimestampNTZType, TimestampType}
 import org.apache.spark.sql.util.CaseInsensitiveStringMap
 
-import scala.jdk.CollectionConverters._
+import scala.collection.convert.ImplicitConversions._
+import scala.collection.JavaConverters._
 
 /**
  * A Spark catalog plugin to get/manage tables in Unity Catalog.
  */
-class UCSingleCatalog extends TableCatalog {
+class UCSingleCatalog extends TableCatalog with SupportsNamespaces {
 
   private var deltaCatalog: TableCatalog = null
 
@@ -34,7 +36,7 @@ class UCSingleCatalog extends TableCatalog {
 
   override def name(): String = deltaCatalog.name()
 
-  override def listTables(namespace: Array[String]): Array[Identifier] = ???
+  override def listTables(namespace: Array[String]): Array[Identifier] = deltaCatalog.listTables(namespace)
 
   override def loadTable(ident: Identifier): Table = deltaCatalog.loadTable(ident)
 
@@ -55,15 +57,40 @@ class UCSingleCatalog extends TableCatalog {
   }
   override def alterTable(ident: Identifier, changes: TableChange*): Table = ???
 
-  override def dropTable(ident: Identifier): Boolean = ???
+  override def dropTable(ident: Identifier): Boolean = deltaCatalog.dropTable(ident)
 
   override def renameTable(oldIdent: Identifier, newIdent: Identifier): Unit = ???
+
+  override def listNamespaces(): Array[Array[String]] = {
+    deltaCatalog.asInstanceOf[DelegatingCatalogExtension].listNamespaces()
+  }
+
+  override def listNamespaces(namespace: Array[String]): Array[Array[String]] = {
+    deltaCatalog.asInstanceOf[DelegatingCatalogExtension].listNamespaces(namespace)
+  }
+
+  override def loadNamespaceMetadata(namespace: Array[String]): util.Map[String, String] = {
+    deltaCatalog.asInstanceOf[DelegatingCatalogExtension].loadNamespaceMetadata(namespace)
+  }
+
+  override def createNamespace(namespace: Array[String], metadata: util.Map[String, String]): Unit = {
+    deltaCatalog.asInstanceOf[DelegatingCatalogExtension].createNamespace(namespace, metadata)
+  }
+
+  override def alterNamespace(namespace: Array[String], changes: NamespaceChange*): Unit = {
+    deltaCatalog.asInstanceOf[DelegatingCatalogExtension].alterNamespace(namespace, changes: _*)
+  }
+
+  override def dropNamespace(namespace: Array[String], cascade: Boolean): Boolean = {
+    deltaCatalog.asInstanceOf[DelegatingCatalogExtension].dropNamespace(namespace, cascade)
+  }
 }
 
 // An internal proxy to talk to the UC client.
-private class UCProxy extends TableCatalog {
+private class UCProxy extends TableCatalog with SupportsNamespaces {
   private[this] var name: String = null
   private[this] var tablesApi: TablesApi = null
+  private[this] var schemasApi: SchemasApi = null
   private[this] var temporaryTableCredentialsApi: TemporaryTableCredentialsApi = null
 
   override def initialize(name: String, options: CaseInsensitiveStringMap): Unit = {
@@ -84,7 +111,8 @@ private class UCProxy extends TableCatalog {
       }
     }
     tablesApi = new TablesApi(client)
-    temporaryTableCredentialsApi = new TemporaryTableCredentialsApi(client);
+    temporaryTableCredentialsApi = new TemporaryTableCredentialsApi(client)
+    schemasApi = new SchemasApi(client)
   }
 
   override def name(): String = {
@@ -92,14 +120,23 @@ private class UCProxy extends TableCatalog {
     this.name
   }
 
-  override def listTables(namespace: Array[String]): Array[Identifier] = ???
+  override def listTables(namespace: Array[String]): Array[Identifier] = {
+    checkUnsupportedNestedNamespace(namespace)
+
+    val catalogName = this.name
+    val schemaName = namespace.head
+    val maxResults = 0
+    val pageToken = null
+    val response: ListTablesResponse = tablesApi.listTables(catalogName, schemaName, maxResults, pageToken)
+    response.getTables.toSeq.map(table => Identifier.of(namespace, table.getName)).toArray
+  }
+
 
   override def loadTable(ident: Identifier): Table = {
     val t = try {
       tablesApi.getTable(name + "." + ident.toString)
     } catch {
       case e: ApiException if e.getCode == 404 =>
-        e.printStackTrace()
         throw new NoSuchTableException(ident)
     }
     val identifier = TableIdentifier(t.getName, Some(t.getSchemaName), Some(t.getCatalogName))
@@ -122,11 +159,10 @@ private class UCProxy extends TableCatalog {
       .getAwsTempCredentials
     val extraSerdeProps = if (uri.getScheme == "s3") {
       Map(
+        // TODO: how to support s3:// properly?
         "fs.s3a.access.key" -> credential.getAccessKeyId,
         "fs.s3a.secret.key" -> credential.getSecretAccessKey,
         "fs.s3a.session.token" -> credential.getSessionToken,
-        // TODO: how to support s3:// properly?
-        "fs.s3a.impl" -> "org.apache.hadoop.fs.s3a.S3AFileSystem",
         "fs.s3a.path.style.access" -> "true"
       )
     } else {
@@ -157,16 +193,136 @@ private class UCProxy extends TableCatalog {
       .asInstanceOf[Table]
   }
 
-  override def createTable(ident: Identifier, columns: Array[Column], partitions: Array[Transform], properties: util.Map[String, String]): Table = ???
-
   override def createTable(ident: Identifier, schema: StructType, partitions: Array[Transform], properties: util.Map[String, String]): Table = {
-    throw new AssertionError("deprecated `createTable` should not be called")
+    checkUnsupportedNestedNamespace(ident.namespace())
+    assert(properties.get(TableCatalog.PROP_EXTERNAL) == null)
+    assert(properties.get("provider") != null)
+
+    val createTable = new CreateTable()
+    createTable.setName(ident.name())
+    createTable.setSchemaName(ident.namespace().head)
+    createTable.setCatalogName(this.name)
+    val storageLocation = properties.get(TableCatalog.PROP_LOCATION)
+    if (storageLocation == null) {
+      // TODO: Unity Catalog does not support managed tables now.
+      throw new ApiException("Unity Catalog does not support managed table.")
+    }
+    createTable.setTableType(TableType.EXTERNAL)
+    createTable.setStorageLocation(storageLocation)
+
+    val columns: Seq[ColumnInfo] = schema.fields.toSeq.zipWithIndex.map { case (field, i) =>
+      val column = new ColumnInfo()
+      column.setName(field.name)
+      if (field.getComment().isDefined) {
+        column.setComment(field.getComment.get)
+      }
+      column.setNullable(field.nullable)
+      column.setTypeText(field.dataType.simpleString)
+      column.setTypeName(convertDataTypeToTypeName(field.dataType))
+      column.setTypeJson(field.dataType.json)
+      column.setPosition(i)
+      column
+    }
+    createTable.setColumns(columns)
+    val format: String = properties.get("provider")
+    createTable.setDataSourceFormat(convertDatasourceFormat(format))
+    tablesApi.createTable(createTable)
+    null
+  }
+
+  private def convertDatasourceFormat(format: String): DataSourceFormat = {
+    format.toUpperCase match {
+      case "PARQUET" => DataSourceFormat.PARQUET
+      case "CSV" => DataSourceFormat.CSV
+      case "DELTA" => DataSourceFormat.DELTA
+      case "JSON" => DataSourceFormat.JSON
+      case "ORC" => DataSourceFormat.ORC
+      case "TEXT" => DataSourceFormat.TEXT
+      case "AVRO" => DataSourceFormat.AVRO
+      case _ => throw new ApiException("DataSourceFormat not supported: " + format)
+    }
+  }
+
+  private def convertDataTypeToTypeName(dataType: DataType): ColumnTypeName = {
+    dataType match {
+      case StringType => ColumnTypeName.STRING
+      case BooleanType => ColumnTypeName.BOOLEAN
+      case ShortType => ColumnTypeName.SHORT
+      case IntegerType => ColumnTypeName.INT
+      case LongType => ColumnTypeName.LONG
+      case FloatType => ColumnTypeName.FLOAT
+      case DoubleType => ColumnTypeName.DOUBLE
+      case ByteType => ColumnTypeName.BYTE
+      case BinaryType => ColumnTypeName.BINARY
+      case TimestampNTZType => ColumnTypeName.TIMESTAMP_NTZ
+      case TimestampType => ColumnTypeName.TIMESTAMP
+      case _ => throw new ApiException("DataType not supported: " + dataType.simpleString)
+    }
   }
 
   override def alterTable(ident: Identifier, changes: TableChange*): Table = ???
 
-  override def dropTable(ident: Identifier): Boolean = ???
+  override def dropTable(ident: Identifier): Boolean = {
+    checkUnsupportedNestedNamespace(ident.namespace())
+    val ret =
+      tablesApi.deleteTable(Seq(this.name, ident.namespace()(0), ident.name()).mkString("."))
+    if (ret == 200) true else false
+  }
 
   override def renameTable(oldIdent: Identifier, newIdent: Identifier): Unit = ???
 
+  private def checkUnsupportedNestedNamespace(namespace: Array[String]): Unit = {
+    if (namespace.length > 1) {
+      throw new ApiException("Nested namespaces are not supported:  " + namespace.mkString("."))
+    }
+  }
+
+  override def listNamespaces(): Array[Array[String]] = {
+    schemasApi.listSchemas(name, 0, null).getSchemas.asScala.map { schema =>
+      Array(schema.getName)
+    }.toArray
+  }
+
+  override def listNamespaces(namespace: Array[String]): Array[Array[String]] = {
+    throw new UnsupportedOperationException("Multi-layer namespace is not supported in Unity Catalog")
+  }
+
+  override def loadNamespaceMetadata(namespace: Array[String]): util.Map[String, String] = {
+    checkUnsupportedNestedNamespace(namespace)
+    val schema = try {
+      schemasApi.getSchema(name + "." + namespace(0))
+    } catch {
+      case e: ApiException if e.getCode == 404 =>
+        throw new NoSuchNamespaceException(namespace)
+    }
+    // flatten the schema properties to a map, with the key prefixed by "properties:"
+    val metadata = schema.getProperties.asScala.map {
+      case (k, v) =>  SchemaInfo.JSON_PROPERTY_PROPERTIES + ":" + k -> v
+    }
+    metadata(SchemaInfo.JSON_PROPERTY_NAME) = schema.getName
+    metadata(SchemaInfo.JSON_PROPERTY_CATALOG_NAME) = schema.getCatalogName
+    metadata(SchemaInfo.JSON_PROPERTY_COMMENT) = schema.getComment
+    metadata(SchemaInfo.JSON_PROPERTY_FULL_NAME) = schema.getFullName
+    metadata(SchemaInfo.JSON_PROPERTY_CREATED_AT) = if (schema.getCreatedAt != null) {schema.getCreatedAt.toString} else {"null"}
+    metadata(SchemaInfo.JSON_PROPERTY_UPDATED_AT) = if (schema.getUpdatedAt != null) {schema.getUpdatedAt.toString} else {"null"}
+    metadata(SchemaInfo.JSON_PROPERTY_SCHEMA_ID) = schema.getSchemaId
+    metadata.asJava
+  }
+
+  override def createNamespace(namespace: Array[String], metadata: util.Map[String, String]): Unit = {
+    checkUnsupportedNestedNamespace(namespace)
+    val createSchema = new CreateSchema()
+    createSchema.setCatalogName(this.name)
+    createSchema.setName(namespace.head)
+    createSchema.setProperties(metadata)
+    schemasApi.createSchema(createSchema)
+  }
+
+  override def alterNamespace(namespace: Array[String], changes: NamespaceChange*): Unit = ???
+
+  override def dropNamespace(namespace: Array[String], cascade: Boolean): Boolean = {
+    checkUnsupportedNestedNamespace(namespace)
+    schemasApi.deleteSchema(name + "." + namespace.head, cascade)
+    true
+  }
 }

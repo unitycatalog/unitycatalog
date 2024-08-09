@@ -1,8 +1,9 @@
 package io.unitycatalog.cli.table;
 
 import static io.unitycatalog.server.utils.TestUtils.*;
-import static org.junit.Assert.*;
-import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatCode;
+import static org.assertj.core.api.Assertions.fail;
 
 import io.unitycatalog.cli.catalog.CliCatalogOperations;
 import io.unitycatalog.cli.delta.DeltaKernelUtils;
@@ -19,9 +20,9 @@ import java.nio.file.attribute.BasicFileAttributes;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
-import org.junit.After;
-import org.junit.Before;
-import org.junit.Test;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
 
 public class CliExternalTableCreationTest extends BaseServerTest {
 
@@ -34,7 +35,7 @@ public class CliExternalTableCreationTest extends BaseServerTest {
           new ColumnInfo().name("id").typeName(ColumnTypeName.INT).comment("id"),
           new ColumnInfo().name("name").typeName(ColumnTypeName.STRING).comment("name"));
 
-  @Before
+  @BeforeEach
   @Override
   public void setUp() {
     super.setUp();
@@ -51,7 +52,7 @@ public class CliExternalTableCreationTest extends BaseServerTest {
     }
   }
 
-  @After
+  @AfterEach
   public void cleanUp() {
     try {
       catalogOperations.deleteCatalog(CATALOG_NAME, Optional.of(true));
@@ -79,11 +80,12 @@ public class CliExternalTableCreationTest extends BaseServerTest {
   public void testCreateTableLocalDirectoryExistsWithDeltaLog() throws ApiException, IOException {
     // First create a table with delta log
     String tablePath = "/tmp/" + UUID.randomUUID();
-    assertDoesNotThrow(
-        () ->
-            DeltaKernelUtils.createDeltaTable(
-                Paths.get(tablePath).toUri().toString(), columns, null));
-    assert (Files.exists(Paths.get(tablePath + "/_delta_log")));
+    assertThatCode(
+            () ->
+                DeltaKernelUtils.createDeltaTable(
+                    Paths.get(tablePath).toUri().toString(), columns, null))
+        .doesNotThrowAnyException();
+    assertThat(Paths.get(tablePath + "/_delta_log")).isDirectory();
     createTableAndAssertReadTableSucceeds(tablePath, columns);
   }
 
@@ -97,15 +99,17 @@ public class CliExternalTableCreationTest extends BaseServerTest {
                 .name(TABLE_NAME)
                 .storageLocation(tablePath)
                 .columns(columns));
-    assertNotNull(tableInfo);
-    assertNotNull(tableInfo.getTableId());
-    assertEquals(tableInfo.getTableId(), tableOperations.getTable(TABLE_FULL_NAME).getTableId());
-    assertDoesNotThrow(
-        () ->
-            DeltaKernelUtils.readDeltaTable(
-                tableOperations.getTable(TABLE_FULL_NAME).getStorageLocation(), null, 100));
-    assertDoesNotThrow(() -> deleteDirectory(Paths.get(tablePath)));
-    assertDoesNotThrow(() -> tableOperations.deleteTable(TABLE_FULL_NAME));
+    assertThat(tableInfo).isNotNull();
+    assertThat(tableInfo.getTableId()).isNotNull();
+    assertThat(tableOperations.getTable(TABLE_FULL_NAME).getTableId())
+        .isEqualTo(tableInfo.getTableId());
+    assertThatCode(
+            () ->
+                DeltaKernelUtils.readDeltaTable(
+                    tableOperations.getTable(TABLE_FULL_NAME).getStorageLocation(), null, 100))
+        .doesNotThrowAnyException();
+    assertThatCode(() -> deleteDirectory(Paths.get(tablePath))).doesNotThrowAnyException();
+    assertThatCode(() -> tableOperations.deleteTable(TABLE_FULL_NAME)).doesNotThrowAnyException();
   }
 
   public static void deleteDirectory(Path path) throws IOException {

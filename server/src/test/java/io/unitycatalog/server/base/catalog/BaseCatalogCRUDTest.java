@@ -1,6 +1,7 @@
 package io.unitycatalog.server.base.catalog;
 
 import static io.unitycatalog.server.utils.TestUtils.*;
+import static org.assertj.core.api.Assertions.assertThat;
 
 import io.unitycatalog.client.ApiException;
 import io.unitycatalog.client.model.CatalogInfo;
@@ -10,26 +11,25 @@ import io.unitycatalog.server.base.BaseCRUDTest;
 import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
-import org.junit.*;
+import org.junit.jupiter.api.Test;
 
 public abstract class BaseCatalogCRUDTest extends BaseCRUDTest {
 
   protected void assertCatalog(CatalogInfo catalogInfo, String name, String comment) {
-    Assert.assertEquals(name, catalogInfo.getName());
-    Assert.assertEquals(comment, catalogInfo.getComment());
-    Assert.assertNotNull(catalogInfo.getCreatedAt());
+    assertThat(catalogInfo.getName()).isEqualTo(name);
+    assertThat(catalogInfo.getComment()).isEqualTo(comment);
+    assertThat(catalogInfo.getCreatedAt()).isNotNull();
     // TODO: Also assert properties once CLI supports it
   }
 
   protected void assertCatalogExists(List<CatalogInfo> catalogList, String name, String comment) {
-    Assert.assertTrue(
-        catalogList.stream()
-            .anyMatch(
-                c -> Objects.equals(c.getName(), name) && Objects.equals(c.getComment(), comment)));
+    assertThat(catalogList)
+        .anyMatch(
+            c -> Objects.equals(c.getName(), name) && Objects.equals(c.getComment(), comment));
   }
 
   protected void assertCatalogNotExists(List<CatalogInfo> catalogList, String name) {
-    Assert.assertFalse(catalogList.stream().anyMatch(c -> Objects.equals(c.getName(), name)));
+    assertThat(catalogList).noneMatch(c -> Objects.equals(c.getName(), name));
   }
 
   @Test
@@ -44,20 +44,20 @@ public abstract class BaseCatalogCRUDTest extends BaseCRUDTest {
     // List catalogs
     System.out.println("Testing list catalogs..");
     List<CatalogInfo> catalogList = catalogOperations.listCatalogs();
-    Assert.assertNotNull(catalogList);
+    assertThat(catalogList).isNotNull();
     assertCatalogExists(catalogList, CATALOG_NAME, COMMENT);
 
     // Get catalog
     System.out.println("Testing get catalog..");
     CatalogInfo catalogInfo2 = catalogOperations.getCatalog(CATALOG_NAME);
-    Assert.assertEquals(catalogInfo, catalogInfo2);
+    assertThat(catalogInfo2).isEqualTo(catalogInfo);
 
     // Calling update catalog with nothing to update should not change anything
     System.out.println("Testing updating catalog with nothing to update..");
     UpdateCatalog emptyUpdateCatalog = new UpdateCatalog();
     catalogOperations.updateCatalog(CATALOG_NAME, emptyUpdateCatalog);
     CatalogInfo catalogInfo3 = catalogOperations.getCatalog(CATALOG_NAME);
-    Assert.assertEquals(catalogInfo, catalogInfo3);
+    assertThat(catalogInfo3).isEqualTo(catalogInfo);
 
     // Update catalog name without updating comment and properties
     System.out.println("Testing update catalog: changing name..");
@@ -83,7 +83,7 @@ public abstract class BaseCatalogCRUDTest extends BaseCRUDTest {
     System.out.println("Testing delete catalog..");
     catalogOperations.deleteCatalog(CATALOG_NEW_NAME, Optional.of(false));
     catalogList = catalogOperations.listCatalogs();
-    Assert.assertNotNull(catalogList);
+    assertThat(catalogList).isNotNull();
     assertCatalogNotExists(catalogList, CATALOG_NEW_NAME);
   }
 }

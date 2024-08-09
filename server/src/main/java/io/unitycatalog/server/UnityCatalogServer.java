@@ -23,6 +23,7 @@ import io.unitycatalog.server.utils.RESTObjectMapper;
 import io.unitycatalog.server.utils.VersionUtils;
 import io.vertx.core.Verticle;
 import io.vertx.core.Vertx;
+import org.apache.commons.cli.*;
 import org.apache.logging.log4j.core.config.Configurator;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -92,8 +93,27 @@ public class UnityCatalogServer {
 
   public static void main(String[] args) {
     int port = 8080;
-    if (args.length > 0) {
-      port = Integer.parseInt(args[0]);
+    Options options = new Options();
+    options.addOption(
+        Option.builder("p")
+            .longOpt("port")
+            .hasArg()
+            .desc("Port number to run the server on. Default is 8080.")
+            .type(Integer.class)
+            .build());
+    CommandLineParser parser = new DefaultParser();
+    try {
+      CommandLine cmd = parser.parse(options, args);
+      if (cmd.hasOption("p")) {
+        port = cmd.getParsedOptionValue("p");
+      }
+    } catch (ParseException e) {
+      System.out.println();
+      System.out.println("Parsing Failed. Reason: " + e.getMessage());
+      System.out.println();
+      HelpFormatter formatter = new HelpFormatter();
+      formatter.printHelp("bin/start-uc-server", options);
+      return;
     }
     // Start Unity Catalog server
     UnityCatalogServer unityCatalogServer = new UnityCatalogServer(port + 1);
