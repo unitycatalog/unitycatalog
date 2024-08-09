@@ -220,7 +220,9 @@ public class SchemaRepository {
         schemaInfo.setUpdatedAt(new Date());
         session.merge(schemaInfo);
         tx.commit();
-        return convertFromDAO(schemaInfo, fullName);
+        SchemaInfo schema = convertFromDAO(schemaInfo, fullName);
+        return RepositoryUtils.attachProperties(
+            schema, schema.getSchemaId(), Constants.SCHEMA, session);
       } catch (Exception e) {
         tx.rollback();
         throw e;

@@ -88,10 +88,10 @@ public abstract class BaseSchemaCRUDTest extends BaseCRUDTest {
     UpdateSchema updateSchema3 = new UpdateSchema().properties(TestUtils.NEW_PROPERTIES);
     schemaOperations.updateSchema(TestUtils.SCHEMA_NEW_FULL_NAME, updateSchema3);
     SchemaInfo retrievedSchemaInfo3 = schemaOperations.getSchema(TestUtils.SCHEMA_NEW_FULL_NAME);
-    assertEquals(TestUtils.SCHEMA_NEW_NAME, retrievedSchemaInfo3.getName());
-    assertEquals(TestUtils.SCHEMA_COMMENT, retrievedSchemaInfo3.getComment());
-    Assert.assertEquals(TestUtils.SCHEMA_NEW_FULL_NAME, retrievedSchemaInfo3.getFullName());
-    assertNotNull(retrievedSchemaInfo3.getUpdatedAt());
+    assertThat(retrievedSchemaInfo3.getName()).isEqualTo(TestUtils.SCHEMA_NEW_NAME);
+    assertThat(retrievedSchemaInfo3.getComment()).isEqualTo(TestUtils.SCHEMA_COMMENT);
+    assertThat(retrievedSchemaInfo3.getFullName()).isEqualTo(TestUtils.SCHEMA_NEW_FULL_NAME);
+    assertThat(retrievedSchemaInfo3.getUpdatedAt()).isNotNull();
 
     // Now update the parent catalog name
     UpdateCatalog updateCatalog = new UpdateCatalog().newName(TestUtils.CATALOG_NEW_NAME);
