@@ -20,7 +20,7 @@ jobs:
           java-version: '17'
           distribution: 'temurin'
       - name: Compile Project
-        run: sbt compile
+        run: build/sbt compile
 
   python-tests:
     runs-on: ubuntu-latest
