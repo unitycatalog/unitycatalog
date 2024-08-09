@@ -13,7 +13,7 @@ public class PropertyRepository {
 
   public static List<PropertyDAO> findProperties(
       Session session, UUID entityId, String entityType) {
-    LOGGER.debug("Getting properties for " + entityType + ": " + entityId);
+    LOGGER.debug("Getting properties for {}: {}", entityType, entityId);
     String hql = "FROM PropertyDAO p WHERE p.entityId = :entityId and p.entityType = :entityType";
     Query<PropertyDAO> query = session.createQuery(hql, PropertyDAO.class);
     query.setParameter("entityId", entityId);

@@ -55,6 +55,8 @@ public class CatalogRepository {
         CatalogInfoDAO catalogInfoDAO = CatalogInfoDAO.from(catalogInfo);
         PropertyDAO.from(catalogInfo.getProperties(), catalogInfoDAO.getId(), Constants.CATALOG)
             .forEach(session::persist);
+        RepositoryUtils.attachProperties(
+            catalogInfo, catalogInfo.getId(), Constants.CATALOG, session);
         session.persist(catalogInfoDAO);
         tx.commit();
         LOGGER.info("Added catalog: {}", catalogInfo.getName());
@@ -144,7 +146,9 @@ public class CatalogRepository {
         if (catalogInfoDAO == null) {
           throw new BaseException(ErrorCode.NOT_FOUND, "Catalog not found: " + name);
         }
-        if (updateCatalog.getNewName() == null && updateCatalog.getComment() == null) {
+        if (updateCatalog.getNewName() == null
+            && updateCatalog.getComment() == null
+            && (updateCatalog.getProperties() == null || updateCatalog.getProperties().isEmpty())) {
           tx.rollback();
           return catalogInfoDAO.toCatalogInfo();
         }
@@ -158,6 +162,17 @@ public class CatalogRepository {
         }
         if (updateCatalog.getComment() != null) {
           catalogInfoDAO.setComment(updateCatalog.getComment());
+        }
+        if (!updateCatalog.getProperties().isEmpty()) {
+          PropertyRepository.findProperties(session, catalogInfoDAO.getId(), Constants.CATALOG)
+              .forEach(session::remove);
+          session.flush();
+          PropertyDAO.from(updateCatalog.getProperties(), catalogInfoDAO.getId(), Constants.CATALOG)
+              .forEach(session::persist);
+
+          CatalogInfo catalogInfo = catalogInfoDAO.toCatalogInfo();
+          RepositoryUtils.attachProperties(
+              catalogInfo, catalogInfo.getId(), Constants.CATALOG, session);
         }
         catalogInfoDAO.setUpdatedAt(new Date());
         session.merge(catalogInfoDAO);
