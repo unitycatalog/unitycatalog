@@ -17,7 +17,7 @@ import org.apache.spark.sql.types.{BinaryType, BooleanType, ByteType, DataType, 
 import org.apache.spark.sql.util.CaseInsensitiveStringMap
 
 import scala.collection.convert.ImplicitConversions._
-import scala.jdk.CollectionConverters._
+import scala.collection.JavaConverters._
 
 /**
  * A Spark catalog plugin to get/manage tables in Unity Catalog.
