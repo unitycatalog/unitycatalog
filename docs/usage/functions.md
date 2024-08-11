@@ -122,7 +122,7 @@ You should see something that looks like:
 
 The `routine definition` is probably most helpful here: `t = x + y + z\nreturn t `
 
-It looks like this functions takes in 3 arguments and returns their sum. The `DATA_TYPE` field tells us that the inputs should be of `INT` data type.
+It looks like this functions takes in 3 arguments and returns their sum. The `DATA_TYPE` field tells us that the output should be of `INT` data type.
 
 ## Calling Functions from Unity Catalog
 
