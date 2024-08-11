@@ -23,11 +23,11 @@ tags:
       In Unity Catalog, a function resides at the same level as a table, so it can be referenced with the form __catalog_name__.__schema_name__.__function_name__.
   - name: RegisteredModels
     description: |
-      Registered models are machine learning models that are stored within the Unity Catalog model registry.  They are comprised of all versions of a single model that a user wishes to keep.
+      Registered models are machine learning models that are stored within the Unity Catalog model registry. They are comprised of all versions of a single model that a user wishes to keep.
       A registered model resides in the third layer of Unity Catalog’s three-level namespace, and can be referenced with the form __catalog_name__.__schema_name__.__model_name__.
   - name: ModelVersions
     description: |
-      Model versions contain all artifact files associated with an individual machine learned model.  They are associated with a single parent model and have an integer identifier, indicating the version number of the model.
+      Model versions contain all artifact files associated with an individual machine learning model. They are associated with a single parent model and have an integer identifier, indicating the version number of the model.
       Model versions are referenced via model URI's using the Unity Catalog three-level namespace of the registered model and the version identifier.
 paths:
   /catalogs:
@@ -595,7 +595,7 @@ paths:
       operationId: generateTemporaryModelVersionCredential
       tags:
         - TemporaryModelVersionCredential
-      summary: Generate temporary model version credentials.  These credentials are used by clients to write and retrieve model artifacts from the model versions external storage location.
+      summary: Generate temporary model version credentials. These credentials are used by clients to write and retrieve model artifacts from the model versions external storage location.
       requestBody:
         content:
           application/json:
