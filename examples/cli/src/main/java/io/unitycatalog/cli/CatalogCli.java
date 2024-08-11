@@ -11,6 +11,7 @@ import io.unitycatalog.cli.utils.CliUtils;
 import io.unitycatalog.client.ApiClient;
 import io.unitycatalog.client.ApiException;
 import io.unitycatalog.client.api.CatalogsApi;
+import io.unitycatalog.client.model.CatalogInfo;
 import io.unitycatalog.client.model.CreateCatalog;
 import io.unitycatalog.client.model.UpdateCatalog;
 import java.util.List;
@@ -54,9 +55,13 @@ public class CatalogCli {
 
   private static String createCatalog(CatalogsApi catalogsApi, JSONObject json)
       throws JsonProcessingException, ApiException {
-    CreateCatalog createCatalog;
-    createCatalog = objectMapper.readValue(json.toString(), CreateCatalog.class);
-    return objectWriter.writeValueAsString(catalogsApi.createCatalog(createCatalog));
+    CreateCatalog createCatalog =
+        new CreateCatalog()
+            .name(json.getString(CliParams.NAME.getServerParam()))
+            .comment(json.optString(CliParams.COMMENT.getServerParam(), null))
+            .properties(CliUtils.extractProperties(objectMapper, json));
+    CatalogInfo catalogInfo = catalogsApi.createCatalog(createCatalog);
+    return objectWriter.writeValueAsString(catalogInfo);
   }
 
   private static String listCatalogs(CatalogsApi catalogsApi, JSONObject json)

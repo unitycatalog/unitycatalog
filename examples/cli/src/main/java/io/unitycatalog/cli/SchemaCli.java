@@ -10,6 +10,7 @@ import io.unitycatalog.client.ApiClient;
 import io.unitycatalog.client.ApiException;
 import io.unitycatalog.client.api.SchemasApi;
 import io.unitycatalog.client.model.CreateSchema;
+import io.unitycatalog.client.model.SchemaInfo;
 import io.unitycatalog.client.model.UpdateSchema;
 import java.util.List;
 import org.apache.commons.cli.CommandLine;
@@ -51,9 +52,14 @@ public class SchemaCli {
 
   private static String createSchema(SchemasApi schemasApi, JSONObject json)
       throws JsonProcessingException, ApiException {
-    CreateSchema createSchema;
-    createSchema = objectMapper.readValue(json.toString(), CreateSchema.class);
-    return objectWriter.writeValueAsString(schemasApi.createSchema(createSchema));
+    CreateSchema createSchema =
+        new CreateSchema()
+            .name(json.getString(CliParams.NAME.getServerParam()))
+            .catalogName(json.getString(CliParams.CATALOG_NAME.getServerParam()))
+            .comment(json.getString(CliParams.COMMENT.getServerParam()))
+            .properties(CliUtils.extractProperties(objectMapper, json));
+    SchemaInfo schemaInfo = schemasApi.createSchema(createSchema);
+    return objectWriter.writeValueAsString(schemaInfo);
   }
 
   private static String listSchemas(SchemasApi schemasApi, JSONObject json)

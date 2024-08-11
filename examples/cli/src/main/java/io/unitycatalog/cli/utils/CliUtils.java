@@ -73,7 +73,11 @@ public class CliUtils {
               CATALOG,
               new HashMap<String, CliOptions>() {
                 {
-                  put(CREATE, new CliOptions(List.of(CliParams.NAME), List.of(CliParams.COMMENT)));
+                  put(
+                      CREATE,
+                      new CliOptions(
+                          List.of(CliParams.NAME),
+                          List.of(CliParams.COMMENT, CliParams.PROPERTIES)));
                   put(LIST, new CliOptions(List.of(), List.of(CliParams.MAX_RESULTS)));
                   put(GET, new CliOptions(List.of(CliParams.NAME), List.of()));
                   put(
@@ -91,7 +95,7 @@ public class CliUtils {
                       CREATE,
                       new CliOptions(
                           List.of(CliParams.CATALOG_NAME, CliParams.NAME),
-                          List.of(CliParams.COMMENT)));
+                          List.of(CliParams.COMMENT, CliParams.PROPERTIES)));
                   put(
                       LIST,
                       new CliOptions(
