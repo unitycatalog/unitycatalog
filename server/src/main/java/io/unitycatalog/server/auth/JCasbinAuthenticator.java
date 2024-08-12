@@ -2,15 +2,34 @@ package io.unitycatalog.server.auth;
 
 import io.unitycatalog.server.model.Privilege;
 import io.unitycatalog.server.persist.UserRepository;
+import io.unitycatalog.server.persist.utils.HibernateUtils;
 import java.util.List;
 import java.util.Map;
+import java.util.Properties;
 import java.util.UUID;
 import java.util.stream.Collectors;
+import org.casbin.adapter.JDBCAdapter;
 import org.casbin.jcasbin.main.Enforcer;
 
 public class JCasbinAuthenticator implements UnityCatalogAuthenticator {
   static UserRepository USER_REPOSITORY = UserRepository.getInstance();
-  Enforcer enforcer = new Enforcer("src/main/resources/jcasbin_auth_model.conf");
+  Enforcer enforcer;
+
+  public JCasbinAuthenticator() {
+    Properties properties = HibernateUtils.getHibernateProperties();
+    String driver = properties.getProperty("hibernate.connection.driver_class");
+    String url = properties.getProperty("hibernate.connection.url");
+    String user = properties.getProperty("hibernate.connection.user");
+    String password = properties.getProperty("hibernate.connection.password");
+    JDBCAdapter adapter = null;
+    try {
+      adapter = new JDBCAdapter(driver, url, user, password);
+    } catch (Exception e) {
+      throw new RuntimeException(e);
+    }
+    enforcer = new Enforcer("server/src/main/resources/jcasbin_auth_model.conf", adapter);
+    enforcer.enableAutoSave(true);
+  }
 
   @Override
   public boolean grantAuthorization(UUID principal, UUID resource, Privilege action) {

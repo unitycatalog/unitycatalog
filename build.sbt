@@ -5,7 +5,6 @@ import sbt.util
 import sbtlicensereport.license.{DepModuleInfo, LicenseCategory, LicenseInfo}
 import ReleaseSettings.{javaOnlyReleaseSettings, rootReleaseSettings, skipReleaseSettings}
 
-import scala.jdk.CollectionConverters.asJavaIterableConverter
 import scala.language.implicitConversions
 
 val orgName = "io.unitycatalog"
@@ -210,8 +209,10 @@ lazy val server = (project in file("server"))
       "io.vertx" % "vertx-web" % "4.3.5",
       "io.vertx" % "vertx-web-client" % "4.3.5",
 
-      // For auth
-      "org.casbin" % "jcasbin" % "1.21.0",
+      // Auth dependencies
+      "com.unboundid.product.scim2" % "scim2-sdk-common" % "3.1.0",
+      "org.casbin" % "jcasbin" % "1.55.0",
+      "org.casbin" % "jdbc-adapter" % "2.7.0",
 
       // Test dependencies
       "org.junit.jupiter" %  "junit-jupiter" % "5.10.3" % Test,

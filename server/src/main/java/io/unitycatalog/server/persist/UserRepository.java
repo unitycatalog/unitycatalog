@@ -100,7 +100,32 @@ public class UserRepository {
     return query.uniqueResult();
   }
 
-  public UserDAO updateUser(String name, UpdateUser updateUser) {
+  public User getUserByEmail(String email) {
+    try (Session session = SESSION_FACTORY.openSession()) {
+      session.setDefaultReadOnly(true);
+      Transaction tx = session.beginTransaction();
+      try {
+        UserDAO userDAO = getUserByEmail(session, email);
+        if (userDAO == null) {
+          throw new BaseException(ErrorCode.NOT_FOUND, "User not found: " + email);
+        }
+        tx.commit();
+        return userDAO.toUser();
+      } catch (Exception e) {
+        tx.rollback();
+        throw e;
+      }
+    }
+  }
+
+  public UserDAO getUserByEmail(Session session, String email) {
+    Query<UserDAO> query = session.createQuery("FROM UserDAO WHERE email = :email", UserDAO.class);
+    query.setParameter("email", email);
+    query.setMaxResults(1);
+    return query.uniqueResult();
+  }
+
+  public User updateUser(String name, UpdateUser updateUser) {
     try (Session session = SESSION_FACTORY.openSession()) {
       Transaction tx = session.beginTransaction();
       try {
@@ -119,7 +144,7 @@ public class UserRepository {
         }
         session.merge(userDAO);
         tx.commit();
-        return userDAO;
+        return userDAO.toUser();
       } catch (Exception e) {
         tx.rollback();
         throw e;
