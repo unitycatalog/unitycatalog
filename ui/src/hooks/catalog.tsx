@@ -98,9 +98,9 @@ export function useUpdateCatalog() {
       }
       return response.json();
     },
-    onSuccess: () => {
+    onSuccess: (catalog) => {
       queryClient.invalidateQueries({
-        queryKey: ['getCatalog', params.name],
+        queryKey: ['getCatalog', catalog.name],
       });
     },
   });
