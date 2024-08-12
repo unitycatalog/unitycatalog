@@ -76,6 +76,36 @@ export function useCreateCatalog() {
   });
 }
 
+export interface UpdateCatalogMutationParams
+  extends Pick<CatalogInterface, 'name' | 'comment'> {}
+
+// Update a new catalog
+export function useUpdateCatalog() {
+  const queryClient = useQueryClient();
+
+  return useMutation<CatalogInterface, Error, UpdateCatalogMutationParams>({
+    mutationFn: async (params: UpdateCatalogMutationParams) => {
+      const response = await fetch(`${UC_API_PREFIX}/catalogs/${params.name}`, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(params),
+      });
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.message || 'Failed to update catalog');
+      }
+      return response.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({
+        queryKey: ['getCatalog', params.name],
+      });
+    },
+  });
+}
+
 export interface DeleteCatalogMutationParams
   extends Pick<CatalogInterface, 'name'> {}
 
