@@ -23,39 +23,27 @@ const router = createBrowserRouter([
     children: [
       {
         path: '/',
-        Component() {
-          return <CatalogsList />;
-        },
+        element: <CatalogsList />,
       },
       {
         path: '/data/:catalog',
-        Component() {
-          return <CatalogDetails />;
-        },
+        element: <CatalogDetails />,
       },
       {
         path: '/data/:catalog/:schema',
-        Component() {
-          return <SchemaDetails />;
-        },
+        element: <SchemaDetails />,
       },
       {
         path: '/data/:catalog/:schema/:table',
-        Component() {
-          return <TableDetails />;
-        },
+        element: <TableDetails />,
       },
       {
         path: '/volumes/:catalog/:schema/:volume',
-        Component() {
-          return <VolumeDetails />;
-        },
+        element: <VolumeDetails />,
       },
       {
         path: '/functions/:catalog/:schema/:ucFunction',
-        Component() {
-          return <FunctionDetails />;
-        },
+        element: <FunctionDetails />,
       },
     ],
   },
@@ -63,88 +51,85 @@ const router = createBrowserRouter([
 
 function AppProvider() {
   const navigate = useNavigate();
+
+  return (
+    <ConfigProvider
+      theme={{
+        components: {
+          Typography: {
+            titleMarginBottom: 0,
+            titleMarginTop: 0,
+          },
+        },
+      }}
+    >
+      <Layout>
+        {/* Header */}
+        <Layout.Header style={{ display: 'flex', alignItems: 'center' }}>
+          <div style={{ marginRight: 24 }} onClick={() => navigate('/')}>
+            <img src="/uc-logo-reverse.png" height={32} alt="uc-logo-reverse" />
+          </div>
+          <Menu
+            theme="dark"
+            mode="horizontal"
+            defaultSelectedKeys={['catalogs']}
+            items={[
+              {
+                key: 'catalogs',
+                label: 'Catalogs',
+                onClick: () => navigate('/'),
+              },
+            ]}
+            style={{ flex: 1, minWidth: 0 }}
+          />
+        </Layout.Header>
+        {/* Content */}
+        <Layout.Content
+          style={{
+            height: 'calc(100vh - 64px)',
+            backgroundColor: '#fff',
+            display: 'flex',
+          }}
+        >
+          {/* Left: Schema Browser */}
+          <div
+            style={{
+              width: '30%',
+              minWidth: 260,
+              maxWidth: 400,
+              borderRight: '1px solid lightgrey',
+            }}
+          >
+            <SchemaBrowser />
+          </div>
+
+          {/* Right: Main details content */}
+          <div
+            style={{
+              overflowY: 'auto',
+              flex: 1,
+              padding: 16,
+              display: 'flex',
+            }}
+          >
+            <Outlet />
+          </div>
+        </Layout.Content>
+      </Layout>
+    </ConfigProvider>
+  );
+}
+
+function App() {
   const queryClient = new QueryClient({
     defaultOptions: { queries: { staleTime: 1000 * 5 * 60 } },
   });
 
   return (
-    <QueryClientProvider client={queryClient}>
-      <ConfigProvider
-        theme={{
-          components: {
-            Typography: {
-              titleMarginBottom: 0,
-              titleMarginTop: 0,
-            },
-          },
-        }}
-      >
-        <Layout>
-          {/* Header */}
-          <Layout.Header style={{ display: 'flex', alignItems: 'center' }}>
-            <div style={{ marginRight: 24 }} onClick={() => navigate('/')}>
-              <img
-                src="/uc-logo-reverse.png"
-                height={32}
-                alt="uc-logo-reverse"
-              />
-            </div>
-            <Menu
-              theme="dark"
-              mode="horizontal"
-              defaultSelectedKeys={['catalogs']}
-              items={[
-                {
-                  key: 'catalogs',
-                  label: 'Catalogs',
-                  onClick: () => navigate('/'),
-                },
-              ]}
-              style={{ flex: 1, minWidth: 0 }}
-            />
-          </Layout.Header>
-          {/* Content */}
-          <Layout.Content
-            style={{
-              height: 'calc(100vh - 64px)',
-              backgroundColor: '#fff',
-              display: 'flex',
-            }}
-          >
-            {/* Left: Schema Browser */}
-            <div
-              style={{
-                width: '30%',
-                minWidth: 260,
-                maxWidth: 400,
-                borderRight: '1px solid lightgrey',
-              }}
-            >
-              <SchemaBrowser />
-            </div>
-
-            {/* Right: Main details content */}
-            <div
-              style={{
-                overflowY: 'auto',
-                flex: 1,
-                padding: 16,
-                display: 'flex',
-              }}
-            >
-              <Outlet />
-            </div>
-          </Layout.Content>
-        </Layout>
-      </ConfigProvider>
-    </QueryClientProvider>
-  );
-}
-
-function App() {
-  return (
     <NotificationProvider>
-      <RouterProvider router={router} fallbackElement={<p>Loading...</p>} />
+      <QueryClientProvider client={queryClient}>
+        <RouterProvider router={router} fallbackElement={<p>Loading...</p>} />
+      </QueryClientProvider>
     </NotificationProvider>
   );
 }
