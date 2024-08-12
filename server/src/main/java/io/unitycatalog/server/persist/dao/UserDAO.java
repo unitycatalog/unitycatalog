@@ -37,6 +37,7 @@ public class UserDAO extends IdentifiableDAO {
   public static UserDAO from(User user) {
     return UserDAO.builder()
         .id(UUID.fromString(user.getId()))
+        .name(user.getName())
         .email(user.getEmail())
         .externalId(user.getExternalId())
         .state(user.getState().name())
@@ -48,6 +49,7 @@ public class UserDAO extends IdentifiableDAO {
   public User toUser() {
     return new User()
         .id(getId().toString())
+        .name(getName())
         .email(getEmail())
         .externalId(getExternalId())
         .state(User.StateEnum.fromValue(getState()))

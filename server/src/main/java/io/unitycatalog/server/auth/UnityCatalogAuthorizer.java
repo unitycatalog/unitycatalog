@@ -5,7 +5,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
-public interface UnityCatalogAuthenticator {
+// TODO: This should be call UnityCatalogAuthorizer
+public interface UnityCatalogAuthorizer {
   public boolean grantAuthorization(UUID principal, UUID resource, Privilege action);
 
   public boolean revokeAuthorization(UUID principal, UUID resource, Privilege action);
@@ -20,9 +21,9 @@ public interface UnityCatalogAuthenticator {
 
   public boolean authorize(UUID principal, UUID resource, Privilege action);
 
-  public boolean authorizeAny(UUID principal, UUID resource, List<Privilege> actions);
+  public boolean authorizeAny(UUID principal, UUID resource, Privilege... actions);
 
-  public boolean authorizeAll(UUID principal, UUID resource, List<Privilege> actions);
+  public boolean authorizeAll(UUID principal, UUID resource, Privilege... actions);
 
   public List<Privilege> listAuthorizations(UUID principal, UUID resource);
 
