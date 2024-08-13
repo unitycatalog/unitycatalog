@@ -80,7 +80,7 @@ public class UnityCatalogServer {
             basePath + "temporary-table-credentials", temporaryTableCredentialsService)
         .annotatedService(
             basePath + "temporary-volume-credentials", temporaryVolumeCredentialsService)
-        .annotatedService(basePath + "unity-control/scim2/Users", Scim2UserService)
+        .annotatedService(basePath + "unity-control/scim2/users", Scim2UserService)
         .annotatedService(basePath + "unity-control/authorizations", authService);
 
     // Add support for Iceberg REST APIs

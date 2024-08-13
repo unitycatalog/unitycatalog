@@ -75,14 +75,14 @@ public class UserRepository {
     }
   }
 
-  public User getUser(String name) {
+  public User getUser(String id) {
     try (Session session = SESSION_FACTORY.openSession()) {
       session.setDefaultReadOnly(true);
       Transaction tx = session.beginTransaction();
       try {
-        UserDAO userDAO = getUserByName(session, name);
+        UserDAO userDAO = getUserById(session, id);
         if (userDAO == null) {
-          throw new BaseException(ErrorCode.NOT_FOUND, "User not found: " + name);
+          throw new BaseException(ErrorCode.NOT_FOUND, "User not found: " + id);
         }
         tx.commit();
         return userDAO.toUser();
@@ -91,6 +91,13 @@ public class UserRepository {
         throw e;
       }
     }
+  }
+
+  public UserDAO getUserById(Session session, String id) {
+    Query<UserDAO> query = session.createQuery("FROM UserDAO WHERE id = :id", UserDAO.class);
+    query.setParameter("id", id);
+    query.setMaxResults(1);
+    return query.uniqueResult();
   }
 
   public UserDAO getUserByName(Session session, String name) {
@@ -125,13 +132,13 @@ public class UserRepository {
     return query.uniqueResult();
   }
 
-  public User updateUser(String name, UpdateUser updateUser) {
+  public User updateUser(String id, UpdateUser updateUser) {
     try (Session session = SESSION_FACTORY.openSession()) {
       Transaction tx = session.beginTransaction();
       try {
-        UserDAO userDAO = getUserByName(session, name);
+        UserDAO userDAO = getUserById(session, id);
         if (userDAO == null) {
-          throw new BaseException(ErrorCode.NOT_FOUND, "User not found: " + name);
+          throw new BaseException(ErrorCode.NOT_FOUND, "User not found: " + id);
         }
         if (updateUser.getNewName() != null) {
           userDAO.setName(updateUser.getNewName());
@@ -152,18 +159,18 @@ public class UserRepository {
     }
   }
 
-  public void deleteUser(String email) {
+  public void deleteUser(String id) {
     try (Session session = SESSION_FACTORY.openSession()) {
       Transaction tx = session.beginTransaction();
       try {
-        UserDAO userDAO = getUserByName(session, email);
+        UserDAO userDAO = getUserById(session, id);
         if (userDAO != null) {
           userDAO.setState(User.StateEnum.DISABLED.toString());
           session.merge(userDAO);
           tx.commit();
-          LOGGER.info("Deleted user: {}", email);
+          LOGGER.info("Deleted user: {}", id);
         } else {
-          throw new BaseException(ErrorCode.NOT_FOUND, "User not found: " + email);
+          throw new BaseException(ErrorCode.NOT_FOUND, "User not found: " + id);
         }
       } catch (Exception e) {
         tx.rollback();
