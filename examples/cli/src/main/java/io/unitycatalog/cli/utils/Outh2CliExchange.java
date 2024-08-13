@@ -12,7 +12,6 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpHandler;
 import com.sun.net.httpserver.HttpServer;
-import io.unitycatalog.server.persist.utils.ServerPropertiesUtils;
 import java.io.BufferedOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
@@ -24,12 +23,15 @@ import java.net.ServerSocket;
 import java.net.URL;
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Paths;
 import java.security.SecureRandom;
 import java.util.Arrays;
 import java.util.Base64;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Properties;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Future;
@@ -46,9 +48,16 @@ public class Outh2CliExchange {
     String REDIRECT_URL = "redirect_uri";
   }
 
-  ServerPropertiesUtils serverProperties = ServerPropertiesUtils.getInstance();
-
   private static final ObjectMapper mapper = new ObjectMapper();
+
+  Properties serverProperties = new Properties();
+
+  public Outh2CliExchange() throws IOException {
+    // TODO: Probably should retrieve this from the server or do exchange server side
+    try (InputStream input = Files.newInputStream(Paths.get("etc/conf/server.properties"))) {
+      serverProperties.load(input);
+    }
+  }
 
   // TODO: Some of this should probably be done server side.
   public String authenticate() throws IOException {

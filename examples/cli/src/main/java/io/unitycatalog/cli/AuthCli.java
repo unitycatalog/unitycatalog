@@ -1,13 +1,13 @@
 package io.unitycatalog.cli;
 
 import static io.unitycatalog.cli.utils.CliUtils.postProcessAndPrintOutput;
+import static java.net.HttpURLConnection.HTTP_OK;
 
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.ObjectWriter;
-import com.linecorp.armeria.common.HttpStatus;
 import io.unitycatalog.cli.utils.CliParams;
 import io.unitycatalog.cli.utils.CliUtils;
 import io.unitycatalog.cli.utils.Outh2CliExchange;
@@ -52,8 +52,8 @@ public class AuthCli {
 
   private static String login(ApiClient apiClient, JSONObject json)
       throws JsonProcessingException, ApiException {
-    Outh2CliExchange outh2CliExchange = new Outh2CliExchange();
     try {
+      Outh2CliExchange outh2CliExchange = new Outh2CliExchange();
       String identityToken = outh2CliExchange.authenticate();
       Map<String, String> login = new HashMap<>();
       login.put("identityToken", identityToken);
@@ -101,7 +101,7 @@ public class AuthCli {
     try {
       HttpResponse<String> response =
           apiClient.getHttpClient().send(request, HttpResponse.BodyHandlers.ofString());
-      if (response.statusCode() != HttpStatus.OK.code()) {
+      if (response.statusCode() != HTTP_OK) {
         throw new ApiException("Error authenticating - " + response.body());
       } else {
         Map<String, String> responseMap =
