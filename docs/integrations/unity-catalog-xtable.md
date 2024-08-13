@@ -2,7 +2,7 @@
 
 This document walks through the steps to register an Apache XTable™ (Incubating) synced Delta table in Unity Catalog.
 
-[Apache XTable](https://xtable.apache.org) provides cross-table omni-directional interoperability between Apache Hudi, Apache Iceberg & Delta Lake.
+[Apache XTable](https://xtable.apache.org) provides cross-table omni-directional interoperability between Apache Hudi, Apache Iceberg, and Delta Lake.
 
 ## Pre-Requisites
 
@@ -18,7 +18,6 @@ sourceFormat: HUDI|ICEBERG # choose only one
 targetFormats:
   - DELTA
 datasets:
-  -
     tableBasePath: s3://path/to/source/data
     tableName: table_name
     partitionSpec: partitionpath:VALUE 
