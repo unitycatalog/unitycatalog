@@ -58,7 +58,8 @@ public class FileUtils {
 
   public static String createRegisteredModelDirectory(
       String catalogName, String schemaName, String modelName) {
-    String absoluteUri = getModelDirectoryURI(catalogName + "." + schemaName + ".models." + modelName);
+    String absoluteUri =
+        getModelDirectoryURI(catalogName + "." + schemaName + ".models." + modelName);
     return createDirectory(absoluteUri).toString();
   }
 

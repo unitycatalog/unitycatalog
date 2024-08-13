@@ -123,7 +123,11 @@ public class ModelRepository {
             .name(createRegisteredModel.getModelName())
             .catalogName(createRegisteredModel.getCatalogName())
             .schemaName(createRegisteredModel.getSchemaName())
-            .storageLocation(FileUtils.createRegisteredModelDirectory(createRegisteredModel.getCatalogName(), createRegisteredModel.getSchemaName(), createRegisteredModel.getModelName()))
+            .storageLocation(
+                FileUtils.createRegisteredModelDirectory(
+                    createRegisteredModel.getCatalogName(),
+                    createRegisteredModel.getSchemaName(),
+                    createRegisteredModel.getModelName()))
             .comment(createRegisteredModel.getComment())
             .createdAt(createTime)
             .updatedAt(createTime);
