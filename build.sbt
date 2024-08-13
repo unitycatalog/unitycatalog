@@ -193,7 +193,6 @@ lazy val server = (project in file("server"))
       "com.h2database" %  "h2" % "2.2.224",
 
       "org.hibernate.orm" % "hibernate-core" % "6.5.0.Final",
-      "org.openapitools" % "jackson-databind-nullable" % openApiToolsJacksonBindNullableVersion,
 
       "jakarta.activation" % "jakarta.activation-api" % "2.1.3",
       "net.bytebuddy" % "byte-buddy" % "1.14.15",
