@@ -12,6 +12,7 @@ import org.casbin.adapter.JDBCAdapter;
 import org.casbin.jcasbin.main.Enforcer;
 
 public class JCasbinAuthenticator implements UnityCatalogAuthenticator {
+  private static final JCasbinAuthenticator INSTANCE = new JCasbinAuthenticator();
   static UserRepository USER_REPOSITORY = UserRepository.getInstance();
   Enforcer enforcer;
 
@@ -29,6 +30,10 @@ public class JCasbinAuthenticator implements UnityCatalogAuthenticator {
     }
     enforcer = new Enforcer("server/src/main/resources/jcasbin_auth_model.conf", adapter);
     enforcer.enableAutoSave(true);
+  }
+
+  public static JCasbinAuthenticator getInstance() {
+    return INSTANCE;
   }
 
   @Override

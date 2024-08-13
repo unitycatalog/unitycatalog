@@ -26,8 +26,8 @@ public class GlobalExceptionHandler implements ExceptionHandlerFunction {
               baseException.getErrorMessage(),
               baseException.getCause(),
               baseException.getMetadata()));
-    } else if (cause instanceof ScimException) {
-      ScimException scimException = (ScimException) cause;
+    } else if (cause instanceof Scim2RuntimeException) {
+      ScimException scimException = (ScimException) cause.getCause();
       return HttpResponse.ofJson(
           HttpStatus.INTERNAL_SERVER_ERROR,
           RESTObjectMapper.mapper().writeValueAsString(scimException.getScimError()));

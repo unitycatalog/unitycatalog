@@ -28,7 +28,8 @@ import java.util.stream.Collectors;
 @ExceptionHandler(GlobalExceptionHandler.class)
 public class AuthService {
 
-  private final JCasbinAuthenticator jCasbinAuthenticator = new JCasbinAuthenticator();
+  private static final JCasbinAuthenticator jCasbinAuthenticator =
+      JCasbinAuthenticator.getInstance();
   private static final UserRepository USER_REPOSITORY = UserRepository.getInstance();
   private static final CatalogRepository CATALOG_REPOSITORY = CatalogRepository.getInstance();
 
