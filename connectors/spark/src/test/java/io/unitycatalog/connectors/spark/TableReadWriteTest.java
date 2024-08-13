@@ -1,66 +1,43 @@
 package io.unitycatalog.connectors.spark;
 
+import io.unitycatalog.client.ApiException;
+import io.unitycatalog.client.model.*;
+import io.unitycatalog.server.base.table.TableOperations;
+import io.unitycatalog.server.sdk.tables.SdkTableOperations;
+import org.apache.spark.network.util.JavaUtils;
+import org.apache.spark.sql.AnalysisException;
+import org.apache.spark.sql.Row;
+import org.apache.spark.sql.SparkSession;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+
+import java.io.File;
+import java.io.IOException;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.List;
+
 import static io.unitycatalog.server.utils.TestUtils.*;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-import io.unitycatalog.client.ApiException;
-import io.unitycatalog.client.model.*;
-import io.unitycatalog.server.base.BaseCRUDTest;
-import io.unitycatalog.server.base.ServerConfig;
-import io.unitycatalog.server.base.catalog.CatalogOperations;
-import io.unitycatalog.server.base.schema.SchemaOperations;
-import io.unitycatalog.server.base.table.TableOperations;
-import io.unitycatalog.server.sdk.catalog.SdkCatalogOperations;
-import io.unitycatalog.server.sdk.schema.SdkSchemaOperations;
-import io.unitycatalog.server.sdk.tables.SdkTableOperations;
-import io.unitycatalog.server.utils.TestUtils;
-import java.io.File;
-import java.io.IOException;
-import java.util.*;
-import org.apache.spark.network.util.JavaUtils;
-import org.apache.spark.sql.AnalysisException;
-import org.apache.spark.sql.Row;
-import org.apache.spark.sql.SparkSession;
-import org.apache.spark.sql.catalyst.analysis.NoSuchNamespaceException;
-import org.junit.jupiter.api.BeforeEach;
-import org.junit.jupiter.api.Test;
+public class TableReadWriteTest extends BaseSparkIntegrationTest {
 
-public class SparkIntegrationTest extends BaseCRUDTest {
-
-  private static final String SPARK_CATALOG = "spark_catalog";
-  private static final String PARQUET_TABLE = "test_parquet";
   private static final String ANOTHER_PARQUET_TABLE = "test_parquet_another";
   private static final String PARQUET_TABLE_PARTITIONED = "test_parquet_partitioned";
   private static final String DELTA_TABLE = "test_delta";
+  private static final String PARQUET_TABLE = "test_parquet";
   private static final String ANOTHER_DELTA_TABLE = "test_delta_another";
   private static final String DELTA_TABLE_PARTITIONED = "test_delta_partitioned";
 
   private final File dataDir = new File(System.getProperty("java.io.tmpdir"), "spark_test");
 
-  @Test
-  public void testCreateSchema() throws ApiException {
-    createCommonResources();
-    SparkSession session = createSparkSessionWithCatalogs(CATALOG_NAME, SPARK_CATALOG);
-    session.catalog().setCurrentCatalog(CATALOG_NAME);
-    session.sql("CREATE DATABASE my_test_database;");
-    assertTrue(session.catalog().databaseExists("my_test_database"));
-    session.sql(String.format("DROP DATABASE %s.my_test_database;", CATALOG_NAME));
-    assertFalse(session.catalog().databaseExists("my_test_database"));
-
-    session.catalog().setCurrentCatalog(SPARK_CATALOG);
-    session.sql("CREATE DATABASE my_test_database;");
-    assertTrue(session.catalog().databaseExists("my_test_database"));
-    session.sql(String.format("DROP DATABASE %s.my_test_database;", SPARK_CATALOG));
-    assertFalse(session.catalog().databaseExists("my_test_database"));
-    session.stop();
-  }
+  private TableOperations tableOperations;
 
   @Test
   public void testParquetReadWrite() throws IOException, ApiException {
-    createCommonResources();
     SparkSession session = createSparkSessionWithCatalogs(SPARK_CATALOG);
     // Spark only allow `spark_catalog` to return built-in file source tables.
     setupExternalParquetTable(PARQUET_TABLE, new ArrayList<>(0));
@@ -75,7 +52,6 @@ public class SparkIntegrationTest extends BaseCRUDTest {
 
   @Test
   public void testDeltaReadWrite() throws IOException, ApiException {
-    createCommonResources();
     // Test both `spark_catalog` and other catalog names.
     SparkSession session = createSparkSessionWithCatalogs(SPARK_CATALOG, CATALOG_NAME);
 
@@ -95,8 +71,7 @@ public class SparkIntegrationTest extends BaseCRUDTest {
   }
 
   @Test
-  public void testDeltaPathTable() throws IOException, ApiException {
-    createCommonResources();
+  public void testDeltaPathTable() throws IOException {
     // We must replace the `spark_catalog` in order to support Delta path tables.
     SparkSession session = createSparkSessionWithCatalogs(SPARK_CATALOG);
 
@@ -124,7 +99,6 @@ public class SparkIntegrationTest extends BaseCRUDTest {
 
   @Test
   public void testCredentialParquet() throws ApiException, IOException {
-    createCommonResources();
     SparkSession session = createSparkSessionWithCatalogs(SPARK_CATALOG);
 
     String loc1 = "s3://test-bucket0" + generateTableLocation(SPARK_CATALOG, PARQUET_TABLE);
@@ -149,7 +123,6 @@ public class SparkIntegrationTest extends BaseCRUDTest {
 
   @Test
   public void testCredentialDelta() throws ApiException, IOException {
-    createCommonResources();
     SparkSession session = createSparkSessionWithCatalogs(SPARK_CATALOG, CATALOG_NAME);
 
     String loc0 = "s3://test-bucket0" + generateTableLocation(SPARK_CATALOG, DELTA_TABLE);
@@ -174,7 +147,6 @@ public class SparkIntegrationTest extends BaseCRUDTest {
 
   @Test
   public void testDeleteDeltaTable() throws ApiException, IOException {
-    createCommonResources();
     SparkSession session = createSparkSessionWithCatalogs(SPARK_CATALOG);
 
     String loc1 = "s3://test-bucket0" + generateTableLocation(SPARK_CATALOG, DELTA_TABLE);
@@ -191,7 +163,6 @@ public class SparkIntegrationTest extends BaseCRUDTest {
 
   @Test
   public void testMergeDeltaTable() throws ApiException, IOException {
-    createCommonResources();
     SparkSession session = createSparkSessionWithCatalogs(SPARK_CATALOG, CATALOG_NAME);
 
     String loc1 = "s3://test-bucket0" + generateTableLocation(SPARK_CATALOG, DELTA_TABLE);
@@ -216,7 +187,6 @@ public class SparkIntegrationTest extends BaseCRUDTest {
 
   @Test
   public void testUpdateDeltaTable() throws ApiException, IOException {
-    createCommonResources();
     SparkSession session = createSparkSessionWithCatalogs(SPARK_CATALOG);
 
     String loc1 = "s3://test-bucket0" + generateTableLocation(SPARK_CATALOG, DELTA_TABLE);
@@ -233,7 +203,6 @@ public class SparkIntegrationTest extends BaseCRUDTest {
 
   @Test
   public void testShowTables() throws ApiException, IOException {
-    createCommonResources();
     SparkSession session = createSparkSessionWithCatalogs(SPARK_CATALOG);
     setupExternalParquetTable(PARQUET_TABLE, new ArrayList<>(0));
 
@@ -251,7 +220,6 @@ public class SparkIntegrationTest extends BaseCRUDTest {
 
   @Test
   public void testDropTable() throws ApiException, IOException {
-    createCommonResources();
     SparkSession session = createSparkSessionWithCatalogs(SPARK_CATALOG);
     setupExternalParquetTable(PARQUET_TABLE, new ArrayList<>(0));
     String fullName = String.join(".", SPARK_CATALOG, SCHEMA_NAME, PARQUET_TABLE);
@@ -261,111 +229,6 @@ public class SparkIntegrationTest extends BaseCRUDTest {
     assertThatThrownBy(() -> session.sql("DROP TABLE a.b.c.d").collect())
         .isInstanceOf(AnalysisException.class);
     session.stop();
-  }
-
-  @Test
-  public void testSetCurrentDB() throws ApiException {
-    createCommonResources();
-    SparkSession session = createSparkSessionWithCatalogs(SPARK_CATALOG, TestUtils.CATALOG_NAME);
-    session.catalog().setCurrentCatalog(TestUtils.CATALOG_NAME);
-    session.catalog().setCurrentDatabase(SCHEMA_NAME);
-    session.catalog().setCurrentCatalog(SPARK_CATALOG);
-    // TODO: We need to apply a fix on Spark side to use v2 session catalog handle
-    // `setCurrentDatabase` when the catalog name is `spark_catalog`.
-    // session.catalog().setCurrentDatabase(SCHEMA_NAME);
-    session.stop();
-  }
-
-  @Test
-  public void testListNamespace() throws IOException, ApiException {
-    SparkSession session = createSparkSessionWithCatalogs(SPARK_CATALOG);
-    createCommonResources();
-    Row row = session.sql("SHOW NAMESPACES").collectAsList().get(0);
-    assertThat(row.getString(0)).isEqualTo(SCHEMA_NAME);
-    assertThatThrownBy(() -> session.sql("SHOW NAMESPACES IN a.b.c").collect())
-        .isInstanceOf(UnsupportedOperationException.class)
-        .hasMessageContaining("Multi-layer namespace is not supported in Unity Catalog");
-    session.stop();
-  }
-
-  @Test
-  public void testLoadNamespace() throws IOException, ApiException {
-    SparkSession session = createSparkSessionWithCatalogs(SPARK_CATALOG);
-    createCommonResources();
-
-    Row[] rows = (Row[]) session.sql("DESC NAMESPACE " + SCHEMA_NAME).collect();
-    assertThat(rows).hasSize(2);
-    assertThat(rows[0].getString(0)).isEqualTo("Catalog Name");
-    assertThat(rows[0].getString(1)).isEqualTo(SPARK_CATALOG);
-    assertThat(rows[1].getString(0)).isEqualTo("Namespace Name");
-    assertThat(rows[1].getString(1)).isEqualTo(SCHEMA_NAME);
-
-    assertThatThrownBy(() -> session.sql("DESC NAMESPACE NonExist").collect())
-        .isInstanceOf(NoSuchNamespaceException.class);
-
-    session.stop();
-  }
-
-  @Test
-  public void testCreateExternalParquetTable() throws ApiException, IOException {
-    createCommonResources();
-    SparkSession session = createSparkSessionWithCatalogs(CATALOG_NAME);
-    String path = generateTableLocation(CATALOG_NAME, PARQUET_TABLE);
-    String fullTableName = CATALOG_NAME + "." + SCHEMA_NAME + "." + PARQUET_TABLE;
-    session
-        .sql(
-            "CREATE TABLE " + fullTableName + "(name STRING) USING PARQUET LOCATION '" + path + "'")
-        .collect();
-    assertTrue(session.catalog().tableExists(fullTableName));
-    TableInfo tableInfo = tableOperations.getTable(fullTableName);
-    assertThat(tableInfo.getColumns().size() == 1);
-    assertThat(tableInfo.getColumns().get(0).getName() == "name");
-    assertThat(tableInfo.getColumns().get(0).getTypeText() == "STRING");
-    session.stop();
-  }
-
-  private String generateTableLocation(String catalogName, String tableName) throws IOException {
-    return new File(new File(dataDir, catalogName), tableName).getCanonicalPath();
-  }
-
-  private void testTableReadWrite(String tableFullName, SparkSession session) {
-    assertThat(session.sql("SELECT * FROM " + tableFullName).collectAsList()).isEmpty();
-    session.sql("INSERT INTO " + tableFullName + " SELECT 1, 'a'");
-    Row row = session.sql("SELECT * FROM " + tableFullName).collectAsList().get(0);
-    assertThat(row.getInt(0)).isEqualTo(1);
-    assertThat(row.getString(1)).isEqualTo("a");
-  }
-
-  private SchemaOperations schemaOperations;
-  private TableOperations tableOperations;
-
-  private void createCommonResources() throws ApiException {
-    // Common setup operations such as creating a catalog and schema
-    catalogOperations.createCatalog(
-        new CreateCatalog().name(TestUtils.CATALOG_NAME).comment(TestUtils.COMMENT));
-    schemaOperations.createSchema(new CreateSchema().name(SCHEMA_NAME).catalogName(CATALOG_NAME));
-    catalogOperations.createCatalog(
-        new CreateCatalog().name(SPARK_CATALOG).comment("Spark catalog"));
-    schemaOperations.createSchema(new CreateSchema().name(SCHEMA_NAME).catalogName(SPARK_CATALOG));
-  }
-
-  private SparkSession createSparkSessionWithCatalogs(String... catalogs) {
-    SparkSession.Builder builder =
-        SparkSession.builder()
-            .appName("test")
-            .master("local[*]")
-            .config("spark.sql.extensions", "io.delta.sql.DeltaSparkSessionExtension");
-    for (String catalog : catalogs) {
-      String catalogConf = "spark.sql.catalog." + catalog;
-      builder =
-          builder
-              .config(catalogConf, UCSingleCatalog.class.getName())
-              .config(catalogConf + ".uri", serverConfig.getServerUrl())
-              .config(catalogConf + ".token", serverConfig.getAuthToken());
-    }
-    // Use fake file system for s3:// so that we can test credentials.
-    builder.config("fs.s3.impl", CredentialTestFileSystem.class.getName());
-    return builder.getOrCreate();
   }
 
   private void setupExternalParquetTable(String tableName, List<String> partitionColumns)
@@ -388,6 +251,27 @@ public class SparkIntegrationTest extends BaseCRUDTest {
     setupExternalDeltaTable(catalogName, tableName, location, partitionColumns, session);
   }
 
+  @Test
+  public void testCreateExternalParquetTable() throws ApiException, IOException {
+    SparkSession session = createSparkSessionWithCatalogs(CATALOG_NAME);
+    String path = generateTableLocation(CATALOG_NAME, PARQUET_TABLE);
+    String fullTableName = CATALOG_NAME + "." + SCHEMA_NAME + "." + PARQUET_TABLE;
+    session
+        .sql(
+            "CREATE TABLE " + fullTableName + "(name STRING) USING PARQUET LOCATION '" + path + "'")
+        .collect();
+    assertTrue(session.catalog().tableExists(fullTableName));
+    TableInfo tableInfo = tableOperations.getTable(fullTableName);
+    assertThat(tableInfo.getColumns().size() == 1);
+    assertThat(tableInfo.getColumns().get(0).getName() == "name");
+    assertThat(tableInfo.getColumns().get(0).getTypeText() == "STRING");
+    session.stop();
+  }
+
+  private String generateTableLocation(String catalogName, String tableName) throws IOException {
+    return new File(new File(dataDir, catalogName), tableName).getCanonicalPath();
+  }
+
   private void setupExternalDeltaTable(
       String catalogName,
       String tableName,
@@ -407,6 +291,14 @@ public class SparkIntegrationTest extends BaseCRUDTest {
             + partitionClause);
 
     setupTables(catalogName, tableName, DataSourceFormat.DELTA, location, partitionColumns, false);
+  }
+
+  private void testTableReadWrite(String tableFullName, SparkSession session) {
+    assertThat(session.sql("SELECT * FROM " + tableFullName).collectAsList()).isEmpty();
+    session.sql("INSERT INTO " + tableFullName + " SELECT 1, 'a'");
+    Row row = session.sql("SELECT * FROM " + tableFullName).collectAsList().get(0);
+    assertThat(row.getInt(0)).isEqualTo(1);
+    assertThat(row.getString(1)).isEqualTo("a");
   }
 
   private void setupTables(
@@ -470,23 +362,11 @@ public class SparkIntegrationTest extends BaseCRUDTest {
   @Override
   public void setUp() {
     super.setUp();
-    schemaOperations = new SdkSchemaOperations(createApiClient(serverConfig));
     tableOperations = new SdkTableOperations(createApiClient(serverConfig));
-    cleanUp();
-  }
-
-  @Override
-  protected CatalogOperations createCatalogOperations(ServerConfig serverConfig) {
-    return new SdkCatalogOperations(createApiClient(serverConfig));
   }
 
   @Override
   public void cleanUp() {
-    try {
-      catalogOperations.deleteCatalog(SPARK_CATALOG, Optional.of(true));
-    } catch (Exception e) {
-      // Ignore
-    }
     super.cleanUp();
     try {
       JavaUtils.deleteRecursively(dataDir);
