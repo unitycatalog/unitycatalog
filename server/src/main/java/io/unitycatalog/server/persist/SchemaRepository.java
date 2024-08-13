@@ -187,8 +187,8 @@ public class SchemaRepository {
     try (Session session = SESSION_FACTORY.openSession()) {
       Transaction tx = session.beginTransaction();
       try {
-        SchemaInfoDAO schemaInfo = getSchemaDAO(session, fullName);
-        if (schemaInfo == null) {
+        SchemaInfoDAO schemaInfoDAO = getSchemaDAO(session, fullName);
+        if (schemaInfoDAO == null) {
           throw new BaseException(ErrorCode.NOT_FOUND, "Schema not found: " + fullName);
         }
         if (updateSchema.getNewName() != null) {
@@ -197,21 +197,33 @@ public class SchemaRepository {
                 ErrorCode.ALREADY_EXISTS, "Schema already exists: " + updateSchema.getNewName());
           }
         }
-        if (updateSchema.getComment() == null && updateSchema.getNewName() == null) {
+        if (updateSchema.getComment() == null
+            && updateSchema.getNewName() == null
+            && (updateSchema.getProperties() == null || updateSchema.getProperties().isEmpty())) {
           tx.rollback();
-          return convertFromDAO(schemaInfo, fullName);
+          SchemaInfo schemaInfo = convertFromDAO(schemaInfoDAO, fullName);
+          return RepositoryUtils.attachProperties(
+              schemaInfo, schemaInfo.getSchemaId(), Constants.SCHEMA, session);
         }
         // Update the schema with new values
         if (updateSchema.getComment() != null) {
-          schemaInfo.setComment(updateSchema.getComment());
+          schemaInfoDAO.setComment(updateSchema.getComment());
         }
         if (updateSchema.getNewName() != null) {
-          schemaInfo.setName(updateSchema.getNewName());
+          schemaInfoDAO.setName(updateSchema.getNewName());
         }
-        schemaInfo.setUpdatedAt(new Date());
-        session.merge(schemaInfo);
+        if (updateSchema.getProperties() != null && !updateSchema.getProperties().isEmpty()) {
+          PropertyRepository.findProperties(session, schemaInfoDAO.getId(), Constants.SCHEMA)
+              .forEach(session::remove);
+          PropertyDAO.from(updateSchema.getProperties(), schemaInfoDAO.getId(), Constants.SCHEMA)
+              .forEach(session::persist);
+        }
+        schemaInfoDAO.setUpdatedAt(new Date());
+        session.merge(schemaInfoDAO);
         tx.commit();
-        return convertFromDAO(schemaInfo, fullName);
+        SchemaInfo schemaInfo = convertFromDAO(schemaInfoDAO, fullName);
+        return RepositoryUtils.attachProperties(
+            schemaInfo, schemaInfo.getSchemaId(), Constants.SCHEMA, session);
       } catch (Exception e) {
         tx.rollback();
         throw e;

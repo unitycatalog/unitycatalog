@@ -92,8 +92,13 @@ public class SchemaCli {
       }
       throw new CliException(errorMessage);
     }
-    UpdateSchema updateSchema = objectMapper.readValue(json.toString(), UpdateSchema.class);
-    return objectWriter.writeValueAsString(schemasApi.updateSchema(schemaFullName, updateSchema));
+    UpdateSchema updateSchema =
+        new UpdateSchema()
+            .newName(json.optString(CliParams.NEW_NAME.getServerParam(), null))
+            .comment(json.optString(CliParams.COMMENT.getServerParam(), null))
+            .properties(CliUtils.extractProperties(objectMapper, json));
+    SchemaInfo schemaInfo = schemasApi.updateSchema(schemaFullName, updateSchema);
+    return objectWriter.writeValueAsString(schemaInfo);
   }
 
   private static String deleteSchema(SchemasApi schemasApi, JSONObject json) throws ApiException {

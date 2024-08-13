@@ -133,7 +133,7 @@ public class CatalogRepository {
     if (updateCatalog.getNewName() != null) {
       ValidationUtils.validateSqlObjectName(updateCatalog.getNewName());
     }
-    // cna make this just update once we have an identifier that is not the name
+    // can make this just update once we have an identifier that is not the name
     try (Session session = SESSION_FACTORY.openSession()) {
       Transaction tx = session.beginTransaction();
       try {
