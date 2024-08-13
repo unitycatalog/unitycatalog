@@ -5,8 +5,8 @@ import com.linecorp.armeria.common.HttpStatus;
 import com.linecorp.armeria.server.annotation.*;
 import io.unitycatalog.server.exception.GlobalExceptionHandler;
 import io.unitycatalog.server.model.CreateRegisteredModel;
-import io.unitycatalog.server.model.UpdateRegisteredModel;
 import io.unitycatalog.server.model.RegisteredModelInfo;
+import io.unitycatalog.server.model.UpdateRegisteredModel;
 import io.unitycatalog.server.persist.ModelRepository;
 import java.util.Optional;
 
@@ -45,13 +45,15 @@ public class ModelService {
   @Patch("/{full_name_arg")
   public HttpResponse updateRegisteredModel(UpdateRegisteredModel updateRegisteredModel) {
     assert updateRegisteredModel != null;
-    RegisteredModelInfo updateRegisteredModelResponse = MODEL_REPOSITORY.updateRegisteredModel(updateRegisteredModel);
+    RegisteredModelInfo updateRegisteredModelResponse =
+        MODEL_REPOSITORY.updateRegisteredModel(updateRegisteredModel);
     return HttpResponse.ofJson(updateRegisteredModelResponse);
   }
 
   @Delete("/{full_name_arg}")
-  public HttpResponse deleteRegisteredModel(@Param("full_name_arg") String fullNameArg) {
-    MODEL_REPOSITORY.deleteRegisteredModel(fullNameArg);
+  public HttpResponse deleteRegisteredModel(
+      @Param("full_name_arg") String fullNameArg, @Param("force") boolean force) {
+    MODEL_REPOSITORY.deleteRegisteredModel(fullNameArg, force);
     return HttpResponse.of(HttpStatus.OK);
   }
 }

@@ -861,6 +861,13 @@ paths:
     delete:
       tags:
         - RegisteredModels
+      parameters:
+        - name: force
+          in: query
+          description: Force deletion even if the registered model still has model versions.
+          required: false
+          schema:
+            type: boolean
       operationId: deleteRegisteredModel
       summary: Delete a specified registered model.
       description: |

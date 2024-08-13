@@ -17,7 +17,8 @@ public class FileUtilsTest {
     String tablePath = FileUtils.createTableDirectory("catalog", "schema", "table");
     String volumePath = FileUtils.createVolumeDirectory("volume");
     String modelPath = FileUtils.createRegisteredModelDirectory("catalog", "schema", "my-model");
-    String modelVersionPath = FileUtils.createModelVersionDirectory("catalog", "schema", "my-model");
+    String modelVersionPath =
+        FileUtils.createModelVersionDirectory("catalog", "schema", "my-model");
 
     assertThat(tablePath).isEqualTo("file:///tmp/catalog/schema/tables/table/");
     assertThat(volumePath).isEqualTo("file:///tmp/volume/");
@@ -39,7 +40,8 @@ public class FileUtilsTest {
     assertThat(tablePath).isEqualTo("file:///tmp/random/catalog/schema/tables/table/");
     assertThat(volumePath).isEqualTo("file:///tmp/random/volume/");
     assertThat(modelPath).isEqualTo("file:///tmp/random/catalog/schema/models/my-model/");
-    assertThat(modelVersionPath).isEqualTo("file:///tmp/random/catalog/schema/models/my-model/versions/");
+    assertThat(modelVersionPath)
+        .isEqualTo("file:///tmp/random/catalog/schema/models/my-model/versions/");
 
     FileUtils.deleteDirectory(tablePath);
     FileUtils.deleteDirectory(volumePath);
@@ -59,12 +61,12 @@ public class FileUtilsTest {
             () -> {
               FileUtils.createRegisteredModelDirectory("..", "schema", "model");
             })
-            .isInstanceOf(BaseException.class);
+        .isInstanceOf(BaseException.class);
 
     assertThatThrownBy(
             () -> {
               FileUtils.createModelVersionDirectory("..", "schema", "model");
             })
-            .isInstanceOf(BaseException.class);
+        .isInstanceOf(BaseException.class);
   }
 }

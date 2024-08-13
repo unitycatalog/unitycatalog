@@ -18,6 +18,8 @@ public class TestUtils {
   public static final String STORAGE_LOCATION = "/tmp/stagingLocation";
   public static final String VOLUME_NAME = "uc_testvolume";
   public static final String FUNCTION_NAME = "uc_testfunction";
+  public static final String MODEL_NAME = "uc_testmodel";
+  public static final String MODEL_NEW_NAME = "uc_newtestmodel";
   public static final String SCHEMA_FULL_NAME = CATALOG_NAME + "." + SCHEMA_NAME;
   public static final String SCHEMA_NEW_NAME = "uc_newtestschema";
   public static final String SCHEMA_NEW_FULL_NAME = CATALOG_NAME + "." + SCHEMA_NEW_NAME;
@@ -27,9 +29,13 @@ public class TestUtils {
       CATALOG_NAME + "." + SCHEMA_NAME + "." + VOLUME_NAME;
   public static final String FUNCTION_FULL_NAME =
       CATALOG_NAME + "." + SCHEMA_NAME + "." + FUNCTION_NAME;
+  public static final String MODEL_FULL_NAME = CATALOG_NAME + "." + SCHEMA_NAME + "." + MODEL_NAME;
+  public static final String MODEL_NEW_FULL_NAME =
+      CATALOG_NAME + "." + SCHEMA_NAME + "." + MODEL_NEW_NAME;
   public static final String COMMENT = "test comment";
   public static final String CATALOG_NEW_NAME = "uc_newtestcatalog";
   public static final String CATALOG_NEW_COMMENT = "new test comment";
+  public static final String MODEL_NEW_COMMENT = "new test model comment";
   public static final String VOLUME_NEW_NAME = "uc_newtestvolume";
   public static final String VOLUME_NEW_FULL_NAME =
       CATALOG_NAME + "." + SCHEMA_NAME + "." + VOLUME_NEW_NAME;
