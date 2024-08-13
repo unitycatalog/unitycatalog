@@ -35,6 +35,8 @@ public class TestUtils {
       CATALOG_NAME + "." + SCHEMA_NAME + "." + VOLUME_NEW_NAME;
   public static final Map<String, String> PROPERTIES =
       new HashMap<>(Map.of("prop1", "value1", "prop2", "value2"));
+  public static final Map<String, String> NEW_PROPERTIES =
+      new HashMap<>(Map.of("prop3", "value3", "prop4", "value4"));
 
   public static int getRandomPort() {
     return (int) (Math.random() * 1000) + 9000;

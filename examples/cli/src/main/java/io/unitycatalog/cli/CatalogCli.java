@@ -80,7 +80,7 @@ public class CatalogCli {
     return objectWriter.writeValueAsString(catalogsApi.getCatalog(catalogName));
   }
 
-  private static String updateCatalog(CatalogsApi apiClient, JSONObject json)
+  private static String updateCatalog(CatalogsApi catalogsApi, JSONObject json)
       throws JsonProcessingException, ApiException {
     String catalogName = json.getString(NAME_PARAM);
     json.remove(NAME_PARAM);
@@ -93,8 +93,13 @@ public class CatalogCli {
       }
       throw new CliException(errorMessage);
     }
-    UpdateCatalog updateCatalog = objectMapper.readValue(json.toString(), UpdateCatalog.class);
-    return objectWriter.writeValueAsString(apiClient.updateCatalog(catalogName, updateCatalog));
+    UpdateCatalog updateCatalog =
+        new UpdateCatalog()
+            .newName(json.optString(CliParams.NEW_NAME.getServerParam(), null))
+            .comment(json.optString(CliParams.COMMENT.getServerParam(), null))
+            .properties(CliUtils.extractProperties(objectMapper, json));
+    CatalogInfo catalogInfo = catalogsApi.updateCatalog(catalogName, updateCatalog);
+    return objectWriter.writeValueAsString(catalogInfo);
   }
 
   private static String deleteCatalog(CatalogsApi catalogsApi, JSONObject json)
