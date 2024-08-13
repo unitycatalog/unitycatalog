@@ -1552,6 +1552,7 @@ components:
     ResourceType:
       type: string
       enum:
+        - METASTORE
         - CATALOG
         - SCHEMA
         - TABLE
@@ -1561,17 +1562,11 @@ components:
     Privilege:
       type: string
       enum:
+        - OWNER
         - CREATE CATALOG
         - USE CATALOG
-        - CREATE SCHEMA
         - USE SCHEMA
-        - CREATE TABLE
-        - CREATE FUNCTION
-        - CREATE VOLUME
         - READ VOLUME
-        - WRITE VOLUME
-        - SELECT
-        - MODIFY
         - EXECUTE
       description: The privilege to grant.
     Authorization:
