@@ -5,7 +5,6 @@ import sbt.util
 import sbtlicensereport.license.{DepModuleInfo, LicenseCategory, LicenseInfo}
 import ReleaseSettings.{javaOnlyReleaseSettings, rootReleaseSettings, skipReleaseSettings}
 
-import scala.jdk.CollectionConverters.asJavaIterableConverter
 import scala.language.implicitConversions
 
 val orgName = "io.unitycatalog"
@@ -134,7 +133,8 @@ lazy val client = (project in file("target/clients/java"))
     openApiAdditionalProperties := Map(
       "library" -> "native",
       "useJakartaEe" -> "true",
-      "hideGenerationTimestamp" -> "true"),
+      "hideGenerationTimestamp" -> "true",
+      "openApiNullable" -> "false"),
     openApiGenerateApiTests := SettingDisabled,
     openApiGenerateModelTests := SettingDisabled,
     openApiGenerateApiDocumentation := SettingDisabled,
@@ -327,9 +327,8 @@ lazy val cli = (project in file("examples") / "cli")
   * and the server(with tests) is required as a test dependency)
   * This was necessary because Spark 3.5 has a dependency on Jackson 2.15, which conflicts with the Jackson 2.17
  */
-lazy val serverAndClientShaded = (project in file("server-and-client-shaded"))
+lazy val serverShaded = (project in file("server-shaded"))
   .dependsOn(server % "compile->compile, test->compile")
-  .dependsOn(client % "compile->compile")
   .settings(
     name := s"${artifactNamePrefix}-server-shaded",
     commonSettings,
@@ -348,7 +347,7 @@ lazy val serverAndClientShaded = (project in file("server-and-client-shaded"))
       case _ => MergeStrategy.first
     },
     assembly / fullClasspath := {
-      val compileClasspath = (server / Compile / fullClasspath).value ++ (client / Compile / fullClasspath).value
+      val compileClasspath = (server / Compile / fullClasspath).value
       val testClasses = (server / Test / products).value
       compileClasspath ++ testClasses.map(Attributed.blank)
     }
@@ -356,6 +355,7 @@ lazy val serverAndClientShaded = (project in file("server-and-client-shaded"))
 
 val sparkVersion = "3.5.1"
 lazy val spark = (project in file("connectors/spark"))
+  .dependsOn(client)
   .settings(
     name := s"$artifactNamePrefix-spark",
     scalaVersion := "2.12.15",
@@ -392,8 +392,7 @@ lazy val spark = (project in file("connectors/spark"))
       "org.antlr" % "antlr4-runtime" % "4.9.3",
       "org.antlr" % "antlr4" % "4.9.3",
     ),
-    Compile / unmanagedJars += (serverAndClientShaded / assembly).value,
-    Test / unmanagedJars += (serverAndClientShaded / assembly).value,
+    Test / unmanagedJars += (serverShaded / assembly).value,
     licenseDepExclusions := {
       case DepModuleInfo("org.hibernate.orm", _, _) => true
       case DepModuleInfo("jakarta.annotation", "jakarta.annotation-api", _) => true
@@ -413,7 +412,7 @@ lazy val spark = (project in file("connectors/spark"))
       case DepModuleInfo("oro", "oro", _) => true
       case DepModuleInfo("org.glassfish", "javax.json", _) => true
       case DepModuleInfo("org.glassfish.hk2.external", "jakarta.inject", _) => true
-      case DepModuleInfo("org.antlr", "ST4", _) => true,
+      case DepModuleInfo("org.antlr", "ST4", _) => true
     }
   )
 
