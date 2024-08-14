@@ -83,17 +83,11 @@ public class UnityAccessDecorator implements DecoratingHttpServiceFunction {
 
       if (expression != null) {
         if (!locator.isEmpty()) {
-
           UUID principal = UnityAccessUtil.findPrincipalId();
-
-          if (locator.size() == 1 && locator.get(0).getSource().equals(SYSTEM)) {
-            return authorizeBySystem(delegate, ctx, req, principal, locator.get(0).getType(), expression);
-          } else {
-            return authorizeByRequest(delegate, ctx, req, principal, locator, expression);
-          }
+          return authorizeByRequest(delegate, ctx, req, principal, locator, expression);
         } else {
-          LOGGER.warn("No authorization resource found.");
-          throw new BaseException(ErrorCode.PERMISSION_DENIED, "Could not evaluate authorization.");
+          LOGGER.warn("No authorization resource(s) found.");
+          // going to assume the expression is just #deny, #allow or #defer
         }
       } else {
         LOGGER.debug("No authorization expression found.");
@@ -101,19 +95,6 @@ public class UnityAccessDecorator implements DecoratingHttpServiceFunction {
     } else {
       LOGGER.warn("Couldn't unwrap service.");
     }
-
-    return delegate.serve(ctx, req);
-  }
-
-  private HttpResponse authorizeBySystem(HttpService delegate, ServiceRequestContext ctx, HttpRequest req, UUID principal, ResourceType key, String expression) throws Exception {
-    LOGGER.debug("resource: system = {}", key);
-
-    Map<ResourceType, Object> resourceKeys = new HashMap<>();
-    switch (key) {
-      case METASTORE -> resourceKeys.put(METASTORE, "metastore");
-    }
-
-    checkAuthorization(principal, expression, resourceKeys);
 
     return delegate.serve(ctx, req);
   }
@@ -145,17 +126,20 @@ public class UnityAccessDecorator implements DecoratingHttpServiceFunction {
     if (payloadLocators.isEmpty()) {
       // If we don't have any PAYLOAD locators, we're ready to evaluate the authorization and allow or deny
       // the request.
-
+      LOGGER.debug("Checking authorization before method.");
       checkAuthorization(principal, expression, resourceKeys);
 
       return delegate.serve(ctx, req);
     } else {
       // Since we have PAYLOAD locators, we can only interrogate the payload while the request
       // is being evaluated, via peekData()
+      LOGGER.debug("Checking authorization before in peekData.");
 
       // Note that peekData only gets called for requests that actually have data (like PUT and POST)
 
       var peekReq = req.peekData(data -> {
+        LOGGER.debug("Authorization peekData invoked.");
+
         try {
           // TODO: For now, we're going to assume JSON data, but might need to support other
           // content types.
@@ -173,7 +157,7 @@ public class UnityAccessDecorator implements DecoratingHttpServiceFunction {
         checkAuthorization(principal, expression, resourceKeys);
       });
 
-      return delegate.serve(ctx, req);
+      return delegate.serve(ctx, peekReq);
     }
   }
 
@@ -192,6 +176,13 @@ public class UnityAccessDecorator implements DecoratingHttpServiceFunction {
       String fullName = resourceKeys.get(CATALOG) + "." + resourceKeys.get(SCHEMA);
       SchemaInfo schema = SchemaRepository.getInstance().getSchema(fullName);
       resourceIds.put(SCHEMA, UUID.fromString(schema.getSchemaId()));
+    }
+
+    if (!resourceKeys.containsKey(CATALOG) && resourceKeys.containsKey(SCHEMA)) {
+      SchemaInfo schema = SchemaRepository.getInstance().getSchema(resourceKeys.get(SCHEMA).toString());
+      CatalogInfo catalog = CatalogRepository.getInstance().getCatalog(schema.getCatalogName());
+      resourceIds.put(SCHEMA, UUID.fromString(schema.getSchemaId()));
+      resourceIds.put(CATALOG, UUID.fromString(catalog.getId()));
     }
 
     if (resourceKeys.containsKey(CATALOG)) {
