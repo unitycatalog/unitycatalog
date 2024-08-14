@@ -12,7 +12,7 @@ The script supports various operations such as creating, retrieving, listing and
 
 Here's how to list catalogs contained in a Unity Catalog instance.
 
-```bash
+```sh
 bin/uc catalog list [--max_results <max_results>]
 ```
 
