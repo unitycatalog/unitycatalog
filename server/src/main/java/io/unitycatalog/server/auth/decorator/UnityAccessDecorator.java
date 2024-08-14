@@ -129,14 +129,21 @@ public class UnityAccessDecorator implements DecoratingHttpServiceFunction {
     // Split up the locators by type, because we have to extract the value from the request
     // different ways for different types
 
+    List<KeyLocator> systemLocators = locators.stream().filter(l -> l.getSource().equals(SYSTEM)).toList();
     List<KeyLocator> paramLocators = locators.stream().filter(l -> l.getSource().equals(PARAM)).toList();
     List<KeyLocator> payloadLocators = locators.stream().filter(l -> l.getSource().equals(PAYLOAD)).toList();
 
-    // Extract the query parameter values just by grabbing them from the request
-    paramLocators.forEach(l -> resourceKeys.put(l.getType(), ctx.queryParam(l.getKey())));
+    // Add system-type keys, just metastore for now.
+    systemLocators.forEach(l -> resourceKeys.put(l.getType(), "metastore"));
+
+    // Extract the query/path parameter values just by grabbing them from the request
+    paramLocators.forEach(l -> {
+      String value = ctx.pathParam(l.getKey()) != null ? ctx.pathParam(l.getKey()) : ctx.queryParam(l.getKey());
+      resourceKeys.put(l.getType(), value);
+    });
 
     if (payloadLocators.isEmpty()) {
-      // If we have only PARAM locators, we're ready to evaluate the authorization and allow or deny
+      // If we don't have any PAYLOAD locators, we're ready to evaluate the authorization and allow or deny
       // the request.
 
       checkAuthorization(principal, expression, resourceKeys);
@@ -234,7 +241,6 @@ public class UnityAccessDecorator implements DecoratingHttpServiceFunction {
     // If resource is on the method, its source is from a global/system variable
     if (methodKey != null) {
       locators.add(KeyLocator.builder().source(SYSTEM).type(methodKey.value()).build());
-      return locators;
     }
 
     for (Parameter parameter : method.getParameters()) {
