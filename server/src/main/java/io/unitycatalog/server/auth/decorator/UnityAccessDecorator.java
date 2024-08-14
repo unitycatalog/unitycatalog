@@ -84,7 +84,7 @@ public class UnityAccessDecorator implements DecoratingHttpServiceFunction {
       if (expression != null) {
         if (!locator.isEmpty()) {
 
-          UUID principal = findPrincipalId(req);
+          UUID principal = UnityAccessUtil.findPrincipalId();
 
           if (locator.size() == 1 && locator.get(0).getSource().equals(SYSTEM)) {
             return authorizeBySystem(delegate, ctx, req, principal, locator.get(0).getType(), expression);
@@ -258,10 +258,6 @@ public class UnityAccessDecorator implements DecoratingHttpServiceFunction {
     return locators;
   }
 
-  private UUID findPrincipalId(HttpRequest req) {
-    return TemporaryBootstrap.getPrincipalId(req); // TODO: Get principal from request
-  }
-
   private static Method findServiceMethod(HttpService httpService) throws ClassNotFoundException {
     if (httpService.unwrap() instanceof SimpleDecoratingHttpService decoratingService &&
             decoratingService.unwrap() instanceof AnnotatedService service) {
@@ -276,7 +272,7 @@ public class UnityAccessDecorator implements DecoratingHttpServiceFunction {
     }
   }
 
-  public static List<Method> findMethodsByName(Class<?> clazz, String methodName) {
+  private static List<Method> findMethodsByName(Class<?> clazz, String methodName) {
     List<Method> matchingMethods = new ArrayList<>();
     Method[] methods = clazz.getDeclaredMethods();
 
