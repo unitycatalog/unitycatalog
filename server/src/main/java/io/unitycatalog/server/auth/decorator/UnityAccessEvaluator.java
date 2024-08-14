@@ -6,8 +6,10 @@ import io.unitycatalog.server.model.ResourceType;
 import java.lang.invoke.MethodHandle;
 import java.lang.invoke.MethodHandles;
 import java.lang.invoke.MethodType;
+import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import java.util.function.Function;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.expression.ExpressionParser;
@@ -46,24 +48,43 @@ public class UnityAccessEvaluator {
     MethodHandle mh = lookup.findVirtual(authorizer.getClass(), "authorize", mt);
     authorizeHandle = mh.bindTo(this.authorizer);
 
-    mt = MethodType.methodType(boolean.class, UUID.class, UUID.class, Privilege[].class);
-    mh = lookup.findVirtual(authorizer.getClass(), "authorizeAny", mt);
-    authorizeAnyHandle = mh.bindTo(this.authorizer);
+    mt = MethodType.methodType(boolean.class, Object[].class);
+    mh = lookup.findVirtual(this.getClass(), "authorizeAny", mt);
+    authorizeAnyHandle = mh.bindTo(this);
 
-    mt = MethodType.methodType(boolean.class, UUID.class, UUID.class, Privilege[].class);
-    mh = lookup.findVirtual(authorizer.getClass(), "authorizeAll", mt);
-    authorizeAllHandle = mh.bindTo(this.authorizer);
+    mt = MethodType.methodType(boolean.class, Object[].class);
+    mh = lookup.findVirtual(this.getClass(), "authorizeAll", mt);
+    authorizeAllHandle = mh.bindTo(this);
+  }
+
+  protected boolean authorizeAny(Object... parameters) {
+    // TODO: Find a better way to deal with the varargs authorizeAny() method.
+    UUID principalId = (UUID) parameters[0];
+    UUID resource = (UUID) parameters[1];
+    Privilege[] privileges = new Privilege[parameters.length - 2];
+    System.arraycopy(parameters, 2, privileges, 0, privileges.length);
+    return authorizer.authorizeAny(principalId, resource, privileges);
+  }
+
+  protected boolean authorizeAll(Object... parameters) {
+    // TODO: Find a better way to deal with the varargs authorizeAll() method.
+    UUID principalId = (UUID) parameters[0];
+    UUID resource = (UUID) parameters[1];
+    Privilege[] privileges = new Privilege[parameters.length - 2];
+    System.arraycopy(parameters, 2, privileges, 0, privileges.length);
+    return authorizer.authorizeAll(principalId, resource, privileges);
   }
 
   public boolean evaluate(
       UUID principal, String expression, Map<ResourceType, Object> resourceIds) {
 
-    StandardEvaluationContext context = new StandardEvaluationContext();
+    StandardEvaluationContext context = new StandardEvaluationContext(Privilege.class);
+
+    context.registerFunction("authorize", authorizeHandle);
+    context.registerFunction("authorizeAny", authorizeAnyHandle);
+    context.registerFunction("authorizeAll", authorizeAllHandle);
 
     context.setVariable("deny", Boolean.FALSE);
-    context.setVariable("authorize", authorizeHandle);
-    context.setVariable("authorizeAny", authorizeAnyHandle);
-    context.setVariable("authorizeAll", authorizeAllHandle);
     context.setVariable("principal", principal);
 
     resourceIds.forEach((k, v) -> context.setVariable(k.name().toLowerCase(), v));
@@ -73,5 +94,13 @@ public class UnityAccessEvaluator {
     LOGGER.debug("evaluating {} = {}", expression, result);
 
     return result != null ? result : false;
+  }
+
+  public <T> void filter(
+      UUID principalId,
+      String expression,
+      List<T> entries,
+      Function<T, Map<ResourceType, Object>> resolver) {
+    entries.removeIf(c -> !evaluate(principalId, expression, resolver.apply(c)));
   }
 }
