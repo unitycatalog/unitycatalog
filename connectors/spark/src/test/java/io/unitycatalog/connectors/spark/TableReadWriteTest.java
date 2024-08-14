@@ -4,6 +4,7 @@ import static io.unitycatalog.server.utils.TestUtils.*;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import io.unitycatalog.client.ApiException;
@@ -19,7 +20,10 @@ import org.apache.spark.network.util.JavaUtils;
 import org.apache.spark.sql.AnalysisException;
 import org.apache.spark.sql.Row;
 import org.apache.spark.sql.SparkSession;
+import org.apache.spark.sql.types.DataTypes;
+import org.apache.spark.sql.types.StructType;
 import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
 
 public class TableReadWriteTest extends BaseSparkIntegrationTest {
@@ -120,6 +124,7 @@ public class TableReadWriteTest extends BaseSparkIntegrationTest {
     session.stop();
   }
 
+  @Disabled("Ignoring test until Delta 3.2.1 is released.")
   @Test
   public void testCredentialDelta() throws ApiException, IOException {
     SparkSession session = createSparkSessionWithCatalogs(SPARK_CATALOG, CATALOG_NAME);
@@ -144,6 +149,7 @@ public class TableReadWriteTest extends BaseSparkIntegrationTest {
     session.stop();
   }
 
+  @Disabled("Ignoring test until Delta 3.2.1 is released.")
   @Test
   public void testDeleteDeltaTable() throws ApiException, IOException {
     SparkSession session = createSparkSessionWithCatalogs(SPARK_CATALOG);
@@ -160,6 +166,7 @@ public class TableReadWriteTest extends BaseSparkIntegrationTest {
     session.stop();
   }
 
+  @Disabled("Ignoring test until Delta 3.2.1 is released.")
   @Test
   public void testMergeDeltaTable() throws ApiException, IOException {
     SparkSession session = createSparkSessionWithCatalogs(SPARK_CATALOG, CATALOG_NAME);
@@ -184,6 +191,7 @@ public class TableReadWriteTest extends BaseSparkIntegrationTest {
     session.stop();
   }
 
+  @Disabled("Ignoring test until Delta 3.2.1 is released.")
   @Test
   public void testUpdateDeltaTable() throws ApiException, IOException {
     SparkSession session = createSparkSessionWithCatalogs(SPARK_CATALOG);
@@ -261,9 +269,45 @@ public class TableReadWriteTest extends BaseSparkIntegrationTest {
         .collect();
     assertTrue(session.catalog().tableExists(fullTableName));
     TableInfo tableInfo = tableOperations.getTable(fullTableName);
-    assertThat(tableInfo.getColumns().size() == 1);
-    assertThat(tableInfo.getColumns().get(0).getName() == "name");
-    assertThat(tableInfo.getColumns().get(0).getTypeText() == "STRING");
+    assertEquals(1, tableInfo.getColumns().size());
+    assertEquals("name", tableInfo.getColumns().get(0).getName());
+    assertEquals(ColumnTypeName.STRING, tableInfo.getColumns().get(0).getTypeName());
+    session.stop();
+  }
+
+  // TODO: enable the test after the new Delta release.
+  // @Test
+  public void testCreateExternalDeltaTable() throws ApiException, IOException {
+    SparkSession session = createSparkSessionWithCatalogs(SPARK_CATALOG, CATALOG_NAME);
+    String path1 = generateTableLocation(SPARK_CATALOG, DELTA_TABLE);
+    String path2 = generateTableLocation(CATALOG_NAME, DELTA_TABLE);
+    session.sql(String.format("CREATE TABLE delta.`%s`(name STRING) USING delta", path1));
+    session.sql(String.format("CREATE TABLE delta.`%s`(name STRING) USING delta", path2));
+
+    String fullTableName1 = SPARK_CATALOG + "." + SCHEMA_NAME + "." + DELTA_TABLE;
+    session.sql(
+            "CREATE TABLE " + fullTableName1 + "(name STRING) USING delta LOCATION '" + path1 + "'");
+    assertTrue(session.catalog().tableExists(fullTableName1));
+    TableInfo tableInfo1 = tableOperations.getTable(fullTableName1);
+    // By default, Delta tables do not store schema in the catalog.
+    assertTrue(tableInfo1.getColumns().isEmpty());
+    assertTrue(session.table(fullTableName1).collectAsList().isEmpty());
+    StructType schema1 = session.table(fullTableName1).schema();
+    assertEquals("name", schema1.apply(0).name());
+    assertEquals(DataTypes.StringType, schema1.apply(0).dataType());
+
+    String fullTableName2 = CATALOG_NAME + "." + SCHEMA_NAME + "." + DELTA_TABLE;
+    session.sql(
+            "CREATE TABLE " + fullTableName2 + "(name STRING) USING delta LOCATION '" + path2 + "'");
+    assertTrue(session.catalog().tableExists(fullTableName2));
+    TableInfo tableInfo2 = tableOperations.getTable(fullTableName2);
+    // By default, Delta tables do not store schema in the catalog.
+    assertTrue(tableInfo2.getColumns().isEmpty());
+    assertTrue(session.table(fullTableName2).collectAsList().isEmpty());
+    StructType schema2 = session.table(fullTableName2).schema();
+    assertEquals("name", schema2.apply(0).name());
+    assertEquals(DataTypes.StringType, schema2.apply(0).dataType());
+
     session.stop();
   }
 
@@ -285,9 +329,14 @@ public class TableReadWriteTest extends BaseSparkIntegrationTest {
     } else {
       partitionClause = String.format(" PARTITIONED BY (%s)", String.join(", ", partitionColumns));
     }
+
+    // Temporarily disable the credential check when setting up the external Delta location which
+    // does not involve Unity Catalog at all.
+    CredentialTestFileSystem.credentialCheckEnabled = false;
     session.sql(
         String.format("CREATE TABLE delta.`%s`(i INT, s STRING) USING delta", location)
             + partitionClause);
+    CredentialTestFileSystem.credentialCheckEnabled = true;
 
     setupTables(catalogName, tableName, DataSourceFormat.DELTA, location, partitionColumns, false);
   }
