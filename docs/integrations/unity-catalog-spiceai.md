@@ -2,9 +2,9 @@
 
 Spice OSS is a unified SQL query interface and portable runtime to locally materialize, accelerate, and query datasets across databases, data warehouses, and data lakes.
 
-[Unity Catalog](https://www.unitycatalog.io/) can be used with [Spice OSS](https://github.com/spiceai/spiceai) as [Catalog Connector](https://docs.spiceai.org/components/catalogs) to enable federated SQL query on [Delta Lake](https://delta.io/) tables. Spice supports both [Unity Catalog](https://github.com/spiceai/quickstarts/blob/trunk/catalogs/unity_catalog/README.md) and Databricks Unity Catalog natively.
+Unity Catalog and Databricks Unity Catalog can be used with [Spice OSS](https://github.com/spiceai/spiceai) as [Catalog Connectors](https://docs.spiceai.org/components/catalogs) to make catalog tables available for query in Spice.
 
-Follow the guide below to connect to Databricks Unity Catalog and query the catalog's tables in Spice.
+Follow the guide below to connect to Databricks Unity Catalog. See the [Unity Catalog quickstart](https://github.com/spiceai/quickstarts/blob/trunk/catalogs/unity_catalog/README.md) to connect to UC directly.
 
 ## Prerequisite
 
