@@ -1,9 +1,21 @@
 package io.unitycatalog.connectors.spark;
 
+import static io.unitycatalog.server.utils.TestUtils.*;
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+
 import io.unitycatalog.client.ApiException;
 import io.unitycatalog.client.model.*;
 import io.unitycatalog.server.base.table.TableOperations;
 import io.unitycatalog.server.sdk.tables.SdkTableOperations;
+import java.io.File;
+import java.io.IOException;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.List;
 import org.apache.spark.network.util.JavaUtils;
 import org.apache.spark.sql.AnalysisException;
 import org.apache.spark.sql.Row;
@@ -11,20 +23,8 @@ import org.apache.spark.sql.SparkSession;
 import org.apache.spark.sql.types.DataTypes;
 import org.apache.spark.sql.types.StructType;
 import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
-
-import java.io.File;
-import java.io.IOException;
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.List;
-
-import static io.unitycatalog.server.utils.TestUtils.*;
-import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
-import static org.junit.jupiter.api.Assertions.assertFalse;
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertTrue;
 
 public class TableReadWriteTest extends BaseSparkIntegrationTest {
 
@@ -124,6 +124,7 @@ public class TableReadWriteTest extends BaseSparkIntegrationTest {
     session.stop();
   }
 
+  @Disabled("Ignoring test until Delta 3.2.1 is released.")
   @Test
   public void testCredentialDelta() throws ApiException, IOException {
     SparkSession session = createSparkSessionWithCatalogs(SPARK_CATALOG, CATALOG_NAME);
@@ -148,6 +149,7 @@ public class TableReadWriteTest extends BaseSparkIntegrationTest {
     session.stop();
   }
 
+  @Disabled("Ignoring test until Delta 3.2.1 is released.")
   @Test
   public void testDeleteDeltaTable() throws ApiException, IOException {
     SparkSession session = createSparkSessionWithCatalogs(SPARK_CATALOG);
@@ -164,6 +166,7 @@ public class TableReadWriteTest extends BaseSparkIntegrationTest {
     session.stop();
   }
 
+  @Disabled("Ignoring test until Delta 3.2.1 is released.")
   @Test
   public void testMergeDeltaTable() throws ApiException, IOException {
     SparkSession session = createSparkSessionWithCatalogs(SPARK_CATALOG, CATALOG_NAME);
@@ -188,6 +191,7 @@ public class TableReadWriteTest extends BaseSparkIntegrationTest {
     session.stop();
   }
 
+  @Disabled("Ignoring test until Delta 3.2.1 is released.")
   @Test
   public void testUpdateDeltaTable() throws ApiException, IOException {
     SparkSession session = createSparkSessionWithCatalogs(SPARK_CATALOG);
