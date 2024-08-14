@@ -30,29 +30,29 @@ public class UnityAccessEvaluator {
 
   private static final Logger LOGGER = LoggerFactory.getLogger(UnityAccessEvaluator.class);
 
-  private final UnityCatalogAuthorizer authenticator;
+  private final UnityCatalogAuthorizer authorizer;
   private final ExpressionParser parser;
   private final MethodHandle authorizeHandle;
   private final MethodHandle authorizeAnyHandle;
   private final MethodHandle authorizeAllHandle;
 
-  public UnityAccessEvaluator(UnityCatalogAuthorizer authenticator)
+  public UnityAccessEvaluator(UnityCatalogAuthorizer authorizer)
       throws NoSuchMethodException, IllegalAccessException {
-    this.authenticator = authenticator;
+    this.authorizer = authorizer;
     this.parser = new SpelExpressionParser();
 
     MethodHandles.Lookup lookup = MethodHandles.lookup();
     MethodType mt = MethodType.methodType(boolean.class, UUID.class, UUID.class, Privilege.class);
-    MethodHandle mh = lookup.findVirtual(authenticator.getClass(), "authorize", mt);
-    authorizeHandle = mh.bindTo(this.authenticator);
+    MethodHandle mh = lookup.findVirtual(authorizer.getClass(), "authorize", mt);
+    authorizeHandle = mh.bindTo(this.authorizer);
 
     mt = MethodType.methodType(boolean.class, UUID.class, UUID.class, Privilege[].class);
-    mh = lookup.findVirtual(authenticator.getClass(), "authorizeAny", mt);
-    authorizeAnyHandle = mh.bindTo(this.authenticator);
+    mh = lookup.findVirtual(authorizer.getClass(), "authorizeAny", mt);
+    authorizeAnyHandle = mh.bindTo(this.authorizer);
 
     mt = MethodType.methodType(boolean.class, UUID.class, UUID.class, Privilege[].class);
-    mh = lookup.findVirtual(authenticator.getClass(), "authorizeAll", mt);
-    authorizeAllHandle = mh.bindTo(this.authenticator);
+    mh = lookup.findVirtual(authorizer.getClass(), "authorizeAll", mt);
+    authorizeAllHandle = mh.bindTo(this.authorizer);
   }
 
   public boolean evaluate(
