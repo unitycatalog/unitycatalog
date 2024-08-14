@@ -1562,9 +1562,11 @@ components:
     Privilege:
       type: string
       enum:
+        - METASTORE ADMIN
         - OWNER
         - CREATE CATALOG
         - USE CATALOG
+        - CREATE SCHEMA
         - USE SCHEMA
         - READ VOLUME
         - SELECT
