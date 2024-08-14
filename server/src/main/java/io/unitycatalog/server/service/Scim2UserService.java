@@ -117,7 +117,8 @@ public class Scim2UserService {
   @Delete("/{id}")
   public HttpResponse deleteUser(@Param("id") String id) {
     User user = USER_REPOSITORY.getUser(id);
-    authorizer.clearAuthorizations(UUID.fromString(Objects.requireNonNull(user.getId())));
+    authorizer.clearAuthorizationsForPrincipal(
+        UUID.fromString(Objects.requireNonNull(user.getId())));
     USER_REPOSITORY.deleteUser(user.getId());
     return HttpResponse.of(HttpStatus.OK);
   }
