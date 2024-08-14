@@ -13,16 +13,24 @@ import java.lang.annotation.Target;
  *
  * <p>The expression context includes the following methods
  *
- * <p>#authorize(principal, resource, privilege) #authorizeAny(principal, resource, privilege ...)
- * #authorizeAll(principal, resource, privilege ...)
+ * <ul>
+ *   <li>#authorize(principal, resource, privilege)
+ *   <li>#authorizeAny(principal, resource, privilege ...)
+ *   <li>#authorizeAll(principal, resource, privilege ...)
+ * </ul>
  *
  * <p>And the context will include the following variables
  *
- * <p>#principal - the (UUID) of the principal making the request #deny - constant evaluating to
- * false #catalog - the ID of the catalog associated with the request (if applicable) #schema - the
- * ID of the schema associated with the request (if applicable) #table - the ID of the table
- * associated with the request (if applicable) #metastore - the ID of the metastore/server (if
- * applicable)
+ * <ul>
+ *   <li>#principal - the (UUID) of the principal making the request
+ *   <li>#deny - constant evaluating to false
+ *   <li>#defer - constant evaluating to true - a marker to note authorization happens elsewhere
+ *   <li>#allow - constant evaluating to tru - always allow access
+ *   <li>#catalog - the ID of the catalog associated with the request (if applicable)
+ *   <li>#schema - the ID of the schema associated with the request (if applicable)
+ *   <li>#table - the ID of the table associated with the request (if applicable)
+ *   <li>#metastore - the ID of the metastore/server (if applicable)
+ * </ul>
  *
  * <p>Example: #authorize(#principal, #schema, 'USE_SCHEMA')
  */

@@ -85,6 +85,8 @@ public class UnityAccessEvaluator {
     context.registerFunction("authorizeAll", authorizeAllHandle);
 
     context.setVariable("deny", Boolean.FALSE);
+    context.setVariable("allow", Boolean.TRUE);
+    context.setVariable("defer", Boolean.TRUE);
     context.setVariable("principal", principal);
 
     resourceIds.forEach((k, v) -> context.setVariable(k.name().toLowerCase(), v));
