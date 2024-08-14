@@ -329,9 +329,14 @@ public class TableReadWriteTest extends BaseSparkIntegrationTest {
     } else {
       partitionClause = String.format(" PARTITIONED BY (%s)", String.join(", ", partitionColumns));
     }
+
+    // Temporarily disable the credential check when setting up the external Delta location which
+    // does not involve Unity Catalog at all.
+    CredentialTestFileSystem.credentialCheckEnabled = false;
     session.sql(
         String.format("CREATE TABLE delta.`%s`(i INT, s STRING) USING delta", location)
             + partitionClause);
+    CredentialTestFileSystem.credentialCheckEnabled = true;
 
     setupTables(catalogName, tableName, DataSourceFormat.DELTA, location, partitionColumns, false);
   }
