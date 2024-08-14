@@ -28,6 +28,9 @@ lazy val commonSettings = Seq(
     "-target", "17",
     "-g:source,lines,vars",
   ),
+  Test / javaOptions ++= Seq (
+    "-ea",
+  ),
   libraryDependencies ++= Seq(
     "org.slf4j" % "slf4j-api" % "2.0.13",
     "org.slf4j" % "slf4j-log4j12" % "2.0.13" % Test,
@@ -439,7 +442,7 @@ lazy val spark = (project in file("connectors/spark"))
       case DepModuleInfo("oro", "oro", _) => true
       case DepModuleInfo("org.glassfish", "javax.json", _) => true
       case DepModuleInfo("org.glassfish.hk2.external", "jakarta.inject", _) => true
-      case DepModuleInfo("org.antlr", "ST4", _) => true,
+      case DepModuleInfo("org.antlr", "ST4", _) => true
     }
   )
 
