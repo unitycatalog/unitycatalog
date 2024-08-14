@@ -134,7 +134,7 @@ SHOW TABLES;
 +---------------+--------------+---------------+------------+
 | spice         | runtime      | metrics       | BASE TABLE |
 | spice         | runtime      | task_history  | BASE TABLE |
-| uc            | default      | taxi_trips    | BASE TABLE |
+| uc_quickstart | default      | taxi_trips    | BASE TABLE |
 +---------------+--------------+---------------+------------+
 ```
 
