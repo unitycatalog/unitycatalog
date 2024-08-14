@@ -14,6 +14,7 @@ import com.linecorp.armeria.server.annotation.Param;
 import io.unitycatalog.server.auth.UnityCatalogAuthorizer;
 import io.unitycatalog.server.auth.annotation.AuthorizeExpression;
 import io.unitycatalog.server.auth.annotation.AuthorizeKey;
+import io.unitycatalog.server.auth.annotation.AuthorizeKeys;
 import io.unitycatalog.server.exception.BaseException;
 import io.unitycatalog.server.exception.ErrorCode;
 import io.unitycatalog.server.model.CatalogInfo;
@@ -30,6 +31,7 @@ import org.slf4j.LoggerFactory;
 import java.lang.reflect.Method;
 import java.lang.reflect.Parameter;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -164,6 +166,20 @@ public class UnityAccessDecorator implements DecoratingHttpServiceFunction {
   private void checkAuthorization(UUID principal, String expression, Map<ResourceType, Object> resourceKeys) {
     LOGGER.debug("resourceKeys = {}", resourceKeys);
 
+    Map<ResourceType, Object> resourceIds = mapResourceKeys(resourceKeys);
+
+    if (!resourceKeys.keySet().equals(resourceIds.keySet())) {
+      LOGGER.warn("Some resource keys have unresolved ids.");
+    }
+
+    LOGGER.debug("resourceIds = {}", resourceIds);
+
+    if (!evaluator.evaluate(principal, expression, resourceIds)) {
+      throw new BaseException(ErrorCode.PERMISSION_DENIED, "Access denied.");
+    }
+  }
+
+  private Map<ResourceType, Object> mapResourceKeys(Map<ResourceType, Object> resourceKeys) {
     Map<ResourceType, Object> resourceIds = new HashMap<>();
 
     if (resourceKeys.containsKey(CATALOG) && resourceKeys.containsKey(SCHEMA) && resourceKeys.containsKey(TABLE)) {
@@ -172,21 +188,35 @@ public class UnityAccessDecorator implements DecoratingHttpServiceFunction {
       resourceIds.put(TABLE, UUID.fromString(table.getTableId()));
     }
 
+    // If only TABLE is specified, assuming its value is a full table name (including catalog and schema)
+    if (!resourceKeys.containsKey(CATALOG) && !resourceKeys.containsKey(SCHEMA) && resourceKeys.containsKey(TABLE)) {
+      String fullName = (String) resourceKeys.get(TABLE);
+      TableInfo table = TableRepository.getInstance().getTable(fullName);
+      String fullSchemaName = table.getCatalogName() + "." + table.getSchemaName();
+      SchemaInfo schema = SchemaRepository.getInstance().getSchema(fullSchemaName);
+      CatalogInfo catalog = CatalogRepository.getInstance().getCatalog(table.getCatalogName());
+      resourceIds.put(TABLE, UUID.fromString(table.getTableId()));
+      resourceIds.put(SCHEMA, UUID.fromString(schema.getSchemaId()));
+      resourceIds.put(CATALOG, UUID.fromString(catalog.getId()));
+    }
+
     if (resourceKeys.containsKey(CATALOG) && resourceKeys.containsKey(SCHEMA)) {
       String fullName = resourceKeys.get(CATALOG) + "." + resourceKeys.get(SCHEMA);
       SchemaInfo schema = SchemaRepository.getInstance().getSchema(fullName);
       resourceIds.put(SCHEMA, UUID.fromString(schema.getSchemaId()));
     }
 
+    // if only TABLE is specified, assuming its value is a full schema name (including catalog)
     if (!resourceKeys.containsKey(CATALOG) && resourceKeys.containsKey(SCHEMA)) {
-      SchemaInfo schema = SchemaRepository.getInstance().getSchema(resourceKeys.get(SCHEMA).toString());
+      String fullName = (String) resourceKeys.get(SCHEMA);
+      SchemaInfo schema = SchemaRepository.getInstance().getSchema(fullName);
       CatalogInfo catalog = CatalogRepository.getInstance().getCatalog(schema.getCatalogName());
       resourceIds.put(SCHEMA, UUID.fromString(schema.getSchemaId()));
       resourceIds.put(CATALOG, UUID.fromString(catalog.getId()));
     }
 
     if (resourceKeys.containsKey(CATALOG)) {
-      String fullName = resourceKeys.get(CATALOG) + "";
+      String fullName = (String) resourceKeys.get(CATALOG);
       CatalogInfo catalog = CatalogRepository.getInstance().getCatalog(fullName);
       resourceIds.put(CATALOG, UUID.fromString(catalog.getId()));
     }
@@ -195,17 +225,7 @@ public class UnityAccessDecorator implements DecoratingHttpServiceFunction {
       resourceIds.put(METASTORE, MetastoreRepository.getInstance().getMetastoreId());
     }
 
-    if (!resourceKeys.keySet().equals(resourceIds.keySet())) {
-      LOGGER.warn("Some resource keys have unresolved ids.");
-    }
-
-    LOGGER.debug("resourceIds = {}", resourceIds);
-
-    boolean allow = evaluator.evaluate(principal, expression, resourceIds);
-
-    if (!allow) {
-      throw new BaseException(ErrorCode.PERMISSION_DENIED, "Access denied.");
-    }
+    return resourceIds;
   }
 
   private static String findAuthorizeExpression(Method method) {
@@ -236,16 +256,29 @@ public class UnityAccessDecorator implements DecoratingHttpServiceFunction {
 
     for (Parameter parameter : method.getParameters()) {
       AuthorizeKey paramKey = parameter.getAnnotation(AuthorizeKey.class);
+      AuthorizeKeys paramKeys = parameter.getAnnotation(AuthorizeKeys.class);
 
+      if (paramKey != null && paramKeys != null) {
+        LOGGER.warn("Both AuthorizeKey and AuthorizeKeys present");
+      }
+
+      List<AuthorizeKey> allKeys = new ArrayList<>();
       if (paramKey != null) {
-        if (!paramKey.key().isEmpty()) {
+        allKeys.add(paramKey);
+      }
+      if (paramKeys != null) {
+        allKeys.addAll(Arrays.asList(paramKeys.value()));
+      }
+
+      for (AuthorizeKey key : allKeys) {
+        if (!key.key().isEmpty()) {
           // Explicitly declaring a key, so it's the source is from the payload data
-          locators.add(KeyLocator.builder().source(PAYLOAD).type(paramKey.value()).key(paramKey.key()).build());
+          locators.add(KeyLocator.builder().source(PAYLOAD).type(key.value()).key(key.key()).build());
         } else {
           // No key defined so implicitly referencing an (annotated) (query) parameter
           Param param = parameter.getAnnotation(Param.class);
           if (param != null) {
-            locators.add(KeyLocator.builder().source(PARAM).type(paramKey.value()).key(param.value()).build());
+            locators.add(KeyLocator.builder().source(PARAM).type(key.value()).key(param.value()).build());
           } else {
             LOGGER.warn("Couldn't find param key for authorization key");
           }
