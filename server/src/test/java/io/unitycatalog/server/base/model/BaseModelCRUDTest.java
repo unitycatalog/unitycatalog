@@ -45,10 +45,10 @@ public abstract class BaseModelCRUDTest extends BaseCRUDTest {
     // Model creation fails if missing catalog/schema
     CreateRegisteredModel createRm =
         new CreateRegisteredModel()
-            .modelName(TestUtils.MODEL_NAME)
-            .catalogName(TestUtils.CATALOG_NAME)
-            .schemaName(TestUtils.SCHEMA_NAME)
-            .comment(TestUtils.COMMENT);
+            .name(MODEL_NAME)
+            .catalogName(CATALOG_NAME)
+            .schemaName(SCHEMA_NAME)
+            .comment(COMMENT);
     assertThatThrownBy(() -> modelOperations.createRegisteredModel(createRm))
         .isInstanceOf(Exception.class);
 
@@ -58,7 +58,7 @@ public abstract class BaseModelCRUDTest extends BaseCRUDTest {
     // Create a registered model
     System.out.println("Testing create registered model...");
     RegisteredModelInfo rmInfo = modelOperations.createRegisteredModel(createRm);
-    assertThat(rmInfo.getName()).isEqualTo(createRm.getModelName());
+    assertThat(rmInfo.getName()).isEqualTo(createRm.getName());
     assertThat(rmInfo.getCatalogName()).isEqualTo(createRm.getCatalogName());
     assertThat(rmInfo.getSchemaName()).isEqualTo(createRm.getSchemaName());
     assertThat(rmInfo.getFullName()).isEqualTo(MODEL_FULL_NAME);
@@ -79,11 +79,13 @@ public abstract class BaseModelCRUDTest extends BaseCRUDTest {
     RegisteredModelInfo retrievedRmInfo = modelOperations.getRegisteredModel(MODEL_FULL_NAME);
     assertThat(retrievedRmInfo).isEqualTo(rmInfo);
 
-    // Calling update model with nothing to update should not change anything
+    // Calling update model with nothing to update should throw an exception
     System.out.println("Testing updating registered model with nothing to update..");
     UpdateRegisteredModel emptyUpdateRegisteredModel = new UpdateRegisteredModel();
-    RegisteredModelInfo emptyUpdateSchemaInfo =
-        modelOperations.updateRegisteredModel(MODEL_FULL_NAME, emptyUpdateRegisteredModel);
+    assertThatThrownBy(
+            () ->
+                modelOperations.updateRegisteredModel(MODEL_FULL_NAME, emptyUpdateRegisteredModel))
+        .isInstanceOf(Exception.class);
     RegisteredModelInfo retrievedRegisteredModelInfo2 =
         modelOperations.getRegisteredModel(MODEL_FULL_NAME);
     assertThat(retrievedRegisteredModelInfo2).isEqualTo(rmInfo);
@@ -91,12 +93,11 @@ public abstract class BaseModelCRUDTest extends BaseCRUDTest {
     // Update model name without updating comment
     System.out.println("Testing update model: changing name..");
     UpdateRegisteredModel updateRegisteredModel =
-        new UpdateRegisteredModel().newName(MODEL_NEW_NAME);
+        new UpdateRegisteredModel().newName(MODEL_NEW_NAME).fullName(MODEL_FULL_NAME);
     RegisteredModelInfo updatedRegisteredModelInfo =
         modelOperations.updateRegisteredModel(MODEL_FULL_NAME, updateRegisteredModel);
     assertThat(updatedRegisteredModelInfo.getName()).isEqualTo(updateRegisteredModel.getNewName());
-    assertThat(updatedRegisteredModelInfo.getComment())
-        .isEqualTo(updateRegisteredModel.getComment());
+    assertThat(updatedRegisteredModelInfo.getComment()).isEqualTo(COMMENT);
     assertThat(updatedRegisteredModelInfo.getFullName()).isEqualTo(MODEL_NEW_FULL_NAME);
     assertThat(updatedRegisteredModelInfo.getUpdatedAt()).isNotNull();
     long firstUpdatedAt = updatedRegisteredModelInfo.getUpdatedAt();
@@ -105,14 +106,15 @@ public abstract class BaseModelCRUDTest extends BaseCRUDTest {
 
     // Update model comment without updating name
     System.out.println("Testing update model: changing comment..");
-    UpdateRegisteredModel updateModel2 = new UpdateRegisteredModel().comment(MODEL_NEW_COMMENT);
+    UpdateRegisteredModel updateModel2 =
+        new UpdateRegisteredModel().comment(MODEL_NEW_COMMENT).fullName(MODEL_NEW_FULL_NAME);
     RegisteredModelInfo updatedRegisteredModelInfo2 =
         modelOperations.updateRegisteredModel(MODEL_NEW_FULL_NAME, updateModel2);
     assertThat(updatedRegisteredModelInfo2.getName()).isEqualTo(MODEL_NEW_NAME);
     assertThat(updatedRegisteredModelInfo2.getComment()).isEqualTo(updateModel2.getComment());
     assertThat(updatedRegisteredModelInfo2.getFullName()).isEqualTo(MODEL_NEW_FULL_NAME);
     assertThat(updatedRegisteredModelInfo2.getUpdatedAt()).isNotNull();
-    assertThat(updatedRegisteredModelInfo.getUpdatedAt()).isNotEqualTo(firstUpdatedAt);
+    assertThat(updatedRegisteredModelInfo2.getUpdatedAt()).isNotEqualTo(firstUpdatedAt);
 
     // Now update the parent catalog name
     UpdateCatalog updateCatalog = new UpdateCatalog().newName(TestUtils.CATALOG_NEW_NAME);
@@ -135,7 +137,7 @@ public abstract class BaseModelCRUDTest extends BaseCRUDTest {
     // Test force delete of parent entity when model exists
     CreateRegisteredModel createRm2 =
         new CreateRegisteredModel()
-            .modelName(MODEL_NAME)
+            .name(MODEL_NAME)
             .catalogName(CATALOG_NEW_NAME)
             .schemaName(SCHEMA_NAME)
             .comment(COMMENT);

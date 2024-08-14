@@ -13,6 +13,7 @@ public class FileUtilsTest {
   public void testFileUtils() {
 
     System.setProperty("storageRoot", "/tmp");
+    System.setProperty("registeredModelStorageRoot", "/tmp");
 
     String tablePath = FileUtils.createTableDirectory("catalog", "schema", "table");
     String volumePath = FileUtils.createVolumeDirectory("volume");
@@ -31,6 +32,7 @@ public class FileUtilsTest {
     FileUtils.deleteDirectory(modelPath);
 
     System.setProperty("storageRoot", "file:///tmp/random");
+    System.setProperty("registeredModelStorageRoot", "file:///tmp/random");
 
     tablePath = FileUtils.createTableDirectory("catalog", "schema", "table");
     volumePath = FileUtils.createVolumeDirectory("volume");

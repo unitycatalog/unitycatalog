@@ -35,14 +35,14 @@ public class ModelService {
         MODEL_REPOSITORY.listRegisteredModels(catalogName, schemaName, maxResults, pageToken));
   }
 
-  @Get("/{full_name_arg}")
-  public HttpResponse getRegisteredModel(@Param("full_name_arg") String fullNameArg) {
+  @Get("/{full_name}")
+  public HttpResponse getRegisteredModel(@Param("full_name") String fullNameArg) {
     assert fullNameArg != null;
     RegisteredModelInfo registeredModelInfo = MODEL_REPOSITORY.getRegisteredModel(fullNameArg);
     return HttpResponse.ofJson(registeredModelInfo);
   }
 
-  @Patch("/{full_name_arg")
+  @Patch("/{full_name}")
   public HttpResponse updateRegisteredModel(UpdateRegisteredModel updateRegisteredModel) {
     assert updateRegisteredModel != null;
     RegisteredModelInfo updateRegisteredModelResponse =
@@ -50,10 +50,10 @@ public class ModelService {
     return HttpResponse.ofJson(updateRegisteredModelResponse);
   }
 
-  @Delete("/{full_name_arg}")
+  @Delete("/{full_name}")
   public HttpResponse deleteRegisteredModel(
-      @Param("full_name_arg") String fullNameArg, @Param("force") boolean force) {
-    MODEL_REPOSITORY.deleteRegisteredModel(fullNameArg, force);
+      @Param("full_name") String fullName, @Param("force") boolean force) {
+    MODEL_REPOSITORY.deleteRegisteredModel(fullName, force);
     return HttpResponse.of(HttpStatus.OK);
   }
 }

@@ -29,10 +29,10 @@ public class CliModelOperations implements ModelOperations {
     List<String> argsList =
         new ArrayList<>(
             List.of(
-                "model",
+                "registered_model",
                 "create",
                 "--name",
-                createRegisteredModel.getModelName(),
+                createRegisteredModel.getName(),
                 "--schema",
                 createRegisteredModel.getSchemaName(),
                 "--catalog",
@@ -50,7 +50,8 @@ public class CliModelOperations implements ModelOperations {
   public List<RegisteredModelInfo> listRegisteredModels(String catalogName, String schemaName) {
     String[] args =
         addServerAndAuthParams(
-            List.of("model", "list", "--catalog", catalogName, "--schema", schemaName), config);
+            List.of("registered_model", "list", "--catalog", catalogName, "--schema", schemaName),
+            config);
     JsonNode registeredModelList = executeCLICommand(args);
     return objectMapper.convertValue(
         registeredModelList, new TypeReference<List<RegisteredModelInfo>>() {});
@@ -60,7 +61,7 @@ public class CliModelOperations implements ModelOperations {
   public RegisteredModelInfo getRegisteredModel(String registeredModelFullName) {
     String[] args =
         addServerAndAuthParams(
-            List.of("model", "get", "--full_name", registeredModelFullName), config);
+            List.of("registered_model", "get", "--full_name", registeredModelFullName), config);
     JsonNode registeredModelInfoJson = executeCLICommand(args);
     return objectMapper.convertValue(registeredModelInfoJson, RegisteredModelInfo.class);
   }
@@ -69,7 +70,9 @@ public class CliModelOperations implements ModelOperations {
   public RegisteredModelInfo updateRegisteredModel(
       String registeredModelFullName, UpdateRegisteredModel updateRm) {
     List<String> argsList =
-        new ArrayList<>(List.of("model", "update", "--full_name", registeredModelFullName));
+        new ArrayList<>(
+            // Fix the full_name_arg issue
+            List.of("registered_model", "update", "--full_name", registeredModelFullName));
     if (updateRm.getNewName() != null) {
       argsList.add("--new_name");
       argsList.add(updateRm.getNewName());
@@ -86,7 +89,8 @@ public class CliModelOperations implements ModelOperations {
   @Override
   public void deleteRegisteredModel(String registeredModelFullName, Optional<Boolean> force) {
     List<String> argsList =
-        new ArrayList<>(List.of("model", "delete", "--full_name", registeredModelFullName));
+        new ArrayList<>(
+            List.of("registered_model", "delete", "--full_name", registeredModelFullName));
     if (force.isPresent() && force.get()) {
       argsList.add("--force");
       argsList.add("true");

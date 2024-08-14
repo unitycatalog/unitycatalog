@@ -21,10 +21,9 @@ import org.slf4j.LoggerFactory;
 
 public class ModelRepository {
   private static final ModelRepository INSTANCE = new ModelRepository();
-  private static final Logger LOGGER = LoggerFactory.getLogger(TableRepository.class);
+  private static final Logger LOGGER = LoggerFactory.getLogger(ModelRepository.class);
   private static final SessionFactory SESSION_FACTORY = HibernateUtils.getSessionFactory();
   private static final SchemaRepository SCHEMA_REPOSITORY = SchemaRepository.getInstance();
-  private static final CatalogRepository CATALOG_REPOSITORY = CatalogRepository.getInstance();
   private static final PagedListingHelper<RegisteredModelInfoDAO> LISTING_HELPER =
       new PagedListingHelper<>(RegisteredModelInfoDAO.class);
 
@@ -35,7 +34,7 @@ public class ModelRepository {
   }
 
   public RegisteredModelInfo getRegisteredModelById(String registeredModelId) {
-    LOGGER.debug("Getting registered model by id: " + registeredModelId);
+    LOGGER.info("Getting registered model by id: " + registeredModelId);
     try (Session session = SESSION_FACTORY.openSession()) {
       session.setDefaultReadOnly(true);
       Transaction tx = session.beginTransaction();
@@ -79,7 +78,7 @@ public class ModelRepository {
   }
 
   public RegisteredModelInfo getRegisteredModel(String fullName) {
-    LOGGER.debug("Getting registered model: " + fullName);
+    LOGGER.info("Getting registered model: " + fullName);
     RegisteredModelInfo registeredModelInfo = null;
     try (Session session = SESSION_FACTORY.openSession()) {
       session.setDefaultReadOnly(true);
@@ -97,6 +96,7 @@ public class ModelRepository {
         registeredModelInfo = registeredModelInfoDAO.toRegisteredModelInfo();
         registeredModelInfo.setCatalogName(catalogName);
         registeredModelInfo.setSchemaName(schemaName);
+        registeredModelInfo.setFullName(getRegisteredModelFullName(registeredModelInfo));
         tx.commit();
         return registeredModelInfo;
       } catch (Exception e) {
@@ -115,24 +115,25 @@ public class ModelRepository {
   }
 
   public RegisteredModelInfo createRegisteredModel(CreateRegisteredModel createRegisteredModel) {
-    ValidationUtils.validateSqlObjectName(createRegisteredModel.getModelName());
+    LOGGER.info("Starting createRegisteredModel...");
+    ValidationUtils.validateSqlObjectName(createRegisteredModel.getName());
     long createTime = System.currentTimeMillis();
+    String modelId = UUID.randomUUID().toString();
+    String storageLocation =
+        FileUtils.getModelStorageLocation(
+            createRegisteredModel.getCatalogName(), createRegisteredModel.getSchemaName(), modelId);
     RegisteredModelInfo registeredModelInfo =
         new RegisteredModelInfo()
-            .modelId(UUID.randomUUID().toString())
-            .name(createRegisteredModel.getModelName())
+            .modelId(modelId)
+            .name(createRegisteredModel.getName())
             .catalogName(createRegisteredModel.getCatalogName())
             .schemaName(createRegisteredModel.getSchemaName())
-            .storageLocation(
-                FileUtils.createRegisteredModelDirectory(
-                    createRegisteredModel.getCatalogName(),
-                    createRegisteredModel.getSchemaName(),
-                    createRegisteredModel.getModelName()))
             .comment(createRegisteredModel.getComment())
             .createdAt(createTime)
             .updatedAt(createTime);
     String fullName = getRegisteredModelFullName(registeredModelInfo);
-    LOGGER.debug("Creating Registered Model: " + fullName);
+    registeredModelInfo.setFullName(fullName);
+    LOGGER.info("Creating Registered Model: " + fullName);
 
     Transaction tx;
     try (Session session = SESSION_FACTORY.openSession()) {
@@ -149,6 +150,7 @@ public class ModelRepository {
           throw new BaseException(
               ErrorCode.ALREADY_EXISTS, "Registered model already exists: " + fullName);
         }
+        registeredModelInfo.setStorageLocation(FileUtils.convertRelativePathToURI(storageLocation));
         RegisteredModelInfoDAO registeredModelInfoDAO =
             RegisteredModelInfoDAO.from(registeredModelInfo);
         registeredModelInfoDAO.setSchemaId(schemaId);
@@ -176,7 +178,7 @@ public class ModelRepository {
     query.setParameter("schemaId", schemaId);
     query.setParameter("name", name);
     query.setMaxResults(1);
-    LOGGER.debug("Finding registered model by schemaId: " + schemaId + " and name: " + name);
+    LOGGER.info("Finding registered model by schemaId: " + schemaId + " and name: " + name);
     return query.uniqueResult(); // Returns null if no result is found
   }
 
@@ -205,6 +207,7 @@ public class ModelRepository {
       String schemaName,
       Optional<Integer> maxResults,
       Optional<String> pageToken) {
+    LOGGER.info("Listing registered models in " + catalogName + "." + schemaName);
     try (Session session = SESSION_FACTORY.openSession()) {
       session.setDefaultReadOnly(true);
       Transaction tx = session.beginTransaction();
@@ -238,21 +241,26 @@ public class ModelRepository {
       RegisteredModelInfo registeredModelInfo = registeredModelInfoDAO.toRegisteredModelInfo();
       registeredModelInfo.setCatalogName(catalogName);
       registeredModelInfo.setSchemaName(schemaName);
+      registeredModelInfo.setFullName(getRegisteredModelFullName(registeredModelInfo));
       result.add(registeredModelInfo);
     }
     return new ListRegisteredModelsResponse().registeredModels(result).nextPageToken(nextPageToken);
   }
 
   public RegisteredModelInfo updateRegisteredModel(UpdateRegisteredModel updateRegisteredModel) {
+    LOGGER.info("Update Registered Model: Processing request: " + updateRegisteredModel);
     if (updateRegisteredModel.getNewName() != null) {
       ValidationUtils.validateSqlObjectName(updateRegisteredModel.getNewName());
+    }
+    if (updateRegisteredModel.getFullName() == null) {
+      throw new BaseException(ErrorCode.INVALID_ARGUMENT, "No model specified.");
     }
     if (updateRegisteredModel.getNewName() == null && updateRegisteredModel.getComment() == null) {
       throw new BaseException(ErrorCode.INVALID_ARGUMENT, "No updated fields defined.");
     }
 
-    String fullName = updateRegisteredModel.getFullNameArg();
-    LOGGER.debug("Updating Registered Model: " + fullName);
+    String fullName = updateRegisteredModel.getFullName();
+    LOGGER.info("Updating Registered Model: " + fullName);
     RegisteredModelInfo registeredModelInfo;
 
     Transaction tx;
@@ -282,18 +290,20 @@ public class ModelRepository {
         if (origRegisteredModelInfoDAO == null) {
           throw new BaseException(ErrorCode.NOT_FOUND, "Registered model not found: " + fullName);
         }
-        registeredModelInfo = origRegisteredModelInfoDAO.toRegisteredModelInfo();
         if (updateRegisteredModel.getNewName() != null) {
-          registeredModelInfo.setName(updateRegisteredModel.getNewName());
+          origRegisteredModelInfoDAO.setName(updateRegisteredModel.getNewName());
         }
         if (updateRegisteredModel.getComment() != null) {
-          registeredModelInfo.setComment(updateRegisteredModel.getComment());
+          origRegisteredModelInfoDAO.setComment(updateRegisteredModel.getComment());
         }
         long updatedTime = System.currentTimeMillis();
-        registeredModelInfo.setUpdatedAt(updatedTime);
-        RegisteredModelInfoDAO toPersistRegisteredModelInfoDAO =
-            RegisteredModelInfoDAO.from(registeredModelInfo);
-        session.persist(toPersistRegisteredModelInfoDAO);
+        origRegisteredModelInfoDAO.setUpdatedAt(new Date(updatedTime));
+        session.persist(origRegisteredModelInfoDAO);
+        registeredModelInfo = origRegisteredModelInfoDAO.toRegisteredModelInfo();
+        registeredModelInfo.setCatalogName(catalogName);
+        registeredModelInfo.setSchemaName(schemaName);
+        registeredModelInfo.setFullName(getRegisteredModelFullName(registeredModelInfo));
+        LOGGER.debug("updateRegisteredModel:  Attempting to persist " + registeredModelInfo);
         tx.commit();
       } catch (RuntimeException e) {
         if (tx != null && tx.getStatus().canRollback()) {

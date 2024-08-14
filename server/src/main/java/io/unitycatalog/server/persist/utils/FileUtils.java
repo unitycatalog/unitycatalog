@@ -32,7 +32,7 @@ public class FileUtils {
     return properties.getProperty("storageRoot");
   }
 
-  // THis is temporary until storageRoot is fully supported
+  // This is temporary until storageRoot is fully supported
   private static String getModelStorageRoot() {
     return properties.getProperty("registeredModelStorageRoot");
   }
@@ -43,6 +43,11 @@ public class FileUtils {
 
   private static String getModelDirectoryURI(String entityFullName) {
     return getModelStorageRoot() + "/" + entityFullName.replace(".", "/");
+  }
+
+  public static String getModelStorageLocation(
+      String catalogName, String schemaName, String modelName) {
+    return getModelDirectoryURI(catalogName + "." + schemaName + ".models." + modelName);
   }
 
   public static String createVolumeDirectory(String volumeName) {
