@@ -50,7 +50,7 @@ public class JCasbinAuthorizerTest {
   }
 
   @Test
-  void testClearAuthorizations() {
+  void testClearAuthorizationsForPrincipal() {
     UUID principal = UUID.randomUUID();
     UUID principal2 = UUID.randomUUID();
     UUID resource = UUID.randomUUID();
@@ -61,11 +61,11 @@ public class JCasbinAuthorizerTest {
     assertTrue(authenticator.authorize(principal, resource, action));
     assertTrue(authenticator.authorize(principal2, resource, action));
 
-    authenticator.clearAuthorizations(principal);
+    authenticator.clearAuthorizationsForPrincipal(principal);
     assertFalse(authenticator.authorize(principal, resource, action));
     assertTrue(authenticator.authorize(principal2, resource, action));
 
-    authenticator.clearAuthorizations(principal2);
+    authenticator.clearAuthorizationsForPrincipal(principal2);
     assertFalse(authenticator.authorize(principal2, resource, action));
   }
 

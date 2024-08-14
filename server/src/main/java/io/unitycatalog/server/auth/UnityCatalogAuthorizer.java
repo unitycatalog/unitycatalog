@@ -11,7 +11,9 @@ public interface UnityCatalogAuthorizer {
 
   public boolean revokeAuthorization(UUID principal, UUID resource, Privilege action);
 
-  public boolean clearAuthorizations(UUID principal);
+  public boolean clearAuthorizationsForPrincipal(UUID principal);
+
+  public boolean clearAuthorizationsForResource(UUID resource);
 
   public boolean addHierarchyChild(UUID parent, UUID child);
 

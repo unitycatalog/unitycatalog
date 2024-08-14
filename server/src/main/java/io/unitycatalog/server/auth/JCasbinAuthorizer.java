@@ -49,8 +49,13 @@ public class JCasbinAuthorizer implements UnityCatalogAuthorizer {
   }
 
   @Override
-  public boolean clearAuthorizations(UUID principal) {
+  public boolean clearAuthorizationsForPrincipal(UUID principal) {
     return enforcer.removeFilteredPolicy(0, principal.toString());
+  }
+
+  @Override
+  public boolean clearAuthorizationsForResource(UUID resource) {
+    return enforcer.removeFilteredPolicy(1, resource.toString());
   }
 
   @Override
