@@ -163,6 +163,7 @@ public class CatalogRepository {
         if (updateCatalog.getProperties() != null && !updateCatalog.getProperties().isEmpty()) {
           PropertyRepository.findProperties(session, catalogInfoDAO.getId(), Constants.CATALOG)
               .forEach(session::remove);
+          session.flush();
           PropertyDAO.from(updateCatalog.getProperties(), catalogInfoDAO.getId(), Constants.CATALOG)
               .forEach(session::persist);
         }
