@@ -161,7 +161,9 @@ private class UCProxy extends TableCatalog with SupportsNamespaces {
         "fs.s3a.access.key" -> credential.getAccessKeyId,
         "fs.s3a.secret.key" -> credential.getSecretAccessKey,
         "fs.s3a.session.token" -> credential.getSessionToken,
-        "fs.s3a.path.style.access" -> "true"
+        "fs.s3a.path.style.access" -> "true",
+        "fs.s3.impl.disable.cache" -> "true",
+        "fs.s3a.impl.disable.cache" -> "true"
       )
     } else {
       Map.empty
