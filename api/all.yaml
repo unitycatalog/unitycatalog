@@ -1567,6 +1567,7 @@ components:
         - USE CATALOG
         - USE SCHEMA
         - READ VOLUME
+        - SELECT
         - EXECUTE
       description: The privilege to grant.
     Authorization:
