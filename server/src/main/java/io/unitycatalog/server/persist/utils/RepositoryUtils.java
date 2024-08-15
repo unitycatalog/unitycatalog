@@ -36,4 +36,18 @@ public class RepositoryUtils {
       throw new RuntimeException(e);
     }
   }
+
+  public static String[] parseFullName(String fullName) {
+    String[] parts = fullName.split("\\.");
+    if (parts.length != 3) {
+      throw new BaseException(
+              ErrorCode.INVALID_ARGUMENT, "Invalid registered model name: " + fullName);
+    }
+    return parts;
+  }
+
+  public static String getAssetFullName(
+          String catalogName, String schemaName, String assetName) {
+    return catalogName + "." + schemaName + "." + assetName;
+  }
 }

@@ -66,6 +66,8 @@ public class UnityCatalogServer {
         new TemporaryTableCredentialsService();
     TemporaryVolumeCredentialsService temporaryVolumeCredentialsService =
         new TemporaryVolumeCredentialsService();
+    TemporaryModelVersionCredentialsService temporaryModelVersionCredentialsService =
+        new TemporaryModelVersionCredentialsService();
     sb.service("/", (ctx, req) -> HttpResponse.of("Hello, Unity Catalog!"))
         .annotatedService(basePath + "catalogs", catalogService, unityConverterFunction)
         .annotatedService(basePath + "schemas", schemaService, unityConverterFunction)
@@ -75,7 +77,9 @@ public class UnityCatalogServer {
         .annotatedService(
             basePath + "temporary-table-credentials", temporaryTableCredentialsService)
         .annotatedService(
-            basePath + "temporary-volume-credentials", temporaryVolumeCredentialsService);
+            basePath + "temporary-volume-credentials", temporaryVolumeCredentialsService)
+        .annotatedService(
+            basePath + "temporary-model-version-credentials", temporaryModelVersionCredentialsService);
 
     // Add support for Iceberg REST APIs
     ObjectMapper icebergMapper = RESTObjectMapper.mapper();
