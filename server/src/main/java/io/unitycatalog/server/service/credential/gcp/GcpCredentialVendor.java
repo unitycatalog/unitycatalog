@@ -34,12 +34,15 @@ public class GcpCredentialVendor {
     String serviceAccountKeyJsonFilePath =
         gcsConfigurations.get(credentialContext.getStorageBase());
 
-    GoogleCredentials creds =
-        ServiceAccountCredentials.fromStream(
-                Files.localInput(serviceAccountKeyJsonFilePath).newStream())
-            .createScoped(INITIAL_SCOPES);
+    GoogleCredentials creds;
+    if (serviceAccountKeyJsonFilePath != null && !serviceAccountKeyJsonFilePath.isEmpty()) {
+      creds = ServiceAccountCredentials.fromStream(
+          Files.localInput(serviceAccountKeyJsonFilePath).newStream());
+    } else {
+      creds = GoogleCredentials.getApplicationDefault();
+    }
 
-    return downscopeGcpCreds(creds, credentialContext).refreshAccessToken();
+    return downscopeGcpCreds(creds.createScoped(INITIAL_SCOPES), credentialContext).refreshAccessToken();
   }
 
   OAuth2Credentials downscopeGcpCreds(GoogleCredentials credentials, CredentialContext context) {
