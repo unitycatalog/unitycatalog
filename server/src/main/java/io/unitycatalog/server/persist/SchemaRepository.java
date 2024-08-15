@@ -72,12 +72,11 @@ public class SchemaRepository {
     schemaInfo.setFullName(catalogName + "." + schemaInfo.getName());
   }
 
-  private SchemaInfo convertFromDAO(Session session, SchemaInfoDAO schemaInfoDAO, String fullName) {
+  private SchemaInfo convertFromDAO(SchemaInfoDAO schemaInfoDAO, String fullName) {
     String catalogName = fullName.split("\\.")[0];
     SchemaInfo schemaInfo = schemaInfoDAO.toSchemaInfo();
     addNamespaceData(schemaInfo, catalogName);
-    return RepositoryUtils.attachProperties(
-        schemaInfo, schemaInfo.getSchemaId(), Constants.SCHEMA, session);
+    return schemaInfo;
   }
 
   public SchemaInfoDAO getSchemaDAO(Session session, UUID catalogId, String schemaName) {
@@ -171,7 +170,9 @@ public class SchemaRepository {
           throw new BaseException(ErrorCode.NOT_FOUND, "Schema not found: " + fullName);
         }
         tx.commit();
-        return convertFromDAO(session, schemaInfoDAO, fullName);
+        SchemaInfo schemaInfo = convertFromDAO(schemaInfoDAO, fullName);
+        return RepositoryUtils.attachProperties(
+            schemaInfo, schemaInfo.getSchemaId(), Constants.SCHEMA, session);
       } catch (Exception e) {
         tx.rollback();
         throw e;
@@ -186,8 +187,8 @@ public class SchemaRepository {
     try (Session session = SESSION_FACTORY.openSession()) {
       Transaction tx = session.beginTransaction();
       try {
-        SchemaInfoDAO schemaInfoDAO = getSchemaDAO(session, fullName);
-        if (schemaInfoDAO == null) {
+        SchemaInfoDAO schemaInfo = getSchemaDAO(session, fullName);
+        if (schemaInfo == null) {
           throw new BaseException(ErrorCode.NOT_FOUND, "Schema not found: " + fullName);
         }
         if (updateSchema.getNewName() != null) {
@@ -196,30 +197,21 @@ public class SchemaRepository {
                 ErrorCode.ALREADY_EXISTS, "Schema already exists: " + updateSchema.getNewName());
           }
         }
-        if (updateSchema.getComment() == null
-            && updateSchema.getNewName() == null
-            && (updateSchema.getProperties() == null || updateSchema.getProperties().isEmpty())) {
+        if (updateSchema.getComment() == null && updateSchema.getNewName() == null) {
           tx.rollback();
-          return convertFromDAO(session, schemaInfoDAO, fullName);
+          return convertFromDAO(schemaInfo, fullName);
         }
         // Update the schema with new values
         if (updateSchema.getComment() != null) {
-          schemaInfoDAO.setComment(updateSchema.getComment());
+          schemaInfo.setComment(updateSchema.getComment());
         }
         if (updateSchema.getNewName() != null) {
-          schemaInfoDAO.setName(updateSchema.getNewName());
+          schemaInfo.setName(updateSchema.getNewName());
         }
-        if (updateSchema.getProperties() != null && !updateSchema.getProperties().isEmpty()) {
-          PropertyRepository.findProperties(session, schemaInfoDAO.getId(), Constants.SCHEMA)
-              .forEach(session::remove);
-          session.flush();
-          PropertyDAO.from(updateSchema.getProperties(), schemaInfoDAO.getId(), Constants.SCHEMA)
-              .forEach(session::persist);
-        }
-        schemaInfoDAO.setUpdatedAt(new Date());
-        session.merge(schemaInfoDAO);
+        schemaInfo.setUpdatedAt(new Date());
+        session.merge(schemaInfo);
         tx.commit();
-        return convertFromDAO(session, schemaInfoDAO, fullName);
+        return convertFromDAO(schemaInfo, fullName);
       } catch (Exception e) {
         tx.rollback();
         throw e;

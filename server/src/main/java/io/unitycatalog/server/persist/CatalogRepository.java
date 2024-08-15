@@ -10,7 +10,10 @@ import io.unitycatalog.server.persist.utils.PagedListingHelper;
 import io.unitycatalog.server.persist.utils.RepositoryUtils;
 import io.unitycatalog.server.utils.Constants;
 import io.unitycatalog.server.utils.ValidationUtils;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.Date;
+import java.util.List;
+import java.util.Optional;
 import org.hibernate.Session;
 import org.hibernate.SessionFactory;
 import org.hibernate.Transaction;
@@ -133,7 +136,7 @@ public class CatalogRepository {
     if (updateCatalog.getNewName() != null) {
       ValidationUtils.validateSqlObjectName(updateCatalog.getNewName());
     }
-    // can make this just update once we have an identifier that is not the name
+    // cna make this just update once we have an identifier that is not the name
     try (Session session = SESSION_FACTORY.openSession()) {
       Transaction tx = session.beginTransaction();
       try {
@@ -141,13 +144,9 @@ public class CatalogRepository {
         if (catalogInfoDAO == null) {
           throw new BaseException(ErrorCode.NOT_FOUND, "Catalog not found: " + name);
         }
-        if (updateCatalog.getNewName() == null
-            && updateCatalog.getComment() == null
-            && (updateCatalog.getProperties() == null || updateCatalog.getProperties().isEmpty())) {
+        if (updateCatalog.getNewName() == null && updateCatalog.getComment() == null) {
           tx.rollback();
-          CatalogInfo catalogInfo = catalogInfoDAO.toCatalogInfo();
-          return RepositoryUtils.attachProperties(
-              catalogInfo, catalogInfo.getId(), Constants.CATALOG, session);
+          return catalogInfoDAO.toCatalogInfo();
         }
         if (updateCatalog.getNewName() != null
             && getCatalogDAO(session, updateCatalog.getNewName()) != null) {
@@ -160,19 +159,10 @@ public class CatalogRepository {
         if (updateCatalog.getComment() != null) {
           catalogInfoDAO.setComment(updateCatalog.getComment());
         }
-        if (updateCatalog.getProperties() != null && !updateCatalog.getProperties().isEmpty()) {
-          PropertyRepository.findProperties(session, catalogInfoDAO.getId(), Constants.CATALOG)
-              .forEach(session::remove);
-          session.flush();
-          PropertyDAO.from(updateCatalog.getProperties(), catalogInfoDAO.getId(), Constants.CATALOG)
-              .forEach(session::persist);
-        }
         catalogInfoDAO.setUpdatedAt(new Date());
         session.merge(catalogInfoDAO);
         tx.commit();
-        CatalogInfo catalogInfo = catalogInfoDAO.toCatalogInfo();
-        return RepositoryUtils.attachProperties(
-            catalogInfo, catalogInfo.getId(), Constants.CATALOG, session);
+        return catalogInfoDAO.toCatalogInfo();
       } catch (Exception e) {
         tx.rollback();
         throw e;
