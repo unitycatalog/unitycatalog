@@ -60,12 +60,12 @@ public class JCasbinAuthorizer implements UnityCatalogAuthorizer {
 
   @Override
   public boolean addHierarchyChild(UUID parent, UUID child) {
-    return enforcer.addNamedGroupingPolicy("g2", child.toString(), parent.toString());
+    return enforcer.addNamedGroupingPolicy("g2", parent.toString(), child.toString());
   }
 
   @Override
   public boolean removeHierarchyChild(UUID parent, UUID child) {
-    return enforcer.removeNamedGroupingPolicy("g2", child.toString(), parent.toString());
+    return enforcer.removeNamedGroupingPolicy("g2", parent.toString(), child.toString());
   }
 
   @Override
