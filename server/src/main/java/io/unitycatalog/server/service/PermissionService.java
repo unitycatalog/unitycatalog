@@ -103,7 +103,7 @@ public class PermissionService {
             .map(
                 entry ->
                     new PrivilegeAssignment()
-                        .principal(entry.getKey().toString())
+                        .principal(USER_REPOSITORY.getUser(entry.getKey().toString()).getEmail())
                         .privileges(entry.getValue()))
             .collect(Collectors.toList());
 
