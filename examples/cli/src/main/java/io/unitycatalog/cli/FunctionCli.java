@@ -97,8 +97,12 @@ public class FunctionCli {
       throws JsonProcessingException, ApiException {
     String catalogName = json.getString(CliParams.CATALOG_NAME.getServerParam());
     String schemaName = json.getString(CliParams.SCHEMA_NAME.getServerParam());
+    int maxResults = 100;
+    if (json.has(CliParams.MAX_RESULTS.getServerParam())) {
+      maxResults = json.getInt(CliParams.MAX_RESULTS.getServerParam());
+    }
     return objectWriter.writeValueAsString(
-        functionsApi.listFunctions(catalogName, schemaName, 100, null).getFunctions());
+        functionsApi.listFunctions(catalogName, schemaName, maxResults, null).getFunctions());
   }
 
   private static String executeFunction(FunctionsApi functionsApi, JSONObject json)

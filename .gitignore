@@ -10,6 +10,9 @@ etc/logs/
 api/.openapi-generator
 build/sbt-launch-*
 venv
+.venv
+.DS_Store
 server_pid.txt
 site
 python_engine.log
+.python-version

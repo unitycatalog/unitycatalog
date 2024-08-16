@@ -6,10 +6,14 @@ import io.unitycatalog.server.model.*;
 import io.unitycatalog.server.persist.dao.FunctionInfoDAO;
 import io.unitycatalog.server.persist.dao.SchemaInfoDAO;
 import io.unitycatalog.server.persist.utils.HibernateUtils;
+import io.unitycatalog.server.persist.utils.PagedListingHelper;
+import io.unitycatalog.server.persist.utils.RepositoryUtils;
+import io.unitycatalog.server.utils.Constants;
 import io.unitycatalog.server.utils.ValidationUtils;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
-import java.util.stream.Collectors;
 import org.hibernate.Session;
 import org.hibernate.SessionFactory;
 import org.hibernate.Transaction;
@@ -22,6 +26,8 @@ public class FunctionRepository {
   private static final SchemaRepository SCHEMA_REPOSITORY = SchemaRepository.getInstance();
   private static final Logger LOGGER = LoggerFactory.getLogger(FunctionRepository.class);
   private static final SessionFactory SESSION_FACTORY = HibernateUtils.getSessionFactory();
+  private static final PagedListingHelper<FunctionInfoDAO> LISTING_HELPER =
+      new PagedListingHelper<>(FunctionInfoDAO.class);
 
   private FunctionRepository() {}
 
@@ -62,10 +68,10 @@ public class FunctionRepository {
             .securityType(
                 FunctionInfo.SecurityTypeEnum.valueOf(createFunction.getSecurityType().name()))
             .specificName(createFunction.getSpecificName());
-    if (createFunction.getSqlDataAccess() != null)
+    if (createFunction.getSqlDataAccess() != null) {
       functionInfo.setSqlDataAccess(
           FunctionInfo.SqlDataAccessEnum.valueOf(createFunction.getSqlDataAccess().toString()));
-
+    }
     try (Session session = SESSION_FACTORY.openSession()) {
       Transaction tx = session.beginTransaction();
       try {
@@ -103,24 +109,41 @@ public class FunctionRepository {
     }
   }
 
+  private void addNamespaceData(FunctionInfo functionInfo, String catalogName, String schemaName) {
+    functionInfo.setCatalogName(catalogName);
+    functionInfo.setSchemaName(schemaName);
+    functionInfo.setFullName(catalogName + "." + schemaName + "." + functionInfo.getName());
+  }
+
+  public UUID getSchemaId(Session session, String catalogName, String schemaName) {
+    SchemaInfoDAO schemaInfo = SCHEMA_REPOSITORY.getSchemaDAO(session, catalogName, schemaName);
+    if (schemaInfo == null) {
+      throw new BaseException(ErrorCode.NOT_FOUND, "Schema not found: " + schemaName);
+    }
+    return schemaInfo.getId();
+  }
+
+  /**
+   * Return the list of functions in ascending order of function name.
+   *
+   * @param catalogName
+   * @param schemaName
+   * @param maxResults
+   * @param pageToken
+   * @return
+   */
   public ListFunctionsResponse listFunctions(
       String catalogName,
       String schemaName,
       Optional<Integer> maxResults,
-      Optional<String> nextPageToken) {
-
+      Optional<String> pageToken) {
     try (Session session = SESSION_FACTORY.openSession()) {
       session.setDefaultReadOnly(true);
       Transaction tx = session.beginTransaction();
       try {
-        SchemaInfoDAO schemaInfo =
-            SCHEMA_REPOSITORY.getSchemaDAO(session, catalogName + "." + schemaName);
-        if (schemaInfo == null) {
-          throw new BaseException(ErrorCode.NOT_FOUND, "Schema not found: " + schemaName);
-        }
+        UUID schemaId = getSchemaId(session, catalogName, schemaName);
         ListFunctionsResponse response =
-            listFunctions(
-                session, schemaInfo.getId(), catalogName, schemaName, maxResults, nextPageToken);
+            listFunctions(session, schemaId, catalogName, schemaName, maxResults, pageToken);
         tx.commit();
         return response;
       } catch (Exception e) {
@@ -136,23 +159,19 @@ public class FunctionRepository {
       String catalogName,
       String schemaName,
       Optional<Integer> maxResults,
-      Optional<String> nextPageToken) {
-    ListFunctionsResponse response = new ListFunctionsResponse();
-    Query<FunctionInfoDAO> query =
-        session.createQuery(
-            "FROM FunctionInfoDAO WHERE schemaId = :schemaId", FunctionInfoDAO.class);
-    query.setParameter("schemaId", schemaId);
-    maxResults.ifPresent(query::setMaxResults);
-    if (nextPageToken.isPresent()) {
-      // Perform pagination logic here if needed
-      // Example: query.setFirstResult(startIndex);
+      Optional<String> pageToken) {
+    List<FunctionInfoDAO> functionInfoDAOList =
+        LISTING_HELPER.listEntity(session, maxResults, pageToken, schemaId);
+    String nextPageToken = LISTING_HELPER.getNextPageToken(functionInfoDAOList, maxResults);
+    List<FunctionInfo> result = new ArrayList<>();
+    for (FunctionInfoDAO functionInfoDAO : functionInfoDAOList) {
+      FunctionInfo functionInfo = functionInfoDAO.toFunctionInfo();
+      RepositoryUtils.attachProperties(
+          functionInfo, functionInfo.getFunctionId(), Constants.FUNCTION, session);
+      addNamespaceData(functionInfo, catalogName, schemaName);
+      result.add(functionInfo);
     }
-    response.setFunctions(
-        query.list().stream()
-            .map(FunctionInfoDAO::toFunctionInfo)
-            .peek(f -> addNamespaceInfo(f, catalogName, schemaName))
-            .collect(Collectors.toList()));
-    return response;
+    return new ListFunctionsResponse().functions(result).nextPageToken(nextPageToken);
   }
 
   public FunctionInfo getFunction(String name) {

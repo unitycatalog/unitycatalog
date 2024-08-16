@@ -78,8 +78,12 @@ public class VolumeCli {
       throws JsonProcessingException, ApiException {
     String catalogName = json.getString(CliParams.CATALOG_NAME.getServerParam());
     String schemaName = json.getString(CliParams.SCHEMA_NAME.getServerParam());
+    int maxResults = 100;
+    if (json.has(CliParams.MAX_RESULTS.getServerParam())) {
+      maxResults = json.getInt(CliParams.MAX_RESULTS.getServerParam());
+    }
     return objectWriter.writeValueAsString(
-        volumesApi.listVolumes(catalogName, schemaName, 100, null).getVolumes());
+        volumesApi.listVolumes(catalogName, schemaName, maxResults, null).getVolumes());
   }
 
   private static String getVolume(VolumesApi volumesApi, JSONObject json)
