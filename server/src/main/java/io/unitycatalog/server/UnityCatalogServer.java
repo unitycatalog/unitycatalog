@@ -17,10 +17,10 @@ import io.unitycatalog.server.auth.decorator.UnityAccessDecorator;
 import io.unitycatalog.server.exception.BaseException;
 import io.unitycatalog.server.exception.ErrorCode;
 import io.unitycatalog.server.exception.GlobalExceptionHandler;
-import io.unitycatalog.server.service.AuthService;
 import io.unitycatalog.server.service.CatalogService;
 import io.unitycatalog.server.service.FunctionService;
 import io.unitycatalog.server.service.IcebergRestCatalogService;
+import io.unitycatalog.server.service.PermissionService;
 import io.unitycatalog.server.service.SchemaService;
 import io.unitycatalog.server.service.Scim2UserService;
 import io.unitycatalog.server.service.TableService;
@@ -76,7 +76,7 @@ public class UnityCatalogServer {
     }
 
     // Add support for Unity Catalog APIs
-    AuthService authService = new AuthService(authorizer);
+    PermissionService permissionService = new PermissionService(authorizer);
     Scim2UserService Scim2UserService = new Scim2UserService(authorizer);
     CatalogService catalogService = new CatalogService(authorizer);
     SchemaService schemaService = new SchemaService(authorizer);
@@ -116,7 +116,7 @@ public class UnityCatalogServer {
       // Temporary configuration until other PRs are merged.
       //
 
-      sb.annotatedService(basePath + "permissions", authService);
+      sb.annotatedService(basePath + "permissions", permissionService);
 
       sb.annotatedService(controlPath + "scim2/Users", Scim2UserService);
 

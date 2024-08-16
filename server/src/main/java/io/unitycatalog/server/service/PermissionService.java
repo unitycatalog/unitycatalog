@@ -31,7 +31,7 @@ import java.util.UUID;
 import java.util.stream.Collectors;
 
 @ExceptionHandler(GlobalExceptionHandler.class)
-public class AuthService {
+public class PermissionService {
 
   private final UnityCatalogAuthorizer authorizer;
   private static final MetastoreRepository METASTORE_REPOSITORY = MetastoreRepository.getInstance();
@@ -40,7 +40,7 @@ public class AuthService {
   private static final SchemaRepository SCHEMA_REPOSITORY = SchemaRepository.getInstance();
   private static final TableRepository TABLE_REPOSITORY = TableRepository.getInstance();
 
-  public AuthService(UnityCatalogAuthorizer authorizer) {
+  public PermissionService(UnityCatalogAuthorizer authorizer) {
     this.authorizer = authorizer;
   }
 
