@@ -101,8 +101,9 @@ public class FunctionParameterInfoDAO extends IdentifiableDAO {
 
   public static List<FunctionParameterInfoDAO> from(
       FunctionParameterInfos functionParameterInfos, InputOrReturnEnum inputOrReturn) {
-    if (functionParameterInfos == null || functionParameterInfos.getParameters() == null)
+    if (functionParameterInfos == null || functionParameterInfos.getParameters() == null) {
       return new ArrayList<>();
+    }
     return functionParameterInfos.getParameters().stream()
         .map(functionParameterInfo -> from(functionParameterInfo, inputOrReturn))
         .collect(Collectors.toList());
