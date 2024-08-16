@@ -28,6 +28,8 @@ import io.unitycatalog.server.persist.TableRepository;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.io.ByteArrayOutputStream;
+import java.io.IOException;
 import java.lang.reflect.Method;
 import java.lang.reflect.Parameter;
 import java.util.ArrayList;
@@ -137,26 +139,43 @@ public class UnityAccessDecorator implements DecoratingHttpServiceFunction {
       // is being evaluated, via peekData()
       LOGGER.debug("Checking authorization before in peekData.");
 
+      // This is a little ugly - peekData provides only a block of data at a time, so lets
+      // buffer it up until we think its complete.
+      ByteArrayOutputStream dataStream = new ByteArrayOutputStream();
+
       // Note that peekData only gets called for requests that actually have data (like PUT and POST)
 
       var peekReq = req.peekData(data -> {
         LOGGER.debug("Authorization peekData invoked.");
 
-        try {
           // TODO: For now, we're going to assume JSON data, but might need to support other
           // content types.
-          if (req.contentType().equals(MediaType.JSON)) {
-            Map<String, Object> payload = new ObjectMapper().readValue(data.toReaderUtf8(), new TypeReference<>() {
-            });
-
-            payloadLocators.forEach(l -> resourceKeys.put(l.getType(), payload.get(l.getKey())));
+        if (req.contentType().equals(MediaType.JSON)) {
+          try {
+            dataStream.write(data.array());
+            LOGGER.debug("Payload: {}", dataStream.toString());
+          } catch (IOException e) {
+            // IGNORE
           }
-        } catch (Exception e) {
-          // TODO: probably should fail the request
-          LOGGER.warn("Error occurred while parsing payload:", e);
-        }
 
-        checkAuthorization(principal, expression, resourceKeys);
+          // Unfortunately we don't appear to get a signal that we've got all the data, so we have to
+          // resort to attempting to parse the data whenever it _looks_ complete.
+          // TODO: try to optimize this using Jackson streaming or something else.
+          if (data.array()[data.array().length - 1] == '}') {
+            try {
+              Map<String, Object> payload = new ObjectMapper().readValue(dataStream.toByteArray(), new TypeReference<>() {
+              });
+
+              payloadLocators.forEach(l -> resourceKeys.put(l.getType(), payload.get(l.getKey())));
+              checkAuthorization(principal, expression, resourceKeys);
+            } catch (IOException e) {
+              // This is probably because we read partial data.
+              LOGGER.warn("Error parsing payload: {}", e.getMessage());
+            }
+          }
+        } else {
+          LOGGER.warn("Skipping content-type: {}", req.contentType());
+        }
       });
 
       return delegate.serve(ctx, peekReq);
@@ -168,7 +187,7 @@ public class UnityAccessDecorator implements DecoratingHttpServiceFunction {
 
     Map<ResourceType, Object> resourceIds = mapResourceKeys(resourceKeys);
 
-    if (!resourceKeys.keySet().equals(resourceIds.keySet())) {
+    if (!resourceIds.keySet().containsAll(resourceKeys.keySet())) {
       LOGGER.warn("Some resource keys have unresolved ids.");
     }
 
