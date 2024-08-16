@@ -9,6 +9,14 @@ import com.linecorp.armeria.server.ServerBuilder;
 import com.linecorp.armeria.server.annotation.JacksonRequestConverterFunction;
 import com.linecorp.armeria.server.annotation.JacksonResponseConverterFunction;
 import com.linecorp.armeria.server.docs.DocService;
+import io.unitycatalog.server.auth.JCasbinAuthorizer;
+import io.unitycatalog.server.auth.UnityCatalogAuthorizer;
+import io.unitycatalog.server.auth.decorator.TemporaryExceptionHandlingDecorator;
+import io.unitycatalog.server.auth.decorator.TemporaryIdentityDecorator;
+import io.unitycatalog.server.auth.decorator.UnityAccessDecorator;
+import io.unitycatalog.server.exception.BaseException;
+import io.unitycatalog.server.exception.ErrorCode;
+import io.unitycatalog.server.exception.GlobalExceptionHandler;
 import io.unitycatalog.server.service.AuthService;
 import io.unitycatalog.server.service.CatalogService;
 import io.unitycatalog.server.service.FunctionService;
@@ -40,6 +48,7 @@ public class UnityCatalogServer {
 
   Server server;
   private static final String basePath = "/api/2.1/unity-catalog/";
+  private static final String controlPath = "/api/1.0/unity-control/";
 
   public UnityCatalogServer() {
     new UnityCatalogServer(8080);
@@ -58,18 +67,26 @@ public class UnityCatalogServer {
     JacksonRequestConverterFunction unityConverterFunction =
         new JacksonRequestConverterFunction(unityMapper);
 
+    UnityCatalogAuthorizer authorizer = null;
+    try {
+      // TODO: Temporary configuration. We'll make this optional with identity config in other PRs
+      authorizer = new JCasbinAuthorizer();
+    } catch (Exception e) {
+      throw new BaseException(ErrorCode.INTERNAL, "Problem initializing authorizer.");
+    }
+
     // Add support for Unity Catalog APIs
-    CatalogService catalogService = new CatalogService();
-    SchemaService schemaService = new SchemaService();
+    AuthService authService = new AuthService(authorizer);
+    Scim2UserService Scim2UserService = new Scim2UserService(authorizer);
+    CatalogService catalogService = new CatalogService(authorizer);
+    SchemaService schemaService = new SchemaService(authorizer);
     VolumeService volumeService = new VolumeService();
-    TableService tableService = new TableService();
+    TableService tableService = new TableService(authorizer);
     FunctionService functionService = new FunctionService();
     TemporaryTableCredentialsService temporaryTableCredentialsService =
         new TemporaryTableCredentialsService();
     TemporaryVolumeCredentialsService temporaryVolumeCredentialsService =
         new TemporaryVolumeCredentialsService();
-    Scim2UserService Scim2UserService = new Scim2UserService();
-    AuthService authService = new AuthService();
     sb.service("/", (ctx, req) -> HttpResponse.of("Hello, Unity Catalog!"))
         .annotatedService(basePath + "catalogs", catalogService, unityConverterFunction)
         .annotatedService(basePath + "schemas", schemaService, unityConverterFunction)
@@ -79,9 +96,7 @@ public class UnityCatalogServer {
         .annotatedService(
             basePath + "temporary-table-credentials", temporaryTableCredentialsService)
         .annotatedService(
-            basePath + "temporary-volume-credentials", temporaryVolumeCredentialsService)
-        .annotatedService(basePath + "unity-control/scim2/users", Scim2UserService)
-        .annotatedService(basePath + "unity-control/authorizations", authService);
+            basePath + "temporary-volume-credentials", temporaryVolumeCredentialsService);
 
     // Add support for Iceberg REST APIs
     ObjectMapper icebergMapper = RESTObjectMapper.mapper();
@@ -95,6 +110,32 @@ public class UnityCatalogServer {
         new IcebergRestCatalogService(catalogService, schemaService, tableService, metadataService),
         icebergRequestConverter,
         icebergResponseConverter);
+
+    try {
+      //
+      // Temporary configuration until other PRs are merged.
+      //
+
+      sb.annotatedService(basePath + "permissions", authService);
+
+      sb.annotatedService(controlPath + "scim2/Users", Scim2UserService);
+
+      UnityAccessDecorator accessDecorator = new UnityAccessDecorator(authorizer);
+      TemporaryIdentityDecorator identityDecorator = new TemporaryIdentityDecorator();
+
+      sb.routeDecorator()
+          .pathPrefix(basePath)
+          .exclude(basePath + "auth/tokens")
+          .build(accessDecorator);
+      sb.routeDecorator()
+          .pathPrefix(basePath)
+          .exclude(basePath + "auth/tokens")
+          .build(identityDecorator);
+      sb.decorator(new TemporaryExceptionHandlingDecorator(new GlobalExceptionHandler()));
+    } catch (Exception e) {
+      // TODO: something better than this
+      LOGGER.error("Problem setting up authorizer", e);
+    }
   }
 
   public static void main(String[] args) {
