@@ -64,7 +64,7 @@ You have to ensure that your local environment has the following:
 - Ensure the `JAVA_HOME` environment variable your terminal is configured to point to JDK17+.
 - Compile the project using `build/sbt package`
 
-> If you prefer to run this using the Unity Catalog Dockerized Environment, please refer to the Docker [README.md](./docker/readme.md)
+> If you prefer to run this using the Unity Catalog Dockerized Environment, please refer to the Docker [README.md](./docker/README.md)
 
 ### Run the UC Server
 
