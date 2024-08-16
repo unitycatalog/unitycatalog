@@ -28,6 +28,20 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.UUID;
 
+/**
+ * SCIM2-compliant user management.
+ *
+ * <p>This will be a SCIM 2.0 compliant user management service. The UC User data model will be a
+ * minimal set of required fields that are necessary to support user management/exchange.
+ *
+ * <ul>
+ *   <li>id - internal unique identifier for user
+ *   <li>name - maps to SCIM displayName
+ *   <li>email - maps to SCIM primary email
+ *   <li>externalId - maps to SCIM external id
+ *   <li>userName - maps to SCIM primary email
+ * </ul>
+ */
 @ExceptionHandler(GlobalExceptionHandler.class)
 public class Scim2UserService {
   private static final UserRepository USER_REPOSITORY = UserRepository.getInstance();
@@ -60,7 +74,7 @@ public class Scim2UserService {
     // Get primary email address
     Email primaryEmail =
         userResource.getEmails().stream()
-            .filter(email -> email.getPrimary())
+            .filter(Email::getPrimary)
             .findFirst()
             .orElseThrow(
                 () ->
@@ -75,7 +89,7 @@ public class Scim2UserService {
         User user =
             USER_REPOSITORY.createUser(
                 new CreateUser()
-                    .name(userResource.getUserName())
+                    .name(userResource.getDisplayName())
                     .email(primaryEmail.getValue())
                     .externalId(userResource.getExternalId()));
         return HttpResponse.ofJson(asUserResource(user));
@@ -98,7 +112,7 @@ public class Scim2UserService {
     // Get primary email address
     Email primaryEmail =
         userResource.getEmails().stream()
-            .filter(email -> email.getPrimary())
+            .filter(Email::getPrimary)
             .findFirst()
             .orElseThrow(
                 () ->
@@ -107,7 +121,7 @@ public class Scim2UserService {
 
     UpdateUser updateUser =
         new UpdateUser()
-            .newName(userResource.getUserName())
+            .newName(userResource.getDisplayName())
             .email(primaryEmail.getValue())
             .externalId(userResource.getExternalId());
 
@@ -139,7 +153,8 @@ public class Scim2UserService {
 
     UserResource userResource = new UserResource();
     userResource
-        .setUserName(user.getName())
+        .setUserName(user.getEmail())
+        .setDisplayName(user.getName())
         .setEmails(List.of(new Email().setValue(user.getEmail()).setPrimary(true)));
     userResource.setId(user.getId());
     userResource.setMeta(meta);
