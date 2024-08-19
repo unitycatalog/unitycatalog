@@ -2097,6 +2097,21 @@ components:
           type: integer
           format: int64
       type: object
+    UserResource:
+      description: SCIM provides a resource type for "User" resources.
+      type: object
+      properties:
+        userName:
+          description: Unique identifier for the User.
+          type: string
+        name:
+          description: The name of the user.
+          type: string
+        emails:
+          description: E-mail addresses for the user.
+          type: array
+          items:
+            type: string
     PrincipalType:
       type: string
       enum:

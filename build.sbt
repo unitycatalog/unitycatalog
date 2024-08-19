@@ -104,9 +104,49 @@ def javafmtCheckSettings() = Seq(
   (Compile / compile) := ((Compile / compile) dependsOn (Compile / javafmtCheckAll)).value
 )
 
+lazy val controlApi = (project in file("client"))
+  .enablePlugins(OpenApiGeneratorPlugin)
+  .disablePlugins(JavaFormatterPlugin)
+  .settings(
+    name := s"$artifactNamePrefix-controlapi",
+    commonSettings,
+    javaOnlyReleaseSettings,
+    libraryDependencies ++= Seq(
+
+    ),
+    (Compile / compile) := ((Compile / compile) dependsOn generate).value,
+
+    // OpenAPI generation specs
+    openApiInputSpec := (file(".") / "api" / "control.yaml").toString,
+    openApiGeneratorName := "java",
+    openApiOutputDir := (file("target") / "clients" / "java").toString,
+    openApiApiPackage := s"$orgName.client.api",
+    openApiModelPackage := s"$orgName.client.model",
+    openApiAdditionalProperties := Map(
+      "library" -> "native",
+      "useJakartaEe" -> "true",
+      "hideGenerationTimestamp" -> "true",
+      "openApiNullable" -> "false"),
+    openApiGenerateApiTests := SettingDisabled,
+    openApiGenerateModelTests := SettingDisabled,
+    openApiGenerateApiDocumentation := SettingDisabled,
+    openApiGenerateModelDocumentation := SettingDisabled,
+    // Define the simple generate command to generate full client codes
+    generate := {
+      val _ = openApiGenerate.value
+
+      // Delete the generated build.sbt file so that it is not used for our sbt config
+      val buildSbtFile = file(openApiOutputDir.value) / "build.sbt"
+      if (buildSbtFile.exists()) {
+        buildSbtFile.delete()
+      }
+    }
+  )
+
 lazy val client = (project in file("target/clients/java"))
   .enablePlugins(OpenApiGeneratorPlugin)
   .disablePlugins(JavaFormatterPlugin)
+  .dependsOn(controlApi % "compile->compile")
   .settings(
     name := s"$artifactNamePrefix-client",
     commonSettings,
