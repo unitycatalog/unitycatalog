@@ -21,10 +21,12 @@ import io.unitycatalog.server.model.CatalogInfo;
 import io.unitycatalog.server.model.ResourceType;
 import io.unitycatalog.server.model.SchemaInfo;
 import io.unitycatalog.server.model.TableInfo;
+import io.unitycatalog.server.model.VolumeInfo;
 import io.unitycatalog.server.persist.CatalogRepository;
 import io.unitycatalog.server.persist.MetastoreRepository;
 import io.unitycatalog.server.persist.SchemaRepository;
 import io.unitycatalog.server.persist.TableRepository;
+import io.unitycatalog.server.persist.VolumeRepository;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -46,6 +48,7 @@ import static io.unitycatalog.server.model.ResourceType.CATALOG;
 import static io.unitycatalog.server.model.ResourceType.METASTORE;
 import static io.unitycatalog.server.model.ResourceType.SCHEMA;
 import static io.unitycatalog.server.model.ResourceType.TABLE;
+import static io.unitycatalog.server.model.ResourceType.VOLUME;
 
 /**
  * Armeria access control Decorator.
@@ -216,6 +219,24 @@ public class UnityAccessDecorator implements DecoratingHttpServiceFunction {
       SchemaInfo schema = SchemaRepository.getInstance().getSchema(fullSchemaName);
       CatalogInfo catalog = CatalogRepository.getInstance().getCatalog(table.getCatalogName());
       resourceIds.put(TABLE, UUID.fromString(table.getTableId()));
+      resourceIds.put(SCHEMA, UUID.fromString(schema.getSchemaId()));
+      resourceIds.put(CATALOG, UUID.fromString(catalog.getId()));
+    }
+
+    if (resourceKeys.containsKey(CATALOG) && resourceKeys.containsKey(SCHEMA) && resourceKeys.containsKey(VOLUME)) {
+      String fullName = resourceKeys.get(CATALOG) + "." + resourceKeys.get(SCHEMA) + "." + resourceKeys.get(VOLUME);
+      VolumeInfo table = VolumeRepository.getInstance().getVolume(fullName);
+      resourceIds.put(VOLUME, UUID.fromString(table.getVolumeId()));
+    }
+
+    // If only VOLUME is specified, assuming its value is a full volume name (including catalog and schema)
+    if (!resourceKeys.containsKey(CATALOG) && !resourceKeys.containsKey(SCHEMA) && resourceKeys.containsKey(VOLUME)) {
+      String fullName = (String) resourceKeys.get(VOLUME);
+      VolumeInfo volume = VolumeRepository.getInstance().getVolume(fullName);
+      String fullSchemaName = volume.getCatalogName() + "." + volume.getSchemaName();
+      SchemaInfo schema = SchemaRepository.getInstance().getSchema(fullSchemaName);
+      CatalogInfo catalog = CatalogRepository.getInstance().getCatalog(volume.getCatalogName());
+      resourceIds.put(VOLUME, UUID.fromString(volume.getVolumeId()));
       resourceIds.put(SCHEMA, UUID.fromString(schema.getSchemaId()));
       resourceIds.put(CATALOG, UUID.fromString(catalog.getId()));
     }

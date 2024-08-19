@@ -80,7 +80,7 @@ public class UnityCatalogServer {
     Scim2UserService Scim2UserService = new Scim2UserService(authorizer);
     CatalogService catalogService = new CatalogService(authorizer);
     SchemaService schemaService = new SchemaService(authorizer);
-    VolumeService volumeService = new VolumeService();
+    VolumeService volumeService = new VolumeService(authorizer);
     TableService tableService = new TableService(authorizer);
     FunctionService functionService = new FunctionService();
     TemporaryTableCredentialsService temporaryTableCredentialsService =
