@@ -12,15 +12,15 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.Mockito;
 
-public class JCasbinAuthenticatorTest {
+public class JCasbinAuthorizerTest {
   private static UserRepository mockUserRepository = Mockito.mock(UserRepository.class);
-  private UnityCatalogAuthenticator authenticator;
+  private UnityCatalogAuthorizer authenticator;
 
   @BeforeEach
-  void setUp() {
+  void setUp() throws Exception {
     System.setProperty("server.env", "test");
     authenticator =
-        new JCasbinAuthenticator() {
+        new JCasbinAuthorizer() {
           {
             USER_REPOSITORY = mockUserRepository;
           }
@@ -50,7 +50,7 @@ public class JCasbinAuthenticatorTest {
   }
 
   @Test
-  void testClearAuthorizations() {
+  void testClearAuthorizationsForPrincipal() {
     UUID principal = UUID.randomUUID();
     UUID principal2 = UUID.randomUUID();
     UUID resource = UUID.randomUUID();
@@ -61,11 +61,11 @@ public class JCasbinAuthenticatorTest {
     assertTrue(authenticator.authorize(principal, resource, action));
     assertTrue(authenticator.authorize(principal2, resource, action));
 
-    authenticator.clearAuthorizations(principal);
+    authenticator.clearAuthorizationsForPrincipal(principal);
     assertFalse(authenticator.authorize(principal, resource, action));
     assertTrue(authenticator.authorize(principal2, resource, action));
 
-    authenticator.clearAuthorizations(principal2);
+    authenticator.clearAuthorizationsForPrincipal(principal2);
     assertFalse(authenticator.authorize(principal2, resource, action));
   }
 
@@ -113,24 +113,32 @@ public class JCasbinAuthenticatorTest {
   void testAuthorizeAny() {
     UUID principal = UUID.randomUUID();
     UUID resource = UUID.randomUUID();
-    List<Privilege> actions = Arrays.asList(Privilege.USE_CATALOG, Privilege.CREATE_CATALOG);
 
-    assertFalse(authenticator.authorizeAny(principal, resource, actions));
+    assertFalse(
+        authenticator.authorizeAny(
+            principal, resource, Privilege.USE_CATALOG, Privilege.CREATE_CATALOG));
     authenticator.grantAuthorization(principal, resource, Privilege.USE_CATALOG);
-    assertTrue(authenticator.authorizeAny(principal, resource, actions));
+    assertTrue(
+        authenticator.authorizeAny(
+            principal, resource, Privilege.USE_CATALOG, Privilege.CREATE_CATALOG));
   }
 
   @Test
   void testAuthorizeAll() {
     UUID principal = UUID.randomUUID();
     UUID resource = UUID.randomUUID();
-    List<Privilege> actions = Arrays.asList(Privilege.USE_CATALOG, Privilege.CREATE_CATALOG);
 
-    assertFalse(authenticator.authorizeAll(principal, resource, actions));
+    assertFalse(
+        authenticator.authorizeAll(
+            principal, resource, Privilege.USE_CATALOG, Privilege.CREATE_CATALOG));
     authenticator.grantAuthorization(principal, resource, Privilege.USE_CATALOG);
-    assertFalse(authenticator.authorizeAll(principal, resource, actions));
+    assertFalse(
+        authenticator.authorizeAll(
+            principal, resource, Privilege.USE_CATALOG, Privilege.CREATE_CATALOG));
     authenticator.grantAuthorization(principal, resource, Privilege.CREATE_CATALOG);
-    assertTrue(authenticator.authorizeAll(principal, resource, actions));
+    assertTrue(
+        authenticator.authorizeAll(
+            principal, resource, Privilege.USE_CATALOG, Privilege.CREATE_CATALOG));
   }
 
   @Test

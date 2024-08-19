@@ -13,7 +13,7 @@ import com.unboundid.scim2.common.types.Meta;
 import com.unboundid.scim2.common.types.UserResource;
 import com.unboundid.scim2.common.utils.FilterEvaluator;
 import com.unboundid.scim2.common.utils.Parser;
-import io.unitycatalog.server.auth.JCasbinAuthenticator;
+import io.unitycatalog.server.auth.UnityCatalogAuthorizer;
 import io.unitycatalog.server.exception.BaseException;
 import io.unitycatalog.server.exception.ErrorCode;
 import io.unitycatalog.server.exception.GlobalExceptionHandler;
@@ -28,19 +28,34 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.UUID;
 
+/**
+ * SCIM2-compliant user management.
+ *
+ * <p>This will be a SCIM 2.0 compliant user management service. The UC User data model will be a
+ * minimal set of required fields that are necessary to support user management/exchange.
+ *
+ * <ul>
+ *   <li>id - internal unique identifier for user
+ *   <li>name - maps to SCIM displayName
+ *   <li>email - maps to SCIM primary email
+ *   <li>externalId - maps to SCIM external id
+ *   <li>userName - maps to SCIM primary email
+ * </ul>
+ */
 @ExceptionHandler(GlobalExceptionHandler.class)
 public class Scim2UserService {
   private static final UserRepository USER_REPOSITORY = UserRepository.getInstance();
-  private static final JCasbinAuthenticator jCasbinAuthenticator =
-      JCasbinAuthenticator.getInstance();
+  private final UnityCatalogAuthorizer authorizer;
 
-  public Scim2UserService() {}
+  public Scim2UserService(UnityCatalogAuthorizer authorizer) {
+    this.authorizer = authorizer;
+  }
 
   @Get("")
   public HttpResponse getScimUsers(
-      @Param Optional<String> filter,
-      @Param Optional<Integer> startIndex,
-      @Param Optional<Integer> count) {
+      @Param("filter") Optional<String> filter,
+      @Param("startIndex") Optional<Integer> startIndex,
+      @Param("count") Optional<Integer> count) {
     final Filter userFilter = filter.filter(f -> !f.isEmpty()).map(this::parseFilter).orElse(null);
     FilterEvaluator filterEvaluator = new FilterEvaluator();
 
@@ -59,7 +74,7 @@ public class Scim2UserService {
     // Get primary email address
     Email primaryEmail =
         userResource.getEmails().stream()
-            .filter(email -> email.getPrimary())
+            .filter(Email::getPrimary)
             .findFirst()
             .orElseThrow(
                 () ->
@@ -67,14 +82,14 @@ public class Scim2UserService {
                         new PreconditionFailedException("User does not have a primary email.")));
 
     try {
-      User user = USER_REPOSITORY.getUser(userResource.getUserName());
+      User user = USER_REPOSITORY.getUserByEmail(primaryEmail.getValue());
       return HttpResponse.ofJson(asUserResource(user));
     } catch (BaseException e) {
       if (e.getErrorCode() == ErrorCode.NOT_FOUND) {
         User user =
             USER_REPOSITORY.createUser(
                 new CreateUser()
-                    .name(userResource.getUserName())
+                    .name(userResource.getDisplayName())
                     .email(primaryEmail.getValue())
                     .externalId(userResource.getExternalId()));
         return HttpResponse.ofJson(asUserResource(user));
@@ -97,7 +112,7 @@ public class Scim2UserService {
     // Get primary email address
     Email primaryEmail =
         userResource.getEmails().stream()
-            .filter(email -> email.getPrimary())
+            .filter(Email::getPrimary)
             .findFirst()
             .orElseThrow(
                 () ->
@@ -106,7 +121,7 @@ public class Scim2UserService {
 
     UpdateUser updateUser =
         new UpdateUser()
-            .newName(userResource.getUserName())
+            .newName(userResource.getDisplayName())
             .email(primaryEmail.getValue())
             .externalId(userResource.getExternalId());
 
@@ -116,7 +131,8 @@ public class Scim2UserService {
   @Delete("/{id}")
   public HttpResponse deleteUser(@Param("id") String id) {
     User user = USER_REPOSITORY.getUser(id);
-    jCasbinAuthenticator.clearAuthorizations(UUID.fromString(Objects.requireNonNull(user.getId())));
+    authorizer.clearAuthorizationsForPrincipal(
+        UUID.fromString(Objects.requireNonNull(user.getId())));
     USER_REPOSITORY.deleteUser(user.getId());
     return HttpResponse.of(HttpStatus.OK);
   }
@@ -137,8 +153,10 @@ public class Scim2UserService {
 
     UserResource userResource = new UserResource();
     userResource
-        .setUserName(user.getName())
+        .setUserName(user.getEmail())
+        .setDisplayName(user.getName())
         .setEmails(List.of(new Email().setValue(user.getEmail()).setPrimary(true)));
+    userResource.setId(user.getId());
     userResource.setMeta(meta);
     userResource.setActive(true);
     userResource.setExternalId(user.getExternalId());

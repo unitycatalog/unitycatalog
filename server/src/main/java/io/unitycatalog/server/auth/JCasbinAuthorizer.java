@@ -3,37 +3,39 @@ package io.unitycatalog.server.auth;
 import io.unitycatalog.server.model.Privilege;
 import io.unitycatalog.server.persist.UserRepository;
 import io.unitycatalog.server.persist.utils.HibernateUtils;
+import java.io.InputStream;
+import java.nio.charset.StandardCharsets;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
 import java.util.Properties;
 import java.util.UUID;
 import java.util.stream.Collectors;
+import org.apache.commons.io.IOUtils;
 import org.casbin.adapter.JDBCAdapter;
 import org.casbin.jcasbin.main.Enforcer;
+import org.casbin.jcasbin.model.Model;
 
-public class JCasbinAuthenticator implements UnityCatalogAuthenticator {
-  private static final JCasbinAuthenticator INSTANCE = new JCasbinAuthenticator();
+// TODO: This should be JCasbinAuthorizer
+public class JCasbinAuthorizer implements UnityCatalogAuthorizer {
   static UserRepository USER_REPOSITORY = UserRepository.getInstance();
-  Enforcer enforcer;
+  private final Enforcer enforcer;
 
-  public JCasbinAuthenticator() {
+  public JCasbinAuthorizer() throws Exception {
     Properties properties = HibernateUtils.getHibernateProperties();
     String driver = properties.getProperty("hibernate.connection.driver_class");
     String url = properties.getProperty("hibernate.connection.url");
     String user = properties.getProperty("hibernate.connection.user");
     String password = properties.getProperty("hibernate.connection.password");
-    JDBCAdapter adapter = null;
-    try {
-      adapter = new JDBCAdapter(driver, url, user, password);
-    } catch (Exception e) {
-      throw new RuntimeException(e);
-    }
-    enforcer = new Enforcer("server/src/main/resources/jcasbin_auth_model.conf", adapter);
-    enforcer.enableAutoSave(true);
-  }
+    JDBCAdapter adapter = new JDBCAdapter(driver, url, user, password);
 
-  public static JCasbinAuthenticator getInstance() {
-    return INSTANCE;
+    InputStream modelStream = this.getClass().getResourceAsStream("/jcasbin_auth_model.conf");
+    String string = IOUtils.toString(modelStream, StandardCharsets.UTF_8);
+    Model model = new Model();
+    model.loadModelFromText(string);
+
+    enforcer = new Enforcer(model, adapter);
+    enforcer.enableAutoSave(true);
   }
 
   @Override
@@ -47,18 +49,23 @@ public class JCasbinAuthenticator implements UnityCatalogAuthenticator {
   }
 
   @Override
-  public boolean clearAuthorizations(UUID principal) {
+  public boolean clearAuthorizationsForPrincipal(UUID principal) {
     return enforcer.removeFilteredPolicy(0, principal.toString());
   }
 
   @Override
+  public boolean clearAuthorizationsForResource(UUID resource) {
+    return enforcer.removeFilteredPolicy(1, resource.toString());
+  }
+
+  @Override
   public boolean addHierarchyChild(UUID parent, UUID child) {
-    return enforcer.addNamedGroupingPolicy("g2", child.toString(), parent.toString());
+    return enforcer.addNamedGroupingPolicy("g2", parent.toString(), child.toString());
   }
 
   @Override
   public boolean removeHierarchyChild(UUID parent, UUID child) {
-    return enforcer.removeNamedGroupingPolicy("g2", child.toString(), parent.toString());
+    return enforcer.removeNamedGroupingPolicy("g2", parent.toString(), child.toString());
   }
 
   @Override
@@ -72,16 +79,16 @@ public class JCasbinAuthenticator implements UnityCatalogAuthenticator {
   }
 
   @Override
-  public boolean authorizeAny(UUID principal, UUID resource, List<Privilege> actions) {
-    return actions.stream()
+  public boolean authorizeAny(UUID principal, UUID resource, Privilege... actions) {
+    return Arrays.stream(actions)
         .anyMatch(
             action ->
                 enforcer.enforce(principal.toString(), resource.toString(), action.toString()));
   }
 
   @Override
-  public boolean authorizeAll(UUID principal, UUID resource, List<Privilege> actions) {
-    return actions.stream()
+  public boolean authorizeAll(UUID principal, UUID resource, Privilege... actions) {
+    return Arrays.stream(actions)
         .allMatch(
             action ->
                 enforcer.enforce(principal.toString(), resource.toString(), action.toString()));

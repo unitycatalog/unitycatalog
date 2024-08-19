@@ -95,7 +95,7 @@ public class UserRepository {
 
   public UserDAO getUserById(Session session, String id) {
     Query<UserDAO> query = session.createQuery("FROM UserDAO WHERE id = :id", UserDAO.class);
-    query.setParameter("id", id);
+    query.setParameter("id", UUID.fromString(id));
     query.setMaxResults(1);
     return query.uniqueResult();
   }
