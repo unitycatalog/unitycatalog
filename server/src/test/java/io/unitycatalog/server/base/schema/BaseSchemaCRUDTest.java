@@ -91,6 +91,7 @@ public abstract class BaseSchemaCRUDTest extends BaseCRUDTest {
     assertThat(retrievedSchemaInfo3.getName()).isEqualTo(TestUtils.SCHEMA_NEW_NAME);
     assertThat(retrievedSchemaInfo3.getComment()).isEqualTo(TestUtils.SCHEMA_COMMENT);
     assertThat(retrievedSchemaInfo3.getFullName()).isEqualTo(TestUtils.SCHEMA_NEW_FULL_NAME);
+    assertThat(retrievedSchemaInfo3.getProperties()).isEqualTo(TestUtils.NEW_PROPERTIES);
     assertThat(retrievedSchemaInfo3.getUpdatedAt()).isNotNull();
 
     // Now update the parent catalog name

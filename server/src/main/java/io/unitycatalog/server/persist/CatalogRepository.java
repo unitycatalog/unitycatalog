@@ -163,21 +163,19 @@ public class CatalogRepository {
         if (updateCatalog.getComment() != null) {
           catalogInfoDAO.setComment(updateCatalog.getComment());
         }
-        if (!updateCatalog.getProperties().isEmpty()) {
+        if (updateCatalog.getProperties() != null && !updateCatalog.getProperties().isEmpty()) {
           PropertyRepository.findProperties(session, catalogInfoDAO.getId(), Constants.CATALOG)
               .forEach(session::remove);
           session.flush();
           PropertyDAO.from(updateCatalog.getProperties(), catalogInfoDAO.getId(), Constants.CATALOG)
               .forEach(session::persist);
-
-          CatalogInfo catalogInfo = catalogInfoDAO.toCatalogInfo();
-          RepositoryUtils.attachProperties(
-              catalogInfo, catalogInfo.getId(), Constants.CATALOG, session);
         }
         catalogInfoDAO.setUpdatedAt(new Date());
         session.merge(catalogInfoDAO);
         tx.commit();
-        return catalogInfoDAO.toCatalogInfo();
+        CatalogInfo catalogInfo = catalogInfoDAO.toCatalogInfo();
+        return RepositoryUtils.attachProperties(
+            catalogInfo, catalogInfo.getId(), Constants.CATALOG, session);
       } catch (Exception e) {
         tx.rollback();
         throw e;
