@@ -226,7 +226,7 @@ public class UnityAccessDecorator implements DecoratingHttpServiceFunction {
       resourceIds.put(SCHEMA, UUID.fromString(schema.getSchemaId()));
     }
 
-    // if only TABLE is specified, assuming its value is a full schema name (including catalog)
+    // if only SCHEMA is specified, assuming its value is a full schema name (including catalog)
     if (!resourceKeys.containsKey(CATALOG) && resourceKeys.containsKey(SCHEMA)) {
       String fullName = (String) resourceKeys.get(SCHEMA);
       SchemaInfo schema = SchemaRepository.getInstance().getSchema(fullName);
