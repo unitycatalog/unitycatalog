@@ -55,8 +55,6 @@ public class CatalogRepository {
         CatalogInfoDAO catalogInfoDAO = CatalogInfoDAO.from(catalogInfo);
         PropertyDAO.from(catalogInfo.getProperties(), catalogInfoDAO.getId(), Constants.CATALOG)
             .forEach(session::persist);
-        RepositoryUtils.attachProperties(
-            catalogInfo, catalogInfo.getId(), Constants.CATALOG, session);
         session.persist(catalogInfoDAO);
         tx.commit();
         LOGGER.info("Added catalog: {}", catalogInfo.getName());
