@@ -237,3 +237,5 @@ Then serve the docs with
 ```sh
 mkdocs serve
 ```
+
+Happy Coding!!!
