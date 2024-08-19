@@ -3,26 +3,34 @@
 This document walks through how to use [PuppyGraph](https://www.puppygraph.com) to query data from Delta tables registered in Unity Catalog as a graph.
 
 ## Prerequisites
+
 - JDK 17 to build and run Unity Catalog and Spark
 - Docker
 - This repository `unitycatalog` cloned.
 - Spark downloaded
 
 ## Build the Unity Server and Spark support
+
 Run the command From the cloned repository root directory
+
 ```shell
 build/sbt clean package publishLocal spark/publishLocal
 ```
 
 ## Run the Unity Catalog Server
+
 Run the command to start a Unity Server.
+
 ```shell
 ./bin/start-uc-server
 ```
+
 For the remaining steps, continue in a different terminal.
 
 ## Create Tables under the Unity Catalog
+
 Create a catalog `puppygraph` and sevral tables under the schema `modern` in that catalog.
+
 ```shell
 ./bin/uc catalog create --name puppygraph
 ./bin/uc schema create --name modern --catalog puppygraph
@@ -33,7 +41,9 @@ Create a catalog `puppygraph` and sevral tables under the schema `modern` in tha
 ```
 
 ## Load Data into the Tables
+
 Run the command from the Spark folder to start a Spark SQL shell .
+
 ```shell
 ./bin/spark-sql \
   --packages \
@@ -45,6 +55,7 @@ Run the command from the Spark folder to start a Spark SQL shell .
 ```
 
 Run the following SQL to insert data into the Delta tables.
+
 ```sql
 insert into puppygraph.modern.person VALUES
                                          ('v1', 'marko', 29),
@@ -63,10 +74,13 @@ INSERT INTO puppygraph.modern.knows VALUES
                                         ('e7', 'v1', 'v2', 0.5),
                                         ('e8', 'v1', 'v4', 1.0);
 ```
+
 Exit the Spark SQL shell after data insertion is done.
 
 ## Querying the Tables as a Graph
+
 Start PuppyGraph using Docker. Here we map the PuppyGraph port `8081` to `9081` on the host.
+
 ```shell
 docker run -p 9081:8081 -p 8182:8182 -p 7687:7687 \
 -v /tmp/puppygraph:/tmp/puppygraph \
@@ -74,6 +88,7 @@ docker run -p 9081:8081 -p 8182:8182 -p 7687:7687 \
 ```
 
 Create the schema.json and replace `<host-name>` with your host ip address.
+
 ```schema.json
 {
     "catalogs": [
@@ -144,20 +159,27 @@ Create the schema.json and replace `<host-name>` with your host ip address.
     ]
 }
 ```
+
 Upload the schema to PuppyGraph. Note here port is 9081 as 8081 is used by Unity Catalog.
+
 ```shell
 curl -XPOST -H "content-type: application/json" --data-binary @./schema.json --user "puppygraph:puppygraph123" localhost:9081/schema
 ```
 
 Start a PuppyGraph Gremlin Console to query the graph.
+
 ```shell
 docker exec -it puppygraph ./bin/console
 ```
+
 Input the following query string to get all the software created by people that marko knows.
+
 ```text
 g.V().has("name", "marko").out("knows").out("created").valueMap()
 ```
+
 The output should be like this:
+
 ```text
 puppy-gremlin> g.V().has("name", "marko").out("knows").out("created").valueMap()
 Done! Elapsed time: 0.080s, rows: 2
@@ -168,5 +190,6 @@ Done! Elapsed time: 0.080s, rows: 2
 You can also use [Web UI](https://docs.puppygraph.com/user-interface/puppygraph-web-ui) for more features like graph visualization and a notebook-style query interface.
 
 ## See Also
+
 - [Querying Unity Catalog Data as a Graph](https://docs.puppygraph.com/getting-started/querying-unity-catalog-data-as-a-graph)
 - [The Internals of Unity Catalog | Spark Integration](https://books.japila.pl/unity-catalog-internals/spark-integration/)
