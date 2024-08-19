@@ -3,6 +3,7 @@ package io.unitycatalog.cli.catalog;
 import static io.unitycatalog.cli.TestUtils.addServerAndAuthParams;
 import static io.unitycatalog.cli.TestUtils.executeCLICommand;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -30,6 +31,14 @@ public class CliCatalogOperations implements CatalogOperations {
     if (createCatalog.getComment() != null) {
       argsList.add("--comment");
       argsList.add(createCatalog.getComment());
+    }
+    if (createCatalog.getProperties() != null && !createCatalog.getProperties().isEmpty()) {
+      argsList.add("--properties");
+      try {
+        argsList.add(objectMapper.writeValueAsString(createCatalog.getProperties()));
+      } catch (JsonProcessingException e) {
+        throw new RuntimeException("Failed to serialize properties", e);
+      }
     }
     String[] args = addServerAndAuthParams(argsList, config);
     JsonNode catalogInfoJson = executeCLICommand(args);
@@ -60,6 +69,14 @@ public class CliCatalogOperations implements CatalogOperations {
     if (updateCatalog.getComment() != null) {
       argsList.add("--comment");
       argsList.add(updateCatalog.getComment());
+    }
+    if (updateCatalog.getProperties() != null && !updateCatalog.getProperties().isEmpty()) {
+      argsList.add("--properties");
+      try {
+        argsList.add(objectMapper.writeValueAsString(updateCatalog.getProperties()));
+      } catch (JsonProcessingException e) {
+        throw new RuntimeException("Failed to serialize properties", e);
+      }
     }
     String[] args = addServerAndAuthParams(argsList, config);
     JsonNode updatedCatalogInfo = executeCLICommand(args);
