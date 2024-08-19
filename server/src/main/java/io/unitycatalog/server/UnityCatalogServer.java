@@ -82,7 +82,7 @@ public class UnityCatalogServer {
     SchemaService schemaService = new SchemaService(authorizer);
     VolumeService volumeService = new VolumeService(authorizer);
     TableService tableService = new TableService(authorizer);
-    FunctionService functionService = new FunctionService();
+    FunctionService functionService = new FunctionService(authorizer);
     TemporaryTableCredentialsService temporaryTableCredentialsService =
         new TemporaryTableCredentialsService();
     TemporaryVolumeCredentialsService temporaryVolumeCredentialsService =
