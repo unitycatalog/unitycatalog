@@ -102,10 +102,11 @@ public class VolumeService {
   @Patch("/{full_name}")
   @AuthorizeExpression("""
           #authorize(#principal, #metastore, METASTORE_ADMIN) ||
-          (#authorize(#principal, #volume, OWNER) && #authorizeAny(#privilege, #catalog, OWNER, USE_CATALOG) && #authorize(#principal, #schema, USE_SCHEMA))
+          (#authorize(#principal, #volume, OWNER) && #authorizeAny(#principal, #catalog, OWNER, USE_CATALOG) && #authorize(#principal, #schema, USE_SCHEMA))
           """)
+  @AuthorizeKey(METASTORE)
   public HttpResponse updateVolume(
-      @Param("full_name") String fullName, UpdateVolumeRequestContent updateVolumeRequest) {
+      @Param("full_name") @AuthorizeKey(VOLUME) String fullName, UpdateVolumeRequestContent updateVolumeRequest) {
     return HttpResponse.ofJson(VOLUME_REPOSITORY.updateVolume(fullName, updateVolumeRequest));
   }
 
