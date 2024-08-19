@@ -72,11 +72,12 @@ public class SchemaRepository {
     schemaInfo.setFullName(catalogName + "." + schemaInfo.getName());
   }
 
-  private SchemaInfo convertFromDAO(SchemaInfoDAO schemaInfoDAO, String fullName) {
+  private SchemaInfo convertFromDAO(Session session, SchemaInfoDAO schemaInfoDAO, String fullName) {
     String catalogName = fullName.split("\\.")[0];
     SchemaInfo schemaInfo = schemaInfoDAO.toSchemaInfo();
     addNamespaceData(schemaInfo, catalogName);
-    return schemaInfo;
+    return RepositoryUtils.attachProperties(
+        schemaInfo, schemaInfo.getSchemaId(), Constants.SCHEMA, session);
   }
 
   public SchemaInfoDAO getSchemaDAO(Session session, UUID catalogId, String schemaName) {
@@ -170,7 +171,7 @@ public class SchemaRepository {
           throw new BaseException(ErrorCode.NOT_FOUND, "Schema not found: " + fullName);
         }
         tx.commit();
-        SchemaInfo schemaInfo = convertFromDAO(schemaInfoDAO, fullName);
+        SchemaInfo schemaInfo = convertFromDAO(session, schemaInfoDAO, fullName);
         return RepositoryUtils.attachProperties(
             schemaInfo, schemaInfo.getSchemaId(), Constants.SCHEMA, session);
       } catch (Exception e) {
@@ -201,7 +202,7 @@ public class SchemaRepository {
             && updateSchema.getNewName() == null
             && (updateSchema.getProperties() == null || updateSchema.getProperties().isEmpty())) {
           tx.rollback();
-          return convertFromDAO(schemaInfoDAO, fullName);
+          return convertFromDAO(session, schemaInfoDAO, fullName);
         }
         // Update the schema with new values
         if (updateSchema.getComment() != null) {
@@ -220,9 +221,7 @@ public class SchemaRepository {
         schemaInfoDAO.setUpdatedAt(new Date());
         session.merge(schemaInfoDAO);
         tx.commit();
-        SchemaInfo schemaInfo = convertFromDAO(schemaInfoDAO, fullName);
-        return RepositoryUtils.attachProperties(
-            schemaInfo, schemaInfo.getSchemaId(), Constants.SCHEMA, session);
+        return convertFromDAO(session, schemaInfoDAO, fullName);
       } catch (Exception e) {
         tx.rollback();
         throw e;

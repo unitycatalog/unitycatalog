@@ -138,7 +138,7 @@ public class CatalogRepository {
     if (updateCatalog.getNewName() != null) {
       ValidationUtils.validateSqlObjectName(updateCatalog.getNewName());
     }
-    // cna make this just update once we have an identifier that is not the name
+    // can make this just update once we have an identifier that is not the name
     try (Session session = SESSION_FACTORY.openSession()) {
       Transaction tx = session.beginTransaction();
       try {
@@ -150,7 +150,9 @@ public class CatalogRepository {
             && updateCatalog.getComment() == null
             && (updateCatalog.getProperties() == null || updateCatalog.getProperties().isEmpty())) {
           tx.rollback();
-          return catalogInfoDAO.toCatalogInfo();
+          CatalogInfo catalogInfo = catalogInfoDAO.toCatalogInfo();
+          return RepositoryUtils.attachProperties(
+              catalogInfo, catalogInfo.getId(), Constants.CATALOG, session);
         }
         if (updateCatalog.getNewName() != null
             && getCatalogDAO(session, updateCatalog.getNewName()) != null) {

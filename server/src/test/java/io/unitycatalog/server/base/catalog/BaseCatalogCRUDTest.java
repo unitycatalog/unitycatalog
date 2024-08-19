@@ -24,10 +24,14 @@ public abstract class BaseCatalogCRUDTest extends BaseCRUDTest {
     assertThat(catalogInfo.getCreatedAt()).isNotNull();
   }
 
-  protected void assertCatalogExists(List<CatalogInfo> catalogList, String name, String comment) {
+  protected void assertCatalogExists(
+      List<CatalogInfo> catalogList, String name, String comment, Map<String, String> properties) {
     assertThat(catalogList)
         .anyMatch(
-            c -> Objects.equals(c.getName(), name) && Objects.equals(c.getComment(), comment));
+            c ->
+                Objects.equals(c.getName(), name)
+                    && Objects.equals(c.getComment(), comment)
+                    && Objects.equals(c.getProperties(), properties));
   }
 
   protected void assertCatalogNotExists(List<CatalogInfo> catalogList, String name) {
@@ -47,7 +51,7 @@ public abstract class BaseCatalogCRUDTest extends BaseCRUDTest {
     System.out.println("Testing list catalogs..");
     List<CatalogInfo> catalogList = catalogOperations.listCatalogs();
     assertThat(catalogList).isNotNull();
-    assertCatalogExists(catalogList, CATALOG_NAME, COMMENT);
+    assertCatalogExists(catalogList, CATALOG_NAME, COMMENT, PROPERTIES);
 
     // Get catalog
     System.out.println("Testing get catalog..");
@@ -80,8 +84,7 @@ public abstract class BaseCatalogCRUDTest extends BaseCRUDTest {
     UpdateCatalog updateCatalog3 = new UpdateCatalog().properties(NEW_PROPERTIES);
     CatalogInfo updatedCatalogInfo3 =
         catalogOperations.updateCatalog(CATALOG_NEW_NAME, updateCatalog3);
-    CatalogInfo catalogInfo4 = catalogOperations.getCatalog(CATALOG_NEW_NAME);
-    assertCatalog(catalogInfo4, CATALOG_NEW_NAME, CATALOG_NEW_COMMENT, NEW_PROPERTIES);
+    assertCatalog(updatedCatalogInfo3, CATALOG_NEW_NAME, CATALOG_NEW_COMMENT, NEW_PROPERTIES);
 
     // Delete catalog
     System.out.println("Testing delete catalog..");

@@ -21,7 +21,7 @@ public class TestUtils {
   public static final String SCHEMA_FULL_NAME = CATALOG_NAME + "." + SCHEMA_NAME;
   public static final String SCHEMA_NEW_NAME = "uc_newtestschema";
   public static final String SCHEMA_NEW_FULL_NAME = CATALOG_NAME + "." + SCHEMA_NEW_NAME;
-  public static final String SCHEMA_COMMENT = "test comment";
+  public static final String SCHEMA_NEW_COMMENT = "new test comment";
   public static final String TABLE_FULL_NAME = CATALOG_NAME + "." + SCHEMA_NAME + "." + TABLE_NAME;
   public static final String VOLUME_FULL_NAME =
       CATALOG_NAME + "." + SCHEMA_NAME + "." + VOLUME_NAME;
