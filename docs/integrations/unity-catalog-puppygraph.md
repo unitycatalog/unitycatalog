@@ -1,4 +1,4 @@
-# Unity Catalog XTable Integration
+# Unity Catalog PuppyGraph Integration
 
 This document walks through how to use [PuppyGraph](https://www.puppygraph.com) to query data from Delta tables registered in Unity Catalog as a graph.
 
@@ -6,7 +6,7 @@ This document walks through how to use [PuppyGraph](https://www.puppygraph.com) 
 
 - JDK 17 to build and run Unity Catalog and Spark
 - Docker
-- This repository `unitycatalog` cloned.
+- This repository `unitycatalog` cloned
 - Spark downloaded
 
 ## Build the Unity Server and Spark support
@@ -29,7 +29,7 @@ For the remaining steps, continue in a different terminal.
 
 ## Create Tables under the Unity Catalog
 
-Create a catalog `puppygraph` and sevral tables under the schema `modern` in that catalog.
+Create a catalog `puppygraph` and several Delta tables under the schema `modern` in that catalog.
 
 ```shell
 ./bin/uc catalog create --name puppygraph
