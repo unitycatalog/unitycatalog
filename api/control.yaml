@@ -1,11 +1,15 @@
 openapi: 3.0.0
 servers:
-  - url: http://localhost:8080/api/2.1/unity-catalog
+  - url: http://localhost:8080/api/1.0/unity-control
     description: Localhost reference server
 tags:
   - name: Users
     description: |
-      A catalog is the first layer of Unity Catalog’s three-level namespace. It’s used to organize your data assets.
+      A user is the identity recognized by Unity Catalog.
+  - name: Permissions
+    description: |
+      In Unity Catalog, data is secure by default. Access can be granted.
+
 paths:
   /scim2/users:
     post:
@@ -118,7 +122,54 @@ paths:
           content:
             application/json:
               schema: {}
+  /permissions/{resource_type}/{name}:
+    parameters:
+      - name: resource_type
+        in: path
+        description: The type of the resource.
+        required: true
+        schema:
+          $ref: './all.yaml#/components/schemas/ResourceType'
+      - name: name
+        in: path
+        description: The name of the principal.
+        required: true
+        schema:
+          type: string
+    get:
+      tags:
+        - Permissions
+      operationId: getPermission
+      summary: Get permissions
+      description: |
+        Gets the permissions for a securable.
+      responses:
+        '200':
+          description: The permissions was successfully retrieved.
+          content:
+            application/json:
+              schema:
+                $ref: './all.yaml#/components/schemas/UpdateAuthorizationResponse'
+    patch:
+      tags:
+        - Permissions
+      operationId: updatePermission
+      summary: Update a permission
+      description: |
+        Updates the permissions for a securable.
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: './all.yaml#/components/schemas/UpdateAuthorizationRequest'
+      responses:
+        '200':
+          description: The permission was successfully updated.
+          content:
+            application/json:
+              schema:
+                $ref: './all.yaml#/components/schemas/UpdateAuthorizationResponse'
 
 info:
-  title: Unity Catalog API
+  title: Unity Control API
   version: '0.1'
