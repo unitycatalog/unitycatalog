@@ -51,6 +51,7 @@ public class UnityCatalogServer {
 
   Server server;
   private static final String basePath = "/api/2.1/unity-catalog/";
+  private static final String controlPath = "/api/1.0/unity-control/";
 
   public UnityCatalogServer() {
     new UnityCatalogServer(8080);
@@ -88,7 +89,7 @@ public class UnityCatalogServer {
     TemporaryVolumeCredentialsService temporaryVolumeCredentialsService =
         new TemporaryVolumeCredentialsService();
     sb.service("/", (ctx, req) -> HttpResponse.of("Hello, Unity Catalog!"))
-        .annotatedService(basePath + "auth", authService, unityConverterFunction)
+        .annotatedService(controlPath + "auth", authService, unityConverterFunction)
         .annotatedService(basePath + "catalogs", catalogService, unityConverterFunction)
         .annotatedService(basePath + "schemas", schemaService, unityConverterFunction)
         .annotatedService(basePath + "volumes", volumeService, unityConverterFunction)

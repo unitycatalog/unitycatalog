@@ -85,6 +85,7 @@ public class UnityCatalogCli {
       String command = subArgs[0];
       switch (command) {
         case CliUtils.AUTH:
+          apiClient.setBasePath("/api/1.0/unity-control");
           AuthCli.handle(cmd, apiClient);
           break;
         case CliUtils.CATALOG:
