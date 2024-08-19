@@ -18,11 +18,13 @@ import io.unitycatalog.server.auth.annotation.AuthorizeKeys;
 import io.unitycatalog.server.exception.BaseException;
 import io.unitycatalog.server.exception.ErrorCode;
 import io.unitycatalog.server.model.CatalogInfo;
+import io.unitycatalog.server.model.FunctionInfo;
 import io.unitycatalog.server.model.ResourceType;
 import io.unitycatalog.server.model.SchemaInfo;
 import io.unitycatalog.server.model.TableInfo;
 import io.unitycatalog.server.model.VolumeInfo;
 import io.unitycatalog.server.persist.CatalogRepository;
+import io.unitycatalog.server.persist.FunctionRepository;
 import io.unitycatalog.server.persist.MetastoreRepository;
 import io.unitycatalog.server.persist.SchemaRepository;
 import io.unitycatalog.server.persist.TableRepository;
@@ -45,6 +47,7 @@ import static io.unitycatalog.server.auth.decorator.KeyLocator.Source.PARAM;
 import static io.unitycatalog.server.auth.decorator.KeyLocator.Source.PAYLOAD;
 import static io.unitycatalog.server.auth.decorator.KeyLocator.Source.SYSTEM;
 import static io.unitycatalog.server.model.ResourceType.CATALOG;
+import static io.unitycatalog.server.model.ResourceType.FUNCTION;
 import static io.unitycatalog.server.model.ResourceType.METASTORE;
 import static io.unitycatalog.server.model.ResourceType.SCHEMA;
 import static io.unitycatalog.server.model.ResourceType.TABLE;
@@ -170,7 +173,7 @@ public class UnityAccessDecorator implements DecoratingHttpServiceFunction {
               Map<String, Object> payload = MAPPER.readValue(dataStream.toByteArray(), new TypeReference<>() {
               });
 
-              payloadLocators.forEach(l -> resourceKeys.put(l.getType(), payload.get(l.getKey())));
+              payloadLocators.forEach(l -> resourceKeys.put(l.getType(), findPayloadValue(l.getKey(), payload)));
               checkAuthorization(principal, expression, resourceKeys);
             } catch (IOException e) {
               // This is probably because we read partial data.
@@ -183,6 +186,20 @@ public class UnityAccessDecorator implements DecoratingHttpServiceFunction {
       });
 
       return delegate.serve(ctx, peekReq);
+    }
+  }
+
+  private static Object findPayloadValue(String key, Map<String, Object> payload) {
+    // TODO: investigate better object traversal functionality
+    String[] args = key.split("[.]", 2);
+    if (args.length == 1) {
+      return payload.get(args[0]);
+    } else {
+      if (payload.get(args[0]) instanceof Map value) {
+        return findPayloadValue(args[1], (Map<String, Object>) value);
+      } else {
+        return null;
+      }
     }
   }
 
@@ -225,8 +242,8 @@ public class UnityAccessDecorator implements DecoratingHttpServiceFunction {
 
     if (resourceKeys.containsKey(CATALOG) && resourceKeys.containsKey(SCHEMA) && resourceKeys.containsKey(VOLUME)) {
       String fullName = resourceKeys.get(CATALOG) + "." + resourceKeys.get(SCHEMA) + "." + resourceKeys.get(VOLUME);
-      VolumeInfo table = VolumeRepository.getInstance().getVolume(fullName);
-      resourceIds.put(VOLUME, UUID.fromString(table.getVolumeId()));
+      VolumeInfo volume = VolumeRepository.getInstance().getVolume(fullName);
+      resourceIds.put(VOLUME, UUID.fromString(volume.getVolumeId()));
     }
 
     // If only VOLUME is specified, assuming its value is a full volume name (including catalog and schema)
@@ -237,6 +254,24 @@ public class UnityAccessDecorator implements DecoratingHttpServiceFunction {
       SchemaInfo schema = SchemaRepository.getInstance().getSchema(fullSchemaName);
       CatalogInfo catalog = CatalogRepository.getInstance().getCatalog(volume.getCatalogName());
       resourceIds.put(VOLUME, UUID.fromString(volume.getVolumeId()));
+      resourceIds.put(SCHEMA, UUID.fromString(schema.getSchemaId()));
+      resourceIds.put(CATALOG, UUID.fromString(catalog.getId()));
+    }
+
+    if (resourceKeys.containsKey(CATALOG) && resourceKeys.containsKey(SCHEMA) && resourceKeys.containsKey(FUNCTION)) {
+      String fullName = resourceKeys.get(CATALOG) + "." + resourceKeys.get(SCHEMA) + "." + resourceKeys.get(FUNCTION);
+      FunctionInfo function = FunctionRepository.getInstance().getFunction(fullName);
+      resourceIds.put(FUNCTION, UUID.fromString(function.getFunctionId()));
+    }
+
+    // If only VOLUME is specified, assuming its value is a full volume name (including catalog and schema)
+    if (!resourceKeys.containsKey(CATALOG) && !resourceKeys.containsKey(SCHEMA) && resourceKeys.containsKey(FUNCTION)) {
+      String fullName = (String) resourceKeys.get(FUNCTION);
+      FunctionInfo function = FunctionRepository.getInstance().getFunction(fullName);
+      String fullSchemaName = function.getCatalogName() + "." + function.getSchemaName();
+      SchemaInfo schema = SchemaRepository.getInstance().getSchema(fullSchemaName);
+      CatalogInfo catalog = CatalogRepository.getInstance().getCatalog(function.getCatalogName());
+      resourceIds.put(FUNCTION, UUID.fromString(function.getFunctionId()));
       resourceIds.put(SCHEMA, UUID.fromString(schema.getSchemaId()));
       resourceIds.put(CATALOG, UUID.fromString(catalog.getId()));
     }
