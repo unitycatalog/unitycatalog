@@ -65,6 +65,7 @@ import static io.unitycatalog.server.model.ResourceType.TABLE;
 public class UnityAccessDecorator implements DecoratingHttpServiceFunction {
 
   private static final Logger LOGGER = LoggerFactory.getLogger(UnityAccessDecorator.class);
+  public static final ObjectMapper MAPPER = new ObjectMapper();
 
   private final UnityAccessEvaluator evaluator;
 
@@ -163,7 +164,7 @@ public class UnityAccessDecorator implements DecoratingHttpServiceFunction {
           // TODO: try to optimize this using Jackson streaming or something else.
           if (data.array()[data.array().length - 1] == '}') {
             try {
-              Map<String, Object> payload = new ObjectMapper().readValue(dataStream.toByteArray(), new TypeReference<>() {
+              Map<String, Object> payload = MAPPER.readValue(dataStream.toByteArray(), new TypeReference<>() {
               });
 
               payloadLocators.forEach(l -> resourceKeys.put(l.getType(), payload.get(l.getKey())));
