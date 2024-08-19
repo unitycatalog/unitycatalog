@@ -70,6 +70,50 @@ export function useGetVolume({ catalog, schema, volume }: GetVolumeParams) {
   });
 }
 
+interface UpdateVolumeParams {
+  catalog: string;
+  schema: string;
+  volume: string;
+}
+
+export interface UpdateVolumeMutationParams
+  extends Pick<VolumeInterface, 'name' | 'comment'> {}
+
+export function useUpdateVolume({
+  catalog,
+  schema,
+  volume,
+}: UpdateVolumeParams) {
+  const queryClient = useQueryClient();
+
+  return useMutation<VolumeInterface, Error, UpdateVolumeMutationParams>({
+    mutationFn: async (params: UpdateVolumeMutationParams) => {
+      const fullVolumeName = [catalog, schema, volume].join('.');
+
+      const response = await fetch(
+        `${UC_API_PREFIX}/volumes/${fullVolumeName}`,
+        {
+          method: 'PATCH',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify(params),
+        },
+      );
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.message || 'Failed to update volume');
+      }
+      return response.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({
+        queryKey: ['getVolume', catalog, schema, volume],
+      });
+    },
+  });
+}
+
 export interface DeleteVolumeMutationParams
   extends Pick<VolumeInterface, 'catalog_name' | 'schema_name' | 'name'> {}
 
