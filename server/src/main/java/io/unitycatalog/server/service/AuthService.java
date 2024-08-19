@@ -15,7 +15,6 @@ import io.unitycatalog.server.exception.GlobalExceptionHandler;
 import io.unitycatalog.server.exception.OAuthInvalidRequestException;
 import io.unitycatalog.server.security.SecurityContext;
 import io.unitycatalog.server.utils.JwksOperations;
-import java.util.Optional;
 import lombok.Builder;
 import lombok.Getter;
 import lombok.NonNull;
@@ -88,7 +87,7 @@ public class AuthService {
           ErrorCode.INVALID_ARGUMENT, "Subject token type is required but was not specified");
     }
 
-    if (request.getActorTokenType().isPresent()) {
+    if (request.getActorTokenType() != null) {
       throw new OAuthInvalidRequestException(
           ErrorCode.INVALID_ARGUMENT, "Actor tokens not currently supported");
     }
@@ -135,11 +134,11 @@ public class AuthService {
 
     @Param(Fields.ACTOR_TOKEN_TYPE)
     @Getter
-    private Optional<String> actorTokenType;
+    private String actorTokenType;
 
     @Param(Fields.ACTOR_TOKEN)
     @Getter
-    private Optional<String> actorToken;
+    private String actorToken;
   }
 
   // TODO: This should be probably integrated into the OpenAPI spec.
