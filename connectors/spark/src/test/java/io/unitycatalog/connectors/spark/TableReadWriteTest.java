@@ -3,8 +3,8 @@ package io.unitycatalog.connectors.spark;
 import static io.unitycatalog.server.utils.TestUtils.*;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
-import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import io.unitycatalog.client.ApiException;
@@ -286,7 +286,7 @@ public class TableReadWriteTest extends BaseSparkIntegrationTest {
 
     String fullTableName1 = SPARK_CATALOG + "." + SCHEMA_NAME + "." + DELTA_TABLE;
     session.sql(
-            "CREATE TABLE " + fullTableName1 + "(name STRING) USING delta LOCATION '" + path1 + "'");
+        "CREATE TABLE " + fullTableName1 + "(name STRING) USING delta LOCATION '" + path1 + "'");
     assertTrue(session.catalog().tableExists(fullTableName1));
     TableInfo tableInfo1 = tableOperations.getTable(fullTableName1);
     // By default, Delta tables do not store schema in the catalog.
@@ -298,7 +298,7 @@ public class TableReadWriteTest extends BaseSparkIntegrationTest {
 
     String fullTableName2 = CATALOG_NAME + "." + SCHEMA_NAME + "." + DELTA_TABLE;
     session.sql(
-            "CREATE TABLE " + fullTableName2 + "(name STRING) USING delta LOCATION '" + path2 + "'");
+        "CREATE TABLE " + fullTableName2 + "(name STRING) USING delta LOCATION '" + path2 + "'");
     assertTrue(session.catalog().tableExists(fullTableName2));
     TableInfo tableInfo2 = tableOperations.getTable(fullTableName2);
     // By default, Delta tables do not store schema in the catalog.
