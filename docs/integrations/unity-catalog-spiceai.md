@@ -4,18 +4,14 @@ Spice OSS is a unified SQL query interface and portable runtime to locally mater
 
 Unity Catalog and Databricks Unity Catalog can be used with [Spice OSS](https://github.com/spiceai/spiceai) as [Catalog Connectors](https://docs.spiceai.org/components/catalogs) to make catalog tables available for query in Spice.
 
-Follow the guide below to connect to Databricks Unity Catalog. See the [Unity Catalog quickstart](https://github.com/spiceai/quickstarts/blob/trunk/catalogs/unity_catalog/README.md) to connect to UC directly.
+Follow the guide below to connect to open-source Unity Catalog. See the [Databricks Unity Catalog quickstart](https://github.com/spiceai/quickstarts/blob/trunk/catalogs/databricks/README.md) if using Databricks Unity Catalog.
 
-## Prerequisite
+## Prerequisites
 
 - **Spice OSS installed:** To install Spice, see [Spice OSS Installation](https://docs.spiceai.org/installation).
-- A Databricks account with a Unity Catalog configured with one or more tables. (see the [Databricks documentation](https://docs.databricks.com/en/data-governance/unity-catalog/index.html) for more information).
+- Access to an open-source Unity Catalog server with 1+ tables.
 
-## Step 1. Create a Databricks API token
-
-Create a Databricks personal access token by following the [Databricks documentation](https://docs.databricks.com/en/dev-tools/auth/index.html).
-
-## Step 2. Create a new directory and initialize a Spicepod
+## Step 1. Create a new directory and initialize a [Spicepod](https://docs.spiceai.org/reference/spicepod)
 
 ```bash
 mkdir uc_quickstart
@@ -23,71 +19,49 @@ cd uc_quickstart
 spice init
 ```
 
-## Step 3. Add the Databricks Unity Catalog Connector
+## Step 2. Add the Unity Catalog Connector
 
 Configure the `spicepod.yaml` with:
 
 ```yaml
 catalogs:
-  - from: databricks:<CATALOG_NAME>
+  - from: unity_catalog:https://<unity_catalog_host>/api/2.1/unity-catalog/catalogs/<catalog_name>
     name: uc_quickstart
     params:
-      mode: spark_connect # or delta_lake
-      databricks_token: ${env:DATABRICKS_TOKEN}
-      databricks_endpoint: <instance-id>.cloud.databricks.com
-      databricks_cluster_id: <cluster-id>
+      # Configure the object store credentials here
 ```
 
-Set `mode` to `spark_connect` or `delta_lake` appropriately.
+The Unity Catalog connector currently supports Delta Lake tables only and requires object store credentials.
 
-The default mode is `spark_connect` and requires an [All-Purpose Compute Cluster](https://docs.databricks.com/en/compute/index.html). The `delta_lake` mode queries Delta Lake tables directly in object storage, and requires Spice to have the necessary object storage access.
+## Step 3. Configure Delta Lake tables object store credentials
 
-Set the `DATABRICKS_TOKEN` environment variable to the Databricks personal access token created in Step 1. An `.env` file created in the same directory as `spicepod.yaml` can be used to set the variable, i.e.:
-
-```bash
-echo "DATABRICKS_TOKEN=<token>" > .env
-```
-
-See the [Databricks Unity Catalog Connector](https://docs.spiceai.org/components/catalogs/databricks) documentation for more information.
-
-## Step 4. Set the object storage credentials for `delta_lake` mode
-
-If using `delta_lake` mode, object storage credentials must be set for Spice to access the data.
-
-### Using Delta Lake in AWS S3
+### AWS S3
 
 ```yaml
 params:
-  mode: delta_lake
-  databricks_endpoint: <instance-id>.cloud.databricks.com
-  databricks_token: ${env:DATABRICKS_TOKEN}
-  databricks_aws_access_key_id: ${env:AWS_ACCESS_KEY_ID}
-  databricks_aws_secret_access_key: ${env:AWS_SECRET_ACCESS_KEY}
-  databricks_aws_region: <region> # E.g. us-east-1, us-west-2
-  databricks_aws_endpoint: <endpoint> # If using an S3-compatible service, like Minio
+  unity_catalog_aws_access_key_id: ${env:AWS_ACCESS_KEY_ID}
+  unity_catalog_aws_secret_access_key: ${env:AWS_SECRET_ACCESS_KEY}
+  unity_catalog_aws_region: <region> # E.g. us-east-1, us-west-2
+  unity_catalog_aws_endpoint: <endpoint> # If using an S3-compatible service, like Minio
 ```
 
 Set the `AWS_ACCESS_KEY_ID` and `AWS_SECRET_ACCESS_KEY` environment variables to the AWS access key and secret key, respectively.
 
-### Using Delta Lake in Azure Storage
+### Azure Storage
 
 ```yaml
 params:
-  mode: delta_lake
-  databricks_token: ${env:DATABRICKS_TOKEN}
-  databricks_azure_storage_account_name: ${env:AZURE_ACCOUNT_NAME}
-  databricks_azure_account_key: ${env:AZURE_ACCOUNT_KEY}
+  unity_catalog_azure_storage_account_name: ${env:AZURE_ACCOUNT_NAME}
+  unity_catalog_azure_account_key: ${env:AZURE_ACCOUNT_KEY}
 ```
 
 Set the `AZURE_ACCOUNT_NAME` and `AZURE_ACCOUNT_KEY` environment variables to the Azure storage account name and account key, respectively.
 
-### Using Delta Lake in Google Cloud Storage
+### Google Cloud Storage
 
 ```yaml
 params:
-  mode: delta_lake
-  databricks_token: ${env:DATABRICKS_TOKEN}
-  databricks_google_service_account: </path/to/service-account.json>
+  unity_catalog_google_service_account: </path/to/service-account.json>
 ```
 
 ## Example Delta Lake Spicepod
@@ -98,17 +72,14 @@ kind: Spicepod
 name: uc_quickstart
 
 catalogs:
-  - from: databricks:<CATALOG_NAME>
+  - from: unity_catalog:https://<unity_catalog_host>/api/2.1/unity-catalog/catalogs/<catalog_name>
     name: uc_quickstart
     params:
-      mode: delta_lake
-      databricks_token: ${env:DATABRICKS_TOKEN}
-      databricks_endpoint: <instance-id>.cloud.databricks.com
-      databricks_cluster_id: <cluster-id>
-      databricks_aws_access_key_id: ${env:AWS_ACCESS_KEY_ID}
-      databricks_aws_secret_access_key: ${env:AWS_SECRET_ACCESS_KEY}
-      databricks_aws_region: <region> # E.g. us-east-1, us-west-2
-      databricks_aws_endpoint: <endpoint> # If using an S3-compatible service, like Minio
+      # delta_lake S3 parameters
+      unity_catalog_aws_region: us-west-2
+      unity_catalog_aws_access_key_id: ${secrets:aws_access_key_id}
+      unity_catalog_aws_secret_access_key: ${secrets:aws_secret_access_key}
+      unity_catalog_aws_endpoint: s3.us-west-2.amazonaws.com
 ```
 
 ## Step 5. Start the Spice runtime and show the available tables
