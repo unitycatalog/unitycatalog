@@ -62,7 +62,7 @@ Let's take Unity Catalog for spin. In this guide, we are going to do the followi
 You have to ensure that your local environment has the following:
 
 - Clone this repository.
-- Ensure the `JAVA_HOME` environment variable your terminal is configured to point to JDK17+.
+- Ensure the `JAVA_HOME` environment variable your terminal is configured to point to JDK17.
 - Compile the project using `build/sbt package`
 
 > If you prefer to run this using the Unity Catalog Dockerized Environment, please refer to the Docker [README.md](./docker/README.md)
@@ -75,7 +75,7 @@ In a terminal, in the cloned repository root directory, start the UC server.
 bin/start-uc-server
 ```
 
-For the rest of the steps, continue in a different terminal.
+For the remaining steps, continue in a different terminal.
 
 ### Operate on Delta tables with the CLI
 
@@ -95,7 +95,7 @@ bin/uc table get --full_name unity.default.numbers
 ```
 
 You can see that it is a Delta table. Now, specifically for Delta tables, this CLI can
-print snippet of the contents of a Delta table (powered by the [Delta Kernel Java](https://delta.io/blog/delta-kernel/) project).
+print a snippet of the contents of a Delta table (powered by the [Delta Kernel Java](https://delta.io/blog/delta-kernel/) project).
 Let's try that.
 
 ```sh
@@ -104,7 +104,7 @@ bin/uc table read --full_name unity.default.numbers
 
 ### Operate on Delta tables with DuckDB
 
-For trying with DuckDB, you will have to [install it](https://duckdb.org/docs/installation/) (at least version 1.0).
+For operating on tables with DuckDB, you will have to [install it](https://duckdb.org/docs/installation/) (at least version 1.0).
 Let's start DuckDB and install a couple of extensions. To start DuckDB, run the command `duckdb` in the terminal.
 Then, in the DuckDB shell, run the following commands:
 
@@ -135,7 +135,7 @@ You should see it print a short table saying `Success` = `true`. Then we attach 
 ATTACH 'unity' AS unity (TYPE UC_CATALOG);
 ```
 
-Now we are ready to query. Try the following
+Now we are ready to query. Try the following:
 
 ```sql
 SHOW ALL TABLES;
@@ -167,8 +167,7 @@ See the [cli usage](docs/usage/cli.md) for more details.
 ## Compiling and testing
 
 - Install JDK 17 by whatever mechanism is appropriate for your system, and
-  set that version to be the default Java version (e.g., by setting env variable
-  JAVA_HOME)
+  set that version to be the default Java version (e.g. via the env variable `JAVA_HOME`)
 - To compile all the code without running tests, run the following:
   ```sh
   build/sbt clean compile
