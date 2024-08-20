@@ -14,8 +14,7 @@ ARG unitycatalog_user_basedir="${unitycatalog_home}/${unitycatalog_user_home}"
 # and generate the Uber-Jar. Therefore it is important to choose
 # a size large enough for the compiler to run. 
 ARG sbt_args="-J-Xmx5G"
-
-
+ARG unitycatalog_version="0.2.0-SNAPSHOT"
 
 # ###### STAGE 1 ###### #
 # Building the Uber-Jar #
@@ -44,7 +43,6 @@ COPY . .
 
 RUN build/sbt ${sbt_args} server/assembly
 
-
 # ###### STAGE 2 ###### #
 # Running the UC server #
 #########################
@@ -61,6 +59,7 @@ ARG unitycatalog_user_name
 ARG unitycatalog_user_home
 ARG unitycatalog_user_basedir
 ARG sbt_args
+ARG unitycatalog_version
 
 EXPOSE 8081
 
@@ -77,12 +76,13 @@ SHELL ["/bin/bash", "-i", "-c", "-o", "pipefail"]
 
 ENV SERVER_TARGET_DIR="${unitycatalog_home}/${unitycatalog_jar}"
 ENV UC_SERVER_BIN="${unitycatalog_home}/${unitycatalog_bin}/start-uc-server"
+ENV UC_VERSION="${unitycatalog_version}"
 
 # Create the UC directories
 RUN <<-EOF 
     set -ex;
     mkdir -p "${unitycatalog_home}";
-    mkdir -p "${unitycatalog_home}/${unitycatalog_jar}";
+    mkdir -p "$SERVER_TARGET_DIR";
     mkdir -p "${unitycatalog_home}/${unitycatalog_etc}";
     mkdir -p "${unitycatalog_home}/${unitycatalog_bin}";
     mkdir -p "${unitycatalog_home}/${unitycatalog_user_home}";
@@ -129,9 +129,9 @@ COPY <<-"EOF" "${UC_SERVER_BIN}"
     ROOT_DIR="$(dirname "$SCRIPT_DIR")"
 
     # Find the jar and store its absolute path into a variable
-    SERVER_JAR=$(find "$SERVER_TARGET_DIR" -name "unitycatalog-server*.jar" | head -n 1)
+    SERVER_JAR="$SERVER_TARGET_DIR/unitycatalog-server-$UC_VERSION.jar"
     if [ -z "$SERVER_JAR" ]; then
-        echo "Server JAR not found starting with 'unitycatalog-server*' in the target directory '$SERVER_TARGET_DIR'."
+        echo "'${SERVER_JAR}' not found in the target directory '$SERVER_TARGET_DIR'."
         exit 1
     fi
 

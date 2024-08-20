@@ -4,15 +4,16 @@ This project provides a Dockerized environment for running Unity Catalog. It inc
 
 ## Prerequisites
 
-- Docker installed on your system.
-- `jq` is installed on your system
-  - e.g., on MacOS, install `jq` using HomeBrew, `brew install jq`
+Before you can build the Docker image, install the following tools:
+
+* [Docker](https://www.docker.com/)
+* [jq](https://jqlang.github.io/jq/)
 
 ## Usage
 
-### 1. Building the Image
+### Building Image
 
-The `build-uc-server-docker` script is responsible for building the Docker image for Unity Catalog. Run the build script from the project directory:
+[build-uc-server-docker](./bin/build-uc-server-docker) is used to build the Docker image for Unity Catalog.
 
 ```bash
 ./docker/bin/build-uc-server-docker
@@ -20,29 +21,53 @@ The `build-uc-server-docker` script is responsible for building the Docker image
 
 This will create an image named `unitycatalog` and the version of the image would follow the version of the active git branch.
 
-#### 1.1 Unity Catalog CLI
+#### Unity Catalog CLI
 
-If you have an instance of Unity Catalog already running, and you want only the CLI to interact with it, you can use the `build-uc-cli-docker` script which is responsible for building the Docker image for Unity Catalog CLI only.
-
-Run the build script from the project directory:
+Run the build script from the project directory to build the Unity Catalog CLI image.
 
 ```bash
 ./docker/bin/build-uc-cli-docker
 ```
 
-Once the CLI image is built you can run an ephemeral instance of the image using the script `start-uc-cli-in-docker` as follows:
+Start the non-dockerized Unity Catalog reference server.
+
+Run the CLI using `start-uc-cli-in-docker` script to start the Unity Catalog CLI dockerized.
 
 ```bash
-./docker/bin/start-uc-cli-in-docker
+./docker/bin/start-uc-cli-in-docker --help
 ```
 
-> \[!NOTE\]
-> The `start-uc-cli-in-docker` script is still not parametrised and assumes that your instance is running
-> locally on a docker network with an address and port passed as an argument `--server http://unitycatalog:8081`.
+#### Access Unity Catalog Localhost Reference Server on macOS
 
-### 2. Running the Catalog
+Start the Unity Catalog Localhost Reference Server.
 
-The `start-uc-server-in-docker` script starts the Unity Catalog container. It also creates a network named `unitycatalog_network` for the container to use. Run it from the project directory:
+```shell
+./bin/start-uc-server
+```
+
+Execute `start-uc-cli-in-docker` to connect to the Unity Catalog server on your local machine (`localhost`).
+
+> **Note:**
+>
+> `localhost` inside a Docker container is different from the local machine's `localhost`.
+
+```shell
+./docker/bin/start-uc-cli-in-docker catalog list --server http://host.docker.internal:8081
+```
+
+```text
+┌─────┬────────────┬──────────┬─────────────┬──────────┬────────────────────────────────────┐
+│NAME │  COMMENT   │PROPERTIES│ CREATED_AT  │UPDATED_AT│                 ID                 │
+├─────┼────────────┼──────────┼─────────────┼──────────┼────────────────────────────────────┤
+│unity│Main catalog│{}        │1721234405334│null      │f029b870-9468-4f10-badc-630b41e5690d│
+└─────┴────────────┴──────────┴─────────────┴──────────┴────────────────────────────────────┘
+```
+
+### Running Dockerized Unity Catalog Localhost Reference Server
+
+The `start-uc-server-in-docker` script starts the Unity Catalog container.
+
+It also creates a network named `unitycatalog_network` for the container to use. Run it from the project directory:
 
 ```bash
 ./docker/bin/start-uc-server-in-docker
