@@ -6,12 +6,9 @@ tags:
   - name: Users
     description: |
       A user is the identity recognized by Unity Catalog.
-  - name: Permissions
-    description: |
-      In Unity Catalog, data is secure by default. Access can be granted.
 
 paths:
-  /scim2/users:
+  /scim2/Users:
     post:
       tags:
         - Users
@@ -23,14 +20,14 @@ paths:
         content:
           application/json:
             schema:
-              $ref: './all.yaml#/components/schemas/UserResource'
+              $ref: '#/components/schemas/UserResource'
       responses:
         '200':
           description: The new user was successfully created.
           content:
             application/json:
               schema:
-                $ref: './all.yaml#/components/schemas/User'
+                $ref: '#/components/schemas/UserResource'
     get:
       tags:
         - Users
@@ -67,8 +64,8 @@ paths:
               schema:
                 type: array
                 items:
-                  $ref: './all.yaml#/components/schemas/UserResource'
-  /scim2/users/{id}:
+                  $ref: '#/components/schemas/UserResource'
+  /scim2/Users/{id}:
     parameters:
       - name: id
         in: path
@@ -89,7 +86,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: './all.yaml#/components/schemas/UserResource'
+                $ref: '#/components/schemas/UserResource'
     put:
       tags:
         - Users
@@ -101,14 +98,14 @@ paths:
         content:
           application/json:
             schema:
-              $ref: './all.yaml#/components/schemas/UserResource'
+              $ref: '#/components/schemas/UserResource'
       responses:
         '200':
           description: The user was successfully updated.
           content:
             application/json:
               schema:
-                $ref: './all.yaml#/components/schemas/UserResource'
+                $ref: '#/components/schemas/UserResource'
     delete:
       tags:
         - Users
@@ -122,54 +119,37 @@ paths:
           content:
             application/json:
               schema: {}
-  /permissions/{resource_type}/{name}:
-    parameters:
-      - name: resource_type
-        in: path
-        description: The type of the resource.
-        required: true
-        schema:
-          $ref: './all.yaml#/components/schemas/ResourceType'
-      - name: name
-        in: path
-        description: The name of the principal.
-        required: true
-        schema:
-          type: string
-    get:
-      tags:
-        - Permissions
-      operationId: getPermission
-      summary: Get permissions
-      description: |
-        Gets the permissions for a securable.
-      responses:
-        '200':
-          description: The permissions was successfully retrieved.
-          content:
-            application/json:
-              schema:
-                $ref: './all.yaml#/components/schemas/UpdateAuthorizationResponse'
-    patch:
-      tags:
-        - Permissions
-      operationId: updatePermission
-      summary: Update a permission
-      description: |
-        Updates the permissions for a securable.
-      requestBody:
-        content:
-          application/json:
-            schema:
-              $ref: './all.yaml#/components/schemas/UpdateAuthorizationRequest'
-      responses:
-        '200':
-          description: The permission was successfully updated.
-          content:
-            application/json:
-              schema:
-                $ref: './all.yaml#/components/schemas/UpdateAuthorizationResponse'
 
+components:
+  schemas:
+    UserResource:
+      description: SCIM provides a resource type for "User" resources.
+      type: object
+      properties:
+        id:
+          description: The id of the user.
+          type: string
+        displayName:
+          description: The name of the user.
+          type: string
+        externalId:
+          description: The SCIM external id.
+          type: string
+        emails:
+          description: E-mail addresses for the user.
+          type: array
+          items:
+            $ref: '#/components/schemas/Email'
+    Email:
+      description: SCIM email for a user.
+      type: object
+      properties:
+        value:
+          description: The email of the user.
+          type: string
+        primary:
+          description: If the email is primary.
+          type: boolean
 info:
   title: Unity Control API
   version: '0.1'

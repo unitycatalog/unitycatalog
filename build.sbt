@@ -104,7 +104,7 @@ def javafmtCheckSettings() = Seq(
   (Compile / compile) := ((Compile / compile) dependsOn (Compile / javafmtCheckAll)).value
 )
 
-lazy val controlApi = (project in file("client"))
+lazy val controlApi = (project in file("target/control/java"))
   .enablePlugins(OpenApiGeneratorPlugin)
   .disablePlugins(JavaFormatterPlugin)
   .settings(
@@ -112,16 +112,19 @@ lazy val controlApi = (project in file("client"))
     commonSettings,
     javaOnlyReleaseSettings,
     libraryDependencies ++= Seq(
-
+      "jakarta.annotation" % "jakarta.annotation-api" % "3.0.0" % Provided,
+      "com.fasterxml.jackson.core" % "jackson-annotations" % jacksonVersion,
+      "com.fasterxml.jackson.core" % "jackson-databind" % jacksonVersion,
+      "com.fasterxml.jackson.datatype" % "jackson-datatype-jsr310" % jacksonVersion,
     ),
     (Compile / compile) := ((Compile / compile) dependsOn generate).value,
 
     // OpenAPI generation specs
     openApiInputSpec := (file(".") / "api" / "control.yaml").toString,
     openApiGeneratorName := "java",
-    openApiOutputDir := (file("target") / "clients" / "java").toString,
-    openApiApiPackage := s"$orgName.client.api",
-    openApiModelPackage := s"$orgName.client.model",
+    openApiOutputDir := (file("target") / "control" / "java").toString,
+    openApiApiPackage := s"$orgName.control.api",
+    openApiModelPackage := s"$orgName.control.model",
     openApiAdditionalProperties := Map(
       "library" -> "native",
       "useJakartaEe" -> "true",
