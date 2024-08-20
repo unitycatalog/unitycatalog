@@ -1,12 +1,12 @@
-# Unity Catalog Dockerised Environment
+# Unity Catalog Dockerized Environment
 
-This project provides a Dockerised environment for running Unity Catalog. It includes everything needed to set up and interact with the catalog for testing purposes.
+This project provides a Dockerized environment for running Unity Catalog. It includes everything needed to set up and interact with the catalog for testing purposes.
 
 ## Prerequisites
 
-* Docker installed on your system.
-* `jq` is installed on your system
-  * e.g., on MacOS, install `jq` using HomeBrew, `brew install jq` 
+- Docker installed on your system.
+- `jq` is installed on your system
+  - e.g., on MacOS, install `jq` using HomeBrew, `brew install jq`
 
 ## Usage
 
@@ -22,7 +22,7 @@ This will create an image named `unitycatalog` and the version of the image woul
 
 #### 1.1 Unity Catalog CLI
 
-If you have an instance of Unity Catalog already running and you want only the CLI to interact with it, you can use the `build-uc-cli-docker` script which is responsible for building the Docker image for Unity Catalog CLI only.
+If you have an instance of Unity Catalog already running, and you want only the CLI to interact with it, you can use the `build-uc-cli-docker` script which is responsible for building the Docker image for Unity Catalog CLI only.
 
 Run the build script from the project directory:
 
@@ -35,8 +35,9 @@ Once the CLI image is built you can run an ephemeral instance of the image using
 ```bash
 ./docker/bin/start-uc-cli-in-docker
 ```
-> [!NOTE]
-> The `start-uc-cli-in-docker` script is still not parametrised and assumes that your instance is running 
+
+> \[!NOTE\]
+> The `start-uc-cli-in-docker` script is still not parametrised and assumes that your instance is running
 > locally on a docker network with an address and port passed as an argument `--server http://unitycatalog:8081`.
 
 ### 2. Running the Catalog
@@ -47,7 +48,7 @@ The `start-uc-server-in-docker` script starts the Unity Catalog container. It al
 ./docker/bin/start-uc-server-in-docker
 ```
 
-> [!TIP]
+> \[!TIP\]
 > You can run the docker container with different settings such as using a different network, volume, or ports.
 > The run script is only for demo and happy path.
 
@@ -55,14 +56,14 @@ This will start the container and make it accessible on port `8081` within the `
 
 ### 3. Adding Custom Startup Code
 
-> [!NOTE]
-> This feature has been removed temportarly until we find out the best way to add customisations to the containerisation process.
+> \[!NOTE\]
+> This feature has been removed temporarily until we find out the best way to add customisations to the containerisation process.
 
 ### 4. Testing the Catalog
 
 This project provides several examples using `curl` commands to interact with the Unity Catalog API and demonstrate basic functionalities.
 
-> [!NOTE]
+> \[!NOTE\]
 > If you wish to use the CLI to test the catalog, run a docker CLI instance and follow the instructions
 > from the repositories main readme.
 
@@ -74,17 +75,17 @@ The examples use a variable `unitycatalog_endpoint` to store the catalog's URL. 
 unitycatalog_endpoint="http://unitycatalog:8080/api/2.1/unity-catalog"
 ```
 
-> [!CAUTION]
+> \[!CAUTION\]
 > Make sure you run the above command in your bash session before proceeding to the examples.
 > Otherwise your examples will not run correctly.
 
-> [!IMPORTANT]
-> Because the default run script runs the script on a network called `unitycatalog_network`, 
+> \[!IMPORTANT\]
+> Because the default run script runs the script on a network called `unitycatalog_network`,
 > if you want to test the catalog you need to make sure you application is running in the same network.
 > For instance, you will not be able to test the API from your machine directly using Postman,
 > wget or cUrl unless you run them with the catalog on the same network, or you change the catalog's
 > network to run on the Host network.
-> This is OS specific, therefore we opted for the most generic option, which is to create 
+> This is OS specific, therefore we opted for the most generic option, which is to create
 > a docker network, but feel free to change those configurations to suit your needs.
 
 #### 4.2. Create a Catalog
@@ -281,8 +282,6 @@ create_table_b_request=$(printf "curl -s \
 docker run --rm --network unitycatalog_network alpine/curl sh -c "$create_table_b_request" | jq .
 ```
 
-### 5. Additional Notes**
+### 5. Additional Notes\*\*
 
 This document provides a basic overview of how to run unity catalog inside a docker and interact with its API.
-
-

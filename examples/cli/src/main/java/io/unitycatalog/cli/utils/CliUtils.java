@@ -73,13 +73,18 @@ public class CliUtils {
               CATALOG,
               new HashMap<String, CliOptions>() {
                 {
-                  put(CREATE, new CliOptions(List.of(CliParams.NAME), List.of(CliParams.COMMENT)));
+                  put(
+                      CREATE,
+                      new CliOptions(
+                          List.of(CliParams.NAME),
+                          List.of(CliParams.COMMENT, CliParams.PROPERTIES)));
                   put(LIST, new CliOptions(List.of(), List.of(CliParams.MAX_RESULTS)));
                   put(GET, new CliOptions(List.of(CliParams.NAME), List.of()));
                   put(
                       UPDATE,
                       new CliOptions(
-                          List.of(CliParams.NAME), List.of(CliParams.NEW_NAME, CliParams.COMMENT)));
+                          List.of(CliParams.NAME),
+                          List.of(CliParams.NEW_NAME, CliParams.COMMENT, CliParams.PROPERTIES)));
                   put(DELETE, new CliOptions(List.of(CliParams.NAME), List.of(CliParams.FORCE)));
                 }
               });
@@ -91,7 +96,7 @@ public class CliUtils {
                       CREATE,
                       new CliOptions(
                           List.of(CliParams.CATALOG_NAME, CliParams.NAME),
-                          List.of(CliParams.COMMENT)));
+                          List.of(CliParams.COMMENT, CliParams.PROPERTIES)));
                   put(
                       LIST,
                       new CliOptions(
@@ -101,7 +106,7 @@ public class CliUtils {
                       UPDATE,
                       new CliOptions(
                           List.of(CliParams.FULL_NAME),
-                          List.of(CliParams.NEW_NAME, CliParams.COMMENT)));
+                          List.of(CliParams.NEW_NAME, CliParams.COMMENT, CliParams.PROPERTIES)));
                   put(
                       DELETE,
                       new CliOptions(List.of(CliParams.FULL_NAME), List.of(CliParams.FORCE)));
@@ -381,9 +386,9 @@ public class CliUtils {
         cmd.hasOption(OUTPUT)
             && ("json".equals(cmd.getOptionValue(OUTPUT))
                 || "jsonPretty".equals(cmd.getOptionValue(OUTPUT)));
-    if (jsonFormat || READ.equals(subCommand) || EXECUTE.equals(subCommand))
+    if (jsonFormat || READ.equals(subCommand) || EXECUTE.equals(subCommand)) {
       System.out.println(output);
-    else {
+    } else {
       AsciiTable at = new AsciiTable();
       int outputWidth = getOutputWidth();
       try {
@@ -439,6 +444,9 @@ public class CliUtils {
       System.out.printf("  --%s %s\n", param.val(), param.getHelpMessage());
     }
     System.out.println("Optional Params:");
+    for (CliParams param : commonOptions) {
+      System.out.printf("  --%s %s\n", param.val(), param.getHelpMessage());
+    }
     for (CliParams param : options.getOptionalParams()) {
       System.out.printf("  --%s %s\n", param.val(), param.getHelpMessage());
     }
@@ -451,7 +459,7 @@ public class CliUtils {
     System.out.println();
     System.out.println(
         "By default, the client will connect to UC running locally at http://localhost:8080\n");
-    System.out.println("To connect to specific UC server, use --server https://<host>\n");
+    System.out.println("To connect to specific UC server, use --server https://<host>:<port>\n");
     System.out.println(
         "Currently, auth using bearer token is supported. Please specify the token via --auth_token"
             + " <PAT Token>\n");

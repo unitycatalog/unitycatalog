@@ -5,4 +5,4 @@ This section shows you how to use Unity Catalog to store, access and govern Tabl
 Use Unity Catalog with:
 
 - [Delta Lake tables](deltalake.md)
-- [Uniform Tables](uniform.md)
+- [UniForm Tables](uniform.md)

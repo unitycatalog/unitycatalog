@@ -2,7 +2,7 @@ package io.unitycatalog.connectors.spark
 
 import io.unitycatalog.client.{ApiClient, ApiException}
 import io.unitycatalog.client.api.{SchemasApi, TablesApi, TemporaryTableCredentialsApi}
-import io.unitycatalog.client.model.{AwsCredentials, CreateSchema, GenerateTemporaryTableCredential, ListTablesResponse, SchemaInfo, TableOperation, TableType}
+import io.unitycatalog.client.model.{AwsCredentials, ColumnInfo, ColumnTypeName, CreateSchema, CreateTable, DataSourceFormat, GenerateTemporaryTableCredential, ListTablesResponse, SchemaInfo, TableOperation, TableType}
 
 import java.net.URI
 import java.util
@@ -11,11 +11,11 @@ import org.apache.spark.sql.catalyst.analysis.{NoSuchNamespaceException, NoSuchT
 import org.apache.spark.sql.catalyst.catalog.{CatalogStorageFormat, CatalogTable, CatalogTableType, CatalogUtils}
 import org.apache.spark.sql.connector.catalog._
 import org.apache.spark.sql.connector.expressions.Transform
-import org.apache.spark.sql.types.{DataType, StructField, StructType}
+import org.apache.spark.sql.types.{BinaryType, BooleanType, ByteType, DataType, DoubleType, FloatType, IntegerType, LongType, ShortType, StringType, StructField, StructType, TimestampNTZType, TimestampType}
 import org.apache.spark.sql.util.CaseInsensitiveStringMap
 
 import scala.collection.convert.ImplicitConversions._
-import scala.jdk.CollectionConverters._
+import scala.collection.JavaConverters._
 
 /**
  * A Spark catalog plugin to get/manage tables in Unity Catalog.
@@ -161,7 +161,9 @@ private class UCProxy extends TableCatalog with SupportsNamespaces {
         "fs.s3a.access.key" -> credential.getAccessKeyId,
         "fs.s3a.secret.key" -> credential.getSecretAccessKey,
         "fs.s3a.session.token" -> credential.getSessionToken,
-        "fs.s3a.path.style.access" -> "true"
+        "fs.s3a.path.style.access" -> "true",
+        "fs.s3.impl.disable.cache" -> "true",
+        "fs.s3a.impl.disable.cache" -> "true"
       )
     } else {
       Map.empty
@@ -191,10 +193,70 @@ private class UCProxy extends TableCatalog with SupportsNamespaces {
       .asInstanceOf[Table]
   }
 
-  override def createTable(ident: Identifier, columns: Array[Column], partitions: Array[Transform], properties: util.Map[String, String]): Table = ???
-
   override def createTable(ident: Identifier, schema: StructType, partitions: Array[Transform], properties: util.Map[String, String]): Table = {
-    throw new AssertionError("deprecated `createTable` should not be called")
+    checkUnsupportedNestedNamespace(ident.namespace())
+    assert(properties.get("provider") != null)
+
+    val createTable = new CreateTable()
+    createTable.setName(ident.name())
+    createTable.setSchemaName(ident.namespace().head)
+    createTable.setCatalogName(this.name)
+    val storageLocation = properties.get(TableCatalog.PROP_LOCATION)
+    if (storageLocation == null) {
+      // TODO: Unity Catalog does not support managed tables now.
+      throw new ApiException("Unity Catalog does not support managed table.")
+    }
+    createTable.setTableType(TableType.EXTERNAL)
+    createTable.setStorageLocation(storageLocation)
+
+    val columns: Seq[ColumnInfo] = schema.fields.toSeq.zipWithIndex.map { case (field, i) =>
+      val column = new ColumnInfo()
+      column.setName(field.name)
+      if (field.getComment().isDefined) {
+        column.setComment(field.getComment.get)
+      }
+      column.setNullable(field.nullable)
+      column.setTypeText(field.dataType.simpleString)
+      column.setTypeName(convertDataTypeToTypeName(field.dataType))
+      column.setTypeJson(field.dataType.json)
+      column.setPosition(i)
+      column
+    }
+    createTable.setColumns(columns)
+    val format: String = properties.get("provider")
+    createTable.setDataSourceFormat(convertDatasourceFormat(format))
+    tablesApi.createTable(createTable)
+    loadTable(ident)
+  }
+
+  private def convertDatasourceFormat(format: String): DataSourceFormat = {
+    format.toUpperCase match {
+      case "PARQUET" => DataSourceFormat.PARQUET
+      case "CSV" => DataSourceFormat.CSV
+      case "DELTA" => DataSourceFormat.DELTA
+      case "JSON" => DataSourceFormat.JSON
+      case "ORC" => DataSourceFormat.ORC
+      case "TEXT" => DataSourceFormat.TEXT
+      case "AVRO" => DataSourceFormat.AVRO
+      case _ => throw new ApiException("DataSourceFormat not supported: " + format)
+    }
+  }
+
+  private def convertDataTypeToTypeName(dataType: DataType): ColumnTypeName = {
+    dataType match {
+      case StringType => ColumnTypeName.STRING
+      case BooleanType => ColumnTypeName.BOOLEAN
+      case ShortType => ColumnTypeName.SHORT
+      case IntegerType => ColumnTypeName.INT
+      case LongType => ColumnTypeName.LONG
+      case FloatType => ColumnTypeName.FLOAT
+      case DoubleType => ColumnTypeName.DOUBLE
+      case ByteType => ColumnTypeName.BYTE
+      case BinaryType => ColumnTypeName.BINARY
+      case TimestampNTZType => ColumnTypeName.TIMESTAMP_NTZ
+      case TimestampType => ColumnTypeName.TIMESTAMP
+      case _ => throw new ApiException("DataType not supported: " + dataType.simpleString)
+    }
   }
 
   override def alterTable(ident: Identifier, changes: TableChange*): Table = ???

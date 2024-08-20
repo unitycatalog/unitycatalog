@@ -8,6 +8,8 @@ import org.apache.hadoop.util.Progressable;
 // A wrapper over the local file system to test UC table credentials.
 public class CredentialTestFileSystem extends RawLocalFileSystem {
 
+  public static boolean credentialCheckEnabled = true;
+
   @Override
   protected void checkPath(Path path) {
     // Do nothing.
@@ -71,7 +73,9 @@ public class CredentialTestFileSystem extends RawLocalFileSystem {
   private Path toLocalPath(Path f) {
     Configuration conf = getConf();
     String host = f.toUri().getHost();
-    if ("test-bucket0".equals(host)) {
+    if (!credentialCheckEnabled) {
+      // Do nothing
+    } else if ("test-bucket0".equals(host)) {
       assert "accessKey0".equals(conf.get("fs.s3a.access.key"));
       assert "secretKey0".equals(conf.get("fs.s3a.secret.key"));
       assert "sessionToken0".equals(conf.get("fs.s3a.session.token"));

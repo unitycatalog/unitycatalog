@@ -136,7 +136,7 @@ public class CatalogRepository {
     if (updateCatalog.getNewName() != null) {
       ValidationUtils.validateSqlObjectName(updateCatalog.getNewName());
     }
-    // cna make this just update once we have an identifier that is not the name
+    // can make this just update once we have an identifier that is not the name
     try (Session session = SESSION_FACTORY.openSession()) {
       Transaction tx = session.beginTransaction();
       try {
@@ -144,9 +144,13 @@ public class CatalogRepository {
         if (catalogInfoDAO == null) {
           throw new BaseException(ErrorCode.NOT_FOUND, "Catalog not found: " + name);
         }
-        if (updateCatalog.getNewName() == null && updateCatalog.getComment() == null) {
+        if (updateCatalog.getNewName() == null
+            && updateCatalog.getComment() == null
+            && (updateCatalog.getProperties() == null || updateCatalog.getProperties().isEmpty())) {
           tx.rollback();
-          return catalogInfoDAO.toCatalogInfo();
+          CatalogInfo catalogInfo = catalogInfoDAO.toCatalogInfo();
+          return RepositoryUtils.attachProperties(
+              catalogInfo, catalogInfo.getId(), Constants.CATALOG, session);
         }
         if (updateCatalog.getNewName() != null
             && getCatalogDAO(session, updateCatalog.getNewName()) != null) {
@@ -159,10 +163,19 @@ public class CatalogRepository {
         if (updateCatalog.getComment() != null) {
           catalogInfoDAO.setComment(updateCatalog.getComment());
         }
+        if (updateCatalog.getProperties() != null && !updateCatalog.getProperties().isEmpty()) {
+          PropertyRepository.findProperties(session, catalogInfoDAO.getId(), Constants.CATALOG)
+              .forEach(session::remove);
+          session.flush();
+          PropertyDAO.from(updateCatalog.getProperties(), catalogInfoDAO.getId(), Constants.CATALOG)
+              .forEach(session::persist);
+        }
         catalogInfoDAO.setUpdatedAt(new Date());
         session.merge(catalogInfoDAO);
         tx.commit();
-        return catalogInfoDAO.toCatalogInfo();
+        CatalogInfo catalogInfo = catalogInfoDAO.toCatalogInfo();
+        return RepositoryUtils.attachProperties(
+            catalogInfo, catalogInfo.getId(), Constants.CATALOG, session);
       } catch (Exception e) {
         tx.rollback();
         throw e;

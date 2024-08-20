@@ -1,6 +1,7 @@
 <img src="./docs/assets/images/uc-logo.png" width="600px" />
 
 # Unity Catalog: Open, Multimodal Catalog for Data & AI
+
 Unity Catalog is the industry’s only universal catalog for data and AI.
 
 - **Multimodal interface supports any format, engine, and asset**
@@ -15,7 +16,9 @@ The first release of Unity Catalog focuses on a core set of APIs for tables, uns
 ![image info](./docs/assets/images/uc.png)
 
 ### Vibrant ecosystem
+
 This is a community effort. Unity Catalog is supported by
+
 - [Amazon Web Services](https://aws.amazon.com/)
 - [Confluent](https://www.confluent.io/)
 - [Daft (Eventual)](https://github.com/Eventual-Inc/Daft)
@@ -45,45 +48,53 @@ Unity Catalog is proud to be hosted by the LF AI & Data Foundation.
 </a>
 
 ## Quickstart - Hello UC!
+
 Let's take Unity Catalog for spin. In this guide, we are going to do the following:
+
 - In one terminal, run the UC server.
-- In another terminal, we will explore the contents of the UC server using a CLI. 
+- In another terminal, we will explore the contents of the UC server using a CLI.
   An example project is provided to demonstrate how to use the UC SDK for various assets
   as well as provide a convenient way to explore the content of any UC server implementation.
 
 ### Prerequisites
+
 You have to ensure that your local environment has the following:
+
 - Clone this repository.
-- Ensure the `JAVA_HOME` environment variable your terminal is configured to point to JDK17+.
+- Ensure the `JAVA_HOME` environment variable your terminal is configured to point to JDK17.
 - Compile the project using `build/sbt package`
 
-> If you prefer to run this using the Unity Catalog Dockerized Environment, please refer to the Docker [README.md](./docker/readme.md)
+> If you prefer to run this using the Unity Catalog Dockerized Environment, please refer to the Docker [README.md](./docker/README.md)
 
 ### Run the UC Server
+
 In a terminal, in the cloned repository root directory, start the UC server.
 
 ```sh
 bin/start-uc-server
 ```
 
-For the rest of the steps, continue in a different terminal.
+For the remaining steps, continue in a different terminal.
 
 ### Operate on Delta tables with the CLI
-Let's list the tables. 
+
+Let's list the tables.
+
 ```sh
 bin/uc table list --catalog unity --schema default
 ```
+
 You should see a few tables. Some details are truncated because of the nested nature of the data.
 To see all the content, you can add `--output jsonPretty` to any command.
 
-Next, let's get the metadata of one of those tables. 
+Next, let's get the metadata of one of those tables.
 
 ```sh
 bin/uc table get --full_name unity.default.numbers
 ```
 
 You can see that it is a Delta table. Now, specifically for Delta tables, this CLI can
-print snippet of the contents of a Delta table (powered by the [Delta Kernel Java](https://delta.io/blog/delta-kernel/) project).
+print a snippet of the contents of a Delta table (powered by the [Delta Kernel Java](https://delta.io/blog/delta-kernel/) project).
 Let's try that.
 
 ```sh
@@ -92,19 +103,22 @@ bin/uc table read --full_name unity.default.numbers
 
 ### Operate on Delta tables with DuckDB
 
-For trying with DuckDB, you will have to [install it](https://duckdb.org/docs/installation/) (at least version 1.0).
+For operating on tables with DuckDB, you will have to [install it](https://duckdb.org/docs/installation/) (at least version 1.0).
 Let's start DuckDB and install a couple of extensions. To start DuckDB, run the command `duckdb` in the terminal.
 Then, in the DuckDB shell, run the following commands:
+
 ```sql
 install uc_catalog from core_nightly;
 load uc_catalog;
 install delta;
 load delta;
 ```
-If you have installed these extensions before, you may have to run `update extensions` and restart DuckDB 
+
+If you have installed these extensions before, you may have to run `update extensions` and restart DuckDB
 for the following steps to work.
 
-Now that we have DuckDB all set up, let's try connecting to UC by specifying a secret. 
+Now that we have DuckDB all set up, let's try connecting to UC by specifying a secret.
+
 ```sql
 CREATE SECRET (
       TYPE UC,
@@ -113,11 +127,14 @@ CREATE SECRET (
       AWS_REGION 'us-east-2'
  );
 ```
+
 You should see it print a short table saying `Success` = `true`. Then we attach the `unity` catalog to DuckDB.
+
 ```sql
 ATTACH 'unity' AS unity (TYPE UC_CATALOG);
 ```
-Now we are ready to query. Try the following
+
+Now we are ready to query. Try the following:
 
 ```sql
 SHOW ALL TABLES;
@@ -129,15 +146,17 @@ To quit DuckDB, press `Ctrl`+`D` (if your platform supports it), press `Ctrl`+`C
 
 ## CLI tutorial
 
-You can interact with a Unity Catalog server to create and manage catalogs, schemas and tables, 
+You can interact with a Unity Catalog server to create and manage catalogs, schemas and tables,
 operate on volumes and functions from the CLI, and much more.
 See the [cli usage](docs/usage/cli.md) for more details.
 
 ## APIs and Compatibility
+
 - Open API specification: The Unity Catalog Rest API is documented [here](api).
 - Compatibility and stability: The APIs are currently evolving and should not be assumed to be stable.
 
 ## Deployment
+
 - To create a tarball that can be used to deploy the UC server or run the CLI, run the following:
   ```sh
   build/sbt createTarball
@@ -145,9 +164,9 @@ See the [cli usage](docs/usage/cli.md) for more details.
   This will create a tarball in the `target` directory. See the full [deployment guide](docs/deployment.md) for more details.
 
 ## Compiling and testing
+
 - Install JDK 17 by whatever mechanism is appropriate for your system, and
-  set that version to be the default Java version (e.g., by setting env variable
-  JAVA_HOME)
+  set that version to be the default Java version (e.g. via the env variable `JAVA_HOME`)
 - To compile all the code without running tests, run the following:
   ```sh
   build/sbt clean compile
@@ -163,7 +182,7 @@ See the [cli usage](docs/usage/cli.md) for more details.
 - To update the API specification, just update the `api/all.yaml` and then run the following:
   ```sh
   build/sbt generate
-  ``` 
+  ```
   This will regenerate the OpenAPI data models in the UC server and data models + APIs in the client SDK.
 - To format the code, run the following:
   ```sh
@@ -173,6 +192,7 @@ See the [cli usage](docs/usage/cli.md) for more details.
 ## Setting up IDE
 
 IntelliJ is the recommended IDE to use when developing Unity Catalog. The below steps outline how to add the project to IntelliJ:
+
 1. Clone Unity Catalog into a local folder, such as `~/unitycatalog`.
 2. Select `File` > `New Project` > `Project from Existing Sources...` and select `~/unitycatalog`.
 3. Under `Import project from external model` select `sbt`. Click `Next`.
@@ -186,12 +206,10 @@ In order to automatically fix Java code style issues, please use `build/sbt java
 Follow the instructions for [Eclipse](https://github.com/google/google-java-format#eclipse) or
 [IntelliJ](https://github.com/google/google-java-format#intellij-android-studio-and-other-jetbrains-ides) to install the **google-java-format** plugin (note the required manual actions for IntelliJ).
 
-
 ### Using more recent JDKs
 
 The build script [checks for a lower bound on the JDK](./build.sbt#L14) but the [current SBT version](./project/build.properties)
 imposes an upper bound. Please check the [JDK compatibility](https://docs.scala-lang.org/overviews/jdk-compatibility/overview.html) documentation for more information
-
 
 ### Serving the documentation with mkdocs
 
@@ -206,7 +224,7 @@ source uc_docs_venv/bin/activate
 
 # Activate virtual environment (Windows)
 uc_docs_venv\Scripts\activate
-``` 
+```
 
 Install the required dependencies:
 
