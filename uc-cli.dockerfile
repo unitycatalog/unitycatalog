@@ -50,7 +50,7 @@ RUN build/sbt ${sbt_args} cli/assembly
 # Running the UC server #
 #########################
 
-FROM eclipse-temurin:22-jre-alpine AS run_uc
+FROM eclipse-temurin:22-jre-alpine AS build_cli
 
 ARG unitycatalog_uid
 ARG unitycatalog_home
@@ -65,8 +65,6 @@ ARG unitycatalog_user_basedir
 ARG sbt_args
 ARG cli_assembly_jar
 ARG unitycatalog_version
-
-EXPOSE 8081
 
 RUN <<EOF
     set -ex;
@@ -110,9 +108,6 @@ RUN <<-EOF
             "${unitycatalog_user_name}";
 EOF
 
-# Define volume to persist Unity Catalog data
-# VOLUME  "${unitycatalog_home}"
-
 WORKDIR "$unitycatalog_home"
 
 # Copy the Uber-Jar from the previous stage
@@ -138,7 +133,11 @@ COPY <<-"EOF" "${UC_CLI_BIN}"
     # configuration files in etc/conf/...
     relative_path_to_jar="${CLI_ASSEMBLY_JAR//"$ROOT_DIR/"/}"
 
-    java -jar $relative_path_to_jar $@
+    CLI_JAVA_COMMAND="java -jar $relative_path_to_jar $@"
+
+    cd ${ROOT_DIR}
+
+    exec ${CLI_JAVA_COMMAND}
 EOF
 
 # Set ownership of directories and Unity Catalog home directory to a less

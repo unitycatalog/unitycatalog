@@ -13,10 +13,15 @@ cd "$project_dir"
 
 if [[ -r "$docker_file" ]]; then
     echo "Building docker container $container_name:$container_version from Dockerfile $docker_file"
-    docker buildx build --progress=plain -t "$container_name:$container_version" -f "$docker_file" .
+    docker buildx build \
+      --progress=plain \
+      --no-cache \
+      --build-arg unitycatalog_version="$container_version" \
+      -t "$container_name:$container_version" \
+      -f "$docker_file" .
 else
-    echo -e "Dockerfile $docker_file not found in the project's root directory."
-    exit
+    echo -e "Dockerfile $docker_file not found in $project_dir. Exiting..."
+    exit 1
 fi
 
 echo "Returning to base directory $current_dir"

@@ -1,6 +1,6 @@
-# Unity Catalog Dockerized Environment
+# Unity Catalog Docker Images
 
-This project provides a Dockerized environment for running Unity Catalog. It includes everything needed to set up and interact with the catalog for testing purposes.
+This project provides the Docker images for running Unity Catalog Server and CLI.
 
 ## Prerequisites
 
@@ -9,35 +9,64 @@ Before you can build the Docker image, install the following tools:
 * [Docker](https://www.docker.com/)
 * [jq](https://jqlang.github.io/jq/)
 
-## Usage
+## Building Unity Catalog Server Image
 
-### Building Image
-
-[build-uc-server-docker](./bin/build-uc-server-docker) is used to build the Docker image for Unity Catalog.
+[build-uc-server-docker](./bin/build-uc-server-docker) builds the Docker image of Unity Catalog Localhost Reference Server.
 
 ```bash
 ./docker/bin/build-uc-server-docker
 ```
 
-This will create an image named `unitycatalog` and the version of the image would follow the version of the active git branch.
+`build-uc-server-docker` creates an image named `unitycatalog` with the version from [version.sbt](../version.sbt).
 
-#### Unity Catalog CLI
+```console
+❯ docker images "unitycatalog:*"
+REPOSITORY     TAG              IMAGE ID       CREATED             SIZE
+unitycatalog   0.2.0-SNAPSHOT   21b6e442f1a4   About an hour ago   332MB
+```
 
-Run the build script from the project directory to build the Unity Catalog CLI image.
+## Running Unity Catalog Server Container
+
+[start-uc-server-in-docker](./bin/start-uc-server-in-docker) script starts the Unity Catalog server container.
+
+The script also creates a network named `unitycatalog_network` that the container attaches to.
+
+```bash
+./docker/bin/start-uc-server-in-docker
+```
+
+> \[!TIP\]
+> You can run the docker container with different settings such as using a different network, volume, or ports.
+> The run script is only for demo and happy path.
+
+This will start the container that is listening on port `8081`.
+
+```console
+❯ ./bin/uc catalog list --server http://localhost:8081
+┌─────┬────────────┬──────────┬─────────────┬──────────┬────────────────────────────────────┐
+│NAME │  COMMENT   │PROPERTIES│ CREATED_AT  │UPDATED_AT│                 ID                 │
+├─────┼────────────┼──────────┼─────────────┼──────────┼────────────────────────────────────┤
+│unity│Main catalog│{}        │1721241605334│null      │f029b870-9468-4f10-badc-630b41e5690d│
+└─────┴────────────┴──────────┴─────────────┴──────────┴────────────────────────────────────┘
+```
+
+## Building Unity Catalog CLI Image
+
+[build-uc-cli-docker](./bin/build-uc-cli-docker) builds the Docker image of Unity Catalog CLI.
 
 ```bash
 ./docker/bin/build-uc-cli-docker
 ```
 
-Start the non-dockerized Unity Catalog reference server.
+`build-uc-cli-docker` creates an image named `unitycatalog-cli` with the version from [version.sbt](../version.sbt).
 
-Run the CLI using `start-uc-cli-in-docker` script to start the Unity Catalog CLI dockerized.
-
-```bash
-./docker/bin/start-uc-cli-in-docker --help
+```console
+❯ docker images "unitycatalog-cli:*"
+REPOSITORY         TAG              IMAGE ID       CREATED       SIZE
+unitycatalog-cli   0.2.0-SNAPSHOT   e9745f21faa6   4 hours ago   1.48GB
 ```
 
-#### Access Unity Catalog Localhost Reference Server on macOS
+## Access Unity Catalog Localhost Reference Server on macOS
 
 Start the Unity Catalog Localhost Reference Server.
 
@@ -63,28 +92,12 @@ Execute `start-uc-cli-in-docker` to connect to the Unity Catalog server on your 
 └─────┴────────────┴──────────┴─────────────┴──────────┴────────────────────────────────────┘
 ```
 
-### Running Dockerized Unity Catalog Localhost Reference Server
-
-The `start-uc-server-in-docker` script starts the Unity Catalog container.
-
-It also creates a network named `unitycatalog_network` for the container to use. Run it from the project directory:
-
-```bash
-./docker/bin/start-uc-server-in-docker
-```
-
-> \[!TIP\]
-> You can run the docker container with different settings such as using a different network, volume, or ports.
-> The run script is only for demo and happy path.
-
-This will start the container and make it accessible on port `8081` within the `unitycatalog_network` and create a volume named `unitycatalog_volume`.
-
-### 3. Adding Custom Startup Code
+## Adding Custom Startup Code
 
 > \[!NOTE\]
 > This feature has been removed temporarily until we find out the best way to add customisations to the containerisation process.
 
-### 4. Testing the Catalog
+## Testing Unity Catalog
 
 This project provides several examples using `curl` commands to interact with the Unity Catalog API and demonstrate basic functionalities.
 
@@ -92,7 +105,7 @@ This project provides several examples using `curl` commands to interact with th
 > If you wish to use the CLI to test the catalog, run a docker CLI instance and follow the instructions
 > from the repositories main readme.
 
-#### 4.1. Store the Catalog Endpoint
+### Store the Catalog Endpoint
 
 The examples use a variable `unitycatalog_endpoint` to store the catalog's URL. Update this variable with the actual address based on your network configuration.
 
@@ -113,7 +126,7 @@ unitycatalog_endpoint="http://unitycatalog:8080/api/2.1/unity-catalog"
 > This is OS specific, therefore we opted for the most generic option, which is to create
 > a docker network, but feel free to change those configurations to suit your needs.
 
-#### 4.2. Create a Catalog
+### Create Catalog
 
 This example demonstrates creating a new catalog named "MyCatalog" with a description and properties:
 
@@ -137,7 +150,7 @@ create_catalog_request=$(printf "curl -s -X POST \
 docker run --rm --network unitycatalog_network alpine/curl sh -c "$create_catalog_request" | jq .
 ```
 
-#### 4.3. List Catalogs
+### List Catalogs
 
 This example lists all available catalogs:
 
@@ -148,7 +161,7 @@ list_catalog_request_body="curl -s --location '$unitycatalog_endpoint/catalogs' 
 docker run --rm --network unitycatalog_network alpine/curl sh -c "$list_catalog_request_body" | jq .
 ```
 
-#### 4.4. Create a Schema
+### Create a Schema
 
 This example creates a new schema named "Schema_A" within the "MyCatalog" catalog:
 
@@ -174,7 +187,7 @@ create_schema_a_request=$(printf "curl -s \
 docker run --rm --network unitycatalog_network alpine/curl sh -c "$create_schema_a_request" | jq .
 ```
 
-#### 4.5. List Schemas
+### List Schemas
 
 This example lists all schemas within the "MyCatalog" catalog:
 
@@ -187,7 +200,7 @@ echo $list_schemas_request
 docker run --rm --network unitycatalog_network alpine/curl sh -c "$list_schemas_request" | jq .
 ```
 
-#### 4.6. Create a Managed Table
+### Create Managed Table
 
 This example demonstrates creating a managed table named "Table_A" within the "Schema_A" schema of the "MyCatalog" catalog. A managed table lets Unity Catalog manage the data location.
 
@@ -237,11 +250,11 @@ create_table_a_request=$(printf "curl -s \
 docker run --rm --network unitycatalog_network alpine/curl sh -c "$create_table_a_request" | jq .
 ```
 
-#### 4.7. Create an External Table
+### Create an External Table
 
 This example demonstrates creating an external table named "Table_B" within the "Schema_A" schema of the "MyCatalog" catalog. An external table points to existing data stored outside of Unity Catalog.
 
-##### 4.7.1. Prepare the Data
+#### Prepare Data
 
 First, you'll need to create a CSV file containing the data for the table. This example creates a file named `test.csv` within the container's `/opt/unitycatalog/external_data` directory:
 
@@ -256,7 +269,7 @@ printf '"ID", "FirstName", "LastName"
 "3", "Paul", "Clark"\n' > test.csv
 ```
 
-##### 4.7.2. Define the Table
+#### Define Table
 
 Now, define the external table using a `curl` command. The `storage_location` property points to the CSV file location within the container:
 
@@ -306,7 +319,3 @@ create_table_b_request=$(printf "curl -s \
 
 docker run --rm --network unitycatalog_network alpine/curl sh -c "$create_table_b_request" | jq .
 ```
-
-### 5. Additional Notes\*\*
-
-This document provides a basic overview of how to run unity catalog inside a docker and interact with its API.
