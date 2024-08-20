@@ -21,7 +21,7 @@ public class TestUtils {
   public static final String SCHEMA_FULL_NAME = CATALOG_NAME + "." + SCHEMA_NAME;
   public static final String SCHEMA_NEW_NAME = "uc_newtestschema";
   public static final String SCHEMA_NEW_FULL_NAME = CATALOG_NAME + "." + SCHEMA_NEW_NAME;
-  public static final String SCHEMA_COMMENT = "test comment";
+  public static final String SCHEMA_NEW_COMMENT = "new test comment";
   public static final String TABLE_FULL_NAME = CATALOG_NAME + "." + SCHEMA_NAME + "." + TABLE_NAME;
   public static final String VOLUME_FULL_NAME =
       CATALOG_NAME + "." + SCHEMA_NAME + "." + VOLUME_NAME;
@@ -35,6 +35,8 @@ public class TestUtils {
       CATALOG_NAME + "." + SCHEMA_NAME + "." + VOLUME_NEW_NAME;
   public static final Map<String, String> PROPERTIES =
       new HashMap<>(Map.of("prop1", "value1", "prop2", "value2"));
+  public static final Map<String, String> NEW_PROPERTIES =
+      new HashMap<>(Map.of("prop2", "value22", "prop3", "value33"));
 
   public static int getRandomPort() {
     return (int) (Math.random() * 1000) + 9000;
