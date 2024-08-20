@@ -148,7 +148,7 @@ We'll start with a basic example using only scalar values.
 
 Suppose you want to register the following function to Unity Catalog: `c = a * b`
 
-To do so, define a new Function by its full name, specify the data type of the output, the input parameters and their data types, and
+To do so, define a new Function by its full name, specify the data type of the output, the input parameters and their data types, and define the function.
 
 ```sh
 bin/uc function create --full_name unity.default.my_function \

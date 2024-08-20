@@ -74,13 +74,18 @@ public class CliUtils {
               CATALOG,
               new HashMap<String, CliOptions>() {
                 {
-                  put(CREATE, new CliOptions(List.of(CliParams.NAME), List.of(CliParams.COMMENT)));
+                  put(
+                      CREATE,
+                      new CliOptions(
+                          List.of(CliParams.NAME),
+                          List.of(CliParams.COMMENT, CliParams.PROPERTIES)));
                   put(LIST, new CliOptions(List.of(), List.of(CliParams.MAX_RESULTS)));
                   put(GET, new CliOptions(List.of(CliParams.NAME), List.of()));
                   put(
                       UPDATE,
                       new CliOptions(
-                          List.of(CliParams.NAME), List.of(CliParams.NEW_NAME, CliParams.COMMENT)));
+                          List.of(CliParams.NAME),
+                          List.of(CliParams.NEW_NAME, CliParams.COMMENT, CliParams.PROPERTIES)));
                   put(DELETE, new CliOptions(List.of(CliParams.NAME), List.of(CliParams.FORCE)));
                 }
               });
@@ -92,7 +97,7 @@ public class CliUtils {
                       CREATE,
                       new CliOptions(
                           List.of(CliParams.CATALOG_NAME, CliParams.NAME),
-                          List.of(CliParams.COMMENT)));
+                          List.of(CliParams.COMMENT, CliParams.PROPERTIES)));
                   put(
                       LIST,
                       new CliOptions(
@@ -102,7 +107,7 @@ public class CliUtils {
                       UPDATE,
                       new CliOptions(
                           List.of(CliParams.FULL_NAME),
-                          List.of(CliParams.NEW_NAME, CliParams.COMMENT)));
+                          List.of(CliParams.NEW_NAME, CliParams.COMMENT, CliParams.PROPERTIES)));
                   put(
                       DELETE,
                       new CliOptions(List.of(CliParams.FULL_NAME), List.of(CliParams.FORCE)));

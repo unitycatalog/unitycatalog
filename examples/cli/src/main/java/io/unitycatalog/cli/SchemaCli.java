@@ -10,6 +10,7 @@ import io.unitycatalog.client.ApiClient;
 import io.unitycatalog.client.ApiException;
 import io.unitycatalog.client.api.SchemasApi;
 import io.unitycatalog.client.model.CreateSchema;
+import io.unitycatalog.client.model.SchemaInfo;
 import io.unitycatalog.client.model.UpdateSchema;
 import java.util.List;
 import org.apache.commons.cli.CommandLine;
@@ -51,9 +52,14 @@ public class SchemaCli {
 
   private static String createSchema(SchemasApi schemasApi, JSONObject json)
       throws JsonProcessingException, ApiException {
-    CreateSchema createSchema;
-    createSchema = objectMapper.readValue(json.toString(), CreateSchema.class);
-    return objectWriter.writeValueAsString(schemasApi.createSchema(createSchema));
+    CreateSchema createSchema =
+        new CreateSchema()
+            .name(json.getString(CliParams.NAME.getServerParam()))
+            .catalogName(json.getString(CliParams.CATALOG_NAME.getServerParam()))
+            .comment(json.optString(CliParams.COMMENT.getServerParam(), null))
+            .properties(CliUtils.extractProperties(objectMapper, json));
+    SchemaInfo schemaInfo = schemasApi.createSchema(createSchema);
+    return objectWriter.writeValueAsString(schemaInfo);
   }
 
   private static String listSchemas(SchemasApi schemasApi, JSONObject json)
@@ -86,8 +92,13 @@ public class SchemaCli {
       }
       throw new CliException(errorMessage);
     }
-    UpdateSchema updateSchema = objectMapper.readValue(json.toString(), UpdateSchema.class);
-    return objectWriter.writeValueAsString(schemasApi.updateSchema(schemaFullName, updateSchema));
+    UpdateSchema updateSchema =
+        new UpdateSchema()
+            .newName(json.optString(CliParams.NEW_NAME.getServerParam(), null))
+            .comment(json.optString(CliParams.COMMENT.getServerParam(), null))
+            .properties(CliUtils.extractProperties(objectMapper, json));
+    SchemaInfo schemaInfo = schemasApi.updateSchema(schemaFullName, updateSchema);
+    return objectWriter.writeValueAsString(schemaInfo);
   }
 
   private static String deleteSchema(SchemasApi schemasApi, JSONObject json) throws ApiException {

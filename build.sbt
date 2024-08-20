@@ -23,8 +23,6 @@ lazy val commonSettings = Seq(
   Compile / compile / javacOptions ++= Seq(
     "-Xlint:deprecation",
     "-Xlint:unchecked",
-    "-source", "17",
-    "-target", "17",
     "-g:source,lines,vars",
   ),
   Test / javaOptions ++= Seq (
@@ -111,6 +109,9 @@ lazy val client = (project in file("target/clients/java"))
     name := s"$artifactNamePrefix-client",
     commonSettings,
     javaOnlyReleaseSettings,
+    Compile / compile / javacOptions ++= Seq(
+      "--release", "11",
+    ),
     libraryDependencies ++= Seq(
       "com.fasterxml.jackson.core" % "jackson-annotations" % jacksonVersion,
       "com.fasterxml.jackson.core" % "jackson-core" % jacksonVersion,
@@ -181,6 +182,11 @@ lazy val server = (project in file("server"))
     javaOnlyReleaseSettings,
     javafmtCheckSettings,
     javaCheckstyleSettings(file("dev") / "checkstyle-config.xml"),
+    Compile / compile / javacOptions ++= Seq(
+      "--release", "17",
+      "-processor",
+      "lombok.launch.AnnotationProcessorHider$AnnotationProcessor"
+    ),
     libraryDependencies ++= Seq(
       "com.linecorp.armeria" %  "armeria" % "1.28.4",
       // Netty dependencies
@@ -229,11 +235,6 @@ lazy val server = (project in file("server"))
       "commons-cli" % "commons-cli" % "1.7.0"
     ),
 
-    Compile / compile / javacOptions ++= Seq(
-      "-processor",
-      "lombok.launch.AnnotationProcessorHider$AnnotationProcessor"
-    ),
-
     Compile / sourceGenerators += Def.task {
       val file = (Compile / sourceManaged).value / "io" / "unitycatalog" / "server" / "utils" / "VersionUtils.java"
       IO.write(file,
@@ -259,6 +260,9 @@ lazy val serverModels = (project in file("server") / "target" / "models")
     name := s"$artifactNamePrefix-servermodels",
     commonSettings,
     (Compile / compile) := ((Compile / compile) dependsOn generate).value,
+    Compile / compile / javacOptions ++= Seq(
+      "--release", "17",
+    ),
     libraryDependencies ++= Seq(
       "jakarta.annotation" % "jakarta.annotation-api" % "3.0.0" % Provided,
       "com.fasterxml.jackson.core" % "jackson-annotations" % jacksonVersion,
@@ -296,6 +300,9 @@ lazy val cli = (project in file("examples") / "cli")
     skipReleaseSettings,
     javafmtCheckSettings,
     javaCheckstyleSettings(file("dev") / "checkstyle-config.xml"),
+    Compile / compile / javacOptions ++= Seq(
+      "--release", "17",
+    ),
     libraryDependencies ++= Seq(
       "commons-cli" % "commons-cli" % "1.7.0",
       "org.json" % "json" % "20240303",
@@ -366,6 +373,9 @@ lazy val spark = (project in file("connectors/spark"))
       "--add-opens=java.base/sun.nio.ch=ALL-UNNAMED",
     ),
     javaCheckstyleSettings(file("dev/checkstyle-config.xml")),
+    Compile / compile / javacOptions ++= Seq(
+      "--release", "11",
+    ),
     libraryDependencies ++= Seq(
       "org.apache.spark" %% "spark-sql" % sparkVersion,
       "com.fasterxml.jackson.core" % "jackson-databind" % "2.15.0",
