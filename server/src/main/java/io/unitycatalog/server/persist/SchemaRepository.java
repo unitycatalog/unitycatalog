@@ -16,8 +16,6 @@ import org.hibernate.Session;
 import org.hibernate.SessionFactory;
 import org.hibernate.Transaction;
 import org.hibernate.query.Query;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 
 public class SchemaRepository {
   public static final SchemaRepository INSTANCE = new SchemaRepository();
@@ -27,7 +25,6 @@ public class SchemaRepository {
   private static final FunctionRepository FUNCTION_REPOSITORY = FunctionRepository.getInstance();
   private static final ModelRepository MODEL_REPOSITORY = ModelRepository.getInstance();
   private static final SessionFactory SESSION_FACTORY = HibernateUtils.getSessionFactory();
-  private static final Logger LOGGER = LoggerFactory.getLogger(SchemaRepository.class);
   private static final PagedListingHelper<SchemaInfoDAO> LISTING_HELPER =
       new PagedListingHelper<>(SchemaInfoDAO.class);
 
@@ -62,7 +59,6 @@ public class SchemaRepository {
             .forEach(session::persist);
         session.persist(schemaInfoDAO);
         tx.commit();
-        LOGGER.info("Added schema: {}", schemaInfo.getName());
         addNamespaceData(schemaInfo, createSchema.getCatalogName());
         return schemaInfo;
       } catch (Exception e) {

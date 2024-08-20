@@ -115,7 +115,6 @@ public class ModelRepository {
   }
 
   public RegisteredModelInfo createRegisteredModel(CreateRegisteredModel createRegisteredModel) {
-    LOGGER.info("Starting createRegisteredModel...");
     ValidationUtils.validateSqlObjectName(createRegisteredModel.getName());
     long createTime = System.currentTimeMillis();
     String modelId = UUID.randomUUID().toString();
@@ -248,7 +247,6 @@ public class ModelRepository {
   }
 
   public RegisteredModelInfo updateRegisteredModel(UpdateRegisteredModel updateRegisteredModel) {
-    LOGGER.info("Update Registered Model: Processing request: " + updateRegisteredModel);
     if (updateRegisteredModel.getNewName() != null) {
       ValidationUtils.validateSqlObjectName(updateRegisteredModel.getNewName());
     }
@@ -303,7 +301,6 @@ public class ModelRepository {
         registeredModelInfo.setCatalogName(catalogName);
         registeredModelInfo.setSchemaName(schemaName);
         registeredModelInfo.setFullName(getRegisteredModelFullName(registeredModelInfo));
-        LOGGER.debug("updateRegisteredModel:  Attempting to persist " + registeredModelInfo);
         tx.commit();
       } catch (RuntimeException e) {
         if (tx != null && tx.getStatus().canRollback()) {
@@ -322,6 +319,7 @@ public class ModelRepository {
   }
 
   public void deleteRegisteredModel(String fullName, boolean force) {
+    LOGGER.info("Deleting Registered Model: " + fullName);
     try (Session session = SESSION_FACTORY.openSession()) {
       Transaction tx = session.beginTransaction();
       String[] parts = fullName.split("\\.");
