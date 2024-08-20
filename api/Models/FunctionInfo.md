@@ -20,7 +20,7 @@
 | **security\_type** | **String** | Function security type. | [default to null] |
 | **specific\_name** | **String** | Specific name of the function; Reserved for future use. | [default to null] |
 | **comment** | **String** | User-provided free-form text description. | [optional] [default to null] |
-| **properties** | **String** | JSON-serialized key-value pair map, encoded (escaped) as a string. | [default to null] |
+| **properties** | **String** | JSON-serialized key-value pair map, encoded (escaped) as a string. | [optional] [default to null] |
 | **full\_name** | **String** | Full name of function, in form of __catalog_name__.__schema_name__.__function__name__ | [optional] [default to null] |
 | **created\_at** | **Long** | Time at which this function was created, in epoch milliseconds. | [optional] [default to null] |
 | **updated\_at** | **Long** | Time at which this function was last updated, in epoch milliseconds. | [optional] [default to null] |

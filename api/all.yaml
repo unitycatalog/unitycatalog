@@ -1337,7 +1337,6 @@ components:
         - is_null_call
         - security_type
         - specific_name
-        - properties
     FunctionInfo:
       type: object
       properties:
@@ -1438,7 +1437,6 @@ components:
         - is_null_call
         - security_type
         - specific_name
-        - properties
         - function_id
     ListFunctionsResponse:
       type: object
