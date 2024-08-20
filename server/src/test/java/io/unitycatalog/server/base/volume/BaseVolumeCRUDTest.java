@@ -157,7 +157,7 @@ public abstract class BaseVolumeCRUDTest extends BaseCRUDTest {
 
     // NOW Update the schema name
     schemaOperations.updateSchema(
-        SCHEMA_FULL_NAME, new UpdateSchema().newName(SCHEMA_NEW_NAME).comment(SCHEMA_COMMENT));
+        SCHEMA_FULL_NAME, new UpdateSchema().newName(SCHEMA_NEW_NAME).comment(SCHEMA_NEW_COMMENT));
     // get volume
     VolumeInfo volumePostSchemaNameChange =
         volumeOperations.getVolume(CATALOG_NAME + "." + SCHEMA_NEW_NAME + "." + VOLUME_NAME);
