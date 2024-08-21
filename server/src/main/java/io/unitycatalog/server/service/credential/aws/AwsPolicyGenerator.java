@@ -84,6 +84,7 @@ public class AwsPolicyGenerator {
         ArrayNode conditionalPrefixes = (ArrayNode) listStatement.findPath("s3:prefix");
         paths.forEach(
           path -> {
+            // remove any preceding forward slashes
             String sanitizedPath = path.replaceAll("^/+", "");
 
             if (sanitizedPath.isEmpty()) {

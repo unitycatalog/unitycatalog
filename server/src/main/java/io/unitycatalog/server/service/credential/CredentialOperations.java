@@ -17,7 +17,6 @@ import io.unitycatalog.server.service.credential.gcp.GcpCredentialVendor;
 import software.amazon.awssdk.services.sts.model.Credentials;
 
 import java.net.URI;
-import java.util.List;
 import java.util.Set;
 
 import static io.unitycatalog.server.utils.Constants.URI_SCHEME_ABFS;
@@ -37,7 +36,7 @@ public class CredentialOperations {
     this.gcpCredentialVendor = new GcpCredentialVendor();
   }
 
-  public GenerateTemporaryTableCredentialResponse vendCredentialForTable(TableInfo table) {
+  public GenerateTemporaryTableCredentialResponse vendCredentialForTable(TableInfo table, Set<CredentialContext.Privilege> privileges) {
     String tableStorageLocation = table.getStorageLocation();
     if (tableStorageLocation == null || tableStorageLocation.isEmpty()) {
       throw new BaseException(ErrorCode.FAILED_PRECONDITION, "Table storage location not found.");
@@ -45,14 +44,13 @@ public class CredentialOperations {
 
     URI storageLocationUri = URI.create(tableStorageLocation);
 
-    // FIXME!! Update privileges when access controls are implemented
-    CredentialContext credentialContext = CredentialContext.create(storageLocationUri,
-      Set.of(CredentialContext.Privilege.SELECT, CredentialContext.Privilege.UPDATE));
+    // TODO: At some point, we need to check if user/subject has privileges they are asking for
+    CredentialContext credentialContext = CredentialContext.create(storageLocationUri, privileges);
 
     return vendCredential(credentialContext).toTableCredentialResponse();
   }
 
-  public GenerateTemporaryVolumeCredentialResponse vendCredentialForVolume(VolumeInfo volume) {
+  public GenerateTemporaryVolumeCredentialResponse vendCredentialForVolume(VolumeInfo volume, Set<CredentialContext.Privilege> privileges) {
     String volumePath = volume.getStorageLocation();
     if (volumePath == null || volumePath.isEmpty()) {
       throw new BaseException(ErrorCode.FAILED_PRECONDITION, "Volume storage location not found.");
@@ -60,9 +58,8 @@ public class CredentialOperations {
 
     URI storageLocationUri = URI.create(volumePath);
 
-    // FIXME!! Update privileges when access controls are implemented
-    CredentialContext credentialContext = CredentialContext.create(storageLocationUri,
-      Set.of(CredentialContext.Privilege.SELECT, CredentialContext.Privilege.UPDATE));
+    // TODO: At some point, we need to check if user/subject has privileges they are asking for
+    CredentialContext credentialContext = CredentialContext.create(storageLocationUri, privileges);
 
     return vendCredential(credentialContext).toVolumeCredentialResponse();
   }

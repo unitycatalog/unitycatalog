@@ -8,8 +8,16 @@ import io.unitycatalog.server.exception.ErrorCode;
 import io.unitycatalog.server.exception.GlobalExceptionHandler;
 import io.unitycatalog.server.model.GenerateTemporaryVolumeCredential;
 import io.unitycatalog.server.model.VolumeInfo;
+import io.unitycatalog.server.model.VolumeOperation;
 import io.unitycatalog.server.persist.VolumeRepository;
+import io.unitycatalog.server.service.credential.CredentialContext;
 import io.unitycatalog.server.service.credential.CredentialOperations;
+
+import java.util.Collections;
+import java.util.Set;
+
+import static io.unitycatalog.server.service.credential.CredentialContext.Privilege.SELECT;
+import static io.unitycatalog.server.service.credential.CredentialContext.Privilege.UPDATE;
 
 @ExceptionHandler(GlobalExceptionHandler.class)
 public class TemporaryVolumeCredentialsService {
@@ -31,6 +39,14 @@ public class TemporaryVolumeCredentialsService {
     }
     VolumeInfo volumeInfo = VOLUME_REPOSITORY.getVolumeById(volumeId);
 
-    return HttpResponse.ofJson(credentialOps.vendCredentialForVolume(volumeInfo));
+    return HttpResponse.ofJson(credentialOps.vendCredentialForVolume(volumeInfo, volumeOperationToPrivileges(generateTemporaryVolumeCredential.getOperation())));
+  }
+
+  private Set<CredentialContext.Privilege> volumeOperationToPrivileges(VolumeOperation volumeOperation) {
+    return switch (volumeOperation) {
+      case READ_VOLUME -> Set.of(SELECT);
+      case WRITE_VOLUME -> Set.of(SELECT, UPDATE);
+      case UNKNOWN_VOLUME_OPERATION -> Collections.emptySet();
+    };
   }
 }

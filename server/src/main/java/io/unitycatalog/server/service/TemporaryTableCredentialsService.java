@@ -6,8 +6,16 @@ import com.linecorp.armeria.server.annotation.Post;
 import io.unitycatalog.server.exception.GlobalExceptionHandler;
 import io.unitycatalog.server.model.GenerateTemporaryTableCredential;
 import io.unitycatalog.server.model.TableInfo;
+import io.unitycatalog.server.model.TableOperation;
 import io.unitycatalog.server.persist.TableRepository;
+import io.unitycatalog.server.service.credential.CredentialContext;
 import io.unitycatalog.server.service.credential.CredentialOperations;
+
+import java.util.Collections;
+import java.util.Set;
+
+import static io.unitycatalog.server.service.credential.CredentialContext.Privilege.SELECT;
+import static io.unitycatalog.server.service.credential.CredentialContext.Privilege.UPDATE;
 
 @ExceptionHandler(GlobalExceptionHandler.class)
 public class TemporaryTableCredentialsService {
@@ -26,6 +34,14 @@ public class TemporaryTableCredentialsService {
     String tableId = generateTemporaryTableCredential.getTableId();
     TableInfo tableInfo = TABLE_REPOSITORY.getTableById(tableId);
 
-    return HttpResponse.ofJson(credentialOps.vendCredentialForTable(tableInfo));
+    return HttpResponse.ofJson(credentialOps.vendCredentialForTable(tableInfo, tableOperationToPrivileges(generateTemporaryTableCredential.getOperation())));
+  }
+
+  private Set<CredentialContext.Privilege> tableOperationToPrivileges(TableOperation tableOperation) {
+    return switch (tableOperation) {
+      case READ -> Set.of(SELECT);
+      case READ_WRITE -> Set.of(SELECT, UPDATE);
+      case UNKNOWN_TABLE_OPERATION -> Collections.emptySet();
+    };
   }
 }

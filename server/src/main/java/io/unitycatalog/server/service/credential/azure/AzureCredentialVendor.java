@@ -4,6 +4,7 @@ import com.azure.core.credential.TokenCredential;
 import com.azure.core.http.HttpClient;
 import com.azure.core.util.Context;
 import com.azure.identity.ClientSecretCredentialBuilder;
+import com.azure.identity.DefaultAzureCredentialBuilder;
 import com.azure.storage.file.datalake.DataLakeServiceAsyncClient;
 import com.azure.storage.file.datalake.DataLakeServiceClientBuilder;
 import com.azure.storage.file.datalake.implementation.util.DataLakeSasImplUtil;
@@ -30,22 +31,29 @@ public class AzureCredentialVendor {
         ADLSLocationUtils.parseLocation(context.getStorageBase());
     ADLSStorageConfig config = adlsConfigurations.get(locationParts.accountName());
 
-    // FIXME!! azure sas token expiration hardcoded to an hour
-    OffsetDateTime start = OffsetDateTime.now();
-    OffsetDateTime expiry = start.plusHours(1);
-
-    TokenCredential tokenCredential =
-        new ClientSecretCredentialBuilder()
-            .tenantId(config.getTenantId())
-            .clientId(config.getClientId())
-            .clientSecret(config.getClientSecret())
-            .build();
+    TokenCredential tokenCredential;
+    if (config == null) {
+      // fallback to creating credential from environment variables (or somewhere on the default
+      // chain)
+      tokenCredential = new DefaultAzureCredentialBuilder().build();
+    } else {
+      tokenCredential =
+          new ClientSecretCredentialBuilder()
+              .tenantId(config.getTenantId())
+              .clientId(config.getClientId())
+              .clientSecret(config.getClientSecret())
+              .build();
+    }
     DataLakeServiceAsyncClient serviceClient =
         new DataLakeServiceClientBuilder()
             .httpClient(HttpClient.createDefault())
             .endpoint("https://" + locationParts.account())
             .credential(tokenCredential)
             .buildAsyncClient();
+
+    // TODO: possibly make this configurable - defaulted to 1 hour right now
+    OffsetDateTime start = OffsetDateTime.now();
+    OffsetDateTime expiry = start.plusHours(1);
     UserDelegationKey key = serviceClient.getUserDelegationKey(start, expiry).toFuture().join();
 
     PathSasPermission perms = resolvePrivileges(context.getPrivileges());
@@ -54,7 +62,9 @@ public class AzureCredentialVendor {
 
     // azure supports only downscoping to a single location for now
     // azure wants only the path
-    String path = URI.create(context.getLocations().get(0)).getPath().substring(1);
+    String path = URI.create(context.getLocations().get(0)).getPath();
+    // remove any preceding forward slashes
+    path = path.replaceAll("^/+", "");
 
     String sasToken =
         new DataLakeSasImplUtil(sasSignatureValues, locationParts.container(), path, true)
