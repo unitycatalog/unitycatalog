@@ -10,6 +10,12 @@ import scala.language.implicitConversions
 val orgName = "io.unitycatalog"
 val artifactNamePrefix = "unitycatalog"
 
+// Use Java 11 for two modules: clients and spark
+// for better Spark compatibility
+// until Spark 4 comes out with newer Java compatibility
+lazy val javacRelease11 = Seq("--release", "11")
+lazy val javacRelease17 = Seq("--release", "17")
+
 lazy val commonSettings = Seq(
   organization := orgName,
   // Compilation configs
@@ -39,7 +45,7 @@ lazy val commonSettings = Seq(
   crossPaths := false,  // No scala cross building
   assembly / assemblyMergeStrategy := {
     case PathList("META-INF", xs @ _*) => MergeStrategy.discard
-    case x => MergeStrategy.first
+    case _ => MergeStrategy.first
   },
 
   // Test configs
@@ -109,9 +115,7 @@ lazy val client = (project in file("target/clients/java"))
     name := s"$artifactNamePrefix-client",
     commonSettings,
     javaOnlyReleaseSettings,
-    Compile / compile / javacOptions ++= Seq(
-      "--release", "11",
-    ),
+    Compile / compile / javacOptions ++= javacRelease11,
     libraryDependencies ++= Seq(
       "com.fasterxml.jackson.core" % "jackson-annotations" % jacksonVersion,
       "com.fasterxml.jackson.core" % "jackson-core" % jacksonVersion,
@@ -209,10 +213,9 @@ lazy val server = (project in file("server"))
     javafmtCheckSettings,
     javaCheckstyleSettings(file("dev") / "checkstyle-config.xml"),
     Compile / compile / javacOptions ++= Seq(
-      "--release", "17",
       "-processor",
       "lombok.launch.AnnotationProcessorHider$AnnotationProcessor"
-    ),
+    ) ++ javacRelease17,
     libraryDependencies ++= Seq(
       "com.linecorp.armeria" %  "armeria" % "1.28.4",
       // Netty dependencies
@@ -286,9 +289,7 @@ lazy val serverModels = (project in file("server") / "target" / "models")
     name := s"$artifactNamePrefix-servermodels",
     commonSettings,
     (Compile / compile) := ((Compile / compile) dependsOn generate).value,
-    Compile / compile / javacOptions ++= Seq(
-      "--release", "17",
-    ),
+    Compile / compile / javacOptions ++= javacRelease17,
     libraryDependencies ++= Seq(
       "jakarta.annotation" % "jakarta.annotation-api" % "3.0.0" % Provided,
       "com.fasterxml.jackson.core" % "jackson-annotations" % jacksonVersion,
@@ -326,9 +327,7 @@ lazy val cli = (project in file("examples") / "cli")
     skipReleaseSettings,
     javafmtCheckSettings,
     javaCheckstyleSettings(file("dev") / "checkstyle-config.xml"),
-    Compile / compile / javacOptions ++= Seq(
-      "--release", "17",
-    ),
+    Compile / compile / javacOptions ++= javacRelease17,
     libraryDependencies ++= Seq(
       "commons-cli" % "commons-cli" % "1.7.0",
       "org.json" % "json" % "20240303",
@@ -365,10 +364,11 @@ lazy val cli = (project in file("examples") / "cli")
 lazy val serverShaded = (project in file("server-shaded"))
   .dependsOn(server % "compile->compile, test->compile")
   .settings(
-    name := s"${artifactNamePrefix}-server-shaded",
+    name := s"$artifactNamePrefix-server-shaded",
     commonSettings,
     skipReleaseSettings,
     Compile / packageBin := assembly.value,
+    assembly / mainClass := Some("io.unitycatalog.server.UnityCatalogServer"),
     assembly / logLevel := Level.Warn,
     assembly / test := {},
     assembly / assemblyShadeRules := Seq(
@@ -376,11 +376,6 @@ lazy val serverShaded = (project in file("server-shaded"))
       ShadeRule.rename("org.antlr.**" -> "shaded.@0").inAll,
     ),
     assemblyPackageScala / assembleArtifact := false,
-
-    assembly / assemblyMergeStrategy := {
-      case PathList("META-INF", xs@_*) => MergeStrategy.discard
-      case _ => MergeStrategy.first
-    },
     assembly / fullClasspath := {
       val compileClasspath = (server / Compile / fullClasspath).value
       val testClasses = (server / Test / products).value
@@ -399,9 +394,7 @@ lazy val spark = (project in file("connectors/spark"))
       "--add-opens=java.base/sun.nio.ch=ALL-UNNAMED",
     ),
     javaCheckstyleSettings(file("dev/checkstyle-config.xml")),
-    Compile / compile / javacOptions ++= Seq(
-      "--release", "11",
-    ),
+    Compile / compile / javacOptions ++= javacRelease11,
     libraryDependencies ++= Seq(
       "org.apache.spark" %% "spark-sql" % sparkVersion,
       "com.fasterxml.jackson.core" % "jackson-databind" % "2.15.0",
