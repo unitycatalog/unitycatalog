@@ -72,7 +72,9 @@ public class PermissionCli {
         new UpdateAuthorizationRequest().changes(List.of(updateAuthorizationChange));
 
     return objectWriter.writeValueAsString(
-        permissionsApi.updatePermission(resourceType, name, updateAuthorizationRequest));
+        permissionsApi
+            .updatePermission(resourceType, name, updateAuthorizationRequest)
+            .getPrivilegeAssignments());
   }
 
   private static String getPermission(PermissionsApi permissionsApi, JSONObject json)
@@ -85,6 +87,6 @@ public class PermissionCli {
       principal = json.getString(CliParams.PRINCIPAL.getServerParam());
     }
     return objectWriter.writeValueAsString(
-        permissionsApi.getPermission(resourceType, name, principal));
+        permissionsApi.getPermission(resourceType, name, principal).getPrivilegeAssignments());
   }
 }

@@ -54,7 +54,7 @@ public enum CliParams {
   ID("id", "The id of the user", "id"),
   DISPLAY_NAME("displayName", "The name of the user", "displayName"),
   EXTERNAL_ID("externalId", "The SCIM external id", "externalId"),
-  EMAILS("emails", "E-mail addresses for the user, comma separated", "emails"),
+  EMAIL("email", "E-mail address for the user", "email"),
   FILTER("filter", "Query by which the results have to be filtered", "filter"),
   START_INDEX(
       "startIndex",

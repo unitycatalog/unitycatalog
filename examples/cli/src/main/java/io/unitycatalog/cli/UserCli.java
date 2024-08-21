@@ -11,6 +11,7 @@ import io.unitycatalog.control.ApiException;
 import io.unitycatalog.control.api.UsersApi;
 import io.unitycatalog.control.model.Email;
 import io.unitycatalog.control.model.UserResource;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.stream.Collectors;
 import org.apache.commons.cli.CommandLine;
@@ -52,12 +53,7 @@ public class UserCli {
   private static String createUser(UsersApi usersApi, JSONObject json)
       throws JsonProcessingException, ApiException {
     List<Email> emails =
-        CliUtils.parseToList(json.getString(CliParams.EMAILS.getServerParam()), "\\,").stream()
-            .map(e -> new Email().value(e))
-            .collect(Collectors.toList());
-    if (!emails.isEmpty()) {
-      emails.get(0).setPrimary(true);
-    }
+        List.of(new Email().value(json.getString(CliParams.EMAIL.getServerParam())).primary(true));
     String externalId = null;
     if (json.has(CliParams.EXTERNAL_ID.getServerParam())) {
       externalId = json.getString(CliParams.EXTERNAL_ID.getServerParam());
@@ -67,23 +63,18 @@ public class UserCli {
             .displayName(json.getString(CliParams.DISPLAY_NAME.getServerParam()))
             .externalId(externalId)
             .emails(emails);
-    return objectWriter.writeValueAsString(usersApi.createUser(userResource));
+    UserResource user = usersApi.createUser(userResource);
+    return objectWriter.writeValueAsString(User.fromUserResource(user));
   }
 
   private static String updateUser(UsersApi usersApi, JSONObject json)
       throws JsonProcessingException, ApiException {
-    List<Email> emails = List.of();
+    List<Email> emails = new ArrayList<>();
     String displayName = null;
     String externalId = null;
 
-    if (json.has(CliParams.EMAILS.getServerParam())) {
-      emails =
-          CliUtils.parseToList(json.getString(CliParams.EMAILS.getServerParam()), "\\,").stream()
-              .map(e -> new Email().value(e))
-              .collect(Collectors.toList());
-      if (!emails.isEmpty()) {
-        emails.get(0).setPrimary(true);
-      }
+    if (json.has(CliParams.EMAIL.getServerParam())) {
+      emails.add(new Email().value(json.getString(CliParams.EMAIL.getServerParam())).primary(true));
     }
 
     if (json.has(CliParams.DISPLAY_NAME.getServerParam())) {
@@ -97,7 +88,8 @@ public class UserCli {
     String id = json.getString(CliParams.ID.getServerParam());
     UserResource userResource =
         new UserResource().id(id).displayName(displayName).externalId(externalId).emails(emails);
-    return objectWriter.writeValueAsString(usersApi.updateUser(id, userResource));
+    UserResource user = usersApi.updateUser(id, userResource);
+    return objectWriter.writeValueAsString(User.fromUserResource(user));
   }
 
   private static String listUsers(UsersApi usersApi, JSONObject json)
@@ -114,18 +106,61 @@ public class UserCli {
     if (json.has(CliParams.COUNT.getServerParam())) {
       count = json.getInt(CliParams.COUNT.getServerParam());
     }
-    return objectWriter.writeValueAsString(usersApi.listUsers(filter, startIndex, count));
+    List<User> users =
+        usersApi.listUsers(filter, startIndex, count).stream()
+            .map(User::fromUserResource)
+            .collect(Collectors.toList());
+    return objectWriter.writeValueAsString(users);
   }
 
   private static String getUser(UsersApi usersApi, JSONObject json)
       throws JsonProcessingException, ApiException {
     String id = json.getString(CliParams.ID.getServerParam());
-    return objectWriter.writeValueAsString(usersApi.getUser(id));
+    UserResource user = usersApi.getUser(id);
+    return objectWriter.writeValueAsString(User.fromUserResource(user));
   }
 
   private static String deleteUser(UsersApi usersApi, JSONObject json) throws ApiException {
     String id = json.getString(CliParams.ID.getServerParam());
     usersApi.deleteUser(id);
     return EMPTY;
+  }
+
+  private static class User {
+    private String id;
+    private String email;
+    private String displayName;
+    private String externalId;
+
+    public User(String id, String email, String displayName, String externalId) {
+      this.id = id;
+      this.email = email;
+      this.displayName = displayName;
+      this.externalId = externalId;
+    }
+
+    public static User fromUserResource(UserResource userResource) {
+      return new User(
+          userResource.getId(),
+          userResource.getEmails().get(0).getValue(),
+          userResource.getDisplayName(),
+          userResource.getExternalId());
+    }
+
+    public String getId() {
+      return id;
+    }
+
+    public String getEmail() {
+      return email;
+    }
+
+    public String getDisplayName() {
+      return displayName;
+    }
+
+    public String getExternalId() {
+      return externalId;
+    }
   }
 }
