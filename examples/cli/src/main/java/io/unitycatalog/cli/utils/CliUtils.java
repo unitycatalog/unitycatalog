@@ -189,8 +189,8 @@ public class CliUtils {
                   put(
                       CREATE,
                       new CliOptions(
-                          List.of(CliParams.DISPLAY_NAME, CliParams.EXTERNAL_ID, CliParams.EMAILS),
-                          List.of()));
+                          List.of(CliParams.DISPLAY_NAME, CliParams.EMAILS),
+                          List.of(CliParams.EXTERNAL_ID)));
                   put(
                       LIST,
                       new CliOptions(
@@ -200,7 +200,9 @@ public class CliUtils {
                   put(
                       UPDATE,
                       new CliOptions(
-                          List.of(CliParams.NAME), List.of(CliParams.NEW_NAME, CliParams.COMMENT)));
+                          List.of(CliParams.ID),
+                          List.of(
+                              CliParams.DISPLAY_NAME, CliParams.EXTERNAL_ID, CliParams.EMAILS)));
                   put(DELETE, new CliOptions(List.of(CliParams.ID), List.of()));
                 }
               });
@@ -212,7 +214,7 @@ public class CliUtils {
                       CREATE,
                       new CliOptions(
                           List.of(CliParams.RESOURCE_TYPE, CliParams.NAME, CliParams.PRINCIPAL),
-                          List.of(CliParams.ADD, CliParams.REMOVE)));
+                          List.of(CliParams.ADD)));
                   put(
                       UPDATE,
                       new CliOptions(

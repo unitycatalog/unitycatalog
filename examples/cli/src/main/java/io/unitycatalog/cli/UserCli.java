@@ -3,7 +3,6 @@ package io.unitycatalog.cli;
 import static io.unitycatalog.cli.utils.CliUtils.*;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.ObjectWriter;
 import io.unitycatalog.cli.utils.CliParams;
 import io.unitycatalog.cli.utils.CliUtils;
@@ -32,6 +31,9 @@ public class UserCli {
       case CREATE:
         output = createUser(usersApi, json);
         break;
+      case UPDATE:
+        output = updateUser(usersApi, json);
+        break;
       case LIST:
         output = listUsers(usersApi, json);
         break;
@@ -56,12 +58,46 @@ public class UserCli {
     if (!emails.isEmpty()) {
       emails.get(0).setPrimary(true);
     }
+    String externalId = null;
+    if (json.has(CliParams.EXTERNAL_ID.getServerParam())) {
+      externalId = json.getString(CliParams.EXTERNAL_ID.getServerParam());
+    }
     UserResource userResource =
         new UserResource()
             .displayName(json.getString(CliParams.DISPLAY_NAME.getServerParam()))
-            .externalId(json.getString(CliParams.EXTERNAL_ID.getServerParam()))
+            .externalId(externalId)
             .emails(emails);
     return objectWriter.writeValueAsString(usersApi.createUser(userResource));
+  }
+
+  private static String updateUser(UsersApi usersApi, JSONObject json)
+      throws JsonProcessingException, ApiException {
+    List<Email> emails = List.of();
+    String displayName = null;
+    String externalId = null;
+
+    if (json.has(CliParams.EMAILS.getServerParam())) {
+      emails =
+          CliUtils.parseToList(json.getString(CliParams.EMAILS.getServerParam()), "\\,").stream()
+              .map(e -> new Email().value(e))
+              .collect(Collectors.toList());
+      if (!emails.isEmpty()) {
+        emails.get(0).setPrimary(true);
+      }
+    }
+
+    if (json.has(CliParams.DISPLAY_NAME.getServerParam())) {
+      displayName = json.getString(CliParams.DISPLAY_NAME.getServerParam());
+    }
+
+    if (json.has(CliParams.EXTERNAL_ID.getServerParam())) {
+      externalId = json.getString(CliParams.EXTERNAL_ID.getServerParam());
+    }
+
+    String id = json.getString(CliParams.ID.getServerParam());
+    UserResource userResource =
+        new UserResource().id(id).displayName(displayName).externalId(externalId).emails(emails);
+    return objectWriter.writeValueAsString(usersApi.updateUser(id, userResource));
   }
 
   private static String listUsers(UsersApi usersApi, JSONObject json)

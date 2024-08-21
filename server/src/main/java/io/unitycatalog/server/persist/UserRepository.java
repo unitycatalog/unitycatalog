@@ -45,9 +45,9 @@ public class UserRepository {
     try (Session session = SESSION_FACTORY.openSession()) {
       Transaction tx = session.beginTransaction();
       try {
-        if (getUserByName(session, user.getName()) != null) {
+        if (getUserByEmail(session, user.getEmail()) != null) {
           throw new BaseException(
-              ErrorCode.ALREADY_EXISTS, "User already exists: " + user.getName());
+              ErrorCode.ALREADY_EXISTS, "User already exists: " + user.getEmail());
         }
         session.persist(UserDAO.from(user));
         tx.commit();
@@ -60,12 +60,22 @@ public class UserRepository {
   }
 
   public List<User> listUsers() {
+    return listUsers(false);
+  }
+
+  public List<User> listUsers(boolean includeDisabled) {
     try (Session session = SESSION_FACTORY.openSession()) {
       session.setDefaultReadOnly(true);
       Transaction tx = session.beginTransaction();
       try {
         List<UserDAO> userDAOs =
             LISTING_HELPER.listEntity(session, Optional.empty(), Optional.empty(), null);
+        if (!includeDisabled) {
+          userDAOs =
+              userDAOs.stream()
+                  .filter(userDAO -> !userDAO.getState().equals(User.StateEnum.DISABLED.toString()))
+                  .collect(Collectors.toList());
+        }
         tx.commit();
         return userDAOs.stream().map(UserDAO::toUser).collect(Collectors.toList());
       } catch (Exception e) {
