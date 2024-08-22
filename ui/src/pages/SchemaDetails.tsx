@@ -1,9 +1,9 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import DetailsLayout from '../components/layouts/DetailsLayout';
 import { Flex, Radio, Typography } from 'antd';
 import DescriptionBox from '../components/DescriptionBox';
-import { useGetSchema } from '../hooks/schemas';
+import { useGetSchema, useUpdateSchema } from '../hooks/schemas';
 import SchemaSidebar from '../components/schemas/SchemaSidebar';
 import TablesList from '../components/tables/TablesList';
 import VolumesList from '../components/volumes/VolumesList';
@@ -11,6 +11,8 @@ import FunctionsList from '../components/functions/FunctionsList';
 import { DatabaseOutlined } from '@ant-design/icons';
 import CreateAssetsDropdown from '../components/schemas/CreateAssetsDropdown';
 import SchemaActionsDropdown from '../components/schemas/SchemaActionDropdown';
+import { EditSchemaDescriptionModal } from '../components/modals/EditSchemaDescriptionModal';
+import { useNotification } from '../utils/NotificationContext';
 
 export default function SchemaDetails() {
   const { catalog, schema } = useParams();
@@ -18,42 +20,75 @@ export default function SchemaDetails() {
   if (!schema) throw new Error('Schema name is required');
 
   const { data } = useGetSchema({ catalog, schema });
-  const schemaFullName = [catalog, schema].join('.');
+  const [open, setOpen] = useState<boolean>(false);
+  const { setNotification } = useNotification();
+  // const mutation = useUpdateSchema();
+  const mutation = useUpdateSchema({ catalog, schema });
 
   if (!data) return null;
 
+  const schemaFullName = [catalog, schema].join('.');
+
   return (
-    <DetailsLayout
-      title={
-        <Flex justify="space-between" align="flex-start" gap="middle">
-          <Typography.Title level={3}>
-            <DatabaseOutlined /> {schemaFullName}
-          </Typography.Title>
-          <Flex gap="middle">
-            <SchemaActionsDropdown catalog={catalog} schema={schema} />
-            <CreateAssetsDropdown catalog={catalog} schema={schema} />
+    <>
+      <DetailsLayout
+        title={
+          <Flex justify="space-between" align="flex-start" gap="middle">
+            <Typography.Title level={3}>
+              <DatabaseOutlined /> {schemaFullName}
+            </Typography.Title>
+            <Flex gap="middle">
+              <SchemaActionsDropdown catalog={catalog} schema={schema} />
+              <CreateAssetsDropdown catalog={catalog} schema={schema} />
+            </Flex>
           </Flex>
-        </Flex>
-      }
-      breadcrumbs={[
-        { title: <Link to="/">Catalogs</Link>, key: '_home' },
-        {
-          title: <Link to={`/data/${catalog}`}>{catalog}</Link>,
-          key: '_catalog',
-        },
-        { title: schema, key: '_schema' },
-      ]}
-    >
-      <DetailsLayout.Content>
-        <Flex vertical gap="middle">
-          <DescriptionBox comment={data.comment} />
-          <SchemaDetailsTabs catalog={catalog} schema={schema} />
-        </Flex>
-      </DetailsLayout.Content>
-      <DetailsLayout.Aside>
-        <SchemaSidebar catalog={catalog} schema={schema} />
-      </DetailsLayout.Aside>
-    </DetailsLayout>
+        }
+        breadcrumbs={[
+          { title: <Link to="/">Catalogs</Link>, key: '_home' },
+          {
+            title: <Link to={`/data/${catalog}`}>{catalog}</Link>,
+            key: '_catalog',
+          },
+          { title: schema, key: '_schema' },
+        ]}
+      >
+        <DetailsLayout.Content>
+          <Flex vertical gap="middle">
+            <DescriptionBox
+              comment={data.comment}
+              onEdit={() => setOpen(true)}
+            />
+            <SchemaDetailsTabs catalog={catalog} schema={schema} />
+          </Flex>
+        </DetailsLayout.Content>
+        <DetailsLayout.Aside>
+          <SchemaSidebar catalog={catalog} schema={schema} />
+        </DetailsLayout.Aside>
+      </DetailsLayout>
+      <EditSchemaDescriptionModal
+        open={open}
+        schema={data}
+        closeModal={() => setOpen(false)}
+        onSubmit={(values) =>
+          mutation.mutate(
+            { ...values, name: schema },
+            {
+              onError: (error: Error) => {
+                setNotification(error.message, 'error');
+              },
+              onSuccess: (schema) => {
+                setNotification(
+                  `${schema.name} schema successfully updated`,
+                  'success',
+                );
+                setOpen(false);
+              },
+            },
+          )
+        }
+        loading={mutation.isPending}
+      />
+    </>
   );
 }
 
