@@ -51,8 +51,7 @@ public enum CliParams {
   PRINCIPAL("principal", "The principal whose privileges we are changing", "principal"),
   PRIVILEGE("privilege", "The privilege to add or remove", "privilege"),
   ID("id", "The id of the user", "id"),
-  DISPLAY_NAME("displayName", "The name of the user", "displayName"),
-  EXTERNAL_ID("externalId", "The SCIM external id", "externalId"),
+  EXTERNAL_ID("external_id", "The SCIM external id", "externalId"),
   EMAIL("email", "E-mail address for the user", "email"),
   FILTER("filter", "Query by which the results have to be filtered", "filter"),
   START_INDEX(

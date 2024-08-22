@@ -140,6 +140,9 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/Email'
+        active:
+            description: The active status of the user.
+            type: boolean
         meta:
           description: The metadata of the user.
           type: object

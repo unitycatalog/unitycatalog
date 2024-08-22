@@ -1,6 +1,8 @@
 package io.unitycatalog.cli;
 
 import static io.unitycatalog.cli.utils.CliUtils.*;
+import static io.unitycatalog.client.model.User.StateEnum.DISABLED;
+import static io.unitycatalog.client.model.User.StateEnum.ENABLED;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectWriter;
@@ -61,7 +63,7 @@ public class UserCli {
     }
     UserResource userResource =
         new UserResource()
-            .displayName(json.getString(CliParams.DISPLAY_NAME.getServerParam()))
+            .displayName(json.getString(CliParams.NAME.getServerParam()))
             .externalId(externalId)
             .emails(emails);
     UserResource user = usersApi.createUser(userResource);
@@ -78,8 +80,8 @@ public class UserCli {
       emails.add(new Email().value(json.getString(CliParams.EMAIL.getServerParam())).primary(true));
     }
 
-    if (json.has(CliParams.DISPLAY_NAME.getServerParam())) {
-      displayName = json.getString(CliParams.DISPLAY_NAME.getServerParam());
+    if (json.has(CliParams.NAME.getServerParam())) {
+      displayName = json.getString(CliParams.NAME.getServerParam());
     }
 
     if (json.has(CliParams.EXTERNAL_ID.getServerParam())) {
@@ -133,6 +135,7 @@ public class UserCli {
         .name(userResource.getDisplayName())
         .externalId(userResource.getExternalId())
         .email(userResource.getEmails().get(0).getValue())
+        .state(userResource.getActive() ? ENABLED : DISABLED)
         .createdAt(userResource.getMeta().getCreated())
         .updatedAt(userResource.getMeta().getLastModified());
   }
