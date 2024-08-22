@@ -48,14 +48,14 @@ public class PermissionCli {
     ResourceType resourceType =
         ResourceType.fromValue(json.getString(CliParams.RESOURCE_TYPE.getServerParam()));
     String name = json.getString(CliParams.NAME.getServerParam());
-    List<Privilege> add = List.of();
-    if (subCommand.equals(CREATE) && json.has(CliParams.PRIVILEGE.getServerParam())) {
-      add = List.of(Privilege.fromValue(json.getString(CliParams.PRIVILEGE.getServerParam())));
-    }
-    List<Privilege> remove = List.of();
-    if (subCommand.equals(DELETE) && json.has(CliParams.PRIVILEGE.getServerParam())) {
-      remove = List.of(Privilege.fromValue(json.getString(CliParams.PRIVILEGE.getServerParam())));
-    }
+    List<Privilege> add =
+        subCommand.equals(CREATE)
+            ? List.of(Privilege.fromValue(json.getString(CliParams.PRIVILEGE.getServerParam())))
+            : List.of();
+    List<Privilege> remove =
+        subCommand.equals(DELETE)
+            ? List.of(Privilege.fromValue(json.getString(CliParams.PRIVILEGE.getServerParam())))
+            : List.of();
     UpdateAuthorizationChange updateAuthorizationChange =
         new UpdateAuthorizationChange()
             .principal(json.getString(CliParams.PRINCIPAL.getServerParam()))
