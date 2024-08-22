@@ -140,6 +140,16 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/Email'
+        meta:
+          description: The metadata of the user.
+          type: object
+          properties:
+            created:
+              type: integer
+              format: int64
+            lastModified:
+              type: integer
+              format: int64
     Email:
       description: SCIM email for a user.
       type: object

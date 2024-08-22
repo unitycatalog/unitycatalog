@@ -6,6 +6,7 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectWriter;
 import io.unitycatalog.cli.utils.CliParams;
 import io.unitycatalog.cli.utils.CliUtils;
+import io.unitycatalog.client.model.User;
 import io.unitycatalog.control.ApiClient;
 import io.unitycatalog.control.ApiException;
 import io.unitycatalog.control.api.UsersApi;
@@ -64,7 +65,7 @@ public class UserCli {
             .externalId(externalId)
             .emails(emails);
     UserResource user = usersApi.createUser(userResource);
-    return objectWriter.writeValueAsString(User.fromUserResource(user));
+    return objectWriter.writeValueAsString(fromUserResource(user));
   }
 
   private static String updateUser(UsersApi usersApi, JSONObject json)
@@ -89,7 +90,7 @@ public class UserCli {
     UserResource userResource =
         new UserResource().id(id).displayName(displayName).externalId(externalId).emails(emails);
     UserResource user = usersApi.updateUser(id, userResource);
-    return objectWriter.writeValueAsString(User.fromUserResource(user));
+    return objectWriter.writeValueAsString(fromUserResource(user));
   }
 
   private static String listUsers(UsersApi usersApi, JSONObject json)
@@ -108,7 +109,7 @@ public class UserCli {
     }
     List<User> users =
         usersApi.listUsers(filter, startIndex, count).stream()
-            .map(User::fromUserResource)
+            .map(UserCli::fromUserResource)
             .collect(Collectors.toList());
     return objectWriter.writeValueAsString(users);
   }
@@ -117,7 +118,7 @@ public class UserCli {
       throws JsonProcessingException, ApiException {
     String id = json.getString(CliParams.ID.getServerParam());
     UserResource user = usersApi.getUser(id);
-    return objectWriter.writeValueAsString(User.fromUserResource(user));
+    return objectWriter.writeValueAsString(fromUserResource(user));
   }
 
   private static String deleteUser(UsersApi usersApi, JSONObject json) throws ApiException {
@@ -126,41 +127,13 @@ public class UserCli {
     return EMPTY;
   }
 
-  private static class User {
-    private String id;
-    private String email;
-    private String displayName;
-    private String externalId;
-
-    public User(String id, String email, String displayName, String externalId) {
-      this.id = id;
-      this.email = email;
-      this.displayName = displayName;
-      this.externalId = externalId;
-    }
-
-    public static User fromUserResource(UserResource userResource) {
-      return new User(
-          userResource.getId(),
-          userResource.getEmails().get(0).getValue(),
-          userResource.getDisplayName(),
-          userResource.getExternalId());
-    }
-
-    public String getId() {
-      return id;
-    }
-
-    public String getEmail() {
-      return email;
-    }
-
-    public String getDisplayName() {
-      return displayName;
-    }
-
-    public String getExternalId() {
-      return externalId;
-    }
+  private static User fromUserResource(UserResource userResource) {
+    return new User()
+        .id(userResource.getId())
+        .name(userResource.getDisplayName())
+        .externalId(userResource.getExternalId())
+        .email(userResource.getEmails().get(0).getValue())
+        .createdAt(userResource.getMeta().getCreated())
+        .updatedAt(userResource.getMeta().getLastModified());
   }
 }
