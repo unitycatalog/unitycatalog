@@ -136,10 +136,10 @@ public class ModelRepository {
 
     Transaction tx;
     try (Session session = SESSION_FACTORY.openSession()) {
+      tx = session.beginTransaction();
       String catalogName = registeredModelInfo.getCatalogName();
       String schemaName = registeredModelInfo.getSchemaName();
       UUID schemaId = getSchemaId(session, catalogName, schemaName);
-      tx = session.beginTransaction();
 
       try {
         // Check if registered model already exists
@@ -251,7 +251,7 @@ public class ModelRepository {
       ValidationUtils.validateSqlObjectName(updateRegisteredModel.getNewName());
     }
     if (updateRegisteredModel.getFullName() == null) {
-      throw new BaseException(ErrorCode.INVALID_ARGUMENT, "No model specified.");
+      throw new BaseException(ErrorCode.INVALID_ARGUMENT, "No three tier full name specified.");
     }
     if (updateRegisteredModel.getNewName() == null && updateRegisteredModel.getComment() == null) {
       throw new BaseException(ErrorCode.INVALID_ARGUMENT, "No updated fields defined.");
