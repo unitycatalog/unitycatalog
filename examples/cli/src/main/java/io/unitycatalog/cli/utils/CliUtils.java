@@ -212,13 +212,21 @@ public class CliUtils {
                   put(
                       CREATE,
                       new CliOptions(
-                          List.of(CliParams.RESOURCE_TYPE, CliParams.NAME, CliParams.PRINCIPAL),
-                          List.of(CliParams.ADD)));
+                          List.of(
+                              CliParams.RESOURCE_TYPE,
+                              CliParams.NAME,
+                              CliParams.PRINCIPAL,
+                              CliParams.PRIVILEGE),
+                          List.of()));
                   put(
-                      UPDATE,
+                      DELETE,
                       new CliOptions(
-                          List.of(CliParams.RESOURCE_TYPE, CliParams.NAME, CliParams.PRINCIPAL),
-                          List.of(CliParams.ADD, CliParams.REMOVE)));
+                          List.of(
+                              CliParams.RESOURCE_TYPE,
+                              CliParams.NAME,
+                              CliParams.PRINCIPAL,
+                              CliParams.PRIVILEGE),
+                          List.of()));
                   put(
                       GET,
                       new CliOptions(

@@ -14,7 +14,6 @@ import io.unitycatalog.client.model.ResourceType;
 import io.unitycatalog.client.model.UpdateAuthorizationChange;
 import io.unitycatalog.client.model.UpdateAuthorizationRequest;
 import java.util.List;
-import java.util.stream.Collectors;
 import org.apache.commons.cli.CommandLine;
 import org.json.JSONObject;
 
@@ -31,8 +30,8 @@ public class PermissionCli {
     String output = EMPTY;
     switch (subCommand) {
       case CREATE:
-      case UPDATE:
-        output = updatePermission(permissionsApi, json);
+      case DELETE:
+        output = updatePermission(permissionsApi, json, subCommand);
         break;
       case GET:
         output = getPermission(permissionsApi, json);
@@ -43,25 +42,19 @@ public class PermissionCli {
     postProcessAndPrintOutput(cmd, output, subCommand);
   }
 
-  private static String updatePermission(PermissionsApi permissionsApi, JSONObject json)
+  private static String updatePermission(
+      PermissionsApi permissionsApi, JSONObject json, String subCommand)
       throws JsonProcessingException, ApiException {
     ResourceType resourceType =
         ResourceType.fromValue(json.getString(CliParams.RESOURCE_TYPE.getServerParam()));
     String name = json.getString(CliParams.NAME.getServerParam());
     List<Privilege> add = List.of();
-    if (json.has(CliParams.ADD.getServerParam())) {
-      add =
-          CliUtils.parseToList(json.getString(CliParams.ADD.getServerParam()), "\\,").stream()
-              .map(Privilege::fromValue)
-              .collect(Collectors.toList());
+    if (subCommand.equals(CREATE) && json.has(CliParams.PRIVILEGE.getServerParam())) {
+      add = List.of(Privilege.fromValue(json.getString(CliParams.PRIVILEGE.getServerParam())));
     }
-
     List<Privilege> remove = List.of();
-    if (json.has(CliParams.REMOVE.getServerParam())) {
-      remove =
-          CliUtils.parseToList(json.getString(CliParams.REMOVE.getServerParam()), "\\,").stream()
-              .map(Privilege::fromValue)
-              .collect(Collectors.toList());
+    if (subCommand.equals(DELETE) && json.has(CliParams.PRIVILEGE.getServerParam())) {
+      remove = List.of(Privilege.fromValue(json.getString(CliParams.PRIVILEGE.getServerParam())));
     }
     UpdateAuthorizationChange updateAuthorizationChange =
         new UpdateAuthorizationChange()
