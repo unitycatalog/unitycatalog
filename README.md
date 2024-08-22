@@ -155,6 +155,18 @@ See the [cli usage](docs/usage/cli.md) for more details.
 - Open API specification: The Unity Catalog Rest API is documented [here](api).
 - Compatibility and stability: The APIs are currently evolving and should not be assumed to be stable.
 
+## Building Unity Catalog
+
+Unity Catalog can be built using [sbt](https://www.scala-sbt.org/).
+
+To build UC (incl. [Spark Integration](./connectors/spark) module), run the following command:
+
+```shell
+build/sbt clean package publishLocal spark/publishLocal
+```
+
+Refer to [sbt docs](https://www.scala-sbt.org/1.x/docs/) for more commands.
+
 ## Deployment
 
 - To create a tarball that can be used to deploy the UC server or run the CLI, run the following:
