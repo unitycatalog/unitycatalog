@@ -20,6 +20,7 @@ import io.unitycatalog.server.exception.GlobalExceptionHandler;
 import io.unitycatalog.server.service.CatalogService;
 import io.unitycatalog.server.service.FunctionService;
 import io.unitycatalog.server.service.IcebergRestCatalogService;
+import io.unitycatalog.server.service.ModelService;
 import io.unitycatalog.server.service.PermissionService;
 import io.unitycatalog.server.service.SchemaService;
 import io.unitycatalog.server.service.Scim2UserService;
@@ -27,8 +28,10 @@ import io.unitycatalog.server.service.TableService;
 import io.unitycatalog.server.service.TemporaryTableCredentialsService;
 import io.unitycatalog.server.service.TemporaryVolumeCredentialsService;
 import io.unitycatalog.server.service.VolumeService;
+import io.unitycatalog.server.service.credential.CredentialOperations;
 import io.unitycatalog.server.service.iceberg.FileIOFactory;
 import io.unitycatalog.server.service.iceberg.MetadataService;
+import io.unitycatalog.server.service.iceberg.TableConfigService;
 import io.unitycatalog.server.utils.RESTObjectMapper;
 import io.unitycatalog.server.utils.VersionUtils;
 import io.vertx.core.Verticle;
@@ -67,6 +70,9 @@ public class UnityCatalogServer {
     JacksonRequestConverterFunction unityConverterFunction =
         new JacksonRequestConverterFunction(unityMapper);
 
+    // Credentials Service
+    CredentialOperations credentialOperations = new CredentialOperations();
+
     UnityCatalogAuthorizer authorizer = null;
     try {
       // TODO: Temporary configuration. We'll make this optional with identity config in other PRs
@@ -83,16 +89,23 @@ public class UnityCatalogServer {
     VolumeService volumeService = new VolumeService(authorizer);
     TableService tableService = new TableService(authorizer);
     FunctionService functionService = new FunctionService(authorizer);
+    CatalogService catalogService = new CatalogService();
+    SchemaService schemaService = new SchemaService();
+    VolumeService volumeService = new VolumeService();
+    TableService tableService = new TableService();
+    FunctionService functionService = new FunctionService();
+    ModelService modelService = new ModelService();
     TemporaryTableCredentialsService temporaryTableCredentialsService =
-        new TemporaryTableCredentialsService();
+        new TemporaryTableCredentialsService(credentialOperations);
     TemporaryVolumeCredentialsService temporaryVolumeCredentialsService =
-        new TemporaryVolumeCredentialsService();
+        new TemporaryVolumeCredentialsService(credentialOperations);
     sb.service("/", (ctx, req) -> HttpResponse.of("Hello, Unity Catalog!"))
         .annotatedService(basePath + "catalogs", catalogService, unityConverterFunction)
         .annotatedService(basePath + "schemas", schemaService, unityConverterFunction)
         .annotatedService(basePath + "volumes", volumeService, unityConverterFunction)
         .annotatedService(basePath + "tables", tableService, unityConverterFunction)
         .annotatedService(basePath + "functions", functionService, unityConverterFunction)
+        .annotatedService(basePath + "models", modelService, unityConverterFunction)
         .annotatedService(
             basePath + "temporary-table-credentials", temporaryTableCredentialsService)
         .annotatedService(
@@ -104,10 +117,12 @@ public class UnityCatalogServer {
         new JacksonRequestConverterFunction(icebergMapper);
     JacksonResponseConverterFunction icebergResponseConverter =
         new JacksonResponseConverterFunction(icebergMapper);
-    MetadataService metadataService = new MetadataService(new FileIOFactory());
+    MetadataService metadataService = new MetadataService(new FileIOFactory(credentialOperations));
+    TableConfigService tableConfigService = new TableConfigService(credentialOperations);
     sb.annotatedService(
         basePath + "iceberg",
-        new IcebergRestCatalogService(catalogService, schemaService, tableService, metadataService),
+        new IcebergRestCatalogService(
+            catalogService, schemaService, tableService, tableConfigService, metadataService),
         icebergRequestConverter,
         icebergResponseConverter);
 

@@ -1,15 +1,16 @@
 package io.unitycatalog.server.persist.utils;
 
+import io.unitycatalog.server.service.credential.aws.S3StorageConfig;
+import io.unitycatalog.server.service.credential.azure.ADLSStorageConfig;
 import java.io.IOException;
 import java.io.InputStream;
-import java.net.URI;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.util.HashMap;
+import java.util.Map;
 import java.util.Properties;
-import lombok.AllArgsConstructor;
 import lombok.Getter;
-import lombok.Setter;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -34,20 +35,6 @@ public class ServerPropertiesUtils {
     try (InputStream input = Files.newInputStream(path)) {
       properties.load(input);
       LOGGER.debug("Properties loaded successfully");
-      int i = 0;
-      while (true) {
-        String bucketPath = properties.getProperty("s3.bucketPath." + i);
-        String accessKey = properties.getProperty("s3.accessKey." + i);
-        String secretKey = properties.getProperty("s3.secretKey." + i);
-        String sessionToken = properties.getProperty("s3.sessionToken." + i);
-        if (bucketPath == null || accessKey == null || secretKey == null || sessionToken == null) {
-          break;
-        }
-        S3BucketConfig s3BucketConfig =
-            new S3BucketConfig(bucketPath, accessKey, secretKey, sessionToken);
-        properties.put(bucketPath, s3BucketConfig);
-        i++;
-      }
     } catch (IOException ex) {
       LOGGER.error("Exception during loading properties", ex);
     }
@@ -60,24 +47,83 @@ public class ServerPropertiesUtils {
     return properties.getProperty(key);
   }
 
-  public S3BucketConfig getS3BucketConfig(String s3Path) {
-    URI uri = URI.create(s3Path);
-    String bucketPath = uri.getScheme() + "://" + uri.getHost();
-    return (S3BucketConfig) properties.get(bucketPath);
+  public Map<String, S3StorageConfig> getS3Configurations() {
+    Map<String, S3StorageConfig> s3BucketConfigMap = new HashMap<>();
+    int i = 0;
+    while (true) {
+      String bucketPath = properties.getProperty("s3.bucketPath." + i);
+      String region = properties.getProperty("s3.region." + i);
+      String awsRoleArn = properties.getProperty("s3.awsRoleArn." + i);
+      String accessKey = properties.getProperty("s3.accessKey." + i);
+      String secretKey = properties.getProperty("s3.secretKey." + i);
+      String sessionToken = properties.getProperty("s3.sessionToken." + i);
+      if ((bucketPath == null || region == null || awsRoleArn == null)
+          && (accessKey == null || secretKey == null || sessionToken == null)) {
+        break;
+      }
+      S3StorageConfig s3StorageConfig =
+          S3StorageConfig.builder()
+              .bucketPath(bucketPath)
+              .region(region)
+              .awsRoleArn(awsRoleArn)
+              .accessKey(accessKey)
+              .secretKey(secretKey)
+              .sessionToken(sessionToken)
+              .build();
+      s3BucketConfigMap.put(bucketPath, s3StorageConfig);
+      i++;
+    }
+
+    return s3BucketConfigMap;
+  }
+
+  public Map<String, String> getGcsConfigurations() {
+    Map<String, String> gcsConfigMap = new HashMap<>();
+    int i = 0;
+    while (true) {
+      String bucketPath = properties.getProperty("gcs.bucketPath." + i);
+      String jsonKeyFilePath = properties.getProperty("gcs.jsonKeyFilePath." + i);
+      if (bucketPath == null || jsonKeyFilePath == null) {
+        break;
+      }
+      gcsConfigMap.put(bucketPath, jsonKeyFilePath);
+      i++;
+    }
+
+    return gcsConfigMap;
+  }
+
+  public Map<String, ADLSStorageConfig> getAdlsConfigurations() {
+    Map<String, ADLSStorageConfig> adlsConfigMap = new HashMap<>();
+
+    int i = 0;
+    while (true) {
+      String storageAccountName = properties.getProperty("adls.storageAccountName." + i);
+      String tenantId = properties.getProperty("adls.tenantId." + i);
+      String clientId = properties.getProperty("adls.clientId." + i);
+      String clientSecret = properties.getProperty("adls.clientSecret." + i);
+      if (storageAccountName == null
+          || tenantId == null
+          || clientId == null
+          || clientSecret == null) {
+        break;
+      }
+      adlsConfigMap.put(
+          storageAccountName,
+          ADLSStorageConfig.builder()
+              .storageAccountName(storageAccountName)
+              .tenantId(tenantId)
+              .clientId(clientId)
+              .clientSecret(clientSecret)
+              .build());
+      i++;
+    }
+
+    return adlsConfigMap;
   }
 
   // Get a property value by key with a default value
   public String getProperty(String key, String defaultValue) {
     return properties.getProperty(key, defaultValue);
-  }
-
-  @Getter
-  @Setter
-  @AllArgsConstructor
-  public static class S3BucketConfig {
-    private final String bucketPath;
-    private final String accessKey;
-    private final String secretKey;
-    private final String sessionToken;
   }
 }
