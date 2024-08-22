@@ -17,6 +17,8 @@ public class CredentialContext {
   private String storageScheme;
   private String storageBase;
   private Set<Privilege> privileges;
+  // This is a list of locations to be a little future-proofing when a table could
+  // have more than 1 location where files belonging to table are located
   private List<String> locations;
 
   public static CredentialContext create(URI locationURI, Set<Privilege> privileges) {

@@ -85,6 +85,7 @@ public class AwsPolicyGenerator {
         paths.forEach(
           path -> {
             // remove any preceding forward slashes
+            // TODO: potentially sanitize/encode the whole path to deal with problematic chars
             String sanitizedPath = path.replaceAll("^/+", "");
 
             if (sanitizedPath.isEmpty()) {
