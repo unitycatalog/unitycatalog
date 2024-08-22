@@ -83,6 +83,47 @@ export function useCreateSchema() {
     },
   });
 }
+// =========================
+interface UpdateSchemaParams {
+  catalog: string;
+  schema: string;
+}
+export interface UpdateSchemaMutationParams
+  extends Pick<SchemaInterface, 'name' | 'comment'> {}
+
+// Update a new schema
+export function useUpdateSchema({ catalog, schema }: UpdateSchemaParams) {
+  const queryClient = useQueryClient();
+
+  return useMutation<SchemaInterface, Error, UpdateSchemaMutationParams>({
+    mutationFn: async (params: UpdateSchemaMutationParams) => {
+      const fullSchemaName = [catalog, schema].join('.');
+
+      const response = await fetch(
+        `${UC_API_PREFIX}/schemas/${fullSchemaName}`,
+        {
+          method: 'PATCH',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify(params),
+        },
+      );
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.message || 'Failed to update schema');
+      }
+      return response.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({
+        queryKey: ['getSchema', catalog, schema],
+      });
+    },
+  });
+}
+
+// =========================
 
 export interface DeleteSchemaMutationParams
   extends Pick<SchemaInterface, 'catalog_name' | 'name'> {}
