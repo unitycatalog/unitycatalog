@@ -23,6 +23,7 @@ public class SchemaRepository {
   private static final TableRepository TABLE_REPOSITORY = TableRepository.getInstance();
   private static final VolumeRepository VOLUME_REPOSITORY = VolumeRepository.getInstance();
   private static final FunctionRepository FUNCTION_REPOSITORY = FunctionRepository.getInstance();
+  private static final ModelRepository MODEL_REPOSITORY = ModelRepository.getInstance();
   private static final SessionFactory SESSION_FACTORY = HibernateUtils.getSessionFactory();
   private static final PagedListingHelper<SchemaInfoDAO> LISTING_HELPER =
       new PagedListingHelper<>(SchemaInfoDAO.class);
@@ -350,6 +351,38 @@ public class SchemaRepository {
     }
   }
 
+  public void processChildModels(
+      Session session, UUID schemaId, String catalogName, String schemaName, boolean force) {
+    // first check if there are any child Models
+    List<RegisteredModelInfo> registeredModels =
+        MODEL_REPOSITORY
+            .listRegisteredModels(
+                session, schemaId, catalogName, schemaName, Optional.of(1), Optional.empty())
+            .getRegisteredModels();
+    if (registeredModels != null && !registeredModels.isEmpty()) {
+      if (!force) {
+        throw new BaseException(ErrorCode.FAILED_PRECONDITION, "Cannot delete schema with models");
+      }
+      String nextToken = null;
+      do {
+        ListRegisteredModelsResponse listRegisteredModelsResponse =
+            MODEL_REPOSITORY.listRegisteredModels(
+                session,
+                schemaId,
+                catalogName,
+                schemaName,
+                Optional.empty(),
+                Optional.ofNullable(nextToken));
+        for (RegisteredModelInfo registeredModelInfo :
+            listRegisteredModelsResponse.getRegisteredModels()) {
+          MODEL_REPOSITORY.deleteRegisteredModel(
+              session, schemaId, registeredModelInfo.getName(), true);
+        }
+        nextToken = listRegisteredModelsResponse.getNextPageToken();
+      } while (nextToken != null);
+    }
+  }
+
   public void deleteSchema(
       Session session, UUID catalogId, String catalogName, String schemaName, boolean force) {
     SchemaInfoDAO schemaInfo = getSchemaDAO(session, catalogId, schemaName);
@@ -357,6 +390,7 @@ public class SchemaRepository {
       processChildTables(session, schemaInfo.getId(), catalogName, schemaName, force);
       processChildVolumes(session, schemaInfo.getId(), catalogName, schemaName, force);
       processChildFunctions(session, schemaInfo.getId(), catalogName, schemaName, force);
+      processChildModels(session, schemaInfo.getId(), catalogName, schemaName, force);
       session.remove(schemaInfo);
       PropertyRepository.findProperties(session, schemaInfo.getId(), Constants.SCHEMA)
           .forEach(session::remove);

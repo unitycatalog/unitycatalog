@@ -99,6 +99,9 @@ public class UnityCatalogCli {
         case CliUtils.FUNCTION:
           FunctionCli.handle(cmd, apiClient);
           break;
+        case CliUtils.REGISTERED_MODEL:
+          ModelCli.handle(cmd, apiClient);
+          break;
         default:
           CliUtils.printHelp();
       }

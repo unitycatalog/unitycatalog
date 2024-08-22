@@ -9,14 +9,7 @@ import com.linecorp.armeria.server.ServerBuilder;
 import com.linecorp.armeria.server.annotation.JacksonRequestConverterFunction;
 import com.linecorp.armeria.server.annotation.JacksonResponseConverterFunction;
 import com.linecorp.armeria.server.docs.DocService;
-import io.unitycatalog.server.service.CatalogService;
-import io.unitycatalog.server.service.FunctionService;
-import io.unitycatalog.server.service.IcebergRestCatalogService;
-import io.unitycatalog.server.service.SchemaService;
-import io.unitycatalog.server.service.TableService;
-import io.unitycatalog.server.service.TemporaryTableCredentialsService;
-import io.unitycatalog.server.service.TemporaryVolumeCredentialsService;
-import io.unitycatalog.server.service.VolumeService;
+import io.unitycatalog.server.service.*;
 import io.unitycatalog.server.service.iceberg.FileIOFactory;
 import io.unitycatalog.server.service.iceberg.MetadataService;
 import io.unitycatalog.server.utils.RESTObjectMapper;
@@ -62,6 +55,7 @@ public class UnityCatalogServer {
     VolumeService volumeService = new VolumeService();
     TableService tableService = new TableService();
     FunctionService functionService = new FunctionService();
+    ModelService modelService = new ModelService();
     TemporaryTableCredentialsService temporaryTableCredentialsService =
         new TemporaryTableCredentialsService();
     TemporaryVolumeCredentialsService temporaryVolumeCredentialsService =
@@ -72,6 +66,7 @@ public class UnityCatalogServer {
         .annotatedService(basePath + "volumes", volumeService, unityConverterFunction)
         .annotatedService(basePath + "tables", tableService, unityConverterFunction)
         .annotatedService(basePath + "functions", functionService, unityConverterFunction)
+        .annotatedService(basePath + "models", modelService, unityConverterFunction)
         .annotatedService(
             basePath + "temporary-table-credentials", temporaryTableCredentialsService)
         .annotatedService(
