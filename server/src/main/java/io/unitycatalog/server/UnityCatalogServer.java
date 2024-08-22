@@ -36,7 +36,13 @@ import io.unitycatalog.server.utils.RESTObjectMapper;
 import io.unitycatalog.server.utils.VersionUtils;
 import io.vertx.core.Verticle;
 import io.vertx.core.Vertx;
-import org.apache.commons.cli.*;
+import org.apache.commons.cli.CommandLine;
+import org.apache.commons.cli.CommandLineParser;
+import org.apache.commons.cli.DefaultParser;
+import org.apache.commons.cli.HelpFormatter;
+import org.apache.commons.cli.Option;
+import org.apache.commons.cli.Options;
+import org.apache.commons.cli.ParseException;
 import org.apache.logging.log4j.core.config.Configurator;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -89,11 +95,6 @@ public class UnityCatalogServer {
     VolumeService volumeService = new VolumeService(authorizer);
     TableService tableService = new TableService(authorizer);
     FunctionService functionService = new FunctionService(authorizer);
-    CatalogService catalogService = new CatalogService();
-    SchemaService schemaService = new SchemaService();
-    VolumeService volumeService = new VolumeService();
-    TableService tableService = new TableService();
-    FunctionService functionService = new FunctionService();
     ModelService modelService = new ModelService();
     TemporaryTableCredentialsService temporaryTableCredentialsService =
         new TemporaryTableCredentialsService(credentialOperations);
