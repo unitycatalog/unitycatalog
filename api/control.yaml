@@ -1,0 +1,165 @@
+openapi: 3.0.0
+servers:
+  - url: http://localhost:8080/api/1.0/unity-control
+    description: Localhost reference server
+tags:
+  - name: Users
+    description: |
+      A user is the identity recognized by Unity Catalog.
+
+paths:
+  /scim2/Users:
+    post:
+      tags:
+        - Users
+      operationId: createUser
+      summary: Create a user
+      description: |
+        Creates a new user.
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UserResource'
+      responses:
+        '200':
+          description: The new user was successfully created.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserResource'
+    get:
+      tags:
+        - Users
+      parameters:
+        - name: filter
+          in: query
+          description: Query by which the results have to be filtered.
+          schema:
+            type: string
+          required: false
+        - name: startIndex
+          in: query
+          description: Specifies the index of the first result. First item is number 1.
+          schema:
+            type: integer
+            format: int32
+          required: false
+        - name: count
+          in: query
+          description: Desired number of results per page.
+          schema:
+            type: integer
+            format: int32
+          required: false
+      operationId: listUsers
+      summary: List users
+      description: |
+        Gets details for all the users.
+      responses:
+        '200':
+          description: The user list was successfully retrieved.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/UserResource'
+  /scim2/Users/{id}:
+    parameters:
+      - name: id
+        in: path
+        description: The id of the user.
+        required: true
+        schema:
+          type: string
+    get:
+      tags:
+        - Users
+      operationId: getUser
+      summary: Get a user
+      description: |
+        Gets the specified user.
+      responses:
+        '200':
+          description: The user was successfully retrieved.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserResource'
+    put:
+      tags:
+        - Users
+      operationId: updateUser
+      summary: Update a user
+      description: |
+        Updates the user that matches the supplied id.
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UserResource'
+      responses:
+        '200':
+          description: The user was successfully updated.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserResource'
+    delete:
+      tags:
+        - Users
+      operationId: deleteUser
+      summary: Delete a user
+      description: |
+        Deletes the user that matches the supplied id.
+      responses:
+        '200':
+          description: The user was successfully deleted.
+          content:
+            application/json:
+              schema: {}
+
+components:
+  schemas:
+    UserResource:
+      description: SCIM provides a resource type for "User" resources.
+      type: object
+      properties:
+        id:
+          description: The id of the user.
+          type: string
+        displayName:
+          description: The name of the user.
+          type: string
+        externalId:
+          description: The SCIM external id.
+          type: string
+        emails:
+          description: E-mail addresses for the user.
+          type: array
+          items:
+            $ref: '#/components/schemas/Email'
+        meta:
+          description: The metadata of the user.
+          type: object
+          properties:
+            created:
+              type: integer
+              format: int64
+            lastModified:
+              type: integer
+              format: int64
+    Email:
+      description: SCIM email for a user.
+      type: object
+      properties:
+        value:
+          description: The email of the user.
+          type: string
+        primary:
+          description: If the email is primary.
+          type: boolean
+info:
+  title: Unity Control API
+  version: '0.1'

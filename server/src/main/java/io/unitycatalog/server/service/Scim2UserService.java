@@ -106,6 +106,7 @@ public class Scim2UserService {
 
   @Put("/{id}")
   public HttpResponse updateUser(@Param("id") String id, UserResource userResource) {
+    UserResource user = asUserResource(USER_REPOSITORY.getUser(id));
     if (!id.equals(userResource.getId())) {
       throw new Scim2RuntimeException(new ResourceConflictException("User id mismatch."));
     }
@@ -114,16 +115,20 @@ public class Scim2UserService {
         userResource.getEmails().stream()
             .filter(Email::getPrimary)
             .findFirst()
-            .orElseThrow(
-                () ->
-                    new Scim2RuntimeException(
-                        new PreconditionFailedException("User does not have a primary email.")));
+            .orElse(user.getEmails().get(0));
+
+    String newName = userResource.getDisplayName();
+    if (newName == null) {
+      newName = user.getDisplayName();
+    }
+
+    String externalId = userResource.getExternalId();
+    if (externalId == null) {
+      externalId = user.getExternalId();
+    }
 
     UpdateUser updateUser =
-        new UpdateUser()
-            .newName(userResource.getDisplayName())
-            .email(primaryEmail.getValue())
-            .externalId(userResource.getExternalId());
+        new UpdateUser().newName(newName).email(primaryEmail.getValue()).externalId(externalId);
 
     return HttpResponse.ofJson(asUserResource(USER_REPOSITORY.updateUser(id, updateUser)));
   }

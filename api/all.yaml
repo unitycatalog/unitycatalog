@@ -29,6 +29,9 @@ tags:
     description: |
       Model versions contain all artifact files associated with an individual machine learning model. They are associated with a single parent model and have an integer identifier, indicating the version number of the model.
       Model versions are referenced via model URI's using the Unity Catalog three-level namespace of the registered model and the version identifier.
+  - name: Permissions
+    description: |
+      In Unity Catalog, data is secure by default. Access can be granted.
 paths:
   /catalogs:
     post:
@@ -1016,6 +1019,61 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ModelVersionInfo'
+  /permissions/{resource_type}/{name}:
+    parameters:
+      - name: resource_type
+        in: path
+        description: The type of the resource.
+        required: true
+        schema:
+          $ref: '#/components/schemas/ResourceType'
+      - name: name
+        in: path
+        description: The name of the principal.
+        required: true
+        schema:
+          type: string
+    get:
+      tags:
+        - Permissions
+      parameters:
+        - name: principal
+          in: query
+          description: |
+            If provided, only the permissions for the specified principal are returned.
+          schema:
+            type: string
+          required: false
+      operationId: getPermission
+      summary: Get permissions
+      description: |
+        Gets the permissions for a securable.
+      responses:
+        '200':
+          description: The permissions was successfully retrieved.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UpdateAuthorizationResponse'
+    patch:
+      tags:
+        - Permissions
+      operationId: updatePermission
+      summary: Update a permission
+      description: |
+        Updates the permissions for a securable.
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateAuthorizationRequest'
+      responses:
+        '200':
+          description: The permission was successfully updated.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UpdateAuthorizationResponse'
 components:
   schemas:
     SecurablePropertiesMap:
@@ -2126,85 +2184,6 @@ components:
         - SELECT
         - EXECUTE
       description: The privilege to grant.
-    Authorization:
-      type: object
-      properties:
-        id:
-          description: The unique identifier of the authorization.
-          type: string
-        principal_id:
-          description: The subject of the authorization.
-          type: string
-        principal_type:
-          $ref: '#/components/schemas/PrincipalType'
-        privilege:
-          $ref: '#/components/schemas/Privilege'
-        resource_id:
-          description: The resource to give the privilege to.
-          type: string
-        resource_type:
-          $ref: '#/components/schemas/ResourceType'
-        created_at:
-          description: The time the authorization was created.
-          type: integer
-          format: int64
-        updated_at:
-          description: The time the authorization was last updated.
-          type: integer
-          format: int64
-      required:
-        - id
-        - principal_id
-        - principal_type
-        - privilege
-        - resource_id
-        - resource_type
-    CreateAuthorization:
-      type: object
-      properties:
-        principal_id:
-          description: The subject of the authorization.
-          type: string
-        principal_type:
-          $ref: '#/components/schemas/PrincipalType'
-        privilege:
-          $ref: '#/components/schemas/Privilege'
-        resource_id:
-          description: The resource to give the privilege to.
-          type: string
-        resource_type:
-          $ref: '#/components/schemas/ResourceType'
-        created_at:
-          description: The time the authorization was created.
-          type: integer
-          format: int64
-      required:
-        - principal_id
-        - principal_type
-        - privilege
-        - resource_id
-        - resource_type
-    UpdateAuthorization:
-      type: object
-      properties:
-        principal_id:
-          description: The subject of the authorization.
-          type: string
-        principal_type:
-          $ref: '#/components/schemas/PrincipalType'
-        privilege:
-          $ref: '#/components/schemas/Privilege'
-        resource_id:
-          description: The resource to give the privilege to.
-          type: string
-        resource_type:
-          $ref: '#/components/schemas/ResourceType'
-        updated_at:
-          description: The time the authorization was last updated.
-          type: integer
-          format: int64
-      required:
-        - id
     UpdateAuthorizationRequest:
       type: object
       properties:

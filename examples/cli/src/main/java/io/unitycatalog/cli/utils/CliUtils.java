@@ -30,6 +30,8 @@ public class CliUtils {
   public static final String TABLE = "table";
 
   public static final String FUNCTION = "function";
+  public static final String PERMISSION = "permission";
+  public static final String USER = "user";
   public static final String CREATE = "create";
   public static final String LIST = "list";
   public static final String GET = "get";
@@ -178,6 +180,58 @@ public class CliUtils {
                       EXECUTE,
                       new CliOptions(
                           List.of(CliParams.FULL_NAME, CliParams.INPUT_PARAMS), List.of()));
+                }
+              });
+          put(
+              USER,
+              new HashMap<String, CliOptions>() {
+                {
+                  put(
+                      CREATE,
+                      new CliOptions(
+                          List.of(CliParams.DISPLAY_NAME, CliParams.EMAIL),
+                          List.of(CliParams.EXTERNAL_ID)));
+                  put(
+                      LIST,
+                      new CliOptions(
+                          List.of(),
+                          List.of(CliParams.FILTER, CliParams.START_INDEX, CliParams.COUNT)));
+                  put(GET, new CliOptions(List.of(CliParams.ID), List.of()));
+                  put(
+                      UPDATE,
+                      new CliOptions(
+                          List.of(CliParams.ID),
+                          List.of(CliParams.DISPLAY_NAME, CliParams.EXTERNAL_ID, CliParams.EMAIL)));
+                  put(DELETE, new CliOptions(List.of(CliParams.ID), List.of()));
+                }
+              });
+          put(
+              PERMISSION,
+              new HashMap<String, CliOptions>() {
+                {
+                  put(
+                      CREATE,
+                      new CliOptions(
+                          List.of(
+                              CliParams.RESOURCE_TYPE,
+                              CliParams.NAME,
+                              CliParams.PRINCIPAL,
+                              CliParams.PRIVILEGE),
+                          List.of()));
+                  put(
+                      DELETE,
+                      new CliOptions(
+                          List.of(
+                              CliParams.RESOURCE_TYPE,
+                              CliParams.NAME,
+                              CliParams.PRINCIPAL,
+                              CliParams.PRIVILEGE),
+                          List.of()));
+                  put(
+                      GET,
+                      new CliOptions(
+                          List.of(CliParams.RESOURCE_TYPE, CliParams.NAME),
+                          List.of(CliParams.PRINCIPAL)));
                 }
               });
         }
@@ -462,8 +516,8 @@ public class CliUtils {
         "For detailed help on entity specific operations, use bin/uc <entity> --help");
   }
 
-  public static List<String> parseFullName(String fullName) {
-    return Arrays.asList(fullName.split("\\."));
+  public static List<String> parseToList(String s, String regex) {
+    return Arrays.asList(s.split(regex));
   }
 
   public static String getPropertyValue(String key) {
@@ -482,7 +536,7 @@ public class CliUtils {
 
   public static void resolveFullNameToThreeLevelNamespace(JSONObject json) {
     String fullName = json.getString(CliParams.FULL_NAME.getServerParam());
-    List<String> threeLevelNamespace = CliUtils.parseFullName(fullName);
+    List<String> threeLevelNamespace = CliUtils.parseToList(fullName, "\\.");
     if (threeLevelNamespace.size() != 3) {
       printSubCommandHelp(TABLE, CREATE);
       throw new RuntimeException("Full name is not three level namespace: " + fullName);
