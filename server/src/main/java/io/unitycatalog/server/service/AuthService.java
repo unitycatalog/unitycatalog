@@ -66,7 +66,19 @@ public class AuthService {
   /**
    * OAuth token exchange.
    *
-   * <p>Performs an OAuth token exchange for an access-token.
+   * <p>Performs an OAuth token exchange for an access-token. Specifically this endpoint accepts a
+   * "token-exchange" grant type (urn:ietf:params:oauth:grant-type:token-exchange) and along with
+   * either an identity-token (urn:ietf:params:oauth:token-type:id_token) or a access-token
+   * (urn:ietf:params:oauth:token-type:access_token), validates the token signature using OIDC
+   * discovery and JWKs, and then creates a new access-token.
+   *
+   * <p>Currently the issuer for the incoming token to validate is not constrained to a specific
+   * identity provider, rather as long as the token is signed by the matching issuer the validation
+   * succeeds.
+   *
+   * <p>Eventually this should be constrained to a specific identity provider and even require that
+   * the incoming identity (email, subject) matches a specific user in the system, once a user
+   * management system is in place.
    *
    * <p>TODO: This could probably be integrated into the OpenAPI spec.
    *
