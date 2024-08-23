@@ -72,6 +72,17 @@ public class AuthService {
    * (urn:ietf:params:oauth:token-type:access_token), validates the token signature using OIDC
    * discovery and JWKs, and then creates a new access-token.
    *
+   * <ul>
+   *   <li>grant_type: urn:ietf:params:oauth:grant-type:token-exchange
+   *   <li>requested_token_type: urn:ietf:params:oauth:token-type:access_token or
+   *       urn:ietf:params:oauth:token-type:id_token
+   *   <li>subject_token_type: urn:ietf:params:oauth:token-type:access_token
+   *   <li>subject_token: The incoming token (typically from an identity provider)
+   *   <li>actor_token_type: Not supported
+   *   <li>actor_token: Not supported
+   *   <li>scope: Not supported
+   * </ul>
+   *
    * <p>Currently the issuer for the incoming token to validate is not constrained to a specific
    * identity provider, rather as long as the token is signed by the matching issuer the validation
    * succeeds.
