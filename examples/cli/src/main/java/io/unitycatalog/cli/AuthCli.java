@@ -10,7 +10,9 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.ObjectWriter;
 import io.unitycatalog.cli.utils.CliParams;
 import io.unitycatalog.cli.utils.CliUtils;
-import io.unitycatalog.cli.utils.Outh2CliExchange;
+import io.unitycatalog.cli.utils.Oauth2CliExchange;
+import io.unitycatalog.cli.utils.Oauth2CliExchange.GrantTypes;
+import io.unitycatalog.cli.utils.Oauth2CliExchange.TokenTypes;
 import io.unitycatalog.client.ApiClient;
 import io.unitycatalog.client.ApiException;
 import java.io.IOException;
@@ -53,8 +55,8 @@ public class AuthCli {
   private static String login(ApiClient apiClient, JSONObject json)
       throws JsonProcessingException, ApiException {
     try {
-      Outh2CliExchange outh2CliExchange = new Outh2CliExchange();
-      String identityToken = outh2CliExchange.authenticate();
+      Oauth2CliExchange oauth2CliExchange = new Oauth2CliExchange();
+      String identityToken = oauth2CliExchange.authenticate();
       Map<String, String> login = new HashMap<>();
       login.put("identityToken", identityToken);
       return doExchange(apiClient, login);
@@ -78,16 +80,11 @@ public class AuthCli {
     StringBuilder builder = new StringBuilder();
     builder
         .append("grant_type=")
-        .append(
-            URLEncoder.encode(
-                "urn:ietf:params:oauth:grant-type:token-exchange", StandardCharsets.UTF_8))
+        .append(URLEncoder.encode(GrantTypes.TOKEN_EXCHANGE, StandardCharsets.UTF_8))
         .append("&requested_token_type=")
-        .append(
-            URLEncoder.encode(
-                "urn:ietf:params:oauth:token-type:access_token", StandardCharsets.UTF_8))
+        .append(URLEncoder.encode(TokenTypes.ACCESS, StandardCharsets.UTF_8))
         .append("&subject_token_type=")
-        .append(
-            URLEncoder.encode("urn:ietf:params:oauth:token-type:id_token", StandardCharsets.UTF_8))
+        .append(URLEncoder.encode(TokenTypes.ID, StandardCharsets.UTF_8))
         .append("&subject_token=")
         .append(URLEncoder.encode(login.get("identityToken"), StandardCharsets.UTF_8));
 

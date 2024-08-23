@@ -39,20 +39,31 @@ import java.util.regex.Pattern;
 import org.apache.commons.codec.binary.Hex;
 
 /** Simple OAuth2 authentication flow for the CLI. */
-public class Outh2CliExchange {
+public class Oauth2CliExchange {
 
-  interface Fields {
+  // TODO: need common module for these constants, they are reused in AuthService
+  public interface Fields {
     String GRANT_TYPE = "grant_type";
     String CLIENT_ID = "client_id";
     String CLIENT_SECRET = "client_secret";
     String REDIRECT_URL = "redirect_uri";
   }
 
+  public interface TokenTypes {
+    String ACCESS = "urn:ietf:params:oauth:token-type:access_token";
+    String ID = "urn:ietf:params:oauth:token-type:id_token";
+    String JWT = "urn:ietf:params:oauth:token-type:jwt";
+  }
+
+  public interface GrantTypes {
+    String TOKEN_EXCHANGE = "urn:ietf:params:oauth:grant-type:token-exchange";
+  }
+
   private static final ObjectMapper mapper = new ObjectMapper();
 
   Properties serverProperties = new Properties();
 
-  public Outh2CliExchange() throws IOException {
+  public Oauth2CliExchange() throws IOException {
     // TODO: Probably should retrieve this from the server or do exchange server side
     try (InputStream input = Files.newInputStream(Paths.get("etc/conf/server.properties"))) {
       serverProperties.load(input);
