@@ -31,6 +31,7 @@ public class CliUtils {
   public static final String TABLE = "table";
 
   public static final String FUNCTION = "function";
+  public static final String REGISTERED_MODEL = "registered_model";
   public static final String CREATE = "create";
   public static final String LIST = "list";
   public static final String GET = "get";
@@ -82,13 +83,18 @@ public class CliUtils {
               CATALOG,
               new HashMap<String, CliOptions>() {
                 {
-                  put(CREATE, new CliOptions(List.of(CliParams.NAME), List.of(CliParams.COMMENT)));
+                  put(
+                      CREATE,
+                      new CliOptions(
+                          List.of(CliParams.NAME),
+                          List.of(CliParams.COMMENT, CliParams.PROPERTIES)));
                   put(LIST, new CliOptions(List.of(), List.of(CliParams.MAX_RESULTS)));
                   put(GET, new CliOptions(List.of(CliParams.NAME), List.of()));
                   put(
                       UPDATE,
                       new CliOptions(
-                          List.of(CliParams.NAME), List.of(CliParams.NEW_NAME, CliParams.COMMENT)));
+                          List.of(CliParams.NAME),
+                          List.of(CliParams.NEW_NAME, CliParams.COMMENT, CliParams.PROPERTIES)));
                   put(DELETE, new CliOptions(List.of(CliParams.NAME), List.of(CliParams.FORCE)));
                 }
               });
@@ -100,7 +106,7 @@ public class CliUtils {
                       CREATE,
                       new CliOptions(
                           List.of(CliParams.CATALOG_NAME, CliParams.NAME),
-                          List.of(CliParams.COMMENT)));
+                          List.of(CliParams.COMMENT, CliParams.PROPERTIES)));
                   put(
                       LIST,
                       new CliOptions(
@@ -110,7 +116,7 @@ public class CliUtils {
                       UPDATE,
                       new CliOptions(
                           List.of(CliParams.FULL_NAME),
-                          List.of(CliParams.NEW_NAME, CliParams.COMMENT)));
+                          List.of(CliParams.NEW_NAME, CliParams.COMMENT, CliParams.PROPERTIES)));
                   put(
                       DELETE,
                       new CliOptions(List.of(CliParams.FULL_NAME), List.of(CliParams.FORCE)));
@@ -187,6 +193,31 @@ public class CliUtils {
                       EXECUTE,
                       new CliOptions(
                           List.of(CliParams.FULL_NAME, CliParams.INPUT_PARAMS), List.of()));
+                }
+              });
+          put(
+              REGISTERED_MODEL,
+              new HashMap<String, CliOptions>() {
+                {
+                  put(
+                      CREATE,
+                      new CliOptions(
+                          List.of(CliParams.CATALOG_NAME, CliParams.SCHEMA_NAME, CliParams.NAME),
+                          List.of(CliParams.COMMENT)));
+                  put(
+                      LIST,
+                      new CliOptions(
+                          List.of(CliParams.CATALOG_NAME, CliParams.SCHEMA_NAME),
+                          List.of(CliParams.MAX_RESULTS)));
+                  put(GET, new CliOptions(List.of(CliParams.FULL_NAME), List.of()));
+                  put(
+                      UPDATE,
+                      new CliOptions(
+                          List.of(CliParams.FULL_NAME),
+                          List.of(CliParams.NEW_NAME, CliParams.COMMENT)));
+                  put(
+                      DELETE,
+                      new CliOptions(List.of(CliParams.FULL_NAME), List.of(CliParams.FORCE)));
                 }
               });
         }

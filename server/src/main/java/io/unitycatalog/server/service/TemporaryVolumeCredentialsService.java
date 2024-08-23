@@ -7,15 +7,28 @@ import io.unitycatalog.server.exception.BaseException;
 import io.unitycatalog.server.exception.ErrorCode;
 import io.unitycatalog.server.exception.GlobalExceptionHandler;
 import io.unitycatalog.server.model.GenerateTemporaryVolumeCredential;
-import io.unitycatalog.server.model.GenerateTemporaryVolumeCredentialResponse;
 import io.unitycatalog.server.model.VolumeInfo;
+import io.unitycatalog.server.model.VolumeOperation;
 import io.unitycatalog.server.persist.VolumeRepository;
-import io.unitycatalog.server.utils.TemporaryCredentialUtils;
+import io.unitycatalog.server.service.credential.CredentialContext;
+import io.unitycatalog.server.service.credential.CredentialOperations;
+
+import java.util.Collections;
+import java.util.Set;
+
+import static io.unitycatalog.server.service.credential.CredentialContext.Privilege.SELECT;
+import static io.unitycatalog.server.service.credential.CredentialContext.Privilege.UPDATE;
 
 @ExceptionHandler(GlobalExceptionHandler.class)
 public class TemporaryVolumeCredentialsService {
 
   private static final VolumeRepository VOLUME_REPOSITORY = VolumeRepository.getInstance();
+
+  private final CredentialOperations credentialOps;
+
+  public TemporaryVolumeCredentialsService(CredentialOperations credentialOps) {
+    this.credentialOps = credentialOps;
+  }
 
   @Post("")
   public HttpResponse generateTemporaryTableCredential(
@@ -25,17 +38,15 @@ public class TemporaryVolumeCredentialsService {
       throw new BaseException(ErrorCode.INVALID_ARGUMENT, "Volume ID is required.");
     }
     VolumeInfo volumeInfo = VOLUME_REPOSITORY.getVolumeById(volumeId);
-    String volumePath = volumeInfo.getStorageLocation();
-    if (volumePath == null || volumePath.isEmpty()) {
-      throw new BaseException(ErrorCode.FAILED_PRECONDITION, "Volume storage location not found.");
-    }
-    if (volumePath.startsWith("s3://")) {
-      return HttpResponse.ofJson(
-          new GenerateTemporaryVolumeCredentialResponse()
-              .awsTempCredentials(TemporaryCredentialUtils.findS3BucketConfig(volumePath)));
-    } else {
-      // return empty credentials for local file system
-      return HttpResponse.ofJson(new GenerateTemporaryVolumeCredential());
-    }
+
+    return HttpResponse.ofJson(credentialOps.vendCredentialForVolume(volumeInfo, volumeOperationToPrivileges(generateTemporaryVolumeCredential.getOperation())));
+  }
+
+  private Set<CredentialContext.Privilege> volumeOperationToPrivileges(VolumeOperation volumeOperation) {
+    return switch (volumeOperation) {
+      case READ_VOLUME -> Set.of(SELECT);
+      case WRITE_VOLUME -> Set.of(SELECT, UPDATE);
+      case UNKNOWN_VOLUME_OPERATION -> Collections.emptySet();
+    };
   }
 }
