@@ -121,10 +121,7 @@ public class UnityCatalogServer {
       AuthDecorator authDecorator = new AuthDecorator();
       ExceptionHandlingDecorator exceptionDecorator =
           new ExceptionHandlingDecorator(new GlobalExceptionHandler());
-      sb.routeDecorator()
-          .pathPrefix(basePath)
-          .exclude(basePath + "auth/tokens")
-          .build(authDecorator);
+      sb.routeDecorator().pathPrefix(basePath).build(authDecorator);
       sb.decorator(exceptionDecorator);
     }
   }
