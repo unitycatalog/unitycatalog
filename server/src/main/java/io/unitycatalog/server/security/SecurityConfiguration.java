@@ -15,7 +15,6 @@ import java.security.interfaces.RSAPublicKey;
 import java.security.spec.InvalidKeySpecException;
 import java.security.spec.PKCS8EncodedKeySpec;
 import java.security.spec.X509EncodedKeySpec;
-import java.util.Base64;
 import lombok.SneakyThrows;
 import org.apache.commons.codec.binary.Hex;
 import org.slf4j.Logger;
@@ -39,10 +38,6 @@ public class SecurityConfiguration {
   private Path rsa512PrivateKey;
 
   private Path keyId;
-
-  private String rsa512PublicKeyEncoded = null;
-
-  private String rsa512PrivateKeyEncoded = null;
 
   @SneakyThrows
   public SecurityConfiguration(Path configurationFolder) {
@@ -79,16 +74,12 @@ public class SecurityConfiguration {
 
   public RSAPublicKey rsaPublicKey()
       throws NoSuchAlgorithmException, InvalidKeySpecException, IOException {
-    byte[] keyBytes;
-    if (rsa512PublicKeyEncoded != null) {
-      keyBytes = Base64.getDecoder().decode(rsa512PublicKeyEncoded);
-    } else {
-      if (Files.notExists(rsa512PublicKey)) {
-        log.info("No JWT public signing key present.");
-        return null;
-      }
-      keyBytes = Files.readAllBytes(rsa512PublicKey);
+
+    if (Files.notExists(rsa512PublicKey)) {
+      log.info("No JWT public signing key present.");
+      return null;
     }
+    byte[] keyBytes = Files.readAllBytes(rsa512PublicKey);
 
     X509EncodedKeySpec spec = new X509EncodedKeySpec(keyBytes);
     KeyFactory kf = KeyFactory.getInstance("RSA");
@@ -97,16 +88,12 @@ public class SecurityConfiguration {
 
   public RSAPrivateKey rsaPrivateKey()
       throws NoSuchAlgorithmException, InvalidKeySpecException, IOException {
-    byte[] keyBytes;
-    if (rsa512PrivateKeyEncoded != null) {
-      keyBytes = Base64.getDecoder().decode(rsa512PrivateKeyEncoded);
-    } else {
-      if (Files.notExists(rsa512PrivateKey)) {
-        log.info("No JWT private signing key present.");
-        return null;
-      }
-      keyBytes = Files.readAllBytes(rsa512PrivateKey);
+
+    if (Files.notExists(rsa512PrivateKey)) {
+      log.info("No JWT private signing key present.");
+      return null;
     }
+    byte[] keyBytes = Files.readAllBytes(rsa512PrivateKey);
 
     PKCS8EncodedKeySpec spec = new PKCS8EncodedKeySpec(keyBytes);
     KeyFactory kf = KeyFactory.getInstance("RSA");
