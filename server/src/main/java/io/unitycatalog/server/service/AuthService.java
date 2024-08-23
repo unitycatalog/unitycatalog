@@ -27,6 +27,7 @@ import org.slf4j.LoggerFactory;
 @ExceptionHandler(GlobalExceptionHandler.class)
 public class AuthService {
 
+  // TODO: need common module for these constants, they are reused in the CLI
   interface Fields {
     String GRANT_TYPE = "grant_type";
     String CLIENT_ID = "client_id";
@@ -76,8 +77,14 @@ public class AuthService {
   public HttpResponse grantToken(OAuthTokenExchangeRequest request) {
     LOGGER.debug("Got token: {}", request);
 
-    if (request.getGrantType() != null
-        && !TokenTypes.ACCESS.equals(request.getRequestedTokenType())) {
+    if (request.getGrantType() == null
+        || !GrantTypes.TOKEN_EXCHANGE.equals(request.getGrantType())) {
+      throw new OAuthInvalidRequestException(
+          ErrorCode.INVALID_ARGUMENT, "Unsupported grant type: " + request.getGrantType());
+    }
+
+    if (request.getRequestedTokenType() == null
+        || !TokenTypes.ACCESS.equals(request.getRequestedTokenType())) {
       throw new OAuthInvalidRequestException(
           ErrorCode.INVALID_ARGUMENT,
           "Unsupported requested token type: " + request.getRequestedTokenType());
@@ -101,6 +108,8 @@ public class AuthService {
 
     JWTVerifier jwtVerifier = jwksOperations.verifierForIssuerAndKey(issuer, keyId);
     decodedJWT = jwtVerifier.verify(decodedJWT);
+
+    LOGGER.debug("Validated. Creating access token.");
 
     String accessToken = securityContext.createAccessToken(decodedJWT);
 
