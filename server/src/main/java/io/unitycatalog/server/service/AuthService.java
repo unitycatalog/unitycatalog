@@ -7,6 +7,7 @@ import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.databind.PropertyNamingStrategies;
 import com.fasterxml.jackson.databind.annotation.JsonNaming;
 import com.linecorp.armeria.common.HttpResponse;
+import com.linecorp.armeria.common.annotation.Nullable;
 import com.linecorp.armeria.server.annotation.ExceptionHandler;
 import com.linecorp.armeria.server.annotation.Param;
 import com.linecorp.armeria.server.annotation.Post;
@@ -133,10 +134,12 @@ public class AuthService {
     private String subjectToken;
 
     @Param(Fields.ACTOR_TOKEN_TYPE)
+    @Nullable
     @Getter
     private String actorTokenType;
 
     @Param(Fields.ACTOR_TOKEN)
+    @Nullable
     @Getter
     private String actorToken;
   }
