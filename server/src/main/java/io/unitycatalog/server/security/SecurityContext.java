@@ -71,6 +71,12 @@ public class SecurityContext {
   }
 
   public String createAccessToken(DecodedJWT decodedJWT) {
+
+    String subject =
+        decodedJWT.getClaim("email").isMissing()
+            ? decodedJWT.getClaim("sub").asString()
+            : decodedJWT.getClaim("email").asString();
+
     return JWT.create()
         .withSubject(serviceName)
         .withIssuer(localIssuer)
@@ -78,7 +84,7 @@ public class SecurityContext {
         .withKeyId(keyId)
         .withJWTId(UUID.randomUUID().toString())
         .withClaim(JwtClaim.TOKEN_TYPE.key(), JwtTokenType.ACCESS.name())
-        .withClaim(JwtClaim.SUBJECT.key(), decodedJWT.getClaim("email").asString())
+        .withClaim(JwtClaim.SUBJECT.key(), subject)
         .sign(algorithm);
   }
 
