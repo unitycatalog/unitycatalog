@@ -1,5 +1,7 @@
 package io.unitycatalog.server.service;
 
+import static io.unitycatalog.server.model.ResourceType.METASTORE;
+
 import com.linecorp.armeria.common.HttpResponse;
 import com.linecorp.armeria.common.HttpStatus;
 import com.linecorp.armeria.server.annotation.*;
@@ -14,6 +16,8 @@ import com.unboundid.scim2.common.types.UserResource;
 import com.unboundid.scim2.common.utils.FilterEvaluator;
 import com.unboundid.scim2.common.utils.Parser;
 import io.unitycatalog.server.auth.UnityCatalogAuthorizer;
+import io.unitycatalog.server.auth.annotation.AuthorizeExpression;
+import io.unitycatalog.server.auth.annotation.AuthorizeKey;
 import io.unitycatalog.server.exception.BaseException;
 import io.unitycatalog.server.exception.ErrorCode;
 import io.unitycatalog.server.exception.GlobalExceptionHandler;
@@ -52,6 +56,8 @@ public class Scim2UserService {
   }
 
   @Get("")
+  @AuthorizeExpression("#principal != null")
+  @AuthorizeKey(METASTORE)
   public HttpResponse getScimUsers(
       @Param("filter") Optional<String> filter,
       @Param("startIndex") Optional<Integer> startIndex,
@@ -70,6 +76,8 @@ public class Scim2UserService {
   }
 
   @Post("")
+  @AuthorizeExpression("#authorizeAny(#principal, #metastore, METASTORE_ADMIN)")
+  @AuthorizeKey(METASTORE)
   public HttpResponse createScimUser(UserResource userResource) {
     // Get primary email address
     Email primaryEmail =
@@ -100,11 +108,15 @@ public class Scim2UserService {
   }
 
   @Get("/{id}")
+  @AuthorizeExpression("#principal != null")
+  @AuthorizeKey(METASTORE)
   public HttpResponse getUser(@Param("id") String id) {
     return HttpResponse.ofJson(asUserResource(USER_REPOSITORY.getUser(id)));
   }
 
   @Put("/{id}")
+  @AuthorizeExpression("#authorizeAny(#principal, #metastore, METASTORE_ADMIN)")
+  @AuthorizeKey(METASTORE)
   public HttpResponse updateUser(@Param("id") String id, UserResource userResource) {
     UserResource user = asUserResource(USER_REPOSITORY.getUser(id));
     if (!id.equals(userResource.getId())) {
@@ -134,6 +146,8 @@ public class Scim2UserService {
   }
 
   @Delete("/{id}")
+  @AuthorizeExpression("#authorizeAny(#principal, #metastore, METASTORE_ADMIN)")
+  @AuthorizeKey(METASTORE)
   public HttpResponse deleteUser(@Param("id") String id) {
     User user = USER_REPOSITORY.getUser(id);
     authorizer.clearAuthorizationsForPrincipal(
