@@ -5,6 +5,13 @@ import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
+/**
+ * An authorizer that allows all actions.
+ *
+ * <p>This is a simple implementation of UnityCatalogAuthorizer that allows all actions for all
+ * principals. This is useful for testing and development purposes. It does not enforce any access
+ * control policies nor persist any data.
+ */
 public class AllowingAuthorizer implements UnityCatalogAuthorizer {
   @Override
   public boolean grantAuthorization(UUID principal, UUID resource, Privilege action) {

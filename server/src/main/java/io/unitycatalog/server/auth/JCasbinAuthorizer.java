@@ -16,7 +16,14 @@ import org.casbin.adapter.JDBCAdapter;
 import org.casbin.jcasbin.main.Enforcer;
 import org.casbin.jcasbin.model.Model;
 
-// TODO: This should be JCasbinAuthorizer
+/**
+ * An authorizer that uses the JCasbin library to enforce access control policies.
+ *
+ * <p>This class is an implementation of UnityCatalogAuthorizor that uses JCasbin as the back end to
+ * both store and enforce access control policies.
+ *
+ * <p>The implementation stores the policies in a database using the JDBCAdapter class.
+ */
 public class JCasbinAuthorizer implements UnityCatalogAuthorizer {
   static UserRepository USER_REPOSITORY = UserRepository.getInstance();
   private final Enforcer enforcer;
