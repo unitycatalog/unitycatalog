@@ -6,15 +6,6 @@ project_dir=$(dirname "$(dirname "$(realpath "$script_dir")")")
 container_name="unitycatalog-cli"
 container_version=$(< "$project_dir/version.sbt" cut -d '"' -f2)
 
-network_name="unitycatalog_network"
-network_details=$(docker network ls -q --filter "name=$network_name")
-container_details=$(docker container ls -a -q --filter "name=$container_name")
-container_running=$(docker ps -q --filter "name=$container_name")
-
-if [ -z "$network_details" ]; then
-    docker network create $network_name
-fi
-
 docker run --rm -it \
    --name "$container_name" \
    "$container_name:$container_version" "$@"

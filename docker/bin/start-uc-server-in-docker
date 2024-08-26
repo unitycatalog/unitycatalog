@@ -5,19 +5,8 @@ project_dir=$(dirname "$(dirname "$(realpath "$script_dir")")")
 container_name="unitycatalog"
 container_version=$(< "$project_dir/version.sbt" cut -d '"' -f2)
 
-network_name="unitycatalog_network"
-
-network_details=$(docker network ls -q --filter "name=$network_name")
 container_details=$(docker container ls -a -q --filter "name=$container_name")
 container_running=$(docker ps -q --filter "name=$container_name")
-
-if [ -z "$network_details" ]; then
-    echo "Network $network_name does not exist. Creating it..."
-    docker network create $network_name
-    echo "Network $network_name created."
-else
-    echo "Network $network_name already exists, skipping."
-fi
 
 if [ -z "$container_details" ]; then
     echo "Container $container_name does not exist. Creating it..."

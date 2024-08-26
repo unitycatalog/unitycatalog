@@ -17,32 +17,69 @@ Before you can build the Docker image, install the following tools:
 ./docker/bin/build-uc-server-docker
 ```
 
+> [!NOTE]
+>
+> `build-uc-server-docker` runs the entire sbt build while creating the Docker image. 
+
 `build-uc-server-docker` creates an image named `unitycatalog` with the version from [version.sbt](../version.sbt).
 
-```console
-❯ docker images "unitycatalog:*"
-REPOSITORY     TAG              IMAGE ID       CREATED             SIZE
-unitycatalog   0.2.0-SNAPSHOT   21b6e442f1a4   About an hour ago   332MB
+```bash
+docker images unitycatalog
+```
+
+```text
+REPOSITORY     TAG              IMAGE ID       CREATED              SIZE
+unitycatalog   0.2.0-SNAPSHOT   8b68b233813b   About a minute ago   427MB
 ```
 
 ## Running Unity Catalog Server Container
 
-[start-uc-server-in-docker](./bin/start-uc-server-in-docker) script starts the Unity Catalog server container.
-
-The script also creates a network named `unitycatalog_network` that the container attaches to.
+Once the Docker image of Unity Catalog's Localhost Reference Server is built, you can start it up using [start-uc-server-in-docker](./bin/start-uc-server-in-docker) script.
 
 ```bash
 ./docker/bin/start-uc-server-in-docker
 ```
 
-> \[!TIP\]
-> You can run the docker container with different settings such as using a different network, volume, or ports.
-> The run script is only for demo and happy path.
+```text
+Container unitycatalog does not exist. Creating it...
+fbf8a0d2fc6a82f81134c4c50fb4c777399e7095706cb65ff6fe0c158ec43ef4
+The container unitycatalog is running with the following parameters:
+{
+  "Command": "\"/bin/bash bin/start…\"",
+  "CreatedAt": "2024-08-26 18:10:48 +0200 CEST",
+  "ID": "fbf8a0d2fc6a",
+  "Image": "unitycatalog:0.2.0-SNAPSHOT",
+  "Labels": "",
+  "LocalVolumes": "1",
+  "Mounts": "3e4bcb63d68a91…",
+  "Names": "unitycatalog",
+  "Networks": "bridge",
+  "Ports": "0.0.0.0:8081->8081/tcp",
+  "RunningFor": "Less than a second ago",
+  "Size": "32.8kB (virtual 427MB)",
+  "State": "running",
+  "Status": "Up Less than a second"
+}
+```
 
-This will start the container that is listening on port `8081`.
+`start-uc-server-in-docker` starts the Unity Catalog server to listen to `8081`.
 
-```console
-❯ ./bin/uc catalog list --server http://localhost:8081
+```bash
+docker container ls --filter name=unitycatalog --no-trunc --format 'table {{.ID}}\t{{.Image}}\t{{.Command}}\t{{.Ports}}'
+```
+
+```text
+CONTAINER ID                                                       IMAGE                         COMMAND                           PORTS
+fbf8a0d2fc6a82f81134c4c50fb4c777399e7095706cb65ff6fe0c158ec43ef4   unitycatalog:0.2.0-SNAPSHOT   "/bin/bash bin/start-uc-server"   0.0.0.0:8081->8081/tcp
+```
+
+Use the regular non-dockerized Unity Catalog CLI to access the server and list the catalogs.
+
+```bash
+./bin/uc catalog list --server http://localhost:8081
+```
+
+```text
 ┌─────┬────────────┬──────────┬─────────────┬──────────┬────────────────────────────────────┐
 │NAME │  COMMENT   │PROPERTIES│ CREATED_AT  │UPDATED_AT│                 ID                 │
 ├─────┼────────────┼──────────┼─────────────┼──────────┼────────────────────────────────────┤
@@ -60,27 +97,27 @@ This will start the container that is listening on port `8081`.
 
 `build-uc-cli-docker` creates an image named `unitycatalog-cli` with the version from [version.sbt](../version.sbt).
 
-```console
-❯ docker images "unitycatalog-cli:*"
-REPOSITORY         TAG              IMAGE ID       CREATED       SIZE
-unitycatalog-cli   0.2.0-SNAPSHOT   e9745f21faa6   4 hours ago   1.48GB
+```bash
+docker images unitycatalog-cli
 ```
 
-## Access Unity Catalog Localhost Reference Server on macOS
-
-Start the Unity Catalog Localhost Reference Server.
-
-```shell
-./bin/start-uc-server
+```text
+REPOSITORY         TAG              IMAGE ID       CREATED              SIZE
+unitycatalog-cli   0.2.0-SNAPSHOT   52502d16934f   About a minute ago   1.48GB
 ```
 
-Execute `start-uc-cli-in-docker` to connect to the Unity Catalog server on your local machine (`localhost`).
+## Access Unity Catalog Localhost Reference Server
 
-> **Note:**
+[start-uc-cli-in-docker](./bin/start-uc-cli-in-docker) uses the `unitycatalog-cli` image to run Unity Catalog CLI in a Docker container.
+
+> [!NOTE]
+> You've already started the Unity Catalog server in a Docker container.
+
+> [!NOTE]
 >
 > `localhost` inside a Docker container is different from the local machine's `localhost`.
 
-```shell
+```bash
 ./docker/bin/start-uc-cli-in-docker catalog list --server http://host.docker.internal:8081
 ```
 
@@ -88,20 +125,15 @@ Execute `start-uc-cli-in-docker` to connect to the Unity Catalog server on your 
 ┌─────┬────────────┬──────────┬─────────────┬──────────┬────────────────────────────────────┐
 │NAME │  COMMENT   │PROPERTIES│ CREATED_AT  │UPDATED_AT│                 ID                 │
 ├─────┼────────────┼──────────┼─────────────┼──────────┼────────────────────────────────────┤
-│unity│Main catalog│{}        │1721234405334│null      │f029b870-9468-4f10-badc-630b41e5690d│
+│unity│Main catalog│{}        │1721241605334│null      │f029b870-9468-4f10-badc-630b41e5690d│
 └─────┴────────────┴──────────┴─────────────┴──────────┴────────────────────────────────────┘
 ```
-
-## Adding Custom Startup Code
-
-> \[!NOTE\]
-> This feature has been removed temporarily until we find out the best way to add customisations to the containerisation process.
 
 ## Testing Unity Catalog
 
 This project provides several examples using `curl` commands to interact with the Unity Catalog API and demonstrate basic functionalities.
 
-> \[!NOTE\]
+> [!NOTE]
 > If you wish to use the CLI to test the catalog, run a docker CLI instance and follow the instructions
 > from the repositories main readme.
 
