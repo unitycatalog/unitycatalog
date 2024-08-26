@@ -1,5 +1,7 @@
 package io.unitycatalog.server;
 
+import static io.unitycatalog.server.security.SecurityContext.Issuers.INTERNAL;
+
 import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.json.JsonMapper;
@@ -9,6 +11,13 @@ import com.linecorp.armeria.server.ServerBuilder;
 import com.linecorp.armeria.server.annotation.JacksonRequestConverterFunction;
 import com.linecorp.armeria.server.annotation.JacksonResponseConverterFunction;
 import com.linecorp.armeria.server.docs.DocService;
+import io.unitycatalog.server.exception.ExceptionHandlingDecorator;
+import io.unitycatalog.server.exception.GlobalExceptionHandler;
+import io.unitycatalog.server.persist.utils.ServerPropertiesUtils;
+import io.unitycatalog.server.security.SecurityConfiguration;
+import io.unitycatalog.server.security.SecurityContext;
+import io.unitycatalog.server.service.AuthDecorator;
+import io.unitycatalog.server.service.AuthService;
 import io.unitycatalog.server.auth.JCasbinAuthorizer;
 import io.unitycatalog.server.auth.UnityCatalogAuthorizer;
 import io.unitycatalog.server.auth.decorator.TemporaryExceptionHandlingDecorator;
@@ -36,6 +45,8 @@ import io.unitycatalog.server.utils.RESTObjectMapper;
 import io.unitycatalog.server.utils.VersionUtils;
 import io.vertx.core.Verticle;
 import io.vertx.core.Vertx;
+import java.nio.file.Path;
+import org.apache.commons.cli.*;
 import org.apache.commons.cli.CommandLine;
 import org.apache.commons.cli.CommandLineParser;
 import org.apache.commons.cli.DefaultParser;
@@ -49,6 +60,9 @@ import org.slf4j.LoggerFactory;
 
 public class UnityCatalogServer {
   private static final Logger LOGGER = LoggerFactory.getLogger(UnityCatalogServer.class);
+
+  private SecurityConfiguration securityConfiguration;
+  private SecurityContext securityContext;
 
   static {
     System.setProperty("log4j.configurationFile", "etc/conf/server.log4j2.properties");
@@ -64,6 +78,13 @@ public class UnityCatalogServer {
   }
 
   public UnityCatalogServer(int port) {
+
+    Path configurationFolder = Path.of("etc", "conf");
+
+    securityConfiguration = new SecurityConfiguration(configurationFolder);
+    securityContext =
+        new SecurityContext(configurationFolder, securityConfiguration, "server", INTERNAL);
+
     ServerBuilder sb = Server.builder().serviceUnder("/docs", new DocService()).http(port);
     addServices(sb);
 
@@ -88,6 +109,7 @@ public class UnityCatalogServer {
     }
 
     // Add support for Unity Catalog APIs
+    AuthService authService = new AuthService(securityContext);
     PermissionService permissionService = new PermissionService(authorizer);
     Scim2UserService Scim2UserService = new Scim2UserService(authorizer);
     CatalogService catalogService = new CatalogService(authorizer);
@@ -101,6 +123,7 @@ public class UnityCatalogServer {
     TemporaryVolumeCredentialsService temporaryVolumeCredentialsService =
         new TemporaryVolumeCredentialsService(credentialOperations);
     sb.service("/", (ctx, req) -> HttpResponse.of("Hello, Unity Catalog!"))
+        .annotatedService(controlPath + "auth", authService, unityConverterFunction)
         .annotatedService(basePath + "catalogs", catalogService, unityConverterFunction)
         .annotatedService(basePath + "schemas", schemaService, unityConverterFunction)
         .annotatedService(basePath + "volumes", volumeService, unityConverterFunction)
@@ -126,6 +149,18 @@ public class UnityCatalogServer {
             catalogService, schemaService, tableService, tableConfigService, metadataService),
         icebergRequestConverter,
         icebergResponseConverter);
+
+    ServerPropertiesUtils serverPropertiesUtils = ServerPropertiesUtils.getInstance();
+    String authorization = serverPropertiesUtils.getProperty("server.authorization");
+    // TODO: eventually might want to make this secure-by-default.
+    if (authorization != null && authorization.equalsIgnoreCase("enable")) {
+      LOGGER.info("Authorization enabled.");
+      AuthDecorator authDecorator = new AuthDecorator();
+      ExceptionHandlingDecorator exceptionDecorator =
+          new ExceptionHandlingDecorator(new GlobalExceptionHandler());
+      sb.routeDecorator().pathPrefix(basePath).build(authDecorator);
+      sb.decorator(exceptionDecorator);
+    }
 
     try {
       //

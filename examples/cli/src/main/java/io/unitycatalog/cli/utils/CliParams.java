@@ -1,6 +1,7 @@
 package io.unitycatalog.cli.utils;
 
 public enum CliParams {
+  IDENTITY_TOKEN("identity_token", "Identity token to authorize", "identityToken"),
   NAME("name", "The name of the entity.", "name"),
   SCHEMA_NAME("schema", "The name of the schema.", "schema_name"),
   CATALOG_NAME("catalog", "The name of the catalog.", "catalog_name"),
