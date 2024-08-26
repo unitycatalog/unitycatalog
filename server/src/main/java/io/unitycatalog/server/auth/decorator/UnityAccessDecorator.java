@@ -75,8 +75,12 @@ public class UnityAccessDecorator implements DecoratingHttpServiceFunction {
 
   private final UnityAccessEvaluator evaluator;
 
-  public UnityAccessDecorator(UnityCatalogAuthorizer authorizer) throws NoSuchMethodException, IllegalAccessException {
-    evaluator = new UnityAccessEvaluator(authorizer);
+  public UnityAccessDecorator(UnityCatalogAuthorizer authorizer) throws BaseException {
+    try {
+      evaluator = new UnityAccessEvaluator(authorizer);
+    } catch (NoSuchMethodException | IllegalAccessException e) {
+      throw new BaseException(ErrorCode.INTERNAL, "Error initializing access evaluator.", e);
+    }
   }
 
   @Override
