@@ -29,7 +29,8 @@ public class IdentifiableDAO {
       Class<T> entityClass) {
     if (TableInfoDAO.class == entityClass
         || VolumeInfoDAO.class == entityClass
-        || FunctionInfoDAO.class == entityClass) {
+        || FunctionInfoDAO.class == entityClass
+        || RegisteredModelInfoDAO.class == entityClass) {
       return Optional.of("schemaId");
     }
     if (SchemaInfoDAO.class == entityClass) {

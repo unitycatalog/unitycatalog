@@ -817,9 +817,9 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ListRegisteredModelsResponse'
-  /models/{full_name_arg}:
+  /models/{full_name}:
     parameters:
-      - name: full_name_arg
+      - name: full_name
         in: path
         description: Full name of the model.
         required: true
@@ -861,6 +861,13 @@ paths:
     delete:
       tags:
         - RegisteredModels
+      parameters:
+        - name: force
+          in: query
+          description: Force deletion even if the registered model still has model versions.
+          required: false
+          schema:
+            type: boolean
       operationId: deleteRegisteredModel
       summary: Delete a specified registered model.
       description: |
@@ -892,9 +899,9 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ModelVersionInfo'
-  /models/{full_name_arg}/versions:
+  /models/{full_name}/versions:
     parameters:
-      - name: full_name_arg
+      - name: full_name
         in: path
         description: Full name of the registered model.
         required: true
@@ -921,9 +928,9 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ListModelVersionsResponse'
-  /models/{full_name_arg}/versions/{version}:
+  /models/{full_name}/versions/{version}:
     parameters:
-      - name: full_name_arg
+      - name: full_name
         in: path
         description: Full name of the model.
         required: true
@@ -982,9 +989,9 @@ paths:
           content:
             application/json:
               schema: {}
-  /models/{full_name_arg}/versions/{version}/finalize:
+  /models/{full_name}/versions/{version}/finalize:
     parameters:
-      - name: full_name_arg
+      - name: full_name
         in: path
         description: Full name of the model.
         required: true
@@ -1782,6 +1789,10 @@ components:
       properties:
         aws_temp_credentials:
           $ref: '#/components/schemas/AwsCredentials'
+        azure_user_delegation_sas:
+          $ref: '#/components/schemas/AzureUserDelegationSAS'
+        gcp_oauth_token:
+          $ref: '#/components/schemas/GcpOauthToken'
         expiration_time:
           description: |
             Server time when the credential will expire, in epoch milliseconds.
@@ -1808,6 +1819,18 @@ components:
             credentials.
           type: string
       type: object
+    AzureUserDelegationSAS:
+      properties:
+        sas_token:
+          description: Azure SAS Token
+          type: string
+      type: object
+    GcpOauthToken:
+      properties:
+        oauth_token:
+          description: Gcp Token
+          type: string
+      type: object
     GenerateTemporaryVolumeCredential:
       properties:
         volume_id:
@@ -1825,6 +1848,10 @@ components:
       properties:
         aws_temp_credentials:
           $ref: '#/components/schemas/AwsCredentials'
+        azure_user_delegation_sas:
+          $ref: '#/components/schemas/AzureUserDelegationSAS'
+        gcp_oauth_token:
+          $ref: '#/components/schemas/GcpOauthToken'
         expiration_time:
           description: |
             Server time when the credential will expire, in epoch milliseconds.
@@ -1938,7 +1965,7 @@ components:
     CreateRegisteredModel:
       type: object
       properties:
-        model_name:
+        name:
           description: Name of model, relative to parent schema.
           type: string
         catalog_name:
@@ -1951,13 +1978,13 @@ components:
           description: User-provided free-form text description.
           type: string
       required:
-        - model_name
+        - name
         - catalog_name
         - schema_name
     UpdateRegisteredModel:
       type: object
       properties:
-        full_name_arg:
+        full_name:
           description: The full name of the registered model to update.
           type: string
         comment:
