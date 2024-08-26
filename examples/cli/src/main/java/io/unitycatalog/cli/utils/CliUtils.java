@@ -24,6 +24,7 @@ import org.fusesource.jansi.AnsiConsole;
 import org.json.JSONObject;
 
 public class CliUtils {
+  public static final String AUTH = "auth";
   public static final String CATALOG = "catalog";
   public static final String SCHEMA = "schema";
   public static final String VOLUME = "volume";
@@ -39,6 +40,7 @@ public class CliUtils {
   public static final String EXECUTE = "call";
   public static final String UPDATE = "update";
   public static final String DELETE = "delete";
+  public static final String LOGIN = "login";
 
   public static final String EMPTY = "";
   public static final String EMPTY_JSON = "{}";
@@ -70,6 +72,13 @@ public class CliUtils {
   public static final Map<String, Map<String, CliOptions>> cliOptions =
       new HashMap<String, Map<String, CliOptions>>() {
         {
+          put(
+              AUTH,
+              new HashMap<String, CliOptions>() {
+                {
+                  put(LOGIN, new CliOptions(List.of(), List.of(CliParams.IDENTITY_TOKEN)));
+                }
+              });
           put(
               CATALOG,
               new HashMap<String, CliOptions>() {
