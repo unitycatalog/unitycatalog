@@ -1,8 +1,17 @@
 package io.unitycatalog.server.service;
 
+import static io.unitycatalog.server.model.ResourceType.CATALOG;
+import static io.unitycatalog.server.model.ResourceType.FUNCTION;
+import static io.unitycatalog.server.model.ResourceType.METASTORE;
+import static io.unitycatalog.server.model.ResourceType.SCHEMA;
+import static io.unitycatalog.server.model.ResourceType.TABLE;
+import static io.unitycatalog.server.model.ResourceType.VOLUME;
+
 import com.linecorp.armeria.common.HttpResponse;
 import com.linecorp.armeria.server.annotation.*;
 import io.unitycatalog.server.auth.UnityCatalogAuthorizer;
+import io.unitycatalog.server.auth.annotation.AuthorizeExpression;
+import io.unitycatalog.server.auth.annotation.AuthorizeKey;
 import io.unitycatalog.server.exception.BaseException;
 import io.unitycatalog.server.exception.ErrorCode;
 import io.unitycatalog.server.exception.GlobalExceptionHandler;
@@ -44,11 +53,62 @@ public class PermissionService {
     this.authorizer = authorizer;
   }
 
-  @Get("/{resource_type}/{name}")
-  public HttpResponse getAuthorization(
-      @Param("resource_type") ResourceType resourceType,
-      @Param("name") String name,
+  // TODO: Refactor these endpoints to use a common method with dynamic resource id lookup
+  @Get("/metastore/{name}")
+  @AuthorizeExpression("#authorizeAny(#principal, #metastore, METASTORE_ADMIN)")
+  @AuthorizeKey(METASTORE)
+  public HttpResponse getMetastoreAuthorization(
+      @Param("name") String name, @Param("principal") Optional<String> principal) {
+    return getAuthorization(METASTORE, name, principal);
+  }
+
+  @Get("/catalog/{name}")
+  @AuthorizeExpression("#authorizeAny(#principal, #catalog, METASTORE_ADMIN)")
+  @AuthorizeKey(METASTORE)
+  public HttpResponse getCatalogAuthorization(
+      @Param("name") @AuthorizeKey(CATALOG) String name,
       @Param("principal") Optional<String> principal) {
+    return getAuthorization(METASTORE, name, principal);
+  }
+
+  @Get("/schema/{name}")
+  @AuthorizeExpression("#authorizeAny(#principal, #schema, METASTORE_ADMIN)")
+  @AuthorizeKey(METASTORE)
+  public HttpResponse getSchemaAuthorization(
+      @Param("name") @AuthorizeKey(SCHEMA) String name,
+      @Param("principal") Optional<String> principal) {
+    return getAuthorization(SCHEMA, name, principal);
+  }
+
+  @Get("/table/{name}")
+  @AuthorizeExpression("#authorizeAny(#principal, #table, METASTORE_ADMIN)")
+  @AuthorizeKey(METASTORE)
+  public HttpResponse getTableAuthorization(
+      @Param("name") @AuthorizeKey(TABLE) String name,
+      @Param("principal") Optional<String> principal) {
+    return getAuthorization(TABLE, name, principal);
+  }
+
+  @Get("/function/{name}")
+  @AuthorizeExpression("#authorizeAny(#principal, #function, METASTORE_ADMIN)")
+  @AuthorizeKey(METASTORE)
+  public HttpResponse getFunctionAuthorization(
+      @Param("name") @AuthorizeKey(FUNCTION) String name,
+      @Param("principal") Optional<String> principal) {
+    return getAuthorization(FUNCTION, name, principal);
+  }
+
+  @Get("/volume/{name}")
+  @AuthorizeExpression("#authorizeAny(#principal, #volume, METASTORE_ADMIN)")
+  @AuthorizeKey(METASTORE)
+  public HttpResponse getVolumeAuthorization(
+      @Param("name") @AuthorizeKey(VOLUME) String name,
+      @Param("principal") Optional<String> principal) {
+    return getAuthorization(VOLUME, name, principal);
+  }
+
+  private HttpResponse getAuthorization(
+      ResourceType resourceType, String name, Optional<String> principal) {
     UUID resourceId = getResourceId(resourceType, name);
     Map<UUID, List<Privilege>> authorizations;
     if (principal.isPresent()) {
@@ -72,11 +132,57 @@ public class PermissionService {
         new UpdateAuthorizationResponse().privilegeAssignments(privilegeAssignments));
   }
 
-  @Patch("/{resource_type}/{name}")
-  public HttpResponse updateAuthorization(
-      @Param("resource_type") ResourceType resourceType,
-      @Param("name") String name,
-      UpdateAuthorizationRequest request) {
+  // TODO: Refactor these endpoints to use a common method with dynamic resource id lookup
+  @Patch("/metastore/{name}")
+  @AuthorizeExpression("#authorizeAny(#principal, #metastore, METASTORE_ADMIN)")
+  @AuthorizeKey(METASTORE)
+  public HttpResponse updateMetastoreAuthorization(
+      @Param("name") String name, UpdateAuthorizationRequest request) {
+    return updateAuthorization(METASTORE, name, request);
+  }
+
+  @Patch("/catalog/{name}")
+  @AuthorizeExpression("#authorizeAny(#principal, #catalog, METASTORE_ADMIN, OWNER)")
+  @AuthorizeKey(METASTORE)
+  public HttpResponse updateCatalogAuthorization(
+      @Param("name") @AuthorizeKey(CATALOG) String name, UpdateAuthorizationRequest request) {
+    return updateAuthorization(CATALOG, name, request);
+  }
+
+  @Patch("/schema/{name}")
+  @AuthorizeExpression("#authorizeAny(#principal, #schema, METASTORE_ADMIN, OWNER)")
+  @AuthorizeKey(METASTORE)
+  public HttpResponse updateSchemaAuthorization(
+      @Param("name") @AuthorizeKey(SCHEMA) String name, UpdateAuthorizationRequest request) {
+    return updateAuthorization(SCHEMA, name, request);
+  }
+
+  @Patch("/table/{name}")
+  @AuthorizeExpression("#authorizeAny(#principal, #table, METASTORE_ADMIN, OWNER)")
+  @AuthorizeKey(METASTORE)
+  public HttpResponse updateTableAuthorization(
+      @Param("name") @AuthorizeKey(TABLE) String name, UpdateAuthorizationRequest request) {
+    return updateAuthorization(TABLE, name, request);
+  }
+
+  @Patch("/function/{name}")
+  @AuthorizeExpression("#authorizeAny(#principal, #function, METASTORE_ADMIN, OWNER)")
+  @AuthorizeKey(METASTORE)
+  public HttpResponse updateFunctionAuthorization(
+      @Param("name") @AuthorizeKey(FUNCTION) String name, UpdateAuthorizationRequest request) {
+    return updateAuthorization(FUNCTION, name, request);
+  }
+
+  @Patch("/volume/{name}")
+  @AuthorizeExpression("#authorizeAny(#principal, #volume, METASTORE_ADMIN, OWNER)")
+  @AuthorizeKey(METASTORE)
+  public HttpResponse updateVolumeAuthorization(
+      @Param("name") @AuthorizeKey(VOLUME) String name, UpdateAuthorizationRequest request) {
+    return updateAuthorization(VOLUME, name, request);
+  }
+
+  private HttpResponse updateAuthorization(
+      ResourceType resourceType, String name, UpdateAuthorizationRequest request) {
     UUID resourceId = getResourceId(resourceType, name);
     List<UpdateAuthorizationChange> changes = request.getChanges();
     Set<UUID> principalIds = new HashSet<>();
@@ -114,7 +220,7 @@ public class PermissionService {
   private UUID getResourceId(ResourceType resourceType, String name) {
     UUID resourceId;
 
-    if (resourceType.equals(ResourceType.METASTORE)) {
+    if (resourceType.equals(METASTORE)) {
       resourceId = METASTORE_REPOSITORY.getMetastoreId();
     } else if (resourceType.equals(ResourceType.CATALOG)) {
       CatalogInfo catalogInfo = CATALOG_REPOSITORY.getCatalog(name);

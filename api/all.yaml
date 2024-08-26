@@ -2191,12 +2191,12 @@ components:
     ResourceType:
       type: string
       enum:
-        - METASTORE
-        - CATALOG
-        - SCHEMA
-        - TABLE
-        - FUNCTION
-        - VOLUME
+        - metastore
+        - catalog
+        - schema
+        - table
+        - function
+        - volume
       description: The type of the resource.
     Privilege:
       type: string
