@@ -45,9 +45,14 @@ public class FileUtils {
     return getModelStorageRoot() + "/" + entityFullName.replace(".", "/");
   }
 
-  public static String getModelStorageLocation(
-      String catalogName, String schemaName, String modelName) {
-    return getModelDirectoryURI(catalogName + "." + schemaName + ".models." + modelName);
+  public static String getModelStorageLocation(String catalogId, String schemaId, String modelId) {
+    return getModelDirectoryURI(catalogId + "." + schemaId + ".models." + modelId);
+  }
+
+  public static String getModelVersionStorageLocation(
+      String catalogId, String schemaId, String modelId, String versionId) {
+    return getModelDirectoryURI(
+        catalogId + "." + schemaId + ".models." + modelId + ".versions." + versionId);
   }
 
   public static String createVolumeDirectory(String volumeName) {
