@@ -54,6 +54,10 @@ public class ModelVersionCli {
   private static String createModelVersion(ModelVersionsApi modelVersionsApi, JSONObject json)
       throws JsonProcessingException, ApiException {
     CreateModelVersion createModelVersion;
+    // Map NAME to model_name for the CreateModelVersion request
+    String modelName = json.getString(CliParams.NAME.val());
+    json.put(CliParams.MODEL_NAME.val(), modelName);
+    json.remove(CliParams.NAME.val());
     createModelVersion = objectMapper.readValue(json.toString(), CreateModelVersion.class);
     return objectWriter.writeValueAsString(modelVersionsApi.createModelVersion(createModelVersion));
   }

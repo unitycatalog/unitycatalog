@@ -229,8 +229,7 @@ public class CliUtils {
                   put(
                       CREATE,
                       new CliOptions(
-                          List.of(
-                              CliParams.CATALOG_NAME, CliParams.SCHEMA_NAME, CliParams.MODEL_NAME),
+                          List.of(CliParams.CATALOG_NAME, CliParams.SCHEMA_NAME, CliParams.NAME),
                           List.of(CliParams.COMMENT, CliParams.RUN_ID, CliParams.SOURCE)));
                   put(
                       LIST,

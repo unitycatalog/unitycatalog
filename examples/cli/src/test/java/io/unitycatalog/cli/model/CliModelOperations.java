@@ -103,7 +103,7 @@ public class CliModelOperations implements ModelOperations {
             List.of(
                 "model_version",
                 "create",
-                "--model_name",
+                "--name",
                 createModelVersion.getModelName(),
                 "--schema",
                 createModelVersion.getSchemaName(),
