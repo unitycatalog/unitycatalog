@@ -1801,6 +1801,10 @@ components:
       properties:
         aws_temp_credentials:
           $ref: '#/components/schemas/AwsCredentials'
+        azure_user_delegation_sas:
+          $ref: '#/components/schemas/AzureUserDelegationSAS'
+        gcp_oauth_token:
+          $ref: '#/components/schemas/GcpOauthToken'
         expiration_time:
           description: |
             Server time when the credential will expire, in epoch milliseconds.
@@ -1827,6 +1831,18 @@ components:
             credentials.
           type: string
       type: object
+    AzureUserDelegationSAS:
+      properties:
+        sas_token:
+          description: Azure SAS Token
+          type: string
+      type: object
+    GcpOauthToken:
+      properties:
+        oauth_token:
+          description: Gcp Token
+          type: string
+      type: object
     GenerateTemporaryVolumeCredential:
       properties:
         volume_id:
@@ -1844,6 +1860,10 @@ components:
       properties:
         aws_temp_credentials:
           $ref: '#/components/schemas/AwsCredentials'
+        azure_user_delegation_sas:
+          $ref: '#/components/schemas/AzureUserDelegationSAS'
+        gcp_oauth_token:
+          $ref: '#/components/schemas/GcpOauthToken'
         expiration_time:
           description: |
             Server time when the credential will expire, in epoch milliseconds.

@@ -1,5 +1,7 @@
 package io.unitycatalog.server;
 
+import static io.unitycatalog.server.security.SecurityContext.Issuers.INTERNAL;
+
 import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.json.JsonMapper;
@@ -9,13 +11,31 @@ import com.linecorp.armeria.server.ServerBuilder;
 import com.linecorp.armeria.server.annotation.JacksonRequestConverterFunction;
 import com.linecorp.armeria.server.annotation.JacksonResponseConverterFunction;
 import com.linecorp.armeria.server.docs.DocService;
-import io.unitycatalog.server.service.*;
+import io.unitycatalog.server.exception.ExceptionHandlingDecorator;
+import io.unitycatalog.server.exception.GlobalExceptionHandler;
+import io.unitycatalog.server.persist.utils.ServerPropertiesUtils;
+import io.unitycatalog.server.security.SecurityConfiguration;
+import io.unitycatalog.server.security.SecurityContext;
+import io.unitycatalog.server.service.AuthDecorator;
+import io.unitycatalog.server.service.AuthService;
+import io.unitycatalog.server.service.CatalogService;
+import io.unitycatalog.server.service.FunctionService;
+import io.unitycatalog.server.service.IcebergRestCatalogService;
+import io.unitycatalog.server.service.ModelService;
+import io.unitycatalog.server.service.SchemaService;
+import io.unitycatalog.server.service.TableService;
+import io.unitycatalog.server.service.TemporaryTableCredentialsService;
+import io.unitycatalog.server.service.TemporaryVolumeCredentialsService;
+import io.unitycatalog.server.service.VolumeService;
+import io.unitycatalog.server.service.credential.CredentialOperations;
 import io.unitycatalog.server.service.iceberg.FileIOFactory;
 import io.unitycatalog.server.service.iceberg.MetadataService;
+import io.unitycatalog.server.service.iceberg.TableConfigService;
 import io.unitycatalog.server.utils.RESTObjectMapper;
 import io.unitycatalog.server.utils.VersionUtils;
 import io.vertx.core.Verticle;
 import io.vertx.core.Vertx;
+import java.nio.file.Path;
 import org.apache.commons.cli.*;
 import org.apache.logging.log4j.core.config.Configurator;
 import org.slf4j.Logger;
@@ -24,6 +44,9 @@ import org.slf4j.LoggerFactory;
 public class UnityCatalogServer {
   private static final Logger LOGGER = LoggerFactory.getLogger(UnityCatalogServer.class);
 
+  private SecurityConfiguration securityConfiguration;
+  private SecurityContext securityContext;
+
   static {
     System.setProperty("log4j.configurationFile", "etc/conf/server.log4j2.properties");
     Configurator.initialize(null, "etc/conf/server.log4j2.properties");
@@ -31,12 +54,20 @@ public class UnityCatalogServer {
 
   Server server;
   private static final String basePath = "/api/2.1/unity-catalog/";
+  private static final String controlPath = "/api/1.0/unity-control/";
 
   public UnityCatalogServer() {
     new UnityCatalogServer(8080);
   }
 
   public UnityCatalogServer(int port) {
+
+    Path configurationFolder = Path.of("etc", "conf");
+
+    securityConfiguration = new SecurityConfiguration(configurationFolder);
+    securityContext =
+        new SecurityContext(configurationFolder, securityConfiguration, "server", INTERNAL);
+
     ServerBuilder sb = Server.builder().serviceUnder("/docs", new DocService()).http(port);
     addServices(sb);
 
@@ -49,7 +80,11 @@ public class UnityCatalogServer {
     JacksonRequestConverterFunction unityConverterFunction =
         new JacksonRequestConverterFunction(unityMapper);
 
+    // Credentials Service
+    CredentialOperations credentialOperations = new CredentialOperations();
+
     // Add support for Unity Catalog APIs
+    AuthService authService = new AuthService(securityContext);
     CatalogService catalogService = new CatalogService();
     SchemaService schemaService = new SchemaService();
     VolumeService volumeService = new VolumeService();
@@ -57,10 +92,11 @@ public class UnityCatalogServer {
     FunctionService functionService = new FunctionService();
     ModelService modelService = new ModelService();
     TemporaryTableCredentialsService temporaryTableCredentialsService =
-        new TemporaryTableCredentialsService();
+        new TemporaryTableCredentialsService(credentialOperations);
     TemporaryVolumeCredentialsService temporaryVolumeCredentialsService =
-        new TemporaryVolumeCredentialsService();
+        new TemporaryVolumeCredentialsService(credentialOperations);
     sb.service("/", (ctx, req) -> HttpResponse.of("Hello, Unity Catalog!"))
+        .annotatedService(controlPath + "auth", authService, unityConverterFunction)
         .annotatedService(basePath + "catalogs", catalogService, unityConverterFunction)
         .annotatedService(basePath + "schemas", schemaService, unityConverterFunction)
         .annotatedService(basePath + "volumes", volumeService, unityConverterFunction)
@@ -78,12 +114,26 @@ public class UnityCatalogServer {
         new JacksonRequestConverterFunction(icebergMapper);
     JacksonResponseConverterFunction icebergResponseConverter =
         new JacksonResponseConverterFunction(icebergMapper);
-    MetadataService metadataService = new MetadataService(new FileIOFactory());
+    MetadataService metadataService = new MetadataService(new FileIOFactory(credentialOperations));
+    TableConfigService tableConfigService = new TableConfigService(credentialOperations);
     sb.annotatedService(
         basePath + "iceberg",
-        new IcebergRestCatalogService(catalogService, schemaService, tableService, metadataService),
+        new IcebergRestCatalogService(
+            catalogService, schemaService, tableService, tableConfigService, metadataService),
         icebergRequestConverter,
         icebergResponseConverter);
+
+    ServerPropertiesUtils serverPropertiesUtils = ServerPropertiesUtils.getInstance();
+    String authorization = serverPropertiesUtils.getProperty("server.authorization");
+    // TODO: eventually might want to make this secure-by-default.
+    if (authorization != null && authorization.equalsIgnoreCase("enable")) {
+      LOGGER.info("Authorization enabled.");
+      AuthDecorator authDecorator = new AuthDecorator();
+      ExceptionHandlingDecorator exceptionDecorator =
+          new ExceptionHandlingDecorator(new GlobalExceptionHandler());
+      sb.routeDecorator().pathPrefix(basePath).build(authDecorator);
+      sb.decorator(exceptionDecorator);
+    }
   }
 
   public static void main(String[] args) {
