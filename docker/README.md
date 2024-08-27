@@ -34,10 +34,10 @@ unitycatalog   0.2.0-SNAPSHOT   8b68b233813b   About a minute ago   427MB
 
 ## Running Unity Catalog Server Container
 
-Once the Docker image of Unity Catalog's Localhost Reference Server is built, you can start it up using [start-uc-server-in-docker](./bin/start-uc-server-in-docker) script.
+Once the Docker image of Unity Catalog's Localhost Reference Server is built, you can start it up using [start-uc-server-docker](./bin/start-uc-server-docker) script.
 
 ```bash
-./docker/bin/start-uc-server-in-docker
+./docker/bin/start-uc-server-docker
 ```
 
 ```text
@@ -62,7 +62,7 @@ The container unitycatalog is running with the following parameters:
 }
 ```
 
-`start-uc-server-in-docker` starts the Unity Catalog server to listen to `8081`.
+`start-uc-server-docker` starts the Unity Catalog server to listen to `8081`.
 
 ```bash
 docker container ls --filter name=unitycatalog --no-trunc --format 'table {{.ID}}\t{{.Image}}\t{{.Command}}\t{{.Ports}}'
@@ -106,19 +106,29 @@ REPOSITORY         TAG              IMAGE ID       CREATED              SIZE
 unitycatalog-cli   0.2.0-SNAPSHOT   52502d16934f   About a minute ago   1.48GB
 ```
 
+> [!NOTE]
+> In case you run into the following build exception, restart the CLI docker image build.
+> ```text
+> ❯ ./docker/bin/build-uc-cli-docker
+> ...
+> [error] java.lang.RuntimeException: Failed to find name hashes for io.unitycatalog.cli.utils.CliUtils
+> ...
+> [error] (cli / Compile / compileIncremental) Failed to find name hashes for io.unitycatalog.cli.utils.CliUtils
+> ```
+
 ## Access Unity Catalog Localhost Reference Server
 
-[start-uc-cli-in-docker](./bin/start-uc-cli-in-docker) uses the `unitycatalog-cli` image to run Unity Catalog CLI in a Docker container.
+[start-uc-cli-docker](./bin/start-uc-cli-docker) uses the `unitycatalog-cli` image to run Unity Catalog CLI in a Docker container.
 
 > [!NOTE]
-> You've already started the Unity Catalog server in a Docker container.
+> You've already started the Unity Catalog server in a Docker container in [Running Unity Catalog Server Container](#running-unity-catalog-server-container) step.
 
 > [!NOTE]
 >
 > `localhost` inside a Docker container is different from the local machine's `localhost`.
 
 ```bash
-./docker/bin/start-uc-cli-in-docker catalog list --server http://host.docker.internal:8081
+./docker/bin/start-uc-cli-docker catalog list --server http://host.docker.internal:8081
 ```
 
 ```text

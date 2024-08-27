@@ -1,5 +1,4 @@
 #!/usr/bin/env bash
-set -ex;
 
 current_dir=$(pwd)
 script_dir=$(dirname "$0")
@@ -7,22 +6,23 @@ project_dir=$(dirname "$(dirname "$(realpath "$script_dir")")")
 docker_file="uc-cli.dockerfile"
 container_name="unitycatalog-cli"
 container_version=$(< "$project_dir/version.sbt" cut -d '"' -f2)
+image_tag=$container_name:$container_version
 
 echo "Changing directory to $project_dir"
-cd "$project_dir"
+cd "$project_dir" || exit
 
 if [[ -r "$docker_file" ]]; then
-    echo "Building docker container $container_name:$container_version from Dockerfile $docker_file"
+    echo "Building $image_tag from Dockerfile $docker_file"
     docker buildx build \
       --progress=plain \
       --no-cache \
       --build-arg unitycatalog_version="$container_version" \
-      -t "$container_name:$container_version" \
+      --tag "$image_tag" \
       -f "$docker_file" .
 else
-    echo -e "Dockerfile $docker_file not found in $project_dir. Exiting..."
+    echo "Dockerfile $docker_file not found in $project_dir. Exiting..."
     exit 1
 fi
 
 echo "Returning to base directory $current_dir"
-cd "$current_dir"
+cd "$current_dir" || exit
