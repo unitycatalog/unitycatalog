@@ -10,6 +10,7 @@ etc/logs/
 api/.openapi-generator
 build/sbt-launch-*
 venv
+uc_docs_venv
 .venv
 .DS_Store
 server_pid.txt
