@@ -189,9 +189,9 @@ No authorization required
 # **deleteModelVersion**
 > oas_any_type_not_mapped deleteModelVersion(full\_name, version)
 
-Delete a registered model
+Delete a model version
 
-    Deletes the specified registered model from the parent schema. 
+    Deletes the specified model version. 
 
 ### Parameters
 
@@ -219,7 +219,7 @@ No authorization required
 
 Get a registered model
 
-    Gets the specified registered model for a schema. 
+    Gets the specified model version. 
 
 ### Parameters
 
@@ -276,7 +276,7 @@ No authorization required
 
 Update a model version
 
-    Updates the specified registered model. 
+    Updates the specified model version. 
 
 ### Parameters
 
@@ -299,3 +299,27 @@ No authorization required
 - **Content-Type**: application/json
 - **Accept**: application/json
 
+
+Finalize a model version
+
+    Finalizes the status of specified model version.
+
+### Parameters
+
+|Name | Type       | Description                        | Notes |
+|------------- |------------|------------------------------------| -------------|
+| **full\_name** | **String** | Full name of the registered model. | [default to null] |
+| **version**    | **Long**   | Version number of the model version | [default to null] |
+
+### Return type
+
+[**ModelVersionInfo**](../Models/ModelVersionInfo.md)
+
+### Authorization
+
+No authorization required
+
+### HTTP request headers
+
+- **Content-Type**: Not defined
+- **Accept**: application/json
