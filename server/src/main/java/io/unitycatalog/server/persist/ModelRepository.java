@@ -24,8 +24,6 @@ public class ModelRepository {
   private static final ModelRepository INSTANCE = new ModelRepository();
   private static final Logger LOGGER = LoggerFactory.getLogger(ModelRepository.class);
   private static final SessionFactory SESSION_FACTORY = HibernateUtils.getSessionFactory();
-  private static final SchemaRepository SCHEMA_REPOSITORY = SchemaRepository.getInstance();
-  private static final CatalogRepository CATALOG_REPOSITORY = CatalogRepository.getInstance();
   private static final PagedListingHelper<RegisteredModelInfoDAO> REGISTERED_MODEL_LISTING_HELPER =
       new PagedListingHelper<>(RegisteredModelInfoDAO.class);
 
@@ -33,6 +31,93 @@ public class ModelRepository {
 
   public static ModelRepository getInstance() {
     return INSTANCE;
+  }
+
+  /** **************** DAO retrieval methods ***************** */
+  public RegisteredModelInfoDAO getRegisteredModelDao(Session session, UUID schemaId, String name) {
+    String hql = "FROM RegisteredModelInfoDAO t WHERE t.schemaId = :schemaId AND t.name = :name";
+    Query<RegisteredModelInfoDAO> query = session.createQuery(hql, RegisteredModelInfoDAO.class);
+    query.setParameter("schemaId", schemaId);
+    query.setParameter("name", name);
+    query.setMaxResults(1);
+    LOGGER.info("Finding registered model by schemaId: " + schemaId + " and name: " + name);
+    return query.uniqueResult(); // Returns null if no result is found
+  }
+
+  public RegisteredModelInfoDAO getRegisteredModelDaoOrThrow(
+      Session session, UUID schemaId, String name) {
+    RegisteredModelInfoDAO existingRegisteredModelDao =
+        getRegisteredModelDao(session, schemaId, name);
+    if (existingRegisteredModelDao == null) {
+      throw new BaseException(ErrorCode.NOT_FOUND, "Registered model not found: " + name);
+    }
+    return existingRegisteredModelDao;
+  }
+
+  public ModelVersionInfoDAO getModelVersionDao(Session session, UUID modelId, Long version) {
+    String hql =
+        "FROM ModelVersionInfoDAO t WHERE t.registeredModelId = :registeredModelId AND t.version = :version";
+    Query<ModelVersionInfoDAO> query = session.createQuery(hql, ModelVersionInfoDAO.class);
+    query.setParameter("registeredModelId", modelId);
+    query.setParameter("version", version.toString());
+    query.setMaxResults(1);
+    LOGGER.info(
+        "Finding model version by registeredModelId: " + modelId + " and version: " + version);
+    return query.uniqueResult(); // Returns null if no result is found
+  }
+
+  public ModelVersionInfoDAO getModelVersionDaoOrThrow(
+      Session session, UUID modelId, String fullName, Long version) {
+    ModelVersionInfoDAO modelVersionInfoDAO = getModelVersionDao(session, modelId, version);
+    if (modelVersionInfoDAO == null) {
+      throw new BaseException(
+          ErrorCode.NOT_FOUND, "Model version not found: " + fullName + "/" + version);
+    }
+    return modelVersionInfoDAO;
+  }
+
+  public ModelVersionInfoDAO getModelVersionDaoOrThrow(
+      Session session, UUID schemaId, String fullName, String registeredModelName, Long version) {
+    RegisteredModelInfoDAO rmInfoDao =
+        getRegisteredModelDaoOrThrow(session, schemaId, registeredModelName);
+    ModelVersionInfoDAO modelVersionInfoDAO =
+        getModelVersionDaoOrThrow(session, rmInfoDao.getId(), fullName, version);
+    return modelVersionInfoDAO;
+  }
+
+  public List<ModelVersionInfoDAO> getModelVersionsDao(
+      Session session, UUID registeredModelId, String token, int maxResults) {
+    String hql =
+        "FROM ModelVersionInfoDAO t WHERE t.registeredModelId = :registeredModelId AND t.version > :token ORDER BY t.version ASC";
+    Query<ModelVersionInfoDAO> query = session.createQuery(hql, ModelVersionInfoDAO.class);
+    query.setParameter("registeredModelId", registeredModelId);
+    query.setParameter("token", Long.parseLong(token));
+    query.setMaxResults(maxResults);
+    LOGGER.info("Finding model versions by registeredModelId: " + registeredModelId);
+    return query.getResultList(); // Returns null if no result is found
+  }
+
+  /** **************** ModelRepository convenience methods ***************** */
+  private String getRegisteredModelFullName(RegisteredModelInfo registeredModelInfo) {
+    return getRegisteredModelFullName(
+        registeredModelInfo.getCatalogName(),
+        registeredModelInfo.getSchemaName(),
+        registeredModelInfo.getName());
+  }
+
+  private String getRegisteredModelFullName(
+      String catalogName, String schemaName, String modelName) {
+    return catalogName + "." + schemaName + "." + modelName;
+  }
+
+  public String getNextPageToken(List<ModelVersionInfoDAO> entities, Optional<Integer> maxResults) {
+    if (entities == null
+        || entities.isEmpty()
+        || entities.size() < PagedListingHelper.getPageSize(maxResults)) {
+      return null;
+    }
+    // return the last version
+    return entities.get(entities.size() - 1).getVersion().toString();
   }
 
   /** **************** Registered Model handlers ***************** */
@@ -113,7 +198,7 @@ public class ModelRepository {
 
   private RegisteredModelInfoDAO findRegisteredModel(
       Session session, String catalogName, String schemaName, String registeredModelName) {
-    UUID schemaId = getSchemaId(session, catalogName, schemaName);
+    UUID schemaId = RepositoryUtils.getSchemaId(session, catalogName, schemaName);
     return getRegisteredModelDao(session, schemaId, registeredModelName);
   }
 
@@ -142,7 +227,7 @@ public class ModelRepository {
       tx = session.beginTransaction();
       String catalogName = registeredModelInfo.getCatalogName();
       String schemaName = registeredModelInfo.getSchemaName();
-      UUID schemaId = getSchemaId(session, catalogName, schemaName);
+      UUID schemaId = RepositoryUtils.getSchemaId(session, catalogName, schemaName);
 
       try {
         // Check if registered model already exists
@@ -175,44 +260,6 @@ public class ModelRepository {
     return registeredModelInfo;
   }
 
-  public RegisteredModelInfoDAO getRegisteredModelDao(Session session, UUID schemaId, String name) {
-    String hql = "FROM RegisteredModelInfoDAO t WHERE t.schemaId = :schemaId AND t.name = :name";
-    Query<RegisteredModelInfoDAO> query = session.createQuery(hql, RegisteredModelInfoDAO.class);
-    query.setParameter("schemaId", schemaId);
-    query.setParameter("name", name);
-    query.setMaxResults(1);
-    LOGGER.info("Finding registered model by schemaId: " + schemaId + " and name: " + name);
-    return query.uniqueResult(); // Returns null if no result is found
-  }
-
-  private String getRegisteredModelFullName(RegisteredModelInfo registeredModelInfo) {
-    return getRegisteredModelFullName(
-        registeredModelInfo.getCatalogName(),
-        registeredModelInfo.getSchemaName(),
-        registeredModelInfo.getName());
-  }
-
-  private String getRegisteredModelFullName(
-      String catalogName, String schemaName, String modelName) {
-    return catalogName + "." + schemaName + "." + modelName;
-  }
-
-  public UUID getSchemaId(Session session, String catalogName, String schemaName) {
-    SchemaInfoDAO schemaInfo = SCHEMA_REPOSITORY.getSchemaDAO(session, catalogName, schemaName);
-    if (schemaInfo == null) {
-      throw new BaseException(ErrorCode.NOT_FOUND, "Schema not found: " + schemaName);
-    }
-    return schemaInfo.getId();
-  }
-
-  public UUID getCatalogId(Session session, String catalogName) {
-    CatalogInfoDAO catalogInfo = CATALOG_REPOSITORY.getCatalogDAO(session, catalogName);
-    if (catalogInfo == null) {
-      throw new BaseException(ErrorCode.NOT_FOUND, "Catalog not found: " + catalogName);
-    }
-    return catalogInfo.getId();
-  }
-
   public ListRegisteredModelsResponse listRegisteredModels(
       String catalogName,
       String schemaName,
@@ -223,7 +270,7 @@ public class ModelRepository {
       session.setDefaultReadOnly(true);
       Transaction tx = session.beginTransaction();
       try {
-        UUID schemaId = getSchemaId(session, catalogName, schemaName);
+        UUID schemaId = RepositoryUtils.getSchemaId(session, catalogName, schemaName);
         ListRegisteredModelsResponse response =
             listRegisteredModels(session, schemaId, catalogName, schemaName, maxResults, pageToken);
         tx.commit();
@@ -344,7 +391,7 @@ public class ModelRepository {
       String schemaName = parts[1];
       String registeredModelName = parts[2];
       try {
-        UUID schemaId = getSchemaId(session, catalogName, schemaName);
+        UUID schemaId = RepositoryUtils.getSchemaId(session, catalogName, schemaName);
         deleteRegisteredModel(session, schemaId, registeredModelName, force);
         tx.commit();
       } catch (RuntimeException e) {
@@ -359,20 +406,16 @@ public class ModelRepository {
   public void deleteRegisteredModel(
       Session session, UUID schemaId, String registeredModelName, boolean force) {
     RegisteredModelInfoDAO registeredModelInfoDAO =
-        getRegisteredModelDao(session, schemaId, registeredModelName);
-    if (registeredModelInfoDAO == null) {
-      throw new BaseException(
-          ErrorCode.NOT_FOUND, "Registered model not found: " + registeredModelName);
-    }
+        getRegisteredModelDaoOrThrow(session, schemaId, registeredModelName);
     if (force) {
       // Remove all model versions
       List<ModelVersionInfoDAO> versionList =
-          getModelVersionsDao(session, registeredModelInfoDAO.getId(), "0", 100);
+          getModelVersionsDao(session, registeredModelInfoDAO.getId(), "0", 1);
       while (versionList.size() > 0) {
         for (ModelVersionInfoDAO modelVersionInfoDao : versionList) {
           session.remove(modelVersionInfoDao);
         }
-        versionList = getModelVersionsDao(session, registeredModelInfoDAO.getId(), "0", 100);
+        versionList = getModelVersionsDao(session, registeredModelInfoDAO.getId(), "0", 1);
       }
     } else {
       // Check if model versions exist and throw with unable to delete if they exist
@@ -426,30 +469,6 @@ public class ModelRepository {
     }
   }
 
-  public ModelVersionInfoDAO getModelVersionDao(Session session, UUID modelId, Long version) {
-    String hql =
-        "FROM ModelVersionInfoDAO t WHERE t.registeredModelId = :registeredModelId AND t.version = :version";
-    Query<ModelVersionInfoDAO> query = session.createQuery(hql, ModelVersionInfoDAO.class);
-    query.setParameter("registeredModelId", modelId);
-    query.setParameter("version", version.toString());
-    query.setMaxResults(1);
-    LOGGER.info(
-        "Finding model version by registeredModelId: " + modelId + " and version: " + version);
-    return query.uniqueResult(); // Returns null if no result is found
-  }
-
-  public List<ModelVersionInfoDAO> getModelVersionsDao(
-      Session session, UUID registeredModelId, String token, int maxResults) {
-    String hql =
-        "FROM ModelVersionInfoDAO t WHERE t.registeredModelId = :registeredModelId AND t.version > :token ORDER BY t.version ASC";
-    Query<ModelVersionInfoDAO> query = session.createQuery(hql, ModelVersionInfoDAO.class);
-    query.setParameter("registeredModelId", registeredModelId);
-    query.setParameter("token", Long.parseLong(token));
-    query.setMaxResults(maxResults);
-    LOGGER.info("Finding model versions by registeredModelId: " + registeredModelId);
-    return query.getResultList(); // Returns null if no result is found
-  }
-
   public ModelVersionInfo createModelVersion(CreateModelVersion createModelVersion) {
     long createTime = System.currentTimeMillis();
     String modelVersionId = UUID.randomUUID().toString();
@@ -473,16 +492,13 @@ public class ModelRepository {
 
     Transaction tx;
     try (Session session = SESSION_FACTORY.openSession()) {
-      UUID catalogId = getCatalogId(session, catalogName);
-      UUID schemaId = getSchemaId(session, catalogName, schemaName);
       tx = session.beginTransaction();
+      UUID catalogId = RepositoryUtils.getCatalogId(session, catalogName);
+      UUID schemaId = RepositoryUtils.getSchemaId(session, catalogName, schemaName);
       try {
         // Check if registered model already exists
         RegisteredModelInfoDAO existingRegisteredModel =
-            getRegisteredModelDao(session, schemaId, modelName);
-        if (existingRegisteredModel == null) {
-          throw new BaseException(ErrorCode.NOT_FOUND, "Registered model not found: " + modelName);
-        }
+            getRegisteredModelDaoOrThrow(session, schemaId, modelName);
         if (existingRegisteredModel.getMaxVersionNumber() == null
             || existingRegisteredModel.getMaxVersionNumber() < 0) {
           throw new BaseException(
@@ -551,13 +567,9 @@ public class ModelRepository {
         String catalogName = parts[0];
         String schemaName = parts[1];
         String registeredModelName = parts[2];
-        UUID schemaId = getSchemaId(session, catalogName, schemaName);
+        UUID schemaId = RepositoryUtils.getSchemaId(session, catalogName, schemaName);
         RegisteredModelInfoDAO existingRegisteredModel =
-            getRegisteredModelDao(session, schemaId, registeredModelName);
-        if (existingRegisteredModel == null) {
-          throw new BaseException(
-              ErrorCode.NOT_FOUND, "Registered model not found: " + registeredModelName);
-        }
+            getRegisteredModelDaoOrThrow(session, schemaId, registeredModelName);
         UUID registeredModelId = existingRegisteredModel.getId();
         List<ModelVersionInfoDAO> modelVersions =
             getModelVersionsDao(
@@ -591,16 +603,6 @@ public class ModelRepository {
     }
   }
 
-  public String getNextPageToken(List<ModelVersionInfoDAO> entities, Optional<Integer> maxResults) {
-    if (entities == null
-        || entities.isEmpty()
-        || entities.size() < PagedListingHelper.getPageSize(maxResults)) {
-      return null;
-    }
-    // return the last entity name
-    return entities.get(entities.size() - 1).getVersion().toString();
-  }
-
   public ModelVersionInfo updateModelVersion(UpdateModelVersion updateModelVersion) {
     if (updateModelVersion.getFullName() == null) {
       throw new BaseException(ErrorCode.INVALID_ARGUMENT, "No model specified.");
@@ -628,20 +630,10 @@ public class ModelRepository {
       tx = session.beginTransaction();
       try {
         // Get the registered model record from the database
-        UUID schemaId = getSchemaId(session, catalogName, schemaName);
-        RegisteredModelInfoDAO existingRegisteredModel =
-            getRegisteredModelDao(session, schemaId, registeredModelName);
-        if (existingRegisteredModel == null) {
-          throw new BaseException(
-              ErrorCode.NOT_FOUND, "Registered model not found: " + registeredModelName);
-        }
+        UUID schemaId = RepositoryUtils.getSchemaId(session, catalogName, schemaName);
         // Get the model version record from the database
         ModelVersionInfoDAO origModelVersionInfoDAO =
-            getModelVersionDao(session, existingRegisteredModel.getId(), version);
-        if (origModelVersionInfoDAO == null) {
-          throw new BaseException(
-              ErrorCode.NOT_FOUND, "Model version not found: " + fullName + "/" + version);
-        }
+            getModelVersionDaoOrThrow(session, schemaId, fullName, registeredModelName, version);
         origModelVersionInfoDAO.setComment(updateModelVersion.getComment());
         long updatedTime = System.currentTimeMillis();
         origModelVersionInfoDAO.setUpdatedAt(new Date(updatedTime));
@@ -677,21 +669,12 @@ public class ModelRepository {
     String catalogName = parts[0];
     String schemaName = parts[1];
     String registeredModelName = parts[2];
-    RegisteredModelInfo rmInfo = getRegisteredModel(fullName);
-    if (rmInfo == null) {
-      throw new BaseException(
-          ErrorCode.INVALID_ARGUMENT, "Invalid registered model name: " + fullName);
-    }
     try (Session session = SESSION_FACTORY.openSession()) {
       Transaction tx = session.beginTransaction();
       try {
-        UUID schemaId = getSchemaId(session, catalogName, schemaName);
+        UUID schemaId = RepositoryUtils.getSchemaId(session, catalogName, schemaName);
         RegisteredModelInfoDAO existingRegisteredModel =
-            getRegisteredModelDao(session, schemaId, registeredModelName);
-        if (existingRegisteredModel == null) {
-          throw new BaseException(
-              ErrorCode.NOT_FOUND, "Registered model not found: " + registeredModelName);
-        }
+            getRegisteredModelDaoOrThrow(session, schemaId, registeredModelName);
         deleteModelVersion(session, existingRegisteredModel.getId(), fullName, version);
         tx.commit();
       } catch (RuntimeException e) {
@@ -716,7 +699,7 @@ public class ModelRepository {
 
   public ModelVersionInfo finalizeModelVersion(FinalizeModelVersion finalizeModelVersion) {
     if (finalizeModelVersion.getFullName() == null) {
-      throw new BaseException(ErrorCode.INVALID_ARGUMENT, "No model specified.");
+      throw new BaseException(ErrorCode.INVALID_ARGUMENT, "No three tier full name specified.");
     }
     if (finalizeModelVersion.getVersion() == null) {
       throw new BaseException(ErrorCode.INVALID_ARGUMENT, "No version specified.");
@@ -736,20 +719,10 @@ public class ModelRepository {
       tx = session.beginTransaction();
       try {
         // Get the registered model record from the database
-        UUID schemaId = getSchemaId(session, catalogName, schemaName);
-        RegisteredModelInfoDAO existingRegisteredModel =
-            getRegisteredModelDao(session, schemaId, registeredModelName);
-        if (existingRegisteredModel == null) {
-          throw new BaseException(
-              ErrorCode.NOT_FOUND, "Registered model not found: " + registeredModelName);
-        }
-        // Get the model version record from the database
+        UUID schemaId = RepositoryUtils.getSchemaId(session, catalogName, schemaName);
         ModelVersionInfoDAO origModelVersionInfoDAO =
-            getModelVersionDao(session, existingRegisteredModel.getId(), version);
-        if (origModelVersionInfoDAO == null) {
-          throw new BaseException(
-              ErrorCode.NOT_FOUND, "Model version not found: " + fullName + "/" + version);
-        }
+            getModelVersionDaoOrThrow(session, schemaId, fullName, registeredModelName, version);
+
         if (ModelVersionStatus.valueOf(origModelVersionInfoDAO.getStatus())
             != ModelVersionStatus.PENDING_REGISTRATION) {
           throw new BaseException(
