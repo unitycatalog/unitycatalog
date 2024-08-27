@@ -14,10 +14,10 @@ public class CredentialResponse {
 
   public GenerateTemporaryModelVersionCredentialResponse toModelVersionCredentialResponse() {
     return new GenerateTemporaryModelVersionCredentialResponse()
-            .awsTempCredentials(awsTempCredentials)
-            .azureUserDelegationSas(azureUserDelegationSas)
-            .gcpOauthToken(gcpOauthToken)
-            .expirationTime(expirationTime);
+        .awsTempCredentials(awsTempCredentials)
+        .azureUserDelegationSas(azureUserDelegationSas)
+        .gcpOauthToken(gcpOauthToken)
+        .expirationTime(expirationTime);
   }
 
   public GenerateTemporaryTableCredentialResponse toTableCredentialResponse() {
