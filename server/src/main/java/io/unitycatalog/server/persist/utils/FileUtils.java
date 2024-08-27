@@ -32,8 +32,22 @@ public class FileUtils {
     return properties.getProperty("storageRoot");
   }
 
+  // This is temporary until storageRoot is fully supported
+  private static String getModelStorageRoot() {
+    return properties.getProperty("registeredModelStorageRoot");
+  }
+
   private static String getDirectoryURI(String entityFullName) {
     return getStorageRoot() + "/" + entityFullName.replace(".", "/");
+  }
+
+  private static String getModelDirectoryURI(String entityFullName) {
+    return getModelStorageRoot() + "/" + entityFullName.replace(".", "/");
+  }
+
+  public static String getModelStorageLocation(
+      String catalogName, String schemaName, String modelName) {
+    return getModelDirectoryURI(catalogName + "." + schemaName + ".models." + modelName);
   }
 
   public static String createVolumeDirectory(String volumeName) {
@@ -44,6 +58,20 @@ public class FileUtils {
   public static String createTableDirectory(
       String catalogName, String schemaName, String tableName) {
     String absoluteUri = getDirectoryURI(catalogName + "." + schemaName + ".tables." + tableName);
+    return createDirectory(absoluteUri).toString();
+  }
+
+  public static String createRegisteredModelDirectory(
+      String catalogName, String schemaName, String modelName) {
+    String absoluteUri =
+        getModelDirectoryURI(catalogName + "." + schemaName + ".models." + modelName);
+    return createDirectory(absoluteUri).toString();
+  }
+
+  public static String createModelVersionDirectory(
+      String catalogName, String schemaName, String modelName) {
+    String absoluteUri =
+        getModelDirectoryURI(catalogName + "." + schemaName + ".models." + modelName + ".versions");
     return createDirectory(absoluteUri).toString();
   }
 

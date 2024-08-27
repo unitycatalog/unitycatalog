@@ -1,5 +1,7 @@
 package io.unitycatalog.server.persist.utils;
 
+import io.unitycatalog.server.exception.BaseException;
+import io.unitycatalog.server.exception.ErrorCode;
 import io.unitycatalog.server.persist.PropertyRepository;
 import io.unitycatalog.server.persist.dao.PropertyDAO;
 import java.lang.reflect.InvocationTargetException;

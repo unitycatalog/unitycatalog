@@ -226,7 +226,7 @@ private class UCProxy extends TableCatalog with SupportsNamespaces {
     val format: String = properties.get("provider")
     createTable.setDataSourceFormat(convertDatasourceFormat(format))
     tablesApi.createTable(createTable)
-    null
+    loadTable(ident)
   }
 
   private def convertDatasourceFormat(format: String): DataSourceFormat = {

@@ -213,7 +213,9 @@ public abstract class BaseTableCRUDTest extends BaseCRUDTest {
     TableInfo tableBeforeSchemaUpdate = tableOperations.getTable(TestUtils.TABLE_FULL_NAME);
     schemaOperations.updateSchema(
         TestUtils.SCHEMA_FULL_NAME,
-        new UpdateSchema().newName(TestUtils.SCHEMA_NEW_NAME).comment(TestUtils.SCHEMA_COMMENT));
+        new UpdateSchema()
+            .newName(TestUtils.SCHEMA_NEW_NAME)
+            .comment(TestUtils.SCHEMA_NEW_COMMENT));
 
     TableInfo tableAfterSchemaUpdate =
         tableOperations.getTable(
