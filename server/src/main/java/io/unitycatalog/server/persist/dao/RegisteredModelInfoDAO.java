@@ -44,6 +44,9 @@ public class RegisteredModelInfoDAO extends IdentifiableDAO {
   @Column(name = "url", length = 2048)
   private String url;
 
+  @Column(name = "max_version_number")
+  private Long maxVersionNumber;
+
   public static RegisteredModelInfoDAO from(RegisteredModelInfo registeredModelInfo) {
     return RegisteredModelInfoDAO.builder()
         .id(UUID.fromString(registeredModelInfo.getModelId()))

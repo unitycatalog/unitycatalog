@@ -9,44 +9,51 @@ import io.unitycatalog.server.exception.GlobalExceptionHandler;
 import io.unitycatalog.server.model.*;
 import io.unitycatalog.server.persist.ModelRepository;
 import io.unitycatalog.server.persist.utils.RepositoryUtils;
-import io.unitycatalog.server.utils.TemporaryCredentialUtils;
+import io.unitycatalog.server.service.credential.CredentialOperations;
+import io.unitycatalog.server.service.credential.CredentialContext;
+import io.unitycatalog.server.persist.ModelRepository;
+
+import java.util.Collections;
+import java.util.Set;
+
+import static io.unitycatalog.server.service.credential.CredentialContext.Privilege.SELECT;
+import static io.unitycatalog.server.service.credential.CredentialContext.Privilege.UPDATE;
 
 @ExceptionHandler(GlobalExceptionHandler.class)
 public class TemporaryModelVersionCredentialsService {
 
     private static final ModelRepository MODEL_REPOSITORY = ModelRepository.getInstance();
 
+    private final CredentialOperations credentialOps;
+
+    public TemporaryModelVersionCredentialsService(CredentialOperations credentialOps) {
+        this.credentialOps = credentialOps;
+    }
+
     @Post("")
-    public HttpResponse generateTemporaryTableCredential(
+    public HttpResponse generateTemporaryModelVersionCredential(
             GenerateTemporaryModelVersionCredential generateTemporaryModelVersionCredential) {
 
         long modelVersion = generateTemporaryModelVersionCredential.getVersion();
         String catalogName = generateTemporaryModelVersionCredential.getCatalogName();
         String schemaName = generateTemporaryModelVersionCredential.getSchemaName();
         String modelName = generateTemporaryModelVersionCredential.getModelName();
-        ModelVersionOperation operation = generateTemporaryModelVersionCredential.getOperation();
         String fullName = RepositoryUtils.getAssetFullName(catalogName, schemaName, modelName);
 
-        // Check if model version exists
-        ModelVersionInfo mvInfo = MODEL_REPOSITORY.getModelVersion(fullName, modelVersion);
-        if (mvInfo == null) {
-            throw new BaseException(ErrorCode.NOT_FOUND, "Model version not found: " + fullName + "/" + modelVersion);
+        ModelVersionInfo modelVersionInfo = MODEL_REPOSITORY.getModelVersion(fullName, modelVersion);
+        ModelVersionOperation requestedOperation = generateTemporaryModelVersionCredential.getOperation();
+        // Must enforce that write credentials are not passed back if the model has been finalized
+        if (modelVersionInfo.getStatus() != ModelVersionStatus.PENDING_REGISTRATION && requestedOperation == ModelVersionOperation.READ_WRITE_MODEL_VERSION) {
+            throw new BaseException(ErrorCode.INVALID_ARGUMENT, "Cannot request read/write credentials on a finalized model version: " + fullName + "/" + modelVersion);
         }
-        String mvStorageLocation = mvInfo.getStorageLocation();
+        return HttpResponse.ofJson(credentialOps.vendCredentialForModelVersion(modelVersionInfo, modelVersionOperationToPrivileges(generateTemporaryModelVersionCredential.getOperation())));
+    }
 
-        // Generate temporary credentials
-        if (mvStorageLocation == null || mvStorageLocation.isEmpty()) {
-            throw new BaseException(ErrorCode.FAILED_PRECONDITION, "Model version storage location not found:" + fullName + "/" + modelVersion);
-        }
-        if (mvStorageLocation.startsWith("s3://")) {
-            return HttpResponse.ofJson(
-                    new GenerateTemporaryModelVersionCredentialResponse()
-                            .awsTempCredentials(
-                                    TemporaryCredentialUtils.findS3BucketConfig(mvStorageLocation)));
-
-        } else {
-            // return empty credentials for local file system
-            return HttpResponse.ofJson(new GenerateTemporaryModelVersionCredentialResponse());
-        }
+    private Set<CredentialContext.Privilege> modelVersionOperationToPrivileges(ModelVersionOperation modelVersionOperation) {
+        return switch (modelVersionOperation) {
+            case READ_MODEL_VERSION -> Set.of(SELECT);
+            case READ_WRITE_MODEL_VERSION -> Set.of(SELECT, UPDATE);
+            case UNKNOWN_MODEL_VERSION_OPERATION -> Collections.emptySet();
+        };
     }
 }

@@ -25,6 +25,7 @@ import io.unitycatalog.server.service.ModelService;
 import io.unitycatalog.server.service.SchemaService;
 import io.unitycatalog.server.service.TableService;
 import io.unitycatalog.server.service.TemporaryTableCredentialsService;
+import io.unitycatalog.server.service.TemporaryModelVersionCredentialsService;
 import io.unitycatalog.server.service.TemporaryVolumeCredentialsService;
 import io.unitycatalog.server.service.VolumeService;
 import io.unitycatalog.server.service.credential.CredentialOperations;

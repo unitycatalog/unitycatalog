@@ -907,6 +907,18 @@ paths:
         required: true
         schema:
           type: string
+      - name: max_results
+        in: query
+        description: |
+          Maximum number of model versions to return.
+          - when set to a value greater than 0, the page length is the minimum of this value and a server configured value;
+          - when set to 0, the page length is set to a server configured value;
+          - when set to a value less than 0, an invalid parameter error is returned;
+        required: false
+        schema:
+          type: integer
+          format: int32
+          maximum: 50
       - name: page_token
         in: query
         description: Opaque token to send for the next page of results (pagination).
@@ -1756,6 +1768,10 @@ components:
       properties:
         aws_temp_credentials:
           $ref: '#/components/schemas/AwsCredentials'
+        azure_user_delegation_sas:
+          $ref: '#/components/schemas/AzureUserDelegationSAS'
+        gcp_oauth_token:
+          $ref: '#/components/schemas/GcpOauthToken'
         expiration_time:
           description: |
             Server time when the credential will expire, in epoch milliseconds.
@@ -2034,6 +2050,13 @@ components:
     UpdateModelVersion:
       type: object
       properties:
+        full_name:
+          description: The full name of the registered model to update.
+          type: string
+        version:
+          description: Version number of the version to update.
+          type: integer
+          format:  int64
         comment:
           description: User-provided free-form text description.
           type: string
@@ -2053,23 +2076,15 @@ components:
     FinalizeModelVersion:
       type: object
       properties:
-        model_name:
-          description: Name of model, relative to parent schema.
-          type: string
-        catalog_name:
-          description: Name of parent catalog.
-          type: string
-        schema_name:
-          description: Name of parent schema relative to its parent catalog.
+        full_name:
+          description: The full name of the registered model to finalize.
           type: string
         version:
-          description: Version number of the version to finalize
+          description: Version number of the version to finalize.
           type: integer
           format:  int64
       required:
-        - model_name
-        - catalog_name
-        - schema_name
+        - full_name
         - version
 info:
   title: Unity Catalog API
