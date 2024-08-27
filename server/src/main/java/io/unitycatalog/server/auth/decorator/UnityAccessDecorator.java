@@ -199,8 +199,10 @@ public class UnityAccessDecorator implements DecoratingHttpServiceFunction {
     if (args.length == 1) {
       return payload.get(args[0]);
     } else {
-      if (payload.get(args[0]) instanceof Map value) {
-        return findPayloadValue(args[1], (Map<String, Object>) value);
+      if (payload.get(args[0]) instanceof Map) {
+        @SuppressWarnings("unchecked")
+        Map<String, Object> value = (Map<String, Object>) payload.get(args[0]);
+        return findPayloadValue(args[1], value);
       } else {
         return null;
       }
