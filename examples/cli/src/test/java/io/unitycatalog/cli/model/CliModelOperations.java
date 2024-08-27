@@ -6,9 +6,7 @@ import static io.unitycatalog.cli.TestUtils.executeCLICommand;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import io.unitycatalog.client.model.CreateRegisteredModel;
-import io.unitycatalog.client.model.RegisteredModelInfo;
-import io.unitycatalog.client.model.UpdateRegisteredModel;
+import io.unitycatalog.client.model.*;
 import io.unitycatalog.server.base.ServerConfig;
 import io.unitycatalog.server.base.model.ModelOperations;
 import java.util.ArrayList;
@@ -71,7 +69,6 @@ public class CliModelOperations implements ModelOperations {
       String registeredModelFullName, UpdateRegisteredModel updateRm) {
     List<String> argsList =
         new ArrayList<>(
-            // Fix the full_name_arg issue
             List.of("registered_model", "update", "--full_name", registeredModelFullName));
     if (updateRm.getNewName() != null) {
       argsList.add("--new_name");
@@ -97,5 +94,114 @@ public class CliModelOperations implements ModelOperations {
     }
     String[] args = addServerAndAuthParams(argsList, config);
     executeCLICommand(args);
+  }
+
+  @Override
+  public ModelVersionInfo createModelVersion(CreateModelVersion createModelVersion) {
+    List<String> argsList =
+        new ArrayList<>(
+            List.of(
+                "model_version",
+                "create",
+                "--name",
+                createModelVersion.getModelName(),
+                "--schema",
+                createModelVersion.getSchemaName(),
+                "--catalog",
+                createModelVersion.getCatalogName()));
+    if (createModelVersion.getComment() != null) {
+      argsList.add("--comment");
+      argsList.add(createModelVersion.getComment());
+    }
+    if (createModelVersion.getRunId() != null) {
+      argsList.add("--run_id");
+      argsList.add(createModelVersion.getRunId());
+    }
+    if (createModelVersion.getSource() != null) {
+      argsList.add("--source");
+      argsList.add(createModelVersion.getSource());
+    }
+    String[] args = addServerAndAuthParams(argsList, config);
+    JsonNode modelVersionInfoJson = executeCLICommand(args);
+    return objectMapper.convertValue(modelVersionInfoJson, ModelVersionInfo.class);
+  }
+
+  @Override
+  public List<ModelVersionInfo> listModelVersions(String registeredModelFullName) {
+    String[] args =
+        addServerAndAuthParams(
+            List.of("model_version", "list", "--full_name", registeredModelFullName), config);
+    JsonNode modelVersionList = executeCLICommand(args);
+    return objectMapper.convertValue(
+        modelVersionList, new TypeReference<List<ModelVersionInfo>>() {});
+  }
+
+  @Override
+  public ModelVersionInfo getModelVersion(String registeredModelFullName, Long version) {
+    String[] args =
+        addServerAndAuthParams(
+            List.of(
+                "model_version",
+                "get",
+                "--full_name",
+                registeredModelFullName,
+                "--version",
+                version.toString()),
+            config);
+    JsonNode modelVersionInfoJson = executeCLICommand(args);
+    return objectMapper.convertValue(modelVersionInfoJson, ModelVersionInfo.class);
+  }
+
+  @Override
+  public ModelVersionInfo updateModelVersion(
+      String fullName, Long version, UpdateModelVersion updateMv) {
+    List<String> argsList =
+        new ArrayList<>(
+            List.of(
+                "model_version",
+                "update",
+                "--full_name",
+                updateMv.getFullName(),
+                "--version",
+                updateMv.getVersion().toString()));
+    if (updateMv.getComment() != null) {
+      argsList.add("--comment");
+      argsList.add(updateMv.getComment());
+    }
+    String[] args = addServerAndAuthParams(argsList, config);
+    JsonNode updatedModelVersionInfo = executeCLICommand(args);
+    return objectMapper.convertValue(updatedModelVersionInfo, ModelVersionInfo.class);
+  }
+
+  @Override
+  public void deleteModelVersion(String registeredModelFullName, Long version) {
+    List<String> argsList =
+        new ArrayList<>(
+            List.of(
+                "model_version",
+                "delete",
+                "--full_name",
+                registeredModelFullName,
+                "--version",
+                version.toString()));
+    String[] args = addServerAndAuthParams(argsList, config);
+    executeCLICommand(args);
+  }
+
+  @Override
+  public ModelVersionInfo finalizeModelVersion(
+      String registeredModelFullName, Long version, FinalizeModelVersion finalizeModelVersion) {
+    List<String> argsList =
+        new ArrayList<>(
+            List.of(
+                "model_version",
+                "finalize",
+                "--full_name",
+                registeredModelFullName,
+                "--version",
+                version.toString()));
+    String[] args = addServerAndAuthParams(argsList, config);
+    JsonNode finalizedModelVersionInfo = executeCLICommand(args);
+    return objectMapper.convertValue(finalizedModelVersionInfo, ModelVersionInfo.class);
   }
 }
