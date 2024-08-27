@@ -470,7 +470,6 @@ public class ModelRepository {
   }
 
   public ModelVersionInfo createModelVersion(CreateModelVersion createModelVersion) {
-    LOGGER.info("Create request: " + createModelVersion.toString());
     long createTime = System.currentTimeMillis();
     String modelVersionId = UUID.randomUUID().toString();
     String catalogName = createModelVersion.getCatalogName();

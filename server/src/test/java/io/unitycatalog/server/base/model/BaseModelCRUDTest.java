@@ -269,7 +269,5 @@ public abstract class BaseModelCRUDTest extends BaseCRUDTest {
         .isInstanceOf(Exception.class);
     assertThatThrownBy(() -> modelOperations.getRegisteredModel(MODEL_FULL_NAME))
         .isInstanceOf(Exception.class);
-
-    System.out.println("Completed model tests.");
   }
 }
