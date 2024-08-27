@@ -39,6 +39,11 @@ public class TestUtils {
   public static final String VOLUME_NEW_NAME = "uc_newtestvolume";
   public static final String VOLUME_NEW_FULL_NAME =
       CATALOG_NAME + "." + SCHEMA_NAME + "." + VOLUME_NEW_NAME;
+
+  public static final String MV_COMMENT = "model version comment";
+  public static final String MV_SOURCE = "model version source";
+  public static final String MV_RUNID = "model version runId";
+
   public static final Map<String, String> PROPERTIES =
       new HashMap<>(Map.of("prop1", "value1", "prop2", "value2"));
   public static final Map<String, String> NEW_PROPERTIES =

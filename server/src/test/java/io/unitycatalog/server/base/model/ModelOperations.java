@@ -1,9 +1,7 @@
 package io.unitycatalog.server.base.model;
 
 import io.unitycatalog.client.ApiException;
-import io.unitycatalog.client.model.CreateRegisteredModel;
-import io.unitycatalog.client.model.RegisteredModelInfo;
-import io.unitycatalog.client.model.UpdateRegisteredModel;
+import io.unitycatalog.client.model.*;
 import java.util.List;
 import java.util.Optional;
 
@@ -19,4 +17,18 @@ public interface ModelOperations {
       String fullName, UpdateRegisteredModel updateRegisteredModel) throws ApiException;
 
   void deleteRegisteredModel(String modelFullName, Optional<Boolean> force) throws ApiException;
+
+  ModelVersionInfo createModelVersion(CreateModelVersion createModelVersion) throws ApiException;
+
+  List<ModelVersionInfo> listModelVersions(String registeredModelFullName) throws ApiException;
+
+  ModelVersionInfo getModelVersion(String modelFullName, Long version) throws ApiException;
+
+  ModelVersionInfo updateModelVersion(
+      String fullName, Long version, UpdateModelVersion updateModelVersion) throws ApiException;
+
+  void deleteModelVersion(String modelFullName, Long version) throws ApiException;
+
+  ModelVersionInfo finalizeModelVersion(
+      String fullName, Long version, FinalizeModelVersion finalizeModelVersion) throws ApiException;
 }
