@@ -5,11 +5,19 @@ import sbt.util
 import sbtlicensereport.license.{DepModuleInfo, LicenseCategory, LicenseInfo}
 import ReleaseSettings.{javaOnlyReleaseSettings, rootReleaseSettings, skipReleaseSettings}
 
-import scala.jdk.CollectionConverters.asJavaIterableConverter
 import scala.language.implicitConversions
 
 val orgName = "io.unitycatalog"
 val artifactNamePrefix = "unitycatalog"
+
+// Use Java 11 for two modules: clients and spark
+// for better Spark compatibility
+// until Spark 4 comes out with newer Java compatibility
+lazy val javacRelease11 = Seq("--release", "11")
+lazy val javacRelease17 = Seq("--release", "17")
+
+lazy val scala212 = "2.12.15"
+lazy val scala213 = "2.13.14"
 
 lazy val commonSettings = Seq(
   organization := orgName,
@@ -24,9 +32,10 @@ lazy val commonSettings = Seq(
   Compile / compile / javacOptions ++= Seq(
     "-Xlint:deprecation",
     "-Xlint:unchecked",
-    "-source", "17",
-    "-target", "17",
     "-g:source,lines,vars",
+  ),
+  Test / javaOptions ++= Seq (
+    "-ea",
   ),
   libraryDependencies ++= Seq(
     "org.slf4j" % "slf4j-api" % "2.0.13",
@@ -39,7 +48,7 @@ lazy val commonSettings = Seq(
   crossPaths := false,  // No scala cross building
   assembly / assemblyMergeStrategy := {
     case PathList("META-INF", xs @ _*) => MergeStrategy.discard
-    case x => MergeStrategy.first
+    case _ => MergeStrategy.first
   },
 
   // Test configs
@@ -75,6 +84,7 @@ lazy val commonSettings = Seq(
     //  - GNU General Public License, version 2 with the GNU Classpath Exception
     // I think we're good with the classpath exception in there.
     case DepModuleInfo("jakarta.transaction", "jakarta.transaction-api", _) => true
+    case DepModuleInfo("javax.annotation", "javax.annotation-api", _) => true
   },
   
   assembly / test := {}
@@ -109,6 +119,7 @@ lazy val client = (project in file("target/clients/java"))
     name := s"$artifactNamePrefix-client",
     commonSettings,
     javaOnlyReleaseSettings,
+    Compile / compile / javacOptions ++= javacRelease11,
     libraryDependencies ++= Seq(
       "com.fasterxml.jackson.core" % "jackson-annotations" % jacksonVersion,
       "com.fasterxml.jackson.core" % "jackson-core" % jacksonVersion,
@@ -134,7 +145,8 @@ lazy val client = (project in file("target/clients/java"))
     openApiAdditionalProperties := Map(
       "library" -> "native",
       "useJakartaEe" -> "true",
-      "hideGenerationTimestamp" -> "true"),
+      "hideGenerationTimestamp" -> "true",
+      "openApiNullable" -> "false"),
     openApiGenerateApiTests := SettingDisabled,
     openApiGenerateModelTests := SettingDisabled,
     openApiGenerateApiDocumentation := SettingDisabled,
@@ -174,10 +186,15 @@ lazy val server = (project in file("server"))
   .dependsOn(serverModels)
   .settings (
     name := s"$artifactNamePrefix-server",
+    mainClass := Some(orgName + ".server.UnityCatalogServer"),
     commonSettings,
     javaOnlyReleaseSettings,
     javafmtCheckSettings,
     javaCheckstyleSettings(file("dev") / "checkstyle-config.xml"),
+    Compile / compile / javacOptions ++= Seq(
+      "-processor",
+      "lombok.launch.AnnotationProcessorHider$AnnotationProcessor"
+    ) ++ javacRelease17,
     libraryDependencies ++= Seq(
       "com.linecorp.armeria" %  "armeria" % "1.28.4",
       // Netty dependencies
@@ -187,17 +204,27 @@ lazy val server = (project in file("server"))
       "com.fasterxml.jackson.core" % "jackson-annotations" % jacksonVersion,
       "com.fasterxml.jackson.core" % "jackson-core" % jacksonVersion,
       "com.fasterxml.jackson.core" % "jackson-databind" % jacksonVersion,
+      "com.fasterxml.jackson.dataformat" % "jackson-dataformat-yaml" % jacksonVersion,
       "com.fasterxml.jackson.datatype" % "jackson-datatype-jsr310" % jacksonVersion,
+      "com.auth0" % "java-jwt" % "4.4.0",
+      "com.auth0" % "jwks-rsa" % "0.22.1",
 
       "com.google.code.findbugs" % "jsr305" % "3.0.2",
       "com.h2database" %  "h2" % "2.2.224",
 
       "org.hibernate.orm" % "hibernate-core" % "6.5.0.Final",
-      "org.openapitools" % "jackson-databind-nullable" % openApiToolsJacksonBindNullableVersion,
 
       "jakarta.activation" % "jakarta.activation-api" % "2.1.3",
       "net.bytebuddy" % "byte-buddy" % "1.14.15",
       "org.projectlombok" % "lombok" % "1.18.32" % Provided,
+
+      // For ALDS access
+      "com.azure" % "azure-identity" % "1.13.2",
+      "com.azure" % "azure-storage-file-datalake" % "12.20.0",
+
+      // For GCS Access
+      "com.google.cloud" % "google-cloud-storage" % "2.30.1",
+      "com.google.auth" % "google-auth-library-oauth2-http" % "1.20.0",
 
       //For s3 access
       "com.amazonaws" % "aws-java-sdk-s3" % "1.12.728",
@@ -207,7 +234,10 @@ lazy val server = (project in file("server"))
       // Iceberg REST Catalog dependencies
       "org.apache.iceberg" % "iceberg-core" % "1.5.2",
       "org.apache.iceberg" % "iceberg-aws" % "1.5.2",
+      "org.apache.iceberg" % "iceberg-azure" % "1.5.2",
+      "org.apache.iceberg" % "iceberg-gcp" % "1.5.2",
       "software.amazon.awssdk" % "s3" % "2.24.0",
+      "software.amazon.awssdk" % "sts" % "2.24.0",
       "io.vertx" % "vertx-core" % "4.3.5",
       "io.vertx" % "vertx-web" % "4.3.5",
       "io.vertx" % "vertx-web-client" % "4.3.5",
@@ -225,11 +255,6 @@ lazy val server = (project in file("server"))
 
       // CLI dependencies
       "commons-cli" % "commons-cli" % "1.7.0"
-    ),
-
-    Compile / compile / javacOptions ++= Seq(
-      "-processor",
-      "lombok.launch.AnnotationProcessorHider$AnnotationProcessor"
     ),
 
     Compile / sourceGenerators += Def.task {
@@ -257,6 +282,7 @@ lazy val serverModels = (project in file("server") / "target" / "models")
     name := s"$artifactNamePrefix-servermodels",
     commonSettings,
     (Compile / compile) := ((Compile / compile) dependsOn generate).value,
+    Compile / compile / javacOptions ++= javacRelease17,
     libraryDependencies ++= Seq(
       "jakarta.annotation" % "jakarta.annotation-api" % "3.0.0" % Provided,
       "com.fasterxml.jackson.core" % "jackson-annotations" % jacksonVersion,
@@ -294,6 +320,7 @@ lazy val cli = (project in file("examples") / "cli")
     skipReleaseSettings,
     javafmtCheckSettings,
     javaCheckstyleSettings(file("dev") / "checkstyle-config.xml"),
+    Compile / compile / javacOptions ++= javacRelease17,
     libraryDependencies ++= Seq(
       "commons-cli" % "commons-cli" % "1.7.0",
       "org.json" % "json" % "20240303",
@@ -327,14 +354,14 @@ lazy val cli = (project in file("examples") / "cli")
   * and the server(with tests) is required as a test dependency)
   * This was necessary because Spark 3.5 has a dependency on Jackson 2.15, which conflicts with the Jackson 2.17
  */
-lazy val serverAndClientShaded = (project in file("server-and-client-shaded"))
+lazy val serverShaded = (project in file("server-shaded"))
   .dependsOn(server % "compile->compile, test->compile")
-  .dependsOn(client % "compile->compile")
   .settings(
-    name := s"${artifactNamePrefix}-server-shaded",
+    name := s"$artifactNamePrefix-server-shaded",
     commonSettings,
     skipReleaseSettings,
     Compile / packageBin := assembly.value,
+    assembly / mainClass := Some("io.unitycatalog.server.UnityCatalogServer"),
     assembly / logLevel := Level.Warn,
     assembly / test := {},
     assembly / assemblyShadeRules := Seq(
@@ -342,13 +369,8 @@ lazy val serverAndClientShaded = (project in file("server-and-client-shaded"))
       ShadeRule.rename("org.antlr.**" -> "shaded.@0").inAll,
     ),
     assemblyPackageScala / assembleArtifact := false,
-
-    assembly / assemblyMergeStrategy := {
-      case PathList("META-INF", xs@_*) => MergeStrategy.discard
-      case _ => MergeStrategy.first
-    },
     assembly / fullClasspath := {
-      val compileClasspath = (server / Compile / fullClasspath).value ++ (client / Compile / fullClasspath).value
+      val compileClasspath = (server / Compile / fullClasspath).value
       val testClasses = (server / Test / products).value
       compileClasspath ++ testClasses.map(Attributed.blank)
     }
@@ -356,20 +378,24 @@ lazy val serverAndClientShaded = (project in file("server-and-client-shaded"))
 
 val sparkVersion = "3.5.1"
 lazy val spark = (project in file("connectors/spark"))
+  .dependsOn(client)
   .settings(
     name := s"$artifactNamePrefix-spark",
-    scalaVersion := "2.12.15",
+    scalaVersion := scala212,
+    crossScalaVersions := Seq(scala212, scala213),
     commonSettings,
     javaOptions ++= Seq(
       "--add-opens=java.base/sun.nio.ch=ALL-UNNAMED",
     ),
     javaCheckstyleSettings(file("dev/checkstyle-config.xml")),
+    Compile / compile / javacOptions ++= javacRelease11,
     libraryDependencies ++= Seq(
       "org.apache.spark" %% "spark-sql" % sparkVersion,
       "com.fasterxml.jackson.core" % "jackson-databind" % "2.15.0",
       "com.fasterxml.jackson.module" %% "jackson-module-scala" % "2.15.0",
       "com.fasterxml.jackson.core" % "jackson-annotations" % "2.15.0",
       "com.fasterxml.jackson.core" % "jackson-core" % "2.15.0",
+      "com.fasterxml.jackson.dataformat" % "jackson-dataformat-xml" % "2.15.0",
       "org.antlr" % "antlr4-runtime" % "4.9.3",
       "org.antlr" % "antlr4" % "4.9.3",
     ),
@@ -389,11 +415,11 @@ lazy val spark = (project in file("connectors/spark"))
       "com.fasterxml.jackson.module" %% "jackson-module-scala" % "2.15.0",
       "com.fasterxml.jackson.core" % "jackson-annotations" % "2.15.0",
       "com.fasterxml.jackson.core" % "jackson-core" % "2.15.0",
+      "com.fasterxml.jackson.dataformat" % "jackson-dataformat-xml" % "2.15.0",
       "org.antlr" % "antlr4-runtime" % "4.9.3",
       "org.antlr" % "antlr4" % "4.9.3",
     ),
-    Compile / unmanagedJars += (serverAndClientShaded / assembly).value,
-    Test / unmanagedJars += (serverAndClientShaded / assembly).value,
+    Test / unmanagedJars += (serverShaded / assembly).value,
     licenseDepExclusions := {
       case DepModuleInfo("org.hibernate.orm", _, _) => true
       case DepModuleInfo("jakarta.annotation", "jakarta.annotation-api", _) => true
@@ -413,7 +439,7 @@ lazy val spark = (project in file("connectors/spark"))
       case DepModuleInfo("oro", "oro", _) => true
       case DepModuleInfo("org.glassfish", "javax.json", _) => true
       case DepModuleInfo("org.glassfish.hk2.external", "jakarta.inject", _) => true
-      case DepModuleInfo("org.antlr", "ST4", _) => true,
+      case DepModuleInfo("org.antlr", "ST4", _) => true
     }
   )
 

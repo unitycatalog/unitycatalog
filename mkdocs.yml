@@ -13,9 +13,10 @@ nav:
       - CLI: usage/cli.md
       - Tables:
           - usage/tables/index.md
-          - UniForm: usage/tables/uniform.md
           - Delta Lake: usage/tables/deltalake.md
           - ORC: usage/tables/orc.md
+          - Parquet: usage/tables/parquet.md
+          - UniForm: usage/tables/uniform.md
       - Volumes: usage/volumes.md
       - Functions: usage/functions.md
       - Server: usage/server.md
