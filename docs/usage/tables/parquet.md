@@ -45,7 +45,7 @@ Let's take a look at how we can create Parquet tables in Unity Catalog.
 Use the `bin/uc table create ...` command with the `--format PARQUET` flag to create a new Parquet table in your Unity Catalog.
 
 ```sh
-bin/uc table create --full_name unity.default.test --columns "some_numbers INT, some_letters STRING" --storage_location $DIRECTORY$
+bin/uc table create --full_name unity.default.test --columns "some_numbers INT, some_letters STRING" --storage_location $DIRECTORY$ --format PARQUET
 ```
 
 Note that you will need to manually set the $DIRECTORY$ variable to the correct storage location.
