@@ -50,9 +50,9 @@ Run the command below with the correct `path/to/storage` to create a new PARQUET
 bin/uc table create --full_name unity.default.test --columns "some_numbers INT, some_letters STRING" --storage_location $DIRECTORY$ --format PARQUET
 ```
 
-Note that you will need to manually set the $DIRECTORY$ variable to the correct storage location.
+Note that you will need to manually set the $DIRECTORY$ variable to the correct storage location. If you don't know where Unity Catalog is storing your files, then take a look at the metadata of an existing table using `bin/uc table get --full_name <catalog.schema.table>` to see its storage location. 
 
-This should output something like:
+After you run the `table create` command, your output should look something like this:
 
 ```
 ┌────────────────────┬────────────────────────────────────────────────────────────────────────────────────────────────────┐
