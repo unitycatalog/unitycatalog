@@ -1,0 +1,11 @@
+#!/usr/bin/env bash
+
+script_dir=$(dirname "$0")
+project_dir=$(dirname "$(dirname "$(realpath "$script_dir")")")
+
+container_name="unitycatalog-cli"
+container_version=$(< "$project_dir/version.sbt" cut -d '"' -f2)
+
+docker run --rm -it \
+   --name "$container_name" \
+   "$container_name:$container_version" "$@"

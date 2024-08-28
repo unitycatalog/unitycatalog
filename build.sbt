@@ -183,6 +183,7 @@ lazy val server = (project in file("server"))
   .dependsOn(serverModels)
   .settings (
     name := s"$artifactNamePrefix-server",
+    mainClass := Some(orgName + ".server.UnityCatalogServer"),
     commonSettings,
     javaOnlyReleaseSettings,
     javafmtCheckSettings,
