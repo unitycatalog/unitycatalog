@@ -23,6 +23,7 @@ import io.unitycatalog.server.service.FunctionService;
 import io.unitycatalog.server.service.IcebergRestCatalogService;
 import io.unitycatalog.server.service.ModelService;
 import io.unitycatalog.server.service.SchemaService;
+import io.unitycatalog.server.service.Scim2UserService;
 import io.unitycatalog.server.service.TableService;
 import io.unitycatalog.server.service.TemporaryTableCredentialsService;
 import io.unitycatalog.server.service.TemporaryVolumeCredentialsService;
@@ -36,7 +37,13 @@ import io.unitycatalog.server.utils.VersionUtils;
 import io.vertx.core.Verticle;
 import io.vertx.core.Vertx;
 import java.nio.file.Path;
-import org.apache.commons.cli.*;
+import org.apache.commons.cli.CommandLine;
+import org.apache.commons.cli.CommandLineParser;
+import org.apache.commons.cli.DefaultParser;
+import org.apache.commons.cli.HelpFormatter;
+import org.apache.commons.cli.Option;
+import org.apache.commons.cli.Options;
+import org.apache.commons.cli.ParseException;
 import org.apache.logging.log4j.core.config.Configurator;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -83,8 +90,13 @@ public class UnityCatalogServer {
     // Credentials Service
     CredentialOperations credentialOperations = new CredentialOperations();
 
+    ServerPropertiesUtils serverPropertiesUtils = ServerPropertiesUtils.getInstance();
+    String authorization = serverPropertiesUtils.getProperty("server.authorization", "disable");
+    boolean enableAuthorization = authorization.equalsIgnoreCase("enable");
+
     // Add support for Unity Catalog APIs
     AuthService authService = new AuthService(securityContext);
+    Scim2UserService Scim2UserService = new Scim2UserService();
     CatalogService catalogService = new CatalogService();
     SchemaService schemaService = new SchemaService();
     VolumeService volumeService = new VolumeService();
@@ -97,6 +109,7 @@ public class UnityCatalogServer {
         new TemporaryVolumeCredentialsService(credentialOperations);
     sb.service("/", (ctx, req) -> HttpResponse.of("Hello, Unity Catalog!"))
         .annotatedService(controlPath + "auth", authService, unityConverterFunction)
+        .annotatedService(controlPath + "scim2/Users", Scim2UserService)
         .annotatedService(basePath + "catalogs", catalogService, unityConverterFunction)
         .annotatedService(basePath + "schemas", schemaService, unityConverterFunction)
         .annotatedService(basePath + "volumes", volumeService, unityConverterFunction)
@@ -123,15 +136,21 @@ public class UnityCatalogServer {
         icebergRequestConverter,
         icebergResponseConverter);
 
-    ServerPropertiesUtils serverPropertiesUtils = ServerPropertiesUtils.getInstance();
-    String authorization = serverPropertiesUtils.getProperty("server.authorization");
     // TODO: eventually might want to make this secure-by-default.
-    if (authorization != null && authorization.equalsIgnoreCase("enable")) {
+    if (enableAuthorization) {
       LOGGER.info("Authorization enabled.");
+
+      // Note: Decorators are applied in reverse order.
+
       AuthDecorator authDecorator = new AuthDecorator();
+      sb.routeDecorator().pathPrefix(basePath).build(authDecorator);
+      sb.routeDecorator()
+          .pathPrefix(controlPath)
+          .exclude(controlPath + "auth/tokens")
+          .build(authDecorator);
+
       ExceptionHandlingDecorator exceptionDecorator =
           new ExceptionHandlingDecorator(new GlobalExceptionHandler());
-      sb.routeDecorator().pathPrefix(basePath).build(authDecorator);
       sb.decorator(exceptionDecorator);
     }
   }
