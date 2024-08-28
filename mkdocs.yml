@@ -15,6 +15,7 @@ nav:
           - usage/tables/index.md
           - UniForm: usage/tables/uniform.md
           - Delta Lake: usage/tables/deltalake.md
+          - ORC: usage/tables/orc.md
       - Volumes: usage/volumes.md
       - Functions: usage/functions.md
       - Server: usage/server.md
