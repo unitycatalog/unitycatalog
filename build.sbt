@@ -76,6 +76,7 @@ lazy val commonSettings = Seq(
     // https://en.wikipedia.org/wiki/GNU_Lesser_General_Public_License
     // We can use and distribute the, but not modify the source code
     case DepModuleInfo("org.hibernate.orm", _, _) => true
+    case DepModuleInfo("com.unboundid.scim2", _, _) => true
     // Duo license:
     //  - Eclipse Public License 2.0
     //  - GNU General Public License, version 2 with the GNU Classpath Exception
@@ -246,8 +247,6 @@ lazy val server = (project in file("server"))
       "com.fasterxml.jackson.core" % "jackson-databind" % jacksonVersion,
       "com.fasterxml.jackson.dataformat" % "jackson-dataformat-yaml" % jacksonVersion,
       "com.fasterxml.jackson.datatype" % "jackson-datatype-jsr310" % jacksonVersion,
-      "com.auth0" % "java-jwt" % "4.4.0",
-      "com.auth0" % "jwks-rsa" % "0.22.1",
 
       "com.google.code.findbugs" % "jsr305" % "3.0.2",
       "com.h2database" %  "h2" % "2.2.224",
@@ -284,10 +283,9 @@ lazy val server = (project in file("server"))
 
       // Auth dependencies
       "com.unboundid.product.scim2" % "scim2-sdk-common" % "3.1.0",
-      "org.casbin" % "jcasbin" % "1.55.0",
-      "org.casbin" % "jdbc-adapter" % "2.7.0",
       "org.springframework" % "spring-expression" % "6.1.11",
       "com.auth0" % "java-jwt" % "4.4.0",
+      "com.auth0" % "jwks-rsa" % "0.22.1",
 
       // Test dependencies
       "org.junit.jupiter" %  "junit-jupiter" % "5.10.3" % Test,
