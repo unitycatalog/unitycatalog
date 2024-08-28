@@ -90,10 +90,6 @@ public class UnityCatalogServer {
     // Credentials Service
     CredentialOperations credentialOperations = new CredentialOperations();
 
-    ServerPropertiesUtils serverPropertiesUtils = ServerPropertiesUtils.getInstance();
-    String authorization = serverPropertiesUtils.getProperty("server.authorization", "disable");
-    boolean enableAuthorization = authorization.equalsIgnoreCase("enable");
-
     // Add support for Unity Catalog APIs
     AuthService authService = new AuthService(securityContext);
     Scim2UserService Scim2UserService = new Scim2UserService();
@@ -136,21 +132,15 @@ public class UnityCatalogServer {
         icebergRequestConverter,
         icebergResponseConverter);
 
+    ServerPropertiesUtils serverPropertiesUtils = ServerPropertiesUtils.getInstance();
+    String authorization = serverPropertiesUtils.getProperty("server.authorization");
     // TODO: eventually might want to make this secure-by-default.
-    if (enableAuthorization) {
+    if (authorization != null && authorization.equalsIgnoreCase("enable")) {
       LOGGER.info("Authorization enabled.");
-
-      // Note: Decorators are applied in reverse order.
-
       AuthDecorator authDecorator = new AuthDecorator();
-      sb.routeDecorator().pathPrefix(basePath).build(authDecorator);
-      sb.routeDecorator()
-          .pathPrefix(controlPath)
-          .exclude(controlPath + "auth/tokens")
-          .build(authDecorator);
-
       ExceptionHandlingDecorator exceptionDecorator =
           new ExceptionHandlingDecorator(new GlobalExceptionHandler());
+      sb.routeDecorator().pathPrefix(basePath).build(authDecorator);
       sb.decorator(exceptionDecorator);
     }
   }
