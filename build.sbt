@@ -77,6 +77,7 @@ lazy val commonSettings = Seq(
     // We can use and distribute the, but not modify the source code
     case DepModuleInfo("org.hibernate.orm", _, _) => true
     case DepModuleInfo("com.unboundid.scim2", _, _) => true
+    case DepModuleInfo("com.unboundid.product.scim2", _, _) => true
     // Duo license:
     //  - Eclipse Public License 2.0
     //  - GNU General Public License, version 2 with the GNU Classpath Exception
