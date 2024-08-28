@@ -2096,6 +2096,9 @@ components:
         external_id:
           description: The external identifier of the user.
           type: string
+        picture_url:
+          description: The URL of the user's profile picture.
+          type: string
       type: object
     UpdateUser:
       properties:
@@ -2107,6 +2110,9 @@ components:
           type: string
         external_id:
           description: The new external identifier of the user.
+          type: string
+        picture_url:
+          description: The URL of the user's profile picture.
           type: string
       type: object
     User:
@@ -2129,6 +2135,9 @@ components:
           enum:
             - ENABLED
             - DISABLED
+        picture_url:
+            description: The URL of the user's profile picture.
+            type: string
         created_at:
           description: The time the user was created.
           type: integer
