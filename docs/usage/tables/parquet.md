@@ -44,6 +44,8 @@ Let's take a look at how we can create Parquet tables in Unity Catalog.
 
 Use the `bin/uc table create ...` command with the `--format PARQUET` flag to create a new Parquet table in your Unity Catalog.
 
+Run the command below with the correct `path/to/storage` to create a new PARQUET table with 2 colummns: `some_numbers` and `some_letters`:
+
 ```sh
 bin/uc table create --full_name unity.default.test --columns "some_numbers INT, some_letters STRING" --storage_location $DIRECTORY$ --format PARQUET
 ```
@@ -98,9 +100,6 @@ This command has multiple parameters:
 - `format`: [Optional] The format of the data source. Supported values are DELTA, PARQUET, ORC, JSON, CSV, AVRO, and TEXT. If not specified the default format is DELTA.
 - `storage_location`: The storage location associated with the table. It is a mandatory field for EXTERNAL tables.
 - `properties`: [Optional] The properties of the entity in JSON format (e.g., '{"key1": "value1", "key2": "value2"}'). Make sure to either escape the double quotes(\") inside the properties string or just use single quotes('') around the same.
-
-Run the command below with the correct `path/to/storage` to create a new PARQUET table with 2 colummns: `some_numbers` and `some_letters`.
-You can get the correct storage location using a `bin/uc table get ...` call to fetch some table metadata.
 
 ## Pros and Cons of Using Parquet
 
