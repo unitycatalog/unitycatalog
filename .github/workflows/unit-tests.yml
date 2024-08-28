@@ -26,6 +26,6 @@ jobs:
         distribution: 'temurin'
 
     - name: Run tests with coverage
-      run: build/sbt -J-Xmx2G jacoco
+      run: build/sbt -J-Xmx2G +jacoco
     - name: Run license check
       run: build/sbt licenseCheck
