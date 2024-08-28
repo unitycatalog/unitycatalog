@@ -119,6 +119,21 @@ paths:
           content:
             application/json:
               schema: {}
+  /scim2/Users/self:
+    get:
+      tags:
+        - Users
+      operationId: getSelf
+      summary: Get the current user
+      description: |
+        Gets the user from the jwt token provided.
+      responses:
+        '200':
+          description: The user was successfully retrieved.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserResource'
 
 components:
   schemas:
@@ -153,6 +168,15 @@ components:
             lastModified:
               type: integer
               format: int64
+        photos:
+          description: The photos of the user.
+          type: array
+          items:
+            type: object
+            properties:
+              value:
+                description: The url of the user's photo.
+                type: string
     Email:
       description: SCIM email for a user.
       type: object

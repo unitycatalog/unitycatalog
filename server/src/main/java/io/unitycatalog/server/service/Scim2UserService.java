@@ -2,8 +2,11 @@ package io.unitycatalog.server.service;
 
 import static io.unitycatalog.server.model.ResourceType.METASTORE;
 
+import com.auth0.jwt.interfaces.Claim;
+import com.auth0.jwt.interfaces.DecodedJWT;
 import com.linecorp.armeria.common.HttpResponse;
 import com.linecorp.armeria.common.HttpStatus;
+import com.linecorp.armeria.server.ServiceRequestContext;
 import com.linecorp.armeria.server.annotation.*;
 import com.unboundid.scim2.common.exceptions.BadRequestException;
 import com.unboundid.scim2.common.exceptions.PreconditionFailedException;
@@ -12,6 +15,7 @@ import com.unboundid.scim2.common.exceptions.ScimException;
 import com.unboundid.scim2.common.filters.Filter;
 import com.unboundid.scim2.common.types.Email;
 import com.unboundid.scim2.common.types.Meta;
+import com.unboundid.scim2.common.types.Photo;
 import com.unboundid.scim2.common.types.UserResource;
 import com.unboundid.scim2.common.utils.FilterEvaluator;
 import com.unboundid.scim2.common.utils.Parser;
@@ -26,6 +30,7 @@ import io.unitycatalog.server.model.CreateUser;
 import io.unitycatalog.server.model.UpdateUser;
 import io.unitycatalog.server.model.User;
 import io.unitycatalog.server.persist.UserRepository;
+import java.net.URI;
 import java.util.Calendar;
 import java.util.List;
 import java.util.Objects;
@@ -94,17 +99,32 @@ public class Scim2UserService {
       return HttpResponse.ofJson(asUserResource(user));
     } catch (BaseException e) {
       if (e.getErrorCode() == ErrorCode.NOT_FOUND) {
+        String pictureUrl = "";
+        if (userResource.getPhotos() != null && !userResource.getPhotos().isEmpty()) {
+          pictureUrl = userResource.getPhotos().get(0).getValue().toString();
+        }
         User user =
             USER_REPOSITORY.createUser(
                 new CreateUser()
                     .name(userResource.getDisplayName())
                     .email(primaryEmail.getValue())
-                    .externalId(userResource.getExternalId()));
+                    .externalId(userResource.getExternalId())
+                    .pictureUrl(pictureUrl));
         return HttpResponse.ofJson(asUserResource(user));
       } else {
         throw e;
       }
     }
+  }
+
+  @Get("/self")
+  @AuthorizeExpression("#principal != null")
+  @AuthorizeKey(METASTORE)
+  public HttpResponse getCurrentUser() {
+    ServiceRequestContext ctx = ServiceRequestContext.current();
+    DecodedJWT decodedJWT = ctx.attr(AuthDecorator.DECODED_JWT_ATTR);
+    Claim sub = decodedJWT.getClaim("sub");
+    return HttpResponse.ofJson(asUserResource(USER_REPOSITORY.getUserByEmail(sub.asString())));
   }
 
   @Get("/{id}")
@@ -170,11 +190,17 @@ public class Scim2UserService {
     meta.setLastModified(lastModified);
     meta.setResourceType("User");
 
+    String pictureUrl = user.getPictureUrl();
+    if (pictureUrl == null) {
+      pictureUrl = "";
+    }
+
     UserResource userResource = new UserResource();
     userResource
         .setUserName(user.getEmail())
         .setDisplayName(user.getName())
-        .setEmails(List.of(new Email().setValue(user.getEmail()).setPrimary(true)));
+        .setEmails(List.of(new Email().setValue(user.getEmail()).setPrimary(true)))
+        .setPhotos(List.of(new Photo().setValue(URI.create(pictureUrl))));
     userResource.setId(user.getId());
     userResource.setMeta(meta);
     userResource.setActive(true);

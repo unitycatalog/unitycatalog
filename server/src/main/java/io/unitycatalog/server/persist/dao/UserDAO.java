@@ -34,6 +34,9 @@ public class UserDAO extends IdentifiableDAO {
   @Column(name = "updated_at")
   private Date updatedAt;
 
+  @Column(name = "picture_url")
+  private String pictureUrl;
+
   public static UserDAO from(User user) {
     return UserDAO.builder()
         .id(UUID.fromString(user.getId()))
@@ -41,6 +44,7 @@ public class UserDAO extends IdentifiableDAO {
         .email(user.getEmail())
         .externalId(user.getExternalId())
         .state(user.getState().name())
+        .pictureUrl(user.getPictureUrl())
         .createdAt(new Date(user.getCreatedAt()))
         .updatedAt(user.getUpdatedAt() == null ? null : new Date(user.getUpdatedAt()))
         .build();
@@ -53,6 +57,7 @@ public class UserDAO extends IdentifiableDAO {
         .email(getEmail())
         .externalId(getExternalId())
         .state(User.StateEnum.fromValue(getState()))
+        .pictureUrl(getPictureUrl())
         .createdAt(getCreatedAt().getTime())
         .updatedAt(getUpdatedAt() == null ? null : getUpdatedAt().getTime());
   }
