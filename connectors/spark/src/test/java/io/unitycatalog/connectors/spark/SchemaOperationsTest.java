@@ -1,17 +1,17 @@
 package io.unitycatalog.connectors.spark;
 
-import io.unitycatalog.server.utils.TestUtils;
-import org.apache.spark.sql.Row;
-import org.apache.spark.sql.SparkSession;
-import org.apache.spark.sql.catalyst.analysis.NoSuchNamespaceException;
-import org.junit.jupiter.api.Test;
-
 import static io.unitycatalog.server.utils.TestUtils.CATALOG_NAME;
 import static io.unitycatalog.server.utils.TestUtils.SCHEMA_NAME;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+
+import io.unitycatalog.server.utils.TestUtils;
+import org.apache.spark.sql.Row;
+import org.apache.spark.sql.SparkSession;
+import org.apache.spark.sql.catalyst.analysis.NoSuchNamespaceException;
+import org.junit.jupiter.api.Test;
 
 public class SchemaOperationsTest extends BaseSparkIntegrationTest {
   @Test

@@ -1,9 +1,13 @@
 package io.unitycatalog.cli.utils;
 
 public enum CliParams {
+  IDENTITY_TOKEN("identity_token", "Identity token to authorize", "identityToken"),
   NAME("name", "The name of the entity.", "name"),
   SCHEMA_NAME("schema", "The name of the schema.", "schema_name"),
   CATALOG_NAME("catalog", "The name of the catalog.", "catalog_name"),
+  MODEL_NAME("model_name", "The name of the registered model.", "model_name"),
+  RUN_ID("run_id", "The run id that generated a model version.", "run_id"),
+  SOURCE("source", "The URI location of the source artifacts for the model version.", "source"),
   PROPERTIES(
       "properties",
       "The properties of the entity. Need to be in json format. For example: \"{\"key1\": \"value1\", \"key2\": \"value2\"}\".",
@@ -46,7 +50,9 @@ public enum CliParams {
       "output",
       "To indicate CLI output format preference. Supported values are json and jsonPretty.",
       "output"),
+  VERSION("version", "Version number of a registered model entity.", "version"),
   FORCE("force", "To force delete the entity", "force");
+
   private final String value;
   private final String helpMessage;
   private final String serverParam;

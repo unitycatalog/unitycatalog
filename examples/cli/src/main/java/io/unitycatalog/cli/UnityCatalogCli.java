@@ -84,6 +84,10 @@ public class UnityCatalogCli {
 
       String command = subArgs[0];
       switch (command) {
+        case CliUtils.AUTH:
+          apiClient.setBasePath("/api/1.0/unity-control");
+          AuthCli.handle(cmd, apiClient);
+          break;
         case CliUtils.CATALOG:
           CatalogCli.handle(cmd, apiClient);
           break;
@@ -98,6 +102,12 @@ public class UnityCatalogCli {
           break;
         case CliUtils.FUNCTION:
           FunctionCli.handle(cmd, apiClient);
+          break;
+        case CliUtils.REGISTERED_MODEL:
+          ModelCli.handle(cmd, apiClient);
+          break;
+        case CliUtils.MODEL_VERSION:
+          ModelVersionCli.handle(cmd, apiClient);
           break;
         default:
           CliUtils.printHelp();

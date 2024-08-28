@@ -51,6 +51,8 @@ public class HibernateUtils {
       configuration.addAnnotatedClass(ColumnInfoDAO.class);
       configuration.addAnnotatedClass(PropertyDAO.class);
       configuration.addAnnotatedClass(FunctionInfoDAO.class);
+      configuration.addAnnotatedClass(RegisteredModelInfoDAO.class);
+      configuration.addAnnotatedClass(ModelVersionInfoDAO.class);
       configuration.addAnnotatedClass(FunctionParameterInfoDAO.class);
       configuration.addAnnotatedClass(VolumeInfoDAO.class);
 
