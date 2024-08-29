@@ -75,7 +75,6 @@ EOF
 # Define the shell used within the container
 SHELL ["/bin/bash", "-i", "-c", "-o", "pipefail"]
 
-ENV SERVER_JAR="${unitycatalog_jars}/unitycatalog-server-${unitycatalog_version}.jar"
 ENV UC_SERVER_BIN="${unitycatalog_home}/${unitycatalog_bin}/start-uc-server"
 
 RUN <<-EOF
