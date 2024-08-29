@@ -2100,6 +2100,9 @@ components:
           description: The URL of the user's profile picture.
           type: string
       type: object
+      required:
+        - name
+        - email
     UpdateUser:
       properties:
         new_name:
@@ -2147,6 +2150,10 @@ components:
           type: integer
           format: int64
       type: object
+      required:
+        - id
+        - name
+        - email
 info:
   title: Unity Catalog API
   version: '0.1'
