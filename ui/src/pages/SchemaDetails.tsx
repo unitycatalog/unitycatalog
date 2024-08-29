@@ -70,21 +70,18 @@ export default function SchemaDetails() {
         schema={data}
         closeModal={() => setOpen(false)}
         onSubmit={(values) =>
-          mutation.mutate(
-            { ...values, name: schema },
-            {
-              onError: (error: Error) => {
-                setNotification(error.message, 'error');
-              },
-              onSuccess: (schema) => {
-                setNotification(
-                  `${schema.name} schema successfully updated`,
-                  'success',
-                );
-                setOpen(false);
-              },
+          mutation.mutate(values, {
+            onError: (error: Error) => {
+              setNotification(error.message, 'error');
             },
-          )
+            onSuccess: (schema) => {
+              setNotification(
+                `${schema.name} schema successfully updated`,
+                'success',
+              );
+              setOpen(false);
+            },
+          })
         }
         loading={mutation.isPending}
       />
