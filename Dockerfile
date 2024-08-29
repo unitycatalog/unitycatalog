@@ -17,7 +17,6 @@ ARG unitycatalog_user_basedir="${unitycatalog_home}/${unitycatalog_user_home}"
 ARG sbt_args="-J-Xmx2G"
 # FIXME Pass it from the outside
 ARG unitycatalog_version="0.2.0-SNAPSHOT"
-ARG server_assembly_jar="${unitycatalog_repo}/${unitycatalog_jar}/unitycatalog-server-assembly-${unitycatalog_version}.jar"
 ARG jars_directory="server/target/jars"
 
 FROM eclipse-temurin:22-jdk-alpine AS package_server
@@ -60,7 +59,6 @@ ARG unitycatalog_user_name
 ARG unitycatalog_user_home
 ARG unitycatalog_user_basedir
 ARG sbt_args
-ARG server_assembly_jar
 ARG unitycatalog_version
 ARG jars_directory
 
