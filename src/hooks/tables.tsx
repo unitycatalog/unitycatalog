@@ -4,7 +4,7 @@ import {
   useQueryClient,
   UseQueryOptions,
 } from '@tanstack/react-query';
-import { UC_API_PREFIX } from '../utils/constants';
+import apiClient from '../context/client';
 
 interface ColumnInterface {
   name: string;
@@ -45,10 +45,9 @@ export function useListTables({ catalog, schema, options }: ListTablesParams) {
         schema_name: schema,
       });
 
-      const response = await fetch(
-        `${UC_API_PREFIX}/tables?${searchParams.toString()}`,
-      );
-      return response.json();
+      return apiClient
+        .get(`/tables?${searchParams.toString()}`)
+        .then((response) => response.data);
     },
     ...options,
   });
@@ -66,8 +65,9 @@ export function useGetTable({ catalog, schema, table }: GetTableParams) {
     queryFn: async () => {
       const fullName = [catalog, schema, table].join('.');
 
-      const response = await fetch(`${UC_API_PREFIX}/tables/${fullName}`);
-      return response.json();
+      return apiClient
+        .get(`/tables/${fullName}`)
+        .then((response) => response.data);
     },
   });
 }
@@ -89,18 +89,14 @@ export function useDeleteTable({ catalog, schema }: DeleteTableParams) {
       schema_name,
       name,
     }: DeleteTableMutationParams): Promise<void> => {
-      const response = await fetch(
-        `${UC_API_PREFIX}/tables/${catalog_name}.${schema_name}.${name}`,
-        {
-          method: 'DELETE',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-        },
-      );
-      if (!response.ok) {
-        throw new Error('Failed to delete table');
-      }
+      return apiClient
+        .delete(`/tables/${catalog_name}.${schema_name}.${name}`)
+        .then((response) => response.data)
+        .catch((e) => {
+          throw new Error(
+            e.response?.data?.message || 'Failed to delete table',
+          );
+        });
     },
     onSuccess: () => {
       queryClient.invalidateQueries({

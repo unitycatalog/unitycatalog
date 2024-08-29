@@ -19,7 +19,7 @@ export default function CatalogDetails() {
   const { data } = useGetCatalog({ catalog });
   const [open, setOpen] = useState<boolean>(false);
   const { setNotification } = useNotification();
-  const mutation = useUpdateCatalog();
+  const mutation = useUpdateCatalog(catalog);
 
   if (!data) return null;
 
@@ -60,21 +60,18 @@ export default function CatalogDetails() {
         catalog={data}
         closeModal={() => setOpen(false)}
         onSubmit={(values) =>
-          mutation.mutate(
-            { ...values, name: data.name },
-            {
-              onError: (error: Error) => {
-                setNotification(error.message, 'error');
-              },
-              onSuccess: (catalog) => {
-                setNotification(
-                  `${catalog.name} catalog successfully updated`,
-                  'success',
-                );
-                setOpen(false);
-              },
+          mutation.mutate(values, {
+            onError: (error: Error) => {
+              setNotification(error.message, 'error');
             },
-          )
+            onSuccess: (catalog) => {
+              setNotification(
+                `${catalog.name} catalog successfully updated`,
+                'success',
+              );
+              setOpen(false);
+            },
+          })
         }
         loading={mutation.isPending}
       />
