@@ -4,7 +4,7 @@ import {
   useQueryClient,
   UseQueryOptions,
 } from '@tanstack/react-query';
-import { UC_API_PREFIX } from '../utils/constants';
+import apiClient from '../context/client';
 
 export interface SchemaInterface {
   schema_id: string;
@@ -30,10 +30,9 @@ export function useListSchemas({ catalog, options }: ListSchemasParams) {
     queryFn: async () => {
       const searchParams = new URLSearchParams({ catalog_name: catalog });
 
-      const response = await fetch(
-        `${UC_API_PREFIX}/schemas?${searchParams.toString()}`,
-      );
-      return response.json();
+      return apiClient
+        .get(`/schemas?${searchParams.toString()}`)
+        .then((response) => response.data);
     },
     ...options,
   });
@@ -49,8 +48,9 @@ export function useGetSchema({ catalog, schema }: GetSchemaParams) {
     queryFn: async () => {
       const fullName = [catalog, schema].join('.');
 
-      const response = await fetch(`${UC_API_PREFIX}/schemas/${fullName}`);
-      return response.json();
+      return apiClient
+        .get(`/schemas/${fullName}`)
+        .then((response) => response.data);
     },
   });
 }
@@ -63,18 +63,14 @@ export function useCreateSchema() {
 
   return useMutation<SchemaInterface, Error, CreateSchemaMutationParams>({
     mutationFn: async (params: CreateSchemaMutationParams) => {
-      const response = await fetch(`${UC_API_PREFIX}/schemas`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(params),
-      });
-      if (!response.ok) {
-        // TODO: Expose error message
-        throw new Error('Failed to create schema');
-      }
-      return response.json();
+      return apiClient
+        .post(`/schemas`, JSON.stringify(params))
+        .then((response) => response.data)
+        .catch((e) => {
+          throw new Error(
+            e.response?.data?.message || 'Failed to create schema',
+          );
+        });
     },
     onSuccess: (schema) => {
       queryClient.invalidateQueries({
@@ -89,7 +85,7 @@ interface UpdateSchemaParams {
   schema: string;
 }
 export interface UpdateSchemaMutationParams
-  extends Pick<SchemaInterface, 'name' | 'comment'> {}
+  extends Pick<SchemaInterface, 'comment'> {}
 
 // Update a new schema
 export function useUpdateSchema({ catalog, schema }: UpdateSchemaParams) {
@@ -99,21 +95,14 @@ export function useUpdateSchema({ catalog, schema }: UpdateSchemaParams) {
     mutationFn: async (params: UpdateSchemaMutationParams) => {
       const fullSchemaName = [catalog, schema].join('.');
 
-      const response = await fetch(
-        `${UC_API_PREFIX}/schemas/${fullSchemaName}`,
-        {
-          method: 'PATCH',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify(params),
-        },
-      );
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.message || 'Failed to update schema');
-      }
-      return response.json();
+      return apiClient
+        .patch(`/schemas/${fullSchemaName}`, JSON.stringify(params))
+        .then((response) => response.data)
+        .catch((e) => {
+          throw new Error(
+            e.response?.data?.message || 'Failed to update schema',
+          );
+        });
     },
     onSuccess: () => {
       queryClient.invalidateQueries({
@@ -137,16 +126,14 @@ export function useDeleteSchema({ catalog }: DeleteSchemaParams) {
 
   return useMutation<void, Error, DeleteSchemaMutationParams>({
     mutationFn: async (params: DeleteSchemaMutationParams) => {
-      const response = await fetch(
-        `${UC_API_PREFIX}/schemas/${params.catalog_name}.${params.name}`,
-        {
-          method: 'DELETE',
-        },
-      );
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.message || 'Failed to delete schema');
-      }
+      return apiClient
+        .delete(`/schemas/${params.catalog_name}.${params.name}`)
+        .then((response) => response.data)
+        .catch((e) => {
+          throw new Error(
+            e.response?.data?.message || 'Failed to delete schema',
+          );
+        });
     },
     onSuccess: () => {
       queryClient.invalidateQueries({

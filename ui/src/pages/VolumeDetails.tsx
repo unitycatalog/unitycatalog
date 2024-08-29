@@ -69,21 +69,18 @@ export default function VolumeDetails() {
         volume={data}
         closeModal={() => setOpen(false)}
         onSubmit={(values) =>
-          mutation.mutate(
-            { ...values, name: volume },
-            {
-              onError: (error: Error) => {
-                setNotification(error.message, 'error');
-              },
-              onSuccess: (volume) => {
-                setNotification(
-                  `${volume.name} volume successfully updated`,
-                  'success',
-                );
-                setOpen(false);
-              },
+          mutation.mutate(values, {
+            onError: (error: Error) => {
+              setNotification(error.message, 'error');
             },
-          )
+            onSuccess: (volume) => {
+              setNotification(
+                `${volume.name} volume successfully updated`,
+                'success',
+              );
+              setOpen(false);
+            },
+          })
         }
         loading={mutation.isPending}
       />
