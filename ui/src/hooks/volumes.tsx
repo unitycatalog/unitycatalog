@@ -4,7 +4,7 @@ import {
   useQueryClient,
   UseQueryOptions,
 } from '@tanstack/react-query';
-import { UC_API_PREFIX } from '../utils/constants';
+import apiClient from '../context/client';
 
 export interface VolumeInterface {
   volume_id: string;
@@ -41,10 +41,9 @@ export function useListVolumes({
         schema_name: schema,
       });
 
-      const response = await fetch(
-        `${UC_API_PREFIX}/volumes?${searchParams.toString()}`,
-      );
-      return response.json();
+      return apiClient
+        .get(`/volumes?${searchParams.toString()}`)
+        .then((response) => response.data);
     },
     ...options,
   });
@@ -62,10 +61,9 @@ export function useGetVolume({ catalog, schema, volume }: GetVolumeParams) {
     queryFn: async () => {
       const fullVolumeName = [catalog, schema, volume].join('.');
 
-      const response = await fetch(
-        `${UC_API_PREFIX}/volumes/${fullVolumeName}`,
-      );
-      return response.json();
+      return apiClient
+        .get(`/volumes/${fullVolumeName}`)
+        .then((response) => response.data);
     },
   });
 }
@@ -77,7 +75,7 @@ interface UpdateVolumeParams {
 }
 
 export interface UpdateVolumeMutationParams
-  extends Pick<VolumeInterface, 'name' | 'comment'> {}
+  extends Pick<VolumeInterface, 'comment'> {}
 
 export function useUpdateVolume({
   catalog,
@@ -90,21 +88,14 @@ export function useUpdateVolume({
     mutationFn: async (params: UpdateVolumeMutationParams) => {
       const fullVolumeName = [catalog, schema, volume].join('.');
 
-      const response = await fetch(
-        `${UC_API_PREFIX}/volumes/${fullVolumeName}`,
-        {
-          method: 'PATCH',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify(params),
-        },
-      );
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.message || 'Failed to update volume');
-      }
-      return response.json();
+      return apiClient
+        .patch(`/volumes/${fullVolumeName}`, JSON.stringify(params))
+        .then((response) => response.data)
+        .catch((e) => {
+          throw new Error(
+            e.response?.data?.message || 'Failed to update volume',
+          );
+        });
     },
     onSuccess: () => {
       queryClient.invalidateQueries({
@@ -132,19 +123,14 @@ export function useDeleteVolume({ catalog, schema }: DeleteVolumeParams) {
       schema_name,
       name,
     }: DeleteVolumeMutationParams) => {
-      const response = await fetch(
-        `${UC_API_PREFIX}/volumes/${catalog_name}.${schema_name}.${name}`,
-        {
-          method: 'DELETE',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-        },
-      );
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.message || 'Failed to delete volume');
-      }
+      return apiClient
+        .delete(`/volumes/${catalog_name}.${schema_name}.${name}`)
+        .then((response) => response.data)
+        .catch((e) => {
+          throw new Error(
+            e.response?.data?.message || 'Failed to delete volume',
+          );
+        });
     },
     onSuccess: () => {
       queryClient.invalidateQueries({
