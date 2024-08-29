@@ -19,7 +19,8 @@ Before you can build the Docker image, install the following tools:
 
 > [!NOTE]
 >
-> `build-uc-server-docker` runs the entire sbt build while creating the Docker image. 
+> `build-uc-server-docker` runs `sbt server/package` build while creating the Docker image.
+> That gives all the required jars files part of the image.
 
 `build-uc-server-docker` creates an image named `unitycatalog` with the version from [version.sbt](../version.sbt).
 
@@ -28,8 +29,8 @@ docker images unitycatalog
 ```
 
 ```text
-REPOSITORY     TAG              IMAGE ID       CREATED              SIZE
-unitycatalog   0.2.0-SNAPSHOT   8b68b233813b   About a minute ago   427MB
+REPOSITORY     TAG              IMAGE ID       CREATED          SIZE
+unitycatalog   0.2.0-SNAPSHOT   de48dd1c2789   12 minutes ago   2.47GB
 ```
 
 ## Running Unity Catalog Server Container
@@ -41,28 +42,23 @@ Once the Docker image of Unity Catalog's Localhost Reference Server is built, yo
 ```
 
 ```text
-Container unitycatalog does not exist. Creating it...
-fbf8a0d2fc6a82f81134c4c50fb4c777399e7095706cb65ff6fe0c158ec43ef4
-The container unitycatalog is running with the following parameters:
-{
-  "Command": "\"/bin/bash bin/start…\"",
-  "CreatedAt": "2024-08-26 18:10:48 +0200 CEST",
-  "ID": "fbf8a0d2fc6a",
-  "Image": "unitycatalog:0.2.0-SNAPSHOT",
-  "Labels": "",
-  "LocalVolumes": "1",
-  "Mounts": "3e4bcb63d68a91…",
-  "Names": "unitycatalog",
-  "Networks": "bridge",
-  "Ports": "0.0.0.0:8081->8081/tcp",
-  "RunningFor": "Less than a second ago",
-  "Size": "32.8kB (virtual 427MB)",
-  "State": "running",
-  "Status": "Up Less than a second"
-}
+❤️ Starting unitycatalog:0.2.0-SNAPSHOT.
+💡 Use Ctrl+C to stop and remove the container.
+###################################################################
+#  _    _       _ _            _____      _        _              #
+# | |  | |     (_) |          / ____|    | |      | |             #
+# | |  | |_ __  _| |_ _   _  | |     __ _| |_ __ _| | ___   __ _  #
+# | |  | | '_ \| | __| | | | | |    / _` | __/ _` | |/ _ \ / _` | #
+# | |__| | | | | | |_| |_| | | |___| (_| | || (_| | | (_) | (_| | #
+#  \____/|_| |_|_|\__|\__, |  \_____\__,_|\__\__,_|_|\___/ \__, | #
+#                      __/ |                                __/ | #
+#                     |___/               v0.2.0-SNAPSHOT  |___/  #
+###################################################################
 ```
 
 `start-uc-server-docker` starts the Unity Catalog server to listen to `8081`.
+
+In another terminal, execute the following command to learn more about the container.
 
 ```bash
 docker container ls --filter name=unitycatalog --no-trunc --format 'table {{.ID}}\t{{.Image}}\t{{.Command}}\t{{.Ports}}'
@@ -108,6 +104,8 @@ unitycatalog-cli   0.2.0-SNAPSHOT   52502d16934f   About a minute ago   1.48GB
 
 > [!NOTE]
 > In case you run into the following build exception, restart the CLI docker image build.
+> This is likely due to Java 22 used to build the image (and execute the sbt build). 
+>
 > ```text
 > ❯ ./docker/bin/build-uc-cli-docker
 > ...
@@ -116,7 +114,7 @@ unitycatalog-cli   0.2.0-SNAPSHOT   52502d16934f   About a minute ago   1.48GB
 > [error] (cli / Compile / compileIncremental) Failed to find name hashes for io.unitycatalog.cli.utils.CliUtils
 > ```
 
-## Access Unity Catalog Localhost Reference Server
+## Access Unity Catalog Server
 
 [start-uc-cli-docker](./bin/start-uc-cli-docker) uses the `unitycatalog-cli` image to run Unity Catalog CLI in a Docker container.
 

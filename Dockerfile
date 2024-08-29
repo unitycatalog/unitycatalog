@@ -14,21 +14,19 @@ ARG unitycatalog_user_basedir="${unitycatalog_home}/${unitycatalog_user_home}"
 # and will cause the process to fail when attempting to compile
 # and generate the Uber-Jar. Therefore it is important to choose
 # a size large enough for the compiler to run. 
-ARG sbt_args="-J-Xmx5G"
+ARG sbt_args="-J-Xmx2G"
 # FIXME Pass it from the outside
 ARG unitycatalog_version="0.2.0-SNAPSHOT"
 ARG server_assembly_jar="${unitycatalog_repo}/${unitycatalog_jar}/unitycatalog-server-assembly-${unitycatalog_version}.jar"
+ARG jars_directory="server/target/jars"
 
-# ###### STAGE 1 ###### #
-# Building the Uber-Jar #
-#########################
-
-FROM eclipse-temurin:22-jdk-alpine AS assemble_server
+FROM eclipse-temurin:22-jdk-alpine AS package_server
 
 ARG unitycatalog_repo
 ARG sbt_args
+ARG jars_directory
 
-# Install any required packages
+# Install required packages
 RUN <<EOF
     set -ex;
     apk update;
@@ -37,18 +35,17 @@ RUN <<EOF
     rm -R /var/cache/apk/*;
 EOF
 
-# If the WORKDIR doesn't exist, it will be created
-# https://docs.docker.com/reference/dockerfile/#workdir
 WORKDIR "${unitycatalog_repo}"
 
 COPY . .
 
-# Builds server/target/unitycatalog-server-assembly-0.2.0-SNAPSHOT.jar
-RUN build/sbt ${sbt_args} server/assembly
+# Builds server/target/unitycatalog-server-0.2.0-SNAPSHOT.jar
+RUN build/sbt ${sbt_args} server/package
 
-# ###### STAGE 2 ###### #
-# Running the UC server #
-#########################
+# As a side effect all the required jars to build the UC server
+# are listed in server/target/classpath that is generated at build time
+# Copy the jar files into a single directory
+RUN ./docker/copy_jars_from_classpath.sh ${jars_directory}
 
 FROM eclipse-temurin:22-jre-alpine AS build_uc
 
@@ -65,6 +62,7 @@ ARG unitycatalog_user_basedir
 ARG sbt_args
 ARG server_assembly_jar
 ARG unitycatalog_version
+ARG jars_directory
 
 EXPOSE 8081
 
@@ -79,11 +77,10 @@ EOF
 # Define the shell used within the container
 SHELL ["/bin/bash", "-i", "-c", "-o", "pipefail"]
 
-ENV SERVER_ASSEMBLY_JAR="${unitycatalog_jars}/unitycatalog-server-assembly-${unitycatalog_version}.jar"
+ENV SERVER_JAR="${unitycatalog_jars}/unitycatalog-server-${unitycatalog_version}.jar"
 ENV UC_SERVER_BIN="${unitycatalog_home}/${unitycatalog_bin}/start-uc-server"
 
-# Create the UC directories
-RUN <<-EOF 
+RUN <<-EOF
     set -ex;
     mkdir -p "${unitycatalog_jars}";
     mkdir -p "${unitycatalog_home}/${unitycatalog_etc}";
@@ -91,9 +88,8 @@ RUN <<-EOF
     mkdir -p "${unitycatalog_home}/${unitycatalog_user_home}";
 EOF
 
-
 # Create system group and user for Unity Catalog
-# ENsure the user created has their HOME pointing to the volume
+# Ensure the user created has their HOME pointing to the volume
 # created to persist user data and the sbt cached files that 
 # are created as a result of compiling the unity catalog.
 # This also ensures that the container can run independently from
@@ -115,11 +111,12 @@ VOLUME  "${unitycatalog_home}"
 
 WORKDIR "$unitycatalog_home"
 
-# Copy the Uber-Jar from the previous stage
-COPY --from=assemble_server "${server_assembly_jar}" "${unitycatalog_jars}/"
+COPY --from=package_server "${server_jar}" "${unitycatalog_jars}/"
 
 # Copy the etc folder which contains the config files and the data folder
-COPY --from=assemble_server "${unitycatalog_repo}/${unitycatalog_etc}" "${unitycatalog_home}/${unitycatalog_etc}/"
+COPY --from=package_server "${unitycatalog_repo}/${unitycatalog_etc}" "${unitycatalog_home}/${unitycatalog_etc}/"
+
+COPY --from=package_server "${unitycatalog_repo}/${jars_directory}" "${unitycatalog_jars}/"
 
 # Create the script that executes the server
 # FIXME It could be already created and simply copied over
@@ -129,26 +126,15 @@ COPY <<-"EOF" "${UC_SERVER_BIN}"
     SCRIPT_DIR="$(dirname "$(readlink -f "$0")")"
     ROOT_DIR="$(dirname "$SCRIPT_DIR")"
 
-    if [ -z "$SERVER_ASSEMBLY_JAR" ]; then
-        echo "Server jar '${SERVER_JAR}' not found. Exiting..."
-        exit 1
-    fi
-
-    # Create relative path to jar so that it is able to find the 
-    # configuration files in etc/conf/...
-    relative_path_to_jar="${SERVER_ASSEMBLY_JAR//"$ROOT_DIR/"/}"
-
-    # FIXME Use cp until mainClass in build.sbt is merged to main
-    #   from which this Dockerfile clones the sources from to build the Docker image
-    # SERVER_JAVA_COMMAND="java -jar $relative_path_to_jar $@"
     SERVER_CLASS_NAME="io.unitycatalog.server.UnityCatalogServer"
-    SERVER_JAVA_COMMAND="java -cp $relative_path_to_jar ${SERVER_CLASS_NAME} $@"
+    # A classpath entry consisting simply of * expands to a list of all the jar files in the current directory.
+    # A class path entry that contains * will not match class files.
+    SERVER_JAVA_COMMAND="java -cp "jars/classes:jars/*" ${SERVER_CLASS_NAME} $@"
 
     cd ${ROOT_DIR}
 
     exec ${SERVER_JAVA_COMMAND}
 EOF
-
 
 # Set ownership of directories and Unity Catalog home directory to a less
 # priviledged user
