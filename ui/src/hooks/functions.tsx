@@ -4,7 +4,7 @@ import {
   useQueryClient,
   UseQueryOptions,
 } from '@tanstack/react-query';
-import { UC_API_PREFIX } from '../utils/constants';
+import apiClient from '../context/client';
 
 export interface FunctionInterface {
   function_id: string;
@@ -44,10 +44,9 @@ export function useListFunctions({
         schema_name: schema,
       });
 
-      const response = await fetch(
-        `${UC_API_PREFIX}/functions?${searchParams.toString()}`,
-      );
-      return response.json();
+      return apiClient
+        .get(`/functions?${searchParams.toString()}`)
+        .then((response) => response.data);
     },
     ...options,
   });
@@ -69,10 +68,9 @@ export function useGetFunction({
     queryFn: async () => {
       const fullFunctionName = [catalog, schema, ucFunction].join('.');
 
-      const response = await fetch(
-        `${UC_API_PREFIX}/functions/${fullFunctionName}`,
-      );
-      return response.json();
+      return apiClient
+        .get(`/functions/${fullFunctionName}`)
+        .then((response) => response.data);
     },
   });
 }
@@ -95,19 +93,14 @@ export function useDeleteFunction({ catalog, schema }: DeleteFunctionParams) {
       schema_name,
       name,
     }: DeleteFunctionMutationParams) => {
-      const response = await fetch(
-        `${UC_API_PREFIX}/functions/${catalog_name}.${schema_name}.${name}`,
-        {
-          method: 'DELETE',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-        },
-      );
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.message || 'Failed to delete function');
-      }
+      return apiClient
+        .delete(`/functions/${catalog_name}.${schema_name}.${name}`)
+        .then((response) => response.data)
+        .catch((e) => {
+          throw new Error(
+            e.response?.data?.message || 'Failed to delete function',
+          );
+        });
     },
     onSuccess: () => {
       queryClient.invalidateQueries({
