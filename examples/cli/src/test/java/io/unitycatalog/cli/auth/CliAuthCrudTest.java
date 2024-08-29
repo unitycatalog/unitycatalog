@@ -1,12 +1,15 @@
 package io.unitycatalog.cli.auth;
 
+import static io.unitycatalog.cli.TestUtils.addServerAndAuthParams;
+import static io.unitycatalog.cli.TestUtils.executeCLICommand;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+
 import com.auth0.jwt.JWT;
 import com.fasterxml.jackson.databind.JsonNode;
 import io.unitycatalog.server.base.auth.BaseAuthCRUDTest;
 import io.unitycatalog.server.security.JwtClaim;
 import io.unitycatalog.server.security.JwtTokenType;
-import org.junit.jupiter.api.Test;
-
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -15,11 +18,7 @@ import java.security.spec.InvalidKeySpecException;
 import java.util.Date;
 import java.util.List;
 import java.util.UUID;
-
-import static io.unitycatalog.cli.TestUtils.addServerAndAuthParams;
-import static io.unitycatalog.cli.TestUtils.executeCLICommand;
-import static org.junit.jupiter.api.Assertions.assertNotNull;
-import static org.junit.jupiter.api.Assertions.assertThrows;
+import org.junit.jupiter.api.Test;
 
 public class CliAuthCrudTest extends BaseAuthCRUDTest {
 

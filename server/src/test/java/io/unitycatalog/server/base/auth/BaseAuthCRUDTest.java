@@ -1,14 +1,13 @@
 package io.unitycatalog.server.base.auth;
 
+import static io.unitycatalog.server.security.SecurityContext.Issuers.INTERNAL;
+
 import io.unitycatalog.server.base.BaseServerTest;
 import io.unitycatalog.server.security.SecurityConfiguration;
 import io.unitycatalog.server.security.SecurityContext;
+import java.nio.file.Path;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
-
-import java.nio.file.Path;
-
-import static io.unitycatalog.server.security.SecurityContext.Issuers.INTERNAL;
 
 public abstract class BaseAuthCRUDTest extends BaseServerTest {
 
