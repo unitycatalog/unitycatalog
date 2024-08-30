@@ -50,8 +50,8 @@ public class ModelService {
 
   @Delete("/{full_name}")
   public HttpResponse deleteRegisteredModel(
-      @Param("full_name") String fullName, @Param("force") boolean force) {
-    MODEL_REPOSITORY.deleteRegisteredModel(fullName, force);
+      @Param("full_name") String fullName, @Param("force") Optional<Boolean> force) {
+    MODEL_REPOSITORY.deleteRegisteredModel(fullName, force.orElse(false));
     return HttpResponse.of(HttpStatus.OK);
   }
 
