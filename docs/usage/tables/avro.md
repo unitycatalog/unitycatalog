@@ -38,7 +38,7 @@ Your output should look something like this:
 
 As you can see, there are currently four (4) Delta tables pre-loaded in this catalog.
 
-Let's take a look at how we can create Parquet tables in Unity Catalog.
+Let's take a look at how we can create Avro tables in Unity Catalog.
 
 ## Create Avro table
 
