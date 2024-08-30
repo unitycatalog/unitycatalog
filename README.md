@@ -186,11 +186,11 @@ Refer to [sbt docs](https://www.scala-sbt.org/1.x/docs/) for more commands.
   ```
 - To compile and execute tests, run the following:
   ```sh
-  build/sbt clean test
+  build/sbt -J-Xmx2G clean test
   ```
 - To execute tests with coverage, run the following:
   ```sh
-  build/sbt jacoco 
+  build/sbt -J-Xmx2G jacoco
   ```
 - To update the API specification, just update the `api/all.yaml` and then run the following:
   ```sh
