@@ -398,7 +398,7 @@ lazy val spark = (project in file("connectors/spark"))
       "com.fasterxml.jackson.dataformat" % "jackson-dataformat-xml" % "2.15.0",
       "org.antlr" % "antlr4-runtime" % "4.9.3",
       "org.antlr" % "antlr4" % "4.9.3",
-      "com.google.cloud.bigdataoss" % "util-hadoop" % "3.0.2", // todo: compileOnly?
+      "com.google.cloud.bigdataoss" % "util-hadoop" % "3.0.2" % Provided,
     ),
     libraryDependencies ++= Seq(
       // Test dependencies
