@@ -216,7 +216,7 @@ public class FileUtils {
     if (url == null) {
       return null;
     }
-    if (url.startsWith("s3://")) {
+    if (url.startsWith("s3://") || url.startsWith("gs://")) {
       return url;
     } else {
       return adjustFileUri(createURI(url)).toString();
