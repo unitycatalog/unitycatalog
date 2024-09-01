@@ -160,6 +160,18 @@ lazy val client = (project in file("target/clients/java"))
       if (buildSbtFile.exists()) {
         buildSbtFile.delete()
       }
+    },
+    // Add VersionInfo in the same way like in server
+    Compile / sourceGenerators += Def.task {
+      val file = (Compile / sourceManaged).value / "io" / "unitycatalog" / "cli" / "utils" / "VersionUtils.java"
+      IO.write(file,
+        s"""package io.unitycatalog.cli.utils;
+          |
+          |public class VersionUtils {
+          |  public static String VERSION = "${version.value}";
+          |}
+          |""".stripMargin)
+      Seq(file)
     }
   )
 

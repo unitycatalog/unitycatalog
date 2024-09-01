@@ -30,6 +30,7 @@ public class UnityCatalogCli {
             cliParam ->
                 options.addOption(Option.builder().longOpt(cliParam.val()).hasArg().build()));
     options.addOption("h", "help", false, "Print help message.");
+    options.addOption("v", false, "Print the version of UC.");
 
     // Add server specific options
     options.addOption(
@@ -64,6 +65,12 @@ public class UnityCatalogCli {
         } else {
           CliUtils.printHelp();
         }
+        return;
+      }
+
+      // Check if version option is provided
+      if (cmd.hasOption("v")) {
+        CliUtils.printVersion();
         return;
       }
 

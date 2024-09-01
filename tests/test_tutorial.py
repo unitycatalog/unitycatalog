@@ -10,6 +10,13 @@ import requests
 import duckdb
 
 commands_and_expected_output_strings = [
+    # server version
+    ("bin/start-uc-server -v", ["Unity Catalog Version"]),
+    ("bin/start-uc-server --version", ["Unity Catalog Version"]),
+
+    # cli version
+    ("bin/uc -v", ["UnityCatalog CLI Version"]),
+
     # catalogs
     ("bin/uc catalog list", ["unity"]),
 
