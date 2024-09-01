@@ -44,7 +44,7 @@ public class CredentialOperations {
     return vendCredential(credentialContext).toTableCredentialResponse();
   }
 
-  public GenerateTemporaryModelVersionCredentialResponse vendCredentialForModelVersion(ModelVersionInfo modelVersionInfo, Set<CredentialContext.Privilege> privileges) {
+  public GenerateTemporaryModelVersionCredentialsResponse vendCredentialForModelVersion(ModelVersionInfo modelVersionInfo, Set<CredentialContext.Privilege> privileges) {
     String mvStorageLocation = modelVersionInfo.getStorageLocation();
     if (mvStorageLocation == null || mvStorageLocation.isEmpty()) {
       throw new BaseException(ErrorCode.FAILED_PRECONDITION, "Model version storage location not found.");
@@ -55,7 +55,7 @@ public class CredentialOperations {
     // TODO: At some point, we need to check if user/subject has privileges they are asking for
     CredentialContext credentialContext = CredentialContext.create(storageLocationUri, privileges);
 
-    return vendCredential(credentialContext).toModelVersionCredentialResponse();
+    return vendCredential(credentialContext).toModelVersionCredentialsResponse();
   }
 
   public GenerateTemporaryVolumeCredentialResponse vendCredentialForVolume(VolumeInfo volume, Set<CredentialContext.Privilege> privileges) {

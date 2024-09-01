@@ -12,8 +12,8 @@ public class CredentialResponse {
   private GcpOauthToken gcpOauthToken;
   private Long expirationTime;
 
-  public GenerateTemporaryModelVersionCredentialResponse toModelVersionCredentialResponse() {
-    return new GenerateTemporaryModelVersionCredentialResponse()
+  public GenerateTemporaryModelVersionCredentialsResponse toModelVersionCredentialsResponse() {
+    return new GenerateTemporaryModelVersionCredentialsResponse()
         .awsTempCredentials(awsTempCredentials)
         .azureUserDelegationSas(azureUserDelegationSas)
         .gcpOauthToken(gcpOauthToken)
