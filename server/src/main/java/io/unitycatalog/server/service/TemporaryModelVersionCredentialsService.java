@@ -31,29 +31,41 @@ public class TemporaryModelVersionCredentialsService {
     }
 
     @Post("")
-    public HttpResponse generateTemporaryModelVersionCredential(
-            GenerateTemporaryModelVersionCredential generateTemporaryModelVersionCredential) {
+    public HttpResponse generateTemporaryModelVersionCredentials(
+            GenerateTemporaryModelVersionCredentials generateTemporaryModelVersionCredentials) {
 
-        long modelVersion = generateTemporaryModelVersionCredential.getVersion();
-        String catalogName = generateTemporaryModelVersionCredential.getCatalogName();
-        String schemaName = generateTemporaryModelVersionCredential.getSchemaName();
-        String modelName = generateTemporaryModelVersionCredential.getModelName();
+        long modelVersion = generateTemporaryModelVersionCredentials.getVersion();
+        String catalogName = generateTemporaryModelVersionCredentials.getCatalogName();
+        String schemaName = generateTemporaryModelVersionCredentials.getSchemaName();
+        String modelName = generateTemporaryModelVersionCredentials.getModelName();
         String fullName = RepositoryUtils.getAssetFullName(catalogName, schemaName, modelName);
 
         ModelVersionInfo modelVersionInfo = MODEL_REPOSITORY.getModelVersion(fullName, modelVersion);
-        ModelVersionOperation requestedOperation = generateTemporaryModelVersionCredential.getOperation();
-        // Must enforce that write credentials are not passed back if the model has been finalized
-        if (modelVersionInfo.getStatus() != ModelVersionStatus.PENDING_REGISTRATION && requestedOperation == ModelVersionOperation.READ_WRITE_MODEL_VERSION) {
-            throw new BaseException(ErrorCode.INVALID_ARGUMENT, "Cannot request read/write credentials on a finalized model version: " + fullName + "/" + modelVersion);
+        String storageLocation = modelVersionInfo.getStorageLocation();
+        if (storageLocation.toLowerCase().startsWith("file")) {
+            throw new BaseException(ErrorCode.INVALID_ARGUMENT, "Cannot request credentials on a model version with a file based storage location: " + fullName + "/" + modelVersion);
         }
-        return HttpResponse.ofJson(credentialOps.vendCredentialForModelVersion(modelVersionInfo, modelVersionOperationToPrivileges(generateTemporaryModelVersionCredential.getOperation())));
+        ModelVersionOperation requestedOperation = generateTemporaryModelVersionCredentials.getOperation();
+        // Must enforce that the status of the model version matches the requested credential type.
+        if (modelVersionInfo.getStatus() == ModelVersionStatus.FAILED_REGISTRATION) {
+            throw new BaseException(ErrorCode.INVALID_ARGUMENT, "Cannot request credentials on a model version that has failed registration: " + fullName + "/" + modelVersion);
+        }
+        if (modelVersionInfo.getStatus() == ModelVersionStatus.MODEL_VERSION_STATUS_UNKNOWN) {
+            throw new BaseException(ErrorCode.INVALID_ARGUMENT, "Cannot request credentials on a model version with an unknown status: " + fullName + "/" + modelVersion);
+        }
+        if ((modelVersionInfo.getStatus() != ModelVersionStatus.PENDING_REGISTRATION &&
+                requestedOperation == ModelVersionOperation.READ_WRITE_MODEL_VERSION)) {
+            throw new BaseException(ErrorCode.INVALID_ARGUMENT, "Cannot request read/write credentials on a model version that has not been finalized: " + fullName + "/" + modelVersion);
+        }
+        return HttpResponse.ofJson(credentialOps.vendCredentialForModelVersion(modelVersionInfo, modelVersionOperationToPrivileges(requestedOperation)));
     }
 
     private Set<CredentialContext.Privilege> modelVersionOperationToPrivileges(ModelVersionOperation modelVersionOperation) {
         return switch (modelVersionOperation) {
             case READ_MODEL_VERSION -> Set.of(SELECT);
             case READ_WRITE_MODEL_VERSION -> Set.of(SELECT, UPDATE);
-            case UNKNOWN_MODEL_VERSION_OPERATION -> Collections.emptySet();
+            case UNKNOWN_MODEL_VERSION_OPERATION ->
+                    throw new BaseException(ErrorCode.INVALID_ARGUMENT, "Unknown operation in the request: " + ModelVersionOperation.UNKNOWN_MODEL_VERSION_OPERATION);
         };
     }
 }

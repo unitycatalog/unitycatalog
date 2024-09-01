@@ -592,22 +592,22 @@ paths:
               schema: {}
   /temporary-model-version-credentials:
     post:
-      operationId: generateTemporaryModelVersionCredential
+      operationId: generateTemporaryModelVersionCredentials
       tags:
-        - TemporaryModelVersionCredential
+        - TemporaryModelVersionCredentials
       summary: Generate temporary model version credentials. These credentials are used by clients to write and retrieve model artifacts from the model versions external storage location.
       requestBody:
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/GenerateTemporaryModelVersionCredential'
+              $ref: '#/components/schemas/GenerateTemporaryModelVersionCredentials'
       responses:
         '200':
           description: Successful response
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/GenerateTemporaryModelVersionCredentialResponse'
+                $ref: '#/components/schemas/GenerateTemporaryModelVersionCredentialsResponse'
   /temporary-table-credentials:
     post:
       operationId: generateTemporaryTableCredentials
@@ -1727,7 +1727,7 @@ components:
           description: |
             Opaque token to retrieve the next page of results. Absent if there are no more pages.
             __page_token__ should be set to this value for the next request (for the next page of results).
-    GenerateTemporaryModelVersionCredential:
+    GenerateTemporaryModelVersionCredentials:
       example:
         catalog_name: catalog_name
         schema_name: schema_name
@@ -1764,7 +1764,7 @@ components:
         - model_name
         - version
         - operation
-    GenerateTemporaryModelVersionCredentialResponse:
+    GenerateTemporaryModelVersionCredentialsResponse:
       properties:
         aws_temp_credentials:
           $ref: '#/components/schemas/AwsCredentials'
@@ -1778,6 +1778,9 @@ components:
             The API client is advised to cache the credential given this expiration time.
           type: integer
           format: int64
+        url:
+          description: The URL of the storage path accessible by the temporary credential.
+          type: string
       type: object
     ModelVersionOperation:
       enum:
