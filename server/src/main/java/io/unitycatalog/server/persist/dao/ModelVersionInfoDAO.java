@@ -2,7 +2,6 @@ package io.unitycatalog.server.persist.dao;
 
 import io.unitycatalog.server.model.ModelVersionInfo;
 import io.unitycatalog.server.model.ModelVersionStatus;
-import io.unitycatalog.server.persist.utils.FileUtils;
 import jakarta.persistence.*;
 import java.util.Date;
 import java.util.UUID;
@@ -90,7 +89,7 @@ public class ModelVersionInfoDAO {
             .source(getSource())
             .version(getVersion())
             .status(ModelVersionStatus.valueOf(getStatus()))
-            .storageLocation(FileUtils.convertRelativePathToURI(url))
+            .storageLocation(url)
             .comment(comment)
             .createdAt(createdAt != null ? createdAt.getTime() : null)
             .createdBy(createdBy)
