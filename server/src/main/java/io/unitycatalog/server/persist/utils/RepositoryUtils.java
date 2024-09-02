@@ -51,9 +51,14 @@ public class RepositoryUtils {
     String[] parts = fullName.split("\\.");
     if (parts.length != 3) {
       throw new BaseException(
-              ErrorCode.INVALID_ARGUMENT, "Invalid registered model name: " + fullName);
+          ErrorCode.INVALID_ARGUMENT, "Invalid registered model name: " + fullName);
     }
     return parts;
+  }
+
+  public static String getAssetFullName(
+      String catalogName, String schemaName, String assetName) {
+    return catalogName + "." + schemaName + "." + assetName;
   }
 
   public static UUID getSchemaId(Session session, String catalogName, String schemaName) {
