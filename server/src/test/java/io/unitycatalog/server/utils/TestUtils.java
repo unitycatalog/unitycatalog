@@ -43,6 +43,8 @@ public class TestUtils {
   public static final String MV_COMMENT = "model version comment";
   public static final String MV_SOURCE = "model version source";
   public static final String MV_RUNID = "model version runId";
+  public static final String MV_SOURCE2 = "model version source 2";
+  public static final String MV_RUNID2 = "model version runId 2";
 
   public static final Map<String, String> PROPERTIES =
       new HashMap<>(Map.of("prop1", "value1", "prop2", "value2"));
