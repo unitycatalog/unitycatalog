@@ -2,49 +2,11 @@
 
 This page explains how to work with Avro tables in Unity Catalog.
 
-## Set up Unity Catalog
-
-To follow along, make sure you have a local instance of Unity Catalog running by launching the following command from a terminal window:
-
-```sh
-bin/start-uc-server
-```
-
-This local UC server will come with some sample data pre-loaded.
-
-You can list all of the tables in your Unity Catalog using:
-
-```sh
-bin/uc table list --catalog unity --schema default
-```
-
-Your output should look something like this:
-
-```
-┌─────────────────┬───────┬───────┬───────┬───────┬───────┬───────┬───────┬───────┬───────┬───────┬────────────────────────────────────┐
-│      NAME       │CATALOG│SCHEMA_│TABLE_T│DATA_SO│COLUMNS│STORAGE│COMMENT│PROPERT│CREATED│UPDATED│              TABLE_ID              │
-│                 │ _NAME │ NAME  │  YPE  │URCE_FO│       │_LOCATI│       │  IES  │  _AT  │  _AT  │                                    │
-│                 │       │       │       │ RMAT  │       │  ON   │       │       │       │       │                                    │
-├─────────────────┼───────┼───────┼───────┼───────┼───────┼───────┼───────┼───────┼───────┼───────┼────────────────────────────────────┤
-│marksheet        │unity  │default│MANAGED│DELTA  │[{"n...│file...│Mana...│{"ke...│1721...│1721...│c389adfa-5c8f-497b-8f70-26c2cca4976d│
-├─────────────────┼───────┼───────┼───────┼───────┼───────┼───────┼───────┼───────┼───────┼───────┼────────────────────────────────────┤
-│marksheet_uniform│unity  │default│EXTE...│DELTA  │[{"n...│file...│Unif...│{"ke...│1721...│1721...│9a73eb46-adf0-4457-9bd8-9ab491865e0d│
-├─────────────────┼───────┼───────┼───────┼───────┼───────┼───────┼───────┼───────┼───────┼───────┼────────────────────────────────────┤
-│numbers          │unity  │default│EXTE...│DELTA  │[{"n...│file...│Exte...│{"ke...│1721...│1721...│32025924-be53-4d67-ac39-501a86046c01│
-├─────────────────┼───────┼───────┼───────┼───────┼───────┼───────┼───────┼───────┼───────┼───────┼────────────────────────────────────┤
-│user_countries   │unity  │default│EXTE...│DELTA  │[{"n...│file...│Part...│{}     │1721...│1721...│26ed93b5-9a18-4726-8ae8-c89dfcfea069│
-└─────────────────┴───────┴───────┴───────┴───────┴───────┴───────┴───────┴───────┴───────┴───────┴────────────────────────────────────┘
-```
-
-As you can see, there are currently four (4) Delta tables pre-loaded in this catalog.
-
-Let's take a look at how we can create Avro tables in Unity Catalog.
-
 ## Create Avro table
 
-Use the `bin/uc table create ...` command with the `--format AVRO` flag to create a new Avro table in your Unity Catalog.
+Use the `bin/uc table create` command with the `--format AVRO` option to create a new Avro table in Unity Catalog.
 
-Run the command below with the correct `path/to/storage` to create a new AVRO table with 2 colummns: `some_numbers` and `some_letters`:
+Run the following command with the correct `$DIRECTORY$` to create a new Avro table with 2 colummns: `some_numbers` and `some_letters`:
 
 ```sh
 bin/uc table create \
@@ -53,8 +15,6 @@ bin/uc table create \
   --storage_location $DIRECTORY$ \
   --format AVRO
 ```
-
-Note that you will need to manually set the $DIRECTORY$ variable to the correct storage location. If you don't know where Unity Catalog is storing your files, then take a look at the metadata of an existing table using `bin/uc table get --full_name <catalog.schema.table>` to see its storage location.
 
 After you run the `table create` command, your output should look something like this:
 
@@ -81,25 +41,17 @@ After you run the `table create` command, your output should look something like
 │                    │"type_scale":0,"type_interval_type":null,"position":1,"comment":null,"nullable":true,"part│
 │                    │ition_index":null}                                                                        │
 ├────────────────────┼──────────────────────────────────────────────────────────────────────────────────────────┤
-│STORAGE_LOCATION    │file:///Users/avriiil/Documents/git/my-forks/unitycatalog/etc/data/external/unity/default│
-│                    │/tables/test                                                                              │
+│STORAGE_LOCATION    │file:///Users/rpelgrim/Documents/git/my-forks/unitycatalog/etc/data/external/unity/default│
+│                    │/tables/                                                                                  │
 ├────────────────────┼──────────────────────────────────────────────────────────────────────────────────────────┤
 │COMMENT             │null                                                                                      │
 ├────────────────────┼──────────────────────────────────────────────────────────────────────────────────────────┤
 │PROPERTIES          │{}                                                                                        │
 ├────────────────────┼──────────────────────────────────────────────────────────────────────────────────────────┤
-│CREATED_AT          │1725009222080                                                                             │
+│CREATED_AT          │1725271317208                                                                             │
 ├────────────────────┼──────────────────────────────────────────────────────────────────────────────────────────┤
 │UPDATED_AT          │null                                                                                      │
 ├────────────────────┼──────────────────────────────────────────────────────────────────────────────────────────┤
-│TABLE_ID            │fcd668dc-949f-4ea8-9e53-814e2b6df64f                                                      │
+│TABLE_ID            │c2710380-fb15-434c-8222-08eb41041fb5                                                      │
 └────────────────────┴──────────────────────────────────────────────────────────────────────────────────────────┘
 ```
-
-This command has multiple parameters:
-
-- `full_name`: The full name of the table, which is a concatenation of the catalog name, schema name, and table name separated by dots (e.g., catalog_name.schema_name.table_name).
-- `columns`: The columns of the table in SQL-like format "column_name column_data_type". Supported data types include BOOLEAN, BYTE, SHORT, INT, LONG, FLOAT, DOUBLE, DATE, TIMESTAMP, TIMESTAMP_NTZ, STRING, BINARY, DECIMAL. Separate multiple columns with a comma (e.g., "id INT, name STRING").
-- `format`: [Optional] The format of the data source. Supported values are DELTA, PARQUET, ORC, JSON, CSV, AVRO, and TEXT. If not specified the default format is DELTA.
-- `storage_location`: The storage location associated with the table. It is a mandatory field for EXTERNAL tables.
-- `properties`: [Optional] The properties of the entity in JSON format (e.g., '{"key1": "value1", "key2": "value2"}'). Make sure to either escape the double quotes(\") inside the properties string or just use single quotes('') around the same.
