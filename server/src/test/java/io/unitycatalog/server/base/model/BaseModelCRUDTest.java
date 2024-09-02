@@ -135,6 +135,20 @@ public abstract class BaseModelCRUDTest extends BaseCRUDTest {
         .as("Model with model name '%s' exists", MODEL_NEW_NAME)
         .noneSatisfy(modelInfo -> assertThat(modelInfo.getName()).isEqualTo(MODEL_NEW_NAME));
 
+    // Test null force delete
+    CreateRegisteredModel createRm1a =
+        new CreateRegisteredModel()
+            .name(MODEL_NEW_NAME)
+            .catalogName(CATALOG_NEW_NAME)
+            .schemaName(SCHEMA_NAME)
+            .comment(COMMENT);
+    modelOperations.createRegisteredModel(createRm1a);
+    modelOperations.deleteRegisteredModel(
+        CATALOG_NEW_NAME + "." + SCHEMA_NAME + "." + MODEL_NEW_NAME, Optional.empty());
+    assertThat(modelOperations.listRegisteredModels(CATALOG_NEW_NAME, SCHEMA_NAME))
+        .as("Model with model name '%s' exists", MODEL_NEW_NAME)
+        .noneSatisfy(modelInfo -> assertThat(modelInfo.getName()).isEqualTo(MODEL_NEW_NAME));
+
     // Test force delete of parent entity when model exists
     CreateRegisteredModel createRm2 =
         new CreateRegisteredModel()

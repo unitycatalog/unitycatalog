@@ -142,7 +142,7 @@ public class TableRepository {
           throw new BaseException(
               ErrorCode.INVALID_ARGUMENT, "MANAGED table creation is not supported yet.");
         }
-        // assuming external table
+        // only external table creation is supported at this time
         if (tableInfo.getStorageLocation() == null) {
           throw new BaseException(
               ErrorCode.INVALID_ARGUMENT, "Storage location is required for external table");
