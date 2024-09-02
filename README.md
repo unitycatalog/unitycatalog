@@ -1,3 +1,6 @@
+# WARNING: Archive repository in process
+Per [Merging unitycatalog-ui repo into unitycatalog (main) repo (#349)](https://github.com/unitycatalog/unitycatalog/discussions/349), as of September 2nd, 2024, we have merged the `unitycatalog-ui/main` repo/branch into `unitycatalog/ui`. Upon debug/review, we will archive this repository on September 5th, 2024.
+
 # Prerequisite
 
 Node: https://nodejs.org/en/download/package-manager
