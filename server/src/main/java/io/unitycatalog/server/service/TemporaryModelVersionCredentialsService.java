@@ -47,15 +47,12 @@ public class TemporaryModelVersionCredentialsService {
         }
         ModelVersionOperation requestedOperation = generateTemporaryModelVersionCredentials.getOperation();
         // Must enforce that the status of the model version matches the requested credential type.
-        if (modelVersionInfo.getStatus() == ModelVersionStatus.FAILED_REGISTRATION) {
-            throw new BaseException(ErrorCode.INVALID_ARGUMENT, "Cannot request credentials on a model version that has failed registration: " + fullName + "/" + modelVersion);
-        }
-        if (modelVersionInfo.getStatus() == ModelVersionStatus.MODEL_VERSION_STATUS_UNKNOWN) {
-            throw new BaseException(ErrorCode.INVALID_ARGUMENT, "Cannot request credentials on a model version with an unknown status: " + fullName + "/" + modelVersion);
+        if (modelVersionInfo.getStatus() == ModelVersionStatus.FAILED_REGISTRATION || modelVersionInfo.getStatus() == ModelVersionStatus.MODEL_VERSION_STATUS_UNKNOWN) {
+            throw new BaseException(ErrorCode.INVALID_ARGUMENT, "Cannot request credentials on a model version with status " + modelVersionInfo.getStatus().getValue() + ": " + fullName + "/" + modelVersion);
         }
         if ((modelVersionInfo.getStatus() != ModelVersionStatus.PENDING_REGISTRATION &&
                 requestedOperation == ModelVersionOperation.READ_WRITE_MODEL_VERSION)) {
-            throw new BaseException(ErrorCode.INVALID_ARGUMENT, "Cannot request read/write credentials on a model version that has not been finalized: " + fullName + "/" + modelVersion);
+            throw new BaseException(ErrorCode.INVALID_ARGUMENT, "Cannot request read/write credentials on a model version that has been finalized: " + fullName + "/" + modelVersion);
         }
         return HttpResponse.ofJson(credentialOps.vendCredentialForModelVersion(modelVersionInfo, modelVersionOperationToPrivileges(requestedOperation)));
     }
