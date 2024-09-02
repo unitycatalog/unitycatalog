@@ -532,8 +532,8 @@ public class CliUtils {
         "For detailed help on entity specific operations, use bin/uc <entity> --help");
   }
 
-  public static void printVersion() { // This class is generated during the build
-    System.out.printf("UnityCatalog CLI Version: %s\n", VersionUtils.VERSION);
+  public static void printVersion() {
+    System.out.println(VersionUtils.VERSION);
   }
 
   public static List<String> parseFullName(String fullName) {
