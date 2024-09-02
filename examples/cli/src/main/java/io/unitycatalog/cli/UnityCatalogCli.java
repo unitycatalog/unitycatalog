@@ -31,7 +31,8 @@ public class UnityCatalogCli {
                 options.addOption(
                     Option.builder()
                         .longOpt(cliParam.val())
-                        .hasArg(!cliParam.val().equals("version")) // See
+                        .optionalArg(cliParam.val().equals("version"))
+                        .hasArg() // See
                         // https://github.com/unitycatalog/unitycatalog/pull/398#issuecomment-2325039123
                         .build()));
     options.addOption("h", "help", false, "Print help message.");
@@ -89,7 +90,7 @@ public class UnityCatalogCli {
             CliUtils.printVersion();
             return;
           } else {
-            if (!option.hasArg()) {
+            if (option.getValue() == null) {
               System.out.println(
                   "Error occurred while parsing the command. Please check the command and try again. Missing argument for option: version");
               CliUtils.printHelp();
