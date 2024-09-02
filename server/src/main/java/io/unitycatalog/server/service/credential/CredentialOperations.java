@@ -3,13 +3,7 @@ package io.unitycatalog.server.service.credential;
 import com.google.auth.oauth2.AccessToken;
 import io.unitycatalog.server.exception.BaseException;
 import io.unitycatalog.server.exception.ErrorCode;
-import io.unitycatalog.server.model.AwsCredentials;
-import io.unitycatalog.server.model.AzureUserDelegationSAS;
-import io.unitycatalog.server.model.GcpOauthToken;
-import io.unitycatalog.server.model.GenerateTemporaryTableCredentialResponse;
-import io.unitycatalog.server.model.GenerateTemporaryVolumeCredentialResponse;
-import io.unitycatalog.server.model.TableInfo;
-import io.unitycatalog.server.model.VolumeInfo;
+import io.unitycatalog.server.model.*;
 import io.unitycatalog.server.service.credential.aws.AwsCredentialVendor;
 import io.unitycatalog.server.service.credential.azure.AzureCredential;
 import io.unitycatalog.server.service.credential.azure.AzureCredentialVendor;
@@ -48,6 +42,20 @@ public class CredentialOperations {
     CredentialContext credentialContext = CredentialContext.create(storageLocationUri, privileges);
 
     return vendCredential(credentialContext).toTableCredentialResponse();
+  }
+
+  public GenerateTemporaryModelVersionCredentialsResponse vendCredentialForModelVersion(ModelVersionInfo modelVersionInfo, Set<CredentialContext.Privilege> privileges) {
+    String mvStorageLocation = modelVersionInfo.getStorageLocation();
+    if (mvStorageLocation == null || mvStorageLocation.isEmpty()) {
+      throw new BaseException(ErrorCode.FAILED_PRECONDITION, "Model version storage location not found.");
+    }
+
+    URI storageLocationUri = URI.create(mvStorageLocation);
+
+    // TODO: At some point, we need to check if user/subject has privileges they are asking for
+    CredentialContext credentialContext = CredentialContext.create(storageLocationUri, privileges);
+
+    return vendCredential(credentialContext).toModelVersionCredentialsResponse();
   }
 
   public GenerateTemporaryVolumeCredentialResponse vendCredentialForVolume(VolumeInfo volume, Set<CredentialContext.Privilege> privileges) {
