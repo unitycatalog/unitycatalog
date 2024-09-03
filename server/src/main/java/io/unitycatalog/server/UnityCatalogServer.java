@@ -153,7 +153,11 @@ public class UnityCatalogServer {
             .type(Integer.class)
             .build());
     options.addOption(
-        Option.builder("v").longOpt("version").hasArg(false).desc("Display the version of the Unity Catalog server").build());
+        Option.builder("v")
+            .longOpt("version")
+            .hasArg(false)
+            .desc("Display the version of the Unity Catalog server")
+            .build());
     CommandLineParser parser = new DefaultParser();
     try {
       CommandLine cmd = parser.parse(options, args);
