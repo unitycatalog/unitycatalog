@@ -124,6 +124,8 @@ public class ServerPropertiesUtils {
 
   // Get a property value by key with a default value
   public String getProperty(String key, String defaultValue) {
+    if (System.getProperty(key) != null) return System.getProperty(key);
+    if (System.getenv().containsKey(key)) return System.getenv(key);
     return properties.getProperty(key, defaultValue);
   }
 }
