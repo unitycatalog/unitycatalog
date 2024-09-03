@@ -36,7 +36,7 @@ public class UnityCatalogCli {
                         // https://github.com/unitycatalog/unitycatalog/pull/398#issuecomment-2325039123
                         .build()));
     options.addOption("h", "help", false, "Print help message.");
-    options.addOption("v", false, "Print the version of UC.");
+    options.addOption("v", false, "Display the version of Unity Catalog CLI");
 
     // Add server specific options
     options.addOption(
