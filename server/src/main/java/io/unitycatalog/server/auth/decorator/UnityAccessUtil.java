@@ -21,9 +21,13 @@ public class UnityAccessUtil {
   public static UUID findPrincipalId() {
     ServiceRequestContext ctx = ServiceRequestContext.current();
     DecodedJWT decodedJWT = ctx.attr(AuthDecorator.DECODED_JWT_ATTR);
-    Claim sub = decodedJWT.getClaim("sub");
-
-    return UUID.fromString(USER_REPOSITORY.getUserByEmail(sub.asString()).getId());
+    // TODO: if/when authorization becomes mandatory, maybe just throw an exception here?
+    if (decodedJWT != null) {
+      Claim sub = decodedJWT.getClaim("sub");
+      return UUID.fromString(USER_REPOSITORY.getUserByEmail(sub.asString()).getId());
+    } else {
+      return null;
+    }
   }
 
   public static void initializeAdmin(UnityCatalogAuthorizer authorizer) {
