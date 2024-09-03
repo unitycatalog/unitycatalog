@@ -8,8 +8,8 @@ import java.util.Optional;
 public interface ModelOperations {
   RegisteredModelInfo createRegisteredModel(CreateRegisteredModel createModel) throws ApiException;
 
-  List<RegisteredModelInfo> listRegisteredModels(String catalogName, String schemaName)
-      throws ApiException;
+  List<RegisteredModelInfo> listRegisteredModels(
+      Optional<String> catalogName, Optional<String> schemaName) throws ApiException;
 
   RegisteredModelInfo getRegisteredModel(String modelFullName) throws ApiException;
 

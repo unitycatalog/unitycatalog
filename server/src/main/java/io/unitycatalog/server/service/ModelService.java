@@ -25,8 +25,8 @@ public class ModelService {
 
   @Get("")
   public HttpResponse listRegisteredModels(
-      @Param("catalog_name") String catalogName,
-      @Param("schema_name") String schemaName,
+      @Param("catalog_name") Optional<String> catalogName,
+      @Param("schema_name") Optional<String> schemaName,
       @Param("max_results") Optional<Integer> maxResults,
       @Param("page_token") Optional<String> pageToken) {
     return HttpResponse.ofJson(
