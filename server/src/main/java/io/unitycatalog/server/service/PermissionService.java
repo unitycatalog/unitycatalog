@@ -134,7 +134,7 @@ public class PermissionService {
 
   // TODO: Refactor these endpoints to use a common method with dynamic resource id lookup
   @Patch("/metastore/{name}")
-  @AuthorizeExpression("#authorizeAny(#principal, #metastore, METASTORE_ADMIN)")
+  @AuthorizeExpression("#authorize(#principal, #metastore, METASTORE_ADMIN)")
   @AuthorizeKey(METASTORE)
   public HttpResponse updateMetastoreAuthorization(
       @Param("name") String name, UpdateAuthorizationRequest request) {
@@ -142,7 +142,8 @@ public class PermissionService {
   }
 
   @Patch("/catalog/{name}")
-  @AuthorizeExpression("#authorizeAny(#principal, #catalog, METASTORE_ADMIN, OWNER)")
+  @AuthorizeExpression(
+      "#authorize(#principal, #metastore, METASTORE_ADMIN) || #authorize(#principal, #catalog, OWNER)")
   @AuthorizeKey(METASTORE)
   public HttpResponse updateCatalogAuthorization(
       @Param("name") @AuthorizeKey(CATALOG) String name, UpdateAuthorizationRequest request) {
@@ -150,7 +151,8 @@ public class PermissionService {
   }
 
   @Patch("/schema/{name}")
-  @AuthorizeExpression("#authorizeAny(#principal, #schema, METASTORE_ADMIN, OWNER)")
+  @AuthorizeExpression(
+      "#authorize(#principal, #metastore, METASTORE_ADMIN) || #authorize(#principal, #schema, OWNER)")
   @AuthorizeKey(METASTORE)
   public HttpResponse updateSchemaAuthorization(
       @Param("name") @AuthorizeKey(SCHEMA) String name, UpdateAuthorizationRequest request) {
@@ -158,7 +160,8 @@ public class PermissionService {
   }
 
   @Patch("/table/{name}")
-  @AuthorizeExpression("#authorizeAny(#principal, #table, METASTORE_ADMIN, OWNER)")
+  @AuthorizeExpression(
+      "#authorize(#principal, #metastore, METASTORE_ADMIN) || #authorize(#principal, #table, OWNER)")
   @AuthorizeKey(METASTORE)
   public HttpResponse updateTableAuthorization(
       @Param("name") @AuthorizeKey(TABLE) String name, UpdateAuthorizationRequest request) {
@@ -166,7 +169,8 @@ public class PermissionService {
   }
 
   @Patch("/function/{name}")
-  @AuthorizeExpression("#authorizeAny(#principal, #function, METASTORE_ADMIN, OWNER)")
+  @AuthorizeExpression(
+      "#authorize(#principal, #metastore, METASTORE_ADMIN) || #authorize(#principal, #function, OWNER)")
   @AuthorizeKey(METASTORE)
   public HttpResponse updateFunctionAuthorization(
       @Param("name") @AuthorizeKey(FUNCTION) String name, UpdateAuthorizationRequest request) {
@@ -174,7 +178,8 @@ public class PermissionService {
   }
 
   @Patch("/volume/{name}")
-  @AuthorizeExpression("#authorizeAny(#principal, #volume, METASTORE_ADMIN, OWNER)")
+  @AuthorizeExpression(
+      "#authorize(#principal, #metastore, METASTORE_ADMIN) || #authorize(#principal, #volume, OWNER)")
   @AuthorizeKey(METASTORE)
   public HttpResponse updateVolumeAuthorization(
       @Param("name") @AuthorizeKey(VOLUME) String name, UpdateAuthorizationRequest request) {
