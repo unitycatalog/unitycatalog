@@ -274,12 +274,12 @@ paths:
     post:
       operationId: createTable
       summary: |
-        Create a table.
+        Create a table. Only external table creation is supported.
         WARNING: This API is experimental and will change in future versions.
       tags:
         - Tables
       description: |
-        Creates a new table instance.
+        Creates a new external table instance.
         WARNING: This API is experimental and will change in future versions.
       requestBody:
         content:
@@ -288,7 +288,7 @@ paths:
               $ref: '#/components/schemas/CreateTable'
       responses:
         '200':
-          description: The new table was successfully created.
+          description: The new external table was successfully created.
           content:
             application/json:
               schema:
@@ -595,22 +595,22 @@ paths:
               schema: {}
   /temporary-model-version-credentials:
     post:
-      operationId: generateTemporaryModelVersionCredential
+      operationId: generateTemporaryModelVersionCredentials
       tags:
-        - TemporaryModelVersionCredential
+        - TemporaryModelVersionCredentials
       summary: Generate temporary model version credentials. These credentials are used by clients to write and retrieve model artifacts from the model versions external storage location.
       requestBody:
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/GenerateTemporaryModelVersionCredential'
+              $ref: '#/components/schemas/GenerateTemporaryModelVersionCredentials'
       responses:
         '200':
           description: Successful response
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/GenerateTemporaryModelVersionCredentialResponse'
+                $ref: '#/components/schemas/GenerateTemporaryModelVersionCredentialsResponse'
   /temporary-table-credentials:
     post:
       operationId: generateTemporaryTableCredentials
@@ -1281,7 +1281,7 @@ components:
           items:
             $ref: '#/components/schemas/ColumnInfo'
         storage_location:
-          description: Storage root URL for table (for **MANAGED**, **EXTERNAL** tables)
+          description: Storage root URL for external table
           type: string
         comment:
           description: User-provided free-form text description.
@@ -1295,6 +1295,7 @@ components:
         - table_type
         - data_source_format
         - columns
+        - storage_location
     ListTablesResponse:
       type: object
       properties:
@@ -1730,7 +1731,7 @@ components:
           description: |
             Opaque token to retrieve the next page of results. Absent if there are no more pages.
             __page_token__ should be set to this value for the next request (for the next page of results).
-    GenerateTemporaryModelVersionCredential:
+    GenerateTemporaryModelVersionCredentials:
       example:
         catalog_name: catalog_name
         schema_name: schema_name
@@ -1767,16 +1768,23 @@ components:
         - model_name
         - version
         - operation
-    GenerateTemporaryModelVersionCredentialResponse:
+    GenerateTemporaryModelVersionCredentialsResponse:
       properties:
         aws_temp_credentials:
           $ref: '#/components/schemas/AwsCredentials'
+        azure_user_delegation_sas:
+          $ref: '#/components/schemas/AzureUserDelegationSAS'
+        gcp_oauth_token:
+          $ref: '#/components/schemas/GcpOauthToken'
         expiration_time:
           description: |
             Server time when the credential will expire, in epoch milliseconds.
             The API client is advised to cache the credential given this expiration time.
           type: integer
           format: int64
+        url:
+          description: The URL of the storage path accessible by the temporary credential.
+          type: string
       type: object
     ModelVersionOperation:
       enum:

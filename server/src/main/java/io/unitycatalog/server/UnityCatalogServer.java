@@ -25,6 +25,7 @@ import io.unitycatalog.server.service.ModelService;
 import io.unitycatalog.server.service.SchemaService;
 import io.unitycatalog.server.service.Scim2UserService;
 import io.unitycatalog.server.service.TableService;
+import io.unitycatalog.server.service.TemporaryModelVersionCredentialsService;
 import io.unitycatalog.server.service.TemporaryTableCredentialsService;
 import io.unitycatalog.server.service.TemporaryVolumeCredentialsService;
 import io.unitycatalog.server.service.VolumeService;
@@ -103,6 +104,8 @@ public class UnityCatalogServer {
         new TemporaryTableCredentialsService(credentialOperations);
     TemporaryVolumeCredentialsService temporaryVolumeCredentialsService =
         new TemporaryVolumeCredentialsService(credentialOperations);
+    TemporaryModelVersionCredentialsService temporaryModelVersionCredentialsService =
+        new TemporaryModelVersionCredentialsService(credentialOperations);
     sb.service("/", (ctx, req) -> HttpResponse.of("Hello, Unity Catalog!"))
         .annotatedService(controlPath + "auth", authService, unityConverterFunction)
         .annotatedService(controlPath + "scim2/Users", Scim2UserService)
@@ -115,7 +118,10 @@ public class UnityCatalogServer {
         .annotatedService(
             basePath + "temporary-table-credentials", temporaryTableCredentialsService)
         .annotatedService(
-            basePath + "temporary-volume-credentials", temporaryVolumeCredentialsService);
+            basePath + "temporary-volume-credentials", temporaryVolumeCredentialsService)
+        .annotatedService(
+            basePath + "temporary-model-version-credentials",
+            temporaryModelVersionCredentialsService);
 
     // Add support for Iceberg REST APIs
     ObjectMapper icebergMapper = RESTObjectMapper.mapper();
