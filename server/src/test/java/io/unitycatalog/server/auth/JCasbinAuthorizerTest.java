@@ -105,7 +105,7 @@ public class JCasbinAuthorizerTest {
     authenticator.addHierarchyChild(catalog, schema);
     authenticator.grantAuthorization(principal, catalog, action);
     assertTrue(authenticator.authorize(principal, schema, action));
-    authenticator.removeHierarchyChildren(schema);
+    authenticator.removeHierarchyChildren(catalog);
     assertFalse(authenticator.authorize(principal, schema, action));
   }
 
