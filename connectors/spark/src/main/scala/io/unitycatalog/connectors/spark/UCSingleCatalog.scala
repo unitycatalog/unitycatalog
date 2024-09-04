@@ -148,22 +148,28 @@ private class UCProxy extends TableCatalog with SupportsNamespaces {
     }.toArray
     val uri = CatalogUtils.stringToURI(t.getStorageLocation)
     val tableId = t.getTableId
-    val credential: AwsCredentials = temporaryTableCredentialsApi
+    val temporaryCredentials = temporaryTableCredentialsApi
       .generateTemporaryTableCredentials(
         // TODO: at this time, we don't know if the table will be read or written. We should get
         //       credential in a later phase.
         new GenerateTemporaryTableCredential().tableId(tableId).operation(TableOperation.READ_WRITE)
       )
-      .getAwsTempCredentials
     val extraSerdeProps = if (uri.getScheme == "s3") {
+      val awsCredentials = temporaryCredentials.getAwsTempCredentials
       Map(
         // TODO: how to support s3:// properly?
-        "fs.s3a.access.key" -> credential.getAccessKeyId,
-        "fs.s3a.secret.key" -> credential.getSecretAccessKey,
-        "fs.s3a.session.token" -> credential.getSessionToken,
+        "fs.s3a.access.key" -> awsCredentials.getAccessKeyId,
+        "fs.s3a.secret.key" -> awsCredentials.getSecretAccessKey,
+        "fs.s3a.session.token" -> awsCredentials.getSessionToken,
         "fs.s3a.path.style.access" -> "true",
         "fs.s3.impl.disable.cache" -> "true",
         "fs.s3a.impl.disable.cache" -> "true"
+      )
+    } else if (uri.getScheme == "gs") {
+      val gcsCredentials = temporaryCredentials.getGcpOauthToken
+      Map(
+        GcsVendedTokenProvider.ACCESS_TOKEN_KEY -> gcsCredentials.getOauthToken,
+        GcsVendedTokenProvider.ACCESS_TOKEN_EXPIRATION_KEY -> temporaryCredentials.getExpirationTime.toString
       )
     } else {
       Map.empty
