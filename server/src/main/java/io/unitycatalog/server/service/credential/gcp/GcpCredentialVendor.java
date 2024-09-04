@@ -13,6 +13,7 @@ import io.unitycatalog.server.persist.utils.ServerPropertiesUtils;
 import io.unitycatalog.server.service.credential.CredentialContext;
 import java.net.URI;
 import java.sql.Date;
+import java.time.Instant;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -41,7 +42,7 @@ public class GcpCredentialVendor {
         // allow pass-through of a dummy value for integration testing
         return AccessToken.newBuilder()
             .setTokenValue(serviceAccountKeyJsonFilePath)
-            .setExpirationTime(Date.valueOf("9999-01-01"))
+            .setExpirationTime(Date.from(Instant.ofEpochMilli(253370790000000L)))
             .build();
       }
       creds =
