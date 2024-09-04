@@ -1,4 +1,4 @@
-name: Tarball Generation Tests
+name: Publish Swagger Docs
 
 on:
   push:
@@ -16,7 +16,7 @@ jobs:
         with:
           output: swagger-ui
           spec-file: ./api/all.yaml
-            GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       - name: Deploy to GitHub Pages
         uses: peaceiris/actions-gh-pages@v3
         with:
