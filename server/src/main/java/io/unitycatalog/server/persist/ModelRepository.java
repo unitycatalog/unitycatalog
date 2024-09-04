@@ -7,10 +7,10 @@ import io.unitycatalog.server.persist.dao.CatalogInfoDAO;
 import io.unitycatalog.server.persist.dao.ModelVersionInfoDAO;
 import io.unitycatalog.server.persist.dao.RegisteredModelInfoDAO;
 import io.unitycatalog.server.persist.dao.SchemaInfoDAO;
-import io.unitycatalog.server.persist.utils.FileUtils;
 import io.unitycatalog.server.persist.utils.HibernateUtils;
 import io.unitycatalog.server.persist.utils.PagedListingHelper;
 import io.unitycatalog.server.persist.utils.RepositoryUtils;
+import io.unitycatalog.server.persist.utils.UriUtils;
 import io.unitycatalog.server.utils.ValidationUtils;
 import java.util.*;
 import org.hibernate.Session;
@@ -208,9 +208,6 @@ public class ModelRepository {
     ValidationUtils.validateSqlObjectName(createRegisteredModel.getName());
     long createTime = System.currentTimeMillis();
     String modelId = UUID.randomUUID().toString();
-    String storageLocation =
-        FileUtils.getModelStorageLocation(
-            createRegisteredModel.getCatalogName(), createRegisteredModel.getSchemaName(), modelId);
     RegisteredModelInfo registeredModelInfo =
         new RegisteredModelInfo()
             .modelId(modelId)
@@ -230,7 +227,9 @@ public class ModelRepository {
       String catalogName = registeredModelInfo.getCatalogName();
       String schemaName = registeredModelInfo.getSchemaName();
       UUID schemaId = RepositoryUtils.getSchemaId(session, catalogName, schemaName);
-
+      UUID catalogId = RepositoryUtils.getCatalogId(session, catalogName);
+      String storageLocation =
+          UriUtils.getModelStorageLocation(catalogId.toString(), schemaId.toString(), modelId);
       try {
         // Check if registered model already exists
         RegisteredModelInfoDAO existingRegisteredModel =
@@ -239,15 +238,26 @@ public class ModelRepository {
           throw new BaseException(
               ErrorCode.ALREADY_EXISTS, "Registered model already exists: " + fullName);
         }
-        registeredModelInfo.setStorageLocation(FileUtils.convertRelativePathToURI(storageLocation));
+        registeredModelInfo.setStorageLocation(storageLocation);
         RegisteredModelInfoDAO registeredModelInfoDAO =
             RegisteredModelInfoDAO.from(registeredModelInfo);
         registeredModelInfoDAO.setSchemaId(schemaId);
         registeredModelInfoDAO.setMaxVersionNumber(0L);
         session.persist(registeredModelInfoDAO);
+        UriUtils.createStorageLocationPath(storageLocation);
         tx.commit();
       } catch (RuntimeException e) {
         if (tx != null && tx.getStatus().canRollback()) {
+          try {
+            // For now, never delete.  We will implement a soft delete later.
+            // UriUtils.deleteStorageLocationPath(storageLocation);
+          } catch (Exception deleteErr) {
+            LOGGER.error(
+                "Unable to delete storage location "
+                    + storageLocation
+                    + " during rollback: "
+                    + deleteErr.getMessage());
+          }
           tx.rollback();
         }
         throw e;
@@ -538,6 +548,7 @@ public class ModelRepository {
       tx = session.beginTransaction();
       UUID catalogId = RepositoryUtils.getCatalogId(session, catalogName);
       UUID schemaId = RepositoryUtils.getSchemaId(session, catalogName, schemaName);
+      String storageLocation = "";
       try {
         // Check if registered model already exists
         RegisteredModelInfoDAO existingRegisteredModel =
@@ -551,20 +562,31 @@ public class ModelRepository {
         }
         UUID modelId = existingRegisteredModel.getId();
         Long version = existingRegisteredModel.getMaxVersionNumber() + 1;
-        String storageLocation =
-            FileUtils.getModelVersionStorageLocation(
+        storageLocation =
+            UriUtils.getModelVersionStorageLocation(
                 catalogId.toString(), schemaId.toString(), modelId.toString(), modelVersionId);
         modelVersionInfo.setVersion(version);
-        modelVersionInfo.setStorageLocation(FileUtils.convertRelativePathToURI(storageLocation));
+        modelVersionInfo.setStorageLocation(storageLocation);
         ModelVersionInfoDAO modelVersionInfoDAO = ModelVersionInfoDAO.from(modelVersionInfo);
         modelVersionInfoDAO.setRegisteredModelId(modelId);
         session.persist(modelVersionInfoDAO);
+        UriUtils.createStorageLocationPath(storageLocation);
         // update the registered model
         existingRegisteredModel.setMaxVersionNumber(version);
         session.persist(existingRegisteredModel);
         tx.commit();
       } catch (RuntimeException e) {
         if (tx != null && tx.getStatus().canRollback()) {
+          try {
+            // For now, never delete.  We will implement a soft delete later.
+            // UriUtils.deleteStorageLocationPath(storageLocation);
+          } catch (Exception deleteErr) {
+            LOGGER.error(
+                "Unable to delete storage location "
+                    + storageLocation
+                    + " during rollback: "
+                    + deleteErr.getMessage());
+          }
           tx.rollback();
         }
         throw e;
