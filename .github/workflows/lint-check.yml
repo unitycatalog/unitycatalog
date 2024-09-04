@@ -23,4 +23,4 @@ jobs:
 
       - name: Run lint check
         run: |
-          yarn install && yarn test:format
+          yarn --cwd ui install && yarn --cwd ui test:format
