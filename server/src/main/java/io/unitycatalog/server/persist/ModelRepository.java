@@ -148,20 +148,9 @@ public class ModelRepository {
         }
         RegisteredModelInfo registeredModelInfo = registeredModelInfoDAO.toRegisteredModelInfo();
         SchemaInfoDAO schemaInfoDAO =
-            session.get(SchemaInfoDAO.class, registeredModelInfoDAO.getSchemaId());
-        if (schemaInfoDAO == null) {
-          throw new BaseException(
-              ErrorCode.NOT_FOUND,
-              "Registered model containing schemaId not found: "
-                  + registeredModelInfoDAO.getSchemaId());
-        }
+            RepositoryUtils.getSchemaByIdOrThrow(session, registeredModelInfoDAO.getSchemaId());
         CatalogInfoDAO catalogInfoDAO =
-            session.get(CatalogInfoDAO.class, schemaInfoDAO.getCatalogId());
-        if (catalogInfoDAO == null) {
-          throw new BaseException(
-              ErrorCode.NOT_FOUND,
-              "Registered model containing catalogId not found: " + schemaInfoDAO.getCatalogId());
-        }
+            RepositoryUtils.getCatalogByIdOrThrow(session, schemaInfoDAO.getCatalogId());
         registeredModelInfo.setSchemaName(schemaInfoDAO.getName());
         registeredModelInfo.setCatalogName(catalogInfoDAO.getName());
         registeredModelInfo.setFullName(
@@ -278,12 +267,8 @@ public class ModelRepository {
       Optional<String> schemaName,
       Optional<Integer> maxResults,
       Optional<String> pageToken) {
-    if (catalogName.isPresent() && catalogName.get().isEmpty()) {
-      catalogName = Optional.empty();
-    }
-    if (schemaName.isPresent() && schemaName.get().isEmpty()) {
-      schemaName = Optional.empty();
-    }
+    catalogName = catalogName.filter(name -> !name.isEmpty());
+    schemaName = schemaName.filter(name -> !name.isEmpty());
     if (catalogName.isPresent() && schemaName.isEmpty()) {
       throw new BaseException(
           ErrorCode.INVALID_ARGUMENT,
@@ -294,11 +279,6 @@ public class ModelRepository {
           ErrorCode.INVALID_ARGUMENT,
           "Cannot specify schema w/o catalog for list registered models.");
     }
-    if (catalogName.isPresent()) {
-      LOGGER.info("Listing registered models in " + catalogName.get() + "." + schemaName.get());
-    } else {
-      LOGGER.info("Listing all registered models in the metastore.");
-    }
     try (Session session = SESSION_FACTORY.openSession()) {
       session.setDefaultReadOnly(true);
       Transaction tx = session.beginTransaction();
@@ -306,6 +286,7 @@ public class ModelRepository {
         ListRegisteredModelsResponse response = new ListRegisteredModelsResponse();
         if (catalogName.isEmpty() || schemaName.isEmpty()) {
           // Run the custom query to pull all models back from all catalogs/schemas
+          LOGGER.info("Listing all registered models in the metastore.");
           List<RegisteredModelInfoDAO> registeredModelInfoDAOList =
               getAllRegisteredModelsDao(session, pageToken, maxResults);
           String nextPageToken =
@@ -314,21 +295,9 @@ public class ModelRepository {
           List<RegisteredModelInfo> result = new ArrayList<>();
           for (RegisteredModelInfoDAO registeredModelInfoDAO : registeredModelInfoDAOList) {
             SchemaInfoDAO schemaInfoDAO =
-                session.get(SchemaInfoDAO.class, registeredModelInfoDAO.getSchemaId());
-            if (schemaInfoDAO == null) {
-              throw new BaseException(
-                  ErrorCode.NOT_FOUND,
-                  "Registered model containing schemaId not found: "
-                      + registeredModelInfoDAO.getSchemaId());
-            }
+                RepositoryUtils.getSchemaByIdOrThrow(session, registeredModelInfoDAO.getSchemaId());
             CatalogInfoDAO catalogInfoDAO =
-                session.get(CatalogInfoDAO.class, schemaInfoDAO.getCatalogId());
-            if (catalogInfoDAO == null) {
-              throw new BaseException(
-                  ErrorCode.NOT_FOUND,
-                  "Registered model containing catalogId not found: "
-                      + schemaInfoDAO.getCatalogId());
-            }
+                RepositoryUtils.getCatalogByIdOrThrow(session, schemaInfoDAO.getCatalogId());
 
             RegisteredModelInfo registeredModelInfo =
                 registeredModelInfoDAO.toRegisteredModelInfo();
@@ -341,6 +310,7 @@ public class ModelRepository {
               .registeredModels(result)
               .nextPageToken(nextPageToken);
         } else {
+          LOGGER.info("Listing registered models in " + catalogName.get() + "." + schemaName.get());
           UUID schemaId = RepositoryUtils.getSchemaId(session, catalogName.get(), schemaName.get());
           response =
               listRegisteredModels(
