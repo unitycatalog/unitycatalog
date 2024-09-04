@@ -29,9 +29,6 @@ tags:
     description: |
       Model versions contain all artifact files associated with an individual machine learning model. They are associated with a single parent model and have an integer identifier, indicating the version number of the model.
       Model versions are referenced via model URI's using the Unity Catalog three-level namespace of the registered model and the version identifier.
-  - name: Permissions
-    description: |
-      In Unity Catalog, data is secure by default. Access can be granted.
 paths:
   /catalogs:
     post:
