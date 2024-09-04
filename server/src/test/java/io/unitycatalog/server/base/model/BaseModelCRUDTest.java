@@ -47,9 +47,10 @@ public abstract class BaseModelCRUDTest extends BaseCRUDTest {
   }
 
   protected void createCommonResources() throws ApiException {
-    CreateCatalog createCatalog = new CreateCatalog().name(CATALOG_NAME).comment(COMMENT);
-    catalogOperations.createCatalog(createCatalog);
+    catalogOperations.createCatalog(new CreateCatalog().name(CATALOG_NAME).comment(COMMENT));
+    catalogOperations.createCatalog(new CreateCatalog().name(CATALOG_NAME2).comment(COMMENT));
     schemaOperations.createSchema(new CreateSchema().name(SCHEMA_NAME).catalogName(CATALOG_NAME));
+    schemaOperations.createSchema(new CreateSchema().name(SCHEMA_NAME2).catalogName(CATALOG_NAME2));
   }
 
   @Test
@@ -65,6 +66,12 @@ public abstract class BaseModelCRUDTest extends BaseCRUDTest {
             .name(MODEL_NAME)
             .catalogName(CATALOG_NAME)
             .schemaName(SCHEMA_NAME)
+            .comment(COMMENT);
+    CreateRegisteredModel createRmNewCat =
+        new CreateRegisteredModel()
+            .name(MODEL_NEW_NAME)
+            .catalogName(CATALOG_NAME2)
+            .schemaName(SCHEMA_NAME2)
             .comment(COMMENT);
     assertThatThrownBy(() -> modelOperations.createRegisteredModel(createRm))
         .isInstanceOf(Exception.class);
@@ -85,11 +92,19 @@ public abstract class BaseModelCRUDTest extends BaseCRUDTest {
     assertThat(rmInfo.getModelId()).isNotNull();
     assertThat(rmInfo.getStorageLocation()).isNotNull();
 
+    RegisteredModelInfo rmInfoNewCat = modelOperations.createRegisteredModel(createRmNewCat);
     // List registered models
     System.out.println("Testing list registered models..");
     Iterable<RegisteredModelInfo> modelList =
-        modelOperations.listRegisteredModels(CATALOG_NAME, SCHEMA_NAME);
+        modelOperations.listRegisteredModels(Optional.of(CATALOG_NAME), Optional.of(SCHEMA_NAME));
     assertThat(modelList).contains(rmInfo);
+    Iterable<RegisteredModelInfo> modelList2 =
+        modelOperations.listRegisteredModels(Optional.of(CATALOG_NAME2), Optional.of(SCHEMA_NAME2));
+    assertThat(modelList2).contains(rmInfoNewCat);
+    Iterable<RegisteredModelInfo> modelList3 =
+        modelOperations.listRegisteredModels(Optional.empty(), Optional.empty());
+    assertThat(modelList3).contains(rmInfo);
+    assertThat(modelList3).contains(rmInfoNewCat);
 
     // Get registered model
     System.out.println("Testing get registered model..");
@@ -148,7 +163,9 @@ public abstract class BaseModelCRUDTest extends BaseCRUDTest {
     System.out.println("Testing delete registerd model..");
     modelOperations.deleteRegisteredModel(
         CATALOG_NEW_NAME + "." + SCHEMA_NAME + "." + MODEL_NEW_NAME, Optional.of(false));
-    assertThat(modelOperations.listRegisteredModels(CATALOG_NEW_NAME, SCHEMA_NAME))
+    assertThat(
+            modelOperations.listRegisteredModels(
+                Optional.of(CATALOG_NEW_NAME), Optional.of(SCHEMA_NAME)))
         .as("Model with model name '%s' exists", MODEL_NEW_NAME)
         .noneSatisfy(modelInfo -> assertThat(modelInfo.getName()).isEqualTo(MODEL_NEW_NAME));
 
@@ -162,7 +179,9 @@ public abstract class BaseModelCRUDTest extends BaseCRUDTest {
     modelOperations.createRegisteredModel(createRm1a);
     modelOperations.deleteRegisteredModel(
         CATALOG_NEW_NAME + "." + SCHEMA_NAME + "." + MODEL_NEW_NAME, Optional.empty());
-    assertThat(modelOperations.listRegisteredModels(CATALOG_NEW_NAME, SCHEMA_NAME))
+    assertThat(
+            modelOperations.listRegisteredModels(
+                Optional.of(CATALOG_NEW_NAME), Optional.of(SCHEMA_NAME)))
         .as("Model with model name '%s' exists", MODEL_NEW_NAME)
         .noneSatisfy(modelInfo -> assertThat(modelInfo.getName()).isEqualTo(MODEL_NEW_NAME));
 
@@ -175,6 +194,7 @@ public abstract class BaseModelCRUDTest extends BaseCRUDTest {
             .comment(COMMENT);
     modelOperations.createRegisteredModel(createRm2);
     catalogOperations.deleteCatalog(TestUtils.CATALOG_NEW_NAME, Optional.of(true));
+    catalogOperations.deleteCatalog(TestUtils.CATALOG_NAME2, Optional.of(true));
     assertThatThrownBy(
             () ->
                 schemaOperations.getSchema(
