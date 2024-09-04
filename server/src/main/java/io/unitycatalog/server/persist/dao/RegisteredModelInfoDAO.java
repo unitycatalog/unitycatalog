@@ -1,7 +1,6 @@
 package io.unitycatalog.server.persist.dao;
 
 import io.unitycatalog.server.model.RegisteredModelInfo;
-import io.unitycatalog.server.persist.utils.FileUtils;
 import jakarta.persistence.*;
 import java.util.Date;
 import java.util.UUID;
@@ -41,7 +40,7 @@ public class RegisteredModelInfoDAO extends IdentifiableDAO {
   @Column(name = "comment", length = 65535)
   private String comment;
 
-  @Column(name = "url", length = 2048)
+  @Column(name = "url", length = 4096)
   private String url;
 
   @Column(name = "max_version_number")
@@ -71,7 +70,7 @@ public class RegisteredModelInfoDAO extends IdentifiableDAO {
         new RegisteredModelInfo()
             .modelId(getId().toString())
             .name(getName())
-            .storageLocation(FileUtils.convertRelativePathToURI(url))
+            .storageLocation(url)
             .comment(comment)
             .createdAt(createdAt != null ? createdAt.getTime() : null)
             .createdBy(createdBy)
