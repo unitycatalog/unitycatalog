@@ -1,10 +1,10 @@
 package io.unitycatalog.server.persist;
 
+import io.unitycatalog.control.model.CreateUser;
+import io.unitycatalog.control.model.UpdateUser;
+import io.unitycatalog.control.model.User;
 import io.unitycatalog.server.exception.BaseException;
 import io.unitycatalog.server.exception.ErrorCode;
-import io.unitycatalog.server.model.CreateUser;
-import io.unitycatalog.server.model.UpdateUser;
-import io.unitycatalog.server.model.User;
 import io.unitycatalog.server.persist.dao.UserDAO;
 import io.unitycatalog.server.persist.utils.HibernateUtils;
 import io.unitycatalog.server.persist.utils.PagedListingHelper;

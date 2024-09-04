@@ -327,6 +327,7 @@ lazy val server = (project in file("server"))
 lazy val serverModels = (project in file("server") / "target" / "models")
   .enablePlugins(OpenApiGeneratorPlugin)
   .disablePlugins(JavaFormatterPlugin)
+  .dependsOn(controlModels % "compile->compile")
   .settings(
     name := s"$artifactNamePrefix-servermodels",
     commonSettings,
@@ -343,6 +344,41 @@ lazy val serverModels = (project in file("server") / "target" / "models")
     openApiValidateSpec := SettingEnabled,
     openApiGenerateMetadata := SettingDisabled,
     openApiModelPackage := s"$orgName.server.model",
+    openApiAdditionalProperties := Map(
+      "library" -> "resteasy", // resteasy generates the most minimal models
+      "useJakartaEe" -> "true",
+      "hideGenerationTimestamp" -> "true"
+    ),
+    openApiGlobalProperties := Map("models" -> ""),
+    openApiGenerateApiTests := SettingDisabled,
+    openApiGenerateModelTests := SettingDisabled,
+    openApiGenerateApiDocumentation := SettingDisabled,
+    openApiGenerateModelDocumentation := SettingDisabled,
+    // Define the simple generate command to generate model codes
+    generate := {
+      val _ = openApiGenerate.value
+    }
+  )
+
+lazy val controlModels = (project in file("server") / "target" / "controlmodels")
+  .enablePlugins(OpenApiGeneratorPlugin)
+  .disablePlugins(JavaFormatterPlugin)
+  .settings(
+    name := s"$artifactNamePrefix-controlmodels",
+    commonSettings,
+    (Compile / compile) := ((Compile / compile) dependsOn generate).value,
+    Compile / compile / javacOptions ++= javacRelease17,
+    libraryDependencies ++= Seq(
+      "jakarta.annotation" % "jakarta.annotation-api" % "3.0.0" % Provided,
+      "com.fasterxml.jackson.core" % "jackson-annotations" % jacksonVersion,
+    ),
+    // OpenAPI generation configs for generating model codes from the spec
+    openApiInputSpec := (file(".") / "api" / "control.yaml").toString,
+    openApiGeneratorName := "java",
+    openApiOutputDir := (file("server") / "target" / "controlmodels").toString,
+    openApiValidateSpec := SettingEnabled,
+    openApiGenerateMetadata := SettingDisabled,
+    openApiModelPackage := s"$orgName.control.model",
     openApiAdditionalProperties := Map(
       "library" -> "resteasy", // resteasy generates the most minimal models
       "useJakartaEe" -> "true",

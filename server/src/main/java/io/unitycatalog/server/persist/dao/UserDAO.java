@@ -1,6 +1,6 @@
 package io.unitycatalog.server.persist.dao;
 
-import io.unitycatalog.server.model.User;
+import io.unitycatalog.control.model.User;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.Table;

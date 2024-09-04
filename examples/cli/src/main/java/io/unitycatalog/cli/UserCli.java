@@ -1,18 +1,18 @@
 package io.unitycatalog.cli;
 
 import static io.unitycatalog.cli.utils.CliUtils.*;
-import static io.unitycatalog.client.model.User.StateEnum.DISABLED;
-import static io.unitycatalog.client.model.User.StateEnum.ENABLED;
+import static io.unitycatalog.control.model.User.StateEnum.DISABLED;
+import static io.unitycatalog.control.model.User.StateEnum.ENABLED;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectWriter;
 import io.unitycatalog.cli.utils.CliParams;
 import io.unitycatalog.cli.utils.CliUtils;
-import io.unitycatalog.client.model.User;
 import io.unitycatalog.control.ApiClient;
 import io.unitycatalog.control.ApiException;
 import io.unitycatalog.control.api.UsersApi;
 import io.unitycatalog.control.model.Email;
+import io.unitycatalog.control.model.User;
 import io.unitycatalog.control.model.UserResource;
 import java.util.ArrayList;
 import java.util.List;
