@@ -2,31 +2,33 @@ ARG unitycatalog_uid=185
 ARG unitycatalog_home="/opt/unitycatalog"
 ARG unitycatalog_repo="${unitycatalog_home}/repo"
 ARG unitycatalog_jar="examples/cli/target"
+ARG unitycatalog_jars="${unitycatalog_home}/jars"
 ARG unitycatalog_etc="etc"
 ARG unitycatalog_bin="bin"
 ARG unitycatalog_user_name="unitycatalog"
 ARG unitycatalog_user_home="home"
 ARG unitycatalog_user_basedir="${unitycatalog_home}/${unitycatalog_user_home}"
 # Specify any custom parameters necessary to generate
-# the Uber-Jar by SBT. 
+# the Uber-Jar by SBT.
 # Note: The default allocated heap memory size is too small
 # and will cause the process to fail when attempting to compile
 # and generate the Uber-Jar. Therefore it is important to choose
 # a size large enough for the compiler to run. 
 ARG sbt_args="-J-Xmx5G"
-
-
+# FIXME Pass it from the outside
+ARG unitycatalog_version="0.2.0-SNAPSHOT"
+ARG cli_assembly_jar="${unitycatalog_repo}/${unitycatalog_jar}/unitycatalog-cli-assembly-${unitycatalog_version}.jar"
 
 # ###### STAGE 1 ###### #
 # Building the Uber-Jar #
 #########################
 
-FROM eclipse-temurin:22-jdk-alpine AS build_uc
+FROM eclipse-temurin:22-jdk-alpine AS assemble_cli
 
 ARG unitycatalog_repo
 ARG sbt_args
 
-# Install any required packages
+# Install required packages
 RUN <<EOF
     set -ex;
     apk update;
@@ -35,34 +37,34 @@ RUN <<EOF
     rm -R /var/cache/apk/*;
 EOF
 
-# Create temporary directories for initialization files
-RUN mkdir -p "${unitycatalog_repo}";
-
+# If the WORKDIR doesn't exist, it will be created
+# https://docs.docker.com/reference/dockerfile/#workdir
 WORKDIR "${unitycatalog_repo}"
 
 COPY . .
 
+# Builds examples/cli/target/unitycatalog-cli-assembly-0.2.0-SNAPSHOT.jar
 RUN build/sbt ${sbt_args} cli/assembly
-
 
 # ###### STAGE 2 ###### #
 # Running the UC server #
 #########################
 
-FROM eclipse-temurin:22-jre-alpine AS run_uc
+FROM eclipse-temurin:22-jre-alpine AS build_cli
 
 ARG unitycatalog_uid
 ARG unitycatalog_home
 ARG unitycatalog_repo
 ARG unitycatalog_jar
+ARG unitycatalog_jars
 ARG unitycatalog_etc
 ARG unitycatalog_bin
 ARG unitycatalog_user_name
 ARG unitycatalog_user_home
 ARG unitycatalog_user_basedir
 ARG sbt_args
-
-EXPOSE 8081
+ARG cli_assembly_jar
+ARG unitycatalog_version
 
 RUN <<EOF
     set -ex;
@@ -75,14 +77,13 @@ EOF
 # Define the shell used within the container
 SHELL ["/bin/bash", "-i", "-c", "-o", "pipefail"] 
 
-ENV CLI_TARGET_DIR="${unitycatalog_home}/${unitycatalog_jar}"
+ENV CLI_ASSEMBLY_JAR="${unitycatalog_jars}/unitycatalog-cli-assembly-${unitycatalog_version}.jar"
 ENV UC_CLI_BIN="${unitycatalog_home}/${unitycatalog_bin}/start-uc-cli"
 
 # Create the UC directories
 RUN <<-EOF 
     set -ex;
-    mkdir -p "${unitycatalog_home}";
-    mkdir -p "${unitycatalog_home}/${unitycatalog_jar}";
+    mkdir -p "${unitycatalog_jars}";
     mkdir -p "${unitycatalog_home}/${unitycatalog_etc}";
     mkdir -p "${unitycatalog_home}/${unitycatalog_bin}";
     mkdir -p "${unitycatalog_home}/${unitycatalog_user_home}";
@@ -107,50 +108,37 @@ RUN <<-EOF
             "${unitycatalog_user_name}";
 EOF
 
-# Define volume to persist Unity Catalog data
-# VOLUME  "${unitycatalog_home}"
-
 WORKDIR "$unitycatalog_home"
 
 # Copy the Uber-Jar from the previous stage
-COPY --from=build_uc "${unitycatalog_repo}/${unitycatalog_jar}/*.jar" "${unitycatalog_home}/${unitycatalog_jar}/"
+COPY --from=assemble_cli ${cli_assembly_jar} "${unitycatalog_jars}/"
 
 # Copy the etc folder which contains the config files and the data folder
-COPY --from=build_uc "${unitycatalog_repo}/${unitycatalog_etc}" "${unitycatalog_home}/${unitycatalog_etc}/"
+COPY --from=assemble_cli "${unitycatalog_repo}/${unitycatalog_etc}" "${unitycatalog_home}/${unitycatalog_etc}/"
 
-# Create the script that executes the server
-# The script looks for the JAR automatially and saves its
-# path into a variable then runs the server.
+# Create the script to execute the CLI
+# FIXME It could be already created and simply copied over
 COPY <<-"EOF" "${UC_CLI_BIN}"
     #!/usr/bin/env bash
-    set -ex;
 
     SCRIPT_DIR="$(dirname "$(readlink -f "$0")")"
     ROOT_DIR="$(dirname "$SCRIPT_DIR")"
 
-    # Find the jar and store its absolute path into a variable
-    CLI_JAR=$(find "$CLI_TARGET_DIR" -name "unitycatalog-cli-*.jar" | head -n 1)
-    if [ -z "$CLI_JAR" ]; then
-        echo "CLI JAR not found starting with 'unitycatalog-cli-*' in the target directory '$CLI_TARGET_DIR'."
+    if [ -z "${CLI_ASSEMBLY_JAR}" ]; then
+        echo "CLI JAR (${CLI_ASSEMBLY_JAR}) not found. Exiting..."
         exit 1
     fi
 
     # Create relative path to jar so that it is able to find the 
     # configuration files in etc/conf/...
-    relative_path_to_jar="${CLI_JAR//"$ROOT_DIR/"/}"
+    relative_path_to_jar="${CLI_ASSEMBLY_JAR//"$ROOT_DIR/"/}"
 
-    # Prepare the command to be executed
-    SERVER_JAVA_COMMAND="java -jar $relative_path_to_jar $@"
+    CLI_JAVA_COMMAND="java -jar $relative_path_to_jar $@"
 
-    cd $ROOT_DIR
+    cd ${ROOT_DIR}
 
-    # alias
-    alias uc-cli="$SERVER_JAVA_COMMAND"
-    alias >> ~/.bashrc
-    echo 'echo "Use uc-cli to query the Unity Catalog. ex: uc-cli catalog list"' >> ~/.bashrc
-    exec /usr/bin/env bash
+    exec ${CLI_JAVA_COMMAND}
 EOF
-
 
 # Set ownership of directories and Unity Catalog home directory to a less
 # priviledged user
@@ -161,9 +149,6 @@ RUN <<-"EOF"
     chmod u+x "$UC_CLI_BIN";
 EOF
 
-
-# Set the user for the container process
 USER "${unitycatalog_user_name}"
 
-ENTRYPOINT ["/bin/bash", "-ex", "bin/start-uc-cli"]
-
+ENTRYPOINT ["/bin/bash", "bin/start-uc-cli"]

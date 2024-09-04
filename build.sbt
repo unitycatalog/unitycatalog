@@ -16,6 +16,9 @@ val artifactNamePrefix = "unitycatalog"
 lazy val javacRelease11 = Seq("--release", "11")
 lazy val javacRelease17 = Seq("--release", "17")
 
+lazy val scala212 = "2.12.15"
+lazy val scala213 = "2.13.14"
+
 lazy val commonSettings = Seq(
   organization := orgName,
   // Compilation configs
@@ -81,6 +84,7 @@ lazy val commonSettings = Seq(
     //  - GNU General Public License, version 2 with the GNU Classpath Exception
     // I think we're good with the classpath exception in there.
     case DepModuleInfo("jakarta.transaction", "jakarta.transaction-api", _) => true
+    case DepModuleInfo("javax.annotation", "javax.annotation-api", _) => true
   },
   
   assembly / test := {}
@@ -182,6 +186,7 @@ lazy val server = (project in file("server"))
   .dependsOn(serverModels)
   .settings (
     name := s"$artifactNamePrefix-server",
+    mainClass := Some(orgName + ".server.UnityCatalogServer"),
     commonSettings,
     javaOnlyReleaseSettings,
     javafmtCheckSettings,
@@ -199,7 +204,10 @@ lazy val server = (project in file("server"))
       "com.fasterxml.jackson.core" % "jackson-annotations" % jacksonVersion,
       "com.fasterxml.jackson.core" % "jackson-core" % jacksonVersion,
       "com.fasterxml.jackson.core" % "jackson-databind" % jacksonVersion,
+      "com.fasterxml.jackson.dataformat" % "jackson-dataformat-yaml" % jacksonVersion,
       "com.fasterxml.jackson.datatype" % "jackson-datatype-jsr310" % jacksonVersion,
+      "com.auth0" % "java-jwt" % "4.4.0",
+      "com.auth0" % "jwks-rsa" % "0.22.1",
 
       "com.google.code.findbugs" % "jsr305" % "3.0.2",
       "com.h2database" %  "h2" % "2.2.224",
@@ -210,6 +218,14 @@ lazy val server = (project in file("server"))
       "net.bytebuddy" % "byte-buddy" % "1.14.15",
       "org.projectlombok" % "lombok" % "1.18.32" % Provided,
 
+      // For ALDS access
+      "com.azure" % "azure-identity" % "1.13.2",
+      "com.azure" % "azure-storage-file-datalake" % "12.20.0",
+
+      // For GCS Access
+      "com.google.cloud" % "google-cloud-storage" % "2.30.1",
+      "com.google.auth" % "google-auth-library-oauth2-http" % "1.20.0",
+
       //For s3 access
       "com.amazonaws" % "aws-java-sdk-s3" % "1.12.728",
       "org.apache.httpcomponents" % "httpcore" % "4.4.16",
@@ -218,7 +234,10 @@ lazy val server = (project in file("server"))
       // Iceberg REST Catalog dependencies
       "org.apache.iceberg" % "iceberg-core" % "1.5.2",
       "org.apache.iceberg" % "iceberg-aws" % "1.5.2",
+      "org.apache.iceberg" % "iceberg-azure" % "1.5.2",
+      "org.apache.iceberg" % "iceberg-gcp" % "1.5.2",
       "software.amazon.awssdk" % "s3" % "2.24.0",
+      "software.amazon.awssdk" % "sts" % "2.24.0",
       "io.vertx" % "vertx-core" % "4.3.5",
       "io.vertx" % "vertx-web" % "4.3.5",
       "io.vertx" % "vertx-web-client" % "4.3.5",
@@ -362,7 +381,8 @@ lazy val spark = (project in file("connectors/spark"))
   .dependsOn(client)
   .settings(
     name := s"$artifactNamePrefix-spark",
-    scalaVersion := "2.12.15",
+    scalaVersion := scala212,
+    crossScalaVersions := Seq(scala212, scala213),
     commonSettings,
     javaOptions ++= Seq(
       "--add-opens=java.base/sun.nio.ch=ALL-UNNAMED",
@@ -375,6 +395,7 @@ lazy val spark = (project in file("connectors/spark"))
       "com.fasterxml.jackson.module" %% "jackson-module-scala" % "2.15.0",
       "com.fasterxml.jackson.core" % "jackson-annotations" % "2.15.0",
       "com.fasterxml.jackson.core" % "jackson-core" % "2.15.0",
+      "com.fasterxml.jackson.dataformat" % "jackson-dataformat-xml" % "2.15.0",
       "org.antlr" % "antlr4-runtime" % "4.9.3",
       "org.antlr" % "antlr4" % "4.9.3",
     ),
@@ -394,6 +415,7 @@ lazy val spark = (project in file("connectors/spark"))
       "com.fasterxml.jackson.module" %% "jackson-module-scala" % "2.15.0",
       "com.fasterxml.jackson.core" % "jackson-annotations" % "2.15.0",
       "com.fasterxml.jackson.core" % "jackson-core" % "2.15.0",
+      "com.fasterxml.jackson.dataformat" % "jackson-dataformat-xml" % "2.15.0",
       "org.antlr" % "antlr4-runtime" % "4.9.3",
       "org.antlr" % "antlr4" % "4.9.3",
     ),

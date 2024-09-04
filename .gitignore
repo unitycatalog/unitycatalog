@@ -1,4 +1,5 @@
 etc/db/h2db.mv.db
+etc/db/h2db.trace.db
 target/
 
 # Intellij IDEA files
@@ -10,9 +11,15 @@ etc/logs/
 api/.openapi-generator
 build/sbt-launch-*
 venv
+uc_docs_venv
 .venv
 .DS_Store
 server_pid.txt
 site
 python_engine.log
 .python-version
+
+# Signing keys and access tokens
+etc/conf/certs.json
+etc/conf/*.txt
+etc/conf/*.der

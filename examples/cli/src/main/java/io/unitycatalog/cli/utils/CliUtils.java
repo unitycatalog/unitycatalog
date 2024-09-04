@@ -24,20 +24,25 @@ import org.fusesource.jansi.AnsiConsole;
 import org.json.JSONObject;
 
 public class CliUtils {
+  public static final String AUTH = "auth";
   public static final String CATALOG = "catalog";
   public static final String SCHEMA = "schema";
   public static final String VOLUME = "volume";
   public static final String TABLE = "table";
 
   public static final String FUNCTION = "function";
+  public static final String REGISTERED_MODEL = "registered_model";
+  public static final String MODEL_VERSION = "model_version";
   public static final String CREATE = "create";
   public static final String LIST = "list";
   public static final String GET = "get";
   public static final String READ = "read";
   public static final String WRITE = "write";
+  public static final String FINALIZE = "finalize";
   public static final String EXECUTE = "call";
   public static final String UPDATE = "update";
   public static final String DELETE = "delete";
+  public static final String LOGIN = "login";
 
   public static final String EMPTY = "";
   public static final String EMPTY_JSON = "{}";
@@ -69,6 +74,13 @@ public class CliUtils {
   public static final Map<String, Map<String, CliOptions>> cliOptions =
       new HashMap<String, Map<String, CliOptions>>() {
         {
+          put(
+              AUTH,
+              new HashMap<String, CliOptions>() {
+                {
+                  put(LOGIN, new CliOptions(List.of(), List.of(CliParams.IDENTITY_TOKEN)));
+                }
+              });
           put(
               CATALOG,
               new HashMap<String, CliOptions>() {
@@ -183,6 +195,62 @@ public class CliUtils {
                       EXECUTE,
                       new CliOptions(
                           List.of(CliParams.FULL_NAME, CliParams.INPUT_PARAMS), List.of()));
+                }
+              });
+          put(
+              REGISTERED_MODEL,
+              new HashMap<String, CliOptions>() {
+                {
+                  put(
+                      CREATE,
+                      new CliOptions(
+                          List.of(CliParams.CATALOG_NAME, CliParams.SCHEMA_NAME, CliParams.NAME),
+                          List.of(CliParams.COMMENT)));
+                  put(
+                      LIST,
+                      new CliOptions(
+                          List.of(),
+                          List.of(
+                              CliParams.CATALOG_NAME,
+                              CliParams.SCHEMA_NAME,
+                              CliParams.MAX_RESULTS)));
+                  put(GET, new CliOptions(List.of(CliParams.FULL_NAME), List.of()));
+                  put(
+                      UPDATE,
+                      new CliOptions(
+                          List.of(CliParams.FULL_NAME),
+                          List.of(CliParams.NEW_NAME, CliParams.COMMENT)));
+                  put(
+                      DELETE,
+                      new CliOptions(List.of(CliParams.FULL_NAME), List.of(CliParams.FORCE)));
+                }
+              });
+          put(
+              MODEL_VERSION,
+              new HashMap<String, CliOptions>() {
+                {
+                  put(
+                      CREATE,
+                      new CliOptions(
+                          List.of(CliParams.CATALOG_NAME, CliParams.SCHEMA_NAME, CliParams.NAME),
+                          List.of(CliParams.COMMENT, CliParams.RUN_ID, CliParams.SOURCE)));
+                  put(
+                      LIST,
+                      new CliOptions(List.of(CliParams.FULL_NAME), List.of(CliParams.MAX_RESULTS)));
+                  put(
+                      GET,
+                      new CliOptions(List.of(CliParams.FULL_NAME, CliParams.VERSION), List.of()));
+                  put(
+                      UPDATE,
+                      new CliOptions(
+                          List.of(CliParams.FULL_NAME, CliParams.VERSION),
+                          List.of(CliParams.COMMENT)));
+                  put(
+                      DELETE,
+                      new CliOptions(List.of(CliParams.FULL_NAME), List.of(CliParams.VERSION)));
+                  put(
+                      FINALIZE,
+                      new CliOptions(List.of(CliParams.FULL_NAME), List.of(CliParams.VERSION)));
                 }
               });
         }

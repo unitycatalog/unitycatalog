@@ -38,6 +38,7 @@ This is a community effort. Unity Catalog is supported by
 - [PuppyGraph](https://www.puppygraph.com/)
 - [Salesforce](https://www.salesforce.com/)
 - [StarRocks (CelerData)](https://celerdata.com/)
+- [Spice AI](https://github.com/spiceai/spiceai)
 - [Tecton](https://www.tecton.ai/)
 - [Unstructured](https://unstructured.io/)
 
@@ -155,6 +156,18 @@ See the [cli usage](docs/usage/cli.md) for more details.
 - Open API specification: The Unity Catalog Rest API is documented [here](api).
 - Compatibility and stability: The APIs are currently evolving and should not be assumed to be stable.
 
+## Building Unity Catalog
+
+Unity Catalog can be built using [sbt](https://www.scala-sbt.org/).
+
+To build UC (incl. [Spark Integration](./connectors/spark) module), run the following command:
+
+```shell
+build/sbt clean package publishLocal spark/publishLocal
+```
+
+Refer to [sbt docs](https://www.scala-sbt.org/1.x/docs/) for more commands.
+
 ## Deployment
 
 - To create a tarball that can be used to deploy the UC server or run the CLI, run the following:
@@ -173,11 +186,11 @@ See the [cli usage](docs/usage/cli.md) for more details.
   ```
 - To compile and execute tests, run the following:
   ```sh
-  build/sbt clean test
+  build/sbt -J-Xmx2G clean test
   ```
 - To execute tests with coverage, run the following:
   ```sh
-  build/sbt jacoco 
+  build/sbt -J-Xmx2G jacoco
   ```
 - To update the API specification, just update the `api/all.yaml` and then run the following:
   ```sh
