@@ -12,6 +12,7 @@ import com.google.common.base.CharMatcher;
 import io.unitycatalog.server.persist.utils.ServerPropertiesUtils;
 import io.unitycatalog.server.service.credential.CredentialContext;
 import java.net.URI;
+import java.sql.Date;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -36,6 +37,13 @@ public class GcpCredentialVendor {
 
     GoogleCredentials creds;
     if (serviceAccountKeyJsonFilePath != null && !serviceAccountKeyJsonFilePath.isEmpty()) {
+      if (serviceAccountKeyJsonFilePath.startsWith("testing://")) {
+        // allow pass-through of a dummy value for integration testing
+        return AccessToken.newBuilder()
+            .setTokenValue(serviceAccountKeyJsonFilePath)
+            .setExpirationTime(Date.valueOf("9999-01-01"))
+            .build();
+      }
       creds =
           ServiceAccountCredentials.fromStream(
               Files.localInput(serviceAccountKeyJsonFilePath).newStream());

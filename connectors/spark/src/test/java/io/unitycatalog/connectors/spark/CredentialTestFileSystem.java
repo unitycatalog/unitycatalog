@@ -1,14 +1,14 @@
 package io.unitycatalog.connectors.spark;
 
 import java.io.IOException;
-import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.*;
 import org.apache.hadoop.util.Progressable;
 
 // A wrapper over the local file system to test UC table credentials.
-public class CredentialTestFileSystem extends RawLocalFileSystem {
-
+public abstract class CredentialTestFileSystem extends RawLocalFileSystem {
   public static boolean credentialCheckEnabled = true;
+
+  abstract String scheme();
 
   @Override
   protected void checkPath(Path path) {
@@ -29,8 +29,8 @@ public class CredentialTestFileSystem extends RawLocalFileSystem {
 
   @Override
   public FileStatus getFileStatus(Path f) throws IOException {
-    if (f.toString().startsWith("s3:")) {
-      String s3Prefix = "s3://" + f.toUri().getHost();
+    if (f.toString().startsWith(scheme())) {
+      String s3Prefix = scheme() + "//" + f.toUri().getHost();
       return restorePathInFileStatus(s3Prefix, super.getFileStatus(toLocalPath(f)));
     } else {
       assert f.toString().startsWith("file:");
@@ -50,7 +50,7 @@ public class CredentialTestFileSystem extends RawLocalFileSystem {
 
   @Override
   public FileStatus[] listStatus(Path f) throws IOException {
-    String s3Prefix = "s3://" + f.toUri().getHost();
+    String s3Prefix = scheme() + "//" + f.toUri().getHost();
     FileStatus[] files = super.listStatus(toLocalPath(f));
     FileStatus[] res = new FileStatus[files.length];
     for (int i = 0; i < files.length; i++) {
@@ -71,21 +71,9 @@ public class CredentialTestFileSystem extends RawLocalFileSystem {
   }
 
   private Path toLocalPath(Path f) {
-    Configuration conf = getConf();
-    String host = f.toUri().getHost();
-    if (!credentialCheckEnabled) {
-      // Do nothing
-    } else if ("test-bucket0".equals(host)) {
-      assert "accessKey0".equals(conf.get("fs.s3a.access.key"));
-      assert "secretKey0".equals(conf.get("fs.s3a.secret.key"));
-      assert "sessionToken0".equals(conf.get("fs.s3a.session.token"));
-    } else if ("test-bucket1".equals(host)) {
-      assert "accessKey1".equals(conf.get("fs.s3a.access.key"));
-      assert "secretKey1".equals(conf.get("fs.s3a.secret.key"));
-      assert "sessionToken1".equals(conf.get("fs.s3a.session.token"));
-    } else {
-      throw new RuntimeException("invalid path: " + f);
-    }
-    return new Path(f.toString().replaceAll("s3://.*?/", "file:///"));
+    checkCredentials(f);
+    return new Path(f.toString().replaceAll(scheme() + "//.*?/", "file:///"));
   }
+
+  abstract void checkCredentials(Path f);
 }
