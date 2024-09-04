@@ -15,7 +15,6 @@ import io.unitycatalog.server.model.AzureUserDelegationSAS;
 import io.unitycatalog.server.model.GcpOauthToken;
 import io.unitycatalog.server.model.GenerateTemporaryModelVersionCredentialsResponse;
 import java.io.ByteArrayInputStream;
-import java.io.File;
 import java.io.IOException;
 import java.net.URI;
 import java.net.URISyntaxException;
@@ -40,8 +39,12 @@ public class UriUtils {
 
   private UriUtils() {}
 
+  private static String modelStorageRootCached;
   // Model specific storage root handlers and convenience methods
   private static String getModelStorageRoot() {
+    if (modelStorageRootCached != null) {
+      return modelStorageRootCached;
+    }
     String modelStorageRoot = properties.getProperty("storage-root.models");
     if (modelStorageRoot == null) {
       // If the model storage root is empty, use the CWD
@@ -50,14 +53,13 @@ public class UriUtils {
     // If the model storage root is not a valid URI, make it one
     if (!isValidURI(modelStorageRoot)) {
       // Convert to an absolute path
-      File file = new File(modelStorageRoot);
-      modelStorageRoot = file.toURI().toString();
+      modelStorageRoot = Paths.get(modelStorageRoot).toUri().toString();
     }
     // Check if the modelStorageRoot ends with a slash and remove it if it does
     while (modelStorageRoot.endsWith("/")) {
       modelStorageRoot = modelStorageRoot.substring(0, modelStorageRoot.length() - 1);
     }
-
+    modelStorageRootCached = modelStorageRoot;
     return modelStorageRoot;
   }
 

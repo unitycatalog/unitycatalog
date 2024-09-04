@@ -56,7 +56,7 @@ public class ModelVersionInfoDAO {
   @Column(name = "comment", length = 65535)
   private String comment;
 
-  @Column(name = "url", length = 2048)
+  @Column(name = "url", length = 4096)
   private String url;
 
   public static ModelVersionInfoDAO from(ModelVersionInfo modelVersionInfo) {
