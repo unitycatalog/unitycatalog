@@ -9,11 +9,14 @@ import io.unitycatalog.client.model.*;
 import io.unitycatalog.server.base.BaseCRUDTest;
 import io.unitycatalog.server.base.ServerConfig;
 import io.unitycatalog.server.base.schema.SchemaOperations;
+import io.unitycatalog.server.persist.utils.UriUtils;
 import io.unitycatalog.server.utils.TestUtils;
 import java.util.List;
 import java.util.Optional;
+import java.util.UUID;
 import java.util.stream.Collectors;
 import java.util.stream.StreamSupport;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
@@ -25,22 +28,34 @@ public abstract class BaseModelCRUDTest extends BaseCRUDTest {
 
   protected abstract ModelOperations createModelOperations(ServerConfig serverConfig);
 
+  String rootBase = "";
+
   @BeforeEach
   @Override
   public void setUp() {
     super.setUp();
     schemaOperations = createSchemaOperations(serverConfig);
     modelOperations = createModelOperations(serverConfig);
+    rootBase = "/tmp/" + UUID.randomUUID().toString();
+    System.setProperty("storage-root.models", rootBase);
+  }
+
+  @AfterEach
+  public void afterEachTest() {
+    // Clean up the newly created storage root
+    UriUtils.deleteStorageLocationPath("file:" + rootBase);
   }
 
   protected void createCommonResources() throws ApiException {
-    CreateCatalog createCatalog = new CreateCatalog().name(CATALOG_NAME).comment(COMMENT);
-    catalogOperations.createCatalog(createCatalog);
+    catalogOperations.createCatalog(new CreateCatalog().name(CATALOG_NAME).comment(COMMENT));
+    catalogOperations.createCatalog(new CreateCatalog().name(CATALOG_NAME2).comment(COMMENT));
     schemaOperations.createSchema(new CreateSchema().name(SCHEMA_NAME).catalogName(CATALOG_NAME));
+    schemaOperations.createSchema(new CreateSchema().name(SCHEMA_NAME2).catalogName(CATALOG_NAME2));
   }
 
   @Test
   public void testModelCRUD() throws ApiException {
+
     // Model doesn't exist
     assertThatThrownBy(() -> modelOperations.getRegisteredModel(MODEL_FULL_NAME))
         .isInstanceOf(Exception.class);
@@ -51,6 +66,12 @@ public abstract class BaseModelCRUDTest extends BaseCRUDTest {
             .name(MODEL_NAME)
             .catalogName(CATALOG_NAME)
             .schemaName(SCHEMA_NAME)
+            .comment(COMMENT);
+    CreateRegisteredModel createRmNewCat =
+        new CreateRegisteredModel()
+            .name(MODEL_NEW_NAME)
+            .catalogName(CATALOG_NAME2)
+            .schemaName(SCHEMA_NAME2)
             .comment(COMMENT);
     assertThatThrownBy(() -> modelOperations.createRegisteredModel(createRm))
         .isInstanceOf(Exception.class);
@@ -71,11 +92,19 @@ public abstract class BaseModelCRUDTest extends BaseCRUDTest {
     assertThat(rmInfo.getModelId()).isNotNull();
     assertThat(rmInfo.getStorageLocation()).isNotNull();
 
+    RegisteredModelInfo rmInfoNewCat = modelOperations.createRegisteredModel(createRmNewCat);
     // List registered models
     System.out.println("Testing list registered models..");
     Iterable<RegisteredModelInfo> modelList =
-        modelOperations.listRegisteredModels(CATALOG_NAME, SCHEMA_NAME);
+        modelOperations.listRegisteredModels(Optional.of(CATALOG_NAME), Optional.of(SCHEMA_NAME));
     assertThat(modelList).contains(rmInfo);
+    Iterable<RegisteredModelInfo> modelList2 =
+        modelOperations.listRegisteredModels(Optional.of(CATALOG_NAME2), Optional.of(SCHEMA_NAME2));
+    assertThat(modelList2).contains(rmInfoNewCat);
+    Iterable<RegisteredModelInfo> modelList3 =
+        modelOperations.listRegisteredModels(Optional.empty(), Optional.empty());
+    assertThat(modelList3).contains(rmInfo);
+    assertThat(modelList3).contains(rmInfoNewCat);
 
     // Get registered model
     System.out.println("Testing get registered model..");
@@ -99,6 +128,7 @@ public abstract class BaseModelCRUDTest extends BaseCRUDTest {
         new UpdateRegisteredModel().newName(MODEL_NEW_NAME).fullName(MODEL_FULL_NAME);
     RegisteredModelInfo updatedRegisteredModelInfo =
         modelOperations.updateRegisteredModel(MODEL_FULL_NAME, updateRegisteredModel);
+    assertThat(updatedRegisteredModelInfo.getModelId()).isEqualTo(rmInfo.getModelId());
     assertThat(updatedRegisteredModelInfo.getName()).isEqualTo(updateRegisteredModel.getNewName());
     assertThat(updatedRegisteredModelInfo.getComment()).isEqualTo(COMMENT);
     assertThat(updatedRegisteredModelInfo.getFullName()).isEqualTo(MODEL_NEW_FULL_NAME);
@@ -113,6 +143,8 @@ public abstract class BaseModelCRUDTest extends BaseCRUDTest {
         new UpdateRegisteredModel().comment(MODEL_NEW_COMMENT).fullName(MODEL_NEW_FULL_NAME);
     RegisteredModelInfo updatedRegisteredModelInfo2 =
         modelOperations.updateRegisteredModel(MODEL_NEW_FULL_NAME, updateModel2);
+    assertThat(updatedRegisteredModelInfo.getModelId())
+        .isEqualTo(updatedRegisteredModelInfo.getModelId());
     assertThat(updatedRegisteredModelInfo2.getName()).isEqualTo(MODEL_NEW_NAME);
     assertThat(updatedRegisteredModelInfo2.getComment()).isEqualTo(updateModel2.getComment());
     assertThat(updatedRegisteredModelInfo2.getFullName()).isEqualTo(MODEL_NEW_FULL_NAME);
@@ -131,7 +163,9 @@ public abstract class BaseModelCRUDTest extends BaseCRUDTest {
     System.out.println("Testing delete registerd model..");
     modelOperations.deleteRegisteredModel(
         CATALOG_NEW_NAME + "." + SCHEMA_NAME + "." + MODEL_NEW_NAME, Optional.of(false));
-    assertThat(modelOperations.listRegisteredModels(CATALOG_NEW_NAME, SCHEMA_NAME))
+    assertThat(
+            modelOperations.listRegisteredModels(
+                Optional.of(CATALOG_NEW_NAME), Optional.of(SCHEMA_NAME)))
         .as("Model with model name '%s' exists", MODEL_NEW_NAME)
         .noneSatisfy(modelInfo -> assertThat(modelInfo.getName()).isEqualTo(MODEL_NEW_NAME));
 
@@ -145,7 +179,9 @@ public abstract class BaseModelCRUDTest extends BaseCRUDTest {
     modelOperations.createRegisteredModel(createRm1a);
     modelOperations.deleteRegisteredModel(
         CATALOG_NEW_NAME + "." + SCHEMA_NAME + "." + MODEL_NEW_NAME, Optional.empty());
-    assertThat(modelOperations.listRegisteredModels(CATALOG_NEW_NAME, SCHEMA_NAME))
+    assertThat(
+            modelOperations.listRegisteredModels(
+                Optional.of(CATALOG_NEW_NAME), Optional.of(SCHEMA_NAME)))
         .as("Model with model name '%s' exists", MODEL_NEW_NAME)
         .noneSatisfy(modelInfo -> assertThat(modelInfo.getName()).isEqualTo(MODEL_NEW_NAME));
 
@@ -158,6 +194,7 @@ public abstract class BaseModelCRUDTest extends BaseCRUDTest {
             .comment(COMMENT);
     modelOperations.createRegisteredModel(createRm2);
     catalogOperations.deleteCatalog(TestUtils.CATALOG_NEW_NAME, Optional.of(true));
+    catalogOperations.deleteCatalog(TestUtils.CATALOG_NAME2, Optional.of(true));
     assertThatThrownBy(
             () ->
                 schemaOperations.getSchema(
@@ -202,6 +239,7 @@ public abstract class BaseModelCRUDTest extends BaseCRUDTest {
     assertThat(mvInfo.getCreatedAt()).isNotNull();
     assertThat(mvInfo.getUpdatedAt()).isNotNull();
     assertThat(mvInfo.getModelVersionId()).isNotNull();
+
     // make another and make sure the version increments;
     System.out.println("Testing version increment...");
     ModelVersionInfo mvInfo2 = modelOperations.createModelVersion(createMv);
@@ -248,6 +286,8 @@ public abstract class BaseModelCRUDTest extends BaseCRUDTest {
     assertThat(updatedModelVersionInfo.getStatus())
         .isEqualTo(ModelVersionStatus.PENDING_REGISTRATION);
     assertThat(updatedModelVersionInfo.getVersion()).isEqualTo(3L);
+    assertThat(updatedModelVersionInfo.getStorageLocation())
+        .isEqualTo(mvInfo3.getStorageLocation());
     assertThat(updatedModelVersionInfo.getCreatedAt()).isEqualTo(mvInfo3.getCreatedAt());
     assertThat(updatedModelVersionInfo.getUpdatedAt()).isNotEqualTo(mvInfo3.getUpdatedAt());
     assertThat(updatedModelVersionInfo.getModelVersionId()).isEqualTo(mvInfo3.getModelVersionId());
@@ -261,6 +301,8 @@ public abstract class BaseModelCRUDTest extends BaseCRUDTest {
     ModelVersionInfo finalizedMv3 =
         modelOperations.finalizeModelVersion(MODEL_FULL_NAME, 3L, finalizeModelVersion);
     assertThat(finalizedMv3.getStatus()).isEqualTo(ModelVersionStatus.READY);
+    assertThat(finalizedMv3.getModelVersionId())
+        .isEqualTo(updatedModelVersionInfo.getModelVersionId());
     assertThatThrownBy(
             () -> modelOperations.finalizeModelVersion(MODEL_FULL_NAME, 3L, finalizeModelVersion))
         .isInstanceOf(Exception.class);

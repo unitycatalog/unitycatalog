@@ -778,13 +778,13 @@ paths:
         - name: catalog_name
           in: query
           description: Name of parent catalog for models of interest.
-          required: true
+          required: false
           schema:
             type: string
         - name: schema_name
           in: query
           description: Name of parent schema for models of interest.
-          required: true
+          required: false
           schema:
             type: string
         - name: max_results
