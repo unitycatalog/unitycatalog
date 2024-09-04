@@ -40,6 +40,11 @@ public class UriUtils {
   private UriUtils() {}
 
   private static String modelStorageRootCached;
+
+  public static void reset() {
+    modelStorageRootCached = null;
+  }
+
   // Model specific storage root handlers and convenience methods
   private static String getModelStorageRoot() {
     if (modelStorageRootCached != null) {
