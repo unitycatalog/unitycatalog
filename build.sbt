@@ -231,6 +231,30 @@ lazy val server = (project in file("server"))
       "org.apache.httpcomponents" % "httpcore" % "4.4.16",
       "org.apache.httpcomponents" % "httpclient" % "4.5.14",
 
+      // Core Hadoop dependencies
+      "org.apache.hadoop" % "hadoop-client-api" % "3.4.0",
+      "org.apache.hadoop" % "hadoop-client-runtime" % "3.4.0",
+
+      //"com.fasterxml.woodstox" % "woodstox-core" % "7.0.0",
+      //"org.codehaus.woodstox" % "stax2-api" % "4.2.2",
+
+      // AWS S3 (s3a) dependencies
+      "org.apache.hadoop" % "hadoop-aws" % "3.4.0" excludeAll(
+        ExclusionRule(organization = "com.amazonaws"),
+        ExclusionRule(organization = "software.amazon.awssdk")
+      ),
+      "com.amazonaws" % "aws-java-sdk-core" % "1.12.728",
+      "software.amazon.awssdk" % "bundle" % "2.20.112",
+
+
+// Azure Blob Storage (abfs) dependencies
+      "org.apache.hadoop" % "hadoop-azure" % "3.4.0",
+      "org.apache.hadoop" % "hadoop-azure-datalake" % "3.4.0",
+      //"org.apache.hadoop" % "hadoop-azure-abfs" % "3.4.0",
+
+      // Google Cloud Storage (gs) dependencies
+      "com.google.cloud.bigdataoss" % "gcs-connector" % "hadoop3-2.2.25",
+      "org.apache.commons" % "commons-lang3" % "3.17.0",
       // Iceberg REST Catalog dependencies
       "org.apache.iceberg" % "iceberg-core" % "1.5.2",
       "org.apache.iceberg" % "iceberg-aws" % "1.5.2",
@@ -256,7 +280,7 @@ lazy val server = (project in file("server"))
       // CLI dependencies
       "commons-cli" % "commons-cli" % "1.7.0"
     ),
-
+    
     Compile / sourceGenerators += Def.task {
       val file = (Compile / sourceManaged).value / "io" / "unitycatalog" / "server" / "utils" / "VersionUtils.java"
       IO.write(file,
@@ -272,6 +296,7 @@ lazy val server = (project in file("server"))
       val log = streams.value.log
       (Test / runMain).toTask(s" io.unitycatalog.server.utils.PopulateTestDatabase").value
     },
+    Compile / mainClass := Some("io.unitycatalog.server.persist.utils.GCSFileSystemHandler"),
     Test / javaOptions += s"-Duser.dir=${(ThisBuild / baseDirectory).value.getAbsolutePath}"
   )
 
