@@ -24,11 +24,18 @@ To run Unity Catalog, you need Java 17 installed on your machine.  You can alway
 
 Let’s create a new Terminal window and verify that the Unity Catalog server is running.
 
-Unity Catalog has a few built-in tables that are great for quick experimentation.  Let’s look at all the tables that have a catalog name of “unity” and a schema name of “default” with the `bin/uc table list --catalog unity --schema default` command:
+Unity Catalog has a few built-in tables that are great for quick experimentation.  Let’s look at all the tables that have a catalog name of “unity” and a schema name of “default” with the Unity Catalog CLI.
+
+```sh
+bin/uc table list --catalog unity --schema default
+```
 
 ![UC list tables](./assets/images/uc_list_tables.png)
 
-Let’s read the content of the `unity.default.numbers` table:
+Let’s read the content of the `unity.default.numbers` table with the Unity Catalog CLI.
+```sh
+bin/uc table read --full_name unity.default.numbers
+```
 
 ![UC query table](./assets/images/uc_query_table.png)
 
@@ -132,6 +139,12 @@ bin/uc table read --full_name unity.default.my_table
 ```
 
 ![UC read random table](./assets/images/uc_read_random_table.png)
+
+Delete the table to clean up:
+
+```sh
+bin/uc table delete --full_name unity.default.my_table
+```
 
 ## APIs and Compatibility
 
