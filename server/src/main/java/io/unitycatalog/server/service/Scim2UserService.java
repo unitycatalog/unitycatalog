@@ -82,27 +82,26 @@ public class Scim2UserService {
                     new Scim2RuntimeException(
                         new PreconditionFailedException("User does not have a primary email.")));
 
+    String pictureUrl = "";
+    if (userResource.getPhotos() != null && !userResource.getPhotos().isEmpty()) {
+      pictureUrl = userResource.getPhotos().get(0).getValue().toString();
+    }
     try {
-      User user = USER_REPOSITORY.getUserByEmail(primaryEmail.getValue());
+      User user =
+          USER_REPOSITORY.createUser(
+              CreateUser.builder()
+                  .name(userResource.getDisplayName())
+                  .email(primaryEmail.getValue())
+                  .active(userResource.getActive())
+                  .externalId(userResource.getExternalId())
+                  .pictureUrl(pictureUrl)
+                  .build());
       return HttpResponse.ofJson(asUserResource(user));
     } catch (BaseException e) {
-      if (e.getErrorCode() == ErrorCode.NOT_FOUND) {
-        String pictureUrl = "";
-        if (userResource.getPhotos() != null && !userResource.getPhotos().isEmpty()) {
-          pictureUrl = userResource.getPhotos().get(0).getValue().toString();
-        }
-        User user =
-            USER_REPOSITORY.createUser(
-                CreateUser.builder()
-                    .name(userResource.getDisplayName())
-                    .email(primaryEmail.getValue())
-                    .active(userResource.getActive())
-                    .externalId(userResource.getExternalId())
-                    .pictureUrl(pictureUrl)
-                    .build());
-        return HttpResponse.ofJson(asUserResource(user));
+      if (e.getErrorCode() == ErrorCode.ALREADY_EXISTS) {
+        throw new Scim2RuntimeException(new ResourceConflictException(e.getMessage()));
       } else {
-        throw e;
+        throw new Scim2RuntimeException(new BadRequestException(e.getMessage()));
       }
     }
   }
