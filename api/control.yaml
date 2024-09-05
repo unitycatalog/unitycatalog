@@ -47,7 +47,7 @@ paths:
           required: false
         - name: count
           in: query
-          description: Desired number of results per page.
+          description: Desired number of results per page. If no count is provided, it defaults to 50.
           schema:
             type: integer
             format: int32
