@@ -173,11 +173,11 @@ private class UCProxy extends TableCatalog with SupportsNamespaces {
       )
     } else if (uri.getScheme == "abfs" || uri.getScheme == "abfss") {
       val azCredentials = temporaryCredentials.getAzureUserDelegationSas
-      val storageAccount = uri.getHost.split('.')(0)
       Map(
-        s"fs.azure.account.auth.type.$storageAccount.dfs.core.windows.net" -> "SAS",
-        s"fs.azure.sas.token.provider.type.$storageAccount.dfs.core.windows.net" -> "io.unitycatalog.connectors.spark.AbfsVendedTokenProvider",
-        s"fs.azure.sas.fixed.token.$storageAccount.dfs.core.windows.net" -> azCredentials.getSasToken,
+        "fs.azure.account.auth.type" -> "SAS",
+        "fs.azure.account.hns.enabled" -> "true",
+        "fs.azure.sas.token.provider.type" -> "io.unitycatalog.connectors.spark.AbfsVendedTokenProvider",
+        "fs.azure.sas.fixed.token" -> azCredentials.getSasToken,
       )
     } else {
       Map.empty

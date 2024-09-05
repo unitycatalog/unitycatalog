@@ -14,7 +14,7 @@ public class AbfsVendedTokenProvider implements SASTokenProvider {
 
     @Override
     public String getSASToken(String account, String fileSystem, String path, String operation) throws IOException, AccessControlException {
-        return conf.get(format("fs.azure.sas.fixed.token.%s.dfs.core.windows.net", account));
+        return conf.get("fs.azure.sas.fixed.token");
     }
 
     @Override

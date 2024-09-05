@@ -1,6 +1,5 @@
 package io.unitycatalog.connectors.spark;
 
-import static java.lang.String.format;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import org.apache.hadoop.conf.Configuration;
@@ -12,12 +11,11 @@ public class AzureCredentialTestFileSystem extends CredentialTestFileSystem {
     Configuration conf = getConf();
     String host = f.toUri().getHost();
     if (credentialCheckEnabled) {
-      String tokenProp = format("fs.azure.sas.fixed.token.%s.dfs.core.windows.net", host);
-      String token = conf.get(tokenProp);
+      String mockToken = conf.get("fs.azure.sas.fixed.token");
       if ("test-bucket0".equals(host)) {
-        assertThat(token).isEqualTo("tenantId0/clientId0/clientSecret0");
+        assertThat(mockToken).isEqualTo("tenantId0/clientId0/clientSecret0");
       } else if ("test-bucket1".equals(host)) {
-        assertThat(token).isEqualTo("tenantId1/clientId1/clientSecret1");
+        assertThat(mockToken).isEqualTo("tenantId1/clientId1/clientSecret1");
       } else {
         throw new RuntimeException("invalid path: " + f);
       }
