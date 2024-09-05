@@ -7,10 +7,10 @@ import io.unitycatalog.server.persist.dao.CatalogInfoDAO;
 import io.unitycatalog.server.persist.dao.ModelVersionInfoDAO;
 import io.unitycatalog.server.persist.dao.RegisteredModelInfoDAO;
 import io.unitycatalog.server.persist.dao.SchemaInfoDAO;
-import io.unitycatalog.server.persist.utils.FileUtils;
 import io.unitycatalog.server.persist.utils.HibernateUtils;
 import io.unitycatalog.server.persist.utils.PagedListingHelper;
 import io.unitycatalog.server.persist.utils.RepositoryUtils;
+import io.unitycatalog.server.persist.utils.UriUtils;
 import io.unitycatalog.server.utils.ValidationUtils;
 import java.util.*;
 import org.hibernate.Session;
@@ -52,6 +52,19 @@ public class ModelRepository {
       throw new BaseException(ErrorCode.NOT_FOUND, "Registered model not found: " + name);
     }
     return existingRegisteredModelDao;
+  }
+
+  public List<RegisteredModelInfoDAO> getAllRegisteredModelsDao(
+      Session session, Optional<String> token, Optional<Integer> maxResults) {
+    UUID tokenToUse = new UUID(0, 0);
+    if (token.isPresent()) {
+      tokenToUse = UUID.fromString(token.get());
+    }
+    String hql = "FROM RegisteredModelInfoDAO t WHERE t.id > :token ORDER BY t.id ASC";
+    Query<RegisteredModelInfoDAO> query = session.createQuery(hql, RegisteredModelInfoDAO.class);
+    query.setParameter("token", tokenToUse);
+    query.setMaxResults(REGISTERED_MODEL_LISTING_HELPER.getPageSize(maxResults));
+    return query.getResultList(); // Returns null if no result is found
   }
 
   public ModelVersionInfoDAO getModelVersionDao(Session session, UUID modelId, Long version) {
@@ -135,20 +148,9 @@ public class ModelRepository {
         }
         RegisteredModelInfo registeredModelInfo = registeredModelInfoDAO.toRegisteredModelInfo();
         SchemaInfoDAO schemaInfoDAO =
-            session.get(SchemaInfoDAO.class, registeredModelInfoDAO.getSchemaId());
-        if (schemaInfoDAO == null) {
-          throw new BaseException(
-              ErrorCode.NOT_FOUND,
-              "Registered model containing schemaId not found: "
-                  + registeredModelInfoDAO.getSchemaId());
-        }
+            RepositoryUtils.getSchemaByIdOrThrow(session, registeredModelInfoDAO.getSchemaId());
         CatalogInfoDAO catalogInfoDAO =
-            session.get(CatalogInfoDAO.class, schemaInfoDAO.getCatalogId());
-        if (catalogInfoDAO == null) {
-          throw new BaseException(
-              ErrorCode.NOT_FOUND,
-              "Registered model containing catalogId not found: " + schemaInfoDAO.getCatalogId());
-        }
+            RepositoryUtils.getCatalogByIdOrThrow(session, schemaInfoDAO.getCatalogId());
         registeredModelInfo.setSchemaName(schemaInfoDAO.getName());
         registeredModelInfo.setCatalogName(catalogInfoDAO.getName());
         registeredModelInfo.setFullName(
@@ -206,9 +208,6 @@ public class ModelRepository {
     ValidationUtils.validateSqlObjectName(createRegisteredModel.getName());
     long createTime = System.currentTimeMillis();
     String modelId = UUID.randomUUID().toString();
-    String storageLocation =
-        FileUtils.getModelStorageLocation(
-            createRegisteredModel.getCatalogName(), createRegisteredModel.getSchemaName(), modelId);
     RegisteredModelInfo registeredModelInfo =
         new RegisteredModelInfo()
             .modelId(modelId)
@@ -228,7 +227,9 @@ public class ModelRepository {
       String catalogName = registeredModelInfo.getCatalogName();
       String schemaName = registeredModelInfo.getSchemaName();
       UUID schemaId = RepositoryUtils.getSchemaId(session, catalogName, schemaName);
-
+      UUID catalogId = RepositoryUtils.getCatalogId(session, catalogName);
+      String storageLocation =
+          UriUtils.getModelStorageLocation(catalogId.toString(), schemaId.toString(), modelId);
       try {
         // Check if registered model already exists
         RegisteredModelInfoDAO existingRegisteredModel =
@@ -237,15 +238,26 @@ public class ModelRepository {
           throw new BaseException(
               ErrorCode.ALREADY_EXISTS, "Registered model already exists: " + fullName);
         }
-        registeredModelInfo.setStorageLocation(FileUtils.convertRelativePathToURI(storageLocation));
+        registeredModelInfo.setStorageLocation(storageLocation);
         RegisteredModelInfoDAO registeredModelInfoDAO =
             RegisteredModelInfoDAO.from(registeredModelInfo);
         registeredModelInfoDAO.setSchemaId(schemaId);
         registeredModelInfoDAO.setMaxVersionNumber(0L);
         session.persist(registeredModelInfoDAO);
+        UriUtils.createStorageLocationPath(storageLocation);
         tx.commit();
       } catch (RuntimeException e) {
         if (tx != null && tx.getStatus().canRollback()) {
+          try {
+            // For now, never delete.  We will implement a soft delete later.
+            // UriUtils.deleteStorageLocationPath(storageLocation);
+          } catch (Exception deleteErr) {
+            LOGGER.error(
+                "Unable to delete storage location "
+                    + storageLocation
+                    + " during rollback: "
+                    + deleteErr.getMessage());
+          }
           tx.rollback();
         }
         throw e;
@@ -261,18 +273,59 @@ public class ModelRepository {
   }
 
   public ListRegisteredModelsResponse listRegisteredModels(
-      String catalogName,
-      String schemaName,
+      Optional<String> catalogName,
+      Optional<String> schemaName,
       Optional<Integer> maxResults,
       Optional<String> pageToken) {
-    LOGGER.info("Listing registered models in " + catalogName + "." + schemaName);
+    catalogName = catalogName.filter(name -> !name.isEmpty());
+    schemaName = schemaName.filter(name -> !name.isEmpty());
+    if (catalogName.isPresent() && schemaName.isEmpty()) {
+      throw new BaseException(
+          ErrorCode.INVALID_ARGUMENT,
+          "Cannot specify catalog w/o schema for list registered models.");
+    }
+    if (catalogName.isEmpty() && schemaName.isPresent()) {
+      throw new BaseException(
+          ErrorCode.INVALID_ARGUMENT,
+          "Cannot specify schema w/o catalog for list registered models.");
+    }
     try (Session session = SESSION_FACTORY.openSession()) {
       session.setDefaultReadOnly(true);
       Transaction tx = session.beginTransaction();
       try {
-        UUID schemaId = RepositoryUtils.getSchemaId(session, catalogName, schemaName);
-        ListRegisteredModelsResponse response =
-            listRegisteredModels(session, schemaId, catalogName, schemaName, maxResults, pageToken);
+        ListRegisteredModelsResponse response = new ListRegisteredModelsResponse();
+        if (catalogName.isEmpty() || schemaName.isEmpty()) {
+          // Run the custom query to pull all models back from all catalogs/schemas
+          LOGGER.info("Listing all registered models in the metastore.");
+          List<RegisteredModelInfoDAO> registeredModelInfoDAOList =
+              getAllRegisteredModelsDao(session, pageToken, maxResults);
+          String nextPageToken =
+              REGISTERED_MODEL_LISTING_HELPER.getNextPageToken(
+                  registeredModelInfoDAOList, maxResults);
+          List<RegisteredModelInfo> result = new ArrayList<>();
+          for (RegisteredModelInfoDAO registeredModelInfoDAO : registeredModelInfoDAOList) {
+            SchemaInfoDAO schemaInfoDAO =
+                RepositoryUtils.getSchemaByIdOrThrow(session, registeredModelInfoDAO.getSchemaId());
+            CatalogInfoDAO catalogInfoDAO =
+                RepositoryUtils.getCatalogByIdOrThrow(session, schemaInfoDAO.getCatalogId());
+
+            RegisteredModelInfo registeredModelInfo =
+                registeredModelInfoDAO.toRegisteredModelInfo();
+            registeredModelInfo.setCatalogName(catalogInfoDAO.getName());
+            registeredModelInfo.setSchemaName(schemaInfoDAO.getName());
+            registeredModelInfo.setFullName(getRegisteredModelFullName(registeredModelInfo));
+            result.add(registeredModelInfo);
+          }
+          return new ListRegisteredModelsResponse()
+              .registeredModels(result)
+              .nextPageToken(nextPageToken);
+        } else {
+          LOGGER.info("Listing registered models in " + catalogName.get() + "." + schemaName.get());
+          UUID schemaId = RepositoryUtils.getSchemaId(session, catalogName.get(), schemaName.get());
+          response =
+              listRegisteredModels(
+                  session, schemaId, catalogName.get(), schemaName.get(), maxResults, pageToken);
+        }
         tx.commit();
         return response;
       } catch (Exception e) {
@@ -495,6 +548,7 @@ public class ModelRepository {
       tx = session.beginTransaction();
       UUID catalogId = RepositoryUtils.getCatalogId(session, catalogName);
       UUID schemaId = RepositoryUtils.getSchemaId(session, catalogName, schemaName);
+      String storageLocation = "";
       try {
         // Check if registered model already exists
         RegisteredModelInfoDAO existingRegisteredModel =
@@ -508,20 +562,31 @@ public class ModelRepository {
         }
         UUID modelId = existingRegisteredModel.getId();
         Long version = existingRegisteredModel.getMaxVersionNumber() + 1;
-        String storageLocation =
-            FileUtils.getModelVersionStorageLocation(
+        storageLocation =
+            UriUtils.getModelVersionStorageLocation(
                 catalogId.toString(), schemaId.toString(), modelId.toString(), modelVersionId);
         modelVersionInfo.setVersion(version);
-        modelVersionInfo.setStorageLocation(FileUtils.convertRelativePathToURI(storageLocation));
+        modelVersionInfo.setStorageLocation(storageLocation);
         ModelVersionInfoDAO modelVersionInfoDAO = ModelVersionInfoDAO.from(modelVersionInfo);
         modelVersionInfoDAO.setRegisteredModelId(modelId);
         session.persist(modelVersionInfoDAO);
+        UriUtils.createStorageLocationPath(storageLocation);
         // update the registered model
         existingRegisteredModel.setMaxVersionNumber(version);
         session.persist(existingRegisteredModel);
         tx.commit();
       } catch (RuntimeException e) {
         if (tx != null && tx.getStatus().canRollback()) {
+          try {
+            // For now, never delete.  We will implement a soft delete later.
+            // UriUtils.deleteStorageLocationPath(storageLocation);
+          } catch (Exception deleteErr) {
+            LOGGER.error(
+                "Unable to delete storage location "
+                    + storageLocation
+                    + " during rollback: "
+                    + deleteErr.getMessage());
+          }
           tx.rollback();
         }
         throw e;

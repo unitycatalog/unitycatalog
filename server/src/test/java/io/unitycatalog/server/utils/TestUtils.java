@@ -14,6 +14,8 @@ import java.util.stream.StreamSupport;
 public class TestUtils {
   public static final String CATALOG_NAME = "uc_testcatalog";
   public static final String SCHEMA_NAME = "uc_testschema";
+  public static final String CATALOG_NAME2 = "uc_testcatalog2";
+  public static final String SCHEMA_NAME2 = "uc_testschema2";
   public static final String TABLE_NAME = "uc_testtable";
   public static final String STORAGE_LOCATION = "/tmp/stagingLocation";
   public static final String VOLUME_NAME = "uc_testvolume";
