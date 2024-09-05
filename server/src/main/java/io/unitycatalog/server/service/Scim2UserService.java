@@ -17,14 +17,14 @@ import com.unboundid.scim2.common.types.Photo;
 import com.unboundid.scim2.common.types.UserResource;
 import com.unboundid.scim2.common.utils.FilterEvaluator;
 import com.unboundid.scim2.common.utils.Parser;
-import io.unitycatalog.control.model.CreateUser;
-import io.unitycatalog.control.model.UpdateUser;
 import io.unitycatalog.control.model.User;
 import io.unitycatalog.server.exception.BaseException;
 import io.unitycatalog.server.exception.ErrorCode;
 import io.unitycatalog.server.exception.GlobalExceptionHandler;
 import io.unitycatalog.server.exception.Scim2RuntimeException;
 import io.unitycatalog.server.persist.UserRepository;
+import io.unitycatalog.server.persist.model.CreateUser;
+import io.unitycatalog.server.persist.model.UpdateUser;
 import java.net.URI;
 import java.util.Calendar;
 import java.util.List;
@@ -63,9 +63,7 @@ public class Scim2UserService {
             .listUsers(
                 startIndex.orElse(1) - 1,
                 count.orElse(50),
-                m ->
-                    match(filterEvaluator, userFilter, asUserResource(m))
-                        && m.getState() == User.StateEnum.ENABLED)
+                m -> match(filterEvaluator, userFilter, asUserResource(m)))
             .stream()
             .map(this::asUserResource)
             .toList();
@@ -95,11 +93,13 @@ public class Scim2UserService {
         }
         User user =
             USER_REPOSITORY.createUser(
-                new CreateUser()
+                CreateUser.builder()
                     .name(userResource.getDisplayName())
                     .email(primaryEmail.getValue())
+                    .active(userResource.getActive())
                     .externalId(userResource.getExternalId())
-                    .pictureUrl(pictureUrl));
+                    .pictureUrl(pictureUrl)
+                    .build());
         return HttpResponse.ofJson(asUserResource(user));
       } else {
         throw e;
@@ -138,13 +138,18 @@ public class Scim2UserService {
       newName = user.getDisplayName();
     }
 
+    Boolean active = userResource.getActive();
+    if (active == null) {
+      active = user.getActive();
+    }
+
     String externalId = userResource.getExternalId();
     if (externalId == null) {
       externalId = user.getExternalId();
     }
 
     UpdateUser updateUser =
-        new UpdateUser().newName(newName).email(primaryEmail.getValue()).externalId(externalId);
+        UpdateUser.builder().name(newName).active(active).externalId(externalId).build();
 
     return HttpResponse.ofJson(asUserResource(USER_REPOSITORY.updateUser(id, updateUser)));
   }
@@ -183,7 +188,7 @@ public class Scim2UserService {
         .setPhotos(List.of(new Photo().setValue(URI.create(pictureUrl))));
     userResource.setId(user.getId());
     userResource.setMeta(meta);
-    userResource.setActive(true);
+    userResource.setActive(user.getState() == User.StateEnum.ENABLED);
     userResource.setExternalId(user.getExternalId());
 
     return userResource;

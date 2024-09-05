@@ -1,11 +1,11 @@
 package io.unitycatalog.server.persist;
 
-import io.unitycatalog.control.model.CreateUser;
-import io.unitycatalog.control.model.UpdateUser;
 import io.unitycatalog.control.model.User;
 import io.unitycatalog.server.exception.BaseException;
 import io.unitycatalog.server.exception.ErrorCode;
 import io.unitycatalog.server.persist.dao.UserDAO;
+import io.unitycatalog.server.persist.model.CreateUser;
+import io.unitycatalog.server.persist.model.UpdateUser;
 import io.unitycatalog.server.persist.utils.HibernateUtils;
 import io.unitycatalog.server.persist.utils.PagedListingHelper;
 import java.util.ArrayList;
@@ -183,11 +183,14 @@ public class UserRepository {
         if (userDAO == null) {
           throw new BaseException(ErrorCode.NOT_FOUND, "User not found: " + id);
         }
-        if (updateUser.getNewName() != null) {
-          userDAO.setName(updateUser.getNewName());
+        if (updateUser.getName() != null) {
+          userDAO.setName(updateUser.getName());
         }
-        if (updateUser.getEmail() != null) {
-          userDAO.setEmail(updateUser.getEmail());
+        if (updateUser.getActive() != null) {
+          userDAO.setState(
+              updateUser.getActive()
+                  ? User.StateEnum.ENABLED.toString()
+                  : User.StateEnum.DISABLED.toString());
         }
         if (updateUser.getExternalId() != null) {
           userDAO.setExternalId(updateUser.getExternalId());
