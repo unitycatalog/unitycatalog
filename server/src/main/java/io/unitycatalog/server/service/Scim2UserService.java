@@ -59,11 +59,15 @@ public class Scim2UserService {
     FilterEvaluator filterEvaluator = new FilterEvaluator();
 
     List<UserResource> userResourcesList =
-        USER_REPOSITORY.listUsers().stream()
+        USER_REPOSITORY
+            .listUsers(
+                startIndex.orElse(1) - 1,
+                count.orElse(50),
+                m ->
+                    match(filterEvaluator, userFilter, asUserResource(m))
+                        && m.getState() == User.StateEnum.ENABLED)
+            .stream()
             .map(this::asUserResource)
-            .filter(m -> match(filterEvaluator, userFilter, m))
-            .skip(startIndex.orElse(1) - 1)
-            .limit(count.orElse(50))
             .toList();
     return HttpResponse.ofJson(userResourcesList);
   }

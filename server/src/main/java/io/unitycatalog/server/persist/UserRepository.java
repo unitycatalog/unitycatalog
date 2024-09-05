@@ -8,9 +8,11 @@ import io.unitycatalog.server.exception.ErrorCode;
 import io.unitycatalog.server.persist.dao.UserDAO;
 import io.unitycatalog.server.persist.utils.HibernateUtils;
 import io.unitycatalog.server.persist.utils.PagedListingHelper;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
+import java.util.function.Predicate;
 import java.util.stream.Collectors;
 import org.hibernate.Session;
 import org.hibernate.SessionFactory;
@@ -61,25 +63,46 @@ public class UserRepository {
     }
   }
 
-  public List<User> listUsers() {
-    return listUsers(false);
-  }
-
-  public List<User> listUsers(boolean includeDisabled) {
+  public List<User> listUsers(int startIndex, int maxUsers, Predicate<User> filter) {
     try (Session session = SESSION_FACTORY.openSession()) {
       session.setDefaultReadOnly(true);
       Transaction tx = session.beginTransaction();
+      int count = 0;
+      List<User> users = new ArrayList<>();
       try {
-        List<UserDAO> userDAOs =
-            LISTING_HELPER.listEntity(session, Optional.empty(), Optional.empty(), null);
-        if (!includeDisabled) {
-          userDAOs =
+        Optional<String> nextPageToken = Optional.empty();
+        boolean hasMore = true;
+        while (users.size() < maxUsers && hasMore) {
+          List<UserDAO> userDAOs =
+              LISTING_HELPER.listEntity(session, Optional.empty(), nextPageToken, null);
+
+          List<User> userBlock =
               userDAOs.stream()
-                  .filter(userDAO -> !userDAO.getState().equals(User.StateEnum.DISABLED.toString()))
+                  .map(UserDAO::toUser)
+                  .filter(filter::test)
                   .collect(Collectors.toList());
+
+          if (count + userBlock.size() < startIndex) {
+            // if we haven't reached the start index, skip the block
+            count += userBlock.size();
+          } else if (count >= startIndex) {
+            // we've already reached the start index, add the whole block
+            users.addAll(userBlock);
+            count += userBlock.size();
+          } else {
+            // we'll reach the start index in this block somewhere.
+            int firstIndex = startIndex - count;
+            users.addAll(userBlock.subList(firstIndex, userBlock.size()));
+            count += userBlock.size();
+          }
+          nextPageToken =
+              Optional.ofNullable(
+                  userDAOs.isEmpty() ? null : userDAOs.get(userDAOs.size() - 1).getName());
+          hasMore = nextPageToken.isPresent();
         }
+
         tx.commit();
-        return userDAOs.stream().map(UserDAO::toUser).collect(Collectors.toList());
+        return users.subList(0, Math.min(users.size(), maxUsers));
       } catch (Exception e) {
         tx.rollback();
         throw e;
