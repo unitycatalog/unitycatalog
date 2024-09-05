@@ -226,42 +226,34 @@ lazy val server = (project in file("server"))
       "com.google.cloud" % "google-cloud-storage" % "2.30.1",
       "com.google.auth" % "google-auth-library-oauth2-http" % "1.20.0",
 
-      //For s3 access
-      "com.amazonaws" % "aws-java-sdk-s3" % "1.12.728",
-      "org.apache.httpcomponents" % "httpcore" % "4.4.16",
-      "org.apache.httpcomponents" % "httpclient" % "4.5.14",
-
       // Core Hadoop dependencies
       "org.apache.hadoop" % "hadoop-client-api" % "3.4.0",
       "org.apache.hadoop" % "hadoop-client-runtime" % "3.4.0",
-
-      //"com.fasterxml.woodstox" % "woodstox-core" % "7.0.0",
-      //"org.codehaus.woodstox" % "stax2-api" % "4.2.2",
 
       // AWS S3 (s3a) dependencies
       "org.apache.hadoop" % "hadoop-aws" % "3.4.0" excludeAll(
         ExclusionRule(organization = "com.amazonaws"),
         ExclusionRule(organization = "software.amazon.awssdk")
       ),
-      "com.amazonaws" % "aws-java-sdk-core" % "1.12.728",
-      "software.amazon.awssdk" % "bundle" % "2.20.112",
+      "software.amazon.awssdk" % "core" % "2.27.19",
+      "software.amazon.awssdk" % "url-connection-client" % "2.27.19",
+      "software.amazon.awssdk" % "s3" % "2.27.19",
+      "software.amazon.awssdk" % "sts" % "2.27.19",
+      "software.amazon.awssdk" % "s3-transfer-manager" % "2.27.19",
 
-
-// Azure Blob Storage (abfs) dependencies
+      // Azure Blob Storage (abfs) dependencies
       "org.apache.hadoop" % "hadoop-azure" % "3.4.0",
       "org.apache.hadoop" % "hadoop-azure-datalake" % "3.4.0",
-      //"org.apache.hadoop" % "hadoop-azure-abfs" % "3.4.0",
 
       // Google Cloud Storage (gs) dependencies
       "com.google.cloud.bigdataoss" % "gcs-connector" % "hadoop3-2.2.25",
       "org.apache.commons" % "commons-lang3" % "3.17.0",
+
       // Iceberg REST Catalog dependencies
       "org.apache.iceberg" % "iceberg-core" % "1.5.2",
       "org.apache.iceberg" % "iceberg-aws" % "1.5.2",
       "org.apache.iceberg" % "iceberg-azure" % "1.5.2",
       "org.apache.iceberg" % "iceberg-gcp" % "1.5.2",
-      "software.amazon.awssdk" % "s3" % "2.24.0",
-      "software.amazon.awssdk" % "sts" % "2.24.0",
       "io.vertx" % "vertx-core" % "4.3.5",
       "io.vertx" % "vertx-web" % "4.3.5",
       "io.vertx" % "vertx-web-client" % "4.3.5",
@@ -296,7 +288,6 @@ lazy val server = (project in file("server"))
       val log = streams.value.log
       (Test / runMain).toTask(s" io.unitycatalog.server.utils.PopulateTestDatabase").value
     },
-    Compile / mainClass := Some("io.unitycatalog.server.persist.utils.GCSFileSystemHandler"),
     Test / javaOptions += s"-Duser.dir=${(ThisBuild / baseDirectory).value.getAbsolutePath}"
   )
 

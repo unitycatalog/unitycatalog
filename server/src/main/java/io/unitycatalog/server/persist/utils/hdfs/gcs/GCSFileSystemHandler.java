@@ -1,9 +1,8 @@
 package io.unitycatalog.server.persist.utils.hdfs.gcs;
 
 import io.unitycatalog.server.model.GcpOauthToken;
-import java.io.IOException;
-
 import io.unitycatalog.server.persist.utils.hdfs.AbstractFileSystemHandler;
+import java.io.IOException;
 import org.apache.hadoop.conf.Configuration;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -40,13 +39,12 @@ public class GCSFileSystemHandler extends AbstractFileSystemHandler {
   }
 
   public static void main(String[] args) throws IOException {
-    String oauthToken =
-        "";
+    String oauthToken = "";
     String storageRoot = "gs://gcstesting22";
     String projectId = "logical-iridium-396206";
     GcpOauthToken gcpOauthToken = new GcpOauthToken().oauthToken(oauthToken);
     GCSFileSystemHandler handler = new GCSFileSystemHandler(storageRoot, projectId, gcpOauthToken);
-    //handler.createDirectory("/a/b/c/d");
+    // handler.createDirectory("/a/b/c/d");
     handler.deleteDirectory("/a", true);
   }
 }

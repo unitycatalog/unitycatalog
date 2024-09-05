@@ -1,10 +1,9 @@
 package io.unitycatalog.server.persist.utils.hdfs;
 
-import java.io.IOException;
-import java.net.URI;
-
 import io.unitycatalog.server.exception.BaseException;
 import io.unitycatalog.server.exception.ErrorCode;
+import java.io.IOException;
+import java.net.URI;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.FileSystem;
 import org.apache.hadoop.fs.Path;
@@ -14,7 +13,9 @@ public abstract class AbstractFileSystemHandler implements FileSystemHandler {
 
   // Method to be implemented by subclasses to provide specific Hadoop configurations
   protected abstract Configuration getHadoopConfiguration();
+
   protected abstract Logger getLogger();
+
   protected URI storageRoot;
 
   protected AbstractFileSystemHandler(String storageRoot) {
@@ -33,7 +34,8 @@ public abstract class AbstractFileSystemHandler implements FileSystemHandler {
         getLogger().debug("Directory already exists at path (skipping creation): " + path);
       }
     } catch (IOException e) {
-      throw new BaseException(ErrorCode.INTERNAL, "Error while creating directory at path: " + path, e);
+      throw new BaseException(
+          ErrorCode.INTERNAL, "Error while creating directory at path: " + path, e);
     }
   }
 
@@ -50,7 +52,8 @@ public abstract class AbstractFileSystemHandler implements FileSystemHandler {
         getLogger().debug("Directory not found (skipping deletion): " + path);
       }
     } catch (IOException e) {
-      throw new BaseException(ErrorCode.INTERNAL, "Error while deleting directory at path: " + path, e);
+      throw new BaseException(
+          ErrorCode.INTERNAL, "Error while deleting directory at path: " + path, e);
     }
   }
 
@@ -61,7 +64,8 @@ public abstract class AbstractFileSystemHandler implements FileSystemHandler {
     try (FileSystem fs = FileSystem.get(storageRoot, conf)) {
       return fs.exists(path);
     } catch (IOException e) {
-      throw new BaseException(ErrorCode.INTERNAL, "Error while checking existence of path: " + path, e);
+      throw new BaseException(
+          ErrorCode.INTERNAL, "Error while checking existence of path: " + path, e);
     }
   }
 }
