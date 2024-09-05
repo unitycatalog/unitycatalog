@@ -93,7 +93,7 @@ public class UnityCatalogServer {
 
     // Add support for Unity Catalog APIs
     AuthService authService = new AuthService(securityContext);
-    Scim2UserService Scim2UserService = new Scim2UserService();
+    Scim2UserService scim2UserService = new Scim2UserService();
     CatalogService catalogService = new CatalogService();
     SchemaService schemaService = new SchemaService();
     VolumeService volumeService = new VolumeService();
@@ -108,7 +108,7 @@ public class UnityCatalogServer {
         new TemporaryModelVersionCredentialsService(credentialOperations);
     sb.service("/", (ctx, req) -> HttpResponse.of("Hello, Unity Catalog!"))
         .annotatedService(controlPath + "auth", authService, unityConverterFunction)
-        .annotatedService(controlPath + "scim2/Users", Scim2UserService)
+        .annotatedService(controlPath + "scim2/Users", scim2UserService, unityConverterFunction)
         .annotatedService(basePath + "catalogs", catalogService, unityConverterFunction)
         .annotatedService(basePath + "schemas", schemaService, unityConverterFunction)
         .annotatedService(basePath + "volumes", volumeService, unityConverterFunction)
