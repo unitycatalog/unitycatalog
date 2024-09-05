@@ -2,8 +2,10 @@ package io.unitycatalog.server;
 
 import static io.unitycatalog.server.security.SecurityContext.Issuers.INTERNAL;
 
+import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.SerializationFeature;
 import com.fasterxml.jackson.databind.json.JsonMapper;
 import com.linecorp.armeria.common.HttpResponse;
 import com.linecorp.armeria.server.Server;
@@ -88,6 +90,14 @@ public class UnityCatalogServer {
     JacksonRequestConverterFunction unityConverterFunction =
         new JacksonRequestConverterFunction(unityMapper);
 
+    ObjectMapper responseMapper =
+        JsonMapper.builder()
+            .disable(SerializationFeature.WRITE_DATES_AS_TIMESTAMPS)
+            .serializationInclusion(JsonInclude.Include.NON_NULL)
+            .build();
+    JacksonResponseConverterFunction scimResponseFunction =
+        new JacksonResponseConverterFunction(responseMapper);
+
     // Credentials Service
     CredentialOperations credentialOperations = new CredentialOperations();
 
@@ -108,7 +118,11 @@ public class UnityCatalogServer {
         new TemporaryModelVersionCredentialsService(credentialOperations);
     sb.service("/", (ctx, req) -> HttpResponse.of("Hello, Unity Catalog!"))
         .annotatedService(controlPath + "auth", authService, unityConverterFunction)
-        .annotatedService(controlPath + "scim2/Users", scim2UserService, unityConverterFunction)
+        .annotatedService(
+            controlPath + "scim2/Users",
+            scim2UserService,
+            unityConverterFunction,
+            scimResponseFunction)
         .annotatedService(basePath + "catalogs", catalogService, unityConverterFunction)
         .annotatedService(basePath + "schemas", schemaService, unityConverterFunction)
         .annotatedService(basePath + "volumes", volumeService, unityConverterFunction)
