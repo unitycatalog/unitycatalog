@@ -45,7 +45,9 @@ public class UserRepository {
     try (Session session = SESSION_FACTORY.openSession()) {
       Transaction tx = session.beginTransaction();
       try {
-        if (getUserByEmail(session, user.getEmail()) != null) {
+        if (getUserByEmail(session, user.getEmail()) != null
+            || (user.getExternalId() != null
+                && getUserByExternalId(session, user.getExternalId()) != null)) {
           throw new BaseException(
               ErrorCode.ALREADY_EXISTS, "User already exists: " + user.getEmail());
         }
@@ -138,6 +140,14 @@ public class UserRepository {
   public UserDAO getUserByEmail(Session session, String email) {
     Query<UserDAO> query = session.createQuery("FROM UserDAO WHERE email = :email", UserDAO.class);
     query.setParameter("email", email);
+    query.setMaxResults(1);
+    return query.uniqueResult();
+  }
+
+  public UserDAO getUserByExternalId(Session session, String externalId) {
+    Query<UserDAO> query =
+        session.createQuery("FROM UserDAO WHERE externalId = :externalId", UserDAO.class);
+    query.setParameter("externalId", externalId);
     query.setMaxResults(1);
     return query.uniqueResult();
   }
