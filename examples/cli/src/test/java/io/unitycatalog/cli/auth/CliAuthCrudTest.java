@@ -2,6 +2,7 @@ package io.unitycatalog.cli.auth;
 
 import static io.unitycatalog.cli.TestUtils.addServerAndAuthParams;
 import static io.unitycatalog.cli.TestUtils.executeCLICommand;
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
@@ -61,8 +62,8 @@ public class CliAuthCrudTest extends BaseAuthCRUDTest {
     serverConfig.setAuthToken(token);
 
     String[] args = addServerAndAuthParams(argsList, serverConfig);
-    JsonNode catalogInfoJson = executeCLICommand(args);
-    assertNotNull(catalogInfoJson);
+    JsonNode responseJsonInfo = executeCLICommand(args);
+    assertNotNull(responseJsonInfo);
 
     // Test with authentication on authenticated end point with missing user
     String missingUserJwt =
@@ -89,8 +90,8 @@ public class CliAuthCrudTest extends BaseAuthCRUDTest {
     List<String> argsAddUser =
         List.of("user", "create", "--email", "test@localhost", "--name", "Test User");
     args = addServerAndAuthParams(argsAddUser, serverConfig);
-    catalogInfoJson = executeCLICommand(args);
-    assertNotNull(catalogInfoJson);
+    responseJsonInfo = executeCLICommand(args);
+    assertNotNull(responseJsonInfo);
 
     // Test with authentication on authenticated end point with added user
     String testUserJwt =
@@ -106,7 +107,59 @@ public class CliAuthCrudTest extends BaseAuthCRUDTest {
 
     serverConfig.setAuthToken(testUserJwt);
     args = addServerAndAuthParams(argsList, serverConfig);
-    catalogInfoJson = executeCLICommand(args);
-    assertNotNull(catalogInfoJson);
+    responseJsonInfo = executeCLICommand(args);
+    assertNotNull(responseJsonInfo);
+  }
+
+  @Test
+  public void testUserCrud() {
+    // Test creating a user
+    List<String> argsAddUser =
+        List.of("user", "create", "--email", "user@localhost", "--name", "Test User");
+    String[] args = addServerAndAuthParams(argsAddUser, serverConfig);
+    JsonNode responseJsonInfo = executeCLICommand(args);
+    assertNotNull(responseJsonInfo);
+    assertEquals("Test User", responseJsonInfo.get("name").asText());
+    assertEquals("user@localhost", responseJsonInfo.get("email").asText());
+
+    String id = responseJsonInfo.get("id").asText();
+
+    // Test creating a user that already exists.
+    assertThrows(
+        RuntimeException.class,
+        () -> {
+          String[] localArgs = addServerAndAuthParams(argsAddUser, serverConfig);
+          JsonNode localResultJson = executeCLICommand(localArgs);
+        });
+
+    // Test updating a user
+    List<String> argsUpdateUser =
+        List.of(
+            "user", "update", "--id", id, "--name", "Test User Updated", "--external_id", "123");
+    args = addServerAndAuthParams(argsUpdateUser, serverConfig);
+    responseJsonInfo = executeCLICommand(args);
+    assertNotNull(responseJsonInfo);
+    assertEquals("Test User Updated", responseJsonInfo.get("name").asText());
+    assertEquals("123", responseJsonInfo.get("external_id").asText());
+
+    // Test getting a user
+    List<String> argsGetUser = List.of("user", "get", "--id", id);
+    args = addServerAndAuthParams(argsGetUser, serverConfig);
+    responseJsonInfo = executeCLICommand(args);
+    assertNotNull(responseJsonInfo);
+    assertEquals("Test User Updated", responseJsonInfo.get("name").asText());
+
+    // Test listing users
+    List<String> argsListUsers = List.of("user", "list");
+    args = addServerAndAuthParams(argsListUsers, serverConfig);
+    responseJsonInfo = executeCLICommand(args);
+    assertNotNull(responseJsonInfo);
+    assertEquals(1, responseJsonInfo.size());
+
+    // Test deleting a user
+    List<String> argsDeleteUser = List.of("user", "delete", "--id", id);
+    args = addServerAndAuthParams(argsDeleteUser, serverConfig);
+    responseJsonInfo = executeCLICommand(args);
+    assertNotNull(responseJsonInfo);
   }
 }
