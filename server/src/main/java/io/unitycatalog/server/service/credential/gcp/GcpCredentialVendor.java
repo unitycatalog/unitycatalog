@@ -69,10 +69,21 @@ public class GcpCredentialVendor {
 
               String resource =
                   format("//storage.googleapis.com/projects/_/buckets/%s", locationUri.getHost());
-              String expr =
+
+              // for reading/writing objects
+              String resourceNameStartsWithExpr =
                   format(
                       "resource.name.startsWith('projects/_/buckets/%s/objects/%s')",
                       locationUri.getHost(), path);
+
+              // for listing objects
+              String objectListPrefixStartsWithExpr =
+                  format(
+                      "api.getAttribute('storage.googleapis.com/objectListPrefix', '').startsWith('%s')",
+                      path);
+
+              String combinedExpr =
+                  resourceNameStartsWithExpr + " || " + objectListPrefixStartsWithExpr;
 
               boundaryBuilder.addRule(
                   CredentialAccessBoundary.AccessBoundaryRule.newBuilder()
@@ -80,7 +91,7 @@ public class GcpCredentialVendor {
                       .setAvailabilityCondition(
                           CredentialAccessBoundary.AccessBoundaryRule.AvailabilityCondition
                               .newBuilder()
-                              .setExpression(expr)
+                              .setExpression(combinedExpr)
                               .build())
                       .setAvailableResource(resource)
                       .build());
