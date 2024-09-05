@@ -45,11 +45,22 @@ public class CliModelOperations implements ModelOperations {
   }
 
   @Override
-  public List<RegisteredModelInfo> listRegisteredModels(String catalogName, String schemaName) {
-    String[] args =
-        addServerAndAuthParams(
-            List.of("registered_model", "list", "--catalog", catalogName, "--schema", schemaName),
-            config);
+  public List<RegisteredModelInfo> listRegisteredModels(
+      Optional<String> catalogName, Optional<String> schemaName) {
+    List<String> params;
+    if (catalogName.isEmpty() || schemaName.isEmpty()) {
+      params = List.of("registered_model", "list");
+    } else {
+      params =
+          List.of(
+              "registered_model",
+              "list",
+              "--catalog",
+              catalogName.get(),
+              "--schema",
+              schemaName.get());
+    }
+    String[] args = addServerAndAuthParams(params, config);
     JsonNode registeredModelList = executeCLICommand(args);
     return objectMapper.convertValue(
         registeredModelList, new TypeReference<List<RegisteredModelInfo>>() {});
