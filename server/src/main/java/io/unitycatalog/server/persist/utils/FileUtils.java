@@ -192,7 +192,8 @@ public class FileUtils {
   }
 
   public static boolean isSupportedCloudStorageUri(String url) {
-    return Constants.SUPPORTED_SCHEMES.contains(URI.create(url).getScheme());
+    String scheme = URI.create(url).getScheme();
+    return scheme != null && Constants.SUPPORTED_SCHEMES.contains(scheme);
   }
 
   private static void validateURI(URI uri) {
