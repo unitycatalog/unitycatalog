@@ -96,6 +96,7 @@ public class ServerPropertiesUtils {
       String tenantId = properties.getProperty("adls.tenantId." + i);
       String clientId = properties.getProperty("adls.clientId." + i);
       String clientSecret = properties.getProperty("adls.clientSecret." + i);
+      String testMode = properties.getProperty("adls.testMode." + i);
       if (storageAccountName == null
           || tenantId == null
           || clientId == null
@@ -109,6 +110,7 @@ public class ServerPropertiesUtils {
               .tenantId(tenantId)
               .clientId(clientId)
               .clientSecret(clientSecret)
+              .testMode(testMode != null && testMode.equalsIgnoreCase("true"))
               .build());
       i++;
     }
