@@ -25,6 +25,8 @@ import org.apache.spark.sql.types.StructType;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 
 public class TableReadWriteTest extends BaseSparkIntegrationTest {
 
@@ -100,16 +102,18 @@ public class TableReadWriteTest extends BaseSparkIntegrationTest {
     session.stop();
   }
 
-  @Test
-  public void testCredentialParquet() throws ApiException, IOException {
+  @ParameterizedTest
+  @ValueSource(strings = {"s3", "gs"})
+  public void testCredentialParquet(String scheme) throws ApiException, IOException {
     SparkSession session = createSparkSessionWithCatalogs(SPARK_CATALOG);
 
-    String loc1 = "s3://test-bucket0" + generateTableLocation(SPARK_CATALOG, PARQUET_TABLE);
+    String loc1 = scheme + "://test-bucket0" + generateTableLocation(SPARK_CATALOG, PARQUET_TABLE);
     setupExternalParquetTable(PARQUET_TABLE, loc1, new ArrayList<>(0));
     String t1 = SPARK_CATALOG + "." + SCHEMA_NAME + "." + PARQUET_TABLE;
     testTableReadWrite(t1, session);
 
-    String loc2 = "s3://test-bucket1" + generateTableLocation(SPARK_CATALOG, ANOTHER_PARQUET_TABLE);
+    String loc2 =
+        scheme + "://test-bucket1" + generateTableLocation(SPARK_CATALOG, ANOTHER_PARQUET_TABLE);
     setupExternalParquetTable(ANOTHER_PARQUET_TABLE, loc2, new ArrayList<>(0));
     String t2 = SPARK_CATALOG + "." + SCHEMA_NAME + "." + ANOTHER_PARQUET_TABLE;
     testTableReadWrite(t2, session);
@@ -125,16 +129,17 @@ public class TableReadWriteTest extends BaseSparkIntegrationTest {
   }
 
   @Disabled("Ignoring test until Delta 3.2.1 is released.")
-  @Test
-  public void testCredentialDelta() throws ApiException, IOException {
+  @ParameterizedTest
+  @ValueSource(strings = {"s3", "gs"})
+  public void testCredentialDelta(String scheme) throws ApiException, IOException {
     SparkSession session = createSparkSessionWithCatalogs(SPARK_CATALOG, CATALOG_NAME);
 
-    String loc0 = "s3://test-bucket0" + generateTableLocation(SPARK_CATALOG, DELTA_TABLE);
+    String loc0 = scheme + "://test-bucket0" + generateTableLocation(SPARK_CATALOG, DELTA_TABLE);
     setupExternalDeltaTable(SPARK_CATALOG, DELTA_TABLE, loc0, new ArrayList<>(0), session);
     String t1 = SPARK_CATALOG + "." + SCHEMA_NAME + "." + DELTA_TABLE;
     testTableReadWrite(t1, session);
 
-    String loc1 = "s3://test-bucket1" + generateTableLocation(CATALOG_NAME, DELTA_TABLE);
+    String loc1 = scheme + "://test-bucket1" + generateTableLocation(CATALOG_NAME, DELTA_TABLE);
     setupExternalDeltaTable(CATALOG_NAME, DELTA_TABLE, loc1, new ArrayList<>(0), session);
     String t2 = CATALOG_NAME + "." + SCHEMA_NAME + "." + DELTA_TABLE;
     testTableReadWrite(t2, session);
@@ -150,11 +155,12 @@ public class TableReadWriteTest extends BaseSparkIntegrationTest {
   }
 
   @Disabled("Ignoring test until Delta 3.2.1 is released.")
-  @Test
-  public void testDeleteDeltaTable() throws ApiException, IOException {
+  @ParameterizedTest
+  @ValueSource(strings = {"s3", "gs"})
+  public void testDeleteDeltaTable(String scheme) throws ApiException, IOException {
     SparkSession session = createSparkSessionWithCatalogs(SPARK_CATALOG);
 
-    String loc1 = "s3://test-bucket0" + generateTableLocation(SPARK_CATALOG, DELTA_TABLE);
+    String loc1 = scheme + "://test-bucket0" + generateTableLocation(SPARK_CATALOG, DELTA_TABLE);
     setupExternalDeltaTable(SPARK_CATALOG, DELTA_TABLE, loc1, new ArrayList<>(0), session);
     String t1 = SPARK_CATALOG + "." + SCHEMA_NAME + "." + DELTA_TABLE;
     testTableReadWrite(t1, session);
@@ -167,16 +173,18 @@ public class TableReadWriteTest extends BaseSparkIntegrationTest {
   }
 
   @Disabled("Ignoring test until Delta 3.2.1 is released.")
-  @Test
-  public void testMergeDeltaTable() throws ApiException, IOException {
+  @ParameterizedTest
+  @ValueSource(strings = {"s3", "gs"})
+  public void testMergeDeltaTable(String scheme) throws ApiException, IOException {
     SparkSession session = createSparkSessionWithCatalogs(SPARK_CATALOG, CATALOG_NAME);
 
-    String loc1 = "s3://test-bucket0" + generateTableLocation(SPARK_CATALOG, DELTA_TABLE);
+    String loc1 = scheme + "://test-bucket0" + generateTableLocation(SPARK_CATALOG, DELTA_TABLE);
     setupExternalDeltaTable(SPARK_CATALOG, DELTA_TABLE, loc1, new ArrayList<>(0), session);
     String t1 = SPARK_CATALOG + "." + SCHEMA_NAME + "." + DELTA_TABLE;
     session.sql("INSERT INTO " + t1 + " SELECT 1, 'a'");
 
-    String loc2 = "s3://test-bucket1" + generateTableLocation(CATALOG_NAME, ANOTHER_DELTA_TABLE);
+    String loc2 =
+        scheme + "://test-bucket1" + generateTableLocation(CATALOG_NAME, ANOTHER_DELTA_TABLE);
     setupExternalDeltaTable(CATALOG_NAME, ANOTHER_DELTA_TABLE, loc2, new ArrayList<>(0), session);
     String t2 = CATALOG_NAME + "." + SCHEMA_NAME + "." + ANOTHER_DELTA_TABLE;
     session.sql("INSERT INTO " + t2 + " SELECT 2, 'b'");
@@ -192,11 +200,12 @@ public class TableReadWriteTest extends BaseSparkIntegrationTest {
   }
 
   @Disabled("Ignoring test until Delta 3.2.1 is released.")
-  @Test
-  public void testUpdateDeltaTable() throws ApiException, IOException {
+  @ParameterizedTest
+  @ValueSource(strings = {"s3", "gs"})
+  public void testUpdateDeltaTable(String scheme) throws ApiException, IOException {
     SparkSession session = createSparkSessionWithCatalogs(SPARK_CATALOG);
 
-    String loc1 = "s3://test-bucket0" + generateTableLocation(SPARK_CATALOG, DELTA_TABLE);
+    String loc1 = scheme + "://test-bucket0" + generateTableLocation(SPARK_CATALOG, DELTA_TABLE);
     setupExternalDeltaTable(SPARK_CATALOG, DELTA_TABLE, loc1, new ArrayList<>(0), session);
     String t1 = SPARK_CATALOG + "." + SCHEMA_NAME + "." + DELTA_TABLE;
     session.sql("INSERT INTO " + t1 + " SELECT 1, 'a'");

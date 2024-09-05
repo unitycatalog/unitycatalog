@@ -25,10 +25,10 @@ public class SdkModelOperations implements ModelOperations {
   }
 
   @Override
-  public List<RegisteredModelInfo> listRegisteredModels(String catalogName, String schemaName)
-      throws ApiException {
+  public List<RegisteredModelInfo> listRegisteredModels(
+      Optional<String> catalogName, Optional<String> schemaName) throws ApiException {
     return registeredModelsApi
-        .listRegisteredModels(catalogName, schemaName, 100, null)
+        .listRegisteredModels(catalogName.orElse(null), schemaName.orElse(null), 100, null)
         .getRegisteredModels();
   }
 

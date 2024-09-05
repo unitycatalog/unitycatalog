@@ -60,8 +60,14 @@ public class ModelCli {
   private static String listRegisteredModels(
       RegisteredModelsApi registeredModelsApi, JSONObject json)
       throws JsonProcessingException, ApiException {
-    String catalogName = json.getString(CliParams.CATALOG_NAME.getServerParam());
-    String schemaName = json.getString(CliParams.SCHEMA_NAME.getServerParam());
+    String catalogName = "";
+    String schemaName = "";
+    if (json.has(CliParams.CATALOG_NAME.getServerParam())) {
+      catalogName = json.getString(CliParams.CATALOG_NAME.getServerParam());
+    }
+    if (json.has(CliParams.SCHEMA_NAME.getServerParam())) {
+      schemaName = json.getString(CliParams.SCHEMA_NAME.getServerParam());
+    }
     int maxResults = 100;
     if (json.has(CliParams.MAX_RESULTS.getServerParam())) {
       maxResults = json.getInt(CliParams.MAX_RESULTS.getServerParam());
