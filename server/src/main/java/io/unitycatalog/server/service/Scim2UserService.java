@@ -125,30 +125,13 @@ public class Scim2UserService {
     if (!id.equals(userResource.getId())) {
       throw new Scim2RuntimeException(new ResourceConflictException("User id mismatch."));
     }
-    // Get primary email address
-    Email primaryEmail =
-        userResource.getEmails().stream()
-            .filter(Email::getPrimary)
-            .findFirst()
-            .orElse(user.getEmails().get(0));
-
-    String newName = userResource.getDisplayName();
-    if (newName == null) {
-      newName = user.getDisplayName();
-    }
-
-    Boolean active = userResource.getActive();
-    if (active == null) {
-      active = user.getActive();
-    }
-
-    String externalId = userResource.getExternalId();
-    if (externalId == null) {
-      externalId = user.getExternalId();
-    }
 
     UpdateUser updateUser =
-        UpdateUser.builder().name(newName).active(active).externalId(externalId).build();
+        UpdateUser.builder()
+            .name(userResource.getDisplayName())
+            .active(userResource.getActive())
+            .externalId(userResource.getExternalId())
+            .build();
 
     return HttpResponse.ofJson(asUserResource(USER_REPOSITORY.updateUser(id, updateUser)));
   }
