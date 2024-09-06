@@ -1,0 +1,261 @@
+openapi: 3.0.0
+servers:
+  - url: http://localhost:8080/api/1.0/unity-control
+    description: Localhost reference server
+tags:
+  - name: Users
+    description: |
+      A user is the identity recognized by Unity Catalog.
+
+paths:
+  /scim2/Users:
+    post:
+      tags:
+        - Users
+      operationId: createUser
+      summary: Create a user
+      description: |
+        Creates a new user.
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UserResource'
+      responses:
+        '200':
+          description: The new user was successfully created.
+          content:
+            application/scim+json:
+              schema:
+                $ref: '#/components/schemas/UserResource'
+    get:
+      tags:
+        - Users
+      parameters:
+        - name: filter
+          in: query
+          description: Query by which the results have to be filtered.
+          schema:
+            type: string
+          required: false
+        - name: startIndex
+          in: query
+          description: Specifies the index of the first result. First item is number 1.
+          schema:
+            type: integer
+            format: int32
+          required: false
+        - name: count
+          in: query
+          description: Desired number of results per page. If no count is provided, it defaults to 50.
+          schema:
+            type: integer
+            format: int32
+          required: false
+      operationId: listUsers
+      summary: List users
+      description: |
+        Gets details for all the users.
+      responses:
+        '200':
+          description: The user list was successfully retrieved.
+          content:
+            application/scim+json:
+              schema:
+                $ref: '#/components/schemas/UserResourceList'
+  /scim2/Users/{id}:
+    parameters:
+      - name: id
+        in: path
+        description: The id of the user.
+        required: true
+        schema:
+          type: string
+    get:
+      tags:
+        - Users
+      operationId: getUser
+      summary: Get a user
+      description: |
+        Gets the specified user.
+      responses:
+        '200':
+          description: The user was successfully retrieved.
+          content:
+            application/scim+json:
+              schema:
+                $ref: '#/components/schemas/UserResource'
+    put:
+      tags:
+        - Users
+      operationId: updateUser
+      summary: Update a user
+      description: |
+        Updates the user that matches the supplied id.
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UserResource'
+      responses:
+        '200':
+          description: The user was successfully updated.
+          content:
+            application/scim+json:
+              schema:
+                $ref: '#/components/schemas/UserResource'
+    delete:
+      tags:
+        - Users
+      operationId: deleteUser
+      summary: Delete a user
+      description: |
+        Deletes the user that matches the supplied id.
+      responses:
+        '200':
+          description: The user was successfully deleted.
+          content:
+            application/scim+json:
+              schema: {}
+  /scim2/Users/self:
+    get:
+      tags:
+        - Users
+      operationId: getSelf
+      summary: Get the current user
+      description: |
+        Gets the user from the jwt token provided.
+      responses:
+        '200':
+          description: The user was successfully retrieved.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserResource'
+
+components:
+  schemas:
+    User:
+      properties:
+        id:
+          description: The unique identifier of the user.
+          type: string
+        name:
+          description: The name of the user.
+          type: string
+        email:
+          description: The email address of the user.
+          type: string
+        external_id:
+          description: The external identifier of the user.
+          type: string
+        state:
+          description: The state of the account.
+          type: string
+          enum:
+            - ENABLED
+            - DISABLED
+        picture_url:
+          description: The URL of the user's profile picture.
+          type: string
+        created_at:
+          description: The time the user was created.
+          type: integer
+          format: int64
+        updated_at:
+          description: The time the user was last updated.
+          type: integer
+          format: int64
+      type: object
+      required:
+        - id
+        - name
+        - email
+    UserResourceList:
+      description: List of SCIM User resources.
+      type: object
+      properties:
+        totalResults:
+          description: The total number of results.
+          type: integer
+          format: int32
+        itemsPerPage:
+            description: The number of items per page.
+            type: integer
+            format: int32
+        startIndex:
+            description: The index of the first result.
+            type: integer
+            format: int32
+        Resources:
+            description: The list of User resources.
+            type: array
+            items:
+                $ref: '#/components/schemas/UserResource'
+        id:
+            description: User list id metadata.
+            type: string
+        externalId:
+            description: User list external id metadata.
+            type: string
+        meta:
+          description: The metadata of the user.
+          type: object
+          properties:
+            resourceType:
+              type: string
+            created:
+              type: string
+            lastModified:
+              type: string
+    UserResource:
+      description: SCIM provides a resource type for "User" resources.
+      type: object
+      properties:
+        id:
+          description: The id of the user.
+          type: string
+        displayName:
+          description: The name of the user.
+          type: string
+        externalId:
+          description: The SCIM external id.
+          type: string
+        emails:
+          description: E-mail addresses for the user.
+          type: array
+          items:
+            $ref: '#/components/schemas/Email'
+        active:
+            description: The active status of the user.
+            type: boolean
+        meta:
+          description: The metadata of the user.
+          type: object
+          properties:
+            created:
+              type: string
+            lastModified:
+              type: string
+        photos:
+          description: The photos of the user.
+          type: array
+          items:
+            type: object
+            properties:
+              value:
+                description: The url of the user's photo.
+                type: string
+    Email:
+      description: SCIM email for a user.
+      type: object
+      properties:
+        value:
+          description: The email of the user.
+          type: string
+        primary:
+          description: If the email is primary.
+          type: boolean
+info:
+  title: Unity Control API
+  version: '0.1'

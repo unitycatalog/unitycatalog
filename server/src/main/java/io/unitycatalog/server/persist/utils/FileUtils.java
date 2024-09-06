@@ -2,6 +2,8 @@ package io.unitycatalog.server.persist.utils;
 
 import io.unitycatalog.server.exception.BaseException;
 import io.unitycatalog.server.exception.ErrorCode;
+import io.unitycatalog.server.utils.Constants;
+
 import java.io.IOException;
 import java.net.URI;
 import java.nio.file.FileVisitOption;
@@ -107,7 +109,7 @@ public class FileUtils {
   }
 
   private static URI modifyS3Directory(URI parsedUri, boolean createOrDelete) {
-    return null;
+    return parsedUri;
     /*    String bucketName = parsedUri.getHost();
     String path = parsedUri.getPath().substring(1); // Remove leading '/'
     String accessKey = ServerPropertiesUtils.getInstance().getProperty("aws.s3.accessKey");
@@ -175,11 +177,16 @@ public class FileUtils {
     if (url == null) {
       return null;
     }
-    if (url.startsWith("s3://") || url.startsWith("gs://")) {
+    if (isSupportedCloudStorageUri(url)) {
       return url;
     } else {
       return adjustFileUri(createURI(url)).toString();
     }
+  }
+
+  public static boolean isSupportedCloudStorageUri(String url) {
+    String scheme = URI.create(url).getScheme();
+    return scheme != null && Constants.SUPPORTED_SCHEMES.contains(scheme);
   }
 
   private static void validateURI(URI uri) {

@@ -5,6 +5,7 @@ import io.unitycatalog.server.service.credential.azure.ADLSStorageConfig;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.file.Files;
+import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.HashMap;
 import java.util.Map;
@@ -26,7 +27,12 @@ public class ServerPropertiesUtils {
 
   // Load properties from a configuration file
   private void loadProperties() {
-    try (InputStream input = Files.newInputStream(Paths.get("etc/conf/server.properties"))) {
+    Path path = Paths.get("etc/conf/server.properties");
+    if (!path.toFile().exists()) {
+      LOGGER.error("Properties file not found: {}", path);
+      return;
+    }
+    try (InputStream input = Files.newInputStream(path)) {
       properties.load(input);
       LOGGER.debug("Properties loaded successfully");
     } catch (IOException ex) {
@@ -96,6 +102,7 @@ public class ServerPropertiesUtils {
       String tenantId = properties.getProperty("adls.tenantId." + i);
       String clientId = properties.getProperty("adls.clientId." + i);
       String clientSecret = properties.getProperty("adls.clientSecret." + i);
+      String testMode = properties.getProperty("adls.testMode." + i);
       if (storageAccountName == null
           || tenantId == null
           || clientId == null
@@ -109,6 +116,7 @@ public class ServerPropertiesUtils {
               .tenantId(tenantId)
               .clientId(clientId)
               .clientSecret(clientSecret)
+              .testMode(testMode != null && testMode.equalsIgnoreCase("true"))
               .build());
       i++;
     }

@@ -51,8 +51,19 @@ public enum CliParams {
       "To indicate CLI output format preference. Supported values are json and jsonPretty.",
       "output"),
   VERSION("version", "Version number of a registered model entity.", "version"),
-  FORCE("force", "To force delete the entity", "force");
-
+  FORCE("force", "To force delete the entity", "force"),
+  RESOURCE_TYPE("resource_type", "The type of the resource", "resource_type"),
+  PRINCIPAL("principal", "The target principal of the permission change", "principal"),
+  PRIVILEGE("privilege", "The privilege to grant or revoke", "privilege"),
+  ID("id", "The unique id of the user", "id"),
+  EXTERNAL_ID("external_id", "The identity provider's id for the user", "externalId"),
+  EMAIL("email", "The email address for the user", "email"),
+  FILTER("filter", "Query by which the results have to be filtered", "filter"),
+  START_INDEX(
+      "startIndex",
+      "Specifies the index of the first result. First item is number 1",
+      "startIndex"),
+  COUNT("count", "Desired number of results per page", "count");
   private final String value;
   private final String helpMessage;
   private final String serverParam;

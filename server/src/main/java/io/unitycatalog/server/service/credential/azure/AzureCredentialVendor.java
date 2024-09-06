@@ -1,5 +1,7 @@
 package io.unitycatalog.server.service.credential.azure;
 
+import static java.lang.String.format;
+
 import com.azure.core.credential.TokenCredential;
 import com.azure.core.http.HttpClient;
 import com.azure.core.util.Context;
@@ -37,6 +39,16 @@ public class AzureCredentialVendor {
       // chain)
       tokenCredential = new DefaultAzureCredentialBuilder().build();
     } else {
+      if (config.isTestMode()) {
+        // allow pass-through of a dummy value for integration testing
+        return AzureCredential.builder()
+            .sasToken(
+                format(
+                    "%s/%s/%s",
+                    config.getTenantId(), config.getClientId(), config.getClientSecret()))
+            .expirationTimeInEpochMillis(253370790000000L)
+            .build();
+      }
       tokenCredential =
           new ClientSecretCredentialBuilder()
               .tenantId(config.getTenantId())
@@ -63,8 +75,10 @@ public class AzureCredentialVendor {
     // azure supports only downscoping to a single location for now
     // azure wants only the path
     String path = URI.create(context.getLocations().get(0)).getPath();
-    // remove any preceding forward slashes
-    path = path.replaceAll("^/+", "");
+    // remove any preceding forward slashes or trailing forward slashes
+    // hadoop ABFS strips trailing slash when preforming some operations so we need to vend
+    // a cred for path without trailing slash
+    path = path.replaceAll("^/+|/*$", "");
 
     String sasToken =
         new DataLakeSasImplUtil(sasSignatureValues, locationParts.container(), path, true)
