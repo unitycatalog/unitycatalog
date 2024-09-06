@@ -37,15 +37,7 @@ public abstract class BaseAccessControlCRUDTest extends BaseCRUDTest {
     SessionFactory sessionFactory = HibernateUtils.getSessionFactory();
     Session session = sessionFactory.openSession();
     Transaction tx = session.beginTransaction();
-    session.createQuery("delete from UserDAO").executeUpdate();
-    session.createQuery("delete from FunctionParameterInfoDAO").executeUpdate();
-    session.createQuery("delete from FunctionInfoDAO").executeUpdate();
-    session.createQuery("delete from VolumeInfoDAO").executeUpdate();
-    session.createQuery("delete from ColumnInfoDAO").executeUpdate();
-    session.createQuery("delete from TableInfoDAO").executeUpdate();
-    session.createQuery("delete from SchemaInfoDAO").executeUpdate();
-    session.createQuery("delete from CatalogInfoDAO").executeUpdate();
-    session.createNativeQuery("delete from casbin_rule").executeUpdate();
+    session.createNativeMutationQuery("delete from casbin_rule").executeUpdate();
     tx.commit();
     session.close();
 
