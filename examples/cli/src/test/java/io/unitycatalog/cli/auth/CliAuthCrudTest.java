@@ -86,6 +86,8 @@ public class CliAuthCrudTest extends BaseAuthCRUDTest {
           JsonNode localResultJson = executeCLICommand(localArgs);
         });
 
+    serverConfig.setAuthToken(token);
+
     // Test adding a user
     List<String> argsAddUser =
         List.of("user", "create", "--email", "test@localhost", "--name", "Test User");
@@ -112,7 +114,12 @@ public class CliAuthCrudTest extends BaseAuthCRUDTest {
   }
 
   @Test
-  public void testUserCrud() {
+  public void testUserCrud() throws IOException {
+    // Test with Authentication on authenticated end point
+    Path path = Path.of("etc", "conf", "token.txt");
+    String token = Files.readString(path);
+
+    serverConfig.setAuthToken(token);
     // Test creating a user
     List<String> argsAddUser =
         List.of("user", "create", "--email", "user@localhost", "--name", "Test User");
@@ -154,12 +161,14 @@ public class CliAuthCrudTest extends BaseAuthCRUDTest {
     args = addServerAndAuthParams(argsListUsers, serverConfig);
     responseJsonInfo = executeCLICommand(args);
     assertNotNull(responseJsonInfo);
-    assertEquals(1, responseJsonInfo.size());
+    assertEquals(2, responseJsonInfo.size());
 
     // Test deleting a user
     List<String> argsDeleteUser = List.of("user", "delete", "--id", id);
     args = addServerAndAuthParams(argsDeleteUser, serverConfig);
     responseJsonInfo = executeCLICommand(args);
     assertNotNull(responseJsonInfo);
+
+    serverConfig.setAuthToken("");
   }
 }
