@@ -1,20 +1,16 @@
 package io.unitycatalog.server.persist.utils;
 
-import com.amazonaws.auth.AWSStaticCredentialsProvider;
-import com.amazonaws.auth.BasicSessionCredentials;
-import com.amazonaws.services.s3.AmazonS3;
-import com.amazonaws.services.s3.AmazonS3ClientBuilder;
-import com.amazonaws.services.s3.model.ListObjectsRequest;
-import com.amazonaws.services.s3.model.ObjectListing;
-import com.amazonaws.services.s3.model.ObjectMetadata;
-import com.amazonaws.services.s3.model.PutObjectRequest;
+import static io.unitycatalog.server.utils.Constants.URI_SCHEME_ABFS;
+import static io.unitycatalog.server.utils.Constants.URI_SCHEME_ABFSS;
+import static io.unitycatalog.server.utils.Constants.URI_SCHEME_GS;
+import static io.unitycatalog.server.utils.Constants.URI_SCHEME_S3;
+
 import io.unitycatalog.server.exception.BaseException;
 import io.unitycatalog.server.exception.ErrorCode;
 import io.unitycatalog.server.model.AwsCredentials;
 import io.unitycatalog.server.model.AzureUserDelegationSAS;
 import io.unitycatalog.server.model.GcpOauthToken;
-import io.unitycatalog.server.model.GenerateTemporaryModelVersionCredentialsResponse;
-import java.io.ByteArrayInputStream;
+import io.unitycatalog.server.model.TemporaryCredentials;
 import java.io.IOException;
 import java.net.URI;
 import java.net.URISyntaxException;
@@ -40,17 +36,30 @@ public class UriUtils {
   private UriUtils() {}
 
   private static String modelStorageRootCached;
+  private static String modelStorageRootPropertyCached;
 
-  public static void reset() {
+  /**
+   * TODO: Deprecate this method once unit tests are self contained and this class gets
+   * re-instantiated with each test. Property updates shouldn't affect the instantiated class and we
+   * should require a server restart if the properties file is updated.
+   */
+  private static void reset() {
+    modelStorageRootPropertyCached = null;
     modelStorageRootCached = null;
   }
 
   // Model specific storage root handlers and convenience methods
   private static String getModelStorageRoot() {
+    String currentModelStorageRoot = properties.getProperty("storage-root.models");
+    if (modelStorageRootPropertyCached != currentModelStorageRoot) {
+      // This means the property has been updated from the previous read, or this is the first time
+      // reading it
+      reset();
+    }
     if (modelStorageRootCached != null) {
       return modelStorageRootCached;
     }
-    String modelStorageRoot = properties.getProperty("storage-root.models");
+    String modelStorageRoot = currentModelStorageRoot;
     if (modelStorageRoot == null) {
       // If the model storage root is empty, use the CWD
       modelStorageRoot = System.getProperty("user.dir");
@@ -65,6 +74,7 @@ public class UriUtils {
       modelStorageRoot = modelStorageRoot.substring(0, modelStorageRoot.length() - 1);
     }
     modelStorageRootCached = modelStorageRoot;
+    modelStorageRootPropertyCached = currentModelStorageRoot;
     return modelStorageRoot;
   }
 
@@ -91,27 +101,31 @@ public class UriUtils {
   }
 
   private static URI updateDirectoryFromUri(
-      String uri,
-      Operation op,
-      Optional<GenerateTemporaryModelVersionCredentialsResponse> credentials) {
+      String uri, Operation op, Optional<TemporaryCredentials> credentials) {
     URI parsedUri = URI.create(uri);
     validateURI(parsedUri);
-    if (!parsedUri.getScheme().equals("file") && credentials.isEmpty()) {
-      throw new BaseException(
-          ErrorCode.INVALID_ARGUMENT, "Empty credentials passed for a non-file based URI");
-    }
     try {
       if (parsedUri.getScheme().equals("file")) {
         return updateLocalDirectory(parsedUri, op);
-      } else if (parsedUri.getScheme().equals("s3")
-          && credentials.get().getAwsTempCredentials() != null) {
-        return updateS3Directory(parsedUri, op, credentials.get().getAwsTempCredentials());
-      } else if (parsedUri.getScheme().equals("gc")
-          && credentials.get().getGcpOauthToken() != null) {
-        return updateGcDirectory(parsedUri, op, credentials.get().getGcpOauthToken());
-      } else if (parsedUri.getScheme().equals("abfs")
-          && credentials.get().getAzureUserDelegationSas() != null) {
-        return updateAbsDirectory(parsedUri, op, credentials.get().getAzureUserDelegationSas());
+      } else if (parsedUri.getScheme().equals(URI_SCHEME_S3)) {
+        // For v0.2, we will NOT create the path in cloud storage since MLflow uses the native cloud
+        // clients and not the hadoopfs libraries.  We will update this in v0.3 when UC OSS begins
+        // using the hadoopfs libraries.
+        /* return updateS3Directory(parsedUri, op, credentials.get().getAwsTempCredentials()); */
+        return parsedUri;
+      } else if (parsedUri.getScheme().equals(URI_SCHEME_GS)) {
+        // For v0.2, we will NOT create the path in cloud storage since MLflow uses the native cloud
+        // clients and not the hadoopfs libraries.  We will update this in v0.3 when UC OSS begins
+        // using the hadoopfs libraries.
+        /* return updateGcDirectory(parsedUri, op, credentials.get().getGcpOauthToken()); */
+        return parsedUri;
+      } else if (parsedUri.getScheme().equals(URI_SCHEME_ABFS)
+          || parsedUri.getScheme().equals(URI_SCHEME_ABFSS)) {
+        // For v0.2, we will NOT create the path in cloud storage since MLflow uses the native cloud
+        // clients and not the hadoopfs libraries.  We will update this in v0.3 when UC OSS begins
+        // using the hadoopfs libraries.
+        /* return updateAbsDirectory(parsedUri, op, credentials.get().getAzureUserDelegationSas()); */
+        return parsedUri;
       }
     } catch (Exception e) {
       throw new BaseException(
@@ -177,58 +191,7 @@ public class UriUtils {
   }
 
   private static URI updateS3Directory(URI parsedUri, Operation op, AwsCredentials awsCredentials) {
-    String bucketName = parsedUri.getHost();
-    String path = parsedUri.getPath().substring(1); // Remove leading '/'
-    String accessKey = awsCredentials.getAccessKeyId();
-    String secretKey = awsCredentials.getSecretAccessKey();
-    String sessionToken = awsCredentials.getSessionToken();
-    String region = ServerPropertiesUtils.getInstance().getProperty("aws.region");
-
-    BasicSessionCredentials sessionCredentials =
-        new BasicSessionCredentials(accessKey, secretKey, sessionToken);
-    AmazonS3 s3Client =
-        AmazonS3ClientBuilder.standard()
-            .withCredentials(new AWSStaticCredentialsProvider(sessionCredentials))
-            .withRegion(region)
-            .build();
-
-    if (op == Operation.CREATE) {
-      if (!path.endsWith("/")) {
-        path += "/";
-      }
-      if (s3Client.doesObjectExist(bucketName, path)) {
-        throw new BaseException(ErrorCode.ALREADY_EXISTS, "Directory already exists: " + path);
-      }
-      try {
-        // Create empty content
-        byte[] emptyContent = new byte[0];
-        ByteArrayInputStream emptyContentStream = new ByteArrayInputStream(emptyContent);
-
-        // Set metadata for the empty content
-        ObjectMetadata metadata = new ObjectMetadata();
-        metadata.setContentLength(0);
-        s3Client.putObject(new PutObjectRequest(bucketName, path, emptyContentStream, metadata));
-        LOGGER.debug("Directory created successfully: " + path);
-      } catch (Exception e) {
-        throw new BaseException(ErrorCode.INTERNAL, "Failed to create directory: " + path, e);
-      }
-    }
-
-    if (op == Operation.DELETE) {
-      ObjectListing listing;
-      ListObjectsRequest req = new ListObjectsRequest().withBucketName(bucketName).withPrefix(path);
-      do {
-        listing = s3Client.listObjects(req);
-        listing
-            .getObjectSummaries()
-            .forEach(
-                object -> {
-                  s3Client.deleteObject(bucketName, object.getKey());
-                });
-        req.setMarker(listing.getNextMarker());
-      } while (listing.isTruncated());
-    }
-    return parsedUri;
+    throw new BaseException(ErrorCode.UNIMPLEMENTED, "Aws cloud storage updates unimplemented");
   }
 
   private static URI updateGcDirectory(URI parsedURI, Operation op, GcpOauthToken token) {

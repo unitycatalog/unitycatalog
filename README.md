@@ -13,7 +13,7 @@ Unity Catalog is the industry’s only universal catalog for data and AI.
 
 The first release of Unity Catalog focuses on a core set of APIs for tables, unstructured data, and AI assets - with more to come soon on governance, access, and client interoperability. This is just the beginning!
 
-![image info](./docs/assets/images/uc.png)
+![UC Hero Image](./docs/assets/images/uc.png)
 
 ### Vibrant ecosystem
 
@@ -104,7 +104,7 @@ bin/uc table read --full_name unity.default.numbers
 
 ### Operate on Delta tables with DuckDB
 
-For operating on tables with DuckDB, you will have to [install it](https://duckdb.org/docs/installation/) (at least version 1.0).
+For operating on tables with DuckDB, you will have to [install it](https://duckdb.org/docs/installation/) (version 1.0).
 Let's start DuckDB and install a couple of extensions. To start DuckDB, run the command `duckdb` in the terminal.
 Then, in the DuckDB shell, run the following commands:
 
@@ -145,6 +145,24 @@ SELECT * from unity.default.numbers;
 You should see the tables listed and the contents of the `numbers` table printed.
 To quit DuckDB, press `Ctrl`+`D` (if your platform supports it), press `Ctrl`+`C`, or use the `.exit` command in the DuckDB shell.
 
+### Interact with the Unity Catalog UI
+
+![UC UI](./docs/assets/images/uc-ui.png)
+
+To use the Unity Catalog UI, start a new terminal and ensure you have already started the UC server (e.g., `./bin/start-uc-server`)
+
+**Prerequisites**
+* Node: https://nodejs.org/en/download/package-manager
+* Yarn: https://classic.yarnpkg.com/lang/en/docs/install
+
+**How to start the UI through yarn**
+```
+cd /ui
+yarn install
+yarn start
+```
+
+
 ## CLI tutorial
 
 You can interact with a Unity Catalog server to create and manage catalogs, schemas and tables,
@@ -153,7 +171,7 @@ See the [cli usage](docs/usage/cli.md) for more details.
 
 ## APIs and Compatibility
 
-- Open API specification: The Unity Catalog Rest API is documented [here](api).
+- Open API specification: See the [Unity Catalog Rest API](https://docs.unitycatalog.io/swagger-docs/).
 - Compatibility and stability: The APIs are currently evolving and should not be assumed to be stable.
 
 ## Building Unity Catalog

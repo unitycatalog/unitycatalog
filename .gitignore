@@ -23,3 +23,6 @@ python_engine.log
 etc/conf/certs.json
 etc/conf/*.txt
 etc/conf/*.der
+connectors/spark/etc/conf/certs.json
+connectors/spark/etc/conf/*.txt
+connectors/spark/etc/conf/*.der

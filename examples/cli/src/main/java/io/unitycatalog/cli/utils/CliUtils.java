@@ -33,6 +33,7 @@ public class CliUtils {
   public static final String FUNCTION = "function";
   public static final String REGISTERED_MODEL = "registered_model";
   public static final String MODEL_VERSION = "model_version";
+  public static final String PERMISSION = "permission";
   public static final String USER = "user";
   public static final String CREATE = "create";
   public static final String LIST = "list";
@@ -275,6 +276,35 @@ public class CliUtils {
                           List.of(CliParams.ID),
                           List.of(CliParams.NAME, CliParams.EXTERNAL_ID, CliParams.EMAIL)));
                   put(DELETE, new CliOptions(List.of(CliParams.ID), List.of()));
+                }
+              });
+          put(
+              PERMISSION,
+              new HashMap<String, CliOptions>() {
+                {
+                  put(
+                      CREATE,
+                      new CliOptions(
+                          List.of(
+                              CliParams.SECURABLE_TYPE,
+                              CliParams.NAME,
+                              CliParams.PRINCIPAL,
+                              CliParams.PRIVILEGE),
+                          List.of()));
+                  put(
+                      DELETE,
+                      new CliOptions(
+                          List.of(
+                              CliParams.SECURABLE_TYPE,
+                              CliParams.NAME,
+                              CliParams.PRINCIPAL,
+                              CliParams.PRIVILEGE),
+                          List.of()));
+                  put(
+                      GET,
+                      new CliOptions(
+                          List.of(CliParams.SECURABLE_TYPE, CliParams.NAME),
+                          List.of(CliParams.PRINCIPAL)));
                 }
               });
         }
@@ -557,6 +587,10 @@ public class CliUtils {
             + " <PAT Token>\n");
     System.out.println(
         "For detailed help on entity specific operations, use bin/uc <entity> --help");
+  }
+
+  public static void printVersion() {
+    System.out.println(VersionUtils.VERSION);
   }
 
   public static List<String> parseFullName(String fullName) {

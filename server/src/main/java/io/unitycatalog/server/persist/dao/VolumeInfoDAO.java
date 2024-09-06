@@ -30,11 +30,20 @@ public class VolumeInfoDAO extends IdentifiableDAO {
   @Column(name = "storage_location")
   private String storageLocation;
 
+  @Column(name = "owner")
+  private String owner;
+
   @Column(name = "created_at")
   private Date createdAt;
 
+  @Column(name = "created_by")
+  private String createdBy;
+
   @Column(name = "updated_at")
   private Date updatedAt;
+
+  @Column(name = "updated_by")
+  private String updatedBy;
 
   @Column(name = "volume_type")
   private String volumeType;
@@ -45,8 +54,11 @@ public class VolumeInfoDAO extends IdentifiableDAO {
         .name(getName())
         .comment(comment)
         .storageLocation(FileUtils.convertRelativePathToURI(storageLocation))
+        .owner(owner)
         .createdAt(createdAt.getTime())
-        .updatedAt(updatedAt.getTime())
+        .createdBy(createdBy)
+        .updatedAt(updatedAt != null ? updatedAt.getTime() : null)
+        .updatedBy(updatedBy)
         .volumeType(VolumeType.valueOf(volumeType));
   }
 
@@ -59,10 +71,12 @@ public class VolumeInfoDAO extends IdentifiableDAO {
         .name(volumeInfo.getName())
         .comment(volumeInfo.getComment())
         .storageLocation(volumeInfo.getStorageLocation())
+        .owner(volumeInfo.getOwner())
         .createdAt(
             volumeInfo.getCreatedAt() != null ? new Date(volumeInfo.getCreatedAt()) : new Date())
-        .updatedAt(
-            volumeInfo.getUpdatedAt() != null ? new Date(volumeInfo.getUpdatedAt()) : new Date())
+        .createdBy(volumeInfo.getCreatedBy())
+        .updatedAt(volumeInfo.getUpdatedAt() != null ? new Date(volumeInfo.getUpdatedAt()) : null)
+        .updatedBy(volumeInfo.getUpdatedBy())
         .volumeType(volumeInfo.getVolumeType().getValue())
         .build();
   }

@@ -12,7 +12,7 @@ import lombok.experimental.SuperBuilder;
 @Table(
     name = "uc_registered_models",
     indexes = {
-      @Index(name = "idx_name", columnList = "name"),
+      @Index(name = "uc_registered_models_name_idx", columnList = "name"),
     })
 // Lombok annotations
 @Getter
@@ -24,6 +24,9 @@ import lombok.experimental.SuperBuilder;
 public class RegisteredModelInfoDAO extends IdentifiableDAO {
   @Column(name = "schema_id")
   private UUID schemaId;
+
+  @Column(name = "owner")
+  private String owner;
 
   @Column(name = "created_at")
   private Date createdAt;
@@ -48,9 +51,10 @@ public class RegisteredModelInfoDAO extends IdentifiableDAO {
 
   public static RegisteredModelInfoDAO from(RegisteredModelInfo registeredModelInfo) {
     return RegisteredModelInfoDAO.builder()
-        .id(UUID.fromString(registeredModelInfo.getModelId()))
+        .id(UUID.fromString(registeredModelInfo.getId()))
         .name(registeredModelInfo.getName())
         .comment(registeredModelInfo.getComment())
+        .owner(registeredModelInfo.getOwner())
         .createdAt(
             registeredModelInfo.getCreatedAt() != null
                 ? new Date(registeredModelInfo.getCreatedAt())
@@ -59,7 +63,7 @@ public class RegisteredModelInfoDAO extends IdentifiableDAO {
         .updatedAt(
             registeredModelInfo.getUpdatedAt() != null
                 ? new Date(registeredModelInfo.getUpdatedAt())
-                : new Date())
+                : null)
         .updatedBy(registeredModelInfo.getUpdatedBy())
         .url(registeredModelInfo.getStorageLocation())
         .build();
@@ -68,10 +72,11 @@ public class RegisteredModelInfoDAO extends IdentifiableDAO {
   public RegisteredModelInfo toRegisteredModelInfo() {
     RegisteredModelInfo registeredModelInfo =
         new RegisteredModelInfo()
-            .modelId(getId().toString())
+            .id(getId().toString())
             .name(getName())
             .storageLocation(url)
             .comment(comment)
+            .owner(owner)
             .createdAt(createdAt != null ? createdAt.getTime() : null)
             .createdBy(createdBy)
             .updatedAt(updatedAt != null ? updatedAt.getTime() : null)

@@ -16,6 +16,8 @@ import io.unitycatalog.server.exception.ErrorCode;
 import io.unitycatalog.server.exception.GlobalExceptionHandler;
 import io.unitycatalog.server.exception.OAuthInvalidRequestException;
 import io.unitycatalog.server.persist.UserRepository;
+import io.unitycatalog.server.persist.utils.ServerPropertiesUtils;
+import io.unitycatalog.server.security.JwtClaim;
 import io.unitycatalog.server.security.SecurityContext;
 import io.unitycatalog.server.utils.JwksOperations;
 import lombok.Builder;
@@ -126,6 +128,13 @@ public class AuthService {
           ErrorCode.INVALID_ARGUMENT, "Actor tokens not currently supported");
     }
 
+    String authorization =
+        ServerPropertiesUtils.getInstance().getProperty("server.authorization", "disable");
+    if (!authorization.equals("enable")) {
+      throw new OAuthInvalidRequestException(
+          ErrorCode.INVALID_ARGUMENT, "Authorization is disabled");
+    }
+
     DecodedJWT decodedJWT = JWT.decode(request.getSubjectToken());
     String issuer = decodedJWT.getClaim("iss").asString();
     String keyId = decodedJWT.getHeaderClaim("kid").asString();
@@ -152,9 +161,9 @@ public class AuthService {
 
   private static void verifyPrincipal(DecodedJWT decodedJWT) {
     String subject =
-        decodedJWT.getClaim("email").isMissing()
-            ? decodedJWT.getClaim("sub").asString()
-            : decodedJWT.getClaim("email").asString();
+        decodedJWT.getClaim(JwtClaim.EMAIL.key()).isMissing()
+            ? decodedJWT.getClaim(JwtClaim.SUBJECT.key()).asString()
+            : decodedJWT.getClaim(JwtClaim.EMAIL.key()).asString();
 
     if (subject.equals("admin")) {
       return;
@@ -162,7 +171,7 @@ public class AuthService {
 
     try {
       User user = USER_REPOSITORY.getUserByEmail(subject);
-      if (user != null && user.getState() != User.StateEnum.ENABLED) {
+      if (user != null && user.getState() == User.StateEnum.ENABLED) {
         return;
       }
     } catch (Exception e) {

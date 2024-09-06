@@ -11,6 +11,14 @@ Before you can build the Docker image, install the following tools:
 
 ## Building Unity Catalog Server Image
 
+> [!NOTE]
+>
+> On [Mac computers with Apple silicon](https://support.apple.com/en-us/116943), you may want to change [DOCKER_DEFAULT_PLATFORM](https://docs.docker.com/reference/cli/docker/#environment-variables) environment variable before building the images as follows:
+>
+> ```bash
+> export DOCKER_DEFAULT_PLATFORM=linux/amd64
+> ```
+
 [build-uc-server-docker](./bin/build-uc-server-docker) builds the Docker image of Unity Catalog Localhost Reference Server.
 
 ```bash
@@ -19,7 +27,8 @@ Before you can build the Docker image, install the following tools:
 
 > [!NOTE]
 >
-> `build-uc-server-docker` runs the entire sbt build while creating the Docker image. 
+> `build-uc-server-docker` runs `sbt server/package` build while creating the Docker image.
+> That gives all the required jars files part of the image.
 
 `build-uc-server-docker` creates an image named `unitycatalog` with the version from [version.sbt](../version.sbt).
 
@@ -28,8 +37,8 @@ docker images unitycatalog
 ```
 
 ```text
-REPOSITORY     TAG              IMAGE ID       CREATED              SIZE
-unitycatalog   0.2.0-SNAPSHOT   8b68b233813b   About a minute ago   427MB
+REPOSITORY     TAG              IMAGE ID       CREATED         SIZE
+unitycatalog   0.2.0-SNAPSHOT   5771da356693   7 minutes ago   2.58GB
 ```
 
 ## Running Unity Catalog Server Container
@@ -41,28 +50,23 @@ Once the Docker image of Unity Catalog's Localhost Reference Server is built, yo
 ```
 
 ```text
-Container unitycatalog does not exist. Creating it...
-fbf8a0d2fc6a82f81134c4c50fb4c777399e7095706cb65ff6fe0c158ec43ef4
-The container unitycatalog is running with the following parameters:
-{
-  "Command": "\"/bin/bash bin/start…\"",
-  "CreatedAt": "2024-08-26 18:10:48 +0200 CEST",
-  "ID": "fbf8a0d2fc6a",
-  "Image": "unitycatalog:0.2.0-SNAPSHOT",
-  "Labels": "",
-  "LocalVolumes": "1",
-  "Mounts": "3e4bcb63d68a91…",
-  "Names": "unitycatalog",
-  "Networks": "bridge",
-  "Ports": "0.0.0.0:8081->8081/tcp",
-  "RunningFor": "Less than a second ago",
-  "Size": "32.8kB (virtual 427MB)",
-  "State": "running",
-  "Status": "Up Less than a second"
-}
+❤️ Starting unitycatalog:0.2.0-SNAPSHOT.
+💡 Use Ctrl+C to stop and remove the container.
+###################################################################
+#  _    _       _ _            _____      _        _              #
+# | |  | |     (_) |          / ____|    | |      | |             #
+# | |  | |_ __  _| |_ _   _  | |     __ _| |_ __ _| | ___   __ _  #
+# | |  | | '_ \| | __| | | | | |    / _` | __/ _` | |/ _ \ / _` | #
+# | |__| | | | | | |_| |_| | | |___| (_| | || (_| | | (_) | (_| | #
+#  \____/|_| |_|_|\__|\__, |  \_____\__,_|\__\__,_|_|\___/ \__, | #
+#                      __/ |                                __/ | #
+#                     |___/               v0.2.0-SNAPSHOT  |___/  #
+###################################################################
 ```
 
-`start-uc-server-docker` starts the Unity Catalog server to listen to `8081`.
+`start-uc-server-docker` starts the Unity Catalog server.
+
+In another terminal, execute the following command to learn more about the container.
 
 ```bash
 docker container ls --filter name=unitycatalog --no-trunc --format 'table {{.ID}}\t{{.Image}}\t{{.Command}}\t{{.Ports}}'
@@ -70,13 +74,13 @@ docker container ls --filter name=unitycatalog --no-trunc --format 'table {{.ID}
 
 ```text
 CONTAINER ID                                                       IMAGE                         COMMAND                           PORTS
-fbf8a0d2fc6a82f81134c4c50fb4c777399e7095706cb65ff6fe0c158ec43ef4   unitycatalog:0.2.0-SNAPSHOT   "/bin/bash bin/start-uc-server"   0.0.0.0:8081->8081/tcp
+1e15b648d6c2669eb83ac12991323ca288e27d9201c4ecbc8dc15ea2bfa6c389   unitycatalog:0.2.0-SNAPSHOT   "/bin/bash bin/start-uc-server"   0.0.0.0:8080-8081->8080-8081/tcp
 ```
 
 Use the regular non-dockerized Unity Catalog CLI to access the server and list the catalogs.
 
 ```bash
-./bin/uc catalog list --server http://localhost:8081
+./bin/uc catalog list
 ```
 
 ```text
@@ -102,21 +106,11 @@ docker images unitycatalog-cli
 ```
 
 ```text
-REPOSITORY         TAG              IMAGE ID       CREATED              SIZE
-unitycatalog-cli   0.2.0-SNAPSHOT   52502d16934f   About a minute ago   1.48GB
+REPOSITORY         TAG              IMAGE ID       CREATED          SIZE
+unitycatalog-cli   0.2.0-SNAPSHOT   c13a37c4e91e   13 seconds ago   1.62GB
 ```
 
-> [!NOTE]
-> In case you run into the following build exception, restart the CLI docker image build.
-> ```text
-> ❯ ./docker/bin/build-uc-cli-docker
-> ...
-> [error] java.lang.RuntimeException: Failed to find name hashes for io.unitycatalog.cli.utils.CliUtils
-> ...
-> [error] (cli / Compile / compileIncremental) Failed to find name hashes for io.unitycatalog.cli.utils.CliUtils
-> ```
-
-## Access Unity Catalog Localhost Reference Server
+## Access Unity Catalog Server
 
 [start-uc-cli-docker](./bin/start-uc-cli-docker) uses the `unitycatalog-cli` image to run Unity Catalog CLI in a Docker container.
 
@@ -240,56 +234,6 @@ list_schemas_request="curl -s --location '$unitycatalog_endpoint/schemas?catalog
 echo $list_schemas_request
 
 docker run --rm --network unitycatalog_network alpine/curl sh -c "$list_schemas_request" | jq .
-```
-
-### Create Managed Table
-
-This example demonstrates creating a managed table named "Table_A" within the "Schema_A" schema of the "MyCatalog" catalog. A managed table lets Unity Catalog manage the data location.
-
-```bash
-create_table_a_request_body='{
-    "name": "Table_A",
-    "catalog_name": "MyCatalog",
-    "schema_name": "Schema_A",
-    "table_type": "MANAGED",
-    "data_source_format": "DELTA",
-    "columns": [
-        {
-            "name": "ID",
-            "type_name": "LONG",
-            "comment": "The unique ID of the person",
-            "nullable": "false"
-        },
-        {
-            "name": "FirstName",
-            "type_name": "STRING",
-            "comment": "The persons official first name",
-            "nullable": "false"
-        },
-        {
-            "name": "LastName",
-            "type_name": "STRING",
-            "comment": "The persons official last name",
-            "nullable": "false"
-        }
-    ],
-    "comment": "A managed table. Leaving it to Unity Catalog to pick the location.",
-    "properties": {
-      "Project": "Unity Catalog Demo",
-	    "Environment": "Development",
-	    "Access": "Public",
-	    "Type": "Table",
-	    "Stage": "Gold"
-    }
-}'
-
-create_table_a_request=$(printf "curl -s \
---location '%s/tables' \
---header 'Content-Type: application/json' \
---header 'Accept: application/json' \
---data '%s'" "$unitycatalog_endpoint" "$create_table_a_request_body")
-
-docker run --rm --network unitycatalog_network alpine/curl sh -c "$create_table_a_request" | jq .
 ```
 
 ### Create an External Table
