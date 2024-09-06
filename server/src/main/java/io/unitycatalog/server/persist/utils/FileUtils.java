@@ -3,7 +3,6 @@ package io.unitycatalog.server.persist.utils;
 import io.unitycatalog.server.exception.BaseException;
 import io.unitycatalog.server.exception.ErrorCode;
 import io.unitycatalog.server.utils.Constants;
-
 import java.io.IOException;
 import java.net.URI;
 import java.nio.file.FileVisitOption;
