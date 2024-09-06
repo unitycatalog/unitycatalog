@@ -2,7 +2,6 @@ package io.unitycatalog.server.persist.utils.hdfs.aws;
 
 import io.unitycatalog.server.model.AwsCredentials;
 import io.unitycatalog.server.persist.utils.hdfs.AbstractFileSystemHandler;
-import java.io.IOException;
 import org.apache.hadoop.conf.Configuration;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -33,23 +32,5 @@ public class S3AFileSystemHandler extends AbstractFileSystemHandler {
   @Override
   protected Logger getLogger() {
     return LOGGER;
-  }
-
-  public static void main(String[] args) throws IOException {
-    String AWS_ACCESS_KEY_ID = "";
-    String AWS_SECRET_ACCESS_KEY = "";
-    String AWS_SESSION_TOKEN =
-        "";
-    AwsCredentials awsCredentials =
-        new AwsCredentials()
-            .accessKeyId(AWS_ACCESS_KEY_ID)
-            .secretAccessKey(AWS_SECRET_ACCESS_KEY)
-            .sessionToken(AWS_SESSION_TOKEN);
-
-    String storageRoot = "s3://uc-oss-hdfs-test";
-    S3AFileSystemHandler handler = new S3AFileSystemHandler(storageRoot, awsCredentials);
-
-    // handler.createDirectory("a/b/c/d");
-    handler.deleteDirectory("a", true);
   }
 }

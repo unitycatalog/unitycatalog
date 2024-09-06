@@ -2,7 +2,6 @@ package io.unitycatalog.server.persist.utils.hdfs.abfs;
 
 import io.unitycatalog.server.model.AzureUserDelegationSAS;
 import io.unitycatalog.server.persist.utils.hdfs.AbstractFileSystemHandler;
-import java.io.IOException;
 import org.apache.hadoop.conf.Configuration;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -49,22 +48,5 @@ public class ABFSFileSystemHandler extends AbstractFileSystemHandler {
   @Override
   protected Logger getLogger() {
     return LOGGER;
-  }
-
-  public static void main(String[] args) throws IOException {
-    String containerName = "default";
-    String accountName = "adlstrial22";
-
-    String storageRoot = "abfs://" + containerName + "@" + accountName + ".dfs.core.windows.net";
-    AzureUserDelegationSAS azureCredential = new AzureUserDelegationSAS().sasToken("");
-
-    ABFSFileSystemHandler abfsFileSystemHandler =
-        new ABFSFileSystemHandler(storageRoot, azureCredential);
-
-    // abfsFileSystemHandler.createDirectory("/a/b/c/d");
-    // abfsFileSystemHandler.createDirectory("/a/b/c/e");
-    // abfsFileSystemHandler.createDirectory("/a/f/g/h");
-
-    abfsFileSystemHandler.deleteDirectory("/a", true);
   }
 }
