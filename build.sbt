@@ -79,6 +79,8 @@ lazy val commonSettings = Seq(
     // https://en.wikipedia.org/wiki/GNU_Lesser_General_Public_License
     // We can use and distribute the, but not modify the source code
     case DepModuleInfo("org.hibernate.orm", _, _) => true
+    case DepModuleInfo("com.unboundid.scim2", _, _) => true
+    case DepModuleInfo("com.unboundid.product.scim2", _, _) => true
     // Duo license:
     //  - Eclipse Public License 2.0
     //  - GNU General Public License, version 2 with the GNU Classpath Exception
@@ -112,9 +114,52 @@ def javafmtCheckSettings() = Seq(
   (Compile / compile) := ((Compile / compile) dependsOn (Compile / javafmtCheckAll)).value
 )
 
+lazy val controlApi = (project in file("target/control/java"))
+  .enablePlugins(OpenApiGeneratorPlugin)
+  .disablePlugins(JavaFormatterPlugin)
+  .settings(
+    name := s"$artifactNamePrefix-controlapi",
+    commonSettings,
+    javaOnlyReleaseSettings,
+    libraryDependencies ++= Seq(
+      "jakarta.annotation" % "jakarta.annotation-api" % "3.0.0" % Provided,
+      "com.fasterxml.jackson.core" % "jackson-annotations" % jacksonVersion,
+      "com.fasterxml.jackson.core" % "jackson-databind" % jacksonVersion,
+      "com.fasterxml.jackson.datatype" % "jackson-datatype-jsr310" % jacksonVersion,
+    ),
+    (Compile / compile) := ((Compile / compile) dependsOn generate).value,
+
+    // OpenAPI generation specs
+    openApiInputSpec := (file(".") / "api" / "control.yaml").toString,
+    openApiGeneratorName := "java",
+    openApiOutputDir := (file("target") / "control" / "java").toString,
+    openApiApiPackage := s"$orgName.control.api",
+    openApiModelPackage := s"$orgName.control.model",
+    openApiAdditionalProperties := Map(
+      "library" -> "native",
+      "useJakartaEe" -> "true",
+      "hideGenerationTimestamp" -> "true",
+      "openApiNullable" -> "false"),
+    openApiGenerateApiTests := SettingDisabled,
+    openApiGenerateModelTests := SettingDisabled,
+    openApiGenerateApiDocumentation := SettingDisabled,
+    openApiGenerateModelDocumentation := SettingDisabled,
+    // Define the simple generate command to generate full client codes
+    generate := {
+      val _ = openApiGenerate.value
+
+      // Delete the generated build.sbt file so that it is not used for our sbt config
+      val buildSbtFile = file(openApiOutputDir.value) / "build.sbt"
+      if (buildSbtFile.exists()) {
+        buildSbtFile.delete()
+      }
+    }
+  )
+
 lazy val client = (project in file("target/clients/java"))
   .enablePlugins(OpenApiGeneratorPlugin)
   .disablePlugins(JavaFormatterPlugin)
+  .dependsOn(controlApi % "compile->compile")
   .settings(
     name := s"$artifactNamePrefix-client",
     commonSettings,
@@ -206,8 +251,6 @@ lazy val server = (project in file("server"))
       "com.fasterxml.jackson.core" % "jackson-databind" % jacksonVersion,
       "com.fasterxml.jackson.dataformat" % "jackson-dataformat-yaml" % jacksonVersion,
       "com.fasterxml.jackson.datatype" % "jackson-datatype-jsr310" % jacksonVersion,
-      "com.auth0" % "java-jwt" % "4.4.0",
-      "com.auth0" % "jwks-rsa" % "0.22.1",
 
       "com.google.code.findbugs" % "jsr305" % "3.0.2",
       "com.h2database" %  "h2" % "2.2.224",
@@ -241,6 +284,12 @@ lazy val server = (project in file("server"))
       "io.vertx" % "vertx-core" % "4.3.5",
       "io.vertx" % "vertx-web" % "4.3.5",
       "io.vertx" % "vertx-web-client" % "4.3.5",
+
+      // Auth dependencies
+      "com.unboundid.product.scim2" % "scim2-sdk-common" % "3.1.0",
+      "org.springframework" % "spring-expression" % "6.1.11",
+      "com.auth0" % "java-jwt" % "4.4.0",
+      "com.auth0" % "jwks-rsa" % "0.22.1",
 
       // Test dependencies
       "org.junit.jupiter" %  "junit-jupiter" % "5.10.3" % Test,
@@ -278,6 +327,7 @@ lazy val server = (project in file("server"))
 lazy val serverModels = (project in file("server") / "target" / "models")
   .enablePlugins(OpenApiGeneratorPlugin)
   .disablePlugins(JavaFormatterPlugin)
+  .dependsOn(controlModels % "compile->compile")
   .settings(
     name := s"$artifactNamePrefix-servermodels",
     commonSettings,
@@ -294,6 +344,41 @@ lazy val serverModels = (project in file("server") / "target" / "models")
     openApiValidateSpec := SettingEnabled,
     openApiGenerateMetadata := SettingDisabled,
     openApiModelPackage := s"$orgName.server.model",
+    openApiAdditionalProperties := Map(
+      "library" -> "resteasy", // resteasy generates the most minimal models
+      "useJakartaEe" -> "true",
+      "hideGenerationTimestamp" -> "true"
+    ),
+    openApiGlobalProperties := Map("models" -> ""),
+    openApiGenerateApiTests := SettingDisabled,
+    openApiGenerateModelTests := SettingDisabled,
+    openApiGenerateApiDocumentation := SettingDisabled,
+    openApiGenerateModelDocumentation := SettingDisabled,
+    // Define the simple generate command to generate model codes
+    generate := {
+      val _ = openApiGenerate.value
+    }
+  )
+
+lazy val controlModels = (project in file("server") / "target" / "controlmodels")
+  .enablePlugins(OpenApiGeneratorPlugin)
+  .disablePlugins(JavaFormatterPlugin)
+  .settings(
+    name := s"$artifactNamePrefix-controlmodels",
+    commonSettings,
+    (Compile / compile) := ((Compile / compile) dependsOn generate).value,
+    Compile / compile / javacOptions ++= javacRelease17,
+    libraryDependencies ++= Seq(
+      "jakarta.annotation" % "jakarta.annotation-api" % "3.0.0" % Provided,
+      "com.fasterxml.jackson.core" % "jackson-annotations" % jacksonVersion,
+    ),
+    // OpenAPI generation configs for generating model codes from the spec
+    openApiInputSpec := (file(".") / "api" / "control.yaml").toString,
+    openApiGeneratorName := "java",
+    openApiOutputDir := (file("server") / "target" / "controlmodels").toString,
+    openApiValidateSpec := SettingEnabled,
+    openApiGenerateMetadata := SettingDisabled,
+    openApiModelPackage := s"$orgName.control.model",
     openApiAdditionalProperties := Map(
       "library" -> "resteasy", // resteasy generates the most minimal models
       "useJakartaEe" -> "true",
@@ -399,6 +484,7 @@ lazy val spark = (project in file("connectors/spark"))
       "org.antlr" % "antlr4-runtime" % "4.9.3",
       "org.antlr" % "antlr4" % "4.9.3",
       "com.google.cloud.bigdataoss" % "util-hadoop" % "3.0.2" % Provided,
+      "org.apache.hadoop" % "hadoop-azure" % "3.4.0" % Provided,
     ),
     libraryDependencies ++= Seq(
       // Test dependencies
