@@ -48,6 +48,7 @@ public abstract class BaseSparkIntegrationTest extends BaseCRUDTest {
     // Use fake file system for cloud storage so that we can test credentials.
     builder.config("fs.s3.impl", S3CredentialTestFileSystem.class.getName());
     builder.config("fs.gs.impl", GCSCredentialTestFileSystem.class.getName());
+    builder.config("fs.abfs.impl", AzureCredentialTestFileSystem.class.getName());
     return builder.getOrCreate();
   }
 
