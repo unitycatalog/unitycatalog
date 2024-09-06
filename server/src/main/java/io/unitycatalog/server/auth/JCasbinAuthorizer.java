@@ -1,7 +1,6 @@
 package io.unitycatalog.server.auth;
 
 import io.unitycatalog.server.model.Privilege;
-import io.unitycatalog.server.persist.UserRepository;
 import io.unitycatalog.server.persist.utils.HibernateUtils;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
@@ -25,7 +24,6 @@ import org.casbin.jcasbin.model.Model;
  * <p>The implementation stores the policies in a database using the JDBCAdapter class.
  */
 public class JCasbinAuthorizer implements UnityCatalogAuthorizer {
-  static UserRepository USER_REPOSITORY = UserRepository.getInstance();
   private final Enforcer enforcer;
 
   public JCasbinAuthorizer() throws Exception {
@@ -110,12 +108,10 @@ public class JCasbinAuthorizer implements UnityCatalogAuthorizer {
 
   @Override
   public Map<UUID, List<Privilege>> listAuthorizations(UUID resource) {
-    Map<UUID, List<Privilege>> result =
-        USER_REPOSITORY.listUsers().stream()
-            .map(user -> UUID.fromString(user.getId()))
-            .collect(Collectors.toMap(id -> id, id -> listAuthorizations(id, resource)));
-    // Remove users with no authorizations
-    result.entrySet().removeIf(entry -> entry.getValue().isEmpty());
-    return result;
+    return enforcer.getFilteredPolicy(1, resource.toString()).stream()
+        .collect(
+            Collectors.groupingBy(
+                l -> UUID.fromString(l.get(0)),
+                Collectors.mapping(l -> Privilege.fromValue(l.get(2)), Collectors.toList())));
   }
 }

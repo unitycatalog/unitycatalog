@@ -1,30 +1,19 @@
 package io.unitycatalog.server.auth;
 
 import static org.junit.jupiter.api.Assertions.*;
-import static org.mockito.Mockito.when;
 
 import io.unitycatalog.server.model.Privilege;
-import io.unitycatalog.server.model.User;
-import io.unitycatalog.server.persist.UserRepository;
 import java.util.*;
-import java.util.stream.Stream;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
-import org.mockito.Mockito;
 
 public class JCasbinAuthorizerTest {
-  private static UserRepository mockUserRepository = Mockito.mock(UserRepository.class);
   private UnityCatalogAuthorizer authenticator;
 
   @BeforeEach
   void setUp() throws Exception {
     System.setProperty("server.env", "test");
-    authenticator =
-        new JCasbinAuthorizer() {
-          {
-            USER_REPOSITORY = mockUserRepository;
-          }
-        };
+    authenticator = new JCasbinAuthorizer();
   }
 
   @Test
@@ -159,12 +148,6 @@ public class JCasbinAuthorizerTest {
     UUID principal2 = UUID.randomUUID();
     UUID resource = UUID.randomUUID();
     UUID resource2 = UUID.randomUUID();
-    when(mockUserRepository.listUsers())
-        .thenReturn(
-            Stream.of(principal, principal2)
-                .map(UUID::toString)
-                .map(u -> new User().id(u))
-                .toList());
 
     List<Privilege> actions = Arrays.asList(Privilege.USE_CATALOG, Privilege.CREATE_CATALOG);
     List<Privilege> actions2 = Arrays.asList(Privilege.CREATE_CATALOG, Privilege.SELECT);

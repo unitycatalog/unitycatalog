@@ -60,9 +60,7 @@ public enum CliParams {
   EMAIL("email", "The email address for the user", "email"),
   FILTER("filter", "Query by which the results have to be filtered", "filter"),
   START_INDEX(
-      "startIndex",
-      "Specifies the index of the first result. First item is number 1",
-      "startIndex"),
+      "start_index", "Specifies the index (starting at 1) of the first result.", "startIndex"),
   COUNT("count", "Desired number of results per page", "count");
   private final String value;
   private final String helpMessage;

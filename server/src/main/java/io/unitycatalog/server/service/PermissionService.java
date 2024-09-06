@@ -9,6 +9,7 @@ import static io.unitycatalog.server.model.ResourceType.VOLUME;
 
 import com.linecorp.armeria.common.HttpResponse;
 import com.linecorp.armeria.server.annotation.*;
+import io.unitycatalog.control.model.User;
 import io.unitycatalog.server.auth.UnityCatalogAuthorizer;
 import io.unitycatalog.server.auth.annotation.AuthorizeExpression;
 import io.unitycatalog.server.auth.annotation.AuthorizeKey;
@@ -24,7 +25,6 @@ import io.unitycatalog.server.model.TableInfo;
 import io.unitycatalog.server.model.UpdateAuthorizationChange;
 import io.unitycatalog.server.model.UpdateAuthorizationRequest;
 import io.unitycatalog.server.model.UpdateAuthorizationResponse;
-import io.unitycatalog.server.model.User;
 import io.unitycatalog.server.persist.CatalogRepository;
 import io.unitycatalog.server.persist.MetastoreRepository;
 import io.unitycatalog.server.persist.SchemaRepository;

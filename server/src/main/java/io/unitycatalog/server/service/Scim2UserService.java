@@ -148,6 +148,7 @@ public class Scim2UserService {
     ServiceRequestContext ctx = ServiceRequestContext.current();
     DecodedJWT decodedJWT = ctx.attr(AuthDecorator.DECODED_JWT_ATTR);
     Claim sub = decodedJWT.getClaim("sub");
+    return asUserResource(USER_REPOSITORY.getUserByEmail(sub.asString()));
   }
 
   @Get("/{id}")

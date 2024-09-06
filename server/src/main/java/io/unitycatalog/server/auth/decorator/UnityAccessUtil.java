@@ -3,13 +3,13 @@ package io.unitycatalog.server.auth.decorator;
 import com.auth0.jwt.interfaces.Claim;
 import com.auth0.jwt.interfaces.DecodedJWT;
 import com.linecorp.armeria.server.ServiceRequestContext;
+import io.unitycatalog.control.model.User;
 import io.unitycatalog.server.auth.UnityCatalogAuthorizer;
 import io.unitycatalog.server.exception.BaseException;
-import io.unitycatalog.server.model.CreateUser;
 import io.unitycatalog.server.model.Privilege;
-import io.unitycatalog.server.model.User;
 import io.unitycatalog.server.persist.MetastoreRepository;
 import io.unitycatalog.server.persist.UserRepository;
+import io.unitycatalog.server.persist.model.CreateUser;
 import io.unitycatalog.server.service.AuthDecorator;
 import java.util.UUID;
 
@@ -48,9 +48,7 @@ public class UnityAccessUtil {
       // IGNORE - this should be user not found exception.
     }
 
-    CreateUser createUser = new CreateUser();
-    createUser.email("admin");
-    createUser.setName("Admin");
+    CreateUser createUser = CreateUser.builder().email("admin").name("Admin").build();
 
     User adminUser = USER_REPOSITORY.createUser(createUser);
 
