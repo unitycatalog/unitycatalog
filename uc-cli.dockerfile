@@ -23,7 +23,7 @@ ARG cli_assembly_jar="${unitycatalog_repo}/${unitycatalog_jar}/unitycatalog-cli-
 # Building the Uber-Jar #
 #########################
 
-FROM eclipse-temurin:22-jdk-alpine AS assemble_cli
+FROM eclipse-temurin:17-jdk-alpine AS assemble_cli
 
 ARG unitycatalog_repo
 ARG sbt_args
@@ -50,7 +50,7 @@ RUN build/sbt ${sbt_args} cli/assembly
 # Running the UC server #
 #########################
 
-FROM eclipse-temurin:22-jre-alpine AS build_cli
+FROM eclipse-temurin:17-jdk-alpine AS build_cli
 
 ARG unitycatalog_uid
 ARG unitycatalog_home

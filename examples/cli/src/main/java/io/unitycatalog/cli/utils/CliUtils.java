@@ -612,6 +612,10 @@ public class CliUtils {
         "For detailed help on entity specific operations, use bin/uc <entity> --help");
   }
 
+  public static void printVersion() {
+    System.out.println(VersionUtils.VERSION);
+  }
+
   public static List<String> parseFullName(String fullName) {
     return Arrays.asList(fullName.split("\\."));
   }

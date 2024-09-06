@@ -5,14 +5,14 @@ script_dir=$(dirname "$0")
 project_dir=$(dirname "$(dirname "$(realpath "$script_dir")")")
 docker_file="Dockerfile"
 container_name="unitycatalog"
-container_version=$(< "$project_dir/version.sbt" cut -d '"' -f2)
+container_version=$(cut -d '"' -f2 "$project_dir/version.sbt")
 image_tag=$container_name:$container_version
 
 echo "Changing directory to $project_dir"
 cd "$project_dir" || exit
 
 if [[ -r "$docker_file" ]]; then
-    echo "Building $image_tag from Dockerfile $docker_file"
+    echo "Building $image_tag using the build definition from $docker_file"
     docker buildx build \
       --progress=plain \
       --no-cache \
