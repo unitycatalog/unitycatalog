@@ -11,6 +11,14 @@ Before you can build the Docker image, install the following tools:
 
 ## Building Unity Catalog Server Image
 
+> [!NOTE]
+>
+> On [Mac computers with Apple silicon](https://support.apple.com/en-us/116943), you may want to change [DOCKER_DEFAULT_PLATFORM](https://docs.docker.com/reference/cli/docker/#environment-variables) environment variable before building the images as follows:
+>
+> ```bash
+> export DOCKER_DEFAULT_PLATFORM=linux/amd64
+> ```
+
 [build-uc-server-docker](./bin/build-uc-server-docker) builds the Docker image of Unity Catalog Localhost Reference Server.
 
 ```bash
@@ -29,8 +37,8 @@ docker images unitycatalog
 ```
 
 ```text
-REPOSITORY     TAG              IMAGE ID       CREATED          SIZE
-unitycatalog   0.2.0-SNAPSHOT   de48dd1c2789   12 minutes ago   2.47GB
+REPOSITORY     TAG              IMAGE ID       CREATED         SIZE
+unitycatalog   0.2.0-SNAPSHOT   5771da356693   7 minutes ago   2.58GB
 ```
 
 ## Running Unity Catalog Server Container
@@ -66,7 +74,7 @@ docker container ls --filter name=unitycatalog --no-trunc --format 'table {{.ID}
 
 ```text
 CONTAINER ID                                                       IMAGE                         COMMAND                           PORTS
-fbf8a0d2fc6a82f81134c4c50fb4c777399e7095706cb65ff6fe0c158ec43ef4   unitycatalog:0.2.0-SNAPSHOT   "/bin/bash bin/start-uc-server"   0.0.0.0:8081->8081/tcp
+1e15b648d6c2669eb83ac12991323ca288e27d9201c4ecbc8dc15ea2bfa6c389   unitycatalog:0.2.0-SNAPSHOT   "/bin/bash bin/start-uc-server"   0.0.0.0:8081->8081/tcp
 ```
 
 Use the regular non-dockerized Unity Catalog CLI to access the server and list the catalogs.
@@ -98,21 +106,9 @@ docker images unitycatalog-cli
 ```
 
 ```text
-REPOSITORY         TAG              IMAGE ID       CREATED              SIZE
-unitycatalog-cli   0.2.0-SNAPSHOT   52502d16934f   About a minute ago   1.48GB
+REPOSITORY         TAG              IMAGE ID       CREATED          SIZE
+unitycatalog-cli   0.2.0-SNAPSHOT   c13a37c4e91e   13 seconds ago   1.62GB
 ```
-
-> [!NOTE]
-> In case you run into the following build exception, restart the CLI docker image build.
-> This is likely due to Java 22 used to build the image (and execute the sbt build). 
->
-> ```text
-> ❯ ./docker/bin/build-uc-cli-docker
-> ...
-> [error] java.lang.RuntimeException: Failed to find name hashes for io.unitycatalog.cli.utils.CliUtils
-> ...
-> [error] (cli / Compile / compileIncremental) Failed to find name hashes for io.unitycatalog.cli.utils.CliUtils
-> ```
 
 ## Access Unity Catalog Server
 
