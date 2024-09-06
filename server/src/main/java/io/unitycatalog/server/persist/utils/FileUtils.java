@@ -10,6 +10,7 @@ import com.amazonaws.services.s3.model.ObjectMetadata;
 import com.amazonaws.services.s3.model.PutObjectRequest;
 import io.unitycatalog.server.exception.BaseException;
 import io.unitycatalog.server.exception.ErrorCode;
+import io.unitycatalog.server.utils.Constants;
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.net.URI;
@@ -32,27 +33,8 @@ public class FileUtils {
     return properties.getProperty("storageRoot");
   }
 
-  // This is temporary until storageRoot is fully supported
-  private static String getModelStorageRoot() {
-    return properties.getProperty("registeredModelStorageRoot");
-  }
-
   private static String getDirectoryURI(String entityFullName) {
     return getStorageRoot() + "/" + entityFullName.replace(".", "/");
-  }
-
-  private static String getModelDirectoryURI(String entityFullName) {
-    return getModelStorageRoot() + "/" + entityFullName.replace(".", "/");
-  }
-
-  public static String getModelStorageLocation(String catalogId, String schemaId, String modelId) {
-    return getModelDirectoryURI(catalogId + "." + schemaId + ".models." + modelId);
-  }
-
-  public static String getModelVersionStorageLocation(
-      String catalogId, String schemaId, String modelId, String versionId) {
-    return getModelDirectoryURI(
-        catalogId + "." + schemaId + ".models." + modelId + ".versions." + versionId);
   }
 
   public static String createVolumeDirectory(String volumeName) {
@@ -63,20 +45,6 @@ public class FileUtils {
   public static String createTableDirectory(
       String catalogName, String schemaName, String tableName) {
     String absoluteUri = getDirectoryURI(catalogName + "." + schemaName + ".tables." + tableName);
-    return createDirectory(absoluteUri).toString();
-  }
-
-  public static String createRegisteredModelDirectory(
-      String catalogName, String schemaName, String modelName) {
-    String absoluteUri =
-        getModelDirectoryURI(catalogName + "." + schemaName + ".models." + modelName);
-    return createDirectory(absoluteUri).toString();
-  }
-
-  public static String createModelVersionDirectory(
-      String catalogName, String schemaName, String modelName) {
-    String absoluteUri =
-        getModelDirectoryURI(catalogName + "." + schemaName + ".models." + modelName + ".versions");
     return createDirectory(absoluteUri).toString();
   }
 
@@ -216,11 +184,16 @@ public class FileUtils {
     if (url == null) {
       return null;
     }
-    if (url.startsWith("s3://")) {
+    if (isSupportedCloudStorageUri(url)) {
       return url;
     } else {
       return adjustFileUri(createURI(url)).toString();
     }
+  }
+
+  public static boolean isSupportedCloudStorageUri(String url) {
+    String scheme = URI.create(url).getScheme();
+    return scheme != null && Constants.SUPPORTED_SCHEMES.contains(scheme);
   }
 
   private static void validateURI(URI uri) {

@@ -1,19 +1,21 @@
 package io.unitycatalog.cli;
 
 import static io.unitycatalog.cli.utils.CliUtils.*;
-import static io.unitycatalog.client.model.User.StateEnum.DISABLED;
-import static io.unitycatalog.client.model.User.StateEnum.ENABLED;
+import static io.unitycatalog.control.model.User.StateEnum.DISABLED;
+import static io.unitycatalog.control.model.User.StateEnum.ENABLED;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectWriter;
 import io.unitycatalog.cli.utils.CliParams;
 import io.unitycatalog.cli.utils.CliUtils;
-import io.unitycatalog.client.model.User;
 import io.unitycatalog.control.ApiClient;
 import io.unitycatalog.control.ApiException;
 import io.unitycatalog.control.api.UsersApi;
 import io.unitycatalog.control.model.Email;
+import io.unitycatalog.control.model.User;
 import io.unitycatalog.control.model.UserResource;
+import java.text.ParseException;
+import java.text.SimpleDateFormat;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.stream.Collectors;
@@ -109,8 +111,9 @@ public class UserCli {
     if (json.has(CliParams.COUNT.getServerParam())) {
       count = json.getInt(CliParams.COUNT.getServerParam());
     }
+
     List<User> users =
-        usersApi.listUsers(filter, startIndex, count).stream()
+        usersApi.listUsers(filter, startIndex, count).getResources().stream()
             .map(UserCli::fromUserResource)
             .collect(Collectors.toList());
     return objectWriter.writeValueAsString(users);
@@ -130,13 +133,24 @@ public class UserCli {
   }
 
   private static User fromUserResource(UserResource userResource) {
+
     return new User()
         .id(userResource.getId())
         .name(userResource.getDisplayName())
         .externalId(userResource.getExternalId())
         .email(userResource.getEmails().get(0).getValue())
         .state(userResource.getActive() ? ENABLED : DISABLED)
-        .createdAt(userResource.getMeta().getCreated())
-        .updatedAt(userResource.getMeta().getLastModified());
+        .createdAt(fromDateString(userResource.getMeta().getCreated()))
+        .updatedAt(fromDateString(userResource.getMeta().getLastModified()));
+  }
+
+  private static Long fromDateString(String date) {
+    // TODO: Should really try to get OpenAPI to convert from dates itself.
+    SimpleDateFormat sdf = new SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSSXXX");
+    try {
+      return sdf.parse(date).getTime();
+    } catch (ParseException e) {
+      return null;
+    }
   }
 }

@@ -76,4 +76,22 @@ public class RepositoryUtils {
     }
     return catalogInfo.getId();
   }
+
+  public static SchemaInfoDAO getSchemaByIdOrThrow(Session session, UUID schemaId) {
+    SchemaInfoDAO schemaInfoDAO =
+            session.get(SchemaInfoDAO.class, schemaId);
+    if (schemaInfoDAO == null) {
+      throw new BaseException(ErrorCode.NOT_FOUND, "Schema id not found: " + schemaId);
+    }
+    return schemaInfoDAO;
+  }
+
+  public static CatalogInfoDAO getCatalogByIdOrThrow(Session session, UUID catalogId) {
+    CatalogInfoDAO catalogInfoDAO =
+            session.get(CatalogInfoDAO.class, catalogId);
+    if (catalogInfoDAO == null) {
+      throw new BaseException(ErrorCode.NOT_FOUND, "Catalog id not found: " + catalogId);
+    }
+    return catalogInfoDAO;
+  }
 }

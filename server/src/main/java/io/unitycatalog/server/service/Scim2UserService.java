@@ -13,12 +13,14 @@ import com.unboundid.scim2.common.exceptions.PreconditionFailedException;
 import com.unboundid.scim2.common.exceptions.ResourceConflictException;
 import com.unboundid.scim2.common.exceptions.ScimException;
 import com.unboundid.scim2.common.filters.Filter;
+import com.unboundid.scim2.common.messages.ListResponse;
 import com.unboundid.scim2.common.types.Email;
 import com.unboundid.scim2.common.types.Meta;
 import com.unboundid.scim2.common.types.Photo;
 import com.unboundid.scim2.common.types.UserResource;
 import com.unboundid.scim2.common.utils.FilterEvaluator;
 import com.unboundid.scim2.common.utils.Parser;
+import io.unitycatalog.control.model.User;
 import io.unitycatalog.server.auth.UnityCatalogAuthorizer;
 import io.unitycatalog.server.auth.annotation.AuthorizeExpression;
 import io.unitycatalog.server.auth.annotation.AuthorizeKey;
@@ -26,10 +28,9 @@ import io.unitycatalog.server.exception.BaseException;
 import io.unitycatalog.server.exception.ErrorCode;
 import io.unitycatalog.server.exception.GlobalExceptionHandler;
 import io.unitycatalog.server.exception.Scim2RuntimeException;
-import io.unitycatalog.server.model.CreateUser;
-import io.unitycatalog.server.model.UpdateUser;
-import io.unitycatalog.server.model.User;
 import io.unitycatalog.server.persist.UserRepository;
+import io.unitycatalog.server.persist.model.CreateUser;
+import io.unitycatalog.server.persist.model.UpdateUser;
 import java.net.URI;
 import java.util.Calendar;
 import java.util.List;
@@ -61,9 +62,11 @@ public class Scim2UserService {
   }
 
   @Get("")
+  @Produces("application/scim+json")
+  @StatusCode(200)
   @AuthorizeExpression("#principal != null")
   @AuthorizeKey(METASTORE)
-  public HttpResponse getScimUsers(
+  public ListResponse<UserResource> getScimUsers(
       @Param("filter") Optional<String> filter,
       @Param("startIndex") Optional<Integer> startIndex,
       @Param("count") Optional<Integer> count) {
@@ -71,19 +74,37 @@ public class Scim2UserService {
     FilterEvaluator filterEvaluator = new FilterEvaluator();
 
     List<UserResource> userResourcesList =
-        USER_REPOSITORY.listUsers().stream()
+        USER_REPOSITORY
+            .listUsers(
+                startIndex.orElse(1) - 1,
+                count.orElse(50),
+                m -> match(filterEvaluator, userFilter, asUserResource(m)))
+            .stream()
             .map(this::asUserResource)
-            .filter(m -> match(filterEvaluator, userFilter, m))
-            .skip(startIndex.orElse(1) - 1)
-            .limit(count.orElse(50))
             .toList();
-    return HttpResponse.ofJson(userResourcesList);
+
+    Meta meta = new Meta();
+    meta.setCreated(Calendar.getInstance());
+    meta.setLastModified(Calendar.getInstance());
+    meta.setResourceType("User");
+
+    ListResponse<UserResource> userResources =
+        new ListResponse<>(
+            userResourcesList.size(),
+            userResourcesList,
+            startIndex.orElse(1),
+            userResourcesList.size());
+    userResources.setMeta(meta);
+
+    return userResources;
   }
 
   @Post("")
+  @Produces("application/scim+json")
+  @StatusCode(201)
   @AuthorizeExpression("#authorizeAny(#principal, #metastore, METASTORE_ADMIN)")
   @AuthorizeKey(METASTORE)
-  public HttpResponse createScimUser(UserResource userResource) {
+  public UserResource createScimUser(UserResource userResource) {
     // Get primary email address
     Email primaryEmail =
         userResource.getEmails().stream()
@@ -94,75 +115,69 @@ public class Scim2UserService {
                     new Scim2RuntimeException(
                         new PreconditionFailedException("User does not have a primary email.")));
 
+    String pictureUrl = "";
+    if (userResource.getPhotos() != null && !userResource.getPhotos().isEmpty()) {
+      pictureUrl = userResource.getPhotos().get(0).getValue().toString();
+    }
     try {
-      User user = USER_REPOSITORY.getUserByEmail(primaryEmail.getValue());
-      return HttpResponse.ofJson(asUserResource(user));
+      User user =
+          USER_REPOSITORY.createUser(
+              CreateUser.builder()
+                  .name(userResource.getDisplayName())
+                  .email(primaryEmail.getValue())
+                  .active(userResource.getActive())
+                  .externalId(userResource.getExternalId())
+                  .pictureUrl(pictureUrl)
+                  .build());
+      return asUserResource(user);
     } catch (BaseException e) {
-      if (e.getErrorCode() == ErrorCode.NOT_FOUND) {
-        String pictureUrl = "";
-        if (userResource.getPhotos() != null && !userResource.getPhotos().isEmpty()) {
-          pictureUrl = userResource.getPhotos().get(0).getValue().toString();
-        }
-        User user =
-            USER_REPOSITORY.createUser(
-                new CreateUser()
-                    .name(userResource.getDisplayName())
-                    .email(primaryEmail.getValue())
-                    .externalId(userResource.getExternalId())
-                    .pictureUrl(pictureUrl));
-        return HttpResponse.ofJson(asUserResource(user));
+      if (e.getErrorCode() == ErrorCode.ALREADY_EXISTS) {
+        throw new Scim2RuntimeException(new ResourceConflictException(e.getMessage()));
       } else {
-        throw e;
+        throw new Scim2RuntimeException(new BadRequestException(e.getMessage()));
       }
     }
   }
 
   @Get("/self")
+  @Produces("application/scim+json")
+  @StatusCode(200)
   @AuthorizeExpression("#principal != null")
   @AuthorizeKey(METASTORE)
-  public HttpResponse getCurrentUser() {
+  public UserResource getCurrentUser() {
     ServiceRequestContext ctx = ServiceRequestContext.current();
     DecodedJWT decodedJWT = ctx.attr(AuthDecorator.DECODED_JWT_ATTR);
     Claim sub = decodedJWT.getClaim("sub");
-    return HttpResponse.ofJson(asUserResource(USER_REPOSITORY.getUserByEmail(sub.asString())));
   }
 
   @Get("/{id}")
+  @Produces("application/scim+json")
+  @StatusCode(200)
   @AuthorizeExpression("#principal != null")
   @AuthorizeKey(METASTORE)
-  public HttpResponse getUser(@Param("id") String id) {
-    return HttpResponse.ofJson(asUserResource(USER_REPOSITORY.getUser(id)));
+  public UserResource getUser(@Param("id") String id) {
+    return asUserResource(USER_REPOSITORY.getUser(id));
   }
 
   @Put("/{id}")
+  @Produces("application/scim+json")
+  @StatusCode(200)
   @AuthorizeExpression("#authorizeAny(#principal, #metastore, METASTORE_ADMIN)")
   @AuthorizeKey(METASTORE)
-  public HttpResponse updateUser(@Param("id") String id, UserResource userResource) {
+  public UserResource updateUser(@Param("id") String id, UserResource userResource) {
     UserResource user = asUserResource(USER_REPOSITORY.getUser(id));
     if (!id.equals(userResource.getId())) {
       throw new Scim2RuntimeException(new ResourceConflictException("User id mismatch."));
     }
-    // Get primary email address
-    Email primaryEmail =
-        userResource.getEmails().stream()
-            .filter(Email::getPrimary)
-            .findFirst()
-            .orElse(user.getEmails().get(0));
-
-    String newName = userResource.getDisplayName();
-    if (newName == null) {
-      newName = user.getDisplayName();
-    }
-
-    String externalId = userResource.getExternalId();
-    if (externalId == null) {
-      externalId = user.getExternalId();
-    }
 
     UpdateUser updateUser =
-        new UpdateUser().newName(newName).email(primaryEmail.getValue()).externalId(externalId);
+        UpdateUser.builder()
+            .name(userResource.getDisplayName())
+            .active(userResource.getActive())
+            .externalId(userResource.getExternalId())
+            .build();
 
-    return HttpResponse.ofJson(asUserResource(USER_REPOSITORY.updateUser(id, updateUser)));
+    return asUserResource(USER_REPOSITORY.updateUser(id, updateUser));
   }
 
   @Delete("/{id}")
@@ -203,7 +218,7 @@ public class Scim2UserService {
         .setPhotos(List.of(new Photo().setValue(URI.create(pictureUrl))));
     userResource.setId(user.getId());
     userResource.setMeta(meta);
-    userResource.setActive(true);
+    userResource.setActive(user.getState() == User.StateEnum.ENABLED);
     userResource.setExternalId(user.getExternalId());
 
     return userResource;

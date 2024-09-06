@@ -79,6 +79,8 @@ lazy val commonSettings = Seq(
     // https://en.wikipedia.org/wiki/GNU_Lesser_General_Public_License
     // We can use and distribute the, but not modify the source code
     case DepModuleInfo("org.hibernate.orm", _, _) => true
+    case DepModuleInfo("com.unboundid.scim2", _, _) => true
+    case DepModuleInfo("com.unboundid.product.scim2", _, _) => true
     // Duo license:
     //  - Eclipse Public License 2.0
     //  - GNU General Public License, version 2 with the GNU Classpath Exception
@@ -328,6 +330,7 @@ lazy val server = (project in file("server"))
 lazy val serverModels = (project in file("server") / "target" / "models")
   .enablePlugins(OpenApiGeneratorPlugin)
   .disablePlugins(JavaFormatterPlugin)
+  .dependsOn(controlModels % "compile->compile")
   .settings(
     name := s"$artifactNamePrefix-servermodels",
     commonSettings,
@@ -344,6 +347,41 @@ lazy val serverModels = (project in file("server") / "target" / "models")
     openApiValidateSpec := SettingEnabled,
     openApiGenerateMetadata := SettingDisabled,
     openApiModelPackage := s"$orgName.server.model",
+    openApiAdditionalProperties := Map(
+      "library" -> "resteasy", // resteasy generates the most minimal models
+      "useJakartaEe" -> "true",
+      "hideGenerationTimestamp" -> "true"
+    ),
+    openApiGlobalProperties := Map("models" -> ""),
+    openApiGenerateApiTests := SettingDisabled,
+    openApiGenerateModelTests := SettingDisabled,
+    openApiGenerateApiDocumentation := SettingDisabled,
+    openApiGenerateModelDocumentation := SettingDisabled,
+    // Define the simple generate command to generate model codes
+    generate := {
+      val _ = openApiGenerate.value
+    }
+  )
+
+lazy val controlModels = (project in file("server") / "target" / "controlmodels")
+  .enablePlugins(OpenApiGeneratorPlugin)
+  .disablePlugins(JavaFormatterPlugin)
+  .settings(
+    name := s"$artifactNamePrefix-controlmodels",
+    commonSettings,
+    (Compile / compile) := ((Compile / compile) dependsOn generate).value,
+    Compile / compile / javacOptions ++= javacRelease17,
+    libraryDependencies ++= Seq(
+      "jakarta.annotation" % "jakarta.annotation-api" % "3.0.0" % Provided,
+      "com.fasterxml.jackson.core" % "jackson-annotations" % jacksonVersion,
+    ),
+    // OpenAPI generation configs for generating model codes from the spec
+    openApiInputSpec := (file(".") / "api" / "control.yaml").toString,
+    openApiGeneratorName := "java",
+    openApiOutputDir := (file("server") / "target" / "controlmodels").toString,
+    openApiValidateSpec := SettingEnabled,
+    openApiGenerateMetadata := SettingDisabled,
+    openApiModelPackage := s"$orgName.control.model",
     openApiAdditionalProperties := Map(
       "library" -> "resteasy", // resteasy generates the most minimal models
       "useJakartaEe" -> "true",
@@ -448,6 +486,8 @@ lazy val spark = (project in file("connectors/spark"))
       "com.fasterxml.jackson.dataformat" % "jackson-dataformat-xml" % "2.15.0",
       "org.antlr" % "antlr4-runtime" % "4.9.3",
       "org.antlr" % "antlr4" % "4.9.3",
+      "com.google.cloud.bigdataoss" % "util-hadoop" % "3.0.2" % Provided,
+      "org.apache.hadoop" % "hadoop-azure" % "3.4.0" % Provided,
     ),
     libraryDependencies ++= Seq(
       // Test dependencies

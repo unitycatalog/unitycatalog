@@ -2,10 +2,11 @@ package io.unitycatalog.connectors.spark
 
 import io.unitycatalog.client.{ApiClient, ApiException}
 import io.unitycatalog.client.api.{SchemasApi, TablesApi, TemporaryTableCredentialsApi}
-import io.unitycatalog.client.model.{AwsCredentials, ColumnInfo, ColumnTypeName, CreateSchema, CreateTable, DataSourceFormat, GenerateTemporaryTableCredential, ListTablesResponse, SchemaInfo, TableOperation, TableType}
+import io.unitycatalog.client.model.{ColumnInfo, ColumnTypeName, CreateSchema, CreateTable, DataSourceFormat, GenerateTemporaryTableCredential, ListTablesResponse, SchemaInfo, TableOperation, TableType}
 
 import java.net.URI
 import java.util
+import org.apache.hadoop.fs.azurebfs.constants.ConfigurationKeys.{FS_AZURE_ACCOUNT_AUTH_TYPE_PROPERTY_NAME, FS_AZURE_ACCOUNT_IS_HNS_ENABLED, FS_AZURE_SAS_TOKEN_PROVIDER_TYPE}
 import org.apache.spark.sql.catalyst.TableIdentifier
 import org.apache.spark.sql.catalyst.analysis.{NoSuchNamespaceException, NoSuchTableException}
 import org.apache.spark.sql.catalyst.catalog.{CatalogStorageFormat, CatalogTable, CatalogTableType, CatalogUtils}
@@ -148,22 +149,36 @@ private class UCProxy extends TableCatalog with SupportsNamespaces {
     }.toArray
     val uri = CatalogUtils.stringToURI(t.getStorageLocation)
     val tableId = t.getTableId
-    val credential: AwsCredentials = temporaryTableCredentialsApi
+    val temporaryCredentials = temporaryTableCredentialsApi
       .generateTemporaryTableCredentials(
         // TODO: at this time, we don't know if the table will be read or written. We should get
         //       credential in a later phase.
         new GenerateTemporaryTableCredential().tableId(tableId).operation(TableOperation.READ_WRITE)
       )
-      .getAwsTempCredentials
     val extraSerdeProps = if (uri.getScheme == "s3") {
+      val awsCredentials = temporaryCredentials.getAwsTempCredentials
       Map(
         // TODO: how to support s3:// properly?
-        "fs.s3a.access.key" -> credential.getAccessKeyId,
-        "fs.s3a.secret.key" -> credential.getSecretAccessKey,
-        "fs.s3a.session.token" -> credential.getSessionToken,
+        "fs.s3a.access.key" -> awsCredentials.getAccessKeyId,
+        "fs.s3a.secret.key" -> awsCredentials.getSecretAccessKey,
+        "fs.s3a.session.token" -> awsCredentials.getSessionToken,
         "fs.s3a.path.style.access" -> "true",
         "fs.s3.impl.disable.cache" -> "true",
         "fs.s3a.impl.disable.cache" -> "true"
+      )
+    } else if (uri.getScheme == "gs") {
+      val gcsCredentials = temporaryCredentials.getGcpOauthToken
+      Map(
+        GcsVendedTokenProvider.ACCESS_TOKEN_KEY -> gcsCredentials.getOauthToken,
+        GcsVendedTokenProvider.ACCESS_TOKEN_EXPIRATION_KEY -> temporaryCredentials.getExpirationTime.toString
+      )
+    } else if (uri.getScheme == "abfs" || uri.getScheme == "abfss") {
+      val azCredentials = temporaryCredentials.getAzureUserDelegationSas
+      Map(
+        FS_AZURE_ACCOUNT_AUTH_TYPE_PROPERTY_NAME -> "SAS",
+        FS_AZURE_ACCOUNT_IS_HNS_ENABLED -> "true",
+        FS_AZURE_SAS_TOKEN_PROVIDER_TYPE -> "io.unitycatalog.connectors.spark.AbfsVendedTokenProvider",
+        AbfsVendedTokenProvider.ACCESS_TOKEN_KEY -> azCredentials.getSasToken,
       )
     } else {
       Map.empty

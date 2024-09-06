@@ -12,6 +12,8 @@ import com.google.common.base.CharMatcher;
 import io.unitycatalog.server.persist.utils.ServerPropertiesUtils;
 import io.unitycatalog.server.service.credential.CredentialContext;
 import java.net.URI;
+import java.sql.Date;
+import java.time.Instant;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -36,6 +38,13 @@ public class GcpCredentialVendor {
 
     GoogleCredentials creds;
     if (serviceAccountKeyJsonFilePath != null && !serviceAccountKeyJsonFilePath.isEmpty()) {
+      if (serviceAccountKeyJsonFilePath.startsWith("testing://")) {
+        // allow pass-through of a dummy value for integration testing
+        return AccessToken.newBuilder()
+            .setTokenValue(serviceAccountKeyJsonFilePath)
+            .setExpirationTime(Date.from(Instant.ofEpochMilli(253370790000000L)))
+            .build();
+      }
       creds =
           ServiceAccountCredentials.fromStream(
               Files.localInput(serviceAccountKeyJsonFilePath).newStream());
@@ -60,10 +69,21 @@ public class GcpCredentialVendor {
 
               String resource =
                   format("//storage.googleapis.com/projects/_/buckets/%s", locationUri.getHost());
-              String expr =
+
+              // for reading/writing objects
+              String resourceNameStartsWithExpr =
                   format(
                       "resource.name.startsWith('projects/_/buckets/%s/objects/%s')",
                       locationUri.getHost(), path);
+
+              // for listing objects
+              String objectListPrefixStartsWithExpr =
+                  format(
+                      "api.getAttribute('storage.googleapis.com/objectListPrefix', '').startsWith('%s')",
+                      path);
+
+              String combinedExpr =
+                  resourceNameStartsWithExpr + " || " + objectListPrefixStartsWithExpr;
 
               boundaryBuilder.addRule(
                   CredentialAccessBoundary.AccessBoundaryRule.newBuilder()
@@ -71,7 +91,7 @@ public class GcpCredentialVendor {
                       .setAvailabilityCondition(
                           CredentialAccessBoundary.AccessBoundaryRule.AvailabilityCondition
                               .newBuilder()
-                              .setExpression(expr)
+                              .setExpression(combinedExpr)
                               .build())
                       .setAvailableResource(resource)
                       .build());

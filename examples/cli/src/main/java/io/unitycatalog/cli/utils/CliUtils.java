@@ -211,8 +211,11 @@ public class CliUtils {
                   put(
                       LIST,
                       new CliOptions(
-                          List.of(CliParams.CATALOG_NAME, CliParams.SCHEMA_NAME),
-                          List.of(CliParams.MAX_RESULTS)));
+                          List.of(),
+                          List.of(
+                              CliParams.CATALOG_NAME,
+                              CliParams.SCHEMA_NAME,
+                              CliParams.MAX_RESULTS)));
                   put(GET, new CliOptions(List.of(CliParams.FULL_NAME), List.of()));
                   put(
                       UPDATE,
@@ -250,6 +253,29 @@ public class CliUtils {
                   put(
                       FINALIZE,
                       new CliOptions(List.of(CliParams.FULL_NAME), List.of(CliParams.VERSION)));
+                }
+              });
+          put(
+              USER,
+              new HashMap<String, CliOptions>() {
+                {
+                  put(
+                      CREATE,
+                      new CliOptions(
+                          List.of(CliParams.NAME, CliParams.EMAIL),
+                          List.of(CliParams.EXTERNAL_ID)));
+                  put(
+                      LIST,
+                      new CliOptions(
+                          List.of(),
+                          List.of(CliParams.FILTER, CliParams.START_INDEX, CliParams.COUNT)));
+                  put(GET, new CliOptions(List.of(CliParams.ID), List.of()));
+                  put(
+                      UPDATE,
+                      new CliOptions(
+                          List.of(CliParams.ID),
+                          List.of(CliParams.NAME, CliParams.EXTERNAL_ID, CliParams.EMAIL)));
+                  put(DELETE, new CliOptions(List.of(CliParams.ID), List.of()));
                 }
               });
           put(

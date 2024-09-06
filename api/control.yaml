@@ -25,7 +25,7 @@ paths:
         '200':
           description: The new user was successfully created.
           content:
-            application/json:
+            application/scim+json:
               schema:
                 $ref: '#/components/schemas/UserResource'
     get:
@@ -47,7 +47,7 @@ paths:
           required: false
         - name: count
           in: query
-          description: Desired number of results per page.
+          description: Desired number of results per page. If no count is provided, it defaults to 50.
           schema:
             type: integer
             format: int32
@@ -60,11 +60,9 @@ paths:
         '200':
           description: The user list was successfully retrieved.
           content:
-            application/json:
+            application/scim+json:
               schema:
-                type: array
-                items:
-                  $ref: '#/components/schemas/UserResource'
+                $ref: '#/components/schemas/UserResourceList'
   /scim2/Users/{id}:
     parameters:
       - name: id
@@ -84,7 +82,7 @@ paths:
         '200':
           description: The user was successfully retrieved.
           content:
-            application/json:
+            application/scim+json:
               schema:
                 $ref: '#/components/schemas/UserResource'
     put:
@@ -103,7 +101,7 @@ paths:
         '200':
           description: The user was successfully updated.
           content:
-            application/json:
+            application/scim+json:
               schema:
                 $ref: '#/components/schemas/UserResource'
     delete:
@@ -117,7 +115,7 @@ paths:
         '200':
           description: The user was successfully deleted.
           content:
-            application/json:
+            application/scim+json:
               schema: {}
   /scim2/Users/self:
     get:
@@ -137,6 +135,79 @@ paths:
 
 components:
   schemas:
+    User:
+      properties:
+        id:
+          description: The unique identifier of the user.
+          type: string
+        name:
+          description: The name of the user.
+          type: string
+        email:
+          description: The email address of the user.
+          type: string
+        external_id:
+          description: The external identifier of the user.
+          type: string
+        state:
+          description: The state of the account.
+          type: string
+          enum:
+            - ENABLED
+            - DISABLED
+        picture_url:
+          description: The URL of the user's profile picture.
+          type: string
+        created_at:
+          description: The time the user was created.
+          type: integer
+          format: int64
+        updated_at:
+          description: The time the user was last updated.
+          type: integer
+          format: int64
+      type: object
+      required:
+        - id
+        - name
+        - email
+    UserResourceList:
+      description: List of SCIM User resources.
+      type: object
+      properties:
+        totalResults:
+          description: The total number of results.
+          type: integer
+          format: int32
+        itemsPerPage:
+            description: The number of items per page.
+            type: integer
+            format: int32
+        startIndex:
+            description: The index of the first result.
+            type: integer
+            format: int32
+        Resources:
+            description: The list of User resources.
+            type: array
+            items:
+                $ref: '#/components/schemas/UserResource'
+        id:
+            description: User list id metadata.
+            type: string
+        externalId:
+            description: User list external id metadata.
+            type: string
+        meta:
+          description: The metadata of the user.
+          type: object
+          properties:
+            resourceType:
+              type: string
+            created:
+              type: string
+            lastModified:
+              type: string
     UserResource:
       description: SCIM provides a resource type for "User" resources.
       type: object
@@ -163,11 +234,9 @@ components:
           type: object
           properties:
             created:
-              type: integer
-              format: int64
+              type: string
             lastModified:
-              type: integer
-              format: int64
+              type: string
         photos:
           description: The photos of the user.
           type: array
