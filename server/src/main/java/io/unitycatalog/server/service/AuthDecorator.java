@@ -12,8 +12,10 @@ import com.linecorp.armeria.server.DecoratingHttpServiceFunction;
 import com.linecorp.armeria.server.HttpService;
 import com.linecorp.armeria.server.ServiceRequestContext;
 import io.netty.util.AttributeKey;
+import io.unitycatalog.control.model.User;
 import io.unitycatalog.server.exception.AuthorizationException;
 import io.unitycatalog.server.exception.ErrorCode;
+import io.unitycatalog.server.persist.UserRepository;
 import io.unitycatalog.server.security.JwtClaim;
 import io.unitycatalog.server.utils.JwksOperations;
 import java.util.Map;
@@ -34,6 +36,7 @@ import org.slf4j.LoggerFactory;
 public class AuthDecorator implements DecoratingHttpServiceFunction {
 
   private static final Logger LOGGER = LoggerFactory.getLogger(AuthDecorator.class);
+  private static final UserRepository USER_REPOSITORY = UserRepository.getInstance();
 
   public static final AttributeKey<DecodedJWT> DECODED_JWT_ATTR =
       AttributeKey.valueOf(DecodedJWT.class, "DECODED_JWT_ATTR");
@@ -74,8 +77,19 @@ public class AuthDecorator implements DecoratingHttpServiceFunction {
 
       JWTVerifier jwtVerifier = jwksOperations.verifierForIssuerAndKey(issuer, keyId);
       decodedJWT = jwtVerifier.verify(decodedJWT);
+      String subject = decodedJWT.getClaim(JwtClaim.SUBJECT.key()).asString();
 
-      LOGGER.debug("Access allowed for subject: {}", decodedJWT.getClaim(JwtClaim.SUBJECT.key()));
+      User user;
+      try {
+        user = USER_REPOSITORY.getUserByEmail(subject);
+      } catch (Exception e) {
+        user = null;
+      }
+      if (!subject.equals("admin") && (user == null || user.getState() != User.StateEnum.ENABLED)) {
+        throw new AuthorizationException(ErrorCode.PERMISSION_DENIED, "User not allowed.");
+      }
+
+      LOGGER.debug("Access allowed for subject: {}", subject);
 
       ctx.setAttr(DECODED_JWT_ATTR, decodedJWT);
     }

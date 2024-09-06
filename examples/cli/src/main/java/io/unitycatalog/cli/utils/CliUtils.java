@@ -33,6 +33,7 @@ public class CliUtils {
   public static final String FUNCTION = "function";
   public static final String REGISTERED_MODEL = "registered_model";
   public static final String MODEL_VERSION = "model_version";
+  public static final String USER = "user";
   public static final String CREATE = "create";
   public static final String LIST = "list";
   public static final String GET = "get";
@@ -251,6 +252,29 @@ public class CliUtils {
                   put(
                       FINALIZE,
                       new CliOptions(List.of(CliParams.FULL_NAME), List.of(CliParams.VERSION)));
+                }
+              });
+          put(
+              USER,
+              new HashMap<String, CliOptions>() {
+                {
+                  put(
+                      CREATE,
+                      new CliOptions(
+                          List.of(CliParams.NAME, CliParams.EMAIL),
+                          List.of(CliParams.EXTERNAL_ID)));
+                  put(
+                      LIST,
+                      new CliOptions(
+                          List.of(),
+                          List.of(CliParams.FILTER, CliParams.START_INDEX, CliParams.COUNT)));
+                  put(GET, new CliOptions(List.of(CliParams.ID), List.of()));
+                  put(
+                      UPDATE,
+                      new CliOptions(
+                          List.of(CliParams.ID),
+                          List.of(CliParams.NAME, CliParams.EXTERNAL_ID, CliParams.EMAIL)));
+                  put(DELETE, new CliOptions(List.of(CliParams.ID), List.of()));
                 }
               });
         }
