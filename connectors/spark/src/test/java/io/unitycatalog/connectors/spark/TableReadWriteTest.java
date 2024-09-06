@@ -103,7 +103,7 @@ public class TableReadWriteTest extends BaseSparkIntegrationTest {
   }
 
   @ParameterizedTest
-  @ValueSource(strings = {"s3", "gs"})
+  @ValueSource(strings = {"s3", "gs", "abfs"})
   public void testCredentialParquet(String scheme) throws ApiException, IOException {
     SparkSession session = createSparkSessionWithCatalogs(SPARK_CATALOG);
 
@@ -130,7 +130,7 @@ public class TableReadWriteTest extends BaseSparkIntegrationTest {
 
   @Disabled("Ignoring test until Delta 3.2.1 is released.")
   @ParameterizedTest
-  @ValueSource(strings = {"s3", "gs"})
+  @ValueSource(strings = {"s3", "gs", "abfs"})
   public void testCredentialDelta(String scheme) throws ApiException, IOException {
     SparkSession session = createSparkSessionWithCatalogs(SPARK_CATALOG, CATALOG_NAME);
 
@@ -156,7 +156,7 @@ public class TableReadWriteTest extends BaseSparkIntegrationTest {
 
   @Disabled("Ignoring test until Delta 3.2.1 is released.")
   @ParameterizedTest
-  @ValueSource(strings = {"s3", "gs"})
+  @ValueSource(strings = {"s3", "gs", "abfs"})
   public void testDeleteDeltaTable(String scheme) throws ApiException, IOException {
     SparkSession session = createSparkSessionWithCatalogs(SPARK_CATALOG);
 
@@ -174,7 +174,7 @@ public class TableReadWriteTest extends BaseSparkIntegrationTest {
 
   @Disabled("Ignoring test until Delta 3.2.1 is released.")
   @ParameterizedTest
-  @ValueSource(strings = {"s3", "gs"})
+  @ValueSource(strings = {"s3", "gs", "abfs"})
   public void testMergeDeltaTable(String scheme) throws ApiException, IOException {
     SparkSession session = createSparkSessionWithCatalogs(SPARK_CATALOG, CATALOG_NAME);
 
@@ -201,7 +201,7 @@ public class TableReadWriteTest extends BaseSparkIntegrationTest {
 
   @Disabled("Ignoring test until Delta 3.2.1 is released.")
   @ParameterizedTest
-  @ValueSource(strings = {"s3", "gs"})
+  @ValueSource(strings = {"s3", "gs", "abfs"})
   public void testUpdateDeltaTable(String scheme) throws ApiException, IOException {
     SparkSession session = createSparkSessionWithCatalogs(SPARK_CATALOG);
 

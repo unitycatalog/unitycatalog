@@ -1,5 +1,7 @@
 package io.unitycatalog.server.service.credential.azure;
 
+import static java.lang.String.format;
+
 import com.azure.core.credential.TokenCredential;
 import com.azure.core.http.HttpClient;
 import com.azure.core.util.Context;
@@ -37,6 +39,16 @@ public class AzureCredentialVendor {
       // chain)
       tokenCredential = new DefaultAzureCredentialBuilder().build();
     } else {
+      if (config.isTestMode()) {
+        // allow pass-through of a dummy value for integration testing
+        return AzureCredential.builder()
+            .sasToken(
+                format(
+                    "%s/%s/%s",
+                    config.getTenantId(), config.getClientId(), config.getClientSecret()))
+            .expirationTimeInEpochMillis(253370790000000L)
+            .build();
+      }
       tokenCredential =
           new ClientSecretCredentialBuilder()
               .tenantId(config.getTenantId())
