@@ -5,12 +5,16 @@ import com.linecorp.armeria.common.HttpResponse;
 import com.linecorp.armeria.common.HttpStatus;
 import com.linecorp.armeria.server.ServiceRequestContext;
 import com.linecorp.armeria.server.annotation.ExceptionHandlerFunction;
+import com.unboundid.scim2.common.exceptions.ScimException;
+import io.unitycatalog.server.utils.RESTObjectMapper;
 import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import lombok.SneakyThrows;
 
 public class GlobalExceptionHandler implements ExceptionHandlerFunction {
+  @SneakyThrows
   @Override
   public HttpResponse handleException(ServiceRequestContext ctx, HttpRequest req, Throwable cause) {
     if (cause instanceof BaseException) {
@@ -22,6 +26,11 @@ public class GlobalExceptionHandler implements ExceptionHandlerFunction {
               baseException.getErrorMessage(),
               baseException.getCause(),
               baseException.getMetadata()));
+    } else if (cause instanceof Scim2RuntimeException) {
+      ScimException scimException = (ScimException) cause.getCause();
+      return HttpResponse.ofJson(
+          HttpStatus.INTERNAL_SERVER_ERROR,
+          RESTObjectMapper.mapper().writeValueAsString(scimException.getScimError()));
     } else if (cause instanceof RuntimeException) {
       return HttpResponse.ofJson(
           HttpStatus.INTERNAL_SERVER_ERROR,
