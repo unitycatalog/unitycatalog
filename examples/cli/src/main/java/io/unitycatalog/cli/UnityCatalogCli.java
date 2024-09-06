@@ -144,6 +144,9 @@ public class UnityCatalogCli {
         case CliUtils.MODEL_VERSION:
           ModelVersionCli.handle(cmd, apiClient);
           break;
+        case CliUtils.USER:
+          UserCli.handle(cmd, getControlClient(cmd));
+          break;
         default:
           CliUtils.printHelp();
       }
@@ -158,7 +161,7 @@ public class UnityCatalogCli {
           "Error occurred while executing the command. "
               + e.getMessage()
               + (e.getCause() != null ? e.getCause().getMessage() : ""));
-    } catch (ApiException e) {
+    } catch (ApiException | io.unitycatalog.control.ApiException e) {
       throw new RuntimeException(e);
     }
   }
@@ -251,5 +254,32 @@ public class UnityCatalogCli {
           });
     }
     return apiClient;
+  }
+
+  private static io.unitycatalog.control.ApiClient getControlClient(CommandLine cmd) {
+    // By default, the client will connect to ref server on localhost:8080
+    io.unitycatalog.control.ApiClient controlClient = new io.unitycatalog.control.ApiClient();
+    String server = loadProperty(CliUtils.SERVER, cmd);
+    if (server.isEmpty()) {
+      server = "http://localhost:8080";
+    }
+    URI uri = URI.create(server);
+    controlClient.setHost(uri.getHost());
+    if (uri.getPort() == -1 && uri.getScheme().equals("https")) {
+      controlClient.setPort(443);
+    } else if (uri.getPort() == -1 && uri.getScheme().equals("http")) {
+      controlClient.setPort(8080);
+    } else {
+      controlClient.setPort(uri.getPort());
+    }
+    controlClient.setScheme(uri.getScheme());
+    String customAuthToken = loadProperty(CliUtils.AUTH_TOKEN, cmd);
+    if (!customAuthToken.isEmpty()) {
+      controlClient.setRequestInterceptor(
+          request -> {
+            request.header("Authorization", "Bearer " + customAuthToken);
+          });
+    }
+    return controlClient;
   }
 }
