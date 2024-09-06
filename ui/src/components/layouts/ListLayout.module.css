@@ -1,5 +1,0 @@
-.clickableListLayout {
-  [class~=ant-table-row] {
-    cursor: pointer;
-  }
-}
