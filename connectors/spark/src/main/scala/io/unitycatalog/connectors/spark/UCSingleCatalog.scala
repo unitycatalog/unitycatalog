@@ -2,10 +2,11 @@ package io.unitycatalog.connectors.spark
 
 import io.unitycatalog.client.{ApiClient, ApiException}
 import io.unitycatalog.client.api.{SchemasApi, TablesApi, TemporaryTableCredentialsApi}
-import io.unitycatalog.client.model.{AwsCredentials, ColumnInfo, ColumnTypeName, CreateSchema, CreateTable, DataSourceFormat, GenerateTemporaryTableCredential, ListTablesResponse, SchemaInfo, TableOperation, TableType}
+import io.unitycatalog.client.model.{ColumnInfo, ColumnTypeName, CreateSchema, CreateTable, DataSourceFormat, GenerateTemporaryTableCredential, ListTablesResponse, SchemaInfo, TableOperation, TableType}
 
 import java.net.URI
 import java.util
+import org.apache.hadoop.fs.azurebfs.constants.ConfigurationKeys.{FS_AZURE_ACCOUNT_AUTH_TYPE_PROPERTY_NAME, FS_AZURE_ACCOUNT_IS_HNS_ENABLED, FS_AZURE_SAS_TOKEN_PROVIDER_TYPE}
 import org.apache.spark.sql.catalyst.TableIdentifier
 import org.apache.spark.sql.catalyst.analysis.{NoSuchNamespaceException, NoSuchTableException}
 import org.apache.spark.sql.catalyst.catalog.{CatalogStorageFormat, CatalogTable, CatalogTableType, CatalogUtils}
@@ -174,10 +175,10 @@ private class UCProxy extends TableCatalog with SupportsNamespaces {
     } else if (uri.getScheme == "abfs" || uri.getScheme == "abfss") {
       val azCredentials = temporaryCredentials.getAzureUserDelegationSas
       Map(
-        "fs.azure.account.auth.type" -> "SAS",
-        "fs.azure.account.hns.enabled" -> "true",
-        "fs.azure.sas.token.provider.type" -> "io.unitycatalog.connectors.spark.AbfsVendedTokenProvider",
-        "fs.azure.sas.fixed.token" -> azCredentials.getSasToken,
+        FS_AZURE_ACCOUNT_AUTH_TYPE_PROPERTY_NAME -> "SAS",
+        FS_AZURE_ACCOUNT_IS_HNS_ENABLED -> "true",
+        FS_AZURE_SAS_TOKEN_PROVIDER_TYPE -> "io.unitycatalog.connectors.spark.AbfsVendedTokenProvider",
+        AbfsVendedTokenProvider.ACCESS_TOKEN_KEY -> azCredentials.getSasToken,
       )
     } else {
       Map.empty
