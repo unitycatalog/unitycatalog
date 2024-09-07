@@ -28,8 +28,15 @@ public class UnityCatalogCli {
     Arrays.stream(CliParams.values())
         .forEach(
             cliParam ->
-                options.addOption(Option.builder().longOpt(cliParam.val()).hasArg().build()));
+                options.addOption(
+                    Option.builder()
+                        .longOpt(cliParam.val())
+                        .optionalArg(cliParam.val().equals("version"))
+                        .hasArg() // See
+                        // https://github.com/unitycatalog/unitycatalog/pull/398#issuecomment-2325039123
+                        .build()));
     options.addOption("h", "help", false, "Print help message.");
+    options.addOption("v", false, "Display the version of Unity Catalog CLI");
 
     // Add server specific options
     options.addOption(
@@ -65,6 +72,34 @@ public class UnityCatalogCli {
           CliUtils.printHelp();
         }
         return;
+      }
+
+      if (cmd.hasOption("v")) {
+        CliUtils.printVersion();
+        return;
+      }
+
+      // Explanation: https://github.com/unitycatalog/unitycatalog/pull/398#issuecomment-2325039123
+      // tldr: we already have "version" for model_version entity.
+      // In the case of no args are provided it is assumed that user wants to see library version;
+      // To allow that behaviour version does not require arg, but if it used for entity args should
+      // be checked!
+      for (Option option : cmd.getOptions()) {
+        if (option.getLongOpt().equals("version")) {
+          if (cmd.getArgs().length == 0) {
+            CliUtils.printVersion();
+            return;
+          } else {
+            if (option.getValue() == null) {
+              System.out.println(
+                  "Error occurred while parsing the command. Please check the command and try again. Missing argument for option: version");
+              CliUtils.printHelp();
+              return;
+            } else {
+              break;
+            }
+          }
+        }
       }
 
       if (!validateCommand(cmd)) {
@@ -109,6 +144,9 @@ public class UnityCatalogCli {
         case CliUtils.MODEL_VERSION:
           ModelVersionCli.handle(cmd, apiClient);
           break;
+        case CliUtils.USER:
+          UserCli.handle(cmd, getControlClient(cmd));
+          break;
         default:
           CliUtils.printHelp();
       }
@@ -123,7 +161,7 @@ public class UnityCatalogCli {
           "Error occurred while executing the command. "
               + e.getMessage()
               + (e.getCause() != null ? e.getCause().getMessage() : ""));
-    } catch (ApiException e) {
+    } catch (ApiException | io.unitycatalog.control.ApiException e) {
       throw new RuntimeException(e);
     }
   }
@@ -216,5 +254,32 @@ public class UnityCatalogCli {
           });
     }
     return apiClient;
+  }
+
+  private static io.unitycatalog.control.ApiClient getControlClient(CommandLine cmd) {
+    // By default, the client will connect to ref server on localhost:8080
+    io.unitycatalog.control.ApiClient controlClient = new io.unitycatalog.control.ApiClient();
+    String server = loadProperty(CliUtils.SERVER, cmd);
+    if (server.isEmpty()) {
+      server = "http://localhost:8080";
+    }
+    URI uri = URI.create(server);
+    controlClient.setHost(uri.getHost());
+    if (uri.getPort() == -1 && uri.getScheme().equals("https")) {
+      controlClient.setPort(443);
+    } else if (uri.getPort() == -1 && uri.getScheme().equals("http")) {
+      controlClient.setPort(8080);
+    } else {
+      controlClient.setPort(uri.getPort());
+    }
+    controlClient.setScheme(uri.getScheme());
+    String customAuthToken = loadProperty(CliUtils.AUTH_TOKEN, cmd);
+    if (!customAuthToken.isEmpty()) {
+      controlClient.setRequestInterceptor(
+          request -> {
+            request.header("Authorization", "Bearer " + customAuthToken);
+          });
+    }
+    return controlClient;
   }
 }
