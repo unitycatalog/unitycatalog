@@ -31,6 +31,8 @@ public class JCasbinAuthorizer implements UnityCatalogAuthorizer {
   private static final int PRIVILEGE_INDEX = 2;
 
   private static final String HIERARCHY_POLICY = "g2";
+  private static final int HIERARCHY_PARENT_INDEX = 0;
+  private static final int HIERARCHY_CHILD_INDEX = 1;
 
   public JCasbinAuthorizer() throws Exception {
     Properties properties = HibernateUtils.getHibernateProperties();
@@ -82,7 +84,8 @@ public class JCasbinAuthorizer implements UnityCatalogAuthorizer {
 
   @Override
   public boolean removeHierarchyChildren(UUID resource) {
-    return enforcer.removeFilteredNamedGroupingPolicy(HIERARCHY_POLICY, 0, resource.toString());
+    return enforcer.removeFilteredNamedGroupingPolicy(
+        HIERARCHY_POLICY, HIERARCHY_PARENT_INDEX, resource.toString());
   }
 
   @Override
