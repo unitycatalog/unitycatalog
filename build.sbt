@@ -301,7 +301,9 @@ lazy val server = (project in file("server"))
       // Auth dependencies
       "com.unboundid.product.scim2" % "scim2-sdk-common" % "3.1.0",
       "org.casbin" % "jcasbin" % "1.55.0",
-      "org.casbin" % "jdbc-adapter" % "2.7.0",
+      "org.casbin" % "jdbc-adapter" % "2.7.0"
+        // Exclude the Oracle JDBC driver for licensing reasons for now
+        exclude("com.oracle.database.jdbc", "ojdbc6"),
       "org.springframework" % "spring-expression" % "6.1.11",
       "com.auth0" % "java-jwt" % "4.4.0",
       "com.auth0" % "jwks-rsa" % "0.22.1",
