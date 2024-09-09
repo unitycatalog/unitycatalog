@@ -202,7 +202,7 @@ public class UnityCatalogServer {
           .build(authDecorator);
 
       ExceptionHandlingDecorator exceptionDecorator =
-              new ExceptionHandlingDecorator(new GlobalExceptionHandler());
+          new ExceptionHandlingDecorator(new GlobalExceptionHandler());
       sb.decorator(exceptionDecorator);
     }
   }
