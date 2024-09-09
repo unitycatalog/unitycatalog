@@ -31,8 +31,11 @@ function AuthProvider(props: any) {
           setAccessToken(response.access_token);
         },
         onError: (error) => {
-          setNotification('Login failed. Please contact your system administrator.', 'error');
-        }
+          setNotification(
+            'Login failed. Please contact your system administrator.',
+            'error',
+          );
+        },
       });
     },
     [loginWithTokenMutation],

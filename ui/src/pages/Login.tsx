@@ -17,8 +17,7 @@ export default function () {
     process.env.REACT_APP_KEYCLOAK_AUTH_ENABLED === 'true';
 
   const handleGoogleSignIn = async (idToken: string) => {
-    await loginWithToken(idToken)
-      .then(() => navigate(from, { replace: true }))
+    await loginWithToken(idToken).then(() => navigate(from, { replace: true }));
   };
 
   return (
