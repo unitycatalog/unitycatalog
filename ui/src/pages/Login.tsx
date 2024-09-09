@@ -4,12 +4,10 @@ import GoogleAuthButton from '../components/login/GoogleAuthButton';
 import OktaAuthButton from '../components/login/OktaAuthButton';
 import { useAuth } from '../context/auth-context';
 import KeycloakAuthButton from '../components/login/KeycloakAuthButton';
-import { useNotification } from '../utils/NotificationContext';
 import { useNavigate, useLocation } from 'react-router-dom';
 
 export default function () {
-  const { setNotification } = useNotification();
-  const { loginWithToken, logout } = useAuth();
+  const { loginWithToken } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
   const from = location.state?.from || '/';
@@ -21,10 +19,6 @@ export default function () {
   const handleGoogleSignIn = async (idToken: string) => {
     await loginWithToken(idToken)
       .then(() => navigate(from, { replace: true }))
-      .catch((e: any) => {
-        console.log('we are in the catch', e);
-        setNotification(e.message, 'error');
-      });
   };
 
   return (

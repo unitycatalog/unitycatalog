@@ -16,6 +16,7 @@ import io.unitycatalog.server.exception.ErrorCode;
 import io.unitycatalog.server.exception.GlobalExceptionHandler;
 import io.unitycatalog.server.exception.OAuthInvalidRequestException;
 import io.unitycatalog.server.persist.UserRepository;
+import io.unitycatalog.server.persist.utils.ServerPropertiesUtils;
 import io.unitycatalog.server.security.SecurityContext;
 import io.unitycatalog.server.utils.JwksOperations;
 import lombok.Builder;
@@ -124,6 +125,13 @@ public class AuthService {
     if (request.getActorTokenType() != null) {
       throw new OAuthInvalidRequestException(
           ErrorCode.INVALID_ARGUMENT, "Actor tokens not currently supported");
+    }
+
+    String authorization =
+        ServerPropertiesUtils.getInstance().getProperty("server.authorization", "disable");
+    if (!authorization.equals("enable")) {
+      throw new OAuthInvalidRequestException(
+          ErrorCode.INVALID_ARGUMENT, "Authorization is disabled");
     }
 
     DecodedJWT decodedJWT = JWT.decode(request.getSubjectToken());

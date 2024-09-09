@@ -61,8 +61,9 @@ const router = createBrowserRouter([
 ]);
 
 function AppProvider() {
-  const { accessToken, logout } = useAuth();
+  const { accessToken, logout, currentUser } = useAuth();
   const navigate = useNavigate();
+  const authEnabled = process.env.REACT_APP_GOOGLE_AUTH_ENABLED === 'true';
   const loggedIn = accessToken !== '';
 
   const profileMenuItems = useMemo(
@@ -77,8 +78,8 @@ function AppProvider() {
               cursor: 'default',
             }}
           >
-            <Typography.Text>User name here</Typography.Text>
-            <Typography.Text>user.email@goeshere.com</Typography.Text>
+            <Typography.Text>{currentUser?.displayName}</Typography.Text>
+            <Typography.Text>{currentUser?.emails[0]?.value}</Typography.Text>
           </div>
         ),
       },
@@ -91,11 +92,11 @@ function AppProvider() {
         onClick: () => logout().then(() => navigate('/')),
       },
     ],
-    [],
+    [currentUser],
   );
 
   // commenting login UI for now until repositories are merged
-  return !loggedIn ? (
+  return authEnabled && !loggedIn ? (
     <Login />
   ) : (
     <ConfigProvider
