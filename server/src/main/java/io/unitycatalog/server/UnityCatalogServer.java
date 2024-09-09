@@ -161,6 +161,10 @@ public class UnityCatalogServer {
       ExceptionHandlingDecorator exceptionDecorator =
           new ExceptionHandlingDecorator(new GlobalExceptionHandler());
       sb.routeDecorator().pathPrefix(basePath).build(authDecorator);
+      sb.routeDecorator()
+          .pathPrefix(controlPath)
+          .exclude(controlPath + "auth/tokens")
+          .build(authDecorator);
       sb.decorator(exceptionDecorator);
     }
   }
@@ -175,9 +179,19 @@ public class UnityCatalogServer {
             .desc("Port number to run the server on. Default is 8080.")
             .type(Integer.class)
             .build());
+    options.addOption(
+        Option.builder("v")
+            .longOpt("version")
+            .hasArg(false)
+            .desc("Display the version of the Unity Catalog server")
+            .build());
     CommandLineParser parser = new DefaultParser();
     try {
       CommandLine cmd = parser.parse(options, args);
+      if (cmd.hasOption("v")) {
+        System.out.println(VersionUtils.VERSION);
+        return;
+      }
       if (cmd.hasOption("p")) {
         port = cmd.getParsedOptionValue("p");
       }
