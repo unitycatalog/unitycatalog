@@ -11,9 +11,11 @@ import com.linecorp.armeria.common.annotation.Nullable;
 import com.linecorp.armeria.server.annotation.ExceptionHandler;
 import com.linecorp.armeria.server.annotation.Param;
 import com.linecorp.armeria.server.annotation.Post;
+import io.unitycatalog.control.model.User;
 import io.unitycatalog.server.exception.ErrorCode;
 import io.unitycatalog.server.exception.GlobalExceptionHandler;
 import io.unitycatalog.server.exception.OAuthInvalidRequestException;
+import io.unitycatalog.server.persist.UserRepository;
 import io.unitycatalog.server.security.SecurityContext;
 import io.unitycatalog.server.utils.JwksOperations;
 import lombok.Builder;
@@ -54,6 +56,7 @@ public class AuthService {
   }
 
   private static final Logger LOGGER = LoggerFactory.getLogger(AuthService.class);
+  private static final UserRepository USER_REPOSITORY = UserRepository.getInstance();
 
   private final SecurityContext securityContext;
   private final JwksOperations jwksOperations;
@@ -131,6 +134,7 @@ public class AuthService {
 
     JWTVerifier jwtVerifier = jwksOperations.verifierForIssuerAndKey(issuer, keyId);
     decodedJWT = jwtVerifier.verify(decodedJWT);
+    verifyPrincipal(decodedJWT);
 
     LOGGER.debug("Validated. Creating access token.");
 
@@ -144,6 +148,29 @@ public class AuthService {
             .build();
 
     return HttpResponse.ofJson(response);
+  }
+
+  private static void verifyPrincipal(DecodedJWT decodedJWT) {
+    String subject =
+        decodedJWT.getClaim("email").isMissing()
+            ? decodedJWT.getClaim("sub").asString()
+            : decodedJWT.getClaim("email").asString();
+
+    if (subject.equals("admin")) {
+      return;
+    }
+
+    try {
+      User user = USER_REPOSITORY.getUserByEmail(subject);
+      if (user != null && user.getState() != User.StateEnum.ENABLED) {
+        return;
+      }
+    } catch (Exception e) {
+      // IGNORE
+    }
+
+    throw new OAuthInvalidRequestException(
+        ErrorCode.INVALID_ARGUMENT, "User not allowed: " + subject);
   }
 
   // TODO: This should be probably integrated into the OpenAPI spec.
