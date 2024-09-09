@@ -22,6 +22,7 @@ export default function () {
     await loginWithToken(idToken)
       .then(() => navigate(from, { replace: true }))
       .catch((e: any) => {
+        console.log('we are in the catch', e);
         setNotification(e.message, 'error');
       });
   };

@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { useGetCurrentUser, useLoginWithToken } from '../hooks/user';
 import apiClient from './client';
+import { useNotification } from '../utils/NotificationContext';
 
 interface AuthContextProps {
   accessToken: any;
@@ -21,6 +22,7 @@ function AuthProvider(props: any) {
   const [accessToken, setAccessToken] = useState<string>('');
   const { data: currentUser, refetch } = useGetCurrentUser(accessToken);
   const loginWithTokenMutation = useLoginWithToken();
+  const { setNotification } = useNotification();
 
   const loginWithToken = useCallback(
     async (idToken: string) => {
@@ -28,6 +30,9 @@ function AuthProvider(props: any) {
         onSuccess: (response) => {
           setAccessToken(response.access_token);
         },
+        onError: (error) => {
+          setNotification('Login failed. Please contact your system administrator.', 'error');
+        }
       });
     },
     [loginWithTokenMutation],

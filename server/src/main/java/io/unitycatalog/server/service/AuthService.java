@@ -162,7 +162,7 @@ public class AuthService {
 
     try {
       User user = USER_REPOSITORY.getUserByEmail(subject);
-      if (user != null && user.getState() != User.StateEnum.ENABLED) {
+      if (user != null && user.getState() != User.StateEnum.DISABLED) {
         return;
       }
     } catch (Exception e) {
