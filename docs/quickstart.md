@@ -146,6 +146,84 @@ Delete the table to clean up:
 bin/uc table delete --full_name unity.default.my_table
 ```
 
+## Manage models in Unity Catalog using MLflow
+
+Unity catalog supports the management and governance of ML models as securable assets.  Starting with 
+[MLflow 2.16.1](https://mlflow.org/releases/2.16.1), MLflow offers integrated support for using Unity Catalog as the 
+backing resource for the MLflow model registry.  What this means is that with the MLflow client, you will be able to 
+interact directly with your Unity Catalog service for the creation and access of registered models.
+
+## Setup MLflow for usage with Unity Catalog
+
+In your desired development environment, install MLflow 2.16.1 or higher:
+
+```sh
+$ pip install mlflow>=2.16.1
+```
+
+The installation of MLflow includes the MLflow CLI tool, so you can start a local MLflow server with UI by running the command below in your terminal:
+
+```sh
+$ mlflow ui
+```
+
+It will generate logs with the IP address, for example:
+
+```
+(mlflow) [master][~/Documents/mlflow_team/mlflow]$ mlflow ui
+[2023-10-25 19:39:12 -0700] [50239] [INFO] Starting gunicorn 20.1.0
+[2023-10-25 19:39:12 -0700] [50239] [INFO] Listening at: http://127.0.0.1:5000 (50239)
+```
+
+Next, from within a python script or shell, import MLflow and set the tracking URI and the registry URI.
+
+```python
+import mlflow
+
+mlflow.set_tracking_uri("http://localhost:5000")
+mlflow.set_registry_uri("uc:http://localhost:8080")
+```
+
+At this point, your MLflow environment is ready for use with the newly started MLflow tracking server and the Unity Catalog server acting as your model registry.
+
+You can quickly train a test model and validate that the MLflow/Unity catalog integration is fully working.
+
+```python
+import os
+from sklearn import datasets
+from sklearn.ensemble import RandomForestClassifier
+from sklearn.model_selection import train_test_split
+import pandas as pd
+
+X, y = datasets.load_iris(return_X_y=True, as_frame=True)
+X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
+
+with mlflow.start_run():
+    # Train a sklearn model on the iris dataset
+    clf = RandomForestClassifier(max_depth=7)
+    clf.fit(X_train, y_train)
+    # Take the first row of the training dataset as the model input example.
+    input_example = X_train.iloc[[0]]
+    # Log the model and register it as a new version in UC.
+    mlflow.sklearn.log_model(
+        sk_model=clf,
+        artifact_path="model",
+        # The signature is automatically inferred from the input example and its predicted output.
+        input_example=input_example,
+        registered_model_name="unity.default.iris",
+    )
+
+loaded_model = mlflow.pyfunc.load_model(f"models:/unity.default.iris/1")
+predictions = loaded_model.predict(X_test)
+iris_feature_names = datasets.load_iris().feature_names
+result = pd.DataFrame(X_test, columns=iris_feature_names)
+result["actual_class"] = y_test
+result["predicted_class"] = predictions
+result[:4]
+```
+
+This code snippet will create a registered model `default.unity.iris` and log the trained model as model version 1.  It then loads the model from the Unity Catalog server, and performs batch inference on the test set using the loaded model.
+
 ## APIs and Compatibility
 
 - Open API specification: See the Unity Catalog Rest API.
