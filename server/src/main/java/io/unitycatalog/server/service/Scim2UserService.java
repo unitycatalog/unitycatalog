@@ -129,10 +129,15 @@ public class Scim2UserService {
   @Produces("application/scim+json")
   @StatusCode(200)
   public UserResource getCurrentUser() {
+    // TODO: will make this a util method in the access control PR
     ServiceRequestContext ctx = ServiceRequestContext.current();
     DecodedJWT decodedJWT = ctx.attr(AuthDecorator.DECODED_JWT_ATTR);
-    Claim sub = decodedJWT.getClaim("sub");
-    return asUserResource(USER_REPOSITORY.getUserByEmail(sub.asString()));
+    if (decodedJWT != null) {
+      Claim sub = decodedJWT.getClaim("sub");
+      return asUserResource(USER_REPOSITORY.getUserByEmail(sub.asString()));
+    } else {
+      throw new Scim2RuntimeException(new BadRequestException("No user found."));
+    }
   }
 
   @Get("/{id}")
