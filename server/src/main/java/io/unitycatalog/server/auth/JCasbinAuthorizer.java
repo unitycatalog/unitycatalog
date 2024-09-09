@@ -26,6 +26,12 @@ import org.casbin.jcasbin.model.Model;
 public class JCasbinAuthorizer implements UnityCatalogAuthorizer {
   private final Enforcer enforcer;
 
+  private static final int PRINCIPAL_INDEX = 0;
+  private static final int RESOURCE_INDEX = 1;
+  private static final int PRIVILEGE_INDEX = 2;
+
+  private static final String HIERARCHY_POLICY = "g2";
+
   public JCasbinAuthorizer() throws Exception {
     Properties properties = HibernateUtils.getHibernateProperties();
     String driver = properties.getProperty("hibernate.connection.driver_class");
@@ -55,27 +61,28 @@ public class JCasbinAuthorizer implements UnityCatalogAuthorizer {
 
   @Override
   public boolean clearAuthorizationsForPrincipal(UUID principal) {
-    return enforcer.removeFilteredPolicy(0, principal.toString());
+    return enforcer.removeFilteredPolicy(PRINCIPAL_INDEX, principal.toString());
   }
 
   @Override
   public boolean clearAuthorizationsForResource(UUID resource) {
-    return enforcer.removeFilteredPolicy(1, resource.toString());
+    return enforcer.removeFilteredPolicy(RESOURCE_INDEX, resource.toString());
   }
 
   @Override
   public boolean addHierarchyChild(UUID parent, UUID child) {
-    return enforcer.addNamedGroupingPolicy("g2", parent.toString(), child.toString());
+    return enforcer.addNamedGroupingPolicy(HIERARCHY_POLICY, parent.toString(), child.toString());
   }
 
   @Override
   public boolean removeHierarchyChild(UUID parent, UUID child) {
-    return enforcer.removeNamedGroupingPolicy("g2", parent.toString(), child.toString());
+    return enforcer.removeNamedGroupingPolicy(
+        HIERARCHY_POLICY, parent.toString(), child.toString());
   }
 
   @Override
   public boolean removeHierarchyChildren(UUID resource) {
-    return enforcer.removeFilteredNamedGroupingPolicy("g2", 0, resource.toString());
+    return enforcer.removeFilteredNamedGroupingPolicy(HIERARCHY_POLICY, 0, resource.toString());
   }
 
   @Override
@@ -103,15 +110,19 @@ public class JCasbinAuthorizer implements UnityCatalogAuthorizer {
   public List<Privilege> listAuthorizations(UUID principal, UUID resource) {
     List<List<String>> list =
         enforcer.getPermissionsForUserInDomain(principal.toString(), resource.toString());
-    return list.stream().map(l -> l.get(2)).map(Privilege::fromValue).collect(Collectors.toList());
+    return list.stream()
+        .map(l -> l.get(PRIVILEGE_INDEX))
+        .map(Privilege::fromValue)
+        .collect(Collectors.toList());
   }
 
   @Override
   public Map<UUID, List<Privilege>> listAuthorizations(UUID resource) {
-    return enforcer.getFilteredPolicy(1, resource.toString()).stream()
+    return enforcer.getFilteredPolicy(RESOURCE_INDEX, resource.toString()).stream()
         .collect(
             Collectors.groupingBy(
-                l -> UUID.fromString(l.get(0)),
-                Collectors.mapping(l -> Privilege.fromValue(l.get(2)), Collectors.toList())));
+                l -> UUID.fromString(l.get(PRINCIPAL_INDEX)),
+                Collectors.mapping(
+                    l -> Privilege.fromValue(l.get(PRIVILEGE_INDEX)), Collectors.toList())));
   }
 }
