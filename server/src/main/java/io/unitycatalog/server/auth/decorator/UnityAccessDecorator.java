@@ -102,7 +102,7 @@ public class UnityAccessDecorator implements DecoratingHttpServiceFunction {
           return authorizeByRequest(delegate, ctx, req, principal, locator, expression);
         } else {
           LOGGER.warn("No authorization resource(s) found.");
-          // going to assume the expression is just #deny, #allow or #defer
+          // going to assume the expression is just #deny, #permit or #defer
         }
       } else {
         LOGGER.debug("No authorization expression found.");
