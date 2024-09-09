@@ -143,22 +143,24 @@ function AppProvider() {
               style={{ flex: 1, minWidth: 0 }}
             />
           </div>
-          <div>
-            <Dropdown
-              menu={{ items: profileMenuItems }}
-              trigger={['click']}
-              placement={'bottomRight'}
-            >
-              <Avatar
-                icon={<UserOutlined />}
-                style={{
-                  backgroundColor: 'white',
-                  color: 'black',
-                  cursor: 'pointer',
-                }}
-              />
-            </Dropdown>
-          </div>
+          {authEnabled && (
+            <div>
+              <Dropdown
+                menu={{ items: profileMenuItems }}
+                trigger={['click']}
+                placement={'bottomRight'}
+              >
+                <Avatar
+                  icon={<UserOutlined />}
+                  style={{
+                    backgroundColor: 'white',
+                    color: 'black',
+                    cursor: 'pointer',
+                  }}
+                />
+              </Dropdown>
+            </div>
+          )}
         </Layout.Header>
         {/* Content */}
         <Layout.Content
