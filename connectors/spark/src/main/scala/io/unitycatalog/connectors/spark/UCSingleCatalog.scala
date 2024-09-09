@@ -6,6 +6,7 @@ import io.unitycatalog.client.model.{ColumnInfo, ColumnTypeName, CreateSchema, C
 
 import java.net.URI
 import java.util
+import org.apache.hadoop.fs.Path
 import org.apache.hadoop.fs.azurebfs.constants.ConfigurationKeys.{FS_AZURE_ACCOUNT_AUTH_TYPE_PROPERTY_NAME, FS_AZURE_ACCOUNT_IS_HNS_ENABLED, FS_AZURE_SAS_TOKEN_PROVIDER_TYPE}
 import org.apache.spark.sql.catalyst.TableIdentifier
 import org.apache.spark.sql.catalyst.analysis.{NoSuchNamespaceException, NoSuchTableException}
@@ -48,7 +49,19 @@ class UCSingleCatalog extends TableCatalog with SupportsNamespaces {
       columns: Array[Column],
       partitions: Array[Transform],
       properties: util.Map[String, String]): Table = {
-    deltaCatalog.createTable(ident, columns, partitions, properties)
+    val isExternal = properties.containsKey(TableCatalog.PROP_EXTERNAL)
+    def isPathTable = ident.namespace().length == 1 && new Path(ident.name()).isAbsolute
+    if (!isExternal && !properties.containsKey(TableCatalog.PROP_LOCATION) && !isPathTable) {
+      val newProps = new util.HashMap[String, String]
+      newProps.putAll(properties)
+      // TODO: here we use a fake location for managed table, we should generate table location
+      //       properly when Unity Catalog supports creating managed table.
+      newProps.put(TableCatalog.PROP_LOCATION, "file:///tmp/fake")
+      newProps.put(TableCatalog.PROP_IS_MANAGED_LOCATION, "true")
+      deltaCatalog.createTable(ident, columns, partitions, newProps)
+    } else {
+      deltaCatalog.createTable(ident, columns, partitions, properties)
+    }
   }
 
   override def createTable(ident: Identifier, schema: StructType, partitions: Array[Transform], properties: util.Map[String, String]): Table = {
@@ -216,8 +229,12 @@ private class UCProxy extends TableCatalog with SupportsNamespaces {
     createTable.setName(ident.name())
     createTable.setSchemaName(ident.namespace().head)
     createTable.setCatalogName(this.name)
+
+    val isExternal = properties.containsKey(TableCatalog.PROP_EXTERNAL)
     val storageLocation = properties.get(TableCatalog.PROP_LOCATION)
-    if (storageLocation == null) {
+    val isManagedLocation = Option(properties.get(TableCatalog.PROP_IS_MANAGED_LOCATION))
+      .exists(_.equalsIgnoreCase("true"))
+    if (!isExternal && (storageLocation == null || isManagedLocation)) {
       // TODO: Unity Catalog does not support managed tables now.
       throw new ApiException("Unity Catalog does not support managed table.")
     }

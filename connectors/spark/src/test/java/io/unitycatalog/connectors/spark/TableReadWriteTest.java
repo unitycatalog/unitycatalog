@@ -284,8 +284,8 @@ public class TableReadWriteTest extends BaseSparkIntegrationTest {
     session.stop();
   }
 
-  // TODO: enable the test after the new Delta release.
-  // @Test
+  @Disabled("Ignoring test until Delta 3.2.1 is released.")
+  @Test
   public void testCreateExternalDeltaTable() throws ApiException, IOException {
     SparkSession session = createSparkSessionWithCatalogs(SPARK_CATALOG, CATALOG_NAME);
     String path1 = generateTableLocation(SPARK_CATALOG, DELTA_TABLE);
@@ -318,6 +318,34 @@ public class TableReadWriteTest extends BaseSparkIntegrationTest {
     assertEquals(DataTypes.StringType, schema2.apply(0).dataType());
 
     session.stop();
+  }
+
+  @Test
+  public void testCreateManagedParquetTable() {
+    SparkSession session = createSparkSessionWithCatalogs(CATALOG_NAME);
+    String fullTableName = CATALOG_NAME + "." + SCHEMA_NAME + "." + PARQUET_TABLE;
+    assertThatThrownBy(() -> {
+      session.sql("CREATE TABLE " + fullTableName + "(name STRING) USING parquet");
+    }).hasMessageContaining("not support managed table");
+    session.close();
+  }
+
+  @Disabled("Ignoring test until Delta 3.2.1 is released.")
+  @Test
+  public void testCreateManagedDeltaTable() {
+    SparkSession session = createSparkSessionWithCatalogs(SPARK_CATALOG, CATALOG_NAME);
+
+    String fullTableName1 = SPARK_CATALOG + "." + SCHEMA_NAME + "." + DELTA_TABLE;
+    assertThatThrownBy(() -> {
+      session.sql("CREATE TABLE " + fullTableName1 + "(name STRING) USING delta");
+    }).hasMessageContaining("not support managed table");
+
+    String fullTableName2 = CATALOG_NAME + "." + SCHEMA_NAME + "." + DELTA_TABLE;
+    assertThatThrownBy(() -> {
+      session.sql("CREATE TABLE " + fullTableName2 + "(name STRING) USING delta");
+    }).hasMessageContaining("not support managed table");
+
+    session.close();
   }
 
   private String generateTableLocation(String catalogName, String tableName) throws IOException {
