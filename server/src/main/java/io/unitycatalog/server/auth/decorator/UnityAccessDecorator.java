@@ -114,7 +114,9 @@ public class UnityAccessDecorator implements DecoratingHttpServiceFunction {
     return delegate.serve(ctx, req);
   }
 
-  private HttpResponse authorizeByRequest(HttpService delegate, ServiceRequestContext ctx, HttpRequest req, UUID principal, List<KeyLocator> locators, String expression) throws Exception {
+  private HttpResponse authorizeByRequest(HttpService delegate, ServiceRequestContext ctx,
+                                          HttpRequest req, UUID principal, List<KeyLocator> locators,
+                                          String expression) throws Exception {
     //
     // Based on the query and payload parameters defined on the service method (that
     // have been gathered as Locators), we'll attempt to find the entity/resource that
