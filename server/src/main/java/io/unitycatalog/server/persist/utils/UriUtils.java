@@ -1,5 +1,10 @@
 package io.unitycatalog.server.persist.utils;
 
+import static io.unitycatalog.server.utils.Constants.URI_SCHEME_ABFS;
+import static io.unitycatalog.server.utils.Constants.URI_SCHEME_ABFSS;
+import static io.unitycatalog.server.utils.Constants.URI_SCHEME_GS;
+import static io.unitycatalog.server.utils.Constants.URI_SCHEME_S3;
+
 import io.unitycatalog.server.exception.BaseException;
 import io.unitycatalog.server.exception.ErrorCode;
 import io.unitycatalog.server.model.AwsCredentials;
@@ -96,35 +101,26 @@ public class UriUtils {
       Optional<GenerateTemporaryModelVersionCredentialsResponse> credentials) {
     URI parsedUri = URI.create(uri);
     validateURI(parsedUri);
-    if (!parsedUri.getScheme().equals("file") && credentials.isEmpty()) {
-      throw new BaseException(
-          ErrorCode.INVALID_ARGUMENT, "Empty credentials passed for a non-file based URI");
-    }
     try {
       if (parsedUri.getScheme().equals("file")) {
         return updateLocalDirectory(parsedUri, op);
-      } else if (parsedUri.getScheme().equals("s3")
-          && credentials.get().getAwsTempCredentials() != null) {
+      } else if (parsedUri.getScheme().equals(URI_SCHEME_S3)) {
         // For v0.2, we will NOT create the path in cloud storage since MLflow uses the native cloud
         // clients and not the hadoopfs libraries.  We will update this in v0.3 when UC OSS begins
-        // using
-        // the hadoopfs libraries.
+        // using the hadoopfs libraries.
         /* return updateS3Directory(parsedUri, op, credentials.get().getAwsTempCredentials()); */
         return parsedUri;
-      } else if (parsedUri.getScheme().equals("gc")
-          && credentials.get().getGcpOauthToken() != null) {
+      } else if (parsedUri.getScheme().equals(URI_SCHEME_GS)) {
         // For v0.2, we will NOT create the path in cloud storage since MLflow uses the native cloud
         // clients and not the hadoopfs libraries.  We will update this in v0.3 when UC OSS begins
-        // using
-        // the hadoopfs libraries.
+        // using the hadoopfs libraries.
         /* return updateGcDirectory(parsedUri, op, credentials.get().getGcpOauthToken()); */
         return parsedUri;
-      } else if (parsedUri.getScheme().equals("abfs")
-          && credentials.get().getAzureUserDelegationSas() != null) {
+      } else if (parsedUri.getScheme().equals(URI_SCHEME_ABFS)
+          || parsedUri.getScheme().equals(URI_SCHEME_ABFSS)) {
         // For v0.2, we will NOT create the path in cloud storage since MLflow uses the native cloud
         // clients and not the hadoopfs libraries.  We will update this in v0.3 when UC OSS begins
-        // using
-        // the hadoopfs libraries.
+        // using the hadoopfs libraries.
         /* return updateAbsDirectory(parsedUri, op, credentials.get().getAzureUserDelegationSas()); */
         return parsedUri;
       }
