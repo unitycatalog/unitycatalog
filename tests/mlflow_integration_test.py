@@ -8,6 +8,11 @@
 # pip install mlflow
 # pip install --no-deps git+https://github.com/mlflow/mlflow.git@master
 
+## If you are using a cloud based storage root, pip install the following external (to mlflow) deps
+# pip install boto3
+# pip install azure-storage-file-datalake azure-identity
+# pip install google-cloud-storage
+
 ## Startup an MLflow tracking server
 # mlflow ui
 
@@ -24,8 +29,8 @@ from sklearn.ensemble import RandomForestClassifier
 from sklearn.model_selection import train_test_split
 import pandas as pd
 
-catalog = "kjc9"
-schema = "uc-oss"
+catalog = "unity"
+schema = "default"
 registered_model_name = "iris"
 model_name = f"{catalog}.{schema}.{registered_model_name}"
 mlflow.set_tracking_uri("http://127.0.0.1:5000")
