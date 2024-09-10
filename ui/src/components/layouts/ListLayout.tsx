@@ -15,14 +15,14 @@ interface ListLayoutProps<T> {
 }
 
 export default function ListLayout<T extends AnyObject = AnyObject>({
-                                                                      data,
-                                                                      columns,
-                                                                      title,
-                                                                      onRowClick,
-                                                                      loading,
-                                                                      filters,
-                                                                      showSearch = true,
-                                                                    }: ListLayoutProps<T>) {
+  data,
+  columns,
+  title,
+  onRowClick,
+  loading,
+  filters,
+  showSearch = true,
+}: ListLayoutProps<T>) {
   const [filterValue, setFilterValue] = useState('');
 
   const filteredData = useMemo(() => {

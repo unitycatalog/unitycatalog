@@ -6,7 +6,7 @@ import {
   DeploymentUnitOutlined,
   FolderOutlined,
   FunctionOutlined,
-  TableOutlined
+  TableOutlined,
 } from '@ant-design/icons';
 import { ModelInterface } from '../hooks/models';
 
@@ -17,7 +17,12 @@ export function updateEntityTreeData({
 }: {
   treeData: TreeDataNode[];
   entityToExpand: { catalog: string; schema: string; type: string };
-  entityList: (TableInterface | VolumeInterface | FunctionInterface | ModelInterface)[];
+  entityList: (
+    | TableInterface
+    | VolumeInterface
+    | FunctionInterface
+    | ModelInterface
+  )[];
 }) {
   const { catalog, schema, type } = entityToExpand;
   const catalogNode = treeData.find(({ key }) => key === catalog);
@@ -39,7 +44,7 @@ export function updateEntityTreeData({
                 <FolderOutlined />
               ) : type === 'registered_models' ? (
                 <DeploymentUnitOutlined />
-              ): (
+              ) : (
                 <TableOutlined />
               )}{' '}
               {name}

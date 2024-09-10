@@ -102,7 +102,9 @@ export default function VersionDetails() {
         <Flex vertical gap={60}>
           <DescriptionBox comment={data?.comment} />
           <div>
-            <Typography.Title level={5} style={{ marginBottom: 16}}>Version details</Typography.Title>
+            <Typography.Title level={5} style={{ marginBottom: 16 }}>
+              Version details
+            </Typography.Title>
             <Table
               columns={columns}
               dataSource={versionData}

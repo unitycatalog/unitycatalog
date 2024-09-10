@@ -40,10 +40,10 @@ interface ModelSidebarProps {
   model: string;
 }
 export default function ModelSidebar({
-                                       catalog,
-                                       schema,
-                                       model,
-                                     }: ModelSidebarProps) {
+  catalog,
+  schema,
+  model,
+}: ModelSidebarProps) {
   const { data } = useGetModel({ catalog, schema, model });
 
   if (!data) return null;

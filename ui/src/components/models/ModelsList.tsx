@@ -13,10 +13,10 @@ interface ModelsListProps {
 }
 
 export default function ModelsList({
-                                     catalog,
-                                     schema,
-                                     filters,
-                                   }: ModelsListProps) {
+  catalog,
+  schema,
+  filters,
+}: ModelsListProps) {
   const { data, isLoading } = useListModels({ catalog, schema });
   const navigate = useNavigate();
 
