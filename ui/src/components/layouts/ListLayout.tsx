@@ -11,16 +11,18 @@ interface ListLayoutProps<T> {
   onRowClick?: (record: T) => void;
   loading?: boolean;
   filters?: ReactNode;
+  showSearch?: boolean;
 }
 
 export default function ListLayout<T extends AnyObject = AnyObject>({
-  data,
-  columns,
-  title,
-  onRowClick,
-  loading,
-  filters,
-}: ListLayoutProps<T>) {
+                                                                      data,
+                                                                      columns,
+                                                                      title,
+                                                                      onRowClick,
+                                                                      loading,
+                                                                      filters,
+                                                                      showSearch = true,
+                                                                    }: ListLayoutProps<T>) {
   const [filterValue, setFilterValue] = useState('');
 
   const filteredData = useMemo(() => {
@@ -36,23 +38,25 @@ export default function ListLayout<T extends AnyObject = AnyObject>({
   return (
     <Flex gap="middle" vertical style={{ flexGrow: 1 }}>
       {title}
-      <Row gutter={[8, 8]}>
-        <Col
-          span={8}
-          xs={{ span: 12 }}
-          md={{ span: 10 }}
-          lg={{ span: 8 }}
-          xl={{ span: 6 }}
-        >
-          <Input
-            placeholder="Search"
-            prefix={<SearchOutlined />}
-            value={filterValue}
-            onChange={(e) => setFilterValue(e.target.value)}
-          />
-        </Col>
-        {filters && <Col flex={1}>{filters}</Col>}
-      </Row>
+      {showSearch && (
+        <Row gutter={[8, 8]}>
+          <Col
+            span={8}
+            xs={{ span: 12 }}
+            md={{ span: 10 }}
+            lg={{ span: 8 }}
+            xl={{ span: 6 }}
+          >
+            <Input
+              placeholder="Search"
+              prefix={<SearchOutlined />}
+              value={filterValue}
+              onChange={(e) => setFilterValue(e.target.value)}
+            />
+          </Col>
+          {filters && <Col flex={1}>{filters}</Col>}
+        </Row>
+      )}
       <Table
         loading={loading}
         className={onRowClick ? styles.clickableListLayout : undefined}

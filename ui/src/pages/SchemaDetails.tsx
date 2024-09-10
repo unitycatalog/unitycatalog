@@ -13,6 +13,7 @@ import CreateAssetsDropdown from '../components/schemas/CreateAssetsDropdown';
 import SchemaActionsDropdown from '../components/schemas/SchemaActionDropdown';
 import { EditSchemaDescriptionModal } from '../components/modals/EditSchemaDescriptionModal';
 import { useNotification } from '../utils/NotificationContext';
+import ModelsList from '../components/models/ModelsList';
 
 export default function SchemaDetails() {
   const { catalog, schema } = useParams();
@@ -93,12 +94,14 @@ enum SchemaTabs {
   Tables = 'Tables',
   Volumes = 'Volumes',
   Functions = 'Functions',
+  Models = 'Models',
 }
 
 const SCHEMA_TABS_MAP = {
   [SchemaTabs.Tables]: TablesList,
   [SchemaTabs.Volumes]: VolumesList,
   [SchemaTabs.Functions]: FunctionsList,
+  [SchemaTabs.Models]: ModelsList,
 };
 
 interface SchemaDetailsTabsProps {
@@ -129,6 +132,9 @@ function SchemaDetailsTabs({ catalog, schema }: SchemaDetailsTabsProps) {
           </Radio.Button>
           <Radio.Button value={SchemaTabs.Functions}>
             {SchemaTabs.Functions}
+          </Radio.Button>
+          <Radio.Button value={SchemaTabs.Models}>
+            {SchemaTabs.Models}
           </Radio.Button>
         </Radio.Group>
       }
