@@ -16,21 +16,17 @@ jobs:
       - name: Generate Swagger UI
         uses: Legion2/swagger-ui-action@v1
         with:
-          output: ./swagger-ui/
+          output: ./swagger-ui/swagger-docs
           spec-file: ./api/all.yaml
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       - name: Prepare deployment directory for Swagger UI
         run: |
-            set +x
-            ls -ltr  ./swagger-ui
-            mkdir -p ./docs
-            mv ./swagger-ui/* ./docs/
-            ls -ltr  ./docs
+            mkdir -p swagger-docs
+            mv swagger-ui/* ./swagger-docs/
 
       - name: Deploy to GitHub Pages
-
         uses: peaceiris/actions-gh-pages@v3
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
-          publish_dir: ./docs
+          publish_dir: ./swagger-docs
           keep_files: true
