@@ -13,7 +13,6 @@ public class UriUtilsTest {
   public void testUriUtils() {
 
     System.setProperty("storage-root.models", "/tmp");
-    UriUtils.reset();
 
     String modelPathUri = UriUtils.getModelStorageLocation("catalog", "schema", "my-model");
     String modelVersionPathUri =
@@ -31,7 +30,6 @@ public class UriUtilsTest {
     UriUtils.deleteStorageLocationPath("file:/tmp/catalog");
 
     System.setProperty("storage-root.models", "file:///tmp/random");
-    UriUtils.reset();
 
     modelPathUri = UriUtils.getModelStorageLocation("catalog", "schema", "my-model");
     modelVersionPathUri =
@@ -60,7 +58,5 @@ public class UriUtilsTest {
               UriUtils.deleteStorageLocationPath("");
             })
         .isInstanceOf(BaseException.class);
-
-    UriUtils.reset();
   }
 }
