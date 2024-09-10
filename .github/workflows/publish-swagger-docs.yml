@@ -20,7 +20,7 @@ jobs:
           spec-file: ./api/all.yaml
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       - name: Prepare deployment directory for Swagger UI
-          run: |
+        run: |
             mkdir -p swagger-docs
             mv swagger-ui/* ./swagger-docs/
 
