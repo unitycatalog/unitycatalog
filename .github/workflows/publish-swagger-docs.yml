@@ -23,6 +23,7 @@ jobs:
         run: |
             mkdir -p swagger-docs
             mv swagger-ui/* ./swagger-docs/
+            touch swagger-docs/.nojekyll
 
       - name: Deploy to GitHub Pages
         uses: peaceiris/actions-gh-pages@v3
