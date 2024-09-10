@@ -21,13 +21,12 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       - name: Prepare deployment directory for Swagger UI
         run: |
-            mkdir -p swagger-docs
-            mv swagger-ui/* ./swagger-docs/
-            touch ./swagger-docs/.nojekyll
+            mkdir -p docs
+            mv swagger-ui/* ./docs/
 
       - name: Deploy to GitHub Pages
         uses: peaceiris/actions-gh-pages@v3
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
-          publish_dir: ./swagger-docs
+          publish_dir: ./docs
           keep_files: true
