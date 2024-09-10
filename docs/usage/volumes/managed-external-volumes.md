@@ -42,6 +42,10 @@ You will see << >>
 OUTPUT
 ```
 
+The storage location can be a local path (absolute path) or an S3 path. When an S3 path is provided, the server will vend temporary credentials to access the S3 bucket and server properties must be set up accordingly.
+
+<< link to server creds docs >>
+
 ## Dropping Managed vs External Volumes
 
 When you drop a managed volume from Unity Catalog, the underlying data is also removed.
