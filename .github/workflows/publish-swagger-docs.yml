@@ -16,7 +16,7 @@ jobs:
       - name: Generate Swagger UI
         uses: Legion2/swagger-ui-action@v1
         with:
-          output: ./swagger-ui/swagger-docs
+f          output: ./swagger-ui
           spec-file: ./api/all.yaml
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       - name: Prepare deployment directory for Swagger UI
