@@ -1,20 +1,11 @@
 package io.unitycatalog.server.persist.utils;
 
-import com.amazonaws.auth.AWSStaticCredentialsProvider;
-import com.amazonaws.auth.BasicSessionCredentials;
-import com.amazonaws.services.s3.AmazonS3;
-import com.amazonaws.services.s3.AmazonS3ClientBuilder;
-import com.amazonaws.services.s3.model.ListObjectsRequest;
-import com.amazonaws.services.s3.model.ObjectListing;
-import com.amazonaws.services.s3.model.ObjectMetadata;
-import com.amazonaws.services.s3.model.PutObjectRequest;
 import io.unitycatalog.server.exception.BaseException;
 import io.unitycatalog.server.exception.ErrorCode;
 import io.unitycatalog.server.model.AwsCredentials;
 import io.unitycatalog.server.model.AzureUserDelegationSAS;
 import io.unitycatalog.server.model.GcpOauthToken;
 import io.unitycatalog.server.model.GenerateTemporaryModelVersionCredentialsResponse;
-import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.net.URI;
 import java.net.URISyntaxException;
@@ -177,7 +168,7 @@ public class UriUtils {
   }
 
   private static URI updateS3Directory(URI parsedUri, Operation op, AwsCredentials awsCredentials) {
-    String bucketName = parsedUri.getHost();
+    /*String bucketName = parsedUri.getHost();
     String path = parsedUri.getPath().substring(1); // Remove leading '/'
     String accessKey = awsCredentials.getAccessKeyId();
     String secretKey = awsCredentials.getSecretAccessKey();
@@ -227,7 +218,7 @@ public class UriUtils {
                 });
         req.setMarker(listing.getNextMarker());
       } while (listing.isTruncated());
-    }
+    }*/
     return parsedUri;
   }
 
