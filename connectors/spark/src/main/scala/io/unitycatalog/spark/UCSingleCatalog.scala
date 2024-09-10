@@ -246,11 +246,16 @@ private class UCProxy extends TableCatalog with SupportsNamespaces {
     createTable.setSchemaName(ident.namespace().head)
     createTable.setCatalogName(this.name)
 
-    val isExternal = properties.containsKey(TableCatalog.PROP_EXTERNAL)
+    val hasExternalClause = properties.containsKey(TableCatalog.PROP_EXTERNAL)
     val storageLocation = properties.get(TableCatalog.PROP_LOCATION)
+    if (hasExternalClause && storageLocation == null) {
+      throw new ApiException("Cannot create EXTERNAL TABLE without location.")
+    }
+    assert(storageLocation != null, "location should either be user specified or system generated.")
     val isManagedLocation = Option(properties.get(TableCatalog.PROP_IS_MANAGED_LOCATION))
       .exists(_.equalsIgnoreCase("true"))
-    if (!isExternal && (storageLocation == null || isManagedLocation)) {
+    if (isManagedLocation) {
+      assert(!hasExternalClause, "location is only generated for managed tables.")
       // TODO: Unity Catalog does not support managed tables now.
       throw new ApiException("Unity Catalog does not support managed table.")
     }

@@ -321,6 +321,24 @@ public class TableReadWriteTest extends BaseSparkIntegrationTest {
   }
 
   @Test
+  public void testCreateExternalTableWithoutLocation() {
+    SparkSession session = createSparkSessionWithCatalogs(CATALOG_NAME);
+
+    String fullTableName1 = CATALOG_NAME + "." + SCHEMA_NAME + "." + PARQUET_TABLE;
+    assertThatThrownBy(() -> {
+      session.sql("CREATE EXTERNAL TABLE " + fullTableName1 + "(name STRING) USING parquet");
+    }).hasMessageContaining("Cannot create EXTERNAL TABLE without location");
+
+    // Uncomment the tests after Delta 3.2.1
+//    String fullTableName2 = CATALOG_NAME + "." + SCHEMA_NAME + "." + DELTA_TABLE;
+//    assertThatThrownBy(() -> {
+//      session.sql("CREATE EXTERNAL TABLE " + fullTableName2 + "(name STRING) USING delta");
+//    }).hasMessageContaining("Cannot create EXTERNAL TABLE without location");
+
+    session.close();
+  }
+
+  @Test
   public void testCreateManagedParquetTable() {
     SparkSession session = createSparkSessionWithCatalogs(CATALOG_NAME);
     String fullTableName = CATALOG_NAME + "." + SCHEMA_NAME + "." + PARQUET_TABLE;
