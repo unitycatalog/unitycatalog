@@ -154,7 +154,7 @@ private class UCProxy extends TableCatalog with SupportsNamespaces {
         temporaryTableCredentialsApi
           .generateTemporaryTableCredentials(
             // TODO: at this time, we don't know if the table will be read or written. For now we always
-            //       request READ credentials as the server doesn't distinguish between READ and
+            //       request READ_WRITE credentials as the server doesn't distinguish between READ and
             //       READ_WRITE credentials as of today. When loading a table, Spark should tell if it's
             //       for read or write, we can request the proper credential after fixing Spark.
             new GenerateTemporaryTableCredential().tableId(tableId).operation(TableOperation.READ_WRITE)
