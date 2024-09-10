@@ -104,7 +104,7 @@ bin/uc table read --full_name unity.default.numbers
 
 ### Operate on Delta tables with DuckDB
 
-For operating on tables with DuckDB, you will have to [install it](https://duckdb.org/docs/installation/) (at least version 1.0).
+For operating on tables with DuckDB, you will have to [install it](https://duckdb.org/docs/installation/) (version 1.0).
 Let's start DuckDB and install a couple of extensions. To start DuckDB, run the command `duckdb` in the terminal.
 Then, in the DuckDB shell, run the following commands:
 
