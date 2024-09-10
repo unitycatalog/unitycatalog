@@ -1,4 +1,4 @@
-package io.unitycatalog.connectors.spark
+package io.unitycatalog.spark
 
 import io.unitycatalog.client.{ApiClient, ApiException}
 import io.unitycatalog.client.api.{SchemasApi, TablesApi, TemporaryTableCredentialsApi}
@@ -49,14 +49,19 @@ class UCSingleCatalog extends TableCatalog with SupportsNamespaces {
       columns: Array[Column],
       partitions: Array[Transform],
       properties: util.Map[String, String]): Table = {
-    val isExternal = properties.containsKey(TableCatalog.PROP_EXTERNAL)
+    val hasExternalClause = properties.containsKey(TableCatalog.PROP_EXTERNAL)
+    val hasLocationClause = properties.containsKey(TableCatalog.PROP_LOCATION)
     def isPathTable = ident.namespace().length == 1 && new Path(ident.name()).isAbsolute
-    if (!isExternal && !properties.containsKey(TableCatalog.PROP_LOCATION) && !isPathTable) {
+    // If both EXTERNAL and LOCATION are not specified in the CREATE TABLE command, and the table is
+    // not a path table like parquet.`/file/path`, we generate the UC-managed table location here.
+    if (!hasExternalClause && !hasLocationClause && !isPathTable) {
       val newProps = new util.HashMap[String, String]
       newProps.putAll(properties)
       // TODO: here we use a fake location for managed table, we should generate table location
       //       properly when Unity Catalog supports creating managed table.
       newProps.put(TableCatalog.PROP_LOCATION, "file:///tmp/fake")
+      // `PROP_IS_MANAGED_LOCATION` is used to indicate that the table location is not
+      // user-specified but system-generated, which is exactly the case here.
       newProps.put(TableCatalog.PROP_IS_MANAGED_LOCATION, "true")
       deltaCatalog.createTable(ident, columns, partitions, newProps)
     } else {

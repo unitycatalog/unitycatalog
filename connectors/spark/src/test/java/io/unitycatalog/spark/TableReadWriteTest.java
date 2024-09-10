@@ -1,4 +1,4 @@
-package io.unitycatalog.connectors.spark;
+package io.unitycatalog.spark;
 
 import static io.unitycatalog.server.utils.TestUtils.*;
 import static org.assertj.core.api.Assertions.assertThat;
