@@ -13,7 +13,7 @@ Unity Catalog is the industry’s only universal catalog for data and AI.
 
 The first release of Unity Catalog focuses on a core set of APIs for tables, unstructured data, and AI assets - with more to come soon on governance, access, and client interoperability. This is just the beginning!
 
-![image info](./docs/assets/images/uc.png)
+![UC Hero Image](./docs/assets/images/uc.png)
 
 ### Vibrant ecosystem
 
@@ -144,6 +144,21 @@ SELECT * from unity.default.numbers;
 
 You should see the tables listed and the contents of the `numbers` table printed.
 To quit DuckDB, press `Ctrl`+`D` (if your platform supports it), press `Ctrl`+`C`, or use the `.exit` command in the DuckDB shell.
+
+### Interact with the Unity Catalog UI
+
+![UC UI](./docs/assets/images/uc-ui.png)
+
+To use the Unity Catalog UI, start a new terminal and ensure you have already started the UC server (e.g., `./bin/start-uc-server`)
+
+```
+cd /ui
+yarn install
+yarn start
+open localhost:3000
+```
+
+
 
 ## CLI tutorial
 
