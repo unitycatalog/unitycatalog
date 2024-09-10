@@ -3,7 +3,7 @@ name: Publish Swagger Docs
 on:
   push:
     branches:
-      - temp
+      - main
 
 jobs:
   build:
