@@ -38,6 +38,11 @@ public class UriUtils {
   private static String modelStorageRootCached;
   private static String modelStorageRootPropertyCached;
 
+  /**
+   * TODO: Deprecate this method once unit tests are self contained and this class gets re-instantiated with
+   *       each test.  Property updates shouldn't affect the instantiated class and we should require a server
+   *       restart if the properties file is updated.
+   */
   private static void reset() {
     modelStorageRootPropertyCached = null;
     modelStorageRootCached = null;
