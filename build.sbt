@@ -543,7 +543,7 @@ lazy val spark = (project in file("connectors/spark"))
   )
 
 lazy val root = (project in file("."))
-  .aggregate(serverModels, client, server, cli, spark)
+  .aggregate(serverModels, client, server, cli, spark, controlApi, controlModels, apiDocs)
   .settings(
     name := s"$artifactNamePrefix",
     createTarballSettings(),
