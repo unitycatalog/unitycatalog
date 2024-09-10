@@ -178,7 +178,7 @@ Unity Catalog can be built using [sbt](https://www.scala-sbt.org/).
 To build UC (incl. [Spark Integration](./connectors/spark) module), run the following command:
 
 ```shell
-build/sbt clean package publishLocal spark/publishLocal
+build/sbt clean package publishLocal
 ```
 
 Refer to [sbt docs](https://www.scala-sbt.org/1.x/docs/) for more commands.
