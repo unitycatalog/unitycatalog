@@ -2,13 +2,11 @@
 
 Unity Catalog supports both managed and external tables.
 
-A **managed table** is a table for which Unity Catalog manages both the metadata and the data lifecycle itself (creation, storage, deletion). Data is managed at a pre-configured default storage location.
+A **managed table** is a table for which Unity Catalog manages both the metadata and the data itself, incl. creation, storage, and deletion. Data is managed at a pre-configured storage location to which Unity Catalog has full read and write access.
 
-An **external table** is a table for which Unity Catalog manages _only_ the metadata and not the lifecycle of the underlying data itself. The user is responsible for data creation, storage and deletion.
+An **external table** is a table for which Unity Catalog manages _only_ the metadata and not the lifecycle of the underlying data itself. The user is responsible for data creation, storage and deletion at the external location.
 
-When you drop a managed table from Unity Catalog, the underlying data is also removed.
-
-<< image >>
+![Managed vs External tables](../../assets/images/uc_managed_external_tables_bg.png)
 
 ## How to Create a Managed Table
 
@@ -78,4 +76,26 @@ You will see `TABLE_TYPE EXTERNAL` in the returned metadata:
 └────────────────────┴──────────────────────────────────────────────────────────────────────────────────────────┘
 ```
 
+## Dropping Managed vs External Tables
+
+When you drop a managed table from Unity Catalog, the underlying data is also removed.
+
+When you drop an external table from Unity Catalog, the underlying data is not touched. If you want the data to be deleted, you will have to do so manually.
+
+![Dropping Managed vs External tables](../../assets/images/uc_managed_external_tables_drop_bg.png)
+
 ## When to use which table
+
+Unity Catalog gives you the freedom to use both managed and external tables, depending on your needs.
+
+**You may want to use managed tables when:**
+
+- You prefer simplicity and easy data management.
+- Your data lifecycle is tightly coupled with the table definition.
+- You don't want to worry about the details of data storage.
+
+**You may want to use external tables when:**
+
+- You need to manage data storage locations explicitly.
+- You require data persistence independent of table definitions.
+- You need external read or write access to your data.
