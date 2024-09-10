@@ -22,7 +22,8 @@ jobs:
       - name: Prepare deployment directory for Swagger UI
         run: |
             set +x
-            mkdir docs
+            ls -ltr  ./swagger-ui
+            mkdir -p ./docs
             mv ./swagger-ui/* ./docs/
             ls -ltr  ./docs
 
