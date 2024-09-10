@@ -22,7 +22,6 @@ export default function SchemaDetails() {
   const { data } = useGetSchema({ catalog, schema });
   const [open, setOpen] = useState<boolean>(false);
   const { setNotification } = useNotification();
-  // const mutation = useUpdateSchema();
   const mutation = useUpdateSchema({ catalog, schema });
 
   if (!data) return null;
