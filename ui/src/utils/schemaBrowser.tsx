@@ -3,10 +3,12 @@ import { TableInterface } from '../hooks/tables';
 import { VolumeInterface } from '../hooks/volumes';
 import { FunctionInterface } from '../hooks/functions';
 import {
+  DeploymentUnitOutlined,
   FolderOutlined,
   FunctionOutlined,
-  TableOutlined,
+  TableOutlined
 } from '@ant-design/icons';
+import { ModelInterface } from '../hooks/models';
 
 export function updateEntityTreeData({
   treeData,
@@ -15,7 +17,7 @@ export function updateEntityTreeData({
 }: {
   treeData: TreeDataNode[];
   entityToExpand: { catalog: string; schema: string; type: string };
-  entityList: (TableInterface | VolumeInterface | FunctionInterface)[];
+  entityList: (TableInterface | VolumeInterface | FunctionInterface | ModelInterface)[];
 }) {
   const { catalog, schema, type } = entityToExpand;
   const catalogNode = treeData.find(({ key }) => key === catalog);
@@ -35,7 +37,9 @@ export function updateEntityTreeData({
                 <FunctionOutlined />
               ) : type === 'volumes' ? (
                 <FolderOutlined />
-              ) : (
+              ) : type === 'registered_models' ? (
+                <DeploymentUnitOutlined />
+              ): (
                 <TableOutlined />
               )}{' '}
               {name}

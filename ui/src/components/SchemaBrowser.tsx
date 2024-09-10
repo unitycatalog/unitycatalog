@@ -15,6 +15,7 @@ import { useListSchemas } from '../hooks/schemas';
 import { useListTables } from '../hooks/tables';
 import { useListVolumes } from '../hooks/volumes';
 import { useListFunctions } from '../hooks/functions';
+import { useListModels } from '../hooks/models';
 
 export default function SchemaBrowser() {
   const navigate = useNavigate();
@@ -64,6 +65,17 @@ export default function SchemaBrowser() {
         !!entityToExpand.catalog &&
         !!entityToExpand.schema &&
         entityToExpand.type === 'functions',
+    },
+  });
+
+  const listModelsRequest = useListModels({
+    catalog: entityToExpand.catalog,
+    schema: entityToExpand.schema,
+    options: {
+      enabled:
+        !!entityToExpand.catalog &&
+        !!entityToExpand.schema &&
+        entityToExpand.type === 'registered_models',
     },
   });
 
@@ -125,6 +137,12 @@ export default function SchemaBrowser() {
                   isLeaf: false,
                   selectable: false,
                 },
+                {
+                  title: 'Models',
+                  key: `${catalog_name}.${name}:registered_models`,
+                  isLeaf: false,
+                  selectable: false,
+                },
               ],
             }))
           : [
@@ -167,6 +185,15 @@ export default function SchemaBrowser() {
       );
     }
   }, [entityToExpand, listFunctionsRequest.data?.functions]);
+
+  useEffect(() => {
+    if (entityToExpand.type === 'registered_models') {
+      const entityList = listModelsRequest.data?.registered_models ?? [];
+      setTreeData((treeData) =>
+        updateEntityTreeData({ treeData, entityToExpand, entityList }),
+      );
+    }
+  }, [entityToExpand, listModelsRequest.data?.registered_models]);
 
   return (
     <div style={{ height: '100%', overflowY: 'auto' }}>
@@ -214,6 +241,8 @@ export default function SchemaBrowser() {
                   return navigate(`/volumes/${catalog}/${schema}/${entity}`);
                 case 'functions':
                   return navigate(`/functions/${catalog}/${schema}/${entity}`);
+                case 'registered_models':
+                  return navigate(`/models/${catalog}/${schema}/${entity}`);
               }
             } else if (schema) {
               navigate(`/data/${catalog}/${schema}`);
