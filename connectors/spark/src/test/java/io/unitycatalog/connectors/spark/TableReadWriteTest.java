@@ -128,7 +128,6 @@ public class TableReadWriteTest extends BaseSparkIntegrationTest {
     session.stop();
   }
 
-  @Disabled("Ignoring test until Delta 3.2.1 is released.")
   @ParameterizedTest
   @ValueSource(strings = {"s3", "gs", "abfs"})
   public void testCredentialDelta(String scheme) throws ApiException, IOException {
@@ -154,7 +153,6 @@ public class TableReadWriteTest extends BaseSparkIntegrationTest {
     session.stop();
   }
 
-  @Disabled("Ignoring test until Delta 3.2.1 is released.")
   @ParameterizedTest
   @ValueSource(strings = {"s3", "gs", "abfs"})
   public void testDeleteDeltaTable(String scheme) throws ApiException, IOException {
@@ -172,7 +170,6 @@ public class TableReadWriteTest extends BaseSparkIntegrationTest {
     session.stop();
   }
 
-  @Disabled("Ignoring test until Delta 3.2.1 is released.")
   @ParameterizedTest
   @ValueSource(strings = {"s3", "gs", "abfs"})
   public void testMergeDeltaTable(String scheme) throws ApiException, IOException {
@@ -199,7 +196,6 @@ public class TableReadWriteTest extends BaseSparkIntegrationTest {
     session.stop();
   }
 
-  @Disabled("Ignoring test until Delta 3.2.1 is released.")
   @ParameterizedTest
   @ValueSource(strings = {"s3", "gs", "abfs"})
   public void testUpdateDeltaTable(String scheme) throws ApiException, IOException {
@@ -228,8 +224,8 @@ public class TableReadWriteTest extends BaseSparkIntegrationTest {
     assertThat(tables[0].getString(1)).isEqualTo(PARQUET_TABLE);
 
     assertThatThrownBy(() -> session.sql("SHOW TABLES in a.b.c").collect())
-        .isInstanceOf(AnalysisException.class)
-        .hasMessageContaining("a.b.c");
+        .isInstanceOf(ApiException.class)
+        .hasMessageContaining("Nested namespaces are not supported");
 
     session.stop();
   }
@@ -243,7 +239,8 @@ public class TableReadWriteTest extends BaseSparkIntegrationTest {
     session.sql("DROP TABLE " + fullName).collect();
     assertFalse(session.catalog().tableExists(fullName));
     assertThatThrownBy(() -> session.sql("DROP TABLE a.b.c.d").collect())
-        .isInstanceOf(AnalysisException.class);
+        .isInstanceOf(ApiException.class)
+        .hasMessageContaining("Invalid table name");
     session.stop();
   }
 
@@ -284,8 +281,7 @@ public class TableReadWriteTest extends BaseSparkIntegrationTest {
     session.stop();
   }
 
-  // TODO: enable the test after the new Delta release.
-  // @Test
+  @Test
   public void testCreateExternalDeltaTable() throws ApiException, IOException {
     SparkSession session = createSparkSessionWithCatalogs(SPARK_CATALOG, CATALOG_NAME);
     String path1 = generateTableLocation(SPARK_CATALOG, DELTA_TABLE);
