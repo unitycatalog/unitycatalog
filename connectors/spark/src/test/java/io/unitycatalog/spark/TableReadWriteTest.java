@@ -334,28 +334,39 @@ public class TableReadWriteTest extends BaseSparkIntegrationTest {
   }
 
   @Test
-  public void testCreateManagedParquetTable() {
+  public void testCreateManagedParquetTable() throws IOException {
     SparkSession session = createSparkSessionWithCatalogs(CATALOG_NAME);
     String fullTableName = CATALOG_NAME + "." + SCHEMA_NAME + "." + PARQUET_TABLE;
+    String location = generateTableLocation(CATALOG_NAME, PARQUET_TABLE);
     assertThatThrownBy(() -> {
-      session.sql("CREATE TABLE " + fullTableName + "(name STRING) USING parquet");
+      session.sql(String.format(
+        "CREATE TABLE %s(name STRING) USING parquet TBLPROPERTIES(__FAKE_PATH__='%s')",
+        fullTableName, location
+      ));
     }).hasMessageContaining("not support managed table");
     session.close();
   }
 
-  @Disabled("Ignoring test until Delta 3.2.1 is released.")
   @Test
-  public void testCreateManagedDeltaTable() {
+  public void testCreateManagedDeltaTable() throws IOException {
     SparkSession session = createSparkSessionWithCatalogs(SPARK_CATALOG, CATALOG_NAME);
 
     String fullTableName1 = SPARK_CATALOG + "." + SCHEMA_NAME + "." + DELTA_TABLE;
+    String location1 = generateTableLocation(SPARK_CATALOG, DELTA_TABLE);
     assertThatThrownBy(() -> {
-      session.sql("CREATE TABLE " + fullTableName1 + "(name STRING) USING delta");
+      session.sql(String.format(
+        "CREATE TABLE %s(name STRING) USING delta TBLPROPERTIES(__FAKE_PATH__='%s')",
+        fullTableName1, location1
+      ));
     }).hasMessageContaining("not support managed table");
 
     String fullTableName2 = CATALOG_NAME + "." + SCHEMA_NAME + "." + DELTA_TABLE;
+    String location2 = generateTableLocation(CATALOG_NAME, DELTA_TABLE);
     assertThatThrownBy(() -> {
-      session.sql("CREATE TABLE " + fullTableName2 + "(name STRING) USING delta");
+      session.sql(String.format(
+        "CREATE TABLE %s(name STRING) USING delta TBLPROPERTIES(__FAKE_PATH__='%s')",
+       fullTableName2, location2
+      ));
     }).hasMessageContaining("not support managed table");
 
     session.close();

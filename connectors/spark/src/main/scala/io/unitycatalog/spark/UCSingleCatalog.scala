@@ -62,7 +62,7 @@ class UCSingleCatalog extends TableCatalog with SupportsNamespaces {
       newProps.putAll(properties)
       // TODO: here we use a fake location for managed table, we should generate table location
       //       properly when Unity Catalog supports creating managed table.
-      newProps.put(TableCatalog.PROP_LOCATION, "file:///tmp/fake")
+      newProps.put(TableCatalog.PROP_LOCATION, properties.get("__FAKE_PATH__"))
       // `PROP_IS_MANAGED_LOCATION` is used to indicate that the table location is not
       // user-specified but system-generated, which is exactly the case here.
       newProps.put(TableCatalog.PROP_IS_MANAGED_LOCATION, "true")
