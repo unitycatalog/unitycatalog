@@ -19,8 +19,8 @@ import io.unitycatalog.server.exception.BaseException;
 import io.unitycatalog.server.exception.ErrorCode;
 import io.unitycatalog.server.model.CatalogInfo;
 import io.unitycatalog.server.model.FunctionInfo;
-import io.unitycatalog.server.model.ResourceType;
 import io.unitycatalog.server.model.SchemaInfo;
+import io.unitycatalog.server.model.SecurableType;
 import io.unitycatalog.server.model.TableInfo;
 import io.unitycatalog.server.model.VolumeInfo;
 import io.unitycatalog.server.persist.CatalogRepository;
@@ -46,12 +46,12 @@ import java.util.UUID;
 import static io.unitycatalog.server.auth.decorator.KeyLocator.Source.PARAM;
 import static io.unitycatalog.server.auth.decorator.KeyLocator.Source.PAYLOAD;
 import static io.unitycatalog.server.auth.decorator.KeyLocator.Source.SYSTEM;
-import static io.unitycatalog.server.model.ResourceType.CATALOG;
-import static io.unitycatalog.server.model.ResourceType.FUNCTION;
-import static io.unitycatalog.server.model.ResourceType.METASTORE;
-import static io.unitycatalog.server.model.ResourceType.SCHEMA;
-import static io.unitycatalog.server.model.ResourceType.TABLE;
-import static io.unitycatalog.server.model.ResourceType.VOLUME;
+import static io.unitycatalog.server.model.SecurableType.CATALOG;
+import static io.unitycatalog.server.model.SecurableType.FUNCTION;
+import static io.unitycatalog.server.model.SecurableType.METASTORE;
+import static io.unitycatalog.server.model.SecurableType.SCHEMA;
+import static io.unitycatalog.server.model.SecurableType.TABLE;
+import static io.unitycatalog.server.model.SecurableType.VOLUME;
 
 /**
  * Armeria access control Decorator.
@@ -122,7 +122,7 @@ public class UnityAccessDecorator implements DecoratingHttpServiceFunction {
     // have been gathered as Locators), we'll attempt to find the entity/resource that
     // we want to authorize against.
 
-    Map<ResourceType, Object> resourceKeys = new HashMap<>();
+    Map<SecurableType, Object> resourceKeys = new HashMap<>();
 
     // Split up the locators by type, because we have to extract the value from the request
     // different ways for different types
@@ -211,10 +211,10 @@ public class UnityAccessDecorator implements DecoratingHttpServiceFunction {
     }
   }
 
-  private void checkAuthorization(UUID principal, String expression, Map<ResourceType, Object> resourceKeys) {
+  private void checkAuthorization(UUID principal, String expression, Map<SecurableType, Object> resourceKeys) {
     LOGGER.debug("resourceKeys = {}", resourceKeys);
 
-    Map<ResourceType, Object> resourceIds = mapResourceKeys(resourceKeys);
+    Map<SecurableType, Object> resourceIds = mapResourceKeys(resourceKeys);
 
     if (!resourceIds.keySet().containsAll(resourceKeys.keySet())) {
       LOGGER.warn("Some resource keys have unresolved ids.");
@@ -227,8 +227,8 @@ public class UnityAccessDecorator implements DecoratingHttpServiceFunction {
     }
   }
 
-  private Map<ResourceType, Object> mapResourceKeys(Map<ResourceType, Object> resourceKeys) {
-    Map<ResourceType, Object> resourceIds = new HashMap<>();
+  private Map<SecurableType, Object> mapResourceKeys(Map<SecurableType, Object> resourceKeys) {
+    Map<SecurableType, Object> resourceIds = new HashMap<>();
 
     if (resourceKeys.containsKey(CATALOG) && resourceKeys.containsKey(SCHEMA) && resourceKeys.containsKey(TABLE)) {
       String fullName = resourceKeys.get(CATALOG) + "." + resourceKeys.get(SCHEMA) + "." + resourceKeys.get(TABLE);

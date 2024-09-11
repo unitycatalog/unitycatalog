@@ -1,6 +1,6 @@
 package io.unitycatalog.server.service;
 
-import static io.unitycatalog.server.model.ResourceType.METASTORE;
+import static io.unitycatalog.server.model.SecurableType.METASTORE;
 
 import com.auth0.jwt.interfaces.Claim;
 import com.auth0.jwt.interfaces.DecodedJWT;
@@ -32,7 +32,6 @@ import io.unitycatalog.server.persist.UserRepository;
 import io.unitycatalog.server.persist.model.CreateUser;
 import io.unitycatalog.server.persist.model.UpdateUser;
 import io.unitycatalog.server.security.JwtClaim;
-
 import java.net.URI;
 import java.util.Calendar;
 import java.util.List;

@@ -309,7 +309,7 @@ public class CliUtils {
                       CREATE,
                       new CliOptions(
                           List.of(
-                              CliParams.RESOURCE_TYPE,
+                              CliParams.SECURABLE_TYPE,
                               CliParams.NAME,
                               CliParams.PRINCIPAL,
                               CliParams.PRIVILEGE),
@@ -318,7 +318,7 @@ public class CliUtils {
                       DELETE,
                       new CliOptions(
                           List.of(
-                              CliParams.RESOURCE_TYPE,
+                              CliParams.SECURABLE_TYPE,
                               CliParams.NAME,
                               CliParams.PRINCIPAL,
                               CliParams.PRIVILEGE),
@@ -326,7 +326,7 @@ public class CliUtils {
                   put(
                       GET,
                       new CliOptions(
-                          List.of(CliParams.RESOURCE_TYPE, CliParams.NAME),
+                          List.of(CliParams.SECURABLE_TYPE, CliParams.NAME),
                           List.of(CliParams.PRINCIPAL)));
                 }
               });

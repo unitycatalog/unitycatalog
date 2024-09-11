@@ -2,7 +2,7 @@ package io.unitycatalog.server.auth.decorator;
 
 import io.unitycatalog.server.auth.UnityCatalogAuthorizer;
 import io.unitycatalog.server.model.Privilege;
-import io.unitycatalog.server.model.ResourceType;
+import io.unitycatalog.server.model.SecurableType;
 import java.lang.invoke.MethodHandle;
 import java.lang.invoke.MethodHandles;
 import java.lang.invoke.MethodType;
@@ -76,7 +76,7 @@ public class UnityAccessEvaluator {
   }
 
   public boolean evaluate(
-      UUID principal, String expression, Map<ResourceType, Object> resourceIds) {
+      UUID principal, String expression, Map<SecurableType, Object> resourceIds) {
 
     StandardEvaluationContext context = new StandardEvaluationContext(Privilege.class);
 
@@ -102,7 +102,7 @@ public class UnityAccessEvaluator {
       UUID principalId,
       String expression,
       List<T> entries,
-      Function<T, Map<ResourceType, Object>> resolver) {
+      Function<T, Map<SecurableType, Object>> resolver) {
     entries.removeIf(c -> !evaluate(principalId, expression, resolver.apply(c)));
   }
 }

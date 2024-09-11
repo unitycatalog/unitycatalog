@@ -52,7 +52,7 @@ public enum CliParams {
       "output"),
   VERSION("version", "Version number of a registered model entity.", "version"),
   FORCE("force", "To force delete the entity", "force"),
-  RESOURCE_TYPE("resource_type", "The type of the resource", "resource_type"),
+  SECURABLE_TYPE("securable_type", "The type of the securable", "securable_type"),
   PRINCIPAL("principal", "The target principal of the permission change", "principal"),
   PRIVILEGE("privilege", "The privilege to grant or revoke", "privilege"),
   ID("id", "The unique id of the user", "id"),

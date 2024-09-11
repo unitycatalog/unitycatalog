@@ -1,6 +1,6 @@
 package io.unitycatalog.server.auth.decorator;
 
-import io.unitycatalog.server.model.ResourceType;
+import io.unitycatalog.server.model.SecurableType;
 import lombok.Builder;
 import lombok.Getter;
 
@@ -13,7 +13,7 @@ public class KeyLocator {
     PAYLOAD;
   }
 
-  private ResourceType type;
+  private SecurableType type;
   private Source source;
   private String key;
 }

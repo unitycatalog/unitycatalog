@@ -8,11 +8,11 @@ import io.unitycatalog.cli.utils.CliParams;
 import io.unitycatalog.cli.utils.CliUtils;
 import io.unitycatalog.client.ApiClient;
 import io.unitycatalog.client.ApiException;
-import io.unitycatalog.client.api.PermissionsApi;
+import io.unitycatalog.client.api.GrantsApi;
+import io.unitycatalog.client.model.PermissionsChange;
 import io.unitycatalog.client.model.Privilege;
-import io.unitycatalog.client.model.ResourceType;
-import io.unitycatalog.client.model.UpdateAuthorizationChange;
-import io.unitycatalog.client.model.UpdateAuthorizationRequest;
+import io.unitycatalog.client.model.SecurableType;
+import io.unitycatalog.client.model.UpdatePermissions;
 import java.util.List;
 import org.apache.commons.cli.CommandLine;
 import org.json.JSONObject;
@@ -22,7 +22,7 @@ public class PermissionCli {
 
   public static void handle(CommandLine cmd, ApiClient apiClient)
       throws JsonProcessingException, ApiException {
-    PermissionsApi permissionsApi = new PermissionsApi(apiClient);
+    GrantsApi grantsApi = new GrantsApi(apiClient);
     String[] subArgs = cmd.getArgs();
     objectWriter = CliUtils.getObjectWriter(cmd);
     String subCommand = subArgs[1];
@@ -31,10 +31,10 @@ public class PermissionCli {
     switch (subCommand) {
       case CREATE:
       case DELETE:
-        output = updatePermission(permissionsApi, json, subCommand);
+        output = updatePermission(grantsApi, json, subCommand);
         break;
       case GET:
-        output = getPermission(permissionsApi, json);
+        output = getPermission(grantsApi, json);
         break;
       default:
         printEntityHelp(PERMISSION);
@@ -42,11 +42,10 @@ public class PermissionCli {
     postProcessAndPrintOutput(cmd, output, subCommand);
   }
 
-  private static String updatePermission(
-      PermissionsApi permissionsApi, JSONObject json, String subCommand)
+  private static String updatePermission(GrantsApi grantsApi, JSONObject json, String subCommand)
       throws JsonProcessingException, ApiException {
-    ResourceType resourceType =
-        ResourceType.fromValue(json.getString(CliParams.RESOURCE_TYPE.getServerParam()));
+    SecurableType securableType =
+        SecurableType.fromValue(json.getString(CliParams.SECURABLE_TYPE.getServerParam()));
     String name = json.getString(CliParams.NAME.getServerParam());
     List<Privilege> add =
         subCommand.equals(CREATE)
@@ -56,30 +55,28 @@ public class PermissionCli {
         subCommand.equals(DELETE)
             ? List.of(Privilege.fromValue(json.getString(CliParams.PRIVILEGE.getServerParam())))
             : List.of();
-    UpdateAuthorizationChange updateAuthorizationChange =
-        new UpdateAuthorizationChange()
+    PermissionsChange permissionsChange =
+        new PermissionsChange()
             .principal(json.getString(CliParams.PRINCIPAL.getServerParam()))
             .add(add)
             .remove(remove);
-    UpdateAuthorizationRequest updateAuthorizationRequest =
-        new UpdateAuthorizationRequest().changes(List.of(updateAuthorizationChange));
+    UpdatePermissions updatePermissions =
+        new UpdatePermissions().changes(List.of(permissionsChange));
 
     return objectWriter.writeValueAsString(
-        permissionsApi
-            .updatePermission(resourceType, name, updateAuthorizationRequest)
-            .getPrivilegeAssignments());
+        grantsApi.update(securableType, name, updatePermissions).getPrivilegeAssignments());
   }
 
-  private static String getPermission(PermissionsApi permissionsApi, JSONObject json)
+  private static String getPermission(GrantsApi grantsApi, JSONObject json)
       throws JsonProcessingException, ApiException {
-    ResourceType resourceType =
-        ResourceType.fromValue(json.getString(CliParams.RESOURCE_TYPE.getServerParam()));
+    SecurableType securableType =
+        SecurableType.fromValue(json.getString(CliParams.SECURABLE_TYPE.getServerParam()));
     String name = json.getString(CliParams.NAME.getServerParam());
     String principal = null;
     if (json.has(CliParams.PRINCIPAL.getServerParam())) {
       principal = json.getString(CliParams.PRINCIPAL.getServerParam());
     }
     return objectWriter.writeValueAsString(
-        permissionsApi.getPermission(resourceType, name, principal).getPrivilegeAssignments());
+        grantsApi.get(securableType, name, principal).getPrivilegeAssignments());
   }
 }

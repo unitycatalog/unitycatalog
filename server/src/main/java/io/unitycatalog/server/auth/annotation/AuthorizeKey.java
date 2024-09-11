@@ -1,6 +1,6 @@
 package io.unitycatalog.server.auth.annotation;
 
-import io.unitycatalog.server.model.ResourceType;
+import io.unitycatalog.server.model.SecurableType;
 import java.lang.annotation.ElementType;
 import java.lang.annotation.Retention;
 import java.lang.annotation.RetentionPolicy;
@@ -52,7 +52,7 @@ import java.lang.annotation.Target;
 @Target({ElementType.METHOD, ElementType.PARAMETER})
 public @interface AuthorizeKey {
 
-  ResourceType value();
+  SecurableType value();
 
   String key() default "";
 }

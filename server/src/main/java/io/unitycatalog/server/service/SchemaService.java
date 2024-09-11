@@ -1,8 +1,8 @@
 package io.unitycatalog.server.service;
 
-import static io.unitycatalog.server.model.ResourceType.CATALOG;
-import static io.unitycatalog.server.model.ResourceType.METASTORE;
-import static io.unitycatalog.server.model.ResourceType.SCHEMA;
+import static io.unitycatalog.server.model.SecurableType.CATALOG;
+import static io.unitycatalog.server.model.SecurableType.METASTORE;
+import static io.unitycatalog.server.model.SecurableType.SCHEMA;
 
 import com.linecorp.armeria.common.HttpResponse;
 import com.linecorp.armeria.common.HttpStatus;

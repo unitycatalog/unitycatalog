@@ -1,11 +1,11 @@
 package io.unitycatalog.server.service;
 
-import static io.unitycatalog.server.model.ResourceType.CATALOG;
-import static io.unitycatalog.server.model.ResourceType.FUNCTION;
-import static io.unitycatalog.server.model.ResourceType.METASTORE;
-import static io.unitycatalog.server.model.ResourceType.SCHEMA;
-import static io.unitycatalog.server.model.ResourceType.TABLE;
-import static io.unitycatalog.server.model.ResourceType.VOLUME;
+import static io.unitycatalog.server.model.SecurableType.CATALOG;
+import static io.unitycatalog.server.model.SecurableType.FUNCTION;
+import static io.unitycatalog.server.model.SecurableType.METASTORE;
+import static io.unitycatalog.server.model.SecurableType.SCHEMA;
+import static io.unitycatalog.server.model.SecurableType.TABLE;
+import static io.unitycatalog.server.model.SecurableType.VOLUME;
 
 import com.linecorp.armeria.common.HttpResponse;
 import com.linecorp.armeria.server.annotation.*;
@@ -17,14 +17,14 @@ import io.unitycatalog.server.exception.BaseException;
 import io.unitycatalog.server.exception.ErrorCode;
 import io.unitycatalog.server.exception.GlobalExceptionHandler;
 import io.unitycatalog.server.model.CatalogInfo;
+import io.unitycatalog.server.model.PermissionsChange;
+import io.unitycatalog.server.model.PermissionsList;
 import io.unitycatalog.server.model.Privilege;
 import io.unitycatalog.server.model.PrivilegeAssignment;
-import io.unitycatalog.server.model.ResourceType;
 import io.unitycatalog.server.model.SchemaInfo;
+import io.unitycatalog.server.model.SecurableType;
 import io.unitycatalog.server.model.TableInfo;
-import io.unitycatalog.server.model.UpdateAuthorizationChange;
-import io.unitycatalog.server.model.UpdateAuthorizationRequest;
-import io.unitycatalog.server.model.UpdateAuthorizationResponse;
+import io.unitycatalog.server.model.UpdatePermissions;
 import io.unitycatalog.server.persist.CatalogRepository;
 import io.unitycatalog.server.persist.MetastoreRepository;
 import io.unitycatalog.server.persist.SchemaRepository;
@@ -108,8 +108,8 @@ public class PermissionService {
   }
 
   private HttpResponse getAuthorization(
-      ResourceType resourceType, String name, Optional<String> principal) {
-    UUID resourceId = getResourceId(resourceType, name);
+      SecurableType securableType, String name, Optional<String> principal) {
+    UUID resourceId = getResourceId(securableType, name);
     Map<UUID, List<Privilege>> authorizations;
     if (principal.isPresent()) {
       User user = USER_REPOSITORY.getUserByEmail(principal.get());
@@ -128,8 +128,7 @@ public class PermissionService {
                         .privileges(entry.getValue()))
             .collect(Collectors.toList());
 
-    return HttpResponse.ofJson(
-        new UpdateAuthorizationResponse().privilegeAssignments(privilegeAssignments));
+    return HttpResponse.ofJson(new PermissionsList().privilegeAssignments(privilegeAssignments));
   }
 
   // TODO: Refactor these endpoints to use a common method with dynamic resource id lookup
@@ -137,7 +136,7 @@ public class PermissionService {
   @AuthorizeExpression("#authorize(#principal, #metastore, METASTORE_ADMIN)")
   @AuthorizeKey(METASTORE)
   public HttpResponse updateMetastoreAuthorization(
-      @Param("name") String name, UpdateAuthorizationRequest request) {
+      @Param("name") String name, UpdatePermissions request) {
     return updateAuthorization(METASTORE, name, request);
   }
 
@@ -146,7 +145,7 @@ public class PermissionService {
       "#authorize(#principal, #metastore, METASTORE_ADMIN) || #authorize(#principal, #catalog, OWNER)")
   @AuthorizeKey(METASTORE)
   public HttpResponse updateCatalogAuthorization(
-      @Param("name") @AuthorizeKey(CATALOG) String name, UpdateAuthorizationRequest request) {
+      @Param("name") @AuthorizeKey(CATALOG) String name, UpdatePermissions request) {
     return updateAuthorization(CATALOG, name, request);
   }
 
@@ -155,7 +154,7 @@ public class PermissionService {
       "#authorize(#principal, #metastore, METASTORE_ADMIN) || #authorize(#principal, #schema, OWNER)")
   @AuthorizeKey(METASTORE)
   public HttpResponse updateSchemaAuthorization(
-      @Param("name") @AuthorizeKey(SCHEMA) String name, UpdateAuthorizationRequest request) {
+      @Param("name") @AuthorizeKey(SCHEMA) String name, UpdatePermissions request) {
     return updateAuthorization(SCHEMA, name, request);
   }
 
@@ -164,7 +163,7 @@ public class PermissionService {
       "#authorize(#principal, #metastore, METASTORE_ADMIN) || #authorize(#principal, #table, OWNER)")
   @AuthorizeKey(METASTORE)
   public HttpResponse updateTableAuthorization(
-      @Param("name") @AuthorizeKey(TABLE) String name, UpdateAuthorizationRequest request) {
+      @Param("name") @AuthorizeKey(TABLE) String name, UpdatePermissions request) {
     return updateAuthorization(TABLE, name, request);
   }
 
@@ -173,7 +172,7 @@ public class PermissionService {
       "#authorize(#principal, #metastore, METASTORE_ADMIN) || #authorize(#principal, #function, OWNER)")
   @AuthorizeKey(METASTORE)
   public HttpResponse updateFunctionAuthorization(
-      @Param("name") @AuthorizeKey(FUNCTION) String name, UpdateAuthorizationRequest request) {
+      @Param("name") @AuthorizeKey(FUNCTION) String name, UpdatePermissions request) {
     return updateAuthorization(FUNCTION, name, request);
   }
 
@@ -182,14 +181,14 @@ public class PermissionService {
       "#authorize(#principal, #metastore, METASTORE_ADMIN) || #authorize(#principal, #volume, OWNER)")
   @AuthorizeKey(METASTORE)
   public HttpResponse updateVolumeAuthorization(
-      @Param("name") @AuthorizeKey(VOLUME) String name, UpdateAuthorizationRequest request) {
+      @Param("name") @AuthorizeKey(VOLUME) String name, UpdatePermissions request) {
     return updateAuthorization(VOLUME, name, request);
   }
 
   private HttpResponse updateAuthorization(
-      ResourceType resourceType, String name, UpdateAuthorizationRequest request) {
-    UUID resourceId = getResourceId(resourceType, name);
-    List<UpdateAuthorizationChange> changes = request.getChanges();
+      SecurableType securableType, String name, UpdatePermissions request) {
+    UUID resourceId = getResourceId(securableType, name);
+    List<PermissionsChange> changes = request.getChanges();
     Set<UUID> principalIds = new HashSet<>();
     changes.forEach(
         change -> {
@@ -218,22 +217,21 @@ public class PermissionService {
                         .privileges(entry.getValue()))
             .collect(Collectors.toList());
 
-    return HttpResponse.ofJson(
-        new UpdateAuthorizationResponse().privilegeAssignments(privilegeAssignments));
+    return HttpResponse.ofJson(new PermissionsList().privilegeAssignments(privilegeAssignments));
   }
 
-  private UUID getResourceId(ResourceType resourceType, String name) {
+  private UUID getResourceId(SecurableType securableType, String name) {
     UUID resourceId;
 
-    if (resourceType.equals(METASTORE)) {
+    if (securableType.equals(METASTORE)) {
       resourceId = METASTORE_REPOSITORY.getMetastoreId();
-    } else if (resourceType.equals(ResourceType.CATALOG)) {
+    } else if (securableType.equals(SecurableType.CATALOG)) {
       CatalogInfo catalogInfo = CATALOG_REPOSITORY.getCatalog(name);
       resourceId = UUID.fromString(Objects.requireNonNull(catalogInfo.getId()));
-    } else if (resourceType.equals(ResourceType.SCHEMA)) {
+    } else if (securableType.equals(SecurableType.SCHEMA)) {
       SchemaInfo schemaInfo = SCHEMA_REPOSITORY.getSchema(name);
       resourceId = UUID.fromString(Objects.requireNonNull(schemaInfo.getSchemaId()));
-    } else if (resourceType.equals(ResourceType.TABLE)) {
+    } else if (securableType.equals(SecurableType.TABLE)) {
       TableInfo tableInfo = TABLE_REPOSITORY.getTable(name);
       resourceId = UUID.fromString(Objects.requireNonNull(tableInfo.getTableId()));
     } else {

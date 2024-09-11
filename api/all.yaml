@@ -1038,46 +1038,46 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ModelVersionInfo'
-  /permissions/{resource_type}/{name}:
+  /permissions/{securable_type}/{full_name}:
     parameters:
-      - name: resource_type
+      - name: securable_type
         in: path
-        description: The type of the resource.
+        description: Type of securable.
         required: true
         schema:
-          $ref: '#/components/schemas/ResourceType'
-      - name: name
+          $ref: '#/components/schemas/SecurableType'
+      - name: full_name
         in: path
-        description: The name of the principal.
+        description: Full name of securable.
         required: true
         schema:
           type: string
     get:
       tags:
-        - Permissions
+        - Grants
       parameters:
         - name: principal
           in: query
           description: |
-            If provided, only the permissions for the specified principal are returned.
+            If provided, only the permissions for the specified principal (user or group) are returned.
           schema:
             type: string
           required: false
-      operationId: getPermission
+      operationId: get
       summary: Get permissions
       description: |
         Gets the permissions for a securable.
       responses:
         '200':
-          description: The permissions was successfully retrieved.
+          description: The permissions list for securable was successfully retrieved.
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/UpdateAuthorizationResponse'
+                $ref: '#/components/schemas/PermissionsList'
     patch:
       tags:
-        - Permissions
-      operationId: updatePermission
+        - Grants
+      operationId: update
       summary: Update a permission
       description: |
         Updates the permissions for a securable.
@@ -1085,14 +1085,14 @@ paths:
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/UpdateAuthorizationRequest'
+              $ref: '#/components/schemas/UpdatePermissions'
       responses:
         '200':
-          description: The permission was successfully updated.
+          description: The permissions list for securable was successfully updated.
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/UpdateAuthorizationResponse'
+                $ref: '#/components/schemas/PermissionsList'
 components:
   schemas:
     SecurablePropertiesMap:
@@ -2154,7 +2154,7 @@ components:
         - USER
         - GROUP
       description: The type of the principal.
-    ResourceType:
+    SecurableType:
       type: string
       enum:
         - metastore
@@ -2177,17 +2177,17 @@ components:
         - SELECT
         - EXECUTE
       description: The privilege to grant.
-    UpdateAuthorizationRequest:
+    UpdatePermissions:
       type: object
       properties:
         changes:
           description: Array of permissions change objects.
           type: array
           items:
-            $ref: '#/components/schemas/UpdateAuthorizationChange'
+            $ref: '#/components/schemas/PermissionsChange'
       required:
         - changes
-    UpdateAuthorizationChange:
+    PermissionsChange:
       type: object
       properties:
         principal:
@@ -2207,7 +2207,7 @@ components:
         - principal
         - add
         - remove
-    UpdateAuthorizationResponse:
+    PermissionsList:
       type: object
       properties:
         privilege_assignments:

@@ -28,11 +28,10 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 
-import static io.unitycatalog.server.model.ResourceType.CATALOG;
-import static io.unitycatalog.server.model.ResourceType.FUNCTION;
-import static io.unitycatalog.server.model.ResourceType.METASTORE;
-import static io.unitycatalog.server.model.ResourceType.SCHEMA;
-import static io.unitycatalog.server.model.ResourceType.VOLUME;
+import static io.unitycatalog.server.model.SecurableType.CATALOG;
+import static io.unitycatalog.server.model.SecurableType.FUNCTION;
+import static io.unitycatalog.server.model.SecurableType.METASTORE;
+import static io.unitycatalog.server.model.SecurableType.SCHEMA;
 
 @ExceptionHandler(GlobalExceptionHandler.class)
 public class FunctionService {
