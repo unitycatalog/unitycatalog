@@ -181,7 +181,8 @@ private class UCProxy extends TableCatalog with SupportsNamespaces {
       val gcsCredentials = temporaryCredentials.getGcpOauthToken
       Map(
         GcsVendedTokenProvider.ACCESS_TOKEN_KEY -> gcsCredentials.getOauthToken,
-        GcsVendedTokenProvider.ACCESS_TOKEN_EXPIRATION_KEY -> temporaryCredentials.getExpirationTime.toString
+        GcsVendedTokenProvider.ACCESS_TOKEN_EXPIRATION_KEY -> temporaryCredentials.getExpirationTime.toString,
+        "fs.gs.impl.disable.cache" -> "true"
       )
     } else if (uri.getScheme == "abfs" || uri.getScheme == "abfss") {
       val azCredentials = temporaryCredentials.getAzureUserDelegationSas
@@ -190,6 +191,8 @@ private class UCProxy extends TableCatalog with SupportsNamespaces {
         FS_AZURE_ACCOUNT_IS_HNS_ENABLED -> "true",
         FS_AZURE_SAS_TOKEN_PROVIDER_TYPE -> "io.unitycatalog.connectors.spark.AbfsVendedTokenProvider",
         AbfsVendedTokenProvider.ACCESS_TOKEN_KEY -> azCredentials.getSasToken,
+        "fs.abfs.impl.disable.cache" -> "true",
+        "fs.abfss.impl.disable.cache" -> "true"
       )
     } else {
       Map.empty
