@@ -65,7 +65,7 @@ public class SchemaService {
     filterSchemas("""
         #authorize(#principal, #metastore, METASTORE_ADMIN) ||
         #authorize(#principal, #catalog, OWNER) ||
-        #authorizeAll(#principal, #schema, OWNER, USE_SCHEMA)
+        #authorizeAny(#principal, #schema, OWNER, USE_SCHEMA)
         """,
         listSchemasResponse.getSchemas());
     return HttpResponse.ofJson(listSchemasResponse);
