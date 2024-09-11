@@ -24,24 +24,32 @@ import scala.collection.JavaConverters._
  */
 class UCSingleCatalog extends TableCatalog with SupportsNamespaces {
 
-  private var deltaCatalog: TableCatalog = null
+  @volatile private var delegating: TableCatalog = null
 
   override def initialize(name: String, options: CaseInsensitiveStringMap): Unit = {
     val proxy = new UCProxy()
     proxy.initialize(name, options)
-    deltaCatalog = Class.forName("org.apache.spark.sql.delta.catalog.DeltaCatalog")
-      .getDeclaredConstructor().newInstance().asInstanceOf[TableCatalog]
-    deltaCatalog.asInstanceOf[DelegatingCatalogExtension].setDelegateCatalog(proxy)
+    try {
+      if (options.containsKey("__TEST_NO_DELTA__")) {
+        throw new ClassNotFoundException("DeltaCatalog")
+      }
+      delegating = Class.forName("org.apache.spark.sql.delta.catalog.DeltaCatalog")
+        .getDeclaredConstructor().newInstance().asInstanceOf[TableCatalog]
+      delegating.asInstanceOf[DelegatingCatalogExtension].setDelegateCatalog(proxy)
+    } catch {
+      case _: ClassNotFoundException =>
+        delegating = proxy
+    }
   }
 
-  override def name(): String = deltaCatalog.name()
+  override def name(): String = delegating.name()
 
-  override def listTables(namespace: Array[String]): Array[Identifier] = deltaCatalog.listTables(namespace)
+  override def listTables(namespace: Array[String]): Array[Identifier] = delegating.listTables(namespace)
 
-  override def loadTable(ident: Identifier): Table = deltaCatalog.loadTable(ident)
+  override def loadTable(ident: Identifier): Table = delegating.loadTable(ident)
 
   override def tableExists(ident: Identifier): Boolean = {
-    deltaCatalog.tableExists(ident)
+    delegating.tableExists(ident)
   }
 
   override def createTable(
@@ -66,9 +74,9 @@ class UCSingleCatalog extends TableCatalog with SupportsNamespaces {
       // `PROP_IS_MANAGED_LOCATION` is used to indicate that the table location is not
       // user-specified but system-generated, which is exactly the case here.
       newProps.put(TableCatalog.PROP_IS_MANAGED_LOCATION, "true")
-      deltaCatalog.createTable(ident, columns, partitions, newProps)
+      delegating.createTable(ident, columns, partitions, newProps)
     } else {
-      deltaCatalog.createTable(ident, columns, partitions, properties)
+      delegating.createTable(ident, columns, partitions, properties)
     }
   }
 
@@ -77,32 +85,32 @@ class UCSingleCatalog extends TableCatalog with SupportsNamespaces {
   }
   override def alterTable(ident: Identifier, changes: TableChange*): Table = ???
 
-  override def dropTable(ident: Identifier): Boolean = deltaCatalog.dropTable(ident)
+  override def dropTable(ident: Identifier): Boolean = delegating.dropTable(ident)
 
   override def renameTable(oldIdent: Identifier, newIdent: Identifier): Unit = ???
 
   override def listNamespaces(): Array[Array[String]] = {
-    deltaCatalog.asInstanceOf[DelegatingCatalogExtension].listNamespaces()
+    delegating.asInstanceOf[DelegatingCatalogExtension].listNamespaces()
   }
 
   override def listNamespaces(namespace: Array[String]): Array[Array[String]] = {
-    deltaCatalog.asInstanceOf[DelegatingCatalogExtension].listNamespaces(namespace)
+    delegating.asInstanceOf[DelegatingCatalogExtension].listNamespaces(namespace)
   }
 
   override def loadNamespaceMetadata(namespace: Array[String]): util.Map[String, String] = {
-    deltaCatalog.asInstanceOf[DelegatingCatalogExtension].loadNamespaceMetadata(namespace)
+    delegating.asInstanceOf[DelegatingCatalogExtension].loadNamespaceMetadata(namespace)
   }
 
   override def createNamespace(namespace: Array[String], metadata: util.Map[String, String]): Unit = {
-    deltaCatalog.asInstanceOf[DelegatingCatalogExtension].createNamespace(namespace, metadata)
+    delegating.asInstanceOf[DelegatingCatalogExtension].createNamespace(namespace, metadata)
   }
 
   override def alterNamespace(namespace: Array[String], changes: NamespaceChange*): Unit = {
-    deltaCatalog.asInstanceOf[DelegatingCatalogExtension].alterNamespace(namespace, changes: _*)
+    delegating.asInstanceOf[DelegatingCatalogExtension].alterNamespace(namespace, changes: _*)
   }
 
   override def dropNamespace(namespace: Array[String], cascade: Boolean): Boolean = {
-    deltaCatalog.asInstanceOf[DelegatingCatalogExtension].dropNamespace(namespace, cascade)
+    delegating.asInstanceOf[DelegatingCatalogExtension].dropNamespace(namespace, cascade)
   }
 }
 

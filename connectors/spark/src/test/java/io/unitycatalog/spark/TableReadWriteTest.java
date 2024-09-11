@@ -42,6 +42,33 @@ public class TableReadWriteTest extends BaseSparkIntegrationTest {
   private TableOperations tableOperations;
 
   @Test
+  public void testNoDeltaCatalog() throws IOException, ApiException {
+    SparkSession.Builder builder = SparkSession.builder()
+            .appName("test")
+            .master("local[*]")
+            .config("spark.sql.extensions", "io.delta.sql.DeltaSparkSessionExtension");
+    String catalogConf = "spark.sql.catalog.spark_catalog";
+    builder = builder
+            .config(catalogConf, UCSingleCatalog.class.getName())
+            .config(catalogConf + ".uri", serverConfig.getServerUrl())
+            .config(catalogConf + ".token", serverConfig.getAuthToken())
+            .config(catalogConf + ".__TEST_NO_DELTA__", "true");
+    SparkSession session = builder.getOrCreate();
+
+    setupExternalParquetTable(PARQUET_TABLE, new ArrayList<>(0));
+    testTableReadWrite(SPARK_CATALOG + "." + SCHEMA_NAME + "." + PARQUET_TABLE, session);
+
+    // Since `DeltaCatalog` is not used, the following CREATE TABLE command doesn't fail while it
+    // should because the table location is empty and Delta Lake shouldn't allow it.
+    String deltaTableName = SPARK_CATALOG + "." + SCHEMA_NAME + "." + DELTA_TABLE;
+    String location = generateTableLocation(SPARK_CATALOG, deltaTableName);
+    session.sql(String.format(
+            "CREATE TABLE %s(i INT) USING delta LOCATION '%s'", deltaTableName, location));
+
+    session.close();
+  }
+
+  @Test
   public void testParquetReadWrite() throws IOException, ApiException {
     SparkSession session = createSparkSessionWithCatalogs(SPARK_CATALOG);
     // Spark only allow `spark_catalog` to return built-in file source tables.
