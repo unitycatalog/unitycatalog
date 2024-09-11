@@ -51,6 +51,9 @@ class UCSingleCatalog extends TableCatalog with SupportsNamespaces {
       properties: util.Map[String, String]): Table = {
     val hasExternalClause = properties.containsKey(TableCatalog.PROP_EXTERNAL)
     val hasLocationClause = properties.containsKey(TableCatalog.PROP_LOCATION)
+    if (hasExternalClause && !hasLocationClause) {
+      throw new ApiException("Cannot create EXTERNAL TABLE without location.")
+    }
     def isPathTable = ident.namespace().length == 1 && new Path(ident.name()).isAbsolute
     // If both EXTERNAL and LOCATION are not specified in the CREATE TABLE command, and the table is
     // not a path table like parquet.`/file/path`, we generate the UC-managed table location here.
@@ -248,9 +251,6 @@ private class UCProxy extends TableCatalog with SupportsNamespaces {
 
     val hasExternalClause = properties.containsKey(TableCatalog.PROP_EXTERNAL)
     val storageLocation = properties.get(TableCatalog.PROP_LOCATION)
-    if (hasExternalClause && storageLocation == null) {
-      throw new ApiException("Cannot create EXTERNAL TABLE without location.")
-    }
     assert(storageLocation != null, "location should either be user specified or system generated.")
     val isManagedLocation = Option(properties.get(TableCatalog.PROP_IS_MANAGED_LOCATION))
       .exists(_.equalsIgnoreCase("true"))
