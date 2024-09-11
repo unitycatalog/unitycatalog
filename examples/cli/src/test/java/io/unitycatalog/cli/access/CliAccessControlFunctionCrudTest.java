@@ -73,6 +73,20 @@ public class CliAccessControlFunctionCrudTest extends CliAccessControlBaseCrudTe
                   "principal-1@localhost",
                   "--privilege",
                   "CREATE SCHEMA"));
+          add(
+              CommandStep.of(
+                  SUCCEED,
+                  1,
+                  "permission",
+                  "create",
+                  "--resource_type",
+                  "catalog",
+                  "--name",
+                  "catalog1",
+                  "--principal",
+                  "principal-1@localhost",
+                  "--privilege",
+                  "USE CATALOG"));
 
           add(TokenStep.of(SUCCEED, "principal-1@localhost"));
           add(

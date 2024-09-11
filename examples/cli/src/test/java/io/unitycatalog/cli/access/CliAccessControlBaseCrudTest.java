@@ -31,7 +31,9 @@ public class CliAccessControlBaseCrudTest extends BaseAccessControlCRUDTest {
     String adminToken = Files.readString(path);
     String token = adminToken;
 
+    int stepNumber = 0;
     for (Step step : steps) {
+      stepNumber++;
       if (step instanceof Step.TokenStep tokenStep) {
         token =
                 JWT.create()
@@ -43,11 +45,14 @@ public class CliAccessControlBaseCrudTest extends BaseAccessControlCRUDTest {
                         .withClaim(JwtClaim.TOKEN_TYPE.key(), JwtTokenType.ACCESS.name())
                         .withClaim(JwtClaim.SUBJECT.key(), tokenStep.getEmail())
                         .sign(securityConfiguration.algorithmRSA());
+
+        System.err.format("%3d Expect: %s set principal to %s\n", stepNumber, tokenStep.getExpectedResult(), tokenStep.getEmail());
+
       } else if (step instanceof Step.CommandStep commandStep) {
         serverConfig.setAuthToken(token);
         String[] args = addServerAndAuthParams(commandStep.getArgs(), serverConfig);
 
-        System.err.println("Expect: " + commandStep.getExpectedResult() + " executing " + commandStep.getArgs());
+        System.err.format("%3d Expect: %s executing %s\n", stepNumber, commandStep.getExpectedResult(), commandStep.getArgs());
 
         if (commandStep.getExpectedResult() == FAIL) {
           assertThrows(

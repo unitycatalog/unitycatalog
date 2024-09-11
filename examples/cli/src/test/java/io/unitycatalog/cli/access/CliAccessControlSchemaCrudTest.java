@@ -108,6 +108,20 @@ public class CliAccessControlSchemaCrudTest extends CliAccessControlBaseCrudTest
                   "principal-1@localhost",
                   "--privilege",
                   "CREATE SCHEMA"));
+          add(
+              CommandStep.of(
+                  SUCCEED,
+                  1,
+                  "permission",
+                  "create",
+                  "--resource_type",
+                  "catalog",
+                  "--name",
+                  "catalog1",
+                  "--principal",
+                  "principal-1@localhost",
+                  "--privilege",
+                  "USE CATALOG"));
           // create a schema (principal-1) -> CREATE SCHEMA -> allowed
           add(TokenStep.of(SUCCEED, "principal-1@localhost"));
           add(
@@ -148,6 +162,20 @@ public class CliAccessControlSchemaCrudTest extends CliAccessControlBaseCrudTest
                   "regular-2@localhost",
                   "--privilege",
                   "CREATE SCHEMA"));
+          add(
+              CommandStep.of(
+                  SUCCEED,
+                  1,
+                  "permission",
+                  "create",
+                  "--resource_type",
+                  "catalog",
+                  "--name",
+                  "catalog1",
+                  "--principal",
+                  "regular-2@localhost",
+                  "--privilege",
+                  "USE CATALOG"));
 
           // create a schema (regular-2)
           add(TokenStep.of(SUCCEED, "regular-2@localhost"));
@@ -266,6 +294,9 @@ public class CliAccessControlSchemaCrudTest extends CliAccessControlBaseCrudTest
 
           // delete schema (regular-1) -> "catalog" owner -> allowed
           add(TokenStep.of(SUCCEED, "principal-1@localhost"));
+          add(CommandStep.of(FAIL, "schema", "delete", "--full_name", "catalog1.schema3"));
+
+          add(TokenStep.of(SUCCEED, "regular-2@localhost"));
           add(CommandStep.of(SUCCEED, "schema", "delete", "--full_name", "catalog1.schema3"));
         }
       };

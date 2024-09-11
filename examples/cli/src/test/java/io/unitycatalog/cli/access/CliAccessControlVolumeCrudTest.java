@@ -73,6 +73,20 @@ public class CliAccessControlVolumeCrudTest extends CliAccessControlBaseCrudTest
                   "principal-1@localhost",
                   "--privilege",
                   "CREATE SCHEMA"));
+          add(
+              CommandStep.of(
+                  SUCCEED,
+                  1,
+                  "permission",
+                  "create",
+                  "--resource_type",
+                  "catalog",
+                  "--name",
+                  "catalog1",
+                  "--principal",
+                  "principal-1@localhost",
+                  "--privilege",
+                  "USE CATALOG"));
 
           add(TokenStep.of(SUCCEED, "principal-1@localhost"));
           add(
@@ -168,6 +182,20 @@ public class CliAccessControlVolumeCrudTest extends CliAccessControlBaseCrudTest
                   "regular-2@localhost",
                   "--privilege",
                   "CREATE SCHEMA"));
+          add(
+              CommandStep.of(
+                  SUCCEED,
+                  1,
+                  "permission",
+                  "create",
+                  "--resource_type",
+                  "catalog",
+                  "--name",
+                  "catalog1",
+                  "--principal",
+                  "regular-2@localhost",
+                  "--privilege",
+                  "USE CATALOG"));
 
           // create a schema (regular-2)
           add(TokenStep.of(SUCCEED, "regular-2@localhost"));

@@ -73,6 +73,20 @@ public class CliAccessControlTableCrudTest extends CliAccessControlBaseCrudTest 
                   "principal-1@localhost",
                   "--privilege",
                   "CREATE SCHEMA"));
+          add(
+              CommandStep.of(
+                  SUCCEED,
+                  1,
+                  "permission",
+                  "create",
+                  "--resource_type",
+                  "catalog",
+                  "--name",
+                  "catalog1",
+                  "--principal",
+                  "principal-1@localhost",
+                  "--privilege",
+                  "USE CATALOG"));
 
           // create a user (regular-1)
           add(TokenStep.of(SUCCEED, "admin"));
@@ -88,6 +102,20 @@ public class CliAccessControlTableCrudTest extends CliAccessControlBaseCrudTest 
 
           // give user USE CATALOG on catalog1
           add(TokenStep.of(SUCCEED, "admin"));
+          add(
+              CommandStep.of(
+                  SUCCEED,
+                  1,
+                  "permission",
+                  "create",
+                  "--resource_type",
+                  "catalog",
+                  "--name",
+                  "catalog1",
+                  "--principal",
+                  "regular-1@localhost",
+                  "--privilege",
+                  "CREATE SCHEMA"));
           add(
               CommandStep.of(
                   SUCCEED,

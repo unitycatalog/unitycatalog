@@ -44,7 +44,7 @@ public class SchemaService {
   @Post("")
   @AuthorizeExpression("""
       #authorize(#principal, #metastore, METASTORE_ADMIN) ||
-      #authorize(#principal, #catalog, CREATE_SCHEMA)
+      #authorizeAll(#principal, #catalog, USE_CATALOG, CREATE_SCHEMA)
       """)
   @AuthorizeKey(METASTORE)
   public HttpResponse createSchema(
@@ -65,7 +65,7 @@ public class SchemaService {
     filterSchemas("""
         #authorize(#principal, #metastore, METASTORE_ADMIN) ||
         #authorize(#principal, #catalog, OWNER) ||
-        #authorizeAny(#principal, #schema, OWNER, USE_SCHEMA)
+        (#authorize(#principal, #schema, USE_SCHEMA) && #authorize(#principal, #catalog, USE_CATALOG)) 
         """,
         listSchemasResponse.getSchemas());
     return HttpResponse.ofJson(listSchemasResponse);
@@ -74,7 +74,8 @@ public class SchemaService {
   @Get("/{full_name}")
   @AuthorizeExpression("""
       #authorize(#principal, #metastore, METASTORE_ADMIN) ||
-      #authorizeAny(#principal, #schema, OWNER, USE_SCHEMA)
+      #authorize(#principal, #schema, OWNER) ||
+      (#authorize(#principal, #schema, USE_SCHEMA) && #authorize(#principal, #catalog, USE_CATALOG))
       """)
   @AuthorizeKey(METASTORE)
   public HttpResponse getSchema(@Param("full_name") @AuthorizeKey(SCHEMA) String fullName) {
@@ -84,7 +85,9 @@ public class SchemaService {
   @Patch("/{full_name}")
   @AuthorizeExpression("""
       #authorize(#principal, #metastore, METASTORE_ADMIN) ||
-      #authorize(#principal, #schema, OWNER)
+      #authorize(#principal, #schema, OWNER) ||
+      #authorizeAll(#principal, #catalog, USE_CATALOG, USE_SCHEMA) ||
+      (#authorize(#principal, #schema, USE_SCHEMA) && #authorize(#principal, #catalog, USE_CATALOG))
       """)
   @AuthorizeKey(METASTORE)
   public HttpResponse updateSchema(
@@ -96,9 +99,11 @@ public class SchemaService {
 
   @Delete("/{full_name}")
   @AuthorizeExpression("""
+      #authorize(#principal, #metastore, METASTORE_ADMIN) ||
       #authorize(#principal, #schema, OWNER) ||
-      #authorize(#principal, #catalog, OWNER)
+      (#authorize(#principal, #schema, USE_SCHEMA) && #authorize(#principal, #catalog, USE_CATALOG))
       """)
+  @AuthorizeKey(METASTORE)
   public HttpResponse deleteSchema(
       @Param("full_name") @AuthorizeKey(SCHEMA) String fullName,
       @Param("force") Optional<Boolean> force) {
