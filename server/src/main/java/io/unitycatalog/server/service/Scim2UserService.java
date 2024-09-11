@@ -31,6 +31,8 @@ import io.unitycatalog.server.exception.Scim2RuntimeException;
 import io.unitycatalog.server.persist.UserRepository;
 import io.unitycatalog.server.persist.model.CreateUser;
 import io.unitycatalog.server.persist.model.UpdateUser;
+import io.unitycatalog.server.security.JwtClaim;
+
 import java.net.URI;
 import java.util.Calendar;
 import java.util.List;
@@ -149,7 +151,7 @@ public class Scim2UserService {
     ServiceRequestContext ctx = ServiceRequestContext.current();
     DecodedJWT decodedJWT = ctx.attr(AuthDecorator.DECODED_JWT_ATTR);
     if (decodedJWT != null) {
-      Claim sub = decodedJWT.getClaim("sub");
+      Claim sub = decodedJWT.getClaim(JwtClaim.SUBJECT.key());
       return asUserResource(USER_REPOSITORY.getUserByEmail(sub.asString()));
     } else {
       throw new Scim2RuntimeException(new BadRequestException("No user found."));

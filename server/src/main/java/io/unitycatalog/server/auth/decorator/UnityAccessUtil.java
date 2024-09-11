@@ -10,6 +10,7 @@ import io.unitycatalog.server.model.Privilege;
 import io.unitycatalog.server.persist.MetastoreRepository;
 import io.unitycatalog.server.persist.UserRepository;
 import io.unitycatalog.server.persist.model.CreateUser;
+import io.unitycatalog.server.security.JwtClaim;
 import io.unitycatalog.server.service.AuthDecorator;
 import java.util.UUID;
 
@@ -23,7 +24,7 @@ public class UnityAccessUtil {
     DecodedJWT decodedJWT = ctx.attr(AuthDecorator.DECODED_JWT_ATTR);
     // TODO: if/when authorization becomes mandatory, maybe just throw an exception here?
     if (decodedJWT != null) {
-      Claim sub = decodedJWT.getClaim("sub");
+      Claim sub = decodedJWT.getClaim(JwtClaim.SUBJECT.key());
       return UUID.fromString(USER_REPOSITORY.getUserByEmail(sub.asString()).getId());
     } else {
       return null;

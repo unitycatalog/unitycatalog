@@ -16,6 +16,7 @@ import io.unitycatalog.server.exception.ErrorCode;
 import io.unitycatalog.server.exception.GlobalExceptionHandler;
 import io.unitycatalog.server.exception.OAuthInvalidRequestException;
 import io.unitycatalog.server.persist.UserRepository;
+import io.unitycatalog.server.security.JwtClaim;
 import io.unitycatalog.server.security.SecurityContext;
 import io.unitycatalog.server.utils.JwksOperations;
 import lombok.Builder;
@@ -152,9 +153,9 @@ public class AuthService {
 
   private static void verifyPrincipal(DecodedJWT decodedJWT) {
     String subject =
-        decodedJWT.getClaim("email").isMissing()
-            ? decodedJWT.getClaim("sub").asString()
-            : decodedJWT.getClaim("email").asString();
+        decodedJWT.getClaim(JwtClaim.EMAIL.key()).isMissing()
+            ? decodedJWT.getClaim(JwtClaim.SUBJECT.key()).asString()
+            : decodedJWT.getClaim(JwtClaim.EMAIL.key()).asString();
 
     if (subject.equals("admin")) {
       return;
