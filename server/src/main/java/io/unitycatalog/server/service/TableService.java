@@ -68,7 +68,6 @@ public class TableService {
   @Get("/{full_name}")
   @AuthorizeExpression("""
           #authorize(#principal, #metastore, METASTORE_ADMIN) ||
-          #authorize(#principal, #catalog, OWNER) ||
           (#authorize(#principal, #schema, OWNER) && #authorize(#principal, #catalog, USE_CATALOG)) ||
           (#authorize(#principal, #schema, USE_SCHEMA) && #authorize(#principal, #catalog, USE_CATALOG) && #authorizeAny(#principal, #table, OWNER, SELECT))
           """)
