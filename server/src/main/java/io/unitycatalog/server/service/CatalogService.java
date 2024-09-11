@@ -76,7 +76,7 @@ public class CatalogService {
   @Patch("/{name}")
   @AuthorizeExpression("""
       #authorize(#principal, #metastore, METASTORE_ADMIN) ||
-      #authorize(#principal, #catalog, OWNER)
+      #authorizeAny(#principal, #catalog, USE_CATALOG)
       """)
   @AuthorizeKey(METASTORE)
   public HttpResponse updateCatalog(
