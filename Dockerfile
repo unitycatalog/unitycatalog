@@ -62,7 +62,7 @@ ARG sbt_args
 ARG unitycatalog_version
 ARG jars_directory
 
-EXPOSE 8081
+EXPOSE 8080 8081
 
 RUN <<EOF
     set -ex;

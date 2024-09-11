@@ -29,6 +29,16 @@ tags:
     description: |
       Model versions contain all artifact files associated with an individual machine learning model. They are associated with a single parent model and have an integer identifier, indicating the version number of the model.
       Model versions are referenced via model URI's using the Unity Catalog three-level namespace of the registered model and the version identifier.
+  - name: TemporaryCredentials
+    description: |
+      Temporary credentials are used to access storage locations or assets for a limited lifetime.
+  - name: Permissions
+    description: |
+      In Unity Catalog, data is secure by default. Access can be granted.
+  - name: Metastores
+    description: |
+      A metastore is the top-level container of objects in Unity Catalog. It stores data assets (tables and views) and the permissions that govern access to them. 
+      Each metastore is configured with a root storage location. This storage location is used for metadata and managed tables data.
 paths:
   /catalogs:
     post:
@@ -594,25 +604,25 @@ paths:
     post:
       operationId: generateTemporaryModelVersionCredentials
       tags:
-        - TemporaryModelVersionCredentials
+        - TemporaryCredentials
       summary: Generate temporary model version credentials. These credentials are used by clients to write and retrieve model artifacts from the model versions external storage location.
       requestBody:
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/GenerateTemporaryModelVersionCredentials'
+              $ref: '#/components/schemas/GenerateTemporaryModelVersionCredential'
       responses:
         '200':
           description: Successful response
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/GenerateTemporaryModelVersionCredentialsResponse'
+                $ref: '#/components/schemas/TemporaryCredentials'
   /temporary-table-credentials:
     post:
       operationId: generateTemporaryTableCredentials
       tags:
-        - TemporaryTableCredentials
+        - TemporaryCredentials
       summary: Generate temporary table credentials.
       requestBody:
         content:
@@ -625,12 +635,12 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/GenerateTemporaryTableCredentialResponse'
+                $ref: '#/components/schemas/TemporaryCredentials'
   /temporary-volume-credentials:
     post:
       operationId: generateTemporaryVolumeCredentials
       tags:
-        - TemporaryVolumeCredentials
+        - TemporaryCredentials
       summary: Generate temporary volume credentials.
       requestBody:
         content:
@@ -643,7 +653,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/GenerateTemporaryVolumeCredentialResponse'
+                $ref: '#/components/schemas/TemporaryCredentials'
   "/functions":
     post:
       tags:
@@ -1035,6 +1045,94 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ModelVersionInfo'
+  /temporary-path-credentials:
+    post:
+      operationId: generateTemporaryPathCredentials
+      tags:
+        - TemporaryCredentials
+      summary: Generate temporary path credentials.
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/GenerateTemporaryPathCredential'
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TemporaryCredentials'
+  /permissions/{securable_type}/{full_name}:
+    parameters:
+      - name: securable_type
+        in: path
+        description: Type of securable.
+        required: true
+        schema:
+          $ref: '#/components/schemas/SecurableType'
+      - name: full_name
+        in: path
+        description: Full name of securable.
+        required: true
+        schema:
+          type: string
+    get:
+      tags:
+        - Grants
+      parameters:
+        - name: principal
+          in: query
+          description: |
+            If provided, only the permissions for the specified principal (user or group) are returned.
+          schema:
+            type: string
+          required: false
+      operationId: get
+      summary: Get permissions
+      description: |
+        Gets the permissions for a securable.
+      responses:
+        '200':
+          description: The permissions list for securable was successfully retrieved.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PermissionsList'
+    patch:
+      tags:
+        - Grants
+      operationId: update
+      summary: Update a permission
+      description: |
+        Updates the permissions for a securable.
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdatePermissions'
+      responses:
+        '200':
+          description: The permissions list for securable was successfully updated.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PermissionsList'
+  /metastore_summary:
+    get:
+      tags:
+        - Metastores
+      operationId: summary
+      summary: Get the summary of a metastore
+      description: |
+        Gets information about a metastore. The summary includes the metastore id, name, creation time and update time.
+      responses:
+        '200':
+          description: The metastore summary was successfully retrieved.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GetMetastoreSummaryResponse'
 components:
   schemas:
     SecurablePropertiesMap:
@@ -1116,17 +1214,26 @@ components:
           maxLength: 65536
           minLength: 1
           description: The comment attached to the volume
+        owner:
+          description: The identifier of the user who owns the volume
+          type: string
         created_at:
           type: integer
           format: int64
           description: Time at which this volume was created, in epoch milliseconds.
+        created_by:
+          description: TThe identifier of the user who created the volume
+          type: string
         updated_at:
           type: integer
           format: int64
           description: Time at which this volume was last modified, in epoch milliseconds.
+        updated_by:
+          description: The identifier of the user who updated the volume last time
+          type: string
         volume_id:
           type: string
-          description: Unique identifier for the volume
+          description: Unique identifier of the volume
         "volume_type":
           "$ref": "#/components/schemas/VolumeType"
         storage_location:
@@ -1245,14 +1352,23 @@ components:
           type: string
         properties:
           $ref: '#/components/schemas/SecurablePropertiesMap'
+        owner:
+          description: Username of current owner of table.
+          type: string
         created_at:
           description: Time at which this table was created, in epoch milliseconds.
           type: integer
           format: int64
+        created_by:
+          description: Username of table creator.
+          type: string
         updated_at:
           description: Time at which this table was last modified, in epoch milliseconds.
           type: integer
           format: int64
+        updated_by:
+          description: Username of user who last modified the table.
+          type: string
         table_id:
           description: Unique identifier for the table.
           type: string
@@ -1323,14 +1439,23 @@ components:
         full_name:
           description: Full name of schema, in form of __catalog_name__.__schema_name__.
           type: string
+        owner:
+          description: Username of current owner of schema.
+          type: string
         created_at:
           description: Time at which this schema was created, in epoch milliseconds.
           type: integer
           format: int64
+        created_by:
+          description: Username of schema creator.
+          type: string
         updated_at:
           description: Time at which this schema was last modified, in epoch milliseconds.
           type: integer
           format: int64
+        updated_by:
+          description: Username of user who last modified schema.
+          type: string
         schema_id:
           description: Unique identifier for the schema.
           type: string
@@ -1386,14 +1511,23 @@ components:
           type: string
         properties:
           $ref: '#/components/schemas/SecurablePropertiesMap'
+        owner:
+          description: Username of current owner of catalog.
+          type: string
         created_at:
           description: Time at which this catalog was created, in epoch milliseconds.
           type: integer
           format: int64
+        created_by:
+          description: Username of catalog creator.
+          type: string
         updated_at:
           description: Time at which this catalog was last modified, in epoch milliseconds.
           type: integer
           format: int64
+        updated_by:
+          description: Username of user who last modified catalog.
+          type: string
         id:
           description: Unique identifier for the catalog.
           type: string
@@ -1701,14 +1835,23 @@ components:
         full_name:
           description: Full name of function, in form of __catalog_name__.__schema_name__.__function__name__
           type: string
+        owner:
+          description: Username of current owner of function.
+          type: string
         created_at:
           description: Time at which this function was created, in epoch milliseconds.
           type: integer
           format: int64
+        created_by:
+          description: Username of function creator.
+          type: string
         updated_at:
           description: Time at which this function was last updated, in epoch milliseconds.
           type: integer
           format: int64
+        updated_by:
+          description: Username of user who last modified function.
+          type: string
         function_id:
           description: Id of Function, relative to parent schema.
           type: string
@@ -1728,7 +1871,7 @@ components:
           description: |
             Opaque token to retrieve the next page of results. Absent if there are no more pages.
             __page_token__ should be set to this value for the next request (for the next page of results).
-    GenerateTemporaryModelVersionCredentials:
+    GenerateTemporaryModelVersionCredential:
       example:
         catalog_name: catalog_name
         schema_name: schema_name
@@ -1765,24 +1908,6 @@ components:
         - model_name
         - version
         - operation
-    GenerateTemporaryModelVersionCredentialsResponse:
-      properties:
-        aws_temp_credentials:
-          $ref: '#/components/schemas/AwsCredentials'
-        azure_user_delegation_sas:
-          $ref: '#/components/schemas/AzureUserDelegationSAS'
-        gcp_oauth_token:
-          $ref: '#/components/schemas/GcpOauthToken'
-        expiration_time:
-          description: |
-            Server time when the credential will expire, in epoch milliseconds.
-            The API client is advised to cache the credential given this expiration time.
-          type: integer
-          format: int64
-        url:
-          description: The URL of the storage path accessible by the temporary credential.
-          type: string
-      type: object
     ModelVersionOperation:
       enum:
         - UNKNOWN_MODEL_VERSION_OPERATION
@@ -1805,21 +1930,6 @@ components:
       required:
         - table_id
         - operation
-    GenerateTemporaryTableCredentialResponse:
-      properties:
-        aws_temp_credentials:
-          $ref: '#/components/schemas/AwsCredentials'
-        azure_user_delegation_sas:
-          $ref: '#/components/schemas/AzureUserDelegationSAS'
-        gcp_oauth_token:
-          $ref: '#/components/schemas/GcpOauthToken'
-        expiration_time:
-          description: |
-            Server time when the credential will expire, in epoch milliseconds.
-            The API client is advised to cache the credential given this expiration time.
-          type: integer
-          format: int64
-      type: object
     TableOperation:
       enum:
         - UNKNOWN_TABLE_OPERATION
@@ -1864,21 +1974,6 @@ components:
       required:
         - volume_id
         - operation
-    GenerateTemporaryVolumeCredentialResponse:
-      properties:
-        aws_temp_credentials:
-          $ref: '#/components/schemas/AwsCredentials'
-        azure_user_delegation_sas:
-          $ref: '#/components/schemas/AzureUserDelegationSAS'
-        gcp_oauth_token:
-          $ref: '#/components/schemas/GcpOauthToken'
-        expiration_time:
-          description: |
-            Server time when the credential will expire, in epoch milliseconds.
-            The API client is advised to cache the credential given this expiration time.
-          type: integer
-          format: int64
-      type: object
     VolumeOperation:
       enum:
         - UNKNOWN_VOLUME_OPERATION
@@ -1889,58 +1984,61 @@ components:
       type: object
       properties:
         name:
-          description: Name of registered model, relative to parent schema.
+          description: The name of the registered model
           type: string
         catalog_name:
-          description: Name of parent catalog.
+          description: The name of the catalog where the schema and the registered model reside
           type: string
         schema_name:
-          description: Name of parent schema relative to its parent catalog.
+          description: The name of the schema where the registered model resides
           type: string
         storage_location:
-          description: The storage location on the cloud under which registered model data files are stored.
+          description: The storage location on the cloud under which model version data files are stored
           type: string
         full_name:
-          description: The full 3 tiered UC identifier for this registered model.
+          description: The three-level (fully qualified) name of the registered model
           type: string
         comment:
-          description: User-provided free-form text description.
+          description: The comment attached to the registered model
+          type: string
+        owner:
+          description: The identifier of the user who owns the registered model
           type: string
         created_at:
-          description: Time at which this registered model was created, in epoch milliseconds.
+          description: Creation timestamp of the registered model in milliseconds since the Unix epoch
           type: integer
           format: int64
         created_by:
-          description: The user that created the model
+          description: The identifier of the user who created the registered model
           type: string
         updated_at:
-          description: Time at which this registered model was last modified, in epoch milliseconds.
+          description: Last-update timestamp of the registered model in milliseconds since the Unix epoch
           type: integer
           format: int64
         updated_by:
-          description: The user that last updated the model
+          description: The identifier of the user who updated the registered model last time
           type: string
-        model_id:
+        id:
           description: Unique identifier for the registered model.
           type: string
     ModelVersionInfo:
       type: object
       properties:
         model_name:
-          description: Name of registered model, relative to parent schema.
+          description: The name of the parent registered model of the model version, relative to parent schema
           type: string
         catalog_name:
-          description: Name of parent catalog.
+          description: The name of the catalog containing the model version
           type: string
         schema_name:
-          description: Name of parent schema relative to its parent catalog.
+          description: The name of the schema containing the model version, relative to parent catalog
           type: string
         version:
-          description: The version number of the model version.
+          description: Integer model version number, used to reference the model version in API requests.
           type: integer
           format: int64
         source:
-          description: URI indicating the location of the source model artifacts.
+          description: URI indicating the location of the source artifacts (files) for the model version
           type: string
         run_id:
           description: The run id used by the ML package that generated the model.
@@ -1948,26 +2046,26 @@ components:
         status:
           $ref: '#/components/schemas/ModelVersionStatus'
         storage_location:
-          description: The storage location on the cloud under which model version data files are stored.
+          description: The storage location on the cloud under which model version data files are stored
           type: string
         comment:
-          description: User-provided free-form text description.
+          description: The comment attached to the model version
           type: string
         created_at:
           description: Time at which this model version was created, in epoch milliseconds.
           type: integer
           format: int64
         created_by:
-          description: The user that created the model version
+          description: The identifier of the user who created the model version
           type: string
         updated_at:
           description: Time at which this model version was last modified, in epoch milliseconds.
           type: integer
           format: int64
         updated_by:
-          description: The user that last updated the model version
+          description: The identifier of the user who updated the model version last time
           type: string
-        model_version_id:
+        id:
           description: Unique identifier for the model version.
           type: string
     ModelVersionStatus:
@@ -2090,6 +2188,142 @@ components:
       required:
         - full_name
         - version
+    GenerateTemporaryPathCredential:
+      type: object
+      properties:
+        url:
+          description: The URL of the storage path for which temporary credentials need to be generated.
+          type: string
+        operation:
+          $ref: '#/components/schemas/PathOperation'
+      required:
+        - url
+        - operation
+    TemporaryCredentials:
+      type: object
+      properties:
+        aws_temp_credentials:
+          $ref: '#/components/schemas/AwsCredentials'
+        azure_user_delegation_sas:
+          $ref: '#/components/schemas/AzureUserDelegationSAS'
+        gcp_oauth_token:
+          $ref: '#/components/schemas/GcpOauthToken'
+        expiration_time:
+          description: |
+            Server time when the credential will expire, in epoch milliseconds.
+            The API client is advised to cache the credential given this expiration time.
+          type: integer
+          format: int64
+    PathOperation:
+      enum:
+        - UNKNOWN_PATH_OPERATION
+        - PATH_READ
+        - PATH_READ_WRITE
+        - PATH_CREATE_TABLE
+      type: string
+    PrincipalType:
+      type: string
+      enum:
+        - USER
+        - GROUP
+      description: The type of the principal.
+    SecurableType:
+      type: string
+      enum:
+        - metastore
+        - catalog
+        - schema
+        - table
+        - function
+        - volume
+        - registered_model
+      description: The type of the resource.
+    Privilege:
+      type: string
+      enum:
+        - CREATE CATALOG
+        - USE CATALOG
+        - CREATE SCHEMA
+        - USE SCHEMA
+        - CREATE TABLE
+        - SELECT
+        - CREATE FUNCTION
+        - EXECUTE
+        - CREATE VOLUME
+        - READ VOLUME
+        - CREATE MODEL
+      description: The privilege to grant.
+    UpdatePermissions:
+      type: object
+      properties:
+        changes:
+          description: Array of permissions change objects.
+          type: array
+          items:
+            $ref: '#/components/schemas/PermissionsChange'
+      required:
+        - changes
+    PermissionsChange:
+      type: object
+      properties:
+        principal:
+          description: The principal whose privileges we are changing.
+          type: string
+        add:
+          description: The set of privileges to add.
+          type: array
+          items:
+            $ref: '#/components/schemas/Privilege'
+        remove:
+          description: The set of privileges to remove.
+          type: array
+          items:
+            $ref: '#/components/schemas/Privilege'
+      required:
+        - principal
+        - add
+        - remove
+    PermissionsList:
+      type: object
+      properties:
+        privilege_assignments:
+          description: The privileges assigned to each principal.
+          type: array
+          items:
+            $ref: '#/components/schemas/PrivilegeAssignment'
+      required:
+        - privilege_assignments
+    PrivilegeAssignment:
+      type: object
+      properties:
+        principal:
+          description: The principal (user email address or group name).
+          type: string
+        privileges:
+          description: The privileges assigned to the principal.
+          type: array
+          items:
+            $ref: '#/components/schemas/Privilege'
+      required:
+        - principal
+        - privileges
+    GetMetastoreSummaryResponse:
+      type: object
+      properties:
+        metastore_id:
+          description: Unique identifier for the metastore.
+          type: string
+        name:
+          description: User-specified name of the metastore.
+          type: string
+        created_at:
+          description: Time at which this metastore was created, in epoch milliseconds.
+          type: integer
+          format: int64
+        updated_at:
+          description: Time at which this metastore was last modified, in epoch milliseconds.
+          type: integer
+          format: int64
 info:
   title: Unity Catalog API
   version: '0.1'

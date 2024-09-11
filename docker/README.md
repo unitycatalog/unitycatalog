@@ -64,7 +64,7 @@ Once the Docker image of Unity Catalog's Localhost Reference Server is built, yo
 ###################################################################
 ```
 
-`start-uc-server-docker` starts the Unity Catalog server to listen to `8081`.
+`start-uc-server-docker` starts the Unity Catalog server.
 
 In another terminal, execute the following command to learn more about the container.
 
@@ -74,13 +74,13 @@ docker container ls --filter name=unitycatalog --no-trunc --format 'table {{.ID}
 
 ```text
 CONTAINER ID                                                       IMAGE                         COMMAND                           PORTS
-1e15b648d6c2669eb83ac12991323ca288e27d9201c4ecbc8dc15ea2bfa6c389   unitycatalog:0.2.0-SNAPSHOT   "/bin/bash bin/start-uc-server"   0.0.0.0:8081->8081/tcp
+1e15b648d6c2669eb83ac12991323ca288e27d9201c4ecbc8dc15ea2bfa6c389   unitycatalog:0.2.0-SNAPSHOT   "/bin/bash bin/start-uc-server"   0.0.0.0:8080-8081->8080-8081/tcp
 ```
 
 Use the regular non-dockerized Unity Catalog CLI to access the server and list the catalogs.
 
 ```bash
-./bin/uc catalog list --server http://localhost:8081
+./bin/uc catalog list
 ```
 
 ```text

@@ -144,6 +144,9 @@ public class UnityCatalogCli {
         case CliUtils.MODEL_VERSION:
           ModelVersionCli.handle(cmd, apiClient);
           break;
+        case CliUtils.PERMISSION:
+          PermissionCli.handle(cmd, apiClient);
+          break;
         case CliUtils.USER:
           UserCli.handle(cmd, getControlClient(cmd));
           break;
@@ -172,15 +175,16 @@ public class UnityCatalogCli {
       System.out.println("Please provide a entity.");
       CliUtils.printHelp();
       return false;
-    } else if (subArgs.length < 2) {
-      System.out.println("Please provide an operation.");
-      CliUtils.printEntityHelp(subArgs[0]);
-      return false;
     } else {
       String entity = cmd.getArgs()[0];
       if (!CliUtils.cliOptions.containsKey(entity.toLowerCase())) {
         System.out.println("Invalid entity provided: " + entity);
         CliUtils.printHelp();
+        return false;
+      }
+      if (subArgs.length < 2) {
+        System.out.println("Please provide an operation.");
+        CliUtils.printEntityHelp(subArgs[0]);
         return false;
       }
       String operation = cmd.getArgs()[1];

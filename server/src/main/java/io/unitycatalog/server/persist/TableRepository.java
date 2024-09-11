@@ -3,6 +3,7 @@ package io.unitycatalog.server.persist;
 import io.unitycatalog.server.exception.BaseException;
 import io.unitycatalog.server.exception.ErrorCode;
 import io.unitycatalog.server.model.*;
+import io.unitycatalog.server.persist.dao.CatalogInfoDAO;
 import io.unitycatalog.server.persist.dao.PropertyDAO;
 import io.unitycatalog.server.persist.dao.SchemaInfoDAO;
 import io.unitycatalog.server.persist.dao.TableInfoDAO;
@@ -11,6 +12,7 @@ import io.unitycatalog.server.persist.utils.HibernateUtils;
 import io.unitycatalog.server.persist.utils.PagedListingHelper;
 import io.unitycatalog.server.persist.utils.RepositoryUtils;
 import io.unitycatalog.server.utils.Constants;
+import io.unitycatalog.server.utils.IdentityUtils;
 import io.unitycatalog.server.utils.ValidationUtils;
 import java.util.*;
 import java.util.stream.Collectors;
@@ -45,7 +47,20 @@ public class TableRepository {
         if (tableInfoDAO == null) {
           throw new BaseException(ErrorCode.NOT_FOUND, "Table not found: " + tableId);
         }
+        SchemaInfoDAO schemaInfoDAO = session.get(SchemaInfoDAO.class, tableInfoDAO.getSchemaId());
+        if (schemaInfoDAO == null) {
+          throw new BaseException(
+              ErrorCode.NOT_FOUND, "Schema not found: " + tableInfoDAO.getSchemaId());
+        }
+        CatalogInfoDAO catalogInfoDAO =
+            session.get(CatalogInfoDAO.class, schemaInfoDAO.getCatalogId());
+        if (catalogInfoDAO == null) {
+          throw new BaseException(
+              ErrorCode.NOT_FOUND, "Catalog not found: " + schemaInfoDAO.getCatalogId());
+        }
         TableInfo tableInfo = tableInfoDAO.toTableInfo(true);
+        tableInfo.setSchemaName(schemaInfoDAO.getName());
+        tableInfo.setCatalogName(catalogInfoDAO.getName());
         tx.commit();
         return tableInfo;
       } catch (Exception e) {
@@ -105,10 +120,12 @@ public class TableRepository {
 
   public TableInfo createTable(CreateTable createTable) {
     ValidationUtils.validateSqlObjectName(createTable.getName());
+    String callerId = IdentityUtils.findPrincipalEmailAddress();
     List<ColumnInfo> columnInfos =
         createTable.getColumns().stream()
             .map(c -> c.typeText(c.getTypeText().toLowerCase(Locale.ROOT)))
             .collect(Collectors.toList());
+    Long createTime = System.currentTimeMillis();
     TableInfo tableInfo =
         new TableInfo()
             .tableId(UUID.randomUUID().toString())
@@ -121,7 +138,11 @@ public class TableRepository {
             .storageLocation(FileUtils.convertRelativePathToURI(createTable.getStorageLocation()))
             .comment(createTable.getComment())
             .properties(createTable.getProperties())
-            .createdAt(System.currentTimeMillis());
+            .owner(callerId)
+            .createdAt(createTime)
+            .createdBy(callerId)
+            .updatedAt(createTime)
+            .updatedBy(callerId);
     String fullName = getTableFullName(tableInfo);
     LOGGER.debug("Creating table: " + fullName);
 
