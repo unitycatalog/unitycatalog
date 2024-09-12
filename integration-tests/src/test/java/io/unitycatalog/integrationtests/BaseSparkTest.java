@@ -1,14 +1,15 @@
 package io.unitycatalog.integrationtests;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
 import org.apache.spark.sql.SparkSession;
 import org.junit.jupiter.api.BeforeAll;
 
+import java.util.Arrays;
+import java.util.List;
+
 public class BaseSparkTest {
-    private static final String ServerUrl = System.getenv().getOrDefault("CATALOG_URI","http://localhost:8080");
-    private static final String AuthToken = System.getenv().getOrDefault("CATALOG_AUTH_TOKEN","");
-    private static final String CatalogName = System.getenv().getOrDefault("CATALOG_NAME","unity");
-    private static final ObjectMapper mapper = new ObjectMapper();
+    private static final String ServerUrl = System.getenv().getOrDefault("CATALOG_URI", "http://localhost:8080");
+    private static final String AuthToken = System.getenv().getOrDefault("CATALOG_AUTH_TOKEN", "");
+    private static final String CatalogName = System.getenv().getOrDefault("CATALOG_NAME", "unity");
     protected static SparkSession spark;
 
     @BeforeAll
@@ -36,5 +37,15 @@ public class BaseSparkTest {
             builder.config("spark.sql.defaultCatalog", catalogs[0]);
         }
         return builder.getOrCreate();
+    }
+
+    public enum LocationType {
+        FILE,
+        S3,
+        GS,
+    }
+
+    static List<LocationType> locationTypes() {
+        return Arrays.stream(LocationType.values()).toList();
     }
 }

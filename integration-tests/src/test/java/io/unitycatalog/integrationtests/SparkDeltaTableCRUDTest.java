@@ -11,7 +11,6 @@ import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.MethodSource;
 
 import java.nio.file.Files;
-import java.util.Arrays;
 import java.util.List;
 import java.util.UUID;
 
@@ -19,20 +18,10 @@ import static java.lang.String.format;
 import static org.assertj.core.api.Assertions.assertThat;
 
 @TestMethodOrder(OrderAnnotation.class)
-public class SparkNumbersTableCRUDTest extends BaseSparkTest {
+public class SparkDeltaTableCRUDTest extends BaseSparkTest {
     private static final String BASE_TABLE_NAME = "numbers";
     private final String RUN_ID = UUID.randomUUID().toString();
     private static final String SCHEMA = RandomStringUtils.randomAlphabetic(8);
-
-    public enum LocationType {
-        FILE,
-        S3,
-        GS,
-    }
-
-    static List<LocationType> locationTypes() {
-        return Arrays.stream(LocationType.values()).toList();
-    }
 
     static String getTableName(LocationType locationType) {
         return format("%s_%s", BASE_TABLE_NAME, locationType.name());
