@@ -1174,17 +1174,26 @@ components:
           maxLength: 65536
           minLength: 1
           description: The comment attached to the volume
+        owner:
+          description: The identifier of the user who owns the volume
+          type: string
         created_at:
           type: integer
           format: int64
           description: Time at which this volume was created, in epoch milliseconds.
+        created_by:
+          description: TThe identifier of the user who created the volume
+          type: string
         updated_at:
           type: integer
           format: int64
           description: Time at which this volume was last modified, in epoch milliseconds.
+        updated_by:
+          description: The identifier of the user who updated the volume last time
+          type: string
         volume_id:
           type: string
-          description: Unique identifier for the volume
+          description: Unique identifier of the volume
         "volume_type":
           "$ref": "#/components/schemas/VolumeType"
         storage_location:
@@ -1303,14 +1312,23 @@ components:
           type: string
         properties:
           $ref: '#/components/schemas/SecurablePropertiesMap'
+        owner:
+          description: Username of current owner of table.
+          type: string
         created_at:
           description: Time at which this table was created, in epoch milliseconds.
           type: integer
           format: int64
+        created_by:
+          description: Username of table creator.
+          type: string
         updated_at:
           description: Time at which this table was last modified, in epoch milliseconds.
           type: integer
           format: int64
+        updated_by:
+          description: Username of user who last modified the table.
+          type: string
         table_id:
           description: Unique identifier for the table.
           type: string
@@ -1381,14 +1399,23 @@ components:
         full_name:
           description: Full name of schema, in form of __catalog_name__.__schema_name__.
           type: string
+        owner:
+          description: Username of current owner of schema.
+          type: string
         created_at:
           description: Time at which this schema was created, in epoch milliseconds.
           type: integer
           format: int64
+        created_by:
+          description: Username of schema creator.
+          type: string
         updated_at:
           description: Time at which this schema was last modified, in epoch milliseconds.
           type: integer
           format: int64
+        updated_by:
+          description: Username of user who last modified schema.
+          type: string
         schema_id:
           description: Unique identifier for the schema.
           type: string
@@ -1444,14 +1471,23 @@ components:
           type: string
         properties:
           $ref: '#/components/schemas/SecurablePropertiesMap'
+        owner:
+          description: Username of current owner of catalog.
+          type: string
         created_at:
           description: Time at which this catalog was created, in epoch milliseconds.
           type: integer
           format: int64
+        created_by:
+          description: Username of catalog creator.
+          type: string
         updated_at:
           description: Time at which this catalog was last modified, in epoch milliseconds.
           type: integer
           format: int64
+        updated_by:
+          description: Username of user who last modified catalog.
+          type: string
         id:
           description: Unique identifier for the catalog.
           type: string
@@ -1759,14 +1795,23 @@ components:
         full_name:
           description: Full name of function, in form of __catalog_name__.__schema_name__.__function__name__
           type: string
+        owner:
+          description: Username of current owner of function.
+          type: string
         created_at:
           description: Time at which this function was created, in epoch milliseconds.
           type: integer
           format: int64
+        created_by:
+          description: Username of function creator.
+          type: string
         updated_at:
           description: Time at which this function was last updated, in epoch milliseconds.
           type: integer
           format: int64
+        updated_by:
+          description: Username of user who last modified function.
+          type: string
         function_id:
           description: Id of Function, relative to parent schema.
           type: string
@@ -1947,58 +1992,61 @@ components:
       type: object
       properties:
         name:
-          description: Name of registered model, relative to parent schema.
+          description: The name of the registered model
           type: string
         catalog_name:
-          description: Name of parent catalog.
+          description: The name of the catalog where the schema and the registered model reside
           type: string
         schema_name:
-          description: Name of parent schema relative to its parent catalog.
+          description: The name of the schema where the registered model resides
           type: string
         storage_location:
-          description: The storage location on the cloud under which registered model data files are stored.
+          description: The storage location on the cloud under which model version data files are stored
           type: string
         full_name:
-          description: The full 3 tiered UC identifier for this registered model.
+          description: The three-level (fully qualified) name of the registered model
           type: string
         comment:
-          description: User-provided free-form text description.
+          description: The comment attached to the registered model
+          type: string
+        owner:
+          description: The identifier of the user who owns the registered model
           type: string
         created_at:
-          description: Time at which this registered model was created, in epoch milliseconds.
+          description: Creation timestamp of the registered model in milliseconds since the Unix epoch
           type: integer
           format: int64
         created_by:
-          description: The user that created the model
+          description: The identifier of the user who created the registered model
           type: string
         updated_at:
-          description: Time at which this registered model was last modified, in epoch milliseconds.
+          description: Last-update timestamp of the registered model in milliseconds since the Unix epoch
           type: integer
           format: int64
         updated_by:
-          description: The user that last updated the model
+          description: The identifier of the user who updated the registered model last time
           type: string
-        model_id:
+        id:
           description: Unique identifier for the registered model.
           type: string
     ModelVersionInfo:
       type: object
       properties:
         model_name:
-          description: Name of registered model, relative to parent schema.
+          description: The name of the parent registered model of the model version, relative to parent schema
           type: string
         catalog_name:
-          description: Name of parent catalog.
+          description: The name of the catalog containing the model version
           type: string
         schema_name:
-          description: Name of parent schema relative to its parent catalog.
+          description: The name of the schema containing the model version, relative to parent catalog
           type: string
         version:
-          description: The version number of the model version.
+          description: Integer model version number, used to reference the model version in API requests.
           type: integer
           format: int64
         source:
-          description: URI indicating the location of the source model artifacts.
+          description: URI indicating the location of the source artifacts (files) for the model version
           type: string
         run_id:
           description: The run id used by the ML package that generated the model.
@@ -2006,26 +2054,26 @@ components:
         status:
           $ref: '#/components/schemas/ModelVersionStatus'
         storage_location:
-          description: The storage location on the cloud under which model version data files are stored.
+          description: The storage location on the cloud under which model version data files are stored
           type: string
         comment:
-          description: User-provided free-form text description.
+          description: The comment attached to the model version
           type: string
         created_at:
           description: Time at which this model version was created, in epoch milliseconds.
           type: integer
           format: int64
         created_by:
-          description: The user that created the model version
+          description: The identifier of the user who created the model version
           type: string
         updated_at:
           description: Time at which this model version was last modified, in epoch milliseconds.
           type: integer
           format: int64
         updated_by:
-          description: The user that last updated the model version
+          description: The identifier of the user who updated the model version last time
           type: string
-        model_version_id:
+        id:
           description: Unique identifier for the model version.
           type: string
     ModelVersionStatus:
