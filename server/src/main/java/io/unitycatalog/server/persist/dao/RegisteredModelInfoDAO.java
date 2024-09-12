@@ -51,7 +51,7 @@ public class RegisteredModelInfoDAO extends IdentifiableDAO {
 
   public static RegisteredModelInfoDAO from(RegisteredModelInfo registeredModelInfo) {
     return RegisteredModelInfoDAO.builder()
-        .id(UUID.fromString(registeredModelInfo.getModelId()))
+        .id(UUID.fromString(registeredModelInfo.getId()))
         .name(registeredModelInfo.getName())
         .comment(registeredModelInfo.getComment())
         .owner(registeredModelInfo.getOwner())
@@ -72,7 +72,7 @@ public class RegisteredModelInfoDAO extends IdentifiableDAO {
   public RegisteredModelInfo toRegisteredModelInfo() {
     RegisteredModelInfo registeredModelInfo =
         new RegisteredModelInfo()
-            .modelId(getId().toString())
+            .id(getId().toString())
             .name(getName())
             .storageLocation(url)
             .comment(comment)

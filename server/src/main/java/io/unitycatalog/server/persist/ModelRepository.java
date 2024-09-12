@@ -210,7 +210,7 @@ public class ModelRepository {
     String modelId = UUID.randomUUID().toString();
     RegisteredModelInfo registeredModelInfo =
         new RegisteredModelInfo()
-            .modelId(modelId)
+            .id(modelId)
             .name(createRegisteredModel.getName())
             .catalogName(createRegisteredModel.getCatalogName())
             .schemaName(createRegisteredModel.getSchemaName())
@@ -530,7 +530,7 @@ public class ModelRepository {
     String modelName = createModelVersion.getModelName();
     ModelVersionInfo modelVersionInfo =
         new ModelVersionInfo()
-            .modelVersionId(modelVersionId)
+            .id(modelVersionId)
             .modelName(createModelVersion.getModelName())
             .catalogName(createModelVersion.getCatalogName())
             .schemaName(createModelVersion.getSchemaName())

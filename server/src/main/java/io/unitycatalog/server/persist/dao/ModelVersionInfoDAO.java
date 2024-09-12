@@ -64,13 +64,12 @@ public class ModelVersionInfoDAO {
 
   public static ModelVersionInfoDAO from(ModelVersionInfo modelVersionInfo) {
     return ModelVersionInfoDAO.builder()
-        .id(UUID.fromString(modelVersionInfo.getModelVersionId()))
+        .id(UUID.fromString(modelVersionInfo.getId()))
         .runId(modelVersionInfo.getRunId())
         .source(modelVersionInfo.getSource())
         .status(modelVersionInfo.getStatus().getValue())
         .comment(modelVersionInfo.getComment())
         .version(modelVersionInfo.getVersion())
-        .owner(modelVersionInfo.getOwner())
         .createdAt(
             modelVersionInfo.getCreatedAt() != null
                 ? new Date(modelVersionInfo.getCreatedAt())
@@ -88,14 +87,13 @@ public class ModelVersionInfoDAO {
   public ModelVersionInfo toModelVersionInfo() {
     ModelVersionInfo modelVersionInfo =
         new ModelVersionInfo()
-            .modelVersionId(getId().toString())
+            .id(getId().toString())
             .runId(getRunId())
             .source(getSource())
             .version(getVersion())
             .status(ModelVersionStatus.valueOf(getStatus()))
             .storageLocation(url)
             .comment(comment)
-            .owner(owner)
             .createdAt(createdAt != null ? createdAt.getTime() : null)
             .createdBy(createdBy)
             .updatedAt(updatedAt != null ? updatedAt.getTime() : null)
