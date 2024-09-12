@@ -14,10 +14,15 @@ package io.unitycatalog.server.persist.model;
 
 import io.unitycatalog.server.model.Privilege;
 
-/** The privilege to grant. */
+/**
+ * The privilege to grant.
+ *
+ * <p>This enum is a superset of the privileges that can be granted in Unity Catalog and that are
+ * defined in the OpenAPI specification. In the access control framework, we might express some
+ * permissions in terms of privileges. Doing so, allows us to unify all access control processing
+ * with a simple and unified rule syntax.
+ */
 public enum Privileges {
-  METASTORE_ADMIN("METASTORE ADMIN"),
-
   OWNER("OWNER"),
 
   CREATE_CATALOG("CREATE CATALOG"),

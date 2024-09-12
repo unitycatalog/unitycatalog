@@ -34,7 +34,7 @@ public class UnityAccessUtil {
   public static void initializeAdmin(UnityCatalogAuthorizer authorizer) {
 
     // If no admin user exists, lets create one and grant the admin as
-    // the METASTORE_ADMIN for this server. This is meant to allow a bootstrap
+    // the OWNER for this server. This is meant to allow a bootstrap
     // for the server and provide an admin account with which regular users
     // can be subsequently added.
     //
@@ -56,6 +56,6 @@ public class UnityAccessUtil {
     authorizer.grantAuthorization(
         UUID.fromString(adminUser.getId()),
         METASTORE_REPOSITORY.getMetastoreId(),
-        Privileges.METASTORE_ADMIN);
+        Privileges.OWNER);
   }
 }

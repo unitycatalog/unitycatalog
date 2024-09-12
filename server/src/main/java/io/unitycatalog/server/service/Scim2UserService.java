@@ -103,7 +103,7 @@ public class Scim2UserService {
   @Post("")
   @Produces("application/scim+json")
   @StatusCode(201)
-  @AuthorizeExpression("#authorizeAny(#principal, #metastore, METASTORE_ADMIN)")
+  @AuthorizeExpression("#authorizeAny(#principal, #metastore, OWNER)")
   @AuthorizeKey(METASTORE)
   public UserResource createScimUser(UserResource userResource) {
     // Get primary email address
@@ -169,7 +169,7 @@ public class Scim2UserService {
   @Put("/{id}")
   @Produces("application/scim+json")
   @StatusCode(200)
-  @AuthorizeExpression("#authorizeAny(#principal, #metastore, METASTORE_ADMIN)")
+  @AuthorizeExpression("#authorizeAny(#principal, #metastore, OWNER)")
   @AuthorizeKey(METASTORE)
   public UserResource updateUser(@Param("id") String id, UserResource userResource) {
     UserResource user = asUserResource(USER_REPOSITORY.getUser(id));
@@ -188,7 +188,7 @@ public class Scim2UserService {
   }
 
   @Delete("/{id}")
-  @AuthorizeExpression("#authorizeAny(#principal, #metastore, METASTORE_ADMIN)")
+  @AuthorizeExpression("#authorizeAny(#principal, #metastore, OWNER)")
   @AuthorizeKey(METASTORE)
   public HttpResponse deleteUser(@Param("id") String id) {
     User user = USER_REPOSITORY.getUser(id);

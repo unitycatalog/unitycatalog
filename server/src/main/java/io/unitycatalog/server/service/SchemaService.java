@@ -49,7 +49,7 @@ public class SchemaService {
 
   @Post("")
   @AuthorizeExpression("""
-      #authorize(#principal, #metastore, METASTORE_ADMIN) ||
+      #authorize(#principal, #metastore, OWNER) ||
       #authorizeAll(#principal, #catalog, USE_CATALOG, CREATE_SCHEMA)
       """)
   @AuthorizeKey(METASTORE)
@@ -69,7 +69,7 @@ public class SchemaService {
     ListSchemasResponse listSchemasResponse =
         SCHEMA_REPOSITORY.listSchemas(catalogName, maxResults, pageToken);
     filterSchemas("""
-        #authorize(#principal, #metastore, METASTORE_ADMIN) ||
+        #authorize(#principal, #metastore, OWNER) ||
         #authorize(#principal, #catalog, OWNER) ||
         (#authorize(#principal, #schema, USE_SCHEMA) && #authorize(#principal, #catalog, USE_CATALOG)) 
         """,
@@ -79,7 +79,7 @@ public class SchemaService {
 
   @Get("/{full_name}")
   @AuthorizeExpression("""
-      #authorize(#principal, #metastore, METASTORE_ADMIN) ||
+      #authorize(#principal, #metastore, OWNER) ||
       #authorize(#principal, #schema, OWNER) ||
       (#authorize(#principal, #schema, USE_SCHEMA) && #authorize(#principal, #catalog, USE_CATALOG))
       """)
@@ -90,7 +90,7 @@ public class SchemaService {
 
   @Patch("/{full_name}")
   @AuthorizeExpression("""
-      #authorize(#principal, #metastore, METASTORE_ADMIN) ||
+      #authorize(#principal, #metastore, OWNER) ||
       #authorize(#principal, #schema, OWNER) ||
       #authorizeAll(#principal, #catalog, USE_CATALOG, USE_SCHEMA) ||
       (#authorize(#principal, #schema, USE_SCHEMA) && #authorize(#principal, #catalog, USE_CATALOG))
@@ -105,7 +105,7 @@ public class SchemaService {
 
   @Delete("/{full_name}")
   @AuthorizeExpression("""
-      #authorize(#principal, #metastore, METASTORE_ADMIN) ||
+      #authorize(#principal, #metastore, OWNER) ||
       #authorize(#principal, #schema, OWNER) ||
       (#authorize(#principal, #schema, USE_SCHEMA) && #authorize(#principal, #catalog, USE_CATALOG))
       """)

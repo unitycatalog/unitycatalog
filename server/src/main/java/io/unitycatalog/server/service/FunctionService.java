@@ -78,7 +78,7 @@ public class FunctionService {
 
     ListFunctionsResponse listFunctionsResponse = FUNCTION_REPOSITORY.listFunctions(catalogName, schemaName, maxResults, pageToken);
     filterVolumes("""
-            #authorize(#principal, #metastore, METASTORE_ADMIN) ||
+            #authorize(#principal, #metastore, OWNER) ||
             #authorize(#principal, #function, OWNER) ||
             (#authorizeAny(#principal, #function, EXECUTE) && #authorize(#principal, #schema, USE_SCHEMA) && #authorize(#principal, #catalog, USE_CATALOG))
             """, listFunctionsResponse.getFunctions());
@@ -88,7 +88,7 @@ public class FunctionService {
   @Get("/{name}")
   @AuthorizeKey(METASTORE)
   @AuthorizeExpression("""
-          #authorize(#principal, #metastore, METASTORE_ADMIN) ||
+          #authorize(#principal, #metastore, OWNER) ||
           #authorize(#principal, #catalog, OWNER) ||
           (#authorize(#principal, #catalog, USE_CATALOG) && #authorize(#principal, #function, OWNER)) ||
           (#authorize(#principal, #catalog, USE_CATALOG) && #authorize(#principal, #schema, USE_SCHEMA) && #authorize(#principal, #function, EXECUTE))
@@ -100,7 +100,7 @@ public class FunctionService {
   @Delete("/{name}")
   @AuthorizeKey(METASTORE)
   @AuthorizeExpression("""
-          #authorize(#principal, #metastore, METASTORE_ADMIN) ||
+          #authorize(#principal, #metastore, OWNER) ||
           (#authorize(#principal, #schema, OWNER) && #authorize(#principal, #catalog, USE_CATALOG)) ||
           (#authorize(#principal, #function, OWNER) && #authorize(#principal, #schema, USE_SCHEMA) && #authorize(#principal, #catalog, USE_CATALOG))
           """)

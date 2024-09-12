@@ -56,7 +56,7 @@ public class VolumeService {
   @Post("")
   // TODO: for now, we are not supporting CREATE VOLUME or CREATE EXTERNAL VOLUME privileges
   @AuthorizeExpression("""
-          #authorize(#principal, #metastore, METASTORE_ADMIN) ||
+          #authorize(#principal, #metastore, OWNER) ||
           #authorizeAny(#principal, #catalog, OWNER, USE_CATALOG) && #authorizeAny(#principal, #schema, OWNER, USE_SCHEMA)
           """)
   @AuthorizeKey(METASTORE)
@@ -83,7 +83,7 @@ public class VolumeService {
             catalogName, schemaName, maxResults, pageToken, includeBrowse);
 
     filterVolumes("""
-            #authorize(#principal, #metastore, METASTORE_ADMIN) ||
+            #authorize(#principal, #metastore, OWNER) ||
             #authorize(#principal, #volume, OWNER) ||
             (#authorize(#principal, #volume, READ_VOLUME) && #authorize(#principal, #schema, USE_SCHEMA) && #authorize(#principal, #catalog, USE_CATALOG))
             """, listVolumesResponse.getVolumes());
@@ -93,7 +93,7 @@ public class VolumeService {
 
   @Get("/{full_name}")
   @AuthorizeExpression("""
-          #authorize(#principal, #metastore, METASTORE_ADMIN) ||
+          #authorize(#principal, #metastore, OWNER) ||
           (#authorize(#principal, #schema, USE_SCHEMA) && #authorize(#principal, #catalog, USE_CATALOG) && #authorizeAny(#principal, #volume, OWNER, READ_VOLUME))
           """)
   @AuthorizeKey(METASTORE)
@@ -105,7 +105,7 @@ public class VolumeService {
 
   @Patch("/{full_name}")
   @AuthorizeExpression("""
-          #authorize(#principal, #metastore, METASTORE_ADMIN) ||
+          #authorize(#principal, #metastore, OWNER) ||
           (#authorize(#principal, #volume, OWNER) && #authorizeAny(#principal, #catalog, OWNER, USE_CATALOG) && #authorize(#principal, #schema, USE_SCHEMA))
           """)
   @AuthorizeKey(METASTORE)
@@ -116,7 +116,7 @@ public class VolumeService {
 
   @Delete("/{full_name}")
   @AuthorizeExpression("""
-          #authorize(#principal, #metastore, METASTORE_ADMIN) ||
+          #authorize(#principal, #metastore, OWNER) ||
           (#authorize(#principal, #volume, OWNER) && #authorizeAny(#principal, #catalog, OWNER, USE_CATALOG) && #authorize(#principal, #schema, USE_SCHEMA))
           """)
   @AuthorizeKey(METASTORE)

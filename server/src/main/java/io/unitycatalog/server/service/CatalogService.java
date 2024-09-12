@@ -44,7 +44,7 @@ public class CatalogService {
   }
 
   @Post("")
-  @AuthorizeExpression("#authorizeAny(#principal, #metastore, METASTORE_ADMIN, CREATE_CATALOG)")
+  @AuthorizeExpression("#authorizeAny(#principal, #metastore, OWNER, CREATE_CATALOG)")
   @AuthorizeKey(METASTORE)
   public HttpResponse createCatalog(CreateCatalog createCatalog) {
     CatalogInfo catalogInfo = CATALOG_REPOSITORY.addCatalog(createCatalog);
@@ -61,7 +61,7 @@ public class CatalogService {
         CATALOG_REPOSITORY.listCatalogs(maxResults, pageToken);
 
     filterCatalogs("""
-        #authorize(#principal, #metastore, METASTORE_ADMIN) ||
+        #authorize(#principal, #metastore, OWNER) ||
         #authorizeAny(#principal, #catalog, OWNER, USE_CATALOG)
         """,
         listCatalogsResponse.getCatalogs());
@@ -71,7 +71,7 @@ public class CatalogService {
 
   @Get("/{name}")
   @AuthorizeExpression("""
-      #authorize(#principal, #metastore, METASTORE_ADMIN) ||
+      #authorize(#principal, #metastore, OWNER) ||
       #authorizeAny(#principal, #catalog, OWNER, USE_CATALOG)
       """)
   @AuthorizeKey(METASTORE)
@@ -81,7 +81,7 @@ public class CatalogService {
 
   @Patch("/{name}")
   @AuthorizeExpression("""
-      #authorize(#principal, #metastore, METASTORE_ADMIN) ||
+      #authorize(#principal, #metastore, OWNER) ||
       #authorizeAny(#principal, #catalog, USE_CATALOG)
       """)
   @AuthorizeKey(METASTORE)
@@ -92,7 +92,7 @@ public class CatalogService {
 
   @Delete("/{name}")
   @AuthorizeExpression("""
-      #authorize(#principal, #metastore, METASTORE_ADMIN) ||
+      #authorize(#principal, #metastore, OWNER) ||
       #authorize(#principal, #catalog, OWNER)
       """)
   @AuthorizeKey(METASTORE)

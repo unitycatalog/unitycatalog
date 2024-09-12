@@ -71,7 +71,7 @@ public class TableService {
 
   @Get("/{full_name}")
   @AuthorizeExpression("""
-          #authorize(#principal, #metastore, METASTORE_ADMIN) ||
+          #authorize(#principal, #metastore, OWNER) ||
           (#authorize(#principal, #schema, OWNER) && #authorize(#principal, #catalog, USE_CATALOG)) ||
           (#authorize(#principal, #schema, USE_SCHEMA) && #authorize(#principal, #catalog, USE_CATALOG) && #authorizeAny(#principal, #table, OWNER, SELECT))
           """)
@@ -101,7 +101,7 @@ public class TableService {
             omitColumns.orElse(false));
 
     filterTables("""
-            #authorize(#principal, #metastore, METASTORE_ADMIN) ||
+            #authorize(#principal, #metastore, OWNER) ||
             #authorize(#principal, #table, OWNER) ||
             (#authorize(#principal, #table, SELECT) && #authorize(#principal, #schema, USE_SCHEMA) && #authorize(#principal, #catalog, USE_CATALOG))
             """, listTablesResponse.getTables());
