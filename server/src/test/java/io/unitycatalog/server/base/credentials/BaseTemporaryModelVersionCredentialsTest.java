@@ -51,7 +51,7 @@ public abstract class BaseTemporaryModelVersionCredentialsTest extends BaseCRUDT
     String modelVersionId = UUID.randomUUID().toString();
     ModelVersionInfo modelVersionInfo =
         new ModelVersionInfo()
-            .modelVersionId(modelVersionId)
+            .id(modelVersionId)
             .modelName(MODEL_NAME)
             .catalogName(CATALOG_NAME)
             .schemaName(SCHEMA_NAME)
@@ -106,11 +106,11 @@ public abstract class BaseTemporaryModelVersionCredentialsTest extends BaseCRUDT
             .source(MV_SOURCE)
             .runId(MV_RUNID);
     modelOperations.createModelVersion(createMv);
-    createNonFileModelVersion(rmInfo.getModelId(), 2L, ModelVersionStatus.PENDING_REGISTRATION);
-    createNonFileModelVersion(rmInfo.getModelId(), 3L, ModelVersionStatus.FAILED_REGISTRATION);
+    createNonFileModelVersion(rmInfo.getId(), 2L, ModelVersionStatus.PENDING_REGISTRATION);
+    createNonFileModelVersion(rmInfo.getId(), 3L, ModelVersionStatus.FAILED_REGISTRATION);
     createNonFileModelVersion(
-        rmInfo.getModelId(), 4L, ModelVersionStatus.MODEL_VERSION_STATUS_UNKNOWN);
-    createNonFileModelVersion(rmInfo.getModelId(), 5L, ModelVersionStatus.READY);
+        rmInfo.getId(), 4L, ModelVersionStatus.MODEL_VERSION_STATUS_UNKNOWN);
+    createNonFileModelVersion(rmInfo.getId(), 5L, ModelVersionStatus.READY);
   }
 
   @Test
