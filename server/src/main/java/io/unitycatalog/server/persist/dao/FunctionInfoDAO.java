@@ -26,11 +26,20 @@ public class FunctionInfoDAO extends IdentifiableDAO {
   @Column(name = "comment")
   private String comment;
 
+  @Column(name = "owner")
+  private String owner;
+
   @Column(name = "created_at")
   private Long createdAt;
 
+  @Column(name = "created_by")
+  private String createdBy;
+
   @Column(name = "updated_at")
   private Long updatedAt;
+
+  @Column(name = "updated_by")
+  private String updatedBy;
 
   @Column(name = "data_type")
   private ColumnTypeName dataType;
@@ -82,8 +91,11 @@ public class FunctionInfoDAO extends IdentifiableDAO {
                     : null)
             .name(functionInfo.getName())
             .comment(functionInfo.getComment())
+            .owner(functionInfo.getOwner())
             .createdAt(functionInfo.getCreatedAt())
+            .createdBy(functionInfo.getCreatedBy())
             .updatedAt(functionInfo.getUpdatedAt())
+            .updatedBy(functionInfo.getUpdatedBy())
             .dataType(functionInfo.getDataType())
             .fullDataType(functionInfo.getFullDataType())
             .externalLanguage(functionInfo.getExternalLanguage())
@@ -119,8 +131,11 @@ public class FunctionInfoDAO extends IdentifiableDAO {
             .functionId(getId().toString())
             .name(getName())
             .comment(comment)
+            .owner(owner)
             .createdAt(createdAt)
+            .createdBy(createdBy)
             .updatedAt(updatedAt)
+            .updatedBy(updatedBy)
             .dataType(dataType)
             .fullDataType(fullDataType)
             .externalLanguage(externalLanguage)

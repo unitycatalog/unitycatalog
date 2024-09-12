@@ -4,12 +4,10 @@ import GoogleAuthButton from '../components/login/GoogleAuthButton';
 import OktaAuthButton from '../components/login/OktaAuthButton';
 import { useAuth } from '../context/auth-context';
 import KeycloakAuthButton from '../components/login/KeycloakAuthButton';
-import { useNotification } from '../utils/NotificationContext';
 import { useNavigate, useLocation } from 'react-router-dom';
 
 export default function () {
-  const { setNotification } = useNotification();
-  const { loginWithToken, logout } = useAuth();
+  const { loginWithToken } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
   const from = location.state?.from || '/';
@@ -19,11 +17,7 @@ export default function () {
     process.env.REACT_APP_KEYCLOAK_AUTH_ENABLED === 'true';
 
   const handleGoogleSignIn = async (idToken: string) => {
-    await loginWithToken(idToken)
-      .then(() => navigate(from, { replace: true }))
-      .catch((e: any) => {
-        setNotification(e.message, 'error');
-      });
+    await loginWithToken(idToken).then(() => navigate(from, { replace: true }));
   };
 
   return (
