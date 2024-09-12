@@ -34,15 +34,6 @@ public class SparkNumbersTableCRUDTest extends BaseSparkTest {
         return Arrays.stream(LocationType.values()).toList();
     }
 
-    @SneakyThrows
-    static String getBaseLocation(LocationType locationType) {
-        return switch (locationType) {
-            case FILE -> Files.createTempDirectory("uc-test-table").toFile().getAbsolutePath();
-            case S3 -> System.getenv("S3_BASE_LOCATION");
-            case GS -> System.getenv("GS_BASE_LOCATION");
-        };
-    }
-
     static String getTableName(LocationType locationType) {
         return format("%s_%s", BASE_TABLE_NAME, locationType.name());
     }
@@ -65,11 +56,17 @@ public class SparkNumbersTableCRUDTest extends BaseSparkTest {
     }
 
 
+    @SneakyThrows
     @ParameterizedTest
     @MethodSource("locationTypes")
     @Order(1)
     public void createTable(LocationType locationType) {
-        String location = getBaseLocation(locationType) + "/integration/" + RUN_ID + "/numbers";
+        String baseLocation = switch (locationType) {
+            case FILE -> Files.createTempDirectory("uc-test-table").toFile().getAbsolutePath();
+            case S3 -> System.getenv("S3_BASE_LOCATION");
+            case GS -> System.getenv("GS_BASE_LOCATION");
+        };
+        String location = baseLocation + "/integration/" + RUN_ID + "/numbers";
         String table = getTableName(locationType);
 
         spark.sql(format("CREATE TABLE %s(as_int INT, as_double DOUBLE) USING DELTA LOCATION '%s'", table, location));
