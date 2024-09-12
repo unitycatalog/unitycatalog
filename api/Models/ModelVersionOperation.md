@@ -1,4 +1,4 @@
-# ModelVersionStatus
+# ModelVersionOperation
 ## Properties
 
 | Name | Type | Description | Notes |
