@@ -53,6 +53,7 @@ theme:
         name: Switch to light mode
   icon:
     repo: fontawesome/brands/github
+  favicon: assets/images/favicon.png
 
 extra:
   social:
