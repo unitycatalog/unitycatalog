@@ -173,6 +173,32 @@ public class TableReadWriteTest extends BaseSparkIntegrationTest {
     session.stop();
   }
 
+  @Test
+  public void testCredentialCreateDeltaTable() throws IOException {
+    SparkSession session = createSparkSessionWithCatalogs(SPARK_CATALOG, CATALOG_NAME);
+
+    String loc1 = "s3://test-bucket0" + generateTableLocation(SPARK_CATALOG, DELTA_TABLE);
+    setupDeltaTableLocation(session, loc1, new ArrayList<>(0));
+    String t1 = SPARK_CATALOG + "." + SCHEMA_NAME + "." + DELTA_TABLE;
+    session.sql(String.format("CREATE TABLE %s USING delta LOCATION '%s'", t1, loc1));
+    testTableReadWrite(t1, session);
+
+    String loc2 = "s3://test-bucket1" + generateTableLocation(CATALOG_NAME, DELTA_TABLE);
+    setupDeltaTableLocation(session, loc2, new ArrayList<>(0));
+    String t2 = CATALOG_NAME + "." + SCHEMA_NAME + "." + DELTA_TABLE;
+    session.sql(String.format("CREATE TABLE %s USING delta LOCATION '%s'", t2, loc2));
+    testTableReadWrite(t2, session);
+
+    Row row =
+        session
+            .sql(String.format("SELECT l.i FROM %s l JOIN %s r ON l.i = r.i", t1, t2))
+            .collectAsList()
+            .get(0);
+    assertThat(row.getInt(0)).isEqualTo(1);
+
+    session.stop();
+  }
+
   @ParameterizedTest
   @ValueSource(strings = {"s3", "gs", "abfs"})
   public void testDeleteDeltaTable(String scheme) throws ApiException, IOException {
@@ -422,13 +448,8 @@ public class TableReadWriteTest extends BaseSparkIntegrationTest {
     return new File(new File(dataDir, catalogName), tableName).getCanonicalPath();
   }
 
-  private void setupExternalDeltaTable(
-      String catalogName,
-      String tableName,
-      String location,
-      List<String> partitionColumns,
-      SparkSession session)
-      throws IOException, ApiException {
+  private void setupDeltaTableLocation(
+      SparkSession session, String location, List<String> partitionColumns) {
     // The Delta path can't be empty, need to initialize before read.
     String partitionClause;
     if (partitionColumns.isEmpty()) {
@@ -436,15 +457,23 @@ public class TableReadWriteTest extends BaseSparkIntegrationTest {
     } else {
       partitionClause = String.format(" PARTITIONED BY (%s)", String.join(", ", partitionColumns));
     }
-
     // Temporarily disable the credential check when setting up the external Delta location which
     // does not involve Unity Catalog at all.
     CredentialTestFileSystem.credentialCheckEnabled = false;
     session.sql(
-        String.format("CREATE TABLE delta.`%s`(i INT, s STRING) USING delta", location)
-            + partitionClause);
+        String.format(
+            "CREATE TABLE delta.`%s`(i INT, s STRING) USING delta %s", location, partitionClause));
     CredentialTestFileSystem.credentialCheckEnabled = true;
+  }
 
+  private void setupExternalDeltaTable(
+      String catalogName,
+      String tableName,
+      String location,
+      List<String> partitionColumns,
+      SparkSession session)
+      throws IOException, ApiException {
+    setupDeltaTableLocation(session, location, partitionColumns);
     setupTables(catalogName, tableName, DataSourceFormat.DELTA, location, partitionColumns, false);
   }
 
