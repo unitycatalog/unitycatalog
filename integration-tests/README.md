@@ -24,77 +24,9 @@ export AWS_PROFILE=your-root-profile
 ../bin/start-uc-server
 ```
 
-Next, create test tables with your specific bucket locations (edit the following commands w/ your specific path)
-
--- todo: replace w/ client api calls and/or fix table create path
-```shell
-curl -X 'POST' \
-  'http://localhost:8080/api/2.1/unity-catalog/tables' \
-  -H 'accept: application/json' \
-  -H 'Content-Type: application/json' \
-  -d '{
-  "name": "numbers_s3",
-  "catalog_name": "spark_catalog",
-  "schema_name": "s3",
-  "table_type": "EXTERNAL",
-  "data_source_format": "DELTA",
-  "columns": [
-    {
-      "name": "as_int",
-      "type_text": "int",
-      "type_json": "integer",
-      "type_name": "INT",
-      "position": 0,
-      "nullable": true
-    },
-    {
-      "name": "as_double",
-      "type_text": "double",
-      "type_json": "double",
-      "type_name": "DOUBLE",
-      "position": 1,
-      "nullable": true
-    }
-  ],
-  "storage_location": "s3://<my-bucket>/<prefix(es)>/to/external/unity/default/tables/numbers",
-  "comment": "delta table in s3",
-  "properties": {
-  }
-}'
-
-curl -X 'POST' \
-  'http://localhost:8080/api/2.1/unity-catalog/tables' \
-  -H 'accept: application/json' \
-  -H 'Content-Type: application/json' \
-  -d '{
-  "name": "numbers_s3_parquet",
-  "catalog_name": "spark_catalog",
-  "schema_name": "s3",
-  "table_type": "EXTERNAL",
-  "data_source_format": "PARQUET",
-  "columns": [
-    {
-      "name": "as_int",
-      "type_text": "int",
-      "type_json": "integer",
-      "type_name": "INT",
-      "position": 0,
-      "nullable": true
-    },
-    {
-      "name": "as_double",
-      "type_text": "double",
-      "type_json": "double",
-      "type_name": "DOUBLE",
-      "position": 1,
-      "nullable": true
-    }
-  ],
-  "storage_location": "s3://<my-bucket>/<prefix(es)>/external/unity/default/tables/numbers/d1df15d1-33d8-45ab-ad77-465476e2d5cd-000.parquet",
-  "comment": "parquet file in s3",
-  "properties": {
-  }
-}'
+Next, create a catalog for testing
+```
+bin/uc catalog create --name unity
 ```
 
 

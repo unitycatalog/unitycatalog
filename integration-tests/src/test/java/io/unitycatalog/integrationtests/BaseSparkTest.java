@@ -16,8 +16,7 @@ public class BaseSparkTest {
 
     @BeforeAll
     public static void setup() {
-        // FIXME: catalog must be named `spark_catalog` for now, upstream issue
-        spark = createSparkSessionWithCatalogs("spark_catalog");
+        spark = createSparkSessionWithCatalogs("unity");
     }
 
     @SneakyThrows
@@ -35,6 +34,7 @@ public class BaseSparkTest {
                         .appName("test")
                         .master("local[*]")
                         .config("spark.sql.extensions", "io.delta.sql.DeltaSparkSessionExtension")
+                        .config("spark.sql.catalog.spark_catalog", "io.unitycatalog.connectors.spark.UCSingleCatalog")
                         .config("spark.hadoop.fs.s3.impl", "org.apache.hadoop.fs.s3a.S3AFileSystem");
         for (String catalog : catalogs) {
             String catalogConf = "spark.sql.catalog." + catalog;

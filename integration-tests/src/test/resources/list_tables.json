@@ -1,7 +1,0 @@
-[
-  "{\"namespace\":\"default\",\"tableName\":\"marksheet\",\"isTemporary\":false}",
-  "{\"namespace\":\"default\",\"tableName\":\"marksheet_uniform\",\"isTemporary\":false}",
-  "{\"namespace\":\"default\",\"tableName\":\"numbers\",\"isTemporary\":false}",
-  "{\"namespace\":\"default\",\"tableName\":\"numbers_parquet\",\"isTemporary\":false}",
-  "{\"namespace\":\"default\",\"tableName\":\"user_countries\",\"isTemporary\":false}"
-]
