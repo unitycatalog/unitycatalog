@@ -10,6 +10,6 @@ echo "💡 Use Ctrl+C to stop and remove the container."
 docker run \
    --rm \
    --tty \
-   --publish 8081:8081 \
+   --publish 8080-8081:8080-8081 \
    --name "$container_name" \
    "$container_name:$container_version"
