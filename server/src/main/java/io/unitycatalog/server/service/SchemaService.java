@@ -1,12 +1,13 @@
 package io.unitycatalog.server.service;
 
-import static io.unitycatalog.server.model.SecurableType.CATALOG;
-import static io.unitycatalog.server.model.SecurableType.METASTORE;
-import static io.unitycatalog.server.model.SecurableType.SCHEMA;
-
 import com.linecorp.armeria.common.HttpResponse;
 import com.linecorp.armeria.common.HttpStatus;
-import com.linecorp.armeria.server.annotation.*;
+import com.linecorp.armeria.server.annotation.Delete;
+import com.linecorp.armeria.server.annotation.ExceptionHandler;
+import com.linecorp.armeria.server.annotation.Get;
+import com.linecorp.armeria.server.annotation.Param;
+import com.linecorp.armeria.server.annotation.Patch;
+import com.linecorp.armeria.server.annotation.Post;
 import io.unitycatalog.server.auth.UnityCatalogAuthorizer;
 import io.unitycatalog.server.auth.annotation.AuthorizeExpression;
 import io.unitycatalog.server.auth.annotation.AuthorizeKey;
@@ -16,17 +17,22 @@ import io.unitycatalog.server.exception.GlobalExceptionHandler;
 import io.unitycatalog.server.model.CatalogInfo;
 import io.unitycatalog.server.model.CreateSchema;
 import io.unitycatalog.server.model.ListSchemasResponse;
-import io.unitycatalog.server.model.Privilege;
 import io.unitycatalog.server.model.SchemaInfo;
 import io.unitycatalog.server.model.UpdateSchema;
 import io.unitycatalog.server.persist.CatalogRepository;
 import io.unitycatalog.server.persist.MetastoreRepository;
 import io.unitycatalog.server.persist.SchemaRepository;
+import io.unitycatalog.server.persist.model.Privileges;
+import lombok.SneakyThrows;
+
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
-import lombok.SneakyThrows;
+
+import static io.unitycatalog.server.model.SecurableType.CATALOG;
+import static io.unitycatalog.server.model.SecurableType.METASTORE;
+import static io.unitycatalog.server.model.SecurableType.SCHEMA;
 
 @ExceptionHandler(GlobalExceptionHandler.class)
 public class SchemaService {
@@ -138,7 +144,7 @@ public class SchemaService {
     UUID principalId = UnityAccessUtil.findPrincipalId();
     // add owner privilege
     authorizer.grantAuthorization(
-        principalId, UUID.fromString(schemaInfo.getSchemaId()), Privilege.OWNER);
+        principalId, UUID.fromString(schemaInfo.getSchemaId()), Privileges.OWNER);
     // make schema a child of the catalog
     authorizer.addHierarchyChild(
         UUID.fromString(catalogInfo.getId()), UUID.fromString(schemaInfo.getSchemaId()));

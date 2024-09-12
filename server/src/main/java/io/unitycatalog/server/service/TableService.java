@@ -1,13 +1,12 @@
 package io.unitycatalog.server.service;
 
-import static io.unitycatalog.server.model.SecurableType.CATALOG;
-import static io.unitycatalog.server.model.SecurableType.METASTORE;
-import static io.unitycatalog.server.model.SecurableType.SCHEMA;
-import static io.unitycatalog.server.model.SecurableType.TABLE;
-
 import com.linecorp.armeria.common.HttpResponse;
 import com.linecorp.armeria.common.HttpStatus;
-import com.linecorp.armeria.server.annotation.*;
+import com.linecorp.armeria.server.annotation.Delete;
+import com.linecorp.armeria.server.annotation.ExceptionHandler;
+import com.linecorp.armeria.server.annotation.Get;
+import com.linecorp.armeria.server.annotation.Param;
+import com.linecorp.armeria.server.annotation.Post;
 import io.unitycatalog.server.auth.UnityCatalogAuthorizer;
 import io.unitycatalog.server.auth.annotation.AuthorizeExpression;
 import io.unitycatalog.server.auth.annotation.AuthorizeKey;
@@ -18,19 +17,24 @@ import io.unitycatalog.server.exception.GlobalExceptionHandler;
 import io.unitycatalog.server.model.CatalogInfo;
 import io.unitycatalog.server.model.CreateTable;
 import io.unitycatalog.server.model.ListTablesResponse;
-import io.unitycatalog.server.model.Privilege;
 import io.unitycatalog.server.model.SchemaInfo;
 import io.unitycatalog.server.model.TableInfo;
 import io.unitycatalog.server.persist.CatalogRepository;
 import io.unitycatalog.server.persist.MetastoreRepository;
 import io.unitycatalog.server.persist.SchemaRepository;
 import io.unitycatalog.server.persist.TableRepository;
+import io.unitycatalog.server.persist.model.Privileges;
 import lombok.SneakyThrows;
 
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
+
+import static io.unitycatalog.server.model.SecurableType.CATALOG;
+import static io.unitycatalog.server.model.SecurableType.METASTORE;
+import static io.unitycatalog.server.model.SecurableType.SCHEMA;
+import static io.unitycatalog.server.model.SecurableType.TABLE;
 
 @ExceptionHandler(GlobalExceptionHandler.class)
 public class TableService {
@@ -147,7 +151,7 @@ public class TableService {
     UUID principalId = UnityAccessUtil.findPrincipalId();
     // add owner privilege
     authorizer.grantAuthorization(
-        principalId, UUID.fromString(tableInfo.getTableId()), Privilege.OWNER);
+        principalId, UUID.fromString(tableInfo.getTableId()), Privileges.OWNER);
     // make table a child of the schema
     authorizer.addHierarchyChild(
         UUID.fromString(schemaInfo.getSchemaId()), UUID.fromString(tableInfo.getTableId()));

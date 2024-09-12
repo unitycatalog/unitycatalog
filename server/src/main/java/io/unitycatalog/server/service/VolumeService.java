@@ -2,7 +2,12 @@ package io.unitycatalog.server.service;
 
 import com.linecorp.armeria.common.HttpResponse;
 import com.linecorp.armeria.common.HttpStatus;
-import com.linecorp.armeria.server.annotation.*;
+import com.linecorp.armeria.server.annotation.Delete;
+import com.linecorp.armeria.server.annotation.ExceptionHandler;
+import com.linecorp.armeria.server.annotation.Get;
+import com.linecorp.armeria.server.annotation.Param;
+import com.linecorp.armeria.server.annotation.Patch;
+import com.linecorp.armeria.server.annotation.Post;
 import io.unitycatalog.server.auth.UnityCatalogAuthorizer;
 import io.unitycatalog.server.auth.annotation.AuthorizeExpression;
 import io.unitycatalog.server.auth.annotation.AuthorizeKey;
@@ -13,7 +18,6 @@ import io.unitycatalog.server.exception.GlobalExceptionHandler;
 import io.unitycatalog.server.model.CatalogInfo;
 import io.unitycatalog.server.model.CreateVolumeRequestContent;
 import io.unitycatalog.server.model.ListVolumesResponseContent;
-import io.unitycatalog.server.model.Privilege;
 import io.unitycatalog.server.model.SchemaInfo;
 import io.unitycatalog.server.model.UpdateVolumeRequestContent;
 import io.unitycatalog.server.model.VolumeInfo;
@@ -21,6 +25,7 @@ import io.unitycatalog.server.persist.CatalogRepository;
 import io.unitycatalog.server.persist.MetastoreRepository;
 import io.unitycatalog.server.persist.SchemaRepository;
 import io.unitycatalog.server.persist.VolumeRepository;
+import io.unitycatalog.server.persist.model.Privileges;
 import lombok.SneakyThrows;
 
 import java.util.List;
@@ -152,7 +157,7 @@ public class VolumeService {
     UUID principalId = UnityAccessUtil.findPrincipalId();
     // add owner privilege
     authorizer.grantAuthorization(
-            principalId, UUID.fromString(volumeInfo.getVolumeId()), Privilege.OWNER);
+            principalId, UUID.fromString(volumeInfo.getVolumeId()), Privileges.OWNER);
     // make table a child of the schema
     authorizer.addHierarchyChild(
             UUID.fromString(schemaInfo.getSchemaId()), UUID.fromString(volumeInfo.getVolumeId()));

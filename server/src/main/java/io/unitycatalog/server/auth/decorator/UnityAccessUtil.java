@@ -6,10 +6,10 @@ import com.linecorp.armeria.server.ServiceRequestContext;
 import io.unitycatalog.control.model.User;
 import io.unitycatalog.server.auth.UnityCatalogAuthorizer;
 import io.unitycatalog.server.exception.BaseException;
-import io.unitycatalog.server.model.Privilege;
 import io.unitycatalog.server.persist.MetastoreRepository;
 import io.unitycatalog.server.persist.UserRepository;
 import io.unitycatalog.server.persist.model.CreateUser;
+import io.unitycatalog.server.persist.model.Privileges;
 import io.unitycatalog.server.security.JwtClaim;
 import io.unitycatalog.server.service.AuthDecorator;
 import java.util.UUID;
@@ -56,6 +56,6 @@ public class UnityAccessUtil {
     authorizer.grantAuthorization(
         UUID.fromString(adminUser.getId()),
         METASTORE_REPOSITORY.getMetastoreId(),
-        Privilege.METASTORE_ADMIN);
+        Privileges.METASTORE_ADMIN);
   }
 }

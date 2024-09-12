@@ -1,6 +1,6 @@
 package io.unitycatalog.server.auth;
 
-import io.unitycatalog.server.model.Privilege;
+import io.unitycatalog.server.persist.model.Privileges;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -14,12 +14,12 @@ import java.util.UUID;
  */
 public class AllowingAuthorizer implements UnityCatalogAuthorizer {
   @Override
-  public boolean grantAuthorization(UUID principal, UUID resource, Privilege action) {
+  public boolean grantAuthorization(UUID principal, UUID resource, Privileges action) {
     return true;
   }
 
   @Override
-  public boolean revokeAuthorization(UUID principal, UUID resource, Privilege action) {
+  public boolean revokeAuthorization(UUID principal, UUID resource, Privileges action) {
     return true;
   }
 
@@ -49,27 +49,27 @@ public class AllowingAuthorizer implements UnityCatalogAuthorizer {
   }
 
   @Override
-  public boolean authorize(UUID principal, UUID resource, Privilege action) {
+  public boolean authorize(UUID principal, UUID resource, Privileges action) {
     return true;
   }
 
   @Override
-  public boolean authorizeAny(UUID principal, UUID resource, Privilege... actions) {
+  public boolean authorizeAny(UUID principal, UUID resource, Privileges... actions) {
     return true;
   }
 
   @Override
-  public boolean authorizeAll(UUID principal, UUID resource, Privilege... actions) {
+  public boolean authorizeAll(UUID principal, UUID resource, Privileges... actions) {
     return true;
   }
 
   @Override
-  public List<Privilege> listAuthorizations(UUID principal, UUID resource) {
+  public List<Privileges> listAuthorizations(UUID principal, UUID resource) {
     return List.of();
   }
 
   @Override
-  public Map<UUID, List<Privilege>> listAuthorizations(UUID resource) {
+  public Map<UUID, List<Privileges>> listAuthorizations(UUID resource) {
     return Map.of();
   }
 }

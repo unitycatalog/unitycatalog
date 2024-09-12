@@ -8,7 +8,10 @@ import static io.unitycatalog.server.model.SecurableType.TABLE;
 import static io.unitycatalog.server.model.SecurableType.VOLUME;
 
 import com.linecorp.armeria.common.HttpResponse;
-import com.linecorp.armeria.server.annotation.*;
+import com.linecorp.armeria.server.annotation.ExceptionHandler;
+import com.linecorp.armeria.server.annotation.Get;
+import com.linecorp.armeria.server.annotation.Param;
+import com.linecorp.armeria.server.annotation.Patch;
 import io.unitycatalog.control.model.User;
 import io.unitycatalog.server.auth.UnityCatalogAuthorizer;
 import io.unitycatalog.server.auth.annotation.AuthorizeExpression;
@@ -30,6 +33,7 @@ import io.unitycatalog.server.persist.MetastoreRepository;
 import io.unitycatalog.server.persist.SchemaRepository;
 import io.unitycatalog.server.persist.TableRepository;
 import io.unitycatalog.server.persist.UserRepository;
+import io.unitycatalog.server.persist.model.Privileges;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
@@ -110,7 +114,7 @@ public class PermissionService {
   private HttpResponse getAuthorization(
       SecurableType securableType, String name, Optional<String> principal) {
     UUID resourceId = getResourceId(securableType, name);
-    Map<UUID, List<Privilege>> authorizations;
+    Map<UUID, List<Privileges>> authorizations;
     if (principal.isPresent()) {
       User user = USER_REPOSITORY.getUserByEmail(principal.get());
       UUID principalId = UUID.fromString(Objects.requireNonNull(user.getId()));
@@ -122,10 +126,19 @@ public class PermissionService {
     List<PrivilegeAssignment> privilegeAssignments =
         authorizations.entrySet().stream()
             .map(
-                entry ->
-                    new PrivilegeAssignment()
-                        .principal(USER_REPOSITORY.getUser(entry.getKey().toString()).getEmail())
-                        .privileges(entry.getValue()))
+                entry -> {
+                  List<Privilege> privileges =
+                      entry.getValue().stream()
+                          .map(Privileges::toPrivilege)
+                          // mapping to Privilege may result in nulls since Privilege is a subset of
+                          // Privileges, so filter them out.
+                          .filter(Objects::nonNull)
+                          .toList();
+                  return new PrivilegeAssignment()
+                      .principal(USER_REPOSITORY.getUser(entry.getKey().toString()).getEmail())
+                      .privileges(privileges);
+                })
+            .filter(assignment -> !assignment.getPrivileges().isEmpty())
             .collect(Collectors.toList());
 
     return HttpResponse.ofJson(new PermissionsList().privilegeAssignments(privilegeAssignments));
@@ -199,22 +212,39 @@ public class PermissionService {
           change
               .getAdd()
               .forEach(
-                  privilege -> authorizer.grantAuthorization(principalId, resourceId, privilege));
+                  privilege ->
+                      //  Privileges should always be a superset of Privilege so this _should_
+                      // always be non-null but let's be safe anyway.
+                      Optional.ofNullable(Privileges.fromPrivilege(privilege))
+                          .map(p -> authorizer.grantAuthorization(principalId, resourceId, p)));
           change
               .getRemove()
               .forEach(
-                  privilege -> authorizer.revokeAuthorization(principalId, resourceId, privilege));
+                  privilege ->
+                      //  Privileges should always be a superset of Privilege so this _should_
+                      // always be non-null but let's be safe anyway.
+                      Optional.ofNullable(Privileges.fromPrivilege(privilege))
+                          .map(p -> authorizer.revokeAuthorization(principalId, resourceId, p)));
         });
 
-    Map<UUID, List<Privilege>> authorizations = authorizer.listAuthorizations(resourceId);
+    Map<UUID, List<Privileges>> authorizations = authorizer.listAuthorizations(resourceId);
     List<PrivilegeAssignment> privilegeAssignments =
         authorizations.entrySet().stream()
             .filter(entry -> principalIds.contains(entry.getKey()))
             .map(
-                entry ->
-                    new PrivilegeAssignment()
-                        .principal(USER_REPOSITORY.getUser(entry.getKey().toString()).getEmail())
-                        .privileges(entry.getValue()))
+                entry -> {
+                  List<Privilege> privileges =
+                      entry.getValue().stream()
+                          .map(Privileges::toPrivilege)
+                          // mapping to Privilege may result in nulls since Privilege is a subset of
+                          // Privileges, so filter them out.
+                          .filter(Objects::nonNull)
+                          .toList();
+                  return new PrivilegeAssignment()
+                      .principal(USER_REPOSITORY.getUser(entry.getKey().toString()).getEmail())
+                      .privileges(privileges);
+                })
+            .filter(assignment -> !assignment.getPrivileges().isEmpty())
             .collect(Collectors.toList());
 
     return HttpResponse.ofJson(new PermissionsList().privilegeAssignments(privilegeAssignments));

@@ -1,6 +1,6 @@
 package io.unitycatalog.server.auth;
 
-import io.unitycatalog.server.model.Privilege;
+import io.unitycatalog.server.persist.model.Privileges;
 import io.unitycatalog.server.persist.utils.HibernateUtils;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
@@ -52,12 +52,12 @@ public class JCasbinAuthorizer implements UnityCatalogAuthorizer {
   }
 
   @Override
-  public boolean grantAuthorization(UUID principal, UUID resource, Privilege action) {
+  public boolean grantAuthorization(UUID principal, UUID resource, Privileges action) {
     return enforcer.addPolicy(principal.toString(), resource.toString(), action.toString());
   }
 
   @Override
-  public boolean revokeAuthorization(UUID principal, UUID resource, Privilege action) {
+  public boolean revokeAuthorization(UUID principal, UUID resource, Privileges action) {
     return enforcer.removePolicy(principal.toString(), resource.toString(), action.toString());
   }
 
@@ -89,12 +89,12 @@ public class JCasbinAuthorizer implements UnityCatalogAuthorizer {
   }
 
   @Override
-  public boolean authorize(UUID principal, UUID resource, Privilege action) {
+  public boolean authorize(UUID principal, UUID resource, Privileges action) {
     return enforcer.enforce(principal.toString(), resource.toString(), action.toString());
   }
 
   @Override
-  public boolean authorizeAny(UUID principal, UUID resource, Privilege... actions) {
+  public boolean authorizeAny(UUID principal, UUID resource, Privileges... actions) {
     return Arrays.stream(actions)
         .anyMatch(
             action ->
@@ -102,7 +102,7 @@ public class JCasbinAuthorizer implements UnityCatalogAuthorizer {
   }
 
   @Override
-  public boolean authorizeAll(UUID principal, UUID resource, Privilege... actions) {
+  public boolean authorizeAll(UUID principal, UUID resource, Privileges... actions) {
     return Arrays.stream(actions)
         .allMatch(
             action ->
@@ -110,22 +110,22 @@ public class JCasbinAuthorizer implements UnityCatalogAuthorizer {
   }
 
   @Override
-  public List<Privilege> listAuthorizations(UUID principal, UUID resource) {
+  public List<Privileges> listAuthorizations(UUID principal, UUID resource) {
     List<List<String>> list =
         enforcer.getPermissionsForUserInDomain(principal.toString(), resource.toString());
     return list.stream()
         .map(l -> l.get(PRIVILEGE_INDEX))
-        .map(Privilege::fromValue)
+        .map(Privileges::fromValue)
         .collect(Collectors.toList());
   }
 
   @Override
-  public Map<UUID, List<Privilege>> listAuthorizations(UUID resource) {
+  public Map<UUID, List<Privileges>> listAuthorizations(UUID resource) {
     return enforcer.getFilteredPolicy(RESOURCE_INDEX, resource.toString()).stream()
         .collect(
             Collectors.groupingBy(
                 l -> UUID.fromString(l.get(PRINCIPAL_INDEX)),
                 Collectors.mapping(
-                    l -> Privilege.fromValue(l.get(PRIVILEGE_INDEX)), Collectors.toList())));
+                    l -> Privileges.fromValue(l.get(PRIVILEGE_INDEX)), Collectors.toList())));
   }
 }

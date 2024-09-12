@@ -2168,7 +2168,6 @@ components:
       type: string
       enum:
         - METASTORE ADMIN
-        - OWNER
         - CREATE CATALOG
         - USE CATALOG
         - CREATE SCHEMA

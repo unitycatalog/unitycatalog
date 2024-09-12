@@ -1,11 +1,13 @@
 package io.unitycatalog.server.service;
 
-import static io.unitycatalog.server.model.SecurableType.CATALOG;
-import static io.unitycatalog.server.model.SecurableType.METASTORE;
-
 import com.linecorp.armeria.common.HttpResponse;
 import com.linecorp.armeria.common.HttpStatus;
-import com.linecorp.armeria.server.annotation.*;
+import com.linecorp.armeria.server.annotation.Delete;
+import com.linecorp.armeria.server.annotation.ExceptionHandler;
+import com.linecorp.armeria.server.annotation.Get;
+import com.linecorp.armeria.server.annotation.Param;
+import com.linecorp.armeria.server.annotation.Patch;
+import com.linecorp.armeria.server.annotation.Post;
 import io.unitycatalog.server.auth.UnityCatalogAuthorizer;
 import io.unitycatalog.server.auth.annotation.AuthorizeExpression;
 import io.unitycatalog.server.auth.annotation.AuthorizeKey;
@@ -15,15 +17,19 @@ import io.unitycatalog.server.exception.GlobalExceptionHandler;
 import io.unitycatalog.server.model.CatalogInfo;
 import io.unitycatalog.server.model.CreateCatalog;
 import io.unitycatalog.server.model.ListCatalogsResponse;
-import io.unitycatalog.server.model.Privilege;
 import io.unitycatalog.server.model.UpdateCatalog;
 import io.unitycatalog.server.persist.CatalogRepository;
 import io.unitycatalog.server.persist.MetastoreRepository;
+import io.unitycatalog.server.persist.model.Privileges;
+import lombok.SneakyThrows;
+
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
-import lombok.SneakyThrows;
+
+import static io.unitycatalog.server.model.SecurableType.CATALOG;
+import static io.unitycatalog.server.model.SecurableType.METASTORE;
 
 @ExceptionHandler(GlobalExceptionHandler.class)
 public class CatalogService {
@@ -117,7 +123,7 @@ public class CatalogService {
   private void initializeAuthorizations(CatalogInfo catalogInfo) {
     UUID principalId = UnityAccessUtil.findPrincipalId();
     authorizer.grantAuthorization(
-        principalId, UUID.fromString(catalogInfo.getId()), Privilege.OWNER);
+        principalId, UUID.fromString(catalogInfo.getId()), Privileges.OWNER);
   }
 
   private void removeAuthorizations(CatalogInfo catalogInfo) {
