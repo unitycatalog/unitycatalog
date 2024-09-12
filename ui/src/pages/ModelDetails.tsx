@@ -57,7 +57,10 @@ export default function ModelDetails() {
     >
       <DetailsLayout.Content>
         <Flex vertical gap={60}>
-          <DescriptionBox comment={data?.comment} />
+          <div>
+            <Typography.Title level={5}>Description</Typography.Title>
+            <Typography.Text type="secondary">{data?.comment}</Typography.Text>
+          </div>
           <ListLayout
             loading={isLoading}
             title={<Typography.Title level={5}>Versions</Typography.Title>}

@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { Link, useParams } from 'react-router-dom';
+import React, { useEffect, useState } from 'react';
+import { Link, useLocation, useParams } from 'react-router-dom';
 import DetailsLayout from '../components/layouts/DetailsLayout';
 import { Flex, Radio, Typography } from 'antd';
 import DescriptionBox from '../components/DescriptionBox';
@@ -15,15 +15,39 @@ import { EditSchemaDescriptionModal } from '../components/modals/EditSchemaDescr
 import { useNotification } from '../utils/NotificationContext';
 import ModelsList from '../components/models/ModelsList';
 
+export enum SchemaTabs {
+  Tables = 'Tables',
+  Volumes = 'Volumes',
+  Functions = 'Functions',
+  Models = 'Models',
+}
+
+const SCHEMA_TABS_MAP = {
+  [SchemaTabs.Tables]: TablesList,
+  [SchemaTabs.Volumes]: VolumesList,
+  [SchemaTabs.Functions]: FunctionsList,
+  [SchemaTabs.Models]: ModelsList,
+};
+
 export default function SchemaDetails() {
   const { catalog, schema } = useParams();
+  const location = useLocation();
+  const [activeTab, setActiveTab] = useState(
+    location?.state ? location.state.tab : SchemaTabs.Tables,
+  );
+
+  useEffect(() => {
+    if (location?.state?.tab && location?.state?.tab !== activeTab) {
+      setActiveTab(location.state.tab);
+    }
+  }, [location]);
+
   if (!catalog) throw new Error('Catalog name is required');
   if (!schema) throw new Error('Schema name is required');
 
   const { data } = useGetSchema({ catalog, schema });
   const [open, setOpen] = useState<boolean>(false);
   const { setNotification } = useNotification();
-  // const mutation = useUpdateSchema();
   const mutation = useUpdateSchema({ catalog, schema });
 
   if (!data) return null;
@@ -40,7 +64,7 @@ export default function SchemaDetails() {
             </Typography.Title>
             <Flex gap="middle">
               <SchemaActionsDropdown catalog={catalog} schema={schema} />
-              <CreateAssetsDropdown catalog={catalog} schema={schema} />
+              {/*<CreateAssetsDropdown catalog={catalog} schema={schema} />*/}
             </Flex>
           </Flex>
         }
@@ -59,7 +83,11 @@ export default function SchemaDetails() {
               comment={data.comment}
               onEdit={() => setOpen(true)}
             />
-            <SchemaDetailsTabs catalog={catalog} schema={schema} />
+            <SchemaDetailsTabs
+              catalog={catalog}
+              schema={schema}
+              tab={activeTab}
+            />
           </Flex>
         </DetailsLayout.Content>
         <DetailsLayout.Aside>
@@ -90,29 +118,19 @@ export default function SchemaDetails() {
   );
 }
 
-enum SchemaTabs {
-  Tables = 'Tables',
-  Volumes = 'Volumes',
-  Functions = 'Functions',
-  Models = 'Models',
-}
-
-const SCHEMA_TABS_MAP = {
-  [SchemaTabs.Tables]: TablesList,
-  [SchemaTabs.Volumes]: VolumesList,
-  [SchemaTabs.Functions]: FunctionsList,
-  [SchemaTabs.Models]: ModelsList,
-};
-
 interface SchemaDetailsTabsProps {
   catalog: string;
   schema: string;
+  tab: SchemaTabs;
 }
 
-function SchemaDetailsTabs({ catalog, schema }: SchemaDetailsTabsProps) {
-  const [activeTab, setActiveTab] = React.useState<SchemaTabs>(
-    SchemaTabs.Tables,
-  );
+function SchemaDetailsTabs({ catalog, schema, tab }: SchemaDetailsTabsProps) {
+  const [activeTab, setActiveTab] = React.useState<SchemaTabs>(tab);
+
+  useEffect(() => {
+    setActiveTab(tab);
+  }, [tab]);
+
   const Component = SCHEMA_TABS_MAP[activeTab];
 
   return (

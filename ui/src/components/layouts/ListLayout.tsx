@@ -24,16 +24,18 @@ export default function ListLayout<T extends AnyObject = AnyObject>({
   showSearch = true,
 }: ListLayoutProps<T>) {
   const [filterValue, setFilterValue] = useState('');
+  const [pageSize, setPageSize] = useState(10);
 
   const filteredData = useMemo(() => {
     if (!filterValue) return data;
     return data?.filter((item) =>
-      Object.values<string | boolean | number | null | undefined>(item).some(
-        (value) =>
-          String(value).toLowerCase().includes(filterValue.toLowerCase()),
-      ),
+      String(item.name).toLowerCase().includes(filterValue.toLowerCase()),
     );
   }, [data, filterValue]);
+
+  const onShowSizeChange = (current: number, pageSize: number) => {
+    setPageSize(pageSize);
+  };
 
   return (
     <Flex gap="middle" vertical style={{ flexGrow: 1 }}>
@@ -64,7 +66,9 @@ export default function ListLayout<T extends AnyObject = AnyObject>({
         columns={columns}
         pagination={{
           hideOnSinglePage: true,
-          pageSize: 10,
+          pageSize: pageSize,
+          onShowSizeChange: onShowSizeChange,
+          showTotal: (total, range) => `${range[0]}-${range[1]} of ${total}`,
         }}
         onRow={(row) => {
           return {

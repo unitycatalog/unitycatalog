@@ -16,6 +16,7 @@ import { useListTables } from '../hooks/tables';
 import { useListVolumes } from '../hooks/volumes';
 import { useListFunctions } from '../hooks/functions';
 import { useListModels } from '../hooks/models';
+import { SchemaTabs } from '../pages/SchemaDetails';
 
 export default function SchemaBrowser() {
   const navigate = useNavigate();
@@ -123,25 +124,25 @@ export default function SchemaBrowser() {
                   title: 'Tables',
                   key: `${catalog_name}.${name}:tables`,
                   isLeaf: false,
-                  selectable: false,
+                  selectable: true,
                 },
                 {
                   title: 'Volumes',
                   key: `${catalog_name}.${name}:volumes`,
                   isLeaf: false,
-                  selectable: false,
+                  selectable: true,
                 },
                 {
                   title: 'Functions',
                   key: `${catalog_name}.${name}:functions`,
                   isLeaf: false,
-                  selectable: false,
+                  selectable: true,
                 },
                 {
                   title: 'Models',
                   key: `${catalog_name}.${name}:registered_models`,
                   isLeaf: false,
-                  selectable: false,
+                  selectable: true,
                 },
               ],
             }))
@@ -233,7 +234,26 @@ export default function SchemaBrowser() {
             const [entityFullName, type] = (key as string)?.split(':');
             if (type === 'no-data') return;
             const [catalog, schema, entity] = entityFullName?.split('.');
-            if (type && entity) {
+            if (type && !entity) {
+              switch (type) {
+                case 'tables':
+                  return navigate(`/data/${catalog}/${schema}`, {
+                    state: { tab: SchemaTabs.Tables },
+                  });
+                case 'volumes':
+                  return navigate(`/data/${catalog}/${schema}`, {
+                    state: { tab: SchemaTabs.Volumes },
+                  });
+                case 'functions':
+                  return navigate(`/data/${catalog}/${schema}`, {
+                    state: { tab: SchemaTabs.Functions },
+                  });
+                case 'registered_models':
+                  return navigate(`/data/${catalog}/${schema}`, {
+                    state: { tab: SchemaTabs.Models },
+                  });
+              }
+            } else if (type && entity) {
               switch (type) {
                 case 'tables':
                   return navigate(`/data/${catalog}/${schema}/${entity}`);
