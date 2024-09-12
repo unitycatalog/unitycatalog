@@ -51,7 +51,7 @@ public class CatalogInfoDAO extends IdentifiableDAO {
             catalogInfo.getUpdatedAt() != null
                 ? Date.from(Instant.ofEpochMilli(catalogInfo.getUpdatedAt()))
                 : null)
-        .updatedBy(catalogInfo.getCreatedBy())
+        .updatedBy(catalogInfo.getUpdatedBy())
         .build();
   }
 

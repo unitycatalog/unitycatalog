@@ -71,10 +71,13 @@ public class VolumeInfoDAO extends IdentifiableDAO {
         .name(volumeInfo.getName())
         .comment(volumeInfo.getComment())
         .storageLocation(volumeInfo.getStorageLocation())
+        .owner(volumeInfo.getOwner())
         .createdAt(
             volumeInfo.getCreatedAt() != null ? new Date(volumeInfo.getCreatedAt()) : new Date())
+        .createdBy(volumeInfo.getCreatedBy())
         .updatedAt(
             volumeInfo.getUpdatedAt() != null ? new Date(volumeInfo.getUpdatedAt()) : new Date())
+        .updatedBy(volumeInfo.getUpdatedBy())
         .volumeType(volumeInfo.getVolumeType().getValue())
         .build();
   }
