@@ -1103,38 +1103,45 @@ components:
       type: object
       properties:
         catalog_name:
-          type: string
           description: The name of the catalog where the schema and the volume are
+          type: string
         schema_name:
-          type: string
           description: The name of the schema where the volume is
-        name:
           type: string
+        name:
           description: The name of the volume
+          type: string
         comment:
+          description: The comment attached to the volume
           type: string
           maxLength: 65536
           minLength: 1
-          description: The comment attached to the volume
         created_at:
-          type: integer
-          format: int64
           description: Time at which this volume was created, in epoch milliseconds.
-        updated_at:
           type: integer
           format: int64
+        updated_at:
           description: Time at which this volume was last modified, in epoch milliseconds.
+          type: integer
+          format: int64
         volume_id:
-          type: string
           description: Unique identifier for the volume
+          type: string
         "volume_type":
           "$ref": "#/components/schemas/VolumeType"
         storage_location:
-          type: string
           description: The storage location of the volume
-        full_name:
           type: string
+        full_name:
           description: Full name of volume, in form of __catalog_name__.__schema_name__.__volume_name__.
+          type: string
+      required:
+        - catalog_name
+        - schema_name
+        - name
+        - volume_id
+        - volume_type
+        - storage_location
     ColumnTypeName:
       description: Name of type (INT, STRUCT, MAP, etc.).
       type: string
@@ -1256,6 +1263,14 @@ components:
         table_id:
           description: Unique identifier for the table.
           type: string
+      required:
+        - name
+        - catalog_name
+        - schema_name
+        - table_type
+        - data_source_format
+        - columns
+        - table_id
     CreateTable:
       type: object
       properties:
@@ -1334,6 +1349,10 @@ components:
         schema_id:
           description: Unique identifier for the schema.
           type: string
+      required:
+        - name
+        - catalog_name
+        - schema_id
     CreateSchema:
       type: object
       properties:
@@ -1397,6 +1416,9 @@ components:
         id:
           description: Unique identifier for the catalog.
           type: string
+      required:
+        - name
+        - id
     CreateCatalog:
       type: object
       properties:
@@ -1447,12 +1469,6 @@ components:
         - IN
     FunctionParameterInfo:
       type: object
-      required:
-        - name
-        - type_text
-        - type_name
-        - type_json
-        - position
       properties:
         name:
           description: Name of parameter.
@@ -1490,6 +1506,12 @@ components:
         comment:
           description: User-provided free-form text description.
           type: string
+      required:
+        - name
+        - type_text
+        - type_name
+        - type_json
+        - position
     FunctionParameterInfos:
       type: object
       properties:
@@ -1544,22 +1566,6 @@ components:
             "$ref": "#/components/schemas/Dependency"
     CreateFunction:
       type: object
-      required:
-        - name
-        - catalog_name
-        - schema_name
-        - input_params
-        - data_type
-        - full_data_type
-        - routine_body
-        - routine_definition
-        - parameter_style
-        - is_deterministic
-        - sql_data_access
-        - is_null_call
-        - security_type
-        - specific_name
-        - properties
       properties:
         name:
           description: Name of function, relative to parent schema.
@@ -1630,6 +1636,21 @@ components:
         external_language:
           description: External language of the function.
           type: string
+      required:
+        - name
+        - catalog_name
+        - schema_name
+        - input_params
+        - data_type
+        - full_data_type
+        - routine_body
+        - routine_definition
+        - parameter_style
+        - is_deterministic
+        - sql_data_access
+        - is_null_call
+        - security_type
+        - specific_name
     FunctionInfo:
       type: object
       properties:
@@ -1715,6 +1736,22 @@ components:
         external_language:
           description: External language of the function.
           type: string
+      required:
+        - name
+        - catalog_name
+        - schema_name
+        - input_params
+        - data_type
+        - full_data_type
+        - routine_body
+        - routine_definition
+        - parameter_style
+        - is_deterministic
+        - sql_data_access
+        - is_null_call
+        - security_type
+        - specific_name
+        - function_id
     ListFunctionsResponse:
       type: object
       properties:
