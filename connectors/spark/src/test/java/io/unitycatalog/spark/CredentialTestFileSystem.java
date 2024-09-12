@@ -1,4 +1,4 @@
-package io.unitycatalog.connectors.spark;
+package io.unitycatalog.spark;
 
 import java.io.IOException;
 import org.apache.hadoop.fs.*;
