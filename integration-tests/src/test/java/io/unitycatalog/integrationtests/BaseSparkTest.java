@@ -1,31 +1,19 @@
 package io.unitycatalog.integrationtests;
 
-import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import lombok.SneakyThrows;
 import org.apache.spark.sql.SparkSession;
 import org.junit.jupiter.api.BeforeAll;
 
-import java.util.List;
-
 public class BaseSparkTest {
-    private static final String ServerUrl = "http://localhost:8080";
-    private static final String AuthToken = "";
+    private static final String ServerUrl = System.getenv().getOrDefault("CATALOG_URI","http://localhost:8080");
+    private static final String AuthToken = System.getenv().getOrDefault("CATALOG_AUTH_TOKEN","");
+    private static final String CatalogName = System.getenv().getOrDefault("CATALOG_NAME","unity");
     private static final ObjectMapper mapper = new ObjectMapper();
     protected static SparkSession spark;
 
     @BeforeAll
     public static void setup() {
-        spark = createSparkSessionWithCatalogs("unity");
-    }
-
-    @SneakyThrows
-    protected List<String> getExpectData(String resourceFileName) {
-        return mapper.readValue(
-                getClass().getClassLoader().getResourceAsStream(resourceFileName),
-                new TypeReference<>() {
-                }
-        );
+        spark = createSparkSessionWithCatalogs(CatalogName);
     }
 
     protected static SparkSession createSparkSessionWithCatalogs(String... catalogs) {
