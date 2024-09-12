@@ -41,6 +41,9 @@ public class ModelVersionInfoDAO {
   @Column(name = "status")
   private String status;
 
+  @Column(name = "owner")
+  private String owner;
+
   @Column(name = "created_at")
   private Date createdAt;
 
@@ -67,6 +70,7 @@ public class ModelVersionInfoDAO {
         .status(modelVersionInfo.getStatus().getValue())
         .comment(modelVersionInfo.getComment())
         .version(modelVersionInfo.getVersion())
+        .owner(modelVersionInfo.getOwner())
         .createdAt(
             modelVersionInfo.getCreatedAt() != null
                 ? new Date(modelVersionInfo.getCreatedAt())
@@ -91,6 +95,7 @@ public class ModelVersionInfoDAO {
             .status(ModelVersionStatus.valueOf(getStatus()))
             .storageLocation(url)
             .comment(comment)
+            .owner(owner)
             .createdAt(createdAt != null ? createdAt.getTime() : null)
             .createdBy(createdBy)
             .updatedAt(updatedAt != null ? updatedAt.getTime() : null)

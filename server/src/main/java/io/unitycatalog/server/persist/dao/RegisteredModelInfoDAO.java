@@ -25,6 +25,9 @@ public class RegisteredModelInfoDAO extends IdentifiableDAO {
   @Column(name = "schema_id")
   private UUID schemaId;
 
+  @Column(name = "owner")
+  private String owner;
+
   @Column(name = "created_at")
   private Date createdAt;
 
@@ -51,6 +54,7 @@ public class RegisteredModelInfoDAO extends IdentifiableDAO {
         .id(UUID.fromString(registeredModelInfo.getModelId()))
         .name(registeredModelInfo.getName())
         .comment(registeredModelInfo.getComment())
+        .owner(registeredModelInfo.getOwner())
         .createdAt(
             registeredModelInfo.getCreatedAt() != null
                 ? new Date(registeredModelInfo.getCreatedAt())
@@ -72,6 +76,7 @@ public class RegisteredModelInfoDAO extends IdentifiableDAO {
             .name(getName())
             .storageLocation(url)
             .comment(comment)
+            .owner(owner)
             .createdAt(createdAt != null ? createdAt.getTime() : null)
             .createdBy(createdBy)
             .updatedAt(updatedAt != null ? updatedAt.getTime() : null)

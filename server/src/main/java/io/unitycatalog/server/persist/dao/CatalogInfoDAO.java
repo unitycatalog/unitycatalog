@@ -21,25 +21,37 @@ public class CatalogInfoDAO extends IdentifiableDAO {
   @Column(name = "comment")
   private String comment;
 
+  @Column(name = "owner")
+  private String owner;
+
   @Column(name = "created_at")
   private Date createdAt;
 
+  @Column(name = "created_by")
+  private String createdBy;
+
   @Column(name = "updated_at")
   private Date updatedAt;
+
+  @Column(name = "updated_by")
+  private String updatedBy;
 
   public static CatalogInfoDAO from(CatalogInfo catalogInfo) {
     return CatalogInfoDAO.builder()
         .id(catalogInfo.getId() != null ? UUID.fromString(catalogInfo.getId()) : null)
         .name(catalogInfo.getName())
         .comment(catalogInfo.getComment())
+        .owner(catalogInfo.getOwner())
         .createdAt(
             catalogInfo.getCreatedAt() != null
                 ? Date.from(Instant.ofEpochMilli(catalogInfo.getCreatedAt()))
                 : new Date())
+        .createdBy(catalogInfo.getCreatedBy())
         .updatedAt(
             catalogInfo.getUpdatedAt() != null
                 ? Date.from(Instant.ofEpochMilli(catalogInfo.getUpdatedAt()))
                 : null)
+        .updatedBy(catalogInfo.getCreatedBy())
         .build();
   }
 
@@ -48,7 +60,10 @@ public class CatalogInfoDAO extends IdentifiableDAO {
         .id(getId().toString())
         .name(getName())
         .comment(comment)
+        .owner(owner)
         .createdAt(createdAt.getTime())
-        .updatedAt(updatedAt != null ? updatedAt.getTime() : null);
+        .createdBy(createdBy)
+        .updatedAt(updatedAt != null ? updatedAt.getTime() : null)
+        .updatedBy(updatedBy);
   }
 }

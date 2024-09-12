@@ -1116,14 +1116,23 @@ components:
           maxLength: 65536
           minLength: 1
           description: The comment attached to the volume
+        owner:
+          description: The user that owns the volume
+          type: string
         created_at:
           type: integer
           format: int64
           description: Time at which this volume was created, in epoch milliseconds.
+        created_by:
+          description: The user that created the volume
+          type: string
         updated_at:
           type: integer
           format: int64
           description: Time at which this volume was last modified, in epoch milliseconds.
+        updated_by:
+          description: The user that last updated the volume
+          type: string
         volume_id:
           type: string
           description: Unique identifier for the volume
@@ -1245,14 +1254,23 @@ components:
           type: string
         properties:
           $ref: '#/components/schemas/SecurablePropertiesMap'
+        owner:
+          description: The user that owns the table
+          type: string
         created_at:
           description: Time at which this table was created, in epoch milliseconds.
           type: integer
           format: int64
+        created_by:
+          description: The user that created the table
+          type: string
         updated_at:
           description: Time at which this table was last modified, in epoch milliseconds.
           type: integer
           format: int64
+        updated_by:
+          description: The user that last updated the table
+          type: string
         table_id:
           description: Unique identifier for the table.
           type: string
@@ -1323,14 +1341,23 @@ components:
         full_name:
           description: Full name of schema, in form of __catalog_name__.__schema_name__.
           type: string
+        owner:
+          description: The user that owns the schema
+          type: string
         created_at:
           description: Time at which this schema was created, in epoch milliseconds.
           type: integer
           format: int64
+        created_by:
+          description: The user that created the schema
+          type: string
         updated_at:
           description: Time at which this schema was last modified, in epoch milliseconds.
           type: integer
           format: int64
+        updated_by:
+          description: The user that last updated the schema
+          type: string
         schema_id:
           description: Unique identifier for the schema.
           type: string
@@ -1386,14 +1413,23 @@ components:
           type: string
         properties:
           $ref: '#/components/schemas/SecurablePropertiesMap'
+        owner:
+          description: The user that owns the catalog
+          type: string
         created_at:
           description: Time at which this catalog was created, in epoch milliseconds.
           type: integer
           format: int64
+        created_by:
+          description: The user that created the catalog
+          type: string
         updated_at:
           description: Time at which this catalog was last modified, in epoch milliseconds.
           type: integer
           format: int64
+        updated_by:
+          description: The user that last updated the catalog
+          type: string
         id:
           description: Unique identifier for the catalog.
           type: string
@@ -1701,14 +1737,23 @@ components:
         full_name:
           description: Full name of function, in form of __catalog_name__.__schema_name__.__function__name__
           type: string
+        owner:
+          description: The user that owns the function
+          type: string
         created_at:
           description: Time at which this function was created, in epoch milliseconds.
           type: integer
           format: int64
+        created_by:
+          description: The user that owns the function
+          type: string
         updated_at:
           description: Time at which this function was last updated, in epoch milliseconds.
           type: integer
           format: int64
+        updated_by:
+          description: The user that last updated the function
+          type: string
         function_id:
           description: Id of Function, relative to parent schema.
           type: string
@@ -1906,6 +1951,9 @@ components:
         comment:
           description: User-provided free-form text description.
           type: string
+        owner:
+          description: The user that owns the model
+          type: string
         created_at:
           description: Time at which this registered model was created, in epoch milliseconds.
           type: integer
@@ -1952,6 +2000,9 @@ components:
           type: string
         comment:
           description: User-provided free-form text description.
+          type: string
+        owner:
+          description: The user that owns the model
           type: string
         created_at:
           description: Time at which this model version was created, in epoch milliseconds.
