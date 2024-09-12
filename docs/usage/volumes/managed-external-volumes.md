@@ -8,24 +8,6 @@ An **external volume** is a volume for which Unity Catalog manages _only_ the me
 
 ![Managed vs External volumes](../../assets/images/uc_managed_external_volumes_bg.png)
 
-## How to Create a Managed Volume
-
-<< code >>
-
-## Specifying the Managed Storage Location
-
-By default, managed volumes are stored in Unity Catalog's root directory.
-
-You can also specify locations for managed volumes at the catalog or schema level. You might want to do this for stronger isolation between schemas or catalogs, e.g. between "prod" and "dev".
-
-<< how / code >>
-
-Unity Catalog will search for a user-defined storage location in the following order:
-
-- at schema level
-- at catalog level
-- at metastore root directory, configured during setup
-
 ## How to Create an External Volume
 
 Use the `uc/bin volume create` command with a `storage_location` to create an external volume.
@@ -33,18 +15,43 @@ Use the `uc/bin volume create` command with a `storage_location` to create an ex
 For example:
 
 ```
-CODE
+bin/uc volume create \
+  --full_name unity.default.new_files \
+  --storage_location ~/tmp/
 ```
 
-You will see << >>
+Which will output:
 
 ```
-OUTPUT
+┌─────────────────────────────────┬──────────────────────────────────────────────────────────────────┐
+│               KEY               │                              VALUE                               │
+├─────────────────────────────────┼──────────────────────────────────────────────────────────────────┤
+│CATALOG_NAME                     │unity                                                             │
+├─────────────────────────────────┼──────────────────────────────────────────────────────────────────┤
+│SCHEMA_NAME                      │default                                                           │
+├─────────────────────────────────┼──────────────────────────────────────────────────────────────────┤
+│NAME                             │new_files                                                         │
+├─────────────────────────────────┼──────────────────────────────────────────────────────────────────┤
+│COMMENT                          │null                                                              │
+├─────────────────────────────────┼──────────────────────────────────────────────────────────────────┤
+│CREATED_AT                       │1726135930624                                                     │
+├─────────────────────────────────┼──────────────────────────────────────────────────────────────────┤
+│UPDATED_AT                       │1726135930624                                                     │
+├─────────────────────────────────┼──────────────────────────────────────────────────────────────────┤
+│VOLUME_ID                        │369419a0-7f8b-496c-94e2-6bc363c139cc                              │
+├─────────────────────────────────┼──────────────────────────────────────────────────────────────────┤
+│VOLUME_TYPE                      │EXTERNAL                                                          │
+├─────────────────────────────────┼──────────────────────────────────────────────────────────────────┤
+│STORAGE_LOCATION                 │file:///Users/user/tmp/                                       │
+├─────────────────────────────────┼──────────────────────────────────────────────────────────────────┤
+│FULL_NAME                        │unity.default.new_files                                           │
+└─────────────────────────────────┴──────────────────────────────────────────────────────────────────┘
+
 ```
 
-The storage location can be a local path (absolute path) or an S3 path. When an S3 path is provided, the server will vend temporary credentials to access the S3 bucket and server properties must be set up accordingly.
+The `VOLUME_TYPE` field confirms that you have created an `EXTERNAL` table.
 
-<< link to server creds docs >>
+The storage location can be a local path (absolute path) or an S3 path. When an S3 path is provided, the server will vend temporary credentials to access the S3 bucket. The server properties must be set up accordingly, see the [server configuration documentation](../../usage/server.md)
 
 ## Dropping Managed vs External Volumes
 
