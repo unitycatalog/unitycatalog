@@ -8,24 +8,6 @@ An **external table** is a table for which Unity Catalog manages _only_ the meta
 
 ![Managed vs External tables](../../assets/images/uc_managed_external_tables_bg.png)
 
-## How to Create a Managed Table
-
-<< code >>
-
-## Specifying the Managed Storage Location
-
-By default, managed tables are stored in Unity Catalog's root directory.
-
-You can also specify locations for managed tables at the catalog or schema level. You might want to do this for stronger isolation between schemas or catalogs, e.g. between "prod" and "dev".
-
-<< how / code >>
-
-Unity Catalog will search for a user-defined storage location in the following order:
-
-- at schema level
-- at catalog level
-- at metastore root directory, configured during setup
-
 ## How to Create an External Table
 
 Use the `uc/bin table create` command with a `storage_location` to create an external table.
