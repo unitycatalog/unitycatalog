@@ -2002,7 +2002,7 @@ components:
           description: User-provided free-form text description.
           type: string
         owner:
-          description: The user that owns the model
+          description: The user that owns the model version
           type: string
         created_at:
           description: Time at which this model version was created, in epoch milliseconds.

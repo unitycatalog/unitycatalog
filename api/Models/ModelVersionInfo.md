@@ -12,7 +12,7 @@
 | **status** | [**ModelVersionStatus**](ModelVersionStatus.md) |  | [optional] [default to null] |
 | **storage\_location** | **String** | The storage location on the cloud under which model version data files are stored. | [optional] [default to null] |
 | **comment** | **String** | User-provided free-form text description. | [optional] [default to null] |
-| **owner** | **String** | The user that owns the model | [optional] [default to null] |
+| **owner** | **String** | The user that owns the model version | [optional] [default to null] |
 | **created\_at** | **Long** | Time at which this model version was created, in epoch milliseconds. | [optional] [default to null] |
 | **created\_by** | **String** | The user that created the model version | [optional] [default to null] |
 | **updated\_at** | **Long** | Time at which this model version was last modified, in epoch milliseconds. | [optional] [default to null] |
