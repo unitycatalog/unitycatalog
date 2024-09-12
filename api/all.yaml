@@ -1256,6 +1256,9 @@ components:
         table_id:
           description: Unique identifier for the table.
           type: string
+        uniform_iceberg_metadata_location:
+          description: icebegrg metadata location 
+          type: string
     CreateTable:
       type: object
       properties:
@@ -1285,6 +1288,9 @@ components:
           type: string
         properties:
           $ref: '#/components/schemas/SecurablePropertiesMap'
+        uniform_iceberg_metadata_location:
+          description: icebegrg metadata location 
+          type: string
       required:
         - name
         - catalog_name

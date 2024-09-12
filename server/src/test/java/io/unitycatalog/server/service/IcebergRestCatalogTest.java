@@ -349,4 +349,108 @@ public class IcebergRestCatalogTest extends BaseServerTest {
         client.head("/v1/namespaces/incomplete_namespace/tables").aggregate().join();
     assertThat(resp.status().code()).isEqualTo(400);
   }
+
+  @Test
+  public void testUniformTableCreation() throws ApiException, IOException, URISyntaxException {
+    CreateCatalog createCatalog =
+        new CreateCatalog().name(TestUtils.CATALOG_NAME).comment(TestUtils.COMMENT);
+    catalogOperations.createCatalog(createCatalog);
+    schemaOperations.createSchema(
+        new CreateSchema().catalogName(TestUtils.CATALOG_NAME).name(TestUtils.SCHEMA_NAME));
+    ColumnInfo columnInfo1 =
+        new ColumnInfo()
+            .name("as_int")
+            .typeText("INTEGER")
+            .typeJson("{\"type\": \"integer\"}")
+            .typeName(ColumnTypeName.INT)
+            .typePrecision(10)
+            .typeScale(0)
+            .position(0)
+            .comment("Integer column")
+            .nullable(true);
+    ColumnInfo columnInfo2 =
+        new ColumnInfo()
+            .name("as_string")
+            .typeText("VARCHAR(255)")
+            .typeJson("{\"type\": \"string\", \"length\": \"255\"}")
+            .typeName(ColumnTypeName.STRING)
+            .position(1)
+            .comment("String column")
+            .nullable(true);
+
+    String metadataLocation =
+        Objects.requireNonNull(this.getClass().getResource("/iceberg.metadata.json"))
+            .toURI()
+            .toString();
+    CreateTable createTableRequest =
+        new CreateTable()
+            .name(TestUtils.TABLE_NAME)
+            .catalogName(TestUtils.CATALOG_NAME)
+            .schemaName(TestUtils.SCHEMA_NAME)
+            .columns(List.of(columnInfo1, columnInfo2))
+            .comment(TestUtils.COMMENT)
+            .storageLocation("/tmp/stagingLocation")
+            .tableType(TableType.EXTERNAL)
+            .dataSourceFormat(DataSourceFormat.DELTA)
+            .uniformIcebergMetadataLocation(metadataLocation);
+    tableOperations.createTable(createTableRequest);
+
+    // uniform table exists
+    {
+      AggregatedHttpResponse resp =
+          client
+              .head(
+                  "/v1/namespaces/"
+                      + TestUtils.CATALOG_NAME
+                      + "."
+                      + TestUtils.SCHEMA_NAME
+                      + "/tables/"
+                      + TestUtils.TABLE_NAME)
+              .aggregate()
+              .join();
+      assertThat(resp.status().code()).isEqualTo(200);
+    }
+    // metadata is valid metadata content and metadata location matches
+    {
+      AggregatedHttpResponse resp =
+          client
+              .get(
+                  "/v1/namespaces/"
+                      + TestUtils.CATALOG_NAME
+                      + "."
+                      + TestUtils.SCHEMA_NAME
+                      + "/tables/"
+                      + TestUtils.TABLE_NAME)
+              .aggregate()
+              .join();
+      assertThat(resp.status().code()).isEqualTo(200);
+      LoadTableResponse loadTableResponse =
+          RESTObjectMapper.mapper().readValue(resp.contentUtf8(), LoadTableResponse.class);
+      assertThat(loadTableResponse.tableMetadata().metadataFileLocation())
+          .isEqualTo(
+              Objects.requireNonNull(this.getClass().getResource("/iceberg.metadata.json"))
+                  .getPath());
+    }
+
+    // List uniform tables
+    {
+      AggregatedHttpResponse resp =
+          client
+              .get(
+                  "/v1/namespaces/"
+                      + TestUtils.CATALOG_NAME
+                      + "."
+                      + TestUtils.SCHEMA_NAME
+                      + "/tables")
+              .aggregate()
+              .join();
+      assertThat(resp.status().code()).isEqualTo(200);
+      ListTablesResponse loadTableResponse =
+          RESTObjectMapper.mapper().readValue(resp.contentUtf8(), ListTablesResponse.class);
+      assertThat(loadTableResponse.identifiers())
+          .containsExactly(
+              TableIdentifier.of(
+                  TestUtils.CATALOG_NAME, TestUtils.SCHEMA_NAME, TestUtils.TABLE_NAME));
+    }
+  }
 }
