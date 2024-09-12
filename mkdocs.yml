@@ -54,6 +54,7 @@ theme:
   icon:
     repo: fontawesome/brands/github
   favicon: assets/images/favicon.png
+  logo: assets/images/uc-icon.svg
 
 extra:
   social:
