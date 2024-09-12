@@ -89,7 +89,7 @@ public abstract class BaseModelCRUDTest extends BaseCRUDTest {
     assertThat(rmInfo.getComment()).isEqualTo(createRm.getComment());
     assertThat(rmInfo.getCreatedAt()).isNotNull();
     assertThat(rmInfo.getUpdatedAt()).isNotNull();
-    assertThat(rmInfo.getModelId()).isNotNull();
+    assertThat(rmInfo.getId()).isNotNull();
     assertThat(rmInfo.getStorageLocation()).isNotNull();
 
     RegisteredModelInfo rmInfoNewCat = modelOperations.createRegisteredModel(createRmNewCat);
@@ -128,7 +128,7 @@ public abstract class BaseModelCRUDTest extends BaseCRUDTest {
         new UpdateRegisteredModel().newName(MODEL_NEW_NAME).fullName(MODEL_FULL_NAME);
     RegisteredModelInfo updatedRegisteredModelInfo =
         modelOperations.updateRegisteredModel(MODEL_FULL_NAME, updateRegisteredModel);
-    assertThat(updatedRegisteredModelInfo.getModelId()).isEqualTo(rmInfo.getModelId());
+    assertThat(updatedRegisteredModelInfo.getId()).isEqualTo(rmInfo.getId());
     assertThat(updatedRegisteredModelInfo.getName()).isEqualTo(updateRegisteredModel.getNewName());
     assertThat(updatedRegisteredModelInfo.getComment()).isEqualTo(COMMENT);
     assertThat(updatedRegisteredModelInfo.getFullName()).isEqualTo(MODEL_NEW_FULL_NAME);
@@ -143,8 +143,7 @@ public abstract class BaseModelCRUDTest extends BaseCRUDTest {
         new UpdateRegisteredModel().comment(MODEL_NEW_COMMENT).fullName(MODEL_NEW_FULL_NAME);
     RegisteredModelInfo updatedRegisteredModelInfo2 =
         modelOperations.updateRegisteredModel(MODEL_NEW_FULL_NAME, updateModel2);
-    assertThat(updatedRegisteredModelInfo.getModelId())
-        .isEqualTo(updatedRegisteredModelInfo.getModelId());
+    assertThat(updatedRegisteredModelInfo.getId()).isEqualTo(updatedRegisteredModelInfo.getId());
     assertThat(updatedRegisteredModelInfo2.getName()).isEqualTo(MODEL_NEW_NAME);
     assertThat(updatedRegisteredModelInfo2.getComment()).isEqualTo(updateModel2.getComment());
     assertThat(updatedRegisteredModelInfo2.getFullName()).isEqualTo(MODEL_NEW_FULL_NAME);
@@ -217,7 +216,7 @@ public abstract class BaseModelCRUDTest extends BaseCRUDTest {
     assertThat(rmInfo2.getComment()).isEqualTo(createRm2.getComment());
     assertThat(rmInfo2.getCreatedAt()).isNotNull();
     assertThat(rmInfo2.getUpdatedAt()).isNotNull();
-    assertThat(rmInfo2.getModelId()).isNotNull();
+    assertThat(rmInfo2.getId()).isNotNull();
     assertThat(rmInfo2.getStorageLocation()).isNotNull();
     CreateModelVersion createMv =
         new CreateModelVersion()
@@ -238,7 +237,7 @@ public abstract class BaseModelCRUDTest extends BaseCRUDTest {
     assertThat(mvInfo.getVersion()).isEqualTo(1L);
     assertThat(mvInfo.getCreatedAt()).isNotNull();
     assertThat(mvInfo.getUpdatedAt()).isNotNull();
-    assertThat(mvInfo.getModelVersionId()).isNotNull();
+    assertThat(mvInfo.getId()).isNotNull();
 
     // make another and make sure the version increments;
     System.out.println("Testing version increment...");
@@ -290,7 +289,7 @@ public abstract class BaseModelCRUDTest extends BaseCRUDTest {
         .isEqualTo(mvInfo3.getStorageLocation());
     assertThat(updatedModelVersionInfo.getCreatedAt()).isEqualTo(mvInfo3.getCreatedAt());
     assertThat(updatedModelVersionInfo.getUpdatedAt()).isNotEqualTo(mvInfo3.getUpdatedAt());
-    assertThat(updatedModelVersionInfo.getModelVersionId()).isEqualTo(mvInfo3.getModelVersionId());
+    assertThat(updatedModelVersionInfo.getId()).isEqualTo(mvInfo3.getId());
     ModelVersionInfo anotherMv3 = modelOperations.getModelVersion(MODEL_FULL_NAME, 3L);
     assertThat(updatedModelVersionInfo).isEqualTo(anotherMv3);
 
@@ -301,8 +300,7 @@ public abstract class BaseModelCRUDTest extends BaseCRUDTest {
     ModelVersionInfo finalizedMv3 =
         modelOperations.finalizeModelVersion(MODEL_FULL_NAME, 3L, finalizeModelVersion);
     assertThat(finalizedMv3.getStatus()).isEqualTo(ModelVersionStatus.READY);
-    assertThat(finalizedMv3.getModelVersionId())
-        .isEqualTo(updatedModelVersionInfo.getModelVersionId());
+    assertThat(finalizedMv3.getId()).isEqualTo(updatedModelVersionInfo.getId());
     assertThatThrownBy(
             () -> modelOperations.finalizeModelVersion(MODEL_FULL_NAME, 3L, finalizeModelVersion))
         .isInstanceOf(Exception.class);
