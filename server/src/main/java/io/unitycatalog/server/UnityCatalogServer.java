@@ -2,8 +2,10 @@ package io.unitycatalog.server;
 
 import static io.unitycatalog.server.security.SecurityContext.Issuers.INTERNAL;
 
+import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.SerializationFeature;
 import com.fasterxml.jackson.databind.json.JsonMapper;
 import com.linecorp.armeria.common.HttpResponse;
 import com.linecorp.armeria.server.Server;
@@ -23,6 +25,7 @@ import io.unitycatalog.server.service.FunctionService;
 import io.unitycatalog.server.service.IcebergRestCatalogService;
 import io.unitycatalog.server.service.ModelService;
 import io.unitycatalog.server.service.SchemaService;
+import io.unitycatalog.server.service.Scim2UserService;
 import io.unitycatalog.server.service.TableService;
 import io.unitycatalog.server.service.TemporaryModelVersionCredentialsService;
 import io.unitycatalog.server.service.TemporaryTableCredentialsService;
@@ -37,7 +40,13 @@ import io.unitycatalog.server.utils.VersionUtils;
 import io.vertx.core.Verticle;
 import io.vertx.core.Vertx;
 import java.nio.file.Path;
-import org.apache.commons.cli.*;
+import org.apache.commons.cli.CommandLine;
+import org.apache.commons.cli.CommandLineParser;
+import org.apache.commons.cli.DefaultParser;
+import org.apache.commons.cli.HelpFormatter;
+import org.apache.commons.cli.Option;
+import org.apache.commons.cli.Options;
+import org.apache.commons.cli.ParseException;
 import org.apache.logging.log4j.core.config.Configurator;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -81,11 +90,20 @@ public class UnityCatalogServer {
     JacksonRequestConverterFunction unityConverterFunction =
         new JacksonRequestConverterFunction(unityMapper);
 
+    ObjectMapper responseMapper =
+        JsonMapper.builder()
+            .disable(SerializationFeature.WRITE_DATES_AS_TIMESTAMPS)
+            .serializationInclusion(JsonInclude.Include.NON_NULL)
+            .build();
+    JacksonResponseConverterFunction scimResponseFunction =
+        new JacksonResponseConverterFunction(responseMapper);
+
     // Credentials Service
     CredentialOperations credentialOperations = new CredentialOperations();
 
     // Add support for Unity Catalog APIs
     AuthService authService = new AuthService(securityContext);
+    Scim2UserService scim2UserService = new Scim2UserService();
     CatalogService catalogService = new CatalogService();
     SchemaService schemaService = new SchemaService();
     VolumeService volumeService = new VolumeService();
@@ -100,6 +118,11 @@ public class UnityCatalogServer {
         new TemporaryModelVersionCredentialsService(credentialOperations);
     sb.service("/", (ctx, req) -> HttpResponse.of("Hello, Unity Catalog!"))
         .annotatedService(controlPath + "auth", authService, unityConverterFunction)
+        .annotatedService(
+            controlPath + "scim2/Users",
+            scim2UserService,
+            unityConverterFunction,
+            scimResponseFunction)
         .annotatedService(basePath + "catalogs", catalogService, unityConverterFunction)
         .annotatedService(basePath + "schemas", schemaService, unityConverterFunction)
         .annotatedService(basePath + "volumes", volumeService, unityConverterFunction)
@@ -138,6 +161,10 @@ public class UnityCatalogServer {
       ExceptionHandlingDecorator exceptionDecorator =
           new ExceptionHandlingDecorator(new GlobalExceptionHandler());
       sb.routeDecorator().pathPrefix(basePath).build(authDecorator);
+      sb.routeDecorator()
+          .pathPrefix(controlPath)
+          .exclude(controlPath + "auth/tokens")
+          .build(authDecorator);
       sb.decorator(exceptionDecorator);
     }
   }
@@ -152,9 +179,19 @@ public class UnityCatalogServer {
             .desc("Port number to run the server on. Default is 8080.")
             .type(Integer.class)
             .build());
+    options.addOption(
+        Option.builder("v")
+            .longOpt("version")
+            .hasArg(false)
+            .desc("Display the version of the Unity Catalog server")
+            .build());
     CommandLineParser parser = new DefaultParser();
     try {
       CommandLine cmd = parser.parse(options, args);
+      if (cmd.hasOption("v")) {
+        System.out.println(VersionUtils.VERSION);
+        return;
+      }
       if (cmd.hasOption("p")) {
         port = cmd.getParsedOptionValue("p");
       }

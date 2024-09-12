@@ -1,0 +1,32 @@
+name: Publish Swagger Docs
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pages: write
+    steps:
+      - uses: actions/checkout@v4
+      - name: Generate Swagger UI
+        uses: Legion2/swagger-ui-action@v1
+        with:
+          output: ./swagger-ui/swagger-docs
+          spec-file: ./api/all.yaml
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Prepare deployment directory for Swagger UI
+        run: |
+            mkdir -p swagger-docs
+            mv swagger-ui/* ./swagger-docs/
+
+      - name: Deploy to GitHub Pages
+        uses: peaceiris/actions-gh-pages@v3
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: ./swagger-docs
+          keep_files: true
