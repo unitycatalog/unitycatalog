@@ -58,9 +58,7 @@ You will see `TABLE_TYPE EXTERNAL` in the returned metadata:
 └────────────────────┴──────────────────────────────────────────────────────────────────────────────────────────┘
 ```
 
-The storage location can be a local path (absolute path) or a path to cloud object storage. When a cloud object store path is provided, the server will vend temporary credentials to access the cloud storage. The server properties must be set up accordingly.
-
-<< link to server creds docs >>
+The storage location can be a local path (absolute path) or a path to cloud object storage. When a cloud object store path is provided, the server will vend temporary credentials to access the cloud storage. The server properties must be set up accordingly, see the [server configuration documentation](../../usage/server.md)
 
 ## Dropping Managed vs External Tables
 
