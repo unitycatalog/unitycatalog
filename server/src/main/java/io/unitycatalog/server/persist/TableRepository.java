@@ -11,6 +11,7 @@ import io.unitycatalog.server.persist.utils.HibernateUtils;
 import io.unitycatalog.server.persist.utils.PagedListingHelper;
 import io.unitycatalog.server.persist.utils.RepositoryUtils;
 import io.unitycatalog.server.utils.Constants;
+import io.unitycatalog.server.utils.IdentityUtils;
 import io.unitycatalog.server.utils.ValidationUtils;
 import java.util.*;
 import java.util.stream.Collectors;
@@ -105,10 +106,12 @@ public class TableRepository {
 
   public TableInfo createTable(CreateTable createTable) {
     ValidationUtils.validateSqlObjectName(createTable.getName());
+    String callerId = IdentityUtils.findPrincipalEmailAddress();
     List<ColumnInfo> columnInfos =
         createTable.getColumns().stream()
             .map(c -> c.typeText(c.getTypeText().toLowerCase(Locale.ROOT)))
             .collect(Collectors.toList());
+    Long createTime = System.currentTimeMillis();
     TableInfo tableInfo =
         new TableInfo()
             .tableId(UUID.randomUUID().toString())
@@ -121,7 +124,11 @@ public class TableRepository {
             .storageLocation(FileUtils.convertRelativePathToURI(createTable.getStorageLocation()))
             .comment(createTable.getComment())
             .properties(createTable.getProperties())
-            .createdAt(System.currentTimeMillis());
+            .owner(callerId)
+            .createdAt(createTime)
+            .createdBy(callerId)
+            .updatedAt(createTime)
+            .updatedBy(callerId);
     String fullName = getTableFullName(tableInfo);
     LOGGER.debug("Creating table: " + fullName);
 
