@@ -2,6 +2,7 @@ package io.unitycatalog.server.auth.decorator;
 
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.linecorp.armeria.common.HttpData;
 import com.linecorp.armeria.common.HttpRequest;
 import com.linecorp.armeria.common.HttpResponse;
 import com.linecorp.armeria.common.MediaType;
@@ -155,42 +156,15 @@ public class UnityAccessDecorator implements DecoratingHttpServiceFunction {
       // is being evaluated, via peekData()
       LOGGER.debug("Checking authorization before in peekData.");
 
-      // This is a little ugly - peekData provides only a block of data at a time, so lets
-      // buffer it up until we think its complete.
-      ByteArrayOutputStream dataStream = new ByteArrayOutputStream();
+      PeekDataHandler peekDataHandler = new PeekDataHandler(req.contentType(), payloadLocators, resourceKeys);
 
       // Note that peekData only gets called for requests that actually have data (like PUT and POST)
 
       var peekReq = req.peekData(data -> {
         LOGGER.debug("Authorization peekData invoked.");
 
-          // TODO: For now, we're going to assume JSON data, but might need to support other
-          // content types.
-        if (req.contentType().equals(MediaType.JSON)) {
-          try {
-            dataStream.write(data.array());
-            LOGGER.debug("Payload: {}", dataStream.toString());
-          } catch (IOException e) {
-            // IGNORE
-          }
-
-          // Unfortunately we don't appear to get a signal that we've got all the data, so we have to
-          // resort to attempting to parse the data whenever it _looks_ complete.
-          // TODO: try to optimize this using Jackson streaming or something else.
-          if (data.array()[data.array().length - 1] == '}') {
-            try {
-              Map<String, Object> payload = MAPPER.readValue(dataStream.toByteArray(), new TypeReference<>() {
-              });
-
-              payloadLocators.forEach(l -> resourceKeys.put(l.getType(), findPayloadValue(l.getKey(), payload)));
-              checkAuthorization(principal, expression, resourceKeys);
-            } catch (IOException e) {
-              // This is probably because we read partial data.
-              LOGGER.warn("Error parsing payload: {}", e.getMessage());
-            }
-          }
-        } else {
-          LOGGER.warn("Skipping content-type: {}", req.contentType());
+        if (peekDataHandler.processPeekData(data)) {
+          checkAuthorization(principal, expression, resourceKeys);
         }
       });
 
@@ -421,4 +395,57 @@ public class UnityAccessDecorator implements DecoratingHttpServiceFunction {
     return matchingMethods;
   }
 
+  private static class PeekDataHandler {
+    // This is a little ugly - peekData provides only a block of data at a time, so lets
+    // buffer it up until we think its complete. A better long term solution would be to
+    // abandon this method and either integrate with Spring Boot to get full AOP support
+    // with aspect weaving, or build implement custom aspect weaving so we can intercept
+    // the method call directly and extract the payload data from the method arguments.
+
+    private final MediaType contentType;
+    private final List<KeyLocator> payloadLocators;
+    private final Map<SecurableType, Object> resourceKeys;
+    private final ByteArrayOutputStream dataStream = new ByteArrayOutputStream();
+
+    private PeekDataHandler(MediaType contentType, List<KeyLocator> payloadLocators, Map<SecurableType, Object> resourceKeys) {
+      this.contentType = contentType;
+      this.payloadLocators = payloadLocators;
+      this.resourceKeys = resourceKeys;
+    }
+
+    private boolean processPeekData(HttpData data) {
+      // TODO: For now, we're going to assume JSON data, but might need to support other
+      // content types.
+      if (contentType.equals(MediaType.JSON)) {
+        try {
+          dataStream.write(data.array());
+          LOGGER.debug("Payload: {}", dataStream.toString());
+        } catch (IOException e) {
+          // IGNORE
+        }
+
+        // Unfortunately we don't appear to get a signal that we've got all the data, so we have to
+        // resort to attempting to parse the data whenever it _looks_ complete.
+        // TODO: try to optimize this using Jackson streaming or something else.
+        if (data.array()[data.array().length - 1] == '}') {
+          try {
+            Map<String, Object> payload = MAPPER.readValue(dataStream.toByteArray(), new TypeReference<>() {
+            });
+
+            payloadLocators.forEach(l -> resourceKeys.put(l.getType(), findPayloadValue(l.getKey(), payload)));
+            return true;
+          } catch (IOException e) {
+            // This is probably because we read partial data.
+            LOGGER.warn("Error parsing payload: {}", e.getMessage());
+          }
+        }
+
+      } else {
+        LOGGER.warn("Skipping content-type: {}", contentType);
+      }
+
+      return false;
+    }
+
+  }
 }
