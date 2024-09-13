@@ -33,8 +33,10 @@ public class TemporaryTableCredentialsService {
       GenerateTemporaryTableCredential generateTemporaryTableCredential) {
     String tableId = generateTemporaryTableCredential.getTableId();
     TableInfo tableInfo = TABLE_REPOSITORY.getTableById(tableId);
-
-    return HttpResponse.ofJson(credentialOps.vendCredentialForTable(tableInfo, tableOperationToPrivileges(generateTemporaryTableCredential.getOperation())));
+    return HttpResponse.ofJson(credentialOps
+            .vendCredentialForPath(tableInfo.getStorageLocation(),
+                    tableOperationToPrivileges(generateTemporaryTableCredential.getOperation()))
+            .toTableCredentialResponse());
   }
 
   private Set<CredentialContext.Privilege> tableOperationToPrivileges(TableOperation tableOperation) {

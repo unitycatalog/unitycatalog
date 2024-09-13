@@ -37,6 +37,7 @@ All URIs are relative to *http://localhost:8080/api/2.1/unity-catalog*
 *TablesApi* | [**getTable**](Apis/TablesApi.md#gettable) | **GET** /tables/{full_name} | Get a table |
 *TablesApi* | [**listTables**](Apis/TablesApi.md#listtables) | **GET** /tables | List tables |
 | *TemporaryModelVersionCredentialsApi* | [**generateTemporaryModelVersionCredentials**](Apis/TemporaryModelVersionCredentialsApi.md#generatetemporarymodelversioncredentials) | **POST** /temporary-model-version-credentials | Generate temporary model version credentials. These credentials are used by clients to write and retrieve model artifacts from the model versions external storage location. |
+| *TemporaryPathCredentialsApi* | [**generateTemporaryPathCredentials**](Apis/TemporaryPathCredentialsApi.md#generatetemporarypathcredentials) | **POST** /temporary-path-credentials | Generate temporary path credentials. |
 | *TemporaryTableCredentialsApi* | [**generateTemporaryTableCredentials**](Apis/TemporaryTableCredentialsApi.md#generatetemporarytablecredentials) | **POST** /temporary-table-credentials | Generate temporary table credentials. |
 | *TemporaryVolumeCredentialsApi* | [**generateTemporaryVolumeCredentials**](Apis/TemporaryVolumeCredentialsApi.md#generatetemporaryvolumecredentials) | **POST** /temporary-volume-credentials | Generate temporary volume credentials. |
 | *VolumesApi* | [**createVolume**](Apis/VolumesApi.md#createvolume) | **POST** /volumes | Create a Volume |
@@ -75,6 +76,8 @@ All URIs are relative to *http://localhost:8080/api/2.1/unity-catalog*
  - [GcpOauthToken](./Models/GcpOauthToken.md)
  - [GenerateTemporaryModelVersionCredentials](./Models/GenerateTemporaryModelVersionCredentials.md)
  - [GenerateTemporaryModelVersionCredentialsResponse](./Models/GenerateTemporaryModelVersionCredentialsResponse.md)
+ - [GenerateTemporaryPathCredential](./Models/GenerateTemporaryPathCredential.md)
+ - [GenerateTemporaryPathCredentialResponse](./Models/GenerateTemporaryPathCredentialResponse.md)
  - [GenerateTemporaryTableCredential](./Models/GenerateTemporaryTableCredential.md)
  - [GenerateTemporaryTableCredentialResponse](./Models/GenerateTemporaryTableCredentialResponse.md)
  - [GenerateTemporaryVolumeCredential](./Models/GenerateTemporaryVolumeCredential.md)
@@ -89,6 +92,7 @@ All URIs are relative to *http://localhost:8080/api/2.1/unity-catalog*
  - [ModelVersionInfo](./Models/ModelVersionInfo.md)
  - [ModelVersionOperation](./Models/ModelVersionOperation.md)
  - [ModelVersionStatus](./Models/ModelVersionStatus.md)
+ - [PathOperation](./Models/PathOperation.md)
  - [RegisteredModelInfo](./Models/RegisteredModelInfo.md)
  - [SchemaInfo](./Models/SchemaInfo.md)
  - [TableDependency](./Models/TableDependency.md)

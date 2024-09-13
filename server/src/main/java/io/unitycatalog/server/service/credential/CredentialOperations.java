@@ -30,46 +30,14 @@ public class CredentialOperations {
     this.gcpCredentialVendor = new GcpCredentialVendor();
   }
 
-  public GenerateTemporaryTableCredentialResponse vendCredentialForTable(TableInfo table, Set<CredentialContext.Privilege> privileges) {
-    String tableStorageLocation = table.getStorageLocation();
-    if (tableStorageLocation == null || tableStorageLocation.isEmpty()) {
-      throw new BaseException(ErrorCode.FAILED_PRECONDITION, "Table storage location not found.");
+  public CredentialResponse vendCredentialForPath(String path, Set<CredentialContext.Privilege> privileges) {
+    if (path == null || path.isEmpty()) {
+      throw new BaseException(ErrorCode.FAILED_PRECONDITION, "Storage location is null or empty.");
     }
-
-    URI storageLocationUri = URI.create(tableStorageLocation);
-
+    URI storageLocationUri = URI.create(path);
     // TODO: At some point, we need to check if user/subject has privileges they are asking for
-    CredentialContext credentialContext = CredentialContext.create(storageLocationUri, privileges);
-
-    return vendCredential(credentialContext).toTableCredentialResponse();
-  }
-
-  public GenerateTemporaryModelVersionCredentialsResponse vendCredentialForModelVersion(ModelVersionInfo modelVersionInfo, Set<CredentialContext.Privilege> privileges) {
-    String mvStorageLocation = modelVersionInfo.getStorageLocation();
-    if (mvStorageLocation == null || mvStorageLocation.isEmpty()) {
-      throw new BaseException(ErrorCode.FAILED_PRECONDITION, "Model version storage location not found.");
-    }
-
-    URI storageLocationUri = URI.create(mvStorageLocation);
-
-    // TODO: At some point, we need to check if user/subject has privileges they are asking for
-    CredentialContext credentialContext = CredentialContext.create(storageLocationUri, privileges);
-
-    return vendCredential(credentialContext).toModelVersionCredentialsResponse();
-  }
-
-  public GenerateTemporaryVolumeCredentialResponse vendCredentialForVolume(VolumeInfo volume, Set<CredentialContext.Privilege> privileges) {
-    String volumePath = volume.getStorageLocation();
-    if (volumePath == null || volumePath.isEmpty()) {
-      throw new BaseException(ErrorCode.FAILED_PRECONDITION, "Volume storage location not found.");
-    }
-
-    URI storageLocationUri = URI.create(volumePath);
-
-    // TODO: At some point, we need to check if user/subject has privileges they are asking for
-    CredentialContext credentialContext = CredentialContext.create(storageLocationUri, privileges);
-
-    return vendCredential(credentialContext).toVolumeCredentialResponse();
+    CredentialContext credentialContext = CredentialContext.create(storageLocationUri, privileges)
+    return vendCredential(credentialContext);
   }
 
   public CredentialResponse vendCredential(CredentialContext context) {

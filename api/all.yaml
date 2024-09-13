@@ -29,6 +29,9 @@ tags:
     description: |
       Model versions contain all artifact files associated with an individual machine learning model. They are associated with a single parent model and have an integer identifier, indicating the version number of the model.
       Model versions are referenced via model URI's using the Unity Catalog three-level namespace of the registered model and the version identifier.
+  - name: TemporaryPathCredentials
+    description: |
+      Temporary path credentials are used to access external storage locations for a limited lifetime.
 paths:
   /catalogs:
     post:
@@ -1035,6 +1038,24 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ModelVersionInfo'
+  /temporary-path-credentials:
+    post:
+      operationId: generateTemporaryPathCredentials
+      tags:
+        - TemporaryPathCredentials
+      summary: Generate temporary path credentials.
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/GenerateTemporaryPathCredential'
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GenerateTemporaryPathCredentialResponse'
 components:
   schemas:
     SecurablePropertiesMap:
@@ -2138,6 +2159,38 @@ components:
       required:
         - full_name
         - version
+    GenerateTemporaryPathCredential:
+      type: object
+      properties:
+        url:
+          description: The URL of the storage path for which temporary credentials need to be generated.
+          type: string
+        operation:
+          $ref: '#/components/schemas/PathOperation'
+    # TODO: should we create a new schema for this? or just use temp table credential response?
+    GenerateTemporaryPathCredentialResponse:
+      type: object
+      properties:
+        aws_temp_credentials:
+          $ref: '#/components/schemas/AwsCredentials'
+        azure_user_delegation_sas:
+          $ref: '#/components/schemas/AzureUserDelegationSAS'
+        gcp_oauth_token:
+          $ref: '#/components/schemas/GcpOauthToken'
+        expiration_time:
+          description: |
+            Server time when the credential will expire, in epoch milliseconds.
+            The API client is advised to cache the credential given this expiration time.
+          type: integer
+          format: int64
+    PathOperation:
+      enum:
+        - UNKNOWN_PATH_OPERATION
+        - PATH_READ
+        - PATH_READ_WRITE
+        - PATH_CREATE_TABLE
+        - PATH_REFRESH
+      type: string
 info:
   title: Unity Catalog API
   version: '0.1'

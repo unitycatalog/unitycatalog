@@ -54,7 +54,11 @@ public class TemporaryModelVersionCredentialsService {
                 requestedOperation == ModelVersionOperation.READ_WRITE_MODEL_VERSION)) {
             throw new BaseException(ErrorCode.INVALID_ARGUMENT, "Cannot request read/write credentials on a model version that has been finalized: " + fullName + "/" + modelVersion);
         }
-        return HttpResponse.ofJson(credentialOps.vendCredentialForModelVersion(modelVersionInfo, modelVersionOperationToPrivileges(requestedOperation)));
+        return HttpResponse.ofJson(
+                credentialOps.vendCredentialForPath(
+                        modelVersionInfo.getStorageLocation(),
+                        modelVersionOperationToPrivileges(requestedOperation))
+                        .toModelVersionCredentialsResponse());
     }
 
     private Set<CredentialContext.Privilege> modelVersionOperationToPrivileges(ModelVersionOperation modelVersionOperation) {

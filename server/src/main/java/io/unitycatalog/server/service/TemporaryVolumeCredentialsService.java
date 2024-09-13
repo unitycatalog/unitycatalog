@@ -38,8 +38,11 @@ public class TemporaryVolumeCredentialsService {
       throw new BaseException(ErrorCode.INVALID_ARGUMENT, "Volume ID is required.");
     }
     VolumeInfo volumeInfo = VOLUME_REPOSITORY.getVolumeById(volumeId);
-
-    return HttpResponse.ofJson(credentialOps.vendCredentialForVolume(volumeInfo, volumeOperationToPrivileges(generateTemporaryVolumeCredential.getOperation())));
+    return HttpResponse.ofJson(
+            credentialOps.vendCredentialForPath(
+                    volumeInfo.getStorageLocation(),
+                    volumeOperationToPrivileges(generateTemporaryVolumeCredential.getOperation()))
+                    .toVolumeCredentialResponse());
   }
 
   private Set<CredentialContext.Privilege> volumeOperationToPrivileges(VolumeOperation volumeOperation) {
