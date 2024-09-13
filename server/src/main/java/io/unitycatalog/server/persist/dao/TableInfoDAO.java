@@ -32,11 +32,20 @@ public class TableInfoDAO extends IdentifiableDAO {
   @Column(name = "type")
   private String type;
 
+  @Column(name = "owner")
+  private String owner;
+
   @Column(name = "created_at")
   private Date createdAt;
 
+  @Column(name = "created_by")
+  private String createdBy;
+
   @Column(name = "updated_at")
   private Date updatedAt;
+
+  @Column(name = "updated_by")
+  private String updatedBy;
 
   @Column(name = "data_source_format")
   private String dataSourceFormat;
@@ -65,9 +74,12 @@ public class TableInfoDAO extends IdentifiableDAO {
         .id(UUID.fromString(tableInfo.getTableId()))
         .name(tableInfo.getName())
         .comment(tableInfo.getComment())
+        .owner(tableInfo.getOwner())
         .createdAt(
             tableInfo.getCreatedAt() != null ? new Date(tableInfo.getCreatedAt()) : new Date())
+        .createdBy(tableInfo.getCreatedBy())
         .updatedAt(tableInfo.getUpdatedAt() != null ? new Date(tableInfo.getUpdatedAt()) : null)
+        .updatedBy(tableInfo.getUpdatedBy())
         .columnCount(tableInfo.getColumns() != null ? tableInfo.getColumns().size() : 0)
         .url(tableInfo.getStorageLocation() != null ? tableInfo.getStorageLocation() : null)
         .type(tableInfo.getTableType().toString())
@@ -86,8 +98,11 @@ public class TableInfoDAO extends IdentifiableDAO {
             .dataSourceFormat(DataSourceFormat.valueOf(dataSourceFormat))
             .storageLocation(FileUtils.convertRelativePathToURI(url))
             .comment(comment)
+            .owner(owner)
             .createdAt(createdAt != null ? createdAt.getTime() : null)
-            .updatedAt(updatedAt != null ? updatedAt.getTime() : null);
+            .createdBy(createdBy)
+            .updatedAt(updatedAt != null ? updatedAt.getTime() : null)
+            .updatedBy(updatedBy);
     if (fetchColumns) {
       tableInfo.columns(ColumnInfoDAO.toList(columns));
     }
