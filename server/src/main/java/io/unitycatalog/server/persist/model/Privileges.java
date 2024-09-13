@@ -33,6 +33,8 @@ public enum Privileges {
 
   USE_SCHEMA("USE SCHEMA"),
 
+  CREATE_MODEL("CREATE MODEL"),
+
   READ_VOLUME("READ VOLUME"),
 
   SELECT("SELECT"),

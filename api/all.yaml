@@ -2211,6 +2211,7 @@ components:
         - table
         - function
         - volume
+        - registered-model
       description: The type of the resource.
     Privilege:
       type: string
@@ -2219,6 +2220,7 @@ components:
         - USE CATALOG
         - CREATE SCHEMA
         - USE SCHEMA
+        - CREATE MODEL
         - READ VOLUME
         - SELECT
         - EXECUTE
