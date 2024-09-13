@@ -96,7 +96,7 @@ interface ListModelVersionsParams {
   model: string;
 }
 
-export function useGetModelVersions({
+export function useListModelVersions({
   catalog,
   schema,
   model,
@@ -120,7 +120,7 @@ interface GetVersionParams {
   version: string;
 }
 
-export function useGetVersion({
+export function useGetModelVersion({
   catalog,
   schema,
   model,

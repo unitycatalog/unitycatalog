@@ -1,7 +1,6 @@
 import React from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import DetailsLayout from '../components/layouts/DetailsLayout';
-import DescriptionBox from '../components/DescriptionBox';
 import { Flex, Tooltip, Typography } from 'antd';
 import {
   CheckCircleOutlined,
@@ -12,11 +11,12 @@ import {
 import {
   ModelVersionStatus,
   useGetModel,
-  useGetModelVersions,
+  useListModelVersions
 } from '../hooks/models';
 import ModelSidebar from '../components/models/ModelSidebar';
 import { formatTimestamp } from '../utils/formatTimestamp';
 import ListLayout from '../components/layouts/ListLayout';
+import ModelVersionStatusDisplay from '../components/models/ModelVersionStatusDisplay';
 
 export default function ModelDetails() {
   const { catalog, schema, model } = useParams();
@@ -25,12 +25,12 @@ export default function ModelDetails() {
   if (!model) throw new Error('Model name is required');
   const navigate = useNavigate();
   const { data } = useGetModel({ catalog, schema, model });
-  const { data: versionData, isLoading } = useGetModelVersions({
+  const { data: versionData, isLoading } = useListModelVersions({
     catalog,
     schema,
     model,
   });
-  console.log('versions', versionData);
+
   if (!data) return null;
 
   return (
@@ -78,40 +78,7 @@ export default function ModelDetails() {
                 key: 'status',
                 width: '10%',
                 align: 'center',
-                render: (status) => {
-                  switch (status) {
-                    case ModelVersionStatus.READY:
-                      return (
-                        <Tooltip title={`READY`}>
-                          <CheckCircleOutlined
-                            style={{ fontSize: '18px', color: 'green' }}
-                          />
-                        </Tooltip>
-                      );
-                    case ModelVersionStatus.PENDING_REGISTRATION:
-                      return (
-                        <Tooltip title={`PENDING REGISTRATION`}>
-                          <MinusCircleOutlined
-                            style={{ fontSize: '18px', color: 'gray' }}
-                          />
-                        </Tooltip>
-                      );
-                    case ModelVersionStatus.FAILED_REGISTRATION:
-                      return (
-                        <Tooltip title={`FAILED REGISTRATION`}>
-                          <CloseCircleOutlined
-                            style={{ fontSize: '18px', color: 'red' }}
-                          />
-                        </Tooltip>
-                      );
-                    default:
-                      return (
-                        <Typography.Text type="secondary">
-                          UNKNOWN
-                        </Typography.Text>
-                      );
-                  }
-                },
+                render: (status) => <ModelVersionStatusDisplay status={status} />
               },
               {
                 title: 'Name',

@@ -5,9 +5,7 @@ import DescriptionBox from '../components/DescriptionBox';
 import { Flex, Table, TableProps, Typography } from 'antd';
 import { DeploymentUnitOutlined } from '@ant-design/icons';
 import {
-  useGetModel,
-  useGetModelVersions,
-  useGetVersion,
+  useGetModelVersion,
 } from '../hooks/models';
 import ModelSidebar from '../components/models/ModelSidebar';
 import { formatTimestamp } from '../utils/formatTimestamp';
@@ -17,20 +15,20 @@ interface DataType {
   versionValue: string;
 }
 
-export default function VersionDetails() {
+export default function ModelVersionDetails() {
   const { catalog, schema, model, version } = useParams();
   if (!catalog) throw new Error('Catalog name is required');
   if (!schema) throw new Error('Schema name is required');
   if (!model) throw new Error('Model name is required');
   if (!version) throw new Error('Version number is required');
 
-  const { data, isLoading } = useGetVersion({
+  const { data } = useGetModelVersion({
     catalog,
     schema,
     model,
     version,
   });
-  console.log('version data', data);
+
   if (!data) return null;
 
   const columns: TableProps<DataType>['columns'] = [

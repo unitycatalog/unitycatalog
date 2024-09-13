@@ -28,7 +28,7 @@ import ModelDetails from './pages/ModelDetails';
 import Login from './pages/Login';
 import { AuthProvider, useAuth } from './context/auth-context';
 import { UserOutlined } from '@ant-design/icons';
-import VersionDetails from './pages/VersionDetails';
+import ModelVersionDetails from './pages/ModelVersionDetails';
 
 const router = createBrowserRouter([
   {
@@ -64,7 +64,7 @@ const router = createBrowserRouter([
       },
       {
         path: '/models/:catalog/:schema/:model/versions/:version',
-        element: <VersionDetails />,
+        element: <ModelVersionDetails />,
       },
     ],
   },
