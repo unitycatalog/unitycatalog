@@ -54,17 +54,8 @@ public class TableReadWriteTest extends BaseSparkIntegrationTest {
             .config(catalogConf + ".token", serverConfig.getAuthToken())
             .config(catalogConf + ".__TEST_NO_DELTA__", "true");
     SparkSession session = builder.getOrCreate();
-
     setupExternalParquetTable(PARQUET_TABLE, new ArrayList<>(0));
     testTableReadWrite(SPARK_CATALOG + "." + SCHEMA_NAME + "." + PARQUET_TABLE, session);
-
-    // Since `DeltaCatalog` is not used, the following CREATE TABLE command doesn't fail while it
-    // should because the table location is empty and Delta Lake shouldn't allow it.
-    String deltaTableName = SPARK_CATALOG + "." + SCHEMA_NAME + "." + DELTA_TABLE;
-    String location = generateTableLocation(SPARK_CATALOG, deltaTableName);
-    session.sql(String.format(
-            "CREATE TABLE %s(i INT) USING delta LOCATION '%s'", deltaTableName, location));
-
     session.close();
   }
 
