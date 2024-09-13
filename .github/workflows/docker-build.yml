@@ -42,12 +42,12 @@ jobs:
       uses: docker/build-push-action@v6
       with:
         context: .
-        push: ${{ github.event_name != 'pull_request' }}
+        push: false # TODO: When we are ready to publish, change this to: ${{ github.event_name != 'pull_request' }}
         platforms: linux/amd64 # TODO: Add support for other platforms, after resolving: https://github.com/unitycatalog/unitycatalog/issues/480
         tags: ${{ steps.meta.outputs.tags }}
         labels: ${{ steps.meta.outputs.labels }}
 
         # TODO: Agree on a caching strategy
         # NOTE: See here for an explanation of registry caching: https://tinyurl.com/4b8mfexr
-        # cache-from: type=registry,ref=${{ env.IMAGE}}:buildcache
-        # cache-to: type=registry,ref=${{ env.IMAGE}}:buildcache,mode=max
+        # cache-from: type=registry,ref=${{ env.IMAGE }}:buildcache
+        # cache-to: type=registry,ref=${{ env.IMAGE }}:buildcache,mode=max
