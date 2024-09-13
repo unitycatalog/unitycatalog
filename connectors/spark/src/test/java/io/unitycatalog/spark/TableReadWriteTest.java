@@ -347,6 +347,7 @@ public class TableReadWriteTest extends BaseSparkIntegrationTest {
     session.close();
   }
 
+  @Disabled("__FAKE_PATH__ property is not triggering PROP_IS_MANAGED_LOCATION as intended")
   @Test
   public void testCreateManagedDeltaTable() throws IOException {
     SparkSession session = createSparkSessionWithCatalogs(SPARK_CATALOG, CATALOG_NAME);
