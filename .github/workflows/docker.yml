@@ -17,7 +17,7 @@ on:
       - '.github/workflows/docker.yml'
 
 jobs:
-  build:
+  build-and-push:
     runs-on: ubuntu-latest
     strategy:
       matrix:
@@ -31,8 +31,8 @@ jobs:
     - name: Checkout repository
       uses: actions/checkout@v3
 
-    - name: Set up QEMU
-      uses: docker/setup-qemu-action@v3
+    # - name: Set up QEMU
+    #   uses: docker/setup-qemu-action@v3
 
     - name: Set up Docker Buildx
       uses: docker/setup-buildx-action@v3
@@ -43,17 +43,15 @@ jobs:
         username: ${{ vars.DOCKERHUB_USERNAME }}
         password: ${{ secrets.DOCKERHUB_TOKEN }}
 
-    - name: Build Docker image
-      uses: docker/build-push-action@v6
+    - name: Build and push Docker image
+      uses: docker/build-push-action@v4
       with:
         context: .
         file: ${{ matrix.dockerfile }}
-        push: false
-        tags: ${{ matrix.image }}:latest
-        outputs: type=docker,dest=/tmp/${{ matrix.image }}.tar
+        push: true
+        platforms: linux/amd64,linux/arm64
+        tags: ${{ vars.DOCKERHUB_USERNAME }}/${{ matrix.image }}:latest
 
-    - name: Upload artifact
-      uses: actions/upload-artifact@v3
-      with:
-        name: ${{ matrix.image }}
-        path: /tmp/${{ matrix.image }}.tar
+        # NOTE: See here for an explanation of registry caching: https://tinyurl.com/4b8mfexr
+        cache-from: type=registry,ref=${{ vars.DOCKERHUB_USERNAME }}/${{ matrix.image }}:buildcache
+        cache-to: type=registry,ref=${{ vars.DOCKERHUB_USERNAME }}/${{ matrix.image }}:buildcache,mode=max
