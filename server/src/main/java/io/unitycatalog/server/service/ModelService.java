@@ -8,7 +8,6 @@ import io.unitycatalog.server.auth.annotation.AuthorizeExpression;
 import io.unitycatalog.server.auth.annotation.AuthorizeKey;
 import io.unitycatalog.server.auth.annotation.AuthorizeKeys;
 import io.unitycatalog.server.auth.decorator.UnityAccessEvaluator;
-import io.unitycatalog.server.auth.decorator.UnityAccessUtil;
 import io.unitycatalog.server.exception.GlobalExceptionHandler;
 import io.unitycatalog.server.model.*;
 import io.unitycatalog.server.persist.CatalogRepository;
@@ -21,6 +20,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
+
+import io.unitycatalog.server.utils.IdentityUtils;
 import lombok.SneakyThrows;
 
 import static io.unitycatalog.server.model.SecurableType.CATALOG;
@@ -214,7 +215,7 @@ public class ModelService {
     SchemaInfo schemaInfo =
         SCHEMA_REPOSITORY.getSchema(
             registeredModelInfo.getCatalogName() + "." + registeredModelInfo.getSchemaName());
-    UUID principalId = UnityAccessUtil.findPrincipalId();
+    UUID principalId = IdentityUtils.findPrincipalId();
     // add owner privilege
     authorizer.grantAuthorization(
         principalId, UUID.fromString(registeredModelInfo.getId()), Privileges.OWNER);
@@ -225,7 +226,7 @@ public class ModelService {
 
   public void filterModels(String expression, List<RegisteredModelInfo> entries) {
     // TODO: would be nice to move this to filtering in the Decorator response
-    UUID principalId = UnityAccessUtil.findPrincipalId();
+    UUID principalId = IdentityUtils.findPrincipalId();
 
     evaluator.filter(
             principalId,

@@ -12,7 +12,6 @@ import io.unitycatalog.server.auth.annotation.AuthorizeExpression;
 import io.unitycatalog.server.auth.annotation.AuthorizeKey;
 import io.unitycatalog.server.auth.annotation.AuthorizeKeys;
 import io.unitycatalog.server.auth.decorator.UnityAccessEvaluator;
-import io.unitycatalog.server.auth.decorator.UnityAccessUtil;
 import io.unitycatalog.server.exception.GlobalExceptionHandler;
 import io.unitycatalog.server.model.CatalogInfo;
 import io.unitycatalog.server.model.CreateFunctionRequest;
@@ -24,6 +23,7 @@ import io.unitycatalog.server.persist.FunctionRepository;
 import io.unitycatalog.server.persist.MetastoreRepository;
 import io.unitycatalog.server.persist.SchemaRepository;
 import io.unitycatalog.server.persist.model.Privileges;
+import io.unitycatalog.server.utils.IdentityUtils;
 import lombok.SneakyThrows;
 
 import java.util.List;
@@ -114,7 +114,7 @@ public class FunctionService {
 
   public void filterVolumes(String expression, List<FunctionInfo> entries) {
     // TODO: would be nice to move this to filtering in the Decorator response
-    UUID principalId = UnityAccessUtil.findPrincipalId();
+    UUID principalId = IdentityUtils.findPrincipalId();
 
     evaluator.filter(
             principalId,
@@ -139,7 +139,7 @@ public class FunctionService {
   private void initializeAuthorizations(FunctionInfo functionInfo) {
     SchemaInfo schemaInfo =
             SCHEMA_REPOSITORY.getSchema(functionInfo.getCatalogName() + "." + functionInfo.getSchemaName());
-    UUID principalId = UnityAccessUtil.findPrincipalId();
+    UUID principalId = IdentityUtils.findPrincipalId();
     // add owner privilege
     authorizer.grantAuthorization(
             principalId, UUID.fromString(functionInfo.getFunctionId()), Privileges.OWNER);

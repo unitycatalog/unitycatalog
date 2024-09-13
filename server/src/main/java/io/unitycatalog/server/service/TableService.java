@@ -12,7 +12,6 @@ import io.unitycatalog.server.auth.annotation.AuthorizeExpression;
 import io.unitycatalog.server.auth.annotation.AuthorizeKey;
 import io.unitycatalog.server.auth.annotation.AuthorizeKeys;
 import io.unitycatalog.server.auth.decorator.UnityAccessEvaluator;
-import io.unitycatalog.server.auth.decorator.UnityAccessUtil;
 import io.unitycatalog.server.exception.GlobalExceptionHandler;
 import io.unitycatalog.server.model.CatalogInfo;
 import io.unitycatalog.server.model.CreateTable;
@@ -24,6 +23,7 @@ import io.unitycatalog.server.persist.MetastoreRepository;
 import io.unitycatalog.server.persist.SchemaRepository;
 import io.unitycatalog.server.persist.TableRepository;
 import io.unitycatalog.server.persist.model.Privileges;
+import io.unitycatalog.server.utils.IdentityUtils;
 import lombok.SneakyThrows;
 
 import java.util.List;
@@ -123,7 +123,7 @@ public class TableService {
 
   public void filterTables(String expression, List<TableInfo> entries) {
     // TODO: would be nice to move this to filtering in the Decorator response
-    UUID principalId = UnityAccessUtil.findPrincipalId();
+    UUID principalId = IdentityUtils.findPrincipalId();
 
     evaluator.filter(
             principalId,
@@ -148,7 +148,7 @@ public class TableService {
   private void initializeAuthorizations(TableInfo tableInfo) {
     SchemaInfo schemaInfo =
         SCHEMA_REPOSITORY.getSchema(tableInfo.getCatalogName() + "." + tableInfo.getSchemaName());
-    UUID principalId = UnityAccessUtil.findPrincipalId();
+    UUID principalId = IdentityUtils.findPrincipalId();
     // add owner privilege
     authorizer.grantAuthorization(
         principalId, UUID.fromString(tableInfo.getTableId()), Privileges.OWNER);

@@ -1,8 +1,5 @@
 package io.unitycatalog.server.auth.decorator;
 
-import com.auth0.jwt.interfaces.Claim;
-import com.auth0.jwt.interfaces.DecodedJWT;
-import com.linecorp.armeria.server.ServiceRequestContext;
 import io.unitycatalog.control.model.User;
 import io.unitycatalog.server.auth.UnityCatalogAuthorizer;
 import io.unitycatalog.server.exception.BaseException;
@@ -10,26 +7,12 @@ import io.unitycatalog.server.persist.MetastoreRepository;
 import io.unitycatalog.server.persist.UserRepository;
 import io.unitycatalog.server.persist.model.CreateUser;
 import io.unitycatalog.server.persist.model.Privileges;
-import io.unitycatalog.server.security.JwtClaim;
-import io.unitycatalog.server.service.AuthDecorator;
 import java.util.UUID;
 
 public class UnityAccessUtil {
 
   private static final UserRepository USER_REPOSITORY = UserRepository.getInstance();
   private static final MetastoreRepository METASTORE_REPOSITORY = MetastoreRepository.getInstance();
-
-  public static UUID findPrincipalId() {
-    ServiceRequestContext ctx = ServiceRequestContext.current();
-    DecodedJWT decodedJWT = ctx.attr(AuthDecorator.DECODED_JWT_ATTR);
-    // TODO: if/when authorization becomes mandatory, maybe just throw an exception here?
-    if (decodedJWT != null) {
-      Claim sub = decodedJWT.getClaim(JwtClaim.SUBJECT.key());
-      return UUID.fromString(USER_REPOSITORY.getUserByEmail(sub.asString()).getId());
-    } else {
-      return null;
-    }
-  }
 
   public static void initializeAdmin(UnityCatalogAuthorizer authorizer) {
 

@@ -12,7 +12,6 @@ import io.unitycatalog.server.auth.UnityCatalogAuthorizer;
 import io.unitycatalog.server.auth.annotation.AuthorizeExpression;
 import io.unitycatalog.server.auth.annotation.AuthorizeKey;
 import io.unitycatalog.server.auth.decorator.UnityAccessEvaluator;
-import io.unitycatalog.server.auth.decorator.UnityAccessUtil;
 import io.unitycatalog.server.exception.GlobalExceptionHandler;
 import io.unitycatalog.server.model.CatalogInfo;
 import io.unitycatalog.server.model.CreateCatalog;
@@ -21,6 +20,7 @@ import io.unitycatalog.server.model.UpdateCatalog;
 import io.unitycatalog.server.persist.CatalogRepository;
 import io.unitycatalog.server.persist.MetastoreRepository;
 import io.unitycatalog.server.persist.model.Privileges;
+import io.unitycatalog.server.utils.IdentityUtils;
 import lombok.SneakyThrows;
 
 import java.util.List;
@@ -106,7 +106,7 @@ public class CatalogService {
 
   public void filterCatalogs(String expression, List<CatalogInfo> entries) {
     // TODO: would be nice to move this to filtering in the Decorator response
-    UUID principalId = UnityAccessUtil.findPrincipalId();
+    UUID principalId = IdentityUtils.findPrincipalId();
 
     evaluator.filter(
         principalId,
@@ -121,7 +121,7 @@ public class CatalogService {
   }
 
   private void initializeAuthorizations(CatalogInfo catalogInfo) {
-    UUID principalId = UnityAccessUtil.findPrincipalId();
+    UUID principalId = IdentityUtils.findPrincipalId();
     authorizer.grantAuthorization(
         principalId, UUID.fromString(catalogInfo.getId()), Privileges.OWNER);
   }

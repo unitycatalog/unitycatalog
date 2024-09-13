@@ -32,6 +32,7 @@ import io.unitycatalog.server.persist.ModelRepository;
 import io.unitycatalog.server.persist.SchemaRepository;
 import io.unitycatalog.server.persist.TableRepository;
 import io.unitycatalog.server.persist.VolumeRepository;
+import io.unitycatalog.server.utils.IdentityUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -102,7 +103,7 @@ public class UnityAccessDecorator implements DecoratingHttpServiceFunction {
 
       if (expression != null) {
         if (!locator.isEmpty()) {
-          UUID principal = UnityAccessUtil.findPrincipalId();
+          UUID principal = IdentityUtils.findPrincipalId();
           return authorizeByRequest(delegate, ctx, req, principal, locator, expression);
         } else {
           LOGGER.warn("No authorization resource(s) found.");
