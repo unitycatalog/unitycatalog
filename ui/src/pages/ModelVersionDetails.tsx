@@ -4,9 +4,7 @@ import DetailsLayout from '../components/layouts/DetailsLayout';
 import DescriptionBox from '../components/DescriptionBox';
 import { Flex, Table, TableProps, Typography } from 'antd';
 import { DeploymentUnitOutlined } from '@ant-design/icons';
-import {
-  useGetModelVersion,
-} from '../hooks/models';
+import { useGetModelVersion } from '../hooks/models';
 import ModelSidebar from '../components/models/ModelSidebar';
 import { formatTimestamp } from '../utils/formatTimestamp';
 

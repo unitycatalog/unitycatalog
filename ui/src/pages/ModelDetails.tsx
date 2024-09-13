@@ -11,7 +11,7 @@ import {
 import {
   ModelVersionStatus,
   useGetModel,
-  useListModelVersions
+  useListModelVersions,
 } from '../hooks/models';
 import ModelSidebar from '../components/models/ModelSidebar';
 import { formatTimestamp } from '../utils/formatTimestamp';
@@ -78,7 +78,9 @@ export default function ModelDetails() {
                 key: 'status',
                 width: '10%',
                 align: 'center',
-                render: (status) => <ModelVersionStatusDisplay status={status} />
+                render: (status) => (
+                  <ModelVersionStatusDisplay status={status} />
+                ),
               },
               {
                 title: 'Name',
