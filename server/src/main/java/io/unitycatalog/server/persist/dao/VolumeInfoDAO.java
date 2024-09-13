@@ -57,7 +57,7 @@ public class VolumeInfoDAO extends IdentifiableDAO {
         .owner(owner)
         .createdAt(createdAt.getTime())
         .createdBy(createdBy)
-        .updatedAt(updatedAt.getTime())
+        .updatedAt(updatedAt != null ? updatedAt.getTime() : null)
         .updatedBy(updatedBy)
         .volumeType(VolumeType.valueOf(volumeType));
   }
@@ -75,8 +75,7 @@ public class VolumeInfoDAO extends IdentifiableDAO {
         .createdAt(
             volumeInfo.getCreatedAt() != null ? new Date(volumeInfo.getCreatedAt()) : new Date())
         .createdBy(volumeInfo.getCreatedBy())
-        .updatedAt(
-            volumeInfo.getUpdatedAt() != null ? new Date(volumeInfo.getUpdatedAt()) : new Date())
+        .updatedAt(volumeInfo.getUpdatedAt() != null ? new Date(volumeInfo.getUpdatedAt()) : null)
         .updatedBy(volumeInfo.getUpdatedBy())
         .volumeType(volumeInfo.getVolumeType().getValue())
         .build();

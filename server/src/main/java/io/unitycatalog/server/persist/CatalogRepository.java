@@ -9,6 +9,7 @@ import io.unitycatalog.server.persist.utils.HibernateUtils;
 import io.unitycatalog.server.persist.utils.PagedListingHelper;
 import io.unitycatalog.server.persist.utils.RepositoryUtils;
 import io.unitycatalog.server.utils.Constants;
+import io.unitycatalog.server.utils.IdentityUtils;
 import io.unitycatalog.server.utils.ValidationUtils;
 import java.util.ArrayList;
 import java.util.Date;
@@ -37,12 +38,15 @@ public class CatalogRepository {
 
   public CatalogInfo addCatalog(CreateCatalog createCatalog) {
     ValidationUtils.validateSqlObjectName(createCatalog.getName());
+    String callerId = IdentityUtils.findPrincipalEmailAddress();
     CatalogInfo catalogInfo =
         new CatalogInfo()
             .id(java.util.UUID.randomUUID().toString())
             .comment(createCatalog.getComment())
             .name(createCatalog.getName())
+            .owner(callerId)
             .createdAt(System.currentTimeMillis())
+            .createdBy(callerId)
             .properties(createCatalog.getProperties());
 
     try (Session session = SESSION_FACTORY.openSession()) {
@@ -136,6 +140,7 @@ public class CatalogRepository {
     if (updateCatalog.getNewName() != null) {
       ValidationUtils.validateSqlObjectName(updateCatalog.getNewName());
     }
+    String callerId = IdentityUtils.findPrincipalEmailAddress();
     // can make this just update once we have an identifier that is not the name
     try (Session session = SESSION_FACTORY.openSession()) {
       Transaction tx = session.beginTransaction();
@@ -171,6 +176,7 @@ public class CatalogRepository {
               .forEach(session::persist);
         }
         catalogInfoDAO.setUpdatedAt(new Date());
+        catalogInfoDAO.setUpdatedBy(callerId);
         session.merge(catalogInfoDAO);
         tx.commit();
         CatalogInfo catalogInfo = catalogInfoDAO.toCatalogInfo();

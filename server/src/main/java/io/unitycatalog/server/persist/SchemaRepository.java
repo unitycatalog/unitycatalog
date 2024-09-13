@@ -10,6 +10,7 @@ import io.unitycatalog.server.persist.utils.HibernateUtils;
 import io.unitycatalog.server.persist.utils.PagedListingHelper;
 import io.unitycatalog.server.persist.utils.RepositoryUtils;
 import io.unitycatalog.server.utils.Constants;
+import io.unitycatalog.server.utils.IdentityUtils;
 import io.unitycatalog.server.utils.ValidationUtils;
 import java.util.*;
 import org.hibernate.Session;
@@ -36,6 +37,7 @@ public class SchemaRepository {
 
   public SchemaInfo createSchema(CreateSchema createSchema) {
     ValidationUtils.validateSqlObjectName(createSchema.getName());
+    String callerId = IdentityUtils.findPrincipalEmailAddress();
     try (Session session = SESSION_FACTORY.openSession()) {
       Transaction tx = session.beginTransaction();
       try {
@@ -51,7 +53,9 @@ public class SchemaRepository {
                 .name(createSchema.getName())
                 .catalogName(createSchema.getCatalogName())
                 .comment(createSchema.getComment())
+                .owner(callerId)
                 .createdAt(System.currentTimeMillis())
+                .createdBy(callerId)
                 .properties(createSchema.getProperties());
         SchemaInfoDAO schemaInfoDAO = SchemaInfoDAO.from(schemaInfo);
         schemaInfoDAO.setCatalogId(catalogDAO.getId());
@@ -186,6 +190,7 @@ public class SchemaRepository {
     if (updateSchema.getNewName() != null) {
       ValidationUtils.validateSqlObjectName(updateSchema.getNewName());
     }
+    String callerId = IdentityUtils.findPrincipalEmailAddress();
     try (Session session = SESSION_FACTORY.openSession()) {
       Transaction tx = session.beginTransaction();
       try {
@@ -219,7 +224,9 @@ public class SchemaRepository {
           PropertyDAO.from(updateSchema.getProperties(), schemaInfoDAO.getId(), Constants.SCHEMA)
               .forEach(session::persist);
         }
+        schemaInfoDAO.setOwner(callerId);
         schemaInfoDAO.setUpdatedAt(new Date());
+        schemaInfoDAO.setUpdatedBy(callerId);
         session.merge(schemaInfoDAO);
         tx.commit();
         return convertFromDAO(session, schemaInfoDAO, fullName);

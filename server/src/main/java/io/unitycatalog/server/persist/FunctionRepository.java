@@ -9,6 +9,7 @@ import io.unitycatalog.server.persist.utils.HibernateUtils;
 import io.unitycatalog.server.persist.utils.PagedListingHelper;
 import io.unitycatalog.server.persist.utils.RepositoryUtils;
 import io.unitycatalog.server.utils.Constants;
+import io.unitycatalog.server.utils.IdentityUtils;
 import io.unitycatalog.server.utils.ValidationUtils;
 import java.util.ArrayList;
 import java.util.List;
@@ -38,6 +39,7 @@ public class FunctionRepository {
   public FunctionInfo createFunction(CreateFunctionRequest createFunctionRequest) {
     ValidationUtils.validateSqlObjectName(createFunctionRequest.getFunctionInfo().getName());
     CreateFunction createFunction = createFunctionRequest.getFunctionInfo();
+    String callerId = IdentityUtils.findPrincipalEmailAddress();
     FunctionInfo functionInfo =
         new FunctionInfo()
             .functionId(UUID.randomUUID().toString())
@@ -46,7 +48,9 @@ public class FunctionRepository {
             .schemaName(createFunction.getSchemaName())
             .comment(createFunction.getComment())
             .properties(createFunction.getProperties())
+            .owner(callerId)
             .createdAt(System.currentTimeMillis())
+            .createdBy(callerId)
             .dataType(createFunction.getDataType())
             .fullDataType(createFunction.getFullDataType())
             .inputParams(createFunction.getInputParams())
