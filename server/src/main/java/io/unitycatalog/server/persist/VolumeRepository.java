@@ -42,6 +42,7 @@ public class VolumeRepository {
             + "."
             + createVolumeRequest.getName();
     String callerId = IdentityUtils.findPrincipalEmailAddress();
+    Long createTime = System.currentTimeMillis();
     VolumeInfo volumeInfo = new VolumeInfo();
     volumeInfo.setVolumeId(UUID.randomUUID().toString());
     volumeInfo.setCatalogName(createVolumeRequest.getCatalogName());
@@ -50,8 +51,10 @@ public class VolumeRepository {
     volumeInfo.setComment(createVolumeRequest.getComment());
     volumeInfo.setFullName(volumeFullName);
     volumeInfo.setOwner(callerId);
-    volumeInfo.setCreatedAt(System.currentTimeMillis());
+    volumeInfo.setCreatedAt(createTime);
     volumeInfo.setCreatedBy(callerId);
+    volumeInfo.setUpdatedAt(createTime);
+    volumeInfo.setUpdatedBy(callerId);
     volumeInfo.setVolumeType(createVolumeRequest.getVolumeType());
     if (VolumeType.MANAGED.equals(createVolumeRequest.getVolumeType())) {
       throw new BaseException(

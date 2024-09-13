@@ -219,7 +219,9 @@ public class ModelRepository {
             .comment(createRegisteredModel.getComment())
             .owner(callerId)
             .createdAt(createTime)
-            .createdBy(callerId);
+            .createdBy(callerId)
+            .updatedAt(createTime)
+            .updatedBy(callerId);
     String fullName = getRegisteredModelFullName(registeredModelInfo);
     registeredModelInfo.setFullName(fullName);
     LOGGER.info("Creating Registered Model: " + fullName);
@@ -545,7 +547,9 @@ public class ModelRepository {
             .status(ModelVersionStatus.PENDING_REGISTRATION)
             .comment(createModelVersion.getComment())
             .createdAt(createTime)
-            .createdBy(callerId);
+            .createdBy(callerId)
+            .updatedAt(createTime)
+            .updatedBy(callerId);
     String registeredModelFullName = getRegisteredModelFullName(catalogName, schemaName, modelName);
     LOGGER.info("Creating Registered Model: " + registeredModelFullName);
 

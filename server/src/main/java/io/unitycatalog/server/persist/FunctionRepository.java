@@ -40,6 +40,7 @@ public class FunctionRepository {
     ValidationUtils.validateSqlObjectName(createFunctionRequest.getFunctionInfo().getName());
     CreateFunction createFunction = createFunctionRequest.getFunctionInfo();
     String callerId = IdentityUtils.findPrincipalEmailAddress();
+    Long createTime = System.currentTimeMillis();
     FunctionInfo functionInfo =
         new FunctionInfo()
             .functionId(UUID.randomUUID().toString())
@@ -49,8 +50,10 @@ public class FunctionRepository {
             .comment(createFunction.getComment())
             .properties(createFunction.getProperties())
             .owner(callerId)
-            .createdAt(System.currentTimeMillis())
+            .createdAt(createTime)
             .createdBy(callerId)
+            .updatedAt(createTime)
+            .updatedBy(callerId)
             .dataType(createFunction.getDataType())
             .fullDataType(createFunction.getFullDataType())
             .inputParams(createFunction.getInputParams())

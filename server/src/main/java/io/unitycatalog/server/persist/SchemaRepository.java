@@ -47,6 +47,7 @@ public class SchemaRepository {
         }
         CatalogInfoDAO catalogDAO =
             CATALOG_REPOSITORY.getCatalogDAO(session, createSchema.getCatalogName());
+        Long createTime = System.currentTimeMillis();
         SchemaInfo schemaInfo =
             new SchemaInfo()
                 .schemaId(UUID.randomUUID().toString())
@@ -54,8 +55,10 @@ public class SchemaRepository {
                 .catalogName(createSchema.getCatalogName())
                 .comment(createSchema.getComment())
                 .owner(callerId)
-                .createdAt(System.currentTimeMillis())
+                .createdAt(createTime)
                 .createdBy(callerId)
+                .updatedAt(createTime)
+                .updatedBy(callerId)
                 .properties(createSchema.getProperties());
         SchemaInfoDAO schemaInfoDAO = SchemaInfoDAO.from(schemaInfo);
         schemaInfoDAO.setCatalogId(catalogDAO.getId());

@@ -111,6 +111,7 @@ public class TableRepository {
         createTable.getColumns().stream()
             .map(c -> c.typeText(c.getTypeText().toLowerCase(Locale.ROOT)))
             .collect(Collectors.toList());
+    Long createTime = System.currentTimeMillis();
     TableInfo tableInfo =
         new TableInfo()
             .tableId(UUID.randomUUID().toString())
@@ -124,8 +125,10 @@ public class TableRepository {
             .comment(createTable.getComment())
             .properties(createTable.getProperties())
             .owner(callerId)
-            .createdAt(System.currentTimeMillis())
-            .createdBy(callerId);
+            .createdAt(createTime)
+            .createdBy(callerId)
+            .updatedAt(createTime)
+            .updatedBy(callerId);
     String fullName = getTableFullName(tableInfo);
     LOGGER.debug("Creating table: " + fullName);
 

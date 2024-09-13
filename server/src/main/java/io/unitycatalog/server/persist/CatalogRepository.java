@@ -39,14 +39,17 @@ public class CatalogRepository {
   public CatalogInfo addCatalog(CreateCatalog createCatalog) {
     ValidationUtils.validateSqlObjectName(createCatalog.getName());
     String callerId = IdentityUtils.findPrincipalEmailAddress();
+    Long createTime = System.currentTimeMillis();
     CatalogInfo catalogInfo =
         new CatalogInfo()
             .id(java.util.UUID.randomUUID().toString())
             .comment(createCatalog.getComment())
             .name(createCatalog.getName())
             .owner(callerId)
-            .createdAt(System.currentTimeMillis())
+            .createdAt(createTime)
             .createdBy(callerId)
+            .updatedAt(createTime)
+            .updatedBy(callerId)
             .properties(createCatalog.getProperties());
 
     try (Session session = SESSION_FACTORY.openSession()) {
