@@ -227,7 +227,6 @@ public class SchemaRepository {
           PropertyDAO.from(updateSchema.getProperties(), schemaInfoDAO.getId(), Constants.SCHEMA)
               .forEach(session::persist);
         }
-        schemaInfoDAO.setOwner(callerId);
         schemaInfoDAO.setUpdatedAt(new Date());
         schemaInfoDAO.setUpdatedBy(callerId);
         session.merge(schemaInfoDAO);
