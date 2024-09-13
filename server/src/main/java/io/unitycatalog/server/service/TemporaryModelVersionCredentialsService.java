@@ -11,9 +11,7 @@ import io.unitycatalog.server.persist.ModelRepository;
 import io.unitycatalog.server.persist.utils.RepositoryUtils;
 import io.unitycatalog.server.service.credential.CredentialOperations;
 import io.unitycatalog.server.service.credential.CredentialContext;
-import io.unitycatalog.server.persist.ModelRepository;
 
-import java.util.Collections;
 import java.util.Set;
 
 import static io.unitycatalog.server.service.credential.CredentialContext.Privilege.SELECT;
@@ -55,7 +53,7 @@ public class TemporaryModelVersionCredentialsService {
             throw new BaseException(ErrorCode.INVALID_ARGUMENT, "Cannot request read/write credentials on a model version that has been finalized: " + fullName + "/" + modelVersion);
         }
         return HttpResponse.ofJson(
-                credentialOps.vendCredentialForPath(
+                credentialOps.vendCredential(
                         modelVersionInfo.getStorageLocation(),
                         modelVersionOperationToPrivileges(requestedOperation))
                         .toModelVersionCredentialsResponse());

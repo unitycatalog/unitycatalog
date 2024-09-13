@@ -18,19 +18,7 @@ import io.unitycatalog.server.exception.GlobalExceptionHandler;
 import io.unitycatalog.server.persist.utils.ServerPropertiesUtils;
 import io.unitycatalog.server.security.SecurityConfiguration;
 import io.unitycatalog.server.security.SecurityContext;
-import io.unitycatalog.server.service.AuthDecorator;
-import io.unitycatalog.server.service.AuthService;
-import io.unitycatalog.server.service.CatalogService;
-import io.unitycatalog.server.service.FunctionService;
-import io.unitycatalog.server.service.IcebergRestCatalogService;
-import io.unitycatalog.server.service.ModelService;
-import io.unitycatalog.server.service.SchemaService;
-import io.unitycatalog.server.service.Scim2UserService;
-import io.unitycatalog.server.service.TableService;
-import io.unitycatalog.server.service.TemporaryModelVersionCredentialsService;
-import io.unitycatalog.server.service.TemporaryTableCredentialsService;
-import io.unitycatalog.server.service.TemporaryVolumeCredentialsService;
-import io.unitycatalog.server.service.VolumeService;
+import io.unitycatalog.server.service.*;
 import io.unitycatalog.server.service.credential.CredentialOperations;
 import io.unitycatalog.server.service.iceberg.FileIOFactory;
 import io.unitycatalog.server.service.iceberg.MetadataService;
@@ -116,6 +104,8 @@ public class UnityCatalogServer {
         new TemporaryVolumeCredentialsService(credentialOperations);
     TemporaryModelVersionCredentialsService temporaryModelVersionCredentialsService =
         new TemporaryModelVersionCredentialsService(credentialOperations);
+    TemporaryPathCredentialsService temporaryPathCredentialsService =
+        new TemporaryPathCredentialsService(credentialOperations);
     sb.service("/", (ctx, req) -> HttpResponse.of("Hello, Unity Catalog!"))
         .annotatedService(controlPath + "auth", authService, unityConverterFunction)
         .annotatedService(
@@ -135,7 +125,8 @@ public class UnityCatalogServer {
             basePath + "temporary-volume-credentials", temporaryVolumeCredentialsService)
         .annotatedService(
             basePath + "temporary-model-version-credentials",
-            temporaryModelVersionCredentialsService);
+            temporaryModelVersionCredentialsService)
+        .annotatedService(basePath + "temporary-path-credentials", temporaryPathCredentialsService);
 
     // Add support for Iceberg REST APIs
     ObjectMapper icebergMapper = RESTObjectMapper.mapper();

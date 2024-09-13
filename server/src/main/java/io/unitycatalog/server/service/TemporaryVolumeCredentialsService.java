@@ -39,7 +39,7 @@ public class TemporaryVolumeCredentialsService {
     }
     VolumeInfo volumeInfo = VOLUME_REPOSITORY.getVolumeById(volumeId);
     return HttpResponse.ofJson(
-            credentialOps.vendCredentialForPath(
+            credentialOps.vendCredential(
                     volumeInfo.getStorageLocation(),
                     volumeOperationToPrivileges(generateTemporaryVolumeCredential.getOperation()))
                     .toVolumeCredentialResponse());

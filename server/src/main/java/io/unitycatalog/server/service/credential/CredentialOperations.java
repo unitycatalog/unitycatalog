@@ -30,7 +30,7 @@ public class CredentialOperations {
     this.gcpCredentialVendor = new GcpCredentialVendor();
   }
 
-  public CredentialResponse vendCredentialForPath(String path, Set<CredentialContext.Privilege> privileges) {
+  public CredentialResponse vendCredential(String path, Set<CredentialContext.Privilege> privileges) {
     if (path == null || path.isEmpty()) {
       throw new BaseException(ErrorCode.FAILED_PRECONDITION, "Storage location is null or empty.");
     }
