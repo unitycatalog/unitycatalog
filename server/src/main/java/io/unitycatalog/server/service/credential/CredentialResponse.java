@@ -36,11 +36,11 @@ public class CredentialResponse {
         .expirationTime(expirationTime);
   }
 
-    public GenerateTemporaryPathCredentialResponse toPathCredentialResponse() {
-        return new GenerateTemporaryPathCredentialResponse()
-            .awsTempCredentials(awsTempCredentials)
-            .azureUserDelegationSas(azureUserDelegationSas)
-            .gcpOauthToken(gcpOauthToken)
-            .expirationTime(expirationTime);
-    }
+  public GenerateTemporaryPathCredentialResponse toPathCredentialResponse() {
+    return new GenerateTemporaryPathCredentialResponse()
+        .awsTempCredentials(awsTempCredentials)
+        .azureUserDelegationSas(azureUserDelegationSas)
+        .gcpOauthToken(gcpOauthToken)
+        .expirationTime(expirationTime);
+  }
 }

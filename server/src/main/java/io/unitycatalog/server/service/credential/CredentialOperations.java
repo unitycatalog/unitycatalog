@@ -36,7 +36,7 @@ public class CredentialOperations {
     }
     URI storageLocationUri = URI.create(path);
     // TODO: At some point, we need to check if user/subject has privileges they are asking for
-    CredentialContext credentialContext = CredentialContext.create(storageLocationUri, privileges)
+    CredentialContext credentialContext = CredentialContext.create(storageLocationUri, privileges);
     return vendCredential(credentialContext);
   }
 
