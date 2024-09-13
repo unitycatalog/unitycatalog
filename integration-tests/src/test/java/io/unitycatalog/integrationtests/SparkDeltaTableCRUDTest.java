@@ -50,11 +50,7 @@ public class SparkDeltaTableCRUDTest extends BaseSparkTest {
     @MethodSource("locationTypes")
     @Order(1)
     public void createTable(LocationType locationType) {
-        String baseLocation = switch (locationType) {
-            case FILE -> Files.createTempDirectory("uc-test-table").toFile().getAbsolutePath();
-            case S3 -> System.getenv("S3_BASE_LOCATION");
-            case GS -> System.getenv("GS_BASE_LOCATION");
-        };
+        String baseLocation = getBaseLocation(locationType);
         String location = baseLocation + "/integration/" + RUN_ID + "/numbers";
         String table = getTableName(locationType);
 

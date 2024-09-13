@@ -3,6 +3,8 @@ package io.unitycatalog.integrationtests;
 import org.apache.spark.sql.SparkSession;
 import org.junit.jupiter.api.BeforeAll;
 
+import java.io.IOException;
+import java.nio.file.Files;
 import java.util.Arrays;
 import java.util.List;
 
@@ -37,6 +39,14 @@ public class BaseSparkTest {
             builder.config("spark.sql.defaultCatalog", catalogs[0]);
         }
         return builder.getOrCreate();
+    }
+
+    protected static String getBaseLocation(LocationType locationType) throws IOException {
+        return switch (locationType) {
+            case FILE -> Files.createTempDirectory("uc-test-table").toFile().getAbsolutePath();
+            case S3 -> System.getenv("S3_BASE_LOCATION");
+            case GS -> System.getenv("GS_BASE_LOCATION");
+        };
     }
 
     public enum LocationType {
