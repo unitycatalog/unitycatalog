@@ -3,7 +3,7 @@ import java.io.File
 import Tarball.createTarballSettings
 import sbt.util
 import sbtlicensereport.license.{DepModuleInfo, LicenseCategory, LicenseInfo}
-import ReleaseSettings.{javaOnlyReleaseSettings, rootReleaseSettings, skipReleaseSettings}
+import ReleaseSettings.{javaOnlyReleaseSettings, releaseSettings, rootReleaseSettings, skipReleaseSettings}
 
 import scala.language.implicitConversions
 
@@ -510,6 +510,7 @@ lazy val spark = (project in file("connectors/spark"))
     scalaVersion := scala212,
     crossScalaVersions := Seq(scala212, scala213),
     commonSettings,
+    releaseSettings,
     javaOptions ++= Seq(
       "--add-opens=java.base/sun.nio.ch=ALL-UNNAMED",
     ),
