@@ -1,4 +1,4 @@
-package io.unitycatalog.connectors.spark;
+package io.unitycatalog.spark;
 
 import org.apache.hadoop.fs.azurebfs.extensions.SASTokenProvider;
 import org.apache.hadoop.conf.Configuration;
