@@ -148,7 +148,7 @@ bin/uc table delete --full_name unity.default.my_table
 
 ## Manage models in Unity Catalog using MLflow
 
-Unity catalog supports the management and governance of ML models as securable assets.  Starting with 
+Unity Catalog supports the management and governance of ML models as securable assets.  Starting with 
 [MLflow 2.16.1](https://mlflow.org/releases/2.16.1), MLflow offers integrated support for using Unity Catalog as the 
 backing resource for the MLflow model registry.  What this means is that with the MLflow client, you will be able to 
 interact directly with your Unity Catalog service for the creation and access of registered models.
@@ -158,7 +158,7 @@ interact directly with your Unity Catalog service for the creation and access of
 In your desired development environment, install MLflow 2.16.1 or higher:
 
 ```sh
-$ pip install mlflow>=2.16.1
+$ pip install mlflow
 ```
 
 The installation of MLflow includes the MLflow CLI tool, so you can start a local MLflow server with UI by running the command below in your terminal:
@@ -180,8 +180,8 @@ Next, from within a python script or shell, import MLflow and set the tracking U
 ```python
 import mlflow
 
-mlflow.set_tracking_uri("http://localhost:5000")
-mlflow.set_registry_uri("uc:http://localhost:8080")
+mlflow.set_tracking_uri("http://127.0.0.1:5000")
+mlflow.set_registry_uri("uc:http://127.0.0.1:8080")
 ```
 
 At this point, your MLflow environment is ready for use with the newly started MLflow tracking server and the Unity Catalog server acting as your model registry.
