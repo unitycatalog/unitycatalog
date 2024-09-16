@@ -50,6 +50,7 @@ public class SchemaService {
   @Post("")
   @AuthorizeExpression("""
       #authorize(#principal, #metastore, OWNER) ||
+      #authorize(#principal, #catalog, OWNER) ||
       #authorizeAll(#principal, #catalog, USE_CATALOG, CREATE_SCHEMA)
       """)
   @AuthorizeKey(METASTORE)
@@ -71,7 +72,8 @@ public class SchemaService {
     filterSchemas("""
         #authorize(#principal, #metastore, OWNER) ||
         #authorize(#principal, #catalog, OWNER) ||
-        (#authorize(#principal, #schema, USE_SCHEMA) && #authorize(#principal, #catalog, USE_CATALOG)) 
+        #authorize(#principal, #schema, OWNER) ||
+        (#authorize(#principal, #schema, USE_SCHEMA) && #authorize(#principal, #catalog, USE_CATALOG))
         """,
         listSchemasResponse.getSchemas());
     return HttpResponse.ofJson(listSchemasResponse);
