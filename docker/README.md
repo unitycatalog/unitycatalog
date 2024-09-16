@@ -64,7 +64,7 @@ Once the Docker image of Unity Catalog's Localhost Reference Server is built, yo
 ###################################################################
 ```
 
-`start-uc-server-docker` starts the Unity Catalog server to listen to `8081`.
+`start-uc-server-docker` starts the Unity Catalog server.
 
 In another terminal, execute the following command to learn more about the container.
 
@@ -74,13 +74,13 @@ docker container ls --filter name=unitycatalog --no-trunc --format 'table {{.ID}
 
 ```text
 CONTAINER ID                                                       IMAGE                         COMMAND                           PORTS
-1e15b648d6c2669eb83ac12991323ca288e27d9201c4ecbc8dc15ea2bfa6c389   unitycatalog:0.2.0-SNAPSHOT   "/bin/bash bin/start-uc-server"   0.0.0.0:8081->8081/tcp
+1e15b648d6c2669eb83ac12991323ca288e27d9201c4ecbc8dc15ea2bfa6c389   unitycatalog:0.2.0-SNAPSHOT   "/bin/bash bin/start-uc-server"   0.0.0.0:8080-8081->8080-8081/tcp
 ```
 
 Use the regular non-dockerized Unity Catalog CLI to access the server and list the catalogs.
 
 ```bash
-./bin/uc catalog list --server http://localhost:8081
+./bin/uc catalog list
 ```
 
 ```text
@@ -234,56 +234,6 @@ list_schemas_request="curl -s --location '$unitycatalog_endpoint/schemas?catalog
 echo $list_schemas_request
 
 docker run --rm --network unitycatalog_network alpine/curl sh -c "$list_schemas_request" | jq .
-```
-
-### Create Managed Table
-
-This example demonstrates creating a managed table named "Table_A" within the "Schema_A" schema of the "MyCatalog" catalog. A managed table lets Unity Catalog manage the data location.
-
-```bash
-create_table_a_request_body='{
-    "name": "Table_A",
-    "catalog_name": "MyCatalog",
-    "schema_name": "Schema_A",
-    "table_type": "MANAGED",
-    "data_source_format": "DELTA",
-    "columns": [
-        {
-            "name": "ID",
-            "type_name": "LONG",
-            "comment": "The unique ID of the person",
-            "nullable": "false"
-        },
-        {
-            "name": "FirstName",
-            "type_name": "STRING",
-            "comment": "The persons official first name",
-            "nullable": "false"
-        },
-        {
-            "name": "LastName",
-            "type_name": "STRING",
-            "comment": "The persons official last name",
-            "nullable": "false"
-        }
-    ],
-    "comment": "A managed table. Leaving it to Unity Catalog to pick the location.",
-    "properties": {
-      "Project": "Unity Catalog Demo",
-	    "Environment": "Development",
-	    "Access": "Public",
-	    "Type": "Table",
-	    "Stage": "Gold"
-    }
-}'
-
-create_table_a_request=$(printf "curl -s \
---location '%s/tables' \
---header 'Content-Type: application/json' \
---header 'Accept: application/json' \
---data '%s'" "$unitycatalog_endpoint" "$create_table_a_request_body")
-
-docker run --rm --network unitycatalog_network alpine/curl sh -c "$create_table_a_request" | jq .
 ```
 
 ### Create an External Table

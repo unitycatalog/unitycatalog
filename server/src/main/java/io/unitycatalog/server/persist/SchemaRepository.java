@@ -10,6 +10,7 @@ import io.unitycatalog.server.persist.utils.HibernateUtils;
 import io.unitycatalog.server.persist.utils.PagedListingHelper;
 import io.unitycatalog.server.persist.utils.RepositoryUtils;
 import io.unitycatalog.server.utils.Constants;
+import io.unitycatalog.server.utils.IdentityUtils;
 import io.unitycatalog.server.utils.ValidationUtils;
 import java.util.*;
 import org.hibernate.Session;
@@ -36,6 +37,7 @@ public class SchemaRepository {
 
   public SchemaInfo createSchema(CreateSchema createSchema) {
     ValidationUtils.validateSqlObjectName(createSchema.getName());
+    String callerId = IdentityUtils.findPrincipalEmailAddress();
     try (Session session = SESSION_FACTORY.openSession()) {
       Transaction tx = session.beginTransaction();
       try {
@@ -45,13 +47,18 @@ public class SchemaRepository {
         }
         CatalogInfoDAO catalogDAO =
             CATALOG_REPOSITORY.getCatalogDAO(session, createSchema.getCatalogName());
+        Long createTime = System.currentTimeMillis();
         SchemaInfo schemaInfo =
             new SchemaInfo()
                 .schemaId(UUID.randomUUID().toString())
                 .name(createSchema.getName())
                 .catalogName(createSchema.getCatalogName())
                 .comment(createSchema.getComment())
-                .createdAt(System.currentTimeMillis())
+                .owner(callerId)
+                .createdAt(createTime)
+                .createdBy(callerId)
+                .updatedAt(createTime)
+                .updatedBy(callerId)
                 .properties(createSchema.getProperties());
         SchemaInfoDAO schemaInfoDAO = SchemaInfoDAO.from(schemaInfo);
         schemaInfoDAO.setCatalogId(catalogDAO.getId());
@@ -186,6 +193,7 @@ public class SchemaRepository {
     if (updateSchema.getNewName() != null) {
       ValidationUtils.validateSqlObjectName(updateSchema.getNewName());
     }
+    String callerId = IdentityUtils.findPrincipalEmailAddress();
     try (Session session = SESSION_FACTORY.openSession()) {
       Transaction tx = session.beginTransaction();
       try {
@@ -220,6 +228,7 @@ public class SchemaRepository {
               .forEach(session::persist);
         }
         schemaInfoDAO.setUpdatedAt(new Date());
+        schemaInfoDAO.setUpdatedBy(callerId);
         session.merge(schemaInfoDAO);
         tx.commit();
         return convertFromDAO(session, schemaInfoDAO, fullName);

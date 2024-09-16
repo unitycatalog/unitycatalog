@@ -41,6 +41,9 @@ public class ModelVersionInfoDAO {
   @Column(name = "status")
   private String status;
 
+  @Column(name = "owner")
+  private String owner;
+
   @Column(name = "created_at")
   private Date createdAt;
 
@@ -61,7 +64,7 @@ public class ModelVersionInfoDAO {
 
   public static ModelVersionInfoDAO from(ModelVersionInfo modelVersionInfo) {
     return ModelVersionInfoDAO.builder()
-        .id(UUID.fromString(modelVersionInfo.getModelVersionId()))
+        .id(UUID.fromString(modelVersionInfo.getId()))
         .runId(modelVersionInfo.getRunId())
         .source(modelVersionInfo.getSource())
         .status(modelVersionInfo.getStatus().getValue())
@@ -75,7 +78,7 @@ public class ModelVersionInfoDAO {
         .updatedAt(
             modelVersionInfo.getUpdatedAt() != null
                 ? new Date(modelVersionInfo.getUpdatedAt())
-                : new Date())
+                : null)
         .updatedBy(modelVersionInfo.getUpdatedBy())
         .url(modelVersionInfo.getStorageLocation())
         .build();
@@ -84,7 +87,7 @@ public class ModelVersionInfoDAO {
   public ModelVersionInfo toModelVersionInfo() {
     ModelVersionInfo modelVersionInfo =
         new ModelVersionInfo()
-            .modelVersionId(getId().toString())
+            .id(getId().toString())
             .runId(getRunId())
             .source(getSource())
             .version(getVersion())
