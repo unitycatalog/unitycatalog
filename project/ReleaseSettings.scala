@@ -45,7 +45,7 @@ object ReleaseSettings {
     releaseCrossBuild := true,
   )
 
-  lazy val releaseSettings = Seq(
+  private lazy val releaseSettings = Seq(
     publishMavenStyle := true,
     publishArtifact := true,
     Test / publishArtifact := false,
