@@ -265,7 +265,7 @@ public class UnityAccessDecorator implements DecoratingHttpServiceFunction {
     if (resourceKeys.containsKey(CATALOG) && resourceKeys.containsKey(SCHEMA) && resourceKeys.containsKey(REGISTERED_MODEL)) {
       String fullName = resourceKeys.get(CATALOG) + "." + resourceKeys.get(SCHEMA) + "." + resourceKeys.get(REGISTERED_MODEL);
       RegisteredModelInfo model = ModelRepository.getInstance().getRegisteredModel(fullName);
-      resourceIds.put(FUNCTION, UUID.fromString(model.getId()));
+      resourceIds.put(REGISTERED_MODEL, UUID.fromString(model.getId()));
     }
 
     // If only REGISTERED_MODEL is specified, assuming its value is a full volume name (including catalog and schema)

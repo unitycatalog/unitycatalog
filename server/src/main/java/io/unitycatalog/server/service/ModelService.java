@@ -130,7 +130,7 @@ public class ModelService {
 
   @Post("/versions")
   @AuthorizeExpression("""
-          #authorize(#principal, #catalog, USE_CATALOG) && #authorizeAll(#principal, #schema, USE_SCHEMA, CREATE_MODEL)
+          #authorize(#principal, #registered_model, OWNER)
           """)
   public HttpResponse createModelVersion(@AuthorizeKeys({
           @AuthorizeKey(value = CATALOG, key = "catalog_name"),
