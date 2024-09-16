@@ -3,6 +3,7 @@ package io.unitycatalog.server.service;
 import static io.unitycatalog.server.model.SecurableType.CATALOG;
 import static io.unitycatalog.server.model.SecurableType.FUNCTION;
 import static io.unitycatalog.server.model.SecurableType.METASTORE;
+import static io.unitycatalog.server.model.SecurableType.REGISTERED_MODEL;
 import static io.unitycatalog.server.model.SecurableType.SCHEMA;
 import static io.unitycatalog.server.model.SecurableType.TABLE;
 import static io.unitycatalog.server.model.SecurableType.VOLUME;
@@ -67,7 +68,8 @@ public class PermissionService {
   }
 
   @Get("/catalog/{name}")
-  @AuthorizeExpression("#authorizeAny(#principal, #catalog, OWNER)")
+  @AuthorizeExpression(
+      "#authorizeAny(#principal, #metastore, OWNER) || #authorizeAny(#principal, #catalog, OWNER)")
   @AuthorizeKey(METASTORE)
   public HttpResponse getCatalogAuthorization(
       @Param("name") @AuthorizeKey(CATALOG) String name,
@@ -76,7 +78,8 @@ public class PermissionService {
   }
 
   @Get("/schema/{name}")
-  @AuthorizeExpression("#authorizeAny(#principal, #schema, OWNER)")
+  @AuthorizeExpression(
+      "#authorizeAny(#principal, #metastore, OWNER) || #authorizeAny(#principal, #schema, OWNER)")
   @AuthorizeKey(METASTORE)
   public HttpResponse getSchemaAuthorization(
       @Param("name") @AuthorizeKey(SCHEMA) String name,
@@ -85,7 +88,8 @@ public class PermissionService {
   }
 
   @Get("/table/{name}")
-  @AuthorizeExpression("#authorizeAny(#principal, #table, OWNER)")
+  @AuthorizeExpression(
+      "#authorizeAny(#principal, #metastore, OWNER) || #authorizeAny(#principal, #table, OWNER)")
   @AuthorizeKey(METASTORE)
   public HttpResponse getTableAuthorization(
       @Param("name") @AuthorizeKey(TABLE) String name,
@@ -94,7 +98,8 @@ public class PermissionService {
   }
 
   @Get("/function/{name}")
-  @AuthorizeExpression("#authorizeAny(#principal, #function, OWNER)")
+  @AuthorizeExpression(
+      "#authorizeAny(#principal, #metastore, OWNER) || #authorizeAny(#principal, #function, OWNER)")
   @AuthorizeKey(METASTORE)
   public HttpResponse getFunctionAuthorization(
       @Param("name") @AuthorizeKey(FUNCTION) String name,
@@ -103,12 +108,23 @@ public class PermissionService {
   }
 
   @Get("/volume/{name}")
-  @AuthorizeExpression("#authorizeAny(#principal, #volume, OWNER)")
+  @AuthorizeExpression(
+      "#authorizeAny(#principal, #metastore, OWNER) || #authorizeAny(#principal, #volume, OWNER)")
   @AuthorizeKey(METASTORE)
   public HttpResponse getVolumeAuthorization(
       @Param("name") @AuthorizeKey(VOLUME) String name,
       @Param("principal") Optional<String> principal) {
     return getAuthorization(VOLUME, name, principal);
+  }
+
+  @Get("/registered_model/{name}")
+  @AuthorizeExpression(
+      "#authorizeAny(#principal, #metastore, OWNER) || #authorizeAny(#principal, #registered_model, OWNER)")
+  @AuthorizeKey(METASTORE)
+  public HttpResponse getRegisteredModelAuthorization(
+      @Param("name") @AuthorizeKey(REGISTERED_MODEL) String name,
+      @Param("principal") Optional<String> principal) {
+    return getAuthorization(REGISTERED_MODEL, name, principal);
   }
 
   private HttpResponse getAuthorization(
@@ -196,6 +212,15 @@ public class PermissionService {
   public HttpResponse updateVolumeAuthorization(
       @Param("name") @AuthorizeKey(VOLUME) String name, UpdatePermissions request) {
     return updateAuthorization(VOLUME, name, request);
+  }
+
+  @Patch("/registered_model/{name}")
+  @AuthorizeExpression(
+      "#authorize(#principal, #metastore, OWNER) || #authorize(#principal, #registered_model, OWNER)")
+  @AuthorizeKey(METASTORE)
+  public HttpResponse updateRegisteredModelAuthorization(
+      @Param("name") @AuthorizeKey(REGISTERED_MODEL) String name, UpdatePermissions request) {
+    return updateAuthorization(REGISTERED_MODEL, name, request);
   }
 
   private HttpResponse updateAuthorization(
