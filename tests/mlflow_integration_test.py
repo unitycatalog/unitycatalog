@@ -81,8 +81,10 @@ model_uri = f"models:/{model_name}/{model_version}"
 rm_desc = "UC-OSS/MLflow Iris model"
 mv_desc = "Version 1 of the UC-OSS/MLflow Iris model"
 
+# Load the model and do some batch inference.
 try:
-    # Load the model and do some batch inference.
+    # By specifying the UC OSS model uri, mlflow will make UC OSS
+    # REST API calls to retrieve the model
     loaded_model = mlflow.pyfunc.load_model(model_uri)
     predictions = loaded_model.predict(X_test)
     iris_feature_names = datasets.load_iris().feature_names
@@ -97,8 +99,11 @@ except Exception as e:
 # COMMAND ----------
 
 try:
-    path = os.path.join("/tmp", "models", model_name, str(model_version))
-    print(path)
+    # list_artifacts will use the UC OSS model URI and make REST API calls to
+    # UC OSS to:
+    #   1) retrieve credentials (none for file based UC OSS)
+    #   2) use the storage location returned from UC OSS for the model version
+    #      list the artifacts stored in the location
     mlflow.artifacts.list_artifacts(model_uri)
     pass
 except Exception as e:
@@ -106,7 +111,15 @@ except Exception as e:
 
 # COMMAND ----------
 
+path = os.path.join("/tmp", "models", model_name, str(model_version))
+print(path)
+
 try:
+    # download_artifacts will use the UC OSS model URI and make REST API calls
+    # to UC OSS to:
+    #   1) retrieve credentials (none for file based UC OSS)
+    #   2) copy the artifact files from the storage location to the
+    #      destintation path
     mlflow.artifacts.download_artifacts(
     artifact_uri=f"models:/{model_name}/{model_version}",
     dst_path=path,
