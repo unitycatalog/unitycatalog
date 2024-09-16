@@ -85,6 +85,8 @@ public class ModelService {
   @Get("/{full_name}")
   @AuthorizeExpression("""
           #authorize(#principal, #metastore, OWNER) ||
+          #authorize(#principal, #catalog, OWNER) ||
+          (#authorize(#principal, #catalog, USE_CATALOG) && #authorize(#principal, #schema, OWNER)) ||
           #authorize(#principal, #registered_model, OWNER) ||
           (#authorize(#principal, #registered_model, EXECUTE) && #authorize(#principal, #schema, USE_SCHEMA) && #authorize(#principal, #catalog, USE_CATALOG))
           """)
@@ -113,6 +115,8 @@ public class ModelService {
   @Delete("/{full_name}")
   @AuthorizeExpression("""
           #authorize(#principal, #metastore, OWNER) ||
+          #authorize(#principal, #catalog, OWNER) ||
+          (#authorize(#principal, #catalog, USE_CATALOG) && #authorize(#principal, #schema, OWNER)) ||
           (#authorize(#principal, #registered_model, OWNER) && #authorize(#principal, #schema, USE_SCHEMA) && #authorize(#principal, #catalog, USE_CATALOG))
           """)
   @AuthorizeKey(METASTORE)
@@ -142,6 +146,8 @@ public class ModelService {
   @Get("/{full_name}/versions")
   @AuthorizeExpression("""
           #authorize(#principal, #metastore, OWNER) ||
+          #authorize(#principal, #catalog, OWNER) ||
+          (#authorize(#principal, #catalog, USE_CATALOG) && #authorize(#principal, #schema, OWNER)) ||
           #authorize(#principal, #registered_model, OWNER) ||
           (#authorize(#principal, #registered_model, EXECUTE) && #authorize(#principal, #schema, USE_SCHEMA) && #authorize(#principal, #catalog, USE_CATALOG))
           """)
@@ -157,6 +163,8 @@ public class ModelService {
   @AuthorizeExpression("""
           #authorize(#principal, #metastore, OWNER) ||
           #authorize(#principal, #registered_model, OWNER) ||
+          #authorize(#principal, #catalog, OWNER) ||
+          (#authorize(#principal, #catalog, USE_CATALOG) && #authorize(#principal, #schema, OWNER)) ||
           (#authorize(#principal, #registered_model, EXECUTE) && #authorize(#principal, #schema, USE_SCHEMA) && #authorize(#principal, #catalog, USE_CATALOG))
           """)
   @AuthorizeKey(METASTORE)
@@ -186,6 +194,8 @@ public class ModelService {
   @Delete("/{full_name}/versions/{version}")
   @AuthorizeExpression("""
           #authorize(#principal, #metastore, OWNER) ||
+          #authorize(#principal, #catalog, OWNER) ||
+          (#authorize(#principal, #catalog, USE_CATALOG) && #authorize(#principal, #schema, OWNER)) ||
           (#authorize(#principal, #registered_model, OWNER) && #authorize(#principal, #schema, USE_SCHEMA) && #authorize(#principal, #catalog, USE_CATALOG))
           """)
   @AuthorizeKey(METASTORE)
@@ -197,10 +207,7 @@ public class ModelService {
 
   @Patch("/{full_name}/versions/{version}/finalize")
   @AuthorizeExpression("""
-          #authorize(#principal, #metastore, OWNER) ||
-          #authorize(#principal, #catalog, OWNER) ||
-          (#authorize(#principal, #catalog, USE_CATALOG) && #authorize(#principal, #schema, OWNER)) ||
-          (#authorize(#principal, #registered_model, OWNER) && #authorize(#principal, #schema, USE_SCHEMA) && #authorize(#principal, #catalog, USE_CATALOG))
+          #authorize(#principal, #catalog, USE_CATALOG) && #authorizeAll(#principal, #schema, USE_SCHEMA, CREATE_MODEL)
           """)
   @AuthorizeKey(METASTORE)
   public HttpResponse finalizeModelVersion(@Param("full_name") @AuthorizeKey(REGISTERED_MODEL) String fullName,
