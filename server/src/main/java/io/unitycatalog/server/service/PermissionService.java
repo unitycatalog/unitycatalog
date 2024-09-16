@@ -30,11 +30,15 @@ import io.unitycatalog.server.model.SecurableType;
 import io.unitycatalog.server.model.TableInfo;
 import io.unitycatalog.server.model.UpdatePermissions;
 import io.unitycatalog.server.persist.CatalogRepository;
+import io.unitycatalog.server.persist.FunctionRepository;
 import io.unitycatalog.server.persist.MetastoreRepository;
+import io.unitycatalog.server.persist.ModelRepository;
 import io.unitycatalog.server.persist.SchemaRepository;
 import io.unitycatalog.server.persist.TableRepository;
 import io.unitycatalog.server.persist.UserRepository;
+import io.unitycatalog.server.persist.VolumeRepository;
 import io.unitycatalog.server.persist.model.Privileges;
+import io.unitycatalog.server.utils.IdentityUtils;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
@@ -53,6 +57,9 @@ public class PermissionService {
   private static final CatalogRepository CATALOG_REPOSITORY = CatalogRepository.getInstance();
   private static final SchemaRepository SCHEMA_REPOSITORY = SchemaRepository.getInstance();
   private static final TableRepository TABLE_REPOSITORY = TableRepository.getInstance();
+  private static final FunctionRepository FUNCTION_REPOSITORY = FunctionRepository.getInstance();
+  private static final VolumeRepository VOLUME_REPOSITORY = VolumeRepository.getInstance();
+  private static final ModelRepository MODEL_REPOSITORY = ModelRepository.getInstance();
 
   public PermissionService(UnityCatalogAuthorizer authorizer) {
     this.authorizer = authorizer;
@@ -60,84 +67,57 @@ public class PermissionService {
 
   // TODO: Refactor these endpoints to use a common method with dynamic resource id lookup
   @Get("/metastore/{name}")
-  @AuthorizeExpression("#authorizeAny(#principal, #metastore, OWNER)")
-  @AuthorizeKey(METASTORE)
   public HttpResponse getMetastoreAuthorization(
       @Param("name") String name, @Param("principal") Optional<String> principal) {
     return getAuthorization(METASTORE, name, principal);
   }
 
   @Get("/catalog/{name}")
-  @AuthorizeExpression(
-      "#authorizeAny(#principal, #metastore, OWNER) || #authorizeAny(#principal, #catalog, OWNER)")
-  @AuthorizeKey(METASTORE)
   public HttpResponse getCatalogAuthorization(
-      @Param("name") @AuthorizeKey(CATALOG) String name,
-      @Param("principal") Optional<String> principal) {
-    return getAuthorization(METASTORE, name, principal);
+      @Param("name") String name, @Param("principal") Optional<String> principal) {
+    return getAuthorization(CATALOG, name, principal);
   }
 
   @Get("/schema/{name}")
-  @AuthorizeExpression(
-      "#authorizeAny(#principal, #metastore, OWNER) || #authorizeAny(#principal, #schema, OWNER)")
-  @AuthorizeKey(METASTORE)
   public HttpResponse getSchemaAuthorization(
-      @Param("name") @AuthorizeKey(SCHEMA) String name,
-      @Param("principal") Optional<String> principal) {
+      @Param("name") String name, @Param("principal") Optional<String> principal) {
     return getAuthorization(SCHEMA, name, principal);
   }
 
   @Get("/table/{name}")
-  @AuthorizeExpression(
-      "#authorizeAny(#principal, #metastore, OWNER) || #authorizeAny(#principal, #table, OWNER)")
-  @AuthorizeKey(METASTORE)
   public HttpResponse getTableAuthorization(
-      @Param("name") @AuthorizeKey(TABLE) String name,
-      @Param("principal") Optional<String> principal) {
+      @Param("name") String name, @Param("principal") Optional<String> principal) {
     return getAuthorization(TABLE, name, principal);
   }
 
-  @Get("/function/{name}")
-  @AuthorizeExpression(
-      "#authorizeAny(#principal, #metastore, OWNER) || #authorizeAny(#principal, #function, OWNER)")
-  @AuthorizeKey(METASTORE)
   public HttpResponse getFunctionAuthorization(
-      @Param("name") @AuthorizeKey(FUNCTION) String name,
-      @Param("principal") Optional<String> principal) {
+      @Param("name") String name, @Param("principal") Optional<String> principal) {
     return getAuthorization(FUNCTION, name, principal);
   }
 
   @Get("/volume/{name}")
-  @AuthorizeExpression(
-      "#authorizeAny(#principal, #metastore, OWNER) || #authorizeAny(#principal, #volume, OWNER)")
-  @AuthorizeKey(METASTORE)
   public HttpResponse getVolumeAuthorization(
-      @Param("name") @AuthorizeKey(VOLUME) String name,
-      @Param("principal") Optional<String> principal) {
+      @Param("name") String name, @Param("principal") Optional<String> principal) {
     return getAuthorization(VOLUME, name, principal);
   }
 
   @Get("/registered_model/{name}")
-  @AuthorizeExpression(
-      "#authorizeAny(#principal, #metastore, OWNER) || #authorizeAny(#principal, #registered_model, OWNER)")
-  @AuthorizeKey(METASTORE)
   public HttpResponse getRegisteredModelAuthorization(
-      @Param("name") @AuthorizeKey(REGISTERED_MODEL) String name,
-      @Param("principal") Optional<String> principal) {
+      @Param("name") String name, @Param("principal") Optional<String> principal) {
     return getAuthorization(REGISTERED_MODEL, name, principal);
   }
 
   private HttpResponse getAuthorization(
       SecurableType securableType, String name, Optional<String> principal) {
     UUID resourceId = getResourceId(securableType, name);
-    Map<UUID, List<Privileges>> authorizations;
-    if (principal.isPresent()) {
-      User user = USER_REPOSITORY.getUserByEmail(principal.get());
-      UUID principalId = UUID.fromString(Objects.requireNonNull(user.getId()));
-      authorizations = Map.of(principalId, authorizer.listAuthorizations(principalId, resourceId));
-    } else {
-      authorizations = authorizer.listAuthorizations(resourceId);
-    }
+
+    UUID principalId =
+        principal
+            .map(p -> UUID.fromString(USER_REPOSITORY.getUserByEmail(p).getId()))
+            .orElseGet(() -> IdentityUtils.findPrincipalId());
+
+    Map<UUID, List<Privileges>> authorizations =
+        Map.of(principalId, authorizer.listAuthorizations(principalId, resourceId));
 
     List<PrivilegeAssignment> privilegeAssignments =
         authorizations.entrySet().stream()
@@ -276,22 +256,18 @@ public class PermissionService {
   }
 
   private UUID getResourceId(SecurableType securableType, String name) {
-    UUID resourceId;
 
-    if (securableType.equals(METASTORE)) {
-      resourceId = METASTORE_REPOSITORY.getMetastoreId();
-    } else if (securableType.equals(SecurableType.CATALOG)) {
-      CatalogInfo catalogInfo = CATALOG_REPOSITORY.getCatalog(name);
-      resourceId = UUID.fromString(Objects.requireNonNull(catalogInfo.getId()));
-    } else if (securableType.equals(SecurableType.SCHEMA)) {
-      SchemaInfo schemaInfo = SCHEMA_REPOSITORY.getSchema(name);
-      resourceId = UUID.fromString(Objects.requireNonNull(schemaInfo.getSchemaId()));
-    } else if (securableType.equals(SecurableType.TABLE)) {
-      TableInfo tableInfo = TABLE_REPOSITORY.getTable(name);
-      resourceId = UUID.fromString(Objects.requireNonNull(tableInfo.getTableId()));
-    } else {
-      throw new BaseException(ErrorCode.FAILED_PRECONDITION, "Unknown resource type");
-    }
-    return resourceId;
+    String resourceId = switch (securableType) {
+      case METASTORE -> METASTORE_REPOSITORY.getMetastoreId().toString();
+      case CATALOG -> CATALOG_REPOSITORY.getCatalog(name).getId();
+      case SCHEMA -> SCHEMA_REPOSITORY.getSchema(name).getSchemaId();
+      case TABLE -> TABLE_REPOSITORY.getTable(name).getTableId();
+      case FUNCTION -> FUNCTION_REPOSITORY.getFunction(name).getFunctionId();
+      case VOLUME -> VOLUME_REPOSITORY.getVolume(name).getVolumeId();
+      case REGISTERED_MODEL -> MODEL_REPOSITORY.getRegisteredModel(name).getId();
+      default -> throw new BaseException(ErrorCode.FAILED_PRECONDITION, "Unknown resource type");
+    };
+
+    return UUID.fromString(Objects.requireNonNull(resourceId));
   }
 }
