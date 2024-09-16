@@ -3,7 +3,7 @@ import java.io.File
 import Tarball.createTarballSettings
 import sbt.util
 import sbtlicensereport.license.{DepModuleInfo, LicenseCategory, LicenseInfo}
-import ReleaseSettings.{javaOnlyReleaseSettings, releaseSettings, rootReleaseSettings, skipReleaseSettings}
+import ReleaseSettings.*
 
 import scala.language.implicitConversions
 
@@ -123,7 +123,7 @@ lazy val controlApi = (project in file("target/control/java"))
   .settings(
     name := s"$artifactNamePrefix-controlapi",
     commonSettings,
-    javaOnlyReleaseSettings,
+    skipReleaseSettings,
     libraryDependencies ++= Seq(
       "jakarta.annotation" % "jakarta.annotation-api" % "3.0.0" % Provided,
       "com.fasterxml.jackson.core" % "jackson-annotations" % jacksonVersion,
@@ -162,7 +162,6 @@ lazy val controlApi = (project in file("target/control/java"))
 lazy val client = (project in file("target/clients/java"))
   .enablePlugins(OpenApiGeneratorPlugin)
   .disablePlugins(JavaFormatterPlugin)
-  .dependsOn(controlApi % "compile->compile")
   .settings(
     name := s"$artifactNamePrefix-client",
     commonSettings,
@@ -227,7 +226,7 @@ lazy val apiDocs = (project in file("api"))
   .enablePlugins(OpenApiGeneratorPlugin)
   .settings(
     name := s"$artifactNamePrefix-docs",
-
+    skipReleaseSettings,
     // OpenAPI generation specs
     openApiInputSpec := (file("api") / "all.yaml").toString,
     openApiGeneratorName := "markdown",
@@ -354,6 +353,7 @@ lazy val serverModels = (project in file("server") / "target" / "models")
   .settings(
     name := s"$artifactNamePrefix-servermodels",
     commonSettings,
+    skipReleaseSettings,
     (Compile / compile) := ((Compile / compile) dependsOn generate).value,
     Compile / compile / javacOptions ++= javacRelease17,
     libraryDependencies ++= Seq(
@@ -389,6 +389,7 @@ lazy val controlModels = (project in file("server") / "target" / "controlmodels"
   .settings(
     name := s"$artifactNamePrefix-controlmodels",
     commonSettings,
+    skipReleaseSettings,
     (Compile / compile) := ((Compile / compile) dependsOn generate).value,
     Compile / compile / javacOptions ++= javacRelease17,
     libraryDependencies ++= Seq(
@@ -421,6 +422,7 @@ lazy val controlModels = (project in file("server") / "target" / "controlmodels"
 lazy val cli = (project in file("examples") / "cli")
   .dependsOn(server % "test->test")
   .dependsOn(client % "compile->compile;test->test")
+  .dependsOn(controlApi % "compile->compile")
   .settings(
     name := s"$artifactNamePrefix-cli",
     mainClass := Some(orgName + ".cli.UnityCatalogCli"),
@@ -492,7 +494,7 @@ lazy val spark = (project in file("connectors/spark"))
     scalaVersion := scala212,
     crossScalaVersions := Seq(scala212, scala213),
     commonSettings,
-    releaseSettings,
+    scalaReleaseSettings,
     javaOptions ++= Seq(
       "--add-opens=java.base/sun.nio.ch=ALL-UNNAMED",
     ),
