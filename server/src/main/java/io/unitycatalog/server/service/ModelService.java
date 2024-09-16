@@ -207,7 +207,7 @@ public class ModelService {
 
   @Patch("/{full_name}/versions/{version}/finalize")
   @AuthorizeExpression("""
-          #authorize(#principal, #catalog, USE_CATALOG) && #authorizeAll(#principal, #schema, USE_SCHEMA, CREATE_MODEL)
+          #authorize(#principal, #registered_model, OWNER)
           """)
   @AuthorizeKey(METASTORE)
   public HttpResponse finalizeModelVersion(@Param("full_name") @AuthorizeKey(REGISTERED_MODEL) String fullName,
