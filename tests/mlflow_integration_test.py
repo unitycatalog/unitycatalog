@@ -6,7 +6,6 @@
 
 ## Pip install the necessary libraries
 # pip install mlflow
-# pip install --no-deps git+https://github.com/mlflow/mlflow.git@master
 
 ## If you are using a cloud based storage root, pip install the following external (to mlflow) deps
 # pip install boto3
@@ -34,7 +33,7 @@ schema = "default"
 registered_model_name = "iris"
 model_name = f"{catalog}.{schema}.{registered_model_name}"
 mlflow.set_tracking_uri("http://127.0.0.1:5000")
-mlflow.set_registry_uri("uc:http://localhost:8080")
+mlflow.set_registry_uri("uc:http://127.0.0.1:8080")
 mlflow.set_experiment("iris-uc-oss")
 
 # COMMAND ----------
@@ -49,12 +48,13 @@ else:
 
 # COMMAND ----------
 
+X, y = datasets.load_iris(return_X_y=True, as_frame=True)
+X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
 def build_model():
     with mlflow.start_run():
         # Train a sklearn model on the iris dataset
-        X, y = datasets.load_iris(return_X_y=True, as_frame=True)
         clf = RandomForestClassifier(max_depth=7)
-        clf.fit(X, y)
+        clf.fit(X_train, y_train)
         # Take the first row of the training dataset as the model input example.
         input_example = X.iloc[[0]]
         # Log the model and register it as a new version in UC.
@@ -66,7 +66,13 @@ def build_model():
             registered_model_name=model_name,
         )
 
-build_model()        
+# COMMAND ----------
+
+try:
+    build_model()
+    pass
+except Exception as e:
+    assert False
 
 # COMMAND ----------
 
@@ -75,31 +81,40 @@ model_uri = f"models:/{model_name}/{model_version}"
 rm_desc = "UC-OSS/MLflow Iris model"
 mv_desc = "Version 1 of the UC-OSS/MLflow Iris model"
 
-# Load the model and do some batch inference.
-X, y = datasets.load_iris(return_X_y=True, as_frame=True)
-X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
-loaded_model = mlflow.pyfunc.load_model(f"models:/{model_name}/{model_version}")
-predictions = loaded_model.predict(X_test)
-iris_feature_names = datasets.load_iris().feature_names
-result = pd.DataFrame(X_test, columns=iris_feature_names)
-result["actual_class"] = y_test
-result["predicted_class"] = predictions
-result[:4]
-
-
-# COMMAND ----------
-
-path = os.path.join("/tmp", "models", model_name, str(model_version))
-print(path)
-mlflow.artifacts.list_artifacts(f"models:/{model_name}/{model_version}")
+try:
+    # Load the model and do some batch inference.
+    loaded_model = mlflow.pyfunc.load_model(model_uri)
+    predictions = loaded_model.predict(X_test)
+    iris_feature_names = datasets.load_iris().feature_names
+    result = pd.DataFrame(X_test, columns=iris_feature_names)
+    result["actual_class"] = y_test
+    result["predicted_class"] = predictions
+    result[:4]
+    pass
+except Exception as e:
+    assert False
 
 # COMMAND ----------
 
-mlflow.artifacts.download_artifacts(
-  artifact_uri=f"models:/{model_name}/{model_version}",
-  dst_path=path,
-)
-os.system(f"cat /tmp/models/{model_name}/{model_version}/requirements.txt")
+try:
+    path = os.path.join("/tmp", "models", model_name, str(model_version))
+    print(path)
+    mlflow.artifacts.list_artifacts(model_uri)
+    pass
+except Exception as e:
+    assert False
+
+# COMMAND ----------
+
+try:
+    mlflow.artifacts.download_artifacts(
+    artifact_uri=f"models:/{model_name}/{model_version}",
+    dst_path=path,
+    )
+    os.system(f"cat {path}/requirements.txt")
+    pass
+except Exception as e:
+    assert False
 
 # COMMAND ----------
 
@@ -134,9 +149,9 @@ assert len(mvs) == 0
 mlflow.MlflowClient().delete_registered_model(name=model_name)
 rms = mlflow.MlflowClient().search_registered_models()
 try:
-  mlflow.MlflowClient().get_registered_model(model_name)
+    mlflow.MlflowClient().get_registered_model(model_name)
 except Exception as e:
-  e.args[0].startswith("NOT_FOUND")
-  pass
+    e.args[0].startswith("NOT_FOUND")
+    pass
 else:
-  assert False, "Expected exception not raised"
+    assert False, "Expected exception not raised"
