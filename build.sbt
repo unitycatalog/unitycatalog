@@ -123,7 +123,6 @@ lazy val controlApi = (project in file("target/control/java"))
   .settings(
     name := s"$artifactNamePrefix-controlapi",
     commonSettings,
-    javaOnlyReleaseSettings,
     libraryDependencies ++= Seq(
       "jakarta.annotation" % "jakarta.annotation-api" % "3.0.0" % Provided,
       "com.fasterxml.jackson.core" % "jackson-annotations" % jacksonVersion,
@@ -162,7 +161,6 @@ lazy val controlApi = (project in file("target/control/java"))
 lazy val client = (project in file("target/clients/java"))
   .enablePlugins(OpenApiGeneratorPlugin)
   .disablePlugins(JavaFormatterPlugin)
-  .dependsOn(controlApi % "compile->compile")
   .settings(
     name := s"$artifactNamePrefix-client",
     commonSettings,
@@ -413,6 +411,7 @@ lazy val controlModels = (project in file("server") / "target" / "controlmodels"
 lazy val cli = (project in file("examples") / "cli")
   .dependsOn(server % "test->test")
   .dependsOn(client % "compile->compile;test->test")
+  .dependsOn(controlApi % "compile->compile")
   .settings(
     name := s"$artifactNamePrefix-cli",
     mainClass := Some(orgName + ".cli.UnityCatalogCli"),
