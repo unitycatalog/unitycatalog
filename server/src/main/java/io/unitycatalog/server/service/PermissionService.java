@@ -1,13 +1,5 @@
 package io.unitycatalog.server.service;
 
-import static io.unitycatalog.server.model.SecurableType.CATALOG;
-import static io.unitycatalog.server.model.SecurableType.FUNCTION;
-import static io.unitycatalog.server.model.SecurableType.METASTORE;
-import static io.unitycatalog.server.model.SecurableType.REGISTERED_MODEL;
-import static io.unitycatalog.server.model.SecurableType.SCHEMA;
-import static io.unitycatalog.server.model.SecurableType.TABLE;
-import static io.unitycatalog.server.model.SecurableType.VOLUME;
-
 import com.linecorp.armeria.common.HttpResponse;
 import com.linecorp.armeria.server.annotation.ExceptionHandler;
 import com.linecorp.armeria.server.annotation.Get;
@@ -20,14 +12,11 @@ import io.unitycatalog.server.auth.annotation.AuthorizeKey;
 import io.unitycatalog.server.exception.BaseException;
 import io.unitycatalog.server.exception.ErrorCode;
 import io.unitycatalog.server.exception.GlobalExceptionHandler;
-import io.unitycatalog.server.model.CatalogInfo;
 import io.unitycatalog.server.model.PermissionsChange;
 import io.unitycatalog.server.model.PermissionsList;
 import io.unitycatalog.server.model.Privilege;
 import io.unitycatalog.server.model.PrivilegeAssignment;
-import io.unitycatalog.server.model.SchemaInfo;
 import io.unitycatalog.server.model.SecurableType;
-import io.unitycatalog.server.model.TableInfo;
 import io.unitycatalog.server.model.UpdatePermissions;
 import io.unitycatalog.server.persist.CatalogRepository;
 import io.unitycatalog.server.persist.FunctionRepository;
@@ -39,6 +28,7 @@ import io.unitycatalog.server.persist.UserRepository;
 import io.unitycatalog.server.persist.VolumeRepository;
 import io.unitycatalog.server.persist.model.Privileges;
 import io.unitycatalog.server.utils.IdentityUtils;
+
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
@@ -47,6 +37,14 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
+
+import static io.unitycatalog.server.model.SecurableType.CATALOG;
+import static io.unitycatalog.server.model.SecurableType.FUNCTION;
+import static io.unitycatalog.server.model.SecurableType.METASTORE;
+import static io.unitycatalog.server.model.SecurableType.REGISTERED_MODEL;
+import static io.unitycatalog.server.model.SecurableType.SCHEMA;
+import static io.unitycatalog.server.model.SecurableType.TABLE;
+import static io.unitycatalog.server.model.SecurableType.VOLUME;
 
 @ExceptionHandler(GlobalExceptionHandler.class)
 public class PermissionService {
@@ -68,56 +66,63 @@ public class PermissionService {
   // TODO: Refactor these endpoints to use a common method with dynamic resource id lookup
   @Get("/metastore/{name}")
   public HttpResponse getMetastoreAuthorization(
-      @Param("name") String name, @Param("principal") Optional<String> principal) {
-    return getAuthorization(METASTORE, name, principal);
+      @Param("name") String name) {
+    return getAuthorization(METASTORE, name);
   }
 
   @Get("/catalog/{name}")
   public HttpResponse getCatalogAuthorization(
-      @Param("name") String name, @Param("principal") Optional<String> principal) {
-    return getAuthorization(CATALOG, name, principal);
+      @Param("name") String name) {
+    return getAuthorization(CATALOG, name);
   }
 
   @Get("/schema/{name}")
   public HttpResponse getSchemaAuthorization(
-      @Param("name") String name, @Param("principal") Optional<String> principal) {
-    return getAuthorization(SCHEMA, name, principal);
+      @Param("name") String name) {
+    return getAuthorization(SCHEMA, name);
   }
 
   @Get("/table/{name}")
   public HttpResponse getTableAuthorization(
-      @Param("name") String name, @Param("principal") Optional<String> principal) {
-    return getAuthorization(TABLE, name, principal);
+      @Param("name") String name) {
+    return getAuthorization(TABLE, name);
   }
 
   public HttpResponse getFunctionAuthorization(
-      @Param("name") String name, @Param("principal") Optional<String> principal) {
-    return getAuthorization(FUNCTION, name, principal);
+      @Param("name") String name) {
+    return getAuthorization(FUNCTION, name);
   }
 
   @Get("/volume/{name}")
   public HttpResponse getVolumeAuthorization(
-      @Param("name") String name, @Param("principal") Optional<String> principal) {
-    return getAuthorization(VOLUME, name, principal);
+      @Param("name") String name) {
+    return getAuthorization(VOLUME, name);
   }
 
   @Get("/registered_model/{name}")
   public HttpResponse getRegisteredModelAuthorization(
-      @Param("name") String name, @Param("principal") Optional<String> principal) {
-    return getAuthorization(REGISTERED_MODEL, name, principal);
+      @Param("name") String name) {
+    return getAuthorization(REGISTERED_MODEL, name);
   }
 
   private HttpResponse getAuthorization(
-      SecurableType securableType, String name, Optional<String> principal) {
-    UUID resourceId = getResourceId(securableType, name);
+      SecurableType securableType, String name) {
 
-    UUID principalId =
-        principal
-            .map(p -> UUID.fromString(USER_REPOSITORY.getUserByEmail(p).getId()))
-            .orElseGet(() -> IdentityUtils.findPrincipalId());
+    // Only show permissions for the authentiated identity unless they are the owner
+    // of the resource or the metastore itself.
+
+    UUID resourceId = getResourceId(securableType, name);
+    UUID principalId = IdentityUtils.findPrincipalId();
+
+    boolean isOwner =
+            authorizer.authorize(principalId, METASTORE_REPOSITORY.getMetastoreId(), Privileges.OWNER) ||
+            authorizer.authorize(principalId, resourceId, Privileges.OWNER);
 
     Map<UUID, List<Privileges>> authorizations =
-        Map.of(principalId, authorizer.listAuthorizations(principalId, resourceId));
+            isOwner ?
+                    authorizer.listAuthorizations(resourceId)
+                    :
+                    Map.of(principalId, authorizer.listAuthorizations(principalId, resourceId));
 
     List<PrivilegeAssignment> privilegeAssignments =
         authorizations.entrySet().stream()
