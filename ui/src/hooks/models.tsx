@@ -13,6 +13,7 @@ export interface ModelInterface {
   updated_at: number | null;
   updated_by: string | null;
   registered_model_id: string;
+  owner: string | null;
 }
 
 export enum ModelVersionStatus {
