@@ -40,12 +40,16 @@ object ReleaseSettings {
     autoScalaLibrary := false,
   )
 
+  lazy val scalaReleaseSettings = releaseSettings ++ Seq(
+    crossPaths := true,
+    releaseCrossBuild := true,
+  )
+
   lazy val releaseSettings = Seq(
     publishMavenStyle := true,
     publishArtifact := true,
     Test / publishArtifact := false,
     releasePublishArtifactsAction := PgpKeys.publishSigned.value,
-    releaseCrossBuild := true,
     pgpPassphrase := sys.env.get("PGP_PASSPHRASE").map(_.toArray),
     sonatypeProfileName := "io.unitycatalog",
     credentials += Credentials(
@@ -98,6 +102,7 @@ object ReleaseSettings {
     publish / skip := true,
     publishTo := Some("snapshots" at "https://oss.sonatype.org/content/repositories/snapshots"),
     releaseCrossBuild := false,
+    crossScalaVersions := Nil,
     releaseProcess := Seq[ReleaseStep](
       checkSnapshotDependencies,
       inquireVersions,
