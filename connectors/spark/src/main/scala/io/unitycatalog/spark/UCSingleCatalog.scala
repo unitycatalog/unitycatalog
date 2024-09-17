@@ -8,6 +8,7 @@ import java.net.URI
 import java.util
 import org.apache.hadoop.fs.Path
 import org.apache.hadoop.fs.azurebfs.constants.ConfigurationKeys.{FS_AZURE_ACCOUNT_AUTH_TYPE_PROPERTY_NAME, FS_AZURE_ACCOUNT_IS_HNS_ENABLED, FS_AZURE_SAS_TOKEN_PROVIDER_TYPE}
+import org.apache.spark.internal.Logging
 import org.apache.spark.sql.catalyst.TableIdentifier
 import org.apache.spark.sql.catalyst.analysis.{NoSuchNamespaceException, NoSuchTableException}
 import org.apache.spark.sql.catalyst.catalog.{CatalogStorageFormat, CatalogTable, CatalogTableType, CatalogUtils}
@@ -22,23 +23,26 @@ import scala.collection.JavaConverters._
 /**
  * A Spark catalog plugin to get/manage tables in Unity Catalog.
  */
-class UCSingleCatalog extends TableCatalog with SupportsNamespaces {
+class UCSingleCatalog extends TableCatalog with SupportsNamespaces with Logging {
 
   @volatile private var delegate: TableCatalog = null
 
   override def initialize(name: String, options: CaseInsensitiveStringMap): Unit = {
     val proxy = new UCProxy()
     proxy.initialize(name, options)
-    try {
-      if (options.containsKey("__TEST_NO_DELTA__")) {
-        throw new ClassNotFoundException("DeltaCatalog")
+    if (UCSingleCatalog.LOAD_DELTA_CATALOG.get()) {
+      try {
+        delegate = Class.forName("org.apache.spark.sql.delta.catalog.DeltaCatalog")
+          .getDeclaredConstructor().newInstance().asInstanceOf[TableCatalog]
+        delegate.asInstanceOf[DelegatingCatalogExtension].setDelegateCatalog(proxy)
+        UCSingleCatalog.DELTA_CATALOG_LOADED.set(true)
+      } catch {
+        case e: ClassNotFoundException =>
+          logWarning("DeltaCatalog is not available in the classpath", e)
+          delegate = proxy
       }
-      delegate = Class.forName("org.apache.spark.sql.delta.catalog.DeltaCatalog")
-        .getDeclaredConstructor().newInstance().asInstanceOf[TableCatalog]
-      delegate.asInstanceOf[DelegatingCatalogExtension].setDelegateCatalog(proxy)
-    } catch {
-      case _: ClassNotFoundException =>
-        delegate = proxy
+    } else {
+      delegate = proxy
     }
   }
 
@@ -112,6 +116,11 @@ class UCSingleCatalog extends TableCatalog with SupportsNamespaces {
   override def dropNamespace(namespace: Array[String], cascade: Boolean): Boolean = {
     delegate.asInstanceOf[DelegatingCatalogExtension].dropNamespace(namespace, cascade)
   }
+}
+
+object UCSingleCatalog {
+  val LOAD_DELTA_CATALOG = ThreadLocal.withInitial[Boolean](() => true)
+  val DELTA_CATALOG_LOADED = ThreadLocal.withInitial[Boolean](() => false)
 }
 
 // An internal proxy to talk to the UC client.

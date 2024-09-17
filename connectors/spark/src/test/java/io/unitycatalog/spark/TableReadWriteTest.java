@@ -10,6 +10,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import io.unitycatalog.client.ApiException;
 import io.unitycatalog.client.model.*;
 import io.unitycatalog.server.base.table.TableOperations;
+import io.unitycatalog.server.sdk.schema.SdkSchemaOperations;
 import io.unitycatalog.server.sdk.tables.SdkTableOperations;
 import java.io.File;
 import java.io.IOException;
@@ -43,6 +44,8 @@ public class TableReadWriteTest extends BaseSparkIntegrationTest {
 
   @Test
   public void testNoDeltaCatalog() throws IOException, ApiException {
+    UCSingleCatalog.LOAD_DELTA_CATALOG().set(false);
+    UCSingleCatalog.DELTA_CATALOG_LOADED().set(false);
     SparkSession.Builder builder = SparkSession.builder()
             .appName("test")
             .master("local[*]")
@@ -56,6 +59,7 @@ public class TableReadWriteTest extends BaseSparkIntegrationTest {
     SparkSession session = builder.getOrCreate();
     setupExternalParquetTable(PARQUET_TABLE, new ArrayList<>(0));
     testTableReadWrite(SPARK_CATALOG + "." + SCHEMA_NAME + "." + PARQUET_TABLE, session);
+    assertEquals(false, UCSingleCatalog.DELTA_CATALOG_LOADED().get());
     session.close();
   }
 
@@ -495,6 +499,7 @@ public class TableReadWriteTest extends BaseSparkIntegrationTest {
   @Override
   public void cleanUp() {
     super.cleanUp();
+    UCSingleCatalog.LOAD_DELTA_CATALOG().set(true);
     try {
       JavaUtils.deleteRecursively(dataDir);
     } catch (IOException e) {
