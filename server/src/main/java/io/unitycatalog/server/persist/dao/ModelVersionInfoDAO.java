@@ -78,7 +78,7 @@ public class ModelVersionInfoDAO {
         .updatedAt(
             modelVersionInfo.getUpdatedAt() != null
                 ? new Date(modelVersionInfo.getUpdatedAt())
-                : new Date())
+                : null)
         .updatedBy(modelVersionInfo.getUpdatedBy())
         .url(modelVersionInfo.getStorageLocation())
         .build();
