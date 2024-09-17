@@ -96,7 +96,10 @@ export default function ModelVersionDetails() {
     >
       <DetailsLayout.Content>
         <Flex vertical gap={60}>
-          <DescriptionBox comment={data?.comment} />
+          <div>
+            <Typography.Title level={5}>Description</Typography.Title>
+            <Typography.Text type="secondary">{data?.comment}</Typography.Text>
+          </div>
           <div>
             <Typography.Title level={5} style={{ marginBottom: 16 }}>
               Version details
