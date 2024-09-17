@@ -48,6 +48,8 @@ public class ModelService {
 
   @Post("")
   @AuthorizeExpression("""
+          #authorize(#principal, #catalog, OWNER) ||
+          (#authorize(#principal, #catalog, USE_CATALOG) && #authorize(#principal, #schema, OWNER)) ||
           #authorize(#principal, #catalog, USE_CATALOG) && #authorizeAll(#principal, #schema, USE_SCHEMA, CREATE_MODEL)
           """)
   public HttpResponse createRegisteredModel(
