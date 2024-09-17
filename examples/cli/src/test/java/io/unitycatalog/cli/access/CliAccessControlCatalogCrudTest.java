@@ -17,6 +17,7 @@ public class CliAccessControlCatalogCrudTest extends CliAccessControlBaseCrudTes
   List<Step> catalogSteps =
       new ArrayList<>() {
         {
+          addAll(commonUserSteps);
           // create a catalog -> metastore admin -> allowed
           add(TokenStep.of(SUCCEED, "admin"));
           add(
@@ -28,18 +29,6 @@ public class CliAccessControlCatalogCrudTest extends CliAccessControlBaseCrudTes
                   "admincatalog1",
                   "--comment",
                   "(created from scratch)"));
-
-          // create a user (principal-1)
-          add(TokenStep.of(SUCCEED, "admin"));
-          add(
-              CommandStep.of(
-                  SUCCEED,
-                  "user",
-                  "create",
-                  "--name",
-                  "Principal 1",
-                  "--email",
-                  "principal-1@localhost"));
 
           // give user CREATE CATALOG
           add(TokenStep.of(SUCCEED, "admin"));
@@ -70,18 +59,6 @@ public class CliAccessControlCatalogCrudTest extends CliAccessControlBaseCrudTes
                   "--comment",
                   "(created from scratch)"));
 
-          // create a user (principal-2)
-          add(TokenStep.of(SUCCEED, "admin"));
-          add(
-              CommandStep.of(
-                  SUCCEED,
-                  "user",
-                  "create",
-                  "--name",
-                  "Principal 2",
-                  "--email",
-                  "principal-2@localhost"));
-
           // create a catalog -> -- -> denied
           add(TokenStep.of(SUCCEED, "principal-2@localhost"));
           add(
@@ -101,18 +78,6 @@ public class CliAccessControlCatalogCrudTest extends CliAccessControlBaseCrudTes
           // list catalogs (principal-1) -> owner -> allowed - list owning
           add(TokenStep.of(SUCCEED, "principal-1@localhost"));
           add(CommandStep.of(SUCCEED, 1, "catalog", "list"));
-
-          // create a user (regular-1)
-          add(TokenStep.of(SUCCEED, "admin"));
-          add(
-              CommandStep.of(
-                  SUCCEED,
-                  "user",
-                  "create",
-                  "--name",
-                  "Regular 1",
-                  "--email",
-                  "regular-1@localhost"));
 
           // give user USE CATALOG on catalog1
           add(TokenStep.of(SUCCEED, "admin"));

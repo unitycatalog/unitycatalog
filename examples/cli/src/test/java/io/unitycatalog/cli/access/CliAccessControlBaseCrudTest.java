@@ -13,6 +13,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.security.NoSuchAlgorithmException;
 import java.security.spec.InvalidKeySpecException;
+import java.util.ArrayList;
 import java.util.Date;
 import java.util.List;
 import java.util.UUID;
@@ -20,13 +21,130 @@ import java.util.UUID;
 import static io.unitycatalog.cli.TestUtils.addServerAndAuthParams;
 import static io.unitycatalog.cli.TestUtils.executeCLICommand;
 import static io.unitycatalog.cli.access.Step.Expect.FAIL;
+import static io.unitycatalog.cli.access.Step.Expect.SUCCEED;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
 public class CliAccessControlBaseCrudTest extends BaseAccessControlCRUDTest {
 
-  public void testSteps(List<Step> steps) throws IOException, NoSuchAlgorithmException, InvalidKeySpecException {
+  protected List<Step> commonUserSteps =
+          new ArrayList<>() {
+            {
+              add(Step.TokenStep.of(SUCCEED, "admin"));
+              add(
+                      Step.CommandStep.of(
+                              SUCCEED,
+                              "user",
+                              "create",
+                              "--name",
+                              "Principal 1",
+                              "--email",
+                              "principal-1@localhost"));
+              add(
+                      Step.CommandStep.of(
+                              SUCCEED,
+                              "user",
+                              "create",
+                              "--name",
+                              "Principal 2",
+                              "--email",
+                              "principal-2@localhost"));
+              add(
+                      Step.CommandStep.of(
+                              SUCCEED,
+                              "user",
+                              "create",
+                              "--name",
+                              "Regular 1",
+                              "--email",
+                              "regular-1@localhost"));
+              add(
+                      Step.CommandStep.of(
+                              SUCCEED,
+                              "user",
+                              "create",
+                              "--name",
+                              "Regular 2",
+                              "--email",
+                              "regular-2@localhost"));
+            }
+          };
+
+  protected List<Step> commonSecurableSteps =
+          new ArrayList<>() {
+            {
+              // give user CREATE CATALOG
+              add(Step.TokenStep.of(SUCCEED, "admin"));
+              add(
+                      Step.CommandStep.of(
+                              SUCCEED,
+                              1,
+                              "permission",
+                              "create",
+                              "--securable_type",
+                              "metastore",
+                              "--name",
+                              "metastore",
+                              "--principal",
+                              "principal-1@localhost",
+                              "--privilege",
+                              "CREATE CATALOG"));
+
+              // create a catalog -> CREATE CATALOG -> allowed
+              add(Step.TokenStep.of(SUCCEED, "principal-1@localhost"));
+              add(
+                      Step.CommandStep.of(
+                              SUCCEED,
+                              "catalog",
+                              "create",
+                              "--name",
+                              "catalog1",
+                              "--comment",
+                              "(created from scratch)"));
+
+              // give user CREATE SCHEMA on catalog1
+              add(
+                      Step.CommandStep.of(
+                              SUCCEED,
+                              1,
+                              "permission",
+                              "create",
+                              "--securable_type",
+                              "catalog",
+                              "--name",
+                              "catalog1",
+                              "--principal",
+                              "principal-1@localhost",
+                              "--privilege",
+                              "CREATE SCHEMA"));
+              add(
+                      Step.CommandStep.of(
+                              SUCCEED,
+                              1,
+                              "permission",
+                              "create",
+                              "--securable_type",
+                              "catalog",
+                              "--name",
+                              "catalog1",
+                              "--principal",
+                              "principal-1@localhost",
+                              "--privilege",
+                              "USE CATALOG"));
+
+              add(Step.TokenStep.of(SUCCEED, "principal-1@localhost"));
+              add(
+                      Step.CommandStep.of(
+                              SUCCEED, "schema", "create", "--name", "schema1", "--catalog", "catalog1"));
+
+            }
+          };
+
+
+
+
+              public void testSteps(List<Step> steps) throws IOException, NoSuchAlgorithmException, InvalidKeySpecException {
     Path path = Path.of("etc", "conf", "token.txt");
     String adminToken = Files.readString(path);
     String token = adminToken;

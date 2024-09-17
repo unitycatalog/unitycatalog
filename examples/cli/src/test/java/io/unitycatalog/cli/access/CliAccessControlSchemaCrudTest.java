@@ -17,17 +17,7 @@ public class CliAccessControlSchemaCrudTest extends CliAccessControlBaseCrudTest
   List<Step> schemaSteps =
       new ArrayList<>() {
         {
-          // create a user (principal-1)
-          add(TokenStep.of(SUCCEED, "admin"));
-          add(
-              CommandStep.of(
-                  SUCCEED,
-                  "user",
-                  "create",
-                  "--name",
-                  "Principal 1",
-                  "--email",
-                  "principal-1@localhost"));
+          addAll(commonUserSteps);
 
           // give user CREATE CATALOG
           add(TokenStep.of(SUCCEED, "admin"));
@@ -57,18 +47,6 @@ public class CliAccessControlSchemaCrudTest extends CliAccessControlBaseCrudTest
                   "catalog1",
                   "--comment",
                   "(created from scratch)"));
-
-          // create a user (regular-1)
-          add(TokenStep.of(SUCCEED, "admin"));
-          add(
-              CommandStep.of(
-                  SUCCEED,
-                  "user",
-                  "create",
-                  "--name",
-                  "Regular 1",
-                  "--email",
-                  "regular-1@localhost"));
 
           // give user USE CATALOG on catalog1
           add(TokenStep.of(SUCCEED, "admin"));
@@ -133,18 +111,6 @@ public class CliAccessControlSchemaCrudTest extends CliAccessControlBaseCrudTest
           add(
               CommandStep.of(
                   FAIL, "schema", "create", "--name", "schema2", "--catalog", "catalog1"));
-
-          // create a user (regular-2)
-          add(TokenStep.of(SUCCEED, "admin"));
-          add(
-              CommandStep.of(
-                  SUCCEED,
-                  "user",
-                  "create",
-                  "--name",
-                  "Regular 2",
-                  "--email",
-                  "regular-2@localhost"));
 
           // give user CREATE SCHEMA on catalog1
           add(TokenStep.of(SUCCEED, "admin"));
