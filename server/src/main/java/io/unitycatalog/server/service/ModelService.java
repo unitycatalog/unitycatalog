@@ -75,6 +75,8 @@ public class ModelService {
             MODEL_REPOSITORY.listRegisteredModels(catalogName, schemaName, maxResults, pageToken);
     filterModels("""
             #authorize(#principal, #metastore, OWNER) ||
+            #authorize(#principal, #catalog, OWNER) ||
+            (#authorize(#principal, #catalog, USE_CATALOG) && #authorize(#principal, #schema, OWNER)) ||
             #authorize(#principal, #registered_model, OWNER) ||
             (#authorize(#principal, #registered_model, EXECUTE) && #authorize(#principal, #schema, USE_SCHEMA) && #authorize(#principal, #catalog, USE_CATALOG))
             """, listRegisteredModelsResponse.getRegisteredModels());
