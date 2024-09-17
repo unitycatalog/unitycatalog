@@ -3,7 +3,6 @@ import { Link, useParams } from 'react-router-dom';
 import { useGetTable } from '../hooks/tables';
 import DetailsLayout from '../components/layouts/DetailsLayout';
 import { Flex, Typography } from 'antd';
-import DescriptionBox from '../components/DescriptionBox';
 import ColumnsList from '../components/tables/ColumnsList';
 import TableSidebar from '../components/tables/TablesSidebar';
 import { TableOutlined } from '@ant-design/icons';
@@ -49,7 +48,10 @@ export default function TableDetails() {
     >
       <DetailsLayout.Content>
         <Flex vertical gap="middle">
-          <DescriptionBox comment={data.comment} />
+          <div>
+            <Typography.Title level={5}>Description</Typography.Title>
+            <Typography.Text type="secondary">{data?.comment}</Typography.Text>
+          </div>
           <ColumnsList catalog={catalog} schema={schema} table={table} />
         </Flex>
       </DetailsLayout.Content>
