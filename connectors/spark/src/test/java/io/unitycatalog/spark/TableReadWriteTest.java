@@ -264,18 +264,33 @@ public class TableReadWriteTest extends BaseSparkIntegrationTest {
 
   @Test
   public void testCreateExternalParquetTable() throws ApiException, IOException {
-    SparkSession session = createSparkSessionWithCatalogs(CATALOG_NAME);
-    String path = generateTableLocation(CATALOG_NAME, PARQUET_TABLE);
-    String fullTableName = CATALOG_NAME + "." + SCHEMA_NAME + "." + PARQUET_TABLE;
-    session
-        .sql(
-            "CREATE TABLE " + fullTableName + "(name STRING) USING PARQUET LOCATION '" + path + "'")
-        .collect();
-    assertTrue(session.catalog().tableExists(fullTableName));
-    TableInfo tableInfo = tableOperations.getTable(fullTableName);
-    assertEquals(1, tableInfo.getColumns().size());
-    assertEquals("name", tableInfo.getColumns().get(0).getName());
-    assertEquals(ColumnTypeName.STRING, tableInfo.getColumns().get(0).getTypeName());
+
+    SparkSession session = createSparkSessionWithCatalogs(SPARK_CATALOG, CATALOG_NAME);
+    String[] names = {SPARK_CATALOG, CATALOG_NAME};
+    for (String testCatalog : names) {
+      String path = generateTableLocation(testCatalog, PARQUET_TABLE);
+      String fullTableName = testCatalog + "." + SCHEMA_NAME + "." + PARQUET_TABLE;
+      String fullTableName2 = testCatalog + "." + SCHEMA_NAME + "." + ANOTHER_PARQUET_TABLE;
+
+      session.sql(
+          "CREATE TABLE "
+              + fullTableName
+              + " USING parquet LOCATION '"
+              + path
+              + "' as SELECT 1, 2, 3");
+      assertThat(session.sql("SELECT * FROM " + fullTableName).collectAsList().size() == 1);
+      String path2 = generateTableLocation(testCatalog, ANOTHER_PARQUET_TABLE);
+      session
+          .sql(
+              "CREATE TABLE "
+                  + fullTableName2
+                  + "(i INT, s STRING) USING PARQUET LOCATION '"
+                  + path2
+                  + "'")
+          .collect();
+      testTableReadWrite(fullTableName2, session);
+    }
+
     session.stop();
   }
 

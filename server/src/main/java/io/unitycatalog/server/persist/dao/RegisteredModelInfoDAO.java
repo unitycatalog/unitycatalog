@@ -63,7 +63,7 @@ public class RegisteredModelInfoDAO extends IdentifiableDAO {
         .updatedAt(
             registeredModelInfo.getUpdatedAt() != null
                 ? new Date(registeredModelInfo.getUpdatedAt())
-                : new Date())
+                : null)
         .updatedBy(registeredModelInfo.getUpdatedBy())
         .url(registeredModelInfo.getStorageLocation())
         .build();
