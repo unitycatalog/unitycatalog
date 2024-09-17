@@ -9,8 +9,11 @@ import com.google.auth.oauth2.GoogleCredentials;
 import com.google.auth.oauth2.OAuth2Credentials;
 import com.google.auth.oauth2.ServiceAccountCredentials;
 import com.google.common.base.CharMatcher;
+import io.unitycatalog.server.exception.BaseException;
+import io.unitycatalog.server.exception.ErrorCode;
 import io.unitycatalog.server.persist.utils.ServerPropertiesUtils;
 import io.unitycatalog.server.service.credential.CredentialContext;
+import java.io.IOException;
 import java.net.URI;
 import java.sql.Date;
 import java.time.Instant;
@@ -49,7 +52,11 @@ public class GcpCredentialVendor {
           ServiceAccountCredentials.fromStream(
               Files.localInput(serviceAccountKeyJsonFilePath).newStream());
     } else {
-      creds = GoogleCredentials.getApplicationDefault();
+      try {
+        creds = GoogleCredentials.getApplicationDefault();
+      } catch (IOException e) {
+        throw new BaseException(ErrorCode.FAILED_PRECONDITION, "GCS credentials not found.", e);
+      }
     }
 
     return downscopeGcpCreds(creds.createScoped(INITIAL_SCOPES), credentialContext)
