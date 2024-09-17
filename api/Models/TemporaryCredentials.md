@@ -1,4 +1,4 @@
-# GenerateTemporaryTableCredentialResponse
+# TemporaryCredentials
 ## Properties
 
 | Name | Type | Description | Notes |

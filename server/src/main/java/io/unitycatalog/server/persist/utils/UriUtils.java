@@ -10,7 +10,7 @@ import io.unitycatalog.server.exception.ErrorCode;
 import io.unitycatalog.server.model.AwsCredentials;
 import io.unitycatalog.server.model.AzureUserDelegationSAS;
 import io.unitycatalog.server.model.GcpOauthToken;
-import io.unitycatalog.server.model.GenerateTemporaryModelVersionCredentialsResponse;
+import io.unitycatalog.server.model.TemporaryCredentials;
 import java.io.IOException;
 import java.net.URI;
 import java.net.URISyntaxException;
@@ -101,9 +101,7 @@ public class UriUtils {
   }
 
   private static URI updateDirectoryFromUri(
-      String uri,
-      Operation op,
-      Optional<GenerateTemporaryModelVersionCredentialsResponse> credentials) {
+      String uri, Operation op, Optional<TemporaryCredentials> credentials) {
     URI parsedUri = URI.create(uri);
     validateURI(parsedUri);
     try {
