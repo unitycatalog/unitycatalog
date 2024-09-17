@@ -16,6 +16,9 @@ export interface FunctionInterface {
   routine_definition: string;
   created_at: number;
   updated_at: number | null;
+  owner: string | null;
+  created_by: string;
+  updated_by: string | null;
 }
 interface ListFunctionsResponse {
   functions: FunctionInterface[];
