@@ -24,9 +24,11 @@ import CatalogsList from './pages/CatalogsList';
 import CatalogDetails from './pages/CatalogDetails';
 import SchemaDetails from './pages/SchemaDetails';
 import { NotificationProvider } from './utils/NotificationContext';
+import ModelDetails from './pages/ModelDetails';
 import Login from './pages/Login';
 import { AuthProvider, useAuth } from './context/auth-context';
 import { UserOutlined } from '@ant-design/icons';
+import ModelVersionDetails from './pages/ModelVersionDetails';
 
 const router = createBrowserRouter([
   {
@@ -55,6 +57,14 @@ const router = createBrowserRouter([
       {
         path: '/functions/:catalog/:schema/:ucFunction',
         element: <FunctionDetails />,
+      },
+      {
+        path: '/models/:catalog/:schema/:model',
+        element: <ModelDetails />,
+      },
+      {
+        path: '/models/:catalog/:schema/:model/versions/:version',
+        element: <ModelVersionDetails />,
       },
     ],
   },
