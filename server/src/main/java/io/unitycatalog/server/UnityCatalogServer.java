@@ -36,6 +36,7 @@ import io.unitycatalog.server.service.SchemaService;
 import io.unitycatalog.server.service.Scim2UserService;
 import io.unitycatalog.server.service.TableService;
 import io.unitycatalog.server.service.TemporaryModelVersionCredentialsService;
+import io.unitycatalog.server.service.TemporaryPathCredentialsService;
 import io.unitycatalog.server.service.TemporaryTableCredentialsService;
 import io.unitycatalog.server.service.TemporaryVolumeCredentialsService;
 import io.unitycatalog.server.service.VolumeService;
