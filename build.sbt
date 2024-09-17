@@ -3,7 +3,7 @@ import java.io.File
 import Tarball.createTarballSettings
 import sbt.util
 import sbtlicensereport.license.{DepModuleInfo, LicenseCategory, LicenseInfo}
-import ReleaseSettings.{javaOnlyReleaseSettings, rootReleaseSettings, skipReleaseSettings}
+import ReleaseSettings.*
 
 import scala.language.implicitConversions
 
@@ -44,6 +44,9 @@ lazy val commonSettings = Seq(
     "org.apache.logging.log4j" % "log4j-api" % "2.23.1"
   ),
   resolvers += Resolver.mavenLocal,
+  // TODO: remove the following two resolvers once the official releases are out
+  resolvers += "Apache Spark 3.5.3 Staging" at "https://repository.apache.org/content/repositories/orgapachespark-1467/",
+  resolvers += "Delta 3.2.1 Staging" at "https://oss.sonatype.org/content/repositories/iodelta-1167",
   autoScalaLibrary := false,
   crossPaths := false,  // No scala cross building
   assembly / assemblyMergeStrategy := {
@@ -120,7 +123,7 @@ lazy val controlApi = (project in file("target/control/java"))
   .settings(
     name := s"$artifactNamePrefix-controlapi",
     commonSettings,
-    javaOnlyReleaseSettings,
+    skipReleaseSettings,
     libraryDependencies ++= Seq(
       "jakarta.annotation" % "jakarta.annotation-api" % "3.0.0" % Provided,
       "com.fasterxml.jackson.core" % "jackson-annotations" % jacksonVersion,
@@ -159,7 +162,6 @@ lazy val controlApi = (project in file("target/control/java"))
 lazy val client = (project in file("target/clients/java"))
   .enablePlugins(OpenApiGeneratorPlugin)
   .disablePlugins(JavaFormatterPlugin)
-  .dependsOn(controlApi % "compile->compile")
   .settings(
     name := s"$artifactNamePrefix-client",
     commonSettings,
@@ -224,7 +226,7 @@ lazy val apiDocs = (project in file("api"))
   .enablePlugins(OpenApiGeneratorPlugin)
   .settings(
     name := s"$artifactNamePrefix-docs",
-
+    skipReleaseSettings,
     // OpenAPI generation specs
     openApiInputSpec := (file("api") / "all.yaml").toString,
     openApiGeneratorName := "markdown",
@@ -343,6 +345,7 @@ lazy val serverModels = (project in file("server") / "target" / "models")
   .settings(
     name := s"$artifactNamePrefix-servermodels",
     commonSettings,
+    skipReleaseSettings,
     (Compile / compile) := ((Compile / compile) dependsOn generate).value,
     Compile / compile / javacOptions ++= javacRelease17,
     libraryDependencies ++= Seq(
@@ -378,6 +381,7 @@ lazy val controlModels = (project in file("server") / "target" / "controlmodels"
   .settings(
     name := s"$artifactNamePrefix-controlmodels",
     commonSettings,
+    skipReleaseSettings,
     (Compile / compile) := ((Compile / compile) dependsOn generate).value,
     Compile / compile / javacOptions ++= javacRelease17,
     libraryDependencies ++= Seq(
@@ -410,6 +414,7 @@ lazy val controlModels = (project in file("server") / "target" / "controlmodels"
 lazy val cli = (project in file("examples") / "cli")
   .dependsOn(server % "test->test")
   .dependsOn(client % "compile->compile;test->test")
+  .dependsOn(controlApi % "compile->compile")
   .settings(
     name := s"$artifactNamePrefix-cli",
     mainClass := Some(orgName + ".cli.UnityCatalogCli"),
@@ -473,7 +478,7 @@ lazy val serverShaded = (project in file("server-shaded"))
     }
   )
 
-val sparkVersion = "3.5.1"
+val sparkVersion = "3.5.3"
 lazy val spark = (project in file("connectors/spark"))
   .dependsOn(client)
   .settings(
@@ -481,6 +486,7 @@ lazy val spark = (project in file("connectors/spark"))
     scalaVersion := scala212,
     crossScalaVersions := Seq(scala212, scala213),
     commonSettings,
+    scalaReleaseSettings,
     javaOptions ++= Seq(
       "--add-opens=java.base/sun.nio.ch=ALL-UNNAMED",
     ),
@@ -507,7 +513,7 @@ lazy val spark = (project in file("connectors/spark"))
       "org.mockito" % "mockito-junit-jupiter" % "5.12.0" % Test,
       "net.aichler" % "jupiter-interface" % JupiterKeys.jupiterVersion.value % Test,
       "org.apache.hadoop" % "hadoop-client-runtime" % "3.4.0",
-      "io.delta" %% "delta-spark" % "3.2.0" % Test,
+      "io.delta" %% "delta-spark" % "3.2.1" % Test,
     ),
     dependencyOverrides ++= Seq(
       "com.fasterxml.jackson.core" % "jackson-databind" % "2.15.0",

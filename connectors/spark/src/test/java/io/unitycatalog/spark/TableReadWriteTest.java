@@ -1,4 +1,4 @@
-package io.unitycatalog.connectors.spark;
+package io.unitycatalog.spark;
 
 import static io.unitycatalog.server.utils.TestUtils.*;
 import static org.assertj.core.api.Assertions.assertThat;
@@ -17,13 +17,11 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import org.apache.spark.network.util.JavaUtils;
-import org.apache.spark.sql.AnalysisException;
 import org.apache.spark.sql.Row;
 import org.apache.spark.sql.SparkSession;
 import org.apache.spark.sql.types.DataTypes;
 import org.apache.spark.sql.types.StructType;
 import org.junit.jupiter.api.BeforeEach;
-import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
@@ -128,7 +126,6 @@ public class TableReadWriteTest extends BaseSparkIntegrationTest {
     session.stop();
   }
 
-  @Disabled("Ignoring test until Delta 3.2.1 is released.")
   @ParameterizedTest
   @ValueSource(strings = {"s3", "gs", "abfs"})
   public void testCredentialDelta(String scheme) throws ApiException, IOException {
@@ -154,7 +151,6 @@ public class TableReadWriteTest extends BaseSparkIntegrationTest {
     session.stop();
   }
 
-  @Disabled("Ignoring test until Delta 3.2.1 is released.")
   @ParameterizedTest
   @ValueSource(strings = {"s3", "gs", "abfs"})
   public void testDeleteDeltaTable(String scheme) throws ApiException, IOException {
@@ -172,7 +168,6 @@ public class TableReadWriteTest extends BaseSparkIntegrationTest {
     session.stop();
   }
 
-  @Disabled("Ignoring test until Delta 3.2.1 is released.")
   @ParameterizedTest
   @ValueSource(strings = {"s3", "gs", "abfs"})
   public void testMergeDeltaTable(String scheme) throws ApiException, IOException {
@@ -199,7 +194,6 @@ public class TableReadWriteTest extends BaseSparkIntegrationTest {
     session.stop();
   }
 
-  @Disabled("Ignoring test until Delta 3.2.1 is released.")
   @ParameterizedTest
   @ValueSource(strings = {"s3", "gs", "abfs"})
   public void testUpdateDeltaTable(String scheme) throws ApiException, IOException {
@@ -228,8 +222,8 @@ public class TableReadWriteTest extends BaseSparkIntegrationTest {
     assertThat(tables[0].getString(1)).isEqualTo(PARQUET_TABLE);
 
     assertThatThrownBy(() -> session.sql("SHOW TABLES in a.b.c").collect())
-        .isInstanceOf(AnalysisException.class)
-        .hasMessageContaining("a.b.c");
+        .isInstanceOf(ApiException.class)
+        .hasMessageContaining("Nested namespaces are not supported");
 
     session.stop();
   }
@@ -243,7 +237,8 @@ public class TableReadWriteTest extends BaseSparkIntegrationTest {
     session.sql("DROP TABLE " + fullName).collect();
     assertFalse(session.catalog().tableExists(fullName));
     assertThatThrownBy(() -> session.sql("DROP TABLE a.b.c.d").collect())
-        .isInstanceOf(AnalysisException.class);
+        .isInstanceOf(ApiException.class)
+        .hasMessageContaining("Invalid table name");
     session.stop();
   }
 
@@ -269,23 +264,37 @@ public class TableReadWriteTest extends BaseSparkIntegrationTest {
 
   @Test
   public void testCreateExternalParquetTable() throws ApiException, IOException {
-    SparkSession session = createSparkSessionWithCatalogs(CATALOG_NAME);
-    String path = generateTableLocation(CATALOG_NAME, PARQUET_TABLE);
-    String fullTableName = CATALOG_NAME + "." + SCHEMA_NAME + "." + PARQUET_TABLE;
-    session
-        .sql(
-            "CREATE TABLE " + fullTableName + "(name STRING) USING PARQUET LOCATION '" + path + "'")
-        .collect();
-    assertTrue(session.catalog().tableExists(fullTableName));
-    TableInfo tableInfo = tableOperations.getTable(fullTableName);
-    assertEquals(1, tableInfo.getColumns().size());
-    assertEquals("name", tableInfo.getColumns().get(0).getName());
-    assertEquals(ColumnTypeName.STRING, tableInfo.getColumns().get(0).getTypeName());
+
+    SparkSession session = createSparkSessionWithCatalogs(SPARK_CATALOG, CATALOG_NAME);
+    String[] names = {SPARK_CATALOG, CATALOG_NAME};
+    for (String testCatalog : names) {
+      String path = generateTableLocation(testCatalog, PARQUET_TABLE);
+      String fullTableName = testCatalog + "." + SCHEMA_NAME + "." + PARQUET_TABLE;
+      String fullTableName2 = testCatalog + "." + SCHEMA_NAME + "." + ANOTHER_PARQUET_TABLE;
+
+      session.sql(
+          "CREATE TABLE "
+              + fullTableName
+              + " USING parquet LOCATION '"
+              + path
+              + "' as SELECT 1, 2, 3");
+      assertThat(session.sql("SELECT * FROM " + fullTableName).collectAsList().size() == 1);
+      String path2 = generateTableLocation(testCatalog, ANOTHER_PARQUET_TABLE);
+      session
+          .sql(
+              "CREATE TABLE "
+                  + fullTableName2
+                  + "(i INT, s STRING) USING PARQUET LOCATION '"
+                  + path2
+                  + "'")
+          .collect();
+      testTableReadWrite(fullTableName2, session);
+    }
+
     session.stop();
   }
 
-  // TODO: enable the test after the new Delta release.
-  // @Test
+  @Test
   public void testCreateExternalDeltaTable() throws ApiException, IOException {
     SparkSession session = createSparkSessionWithCatalogs(SPARK_CATALOG, CATALOG_NAME);
     String path1 = generateTableLocation(SPARK_CATALOG, DELTA_TABLE);
@@ -318,6 +327,73 @@ public class TableReadWriteTest extends BaseSparkIntegrationTest {
     assertEquals(DataTypes.StringType, schema2.apply(0).dataType());
 
     session.stop();
+  }
+
+  @Test
+  public void testCreateExternalTableWithoutLocation() {
+    SparkSession session = createSparkSessionWithCatalogs(CATALOG_NAME);
+
+    String fullTableName1 = CATALOG_NAME + "." + SCHEMA_NAME + "." + PARQUET_TABLE;
+    assertThatThrownBy(
+            () -> {
+              session.sql(
+                  "CREATE EXTERNAL TABLE " + fullTableName1 + "(name STRING) USING parquet");
+            })
+        .hasMessageContaining("Cannot create EXTERNAL TABLE without location");
+
+    String fullTableName2 = CATALOG_NAME + "." + SCHEMA_NAME + "." + DELTA_TABLE;
+    assertThatThrownBy(
+            () -> {
+              session.sql("CREATE EXTERNAL TABLE " + fullTableName2 + "(name STRING) USING delta");
+            })
+        .hasMessageContaining("Cannot create EXTERNAL TABLE without location");
+
+    session.close();
+  }
+
+  @Test
+  public void testCreateManagedParquetTable() throws IOException {
+    SparkSession session = createSparkSessionWithCatalogs(CATALOG_NAME);
+    String fullTableName = CATALOG_NAME + "." + SCHEMA_NAME + "." + PARQUET_TABLE;
+    String location = generateTableLocation(CATALOG_NAME, PARQUET_TABLE);
+    assertThatThrownBy(
+            () -> {
+              session.sql(
+                  String.format(
+                      "CREATE TABLE %s(name STRING) USING parquet TBLPROPERTIES(__FAKE_PATH__='%s')",
+                      fullTableName, location));
+            })
+        .hasMessageContaining("not support managed table");
+    session.close();
+  }
+
+  @Test
+  public void testCreateManagedDeltaTable() throws IOException {
+    SparkSession session = createSparkSessionWithCatalogs(SPARK_CATALOG, CATALOG_NAME);
+
+    String fullTableName1 = SPARK_CATALOG + "." + SCHEMA_NAME + "." + DELTA_TABLE;
+    String location1 = generateTableLocation(SPARK_CATALOG, DELTA_TABLE);
+    assertThatThrownBy(
+            () -> {
+              session.sql(
+                  String.format(
+                      "CREATE TABLE %s(name STRING) USING delta TBLPROPERTIES(__FAKE_PATH__='%s')",
+                      fullTableName1, location1));
+            })
+        .hasMessageContaining("not support managed table");
+
+    String fullTableName2 = CATALOG_NAME + "." + SCHEMA_NAME + "." + DELTA_TABLE;
+    String location2 = generateTableLocation(CATALOG_NAME, DELTA_TABLE);
+    assertThatThrownBy(
+            () -> {
+              session.sql(
+                  String.format(
+                      "CREATE TABLE %s(name STRING) USING delta TBLPROPERTIES(__FAKE_PATH__='%s')",
+                      fullTableName2, location2));
+            })
+        .hasMessageContaining("not support managed table");
+
+    session.close();
   }
 
   private String generateTableLocation(String catalogName, String tableName) throws IOException {

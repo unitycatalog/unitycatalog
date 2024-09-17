@@ -7,6 +7,7 @@ import io.unitycatalog.server.persist.dao.SchemaInfoDAO;
 import io.unitycatalog.server.persist.dao.VolumeInfoDAO;
 import io.unitycatalog.server.persist.utils.FileUtils;
 import io.unitycatalog.server.persist.utils.HibernateUtils;
+import io.unitycatalog.server.utils.IdentityUtils;
 import io.unitycatalog.server.utils.ValidationUtils;
 import java.util.Date;
 import java.util.Optional;
@@ -40,6 +41,8 @@ public class VolumeRepository {
             + createVolumeRequest.getSchemaName()
             + "."
             + createVolumeRequest.getName();
+    String callerId = IdentityUtils.findPrincipalEmailAddress();
+    Long createTime = System.currentTimeMillis();
     VolumeInfo volumeInfo = new VolumeInfo();
     volumeInfo.setVolumeId(UUID.randomUUID().toString());
     volumeInfo.setCatalogName(createVolumeRequest.getCatalogName());
@@ -47,7 +50,11 @@ public class VolumeRepository {
     volumeInfo.setName(createVolumeRequest.getName());
     volumeInfo.setComment(createVolumeRequest.getComment());
     volumeInfo.setFullName(volumeFullName);
-    volumeInfo.setCreatedAt(System.currentTimeMillis());
+    volumeInfo.setOwner(callerId);
+    volumeInfo.setCreatedAt(createTime);
+    volumeInfo.setCreatedBy(callerId);
+    volumeInfo.setUpdatedAt(createTime);
+    volumeInfo.setUpdatedBy(callerId);
     volumeInfo.setVolumeType(createVolumeRequest.getVolumeType());
     if (VolumeType.MANAGED.equals(createVolumeRequest.getVolumeType())) {
       throw new BaseException(
@@ -216,6 +223,7 @@ public class VolumeRepository {
     if (updateVolumeRequest.getNewName() != null) {
       ValidationUtils.validateSqlObjectName(updateVolumeRequest.getNewName());
     }
+    String callerId = IdentityUtils.findPrincipalEmailAddress();
     String[] namespace = name.split("\\.");
     String catalog = namespace[0], schema = namespace[1], volume = namespace[2];
     try (Session session = SESSION_FACTORY.openSession()) {
@@ -245,6 +253,7 @@ public class VolumeRepository {
           volumeInfo.setComment(updateVolumeRequest.getComment());
         }
         volumeInfo.setUpdatedAt(new Date());
+        volumeInfo.setUpdatedBy(callerId);
         session.merge(volumeInfo);
         tx.commit();
         LOGGER.info("Updated volume: {}", volumeInfo.getName());
