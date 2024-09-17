@@ -2122,7 +2122,6 @@ components:
       required:
         - url
         - operation
-    # TODO: should we create a new schema for this? or just use temp table credential response?
     TemporaryCredentials:
       type: object
       properties:
