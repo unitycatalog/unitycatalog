@@ -30,7 +30,7 @@ public class TemporaryModelVersionCredentialsService {
 
     @Post("")
     public HttpResponse generateTemporaryModelVersionCredentials(
-            GenerateTemporaryModelVersionCredentials generateTemporaryModelVersionCredentials) {
+            GenerateTemporaryModelVersionCredential generateTemporaryModelVersionCredentials) {
 
         long modelVersion = generateTemporaryModelVersionCredentials.getVersion();
         String catalogName = generateTemporaryModelVersionCredentials.getCatalogName();
@@ -55,8 +55,7 @@ public class TemporaryModelVersionCredentialsService {
         return HttpResponse.ofJson(
                 credentialOps.vendCredential(
                         modelVersionInfo.getStorageLocation(),
-                        modelVersionOperationToPrivileges(requestedOperation))
-                        .toModelVersionCredentialsResponse());
+                        modelVersionOperationToPrivileges(requestedOperation)));
     }
 
     private Set<CredentialContext.Privilege> modelVersionOperationToPrivileges(ModelVersionOperation modelVersionOperation) {

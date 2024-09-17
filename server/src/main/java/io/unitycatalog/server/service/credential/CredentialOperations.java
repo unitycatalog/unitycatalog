@@ -30,7 +30,7 @@ public class CredentialOperations {
     this.gcpCredentialVendor = new GcpCredentialVendor();
   }
 
-  public CredentialResponse vendCredential(String path, Set<CredentialContext.Privilege> privileges) {
+  public TemporaryCredentials vendCredential(String path, Set<CredentialContext.Privilege> privileges) {
     if (path == null || path.isEmpty()) {
       throw new BaseException(ErrorCode.FAILED_PRECONDITION, "Storage location is null or empty.");
     }
@@ -40,30 +40,30 @@ public class CredentialOperations {
     return vendCredential(credentialContext);
   }
 
-  public CredentialResponse vendCredential(CredentialContext context) {
-    CredentialResponse.CredentialResponseBuilder builder = new CredentialResponse.CredentialResponseBuilder();
+  public TemporaryCredentials vendCredential(CredentialContext context) {
+    TemporaryCredentials temporaryCredentials = new TemporaryCredentials();
 
     switch (context.getStorageScheme()) {
       case URI_SCHEME_ABFS, URI_SCHEME_ABFSS -> {
         AzureCredential azureCredential = vendAzureCredential(context);
-        builder.azureUserDelegationSas(new AzureUserDelegationSAS().sasToken(azureCredential.getSasToken()))
+        temporaryCredentials.azureUserDelegationSas(new AzureUserDelegationSAS().sasToken(azureCredential.getSasToken()))
           .expirationTime(azureCredential.getExpirationTimeInEpochMillis());
       }
       case URI_SCHEME_GS -> {
         AccessToken gcpToken = vendGcpToken(context);
-        builder.gcpOauthToken(new GcpOauthToken().oauthToken(gcpToken.getTokenValue()))
+        temporaryCredentials.gcpOauthToken(new GcpOauthToken().oauthToken(gcpToken.getTokenValue()))
           .expirationTime(gcpToken.getExpirationTime().getTime());
       }
       case URI_SCHEME_S3 -> {
         Credentials awsSessionCredentials = vendAwsCredential(context);
-        builder.awsTempCredentials(new AwsCredentials()
+        temporaryCredentials.awsTempCredentials(new AwsCredentials()
           .accessKeyId(awsSessionCredentials.accessKeyId())
           .secretAccessKey(awsSessionCredentials.secretAccessKey())
           .sessionToken(awsSessionCredentials.sessionToken()));
       }
     }
 
-    return builder.build();
+    return temporaryCredentials;
   }
 
   public Credentials vendAwsCredential(CredentialContext context) {
@@ -77,5 +77,4 @@ public class CredentialOperations {
   public AccessToken vendGcpToken(CredentialContext context) {
     return gcpCredentialVendor.vendGcpToken(context);
   }
-
 }

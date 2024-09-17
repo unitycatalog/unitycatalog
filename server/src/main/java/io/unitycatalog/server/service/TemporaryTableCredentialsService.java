@@ -35,8 +35,7 @@ public class TemporaryTableCredentialsService {
     TableInfo tableInfo = TABLE_REPOSITORY.getTableById(tableId);
     return HttpResponse.ofJson(credentialOps
             .vendCredential(tableInfo.getStorageLocation(),
-                    tableOperationToPrivileges(generateTemporaryTableCredential.getOperation()))
-            .toTableCredentialResponse());
+                    tableOperationToPrivileges(generateTemporaryTableCredential.getOperation())));
   }
 
   private Set<CredentialContext.Privilege> tableOperationToPrivileges(TableOperation tableOperation) {

@@ -41,8 +41,7 @@ public class TemporaryVolumeCredentialsService {
     return HttpResponse.ofJson(
             credentialOps.vendCredential(
                     volumeInfo.getStorageLocation(),
-                    volumeOperationToPrivileges(generateTemporaryVolumeCredential.getOperation()))
-                    .toVolumeCredentialResponse());
+                    volumeOperationToPrivileges(generateTemporaryVolumeCredential.getOperation())));
   }
 
   private Set<CredentialContext.Privilege> volumeOperationToPrivileges(VolumeOperation volumeOperation) {

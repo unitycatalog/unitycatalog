@@ -14,7 +14,7 @@ import io.unitycatalog.cli.utils.CliUtils;
 import io.unitycatalog.client.ApiClient;
 import io.unitycatalog.client.ApiException;
 import io.unitycatalog.client.api.TablesApi;
-import io.unitycatalog.client.api.TemporaryTableCredentialsApi;
+import io.unitycatalog.client.api.TemporaryCredentialsApi;
 import io.unitycatalog.client.model.*;
 import java.net.URI;
 import java.nio.file.Path;
@@ -31,8 +31,7 @@ public class TableCli {
   public static void handle(CommandLine cmd, ApiClient apiClient)
       throws JsonProcessingException, ApiException {
     TablesApi tablesApi = new TablesApi(apiClient);
-    TemporaryTableCredentialsApi temporaryTableCredentialsApi =
-        new TemporaryTableCredentialsApi(apiClient);
+    TemporaryCredentialsApi temporaryTableCredentialsApi = new TemporaryCredentialsApi(apiClient);
     String[] subArgs = cmd.getArgs();
     String subCommand = subArgs[1];
     objectWriter = CliUtils.getObjectWriter(cmd);
@@ -154,9 +153,7 @@ public class TableCli {
   }
 
   private static String readTable(
-      TemporaryTableCredentialsApi temporaryTableCredentialsApi,
-      TablesApi tablesApi,
-      JSONObject json)
+      TemporaryCredentialsApi temporaryTableCredentialsApi, TablesApi tablesApi, JSONObject json)
       throws ApiException {
     String fullTableName = json.getString(CliParams.FULL_NAME.getServerParam());
     TableInfo info = tablesApi.getTable(fullTableName);
@@ -179,9 +176,7 @@ public class TableCli {
   }
 
   private static String writeTable(
-      TemporaryTableCredentialsApi temporaryTableCredentialsApi,
-      TablesApi tablesApi,
-      JSONObject json)
+      TemporaryCredentialsApi temporaryTableCredentialsApi, TablesApi tablesApi, JSONObject json)
       throws ApiException {
     String fullTableName = json.getString(CliParams.FULL_NAME.getServerParam());
     TableInfo info = tablesApi.getTable(fullTableName);
@@ -208,9 +203,9 @@ public class TableCli {
   }
 
   public static AwsCredentials getTemporaryTableCredentials(
-      TemporaryTableCredentialsApi apiClient, String tableId, TableOperation operation)
+      TemporaryCredentialsApi apiClient, String tableId, TableOperation operation)
       throws ApiException {
-    GenerateTemporaryTableCredentialResponse temporaryTableCredentialResponse =
+    TemporaryCredentials temporaryTableCredentialResponse =
         apiClient.generateTemporaryTableCredentials(
             new GenerateTemporaryTableCredential().tableId(tableId).operation(operation));
     return temporaryTableCredentialResponse.getAwsTempCredentials();

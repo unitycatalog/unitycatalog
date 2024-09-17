@@ -98,6 +98,7 @@ public class UnityCatalogServer {
     TableService tableService = new TableService();
     FunctionService functionService = new FunctionService();
     ModelService modelService = new ModelService();
+    // TODO: combine these into a single service in a follow-up PR
     TemporaryTableCredentialsService temporaryTableCredentialsService =
         new TemporaryTableCredentialsService(credentialOperations);
     TemporaryVolumeCredentialsService temporaryVolumeCredentialsService =

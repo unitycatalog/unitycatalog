@@ -29,8 +29,7 @@ public class TemporaryPathCredentialsService {
         return HttpResponse.ofJson(
                 credentialOps.vendCredential(
                         generateTemporaryPathCredential.getUrl(),
-                        pathOperationToPrivileges(generateTemporaryPathCredential.getOperation()))
-                        .toPathCredentialResponse());
+                        pathOperationToPrivileges(generateTemporaryPathCredential.getOperation())));
     }
 
     private Set<CredentialContext.Privilege> pathOperationToPrivileges(PathOperation pathOperation) {
