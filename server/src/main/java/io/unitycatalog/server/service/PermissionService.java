@@ -99,7 +99,7 @@ public class PermissionService {
     return getAuthorization(VOLUME, name);
   }
 
-  @Get("/registered_model/{name}")
+  @Get("/registered-model/{name}")
   public HttpResponse getRegisteredModelAuthorization(
       @Param("name") String name) {
     return getAuthorization(REGISTERED_MODEL, name);
@@ -199,7 +199,7 @@ public class PermissionService {
     return updateAuthorization(VOLUME, name, request);
   }
 
-  @Patch("/registered_model/{name}")
+  @Patch("/registered-model/{name}")
   @AuthorizeExpression(
       "#authorize(#principal, #metastore, OWNER) || #authorize(#principal, #registered_model, OWNER)")
   @AuthorizeKey(METASTORE)
