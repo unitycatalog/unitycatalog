@@ -9,7 +9,7 @@ export interface ModelInterface {
   comment: string;
   full_name: string;
   created_at: number;
-  created_by: string;
+  created_by: string | null;
   updated_at: number | null;
   updated_by: string | null;
   registered_model_id: string;

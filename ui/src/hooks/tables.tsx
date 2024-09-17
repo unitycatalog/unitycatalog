@@ -25,7 +25,7 @@ export interface TableInterface {
   data_source_format: string;
   columns: ColumnInterface[];
   owner: string | null;
-  created_by: string;
+  created_by: string | null;
   updated_by: string | null;
 }
 interface ListTablesResponse {

@@ -14,7 +14,7 @@ export interface SchemaInterface {
   created_at: number;
   updated_at: number | null;
   owner: string | null;
-  created_by: string;
+  created_by: string | null;
   updated_by: string | null;
 }
 interface ListSchemasResponse {
