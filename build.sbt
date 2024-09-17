@@ -493,7 +493,7 @@ lazy val spark = (project in file("connectors/spark"))
     javaCheckstyleSettings(file("dev/checkstyle-config.xml")),
     Compile / compile / javacOptions ++= javacRelease11,
     libraryDependencies ++= Seq(
-      "org.apache.spark" %% "spark-sql" % sparkVersion,
+      "org.apache.spark" %% "spark-sql" % sparkVersion % Provided,
       "com.fasterxml.jackson.core" % "jackson-databind" % "2.15.0",
       "com.fasterxml.jackson.module" %% "jackson-module-scala" % "2.15.0",
       "com.fasterxml.jackson.core" % "jackson-annotations" % "2.15.0",
