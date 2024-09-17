@@ -1,4 +1,4 @@
-# GenerateTemporaryModelVersionCredentials
+# GenerateTemporaryModelVersionCredential
 ## Properties
 
 | Name | Type | Description | Notes |
