@@ -30,72 +30,40 @@ public class CredentialOperations {
     this.gcpCredentialVendor = new GcpCredentialVendor();
   }
 
-  public GenerateTemporaryTableCredentialResponse vendCredentialForTable(TableInfo table, Set<CredentialContext.Privilege> privileges) {
-    String tableStorageLocation = table.getStorageLocation();
-    if (tableStorageLocation == null || tableStorageLocation.isEmpty()) {
-      throw new BaseException(ErrorCode.FAILED_PRECONDITION, "Table storage location not found.");
+  public TemporaryCredentials vendCredential(String path, Set<CredentialContext.Privilege> privileges) {
+    if (path == null || path.isEmpty()) {
+      throw new BaseException(ErrorCode.FAILED_PRECONDITION, "Storage location is null or empty.");
     }
-
-    URI storageLocationUri = URI.create(tableStorageLocation);
-
+    URI storageLocationUri = URI.create(path);
     // TODO: At some point, we need to check if user/subject has privileges they are asking for
     CredentialContext credentialContext = CredentialContext.create(storageLocationUri, privileges);
-
-    return vendCredential(credentialContext).toTableCredentialResponse();
+    return vendCredential(credentialContext);
   }
 
-  public GenerateTemporaryModelVersionCredentialsResponse vendCredentialForModelVersion(ModelVersionInfo modelVersionInfo, Set<CredentialContext.Privilege> privileges) {
-    String mvStorageLocation = modelVersionInfo.getStorageLocation();
-    if (mvStorageLocation == null || mvStorageLocation.isEmpty()) {
-      throw new BaseException(ErrorCode.FAILED_PRECONDITION, "Model version storage location not found.");
-    }
-
-    URI storageLocationUri = URI.create(mvStorageLocation);
-
-    // TODO: At some point, we need to check if user/subject has privileges they are asking for
-    CredentialContext credentialContext = CredentialContext.create(storageLocationUri, privileges);
-
-    return vendCredential(credentialContext).toModelVersionCredentialsResponse();
-  }
-
-  public GenerateTemporaryVolumeCredentialResponse vendCredentialForVolume(VolumeInfo volume, Set<CredentialContext.Privilege> privileges) {
-    String volumePath = volume.getStorageLocation();
-    if (volumePath == null || volumePath.isEmpty()) {
-      throw new BaseException(ErrorCode.FAILED_PRECONDITION, "Volume storage location not found.");
-    }
-
-    URI storageLocationUri = URI.create(volumePath);
-
-    // TODO: At some point, we need to check if user/subject has privileges they are asking for
-    CredentialContext credentialContext = CredentialContext.create(storageLocationUri, privileges);
-
-    return vendCredential(credentialContext).toVolumeCredentialResponse();
-  }
-
-  public CredentialResponse vendCredential(CredentialContext context) {
-    CredentialResponse.CredentialResponseBuilder builder = new CredentialResponse.CredentialResponseBuilder();
+  public TemporaryCredentials vendCredential(CredentialContext context) {
+    TemporaryCredentials temporaryCredentials = new TemporaryCredentials();
 
     switch (context.getStorageScheme()) {
       case URI_SCHEME_ABFS, URI_SCHEME_ABFSS -> {
         AzureCredential azureCredential = vendAzureCredential(context);
-        builder.azureUserDelegationSas(new AzureUserDelegationSAS().sasToken(azureCredential.getSasToken()))
+        temporaryCredentials.azureUserDelegationSas(new AzureUserDelegationSAS().sasToken(azureCredential.getSasToken()))
           .expirationTime(azureCredential.getExpirationTimeInEpochMillis());
       }
       case URI_SCHEME_GS -> {
         AccessToken gcpToken = vendGcpToken(context);
-        builder.gcpOauthToken(new GcpOauthToken().oauthToken(gcpToken.getTokenValue()))
+        temporaryCredentials.gcpOauthToken(new GcpOauthToken().oauthToken(gcpToken.getTokenValue()))
           .expirationTime(gcpToken.getExpirationTime().getTime());
       }
       case URI_SCHEME_S3 -> {
         Credentials awsSessionCredentials = vendAwsCredential(context);
-        builder.awsTempCredentials(new AwsCredentials()
+        temporaryCredentials.awsTempCredentials(new AwsCredentials()
           .accessKeyId(awsSessionCredentials.accessKeyId())
           .secretAccessKey(awsSessionCredentials.secretAccessKey())
           .sessionToken(awsSessionCredentials.sessionToken()));
       }
     }
 
-    return builder.build();
+    return temporaryCredentials;
   }
 
   public Credentials vendAwsCredential(CredentialContext context) {
@@ -109,5 +77,4 @@ public class CredentialOperations {
   public AccessToken vendGcpToken(CredentialContext context) {
     return gcpCredentialVendor.vendGcpToken(context);
   }
-
 }

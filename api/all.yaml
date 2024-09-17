@@ -29,6 +29,9 @@ tags:
     description: |
       Model versions contain all artifact files associated with an individual machine learning model. They are associated with a single parent model and have an integer identifier, indicating the version number of the model.
       Model versions are referenced via model URI's using the Unity Catalog three-level namespace of the registered model and the version identifier.
+  - name: TemporaryCredentials
+    description: |
+      Temporary credentials are used to access storage locations or assets for a limited lifetime.
 paths:
   /catalogs:
     post:
@@ -594,25 +597,25 @@ paths:
     post:
       operationId: generateTemporaryModelVersionCredentials
       tags:
-        - TemporaryModelVersionCredentials
+        - TemporaryCredentials
       summary: Generate temporary model version credentials. These credentials are used by clients to write and retrieve model artifacts from the model versions external storage location.
       requestBody:
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/GenerateTemporaryModelVersionCredentials'
+              $ref: '#/components/schemas/GenerateTemporaryModelVersionCredential'
       responses:
         '200':
           description: Successful response
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/GenerateTemporaryModelVersionCredentialsResponse'
+                $ref: '#/components/schemas/TemporaryCredentials'
   /temporary-table-credentials:
     post:
       operationId: generateTemporaryTableCredentials
       tags:
-        - TemporaryTableCredentials
+        - TemporaryCredentials
       summary: Generate temporary table credentials.
       requestBody:
         content:
@@ -625,12 +628,12 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/GenerateTemporaryTableCredentialResponse'
+                $ref: '#/components/schemas/TemporaryCredentials'
   /temporary-volume-credentials:
     post:
       operationId: generateTemporaryVolumeCredentials
       tags:
-        - TemporaryVolumeCredentials
+        - TemporaryCredentials
       summary: Generate temporary volume credentials.
       requestBody:
         content:
@@ -643,7 +646,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/GenerateTemporaryVolumeCredentialResponse'
+                $ref: '#/components/schemas/TemporaryCredentials'
   "/functions":
     post:
       tags:
@@ -1035,6 +1038,24 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ModelVersionInfo'
+  /temporary-path-credentials:
+    post:
+      operationId: generateTemporaryPathCredentials
+      tags:
+        - TemporaryCredentials
+      summary: Generate temporary path credentials.
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/GenerateTemporaryPathCredential'
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TemporaryCredentials'
 components:
   schemas:
     SecurablePropertiesMap:
@@ -1773,7 +1794,7 @@ components:
           description: |
             Opaque token to retrieve the next page of results. Absent if there are no more pages.
             __page_token__ should be set to this value for the next request (for the next page of results).
-    GenerateTemporaryModelVersionCredentials:
+    GenerateTemporaryModelVersionCredential:
       example:
         catalog_name: catalog_name
         schema_name: schema_name
@@ -1810,24 +1831,6 @@ components:
         - model_name
         - version
         - operation
-    GenerateTemporaryModelVersionCredentialsResponse:
-      properties:
-        aws_temp_credentials:
-          $ref: '#/components/schemas/AwsCredentials'
-        azure_user_delegation_sas:
-          $ref: '#/components/schemas/AzureUserDelegationSAS'
-        gcp_oauth_token:
-          $ref: '#/components/schemas/GcpOauthToken'
-        expiration_time:
-          description: |
-            Server time when the credential will expire, in epoch milliseconds.
-            The API client is advised to cache the credential given this expiration time.
-          type: integer
-          format: int64
-        url:
-          description: The URL of the storage path accessible by the temporary credential.
-          type: string
-      type: object
     ModelVersionOperation:
       enum:
         - UNKNOWN_MODEL_VERSION_OPERATION
@@ -1850,21 +1853,6 @@ components:
       required:
         - table_id
         - operation
-    GenerateTemporaryTableCredentialResponse:
-      properties:
-        aws_temp_credentials:
-          $ref: '#/components/schemas/AwsCredentials'
-        azure_user_delegation_sas:
-          $ref: '#/components/schemas/AzureUserDelegationSAS'
-        gcp_oauth_token:
-          $ref: '#/components/schemas/GcpOauthToken'
-        expiration_time:
-          description: |
-            Server time when the credential will expire, in epoch milliseconds.
-            The API client is advised to cache the credential given this expiration time.
-          type: integer
-          format: int64
-      type: object
     TableOperation:
       enum:
         - UNKNOWN_TABLE_OPERATION
@@ -1909,21 +1897,6 @@ components:
       required:
         - volume_id
         - operation
-    GenerateTemporaryVolumeCredentialResponse:
-      properties:
-        aws_temp_credentials:
-          $ref: '#/components/schemas/AwsCredentials'
-        azure_user_delegation_sas:
-          $ref: '#/components/schemas/AzureUserDelegationSAS'
-        gcp_oauth_token:
-          $ref: '#/components/schemas/GcpOauthToken'
-        expiration_time:
-          description: |
-            Server time when the credential will expire, in epoch milliseconds.
-            The API client is advised to cache the credential given this expiration time.
-          type: integer
-          format: int64
-      type: object
     VolumeOperation:
       enum:
         - UNKNOWN_VOLUME_OPERATION
@@ -2138,6 +2111,40 @@ components:
       required:
         - full_name
         - version
+    GenerateTemporaryPathCredential:
+      type: object
+      properties:
+        url:
+          description: The URL of the storage path for which temporary credentials need to be generated.
+          type: string
+        operation:
+          $ref: '#/components/schemas/PathOperation'
+      required:
+        - url
+        - operation
+    TemporaryCredentials:
+      type: object
+      properties:
+        aws_temp_credentials:
+          $ref: '#/components/schemas/AwsCredentials'
+        azure_user_delegation_sas:
+          $ref: '#/components/schemas/AzureUserDelegationSAS'
+        gcp_oauth_token:
+          $ref: '#/components/schemas/GcpOauthToken'
+        expiration_time:
+          description: |
+            Server time when the credential will expire, in epoch milliseconds.
+            The API client is advised to cache the credential given this expiration time.
+          type: integer
+          format: int64
+    PathOperation:
+      enum:
+        - UNKNOWN_PATH_OPERATION
+        - PATH_READ
+        - PATH_READ_WRITE
+        - PATH_CREATE_TABLE
+        - PATH_REFRESH
+      type: string
 info:
   title: Unity Catalog API
   version: '0.1'

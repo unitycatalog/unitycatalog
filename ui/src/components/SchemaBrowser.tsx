@@ -15,6 +15,8 @@ import { useListSchemas } from '../hooks/schemas';
 import { useListTables } from '../hooks/tables';
 import { useListVolumes } from '../hooks/volumes';
 import { useListFunctions } from '../hooks/functions';
+import { useListModels } from '../hooks/models';
+import { SchemaTabs } from '../pages/SchemaDetails';
 
 export default function SchemaBrowser() {
   const navigate = useNavigate();
@@ -67,6 +69,17 @@ export default function SchemaBrowser() {
     },
   });
 
+  const listModelsRequest = useListModels({
+    catalog: entityToExpand.catalog,
+    schema: entityToExpand.schema,
+    options: {
+      enabled:
+        !!entityToExpand.catalog &&
+        !!entityToExpand.schema &&
+        entityToExpand.type === 'registered_models',
+    },
+  });
+
   useEffect(() => {
     setExpendedKeys([]); // Collapse all nodes when list catalog updates
     setTreeData(
@@ -111,19 +124,25 @@ export default function SchemaBrowser() {
                   title: 'Tables',
                   key: `${catalog_name}.${name}:tables`,
                   isLeaf: false,
-                  selectable: false,
+                  selectable: true,
                 },
                 {
                   title: 'Volumes',
                   key: `${catalog_name}.${name}:volumes`,
                   isLeaf: false,
-                  selectable: false,
+                  selectable: true,
                 },
                 {
                   title: 'Functions',
                   key: `${catalog_name}.${name}:functions`,
                   isLeaf: false,
-                  selectable: false,
+                  selectable: true,
+                },
+                {
+                  title: 'Models',
+                  key: `${catalog_name}.${name}:registered_models`,
+                  isLeaf: false,
+                  selectable: true,
                 },
               ],
             }))
@@ -168,6 +187,15 @@ export default function SchemaBrowser() {
     }
   }, [entityToExpand, listFunctionsRequest.data?.functions]);
 
+  useEffect(() => {
+    if (entityToExpand.type === 'registered_models') {
+      const entityList = listModelsRequest.data?.registered_models ?? [];
+      setTreeData((treeData) =>
+        updateEntityTreeData({ treeData, entityToExpand, entityList }),
+      );
+    }
+  }, [entityToExpand, listModelsRequest.data?.registered_models]);
+
   return (
     <div style={{ height: '100%', overflowY: 'auto' }}>
       <Typography.Title
@@ -206,7 +234,26 @@ export default function SchemaBrowser() {
             const [entityFullName, type] = (key as string)?.split(':');
             if (type === 'no-data') return;
             const [catalog, schema, entity] = entityFullName?.split('.');
-            if (type && entity) {
+            if (type && !entity) {
+              switch (type) {
+                case 'tables':
+                  return navigate(`/data/${catalog}/${schema}`, {
+                    state: { tab: SchemaTabs.Tables },
+                  });
+                case 'volumes':
+                  return navigate(`/data/${catalog}/${schema}`, {
+                    state: { tab: SchemaTabs.Volumes },
+                  });
+                case 'functions':
+                  return navigate(`/data/${catalog}/${schema}`, {
+                    state: { tab: SchemaTabs.Functions },
+                  });
+                case 'registered_models':
+                  return navigate(`/data/${catalog}/${schema}`, {
+                    state: { tab: SchemaTabs.Models },
+                  });
+              }
+            } else if (type && entity) {
               switch (type) {
                 case 'tables':
                   return navigate(`/data/${catalog}/${schema}/${entity}`);
@@ -214,6 +261,8 @@ export default function SchemaBrowser() {
                   return navigate(`/volumes/${catalog}/${schema}/${entity}`);
                 case 'functions':
                   return navigate(`/functions/${catalog}/${schema}/${entity}`);
+                case 'registered_models':
+                  return navigate(`/models/${catalog}/${schema}/${entity}`);
               }
             } else if (schema) {
               navigate(`/data/${catalog}/${schema}`);

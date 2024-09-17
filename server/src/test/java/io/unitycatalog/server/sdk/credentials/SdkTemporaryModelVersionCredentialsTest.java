@@ -3,7 +3,7 @@ package io.unitycatalog.server.sdk.credentials;
 import io.unitycatalog.server.base.ServerConfig;
 import io.unitycatalog.server.base.catalog.CatalogOperations;
 import io.unitycatalog.server.base.credentials.BaseTemporaryModelVersionCredentialsTest;
-import io.unitycatalog.server.base.credentials.TemporaryModelVersionCredentialsOperations;
+import io.unitycatalog.server.base.credentials.TemporaryCredentialsOperations;
 import io.unitycatalog.server.base.model.ModelOperations;
 import io.unitycatalog.server.base.schema.SchemaOperations;
 import io.unitycatalog.server.sdk.catalog.SdkCatalogOperations;
@@ -30,8 +30,8 @@ public class SdkTemporaryModelVersionCredentialsTest
   }
 
   @Override
-  protected TemporaryModelVersionCredentialsOperations
-      createTemporaruModelVersionCredentialsOperations(ServerConfig config) {
-    return new SdkTemporaryModelVersionCredentialsOperations(TestUtils.createApiClient(config));
+  protected TemporaryCredentialsOperations createTemporaryCredentialsOperations(
+      ServerConfig config) {
+    return new SdkTemporaryCredentialsOperations(TestUtils.createApiClient(config));
   }
 }

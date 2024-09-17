@@ -36,9 +36,10 @@ All URIs are relative to *http://localhost:8080/api/2.1/unity-catalog*
 *TablesApi* | [**deleteTable**](Apis/TablesApi.md#deletetable) | **DELETE** /tables/{full_name} | Delete a table |
 *TablesApi* | [**getTable**](Apis/TablesApi.md#gettable) | **GET** /tables/{full_name} | Get a table |
 *TablesApi* | [**listTables**](Apis/TablesApi.md#listtables) | **GET** /tables | List tables |
-| *TemporaryModelVersionCredentialsApi* | [**generateTemporaryModelVersionCredentials**](Apis/TemporaryModelVersionCredentialsApi.md#generatetemporarymodelversioncredentials) | **POST** /temporary-model-version-credentials | Generate temporary model version credentials. These credentials are used by clients to write and retrieve model artifacts from the model versions external storage location. |
-| *TemporaryTableCredentialsApi* | [**generateTemporaryTableCredentials**](Apis/TemporaryTableCredentialsApi.md#generatetemporarytablecredentials) | **POST** /temporary-table-credentials | Generate temporary table credentials. |
-| *TemporaryVolumeCredentialsApi* | [**generateTemporaryVolumeCredentials**](Apis/TemporaryVolumeCredentialsApi.md#generatetemporaryvolumecredentials) | **POST** /temporary-volume-credentials | Generate temporary volume credentials. |
+| *TemporaryCredentialsApi* | [**generateTemporaryModelVersionCredentials**](Apis/TemporaryCredentialsApi.md#generatetemporarymodelversioncredentials) | **POST** /temporary-model-version-credentials | Generate temporary model version credentials. These credentials are used by clients to write and retrieve model artifacts from the model versions external storage location. |
+*TemporaryCredentialsApi* | [**generateTemporaryPathCredentials**](Apis/TemporaryCredentialsApi.md#generatetemporarypathcredentials) | **POST** /temporary-path-credentials | Generate temporary path credentials. |
+*TemporaryCredentialsApi* | [**generateTemporaryTableCredentials**](Apis/TemporaryCredentialsApi.md#generatetemporarytablecredentials) | **POST** /temporary-table-credentials | Generate temporary table credentials. |
+*TemporaryCredentialsApi* | [**generateTemporaryVolumeCredentials**](Apis/TemporaryCredentialsApi.md#generatetemporaryvolumecredentials) | **POST** /temporary-volume-credentials | Generate temporary volume credentials. |
 | *VolumesApi* | [**createVolume**](Apis/VolumesApi.md#createvolume) | **POST** /volumes | Create a Volume |
 *VolumesApi* | [**deleteVolume**](Apis/VolumesApi.md#deletevolume) | **DELETE** /volumes/{name} | Delete a Volume |
 *VolumesApi* | [**getVolume**](Apis/VolumesApi.md#getvolume) | **GET** /volumes/{name} | Get a Volume |
@@ -73,12 +74,10 @@ All URIs are relative to *http://localhost:8080/api/2.1/unity-catalog*
  - [FunctionParameterMode](./Models/FunctionParameterMode.md)
  - [FunctionParameterType](./Models/FunctionParameterType.md)
  - [GcpOauthToken](./Models/GcpOauthToken.md)
- - [GenerateTemporaryModelVersionCredentials](./Models/GenerateTemporaryModelVersionCredentials.md)
- - [GenerateTemporaryModelVersionCredentialsResponse](./Models/GenerateTemporaryModelVersionCredentialsResponse.md)
+ - [GenerateTemporaryModelVersionCredential](./Models/GenerateTemporaryModelVersionCredential.md)
+ - [GenerateTemporaryPathCredential](./Models/GenerateTemporaryPathCredential.md)
  - [GenerateTemporaryTableCredential](./Models/GenerateTemporaryTableCredential.md)
- - [GenerateTemporaryTableCredentialResponse](./Models/GenerateTemporaryTableCredentialResponse.md)
  - [GenerateTemporaryVolumeCredential](./Models/GenerateTemporaryVolumeCredential.md)
- - [GenerateTemporaryVolumeCredentialResponse](./Models/GenerateTemporaryVolumeCredentialResponse.md)
  - [ListCatalogsResponse](./Models/ListCatalogsResponse.md)
  - [ListFunctionsResponse](./Models/ListFunctionsResponse.md)
  - [ListModelVersionsResponse](./Models/ListModelVersionsResponse.md)
@@ -89,12 +88,14 @@ All URIs are relative to *http://localhost:8080/api/2.1/unity-catalog*
  - [ModelVersionInfo](./Models/ModelVersionInfo.md)
  - [ModelVersionOperation](./Models/ModelVersionOperation.md)
  - [ModelVersionStatus](./Models/ModelVersionStatus.md)
+ - [PathOperation](./Models/PathOperation.md)
  - [RegisteredModelInfo](./Models/RegisteredModelInfo.md)
  - [SchemaInfo](./Models/SchemaInfo.md)
  - [TableDependency](./Models/TableDependency.md)
  - [TableInfo](./Models/TableInfo.md)
  - [TableOperation](./Models/TableOperation.md)
  - [TableType](./Models/TableType.md)
+ - [TemporaryCredentials](./Models/TemporaryCredentials.md)
  - [UpdateCatalog](./Models/UpdateCatalog.md)
  - [UpdateModelVersion](./Models/UpdateModelVersion.md)
  - [UpdateRegisteredModel](./Models/UpdateRegisteredModel.md)
