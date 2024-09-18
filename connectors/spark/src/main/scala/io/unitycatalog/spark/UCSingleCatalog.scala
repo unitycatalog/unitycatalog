@@ -18,6 +18,7 @@ import org.apache.spark.sql.util.CaseInsensitiveStringMap
 
 import scala.collection.convert.ImplicitConversions._
 import scala.collection.JavaConverters._
+import scala.language.existentials
 
 /**
  * A Spark catalog plugin to get/manage tables in Unity Catalog.
