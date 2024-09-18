@@ -103,7 +103,8 @@ public class TableService {
 
     filterTables("""
             #authorize(#principal, #metastore, OWNER) ||
-            (#authorizeAny(#principal, #schema, OWNER, USE_SCHEMA) && #authorizeAny(#principal, #catalog, OWNER, USE_CATALOG))
+            (#authorizeAll(#principal, #schema, OWNER, USE_SCHEMA) && #authorizeAny(#principal, #catalog, OWNER, USE_CATALOG)) ||
+            (#authorize(#principal, #schema, USE_SCHEMA) && #authorizeAny(#principal, #catalog, OWNER, USE_CATALOG) && #authorizeAny(#principal, #table, OWNER, SELECT))
             """, listTablesResponse.getTables());
 
     return HttpResponse.ofJson(listTablesResponse);

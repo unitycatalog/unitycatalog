@@ -84,7 +84,8 @@ public class VolumeService {
 
     filterVolumes("""
             #authorize(#principal, #metastore, OWNER) ||
-            (#authorizeAny(#principal, #schema, OWNER, USE_SCHEMA) && #authorizeAny(#principal, #catalog, OWNER, USE_CATALOG))
+            (#authorizeAll(#principal, #schema, OWNER, USE_SCHEMA) && #authorizeAny(#principal, #catalog, OWNER, USE_CATALOG)) ||
+            (#authorize(#principal, #schema, USE_SCHEMA) && #authorizeAny(#principal, #catalog, OWNER, USE_CATALOG) && #authorizeAny(#principal, #volume, OWNER, READ_VOLUME))
             """, listVolumesResponse.getVolumes());
 
     return HttpResponse.ofJson(listVolumesResponse);

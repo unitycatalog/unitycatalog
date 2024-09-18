@@ -54,10 +54,12 @@ public class FunctionService {
   }
 
   @Post("")
-  // TODO: for now, we are not supporting CREATE VOLUME or CREATE EXTERNAL VOLUME privileges
+  // TODO: for now, we are not supporting CREATE FUNCTION privilege
   @AuthorizeExpression("""
-          #authorize(#principal, #catalog, USE_CATALOG) && #authorize(#principal, #schema, USE_SCHEMA)
+          #authorize(#principal, #metastore, OWNER) ||
+          #authorizeAny(#principal, #catalog, OWNER, USE_CATALOG) && #authorizeAny(#principal, #schema, OWNER, USE_SCHEMA)
           """)
+  @AuthorizeKey(METASTORE)
   public HttpResponse createFunction(@AuthorizeKeys({
                                         @AuthorizeKey(value = CATALOG, key = "function_info.catalog_name"),
                                         @AuthorizeKey(value = SCHEMA, key = "function_info.schema_name")
@@ -77,10 +79,10 @@ public class FunctionService {
       @Param("page_token") Optional<String> pageToken) {
 
     ListFunctionsResponse listFunctionsResponse = FUNCTION_REPOSITORY.listFunctions(catalogName, schemaName, maxResults, pageToken);
-    filterVolumes("""
+    filterFunctions("""
             #authorize(#principal, #metastore, OWNER) ||
-            #authorize(#principal, #function, OWNER) ||
-            (#authorizeAny(#principal, #function, EXECUTE) && #authorize(#principal, #schema, USE_SCHEMA) && #authorize(#principal, #catalog, USE_CATALOG))
+            (#authorizeAll(#principal, #schema, OWNER, USE_SCHEMA) && #authorizeAny(#principal, #catalog, OWNER, USE_CATALOG)) ||
+            (#authorize(#principal, #schema, USE_SCHEMA) && #authorizeAny(#principal, #catalog, OWNER, USE_CATALOG) && #authorizeAny(#principal, #function, OWNER, EXECUTE))
             """, listFunctionsResponse.getFunctions());
     return HttpResponse.ofJson(listFunctionsResponse);
   }
@@ -89,9 +91,7 @@ public class FunctionService {
   @AuthorizeKey(METASTORE)
   @AuthorizeExpression("""
           #authorize(#principal, #metastore, OWNER) ||
-          #authorize(#principal, #catalog, OWNER) ||
-          (#authorize(#principal, #catalog, USE_CATALOG) && #authorize(#principal, #function, OWNER)) ||
-          (#authorize(#principal, #catalog, USE_CATALOG) && #authorize(#principal, #schema, USE_SCHEMA) && #authorize(#principal, #function, EXECUTE))
+          (#authorizeAny(#principal, #catalog, OWNER, USE_CATALOG) && #authorizeAny(#principal, #schema, OWNER, USE_SCHEMA) && #authorizeAny(#principal, #function, OWNER, EXECUTE))
           """)
   public HttpResponse getFunction(@Param("name") @AuthorizeKey(FUNCTION) String name) {
     return HttpResponse.ofJson(FUNCTION_REPOSITORY.getFunction(name));
@@ -101,8 +101,7 @@ public class FunctionService {
   @AuthorizeKey(METASTORE)
   @AuthorizeExpression("""
           #authorize(#principal, #metastore, OWNER) ||
-          (#authorize(#principal, #schema, OWNER) && #authorize(#principal, #catalog, USE_CATALOG)) ||
-          (#authorize(#principal, #function, OWNER) && #authorize(#principal, #schema, USE_SCHEMA) && #authorize(#principal, #catalog, USE_CATALOG))
+          (#authorize(#principal, #function, OWNER) && #authorizeAny(#principal, #schema, OWNER, USE_SCHEMA) && #authorizeAny(#principal, #catalog, OWNER, USE_CATALOG))
           """)
   public HttpResponse deleteFunction(
       @Param("name") @AuthorizeKey(FUNCTION) String name, @Param("force") Optional<Boolean> force) {
@@ -112,7 +111,7 @@ public class FunctionService {
     return HttpResponse.of(HttpStatus.OK);
   }
 
-  public void filterVolumes(String expression, List<FunctionInfo> entries) {
+  public void filterFunctions(String expression, List<FunctionInfo> entries) {
     // TODO: would be nice to move this to filtering in the Decorator response
     UUID principalId = IdentityUtils.findPrincipalId();
 

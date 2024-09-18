@@ -270,13 +270,13 @@ public class CliAccessControlTableCrudTest extends CliAccessControlBaseCrudTest 
           add(TokenStep.of(SUCCEED, "regular-2@localhost"));
           add(
               CommandStep.of(
-                  SUCCEED, 2, "table", "list", "--catalog", "catalog1", "--schema", "schema2"));
+                  SUCCEED, 1, "table", "list", "--catalog", "catalog1", "--schema", "schema2"));
 
           // list tables (regular-1) -> -- -> empty list
           add(TokenStep.of(SUCCEED, "regular-1@localhost"));
           add(
               CommandStep.of(
-                  SUCCEED, 2, "table", "list", "--catalog", "catalog1", "--schema", "schema2"));
+                  SUCCEED, 1, "table", "list", "--catalog", "catalog1", "--schema", "schema2"));
 
           // get, table (admin) -> metastore admin -> allowed
           add(TokenStep.of(SUCCEED, "admin"));
