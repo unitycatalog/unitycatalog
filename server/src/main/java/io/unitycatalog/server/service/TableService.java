@@ -55,8 +55,10 @@ public class TableService {
   @Post("")
   // The Databricks API does not have a create table endpoint, so defining sensible rules here.
   @AuthorizeExpression("""
+      #authorize(#principal, #metastore, OWNER) ||
       #authorizeAny(#principal, #catalog, OWNER, USE_CATALOG) && #authorizeAny(#principal, #schema, OWNER, USE_SCHEMA)
       """)
+  @AuthorizeKey(METASTORE)
   public HttpResponse createTable(
       @AuthorizeKeys({
             @AuthorizeKey(value = SCHEMA, key = "schema_name"),
@@ -72,8 +74,7 @@ public class TableService {
   @Get("/{full_name}")
   @AuthorizeExpression("""
           #authorize(#principal, #metastore, OWNER) ||
-          (#authorize(#principal, #schema, OWNER) && #authorize(#principal, #catalog, USE_CATALOG)) ||
-          (#authorize(#principal, #schema, USE_SCHEMA) && #authorize(#principal, #catalog, USE_CATALOG) && #authorizeAny(#principal, #table, OWNER, SELECT))
+          (#authorizeAny(#principal, #schema, OWNER, USE_SCHEMA) && #authorizeAny(#principal, #catalog, OWNER, USE_CATALOG) && #authorizeAny(#principal, #table, OWNER, SELECT))
           """)
   @AuthorizeKey(METASTORE)
   public HttpResponse getTable(@Param("full_name") @AuthorizeKey(TABLE) String fullName) {
@@ -102,8 +103,7 @@ public class TableService {
 
     filterTables("""
             #authorize(#principal, #metastore, OWNER) ||
-            #authorize(#principal, #table, OWNER) ||
-            (#authorize(#principal, #table, SELECT) && #authorize(#principal, #schema, USE_SCHEMA) && #authorize(#principal, #catalog, USE_CATALOG))
+            (#authorizeAny(#principal, #schema, OWNER, USE_SCHEMA) && #authorizeAny(#principal, #catalog, OWNER, USE_CATALOG))
             """, listTablesResponse.getTables());
 
     return HttpResponse.ofJson(listTablesResponse);
@@ -111,8 +111,7 @@ public class TableService {
 
   @Delete("/{full_name}")
   @AuthorizeExpression("""
-          (#authorizeAll(#principal, #catalog, OWNER, USE_CATALOG) && #authorize(#principal, #schema, OWNER)) ||
-          #authorizeAll(#principal, #table, OWNER, USE_CATALOG, USE_SCHEMA)
+          (#authorizeAny(#principal, #catalog, OWNER, USE_CATALOG) && #authorizeAny(#principal, #schema, OWNER, USE_SCHEMA) && #authorize(#principal, #table, OWNER))
           """)
   public HttpResponse deleteTable(@Param("full_name") @AuthorizeKey(TABLE) String fullName) {
     TableInfo tableInfo = TABLE_REPOSITORY.getTable(fullName);
