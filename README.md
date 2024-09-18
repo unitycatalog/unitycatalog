@@ -164,18 +164,18 @@ open localhost:3000
 ```
 
 ## Docker Quickstart
-To run the UC in Docker Compose in one command, install the latest version of [Docker Desktop](https://www.docker.com/products/docker-desktop/) and run the following command:
+To start Unity Catalog in Docker Compose in one command, install the latest version of [Docker Desktop](https://www.docker.com/products/docker-desktop/) and run the following:
 
 ```sh
 docker compose up -d
 ```
 
-The starts the Unity Catalog UI and backend. You can access the UI at http://localhost:3000 and the backend at http://localhost:8080.
+This starts the Unity Catalog UI and backend. You can access the UI at http://localhost:3000 and the backend at http://localhost:8080.
 
 To use the Unity Catalog CLI, attach to a shell in the backend container:
 
 ```sh
-docker exec -it unitycatalog_backend_1 /bin/bash
+docker exec -it unitycatalog-backend-1 /bin/bash
 ```
 
 Use the Unity Catalog CLI from the attached shell to interact with the server:
@@ -187,6 +187,16 @@ To remove the containers and persistent volumes, `exit` the attached shell and r
 ```sh
 docker compose down --volumes --remove-orphans
 ```
+
+### Run with Postgres Container
+To run with a Postgres db container, instead of the default hibernate filesystem datastore, use the `compose.psql.yaml` file to [override](https://docs.docker.com/compose/multiple-compose-files/merge/#example) the default `compose.yaml` file:
+
+```sh
+docker compose -f compose.yaml -f compose.psql.yaml up -d
+```
+
+### Run with External Database
+The Unity Catalog container can be configured to connect with an external Postgres or MySQL database. Pass environment variables to the container to configure the [hibernate.properties](etc/conf/hibernate.properties) file. For example, `docker run --rm --env-file .env unitycatalog_backend_1`. See [.env.example](.env.example) for the possible variables.
 
 ## CLI tutorial
 

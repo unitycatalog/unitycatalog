@@ -4,17 +4,17 @@ services:
     depends_on: ["postgres_db"]
     environment:
       - HIBERNATE_CONNECTION_DRIVER_CLASS=org.postgresql.Driver
-      - HIBERNATE_CONNECTION_URL=jdbc:postgresql://postgres_db:5432/${DB_NAME}?user=${DB_USER}&password=${DB_PASSWORD}
-      - HIBERNATE_CONNECTION_USER=${DB_USER}
-      - HIBERNATE_CONNECTION_PASSWORD=${DB_PASSWORD}
+      - HIBERNATE_CONNECTION_URL=jdbc:postgresql://postgres_db:5432/ucdb
+      - HIBERNATE_CONNECTION_USER=uc_default_user
+      - HIBERNATE_CONNECTION_PASSWORD=uc_default_password
     volumes: !reset []
 
   postgres_db:
-    image: postgres:14
+    image: postgres:16.3
     environment:
-      - POSTGRES_DB=${DB_NAME}
-      - POSTGRES_USER=${DB_USER}
-      - POSTGRES_PASSWORD=${DB_PASSWORD}
+      - POSTGRES_DB=ucdb
+      - POSTGRES_USER=uc_default_user
+      - POSTGRES_PASSWORD=uc_default_password
     volumes:
       - postgres_data:/var/lib/postgresql/data
 
