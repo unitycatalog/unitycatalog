@@ -273,8 +273,9 @@ lazy val server = (project in file("server"))
       // For loading properties from the environment
       "uk.org.webcompere" % "lightweight-config" % "1.3.0",
 
-      // For MySQL backend
-      "com.mysql" % "mysql-connector-j" % "8.4.0",
+      // TODO: Determine if project will support MySQL jar; linter currently states
+      // license is imcompatible
+      // "com.mysql" % "mysql-connector-j" % "8.4.0",
 
       // For PostgreSQL backend
       "org.postgresql" % "postgresql" % "42.6.0",
