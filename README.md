@@ -48,7 +48,14 @@ Unity Catalog is proud to be hosted by the LF AI & Data Foundation.
   <img src="./docs/assets/images/lfaidata-project-badge-sandbox-color.png" width="200px" />
 </a>
 
-## Quickstart - Hello UC!
+## Quickstart Overview
+
+You can run Unity Catalog in one of the following ways:
+
+- [Manual Quickstart - Hello UC!](#manual-quickstart---hello-uc!)
+- [Docker Quickstart](#docker-quickstart)
+
+## Manual Quickstart - Hello UC!
 
 Let's take Unity Catalog for spin. In this guide, we are going to do the following:
 
@@ -64,8 +71,6 @@ You have to ensure that your local environment has the following:
 - Clone this repository.
 - Ensure the `JAVA_HOME` environment variable your terminal is configured to point to JDK17.
 - Compile the project using `build/sbt package`
-
-> If you prefer to run this using the Unity Catalog Dockerized Environment, please refer to the Docker [README.md](./docker/README.md)
 
 ### Run the UC Server
 
@@ -158,7 +163,30 @@ yarn start
 open localhost:3000
 ```
 
+## Docker Quickstart
+To run the UC in Docker Compose in one command, install the latest version of [Docker Desktop](https://www.docker.com/products/docker-desktop/) and run the following command:
 
+```sh
+docker compose up -d
+```
+
+The starts the Unity Catalog UI and backend. You can access the UI at http://localhost:3000 and the backend at http://localhost:8080.
+
+To use the Unity Catalog CLI, attach to a shell in the backend container:
+
+```sh
+docker exec -it unitycatalog_backend_1 /bin/bash
+```
+
+Use the Unity Catalog CLI from the attached shell to interact with the server:
+```sh
+bin/uc table list --catalog unity --schema default
+```
+
+To remove the containers and persistent volumes, `exit` the attached shell and run the following from the host machine:
+```sh
+docker compose down --volumes --remove-orphans
+```
 
 ## CLI tutorial
 
