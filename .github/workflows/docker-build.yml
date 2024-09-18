@@ -21,9 +21,8 @@ jobs:
     - name: Checkout repository
       uses: actions/checkout@v4
 
-    # TODO: Add support for other platforms, after resolving: https://github.com/unitycatalog/unitycatalog/issues/480
-    # - name: Set up QEMU
-    #   uses: docker/setup-qemu-action@v3
+    - name: Set up QEMU
+      uses: docker/setup-qemu-action@v3
 
     - name: Apply metadata and tags
       id: meta
@@ -43,7 +42,9 @@ jobs:
       with:
         context: .
         push: false # TODO: When we are ready to publish, change this to: ${{ github.event_name != 'pull_request' }}
-        platforms: linux/amd64 # TODO: Add support for other platforms, after resolving: https://github.com/unitycatalog/unitycatalog/issues/480
+        platforms:
+          - linux/amd64
+          - linux/arm64
         tags: ${{ steps.meta.outputs.tags }}
         labels: ${{ steps.meta.outputs.labels }}
 
