@@ -132,13 +132,13 @@ public class CliAccessControlCatalogCrudTest extends CliAccessControlBaseCrudTes
           add(TokenStep.of(SUCCEED, "principal-1@localhost"));
           add(
               CommandStep.of(
-                  FAIL,
+                  SUCCEED,
                   "catalog",
                   "update",
                   "--name",
                   "catalog1",
                   "--comment",
-                  "(principal update)"));
+                  "(principal update 1)"));
 
           add(TokenStep.of(SUCCEED, "admin"));
           add(
@@ -165,7 +165,7 @@ public class CliAccessControlCatalogCrudTest extends CliAccessControlBaseCrudTes
                   "--name",
                   "catalog1",
                   "--comment",
-                  "(principal update)"));
+                  "(principal update 2)"));
 
           // update catalog (regular-1) -> use catalog -> succeed
           add(TokenStep.of(SUCCEED, "regular-1@localhost"));

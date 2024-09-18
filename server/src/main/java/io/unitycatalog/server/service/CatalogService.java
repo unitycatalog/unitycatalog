@@ -82,7 +82,7 @@ public class CatalogService {
   @Patch("/{name}")
   @AuthorizeExpression("""
       #authorize(#principal, #metastore, OWNER) ||
-      #authorizeAny(#principal, #catalog, USE_CATALOG)
+      #authorizeAny(#principal, #catalog, OWNER, USE_CATALOG)
       """)
   @AuthorizeKey(METASTORE)
   public HttpResponse updateCatalog(
@@ -93,7 +93,7 @@ public class CatalogService {
   @Delete("/{name}")
   @AuthorizeExpression("""
       #authorize(#principal, #metastore, OWNER) ||
-      #authorize(#principal, #catalog, OWNER)
+      #authorizeAny(#principal, #catalog, OWNER, USE_CATALOG)
       """)
   @AuthorizeKey(METASTORE)
   public HttpResponse deleteCatalog(

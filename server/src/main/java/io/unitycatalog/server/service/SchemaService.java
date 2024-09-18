@@ -71,9 +71,7 @@ public class SchemaService {
         SCHEMA_REPOSITORY.listSchemas(catalogName, maxResults, pageToken);
     filterSchemas("""
         #authorize(#principal, #metastore, OWNER) ||
-        #authorize(#principal, #catalog, OWNER) ||
-        #authorize(#principal, #schema, OWNER) ||
-        (#authorize(#principal, #schema, USE_SCHEMA) && #authorize(#principal, #catalog, USE_CATALOG))
+        #authorizeAny(#principal, #catalog, OWNER, USE_CATALOG)
         """,
         listSchemasResponse.getSchemas());
     return HttpResponse.ofJson(listSchemasResponse);
@@ -82,8 +80,7 @@ public class SchemaService {
   @Get("/{full_name}")
   @AuthorizeExpression("""
       #authorize(#principal, #metastore, OWNER) ||
-      #authorize(#principal, #schema, OWNER) ||
-      (#authorize(#principal, #schema, USE_SCHEMA) && #authorize(#principal, #catalog, USE_CATALOG))
+      (#authorizeAny(#principal, #schema, OWNER, USE_SCHEMA) && #authorizeAny(#principal, #catalog, OWNER, USE_CATALOG))
       """)
   @AuthorizeKey(METASTORE)
   public HttpResponse getSchema(@Param("full_name") @AuthorizeKey(SCHEMA) String fullName) {
