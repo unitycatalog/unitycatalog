@@ -1,8 +1,6 @@
 package io.unitycatalog.server.persist.utils;
 
 import io.unitycatalog.server.persist.dao.*;
-import java.io.InputStream;
-import java.nio.file.Files;
 import java.nio.file.Paths;
 import java.util.Properties;
 import lombok.Getter;
@@ -12,6 +10,7 @@ import org.hibernate.cfg.Configuration;
 import org.hibernate.service.ServiceRegistry;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import uk.org.webcompere.lightweightconfig.ConfigLoader;
 
 public class HibernateUtils {
 
@@ -31,10 +30,9 @@ public class HibernateUtils {
         throw new RuntimeException("PropertiesUtil instance is null in createSessionFactory");
       }
 
-      Properties hibernateProperties = new Properties();
-      try (InputStream input = Files.newInputStream(Paths.get("etc/conf/hibernate.properties"))) {
-        hibernateProperties.load(input);
-      }
+      // Load properties with environment variable substitution to configure service in Docker
+      Properties hibernateProperties =
+          ConfigLoader.loadProperties(Paths.get("etc/conf/hibernate.properties"));
       Configuration configuration = new Configuration().setProperties(hibernateProperties);
       if ("test".equals(properties.getProperty("server.env"))) {
         configuration.setProperty("hibernate.connection.driver_class", "org.h2.Driver");
