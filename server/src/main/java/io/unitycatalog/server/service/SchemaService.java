@@ -71,7 +71,8 @@ public class SchemaService {
         SCHEMA_REPOSITORY.listSchemas(catalogName, maxResults, pageToken);
     filterSchemas("""
         #authorize(#principal, #metastore, OWNER) ||
-        #authorizeAny(#principal, #catalog, OWNER, USE_CATALOG)
+        (#authorize(#principal, #schema, OWNER) && #authorizeAll(#principal, #catalog, OWNER, USE_CATALOG)) ||
+        (#authorize(#principal, #schema, USE_SCHEMA) && #authorizeAll(#principal, #catalog, OWNER, USE_CATALOG))
         """,
         listSchemasResponse.getSchemas());
     return HttpResponse.ofJson(listSchemasResponse);

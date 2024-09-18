@@ -172,15 +172,15 @@ public class CliAccessControlSchemaCrudTest extends CliAccessControlBaseCrudTest
 
           // list schemas (principal-1) -> owner (catalog) -> allowed - list all
           add(TokenStep.of(SUCCEED, "principal-1@localhost"));
-          add(CommandStep.of(SUCCEED, 3, "schema", "list", "--catalog", "catalog1"));
+          add(CommandStep.of(SUCCEED, 1, "schema", "list", "--catalog", "catalog1"));
 
           // list schemas (regular-1) -> -> allowed - empty list
           add(TokenStep.of(SUCCEED, "regular-1@localhost"));
-          add(CommandStep.of(SUCCEED, 3, "schema", "list", "--catalog", "catalog1"));
+          add(CommandStep.of(SUCCEED, 0, "schema", "list", "--catalog", "catalog1"));
 
           // list schemas (regular-2) -> -> USE SCHEMA - filtered list
           add(TokenStep.of(SUCCEED, "regular-2@localhost"));
-          add(CommandStep.of(SUCCEED, 3, "schema", "list", "--catalog", "catalog1"));
+          add(CommandStep.of(SUCCEED, 0, "schema", "list", "--catalog", "catalog1"));
 
           // get schema (admin) -> metastore admin -> allowed
           add(TokenStep.of(SUCCEED, "admin"));
