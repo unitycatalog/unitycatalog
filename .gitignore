@@ -13,6 +13,7 @@ build/sbt-launch-*
 venv
 uc_docs_venv
 .venv
+.env
 .DS_Store
 server_pid.txt
 site

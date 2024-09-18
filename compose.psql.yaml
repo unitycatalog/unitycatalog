@@ -1,0 +1,22 @@
+services:
+
+  backend:
+    depends_on: ["postgres_db"]
+    environment:
+      - HIBERNATE_CONNECTION_DRIVER_CLASS=org.postgresql.Driver
+      - HIBERNATE_CONNECTION_URL=jdbc:postgresql://postgres_db:5432/${DB_NAME}?user=${DB_USER}&password=${DB_PASSWORD}
+      - HIBERNATE_CONNECTION_USER=${DB_USER}
+      - HIBERNATE_CONNECTION_PASSWORD=${DB_PASSWORD}
+    volumes: !reset []
+
+  postgres_db:
+    image: postgres:14
+    environment:
+      - POSTGRES_DB=${DB_NAME}
+      - POSTGRES_USER=${DB_USER}
+      - POSTGRES_PASSWORD=${DB_PASSWORD}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+volumes:
+  postgres_data:
