@@ -106,8 +106,7 @@ public class SchemaService {
   @Delete("/{full_name}")
   @AuthorizeExpression("""
       #authorize(#principal, #metastore, OWNER) ||
-      #authorize(#principal, #schema, OWNER) ||
-      (#authorize(#principal, #schema, USE_SCHEMA) && #authorize(#principal, #catalog, USE_CATALOG))
+      (#authorizeAll(#principal, #schema, OWNER, USE_SCHEMA) && #authorizeAny(#principal, #catalog, OWNER, USE_CATALOG))
       """)
   @AuthorizeKey(METASTORE)
   public HttpResponse deleteSchema(

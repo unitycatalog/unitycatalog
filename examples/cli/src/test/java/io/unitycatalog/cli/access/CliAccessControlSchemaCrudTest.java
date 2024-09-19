@@ -256,7 +256,7 @@ public class CliAccessControlSchemaCrudTest extends CliAccessControlBaseCrudTest
 
           // delete schema (regular-1) -> "schema" owner -> allowed
           add(TokenStep.of(SUCCEED, "principal-1@localhost"));
-          add(CommandStep.of(SUCCEED, "schema", "delete", "--full_name", "catalog1.schema1"));
+          add(CommandStep.of(FAIL, "schema", "delete", "--full_name", "catalog1.schema1"));
 
           // delete schema (regular-1) -> "catalog" owner -> allowed
           add(TokenStep.of(SUCCEED, "principal-1@localhost"));
