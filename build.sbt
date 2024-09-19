@@ -114,7 +114,7 @@ def javaCheckstyleSettings(configLocation: File) = Seq(
 
 // enforce java code style
 def javafmtCheckSettings() = Seq(
-  (Compile / compile) := ((Compile / compile) dependsOn (Compile / javafmtCheckAll)).value
+  (Compile / compile) := ((Compile / compile) dependsOn (Compile / javafmtAll)).value
 )
 
 lazy val controlApi = (project in file("target/control/java"))
