@@ -18,16 +18,17 @@ RUN apk add --no-cache bash && ./build/sbt -info clean package
 # Small runtime image
 FROM alpine:${ALPINE_VERSION} as runtime
 
+# Specific JAVA_HOME from Amazon Corretto
+ARG JAVA_HOME="/usr/lib/jvm/default-jvm"
 ARG USER="unitycatalog"
 ARG HOME
-
-ENV HOME=$HOME \
-    JAVA_HOME=/usr/lib/jvm/default-jvm
 
 # Copy Java from base
 COPY --from=base $JAVA_HOME $JAVA_HOME
 
-ENV PATH="${JAVA_HOME}/bin:${PATH}"
+ENV HOME=$HOME \
+    JAVA_HOME=$JAVA_HOME \
+    PATH="${JAVA_HOME}/bin:${PATH}"
 
 # Copy build artifacts from base stage
 COPY --from=base --parents \
@@ -51,7 +52,7 @@ EOF
 
 USER $USER
 
-# # Copy remaining directories here for caching optimization
+# Copy remaining directories here for caching optimization
 COPY --chown=$USER:$USER --parents bin/ etc/ $HOME/
 
 WORKDIR $HOME
