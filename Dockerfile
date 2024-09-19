@@ -27,7 +27,7 @@ ENV HOME=$HOME \
 # Copy Java from base
 COPY --from=base $JAVA_HOME $JAVA_HOME
 
-ENV PATH="${BASH_HOME}:${JAVA_HOME}/bin:${PATH}"
+ENV PATH="${JAVA_HOME}/bin:${PATH}"
 
 # Copy build artifacts from base stage
 COPY --from=base --parents \
