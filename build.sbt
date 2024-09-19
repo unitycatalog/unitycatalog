@@ -84,6 +84,7 @@ lazy val commonSettings = Seq(
     case DepModuleInfo("org.hibernate.orm", _, _) => true
     case DepModuleInfo("com.unboundid.scim2", _, _) => true
     case DepModuleInfo("com.unboundid.product.scim2", _, _) => true
+    case DepModuleInfo("uk.org.webcompere", _, _) => true
     // Duo license:
     //  - Eclipse Public License 2.0
     //  - GNU General Public License, version 2 with the GNU Classpath Exception
