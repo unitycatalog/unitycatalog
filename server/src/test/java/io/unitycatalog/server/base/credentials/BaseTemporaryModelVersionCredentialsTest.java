@@ -27,14 +27,14 @@ public abstract class BaseTemporaryModelVersionCredentialsTest extends BaseCRUDT
 
   protected SchemaOperations schemaOperations;
   protected ModelOperations modelOperations;
-  protected TemporaryModelVersionCredentialsOperations credentialsOperations;
+  protected TemporaryCredentialsOperations credentialsOperations;
 
   protected abstract SchemaOperations createSchemaOperations(ServerConfig serverConfig);
 
   protected abstract ModelOperations createModelOperations(ServerConfig serverConfig);
 
-  protected abstract TemporaryModelVersionCredentialsOperations
-      createTemporaruModelVersionCredentialsOperations(ServerConfig serverConfig);
+  protected abstract TemporaryCredentialsOperations createTemporaryCredentialsOperations(
+      ServerConfig serverConfig);
 
   @BeforeEach
   @Override
@@ -42,7 +42,7 @@ public abstract class BaseTemporaryModelVersionCredentialsTest extends BaseCRUDT
     super.setUp();
     schemaOperations = createSchemaOperations(serverConfig);
     modelOperations = createModelOperations(serverConfig);
-    credentialsOperations = createTemporaruModelVersionCredentialsOperations(serverConfig);
+    credentialsOperations = createTemporaryCredentialsOperations(serverConfig);
   }
 
   protected void createNonFileModelVersion(
@@ -51,7 +51,7 @@ public abstract class BaseTemporaryModelVersionCredentialsTest extends BaseCRUDT
     String modelVersionId = UUID.randomUUID().toString();
     ModelVersionInfo modelVersionInfo =
         new ModelVersionInfo()
-            .modelVersionId(modelVersionId)
+            .id(modelVersionId)
             .modelName(MODEL_NAME)
             .catalogName(CATALOG_NAME)
             .schemaName(SCHEMA_NAME)
@@ -106,11 +106,10 @@ public abstract class BaseTemporaryModelVersionCredentialsTest extends BaseCRUDT
             .source(MV_SOURCE)
             .runId(MV_RUNID);
     modelOperations.createModelVersion(createMv);
-    createNonFileModelVersion(rmInfo.getModelId(), 2L, ModelVersionStatus.PENDING_REGISTRATION);
-    createNonFileModelVersion(rmInfo.getModelId(), 3L, ModelVersionStatus.FAILED_REGISTRATION);
-    createNonFileModelVersion(
-        rmInfo.getModelId(), 4L, ModelVersionStatus.MODEL_VERSION_STATUS_UNKNOWN);
-    createNonFileModelVersion(rmInfo.getModelId(), 5L, ModelVersionStatus.READY);
+    createNonFileModelVersion(rmInfo.getId(), 2L, ModelVersionStatus.PENDING_REGISTRATION);
+    createNonFileModelVersion(rmInfo.getId(), 3L, ModelVersionStatus.FAILED_REGISTRATION);
+    createNonFileModelVersion(rmInfo.getId(), 4L, ModelVersionStatus.MODEL_VERSION_STATUS_UNKNOWN);
+    createNonFileModelVersion(rmInfo.getId(), 5L, ModelVersionStatus.READY);
   }
 
   @Test
@@ -143,8 +142,8 @@ public abstract class BaseTemporaryModelVersionCredentialsTest extends BaseCRUDT
     assertThat(readyCloudMv.getStatus().getValue()).isEqualTo(ModelVersionStatus.READY.getValue());
 
     // Cannot get credentials for a file based storage location
-    GenerateTemporaryModelVersionCredentials generateFileCreds =
-        new GenerateTemporaryModelVersionCredentials()
+    GenerateTemporaryModelVersionCredential generateFileCreds =
+        new GenerateTemporaryModelVersionCredential()
             .catalogName(CATALOG_NAME)
             .schemaName(SCHEMA_NAME)
             .modelName(MODEL_NAME)
@@ -161,8 +160,8 @@ public abstract class BaseTemporaryModelVersionCredentialsTest extends BaseCRUDT
     }
 
     // Cannot get credentials for a failed status model version
-    GenerateTemporaryModelVersionCredentials generateCloudFailedCreds =
-        new GenerateTemporaryModelVersionCredentials()
+    GenerateTemporaryModelVersionCredential generateCloudFailedCreds =
+        new GenerateTemporaryModelVersionCredential()
             .catalogName(CATALOG_NAME)
             .schemaName(SCHEMA_NAME)
             .modelName(MODEL_NAME)
@@ -181,8 +180,8 @@ public abstract class BaseTemporaryModelVersionCredentialsTest extends BaseCRUDT
     }
 
     // Cannot get credentials for an unknown status model version
-    GenerateTemporaryModelVersionCredentials generateCloudUnknownCreds =
-        new GenerateTemporaryModelVersionCredentials()
+    GenerateTemporaryModelVersionCredential generateCloudUnknownCreds =
+        new GenerateTemporaryModelVersionCredential()
             .catalogName(CATALOG_NAME)
             .schemaName(SCHEMA_NAME)
             .modelName(MODEL_NAME)
@@ -201,8 +200,8 @@ public abstract class BaseTemporaryModelVersionCredentialsTest extends BaseCRUDT
     }
 
     // Cannot get read/write credentials for a ready status model version
-    GenerateTemporaryModelVersionCredentials generateCloudReadyCreds =
-        new GenerateTemporaryModelVersionCredentials()
+    GenerateTemporaryModelVersionCredential generateCloudReadyCreds =
+        new GenerateTemporaryModelVersionCredential()
             .catalogName(CATALOG_NAME)
             .schemaName(SCHEMA_NAME)
             .modelName(MODEL_NAME)
@@ -221,8 +220,8 @@ public abstract class BaseTemporaryModelVersionCredentialsTest extends BaseCRUDT
     }
 
     // Cannot pass in an unknown operation
-    GenerateTemporaryModelVersionCredentials generateUnknownOperation =
-        new GenerateTemporaryModelVersionCredentials()
+    GenerateTemporaryModelVersionCredential generateUnknownOperation =
+        new GenerateTemporaryModelVersionCredential()
             .catalogName(CATALOG_NAME)
             .schemaName(SCHEMA_NAME)
             .modelName(MODEL_NAME)

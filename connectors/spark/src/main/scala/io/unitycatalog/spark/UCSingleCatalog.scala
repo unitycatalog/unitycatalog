@@ -1,7 +1,7 @@
 package io.unitycatalog.spark
 
 import io.unitycatalog.client.{ApiClient, ApiException}
-import io.unitycatalog.client.api.{SchemasApi, TablesApi, TemporaryTableCredentialsApi}
+import io.unitycatalog.client.api.{SchemasApi, TablesApi, TemporaryCredentialsApi}
 import io.unitycatalog.client.model.{ColumnInfo, ColumnTypeName, CreateSchema, CreateTable, DataSourceFormat, GenerateTemporaryTableCredential, ListTablesResponse, SchemaInfo, TableOperation, TableType}
 
 import java.net.URI
@@ -19,6 +19,7 @@ import org.apache.spark.sql.util.CaseInsensitiveStringMap
 
 import scala.collection.convert.ImplicitConversions._
 import scala.collection.JavaConverters._
+import scala.language.existentials
 
 /**
  * A Spark catalog plugin to get/manage tables in Unity Catalog.
@@ -128,7 +129,7 @@ private class UCProxy extends TableCatalog with SupportsNamespaces {
   private[this] var name: String = null
   private[this] var tablesApi: TablesApi = null
   private[this] var schemasApi: SchemasApi = null
-  private[this] var temporaryTableCredentialsApi: TemporaryTableCredentialsApi = null
+  private[this] var temporaryCredentialsApi: TemporaryCredentialsApi = null
 
   override def initialize(name: String, options: CaseInsensitiveStringMap): Unit = {
     this.name = name
@@ -148,7 +149,7 @@ private class UCProxy extends TableCatalog with SupportsNamespaces {
       }
     }
     tablesApi = new TablesApi(client)
-    temporaryTableCredentialsApi = new TemporaryTableCredentialsApi(client)
+    temporaryCredentialsApi = new TemporaryCredentialsApi(client)
     schemasApi = new SchemasApi(client)
   }
 
@@ -189,7 +190,7 @@ private class UCProxy extends TableCatalog with SupportsNamespaces {
     val tableId = t.getTableId
     val temporaryCredentials = {
       try {
-        temporaryTableCredentialsApi
+        temporaryCredentialsApi
           .generateTemporaryTableCredentials(
             // TODO: at this time, we don't know if the table will be read or written. For now we always
             //       request READ_WRITE credentials as the server doesn't distinguish between READ and
@@ -198,7 +199,7 @@ private class UCProxy extends TableCatalog with SupportsNamespaces {
             new GenerateTemporaryTableCredential().tableId(tableId).operation(TableOperation.READ_WRITE)
           )
       } catch {
-        case e: ApiException => temporaryTableCredentialsApi
+        case e: ApiException => temporaryCredentialsApi
           .generateTemporaryTableCredentials(
             new GenerateTemporaryTableCredential().tableId(tableId).operation(TableOperation.READ)
           )

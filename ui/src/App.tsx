@@ -24,9 +24,11 @@ import CatalogsList from './pages/CatalogsList';
 import CatalogDetails from './pages/CatalogDetails';
 import SchemaDetails from './pages/SchemaDetails';
 import { NotificationProvider } from './utils/NotificationContext';
+import ModelDetails from './pages/ModelDetails';
 import Login from './pages/Login';
 import { AuthProvider, useAuth } from './context/auth-context';
 import { UserOutlined } from '@ant-design/icons';
+import ModelVersionDetails from './pages/ModelVersionDetails';
 
 const router = createBrowserRouter([
   {
@@ -56,13 +58,22 @@ const router = createBrowserRouter([
         path: '/functions/:catalog/:schema/:ucFunction',
         element: <FunctionDetails />,
       },
+      {
+        path: '/models/:catalog/:schema/:model',
+        element: <ModelDetails />,
+      },
+      {
+        path: '/models/:catalog/:schema/:model/versions/:version',
+        element: <ModelVersionDetails />,
+      },
     ],
   },
 ]);
 
 function AppProvider() {
-  const { accessToken, logout } = useAuth();
+  const { accessToken, logout, currentUser } = useAuth();
   const navigate = useNavigate();
+  const authEnabled = process.env.REACT_APP_GOOGLE_AUTH_ENABLED === 'true';
   const loggedIn = accessToken !== '';
 
   const profileMenuItems = useMemo(
@@ -77,8 +88,8 @@ function AppProvider() {
               cursor: 'default',
             }}
           >
-            <Typography.Text>User name here</Typography.Text>
-            <Typography.Text>user.email@goeshere.com</Typography.Text>
+            <Typography.Text>{currentUser?.displayName}</Typography.Text>
+            <Typography.Text>{currentUser?.emails[0]?.value}</Typography.Text>
           </div>
         ),
       },
@@ -91,14 +102,13 @@ function AppProvider() {
         onClick: () => logout().then(() => navigate('/')),
       },
     ],
-    [],
+    [currentUser],
   );
 
   // commenting login UI for now until repositories are merged
-  // return !loggedIn ? (
-  //   <Login />
-  // ) : (
-  return (
+  return authEnabled && !loggedIn ? (
+    <Login />
+  ) : (
     <ConfigProvider
       theme={{
         components: {
@@ -143,22 +153,24 @@ function AppProvider() {
               style={{ flex: 1, minWidth: 0 }}
             />
           </div>
-          {/*<div>*/}
-          {/*  <Dropdown*/}
-          {/*    menu={{ items: profileMenuItems }}*/}
-          {/*    trigger={['click']}*/}
-          {/*    placement={'bottomRight'}*/}
-          {/*  >*/}
-          {/*    <Avatar*/}
-          {/*      icon={<UserOutlined />}*/}
-          {/*      style={{*/}
-          {/*        backgroundColor: 'white',*/}
-          {/*        color: 'black',*/}
-          {/*        cursor: 'pointer',*/}
-          {/*      }}*/}
-          {/*    />*/}
-          {/*  </Dropdown>*/}
-          {/*</div>*/}
+          {authEnabled && (
+            <div>
+              <Dropdown
+                menu={{ items: profileMenuItems }}
+                trigger={['click']}
+                placement={'bottomRight'}
+              >
+                <Avatar
+                  icon={<UserOutlined />}
+                  style={{
+                    backgroundColor: 'white',
+                    color: 'black',
+                    cursor: 'pointer',
+                  }}
+                />
+              </Dropdown>
+            </div>
+          )}
         </Layout.Header>
         {/* Content */}
         <Layout.Content
