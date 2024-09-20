@@ -56,7 +56,6 @@ public class FunctionService {
   @Post("")
   // TODO: for now, we are not supporting CREATE FUNCTION privilege
   @AuthorizeExpression("""
-          #authorize(#principal, #metastore, OWNER) ||
           #authorizeAny(#principal, #catalog, OWNER, USE_CATALOG) && #authorizeAny(#principal, #schema, OWNER, USE_SCHEMA)
           """)
   @AuthorizeKey(METASTORE)
@@ -81,8 +80,9 @@ public class FunctionService {
     ListFunctionsResponse listFunctionsResponse = FUNCTION_REPOSITORY.listFunctions(catalogName, schemaName, maxResults, pageToken);
     filterFunctions("""
             #authorize(#principal, #metastore, OWNER) ||
-            (#authorizeAll(#principal, #schema, OWNER, USE_SCHEMA) && #authorizeAny(#principal, #catalog, OWNER, USE_CATALOG)) ||
-            (#authorize(#principal, #schema, USE_SCHEMA) && #authorizeAny(#principal, #catalog, OWNER, USE_CATALOG) && #authorizeAny(#principal, #function, OWNER, EXECUTE))
+            #authorize(#principal, #catalog, OWNER) ||
+            (#authorize(#principal, #schema, OWNER) && #authorize(#principal, #catalog, USE_CATALOG)) ||
+            (#authorize(#principal, #schema, USE_SCHEMA) && #authorizeAny(#principal, #catalog, USE_CATALOG) && #authorizeAny(#principal, #function, OWNER, EXECUTE))
             """, listFunctionsResponse.getFunctions());
     return HttpResponse.ofJson(listFunctionsResponse);
   }
@@ -91,7 +91,9 @@ public class FunctionService {
   @AuthorizeKey(METASTORE)
   @AuthorizeExpression("""
           #authorize(#principal, #metastore, OWNER) ||
-          (#authorizeAny(#principal, #catalog, OWNER, USE_CATALOG) && #authorizeAny(#principal, #schema, OWNER, USE_SCHEMA) && #authorizeAny(#principal, #function, OWNER, EXECUTE))
+          #authorize(#principal, #catalog, OWNER) ||
+          (#authorize(#principal, #schema, OWNER) && #authorizeAny(#principal, #catalog, USE_CATALOG)) ||
+          (#authorize(#principal, #catalog, USE_CATALOG) && #authorize(#principal, #schema, USE_SCHEMA) && #authorizeAny(#principal, #function, OWNER, EXECUTE))
           """)
   public HttpResponse getFunction(@Param("name") @AuthorizeKey(FUNCTION) String name) {
     return HttpResponse.ofJson(FUNCTION_REPOSITORY.getFunction(name));

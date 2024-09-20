@@ -30,7 +30,7 @@ public class CliAccessControlFunctionCrudTest extends CliAccessControlBaseCrudTe
                   "--securable_type",
                   "catalog",
                   "--name",
-                  "catalog1",
+                  "cat_pr1",
                   "--principal",
                   "principal-1@localhost",
                   "--privilege",
@@ -46,7 +46,7 @@ public class CliAccessControlFunctionCrudTest extends CliAccessControlBaseCrudTe
                   "--securable_type",
                   "schema",
                   "--name",
-                  "catalog1.schema1",
+                  "cat_pr1.sch_pr1",
                   "--principal",
                   "principal-1@localhost",
                   "--privilege",
@@ -60,7 +60,7 @@ public class CliAccessControlFunctionCrudTest extends CliAccessControlBaseCrudTe
                   "function",
                   "create",
                   "--full_name",
-                  "catalog1.schema1.function2",
+                  "cat_pr1.sch_pr1.fun_pr1",
                   "--data_type",
                   "INT",
                   "--input_params",
@@ -74,7 +74,7 @@ public class CliAccessControlFunctionCrudTest extends CliAccessControlBaseCrudTe
                   "function",
                   "create",
                   "--full_name",
-                  "catalog1.schema3.function2",
+                  "cat_pr1.schema3.fun_pr1",
                   "--data_type",
                   "INT",
                   "--input_params",
@@ -84,35 +84,31 @@ public class CliAccessControlFunctionCrudTest extends CliAccessControlBaseCrudTe
           add(TokenStep.of(SUCCEED, "principal-2@localhost"));
           add(
               CommandStep.of(
-                  SUCCEED, 0, "function", "list", "--catalog", "catalog1", "--schema", "schema1"));
+                  SUCCEED, 0, "function", "list", "--catalog", "cat_pr1", "--schema", "sch_pr1"));
 
           // list functions -> owner -> allow - filtered
           add(TokenStep.of(SUCCEED, "principal-1@localhost"));
           add(
               CommandStep.of(
-                  SUCCEED, 1, "function", "list", "--catalog", "catalog1", "--schema", "schema1"));
+                  SUCCEED, 1, "function", "list", "--catalog", "cat_pr1", "--schema", "sch_pr1"));
 
           // get function -> no privileges -> denied
           add(TokenStep.of(SUCCEED, "principal-2@localhost"));
-          add(CommandStep.of(FAIL, "function", "get", "--full_name", "catalog1.schema1.function2"));
+          add(CommandStep.of(FAIL, "function", "get", "--full_name", "cat_pr1.sch_pr1.fun_pr1"));
 
           // get function -> owner -> allow
           add(TokenStep.of(SUCCEED, "principal-1@localhost"));
-          add(
-              CommandStep.of(
-                  SUCCEED, "function", "get", "--full_name", "catalog1.schema1.function2"));
+          add(CommandStep.of(SUCCEED, "function", "get", "--full_name", "cat_pr1.sch_pr1.fun_pr1"));
 
           // delete function -> no privileges -> denied
           add(TokenStep.of(SUCCEED, "principal-2@localhost"));
-          add(
-              CommandStep.of(
-                  FAIL, "function", "delete", "--full_name", "catalog1.schema1.function2"));
+          add(CommandStep.of(FAIL, "function", "delete", "--full_name", "cat_pr1.sch_pr1.fun_pr1"));
 
           // delete function -> owner -> allow
           add(TokenStep.of(SUCCEED, "principal-1@localhost"));
           add(
               CommandStep.of(
-                  SUCCEED, "function", "delete", "--full_name", "catalog1.schema1.function2"));
+                  SUCCEED, "function", "delete", "--full_name", "cat_pr1.sch_pr1.fun_pr1"));
         }
       };
 

@@ -44,11 +44,11 @@ public class CliAccessControlSchemaCrudTest extends CliAccessControlBaseCrudTest
                   "catalog",
                   "create",
                   "--name",
-                  "catalog1",
+                  "cat_pr1",
                   "--comment",
                   "(created from scratch)"));
 
-          // give user USE CATALOG on catalog1
+          // give user USE CATALOG on cat_pr1
           add(TokenStep.of(SUCCEED, "admin"));
           add(
               CommandStep.of(
@@ -59,17 +59,17 @@ public class CliAccessControlSchemaCrudTest extends CliAccessControlBaseCrudTest
                   "--securable_type",
                   "catalog",
                   "--name",
-                  "catalog1",
+                  "cat_pr1",
                   "--principal",
                   "regular-1@localhost",
                   "--privilege",
                   "USE CATALOG"));
 
-          // create a schema (admin) -> metastore admin -> allowed
+          // create a schema (admin) -> metastore admin -> denied
           add(TokenStep.of(SUCCEED, "admin"));
           add(
               CommandStep.of(
-                  SUCCEED, "schema", "create", "--name", "adminschema1", "--catalog", "catalog1"));
+                  FAIL, "schema", "create", "--name", "sch_adm", "--catalog", "cat_pr1"));
 
           add(TokenStep.of(SUCCEED, "admin"));
           add(
@@ -81,7 +81,7 @@ public class CliAccessControlSchemaCrudTest extends CliAccessControlBaseCrudTest
                   "--securable_type",
                   "catalog",
                   "--name",
-                  "catalog1",
+                  "cat_pr1",
                   "--principal",
                   "principal-1@localhost",
                   "--privilege",
@@ -95,7 +95,7 @@ public class CliAccessControlSchemaCrudTest extends CliAccessControlBaseCrudTest
                   "--securable_type",
                   "catalog",
                   "--name",
-                  "catalog1",
+                  "cat_pr1",
                   "--principal",
                   "principal-1@localhost",
                   "--privilege",
@@ -104,15 +104,15 @@ public class CliAccessControlSchemaCrudTest extends CliAccessControlBaseCrudTest
           add(TokenStep.of(SUCCEED, "principal-1@localhost"));
           add(
               CommandStep.of(
-                  SUCCEED, "schema", "create", "--name", "schema1", "--catalog", "catalog1"));
+                  SUCCEED, "schema", "create", "--name", "sch_pr1", "--catalog", "cat_pr1"));
 
           // create a schema (regular-1) -> denied
           add(TokenStep.of(SUCCEED, "regular-1@localhost"));
           add(
               CommandStep.of(
-                  FAIL, "schema", "create", "--name", "schema2", "--catalog", "catalog1"));
+                  FAIL, "schema", "create", "--name", "sch_rg1", "--catalog", "cat_pr1"));
 
-          // give user CREATE SCHEMA on catalog1
+          // give user CREATE SCHEMA on cat_pr1
           add(TokenStep.of(SUCCEED, "admin"));
           add(
               CommandStep.of(
@@ -123,7 +123,7 @@ public class CliAccessControlSchemaCrudTest extends CliAccessControlBaseCrudTest
                   "--securable_type",
                   "catalog",
                   "--name",
-                  "catalog1",
+                  "cat_pr1",
                   "--principal",
                   "regular-2@localhost",
                   "--privilege",
@@ -137,7 +137,7 @@ public class CliAccessControlSchemaCrudTest extends CliAccessControlBaseCrudTest
                   "--securable_type",
                   "catalog",
                   "--name",
-                  "catalog1",
+                  "cat_pr1",
                   "--principal",
                   "regular-2@localhost",
                   "--privilege",
@@ -147,9 +147,9 @@ public class CliAccessControlSchemaCrudTest extends CliAccessControlBaseCrudTest
           add(TokenStep.of(SUCCEED, "regular-2@localhost"));
           add(
               CommandStep.of(
-                  SUCCEED, "schema", "create", "--name", "schema3", "--catalog", "catalog1"));
+                  SUCCEED, "schema", "create", "--name", "sch_rg2", "--catalog", "cat_pr1"));
 
-          // give user USE SCHEMA on schema3
+          // give user USE SCHEMA on sch_rg2
           add(TokenStep.of(SUCCEED, "admin"));
           add(
               CommandStep.of(
@@ -160,7 +160,7 @@ public class CliAccessControlSchemaCrudTest extends CliAccessControlBaseCrudTest
                   "--securable_type",
                   "schema",
                   "--name",
-                  "catalog1.schema3",
+                  "cat_pr1.sch_rg2",
                   "--principal",
                   "regular-2@localhost",
                   "--privilege",
@@ -168,31 +168,31 @@ public class CliAccessControlSchemaCrudTest extends CliAccessControlBaseCrudTest
 
           // list schemas (admin) -> metastore admin -> allowed - list all
           add(TokenStep.of(SUCCEED, "admin"));
-          add(CommandStep.of(SUCCEED, 3, "schema", "list", "--catalog", "catalog1"));
+          add(CommandStep.of(SUCCEED, 2, "schema", "list", "--catalog", "cat_pr1"));
 
           // list schemas (principal-1) -> owner (catalog) -> allowed - list all
           add(TokenStep.of(SUCCEED, "principal-1@localhost"));
-          add(CommandStep.of(SUCCEED, 1, "schema", "list", "--catalog", "catalog1"));
+          add(CommandStep.of(SUCCEED, 2, "schema", "list", "--catalog", "cat_pr1"));
 
           // list schemas (regular-1) -> -> allowed - empty list
           add(TokenStep.of(SUCCEED, "regular-1@localhost"));
-          add(CommandStep.of(SUCCEED, 0, "schema", "list", "--catalog", "catalog1"));
+          add(CommandStep.of(SUCCEED, 0, "schema", "list", "--catalog", "cat_pr1"));
 
           // list schemas (regular-2) -> -> USE SCHEMA - filtered list
           add(TokenStep.of(SUCCEED, "regular-2@localhost"));
-          add(CommandStep.of(SUCCEED, 0, "schema", "list", "--catalog", "catalog1"));
+          add(CommandStep.of(SUCCEED, 1, "schema", "list", "--catalog", "cat_pr1"));
 
           // get schema (admin) -> metastore admin -> allowed
           add(TokenStep.of(SUCCEED, "admin"));
-          add(CommandStep.of(SUCCEED, "schema", "get", "--full_name", "catalog1.schema1"));
+          add(CommandStep.of(SUCCEED, "schema", "get", "--full_name", "cat_pr1.sch_pr1"));
 
           // get schema (principal-1) -> owner -> allowed
           add(TokenStep.of(SUCCEED, "principal-1@localhost"));
-          add(CommandStep.of(SUCCEED, "schema", "get", "--full_name", "catalog1.schema1"));
+          add(CommandStep.of(SUCCEED, "schema", "get", "--full_name", "cat_pr1.sch_pr1"));
 
           // get schema (regular-1) -> -- -> denied
           add(TokenStep.of(SUCCEED, "regular-1@localhost"));
-          add(CommandStep.of(FAIL, "schema", "get", "--full_name", "catalog1.schema1"));
+          add(CommandStep.of(FAIL, "schema", "get", "--full_name", "cat_pr1.sch_pr1"));
 
           // get schema (regular-1) -> USE SCHEMA -> allowed
           add(TokenStep.of(SUCCEED, "admin"));
@@ -205,14 +205,14 @@ public class CliAccessControlSchemaCrudTest extends CliAccessControlBaseCrudTest
                   "--securable_type",
                   "schema",
                   "--name",
-                  "catalog1.schema1",
+                  "cat_pr1.sch_pr1",
                   "--principal",
                   "regular-2@localhost",
                   "--privilege",
                   "USE SCHEMA"));
 
           add(TokenStep.of(SUCCEED, "regular-2@localhost"));
-          add(CommandStep.of(SUCCEED, "schema", "get", "--full_name", "catalog1.schema1"));
+          add(CommandStep.of(SUCCEED, "schema", "get", "--full_name", "cat_pr1.sch_pr1"));
 
           // update schema (admin) -> metastore admin -> allowed
           add(TokenStep.of(SUCCEED, "admin"));
@@ -222,7 +222,7 @@ public class CliAccessControlSchemaCrudTest extends CliAccessControlBaseCrudTest
                   "schema",
                   "update",
                   "--full_name",
-                  "catalog1.schema1",
+                  "cat_pr1.sch_pr1",
                   "--comment",
                   "(admin update)"));
 
@@ -234,7 +234,7 @@ public class CliAccessControlSchemaCrudTest extends CliAccessControlBaseCrudTest
                   "schema",
                   "update",
                   "--full_name",
-                  "catalog1.schema1",
+                  "cat_pr1.sch_pr1",
                   "--comment",
                   "(principal update)"));
 
@@ -246,24 +246,21 @@ public class CliAccessControlSchemaCrudTest extends CliAccessControlBaseCrudTest
                   "schema",
                   "update",
                   "--full_name",
-                  "catalog1.schema1",
+                  "cat_pr1.sch_pr1",
                   "--comment",
                   "(regular update)"));
 
           // delete schema (regular-1) -> -- -> denied
           add(TokenStep.of(SUCCEED, "regular-1@localhost"));
-          add(CommandStep.of(FAIL, "schema", "delete", "--full_name", "catalog1.schema1"));
+          add(CommandStep.of(FAIL, "schema", "delete", "--full_name", "cat_pr1.sch_pr1"));
 
           // delete schema (regular-1) -> "schema" owner -> allowed
           add(TokenStep.of(SUCCEED, "principal-1@localhost"));
-          add(CommandStep.of(FAIL, "schema", "delete", "--full_name", "catalog1.schema1"));
+          add(CommandStep.of(SUCCEED, "schema", "delete", "--full_name", "cat_pr1.sch_pr1"));
 
           // delete schema (regular-1) -> "catalog" owner -> allowed
           add(TokenStep.of(SUCCEED, "principal-1@localhost"));
-          add(CommandStep.of(FAIL, "schema", "delete", "--full_name", "catalog1.schema3"));
-
-          add(TokenStep.of(SUCCEED, "regular-2@localhost"));
-          add(CommandStep.of(SUCCEED, "schema", "delete", "--full_name", "catalog1.schema3"));
+          add(CommandStep.of(SUCCEED, "schema", "delete", "--full_name", "cat_pr1.sch_rg2"));
         }
       };
 

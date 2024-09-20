@@ -49,7 +49,6 @@ public class SchemaService {
 
   @Post("")
   @AuthorizeExpression("""
-      #authorize(#principal, #metastore, OWNER) ||
       #authorize(#principal, #catalog, OWNER) ||
       #authorizeAll(#principal, #catalog, USE_CATALOG, CREATE_SCHEMA)
       """)
@@ -71,8 +70,8 @@ public class SchemaService {
         SCHEMA_REPOSITORY.listSchemas(catalogName, maxResults, pageToken);
     filterSchemas("""
         #authorize(#principal, #metastore, OWNER) ||
-        (#authorize(#principal, #schema, OWNER) && #authorizeAll(#principal, #catalog, OWNER, USE_CATALOG)) ||
-        (#authorize(#principal, #schema, USE_SCHEMA) && #authorizeAll(#principal, #catalog, OWNER, USE_CATALOG))
+        #authorize(#principal, #catalog, OWNER) ||
+        (#authorize(#principal, #schema, USE_SCHEMA) && #authorizeAny(#principal, #catalog, OWNER, USE_CATALOG))
         """,
         listSchemasResponse.getSchemas());
     return HttpResponse.ofJson(listSchemasResponse);
@@ -81,7 +80,8 @@ public class SchemaService {
   @Get("/{full_name}")
   @AuthorizeExpression("""
       #authorize(#principal, #metastore, OWNER) ||
-      (#authorizeAny(#principal, #schema, OWNER, USE_SCHEMA) && #authorizeAny(#principal, #catalog, OWNER, USE_CATALOG))
+      #authorize(#principal, #catalog, OWNER) ||
+      (#authorizeAny(#principal, #schema, OWNER, USE_SCHEMA) && #authorizeAny(#principal, #catalog, USE_CATALOG))
       """)
   @AuthorizeKey(METASTORE)
   public HttpResponse getSchema(@Param("full_name") @AuthorizeKey(SCHEMA) String fullName) {
@@ -106,7 +106,8 @@ public class SchemaService {
   @Delete("/{full_name}")
   @AuthorizeExpression("""
       #authorize(#principal, #metastore, OWNER) ||
-      (#authorizeAll(#principal, #schema, OWNER, USE_SCHEMA) && #authorizeAny(#principal, #catalog, OWNER, USE_CATALOG))
+      #authorize(#principal, #catalog, OWNER) ||
+      (#authorize(#principal, #schema, OWNER) && #authorizeAny(#principal, #catalog, USE_CATALOG))
       """)
   @AuthorizeKey(METASTORE)
   public HttpResponse deleteSchema(

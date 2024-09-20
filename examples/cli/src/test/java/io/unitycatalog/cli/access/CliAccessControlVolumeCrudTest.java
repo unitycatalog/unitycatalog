@@ -30,7 +30,7 @@ public class CliAccessControlVolumeCrudTest extends CliAccessControlBaseCrudTest
                   "--securable_type",
                   "catalog",
                   "--name",
-                  "catalog1",
+                  "cat_pr1",
                   "--principal",
                   "principal-1@localhost",
                   "--privilege",
@@ -46,13 +46,13 @@ public class CliAccessControlVolumeCrudTest extends CliAccessControlBaseCrudTest
                   "--securable_type",
                   "schema",
                   "--name",
-                  "catalog1.schema1",
+                  "cat_pr1.sch_pr1",
                   "--principal",
                   "principal-1@localhost",
                   "--privilege",
                   "USE SCHEMA"));
 
-          // give user USE CATALOG on catalog1
+          // give user USE CATALOG on cat_pr1
           add(TokenStep.of(SUCCEED, "admin"));
           add(
               CommandStep.of(
@@ -63,13 +63,13 @@ public class CliAccessControlVolumeCrudTest extends CliAccessControlBaseCrudTest
                   "--securable_type",
                   "catalog",
                   "--name",
-                  "catalog1",
+                  "cat_pr1",
                   "--principal",
                   "regular-1@localhost",
                   "--privilege",
                   "USE CATALOG"));
 
-          // give user CREATE SCHEMA on catalog1
+          // give user CREATE SCHEMA on cat_pr1
           add(TokenStep.of(SUCCEED, "admin"));
           add(
               CommandStep.of(
@@ -80,7 +80,7 @@ public class CliAccessControlVolumeCrudTest extends CliAccessControlBaseCrudTest
                   "--securable_type",
                   "catalog",
                   "--name",
-                  "catalog1",
+                  "cat_pr1",
                   "--principal",
                   "regular-2@localhost",
                   "--privilege",
@@ -94,7 +94,7 @@ public class CliAccessControlVolumeCrudTest extends CliAccessControlBaseCrudTest
                   "--securable_type",
                   "catalog",
                   "--name",
-                  "catalog1",
+                  "cat_pr1",
                   "--principal",
                   "regular-2@localhost",
                   "--privilege",
@@ -104,9 +104,9 @@ public class CliAccessControlVolumeCrudTest extends CliAccessControlBaseCrudTest
           add(TokenStep.of(SUCCEED, "regular-2@localhost"));
           add(
               CommandStep.of(
-                  SUCCEED, "schema", "create", "--name", "schema3", "--catalog", "catalog1"));
+                  SUCCEED, "schema", "create", "--name", "sch_rg2", "--catalog", "cat_pr1"));
 
-          // give user USE SCHEMA on schema3
+          // give user USE SCHEMA on sch_rg2
           add(TokenStep.of(SUCCEED, "admin"));
           add(
               CommandStep.of(
@@ -117,7 +117,7 @@ public class CliAccessControlVolumeCrudTest extends CliAccessControlBaseCrudTest
                   "--securable_type",
                   "schema",
                   "--name",
-                  "catalog1.schema3",
+                  "cat_pr1.sch_rg2",
                   "--principal",
                   "regular-2@localhost",
                   "--privilege",
@@ -127,13 +127,13 @@ public class CliAccessControlVolumeCrudTest extends CliAccessControlBaseCrudTest
           add(TokenStep.of(SUCCEED, "admin"));
           add(
               CommandStep.of(
-                  SUCCEED,
+                  FAIL,
                   "volume",
                   "create",
                   "--full_name",
-                  "catalog1.schema3.volume1",
+                  "cat_pr1.sch_rg2.vol_adm",
                   "--storage_location",
-                  "/tmp/volume1"));
+                  "/tmp/vol_adm"));
 
           // create volume (principal-1) -> owner [catalog], owner [schema] -> allowed
           add(TokenStep.of(SUCCEED, "principal-1@localhost"));
@@ -143,7 +143,7 @@ public class CliAccessControlVolumeCrudTest extends CliAccessControlBaseCrudTest
                   "volume",
                   "create",
                   "--full_name",
-                  "catalog1.schema1.volume1",
+                  "cat_pr1.sch_pr1.vol_adm",
                   "--storage_location",
                   "/tmp/volume3"));
 
@@ -155,7 +155,7 @@ public class CliAccessControlVolumeCrudTest extends CliAccessControlBaseCrudTest
                   "volume",
                   "create",
                   "--full_name",
-                  "catalog1.schema3.volume1",
+                  "cat_pr1.sch_rg2.vol_adm",
                   "--storage_location",
                   "/tmp/volume3"));
 
@@ -163,25 +163,25 @@ public class CliAccessControlVolumeCrudTest extends CliAccessControlBaseCrudTest
           add(TokenStep.of(SUCCEED, "admin"));
           add(
               CommandStep.of(
-                  SUCCEED, 1, "volume", "list", "--catalog", "catalog1", "--schema", "schema1"));
+                  SUCCEED, 1, "volume", "list", "--catalog", "cat_pr1", "--schema", "sch_pr1"));
 
           // list volume (principal-1) -> owner (schema) -> allowed - filtered list
           add(TokenStep.of(SUCCEED, "principal-1@localhost"));
           add(
               CommandStep.of(
-                  SUCCEED, 1, "volume", "list", "--catalog", "catalog1", "--schema", "schema1"));
+                  SUCCEED, 1, "volume", "list", "--catalog", "cat_pr1", "--schema", "sch_pr1"));
 
           // get volume (principal-1) -> use catalog, use schema, owner [volume] -> allowed
           add(TokenStep.of(SUCCEED, "principal-1@localhost"));
-          add(CommandStep.of(SUCCEED, "volume", "get", "--full_name", "catalog1.schema1.volume1"));
+          add(CommandStep.of(SUCCEED, "volume", "get", "--full_name", "cat_pr1.sch_pr1.vol_adm"));
 
           // get volume (admin) -> metastore admin -> allowed
           add(TokenStep.of(SUCCEED, "admin"));
-          add(CommandStep.of(SUCCEED, "volume", "get", "--full_name", "catalog1.schema1.volume1"));
+          add(CommandStep.of(SUCCEED, "volume", "get", "--full_name", "cat_pr1.sch_pr1.vol_adm"));
 
           // get volume (regular-1) -> not read "volume" -> denied
           add(TokenStep.of(SUCCEED, "regular-1@localhost"));
-          add(CommandStep.of(FAIL, "volume", "get", "--full_name", "catalog1.schema1.volume1"));
+          add(CommandStep.of(FAIL, "volume", "get", "--full_name", "cat_pr1.sch_pr1.vol_adm"));
 
           // update volume (principal-1) -> catalog [owner], schema [owner], USE SCHEMA -> allowed
           add(TokenStep.of(SUCCEED, "principal-1@localhost"));
@@ -191,7 +191,7 @@ public class CliAccessControlVolumeCrudTest extends CliAccessControlBaseCrudTest
                   "volume",
                   "update",
                   "--full_name",
-                  "catalog1.schema1.volume1",
+                  "cat_pr1.sch_pr1.vol_adm",
                   "--comment",
                   "principal update"));
 
@@ -203,25 +203,19 @@ public class CliAccessControlVolumeCrudTest extends CliAccessControlBaseCrudTest
                   "volume",
                   "update",
                   "--full_name",
-                  "catalog1.schema1.volume1",
+                  "cat_pr1.sch_pr1.vol_adm",
                   "--comment",
                   "principal update"));
 
           // delete volume (regular-1) -> not owner [catalog] -> denied
           add(TokenStep.of(SUCCEED, "regular-1@localhost"));
-          add(CommandStep.of(FAIL, "volume", "delete", "--full_name", "catalog1.schema1.volume1"));
+          add(CommandStep.of(FAIL, "volume", "delete", "--full_name", "cat_pr1.sch_pr1.vol_adm"));
 
           // delete volume (principal-1) -> owner -> allowed
           add(TokenStep.of(SUCCEED, "principal-1@localhost"));
           add(
               CommandStep.of(
-                  SUCCEED, "volume", "delete", "--full_name", "catalog1.schema1.volume1"));
-
-          // delete volume (admin) -> metastore admin -> allowed
-          add(TokenStep.of(SUCCEED, "admin"));
-          add(
-              CommandStep.of(
-                  SUCCEED, "volume", "delete", "--full_name", "catalog1.schema3.volume1"));
+                  SUCCEED, "volume", "delete", "--full_name", "cat_pr1.sch_pr1.vol_adm"));
         }
       };
 

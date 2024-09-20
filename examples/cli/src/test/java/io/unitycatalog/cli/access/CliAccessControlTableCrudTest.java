@@ -44,11 +44,11 @@ public class CliAccessControlTableCrudTest extends CliAccessControlBaseCrudTest 
                   "catalog",
                   "create",
                   "--name",
-                  "catalog1",
+                  "cat_pr1",
                   "--comment",
                   "(created from scratch)"));
 
-          // give user CREATE SCHEMA on catalog1
+          // give user CREATE SCHEMA on cat_pr1
           add(
               CommandStep.of(
                   SUCCEED,
@@ -58,7 +58,7 @@ public class CliAccessControlTableCrudTest extends CliAccessControlBaseCrudTest 
                   "--securable_type",
                   "catalog",
                   "--name",
-                  "catalog1",
+                  "cat_pr1",
                   "--principal",
                   "principal-1@localhost",
                   "--privilege",
@@ -72,13 +72,13 @@ public class CliAccessControlTableCrudTest extends CliAccessControlBaseCrudTest 
                   "--securable_type",
                   "catalog",
                   "--name",
-                  "catalog1",
+                  "cat_pr1",
                   "--principal",
                   "principal-1@localhost",
                   "--privilege",
                   "USE CATALOG"));
 
-          // give user USE CATALOG on catalog1
+          // give user USE CATALOG on cat_pr1
           add(TokenStep.of(SUCCEED, "admin"));
           add(
               CommandStep.of(
@@ -89,7 +89,7 @@ public class CliAccessControlTableCrudTest extends CliAccessControlBaseCrudTest 
                   "--securable_type",
                   "catalog",
                   "--name",
-                  "catalog1",
+                  "cat_pr1",
                   "--principal",
                   "regular-1@localhost",
                   "--privilege",
@@ -103,7 +103,7 @@ public class CliAccessControlTableCrudTest extends CliAccessControlBaseCrudTest 
                   "--securable_type",
                   "catalog",
                   "--name",
-                  "catalog1",
+                  "cat_pr1",
                   "--principal",
                   "regular-1@localhost",
                   "--privilege",
@@ -112,7 +112,7 @@ public class CliAccessControlTableCrudTest extends CliAccessControlBaseCrudTest 
           add(TokenStep.of(SUCCEED, "principal-1@localhost"));
           add(
               CommandStep.of(
-                  SUCCEED, "schema", "create", "--name", "schema2", "--catalog", "catalog1"));
+                  SUCCEED, "schema", "create", "--name", "sch_pr1", "--catalog", "cat_pr1"));
 
           add(TokenStep.of(SUCCEED, "admin"));
           add(
@@ -124,7 +124,7 @@ public class CliAccessControlTableCrudTest extends CliAccessControlBaseCrudTest 
                   "--securable_type",
                   "catalog",
                   "--name",
-                  "catalog1",
+                  "cat_pr1",
                   "--principal",
                   "principal-1@localhost",
                   "--privilege",
@@ -140,7 +140,7 @@ public class CliAccessControlTableCrudTest extends CliAccessControlBaseCrudTest 
                   "--securable_type",
                   "schema",
                   "--name",
-                  "catalog1.schema2",
+                  "cat_pr1.sch_pr1",
                   "--principal",
                   "principal-1@localhost",
                   "--privilege",
@@ -154,11 +154,11 @@ public class CliAccessControlTableCrudTest extends CliAccessControlBaseCrudTest 
                   "table",
                   "create",
                   "--full_name",
-                  "catalog1.schema2.table1",
+                  "cat_pr1.sch_pr1.tbl_pr1",
                   "--columns",
                   "id INT",
                   "--storage_location",
-                  "/tmp/table1"));
+                  "/tmp/tbl_pr1"));
 
           add(TokenStep.of(SUCCEED, "admin"));
           add(
@@ -170,7 +170,7 @@ public class CliAccessControlTableCrudTest extends CliAccessControlBaseCrudTest 
                   "--securable_type",
                   "catalog",
                   "--name",
-                  "catalog1",
+                  "cat_pr1",
                   "--principal",
                   "regular-1@localhost",
                   "--privilege",
@@ -186,7 +186,7 @@ public class CliAccessControlTableCrudTest extends CliAccessControlBaseCrudTest 
                   "--securable_type",
                   "schema",
                   "--name",
-                  "catalog1.schema2",
+                  "cat_pr1.sch_pr1",
                   "--principal",
                   "regular-1@localhost",
                   "--privilege",
@@ -200,23 +200,23 @@ public class CliAccessControlTableCrudTest extends CliAccessControlBaseCrudTest 
                   "table",
                   "create",
                   "--full_name",
-                  "catalog1.schema2.table2",
+                  "cat_pr1.sch_pr1.tab_rg1",
                   "--columns",
                   "id INT",
                   "--storage_location",
-                  "/tmp/table2"));
+                  "/tmp/tab_rg1"));
 
           // list tables (admin) -> metastore admin -> allowed - list all
           add(TokenStep.of(SUCCEED, "admin"));
           add(
               CommandStep.of(
-                  SUCCEED, 2, "table", "list", "--catalog", "catalog1", "--schema", "schema2"));
+                  SUCCEED, 2, "table", "list", "--catalog", "cat_pr1", "--schema", "sch_pr1"));
 
           // list tables (principal-1) -> owner -> allowed -> filtered list
           add(TokenStep.of(SUCCEED, "principal-1@localhost"));
           add(
               CommandStep.of(
-                  SUCCEED, 2, "table", "list", "--catalog", "catalog1", "--schema", "schema2"));
+                  SUCCEED, 2, "table", "list", "--catalog", "cat_pr1", "--schema", "sch_pr1"));
 
           add(TokenStep.of(SUCCEED, "admin"));
           add(
@@ -228,7 +228,7 @@ public class CliAccessControlTableCrudTest extends CliAccessControlBaseCrudTest 
                   "--securable_type",
                   "catalog",
                   "--name",
-                  "catalog1",
+                  "cat_pr1",
                   "--principal",
                   "regular-2@localhost",
                   "--privilege",
@@ -244,7 +244,7 @@ public class CliAccessControlTableCrudTest extends CliAccessControlBaseCrudTest 
                   "--securable_type",
                   "schema",
                   "--name",
-                  "catalog1.schema2",
+                  "cat_pr1.sch_pr1",
                   "--principal",
                   "regular-2@localhost",
                   "--privilege",
@@ -260,7 +260,7 @@ public class CliAccessControlTableCrudTest extends CliAccessControlBaseCrudTest 
                   "--securable_type",
                   "table",
                   "--name",
-                  "catalog1.schema2.table1",
+                  "cat_pr1.sch_pr1.tbl_pr1",
                   "--principal",
                   "regular-2@localhost",
                   "--privilege",
@@ -270,25 +270,25 @@ public class CliAccessControlTableCrudTest extends CliAccessControlBaseCrudTest 
           add(TokenStep.of(SUCCEED, "regular-2@localhost"));
           add(
               CommandStep.of(
-                  SUCCEED, 1, "table", "list", "--catalog", "catalog1", "--schema", "schema2"));
+                  SUCCEED, 1, "table", "list", "--catalog", "cat_pr1", "--schema", "sch_pr1"));
 
           // list tables (regular-1) -> -- -> empty list
           add(TokenStep.of(SUCCEED, "regular-1@localhost"));
           add(
               CommandStep.of(
-                  SUCCEED, 1, "table", "list", "--catalog", "catalog1", "--schema", "schema2"));
+                  SUCCEED, 1, "table", "list", "--catalog", "cat_pr1", "--schema", "sch_pr1"));
 
           // get, table (admin) -> metastore admin -> allowed
           add(TokenStep.of(SUCCEED, "admin"));
-          add(CommandStep.of(SUCCEED, "table", "get", "--full_name", "catalog1.schema2.table1"));
+          add(CommandStep.of(SUCCEED, "table", "get", "--full_name", "cat_pr1.sch_pr1.tbl_pr1"));
 
           // get, table (principal-1) -> owner [catalog] -> allowed
           add(TokenStep.of(SUCCEED, "principal-1@localhost"));
-          add(CommandStep.of(SUCCEED, "table", "get", "--full_name", "catalog1.schema2.table1"));
+          add(CommandStep.of(SUCCEED, "table", "get", "--full_name", "cat_pr1.sch_pr1.tbl_pr1"));
 
           // get, table (regular-2) -> use schema, use catalog, select [table] -> allowed
           add(TokenStep.of(SUCCEED, "regular-2@localhost"));
-          add(CommandStep.of(SUCCEED, "table", "get", "--full_name", "catalog1.schema2.table1"));
+          add(CommandStep.of(SUCCEED, "table", "get", "--full_name", "cat_pr1.sch_pr1.tbl_pr1"));
 
           add(TokenStep.of(SUCCEED, "admin"));
           add(
@@ -300,7 +300,7 @@ public class CliAccessControlTableCrudTest extends CliAccessControlBaseCrudTest 
                   "--securable_type",
                   "catalog",
                   "--name",
-                  "catalog1",
+                  "cat_pr1",
                   "--principal",
                   "regular-2@localhost",
                   "--privilege",
@@ -309,7 +309,7 @@ public class CliAccessControlTableCrudTest extends CliAccessControlBaseCrudTest 
           add(TokenStep.of(SUCCEED, "regular-2@localhost"));
           add(
               CommandStep.of(
-                  SUCCEED, "schema", "create", "--name", "schema3", "--catalog", "catalog1"));
+                  SUCCEED, "schema", "create", "--name", "sch_rg2", "--catalog", "cat_pr1"));
 
           add(TokenStep.of(SUCCEED, "admin"));
           add(
@@ -321,7 +321,7 @@ public class CliAccessControlTableCrudTest extends CliAccessControlBaseCrudTest 
                   "--securable_type",
                   "schema",
                   "--name",
-                  "catalog1.schema3",
+                  "cat_pr1.sch_rg2",
                   "--principal",
                   "regular-2@localhost",
                   "--privilege",
@@ -335,23 +335,19 @@ public class CliAccessControlTableCrudTest extends CliAccessControlBaseCrudTest 
                   "table",
                   "create",
                   "--full_name",
-                  "catalog1.schema3.table3",
+                  "cat_pr1.sch_rg2.tab_rg2",
                   "--columns",
                   "id INT",
                   "--storage_location",
-                  "/tmp/table3"));
+                  "/tmp/tab_rg2"));
 
           // delete table (regular-1) -> -- -> denied
           add(TokenStep.of(SUCCEED, "regular-1@localhost"));
-          add(CommandStep.of(FAIL, "table", "delete", "--full_name", "catalog1.schema3.table3"));
+          add(CommandStep.of(FAIL, "table", "delete", "--full_name", "cat_pr1.sch_rg2.tab_rg2"));
 
           // delete table (principal-1) -> owner [catalog], not owner [schema] -> denied
           add(TokenStep.of(SUCCEED, "principal-1@localhost"));
-          add(CommandStep.of(FAIL, "table", "delete", "--full_name", "catalog1.schema3.table3"));
-
-          // delete table (regular-2) -> owner [schema], owner [table] -> allow
-          add(TokenStep.of(SUCCEED, "regular-2@localhost"));
-          add(CommandStep.of(SUCCEED, "table", "delete", "--full_name", "catalog1.schema3.table3"));
+          add(CommandStep.of(SUCCEED, "table", "delete", "--full_name", "cat_pr1.sch_rg2.tab_rg2"));
         }
       };
 

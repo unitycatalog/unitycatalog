@@ -99,11 +99,11 @@ public class CliAccessControlBaseCrudTest extends BaseAccessControlCRUDTest {
                               "catalog",
                               "create",
                               "--name",
-                              "catalog1",
+                              "cat_pr1",
                               "--comment",
                               "(created from scratch)"));
 
-              // give user CREATE SCHEMA on catalog1
+              // give user CREATE SCHEMA on cat_pr1
               add(
                       Step.CommandStep.of(
                               SUCCEED,
@@ -113,7 +113,7 @@ public class CliAccessControlBaseCrudTest extends BaseAccessControlCRUDTest {
                               "--securable_type",
                               "catalog",
                               "--name",
-                              "catalog1",
+                              "cat_pr1",
                               "--principal",
                               "principal-1@localhost",
                               "--privilege",
@@ -127,7 +127,7 @@ public class CliAccessControlBaseCrudTest extends BaseAccessControlCRUDTest {
                               "--securable_type",
                               "catalog",
                               "--name",
-                              "catalog1",
+                              "cat_pr1",
                               "--principal",
                               "principal-1@localhost",
                               "--privilege",
@@ -136,7 +136,7 @@ public class CliAccessControlBaseCrudTest extends BaseAccessControlCRUDTest {
               add(Step.TokenStep.of(SUCCEED, "principal-1@localhost"));
               add(
                       Step.CommandStep.of(
-                              SUCCEED, "schema", "create", "--name", "schema1", "--catalog", "catalog1"));
+                              SUCCEED, "schema", "create", "--name", "sch_pr1", "--catalog", "cat_pr1"));
 
             }
           };

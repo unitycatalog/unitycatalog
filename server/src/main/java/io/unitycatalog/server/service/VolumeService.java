@@ -56,7 +56,6 @@ public class VolumeService {
   @Post("")
   // TODO: for now, we are not supporting CREATE VOLUME or CREATE EXTERNAL VOLUME privileges
   @AuthorizeExpression("""
-          #authorize(#principal, #metastore, OWNER) ||
           #authorizeAny(#principal, #catalog, OWNER, USE_CATALOG) && #authorizeAny(#principal, #schema, OWNER, USE_SCHEMA)
           """)
   @AuthorizeKey(METASTORE)
@@ -93,8 +92,9 @@ public class VolumeService {
 
   @Get("/{full_name}")
   @AuthorizeExpression("""
-          #authorize(#principal, #metastore, OWNER) ||
-          (#authorizeAny(#principal, #schema, OWNER, USE_SCHEMA) && #authorizeAny(#principal, #catalog, OWNER, USE_CATALOG) && #authorizeAny(#principal, #volume, OWNER, READ_VOLUME))
+            #authorize(#principal, #metastore, OWNER) ||
+            (#authorizeAll(#principal, #schema, OWNER, USE_SCHEMA) && #authorizeAny(#principal, #catalog, OWNER, USE_CATALOG)) ||
+            (#authorize(#principal, #schema, USE_SCHEMA) && #authorizeAny(#principal, #catalog, OWNER, USE_CATALOG) && #authorizeAny(#principal, #volume, OWNER, READ_VOLUME))
           """)
   @AuthorizeKey(METASTORE)
   public HttpResponse getVolume(
@@ -105,7 +105,6 @@ public class VolumeService {
 
   @Patch("/{full_name}")
   @AuthorizeExpression("""
-          #authorize(#principal, #metastore, OWNER) ||
           (#authorize(#principal, #volume, OWNER) && #authorizeAny(#principal, #catalog, OWNER, USE_CATALOG) && #authorizeAny(#principal, #schema, OWNER, USE_SCHEMA))
           """)
   @AuthorizeKey(METASTORE)
@@ -117,7 +116,9 @@ public class VolumeService {
   @Delete("/{full_name}")
   @AuthorizeExpression("""
           #authorize(#principal, #metastore, OWNER) ||
-          (#authorize(#principal, #volume, OWNER) && #authorizeAny(#principal, #catalog, OWNER, USE_CATALOG) && #authorizeAny(#principal, #schema, OWNER, USE_SCHEMA))
+          #authorize(#principal, #catalog, OWNER) ||
+          (#authorize(#principal, #schema, OWNER) && #authorize(#principal, #catalog, USE_CATALOG)) ||
+          (#authorize(#principal, #volume, OWNER) && #authorize(#principal, #catalog, USE_CATALOG) && #authorize(#principal, #schema, USE_SCHEMA))
           """)
   @AuthorizeKey(METASTORE)
   public HttpResponse deleteVolume(@Param("full_name") @AuthorizeKey(VOLUME) String fullName) {

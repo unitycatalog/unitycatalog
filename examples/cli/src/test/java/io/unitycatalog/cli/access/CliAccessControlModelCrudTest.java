@@ -30,7 +30,7 @@ public class CliAccessControlModelCrudTest extends CliAccessControlBaseCrudTest 
                   "--securable_type",
                   "schema",
                   "--name",
-                  "catalog1.schema1",
+                  "cat_pr1.sch_pr1",
                   "--principal",
                   "principal-1@localhost",
                   "--privilege",
@@ -44,7 +44,7 @@ public class CliAccessControlModelCrudTest extends CliAccessControlBaseCrudTest 
                   "--securable_type",
                   "schema",
                   "--name",
-                  "catalog1.schema1",
+                  "cat_pr1.sch_pr1",
                   "--principal",
                   "principal-1@localhost",
                   "--privilege",
@@ -58,7 +58,7 @@ public class CliAccessControlModelCrudTest extends CliAccessControlBaseCrudTest 
                   "--securable_type",
                   "schema",
                   "--name",
-                  "catalog1.schema1",
+                  "cat_pr1.sch_pr1",
                   "--principal",
                   "principal-2@localhost",
                   "--privilege",
@@ -71,20 +71,20 @@ public class CliAccessControlModelCrudTest extends CliAccessControlBaseCrudTest 
                   "registered_model",
                   "create",
                   "--catalog",
-                  "catalog1",
+                  "cat_pr1",
                   "--schema",
-                  "schema1",
+                  "sch_pr1",
                   "--name",
-                  "model1"));
+                  "mod_pr1"));
 
           add(TokenStep.of(SUCCEED, "principal-1@localhost"));
           add(
               CommandStep.of(
-                  SUCCEED, "registered_model", "get", "--full_name", "catalog1.schema1.model1"));
+                  SUCCEED, "registered_model", "get", "--full_name", "cat_pr1.sch_pr1.mod_pr1"));
           add(TokenStep.of(SUCCEED, "principal-2@localhost"));
           add(
               CommandStep.of(
-                  FAIL, "registered_model", "get", "--full_name", "catalog1.schema1.model1"));
+                  FAIL, "registered_model", "get", "--full_name", "cat_pr1.sch_pr1.mod_pr1"));
 
           add(TokenStep.of(SUCCEED, "principal-1@localhost"));
           add(CommandStep.of(SUCCEED, 1, "registered_model", "list"));
@@ -99,7 +99,7 @@ public class CliAccessControlModelCrudTest extends CliAccessControlBaseCrudTest 
                   "registered_model",
                   "update",
                   "--full_name",
-                  "catalog1.schema1.model1",
+                  "cat_pr1.sch_pr1.mod_pr1",
                   "--comment",
                   "hello"));
 
@@ -110,7 +110,7 @@ public class CliAccessControlModelCrudTest extends CliAccessControlBaseCrudTest 
                   "registered_model",
                   "update",
                   "--full_name",
-                  "catalog1.schema1.model1",
+                  "cat_pr1.sch_pr1.mod_pr1",
                   "--comment",
                   "hello"));
 
@@ -121,11 +121,11 @@ public class CliAccessControlModelCrudTest extends CliAccessControlBaseCrudTest 
                   "model_version",
                   "create",
                   "--catalog",
-                  "catalog1",
+                  "cat_pr1",
                   "--schema",
-                  "schema1",
+                  "sch_pr1",
                   "--name",
-                  "model1"));
+                  "mod_pr1"));
 
           add(TokenStep.of(SUCCEED, "principal-2@localhost"));
           add(
@@ -134,11 +134,11 @@ public class CliAccessControlModelCrudTest extends CliAccessControlBaseCrudTest 
                   "model_version",
                   "create",
                   "--catalog",
-                  "catalog1",
+                  "cat_pr1",
                   "--schema",
-                  "schema1",
+                  "sch_pr1",
                   "--name",
-                  "model1"));
+                  "mod_pr1"));
 
           add(TokenStep.of(SUCCEED, "principal-1@localhost"));
           add(
@@ -147,7 +147,7 @@ public class CliAccessControlModelCrudTest extends CliAccessControlBaseCrudTest 
                   "model_version",
                   "get",
                   "--full_name",
-                  "catalog1.schema1.model1",
+                  "cat_pr1.sch_pr1.mod_pr1",
                   "--version",
                   "1"));
 
@@ -158,19 +158,19 @@ public class CliAccessControlModelCrudTest extends CliAccessControlBaseCrudTest 
                   "model_version",
                   "get",
                   "--full_name",
-                  "catalog1.schema1.model1",
+                  "cat_pr1.sch_pr1.mod_pr1",
                   "--version",
                   "1"));
 
           add(TokenStep.of(SUCCEED, "principal-1@localhost"));
           add(
               CommandStep.of(
-                  SUCCEED, 1, "model_version", "list", "--full_name", "catalog1.schema1.model1"));
+                  SUCCEED, 1, "model_version", "list", "--full_name", "cat_pr1.sch_pr1.mod_pr1"));
 
           add(TokenStep.of(SUCCEED, "principal-2@localhost"));
           add(
               CommandStep.of(
-                  FAIL, "model_version", "list", "--full_name", "catalog1.schema1.model1"));
+                  FAIL, "model_version", "list", "--full_name", "cat_pr1.sch_pr1.mod_pr1"));
 
           add(TokenStep.of(SUCCEED, "principal-1@localhost"));
           add(
@@ -179,7 +179,7 @@ public class CliAccessControlModelCrudTest extends CliAccessControlBaseCrudTest 
                   "model_version",
                   "update",
                   "--full_name",
-                  "catalog1.schema1.model1",
+                  "cat_pr1.sch_pr1.mod_pr1",
                   "--version",
                   "1",
                   "--comment",
@@ -192,7 +192,7 @@ public class CliAccessControlModelCrudTest extends CliAccessControlBaseCrudTest 
                   "model_version",
                   "update",
                   "--full_name",
-                  "catalog1.schema1.model1",
+                  "cat_pr1.sch_pr1.mod_pr1",
                   "--version",
                   "1",
                   "--comment",
@@ -205,7 +205,7 @@ public class CliAccessControlModelCrudTest extends CliAccessControlBaseCrudTest 
                   "model_version",
                   "delete",
                   "--full_name",
-                  "catalog1.schema1.model1",
+                  "cat_pr1.sch_pr1.mod_pr1",
                   "--version",
                   "1"));
 
@@ -216,19 +216,19 @@ public class CliAccessControlModelCrudTest extends CliAccessControlBaseCrudTest 
                   "model_version",
                   "delete",
                   "--full_name",
-                  "catalog1.schema1.model1",
+                  "cat_pr1.sch_pr1.mod_pr1",
                   "--version",
                   "1"));
 
           add(TokenStep.of(SUCCEED, "principal-2@localhost"));
           add(
               CommandStep.of(
-                  FAIL, "registered_model", "delete", "--full_name", "catalog1.schema1.model1"));
+                  FAIL, "registered_model", "delete", "--full_name", "cat_pr1.sch_pr1.mod_pr1"));
 
           add(TokenStep.of(SUCCEED, "principal-1@localhost"));
           add(
               CommandStep.of(
-                  SUCCEED, "registered_model", "delete", "--full_name", "catalog1.schema1.model1"));
+                  SUCCEED, "registered_model", "delete", "--full_name", "cat_pr1.sch_pr1.mod_pr1"));
         }
       };
 

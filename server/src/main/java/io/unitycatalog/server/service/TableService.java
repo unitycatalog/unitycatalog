@@ -74,7 +74,9 @@ public class TableService {
   @Get("/{full_name}")
   @AuthorizeExpression("""
           #authorize(#principal, #metastore, OWNER) ||
-          (#authorizeAny(#principal, #schema, OWNER, USE_SCHEMA) && #authorizeAny(#principal, #catalog, OWNER, USE_CATALOG) && #authorizeAny(#principal, #table, OWNER, SELECT))
+          #authorize(#principal, #catalog, OWNER) ||
+          (#authorize(#principal, #schema, OWNER) && #authorize(#principal, #catalog, USE_CATALOG)) ||
+          (#authorize(#principal, #schema, USE_SCHEMA) && #authorize(#principal, #catalog, USE_CATALOG) && #authorizeAny(#principal, #table, OWNER, SELECT))
           """)
   @AuthorizeKey(METASTORE)
   public HttpResponse getTable(@Param("full_name") @AuthorizeKey(TABLE) String fullName) {
@@ -102,18 +104,23 @@ public class TableService {
             omitColumns.orElse(false));
 
     filterTables("""
-            #authorize(#principal, #metastore, OWNER) ||
-            (#authorizeAll(#principal, #schema, OWNER, USE_SCHEMA) && #authorizeAny(#principal, #catalog, OWNER, USE_CATALOG)) ||
-            (#authorize(#principal, #schema, USE_SCHEMA) && #authorizeAny(#principal, #catalog, OWNER, USE_CATALOG) && #authorizeAny(#principal, #table, OWNER, SELECT))
-            """, listTablesResponse.getTables());
+          #authorize(#principal, #metastore, OWNER) ||
+          #authorize(#principal, #catalog, OWNER) ||
+          (#authorize(#principal, #schema, OWNER) && #authorize(#principal, #catalog, USE_CATALOG)) ||
+          (#authorize(#principal, #schema, USE_SCHEMA) && #authorize(#principal, #catalog, USE_CATALOG) && #authorizeAny(#principal, #table, OWNER, SELECT))
+          """, listTablesResponse.getTables());
 
     return HttpResponse.ofJson(listTablesResponse);
   }
 
   @Delete("/{full_name}")
   @AuthorizeExpression("""
-          (#authorizeAny(#principal, #catalog, OWNER, USE_CATALOG) && #authorizeAny(#principal, #schema, OWNER, USE_SCHEMA) && #authorize(#principal, #table, OWNER))
+          #authorize(#principal, #metastore, OWNER) ||
+          #authorize(#principal, #catalog, OWNER) ||
+          (#authorize(#principal, #schema, OWNER) && #authorize(#principal, #catalog, USE_CATALOG)) ||
+          (#authorize(#principal, #schema, USE_SCHEMA) && #authorize(#principal, #catalog, USE_CATALOG) && #authorize(#principal, #table, OWNER))
           """)
+  @AuthorizeKey(METASTORE)
   public HttpResponse deleteTable(@Param("full_name") @AuthorizeKey(TABLE) String fullName) {
     TableInfo tableInfo = TABLE_REPOSITORY.getTable(fullName);
     TABLE_REPOSITORY.deleteTable(fullName);
