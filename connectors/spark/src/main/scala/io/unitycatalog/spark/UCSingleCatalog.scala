@@ -8,6 +8,7 @@ import java.net.URI
 import java.util
 import org.apache.hadoop.fs.Path
 import org.apache.hadoop.fs.azurebfs.constants.ConfigurationKeys.{FS_AZURE_ACCOUNT_AUTH_TYPE_PROPERTY_NAME, FS_AZURE_ACCOUNT_IS_HNS_ENABLED, FS_AZURE_SAS_TOKEN_PROVIDER_TYPE}
+import org.apache.spark.internal.Logging
 import org.apache.spark.sql.catalyst.TableIdentifier
 import org.apache.spark.sql.catalyst.analysis.{NoSuchNamespaceException, NoSuchTableException}
 import org.apache.spark.sql.catalyst.catalog.{CatalogStorageFormat, CatalogTable, CatalogTableType, CatalogUtils}
@@ -23,26 +24,37 @@ import scala.language.existentials
 /**
  * A Spark catalog plugin to get/manage tables in Unity Catalog.
  */
-class UCSingleCatalog extends TableCatalog with SupportsNamespaces {
+class UCSingleCatalog extends TableCatalog with SupportsNamespaces with Logging {
 
-  private var deltaCatalog: TableCatalog = null
+  @volatile private var delegate: TableCatalog = null
 
   override def initialize(name: String, options: CaseInsensitiveStringMap): Unit = {
     val proxy = new UCProxy()
     proxy.initialize(name, options)
-    deltaCatalog = Class.forName("org.apache.spark.sql.delta.catalog.DeltaCatalog")
-      .getDeclaredConstructor().newInstance().asInstanceOf[TableCatalog]
-    deltaCatalog.asInstanceOf[DelegatingCatalogExtension].setDelegateCatalog(proxy)
+    if (UCSingleCatalog.LOAD_DELTA_CATALOG.get()) {
+      try {
+        delegate = Class.forName("org.apache.spark.sql.delta.catalog.DeltaCatalog")
+          .getDeclaredConstructor().newInstance().asInstanceOf[TableCatalog]
+        delegate.asInstanceOf[DelegatingCatalogExtension].setDelegateCatalog(proxy)
+        UCSingleCatalog.DELTA_CATALOG_LOADED.set(true)
+      } catch {
+        case e: ClassNotFoundException =>
+          logWarning("DeltaCatalog is not available in the classpath", e)
+          delegate = proxy
+      }
+    } else {
+      delegate = proxy
+    }
   }
 
-  override def name(): String = deltaCatalog.name()
+  override def name(): String = delegate.name()
 
-  override def listTables(namespace: Array[String]): Array[Identifier] = deltaCatalog.listTables(namespace)
+  override def listTables(namespace: Array[String]): Array[Identifier] = delegate.listTables(namespace)
 
-  override def loadTable(ident: Identifier): Table = deltaCatalog.loadTable(ident)
+  override def loadTable(ident: Identifier): Table = delegate.loadTable(ident)
 
   override def tableExists(ident: Identifier): Boolean = {
-    deltaCatalog.tableExists(ident)
+    delegate.tableExists(ident)
   }
 
   override def createTable(
@@ -67,9 +79,9 @@ class UCSingleCatalog extends TableCatalog with SupportsNamespaces {
       // `PROP_IS_MANAGED_LOCATION` is used to indicate that the table location is not
       // user-specified but system-generated, which is exactly the case here.
       newProps.put(TableCatalog.PROP_IS_MANAGED_LOCATION, "true")
-      deltaCatalog.createTable(ident, columns, partitions, newProps)
+      delegate.createTable(ident, columns, partitions, newProps)
     } else {
-      deltaCatalog.createTable(ident, columns, partitions, properties)
+      delegate.createTable(ident, columns, partitions, properties)
     }
   }
 
@@ -78,33 +90,38 @@ class UCSingleCatalog extends TableCatalog with SupportsNamespaces {
   }
   override def alterTable(ident: Identifier, changes: TableChange*): Table = ???
 
-  override def dropTable(ident: Identifier): Boolean = deltaCatalog.dropTable(ident)
+  override def dropTable(ident: Identifier): Boolean = delegate.dropTable(ident)
 
   override def renameTable(oldIdent: Identifier, newIdent: Identifier): Unit = ???
 
   override def listNamespaces(): Array[Array[String]] = {
-    deltaCatalog.asInstanceOf[DelegatingCatalogExtension].listNamespaces()
+    delegate.asInstanceOf[DelegatingCatalogExtension].listNamespaces()
   }
 
   override def listNamespaces(namespace: Array[String]): Array[Array[String]] = {
-    deltaCatalog.asInstanceOf[DelegatingCatalogExtension].listNamespaces(namespace)
+    delegate.asInstanceOf[DelegatingCatalogExtension].listNamespaces(namespace)
   }
 
   override def loadNamespaceMetadata(namespace: Array[String]): util.Map[String, String] = {
-    deltaCatalog.asInstanceOf[DelegatingCatalogExtension].loadNamespaceMetadata(namespace)
+    delegate.asInstanceOf[DelegatingCatalogExtension].loadNamespaceMetadata(namespace)
   }
 
   override def createNamespace(namespace: Array[String], metadata: util.Map[String, String]): Unit = {
-    deltaCatalog.asInstanceOf[DelegatingCatalogExtension].createNamespace(namespace, metadata)
+    delegate.asInstanceOf[DelegatingCatalogExtension].createNamespace(namespace, metadata)
   }
 
   override def alterNamespace(namespace: Array[String], changes: NamespaceChange*): Unit = {
-    deltaCatalog.asInstanceOf[DelegatingCatalogExtension].alterNamespace(namespace, changes: _*)
+    delegate.asInstanceOf[DelegatingCatalogExtension].alterNamespace(namespace, changes: _*)
   }
 
   override def dropNamespace(namespace: Array[String], cascade: Boolean): Boolean = {
-    deltaCatalog.asInstanceOf[DelegatingCatalogExtension].dropNamespace(namespace, cascade)
+    delegate.asInstanceOf[DelegatingCatalogExtension].dropNamespace(namespace, cascade)
   }
+}
+
+object UCSingleCatalog {
+  val LOAD_DELTA_CATALOG = ThreadLocal.withInitial[Boolean](() => true)
+  val DELTA_CATALOG_LOADED = ThreadLocal.withInitial[Boolean](() => false)
 }
 
 // An internal proxy to talk to the UC client.
