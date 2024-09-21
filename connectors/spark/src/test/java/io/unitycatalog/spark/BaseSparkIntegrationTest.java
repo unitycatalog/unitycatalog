@@ -36,6 +36,7 @@ public abstract class BaseSparkIntegrationTest extends BaseCRUDTest {
         SparkSession.builder()
             .appName("test")
             .master("local[*]")
+            .config("spark.sql.shuffle.partitions", "4")
             .config("spark.sql.extensions", "io.delta.sql.DeltaSparkSessionExtension");
     for (String catalog : catalogs) {
       String catalogConf = "spark.sql.catalog." + catalog;
