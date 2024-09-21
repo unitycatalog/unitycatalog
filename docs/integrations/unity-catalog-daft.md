@@ -9,7 +9,7 @@ This page shows you how to use Unity Catalog with Daft.
 To start, install Daft with the extra Unity Catalog dependencies using:
 
 ```sh
-pip install -U "getdaft[unity]"
+pip install -U "getdaft[unity,deltalake]"
 ```
 
 Then import Daft and the `UnityCatalog` abstraction:
@@ -76,10 +76,10 @@ unity_table = unity.load_table("unity.default.numbers")
 
 Unity Catalog tables are stored in the Delta Lake format.
 
-Simply read your table using the Daft `read_delta_lake` method:
+Simply read your table using the Daft `read_deltalake` method:
 
 ```python
-> df = daft.read_delta_lake(unity_table)
+> df = daft.read_deltalake(unity_table)
 > df.show()
 
 as_int  as_double
