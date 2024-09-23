@@ -415,7 +415,11 @@ bin/uc function delete --full_name <catalog>.<schema>.<function_name>
 - `schema` : The name of the schema.
 - `function_name` : The name of the function.
 
-## 6. CLI Server Configuration
+## 6. Registered model and model version management
+
+Please refer to [MLflow documentation](https://mlflow.org/docs/latest/index.html) to learn how to use MLflow to create, register, update, use, and delete registered models and model versions.
+
+## 7. CLI Server Configuration
 
 By default, the CLI tool is configured to interact with a local reference server running at `http://localhost:8080`.
 The CLI can be configured to talk to Databricks Unity Catalog by one of the following methods:
