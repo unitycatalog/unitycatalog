@@ -2227,10 +2227,13 @@ components:
         - USE CATALOG
         - CREATE SCHEMA
         - USE SCHEMA
-        - CREATE MODEL
-        - READ VOLUME
+        - CREATE TABLE
         - SELECT
+        - CREATE FUNCTION
         - EXECUTE
+        - CREATE VOLUME
+        - READ VOLUME
+        - CREATE MODEL
       description: The privilege to grant.
     UpdatePermissions:
       type: object

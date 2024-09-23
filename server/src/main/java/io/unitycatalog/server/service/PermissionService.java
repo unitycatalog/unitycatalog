@@ -108,15 +108,23 @@ public class PermissionService {
   private HttpResponse getAuthorization(
       SecurableType securableType, String name) {
 
-    // Only show permissions for the authentiated identity unless they are the owner
+    // Only show permissions for the authenticated identity unless they are the owner
+    // or if the authenticated identity is the owner of the parent resource(s)
     // of the resource or the metastore itself.
 
     UUID resourceId = getResourceId(securableType, name);
     UUID principalId = IdentityUtils.findPrincipalId();
 
+    // TODO: could be more explicit about the hierarchy here.
+    // For now this is sufficient in that it covers owner on resources parentage.
+    UUID parentId = authorizer.getHierarchyParent(resourceId);
+    UUID grandparentId = (parentId != null) ? authorizer.getHierarchyParent(parentId):null;
+
     boolean isOwner =
             authorizer.authorize(principalId, METASTORE_REPOSITORY.getMetastoreId(), Privileges.OWNER) ||
-            authorizer.authorize(principalId, resourceId, Privileges.OWNER);
+            authorizer.authorize(principalId, resourceId, Privileges.OWNER) ||
+            (parentId != null && authorizer.authorize(principalId, parentId, Privileges.OWNER)) ||
+            (grandparentId != null && authorizer.authorize(principalId, grandparentId, Privileges.OWNER));
 
     Map<UUID, List<Privileges>> authorizations =
             isOwner ?
@@ -164,8 +172,11 @@ public class PermissionService {
   }
 
   @Patch("/schema/{name}")
-  @AuthorizeExpression(
-      "#authorize(#principal, #metastore, OWNER) || #authorize(#principal, #schema, OWNER)")
+  @AuthorizeExpression("""
+      #authorize(#principal, #metastore, OWNER) ||
+      #authorize(#principal, #catalog, OWNER) ||
+      (#authorize(#principal, #schema, OWNER) && #authorize(#principal, #catalog, USE_CATALOG))
+      """)
   @AuthorizeKey(METASTORE)
   public HttpResponse updateSchemaAuthorization(
       @Param("name") @AuthorizeKey(SCHEMA) String name, UpdatePermissions request) {
@@ -173,8 +184,12 @@ public class PermissionService {
   }
 
   @Patch("/table/{name}")
-  @AuthorizeExpression(
-      "#authorize(#principal, #metastore, OWNER) || #authorize(#principal, #table, OWNER)")
+  @AuthorizeExpression("""
+      #authorize(#principal, #metastore, OWNER) ||
+      #authorize(#principal, #catalog, OWNER) ||
+      (#authorize(#principal, #catalog, USE_CATALOG) && #authorize(#principal, #schema, OWNER)) ||
+      (#authorize(#principal, #catalog, USE_CATALOG) && #authorize(#principal, #schema, USE_SCHEMA) && #authorize(#principal, #table, OWNER))
+      """)
   @AuthorizeKey(METASTORE)
   public HttpResponse updateTableAuthorization(
       @Param("name") @AuthorizeKey(TABLE) String name, UpdatePermissions request) {
@@ -182,8 +197,12 @@ public class PermissionService {
   }
 
   @Patch("/function/{name}")
-  @AuthorizeExpression(
-      "#authorize(#principal, #metastore, OWNER) || #authorize(#principal, #function, OWNER)")
+  @AuthorizeExpression("""
+      #authorize(#principal, #metastore, OWNER) ||
+      #authorize(#principal, #catalog, OWNER) ||
+      (#authorize(#principal, #catalog, USE_CATALOG) && #authorize(#principal, #schema, OWNER)) ||
+      (#authorize(#principal, #catalog, USE_CATALOG) && #authorize(#principal, #schema, USE_SCHEMA) && #authorize(#principal, #function, OWNER))
+      """)
   @AuthorizeKey(METASTORE)
   public HttpResponse updateFunctionAuthorization(
       @Param("name") @AuthorizeKey(FUNCTION) String name, UpdatePermissions request) {
@@ -191,8 +210,12 @@ public class PermissionService {
   }
 
   @Patch("/volume/{name}")
-  @AuthorizeExpression(
-      "#authorize(#principal, #metastore, OWNER) || #authorize(#principal, #volume, OWNER)")
+  @AuthorizeExpression("""
+      #authorize(#principal, #metastore, OWNER) ||
+      #authorize(#principal, #catalog, OWNER) ||
+      (#authorize(#principal, #catalog, USE_CATALOG) && #authorize(#principal, #schema, OWNER)) ||
+      (#authorize(#principal, #catalog, USE_CATALOG) && #authorize(#principal, #schema, USE_SCHEMA) && #authorize(#principal, #volume, OWNER))
+      """)
   @AuthorizeKey(METASTORE)
   public HttpResponse updateVolumeAuthorization(
       @Param("name") @AuthorizeKey(VOLUME) String name, UpdatePermissions request) {

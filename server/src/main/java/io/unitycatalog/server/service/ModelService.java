@@ -48,9 +48,9 @@ public class ModelService {
 
   @Post("")
   @AuthorizeExpression("""
-          #authorize(#principal, #catalog, OWNER) ||
-          (#authorize(#principal, #catalog, USE_CATALOG) && #authorize(#principal, #schema, OWNER)) ||
-          (#authorize(#principal, #catalog, USE_CATALOG) && #authorizeAll(#principal, #schema, USE_SCHEMA, CREATE_MODEL))
+          (#authorizeAny(#principal, #catalog, OWNER, USE_CATALOG) && #authorize(#principal, #schema, OWNER)) ||
+          (#authorizeAny(#principal, #catalog, OWNER, USE_CATALOG) && #authorizeAll(#principal, #schema, USE_SCHEMA, CREATE_MODEL)) ||
+          (#authorizeAny(#principal, #catalog, OWNER, USE_CATALOG) && #authorizeAll(#principal, #schema, USE_SCHEMA, CREATE_FUNCTION))
           """)
   public HttpResponse createRegisteredModel(
           @AuthorizeKeys({
@@ -101,7 +101,7 @@ public class ModelService {
 
   @Patch("/{full_name}")
   @AuthorizeExpression("""
-          (#authorize(#principal, #registered_model, OWNER) && #authorize(#principal, #schema, USE_SCHEMA) && #authorize(#principal, #catalog, USE_CATALOG))
+          (#authorize(#principal, #registered_model, OWNER) && #authorizeAny(#principal, #schema, OWNER, USE_SCHEMA) && #authorizeAny(#principal, #catalog, OWNER, USE_CATALOG))
           """)
   @AuthorizeKey(METASTORE)
   public HttpResponse updateRegisteredModel(@Param("full_name") @AuthorizeKey(REGISTERED_MODEL) String fullNameArg, UpdateRegisteredModel updateRegisteredModel) {
@@ -129,7 +129,7 @@ public class ModelService {
 
   @Post("/versions")
   @AuthorizeExpression("""
-          #authorize(#principal, #registered_model, OWNER) && #authorize(#principal, #schema, USE_SCHEMA) && #authorize(#principal, #catalog, USE_CATALOG)
+          (#authorize(#principal, #registered_model, OWNER) && #authorizeAny(#principal, #schema, OWNER, USE_SCHEMA) && #authorizeAny(#principal, #catalog, OWNER, USE_CATALOG))
           """)
   public HttpResponse createModelVersion(@AuthorizeKeys({
           @AuthorizeKey(value = CATALOG, key = "catalog_name"),
@@ -174,7 +174,7 @@ public class ModelService {
 
   @Patch("/{full_name}/versions/{version}")
   @AuthorizeExpression("""
-          (#authorize(#principal, #registered_model, OWNER) && #authorize(#principal, #schema, USE_SCHEMA) && #authorize(#principal, #catalog, USE_CATALOG))
+          (#authorize(#principal, #registered_model, OWNER) && #authorizeAny(#principal, #schema, OWNER, USE_SCHEMA) && #authorizeAny(#principal, #catalog, OWNER, USE_CATALOG))
           """)
   @AuthorizeKey(METASTORE)
   public HttpResponse updateModelVersion(@Param("full_name") @AuthorizeKey(REGISTERED_MODEL) String fullName,
@@ -201,7 +201,7 @@ public class ModelService {
 
   @Patch("/{full_name}/versions/{version}/finalize")
   @AuthorizeExpression("""
-          (#authorize(#principal, #registered_model, OWNER) && #authorize(#principal, #schema, USE_SCHEMA) && #authorize(#principal, #catalog, USE_CATALOG))
+          (#authorize(#principal, #registered_model, OWNER) && #authorizeAny(#principal, #schema, OWNER, USE_SCHEMA) && #authorizeAny(#principal, #catalog, OWNER, USE_CATALOG))
           """)
   @AuthorizeKey(METASTORE)
   public HttpResponse finalizeModelVersion(@Param("full_name") @AuthorizeKey(REGISTERED_MODEL) String fullName,

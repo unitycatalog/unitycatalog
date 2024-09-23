@@ -89,6 +89,17 @@ public class JCasbinAuthorizer implements UnityCatalogAuthorizer {
   }
 
   @Override
+  public UUID getHierarchyParent(UUID resource) {
+    List<List<String>> policy =
+        enforcer.getFilteredNamedGroupingPolicy(
+            HIERARCHY_POLICY, HIERARCHY_CHILD_INDEX, resource.toString());
+    if (policy.isEmpty() || policy.get(0).isEmpty()) {
+      return null;
+    }
+    return UUID.fromString(policy.get(0).get(HIERARCHY_PARENT_INDEX));
+  }
+
+  @Override
   public boolean authorize(UUID principal, UUID resource, Privileges action) {
     return enforcer.enforce(principal.toString(), resource.toString(), action.toString());
   }

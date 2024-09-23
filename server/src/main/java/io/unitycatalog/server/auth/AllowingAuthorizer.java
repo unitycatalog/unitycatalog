@@ -49,6 +49,11 @@ public class AllowingAuthorizer implements UnityCatalogAuthorizer {
   }
 
   @Override
+  public UUID getHierarchyParent(UUID resource) {
+    return null;
+  }
+
+  @Override
   public boolean authorize(UUID principal, UUID resource, Privileges action) {
     return true;
   }

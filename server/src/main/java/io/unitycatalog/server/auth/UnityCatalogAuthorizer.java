@@ -30,6 +30,8 @@ public interface UnityCatalogAuthorizer {
 
   public boolean removeHierarchyChildren(UUID resource);
 
+  public UUID getHierarchyParent(UUID resource);
+
   public boolean authorize(UUID principal, UUID resource, Privileges action);
 
   public boolean authorizeAny(UUID principal, UUID resource, Privileges... actions);

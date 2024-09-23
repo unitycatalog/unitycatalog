@@ -192,7 +192,38 @@ public class CliAccessControlTableCrudTest extends CliAccessControlBaseCrudTest 
                   "--privilege",
                   "USE SCHEMA"));
 
-          // create table (regular-1) -> not owner, use catalog, USE SCHEMA -> allowed
+          // create table (regular-1) -> not owner, use catalog, USE SCHEMA, no create table ->
+          // denied
+          add(TokenStep.of(SUCCEED, "regular-1@localhost"));
+          add(
+              CommandStep.of(
+                  FAIL,
+                  "table",
+                  "create",
+                  "--full_name",
+                  "cat_pr1.sch_pr1.tab_rg1",
+                  "--columns",
+                  "id INT",
+                  "--storage_location",
+                  "/tmp/tab_rg1"));
+
+          // create table (regular-1) -> not owner, use catalog, USE SCHEMA, create table -> allowed
+          add(TokenStep.of(SUCCEED, "admin"));
+          add(
+              CommandStep.of(
+                  SUCCEED,
+                  1,
+                  "permission",
+                  "create",
+                  "--securable_type",
+                  "schema",
+                  "--name",
+                  "cat_pr1.sch_pr1",
+                  "--principal",
+                  "regular-1@localhost",
+                  "--privilege",
+                  "CREATE TABLE"));
+
           add(TokenStep.of(SUCCEED, "regular-1@localhost"));
           add(
               CommandStep.of(

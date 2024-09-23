@@ -21,25 +21,24 @@ import io.unitycatalog.server.model.Privilege;
  * defined in the OpenAPI specification. In the access control framework, we might express some
  * permissions in terms of privileges. Doing so, allows us to unify all access control processing
  * with a simple and unified rule syntax.
+ *
+ * <p>The OWNER privilege is an example of a privilege that is not defined in the OpenAPI
+ * specification but expression OWNER as a privilege makes permission evaluation including ownership
+ * more straight forward.
  */
 public enum Privileges {
   OWNER("OWNER"),
-
   CREATE_CATALOG("CREATE CATALOG"),
-
   USE_CATALOG("USE CATALOG"),
-
   CREATE_SCHEMA("CREATE SCHEMA"),
-
   USE_SCHEMA("USE SCHEMA"),
-
-  CREATE_MODEL("CREATE MODEL"),
-
-  READ_VOLUME("READ VOLUME"),
-
+  CREATE_TABLE("CREATE TABLE"),
   SELECT("SELECT"),
-
-  EXECUTE("EXECUTE");
+  CREATE_FUNCTION("CREATE FUNCTION"),
+  EXECUTE("EXECUTE"),
+  CREATE_VOLUME("CREATE VOLUME"),
+  READ_VOLUME("READ VOLUME"),
+  CREATE_MODEL("CREATE MODEL");
 
   private String value;
 

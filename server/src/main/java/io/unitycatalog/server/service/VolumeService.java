@@ -83,8 +83,9 @@ public class VolumeService {
 
     filterVolumes("""
             #authorize(#principal, #metastore, OWNER) ||
-            (#authorizeAll(#principal, #schema, OWNER, USE_SCHEMA) && #authorizeAny(#principal, #catalog, OWNER, USE_CATALOG)) ||
-            (#authorize(#principal, #schema, USE_SCHEMA) && #authorizeAny(#principal, #catalog, OWNER, USE_CATALOG) && #authorizeAny(#principal, #volume, OWNER, READ_VOLUME))
+            #authorize(#principal, #catalog, OWNER) ||
+            (#authorize(#principal, #schema, OWNER) && #authorize(#principal, #catalog, USE_CATALOG)) ||
+            (#authorize(#principal, #schema, USE_SCHEMA) && #authorize(#principal, #catalog, USE_CATALOG) && #authorizeAny(#principal, #volume, OWNER, READ_VOLUME))
             """, listVolumesResponse.getVolumes());
 
     return HttpResponse.ofJson(listVolumesResponse);
@@ -93,8 +94,9 @@ public class VolumeService {
   @Get("/{full_name}")
   @AuthorizeExpression("""
             #authorize(#principal, #metastore, OWNER) ||
-            (#authorizeAll(#principal, #schema, OWNER, USE_SCHEMA) && #authorizeAny(#principal, #catalog, OWNER, USE_CATALOG)) ||
-            (#authorize(#principal, #schema, USE_SCHEMA) && #authorizeAny(#principal, #catalog, OWNER, USE_CATALOG) && #authorizeAny(#principal, #volume, OWNER, READ_VOLUME))
+            #authorize(#principal, #catalog, OWNER) ||
+            (#authorize(#principal, #schema, OWNER) && #authorize(#principal, #catalog, USE_CATALOG)) ||
+            (#authorize(#principal, #schema, USE_SCHEMA) && #authorize(#principal, #catalog, USE_CATALOG) && #authorizeAny(#principal, #volume, OWNER, READ_VOLUME))
           """)
   @AuthorizeKey(METASTORE)
   public HttpResponse getVolume(
@@ -115,7 +117,6 @@ public class VolumeService {
 
   @Delete("/{full_name}")
   @AuthorizeExpression("""
-          #authorize(#principal, #metastore, OWNER) ||
           #authorize(#principal, #catalog, OWNER) ||
           (#authorize(#principal, #schema, OWNER) && #authorize(#principal, #catalog, USE_CATALOG)) ||
           (#authorize(#principal, #volume, OWNER) && #authorize(#principal, #catalog, USE_CATALOG) && #authorize(#principal, #schema, USE_SCHEMA))
