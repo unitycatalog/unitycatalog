@@ -25,12 +25,9 @@ public class IdentityUtils {
   }
 
   public static UUID findPrincipalId() {
-    ServiceRequestContext ctx = ServiceRequestContext.current();
-    DecodedJWT decodedJWT = ctx.attr(AuthDecorator.DECODED_JWT_ATTR);
-    // TODO: if/when authorization becomes mandatory, maybe just throw an exception here?
-    if (decodedJWT != null) {
-      Claim sub = decodedJWT.getClaim(JwtClaim.SUBJECT.key());
-      return UUID.fromString(USER_REPOSITORY.getUserByEmail(sub.asString()).getId());
+    String principalEmailAddress = findPrincipalEmailAddress();
+    if (principalEmailAddress != null) {
+      return UUID.fromString(USER_REPOSITORY.getUserByEmail(principalEmailAddress).getId());
     } else {
       return null;
     }

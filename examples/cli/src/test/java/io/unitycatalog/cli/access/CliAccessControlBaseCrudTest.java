@@ -144,7 +144,7 @@ public class CliAccessControlBaseCrudTest extends BaseAccessControlCRUDTest {
 
 
 
-              public void testSteps(List<Step> steps) throws IOException, NoSuchAlgorithmException, InvalidKeySpecException {
+  public void testSteps(List<Step> steps) throws IOException, NoSuchAlgorithmException, InvalidKeySpecException {
     Path path = Path.of("etc", "conf", "token.txt");
     String adminToken = Files.readString(path);
     String token = adminToken;

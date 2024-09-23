@@ -279,29 +279,6 @@ public class CliUtils {
                 }
               });
           put(
-              USER,
-              new HashMap<String, CliOptions>() {
-                {
-                  put(
-                      CREATE,
-                      new CliOptions(
-                          List.of(CliParams.NAME, CliParams.EMAIL),
-                          List.of(CliParams.EXTERNAL_ID)));
-                  put(
-                      LIST,
-                      new CliOptions(
-                          List.of(),
-                          List.of(CliParams.FILTER, CliParams.START_INDEX, CliParams.COUNT)));
-                  put(GET, new CliOptions(List.of(CliParams.ID), List.of()));
-                  put(
-                      UPDATE,
-                      new CliOptions(
-                          List.of(CliParams.ID),
-                          List.of(CliParams.NAME, CliParams.EXTERNAL_ID, CliParams.EMAIL)));
-                  put(DELETE, new CliOptions(List.of(CliParams.ID), List.of()));
-                }
-              });
-          put(
               PERMISSION,
               new HashMap<String, CliOptions>() {
                 {
