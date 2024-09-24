@@ -46,7 +46,7 @@ lazy val commonSettings = Seq(
   resolvers += Resolver.mavenLocal,
   // TODO: remove the following two resolvers once the official releases are out
   resolvers += "Apache Spark 3.5.3 Staging" at "https://repository.apache.org/content/repositories/orgapachespark-1467/",
-  resolvers += "Delta 3.2.1 Staging" at "https://oss.sonatype.org/content/repositories/iodelta-1167",
+  resolvers += "Delta 3.2.1 Staging" at "https://oss.sonatype.org/content/repositories/iodelta-1168",
   autoScalaLibrary := false,
   crossPaths := false,  // No scala cross building
   assembly / assemblyMergeStrategy := {
