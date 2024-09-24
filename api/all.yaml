@@ -2218,7 +2218,7 @@ components:
         - table
         - function
         - volume
-        - registered-model
+        - registered_model
       description: The type of the resource.
     Privilege:
       type: string
