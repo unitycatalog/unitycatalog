@@ -24,6 +24,7 @@ nav:
   - Integrations:
       - Daft: integrations/unity-catalog-daft.md
       - DuckDB: integrations/unity-catalog-duckdb.md
+      - Spark: integrations/unity-catalog-spark.md
   - Deployment: deployment.md
 
 plugins:
