@@ -14,8 +14,10 @@ nav:
       - Tables:
           - usage/tables/index.md
           - Delta Lake: usage/tables/deltalake.md
+          - ORC: usage/tables/orc.md
           - Parquet: usage/tables/parquet.md
           - UniForm: usage/tables/uniform.md
+          - Managed vs External: usage/tables/managed-external-tables.md
       - Volumes: usage/volumes.md
       - Functions: usage/functions.md
       - Server: usage/server.md
