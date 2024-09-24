@@ -45,7 +45,7 @@ lazy val commonSettings = Seq(
   ),
   resolvers += Resolver.mavenLocal,
   // TODO: remove the following resolver once the official releases are out
-  resolvers += "Delta 3.2.1 Staging" at "https://oss.sonatype.org/content/repositories/iodelta-1167",
+  resolvers += "Delta 3.2.1 Staging" at "https://oss.sonatype.org/content/repositories/iodelta-1168",
   autoScalaLibrary := false,
   crossPaths := false,  // No scala cross building
   assembly / assemblyMergeStrategy := {
