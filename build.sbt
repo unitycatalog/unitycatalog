@@ -569,7 +569,7 @@ lazy val integrationTests = (project in file("integration-tests"))
       "org.projectlombok" % "lombok" % "1.18.32" % Provided,
       "org.apache.spark" %% "spark-sql" % "3.5.3" % Test,
       "io.delta" %% "delta-spark" % "3.2.1" % Test,
-      "org.apache.hadoop" % "hadoop-aws" % "3.4.0" % Test,
+      "org.apache.hadoop" % "hadoop-aws" % "3.3.6" % Test,
       "org.apache.hadoop" % "hadoop-azure" % "3.3.6" % Test,
       "com.google.cloud.bigdataoss" % "gcs-connector" % "3.0.2" % Test classifier "shaded",
       "io.unitycatalog" %% "unitycatalog-spark" % "0.2.0-SNAPSHOT" % Test,
@@ -582,6 +582,7 @@ lazy val integrationTests = (project in file("integration-tests"))
       "com.fasterxml.jackson.dataformat" % "jackson-dataformat-xml" % "2.15.0",
       "org.antlr" % "antlr4-runtime" % "4.9.3",
       "org.antlr" % "antlr4" % "4.9.3",
+      "org.apache.hadoop" % "hadoop-client-api" % "3.3.6",
     ),
     Test / javaOptions += s"-Duser.dir=${((ThisBuild / baseDirectory).value / "integration-tests").getAbsolutePath}",
   )
