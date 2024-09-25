@@ -243,7 +243,7 @@ public class Oauth2CliExchange {
       String value = parameters.get("code").get(0);
 
       // Prepare response send to browser.
-      String response = "Authentication to UC successful.";
+      String response = "User validated with identity provider.";
       exchange.sendResponseHeaders(HTTP_OK, response.getBytes().length);
       OutputStream os = exchange.getResponseBody();
       os.write(response.getBytes());
