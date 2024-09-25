@@ -103,7 +103,7 @@ class UCSingleCatalog extends TableCatalog with SupportsNamespaces with Logging 
       val location = properties.get(TableCatalog.PROP_LOCATION)
       assert(location != null)
       val cred = temporaryCredentialsApi.generateTemporaryPathCredentials(
-        new GenerateTemporaryPathCredential().url(location).operation(PathOperation.PATH_READ))
+        new GenerateTemporaryPathCredential().url(location).operation(PathOperation.PATH_CREATE_TABLE))
       val newProps = new util.HashMap[String, String]
       newProps.putAll(properties)
       val credentialProps = UCSingleCatalog.generateCredentialProps(
