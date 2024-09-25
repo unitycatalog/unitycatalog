@@ -187,7 +187,7 @@ object UCSingleCatalog {
       Map(
         FS_AZURE_ACCOUNT_AUTH_TYPE_PROPERTY_NAME -> "SAS",
         FS_AZURE_ACCOUNT_IS_HNS_ENABLED -> "true",
-        FS_AZURE_SAS_TOKEN_PROVIDER_TYPE -> "io.unitycatalog.connectors.spark.AbfsVendedTokenProvider",
+        FS_AZURE_SAS_TOKEN_PROVIDER_TYPE -> classOf[AbfsVendedTokenProvider].getName,
         AbfsVendedTokenProvider.ACCESS_TOKEN_KEY -> azCredentials.getSasToken,
         "fs.abfs.impl.disable.cache" -> "true",
         "fs.abfss.impl.disable.cache" -> "true"
