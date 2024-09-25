@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<!DOCTYPE svg PUBLIC "-//W3C//DTD SVG 1.1//EN" "http://www.w3.org/Graphics/SVG/1.1/DTD/svg11.dtd">
+<svg width="100%" height="100%" viewBox="0 0 48 49" version="1.1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" xml:space="preserve" xmlns:serif="http://www.serif.com/" style="fill-rule:evenodd;clip-rule:evenodd;stroke-linejoin:round;stroke-miterlimit:2;">
+    <g transform="matrix(1,0,0,1,-0.708862,0)">
+        <path d="M24.639,16.251L17.497,20.375L17.497,28.623L24.639,32.747L31.781,28.623L31.781,20.375L24.639,16.251Z" style="fill:white;fill-rule:nonzero;"/>
+        <path d="M39.694,15.806L47.908,15.806L43.8,8.693L39.694,15.806Z" style="fill:rgb(255,188,0);fill-rule:nonzero;"/>
+        <path d="M39.694,33.19L43.8,40.305L47.908,33.19L39.694,33.19Z" style="fill:rgb(255,188,0);fill-rule:nonzero;"/>
+        <path d="M20.53,48.996L28.745,48.996L24.639,41.883L20.53,48.996Z" style="fill:rgb(255,188,0);fill-rule:nonzero;"/>
+        <path d="M1.369,33.19L5.476,40.305L9.584,33.19L1.369,33.19Z" style="fill:rgb(255,188,0);fill-rule:nonzero;"/>
+        <path d="M1.369,15.806L9.584,15.806L5.476,8.693L1.369,15.806Z" style="fill:rgb(255,188,0);fill-rule:nonzero;"/>
+        <path d="M20.53,0L24.639,7.115L28.745,0L20.53,0Z" style="fill:rgb(255,188,0);fill-rule:nonzero;"/>
+        <path d="M32.476,1.394L27.709,9.65L35.965,14.417L40.732,6.16L32.476,1.394Z" style="fill:rgb(244,59,166);fill-rule:nonzero;"/>
+        <rect x="39.034" y="19.732" width="9.533" height="9.533" style="fill:rgb(244,59,166);fill-rule:nonzero;"/>
+        <path d="M35.963,34.58L27.707,39.346L32.474,47.603L40.73,42.836L35.963,34.58Z" style="fill:rgb(244,59,166);fill-rule:nonzero;"/>
+        <path d="M13.314,34.581L8.547,42.837L16.803,47.604L21.57,39.348L13.314,34.581Z" style="fill:rgb(244,59,166);fill-rule:nonzero;"/>
+        <rect x="0.709" y="19.731" width="9.533" height="9.533" style="fill:rgb(244,59,166);fill-rule:nonzero;"/>
+        <path d="M16.801,1.39L8.544,6.157L13.311,14.413L21.567,9.646L16.801,1.39Z" style="fill:rgb(244,59,166);fill-rule:nonzero;"/>
+    </g>
+</svg>
