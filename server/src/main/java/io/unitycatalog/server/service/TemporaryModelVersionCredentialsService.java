@@ -3,6 +3,9 @@ package io.unitycatalog.server.service;
 import com.linecorp.armeria.common.HttpResponse;
 import com.linecorp.armeria.server.annotation.ExceptionHandler;
 import com.linecorp.armeria.server.annotation.Post;
+import io.unitycatalog.server.auth.annotation.AuthorizeExpression;
+import io.unitycatalog.server.auth.annotation.AuthorizeKey;
+import io.unitycatalog.server.auth.annotation.AuthorizeKeys;
 import io.unitycatalog.server.exception.BaseException;
 import io.unitycatalog.server.exception.ErrorCode;
 import io.unitycatalog.server.exception.GlobalExceptionHandler;
@@ -14,6 +17,10 @@ import io.unitycatalog.server.service.credential.CredentialContext;
 
 import java.util.Set;
 
+import static io.unitycatalog.server.model.SecurableType.CATALOG;
+import static io.unitycatalog.server.model.SecurableType.METASTORE;
+import static io.unitycatalog.server.model.SecurableType.REGISTERED_MODEL;
+import static io.unitycatalog.server.model.SecurableType.SCHEMA;
 import static io.unitycatalog.server.service.credential.CredentialContext.Privilege.SELECT;
 import static io.unitycatalog.server.service.credential.CredentialContext.Privilege.UPDATE;
 
@@ -29,7 +36,19 @@ public class TemporaryModelVersionCredentialsService {
     }
 
     @Post("")
+    @AuthorizeExpression("""
+          #authorize(#principal, #metastore, OWNER) ||
+          #authorize(#principal, #catalog, OWNER) ||
+          (#authorize(#principal, #catalog, USE_CATALOG) && #authorize(#principal, #schema, OWNER)) ||
+          (#authorizeAny(#principal, #registered_model, OWNER, EXECUTE) && #authorize(#principal, #schema, USE_SCHEMA) && #authorize(#principal, #catalog, USE_CATALOG))
+          """)
+    @AuthorizeKey(METASTORE)
     public HttpResponse generateTemporaryModelVersionCredentials(
+            @AuthorizeKeys({
+                    @AuthorizeKey(value = SCHEMA, key = "schema_name"),
+                    @AuthorizeKey(value = CATALOG, key = "catalog_name"),
+                    @AuthorizeKey(value = REGISTERED_MODEL, key = "model_name")
+            })
             GenerateTemporaryModelVersionCredential generateTemporaryModelVersionCredentials) {
 
         long modelVersion = generateTemporaryModelVersionCredentials.getVersion();

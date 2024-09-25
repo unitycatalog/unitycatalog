@@ -3,6 +3,8 @@ package io.unitycatalog.server.service;
 import com.linecorp.armeria.common.HttpResponse;
 import com.linecorp.armeria.server.annotation.ExceptionHandler;
 import com.linecorp.armeria.server.annotation.Post;
+import io.unitycatalog.server.auth.annotation.AuthorizeExpression;
+import io.unitycatalog.server.auth.annotation.AuthorizeKey;
 import io.unitycatalog.server.exception.BaseException;
 import io.unitycatalog.server.exception.ErrorCode;
 import io.unitycatalog.server.exception.GlobalExceptionHandler;
@@ -16,6 +18,8 @@ import io.unitycatalog.server.service.credential.CredentialOperations;
 import java.util.Collections;
 import java.util.Set;
 
+import static io.unitycatalog.server.model.SecurableType.METASTORE;
+import static io.unitycatalog.server.model.SecurableType.VOLUME;
 import static io.unitycatalog.server.service.credential.CredentialContext.Privilege.SELECT;
 import static io.unitycatalog.server.service.credential.CredentialContext.Privilege.UPDATE;
 
@@ -31,8 +35,15 @@ public class TemporaryVolumeCredentialsService {
   }
 
   @Post("")
+  @AuthorizeExpression("""
+            #authorize(#principal, #metastore, OWNER) ||
+            #authorize(#principal, #catalog, OWNER) ||
+            (#authorize(#principal, #schema, OWNER) && #authorize(#principal, #catalog, USE_CATALOG)) ||
+            (#authorize(#principal, #schema, USE_SCHEMA) && #authorize(#principal, #catalog, USE_CATALOG) && #authorizeAny(#principal, #volume, OWNER, READ_VOLUME))
+          """)
+  @AuthorizeKey(METASTORE)
   public HttpResponse generateTemporaryTableCredential(
-      GenerateTemporaryVolumeCredential generateTemporaryVolumeCredential) {
+      @AuthorizeKey(value = VOLUME, key = "volume_id") GenerateTemporaryVolumeCredential generateTemporaryVolumeCredential) {
     String volumeId = generateTemporaryVolumeCredential.getVolumeId();
     if (volumeId.isEmpty()) {
       throw new BaseException(ErrorCode.INVALID_ARGUMENT, "Volume ID is required.");

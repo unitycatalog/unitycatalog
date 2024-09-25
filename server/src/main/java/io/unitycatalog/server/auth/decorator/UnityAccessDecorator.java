@@ -217,7 +217,9 @@ public class UnityAccessDecorator implements DecoratingHttpServiceFunction {
     // If only TABLE is specified, assuming its value is a full table name (including catalog and schema)
     if (!resourceKeys.containsKey(CATALOG) && !resourceKeys.containsKey(SCHEMA) && resourceKeys.containsKey(TABLE)) {
       String fullName = (String) resourceKeys.get(TABLE);
-      TableInfo table = TableRepository.getInstance().getTable(fullName);
+      // If the full name contains a dot, we assume it's a full name, otherwise we assume it's an id
+      TableInfo table = fullName.contains(".") ?
+        TableRepository.getInstance().getTable(fullName):TableRepository.getInstance().getTableById(fullName);
       String fullSchemaName = table.getCatalogName() + "." + table.getSchemaName();
       SchemaInfo schema = SchemaRepository.getInstance().getSchema(fullSchemaName);
       CatalogInfo catalog = CatalogRepository.getInstance().getCatalog(table.getCatalogName());
@@ -235,7 +237,9 @@ public class UnityAccessDecorator implements DecoratingHttpServiceFunction {
     // If only VOLUME is specified, assuming its value is a full volume name (including catalog and schema)
     if (!resourceKeys.containsKey(CATALOG) && !resourceKeys.containsKey(SCHEMA) && resourceKeys.containsKey(VOLUME)) {
       String fullName = (String) resourceKeys.get(VOLUME);
-      VolumeInfo volume = VolumeRepository.getInstance().getVolume(fullName);
+      // If the full name contains a dot, we assume it's a full name, otherwise we assume it's an id
+      VolumeInfo volume = (fullName.contains(".")) ?
+              VolumeRepository.getInstance().getVolume(fullName): VolumeRepository.getInstance().getVolumeById(fullName);
       String fullSchemaName = volume.getCatalogName() + "." + volume.getSchemaName();
       SchemaInfo schema = SchemaRepository.getInstance().getSchema(fullSchemaName);
       CatalogInfo catalog = CatalogRepository.getInstance().getCatalog(volume.getCatalogName());
