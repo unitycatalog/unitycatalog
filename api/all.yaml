@@ -270,6 +270,26 @@ paths:
           content:
             application/json:
               schema: {}
+  /staging-tables:
+    post:
+      operationId: createStagingTable
+      summary: Create a staging table
+      tags:
+        - StagingTables
+      description: |
+        Creates a new staging table instance.
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateStagingTable'
+      responses:
+        '200':
+          description: The new staging table was successfully created.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StagingTableInfo'
   /tables:
     post:
       operationId: createTable
@@ -1332,6 +1352,40 @@ components:
         - data_source_format
         - columns
         - storage_location
+    StagingTableInfo:
+      type: object
+      properties:
+        name:
+          description: Name of table, relative to parent schema.
+          type: string
+        catalog_name:
+          description: Name of parent catalog.
+          type: string
+        schema_name:
+          description: Name of parent schema relative to its parent catalog.
+          type: string
+        id:
+          description: Unique identifier for the table.
+          type: string
+        staging_location:
+          description: URI generated for the staging table
+          type: string
+    CreateStagingTable:
+      type: object
+      properties:
+        name:
+          description: Name of table, relative to parent schema.
+          type: string
+        catalog_name:
+          description: Name of parent catalog.
+          type: string
+        schema_name:
+          description: Name of parent schema relative to its parent catalog.
+          type: string
+      required:
+        - name
+        - catalog_name
+        - schema_name
     ListTablesResponse:
       type: object
       properties:
