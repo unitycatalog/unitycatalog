@@ -3,9 +3,9 @@ package io.unitycatalog.server.service;
 import com.linecorp.armeria.common.HttpResponse;
 import com.linecorp.armeria.server.annotation.ExceptionHandler;
 import com.linecorp.armeria.server.annotation.Post;
-import io.unitycatalog.server.auth.annotation.AuthorizeExpression;
-import io.unitycatalog.server.auth.annotation.AuthorizeKey;
-import io.unitycatalog.server.auth.annotation.AuthorizeKeys;
+import io.unitycatalog.server.auth.UnityCatalogAuthorizer;
+import io.unitycatalog.server.auth.decorator.KeyMapperUtil;
+import io.unitycatalog.server.auth.decorator.UnityAccessEvaluator;
 import io.unitycatalog.server.exception.BaseException;
 import io.unitycatalog.server.exception.ErrorCode;
 import io.unitycatalog.server.exception.GlobalExceptionHandler;
@@ -14,7 +14,10 @@ import io.unitycatalog.server.persist.ModelRepository;
 import io.unitycatalog.server.persist.utils.RepositoryUtils;
 import io.unitycatalog.server.service.credential.CredentialOperations;
 import io.unitycatalog.server.service.credential.CredentialContext;
+import io.unitycatalog.server.utils.IdentityUtils;
+import lombok.SneakyThrows;
 
+import java.util.Map;
 import java.util.Set;
 
 import static io.unitycatalog.server.model.SecurableType.CATALOG;
@@ -29,27 +32,18 @@ public class TemporaryModelVersionCredentialsService {
 
     private static final ModelRepository MODEL_REPOSITORY = ModelRepository.getInstance();
 
+    private final UnityAccessEvaluator evaluator;
     private final CredentialOperations credentialOps;
 
-    public TemporaryModelVersionCredentialsService(CredentialOperations credentialOps) {
+    @SneakyThrows
+    public TemporaryModelVersionCredentialsService(UnityCatalogAuthorizer authorizer, CredentialOperations credentialOps) {
+        this.evaluator = new UnityAccessEvaluator(authorizer);
         this.credentialOps = credentialOps;
     }
 
     @Post("")
-    @AuthorizeExpression("""
-          #authorize(#principal, #metastore, OWNER) ||
-          #authorize(#principal, #catalog, OWNER) ||
-          (#authorize(#principal, #catalog, USE_CATALOG) && #authorize(#principal, #schema, OWNER)) ||
-          (#authorizeAny(#principal, #registered_model, OWNER, EXECUTE) && #authorize(#principal, #schema, USE_SCHEMA) && #authorize(#principal, #catalog, USE_CATALOG))
-          """)
-    @AuthorizeKey(METASTORE)
-    public HttpResponse generateTemporaryModelVersionCredentials(
-            @AuthorizeKeys({
-                    @AuthorizeKey(value = SCHEMA, key = "schema_name"),
-                    @AuthorizeKey(value = CATALOG, key = "catalog_name"),
-                    @AuthorizeKey(value = REGISTERED_MODEL, key = "model_name")
-            })
-            GenerateTemporaryModelVersionCredential generateTemporaryModelVersionCredentials) {
+    public HttpResponse generateTemporaryModelVersionCredentials(GenerateTemporaryModelVersionCredential generateTemporaryModelVersionCredentials) {
+        authorizeForOperation(generateTemporaryModelVersionCredentials);
 
         long modelVersion = generateTemporaryModelVersionCredentials.getVersion();
         String catalogName = generateTemporaryModelVersionCredentials.getCatalogName();
@@ -84,5 +78,36 @@ public class TemporaryModelVersionCredentialsService {
             case UNKNOWN_MODEL_VERSION_OPERATION ->
                     throw new BaseException(ErrorCode.INVALID_ARGUMENT, "Unknown operation in the request: " + ModelVersionOperation.UNKNOWN_MODEL_VERSION_OPERATION);
         };
+    }
+
+    private void authorizeForOperation(GenerateTemporaryModelVersionCredential generateTemporaryModelVersionCredentials) {
+
+        // TODO: This is a short term solution to conditional expression evaluation based on additional request parameters.
+        // This should be replaced with more direct annotations and syntax in the future.
+
+        String readExpression = """
+          #authorize(#principal, #metastore, OWNER) ||
+          #authorize(#principal, #catalog, OWNER) ||
+          (#authorize(#principal, #catalog, USE_CATALOG) && #authorize(#principal, #schema, OWNER)) ||
+          (#authorizeAny(#principal, #registered_model, OWNER, EXECUTE) && #authorize(#principal, #schema, USE_SCHEMA) && #authorize(#principal, #catalog, USE_CATALOG))
+          """;
+
+        String writeExpression = """
+          (#authorize(#principal, #registered_model, OWNER) && #authorizeAny(#principal, #schema, OWNER, USE_SCHEMA) && #authorizeAny(#principal, #catalog, OWNER, USE_CATALOG))
+          """;
+
+        String authorizeExpression =
+                generateTemporaryModelVersionCredentials.getOperation() == ModelVersionOperation.READ_MODEL_VERSION ?
+                        readExpression : writeExpression;
+
+        Map<SecurableType, Object> resourceKeys = KeyMapperUtil.mapResourceKeys(
+                Map.of(METASTORE, "metastore",
+                        CATALOG, generateTemporaryModelVersionCredentials.getCatalogName(),
+                        SCHEMA, generateTemporaryModelVersionCredentials.getSchemaName(),
+                        REGISTERED_MODEL, generateTemporaryModelVersionCredentials.getModelName()));
+
+        if (!evaluator.evaluate(IdentityUtils.findPrincipalId(), authorizeExpression, resourceKeys)) {
+            throw new BaseException(ErrorCode.PERMISSION_DENIED, "Access denied.");
+        }
     }
 }
