@@ -77,19 +77,19 @@ public class AuthDecorator implements DecoratingHttpServiceFunction {
 
       JWTVerifier jwtVerifier = jwksOperations.verifierForIssuerAndKey(issuer, keyId);
       decodedJWT = jwtVerifier.verify(decodedJWT);
-      String subject = decodedJWT.getClaim(JwtClaim.SUBJECT.key()).asString();
 
       User user;
       try {
-        user = USER_REPOSITORY.getUserByEmail(subject);
+        user =
+            USER_REPOSITORY.getUserByEmail(decodedJWT.getClaim(JwtClaim.SUBJECT.key()).asString());
       } catch (Exception e) {
         user = null;
       }
-      if (!subject.equals("admin") && (user == null || user.getState() != User.StateEnum.ENABLED)) {
+      if (user == null || user.getState() != User.StateEnum.ENABLED) {
         throw new AuthorizationException(ErrorCode.PERMISSION_DENIED, "User not allowed.");
       }
 
-      LOGGER.debug("Access allowed for subject: {}", subject);
+      LOGGER.debug("Access allowed for subject: {}", decodedJWT.getClaim(JwtClaim.SUBJECT.key()));
 
       ctx.setAttr(DECODED_JWT_ATTR, decodedJWT);
     }

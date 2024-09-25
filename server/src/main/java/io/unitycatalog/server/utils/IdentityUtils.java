@@ -3,10 +3,14 @@ package io.unitycatalog.server.utils;
 import com.auth0.jwt.interfaces.Claim;
 import com.auth0.jwt.interfaces.DecodedJWT;
 import com.linecorp.armeria.server.ServiceRequestContext;
+import io.unitycatalog.server.persist.UserRepository;
 import io.unitycatalog.server.security.JwtClaim;
 import io.unitycatalog.server.service.AuthDecorator;
+import java.util.UUID;
 
 public class IdentityUtils {
+
+  private static final UserRepository USER_REPOSITORY = UserRepository.getInstance();
 
   public static String findPrincipalEmailAddress() {
     ServiceRequestContext ctx = ServiceRequestContext.current();
@@ -15,6 +19,15 @@ public class IdentityUtils {
     if (decodedJWT != null) {
       Claim sub = decodedJWT.getClaim(JwtClaim.SUBJECT.key());
       return sub.asString();
+    } else {
+      return null;
+    }
+  }
+
+  public static UUID findPrincipalId() {
+    String principalEmailAddress = findPrincipalEmailAddress();
+    if (principalEmailAddress != null) {
+      return UUID.fromString(USER_REPOSITORY.getUserByEmail(principalEmailAddress).getId());
     } else {
       return null;
     }
