@@ -197,6 +197,13 @@ public class TableReadWriteTest extends BaseSparkIntegrationTest {
             .get(0);
     assertThat(row.getInt(0)).isEqualTo(1);
 
+    // Path that does not exist
+    String loc3 = scheme + "://test-bucket1" + generateTableLocation(CATALOG_NAME, ANOTHER_DELTA_TABLE);
+    String t3 = CATALOG_NAME + "." + SCHEMA_NAME + "." + ANOTHER_DELTA_TABLE;
+    session.sql(String.format("CREATE TABLE %s(i INT) USING delta LOCATION '%s'", t3, loc3));
+    List<Row> rows = session.table(t3).collectAsList();
+    assertThat(0 == rows.size());
+
     session.stop();
   }
 
