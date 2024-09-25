@@ -86,10 +86,7 @@ public class TemporaryModelVersionCredentialsService {
         // This should be replaced with more direct annotations and syntax in the future.
 
         String readExpression = """
-          #authorize(#principal, #metastore, OWNER) ||
-          #authorize(#principal, #catalog, OWNER) ||
-          (#authorize(#principal, #catalog, USE_CATALOG) && #authorize(#principal, #schema, OWNER)) ||
-          (#authorizeAny(#principal, #registered_model, OWNER, EXECUTE) && #authorize(#principal, #schema, USE_SCHEMA) && #authorize(#principal, #catalog, USE_CATALOG))
+          #authorizeAny(#principal, #registered_model, OWNER, EXECUTE) && #authorizeAny(#principal, #schema, OWNER, USE_SCHEMA) && #authorizeAny(#principal, #catalog, OWNER, USE_CATALOG)
           """;
 
         String writeExpression = """

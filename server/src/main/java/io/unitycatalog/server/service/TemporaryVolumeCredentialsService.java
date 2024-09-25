@@ -71,14 +71,14 @@ public class TemporaryVolumeCredentialsService {
     // This should be replaced with more direct annotations and syntax in the future.
 
     String readExpression = """
-          #authorize(#principal, #metastore, OWNER) ||
-          #authorize(#principal, #catalog, OWNER) ||
-          (#authorize(#principal, #schema, OWNER) && #authorize(#principal, #catalog, USE_CATALOG)) ||
-          (#authorize(#principal, #schema, USE_SCHEMA) && #authorize(#principal, #catalog, USE_CATALOG) && #authorizeAny(#principal, #volume, OWNER, READ_VOLUME))
+          #authorizeAny(#principal, #schema, OWNER, USE_SCHEMA) && #authorizeAny(#principal, #catalog, OWNER, USE_CATALOG) && #authorizeAny(#principal, #volume, OWNER, READ_VOLUME)
           """;
 
+    // TODO: add WRITE_VOLUME to the expression
     String writeExpression = """
-          (#authorize(#principal, #volume, OWNER) && #authorizeAny(#principal, #catalog, OWNER, USE_CATALOG) && #authorizeAny(#principal, #schema, OWNER, USE_SCHEMA))
+          #authorizeAny(#principal, #catalog, OWNER, USE_CATALOG) &&
+          #authorizeAny(#principal, #schema, OWNER, USE_SCHEMA) &&
+          (#authorize(#principal, #schema, OWNER) || #authorizeAll(#principal, #volume, READ_VOLUME))
           """;
 
     String authorizeExpression =
