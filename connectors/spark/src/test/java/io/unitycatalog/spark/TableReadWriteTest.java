@@ -173,17 +173,18 @@ public class TableReadWriteTest extends BaseSparkIntegrationTest {
     session.stop();
   }
 
-  @Test
-  public void testCredentialCreateDeltaTable() throws IOException {
+  @ParameterizedTest
+  @ValueSource(strings = {"s3", "gs", "abfs"})
+  public void testCredentialCreateDeltaTable(String scheme) throws IOException {
     SparkSession session = createSparkSessionWithCatalogs(SPARK_CATALOG, CATALOG_NAME);
 
-    String loc1 = "s3://test-bucket0" + generateTableLocation(SPARK_CATALOG, DELTA_TABLE);
+    String loc1 = scheme + "://test-bucket0" + generateTableLocation(SPARK_CATALOG, DELTA_TABLE);
     setupDeltaTableLocation(session, loc1, new ArrayList<>(0));
     String t1 = SPARK_CATALOG + "." + SCHEMA_NAME + "." + DELTA_TABLE;
     session.sql(String.format("CREATE TABLE %s USING delta LOCATION '%s'", t1, loc1));
     testTableReadWrite(t1, session);
 
-    String loc2 = "s3://test-bucket1" + generateTableLocation(CATALOG_NAME, DELTA_TABLE);
+    String loc2 = scheme + "://test-bucket1" + generateTableLocation(CATALOG_NAME, DELTA_TABLE);
     setupDeltaTableLocation(session, loc2, new ArrayList<>(0));
     String t2 = CATALOG_NAME + "." + SCHEMA_NAME + "." + DELTA_TABLE;
     session.sql(String.format("CREATE TABLE %s USING delta LOCATION '%s'", t2, loc2));
