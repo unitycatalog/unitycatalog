@@ -25,13 +25,21 @@ public class BaseSparkTest {
                         .appName("test")
                         .master("local[*]")
                         .config("spark.sql.extensions", "io.delta.sql.DeltaSparkSessionExtension")
-                        .config("spark.sql.catalog.spark_catalog", "io.unitycatalog.connectors.spark.UCSingleCatalog")
-                        .config("spark.hadoop.fs.s3.impl", "org.apache.hadoop.fs.s3a.S3AFileSystem");
+                        .config("spark.sql.catalog.spark_catalog", "io.unitycatalog.spark.UCSingleCatalog")
+                        // s3 conf
+                        .config("spark.hadoop.fs.s3.impl", "org.apache.hadoop.fs.s3a.S3AFileSystem")
+                        // GCS conf
+                        .config("spark.hadoop.fs.AbstractFileSystem.gs.impl", "com.google.cloud.hadoop.fs.gcs.GoogleHadoopFS")
+                        .config("spark.hadoop.fs.gs.create.items.conflict.check.enable", "false")
+                        .config("spark.hadoop.fs.gs.auth.type", "ACCESS_TOKEN_PROVIDER")
+                        .config("spark.hadoop.fs.gs.auth.access.token.provider", "io.unitycatalog.spark.GcsVendedTokenProvider")
+                ;
+
         for (String catalog : catalogs) {
             String catalogConf = "spark.sql.catalog." + catalog;
             builder =
                     builder
-                            .config(catalogConf, "io.unitycatalog.connectors.spark.UCSingleCatalog")
+                            .config(catalogConf, "io.unitycatalog.spark.UCSingleCatalog")
                             .config(catalogConf + ".uri", ServerUrl)
                             .config(catalogConf + ".token", AuthToken);
         }
@@ -46,6 +54,7 @@ public class BaseSparkTest {
             case FILE -> Files.createTempDirectory("uc-test-table").toFile().getAbsolutePath();
             case S3 -> System.getenv("S3_BASE_LOCATION");
             case GS -> System.getenv("GS_BASE_LOCATION");
+            case ABFSS -> System.getenv("ABFSS_BASE_LOCATION");
         };
     }
 
@@ -53,6 +62,7 @@ public class BaseSparkTest {
         FILE,
         S3,
         GS,
+        ABFSS,
     }
 
     static List<LocationType> locationTypes() {
