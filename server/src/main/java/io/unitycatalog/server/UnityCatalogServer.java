@@ -138,7 +138,7 @@ public class UnityCatalogServer {
     ModelService modelService = new ModelService(authorizer);
     // TODO: combine these into a single service in a follow-up PR
     TemporaryTableCredentialsService temporaryTableCredentialsService =
-        new TemporaryTableCredentialsService(credentialOperations);
+        new TemporaryTableCredentialsService(authorizer, credentialOperations);
     TemporaryVolumeCredentialsService temporaryVolumeCredentialsService =
         new TemporaryVolumeCredentialsService(authorizer, credentialOperations);
     TemporaryModelVersionCredentialsService temporaryModelVersionCredentialsService =
