@@ -208,7 +208,10 @@ public class Scim2UserService {
   public HttpResponse patchUser(@Param("id") String id, PatchRequest patchRequest) {
 
     return patchRequest.getOperations().stream()
-        .filter(op -> op.getOpType() == PatchOpType.REPLACE)
+        .filter(
+            op ->
+                op.getOpType() == PatchOpType.REPLACE
+                    && op.getPath() == null) // Only support patch for okta
         .findFirst()
         .map(op -> handleUserUpdate(id, op))
         .orElse(HttpResponse.of(HttpStatus.NOT_IMPLEMENTED));
