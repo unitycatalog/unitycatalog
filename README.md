@@ -155,9 +155,10 @@ To use the Unity Catalog UI, start a new terminal and ensure you have already st
 cd /ui
 yarn install
 yarn start
-open localhost:3000
 ```
 
+### Continue with the Rapidstart
+Do you want to try more Unity Catalog features including Apache Spark integration, MLflow integration, and Google Authentication, continue with the [Rapidstart](./docs/rapidstart.md).
 
 
 ## CLI tutorial
