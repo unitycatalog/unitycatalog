@@ -449,7 +449,7 @@ bin/uc --auth_token $(cat etc/conf/token.txt) user list
 
 The output should look something like this
 
-```bash
+```console
 ┌────────────────────────────────────┬─────────┬────────────────────────┬───────────┬───────┬───────────┬─────────────┬─────────────┐
 │                 ID                 │  NAME   │         EMAIL          │EXTERNAL_ID│ STATE │PICTURE_URL│ CREATED_AT  │ UPDATED_AT  │
 ├────────────────────────────────────┼─────────┼────────────────────────┼───────────┼───────┼───────────┼─────────────┼─────────────┤
@@ -467,7 +467,7 @@ bin/uc auth login
 
 Your browser will open and you will authenticate with the specific Google identity (e.g., bobbie@rocinante).  While authenticated, the user account has not been added to the local database.  Hence the command will fail with the output similar to the following:
 
-```bash
+```console
 Listening on port: 61918
 Attempting to open the authorization page in your default browser.
 If the browser does not open, you can manually open the following URL:
@@ -505,7 +505,7 @@ bin/uc auth login --output jsonPretty
 
 Similar to the previous steps, your browser will open and you will authenticate with the specific Google identity (e.g., bobbie@rocinante).  This time it should succeed provided the Google Identity you are authenticating with is the same one authorized in the Unity Catalog local database.  The output should be similar to the following
 
-```bash
+```console
 Listening on port: 51798
 Attempting to open the authorization page in your default browser.
 If the browser does not open, you can manually open the following URL:
@@ -610,7 +610,7 @@ SELECT * from unity.default.numbers;
 
 Now that you have enabled Google Authentication for your UC instance, any unauthenticated clients such as a spark-sql shell without using an identity token will fail.  For example, if you were to run the `SHOW SCHEMA` step in the [working with Unity Catalog Tables with Spark](#working-with-unity-catalog-tables-with-spark-and-delta-locally) using the unauthenticated spark-sql command, you would get the following error.
 
-```bash
+```console
 spark-sql ()> SHOW SCHEMAS;
 24/09/25 15:36:28 ERROR SparkSQLDriver: Failed in [SHOW SCHEMAS]
 io.unitycatalog.client.ApiException: listSchemas call failed with: 401 - {"error_code":"UNAUTHENTICATED","details":[{"reason":"UNAUTHENTICATED","metadata":{},"@type":"google.rpc.ErrorInfo"}],"stack_trace":null,"message":"No authorization found."}
