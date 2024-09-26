@@ -156,15 +156,19 @@ To quit DuckDB, press `Ctrl`+`D` (if your platform supports it), press `Ctrl`+`C
 
 To use the Unity Catalog UI, start a new terminal and ensure you have already started the UC server (e.g., `./bin/start-uc-server`)
 
+**Prerequisites**
+* Node: https://nodejs.org/en/download/package-manager
+* Yarn: https://classic.yarnpkg.com/lang/en/docs/install
+
+**How to start the UI through yarn**
 ```
 cd /ui
 yarn install
 yarn start
-open localhost:3000
 ```
 
-## Docker Quickstart
-To start Unity Catalog in Docker Compose in one command, install the latest version of [Docker Desktop](https://www.docker.com/products/docker-desktop/) and run the following:
+### Continue with the Rapidstart
+Do you want to try more Unity Catalog features including Apache Spark integration, MLflow integration, and Google Authentication, continue with the [Rapidstart](./docs/rapidstart.md).
 
 ```sh
 docker compose up -d
