@@ -151,6 +151,11 @@ To quit DuckDB, press `Ctrl`+`D` (if your platform supports it), press `Ctrl`+`C
 
 To use the Unity Catalog UI, start a new terminal and ensure you have already started the UC server (e.g., `./bin/start-uc-server`)
 
+**Prerequisites**
+* Node: https://nodejs.org/en/download/package-manager
+* Yarn: https://classic.yarnpkg.com/lang/en/docs/install
+
+**How to start the UI through yarn**
 ```
 cd /ui
 yarn install
