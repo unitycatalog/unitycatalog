@@ -460,7 +460,7 @@ The results can be seen in the Unity Catalog UI at [http://localhost:3000,](http
 
 ![](./assets/images/uc_ui_models.png)
 
-### Continue with the Rapidstart
+## Continue with the Rapidstart
 Do you want to try more Unity Catalog features including Apache Spark integration, MLflow integration, and Google Authentication, continue with the [Rapidstart](./rapidstart.md).
 
 ## APIs and Compatibility
