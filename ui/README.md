@@ -4,7 +4,7 @@ Unity Catalog UI is an intuitive user interface designed to manage and interact 
 
 For more details on how to use the Unity Catalog UI, please refer to the [UI Documentation](https://github.com/unitycatalog/unitycatalog/tree/main/docs/ui).
 
-![UC UI](./docs/assets/images/uc-ui.png)
+![UC UI](../docs/assets/images/uc-ui.png)
 
 # Prerequisite
 
