@@ -443,7 +443,7 @@ The following steps allow you to test user and admin authentication to your loca
 
 ### Use admin token to verify admin user is in local database
 
-As noted earlier, on startup the UC server configured itself and created the admin access token at `/etc/conf/token.txt`.  The following command uses the same admin authentication token to view the user list.
+As noted earlier, on startup the UC server configured itself and created the admin access token at `etc/conf/token.txt`.  The following command uses the same admin authentication token to view the user list.
 
 ```bash
 bin/uc --auth_token $(cat etc/conf/token.txt) user list
