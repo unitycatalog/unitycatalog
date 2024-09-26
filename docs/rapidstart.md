@@ -323,11 +323,16 @@ Created version '1' of model 'unity.default.iris'.
 ```
 
 The results can be seen in the Unity Catalog UI at [http://localhost:3000,](http://localhost:3000) per the instructions in the [Interact with the Unity Catalog tutorial](https://github.com/unitycatalog/unitycatalog?tab=readme-ov-file#interact-with-the-unity-catalog-ui).  
+
 ![](./assets/images/uc_ui_models.png)
 
+<hr width=70%>
+<br/> &nbsp;
 
 You can also see the model in the MLflow UI at [http://127.0.0.1:5000/](http://127.0.0.1:5000/).  
 ![](./assets/images/mlflow-unitycatalog-model-view-2.0.gif)
+
+<hr width=70%>
 
 ## Load the sample model 
 In a new terminal, you can load your recently registered model using the following code snippet.
@@ -383,7 +388,7 @@ Go to the [Google Cloud Console Resource Manager](https://console.cloud.google.c
 * Click on **Create Project** and name it (e.g, UC demo)
 
 * Go to your project, then select **APIs & Services \> OAuth consent screen**  
-  ![](./assets/images/googleconsole-oauth-consent-screen.png)
+  <img src="./assets/images/googleconsole-oauth-consent-screen.png" width=500>
     
 * Choose **External** and then click **Create**.
 
@@ -402,7 +407,7 @@ Go to the [Google Cloud Console Resource Manager](https://console.cloud.google.c
 
 * Once the OAuth client ID is created, a pop-up dialog box will appear containing the **Client ID** and **client secret**. Make sure to copy and/or download it (via the Download JSON button), as this will be needed in the following steps.
 
-  ![](./assets/images/googleconsole-oauth-client-created.png)
+  <img src="./assets/images/googleconsole-oauth-client-created.png" width=400 />
 
 ## Configure UC Server Settings
 
@@ -653,9 +658,12 @@ yarn start
 ```
 
 This will open a new browser window with the Google Auth Login.  
-![](./assets/images/uc_googleauth-browser-window.png)
+
+<img src="./assets/images/uc_googleauth-browser-window.png" width=400 />
+<br/> &nbsp;
 
 Upon authentication, you will be able to view your Unity Catalog data and AI assets including the catalog (`myfirstcatalog`) you recently created in the [try creating a catalog with your account](#try-creating-a-catalog-with-your-user-account) step.  
+
 ![](./assets/images/uc_googleauth-ui.png)
 
 ### \[Optional\] Understanding Server and UI authentication
@@ -671,7 +679,8 @@ server.authorization=disable
 
 Restarting your UC server (i.e., `bin/start-uc-server`)  and UI (i.e., `yarn start`) will open a new browser window with the Google Auth login but fail with the following login failed error.
 
-![](./assets/images/uc_googleauth_ui-enabled_server-disabled.png)
+<img src="./assets/images/uc_googleauth_ui-enabled_server-disabled.png" width=700/>
+<br>&nbsp;
 
 **Enabling server authentication, UI authentication is disabled**  
 Let’s go the other way and enable server authentication and disable UI authentication.  Modify `server.properties` so it is now enabled
@@ -689,7 +698,7 @@ REACT_APP_GOOGLE_CLIENT_ID=
 
 Restarting your UC server (i.e., `bin/start-uc-server`)  and UI (i.e., `yarn start`) will open a new browser window with the Google Auth login.  You will successfully log into the UI but fail to show any Unity Catalog assets as the UI is not authenticated to query those assets.
 
-![](./assets/images/uc_googleauth_ui-enabled_server-disabled.png)
+![](./assets/images/uc_googleauth_ui-disabled_server-enabled.png)
 
 **Disable both server and authentication**   
 Finally, let’s disable both server and UI authentication by modifying the `server.properties` 
