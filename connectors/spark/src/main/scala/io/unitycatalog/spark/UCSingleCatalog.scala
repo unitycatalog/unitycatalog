@@ -180,6 +180,9 @@ object UCSingleCatalog {
       Map(
         GcsVendedTokenProvider.ACCESS_TOKEN_KEY -> gcsCredentials.getOauthToken,
         GcsVendedTokenProvider.ACCESS_TOKEN_EXPIRATION_KEY -> temporaryCredentials.getExpirationTime.toString,
+        "fs.gs.create.items.conflict.check.enable" -> "false",
+        "fs.gs.auth.type" -> "ACCESS_TOKEN_PROVIDER",
+        "fs.gs.auth.access.token.provider" -> classOf[GcsVendedTokenProvider].getName,
         "fs.gs.impl.disable.cache" -> "true"
       )
     } else if (scheme == "abfs" || scheme == "abfss") {
