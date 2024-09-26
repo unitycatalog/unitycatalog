@@ -78,7 +78,7 @@ public class TemporaryVolumeCredentialsService {
     String writeExpression = """
           #authorizeAny(#principal, #catalog, OWNER, USE_CATALOG) &&
           #authorizeAny(#principal, #schema, OWNER, USE_SCHEMA) &&
-          (#authorize(#principal, #schema, OWNER) || #authorizeAll(#principal, #volume, READ_VOLUME))
+          #authorize(#principal, #volume, OWNER)
           """;
 
     String authorizeExpression =
