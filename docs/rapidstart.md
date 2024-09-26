@@ -62,7 +62,7 @@ cd unitycatalog/
 bin/start-uc-server
 ```
 
-## Working with Unity Catalog Tables with Spark and Delta Locally {#working-with-unity-catalog-tables-with-spark-and-delta-locally}
+## Working with Unity Catalog Tables with Spark and Delta Locally
 
 Let’s start running some Spark SQL queries in the Spark SQL shell within the terminal of your Apache Spark 3.5.3 folder against your local UC.
 
@@ -305,7 +305,7 @@ with mlflow.start_run():
         sk_model=clf,
         artifact_path="model",
         # The signature is automatically inferred from the input example
-  # and its predicted output.
+        # and its predicted output.
         input_example=input_example,
         registered_model_name="unity.default.iris",
     )
@@ -432,7 +432,7 @@ bin/start-uc-server
 Behind the scenes, on startup, the UC server will configure itself with the following:
 
 * Creation of internal signing keys and authentication files in `etc/conf`  
-* Creation of an admin access token in etc/conf/token.txt  
+* Creation of an admin access token in `etc/conf/token.txt`
 * Creation of an admin account in the user database  
 * Granting the admin account as the metastore admin for the server
 
@@ -497,7 +497,7 @@ To fix this error, let’s start by adding your user account to the UC local dat
 bin/uc --auth_token $(cat etc/conf/token.txt) user create --name "Bobbie Draper" --email bobbie@rocinante
 ```
 
-### Try to log in with your user account {#try-to-log-in-with-your-user-account}
+### Try to log in with your user account
 
 Now use the CLI to authenticate and gain an access token using the account that has been created.
 
