@@ -22,7 +22,7 @@ OpenJDK 64-Bit Server VM Homebrew (build 17.0.12+0, mixed mode, sharing)
 
 Change into the `unitycatalog` directory and run `bin/start-uc-server` to instantiate the server.  Here is what you should see:
 
-```bash
+```console
 ################################################################### 
 #  _    _       _ _            _____      _        _              #
 # | |  | |     (_) |          / ____|    | |      | |             #
@@ -48,7 +48,7 @@ Unity Catalog has a few built-in tables that are great for quick experimentation
 bin/uc table list --catalog unity --schema default
 ```
 
-```
+```console
 ┌─────────────────┬────────────────┬────────────────┬────────────────┬────────────────┬────────────────┬────────────────┬────────────────┬────────────────┬────────────────┬────────────────┬────────────────┬────────────────┬────────────────┬────────────────────────────────────┐
 │      NAME       │  CATALOG_NAME  │  SCHEMA_NAME   │   TABLE_TYPE   │DATA_SOURCE_FORM│    COLUMNS     │STORAGE_LOCATION│    COMMENT     │   PROPERTIES   │     OWNER      │   CREATED_AT   │   CREATED_BY   │   UPDATED_AT   │   UPDATED_BY   │              TABLE_ID              │
 │                 │                │                │                │       AT       │                │                │                │                │                │                │                │                │                │                                    │
@@ -68,7 +68,8 @@ Let’s read the content of the `unity.default.numbers` table with the Unity Cat
 ```bash
 bin/uc table read --full_name unity.default.numbers
 ```
-```
+
+```console
 ┌───────────────────────────────────────┬──────────────────────────────────────┐
 │as_int(integer)                        │as_double(double)                     │
 ├───────────────────────────────────────┼──────────────────────────────────────┤
@@ -145,7 +146,7 @@ You should see a catalog named `unity`. Let's see what's in this `unity` catalog
 bin/uc schema list --catalog unity
 ```
 
-```
+```console
 ┌───────┬────────────┬──────────────┬──────────┬─────────────┬─────┬─────────────┬──────────┬──────────┬──────────┬────────────────────────────────────┐
 │ NAME  │CATALOG_NAME│   COMMENT    │PROPERTIES│  FULL_NAME  │OWNER│ CREATED_AT  │CREATED_BY│UPDATED_AT│UPDATED_BY│             SCHEMA_ID              │
 ├───────┼────────────┼──────────────┼──────────┼─────────────┼─────┼─────────────┼──────────┼──────────┼──────────┼────────────────────────────────────┤
@@ -164,7 +165,7 @@ Let's list the tables.
 bin/uc table list --catalog unity --schema default
 ```
 
-```
+```console
 ┌─────────────────┬─────────┬─────────┬─────────┬─────────┬─────────┬─────────┬─────────┬─────────┬─────────┬─────────┬─────────┬─────────┬─────────┬────────────────────────────────────┐
 │      NAME       │CATALOG_N│SCHEMA_NA│TABLE_TYP│DATA_SOUR│ COLUMNS │STORAGE_L│ COMMENT │PROPERTIE│  OWNER  │CREATED_A│CREATED_B│UPDATED_A│UPDATED_B│              TABLE_ID              │
 │                 │   AME   │   ME    │    E    │CE_FORMAT│         │ OCATION │         │    S    │         │    T    │    Y    │    T    │    Y    │                                    │
@@ -189,7 +190,7 @@ Next, let's get the metadata of one those tables.
 bin/uc table get --full_name unity.default.numbers
 ```
 
-```
+```console
 ┌───────────────────────────────┬─────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┐
 │              KEY              │                                                                    VALUE                                                                    │
 ├───────────────────────────────┼─────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┤
@@ -237,7 +238,7 @@ Here's how to print a snippet of a Delta table (powered by the [Delta Kernel Jav
 bin/uc table read --full_name unity.default.numbers
 ```
 
-```
+```console
 ┌───────────────────────────────────────┬──────────────────────────────────────┐
 │as_int(integer)                        │as_double(double)                     │
 ├───────────────────────────────────────┼──────────────────────────────────────┤
@@ -280,7 +281,7 @@ bin/uc table create --full_name unity.default.my_table \
 --columns "col1 int, col2 double" --storage_location /tmp/uc/my_table
 ```
 
-```
+```console
 ┌───────────────────────────────┬─────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┐
 │              KEY              │                                                                    VALUE                                                                    │
 ├───────────────────────────────┼─────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┤
@@ -331,11 +332,11 @@ bin/uc table write --full_name unity.default.my_table
 
 Read the table to confirm the random data was appended:
 
-```sh
+```bash
 bin/uc table read --full_name unity.default.my_table
 ```
 
-```
+```console
 ┌───────────────────────────────────────┬──────────────────────────────────────┐
 │col1(integer)                          │col2(double)                          │
 ├───────────────────────────────────────┼──────────────────────────────────────┤
@@ -373,7 +374,7 @@ bin/uc table read --full_name unity.default.my_table
 
 Delete the table to clean up:
 
-```sh
+```bash
 bin/uc table delete --full_name unity.default.my_table
 ```
 > Note, while you have deleted the table from Unity Catalog, the underlying file system may still have the files (i.e., check the /tmp/uc/my_table/ folder).  
@@ -389,19 +390,19 @@ interact directly with your Unity Catalog service for the creation and access of
 
 In your desired development environment, install MLflow 2.16.1 or higher:
 
-```sh
+```bash
 $ pip install mlflow
 ```
 
 The installation of MLflow includes the MLflow CLI tool, so you can start a local MLflow server with UI by running the command below in your terminal:
 
-```sh
+```bash
 $ mlflow ui
 ```
 
 It will generate logs with the IP address, for example:
 
-```
+```console
 [2023-10-25 19:39:12 -0700] [50239] [INFO] Starting gunicorn 20.1.0
 [2023-10-25 19:39:12 -0700] [50239] [INFO] Listening at: http://127.0.0.1:5000 (50239)
 ```
