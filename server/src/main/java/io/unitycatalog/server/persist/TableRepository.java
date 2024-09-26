@@ -3,6 +3,7 @@ package io.unitycatalog.server.persist;
 import io.unitycatalog.server.exception.BaseException;
 import io.unitycatalog.server.exception.ErrorCode;
 import io.unitycatalog.server.model.*;
+import io.unitycatalog.server.persist.dao.CatalogInfoDAO;
 import io.unitycatalog.server.persist.dao.PropertyDAO;
 import io.unitycatalog.server.persist.dao.SchemaInfoDAO;
 import io.unitycatalog.server.persist.dao.TableInfoDAO;
@@ -46,7 +47,20 @@ public class TableRepository {
         if (tableInfoDAO == null) {
           throw new BaseException(ErrorCode.NOT_FOUND, "Table not found: " + tableId);
         }
+        SchemaInfoDAO schemaInfoDAO = session.get(SchemaInfoDAO.class, tableInfoDAO.getSchemaId());
+        if (schemaInfoDAO == null) {
+          throw new BaseException(
+              ErrorCode.NOT_FOUND, "Schema not found: " + tableInfoDAO.getSchemaId());
+        }
+        CatalogInfoDAO catalogInfoDAO =
+            session.get(CatalogInfoDAO.class, schemaInfoDAO.getCatalogId());
+        if (catalogInfoDAO == null) {
+          throw new BaseException(
+              ErrorCode.NOT_FOUND, "Catalog not found: " + schemaInfoDAO.getCatalogId());
+        }
         TableInfo tableInfo = tableInfoDAO.toTableInfo(true);
+        tableInfo.setSchemaName(schemaInfoDAO.getName());
+        tableInfo.setCatalogName(catalogInfoDAO.getName());
         tx.commit();
         return tableInfo;
       } catch (Exception e) {
