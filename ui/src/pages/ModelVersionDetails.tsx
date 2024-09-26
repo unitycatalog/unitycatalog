@@ -7,6 +7,7 @@ import { DeploymentUnitOutlined } from '@ant-design/icons';
 import { useGetModelVersion } from '../hooks/models';
 import ModelSidebar from '../components/models/ModelSidebar';
 import { formatTimestamp } from '../utils/formatTimestamp';
+import VersionActionsDropdown from '../components/models/VersionActionsDropdown';
 
 interface DataType {
   versionKey: string;
@@ -73,6 +74,12 @@ export default function ModelVersionDetails() {
           <Typography.Title level={3}>
             <DeploymentUnitOutlined /> {`${model} version ${version}`}
           </Typography.Title>
+          <VersionActionsDropdown
+            catalog={catalog}
+            schema={schema}
+            model={model}
+            version={Number(version)}
+          />
         </Flex>
       }
       breadcrumbs={[
