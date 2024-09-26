@@ -144,6 +144,9 @@ public class UnityCatalogCli {
         case CliUtils.MODEL_VERSION:
           ModelVersionCli.handle(cmd, apiClient);
           break;
+        case CliUtils.PERMISSION:
+          PermissionCli.handle(cmd, apiClient);
+          break;
         case CliUtils.USER:
           UserCli.handle(cmd, getControlClient(cmd));
           break;

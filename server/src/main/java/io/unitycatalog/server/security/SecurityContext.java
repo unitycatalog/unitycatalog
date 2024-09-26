@@ -73,9 +73,9 @@ public class SecurityContext {
   public String createAccessToken(DecodedJWT decodedJWT) {
 
     String subject =
-        decodedJWT.getClaim("email").isMissing()
-            ? decodedJWT.getClaim("sub").asString()
-            : decodedJWT.getClaim("email").asString();
+        decodedJWT.getClaim(JwtClaim.EMAIL.key()).isMissing()
+            ? decodedJWT.getClaim(JwtClaim.SUBJECT.key()).asString()
+            : decodedJWT.getClaim(JwtClaim.EMAIL.key()).asString();
 
     return JWT.create()
         .withSubject(serviceName)

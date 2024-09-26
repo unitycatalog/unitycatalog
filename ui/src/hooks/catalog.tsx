@@ -64,7 +64,9 @@ export function useCreateCatalog() {
         .post(`/catalogs`, JSON.stringify(params))
         .then((response) => response.data)
         .catch((e) => {
-          throw new Error('Failed to create catalog');
+          throw new Error(
+            e.response?.data?.message || 'Failed to create catalog',
+          );
         });
     },
     onSuccess: () => {
