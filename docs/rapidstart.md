@@ -124,8 +124,6 @@ bin/spark-sql --name "gcs-uc-test" \
     --conf "spark.sql.catalog.spark_catalog=io.unitycatalog.spark.UCSingleCatalog" \
     --conf "spark.hadoop.fs.gs.impl=com.google.cloud.hadoop.fs.gcs.GoogleHadoopFileSystem" \
     --conf "spark.hadoop.fs.AbstractFileSystem.gs.impl=com.google.cloud.hadoop.fs.gcs.GoogleHadoopFS" \
-    --conf "spark.hadoop.fs.gs.auth.type=ACCESS_TOKEN_PROVIDER" \
-    --conf "spark.hadoop.fs.gs.auth.access.token.provider=io.unitycatalog.spark.GcsVendedTokenProvider" \
     --conf "spark.sql.catalog.unity=io.unitycatalog.spark.UCSingleCatalog" \
     --conf "spark.sql.catalog.unity.uri=http://localhost:8080" \
     --conf "spark.sql.catalog.unity.token=" \
