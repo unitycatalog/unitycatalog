@@ -14,13 +14,9 @@ nav:
   - Usage:
       - CLI: usage/cli.md
       - Tables:
-          - usage/tables/index.md
           - Delta Lake: usage/tables/deltalake.md
           - Parquet: usage/tables/parquet.md
           - UniForm: usage/tables/uniform.md
-          - Managed vs External: usage/tables/managed-external-tables.md
-          - ORC: usage/tables/orc.md
-          - Avro: usage/tables/avro.md          
       - Volumes: usage/volumes.md
       - Functions: usage/functions.md
       - Models: usage/models.md
@@ -69,6 +65,8 @@ theme:
         name: Switch to light mode
   icon:
     repo: fontawesome/brands/github
+    annotation: material/arrow-right-circle
+
 
 extra:
   homepage: https://unitycatalog.io
@@ -100,7 +98,13 @@ markdown_extensions:
   - toc:
       permalink: true
   - pymdownx.details      
-  - pymdownx.superfences
   - pymdownx.tabbed:
       alternate_style: true
-
+  - pymdownx.superfences:
+      custom_fences:
+        - name: mermaid
+          class: mermaid
+          format: !!python/name:pymdownx.superfences.fence_code_format
+        - name: plantuml
+          class: plantuml
+          format: !!python/name:pymdownx.superfences.fence_code_format

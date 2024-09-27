@@ -1,14 +1,17 @@
-# Unity Catalog and Spark
+# Unity Catalog Apache Spark™ Integration
 
 This page explains how to create Unity Catalog tables with Apache Spark™.
 
-Apache Spark is a great engine when your data is organized in Unity Catalog and vice versa.  
+[Apache Spark](http://spark.apache.org) is a multi-language engine for executing data engineering, data science, and machine learning on single-node machines or clusters.  
+
+Integrating Apache Spark with Unity Catalog offers significant advantages over traditional catalog solutions. Unity Catalog provides unified governance across both data and AI assets, fine-grained access control down to the column level, automated data lineage tracking, and seamless interoperability with various lakehouse formats and compute engines. It enables centralized metadata management, simplified data discovery, and enhanced security.  The credential vending capability of Unity Catalog is particularly noteworthy as it allows Apache Spark to securely access data stored in Unity Catalog through a controlled mechanism.
 
 * Neatly organizing data in tables and volumes in the Unity Catalog hierarchy makes it a lot easier to write Spark code.  
 * Make it easier to decouple business logic from file paths.  
 * Provides easy access to different file formats without end users needing to know how the data is stored.
 
-Let’s examine how to use Apache Spark with Unity Catalog and discuss the advantages in more detail.
+Let’s dive into how to use Apache Spark with Unity Catalog.
+<!-- and discuss the advantages in more detail. -->
 
 !!! warning "Prerequisites"
     For Apache Spark and Delta Lake to work together with Unity Catalog, you will need atleast Apache Spark 3.5.3 and Delta Lake 3.2.1.
@@ -62,7 +65,7 @@ To have Unity Catalog work with cloud object storage as the storage location for
     gcs.jsonKeyFilePath.0=/path/to/<SECRET>/gcp-key-uc-testing.json
     ```
 
-### [Optional] Restart the UC Server
+### [Optional] Restart Unity Catalog Server
 
 If the UC Server is already started, please restart it to account for the cloud storage server properties.  
 
@@ -72,7 +75,7 @@ bin/start-uc-server
 ```
 
 
-## Working with Unity Catalog Tables with Spark and Delta Locally
+## Working with Unity Catalog Tables with Apache Spark and Delta Lake Locally
 
 Let’s start running some Spark SQL queries in the Spark SQL shell (`bin/spark-sql`) or PySpark shell (`bin/pyspark`) within the terminal of your Apache Spark 3.5.3 folder against your local UC.
 
@@ -106,20 +109,6 @@ Let’s start running some Spark SQL queries in the Spark SQL shell (`bin/spark-
         --conf "spark.sql.defaultCatalog=unity"
     ```
 
-=== "Spark SQL (build)"
-
-    ```bash
-    bin/spark-sql --name "local-uc-test" \
-        --master "local[*]" \
-        --repositories "https://oss.sonatype.org/content/repositories/iodelta-1168" \
-        --packages "io.delta:delta-spark_2.12:3.2.1,io.unitycatalog:unitycatalog-spark_2.12:0.2.0-SNAPSHOT" \
-        --conf "spark.sql.extensions=io.delta.sql.DeltaSparkSessionExtension" \
-        --conf "spark.sql.catalog.spark_catalog=io.unitycatalog.spark.UCSingleCatalog" \
-        --conf "spark.sql.catalog.unity=io.unitycatalog.spark.UCSingleCatalog" \
-        --conf "spark.sql.catalog.unity.uri=http://localhost:8080" \
-        --conf "spark.sql.catalog.unity.token=" \
-        --conf "spark.sql.defaultCatalog=unity"
-    ```
 
 !!! tip "Tip"
      Initially, this may take a few minutes to run to download the necessary dependencies.  Afterwards, you can run some quick commands to see your UC assets within Spark SQL shell.
@@ -192,7 +181,7 @@ If you would like to run this against cloud object storage, the following versio
 
 
 
-### Showing and reading
+## Using Spark SQL to query Unity Catalog schemas and tables
 
 Let’s start by running some quick commands from the Spark SQL and pyspark shells.
 
@@ -234,21 +223,35 @@ with the output similar to:
 
 Let’s query the first five rows of the `marksheet` table.
 
-```sql
-SELECT * FROM default.marksheet LIMIT 5;
-```
+
+=== "Spark SQL"
+
+    ```sql
+    SELECT * FROM default.marksheet LIMIT 5;
+    ```
+
+=== "PySpark"
+
+    ```python
+    sql("SELECT * FROM default.marksheet LIMIT5;").show()
+    ```
+
 
 With the output looking similar to the following.
 ```console
-1	nWYHawtqUw	930
-2	uvOzzthsLV	166
-3	WIAehuXWkv	170
-4	wYCSvnJKTo	709
-5	VsslXsUIDZ	993
++---+----------+-----+
+| id|      name|marks|
++---+----------+-----+
+|  1|nWYHawtqUw|  930|
+|  2|uvOzzthsLV|  166|
+|  3|WIAehuXWkv|  170|
+|  4|wYCSvnJKTo|  709|
+|  5|VsslXsUIDZ|  993|
++---+----------+-----+
 ```
 
 
-### UC Table CRUD Operations
+## Running CRUD Operations on a Unity Catalog table
 
 Let’s extend this example by executing various CRUD operations on our UC tables.  
 
