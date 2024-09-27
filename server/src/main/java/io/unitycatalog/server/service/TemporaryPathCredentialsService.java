@@ -39,8 +39,7 @@ public class TemporaryPathCredentialsService {
 
     private Set<CredentialContext.Privilege> pathOperationToPrivileges(PathOperation pathOperation) {
         return switch (pathOperation) {
-            // Should PATH_REFRESH be SELECT?
-            case PATH_READ, PATH_REFRESH -> Set.of(SELECT);
+            case PATH_READ -> Set.of(SELECT);
             case PATH_READ_WRITE, PATH_CREATE_TABLE -> Set.of(SELECT, UPDATE);
             case UNKNOWN_PATH_OPERATION -> Collections.emptySet();
         };
