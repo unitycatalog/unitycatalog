@@ -3,6 +3,7 @@ package io.unitycatalog.server.persist;
 import io.unitycatalog.server.exception.BaseException;
 import io.unitycatalog.server.exception.ErrorCode;
 import io.unitycatalog.server.model.*;
+import io.unitycatalog.server.persist.dao.CatalogInfoDAO;
 import io.unitycatalog.server.persist.dao.SchemaInfoDAO;
 import io.unitycatalog.server.persist.dao.VolumeInfoDAO;
 import io.unitycatalog.server.persist.utils.FileUtils;
@@ -146,13 +147,26 @@ public class VolumeRepository {
       session.setDefaultReadOnly(true);
       Transaction tx = session.beginTransaction();
       try {
-        Query<VolumeInfoDAO> query =
-            session.createQuery("FROM VolumeInfoDAO WHERE id = :value", VolumeInfoDAO.class);
-        query.setParameter("value", UUID.fromString(volumeId));
-        query.setMaxResults(1);
-        VolumeInfoDAO volumeInfoDAO = query.uniqueResult();
+        VolumeInfoDAO volumeInfoDAO = session.get(VolumeInfoDAO.class, UUID.fromString(volumeId));
+        if (volumeInfoDAO == null) {
+          throw new BaseException(ErrorCode.NOT_FOUND, "Table not found: " + volumeId);
+        }
+        SchemaInfoDAO schemaInfoDAO = session.get(SchemaInfoDAO.class, volumeInfoDAO.getSchemaId());
+        if (schemaInfoDAO == null) {
+          throw new BaseException(
+              ErrorCode.NOT_FOUND, "Schema not found: " + volumeInfoDAO.getSchemaId());
+        }
+        CatalogInfoDAO catalogInfoDAO =
+            session.get(CatalogInfoDAO.class, schemaInfoDAO.getCatalogId());
+        if (catalogInfoDAO == null) {
+          throw new BaseException(
+              ErrorCode.NOT_FOUND, "Catalog not found: " + schemaInfoDAO.getCatalogId());
+        }
         tx.commit();
-        return volumeInfoDAO.toVolumeInfo();
+        VolumeInfo volumeInfo = volumeInfoDAO.toVolumeInfo();
+        volumeInfo.setSchemaName(schemaInfoDAO.getName());
+        volumeInfo.setCatalogName(catalogInfoDAO.getName());
+        return volumeInfo;
       } catch (Exception e) {
         tx.rollback();
         throw e;

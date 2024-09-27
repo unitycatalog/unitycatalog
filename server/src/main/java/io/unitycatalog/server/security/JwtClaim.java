@@ -4,6 +4,7 @@ package io.unitycatalog.server.security;
 public enum JwtClaim {
   ISSUER("iss"),
   SUBJECT("sub"),
+  EMAIL("email"),
   EXPIRATION("exp"),
   ISSUED_AT("iat"),
   JWT_ID("jti"),

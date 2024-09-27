@@ -161,7 +161,7 @@ public class CliAuthCrudTest extends BaseAuthCRUDTest {
     args = addServerAndAuthParams(argsListUsers, serverConfig);
     responseJsonInfo = executeCLICommand(args);
     assertNotNull(responseJsonInfo);
-    assertEquals(1, responseJsonInfo.size());
+    assertEquals(2, responseJsonInfo.size());
 
     // Test deleting a user
     List<String> argsDeleteUser = List.of("user", "delete", "--id", id);
