@@ -44,6 +44,7 @@ theme:
   features:
     - content.action.edit
     - content.code.copy
+    - content.tabs.link    
     - navigation.footer
     - navigation.expand
     - navigation.indexes
