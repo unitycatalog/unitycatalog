@@ -2201,7 +2201,6 @@ components:
         - PATH_READ
         - PATH_READ_WRITE
         - PATH_CREATE_TABLE
-        - PATH_REFRESH
       type: string
     PrincipalType:
       type: string
