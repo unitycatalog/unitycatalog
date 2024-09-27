@@ -9,7 +9,7 @@ To start working with Unity Catalog in your development environment, start with 
 * [Run the UC Server](https://github.com/unitycatalog/unitycatalog?tab=readme-ov-file#run-the-uc-server)  
 * [Operate on Delta tables with the CLI](https://github.com/unitycatalog/unitycatalog?tab=readme-ov-file#operate-on-delta-tables-with-the-cli)  
 * [Operate on Delta tables with DuckDB](https://github.com/unitycatalog/unitycatalog?tab=readme-ov-file#operate-on-delta-tables-with-duckdb)  
-* [Interact with the Unity Catalog tutorial](https://github.com/unitycatalog/unitycatalog?tab=readme-ov-file#interact-with-the-unity-catalog-ui)
+* [Interact with the Unity Catalog UI](https://github.com/unitycatalog/unitycatalog?tab=readme-ov-file#interact-with-the-unity-catalog-ui)
 
 # Using Unity Catalog with Apache Spark™ and Delta Lake
 
