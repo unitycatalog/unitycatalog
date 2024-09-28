@@ -34,7 +34,7 @@ tar xzf spark-3.5.3-bin-hadoop3.tgz
 
 To have Unity Catalog work with cloud object storage as the storage location for tables, configure the `etc/conf/server.properties` to add configuration:  
 
-=== "S3 Storage Config"
+=== "AWS S3"
 
     ```bash
     ## S3 Storage Config (Multiple configs can be added by incrementing the index)
@@ -46,7 +46,7 @@ To have Unity Catalog work with cloud object storage as the storage location for
     s3.secretKey.0=<SECRET>
     ```
 
-=== "ADLSgen2 Storage Config"
+=== "Azure ADLSgen2"
 
     ```bash
     ## ADLS Storage Config (Multiple configs can be added by incrementing the index)
@@ -56,7 +56,7 @@ To have Unity Catalog work with cloud object storage as the storage location for
     adls.clientSecret.0=<SECRET>
     ```
 
-=== "GCS Storage Config"    
+=== "Google Cloud Storage"    
 
     ```bash
     ## GCS Storage Config (Multiple configs can be added by incrementing the index)
@@ -162,7 +162,7 @@ If you would like to run this against cloud object storage, the following versio
         --conf "spark.sql.defaultCatalog=unity"
     ```
 
-=== "GCS"
+=== "Google Cloud Storage"
 
     ```bash
     bin/spark-sql --name "gcs-uc-test" \
