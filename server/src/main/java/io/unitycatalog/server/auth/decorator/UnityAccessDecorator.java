@@ -46,9 +46,9 @@ import static io.unitycatalog.server.auth.decorator.KeyLocator.Source.SYSTEM;
  * and @AuthorizeKey to define authorization rules and identify requests parameters for objects
  * to authorize with.
  *
- * @AuthorizeExpression - This defines a Spring Expression Language expression to evaluate to make
+ * {@code @AuthorizeExpression} - This defines a Spring Expression Language expression to evaluate to make
  * an authorization decision.
- * @AuthorizeKey - This annotation is used to define request and payload parameters for the authorization
+ * {@code @AuthorizeKey} - This annotation is used to define request and payload parameters for the authorization
  * context. These are typically things like catalog, schema and table names. This annotation may be used
  * at both the method and method parameter context. It may be specified more than once per method to
  * map parameters to object keys.
