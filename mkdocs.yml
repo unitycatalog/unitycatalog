@@ -17,6 +17,8 @@ nav:
           - Delta Lake: usage/tables/deltalake.md
           - Parquet: usage/tables/parquet.md
           - UniForm: usage/tables/uniform.md
+          - Avro: usage/tables/avro.md
+          - ORC: usage/tables/orc.md
       - Volumes: usage/volumes.md
       - Functions: usage/functions.md
       - Models: usage/models.md
