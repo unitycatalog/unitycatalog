@@ -49,3 +49,6 @@ Any params that are not required can be left empty.
 ### Logging
 
 The server logs are located at `etc/logs/server.log`. The log level and log rolling policy can be set in log4j2 config file: `etc/conf/server.log4j2.properties`
+
+## Authentication and Authorization
+Please refer to [Authentication and Authorization](./auth.md) section for more information.

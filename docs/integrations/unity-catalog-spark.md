@@ -84,7 +84,6 @@ Let’s start running some Spark SQL queries in the Spark SQL shell (`bin/spark-
     ```bash
     bin/spark-sql --name "local-uc-test" \
         --master "local[*]" \
-        --repositories "https://s01.oss.sonatype.org/content/repositories/iounitycatalog-1016/" \
         --packages "io.delta:delta-spark_2.12:3.2.1,io.unitycatalog:unitycatalog-spark_2.12:0.2.0" \
         --conf "spark.sql.extensions=io.delta.sql.DeltaSparkSessionExtension" \
         --conf "spark.sql.catalog.spark_catalog=io.unitycatalog.spark.UCSingleCatalog" \
@@ -99,7 +98,6 @@ Let’s start running some Spark SQL queries in the Spark SQL shell (`bin/spark-
     ```bash
     bin/pyspark --name "local-uc-test" \
         --master "local[*]" \
-        --repositories "https://s01.oss.sonatype.org/content/repositories/iounitycatalog-1016/" \
         --packages "io.delta:delta-spark_2.12:3.2.1,io.unitycatalog:unitycatalog-spark_2.12:0.2.0" \
         --conf "spark.sql.extensions=io.delta.sql.DeltaSparkSessionExtension" \
         --conf "spark.sql.catalog.spark_catalog=io.unitycatalog.spark.UCSingleCatalog" \
