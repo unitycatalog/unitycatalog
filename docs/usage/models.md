@@ -15,7 +15,7 @@ The MLflow client connects both MLflow and Unity Catalog services (via `port:500
 
 1. When you are running your training runs with MLflow, the metrics generated in those training runs are stored within MLflow.
 2. For those same training runs, models are often generated, and those models are also stored within MLflow.
-3. Once you have decided which model you want to register, you can register and store that model into Unity Catalog
+3. Once you have decided which model you want to register, you can register and store that model into Unity Catalog.
 
 
 ## Setting up MLflow and Unity Catalog
