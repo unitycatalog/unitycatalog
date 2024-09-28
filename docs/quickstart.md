@@ -274,16 +274,18 @@ bin/uc table delete --full_name unity.default.my_table
 
 To use the Unity Catalog UI, start a new terminal and ensure you have already started the UC server (e.g., `./bin/start-uc-server`)
 
-**Prerequisites**
-* Node: https://nodejs.org/en/download/package-manager
-* Yarn: https://classic.yarnpkg.com/lang/en/docs/install
+!!! warning "Prerequisites"
+    The Unity Catalog UI requires both [Node](https://nodejs.org/en/download/package-manager) and [Yarn](https://classic.yarnpkg.com/lang/en/docs/install).
 
-**How to start the UI through yarn**
+
+To start the UI locally, run the following commands to start `yarn`
+
 ```
 cd /ui
 yarn install
 yarn start
 ```
+
 
 
 ## Manage models in Unity Catalog using MLflow

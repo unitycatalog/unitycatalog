@@ -8,11 +8,10 @@ site_author: unitycatalog
 
 nav:
   - Home: index.md
-  - Guides:
-    - Quickstart: quickstart.md
-    - Rapidstart: rapidstart.md  
+  - Quickstart: quickstart.md
   - Usage:
       - CLI: usage/cli.md
+      - UI: usage/ui.md
       - Tables:
           - Delta Lake: usage/tables/deltalake.md
           - Parquet: usage/tables/parquet.md
