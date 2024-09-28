@@ -8,22 +8,26 @@ site_author: unitycatalog
 
 nav:
   - Home: index.md
-  - Quickstart: quickstart.md
+  - Guides:
+    - Quickstart: quickstart.md
+    - Rapidstart: rapidstart.md  
   - Usage:
       - CLI: usage/cli.md
       - Tables:
-          - usage/tables/index.md
           - Delta Lake: usage/tables/deltalake.md
-          - ORC: usage/tables/orc.md
           - Parquet: usage/tables/parquet.md
           - UniForm: usage/tables/uniform.md
-          - Managed vs External: usage/tables/managed-external-tables.md
       - Volumes: usage/volumes.md
       - Functions: usage/functions.md
+      - Models: usage/models.md
       - Server: usage/server.md
   - Integrations:
+      - Apache Spark: integrations/unity-catalog-spark.md  
       - Daft: integrations/unity-catalog-daft.md
       - DuckDB: integrations/unity-catalog-duckdb.md
+      - PuppyGraph: integrations/unity-catalog-puppygraph.md
+      - SpiceAI: integrations/unity-catalog-spiceai.md
+      - XTable: integrations/unity-catalog-xtable.md
   - Deployment: deployment.md
 
 plugins:
@@ -32,12 +36,19 @@ plugins:
 
 theme:
   name: material
+  logo: assets/images/uc-logo-mark-reverse.png
+  favicon: assets/images/unitycatalog_256x256.png
+  font:
+    text: Plus Jakarta Sans
+    code: Consolas  
   features:
     - content.action.edit
     - content.code.copy
+    - content.tabs.link    
     - navigation.footer
     - navigation.expand
     - navigation.indexes
+    - content.code.annotate    
   palette:
     - media: "(prefers-color-scheme: light)"
       scheme: default
@@ -55,8 +66,11 @@ theme:
         name: Switch to light mode
   icon:
     repo: fontawesome/brands/github
+    annotation: material/arrow-right-circle
+
 
 extra:
+  homepage: https://unitycatalog.io
   social:
     - icon: fontawesome/brands/github
       link: https://github.com/unitycatalog/unitycatalog
@@ -84,3 +98,14 @@ markdown_extensions:
   - md_in_html
   - toc:
       permalink: true
+  - pymdownx.details      
+  - pymdownx.tabbed:
+      alternate_style: true
+  - pymdownx.superfences:
+      custom_fences:
+        - name: mermaid
+          class: mermaid
+          format: !!python/name:pymdownx.superfences.fence_code_format
+        - name: plantuml
+          class: plantuml
+          format: !!python/name:pymdownx.superfences.fence_code_format
