@@ -8,19 +8,20 @@ site_author: unitycatalog
 
 nav:
   - Home: index.md
-  - Guides:
-    - Quickstart: quickstart.md
-    - Rapidstart: rapidstart.md  
+  - Quickstart: quickstart.md
   - Usage:
       - CLI: usage/cli.md
+      - UI: usage/ui.md
       - Tables:
           - Delta Lake: usage/tables/deltalake.md
-          - Parquet: usage/tables/parquet.md
+          - Formats: usage/tables/formats.md
           - UniForm: usage/tables/uniform.md
       - Volumes: usage/volumes.md
       - Functions: usage/functions.md
       - Models: usage/models.md
-      - Server: usage/server.md
+  - Server:
+      - Configuration: server/configuration.md
+      - Auth: server/auth.md
   - Integrations:
       - Apache Spark: integrations/unity-catalog-spark.md  
       - Daft: integrations/unity-catalog-daft.md
@@ -67,7 +68,8 @@ theme:
   icon:
     repo: fontawesome/brands/github
     annotation: material/arrow-right-circle
-
+extra_css:
+  - assets/stylesheets/extra.css
 
 extra:
   homepage: https://unitycatalog.io
