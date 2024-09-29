@@ -274,16 +274,18 @@ bin/uc table delete --full_name unity.default.my_table
 
 To use the Unity Catalog UI, start a new terminal and ensure you have already started the UC server (e.g., `./bin/start-uc-server`)
 
-**Prerequisites**
-* Node: https://nodejs.org/en/download/package-manager
-* Yarn: https://classic.yarnpkg.com/lang/en/docs/install
+!!! warning "Prerequisites"
+    The Unity Catalog UI requires both [Node](https://nodejs.org/en/download/package-manager) and [Yarn](https://classic.yarnpkg.com/lang/en/docs/install).
 
-**How to start the UI through yarn**
+
+To start the UI locally, run the following commands to start `yarn`
+
 ```
 cd /ui
 yarn install
 yarn start
 ```
+
 
 
 ## Manage models in Unity Catalog using MLflow
@@ -293,7 +295,7 @@ Unity Catalog supports the management and governance of ML models as securable a
 backing resource for the MLflow model registry.  What this means is that with the MLflow client, you will be able to 
 interact directly with your Unity Catalog service for the creation and access of registered models.
 
-## Setup MLflow for usage with Unity Catalog
+### Setup MLflow for usage with Unity Catalog
 
 In your desired development environment, install MLflow 2.16.1 or higher:
 
@@ -324,6 +326,8 @@ mlflow.set_registry_uri("uc:http://127.0.0.1:8080")
 ```
 
 At this point, your MLflow environment is ready for use with the newly started MLflow tracking server and the Unity Catalog server acting as your model registry.
+
+### Train your model and register it into Unity Catalog
 
 You can quickly train a test model and validate that the MLflow/Unity catalog integration is fully working.
 
@@ -367,8 +371,6 @@ The results can be seen in the Unity Catalog UI at [http://localhost:3000,](http
 
 ![](./assets/images/uc_ui_models.png)
 
-## Continue with the Rapidstart
-Do you want to try more Unity Catalog features including Apache Spark integration, MLflow integration, and Google Authentication, continue with the [Rapidstart](./rapidstart.md).
 
 ## APIs and Compatibility
 
