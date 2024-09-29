@@ -3,6 +3,18 @@
 The CLI tool allows users to interact with a Unity Catalog server to create and manage catalogs, schemas, tables across 
 different formats (DELTA, UNIFORM, PARQUET, JSON, and CSV), volumes with unstructured data, and functions.
 
+!!! note "Specify token for authenticated access"
+
+    For all the following commands, you will need to provide an authentication token when executng these commands.  For example, in the following section, to run the catalog list command, you would specify:
+
+    ```bash
+    bin/uc --auth_token $token catalog list
+    ```
+
+    where $token is the authentication token provided by an identity provider.  For more information on how to support both authentication and authorization, please refer to the [auth](../server/auth.md).
+
+
+
 ## 1. Catalog Management CLI Usage
 
 This section outlines the usage of the `bin/uc` script for managing catalogs within your system.
@@ -196,9 +208,8 @@ Example:
 bin/uc table create --full_name my_catalog.my_schema.my_table --columns "id INT, name STRING" --storage_location "/path/to/storage"
 ```
 
-When running against UC OSS server, the storage location can be a local path(absolute path) or an S3 path. 
-When S3 path is provided, the [server](./server.md) will vend temporary credentials to access the S3 bucket 
-and server properties must be set up accordingly.
+When running against UC server, the storage location can be a local path(absolute path) or an S3 path. 
+When S3 path is provided, the [server configuration](../server/configuration.md) will vend temporary credentials to access the S3 bucket and server properties must be set up accordingly.
 
 ### 3.4 Read a DELTA Table
 
@@ -269,7 +280,7 @@ bin/uc volume create --full_name <catalog>.<schema>.<volume> --storage_location 
 - `volume`: The name of the volume.
 - `storage_location`: The storage location associated with the volume. When running against UC OSS server,
   the storage location can be a local path(absolute path) or an S3 path.
-  When S3 path is provided, the [server](./server.md) will vend temporary credentials to access the S3 bucket and server properties must be set up accordingly.
+  When S3 path is provided, the [server configuration](../server/configuration.md) will vend temporary credentials to access the S3 bucket and server properties must be set up accordingly.
   When running against Databricks Unity Catalog, the storage location for EXTERNAL volume can only be an S3 location which
   has been configured as an `external location` in your Databricks workspace.
 - `comment`: *\[Optional\]* The description of the volume.

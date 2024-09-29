@@ -10,8 +10,6 @@ Integrating Apache Spark with Unity Catalog offers significant advantages over t
 * Make it easier to decouple business logic from file paths.  
 * Provides easy access to different file formats without end users needing to know how the data is stored.
 
-Let’s dive into how to use Apache Spark with Unity Catalog.
-<!-- and discuss the advantages in more detail. -->
 
 !!! warning "Prerequisites"
     For Apache Spark and Delta Lake to work together with Unity Catalog, you will need atleast Apache Spark 3.5.3 and Delta Lake 3.2.1.
@@ -116,7 +114,7 @@ Notice the following packages (`--packages`) and configurations (`--conf`)
 
 * `--packages` points to the delta-spark and unitycatalog-spark packages; update the version numbers to your current versions.
 * `spark.sql.catalog.unity.uri` points to your local development UC instance
-* `spark.sql.catalog.unity.token` is empty indicating there is no authentication; we will fill this later in this section.
+* `spark.sql.catalog.unity.token` is empty indicating there is no authentication; refer to [auth](../server/auth.md) for more information.
 * `spark.sql.defaultCatalog=unity` must be filled out to indicate the default catalog.
 
 

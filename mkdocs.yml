@@ -14,7 +14,7 @@ nav:
       - UI: usage/ui.md
       - Tables:
           - Delta Lake: usage/tables/deltalake.md
-          - Parquet: usage/tables/parquet.md
+          - Formats: usage/tables/formats.md
           - UniForm: usage/tables/uniform.md
       - Volumes: usage/volumes.md
       - Functions: usage/functions.md
