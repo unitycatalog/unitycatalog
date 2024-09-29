@@ -121,9 +121,8 @@ Created version '1' of model 'unity.default.iris'.
 2024/09/24 20:51:29 INFO mlflow.tracking._tracking_service.client: 🧪 View experiment at: http://127.0.0.1:5000/#/experiments/0.
 ```
 
-The results can be seen in the Unity Catalog UI at [http://localhost:3000](http://localhost:3000) as per the instructions in the [Interact with the Unity Catalog tutorial](https://github.com/unitycatalog/unitycatalog?tab=readme-ov-file#interact-with-the-unity-catalog-ui).  
+The results can be seen in the Unity Catalog UI at [http://localhost:3000](http://localhost:3000).  For more information, dive deeper into the [Unity Catalog UI](./ui.md).  
 
-<!-- Change the above link to point to the UI section of the docs -->
 
 ![](../assets/images/uc_ui_models.png)
 
