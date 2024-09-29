@@ -444,3 +444,108 @@ The CLI can be configured to talk to Databricks Unity Catalog by one of the foll
 
 Each parameter can be configured either from the CLI or the configuration file, independently of each other.
 The CLI will prioritize the values provided from the CLI over the configuration file.
+
+!!! feedback "Different look for users CLI commands"
+
+    We're trying out a different look for the CLI commands - which do you prefer - the format above this or the format below?  Chime in UC GitHub discussion [529](https://github.com/unitycatalog/unitycatalog/discussions/529) and let us know!
+
+
+## 8. Manage Users
+
+This section outlines the usage of the `bin/uc` script for managing users within UC.
+The script supports various operations such as creating, getting, updating, listing, and deleting users.
+
+### 8.1 Create User
+
+```bash title="Usage"
+bin/uc create [options]
+```
+
+*Required Params:*
+
+    -- name: The name of the entity.
+    -- email : The email address for the user
+
+*Optional Params:*
+
+    -- server: UC Server to connect to. Default is reference server.
+    -- auth_token: PAT token to authorize uc requests.
+    -- external_id: The identity provider's id for the user
+    -- output: To indicate CLI output format preference. Supported values are json and jsonPretty.
+
+
+### 8.2 Delete User
+
+```bash title="Usage"
+bin/uc user delete [options]
+```
+
+*Required Params:*
+
+    --id The unique id of the user
+
+*Optional Params:*
+
+    --server UC Server to connect to. Default is reference server.
+    --auth_token PAT token to authorize uc requests.
+    --output To indicate CLI output format preference. Supported values are json and jsonPretty.
+
+
+### 8.3 Get User
+
+```bash title="Usage"
+bin/uc user get [options]
+```
+
+*Required Params:*
+
+    --id The unique id of the user
+
+*Optional Params:*
+
+    --server UC Server to connect to. Default is reference server.
+    --auth_token PAT token to authorize uc requests.
+    --output To indicate CLI output format preference. Supported values are json and jsonPretty.
+
+
+### 8.4 List Users
+
+```bash title="Usage"
+bin/uc user list [options]
+```
+
+*Required Params:*
+
+    None  
+
+*Optional Params:*
+
+    --server UC Server to connect to. Default is reference server.
+    --auth_token PAT token to authorize uc requests.
+    --output To indicate CLI output format preference. Supported values are json and jsonPretty.
+    --filter Query by which the results have to be filtered
+    --start_index Specifies the index (starting at 1) of the first result.
+    --count Desired number of results per page
+
+
+### 8.5 Update User
+
+```bash title="Usage"
+bin/uc user update [options]
+```
+
+
+*Required Params:*
+
+    --id The unique id of the user
+
+
+*Optional Params:*
+
+    --server UC Server to connect to. Default is reference server.
+    --auth_token PAT token to authorize uc requests.
+    --output To indicate CLI output format preference. Supported values are json and jsonPretty.
+    --name The name of the entity.
+    --external_id The identity provider's id for the user
+    --email The email address for the user
+
