@@ -2,9 +2,9 @@
 
 The Unity Catalog UI allows you to interact with a Unity Catalog server to view or create data and AI assets.  
 
-## Start Unity Catalog UI locally
-
 ![UC UI](../assets/images/ui/uc-ui-expanded.png)
+
+## Start Unity Catalog UI locally
 
 To use the Unity Catalog UI, start a new terminal and ensure you have already started the UC server (e.g., `./bin/start-uc-server`)
 
