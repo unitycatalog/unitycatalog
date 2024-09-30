@@ -20,7 +20,7 @@ To try out authentication and authorization, first configure your preferred exte
 * [Optional] `ui/.env` so the Unity Catalog UI can also use the same `client_id`.  
 
 !!! note "Unity Catalog UI supported Identity Authentication Providers"
-    Currently, the Unity Catalog User Interface supports Google, Okta, and Keyclock
+    Currently, the Unity Catalog User Interface supports Google Identity Provider.
 
 You can follow [these instructions](./google-auth.md) if would like to use Google as your external identity provider.
 
