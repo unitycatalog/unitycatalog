@@ -18,11 +18,11 @@
         <link rel="prev" href="../../quickstart/">
       
       
-        <link rel="next" href="../tables/uniform/">
+        <link rel="next" href="../ui/">
       
       
-      <link rel="icon" href="../../assets/images/favicon.png">
-      <meta name="generator" content="mkdocs-1.6.0, mkdocs-material-9.5.28">
+      <link rel="icon" href="../../assets/images/unitycatalog_256x256.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.5.38">
     
     
       
@@ -30,12 +30,18 @@
       
     
     
-      <link rel="stylesheet" href="../../assets/stylesheets/main.6543a935.min.css">
+      <link rel="stylesheet" href="../../assets/stylesheets/main.8c3ca2c6.min.css">
       
         
         <link rel="stylesheet" href="../../assets/stylesheets/palette.06af60db.min.css">
       
       
+
+  
+  
+  
+  
+  <style>:root{--md-annotation-icon:url('data:image/svg+xml;charset=utf-8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M22 12a10 10 0 0 1-10 10A10 10 0 0 1 2 12 10 10 0 0 1 12 2a10 10 0 0 1 10 10M6 13h8l-3.5 3.5 1.42 1.42L17.84 12l-5.92-5.92L10.5 7.5 14 11H6z"/></svg>');}</style>
 
 
     
@@ -47,14 +53,68 @@
         
         
         <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
-        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Plus+Jakarta+Sans:300,300i,400,400i,700,700i%7CConsolas:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Plus Jakarta Sans";--md-code-font:"Consolas"}</style>
       
     
     
-    <script>__md_scope=new URL("../..",location),__md_hash=e=>[...e].reduce((e,_)=>(e<<5)-e+_.charCodeAt(0),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+      <link rel="stylesheet" href="../../assets/stylesheets/extra.css">
+    
+    <script>__md_scope=new URL("../..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
     
       
+  
+
+
+  <script
+  defer
+  data-domain="unitycatalog.io"
+  src="https://plausible.io/js/plausible.js"
+></script>
+
+<script>
+  window.plausible = window.plausible || function () { (window.plausible.q = window.plausible.q || []).push(arguments) };
+
+  /* Register event handlers after documented loaded */
+  document.addEventListener("DOMContentLoaded", function () {
+    /* Set up search tracking */
+    if (document.forms.search) {
+      var query = document.forms.search.query;
+      query.addEventListener("blur", function() {
+        if (this.value) plausible("Search", { props: { search_term: this.value } });
+      })
+    }
+
+    /* Set up feedback, i.e. "Was this page helpful?" */
+    document$.subscribe(function () {
+      var feedback = document.forms.feedback;
+      if (typeof feedback === "undefined") return;
+
+      /* Send feedback to Plausible */
+      for (var button of feedback.querySelectorAll("[type=submit]")) {
+        button.addEventListener("click", function (ev) {
+          ev.preventDefault();
+
+          var page = document.location.pathname;
+          var value = this.getAttribute("data-md-value");
+          console.log("[feedback] User clicked", { value });
+          plausible(`Feedback: ${value}`);
+
+          /* Disable form and show note, if given */
+          feedback.firstElementChild.disabled = true;
+          var note = feedback.querySelector(".md-feedback__note [data-md-value='" + value + "']");
+          if (note) note.hidden = false;
+        })
+
+        /* Show feedback */
+        feedback.hidden = false;
+      }
+    });
+  });
+</script>
+  
+    <script>"undefined"!=typeof __md_analytics&&__md_analytics()</script>
+  
 
     
     
@@ -94,15 +154,14 @@
 
 <header class="md-header md-header--shadow" data-md-component="header">
   <nav class="md-header__inner md-grid" aria-label="Header">
-    <a href="../.." title="Unity Catalog" class="md-header__button md-logo" aria-label="Unity Catalog" data-md-component="logo">
+    <a href="https://unitycatalog.io" title="Unity Catalog" class="md-header__button md-logo" aria-label="Unity Catalog" data-md-component="logo">
       
-  
-  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54Z"/></svg>
+  <img src="../../assets/images/uc-logo-mark-reverse.png" alt="logo">
 
     </a>
     <label class="md-header__button md-icon" for="__drawer">
       
-      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3V6m0 5h18v2H3v-2m0 5h18v2H3v-2Z"/></svg>
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
     </label>
     <div class="md-header__title" data-md-component="header-title">
       <div class="md-header__ellipsis">
@@ -130,7 +189,7 @@
     <input class="md-option" data-md-color-media="(prefers-color-scheme: light)" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="amber"  aria-label="Switch to dark mode"  type="radio" name="__palette" id="__palette_0">
     
       <label class="md-header__button md-icon" title="Switch to dark mode" for="__palette_1" hidden>
-        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a4 4 0 0 0-4 4 4 4 0 0 0 4 4 4 4 0 0 0 4-4 4 4 0 0 0-4-4m0 10a6 6 0 0 1-6-6 6 6 0 0 1 6-6 6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12 20 8.69Z"/></svg>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a4 4 0 0 0-4 4 4 4 0 0 0 4 4 4 4 0 0 0 4-4 4 4 0 0 0-4-4m0 10a6 6 0 0 1-6-6 6 6 0 0 1 6-6 6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
       </label>
     
   
@@ -140,7 +199,7 @@
     <input class="md-option" data-md-color-media="(prefers-color-scheme: dark)" data-md-color-scheme="slate" data-md-color-primary="indigo" data-md-color-accent="amber"  aria-label="Switch to light mode"  type="radio" name="__palette" id="__palette_1">
     
       <label class="md-header__button md-icon" title="Switch to light mode" for="__palette_0" hidden>
-        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 18c-.89 0-1.74-.2-2.5-.55C11.56 16.5 13 14.42 13 12c0-2.42-1.44-4.5-3.5-5.45C10.26 6.2 11.11 6 12 6a6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12 20 8.69Z"/></svg>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 18c-.89 0-1.74-.2-2.5-.55C11.56 16.5 13 14.42 13 12s-1.44-4.5-3.5-5.45C10.26 6.2 11.11 6 12 6a6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
       </label>
     
   
@@ -148,13 +207,13 @@
       
     
     
-      <script>var media,input,key,value,palette=__md_get("__palette");if(palette&&palette.color){"(prefers-color-scheme)"===palette.color.media&&(media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']"),palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent"));for([key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
     
     
     
       <label class="md-header__button md-icon" for="__search">
         
-        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.516 6.516 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5Z"/></svg>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
       </label>
       <div class="md-search" data-md-component="search" role="dialog">
   <label class="md-search__overlay" for="__search"></label>
@@ -163,15 +222,15 @@
       <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
       <label class="md-search__icon md-icon" for="__search">
         
-        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.516 6.516 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5Z"/></svg>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
         
-        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11h12Z"/></svg>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
       </label>
       <nav class="md-search__options" aria-label="Search">
         
         <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
           
-          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12 19 6.41Z"/></svg>
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
         </button>
       </nav>
       
@@ -194,7 +253,7 @@
         <a href="https://github.com/unitycatalog/unitycatalog" title="Go to repository" class="md-source" data-md-component="source">
   <div class="md-source__icon md-icon">
     
-    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 496 512"><!--! Font Awesome Free 6.5.2 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2024 Fonticons, Inc.--><path d="M165.9 397.4c0 2-2.3 3.6-5.2 3.6-3.3.3-5.6-1.3-5.6-3.6 0-2 2.3-3.6 5.2-3.6 3-.3 5.6 1.3 5.6 3.6zm-31.1-4.5c-.7 2 1.3 4.3 4.3 4.9 2.6 1 5.6 0 6.2-2s-1.3-4.3-4.3-5.2c-2.6-.7-5.5.3-6.2 2.3zm44.2-1.7c-2.9.7-4.9 2.6-4.6 4.9.3 2 2.9 3.3 5.9 2.6 2.9-.7 4.9-2.6 4.6-4.6-.3-1.9-3-3.2-5.9-2.9zM244.8 8C106.1 8 0 113.3 0 252c0 110.9 69.8 205.8 169.5 239.2 12.8 2.3 17.3-5.6 17.3-12.1 0-6.2-.3-40.4-.3-61.4 0 0-70 15-84.7-29.8 0 0-11.4-29.1-27.8-36.6 0 0-22.9-15.7 1.6-15.4 0 0 24.9 2 38.6 25.8 21.9 38.6 58.6 27.5 72.9 20.9 2.3-16 8.8-27.1 16-33.7-55.9-6.2-112.3-14.3-112.3-110.5 0-27.5 7.6-41.3 23.6-58.9-2.6-6.5-11.1-33.3 2.6-67.9 20.9-6.5 69 27 69 27 20-5.6 41.5-8.5 62.8-8.5s42.8 2.9 62.8 8.5c0 0 48.1-33.6 69-27 13.7 34.7 5.2 61.4 2.6 67.9 16 17.7 25.8 31.5 25.8 58.9 0 96.5-58.9 104.2-114.8 110.5 9.2 7.9 17 22.9 17 46.4 0 33.7-.3 75.4-.3 83.6 0 6.5 4.6 14.4 17.3 12.1C428.2 457.8 496 362.9 496 252 496 113.3 383.5 8 244.8 8zM97.2 352.9c-1.3 1-1 3.3.7 5.2 1.6 1.6 3.9 2.3 5.2 1 1.3-1 1-3.3-.7-5.2-1.6-1.6-3.9-2.3-5.2-1zm-10.8-8.1c-.7 1.3.3 2.9 2.3 3.9 1.6 1 3.6.7 4.3-.7.7-1.3-.3-2.9-2.3-3.9-2-.6-3.6-.3-4.3.7zm32.4 35.6c-1.6 1.3-1 4.3 1.3 6.2 2.3 2.3 5.2 2.6 6.5 1 1.3-1.3.7-4.3-1.3-6.2-2.2-2.3-5.2-2.6-6.5-1zm-11.4-14.7c-1.6 1-1.6 3.6 0 5.9 1.6 2.3 4.3 3.3 5.6 2.3 1.6-1.3 1.6-3.9 0-6.2-1.4-2.3-4-3.3-5.6-2z"/></svg>
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 496 512"><!--! Font Awesome Free 6.6.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2024 Fonticons, Inc.--><path d="M165.9 397.4c0 2-2.3 3.6-5.2 3.6-3.3.3-5.6-1.3-5.6-3.6 0-2 2.3-3.6 5.2-3.6 3-.3 5.6 1.3 5.6 3.6m-31.1-4.5c-.7 2 1.3 4.3 4.3 4.9 2.6 1 5.6 0 6.2-2s-1.3-4.3-4.3-5.2c-2.6-.7-5.5.3-6.2 2.3m44.2-1.7c-2.9.7-4.9 2.6-4.6 4.9.3 2 2.9 3.3 5.9 2.6 2.9-.7 4.9-2.6 4.6-4.6-.3-1.9-3-3.2-5.9-2.9M244.8 8C106.1 8 0 113.3 0 252c0 110.9 69.8 205.8 169.5 239.2 12.8 2.3 17.3-5.6 17.3-12.1 0-6.2-.3-40.4-.3-61.4 0 0-70 15-84.7-29.8 0 0-11.4-29.1-27.8-36.6 0 0-22.9-15.7 1.6-15.4 0 0 24.9 2 38.6 25.8 21.9 38.6 58.6 27.5 72.9 20.9 2.3-16 8.8-27.1 16-33.7-55.9-6.2-112.3-14.3-112.3-110.5 0-27.5 7.6-41.3 23.6-58.9-2.6-6.5-11.1-33.3 2.6-67.9 20.9-6.5 69 27 69 27 20-5.6 41.5-8.5 62.8-8.5s42.8 2.9 62.8 8.5c0 0 48.1-33.6 69-27 13.7 34.7 5.2 61.4 2.6 67.9 16 17.7 25.8 31.5 25.8 58.9 0 96.5-58.9 104.2-114.8 110.5 9.2 7.9 17 22.9 17 46.4 0 33.7-.3 75.4-.3 83.6 0 6.5 4.6 14.4 17.3 12.1C428.2 457.8 496 362.9 496 252 496 113.3 383.5 8 244.8 8M97.2 352.9c-1.3 1-1 3.3.7 5.2 1.6 1.6 3.9 2.3 5.2 1 1.3-1 1-3.3-.7-5.2-1.6-1.6-3.9-2.3-5.2-1m-10.8-8.1c-.7 1.3.3 2.9 2.3 3.9 1.6 1 3.6.7 4.3-.7.7-1.3-.3-2.9-2.3-3.9-2-.6-3.6-.3-4.3.7m32.4 35.6c-1.6 1.3-1 4.3 1.3 6.2 2.3 2.3 5.2 2.6 6.5 1 1.3-1.3.7-4.3-1.3-6.2-2.2-2.3-5.2-2.6-6.5-1m-11.4-14.7c-1.6 1-1.6 3.6 0 5.9s4.3 3.3 5.6 2.3c1.6-1.3 1.6-3.9 0-6.2-1.4-2.3-4-3.3-5.6-2"/></svg>
   </div>
   <div class="md-source__repository">
     unitycatalog/unitycatalog
@@ -227,10 +286,9 @@
 
 <nav class="md-nav md-nav--primary" aria-label="Navigation" data-md-level="0">
   <label class="md-nav__title" for="__drawer">
-    <a href="../.." title="Unity Catalog" class="md-nav__button md-logo" aria-label="Unity Catalog" data-md-component="logo">
+    <a href="https://unitycatalog.io" title="Unity Catalog" class="md-nav__button md-logo" aria-label="Unity Catalog" data-md-component="logo">
       
-  
-  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54Z"/></svg>
+  <img src="../../assets/images/uc-logo-mark-reverse.png" alt="logo">
 
     </a>
     Unity Catalog
@@ -240,7 +298,7 @@
       <a href="https://github.com/unitycatalog/unitycatalog" title="Go to repository" class="md-source" data-md-component="source">
   <div class="md-source__icon md-icon">
     
-    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 496 512"><!--! Font Awesome Free 6.5.2 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2024 Fonticons, Inc.--><path d="M165.9 397.4c0 2-2.3 3.6-5.2 3.6-3.3.3-5.6-1.3-5.6-3.6 0-2 2.3-3.6 5.2-3.6 3-.3 5.6 1.3 5.6 3.6zm-31.1-4.5c-.7 2 1.3 4.3 4.3 4.9 2.6 1 5.6 0 6.2-2s-1.3-4.3-4.3-5.2c-2.6-.7-5.5.3-6.2 2.3zm44.2-1.7c-2.9.7-4.9 2.6-4.6 4.9.3 2 2.9 3.3 5.9 2.6 2.9-.7 4.9-2.6 4.6-4.6-.3-1.9-3-3.2-5.9-2.9zM244.8 8C106.1 8 0 113.3 0 252c0 110.9 69.8 205.8 169.5 239.2 12.8 2.3 17.3-5.6 17.3-12.1 0-6.2-.3-40.4-.3-61.4 0 0-70 15-84.7-29.8 0 0-11.4-29.1-27.8-36.6 0 0-22.9-15.7 1.6-15.4 0 0 24.9 2 38.6 25.8 21.9 38.6 58.6 27.5 72.9 20.9 2.3-16 8.8-27.1 16-33.7-55.9-6.2-112.3-14.3-112.3-110.5 0-27.5 7.6-41.3 23.6-58.9-2.6-6.5-11.1-33.3 2.6-67.9 20.9-6.5 69 27 69 27 20-5.6 41.5-8.5 62.8-8.5s42.8 2.9 62.8 8.5c0 0 48.1-33.6 69-27 13.7 34.7 5.2 61.4 2.6 67.9 16 17.7 25.8 31.5 25.8 58.9 0 96.5-58.9 104.2-114.8 110.5 9.2 7.9 17 22.9 17 46.4 0 33.7-.3 75.4-.3 83.6 0 6.5 4.6 14.4 17.3 12.1C428.2 457.8 496 362.9 496 252 496 113.3 383.5 8 244.8 8zM97.2 352.9c-1.3 1-1 3.3.7 5.2 1.6 1.6 3.9 2.3 5.2 1 1.3-1 1-3.3-.7-5.2-1.6-1.6-3.9-2.3-5.2-1zm-10.8-8.1c-.7 1.3.3 2.9 2.3 3.9 1.6 1 3.6.7 4.3-.7.7-1.3-.3-2.9-2.3-3.9-2-.6-3.6-.3-4.3.7zm32.4 35.6c-1.6 1.3-1 4.3 1.3 6.2 2.3 2.3 5.2 2.6 6.5 1 1.3-1.3.7-4.3-1.3-6.2-2.2-2.3-5.2-2.6-6.5-1zm-11.4-14.7c-1.6 1-1.6 3.6 0 5.9 1.6 2.3 4.3 3.3 5.6 2.3 1.6-1.3 1.6-3.9 0-6.2-1.4-2.3-4-3.3-5.6-2z"/></svg>
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 496 512"><!--! Font Awesome Free 6.6.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2024 Fonticons, Inc.--><path d="M165.9 397.4c0 2-2.3 3.6-5.2 3.6-3.3.3-5.6-1.3-5.6-3.6 0-2 2.3-3.6 5.2-3.6 3-.3 5.6 1.3 5.6 3.6m-31.1-4.5c-.7 2 1.3 4.3 4.3 4.9 2.6 1 5.6 0 6.2-2s-1.3-4.3-4.3-5.2c-2.6-.7-5.5.3-6.2 2.3m44.2-1.7c-2.9.7-4.9 2.6-4.6 4.9.3 2 2.9 3.3 5.9 2.6 2.9-.7 4.9-2.6 4.6-4.6-.3-1.9-3-3.2-5.9-2.9M244.8 8C106.1 8 0 113.3 0 252c0 110.9 69.8 205.8 169.5 239.2 12.8 2.3 17.3-5.6 17.3-12.1 0-6.2-.3-40.4-.3-61.4 0 0-70 15-84.7-29.8 0 0-11.4-29.1-27.8-36.6 0 0-22.9-15.7 1.6-15.4 0 0 24.9 2 38.6 25.8 21.9 38.6 58.6 27.5 72.9 20.9 2.3-16 8.8-27.1 16-33.7-55.9-6.2-112.3-14.3-112.3-110.5 0-27.5 7.6-41.3 23.6-58.9-2.6-6.5-11.1-33.3 2.6-67.9 20.9-6.5 69 27 69 27 20-5.6 41.5-8.5 62.8-8.5s42.8 2.9 62.8 8.5c0 0 48.1-33.6 69-27 13.7 34.7 5.2 61.4 2.6 67.9 16 17.7 25.8 31.5 25.8 58.9 0 96.5-58.9 104.2-114.8 110.5 9.2 7.9 17 22.9 17 46.4 0 33.7-.3 75.4-.3 83.6 0 6.5 4.6 14.4 17.3 12.1C428.2 457.8 496 362.9 496 252 496 113.3 383.5 8 244.8 8M97.2 352.9c-1.3 1-1 3.3.7 5.2 1.6 1.6 3.9 2.3 5.2 1 1.3-1 1-3.3-.7-5.2-1.6-1.6-3.9-2.3-5.2-1m-10.8-8.1c-.7 1.3.3 2.9 2.3 3.9 1.6 1 3.6.7 4.3-.7.7-1.3-.3-2.9-2.3-3.9-2-.6-3.6-.3-4.3.7m32.4 35.6c-1.6 1.3-1 4.3 1.3 6.2 2.3 2.3 5.2 2.6 6.5 1 1.3-1.3.7-4.3-1.3-6.2-2.2-2.3-5.2-2.6-6.5-1m-11.4-14.7c-1.6 1-1.6 3.6 0 5.9s4.3 3.3 5.6 2.3c1.6-1.3 1.6-3.9 0-6.2-1.4-2.3-4-3.3-5.6-2"/></svg>
   </div>
   <div class="md-source__repository">
     unitycatalog/unitycatalog
@@ -299,6 +357,20 @@
   
   
     
+    
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
     
     
     
@@ -380,56 +452,407 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
-  <a href="#catalog-management-cli-usage" class="md-nav__link">
+  <a href="#1-catalog-management-cli-usage" class="md-nav__link">
     <span class="md-ellipsis">
-      Catalog Management CLI Usage
+      1. Catalog Management CLI Usage
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="1. Catalog Management CLI Usage">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#11-list-catalogs" class="md-nav__link">
+    <span class="md-ellipsis">
+      1.1 List Catalogs
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#12-get-details-of-a-catalog" class="md-nav__link">
+    <span class="md-ellipsis">
+      1.2 Get details of a Catalog
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#13-create-a-catalog" class="md-nav__link">
+    <span class="md-ellipsis">
+      1.3 Create a Catalog
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#14-update-a-catalog" class="md-nav__link">
+    <span class="md-ellipsis">
+      1.4 Update a Catalog
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#15-delete-a-catalog" class="md-nav__link">
+    <span class="md-ellipsis">
+      1.5 Delete a Catalog
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#2-schema-management-cli-usage" class="md-nav__link">
+    <span class="md-ellipsis">
+      2. Schema Management CLI Usage
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="2. Schema Management CLI Usage">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#21-list-schemas" class="md-nav__link">
+    <span class="md-ellipsis">
+      2.1 List Schemas
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#22-get-a-schema" class="md-nav__link">
+    <span class="md-ellipsis">
+      2.2 Get a Schema
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#23-create-a-schema" class="md-nav__link">
+    <span class="md-ellipsis">
+      2.3 Create a Schema
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#24-update-a-schema" class="md-nav__link">
+    <span class="md-ellipsis">
+      2.4 Update a Schema
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#25-delete-a-schema" class="md-nav__link">
+    <span class="md-ellipsis">
+      2.5 Delete a Schema
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#3-table-management-cli-usage" class="md-nav__link">
+    <span class="md-ellipsis">
+      3. Table Management CLI Usage
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="3. Table Management CLI Usage">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#31-list-tables" class="md-nav__link">
+    <span class="md-ellipsis">
+      3.1 List Tables
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#32-retrieve-table-information" class="md-nav__link">
+    <span class="md-ellipsis">
+      3.2 Retrieve Table Information
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#33-create-a-table" class="md-nav__link">
+    <span class="md-ellipsis">
+      3.3 Create a Table
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#34-read-a-delta-table" class="md-nav__link">
+    <span class="md-ellipsis">
+      3.4 Read a DELTA Table
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#35-write-sample-data-to-a-delta-table" class="md-nav__link">
+    <span class="md-ellipsis">
+      3.5 Write Sample Data to a DELTA Table
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#36-delete-a-table" class="md-nav__link">
+    <span class="md-ellipsis">
+      3.6 Delete a Table
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#4-volume-management-cli-usage" class="md-nav__link">
+    <span class="md-ellipsis">
+      4. Volume Management CLI Usage
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="4. Volume Management CLI Usage">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#41-list-volumes" class="md-nav__link">
+    <span class="md-ellipsis">
+      4.1 List Volumes
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#42-retrieve-volume-information" class="md-nav__link">
+    <span class="md-ellipsis">
+      4.2 Retrieve Volume Information
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#43-create-a-volume" class="md-nav__link">
+    <span class="md-ellipsis">
+      4.3 Create a Volume
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#44-update-a-volume" class="md-nav__link">
+    <span class="md-ellipsis">
+      4.4 Update a Volume
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#45-read-a-volumes-content" class="md-nav__link">
+    <span class="md-ellipsis">
+      4.5 Read a Volume's content
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#46-write-sample-data-to-a-volume" class="md-nav__link">
+    <span class="md-ellipsis">
+      4.6 Write Sample Data to a Volume
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#47-delete-a-volume" class="md-nav__link">
+    <span class="md-ellipsis">
+      4.7 Delete a Volume
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#5-function-management-cli-usage" class="md-nav__link">
+    <span class="md-ellipsis">
+      5. Function Management CLI Usage
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="5. Function Management CLI Usage">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#51-list-functions" class="md-nav__link">
+    <span class="md-ellipsis">
+      5.1 List Functions
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#52-retrieve-function-information" class="md-nav__link">
+    <span class="md-ellipsis">
+      5.2 Retrieve Function Information
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#53-create-a-function" class="md-nav__link">
+    <span class="md-ellipsis">
+      5.3 Create a Function
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#54-invoke-a-function" class="md-nav__link">
+    <span class="md-ellipsis">
+      5.4 Invoke a Function
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#55-delete-a-function" class="md-nav__link">
+    <span class="md-ellipsis">
+      5.5 Delete a Function
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#6-registered-model-and-model-version-management" class="md-nav__link">
+    <span class="md-ellipsis">
+      6. Registered model and model version management
     </span>
   </a>
   
 </li>
       
         <li class="md-nav__item">
-  <a href="#schema-management-cli-usage" class="md-nav__link">
+  <a href="#7-cli-server-configuration" class="md-nav__link">
     <span class="md-ellipsis">
-      Schema Management CLI Usage
+      7. CLI Server Configuration
     </span>
   </a>
   
 </li>
       
         <li class="md-nav__item">
-  <a href="#table-management-cli-usage" class="md-nav__link">
+  <a href="#8-manage-users" class="md-nav__link">
     <span class="md-ellipsis">
-      Table Management CLI Usage
+      8. Manage Users
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="8. Manage Users">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#81-create-user" class="md-nav__link">
+    <span class="md-ellipsis">
+      8.1 Create User
     </span>
   </a>
   
 </li>
-      
-        <li class="md-nav__item">
-  <a href="#volume-management-cli-usage" class="md-nav__link">
+        
+          <li class="md-nav__item">
+  <a href="#82-delete-user" class="md-nav__link">
     <span class="md-ellipsis">
-      Volume Management CLI Usage
+      8.2 Delete User
     </span>
   </a>
   
 </li>
-      
-        <li class="md-nav__item">
-  <a href="#function-management-cli-usage" class="md-nav__link">
+        
+          <li class="md-nav__item">
+  <a href="#83-get-user" class="md-nav__link">
     <span class="md-ellipsis">
-      Function Management CLI Usage
+      8.3 Get User
     </span>
   </a>
   
 </li>
-      
-        <li class="md-nav__item">
-  <a href="#cli-server-configuration" class="md-nav__link">
+        
+          <li class="md-nav__item">
+  <a href="#84-list-users" class="md-nav__link">
     <span class="md-ellipsis">
-      CLI Server Configuration
+      8.4 List Users
     </span>
   </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#85-update-user" class="md-nav__link">
+    <span class="md-ellipsis">
+      8.5 Update User
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
   
 </li>
       
@@ -448,7 +871,36 @@
   
   
   
+    <li class="md-nav__item">
+      <a href="../ui/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    UI
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
     
+    
+      
+        
+      
+        
+      
+        
+      
     
     
     
@@ -458,10 +910,10 @@
         
           
         
-        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_3_2" >
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_3_3" >
         
           
-          <label class="md-nav__link" for="__nav_3_2" id="__nav_3_2_label" tabindex="0">
+          <label class="md-nav__link" for="__nav_3_3" id="__nav_3_3_label" tabindex="0">
             
   
   <span class="md-ellipsis">
@@ -472,12 +924,54 @@
             <span class="md-nav__icon md-icon"></span>
           </label>
         
-        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_3_2_label" aria-expanded="false">
-          <label class="md-nav__title" for="__nav_3_2">
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_3_3_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3_3">
             <span class="md-nav__icon md-icon"></span>
             Tables
           </label>
           <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../tables/deltalake/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Delta Lake
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../tables/formats/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Formats
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
             
               
                 
@@ -557,11 +1051,11 @@
   
   
     <li class="md-nav__item">
-      <a href="../server/" class="md-nav__link">
+      <a href="../models/" class="md-nav__link">
         
   
   <span class="md-ellipsis">
-    Server
+    Models
   </span>
   
 
@@ -586,6 +1080,12 @@
   
     
     
+      
+        
+      
+        
+      
+    
     
     
     <li class="md-nav__item md-nav__item--nested">
@@ -601,7 +1101,7 @@
             
   
   <span class="md-ellipsis">
-    Integrations
+    Server
   </span>
   
 
@@ -611,9 +1111,130 @@
         <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_4_label" aria-expanded="false">
           <label class="md-nav__title" for="__nav_4">
             <span class="md-nav__icon md-icon"></span>
+            Server
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../server/configuration/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Configuration
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../server/auth/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Auth
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_5" >
+        
+          
+          <label class="md-nav__link" for="__nav_5" id="__nav_5_label" tabindex="0">
+            
+  
+  <span class="md-ellipsis">
+    Integrations
+  </span>
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_5_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_5">
+            <span class="md-nav__icon md-icon"></span>
             Integrations
           </label>
           <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../integrations/unity-catalog-spark/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Apache Spark
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
             
               
                 
@@ -664,11 +1285,53 @@
   
   
     <li class="md-nav__item">
-      <a href="../../integrations/unity-catalog-trino/" class="md-nav__link">
+      <a href="../../integrations/unity-catalog-puppygraph/" class="md-nav__link">
         
   
   <span class="md-ellipsis">
-    Trino
+    PuppyGraph
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../integrations/unity-catalog-spiceai/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    SpiceAI
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../integrations/unity-catalog-xtable/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    XTable
   </span>
   
 
@@ -732,56 +1395,407 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
-  <a href="#catalog-management-cli-usage" class="md-nav__link">
+  <a href="#1-catalog-management-cli-usage" class="md-nav__link">
     <span class="md-ellipsis">
-      Catalog Management CLI Usage
+      1. Catalog Management CLI Usage
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="1. Catalog Management CLI Usage">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#11-list-catalogs" class="md-nav__link">
+    <span class="md-ellipsis">
+      1.1 List Catalogs
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#12-get-details-of-a-catalog" class="md-nav__link">
+    <span class="md-ellipsis">
+      1.2 Get details of a Catalog
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#13-create-a-catalog" class="md-nav__link">
+    <span class="md-ellipsis">
+      1.3 Create a Catalog
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#14-update-a-catalog" class="md-nav__link">
+    <span class="md-ellipsis">
+      1.4 Update a Catalog
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#15-delete-a-catalog" class="md-nav__link">
+    <span class="md-ellipsis">
+      1.5 Delete a Catalog
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#2-schema-management-cli-usage" class="md-nav__link">
+    <span class="md-ellipsis">
+      2. Schema Management CLI Usage
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="2. Schema Management CLI Usage">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#21-list-schemas" class="md-nav__link">
+    <span class="md-ellipsis">
+      2.1 List Schemas
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#22-get-a-schema" class="md-nav__link">
+    <span class="md-ellipsis">
+      2.2 Get a Schema
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#23-create-a-schema" class="md-nav__link">
+    <span class="md-ellipsis">
+      2.3 Create a Schema
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#24-update-a-schema" class="md-nav__link">
+    <span class="md-ellipsis">
+      2.4 Update a Schema
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#25-delete-a-schema" class="md-nav__link">
+    <span class="md-ellipsis">
+      2.5 Delete a Schema
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#3-table-management-cli-usage" class="md-nav__link">
+    <span class="md-ellipsis">
+      3. Table Management CLI Usage
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="3. Table Management CLI Usage">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#31-list-tables" class="md-nav__link">
+    <span class="md-ellipsis">
+      3.1 List Tables
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#32-retrieve-table-information" class="md-nav__link">
+    <span class="md-ellipsis">
+      3.2 Retrieve Table Information
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#33-create-a-table" class="md-nav__link">
+    <span class="md-ellipsis">
+      3.3 Create a Table
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#34-read-a-delta-table" class="md-nav__link">
+    <span class="md-ellipsis">
+      3.4 Read a DELTA Table
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#35-write-sample-data-to-a-delta-table" class="md-nav__link">
+    <span class="md-ellipsis">
+      3.5 Write Sample Data to a DELTA Table
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#36-delete-a-table" class="md-nav__link">
+    <span class="md-ellipsis">
+      3.6 Delete a Table
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#4-volume-management-cli-usage" class="md-nav__link">
+    <span class="md-ellipsis">
+      4. Volume Management CLI Usage
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="4. Volume Management CLI Usage">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#41-list-volumes" class="md-nav__link">
+    <span class="md-ellipsis">
+      4.1 List Volumes
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#42-retrieve-volume-information" class="md-nav__link">
+    <span class="md-ellipsis">
+      4.2 Retrieve Volume Information
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#43-create-a-volume" class="md-nav__link">
+    <span class="md-ellipsis">
+      4.3 Create a Volume
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#44-update-a-volume" class="md-nav__link">
+    <span class="md-ellipsis">
+      4.4 Update a Volume
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#45-read-a-volumes-content" class="md-nav__link">
+    <span class="md-ellipsis">
+      4.5 Read a Volume's content
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#46-write-sample-data-to-a-volume" class="md-nav__link">
+    <span class="md-ellipsis">
+      4.6 Write Sample Data to a Volume
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#47-delete-a-volume" class="md-nav__link">
+    <span class="md-ellipsis">
+      4.7 Delete a Volume
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#5-function-management-cli-usage" class="md-nav__link">
+    <span class="md-ellipsis">
+      5. Function Management CLI Usage
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="5. Function Management CLI Usage">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#51-list-functions" class="md-nav__link">
+    <span class="md-ellipsis">
+      5.1 List Functions
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#52-retrieve-function-information" class="md-nav__link">
+    <span class="md-ellipsis">
+      5.2 Retrieve Function Information
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#53-create-a-function" class="md-nav__link">
+    <span class="md-ellipsis">
+      5.3 Create a Function
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#54-invoke-a-function" class="md-nav__link">
+    <span class="md-ellipsis">
+      5.4 Invoke a Function
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#55-delete-a-function" class="md-nav__link">
+    <span class="md-ellipsis">
+      5.5 Delete a Function
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#6-registered-model-and-model-version-management" class="md-nav__link">
+    <span class="md-ellipsis">
+      6. Registered model and model version management
     </span>
   </a>
   
 </li>
       
         <li class="md-nav__item">
-  <a href="#schema-management-cli-usage" class="md-nav__link">
+  <a href="#7-cli-server-configuration" class="md-nav__link">
     <span class="md-ellipsis">
-      Schema Management CLI Usage
+      7. CLI Server Configuration
     </span>
   </a>
   
 </li>
       
         <li class="md-nav__item">
-  <a href="#table-management-cli-usage" class="md-nav__link">
+  <a href="#8-manage-users" class="md-nav__link">
     <span class="md-ellipsis">
-      Table Management CLI Usage
+      8. Manage Users
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="8. Manage Users">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#81-create-user" class="md-nav__link">
+    <span class="md-ellipsis">
+      8.1 Create User
     </span>
   </a>
   
 </li>
-      
-        <li class="md-nav__item">
-  <a href="#volume-management-cli-usage" class="md-nav__link">
+        
+          <li class="md-nav__item">
+  <a href="#82-delete-user" class="md-nav__link">
     <span class="md-ellipsis">
-      Volume Management CLI Usage
+      8.2 Delete User
     </span>
   </a>
   
 </li>
-      
-        <li class="md-nav__item">
-  <a href="#function-management-cli-usage" class="md-nav__link">
+        
+          <li class="md-nav__item">
+  <a href="#83-get-user" class="md-nav__link">
     <span class="md-ellipsis">
-      Function Management CLI Usage
+      8.3 Get User
     </span>
   </a>
   
 </li>
-      
-        <li class="md-nav__item">
-  <a href="#cli-server-configuration" class="md-nav__link">
+        
+          <li class="md-nav__item">
+  <a href="#84-list-users" class="md-nav__link">
     <span class="md-ellipsis">
-      CLI Server Configuration
+      8.4 List Users
     </span>
   </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#85-update-user" class="md-nav__link">
+    <span class="md-ellipsis">
+      8.5 Update User
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
   
 </li>
       
@@ -802,323 +1816,420 @@
   
     <a href="https://github.com/unitycatalog/unitycatalog/edit/main/docs/usage/cli.md" title="Edit this page" class="md-content__button md-icon">
       
-      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M10 20H6V4h7v5h5v3.1l2-2V8l-6-6H6c-1.1 0-2 .9-2 2v16c0 1.1.9 2 2 2h4v-2m10.2-7c.1 0 .3.1.4.2l1.3 1.3c.2.2.2.6 0 .8l-1 1-2.1-2.1 1-1c.1-.1.2-.2.4-.2m0 3.9L14.1 23H12v-2.1l6.1-6.1 2.1 2.1Z"/></svg>
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M10 20H6V4h7v5h5v3.1l2-2V8l-6-6H6c-1.1 0-2 .9-2 2v16c0 1.1.9 2 2 2h4zm10.2-7c.1 0 .3.1.4.2l1.3 1.3c.2.2.2.6 0 .8l-1 1-2.1-2.1 1-1c.1-.1.2-.2.4-.2m0 3.9L14.1 23H12v-2.1l6.1-6.1z"/></svg>
     </a>
   
   
 
 
 <h1 id="unity-catalog-cli">Unity Catalog CLI<a class="headerlink" href="#unity-catalog-cli" title="Permanent link">&para;</a></h1>
-<p>The CLI tool allows users to interact with a Unity Catalog server to create and manage catalogs, schemas, tables across different formats (DELTA, UNIFORM, PARQUET, JSON, and CSV), volumes with unstructured data, and functions.</p>
-<h2 id="catalog-management-cli-usage">Catalog Management CLI Usage<a class="headerlink" href="#catalog-management-cli-usage" title="Permanent link">&para;</a></h2>
-<p>This section outlines the usage of the <code>bin/uc</code> script for managing catalogs within your system. 
+<p>The CLI tool allows users to interact with a Unity Catalog server to create and manage catalogs, schemas, tables across 
+different formats (DELTA, UNIFORM, PARQUET, JSON, and CSV), volumes with unstructured data, and functions.</p>
+<div class="admonition note">
+<p class="admonition-title">Specify token for authenticated access</p>
+<p>For all the following commands, you will need to provide an authentication token when executng these commands.  For example, in the following section, to run the catalog list command, you would specify:</p>
+<div class="highlight"><pre><span></span><code>bin/uc<span class="w"> </span>--auth_token<span class="w"> </span><span class="nv">$token</span><span class="w"> </span>catalog<span class="w"> </span>list
+</code></pre></div>
+<p>where $token is the authentication token provided by an identity provider.  For more information on how to support both authentication and authorization, please refer to the <a href="../../server/auth/">auth</a>.</p>
+</div>
+<h2 id="1-catalog-management-cli-usage">1. Catalog Management CLI Usage<a class="headerlink" href="#1-catalog-management-cli-usage" title="Permanent link">&para;</a></h2>
+<p>This section outlines the usage of the <code>bin/uc</code> script for managing catalogs within your system.
 The script supports various operations such as creating, retrieving, listing and updating catalogs.</p>
-<p><strong>List Catalogs</strong></p>
-<p>Here's how to list all the catalogs contained in a Unity Catalog instance.</p>
-<pre><code class="language-sh">bin/uc catalog list
-</code></pre>
-<p><strong>Get details of a Catalog</strong></p>
-<pre><code class="language-sh">bin/uc catalog get --name &lt;name&gt; 
-</code></pre>
+<h3 id="11-list-catalogs">1.1 List Catalogs<a class="headerlink" href="#11-list-catalogs" title="Permanent link">&para;</a></h3>
+<p>Here's how to list catalogs contained in a Unity Catalog instance.</p>
+<div class="highlight"><pre><span></span><code>bin/uc<span class="w"> </span>catalog<span class="w"> </span>list<span class="w"> </span><span class="o">[</span>--max_results<span class="w"> </span>&lt;max_results&gt;<span class="o">]</span>
+</code></pre></div>
 <ul>
-<li><code>name</code> : The name of the catalog.</li>
+<li><code>max_results</code>: <em>[Optional]</em> The maximum number of results to return.</li>
 </ul>
-<p><strong>Create a Catalog</strong></p>
-<pre><code class="language-sh">bin/uc catalog create --name &lt;name&gt; [--comment &lt;comment&gt;]
-</code></pre>
+<h3 id="12-get-details-of-a-catalog">1.2 Get details of a Catalog<a class="headerlink" href="#12-get-details-of-a-catalog" title="Permanent link">&para;</a></h3>
+<div class="highlight"><pre><span></span><code>bin/uc<span class="w"> </span>catalog<span class="w"> </span>get<span class="w"> </span>--name<span class="w"> </span>&lt;name&gt;<span class="w"> </span>
+</code></pre></div>
+<ul>
+<li><code>name</code>: The name of the catalog.</li>
+</ul>
+<h3 id="13-create-a-catalog">1.3 Create a Catalog<a class="headerlink" href="#13-create-a-catalog" title="Permanent link">&para;</a></h3>
+<div class="highlight"><pre><span></span><code>bin/uc<span class="w"> </span>catalog<span class="w"> </span>create<span class="w"> </span>--name<span class="w"> </span>&lt;name&gt;<span class="w"> </span><span class="o">[</span>--comment<span class="w"> </span>&lt;comment&gt;<span class="o">]</span><span class="w"> </span><span class="o">[</span>--properties<span class="w"> </span>&lt;properties&gt;<span class="o">]</span>
+</code></pre></div>
 <ul>
 <li><code>name</code>: The name of the catalog.</li>
 <li><code>comment</code>: <em>[Optional]</em> The description of the catalog.</li>
+<li><code>properties</code>:  <em>[Optional]</em> The properties of the catalog in JSON format (e.g., <code>'{"key1": "value1", "key2": "value2"}'</code>).
+  Make sure to either escape the double quotes(<code>\"</code>) inside the properties string or just use single quotes(<code>''</code>) around the same.</li>
 </ul>
-<p>Example: </p>
-<pre><code class="language-sh">bin/uc catalog create --name my_catalog --comment &quot;My First Catalog&quot;
-</code></pre>
-<p><strong>Update a Catalog</strong></p>
-<pre><code class="language-sh">bin/uc catalog update --name &lt;name&gt; [--new_name &lt;new_name&gt;] [--comment &lt;comment&gt;]
-</code></pre>
-<ul>
-<li><code>name</code> : The name of the existing catalog.</li>
-<li><code>new_name</code> : <em>[Optional]</em> The new name of the catalog.</li>
-<li><code>comment</code> : <em>[Optional]</em> The new description of the catalog.</li>
-</ul>
-<p><em>Note:</em> at least one of the optional parameters must be specified.</p>
 <p>Example:</p>
-<pre><code class="language-sh">bin/uc catalog update --name my_catalog --new_name my_updated_catalog --comment &quot;Updated Catalog&quot;
-</code></pre>
-<p><strong>Delete a Catalog</strong></p>
-<pre><code class="language-sh">bin/uc catalog delete --name &lt;name&gt;
-</code></pre>
+<div class="highlight"><pre><span></span><code>bin/uc<span class="w"> </span>catalog<span class="w"> </span>create<span class="w"> </span>--name<span class="w"> </span>my_catalog<span class="w"> </span>--comment<span class="w"> </span><span class="s2">&quot;My First Catalog&quot;</span><span class="w"> </span>--properties<span class="w"> </span><span class="s1">&#39;{&quot;key1&quot;: &quot;value1&quot;, &quot;key2&quot;: &quot;value2&quot;}&#39;</span>
+</code></pre></div>
+<h3 id="14-update-a-catalog">1.4 Update a Catalog<a class="headerlink" href="#14-update-a-catalog" title="Permanent link">&para;</a></h3>
+<div class="highlight"><pre><span></span><code>bin/uc<span class="w"> </span>catalog<span class="w"> </span>update<span class="w"> </span>--name<span class="w"> </span>&lt;name&gt;<span class="w"> </span><span class="o">[</span>--new_name<span class="w"> </span>&lt;new_name&gt;<span class="o">]</span><span class="w"> </span><span class="o">[</span>--comment<span class="w"> </span>&lt;comment&gt;<span class="o">]</span><span class="w"> </span><span class="o">[</span>--properties<span class="w"> </span>&lt;properties&gt;<span class="o">]</span>
+</code></pre></div>
 <ul>
-<li><code>name</code> : The name of the catalog.</li>
+<li><code>name</code>: The name of the existing catalog.</li>
+<li><code>new_name</code>: <em>[Optional]</em> The new name of the catalog.</li>
+<li><code>comment</code>: <em>[Optional]</em> The new description of the catalog.</li>
+<li><code>properties</code>:  <em>[Optional]</em> The new properties of the catalog in JSON format (e.g., <code>'{"key1": "value1", "key2": "value2"}'</code>).
+  Make sure to either escape the double quotes(<code>\"</code>) inside the properties string or just use single quotes(<code>''</code>) around the same.</li>
 </ul>
-<h2 id="schema-management-cli-usage">Schema Management CLI Usage<a class="headerlink" href="#schema-management-cli-usage" title="Permanent link">&para;</a></h2>
-<p>This section outlines the usage of the <code>bin/uc</code> script for managing schemas within your system. 
+<p><em><strong>Note:</strong> At least one of the optional parameters must be specified.</em></p>
+<p>Example:</p>
+<div class="highlight"><pre><span></span><code>bin/uc<span class="w"> </span>catalog<span class="w"> </span>update<span class="w"> </span>--name<span class="w"> </span>my_catalog<span class="w"> </span>--new_name<span class="w"> </span>my_updated_catalog<span class="w"> </span>--comment<span class="w"> </span><span class="s2">&quot;Updated Catalog&quot;</span><span class="w"> </span>--properties<span class="w"> </span><span class="s1">&#39;{&quot;updated_key&quot;: &quot;updated_value&quot;}&#39;</span>
+</code></pre></div>
+<h3 id="15-delete-a-catalog">1.5 Delete a Catalog<a class="headerlink" href="#15-delete-a-catalog" title="Permanent link">&para;</a></h3>
+<div class="highlight"><pre><span></span><code>bin/uc<span class="w"> </span>catalog<span class="w"> </span>delete<span class="w"> </span>--name<span class="w"> </span>&lt;name&gt;
+</code></pre></div>
+<ul>
+<li><code>name</code>: The name of the catalog.</li>
+</ul>
+<h2 id="2-schema-management-cli-usage">2. Schema Management CLI Usage<a class="headerlink" href="#2-schema-management-cli-usage" title="Permanent link">&para;</a></h2>
+<p>This section outlines the usage of the <code>bin/uc</code> script for managing schemas within your system.
 The script supports various operations such as creating, retrieving, listing, updating and deleting schemas.</p>
-<p><strong>List Schemas</strong></p>
-<pre><code class="language-sh">bin/uc schema list --catalog &lt;catalog&gt; [--max_results &lt;max_results&gt;]
-</code></pre>
+<h3 id="21-list-schemas">2.1 List Schemas<a class="headerlink" href="#21-list-schemas" title="Permanent link">&para;</a></h3>
+<div class="highlight"><pre><span></span><code>bin/uc<span class="w"> </span>schema<span class="w"> </span>list<span class="w"> </span>--catalog<span class="w"> </span>&lt;catalog&gt;<span class="w"> </span><span class="o">[</span>--max_results<span class="w"> </span>&lt;max_results&gt;<span class="o">]</span>
+</code></pre></div>
 <ul>
 <li><code>catalog</code>: The name of the catalog.</li>
 <li><code>max_results</code>: <em>[Optional]</em> The maximum number of results to return.</li>
 </ul>
-<p><strong>Get a Schema</strong></p>
+<h3 id="22-get-a-schema">2.2 Get a Schema<a class="headerlink" href="#22-get-a-schema" title="Permanent link">&para;</a></h3>
 <p>Retrieve the details of a schema using the full name of the schema.</p>
-<pre><code class="language-sh">bin/uc schema get --full_name &lt;catalog&gt;.&lt;schema&gt;
-</code></pre>
+<div class="highlight"><pre><span></span><code>bin/uc<span class="w"> </span>schema<span class="w"> </span>get<span class="w"> </span>--full_name<span class="w"> </span>&lt;catalog&gt;.&lt;schema&gt;
+</code></pre></div>
 <ul>
-<li><code>catalog</code> : The name of the catalog.</li>
-<li><code>schema</code> : The name of the schema.</li>
+<li><code>catalog</code>: The name of the catalog.</li>
+<li><code>schema</code>: The name of the schema.</li>
 </ul>
-<p><strong>Create a Schema</strong></p>
-<pre><code class="language-sh">bin/uc schema create --catalog &lt;catalog&gt; --name &lt;name&gt; [--comment &lt;comment&gt;]
-</code></pre>
+<h3 id="23-create-a-schema">2.3 Create a Schema<a class="headerlink" href="#23-create-a-schema" title="Permanent link">&para;</a></h3>
+<div class="highlight"><pre><span></span><code>bin/uc<span class="w"> </span>schema<span class="w"> </span>create<span class="w"> </span>--catalog<span class="w"> </span>&lt;catalog&gt;<span class="w"> </span>--name<span class="w"> </span>&lt;name&gt;<span class="w"> </span><span class="o">[</span>--comment<span class="w"> </span>&lt;comment&gt;<span class="o">]</span><span class="w"> </span><span class="o">[</span>--properties<span class="w"> </span>&lt;properties&gt;<span class="o">]</span>
+</code></pre></div>
 <ul>
 <li><code>catalog</code>: The name of the catalog.</li>
 <li><code>name</code>: The name of the schema.</li>
 <li><code>comment</code>: <em>[Optional]</em>  The description of the schema.</li>
+<li><code>properties</code>:  <em>[Optional]</em> The properties of the schema in JSON format (e.g., <code>'{"key1": "value1", "key2": "value2"}'</code>).
+  Make sure to either escape the double quotes(<code>\"</code>) inside the properties string or just use single quotes(<code>''</code>) around the same.</li>
 </ul>
 <p>Example:</p>
-<pre><code class="language-sh">bin/uc schema create --catalog my_catalog --name my_schema --comment &quot;My Schema&quot;
-</code></pre>
-<p><strong>Update a Schema</strong></p>
-<pre><code class="language-sh">bin/uc schema update --full_name &lt;full_name&gt; --new_name &lt;new_name&gt; [--comment &lt;comment&gt;]
-</code></pre>
+<div class="highlight"><pre><span></span><code>bin/uc<span class="w"> </span>schema<span class="w"> </span>create<span class="w"> </span>--catalog<span class="w"> </span>my_catalog<span class="w"> </span>--name<span class="w"> </span>my_schema<span class="w"> </span>--comment<span class="w"> </span><span class="s2">&quot;My Schema&quot;</span><span class="w"> </span>--properties<span class="w"> </span><span class="s1">&#39;{&quot;key1&quot;: &quot;value1&quot;, &quot;key2&quot;: &quot;value2&quot;}&#39;</span>
+</code></pre></div>
+<h3 id="24-update-a-schema">2.4 Update a Schema<a class="headerlink" href="#24-update-a-schema" title="Permanent link">&para;</a></h3>
+<div class="highlight"><pre><span></span><code>bin/uc<span class="w"> </span>schema<span class="w"> </span>update<span class="w"> </span>--full_name<span class="w"> </span>&lt;full_name&gt;<span class="w"> </span><span class="o">[</span>--new_name<span class="w"> </span>&lt;new_name&gt;<span class="o">]</span><span class="w"> </span><span class="o">[</span>--comment<span class="w"> </span>&lt;comment&gt;<span class="o">]</span><span class="w"> </span><span class="o">[</span>--properties<span class="w"> </span>&lt;properties&gt;<span class="o">]</span>
+</code></pre></div>
 <ul>
-<li><code>full_name</code>: The full name of the existing schema. The full name is the concatenation of the catalog name and schema name separated by a dot (e.g., <code>catalog_name.schema_name</code>).</li>
-<li><code>new_name</code>: The new name of the schema.</li>
+<li><code>full_name</code>: The full name of the existing schema. 
+  The full name is the concatenation of the catalog name and schema name separated by a dot (e.g., <code>catalog_name.schema_name</code>).</li>
+<li><code>new_name</code>: <em>[Optional]</em> The new name of the schema.</li>
 <li><code>comment</code>: <em>[Optional]</em> The new description of the schema.</li>
+<li><code>properties</code>:  <em>[Optional]</em> The new properties of the schema in JSON format (e.g., <code>'{"key1": "value1", "key2": "value2"}'</code>).
+  Make sure to either escape the double quotes(<code>\"</code>) inside the properties string or just use single quotes(<code>''</code>) around the same.</li>
 </ul>
+<p><em><strong>Note:</strong> At least one of the optional parameters must be specified.</em></p>
 <p>Example:</p>
-<pre><code class="language-sh">bin/uc schema update --full_name my_catalog.my_schema --new_name my_updated_schema --comment &quot;Updated Schema&quot;
-</code></pre>
-<p><strong>Delete a Schema</strong></p>
-<pre><code class="language-sh">bin/uc schema delete --full_name &lt;catalog&gt;.&lt;schema&gt;
-</code></pre>
+<div class="highlight"><pre><span></span><code>bin/uc<span class="w"> </span>schema<span class="w"> </span>update<span class="w"> </span>--full_name<span class="w"> </span>my_catalog.my_schema<span class="w"> </span>--new_name<span class="w"> </span>my_updated_schema<span class="w"> </span>--comment<span class="w"> </span><span class="s2">&quot;Updated Schema&quot;</span><span class="w"> </span>--properties<span class="w"> </span><span class="s1">&#39;{&quot;updated_key&quot;: &quot;updated_value&quot;}&#39;</span>
+</code></pre></div>
+<h3 id="25-delete-a-schema">2.5 Delete a Schema<a class="headerlink" href="#25-delete-a-schema" title="Permanent link">&para;</a></h3>
+<div class="highlight"><pre><span></span><code>bin/uc<span class="w"> </span>schema<span class="w"> </span>delete<span class="w"> </span>--full_name<span class="w"> </span>&lt;catalog&gt;.&lt;schema&gt;
+</code></pre></div>
 <ul>
-<li><code>catalog</code> : The name of the catalog.</li>
-<li><code>schema</code> : The name of the schema.</li>
+<li><code>catalog</code>: The name of the catalog.</li>
+<li><code>schema</code>: The name of the schema.</li>
 </ul>
-<h2 id="table-management-cli-usage">Table Management CLI Usage<a class="headerlink" href="#table-management-cli-usage" title="Permanent link">&para;</a></h2>
-<p>This section outlines the usage of the <code>bin/uc</code> script for managing tables within your system. 
-The script supports various operations such as creating, retrieving, listing and deleting tables. 
+<h2 id="3-table-management-cli-usage">3. Table Management CLI Usage<a class="headerlink" href="#3-table-management-cli-usage" title="Permanent link">&para;</a></h2>
+<p>This section outlines the usage of the <code>bin/uc</code> script for managing tables within your system.
+The script supports various operations such as creating, retrieving, listing and deleting tables.
 There's additional functionality to write sample data to a DELTA table and read data from a DELTA table.</p>
-<p><strong>List Tables</strong></p>
-<pre><code class="language-sh">bin/uc table list --catalog &lt;catalog&gt; --schema &lt;schema&gt; [--max_results &lt;max_results&gt;]
-</code></pre>
+<h3 id="31-list-tables">3.1 List Tables<a class="headerlink" href="#31-list-tables" title="Permanent link">&para;</a></h3>
+<div class="highlight"><pre><span></span><code>bin/uc<span class="w"> </span>table<span class="w"> </span>list<span class="w"> </span>--catalog<span class="w"> </span>&lt;catalog&gt;<span class="w"> </span>--schema<span class="w"> </span>&lt;schema&gt;<span class="w"> </span><span class="o">[</span>--max_results<span class="w"> </span>&lt;max_results&gt;<span class="o">]</span>
+</code></pre></div>
 <ul>
-<li><code>catalog</code> : The name of the catalog.</li>
-<li><code>schema</code> : The name of the schema.</li>
-<li><code>max_results</code> <em>[Optional]</em> : The maximum number of results to return.</li>
+<li><code>catalog</code>: The name of the catalog.</li>
+<li><code>schema</code>: The name of the schema.</li>
+<li><code>max_results</code>: <em>[Optional]</em> The maximum number of results to return.</li>
 </ul>
-<p><strong>Retrieve Table Information</strong></p>
-<pre><code class="language-sh">bin/uc table get --full_name &lt;catalog&gt;.&lt;schema&gt;.&lt;table&gt;
-</code></pre>
+<h3 id="32-retrieve-table-information">3.2 Retrieve Table Information<a class="headerlink" href="#32-retrieve-table-information" title="Permanent link">&para;</a></h3>
+<div class="highlight"><pre><span></span><code>bin/uc<span class="w"> </span>table<span class="w"> </span>get<span class="w"> </span>--full_name<span class="w"> </span>&lt;catalog&gt;.&lt;schema&gt;.&lt;table&gt;
+</code></pre></div>
 <ul>
-<li><code>catalog</code> : The name of the catalog.</li>
-<li><code>schema</code> : The name of the schema.</li>
-<li><code>table</code> : The name of the table.</li>
+<li><code>catalog</code>: The name of the catalog.</li>
+<li><code>schema</code>: The name of the schema.</li>
+<li><code>table</code>: The name of the table.</li>
 </ul>
-<p><strong>Create a Table</strong></p>
-<pre><code class="language-sh">bin/uc table create --full_name &lt;full_name&gt; --columns &lt;columns&gt; --storage_location &lt;storage_location&gt; [--format &lt;format&gt;] [--properties &lt;properties&gt;]
-</code></pre>
+<h3 id="33-create-a-table">3.3 Create a Table<a class="headerlink" href="#33-create-a-table" title="Permanent link">&para;</a></h3>
+<div class="highlight"><pre><span></span><code>bin/uc<span class="w"> </span>table<span class="w"> </span>create<span class="w"> </span>--full_name<span class="w"> </span>&lt;full_name&gt;<span class="w"> </span>--columns<span class="w"> </span>&lt;columns&gt;<span class="w"> </span>--storage_location<span class="w"> </span>&lt;storage_location&gt;<span class="w"> </span><span class="o">[</span>--format<span class="w"> </span>&lt;format&gt;<span class="o">]</span><span class="w"> </span><span class="o">[</span>--properties<span class="w"> </span>&lt;properties&gt;<span class="o">]</span>
+</code></pre></div>
 <ul>
-<li><code>full_name</code>: The full name of the table, which is a concatenation of the catalog name, 
+<li><code>full_name</code>: The full name of the table, which is a concatenation of the catalog name,
   schema name, and table name separated by dots (e.g., <code>catalog_name.schema_name.table_name</code>).</li>
 <li><code>columns</code>: The columns of the table in SQL-like format <code>"column_name column_data_type"</code>.
   Supported data types include <code>BOOLEAN</code>, <code>BYTE</code>, <code>SHORT</code>, <code>INT</code>, <code>LONG</code>, <code>FLOAT</code>, <code>DOUBLE</code>, <code>DATE</code>, <code>TIMESTAMP</code>,
   <code>TIMESTAMP_NTZ</code>, <code>STRING</code>, <code>BINARY</code>, <code>DECIMAL</code>. Separate multiple columns with a comma
   (e.g., <code>"id INT, name STRING"</code>).</li>
-<li><code>format</code>: <em>[Optional]</em> The format of the data source. Supported values are <code>DELTA</code>, <code>PARQUET</code>, <code>ORC</code>, <code>JSON</code>, <code>CSV</code>, <code>AVRO</code>, and <code>TEXT</code>. 
-If not specified the default format is <code>DELTA</code>.</li>
+<li><code>format</code>: <em>[Optional]</em> The format of the data source. Supported values are <code>DELTA</code>, <code>PARQUET</code>, <code>ORC</code>, <code>JSON</code>, <code>CSV</code>, <code>AVRO</code>, and <code>TEXT</code>.
+  If not specified the default format is <code>DELTA</code>.</li>
 <li><code>storage_location</code>: The storage location associated with the table. It is a mandatory field for <code>EXTERNAL</code> tables.</li>
-<li><code>properties</code>:  <em>[Optional]</em> The properties of the entity in JSON format (e.g., <code>'{"key1": "value1", "key2": "value2"}'</code>). 
-Make sure to either escape the double quotes(<code>\"</code>) inside the properties string or just use single quotes(<code>''</code>) around the same.</li>
+<li><code>properties</code>:  <em>[Optional]</em> The properties of the table in JSON format (e.g., <code>'{"key1": "value1", "key2": "value2"}'</code>).
+  Make sure to either escape the double quotes(<code>\"</code>) inside the properties string or just use single quotes(<code>''</code>) around the same.</li>
 </ul>
 <p>Example:</p>
 <ul>
 <li>Create an external DELTA table with columns <code>id</code> and <code>name</code> in the schema <code>my_schema</code> of catalog <code>my_catalog</code> with storage location <code>/path/to/storage</code>:</li>
 </ul>
-<pre><code class="language-sh">bin/uc table create --full_name my_catalog.my_schema.my_table --columns &quot;id INT, name STRING&quot; --storage_location &quot;/path/to/storage&quot;
-</code></pre>
-<p>When running against UC OSS server, the storage location can be a local path(absolute path) or an S3 path. When S3 path is provided,  the <a href="../server/">server</a> will vend temporary credentials to access the S3 bucket and server properties must be set up accordingly.</p>
-<p><strong>Read a DELTA Table</strong></p>
-<pre><code class="language-sh">bin/uc table read --full_name &lt;catalog&gt;.&lt;schema&gt;.&lt;table&gt; [--max_results &lt;max_results&gt;]
-</code></pre>
+<div class="highlight"><pre><span></span><code>bin/uc<span class="w"> </span>table<span class="w"> </span>create<span class="w"> </span>--full_name<span class="w"> </span>my_catalog.my_schema.my_table<span class="w"> </span>--columns<span class="w"> </span><span class="s2">&quot;id INT, name STRING&quot;</span><span class="w"> </span>--storage_location<span class="w"> </span><span class="s2">&quot;/path/to/storage&quot;</span>
+</code></pre></div>
+<p>When running against UC server, the storage location can be a local path(absolute path) or an S3 path. 
+When S3 path is provided, the <a href="../../server/configuration/">server configuration</a> will vend temporary credentials to access the S3 bucket and server properties must be set up accordingly.</p>
+<h3 id="34-read-a-delta-table">3.4 Read a DELTA Table<a class="headerlink" href="#34-read-a-delta-table" title="Permanent link">&para;</a></h3>
+<div class="highlight"><pre><span></span><code>bin/uc<span class="w"> </span>table<span class="w"> </span><span class="nb">read</span><span class="w"> </span>--full_name<span class="w"> </span>&lt;catalog&gt;.&lt;schema&gt;.&lt;table&gt;<span class="w"> </span><span class="o">[</span>--max_results<span class="w"> </span>&lt;max_results&gt;<span class="o">]</span>
+</code></pre></div>
 <ul>
-<li><code>catalog</code> : The name of the catalog.</li>
-<li><code>schema</code> : The name of the schema.</li>
-<li><code>table</code> : The name of the table.</li>
-<li><code>max_results</code> : <em>[Optional]</em> The maximum number of rows to return.</li>
+<li><code>catalog</code>: The name of the catalog.</li>
+<li><code>schema</code>: The name of the schema.</li>
+<li><code>table</code>: The name of the table.</li>
+<li><code>max_results</code>: <em>[Optional]</em> The maximum number of rows to return.</li>
 </ul>
-<p><strong>Write Sample Data to a DELTA Table</strong></p>
-<pre><code class="language-sh">bin/uc table write --full_name &lt;catalog&gt;.&lt;schema&gt;.&lt;table&gt;
-</code></pre>
+<h3 id="35-write-sample-data-to-a-delta-table">3.5 Write Sample Data to a DELTA Table<a class="headerlink" href="#35-write-sample-data-to-a-delta-table" title="Permanent link">&para;</a></h3>
+<div class="highlight"><pre><span></span><code>bin/uc<span class="w"> </span>table<span class="w"> </span>write<span class="w"> </span>--full_name<span class="w"> </span>&lt;catalog&gt;.&lt;schema&gt;.&lt;table&gt;
+</code></pre></div>
 <ul>
-<li><code>catalog</code> : The name of the catalog.</li>
-<li><code>schema</code> : The name of the schema.</li>
-<li><code>table</code> : The name of the table.</li>
+<li><code>catalog</code>: The name of the catalog.</li>
+<li><code>schema</code>: The name of the schema.</li>
+<li><code>table</code>: The name of the table.</li>
 </ul>
 <p>This is an experimental feature and only some primitive types are supported for writing sample data.</p>
-<p><strong>Delete a Table</strong></p>
-<pre><code class="language-sh">bin/uc table delete --full_name &lt;catalog&gt;.&lt;schema&gt;.&lt;table&gt;
-</code></pre>
+<h3 id="36-delete-a-table">3.6 Delete a Table<a class="headerlink" href="#36-delete-a-table" title="Permanent link">&para;</a></h3>
+<div class="highlight"><pre><span></span><code>bin/uc<span class="w"> </span>table<span class="w"> </span>delete<span class="w"> </span>--full_name<span class="w"> </span>&lt;catalog&gt;.&lt;schema&gt;.&lt;table&gt;
+</code></pre></div>
 <ul>
-<li><code>catalog</code> : The name of the catalog.</li>
-<li><code>schema</code> : The name of the schema.</li>
-<li><code>table</code> : The name of the table.</li>
+<li><code>catalog</code>: The name of the catalog.</li>
+<li><code>schema</code>: The name of the schema.</li>
+<li><code>table</code>: The name of the table.</li>
 </ul>
-<h2 id="volume-management-cli-usage">Volume Management CLI Usage<a class="headerlink" href="#volume-management-cli-usage" title="Permanent link">&para;</a></h2>
-<p>This section outlines the usage of the <code>bin/uc</code> script for managing volumes within your system. 
+<h2 id="4-volume-management-cli-usage">4. Volume Management CLI Usage<a class="headerlink" href="#4-volume-management-cli-usage" title="Permanent link">&para;</a></h2>
+<p>This section outlines the usage of the <code>bin/uc</code> script for managing volumes within your system.
 The script supports various operations such as creating, retrieving, listing and deleting volumes.</p>
-<p><strong>List Volumes</strong></p>
-<pre><code class="language-sh">bin/uc volume list --catalog &lt;catalog&gt; --schema &lt;schema&gt; [--max_results &lt;max_results&gt;]
-</code></pre>
+<h3 id="41-list-volumes">4.1 List Volumes<a class="headerlink" href="#41-list-volumes" title="Permanent link">&para;</a></h3>
+<div class="highlight"><pre><span></span><code>bin/uc<span class="w"> </span>volume<span class="w"> </span>list<span class="w"> </span>--catalog<span class="w"> </span>&lt;catalog&gt;<span class="w"> </span>--schema<span class="w"> </span>&lt;schema&gt;<span class="w"> </span><span class="o">[</span>--max_results<span class="w"> </span>&lt;max_results&gt;<span class="o">]</span>
+</code></pre></div>
 <ul>
-<li><code>catalog</code> : The name of the catalog.</li>
-<li><code>schema</code> : The name of the schema.</li>
-<li><code>max_results</code> : <em>[Optional]</em> The maximum number of results to return.</li>
+<li><code>catalog</code>: The name of the catalog.</li>
+<li><code>schema</code>: The name of the schema.</li>
+<li><code>max_results</code>: <em>[Optional]</em> The maximum number of results to return.</li>
 </ul>
-<p><strong>Retrieve Volume Information</strong></p>
-<pre><code class="language-sh">bin/uc volume get --full_name &lt;catalog&gt;.&lt;schema&gt;.&lt;volume&gt;
-</code></pre>
+<h3 id="42-retrieve-volume-information">4.2 Retrieve Volume Information<a class="headerlink" href="#42-retrieve-volume-information" title="Permanent link">&para;</a></h3>
+<div class="highlight"><pre><span></span><code>bin/uc<span class="w"> </span>volume<span class="w"> </span>get<span class="w"> </span>--full_name<span class="w"> </span>&lt;catalog&gt;.&lt;schema&gt;.&lt;volume&gt;
+</code></pre></div>
 <ul>
-<li><code>catalog</code> : The name of the catalog.  </li>
-<li><code>schema</code> : The name of the schema.</li>
-<li><code>volume</code> : The name of the volume.</li>
+<li><code>catalog</code>: The name of the catalog.</li>
+<li><code>schema</code>: The name of the schema.</li>
+<li><code>volume</code>: The name of the volume.</li>
 </ul>
-<p><strong>Create a Volume</strong></p>
-<pre><code class="language-sh">bin/uc volume create --full_name &lt;catalog&gt;.&lt;schema&gt;.&lt;volume&gt; --storage_location &lt;storage_location&gt; [--comment &lt;comment&gt;]
-</code></pre>
+<h3 id="43-create-a-volume">4.3 Create a Volume<a class="headerlink" href="#43-create-a-volume" title="Permanent link">&para;</a></h3>
+<div class="highlight"><pre><span></span><code>bin/uc<span class="w"> </span>volume<span class="w"> </span>create<span class="w"> </span>--full_name<span class="w"> </span>&lt;catalog&gt;.&lt;schema&gt;.&lt;volume&gt;<span class="w"> </span>--storage_location<span class="w"> </span>&lt;storage_location&gt;<span class="w"> </span><span class="o">[</span>--comment<span class="w"> </span>&lt;comment&gt;<span class="o">]</span>
+</code></pre></div>
 <ul>
-<li><code>catalog</code> : The name of the catalog.</li>
-<li><code>schema</code> : The name of the schema.</li>
-<li><code>volume</code> : The name of the volume.</li>
-<li><code>storage_location</code> : The storage location associated with the volume. When running against UC OSS server, 
-the storage location can be a local path(absolute path) or an S3 path.
-When S3 path is provided, the <a href="../server/">server</a> will vend temporary credentials to access the S3 bucket and server properties must be set up accordingly.
-When running against Databricks Unity Catalog, the storage location for EXTERNAL volume can only be an S3 location which
-has been configured as an <code>external location</code> in your Databricks workspace.</li>
-<li><code>comment</code> : <em>[Optional]</em> The description of the volume.</li>
-</ul>
-<p>Example:
-* Create an external volume with full name <code>my_catalog.my_schema.my_volume</code> with storage location <code>/path/to/storage</code> :</p>
-<pre><code class="language-sh">bin/uc volume create --full_name my_catalog.my_schema.my_volume --storage_location &quot;/path/to/storage&quot;
-</code></pre>
-<p><strong>Update a Volume</strong></p>
-<pre><code class="language-sh">bin/uc volume update --full_name &lt;catalog&gt;.&lt;schema&gt;.&lt;volume&gt; --new_name &lt;new_name&gt; [--comment &lt;comment&gt;]
-</code></pre>
-<ul>
-<li><code>catalog</code> : The name of the catalog.</li>
-<li><code>schema</code> : The name of the schema.</li>
-<li><code>volume</code> : The name of the volume.</li>
-<li><code>new_name</code> : The new name of the volume.</li>
-<li><code>comment</code> : <em>[Optional]</em> The new description of the volume.</li>
+<li><code>catalog</code>: The name of the catalog.</li>
+<li><code>schema</code>: The name of the schema.</li>
+<li><code>volume</code>: The name of the volume.</li>
+<li><code>storage_location</code>: The storage location associated with the volume. When running against UC OSS server,
+  the storage location can be a local path(absolute path) or an S3 path.
+  When S3 path is provided, the <a href="../../server/configuration/">server configuration</a> will vend temporary credentials to access the S3 bucket and server properties must be set up accordingly.
+  When running against Databricks Unity Catalog, the storage location for EXTERNAL volume can only be an S3 location which
+  has been configured as an <code>external location</code> in your Databricks workspace.</li>
+<li><code>comment</code>: <em>[Optional]</em> The description of the volume.</li>
 </ul>
 <p>Example:</p>
-<pre><code class="language-sh">bin/uc volume update --full_name my_catalog.my_schema.my_volume --new_name my_updated_volume --comment &quot;Updated Volume&quot;
-</code></pre>
-<p><strong>Read a Volume's content</strong></p>
-<pre><code class="language-sh">bin/uc volume read --full_name &lt;catalog&gt;.&lt;schema&gt;.&lt;volume&gt; [--path &lt;path&gt;]
-</code></pre>
 <ul>
-<li><code>catalog</code> : The name of the catalog.</li>
-<li><code>schema</code> : The name of the schema.</li>
-<li><code>volume</code> : The name of the volume.</li>
-<li><code>path</code> : <em>[Optional]</em> The path relative to the volume root. 
-If no path is provided, the volume root is read.
-If the final path is a directory, the contents of the directory are listed(<em>ls</em>). 
-If the final path is a file, the contents of the file are displayed(<em>cat</em>).</li>
+<li>Create an external volume with full name <code>my_catalog.my_schema.my_volume</code> with storage location <code>/path/to/storage</code>:</li>
 </ul>
-<p><strong>Write Sample Data to a Volume</strong></p>
-<pre><code class="language-sh">bin/uc volume write --full_name &lt;catalog&gt;.&lt;schema&gt;.&lt;volume&gt;
-</code></pre>
-<p>Writes sample txt data to a randomly generated file name(UUID) in the volume. This is an experimental feature.</p>
+<div class="highlight"><pre><span></span><code>bin/uc<span class="w"> </span>volume<span class="w"> </span>create<span class="w"> </span>--full_name<span class="w"> </span>my_catalog.my_schema.my_volume<span class="w"> </span>--storage_location<span class="w"> </span><span class="s2">&quot;/path/to/storage&quot;</span>
+</code></pre></div>
+<h3 id="44-update-a-volume">4.4 Update a Volume<a class="headerlink" href="#44-update-a-volume" title="Permanent link">&para;</a></h3>
+<div class="highlight"><pre><span></span><code>bin/uc<span class="w"> </span>volume<span class="w"> </span>update<span class="w"> </span>--full_name<span class="w"> </span>&lt;catalog&gt;.&lt;schema&gt;.&lt;volume&gt;<span class="w"> </span>--new_name<span class="w"> </span>&lt;new_name&gt;<span class="w"> </span><span class="o">[</span>--comment<span class="w"> </span>&lt;comment&gt;<span class="o">]</span>
+</code></pre></div>
 <ul>
-<li><code>catalog</code> : The name of the catalog.</li>
-<li><code>schema</code> : The name of the schema.</li>
-<li><code>volume</code> : The name of the volume.</li>
+<li><code>catalog</code>: The name of the catalog.</li>
+<li><code>schema</code>: The name of the schema.</li>
+<li><code>volume</code>: The name of the volume.</li>
+<li><code>new_name</code>: <em>[Optional]</em> The new name of the volume.</li>
+<li><code>comment</code>: <em>[Optional]</em> The new description of the volume.</li>
 </ul>
-<p><strong>Delete a Volume</strong></p>
-<pre><code class="language-sh">bin/uc volume delete --full_name &lt;catalog&gt;.&lt;schema&gt;.&lt;volume&gt;
-</code></pre>
+<p><em>Note:</em> at least one of the optional parameters must be specified.</p>
+<p>Example:</p>
+<div class="highlight"><pre><span></span><code>bin/uc<span class="w"> </span>volume<span class="w"> </span>update<span class="w"> </span>--full_name<span class="w"> </span>my_catalog.my_schema.my_volume<span class="w"> </span>--new_name<span class="w"> </span>my_updated_volume<span class="w"> </span>--comment<span class="w"> </span><span class="s2">&quot;Updated Volume&quot;</span>
+</code></pre></div>
+<h3 id="45-read-a-volumes-content">4.5 Read a Volume's content<a class="headerlink" href="#45-read-a-volumes-content" title="Permanent link">&para;</a></h3>
+<div class="highlight"><pre><span></span><code>bin/uc<span class="w"> </span>volume<span class="w"> </span><span class="nb">read</span><span class="w"> </span>--full_name<span class="w"> </span>&lt;catalog&gt;.&lt;schema&gt;.&lt;volume&gt;<span class="w"> </span><span class="o">[</span>--path<span class="w"> </span>&lt;path&gt;<span class="o">]</span>
+</code></pre></div>
 <ul>
-<li><code>catalog</code> : The name of the catalog.</li>
-<li><code>schema</code> : The name of the schema.</li>
-<li><code>volume</code> : The name of the volume. </li>
+<li><code>catalog</code>: The name of the catalog.</li>
+<li><code>schema</code>: The name of the schema.</li>
+<li><code>volume</code>: The name of the volume.</li>
+<li><code>path</code>: <em>[Optional]</em> The path relative to the volume root.
+  If no path is provided, the volume root is read.
+  If the final path is a directory, the contents of the directory are listed(<code>ls</code>).
+  If the final path is a file, the contents of the file are displayed(<code>cat</code>).</li>
 </ul>
-<h2 id="function-management-cli-usage">Function Management CLI Usage<a class="headerlink" href="#function-management-cli-usage" title="Permanent link">&para;</a></h2>
-<p>This section outlines the usage of the <code>bin/uc</code> script for managing functions within your catalog. 
+<h3 id="46-write-sample-data-to-a-volume">4.6 Write Sample Data to a Volume<a class="headerlink" href="#46-write-sample-data-to-a-volume" title="Permanent link">&para;</a></h3>
+<div class="highlight"><pre><span></span><code>bin/uc<span class="w"> </span>volume<span class="w"> </span>write<span class="w"> </span>--full_name<span class="w"> </span>&lt;catalog&gt;.&lt;schema&gt;.&lt;volume&gt;
+</code></pre></div>
+<ul>
+<li><code>catalog</code>: The name of the catalog.</li>
+<li><code>schema</code>: The name of the schema.</li>
+<li><code>volume</code>: The name of the volume.</li>
+</ul>
+<p>Writes sample text data to a randomly generated file name(UUID) in the volume. This is an experimental feature.</p>
+<h3 id="47-delete-a-volume">4.7 Delete a Volume<a class="headerlink" href="#47-delete-a-volume" title="Permanent link">&para;</a></h3>
+<div class="highlight"><pre><span></span><code>bin/uc<span class="w"> </span>volume<span class="w"> </span>delete<span class="w"> </span>--full_name<span class="w"> </span>&lt;catalog&gt;.&lt;schema&gt;.&lt;volume&gt;
+</code></pre></div>
+<ul>
+<li><code>catalog</code>: The name of the catalog.</li>
+<li><code>schema</code>: The name of the schema.</li>
+<li><code>volume</code>: The name of the volume.</li>
+</ul>
+<h2 id="5-function-management-cli-usage">5. Function Management CLI Usage<a class="headerlink" href="#5-function-management-cli-usage" title="Permanent link">&para;</a></h2>
+<p>This section outlines the usage of the <code>bin/uc</code> script for managing functions within your catalog.
 The script supports various operations such as creating, retrieving, listing and deleting functions.</p>
-<p><strong>List Functions</strong></p>
-<pre><code class="language-sh">bin/uc function list --catalog &lt;catalog&gt; --schema &lt;schema&gt; [--max_results &lt;max_results&gt;]
-</code></pre>
+<h3 id="51-list-functions">5.1 List Functions<a class="headerlink" href="#51-list-functions" title="Permanent link">&para;</a></h3>
+<div class="highlight"><pre><span></span><code>bin/uc<span class="w"> </span><span class="k">function</span><span class="w"> </span>list<span class="w"> </span>--catalog<span class="w"> </span>&lt;catalog&gt;<span class="w"> </span>--schema<span class="w"> </span>&lt;schema&gt;<span class="w"> </span><span class="o">[</span>--max_results<span class="w"> </span>&lt;max_results&gt;<span class="o">]</span>
+</code></pre></div>
 <ul>
-<li><code>catalog</code> : The name of the catalog.</li>
-<li><code>schema</code> : The name of the schema.</li>
-<li><code>max_results</code> : <em>[Optional]</em> The maximum number of results to return.</li>
+<li><code>catalog</code>: The name of the catalog.</li>
+<li><code>schema</code>: The name of the schema.</li>
+<li><code>max_results</code>: <em>[Optional]</em> The maximum number of results to return.</li>
 </ul>
-<p><strong>Retrieve Function Information</strong></p>
-<pre><code class="language-sh">bin/uc function get --full_name &lt;catalog&gt;.&lt;schema&gt;.&lt;function_name&gt;
-</code></pre>
+<h3 id="52-retrieve-function-information">5.2 Retrieve Function Information<a class="headerlink" href="#52-retrieve-function-information" title="Permanent link">&para;</a></h3>
+<div class="highlight"><pre><span></span><code>bin/uc<span class="w"> </span><span class="k">function</span><span class="w"> </span>get<span class="w"> </span>--full_name<span class="w"> </span>&lt;catalog&gt;.&lt;schema&gt;.&lt;function_name&gt;
+</code></pre></div>
 <ul>
-<li><code>catalog</code> : The name of the catalog.</li>
-<li><code>schema</code> : The name of the schema.</li>
-<li><code>function_name</code> : The name of the function.</li>
+<li><code>catalog</code>: The name of the catalog.</li>
+<li><code>schema</code>: The name of the schema.</li>
+<li><code>function_name</code>: The name of the function.</li>
 </ul>
-<p><strong>Create a Function</strong></p>
-<pre><code class="language-sh">bin/uc function create --full_name &lt;catalog&gt;.&lt;schema&gt;.&lt;function_name&gt; --input_params &lt;input_params&gt; --data_type &lt;data_type&gt; --def &lt;definition&gt; [--comment &lt;comment&gt;] [--language &lt;language&gt;]
-</code></pre>
+<h3 id="53-create-a-function">5.3 Create a Function<a class="headerlink" href="#53-create-a-function" title="Permanent link">&para;</a></h3>
+<div class="highlight"><pre><span></span><code>bin/uc<span class="w"> </span><span class="k">function</span><span class="w"> </span>create<span class="w"> </span>--full_name<span class="w"> </span>&lt;catalog&gt;.&lt;schema&gt;.&lt;function_name&gt;<span class="w"> </span>--input_params<span class="w"> </span>&lt;input_params&gt;<span class="w"> </span>--data_type<span class="w"> </span>&lt;data_type&gt;<span class="w"> </span>--def<span class="w"> </span>&lt;definition&gt;<span class="w"> </span><span class="o">[</span>--comment<span class="w"> </span>&lt;comment&gt;<span class="o">]</span><span class="w"> </span><span class="o">[</span>--language<span class="w"> </span>&lt;language&gt;<span class="o">]</span>
+</code></pre></div>
 <ul>
 <li><code>full_name</code>: The full name of the function, which is a concatenation of the catalog name, schema name, and function name separated by dots (e.g., <code>catalog_name.schema_name.function_name</code>).</li>
-<li><code>input_params</code> : The input parameters to the function in SQL-like format <code>"param_name param_data_type"</code>.
-Multiple input parameters should be separated by a comma (e.g., <code>"param1 INT, param2 STRING"</code>).</li>
-<li><code>data_type</code>: The data type of the function. Either a type_name(for e.g. <code>INT</code>,<code>DOUBLE</code>, <code>BOOLEAN</code>, <code>DATE</code>), or <code>TABLE_TYPE</code> if this is a table valued function.</li>
+<li><code>input_params</code>: The input parameters to the function in SQL-like format <code>"param_name param_data_type"</code>.
+  Multiple input parameters should be separated by a comma (e.g., <code>"param1 INT, param2 STRING"</code>).</li>
+<li><code>data_type</code>: The data type of the function. Either a type_name (for e.g. <code>INT</code>,<code>DOUBLE</code>, <code>BOOLEAN</code>, <code>DATE</code>), or <code>TABLE_TYPE</code> if this is a table valued function.</li>
 <li><code>def</code>: The definition of the function. The definition should be a valid SQL statement or a python routine with the function logic and return statement.</li>
 <li><code>comment</code>: <em>[Optional]</em> The description of the function.</li>
 <li><code>language</code>: <em>[Optional]</em>  The language of the function. If not specified, the default value is <code>PYTHON</code>.</li>
 </ul>
-<p>Example:
-Create a python function that takes two integer inputs and returns the sum of the inputs:</p>
-<pre><code class="language-sh">bin/uc function create --full_name my_catalog.my_schema.my_function --input_params &quot;param1 INT, param2 INT&quot; --data_type INT --def &quot;return param1 + param2&quot; --comment &quot;Sum Function&quot;
-</code></pre>
-<p><strong>Invoke a Function</strong></p>
-<pre><code class="language-sh">bin/uc function call --full_name &lt;catalog&gt;.&lt;schema&gt;.&lt;function_name&gt; --input_params &lt;input_params&gt;
-</code></pre>
+<p>Example:</p>
+<ul>
+<li>Create a python function that takes two integer inputs and returns the sum of the inputs:</li>
+</ul>
+<div class="highlight"><pre><span></span><code>bin/uc<span class="w"> </span><span class="k">function</span><span class="w"> </span>create<span class="w"> </span>--full_name<span class="w"> </span>my_catalog.my_schema.my_function<span class="w"> </span>--input_params<span class="w"> </span><span class="s2">&quot;param1 INT, param2 INT&quot;</span><span class="w"> </span>--data_type<span class="w"> </span>INT<span class="w"> </span>--def<span class="w"> </span><span class="s2">&quot;return param1 + param2&quot;</span><span class="w"> </span>--comment<span class="w"> </span><span class="s2">&quot;Sum Function&quot;</span>
+</code></pre></div>
+<h3 id="54-invoke-a-function">5.4 Invoke a Function<a class="headerlink" href="#54-invoke-a-function" title="Permanent link">&para;</a></h3>
+<div class="highlight"><pre><span></span><code>bin/uc<span class="w"> </span><span class="k">function</span><span class="w"> </span>call<span class="w"> </span>--full_name<span class="w"> </span>&lt;catalog&gt;.&lt;schema&gt;.&lt;function_name&gt;<span class="w"> </span>--input_params<span class="w"> </span>&lt;input_params&gt;
+</code></pre></div>
 <ul>
 <li><code>full_name</code>: The full name of the function, which is a concatenation of the catalog name, schema name, and function name separated by dots (e.g., <code>catalog_name.schema_name.function_name</code>).</li>
 <li><code>input_params</code> : The value of input parameters to the function separated by a comma (e.g., <code>"param1,param2"</code>).</li>
 </ul>
 <p>This is an experimental feature and only supported for python functions that take in primitive types as input parameters.
 It runs the functions using the python engine script at <code>etc/data/function/python_engine.py</code>.</p>
-<p>Example:
-Invoke a python sum function that takes two integer inputs:</p>
-<pre><code class="language-sh">bin/uc function call --full_name my_catalog.my_schema.my_function --input_params &quot;1,2&quot;
-</code></pre>
-<p><strong>Delete a Function</strong></p>
-<pre><code class="language-sh">bin/uc function delete --full_name &lt;catalog&gt;.&lt;schema&gt;.&lt;function_name&gt;
-</code></pre>
+<p>Example:</p>
+<ul>
+<li>Invoke a python sum function that takes two integer inputs:</li>
+</ul>
+<div class="highlight"><pre><span></span><code>bin/uc<span class="w"> </span><span class="k">function</span><span class="w"> </span>call<span class="w"> </span>--full_name<span class="w"> </span>my_catalog.my_schema.my_function<span class="w"> </span>--input_params<span class="w"> </span><span class="s2">&quot;1,2&quot;</span>
+</code></pre></div>
+<h3 id="55-delete-a-function">5.5 Delete a Function<a class="headerlink" href="#55-delete-a-function" title="Permanent link">&para;</a></h3>
+<div class="highlight"><pre><span></span><code>bin/uc<span class="w"> </span><span class="k">function</span><span class="w"> </span>delete<span class="w"> </span>--full_name<span class="w"> </span>&lt;catalog&gt;.&lt;schema&gt;.&lt;function_name&gt;
+</code></pre></div>
 <ul>
 <li><code>catalog</code> : The name of the catalog.</li>
 <li><code>schema</code> : The name of the schema.</li>
 <li><code>function_name</code> : The name of the function.</li>
 </ul>
-<h2 id="cli-server-configuration">CLI Server Configuration<a class="headerlink" href="#cli-server-configuration" title="Permanent link">&para;</a></h2>
+<h2 id="6-registered-model-and-model-version-management">6. Registered model and model version management<a class="headerlink" href="#6-registered-model-and-model-version-management" title="Permanent link">&para;</a></h2>
+<p>Please refer to <a href="https://mlflow.org/docs/latest/index.html">MLflow documentation</a> to learn how to use MLflow to create, register, update, use, and delete registered models and model versions.</p>
+<h2 id="7-cli-server-configuration">7. CLI Server Configuration<a class="headerlink" href="#7-cli-server-configuration" title="Permanent link">&para;</a></h2>
 <p>By default, the CLI tool is configured to interact with a local reference server running at <code>http://localhost:8080</code>.
 The CLI can be configured to talk to Databricks Unity Catalog by one of the following methods:</p>
 <ul>
-<li>Include the following params in CLI commands:<ul>
+<li>Include the following params in CLI commands:</li>
 <li><code>--server &lt;server_url&gt;</code>: The URL of the Unity Catalog server.</li>
 <li><code>--auth_token &lt;auth_token&gt;</code>: The PAT(Personal Authorization Token) token obtained from Databricks' Workspace.</li>
-</ul>
-</li>
-<li>Set the following properties in the CLI configuration file located at <code>examples/cli/src/main/resources/application.properties</code>:<ul>
+<li>Set the following properties in the CLI configuration file located at <code>examples/cli/src/main/resources/application.properties</code>:</li>
 <li><code>server</code>: The URL of the Unity Catalog server.</li>
 <li><code>auth_token</code>: The PAT(Personal Authorization Token) token obtained from Databricks' Workspace.</li>
 </ul>
-</li>
-</ul>
 <p>Each parameter can be configured either from the CLI or the configuration file, independently of each other.
 The CLI will prioritize the values provided from the CLI over the configuration file.</p>
+<div class="admonition feedback">
+<p class="admonition-title">Different look for users CLI commands</p>
+<p>We're trying out a different look for the CLI commands - which do you prefer - the format above this or the format below?  Chime in UC GitHub discussion <a href="https://github.com/unitycatalog/unitycatalog/discussions/529">529</a> and let us know!</p>
+</div>
+<h2 id="8-manage-users">8. Manage Users<a class="headerlink" href="#8-manage-users" title="Permanent link">&para;</a></h2>
+<p>This section outlines the usage of the <code>bin/uc</code> script for managing users within UC.
+The script supports various operations such as creating, getting, updating, listing, and deleting users.</p>
+<h3 id="81-create-user">8.1 Create User<a class="headerlink" href="#81-create-user" title="Permanent link">&para;</a></h3>
+<div class="highlight"><span class="filename">Usage</span><pre><span></span><code>bin/uc<span class="w"> </span>create<span class="w"> </span><span class="o">[</span>options<span class="o">]</span>
+</code></pre></div>
+<p><em>Required Params:</em></p>
+<pre><code>-- name: The name of the entity.
+-- email : The email address for the user
+</code></pre>
+<p><em>Optional Params:</em></p>
+<pre><code>-- server: UC Server to connect to. Default is reference server.
+-- auth_token: PAT token to authorize uc requests.
+-- external_id: The identity provider's id for the user
+-- output: To indicate CLI output format preference. Supported values are json and jsonPretty.
+</code></pre>
+<h3 id="82-delete-user">8.2 Delete User<a class="headerlink" href="#82-delete-user" title="Permanent link">&para;</a></h3>
+<div class="highlight"><span class="filename">Usage</span><pre><span></span><code>bin/uc<span class="w"> </span>user<span class="w"> </span>delete<span class="w"> </span><span class="o">[</span>options<span class="o">]</span>
+</code></pre></div>
+<p><em>Required Params:</em></p>
+<pre><code>--id The unique id of the user
+</code></pre>
+<p><em>Optional Params:</em></p>
+<pre><code>--server UC Server to connect to. Default is reference server.
+--auth_token PAT token to authorize uc requests.
+--output To indicate CLI output format preference. Supported values are json and jsonPretty.
+</code></pre>
+<h3 id="83-get-user">8.3 Get User<a class="headerlink" href="#83-get-user" title="Permanent link">&para;</a></h3>
+<div class="highlight"><span class="filename">Usage</span><pre><span></span><code>bin/uc<span class="w"> </span>user<span class="w"> </span>get<span class="w"> </span><span class="o">[</span>options<span class="o">]</span>
+</code></pre></div>
+<p><em>Required Params:</em></p>
+<pre><code>--id The unique id of the user
+</code></pre>
+<p><em>Optional Params:</em></p>
+<pre><code>--server UC Server to connect to. Default is reference server.
+--auth_token PAT token to authorize uc requests.
+--output To indicate CLI output format preference. Supported values are json and jsonPretty.
+</code></pre>
+<h3 id="84-list-users">8.4 List Users<a class="headerlink" href="#84-list-users" title="Permanent link">&para;</a></h3>
+<div class="highlight"><span class="filename">Usage</span><pre><span></span><code>bin/uc<span class="w"> </span>user<span class="w"> </span>list<span class="w"> </span><span class="o">[</span>options<span class="o">]</span>
+</code></pre></div>
+<p><em>Required Params:</em></p>
+<pre><code>None
+</code></pre>
+<p><em>Optional Params:</em></p>
+<pre><code>--server UC Server to connect to. Default is reference server.
+--auth_token PAT token to authorize uc requests.
+--output To indicate CLI output format preference. Supported values are json and jsonPretty.
+--filter Query by which the results have to be filtered
+--start_index Specifies the index (starting at 1) of the first result.
+--count Desired number of results per page
+</code></pre>
+<h3 id="85-update-user">8.5 Update User<a class="headerlink" href="#85-update-user" title="Permanent link">&para;</a></h3>
+<div class="highlight"><span class="filename">Usage</span><pre><span></span><code>bin/uc<span class="w"> </span>user<span class="w"> </span>update<span class="w"> </span><span class="o">[</span>options<span class="o">]</span>
+</code></pre></div>
+<p><em>Required Params:</em></p>
+<pre><code>--id The unique id of the user
+</code></pre>
+<p><em>Optional Params:</em></p>
+<pre><code>--server UC Server to connect to. Default is reference server.
+--auth_token PAT token to authorize uc requests.
+--output To indicate CLI output format preference. Supported values are json and jsonPretty.
+--name The name of the entity.
+--external_id The identity provider's id for the user
+--email The email address for the user
+</code></pre>
 
 
 
@@ -1128,7 +2239,49 @@ The CLI will prioritize the values provided from the CLI over the configuration 
 
 
 
+  
 
+
+
+  <form class="md-feedback" name="feedback" hidden>
+    <fieldset>
+      <legend class="md-feedback__title">
+        Was this page helpful?
+      </legend>
+      <div class="md-feedback__inner">
+        <div class="md-feedback__list">
+          
+            <button class="md-feedback__icon md-icon" type="submit" title="This page was helpful" data-md-value="good">
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 12a8 8 0 0 0-8-8 8 8 0 0 0-8 8 8 8 0 0 0 8 8 8 8 0 0 0 8-8m2 0a10 10 0 0 1-10 10A10 10 0 0 1 2 12 10 10 0 0 1 12 2a10 10 0 0 1 10 10M10 9.5c0 .8-.7 1.5-1.5 1.5S7 10.3 7 9.5 7.7 8 8.5 8s1.5.7 1.5 1.5m7 0c0 .8-.7 1.5-1.5 1.5S14 10.3 14 9.5 14.7 8 15.5 8s1.5.7 1.5 1.5m-5 7.73c-1.75 0-3.29-.73-4.19-1.81L9.23 14c.45.72 1.52 1.23 2.77 1.23s2.32-.51 2.77-1.23l1.42 1.42c-.9 1.08-2.44 1.81-4.19 1.81"/></svg>
+            </button>
+          
+            <button class="md-feedback__icon md-icon" type="submit" title="This page could be improved" data-md-value="bad">
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 12a8 8 0 0 0-8-8 8 8 0 0 0-8 8 8 8 0 0 0 8 8 8 8 0 0 0 8-8m2 0a10 10 0 0 1-10 10A10 10 0 0 1 2 12 10 10 0 0 1 12 2a10 10 0 0 1 10 10m-6.5-4c.8 0 1.5.7 1.5 1.5s-.7 1.5-1.5 1.5-1.5-.7-1.5-1.5.7-1.5 1.5-1.5M10 9.5c0 .8-.7 1.5-1.5 1.5S7 10.3 7 9.5 7.7 8 8.5 8s1.5.7 1.5 1.5m2 4.5c1.75 0 3.29.72 4.19 1.81l-1.42 1.42C14.32 16.5 13.25 16 12 16s-2.32.5-2.77 1.23l-1.42-1.42C8.71 14.72 10.25 14 12 14"/></svg>
+            </button>
+          
+        </div>
+        <div class="md-feedback__note">
+          
+            <div data-md-value="good" hidden>
+              
+              
+                
+              
+              Thanks for your feedback!
+            </div>
+          
+            <div data-md-value="bad" hidden>
+              
+              
+                
+              
+              Thanks for your feedback!
+            </div>
+          
+        </div>
+      </div>
+    </fieldset>
+  </form>
 
 
                 
@@ -1136,6 +2289,8 @@ The CLI will prioritize the values provided from the CLI over the configuration 
             </div>
           
           
+  <script>var tabs=__md_get("__tabs");if(Array.isArray(tabs))e:for(var set of document.querySelectorAll(".tabbed-set")){var labels=set.querySelector(".tabbed-labels");for(var tab of tabs)for(var label of labels.getElementsByTagName("label"))if(label.innerText.trim()===tab){var input=document.getElementById(label.htmlFor);input.checked=!0;continue e}}</script>
+
 <script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
         </div>
         
@@ -1151,7 +2306,7 @@ The CLI will prioritize the values provided from the CLI over the configuration 
           <a href="../../quickstart/" class="md-footer__link md-footer__link--prev" aria-label="Previous: Quickstart">
             <div class="md-footer__button md-icon">
               
-              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11h12Z"/></svg>
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
             </div>
             <div class="md-footer__title">
               <span class="md-footer__direction">
@@ -1165,18 +2320,18 @@ The CLI will prioritize the values provided from the CLI over the configuration 
         
         
           
-          <a href="../tables/uniform/" class="md-footer__link md-footer__link--next" aria-label="Next: UniForm">
+          <a href="../ui/" class="md-footer__link md-footer__link--next" aria-label="Next: UI">
             <div class="md-footer__title">
               <span class="md-footer__direction">
                 Next
               </span>
               <div class="md-ellipsis">
-                UniForm
+                UI
               </div>
             </div>
             <div class="md-footer__button md-icon">
               
-              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M4 11v2h12l-5.5 5.5 1.42 1.42L19.84 12l-7.92-7.92L10.5 5.5 16 11H4Z"/></svg>
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M4 11v2h12l-5.5 5.5 1.42 1.42L19.84 12l-7.92-7.92L10.5 5.5 16 11z"/></svg>
             </div>
           </a>
         
@@ -1205,7 +2360,7 @@ The CLI will prioritize the values provided from the CLI over the configuration 
       
     
     <a href="https://github.com/unitycatalog/unitycatalog" target="_blank" rel="noopener" title="github.com" class="md-social__link">
-      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 496 512"><!--! Font Awesome Free 6.5.2 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2024 Fonticons, Inc.--><path d="M165.9 397.4c0 2-2.3 3.6-5.2 3.6-3.3.3-5.6-1.3-5.6-3.6 0-2 2.3-3.6 5.2-3.6 3-.3 5.6 1.3 5.6 3.6zm-31.1-4.5c-.7 2 1.3 4.3 4.3 4.9 2.6 1 5.6 0 6.2-2s-1.3-4.3-4.3-5.2c-2.6-.7-5.5.3-6.2 2.3zm44.2-1.7c-2.9.7-4.9 2.6-4.6 4.9.3 2 2.9 3.3 5.9 2.6 2.9-.7 4.9-2.6 4.6-4.6-.3-1.9-3-3.2-5.9-2.9zM244.8 8C106.1 8 0 113.3 0 252c0 110.9 69.8 205.8 169.5 239.2 12.8 2.3 17.3-5.6 17.3-12.1 0-6.2-.3-40.4-.3-61.4 0 0-70 15-84.7-29.8 0 0-11.4-29.1-27.8-36.6 0 0-22.9-15.7 1.6-15.4 0 0 24.9 2 38.6 25.8 21.9 38.6 58.6 27.5 72.9 20.9 2.3-16 8.8-27.1 16-33.7-55.9-6.2-112.3-14.3-112.3-110.5 0-27.5 7.6-41.3 23.6-58.9-2.6-6.5-11.1-33.3 2.6-67.9 20.9-6.5 69 27 69 27 20-5.6 41.5-8.5 62.8-8.5s42.8 2.9 62.8 8.5c0 0 48.1-33.6 69-27 13.7 34.7 5.2 61.4 2.6 67.9 16 17.7 25.8 31.5 25.8 58.9 0 96.5-58.9 104.2-114.8 110.5 9.2 7.9 17 22.9 17 46.4 0 33.7-.3 75.4-.3 83.6 0 6.5 4.6 14.4 17.3 12.1C428.2 457.8 496 362.9 496 252 496 113.3 383.5 8 244.8 8zM97.2 352.9c-1.3 1-1 3.3.7 5.2 1.6 1.6 3.9 2.3 5.2 1 1.3-1 1-3.3-.7-5.2-1.6-1.6-3.9-2.3-5.2-1zm-10.8-8.1c-.7 1.3.3 2.9 2.3 3.9 1.6 1 3.6.7 4.3-.7.7-1.3-.3-2.9-2.3-3.9-2-.6-3.6-.3-4.3.7zm32.4 35.6c-1.6 1.3-1 4.3 1.3 6.2 2.3 2.3 5.2 2.6 6.5 1 1.3-1.3.7-4.3-1.3-6.2-2.2-2.3-5.2-2.6-6.5-1zm-11.4-14.7c-1.6 1-1.6 3.6 0 5.9 1.6 2.3 4.3 3.3 5.6 2.3 1.6-1.3 1.6-3.9 0-6.2-1.4-2.3-4-3.3-5.6-2z"/></svg>
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 496 512"><!--! Font Awesome Free 6.6.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2024 Fonticons, Inc.--><path d="M165.9 397.4c0 2-2.3 3.6-5.2 3.6-3.3.3-5.6-1.3-5.6-3.6 0-2 2.3-3.6 5.2-3.6 3-.3 5.6 1.3 5.6 3.6m-31.1-4.5c-.7 2 1.3 4.3 4.3 4.9 2.6 1 5.6 0 6.2-2s-1.3-4.3-4.3-5.2c-2.6-.7-5.5.3-6.2 2.3m44.2-1.7c-2.9.7-4.9 2.6-4.6 4.9.3 2 2.9 3.3 5.9 2.6 2.9-.7 4.9-2.6 4.6-4.6-.3-1.9-3-3.2-5.9-2.9M244.8 8C106.1 8 0 113.3 0 252c0 110.9 69.8 205.8 169.5 239.2 12.8 2.3 17.3-5.6 17.3-12.1 0-6.2-.3-40.4-.3-61.4 0 0-70 15-84.7-29.8 0 0-11.4-29.1-27.8-36.6 0 0-22.9-15.7 1.6-15.4 0 0 24.9 2 38.6 25.8 21.9 38.6 58.6 27.5 72.9 20.9 2.3-16 8.8-27.1 16-33.7-55.9-6.2-112.3-14.3-112.3-110.5 0-27.5 7.6-41.3 23.6-58.9-2.6-6.5-11.1-33.3 2.6-67.9 20.9-6.5 69 27 69 27 20-5.6 41.5-8.5 62.8-8.5s42.8 2.9 62.8 8.5c0 0 48.1-33.6 69-27 13.7 34.7 5.2 61.4 2.6 67.9 16 17.7 25.8 31.5 25.8 58.9 0 96.5-58.9 104.2-114.8 110.5 9.2 7.9 17 22.9 17 46.4 0 33.7-.3 75.4-.3 83.6 0 6.5 4.6 14.4 17.3 12.1C428.2 457.8 496 362.9 496 252 496 113.3 383.5 8 244.8 8M97.2 352.9c-1.3 1-1 3.3.7 5.2 1.6 1.6 3.9 2.3 5.2 1 1.3-1 1-3.3-.7-5.2-1.6-1.6-3.9-2.3-5.2-1m-10.8-8.1c-.7 1.3.3 2.9 2.3 3.9 1.6 1 3.6.7 4.3-.7.7-1.3-.3-2.9-2.3-3.9-2-.6-3.6-.3-4.3.7m32.4 35.6c-1.6 1.3-1 4.3 1.3 6.2 2.3 2.3 5.2 2.6 6.5 1 1.3-1.3.7-4.3-1.3-6.2-2.2-2.3-5.2-2.6-6.5-1m-11.4-14.7c-1.6 1-1.6 3.6 0 5.9s4.3 3.3 5.6 2.3c1.6-1.3 1.6-3.9 0-6.2-1.4-2.3-4-3.3-5.6-2"/></svg>
     </a>
   
 </div>
@@ -1220,10 +2375,10 @@ The CLI will prioritize the values provided from the CLI over the configuration 
     </div>
     
     
-    <script id="__config" type="application/json">{"base": "../..", "features": ["content.action.edit", "content.code.copy", "navigation.footer", "navigation.expand"], "search": "../../assets/javascripts/workers/search.b8dbb3d2.min.js", "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}}</script>
+    <script id="__config" type="application/json">{"base": "../..", "features": ["content.action.edit", "content.code.copy", "content.tabs.link", "navigation.footer", "navigation.expand", "navigation.indexes", "content.code.annotate"], "search": "../../assets/javascripts/workers/search.6ce7567c.min.js", "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}}</script>
     
     
-      <script src="../../assets/javascripts/bundle.fe8b6f2b.min.js"></script>
+      <script src="../../assets/javascripts/bundle.d6f25eb3.min.js"></script>
       
     
   </body>

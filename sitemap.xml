@@ -2,57 +2,82 @@
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
     <url>
          <loc>https://docs.unitycatalog.io/</loc>
-         <lastmod>2024-07-10</lastmod>
-         <changefreq>daily</changefreq>
+         <lastmod>2024-09-30</lastmod>
     </url>
     <url>
          <loc>https://docs.unitycatalog.io/deployment/</loc>
-         <lastmod>2024-07-10</lastmod>
-         <changefreq>daily</changefreq>
+         <lastmod>2024-09-30</lastmod>
     </url>
     <url>
          <loc>https://docs.unitycatalog.io/quickstart/</loc>
-         <lastmod>2024-07-10</lastmod>
-         <changefreq>daily</changefreq>
+         <lastmod>2024-09-30</lastmod>
     </url>
     <url>
          <loc>https://docs.unitycatalog.io/integrations/unity-catalog-daft/</loc>
-         <lastmod>2024-07-10</lastmod>
-         <changefreq>daily</changefreq>
+         <lastmod>2024-09-30</lastmod>
     </url>
     <url>
          <loc>https://docs.unitycatalog.io/integrations/unity-catalog-duckdb/</loc>
-         <lastmod>2024-07-10</lastmod>
-         <changefreq>daily</changefreq>
+         <lastmod>2024-09-30</lastmod>
     </url>
     <url>
-         <loc>https://docs.unitycatalog.io/integrations/unity-catalog-trino/</loc>
-         <lastmod>2024-07-10</lastmod>
-         <changefreq>daily</changefreq>
+         <loc>https://docs.unitycatalog.io/integrations/unity-catalog-puppygraph/</loc>
+         <lastmod>2024-09-30</lastmod>
+    </url>
+    <url>
+         <loc>https://docs.unitycatalog.io/integrations/unity-catalog-spark/</loc>
+         <lastmod>2024-09-30</lastmod>
+    </url>
+    <url>
+         <loc>https://docs.unitycatalog.io/integrations/unity-catalog-spiceai/</loc>
+         <lastmod>2024-09-30</lastmod>
+    </url>
+    <url>
+         <loc>https://docs.unitycatalog.io/integrations/unity-catalog-xtable/</loc>
+         <lastmod>2024-09-30</lastmod>
+    </url>
+    <url>
+         <loc>https://docs.unitycatalog.io/server/auth/</loc>
+         <lastmod>2024-09-30</lastmod>
+    </url>
+    <url>
+         <loc>https://docs.unitycatalog.io/server/configuration/</loc>
+         <lastmod>2024-09-30</lastmod>
+    </url>
+    <url>
+         <loc>https://docs.unitycatalog.io/server/google-auth/</loc>
+         <lastmod>2024-09-30</lastmod>
     </url>
     <url>
          <loc>https://docs.unitycatalog.io/usage/cli/</loc>
-         <lastmod>2024-07-10</lastmod>
-         <changefreq>daily</changefreq>
+         <lastmod>2024-09-30</lastmod>
     </url>
     <url>
          <loc>https://docs.unitycatalog.io/usage/functions/</loc>
-         <lastmod>2024-07-10</lastmod>
-         <changefreq>daily</changefreq>
+         <lastmod>2024-09-30</lastmod>
     </url>
     <url>
-         <loc>https://docs.unitycatalog.io/usage/server/</loc>
-         <lastmod>2024-07-10</lastmod>
-         <changefreq>daily</changefreq>
+         <loc>https://docs.unitycatalog.io/usage/models/</loc>
+         <lastmod>2024-09-30</lastmod>
+    </url>
+    <url>
+         <loc>https://docs.unitycatalog.io/usage/ui/</loc>
+         <lastmod>2024-09-30</lastmod>
     </url>
     <url>
          <loc>https://docs.unitycatalog.io/usage/volumes/</loc>
-         <lastmod>2024-07-10</lastmod>
-         <changefreq>daily</changefreq>
+         <lastmod>2024-09-30</lastmod>
+    </url>
+    <url>
+         <loc>https://docs.unitycatalog.io/usage/tables/deltalake/</loc>
+         <lastmod>2024-09-30</lastmod>
+    </url>
+    <url>
+         <loc>https://docs.unitycatalog.io/usage/tables/formats/</loc>
+         <lastmod>2024-09-30</lastmod>
     </url>
     <url>
          <loc>https://docs.unitycatalog.io/usage/tables/uniform/</loc>
-         <lastmod>2024-07-10</lastmod>
-         <changefreq>daily</changefreq>
+         <lastmod>2024-09-30</lastmod>
     </url>
 </urlset>
