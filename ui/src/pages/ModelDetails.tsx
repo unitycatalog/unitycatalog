@@ -1,15 +1,11 @@
 import React from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import DetailsLayout from '../components/layouts/DetailsLayout';
-import { Flex, Tooltip, Typography } from 'antd';
+import { Flex, Typography } from 'antd';
 import {
-  CheckCircleOutlined,
-  CloseCircleOutlined,
   DeploymentUnitOutlined,
-  MinusCircleOutlined,
 } from '@ant-design/icons';
 import {
-  ModelVersionStatus,
   useGetModel,
   useListModelVersions,
 } from '../hooks/models';

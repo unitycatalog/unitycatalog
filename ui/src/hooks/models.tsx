@@ -5,7 +5,6 @@ import {
   UseQueryOptions,
 } from '@tanstack/react-query';
 import apiClient from '../context/client';
-import { FunctionInterface } from './functions';
 
 export interface ModelInterface {
   name: string;
