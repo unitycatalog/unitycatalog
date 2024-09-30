@@ -65,7 +65,10 @@ export function DeleteModelModal({
       destroyOnClose
       onCancel={closeModal}
       onOk={handleSubmit}
-      okButtonProps={{ loading: mutation.isPending, disabled: existingVersions }}
+      okButtonProps={{
+        loading: mutation.isPending,
+        disabled: existingVersions,
+      }}
     >
       {existingVersions ? (
         <Typography.Text>

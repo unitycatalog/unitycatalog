@@ -2,13 +2,8 @@ import React from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import DetailsLayout from '../components/layouts/DetailsLayout';
 import { Flex, Typography } from 'antd';
-import {
-  DeploymentUnitOutlined,
-} from '@ant-design/icons';
-import {
-  useGetModel,
-  useListModelVersions,
-} from '../hooks/models';
+import { DeploymentUnitOutlined } from '@ant-design/icons';
+import { useGetModel, useListModelVersions } from '../hooks/models';
 import ModelSidebar from '../components/models/ModelSidebar';
 import { formatTimestamp } from '../utils/formatTimestamp';
 import ListLayout from '../components/layouts/ListLayout';
