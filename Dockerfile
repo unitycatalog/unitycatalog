@@ -1,5 +1,5 @@
 # syntax=docker.io/docker/dockerfile:1.7-labs
-ARG HOME="/unitycatalog"
+ARG HOME="/opt/unitycatalog"
 ARG ALPINE_VERSION="3.20"
 
 # Build stage, using Amazon Corretto jdk 17 on alpine with arm64 support

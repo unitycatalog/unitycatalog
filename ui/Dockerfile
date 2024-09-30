@@ -1,7 +1,7 @@
 # syntax=docker.io/docker/dockerfile:1.7-labs
 FROM node:18
 
-ARG PROXY_HOST=backend
+ARG PROXY_HOST=server
 WORKDIR /ui
 
 COPY package.json yarn.lock ./
