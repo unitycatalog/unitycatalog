@@ -91,7 +91,7 @@ lazy val commonSettings = Seq(
     case DepModuleInfo("jakarta.transaction", "jakarta.transaction-api", _) => true
     case DepModuleInfo("javax.annotation", "javax.annotation-api", _) => true
   },
-
+  
   assembly / test := {}
 )
 
@@ -270,15 +270,6 @@ lazy val server = (project in file("server"))
       "com.h2database" %  "h2" % "2.2.224",
 
       "org.hibernate.orm" % "hibernate-core" % "6.5.0.Final",
-      // For loading properties from the environment
-      "uk.org.webcompere" % "lightweight-config" % "1.3.0",
-
-      // TODO: Determine if project will support MySQL jar; linter currently states
-      // license is imcompatible
-      // "com.mysql" % "mysql-connector-j" % "8.4.0",
-
-      // For PostgreSQL backend
-      "org.postgresql" % "postgresql" % "42.6.0",
 
       "jakarta.activation" % "jakarta.activation-api" % "2.1.3",
       "net.bytebuddy" % "byte-buddy" % "1.14.15",
