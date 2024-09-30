@@ -11,6 +11,8 @@ To start working with Unity Catalog in your development environment, start with 
 * [Operate on Delta tables with DuckDB](https://github.com/unitycatalog/unitycatalog?tab=readme-ov-file#operate-on-delta-tables-with-duckdb)  
 * [Interact with the Unity Catalog tutorial](https://github.com/unitycatalog/unitycatalog?tab=readme-ov-file#interact-with-the-unity-catalog-ui)
 
+You can also run Unity Catalog using Docker Compose while interacting with the server using Spark. See the [Docker Quickstart](docker_quickstart.md) for more details on how to start the service, before continuing with this guide.
+
 # Using Unity Catalog with Apache Spark™ and Delta Lake
 
 For Apache Spark™ and Delta Lake to work together with Unity Catalog, you will need Apache Spark 3.5.3 and Delta Lake 3.2.1.

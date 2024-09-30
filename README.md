@@ -48,14 +48,7 @@ Unity Catalog is proud to be hosted by the LF AI & Data Foundation.
   <img src="./docs/assets/images/lfaidata-project-badge-sandbox-color.png" width="200px" />
 </a>
 
-## Quickstart Overview
-
-You can run Unity Catalog in one of the following ways:
-
-- [Manual Quickstart - Hello UC!](#manual-quickstart---hello-uc!)
-- [Docker Quickstart](#docker-quickstart)
-
-## Manual Quickstart - Hello UC!
+## Quickstart - Hello UC!
 
 Let's take Unity Catalog for spin. In this guide, we are going to do the following:
 
@@ -64,6 +57,9 @@ Let's take Unity Catalog for spin. In this guide, we are going to do the followi
   An example project is provided to demonstrate how to use the UC SDK for various assets
   as well as provide a convenient way to explore the content of any UC server implementation.
 
+> If you prefer to run Unity Catalog in Docker use `docker
+> compose up`. See the [Docker Quickstart](./docs/docker_compose_quickstart.md) for more details.
+
 ### Prerequisites
 
 You have to ensure that your local environment has the following:
@@ -71,6 +67,7 @@ You have to ensure that your local environment has the following:
 - Clone this repository.
 - Ensure the `JAVA_HOME` environment variable your terminal is configured to point to JDK17.
 - Compile the project using `build/sbt package`
+
 
 ### Run the UC Server
 
@@ -167,40 +164,6 @@ yarn install
 yarn start
 ```
 
-### Continue with the Rapidstart
-Do you want to try more Unity Catalog features including Apache Spark integration, MLflow integration, and Google Authentication, continue with the [Rapidstart](./docs/rapidstart.md).
-
-```sh
-docker compose up -d
-```
-
-This starts the Unity Catalog UI and backend. You can access the UI at http://localhost:3000 and the backend at http://localhost:8080.
-
-To use the Unity Catalog CLI, attach to a shell in the backend container:
-
-```sh
-docker exec -it unitycatalog-backend-1 /bin/bash
-```
-
-Use the Unity Catalog CLI from the attached shell to interact with the server:
-```sh
-bin/uc table list --catalog unity --schema default
-```
-
-To remove the containers and persistent volumes, `exit` the attached shell and run the following from the host machine:
-```sh
-docker compose down --volumes --remove-orphans
-```
-
-### Run with Postgres Container
-To run with a Postgres db container, instead of the default hibernate filesystem datastore, use the `compose.psql.yaml` file to [override](https://docs.docker.com/compose/multiple-compose-files/merge/#example) the default `compose.yaml` file:
-
-```sh
-docker compose -f compose.yaml -f compose.psql.yaml up -d
-```
-
-### Run with External Database
-The Unity Catalog container can be configured to connect with an external Postgres or MySQL database. Pass environment variables to the container to configure the [hibernate.properties](etc/conf/hibernate.properties) file. For example, `docker run --rm --env-file .env unitycatalog_backend_1`. See [.env.example](.env.example) for the possible variables.
 
 ## CLI tutorial
 
@@ -210,7 +173,7 @@ See the [cli usage](docs/usage/cli.md) for more details.
 
 ## APIs and Compatibility
 
-- Open API specification: The Unity Catalog Rest API is documented [here](api).
+- Open API specification: See the [Unity Catalog Rest API](https://docs.unitycatalog.io/swagger-docs/).
 - Compatibility and stability: The APIs are currently evolving and should not be assumed to be stable.
 
 ## Building Unity Catalog

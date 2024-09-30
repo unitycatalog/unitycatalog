@@ -1,0 +1,40 @@
+# Docker Quickstart \- Hello UC\!
+
+To start Unity Catalog in Docker Compose in one command, install the latest
+version of [Docker Desktop](https://www.docker.com/products/docker-desktop/) and
+run the following from the project's root directory:
+
+```sh
+docker compose up -d
+```
+
+This starts the Unity Catalog server and UI. You can access the UI at
+http://localhost:3000 and the server at http://localhost:8080.
+
+To use the Unity Catalog CLI, attach to a shell in the Unity Catalog server container:
+
+```sh
+docker exec -it unitycatalog-server-1 /bin/bash
+```
+
+Use the Unity Catalog CLI from the attached shell to interact with the server:
+```sh
+bin/uc table list --catalog unity --schema default
+```
+
+To remove the containers and persistent volumes, `exit` the attached shell and run the following from the host machine:
+```sh
+docker compose down --volumes --remove-orphans
+```
+
+## Configurations
+Docker Compose is configured in the [`/unitycatalog/compose.yaml`](../compose.yaml) file.
+
+The configuration will create a bind mount to the local files in
+`./etc/conf`. The UC server can be configured by editing the
+configuration files on the host, and the mount will reflect the changes in the container.
+
+The congfiguration will also create a persistent, named volume to store the server's
+data. This will persist between restarts of the container. See
+[here](./deployment.md) for more details on how to configure other databases
+like Postgres.
