@@ -17,6 +17,7 @@ import ModelSidebar from '../components/models/ModelSidebar';
 import { formatTimestamp } from '../utils/formatTimestamp';
 import ListLayout from '../components/layouts/ListLayout';
 import ModelVersionStatusDisplay from '../components/models/ModelVersionStatusDisplay';
+import ModelActionsDropdown from '../components/models/ModelActionsDropdown';
 
 export default function ModelDetails() {
   const { catalog, schema, model } = useParams();
@@ -40,6 +41,16 @@ export default function ModelDetails() {
           <Typography.Title level={3}>
             <DeploymentUnitOutlined /> {model}
           </Typography.Title>
+          <ModelActionsDropdown
+            catalog={catalog}
+            schema={schema}
+            model={model}
+            existingVersions={
+              versionData?.model_versions
+                ? versionData.model_versions.length > 0
+                : false
+            }
+          />
         </Flex>
       }
       breadcrumbs={[

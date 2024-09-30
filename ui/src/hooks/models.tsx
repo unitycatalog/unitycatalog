@@ -191,3 +191,40 @@ export function useDeleteModelVersion({
     },
   });
 }
+
+export interface DeleteModelMutationParams
+  extends Pick<ModelInterface, 'catalog_name' | 'schema_name' | 'name'> {}
+
+interface DeleteModelParams {
+  catalog: string;
+  schema: string;
+  model: string;
+}
+
+// Delete a model
+export function useDeleteModel({ catalog, schema, model }: DeleteModelParams) {
+  const queryClient = useQueryClient();
+
+  return useMutation<void, Error, DeleteModelMutationParams>({
+    mutationFn: async ({
+      catalog_name,
+      schema_name,
+      name,
+    }: DeleteModelMutationParams) => {
+      const fullName = [catalog_name, schema_name, name].join('.');
+      return apiClient
+        .delete(`/models/${fullName}`)
+        .then((response) => response.data)
+        .catch((e) => {
+          throw new Error(
+            e.response?.data?.message || 'Failed to delete model',
+          );
+        });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({
+        queryKey: ['listModels', catalog, schema],
+      });
+    },
+  });
+}
