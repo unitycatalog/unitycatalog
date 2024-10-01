@@ -1,0 +1,78 @@
+[project]
+name = "ucai-core"
+version = "0.0.1"
+description = "Official Python library for Unity Catalog AI support"
+authors = [
+    { name="Serena Ruan", email="serena.ruan@databricks.com" },
+    { name="Ben Wilson", email="benjamin.wilson@databricks.com" }
+]
+readme = "README.md"
+requires-python = ">=3.9"
+dependencies = [
+  "typing_extensions",
+  "pydantic"
+]
+
+[project.license]
+file = "LICENSE.txt"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build]
+include = [
+  "src/*"
+]
+exclude = [
+  "src/ucai/test_utils/*"
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/ucai"]
+
+[project.optional-dependencies]
+dev = [
+  "hatch",
+  "pytest",
+  "databricks-sdk>=0.32.0",
+  # Note: databricks-connect 15.1 is recommended for serverless, databricks-connect>=14.0.0 requires python>=3.10
+  "databricks-connect",
+  "pandas",
+  "ruff==0.6.4",
+]
+
+[tool.ruff]
+line-length = 100
+target-version = "py39"
+
+[tool.ruff.lint]
+select = [
+  # isort
+  "I",
+  # bugbear rules
+  "B",
+  # remove unused imports
+  "F401",
+  # bare except statements
+  "E722",
+  # print statements
+  "T201",
+  "T203",
+  # misuse of typing.TYPE_CHECKING
+  "TCH004",
+  # import rules
+  "TID251",
+  # undefined-local-with-import-star
+  "F403",
+]
+
+[tool.ruff.format]
+docstring-code-format = true
+docstring-code-line-length = 88
+
+[tool.ruff.lint.pydocstyle]
+convention = "google"
+
+[tool.pytest.ini_options]
+pythonpath = ["src"]
