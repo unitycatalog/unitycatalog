@@ -24,6 +24,7 @@ jobs:
 
       - name: Check Generated Docs Differences
         run: |
+          git status --porcelain api
           DOCS_DIFF=$(git status --porcelain api | awk '{print $2}')
 
           if [[ -n $DOCS_DIFF ]]; then
