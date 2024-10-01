@@ -5,7 +5,6 @@ import {
   UseQueryOptions,
 } from '@tanstack/react-query';
 import apiClient from '../context/client';
-import { SchemaInterface } from './schemas';
 
 export interface ModelInterface {
   name: string;
@@ -258,7 +257,7 @@ export function useUpdateModelVersion({
       return apiClient
         .patch(
           `/models/${fullName}/versions/${version}`,
-          JSON.stringify(params),
+          JSON.stringify({ ...params, full_name: fullName, version: version }), // remove full_name and version from params when path variables are fixed
         )
         .then((response) => response.data)
         .catch((e) => {

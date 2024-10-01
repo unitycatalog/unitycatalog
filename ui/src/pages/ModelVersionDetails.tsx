@@ -27,7 +27,7 @@ export default function ModelVersionDetails() {
   if (!model) throw new Error('Model name is required');
   if (!version) throw new Error('Version number is required');
   const versionNumber = Number(version);
-  const { data } = useGetModelVersion({
+  const { data, refetch } = useGetModelVersion({
     catalog,
     schema,
     model,
@@ -151,11 +151,13 @@ export default function ModelVersionDetails() {
               setNotification(error.message, 'error');
             },
             onSuccess: (version) => {
-              setNotification(
-                `Model version ${version} successfully updated`,
-                'success',
-              );
-              setOpen(false);
+              refetch().then(() => {
+                setNotification(
+                  `Model version ${version.version} successfully updated`,
+                  'success',
+                );
+                setOpen(false);
+              });
             },
           })
         }
