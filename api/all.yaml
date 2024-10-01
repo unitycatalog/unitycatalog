@@ -1370,6 +1370,9 @@ components:
         staging_location:
           description: URI generated for the staging table
           type: string
+        metastore_id:
+          description: The metastore ID of the parent catalog
+          type: string
     CreateStagingTable:
       type: object
       properties:
