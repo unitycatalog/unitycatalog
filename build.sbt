@@ -44,9 +44,6 @@ lazy val commonSettings = Seq(
     "org.apache.logging.log4j" % "log4j-api" % "2.23.1"
   ),
   resolvers += Resolver.mavenLocal,
-  // TODO: remove the following two resolvers once the official releases are out
-  resolvers += "Apache Spark 3.5.3 Staging" at "https://repository.apache.org/content/repositories/orgapachespark-1467/",
-  resolvers += "Delta 3.2.1 Staging" at "https://oss.sonatype.org/content/repositories/iodelta-1168",
   autoScalaLibrary := false,
   crossPaths := false,  // No scala cross building
   assembly / assemblyMergeStrategy := {
@@ -84,6 +81,7 @@ lazy val commonSettings = Seq(
     case DepModuleInfo("org.hibernate.orm", _, _) => true
     case DepModuleInfo("com.unboundid.scim2", _, _) => true
     case DepModuleInfo("com.unboundid.product.scim2", _, _) => true
+    case DepModuleInfo("com.googlecode.aviator", _, _) => true
     // Duo license:
     //  - Eclipse Public License 2.0
     //  - GNU General Public License, version 2 with the GNU Classpath Exception
@@ -301,6 +299,10 @@ lazy val server = (project in file("server"))
 
       // Auth dependencies
       "com.unboundid.product.scim2" % "scim2-sdk-common" % "3.1.0",
+      "org.casbin" % "jcasbin" % "1.55.0",
+      "org.casbin" % "jdbc-adapter" % "2.7.0"
+        exclude("com.microsoft.sqlserver", "mssql-jdbc")
+        exclude("com.oracle.database.jdbc", "ojdbc6"),
       "org.springframework" % "spring-expression" % "6.1.11",
       "com.auth0" % "java-jwt" % "4.4.0",
       "com.auth0" % "jwks-rsa" % "0.22.1",

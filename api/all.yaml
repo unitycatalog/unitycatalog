@@ -32,6 +32,9 @@ tags:
   - name: TemporaryCredentials
     description: |
       Temporary credentials are used to access storage locations or assets for a limited lifetime.
+  - name: Permissions
+    description: |
+      In Unity Catalog, data is secure by default. Access can be granted.
 paths:
   /catalogs:
     post:
@@ -1076,6 +1079,61 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/TemporaryCredentials'
+  /permissions/{securable_type}/{full_name}:
+    parameters:
+      - name: securable_type
+        in: path
+        description: Type of securable.
+        required: true
+        schema:
+          $ref: '#/components/schemas/SecurableType'
+      - name: full_name
+        in: path
+        description: Full name of securable.
+        required: true
+        schema:
+          type: string
+    get:
+      tags:
+        - Grants
+      parameters:
+        - name: principal
+          in: query
+          description: |
+            If provided, only the permissions for the specified principal (user or group) are returned.
+          schema:
+            type: string
+          required: false
+      operationId: get
+      summary: Get permissions
+      description: |
+        Gets the permissions for a securable.
+      responses:
+        '200':
+          description: The permissions list for securable was successfully retrieved.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PermissionsList'
+    patch:
+      tags:
+        - Grants
+      operationId: update
+      summary: Update a permission
+      description: |
+        Updates the permissions for a securable.
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdatePermissions'
+      responses:
+        '200':
+          description: The permissions list for securable was successfully updated.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PermissionsList'
 components:
   schemas:
     SecurablePropertiesMap:
@@ -2200,8 +2258,93 @@ components:
         - PATH_READ
         - PATH_READ_WRITE
         - PATH_CREATE_TABLE
-        - PATH_REFRESH
       type: string
+    PrincipalType:
+      type: string
+      enum:
+        - USER
+        - GROUP
+      description: The type of the principal.
+    SecurableType:
+      type: string
+      enum:
+        - metastore
+        - catalog
+        - schema
+        - table
+        - function
+        - volume
+        - registered_model
+      description: The type of the resource.
+    Privilege:
+      type: string
+      enum:
+        - CREATE CATALOG
+        - USE CATALOG
+        - CREATE SCHEMA
+        - USE SCHEMA
+        - CREATE TABLE
+        - SELECT
+        - CREATE FUNCTION
+        - EXECUTE
+        - CREATE VOLUME
+        - READ VOLUME
+        - CREATE MODEL
+      description: The privilege to grant.
+    UpdatePermissions:
+      type: object
+      properties:
+        changes:
+          description: Array of permissions change objects.
+          type: array
+          items:
+            $ref: '#/components/schemas/PermissionsChange'
+      required:
+        - changes
+    PermissionsChange:
+      type: object
+      properties:
+        principal:
+          description: The principal whose privileges we are changing.
+          type: string
+        add:
+          description: The set of privileges to add.
+          type: array
+          items:
+            $ref: '#/components/schemas/Privilege'
+        remove:
+          description: The set of privileges to remove.
+          type: array
+          items:
+            $ref: '#/components/schemas/Privilege'
+      required:
+        - principal
+        - add
+        - remove
+    PermissionsList:
+      type: object
+      properties:
+        privilege_assignments:
+          description: The privileges assigned to each principal.
+          type: array
+          items:
+            $ref: '#/components/schemas/PrivilegeAssignment'
+      required:
+        - privilege_assignments
+    PrivilegeAssignment:
+      type: object
+      properties:
+        principal:
+          description: The principal (user email address or group name).
+          type: string
+        privileges:
+          description: The privileges assigned to the principal.
+          type: array
+          items:
+            $ref: '#/components/schemas/Privilege'
+      required:
+        - principal
+        - privileges
 info:
   title: Unity Catalog API
   version: '0.1'

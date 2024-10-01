@@ -151,13 +151,16 @@ To quit DuckDB, press `Ctrl`+`D` (if your platform supports it), press `Ctrl`+`C
 
 To use the Unity Catalog UI, start a new terminal and ensure you have already started the UC server (e.g., `./bin/start-uc-server`)
 
+**Prerequisites**
+* Node: https://nodejs.org/en/download/package-manager
+* Yarn: https://classic.yarnpkg.com/lang/en/docs/install
+
+**How to start the UI through yarn**
 ```
 cd /ui
 yarn install
 yarn start
-open localhost:3000
 ```
-
 
 
 ## CLI tutorial
@@ -168,7 +171,7 @@ See the [cli usage](docs/usage/cli.md) for more details.
 
 ## APIs and Compatibility
 
-- Open API specification: The Unity Catalog Rest API is documented [here](api).
+- Open API specification: See the [Unity Catalog Rest API](https://docs.unitycatalog.io/swagger-docs/).
 - Compatibility and stability: The APIs are currently evolving and should not be assumed to be stable.
 
 ## Building Unity Catalog
