@@ -46,7 +46,6 @@ public class FileUtils {
       InputFile inputFile = fileIO.newInputFile(fileUri.getPath());
       return inputFile.exists(); // Returns true if the file exists, false otherwise
     } catch (Exception e) {
-      // Optionally log or handle exceptions
       return false;
     }
   }

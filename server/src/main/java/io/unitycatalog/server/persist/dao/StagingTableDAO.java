@@ -5,6 +5,7 @@ import jakarta.persistence.*;
 import java.util.Date;
 import java.util.UUID;
 import lombok.*;
+import lombok.experimental.SuperBuilder;
 
 // Hibernate annotations
 @Entity
@@ -14,18 +15,12 @@ import lombok.*;
 @Setter
 @NoArgsConstructor
 @AllArgsConstructor
-@EqualsAndHashCode
-@Builder
-public class StagingTableDAO {
-  @Id
-  @Column(name = "id", nullable = false)
-  private UUID id;
+@SuperBuilder
+@EqualsAndHashCode(callSuper = true)
+public class StagingTableDAO extends IdentifiableDAO {
 
   @Column(name = "schema_id", columnDefinition = "BINARY(16)")
   private UUID schemaId;
-
-  @Column(name = "name")
-  private String name;
 
   @Lob
   @Column(name = "staging_location", nullable = false)
