@@ -1,6 +1,11 @@
 package io.unitycatalog.server.service.iceberg;
 
 import java.io.IOException;
+import java.nio.file.FileVisitResult;
+import java.nio.file.Path;
+import java.nio.file.Paths;
+import java.nio.file.SimpleFileVisitor;
+import java.nio.file.attribute.BasicFileAttributes;
 import org.apache.iceberg.Files;
 import org.apache.iceberg.io.FileIO;
 import org.apache.iceberg.io.InputFile;
@@ -13,20 +18,39 @@ public class SimpleLocalFileIO implements FileIO {
 
   @Override
   public InputFile newInputFile(String path) {
-    return Files.localInput(path);
+    return Files.localInput(Paths.get(path).toFile());
   }
 
   @Override
   public OutputFile newOutputFile(String path) {
-    return Files.localOutput(path);
+    return Files.localOutput(Paths.get(path).toFile());
   }
 
   @Override
   public void deleteFile(String path) {
+    Path directory = Paths.get(path);
+
+    // Walk through the directory tree and delete files and subdirectories
     try {
-      java.nio.file.Files.delete(java.nio.file.Paths.get(path));
+      java.nio.file.Files.walkFileTree(
+          directory,
+          new SimpleFileVisitor<>() {
+            @Override
+            public FileVisitResult visitFile(Path file, BasicFileAttributes attrs)
+                throws IOException {
+              java.nio.file.Files.delete(file); // Delete each file
+              return FileVisitResult.CONTINUE;
+            }
+
+            @Override
+            public FileVisitResult postVisitDirectory(Path dir, IOException exc)
+                throws IOException {
+              java.nio.file.Files.delete(dir); // Delete directory after its contents are deleted
+              return FileVisitResult.CONTINUE;
+            }
+          });
     } catch (IOException e) {
-      LOGGER.error("Failed to delete file: {}", path, e);
+      throw new RuntimeException(e);
     }
   }
 }

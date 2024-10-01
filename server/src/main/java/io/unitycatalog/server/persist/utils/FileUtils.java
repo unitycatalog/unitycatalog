@@ -38,13 +38,12 @@ public class FileUtils {
 
   public static String createEntityDirectory(String entityId) {
     URI standardURI = URI.create(toStandardizedURIString(getStorageRoot() + "/" + entityId));
-    validateURI(standardURI);
     return createDirectory(standardURI).toString();
   }
 
   public static boolean fileExists(FileIO fileIO, URI fileUri) {
     try {
-      InputFile inputFile = fileIO.newInputFile(fileUri.toString());
+      InputFile inputFile = fileIO.newInputFile(fileUri.getPath());
       return inputFile.exists(); // Returns true if the file exists, false otherwise
     } catch (Exception e) {
       // Optionally log or handle exceptions
@@ -53,6 +52,7 @@ public class FileUtils {
   }
 
   public static URI createDirectory(URI uri) {
+    validateURI(uri);
     FileIO fileIO = fileIOFactory.getFileIO(uri);
     if (fileExists(fileIO, uri)) {
       throw new BaseException(ErrorCode.ALREADY_EXISTS, "Directory already exists: " + uri);
@@ -65,9 +65,9 @@ public class FileUtils {
       }
 
       // Create a zero-byte file to represent the directory
-      OutputFile outputFile = fileIO.newOutputFile(dirPath + ".dir");
+      OutputFile outputFile = fileIO.newOutputFile(URI.create(dirPath + ".dir").getPath());
       outputFile.createOrOverwrite().close();
-      System.out.println("Directory created: " + dirPath);
+      LOGGER.info("Directory created: " + dirPath);
       return URI.create(dirPath);
     } catch (Exception e) {
       throw new RuntimeException("Failed to create directory: " + uri, e);
@@ -77,73 +77,9 @@ public class FileUtils {
   public static void deleteDirectory(String path) {
     URI directoryUri = URI.create(toStandardizedURIString(path));
     validateURI(directoryUri);
-    if (directoryUri.getScheme() == null || directoryUri.getScheme().equals("file")) {
-//      try {
-//        deleteLocalDirectory(Paths.get(directoryUri));
-//      } catch (RuntimeException | IOException e) {
-//        throw new BaseException(ErrorCode.INTERNAL, "Failed to delete directory: " + path, e);
-//      }
-    } else if (directoryUri.getScheme().equals("s3")) {
-      modifyS3Directory(directoryUri, false);
-    } else {
-      throw new BaseException(
-          ErrorCode.INVALID_ARGUMENT, "Unsupported URI scheme: " + directoryUri.getScheme());
-    }
-  }
-
-  private static URI modifyS3Directory(URI parsedUri, boolean createOrDelete) {
-    String bucketName = parsedUri.getHost();
-    String path = parsedUri.getPath().substring(1); // Remove leading '/'
-    String accessKey = ServerPropertiesUtils.getInstance().getProperty("aws.s3.accessKey");
-    String secretKey = ServerPropertiesUtils.getInstance().getProperty("aws.s3.secretKey");
-    String sessionToken = ServerPropertiesUtils.getInstance().getProperty("aws.s3.sessionToken");
-    String region = ServerPropertiesUtils.getInstance().getProperty("aws.region");
-
-    BasicSessionCredentials sessionCredentials =
-        new BasicSessionCredentials(accessKey, secretKey, sessionToken);
-    AmazonS3 s3Client =
-        AmazonS3ClientBuilder.standard()
-            .withCredentials(new AWSStaticCredentialsProvider(sessionCredentials))
-            .withRegion(region)
-            .build();
-
-    if (createOrDelete) {
-
-      if (!path.endsWith("/")) {
-        path += "/";
-      }
-      if (s3Client.doesObjectExist(bucketName, path)) {
-        throw new BaseException(ErrorCode.ALREADY_EXISTS, "Directory already exists: " + path);
-      }
-      try {
-        // Create empty content
-        byte[] emptyContent = new byte[0];
-        ByteArrayInputStream emptyContentStream = new ByteArrayInputStream(emptyContent);
-
-        // Set metadata for the empty content
-        ObjectMetadata metadata = new ObjectMetadata();
-        metadata.setContentLength(0);
-        s3Client.putObject(new PutObjectRequest(bucketName, path, emptyContentStream, metadata));
-        LOGGER.debug("Directory created successfully: " + path);
-        return URI.create(String.format("s3://%s/%s", bucketName, path));
-      } catch (Exception e) {
-        throw new BaseException(ErrorCode.INTERNAL, "Failed to create directory: " + path, e);
-      }
-    } else {
-      ObjectListing listing;
-      ListObjectsRequest req = new ListObjectsRequest().withBucketName(bucketName).withPrefix(path);
-      do {
-        listing = s3Client.listObjects(req);
-        listing
-            .getObjectSummaries()
-            .forEach(
-                object -> {
-                  s3Client.deleteObject(bucketName, object.getKey());
-                });
-        req.setMarker(listing.getNextMarker());
-      } while (listing.isTruncated());
-      return URI.create(String.format("s3://%s/%s", bucketName, path));
-    }
+    FileIO fileIO = fileIOFactory.getFileIO(directoryUri);
+    fileIO.deleteFile(directoryUri.getPath());
+    LOGGER.info("Directory deleted: " + directoryUri);
   }
 
   private static URI adjustLocalFileURI(URI fileUri) {
