@@ -43,6 +43,9 @@ public class FileIOFactory {
 
   // TODO: Cache fileIOs
   public FileIO getFileIO(URI tableLocationUri) {
+    if (tableLocationUri.getScheme() == null) {
+      return new SimpleLocalFileIO();
+    }
     return switch (tableLocationUri.getScheme()) {
       case URI_SCHEME_ABFS, URI_SCHEME_ABFSS -> getADLSFileIO(tableLocationUri);
       case URI_SCHEME_GS -> getGCSFileIO(tableLocationUri);
