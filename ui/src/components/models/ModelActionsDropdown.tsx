@@ -7,7 +7,7 @@ interface ModelActionDropdownProps {
   catalog: string;
   schema: string;
   model: string;
-  existingVersions: boolean;
+  hasExistingVersions: boolean;
 }
 
 enum ModelActionsEnum {
@@ -18,7 +18,7 @@ export default function ModelActionsDropdown({
   catalog,
   schema,
   model,
-  existingVersions,
+  hasExistingVersions,
 }: ModelActionDropdownProps) {
   const [dropdownVisible, setDropdownVisible] = useState<boolean>(false);
   const [action, setAction] = useState<ModelActionsEnum | null>(null);
@@ -59,7 +59,7 @@ export default function ModelActionsDropdown({
         catalog={catalog}
         schema={schema}
         model={model}
-        existingVersions={existingVersions}
+        hasExistingVersions={hasExistingVersions}
       />
     </>
   );

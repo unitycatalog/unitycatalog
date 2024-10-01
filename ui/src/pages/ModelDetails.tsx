@@ -36,11 +36,7 @@ export default function ModelDetails() {
             catalog={catalog}
             schema={schema}
             model={model}
-            existingVersions={
-              versionData?.model_versions
-                ? versionData.model_versions.length > 0
-                : false
-            }
+            hasExistingVersions={Boolean(versionData?.model_versions?.length)}
           />
         </Flex>
       }

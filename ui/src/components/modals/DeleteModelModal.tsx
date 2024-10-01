@@ -11,7 +11,7 @@ interface DeleteModelModalProps {
   catalog: string;
   schema: string;
   model: string;
-  existingVersions: boolean;
+  hasExistingVersions: boolean;
 }
 
 export function DeleteModelModal({
@@ -20,7 +20,7 @@ export function DeleteModelModal({
   catalog,
   schema,
   model,
-  existingVersions,
+  hasExistingVersions,
 }: DeleteModelModalProps) {
   const navigate = useNavigate();
   const { setNotification } = useNotification();
@@ -67,10 +67,10 @@ export function DeleteModelModal({
       onOk={handleSubmit}
       okButtonProps={{
         loading: mutation.isPending,
-        disabled: existingVersions,
+        disabled: hasExistingVersions,
       }}
     >
-      {existingVersions ? (
+      {hasExistingVersions ? (
         <Typography.Text>
           Registered models cannot be deleted with existing model versions.
           Delete model versions and try again.
