@@ -13,33 +13,18 @@ public class FileUtilsTest {
   public void testFileUtils() {
 
     System.setProperty("storageRoot", "/tmp");
-
-    String tablePath = FileUtils.createTableDirectory("catalog", "schema", "table");
-    String volumePath = FileUtils.createVolumeDirectory("volume");
-
-    assertThat(tablePath).isEqualTo("file:///tmp/catalog/schema/tables/table/");
+    String volumePath = FileUtils.createEntityDirectory("volume");
     assertThat(volumePath).isEqualTo("file:///tmp/volume/");
-
-    FileUtils.deleteDirectory(tablePath);
     FileUtils.deleteDirectory(volumePath);
 
     System.setProperty("storageRoot", "file:///tmp/random");
-
-    tablePath = FileUtils.createTableDirectory("catalog", "schema", "table");
-    volumePath = FileUtils.createVolumeDirectory("volume");
-
-    assertThat(tablePath).isEqualTo("file:///tmp/random/catalog/schema/tables/table/");
+    volumePath = FileUtils.createEntityDirectory("volume");
     assertThat(volumePath).isEqualTo("file:///tmp/random/volume/");
-
-    FileUtils.deleteDirectory(tablePath);
     FileUtils.deleteDirectory(volumePath);
-
-    assertThatThrownBy(() -> FileUtils.createTableDirectory("..", "schema", "table"))
-        .isInstanceOf(BaseException.class);
 
     assertThatThrownBy(
             () -> {
-              FileUtils.createVolumeDirectory("..");
+              FileUtils.createEntityDirectory("..");
             })
         .isInstanceOf(BaseException.class);
   }

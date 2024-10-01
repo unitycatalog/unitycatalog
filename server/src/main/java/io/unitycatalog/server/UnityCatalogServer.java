@@ -25,21 +25,7 @@ import io.unitycatalog.server.exception.GlobalExceptionHandler;
 import io.unitycatalog.server.persist.utils.ServerPropertiesUtils;
 import io.unitycatalog.server.security.SecurityConfiguration;
 import io.unitycatalog.server.security.SecurityContext;
-import io.unitycatalog.server.service.AuthDecorator;
-import io.unitycatalog.server.service.AuthService;
-import io.unitycatalog.server.service.CatalogService;
-import io.unitycatalog.server.service.FunctionService;
-import io.unitycatalog.server.service.IcebergRestCatalogService;
-import io.unitycatalog.server.service.ModelService;
-import io.unitycatalog.server.service.PermissionService;
-import io.unitycatalog.server.service.SchemaService;
-import io.unitycatalog.server.service.Scim2UserService;
-import io.unitycatalog.server.service.TableService;
-import io.unitycatalog.server.service.TemporaryModelVersionCredentialsService;
-import io.unitycatalog.server.service.TemporaryPathCredentialsService;
-import io.unitycatalog.server.service.TemporaryTableCredentialsService;
-import io.unitycatalog.server.service.TemporaryVolumeCredentialsService;
-import io.unitycatalog.server.service.VolumeService;
+import io.unitycatalog.server.service.*;
 import io.unitycatalog.server.service.credential.CredentialOperations;
 import io.unitycatalog.server.service.iceberg.FileIOFactory;
 import io.unitycatalog.server.service.iceberg.MetadataService;
@@ -134,6 +120,7 @@ public class UnityCatalogServer {
     SchemaService schemaService = new SchemaService(authorizer);
     VolumeService volumeService = new VolumeService(authorizer);
     TableService tableService = new TableService(authorizer);
+    StagingTableService stagingTableService = new StagingTableService();
     FunctionService functionService = new FunctionService(authorizer);
     ModelService modelService = new ModelService(authorizer);
     // TODO: combine these into a single service in a follow-up PR
@@ -144,7 +131,7 @@ public class UnityCatalogServer {
     TemporaryModelVersionCredentialsService temporaryModelVersionCredentialsService =
         new TemporaryModelVersionCredentialsService(authorizer, credentialOperations);
     TemporaryPathCredentialsService temporaryPathCredentialsService =
-        new TemporaryPathCredentialsService(credentialOperations);
+        new TemporaryPathCredentialsService(authorizer, credentialOperations);
     sb.service("/", (ctx, req) -> HttpResponse.of("Hello, Unity Catalog!"))
         .annotatedService(controlPath + "auth", authService, unityConverterFunction)
         .annotatedService(
@@ -157,6 +144,7 @@ public class UnityCatalogServer {
         .annotatedService(basePath + "schemas", schemaService, unityConverterFunction)
         .annotatedService(basePath + "volumes", volumeService, unityConverterFunction)
         .annotatedService(basePath + "tables", tableService, unityConverterFunction)
+        .annotatedService(basePath + "staging-tables", stagingTableService, unityConverterFunction)
         .annotatedService(basePath + "functions", functionService, unityConverterFunction)
         .annotatedService(basePath + "models", modelService, unityConverterFunction)
         .annotatedService(
