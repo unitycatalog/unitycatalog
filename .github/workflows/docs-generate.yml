@@ -42,7 +42,6 @@ jobs:
       - name: Check Generated Docs Differences
         run: |
           DOCS_DIFF=$(git ls-files --others --modified --exclude-standard api)
-          echo $DOCS_DIFF
           if [[ -n $DOCS_DIFF ]]; then
             echo "This PR contains changes that should also update the generated docs using build/sbt generate"
             echo "If you have changed the UC REST APIs such that changes to generated docs are expected, then please make sure all generated docs have been properly updated in this PR."
