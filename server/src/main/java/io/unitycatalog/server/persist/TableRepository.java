@@ -180,7 +180,7 @@ public class TableRepository {
               tableInfoDAO.setUrl(tableInfo.getStorageLocation());
             } else {
               // creating a new table location and setting that as the url
-              String tableLocation = FileUtils.createEntityDirectory(tableId);
+              String tableLocation = FileUtils.createTableDirectory(tableId);
               // set location in both tableInfo and tableInfoDAO
               tableInfoDAO.setUrl(tableLocation);
               tableInfo.setStorageLocation(tableLocation);

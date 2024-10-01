@@ -77,8 +77,7 @@ public class StagingTableRepository {
 
         StagingTableDAO stagingTableDAO = new StagingTableDAO();
         stagingTableDAO.setId(UUID.randomUUID());
-        String stagingLocation =
-            FileUtils.createEntityDirectory(stagingTableDAO.getId().toString());
+        String stagingLocation = FileUtils.createTableDirectory(stagingTableDAO.getId().toString());
 
         validateIfAlreadyExists(session, schemaId, createStagingTable.getName(), stagingLocation);
 
