@@ -7,7 +7,7 @@ on:
     branches: [ "main" ]
 
 jobs:
-  generated-files-validation:
+  generated-docs-validation:
     runs-on: ubuntu-latest
 
     steps:
