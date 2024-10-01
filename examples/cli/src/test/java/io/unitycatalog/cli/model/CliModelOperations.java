@@ -172,9 +172,9 @@ public class CliModelOperations implements ModelOperations {
                 "model_version",
                 "update",
                 "--full_name",
-                updateMv.getFullName(),
+                fullName,
                 "--version",
-                updateMv.getVersion().toString()));
+                version.toString()));
     if (updateMv.getComment() != null) {
       argsList.add("--comment");
       argsList.add(updateMv.getComment());
