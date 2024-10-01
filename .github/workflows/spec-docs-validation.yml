@@ -1,0 +1,41 @@
+name: OpenAPI Generated Docs Validation
+
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+
+jobs:
+  generated-files-validation:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+
+      - name: Generate OpenAPI API and Model docs
+        run: build/sbt generate
+
+      - name: Check Generated Files Differences
+        run: |
+          DOCS_DIFF=$(git diff --name-only api)
+
+          if [[ -n $DOCS_DIFF ]]; then
+            echo "This PR contains changes that should also updated the generated docs using build/sbt generate"
+            echo "If you have changed the UC REST APIs such that changes to generated docs are expected, then please make sure all generated docs have been properly updated in this PR."
+            echo "Otherwise, without changes to UC REST APIs, manual changes to the generated docs are not acceptable."
+            if [[ -n $DOCS_DIFF ]]; then
+              echo "Modified doc files:"
+              echo "$DOCS_DIFF"
+            fi
+            exit 1
+          else
+            echo "No changes to generated docs detected."
+          fi
+        shell: bash
