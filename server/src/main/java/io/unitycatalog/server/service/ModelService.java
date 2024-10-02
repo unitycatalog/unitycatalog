@@ -104,10 +104,10 @@ public class ModelService {
           (#authorize(#principal, #registered_model, OWNER) && #authorizeAny(#principal, #schema, OWNER, USE_SCHEMA) && #authorizeAny(#principal, #catalog, OWNER, USE_CATALOG))
           """)
   @AuthorizeKey(METASTORE)
-  public HttpResponse updateRegisteredModel(@Param("full_name") @AuthorizeKey(REGISTERED_MODEL) String fullNameArg, UpdateRegisteredModel updateRegisteredModel) {
+  public HttpResponse updateRegisteredModel(@Param("full_name") @AuthorizeKey(REGISTERED_MODEL) String fullName, UpdateRegisteredModel updateRegisteredModel) {
     assert updateRegisteredModel != null;
     RegisteredModelInfo updateRegisteredModelResponse =
-        MODEL_REPOSITORY.updateRegisteredModel(updateRegisteredModel);
+        MODEL_REPOSITORY.updateRegisteredModel(fullName, updateRegisteredModel);
     return HttpResponse.ofJson(updateRegisteredModelResponse);
   }
 
@@ -177,11 +177,11 @@ public class ModelService {
           (#authorize(#principal, #registered_model, OWNER) && #authorizeAny(#principal, #schema, OWNER, USE_SCHEMA) && #authorizeAny(#principal, #catalog, OWNER, USE_CATALOG))
           """)
   @AuthorizeKey(METASTORE)
-  public HttpResponse updateModelVersion(@Param("full_name") @AuthorizeKey(REGISTERED_MODEL) String fullName,
+  public HttpResponse updateModelVersion(@Param("full_name") @AuthorizeKey(REGISTERED_MODEL) String fullName, @Param("version") Long version,
                                          UpdateModelVersion updateModelVersion) {
     assert updateModelVersion != null;
     ModelVersionInfo updateModelVersionResponse =
-        MODEL_REPOSITORY.updateModelVersion(updateModelVersion);
+        MODEL_REPOSITORY.updateModelVersion(fullName, version, updateModelVersion);
     return HttpResponse.ofJson(updateModelVersionResponse);
   }
 
