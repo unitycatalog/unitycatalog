@@ -9,6 +9,7 @@ import java.util.Arrays;
 import java.util.List;
 
 public class BaseSparkTest {
+    // todo: parameterize such that catalogs can be specified per cloud provider if desired
     private static final String ServerUrl = System.getenv().getOrDefault("CATALOG_URI", "http://localhost:8080");
     private static final String AuthToken = System.getenv().getOrDefault("CATALOG_AUTH_TOKEN", "");
     private static final String CatalogName = System.getenv().getOrDefault("CATALOG_NAME", "unity");
@@ -48,6 +49,7 @@ public class BaseSparkTest {
 
     protected static String getBaseLocation(LocationType locationType) throws IOException {
         return switch (locationType) {
+            // todo: add hook to clean up temp directory
             case FILE -> Files.createTempDirectory("uc-test-table").toFile().getAbsolutePath();
             case S3 -> System.getenv("S3_BASE_LOCATION");
             case GS -> System.getenv("GS_BASE_LOCATION");
@@ -63,6 +65,7 @@ public class BaseSparkTest {
     }
 
     static List<LocationType> locationTypes() {
+        // todo: add config to enable/disable location types
         return Arrays.stream(LocationType.values()).toList();
     }
 }
