@@ -257,7 +257,7 @@ export function useUpdateModelVersion({
       return apiClient
         .patch(
           `/models/${fullName}/versions/${version}`,
-          JSON.stringify({ ...params, full_name: fullName, version: version }), // @TODO remove full_name and version from params when path variables are fixed
+          JSON.stringify(params),
         )
         .then((response) => response.data)
         .catch((e) => {
