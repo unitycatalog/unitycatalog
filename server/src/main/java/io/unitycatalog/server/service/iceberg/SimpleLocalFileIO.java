@@ -1,6 +1,7 @@
 package io.unitycatalog.server.service.iceberg;
 
 import java.io.IOException;
+import java.net.URI;
 import java.nio.file.FileVisitResult;
 import java.nio.file.Path;
 import java.nio.file.Paths;
@@ -10,25 +11,21 @@ import org.apache.iceberg.Files;
 import org.apache.iceberg.io.FileIO;
 import org.apache.iceberg.io.InputFile;
 import org.apache.iceberg.io.OutputFile;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 
 public class SimpleLocalFileIO implements FileIO {
-  private static final Logger LOGGER = LoggerFactory.getLogger(SimpleLocalFileIO.class);
-
   @Override
   public InputFile newInputFile(String path) {
-    return Files.localInput(Paths.get(path).toFile());
+    return Files.localInput(Paths.get(URI.create(path).getPath()).toFile());
   }
 
   @Override
   public OutputFile newOutputFile(String path) {
-    return Files.localOutput(Paths.get(path).toFile());
+    return Files.localOutput(Paths.get(URI.create(path).getPath()).toFile());
   }
 
   @Override
   public void deleteFile(String path) {
-    Path directory = Paths.get(path);
+    Path directory = Paths.get(URI.create(path).getPath());
 
     // Walk through the directory tree and delete files and subdirectories
     try {
