@@ -37,8 +37,7 @@ tags:
       In Unity Catalog, data is secure by default. Access can be granted.
   - name: Metastores
     description: |
-      A metastore is the top-level container of objects in Unity Catalog. It stores data assets (tables and views) and the permissions that govern access to them. 
-      Each metastore is configured with a root storage location. This storage location is used for metadata and managed tables data.
+      A metastore is the top-level container of objects in Unity Catalog that stores all UC assets.
 paths:
   /catalogs:
     post:
