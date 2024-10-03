@@ -29,7 +29,7 @@ public class FileUtils {
 
   public static String createTableDirectory(String tableId) {
     URI standardURI = URI.create(toStandardizedURIString(getStorageRoot() + "/tables/" + tableId));
-    return createDirectory(standardURI).toString();
+    return createDirectory(standardURI).getPath();
   }
 
   public static boolean fileExists(FileIO fileIO, URI fileUri) {
@@ -49,14 +49,14 @@ public class FileUtils {
     }
     try {
       // Add a trailing slash to represent the directory if not present
-      String dirPath = uri.toString();
-      if (!dirPath.endsWith("/")) {
-        dirPath += "/";
-      }
+      String dirPath = uri.getPath();
+//      if (!dirPath.endsWith("/")) {
+//        dirPath += "/";
+//      }
 
       // Create a zero-byte file to represent the directory
-      OutputFile outputFile = fileIO.newOutputFile(URI.create(dirPath + ".dir").getPath());
-      outputFile.createOrOverwrite().close();
+//      OutputFile outputFile = fileIO.newOutputFile(dirPath);
+//      outputFile.createOrOverwrite().close();
       LOGGER.info("Directory created: " + dirPath);
       return URI.create(dirPath);
     } catch (Exception e) {

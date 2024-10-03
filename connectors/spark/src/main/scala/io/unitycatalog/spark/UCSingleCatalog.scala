@@ -1,8 +1,8 @@
 package io.unitycatalog.spark
 
 import io.unitycatalog.client.{ApiClient, ApiException}
-import io.unitycatalog.client.api.{SchemasApi, TablesApi, TemporaryCredentialsApi}
-import io.unitycatalog.client.model.{ColumnInfo, ColumnTypeName, CreateSchema, CreateTable, DataSourceFormat, GenerateTemporaryPathCredential, GenerateTemporaryTableCredential, ListTablesResponse, PathOperation, SchemaInfo, TableOperation, TableType, TemporaryCredentials}
+import io.unitycatalog.client.api.{SchemasApi, StagingTablesApi, TablesApi, TemporaryCredentialsApi}
+import io.unitycatalog.client.model.{ColumnInfo, ColumnTypeName, CreateSchema, CreateStagingTable, CreateTable, DataSourceFormat, GenerateTemporaryPathCredential, GenerateTemporaryTableCredential, ListTablesResponse, PathOperation, SchemaInfo, TableOperation, TableType, TemporaryCredentials}
 
 import java.net.URI
 import java.util
@@ -28,6 +28,7 @@ class UCSingleCatalog extends TableCatalog with SupportsNamespaces with Logging 
 
   private[this] var apiClient: ApiClient = null;
   private[this] var temporaryCredentialsApi: TemporaryCredentialsApi = null
+  private[this] var stagingTablesApi: StagingTablesApi = null
 
   @volatile private var delegate: TableCatalog = null
 
@@ -48,6 +49,7 @@ class UCSingleCatalog extends TableCatalog with SupportsNamespaces with Logging 
       }
     }
     temporaryCredentialsApi = new TemporaryCredentialsApi(apiClient)
+    stagingTablesApi = new StagingTablesApi(apiClient)
     val proxy = new UCProxy(apiClient, temporaryCredentialsApi)
     proxy.initialize(name, options)
     if (UCSingleCatalog.LOAD_DELTA_CATALOG.get()) {
@@ -92,29 +94,23 @@ class UCSingleCatalog extends TableCatalog with SupportsNamespaces with Logging 
     if (!hasExternalClause && !hasLocationClause && !isPathTable) {
       val newProps = new util.HashMap[String, String]
       newProps.putAll(properties)
-      // TODO: here we use a fake location for managed table, we should generate table location
-      //       properly when Unity Catalog supports creating managed table.
-      newProps.put(TableCatalog.PROP_LOCATION, properties.get("__FAKE_PATH__"))
+      val createStagingTable = new CreateStagingTable()
+      createStagingTable.setName(ident.name())
+      createStagingTable.setSchemaName(ident.namespace().head)
+      createStagingTable.setCatalogName(name())
+      val stagingTableInfo = stagingTablesApi.createStagingTable(createStagingTable)
+      newProps.put(TableCatalog.PROP_LOCATION, stagingTableInfo.getStagingLocation)
       // `PROP_IS_MANAGED_LOCATION` is used to indicate that the table location is not
       // user-specified but system-generated, which is exactly the case here.
       newProps.put(TableCatalog.PROP_IS_MANAGED_LOCATION, "true")
+      UCSingleCatalog.setCredentialProps(newProps, temporaryCredentialsApi, stagingTableInfo.getStagingLocation)
       delegate.createTable(ident, columns, partitions, newProps)
     } else if (hasLocationClause) {
       val location = properties.get(TableCatalog.PROP_LOCATION)
       assert(location != null)
-      val cred = temporaryCredentialsApi.generateTemporaryPathCredentials(
-        new GenerateTemporaryPathCredential().url(location).operation(PathOperation.PATH_CREATE_TABLE))
       val newProps = new util.HashMap[String, String]
       newProps.putAll(properties)
-      val credentialProps = UCSingleCatalog.generateCredentialProps(
-        CatalogUtils.stringToURI(location).getScheme, cred)
-      newProps.putAll(credentialProps.asJava)
-      // TODO: Delta requires the options to be set twice in the properties, with and without the
-      //       `option.` prefix. We should revisit this in Delta.
-      val prefix = TableCatalog.OPTION_PREFIX
-      newProps.putAll(credentialProps.map {
-        case (k, v) => (prefix + k, v)
-      }.asJava)
+      UCSingleCatalog.setCredentialProps(newProps, temporaryCredentialsApi, location)
       delegate.createTable(ident, columns, partitions, newProps)
     } else {
       // TODO: for path-based tables, Spark should generate a location property using the qualified
@@ -198,6 +194,26 @@ object UCSingleCatalog {
     } else {
       Map.empty
     }
+  }
+
+  def setCredentialProps(
+      props: util.HashMap[String, String],
+      temporaryCredentialsApi: TemporaryCredentialsApi,
+      location: String): Unit = {
+    val cred = temporaryCredentialsApi.generateTemporaryPathCredentials(
+      new GenerateTemporaryPathCredential()
+        .url(location)
+        .operation(PathOperation.PATH_CREATE_TABLE)
+    )
+    val credentialProps =
+      UCSingleCatalog.generateCredentialProps(CatalogUtils.stringToURI(location).getScheme, cred)
+    props.putAll(credentialProps.asJava)
+    // TODO: Delta requires the options to be set twice in the properties, with and without the
+    //       `option.` prefix. We should revisit this in Delta.
+    val prefix = TableCatalog.OPTION_PREFIX
+    props.putAll(credentialProps.map {
+      case (k, v) => (prefix + k, v)
+    }.asJava)
   }
 }
 
@@ -308,12 +324,17 @@ private class UCProxy(
     assert(storageLocation != null, "location should either be user specified or system generated.")
     val isManagedLocation = Option(properties.get(TableCatalog.PROP_IS_MANAGED_LOCATION))
       .exists(_.equalsIgnoreCase("true"))
+    val format: String = properties.get("provider")
     if (isManagedLocation) {
       assert(!hasExternalClause, "location is only generated for managed tables.")
-      // TODO: Unity Catalog does not support managed tables now.
-      throw new ApiException("Unity Catalog does not support managed table.")
+      // Unity Catalog only supports managed tables now.
+      if (!format.equalsIgnoreCase("delta")) {
+        throw new ApiException("Unity Catalog does not support non-delta managed table.")
+      }
+      createTable.setTableType(TableType.MANAGED)
+    } else {
+      createTable.setTableType(TableType.EXTERNAL)
     }
-    createTable.setTableType(TableType.EXTERNAL)
     createTable.setStorageLocation(storageLocation)
 
     val columns: Seq[ColumnInfo] = schema.fields.toSeq.zipWithIndex.map { case (field, i) =>
@@ -330,7 +351,6 @@ private class UCProxy(
       column
     }
     createTable.setColumns(columns)
-    val format: String = properties.get("provider")
     createTable.setDataSourceFormat(convertDatasourceFormat(format))
     tablesApi.createTable(createTable)
     loadTable(ident)

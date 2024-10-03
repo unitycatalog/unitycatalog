@@ -421,35 +421,35 @@ public class TableReadWriteTest extends BaseSparkIntegrationTest {
                       "CREATE TABLE %s(name STRING) USING parquet TBLPROPERTIES(__FAKE_PATH__='%s')",
                       fullTableName, location));
             })
-        .hasMessageContaining("not support managed table");
+        .hasMessageContaining("not support non-delta managed table");
     session.close();
   }
 
   @Test
-  public void testCreateManagedDeltaTable() throws IOException {
+  public void testCreateManagedDeltaTable() throws ApiException {
     SparkSession session = createSparkSessionWithCatalogs(SPARK_CATALOG, CATALOG_NAME);
 
     String fullTableName1 = SPARK_CATALOG + "." + SCHEMA_NAME + "." + DELTA_TABLE;
-    String location1 = generateTableLocation(SPARK_CATALOG, DELTA_TABLE);
-    assertThatThrownBy(
-            () -> {
-              session.sql(
-                  String.format(
-                      "CREATE TABLE %s(name STRING) USING delta TBLPROPERTIES(__FAKE_PATH__='%s')",
-                      fullTableName1, location1));
-            })
-        .hasMessageContaining("not support managed table");
+    session.sql(String.format("CREATE TABLE %s(name STRING) USING delta", fullTableName1));
+    assertTrue(session.catalog().tableExists(fullTableName1));
+    TableInfo tableInfo1 = tableOperations.getTable(fullTableName1);
+    // By default, Delta tables do not store schema in the catalog.
+    assertTrue(tableInfo1.getColumns().isEmpty());
+    assertTrue(session.table(fullTableName1).collectAsList().isEmpty());
+    StructType schema1 = session.table(fullTableName1).schema();
+    assertEquals("name", schema1.apply(0).name());
+    assertEquals(DataTypes.StringType, schema1.apply(0).dataType());
 
     String fullTableName2 = CATALOG_NAME + "." + SCHEMA_NAME + "." + DELTA_TABLE;
-    String location2 = generateTableLocation(CATALOG_NAME, DELTA_TABLE);
-    assertThatThrownBy(
-            () -> {
-              session.sql(
-                  String.format(
-                      "CREATE TABLE %s(name STRING) USING delta TBLPROPERTIES(__FAKE_PATH__='%s')",
-                      fullTableName2, location2));
-            })
-        .hasMessageContaining("not support managed table");
+    session.sql(String.format("CREATE TABLE %s(name STRING) USING delta", fullTableName2));
+    assertTrue(session.catalog().tableExists(fullTableName2));
+    TableInfo tableInfo2 = tableOperations.getTable(fullTableName2);
+    // By default, Delta tables do not store schema in the catalog.
+    assertTrue(tableInfo2.getColumns().isEmpty());
+    assertTrue(session.table(fullTableName2).collectAsList().isEmpty());
+    StructType schema2 = session.table(fullTableName2).schema();
+    assertEquals("name", schema2.apply(0).name());
+    assertEquals(DataTypes.StringType, schema2.apply(0).dataType());
 
     session.close();
   }
