@@ -1,22 +1,14 @@
 import React from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import DetailsLayout from '../components/layouts/DetailsLayout';
-import { Flex, Tooltip, Typography } from 'antd';
-import {
-  CheckCircleOutlined,
-  CloseCircleOutlined,
-  DeploymentUnitOutlined,
-  MinusCircleOutlined,
-} from '@ant-design/icons';
-import {
-  ModelVersionStatus,
-  useGetModel,
-  useListModelVersions,
-} from '../hooks/models';
+import { Flex, Typography } from 'antd';
+import { DeploymentUnitOutlined } from '@ant-design/icons';
+import { useGetModel, useListModelVersions } from '../hooks/models';
 import ModelSidebar from '../components/models/ModelSidebar';
 import { formatTimestamp } from '../utils/formatTimestamp';
 import ListLayout from '../components/layouts/ListLayout';
 import ModelVersionStatusDisplay from '../components/models/ModelVersionStatusDisplay';
+import ModelActionsDropdown from '../components/models/ModelActionsDropdown';
 
 export default function ModelDetails() {
   const { catalog, schema, model } = useParams();
@@ -40,6 +32,12 @@ export default function ModelDetails() {
           <Typography.Title level={3}>
             <DeploymentUnitOutlined /> {model}
           </Typography.Title>
+          <ModelActionsDropdown
+            catalog={catalog}
+            schema={schema}
+            model={model}
+            hasExistingVersions={Boolean(versionData?.model_versions?.length)}
+          />
         </Flex>
       }
       breadcrumbs={[
