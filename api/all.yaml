@@ -1122,7 +1122,7 @@ paths:
       tags:
         - Metastores
       operationId: summary
-      summary: Get the summary of a metastore
+      summary: Get a metastore summary
       description: |
         Gets information about a metastore. The summary includes the metastore id, name, creation time and update time.
       responses:
@@ -2300,10 +2300,10 @@ components:
       type: object
       properties:
         metastore_id:
-          description: Unique identifier for the metastore.
+          description: Unique identifier of metastore.
           type: string
         name:
-          description: User-specified name of the metastore.
+          description: The user-specified name of the metastore.
           type: string
         created_at:
           description: Time at which this metastore was created, in epoch milliseconds.
