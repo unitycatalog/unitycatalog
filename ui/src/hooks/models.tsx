@@ -1,4 +1,9 @@
-import { useQuery, UseQueryOptions } from '@tanstack/react-query';
+import {
+  useMutation,
+  useQuery,
+  useQueryClient,
+  UseQueryOptions,
+} from '@tanstack/react-query';
 import apiClient from '../context/client';
 
 export interface ModelInterface {
@@ -135,6 +140,90 @@ export function useGetModelVersion({
       return apiClient
         .get(`/models/${fullModelName}/versions/${version}`)
         .then((response) => response.data);
+    },
+  });
+}
+
+export interface DeleteModelVersionMutationParams
+  extends Pick<
+    ModelVersionInterface,
+    'catalog_name' | 'schema_name' | 'model_name' | 'version'
+  > {}
+
+interface DeleteModelVersionParams {
+  catalog: string;
+  schema: string;
+  model: string;
+  version: number;
+}
+
+// Delete a model version
+export function useDeleteModelVersion({
+  catalog,
+  schema,
+  model,
+  version,
+}: DeleteModelVersionParams) {
+  const queryClient = useQueryClient();
+
+  return useMutation<void, Error, DeleteModelVersionMutationParams>({
+    mutationFn: async ({
+      catalog_name,
+      schema_name,
+      model_name,
+      version,
+    }: DeleteModelVersionMutationParams) => {
+      const fullName = [catalog_name, schema_name, model_name].join('.');
+      return apiClient
+        .delete(`/models/${fullName}/versions/${version}`)
+        .then((response) => response.data)
+        .catch((e) => {
+          throw new Error(
+            e.response?.data?.message || 'Failed to delete model version',
+          );
+        });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({
+        queryKey: ['listModelVersions', catalog, schema, model],
+      });
+    },
+  });
+}
+
+export interface DeleteModelMutationParams
+  extends Pick<ModelInterface, 'catalog_name' | 'schema_name' | 'name'> {}
+
+interface DeleteModelParams {
+  catalog: string;
+  schema: string;
+  model: string;
+}
+
+// Delete a model
+export function useDeleteModel({ catalog, schema, model }: DeleteModelParams) {
+  const queryClient = useQueryClient();
+
+  return useMutation<void, Error, DeleteModelMutationParams>({
+    mutationFn: async ({
+      catalog_name,
+      schema_name,
+      name,
+    }: DeleteModelMutationParams) => {
+      const fullName = [catalog_name, schema_name, name].join('.');
+      return apiClient
+        .delete(`/models/${fullName}`)
+        .then((response) => response.data)
+        .catch((e) => {
+          throw new Error(
+            e.response?.data?.message || 'Failed to delete model',
+          );
+        });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({
+        queryKey: ['listModels', catalog, schema],
+      });
     },
   });
 }

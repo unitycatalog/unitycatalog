@@ -1,9 +1,9 @@
-# UpdateModelVersion
+# PermissionsList
 ## Properties
 
 | Name | Type | Description | Notes |
 |------------ | ------------- | ------------- | -------------|
-| **comment** | **String** | User-provided free-form text description. | [optional] [default to null] |
+| **privilege\_assignments** | [**List**](PrivilegeAssignment.md) | The privileges assigned to each principal. | [default to null] |
 
 [[Back to Model list]](../README.md#documentation-for-models) [[Back to API list]](../README.md#documentation-for-api-endpoints) [[Back to README]](../README.md)
 

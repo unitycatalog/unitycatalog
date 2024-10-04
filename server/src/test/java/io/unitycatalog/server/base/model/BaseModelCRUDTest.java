@@ -125,7 +125,7 @@ public abstract class BaseModelCRUDTest extends BaseCRUDTest {
     // Update model name without updating comment
     System.out.println("Testing update model: changing name..");
     UpdateRegisteredModel updateRegisteredModel =
-        new UpdateRegisteredModel().newName(MODEL_NEW_NAME).fullName(MODEL_FULL_NAME);
+        new UpdateRegisteredModel().newName(MODEL_NEW_NAME);
     RegisteredModelInfo updatedRegisteredModelInfo =
         modelOperations.updateRegisteredModel(MODEL_FULL_NAME, updateRegisteredModel);
     assertThat(updatedRegisteredModelInfo.getId()).isEqualTo(rmInfo.getId());
@@ -139,8 +139,7 @@ public abstract class BaseModelCRUDTest extends BaseCRUDTest {
 
     // Update model comment without updating name
     System.out.println("Testing update model: changing comment..");
-    UpdateRegisteredModel updateModel2 =
-        new UpdateRegisteredModel().comment(MODEL_NEW_COMMENT).fullName(MODEL_NEW_FULL_NAME);
+    UpdateRegisteredModel updateModel2 = new UpdateRegisteredModel().comment(MODEL_NEW_COMMENT);
     RegisteredModelInfo updatedRegisteredModelInfo2 =
         modelOperations.updateRegisteredModel(MODEL_NEW_FULL_NAME, updateModel2);
     assertThat(updatedRegisteredModelInfo.getId()).isEqualTo(updatedRegisteredModelInfo.getId());
@@ -272,8 +271,7 @@ public abstract class BaseModelCRUDTest extends BaseCRUDTest {
 
     // Update model version comment
     System.out.println("Testing update model version comment...");
-    UpdateModelVersion updateModelVersion =
-        new UpdateModelVersion().comment(MODEL_NEW_COMMENT).fullName(MODEL_FULL_NAME).version(3L);
+    UpdateModelVersion updateModelVersion = new UpdateModelVersion().comment(MODEL_NEW_COMMENT);
     ModelVersionInfo updatedModelVersionInfo =
         modelOperations.updateModelVersion(MODEL_FULL_NAME, 3L, updateModelVersion);
     assertThat(updatedModelVersionInfo.getCatalogName()).isEqualTo(mvInfo3.getCatalogName());
