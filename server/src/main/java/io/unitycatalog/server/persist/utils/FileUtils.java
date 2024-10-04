@@ -29,7 +29,7 @@ public class FileUtils {
 
   public static String createTableDirectory(String tableId) {
     URI standardURI = URI.create(toStandardizedURIString(getStorageRoot() + "/tables/" + tableId));
-    return createDirectory(standardURI).getPath();
+    return toStandardizedURIString(createDirectory(standardURI).toString());
   }
 
   public static boolean fileExists(FileIO fileIO, URI fileUri) {

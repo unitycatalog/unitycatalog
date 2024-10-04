@@ -6,6 +6,7 @@ import io.unitycatalog.client.model.{ColumnInfo, ColumnTypeName, CreateSchema, C
 
 import java.net.URI
 import java.util
+import java.util.{HashMap => JMap}
 import org.apache.hadoop.fs.Path
 import org.apache.hadoop.fs.azurebfs.constants.ConfigurationKeys.{FS_AZURE_ACCOUNT_AUTH_TYPE_PROPERTY_NAME, FS_AZURE_ACCOUNT_IS_HNS_ENABLED, FS_AZURE_SAS_TOKEN_PROVIDER_TYPE}
 import org.apache.spark.internal.Logging
@@ -92,7 +93,7 @@ class UCSingleCatalog extends TableCatalog with SupportsNamespaces with Logging 
     // If both EXTERNAL and LOCATION are not specified in the CREATE TABLE command, and the table is
     // not a path table like parquet.`/file/path`, we generate the UC-managed table location here.
     if (!hasExternalClause && !hasLocationClause && !isPathTable) {
-      val newProps = new util.HashMap[String, String]
+      val newProps = new JMap[String, String]
       newProps.putAll(properties)
       val createStagingTable = new CreateStagingTable()
       createStagingTable.setName(ident.name())
@@ -108,7 +109,7 @@ class UCSingleCatalog extends TableCatalog with SupportsNamespaces with Logging 
     } else if (hasLocationClause) {
       val location = properties.get(TableCatalog.PROP_LOCATION)
       assert(location != null)
-      val newProps = new util.HashMap[String, String]
+      val newProps = new JMap[String, String]
       newProps.putAll(properties)
       UCSingleCatalog.setCredentialProps(newProps, temporaryCredentialsApi, location)
       delegate.createTable(ident, columns, partitions, newProps)
@@ -197,7 +198,7 @@ object UCSingleCatalog {
   }
 
   def setCredentialProps(
-      props: util.HashMap[String, String],
+      props: JMap[String, String],
       temporaryCredentialsApi: TemporaryCredentialsApi,
       location: String): Unit = {
     val cred = temporaryCredentialsApi.generateTemporaryPathCredentials(
@@ -322,13 +323,11 @@ private class UCProxy(
     val hasExternalClause = properties.containsKey(TableCatalog.PROP_EXTERNAL)
     val storageLocation = properties.get(TableCatalog.PROP_LOCATION)
     assert(storageLocation != null, "location should either be user specified or system generated.")
-    val isManagedLocation = Option(properties.get(TableCatalog.PROP_IS_MANAGED_LOCATION))
-      .exists(_.equalsIgnoreCase("true"))
-    val format: String = properties.get("provider")
+    val isManagedLocation = Option(properties.get(TableCatalog.PROP_IS_MANAGED_LOCATION)).exists(_.toBoolean)
+    val format = properties.get("provider")
     if (isManagedLocation) {
       assert(!hasExternalClause, "location is only generated for managed tables.")
-      // Unity Catalog only supports managed tables now.
-      if (!format.equalsIgnoreCase("delta")) {
+      if (!format.equalsIgnoreCase(DataSourceFormat.DELTA.name)) {
         throw new ApiException("Unity Catalog does not support non-delta managed table.")
       }
       createTable.setTableType(TableType.MANAGED)

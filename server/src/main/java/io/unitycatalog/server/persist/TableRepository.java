@@ -175,7 +175,7 @@ public class TableRepository {
           case MANAGED -> {
             if (tableInfo.getDataSourceFormat() == DataSourceFormat.DELTA) {
               // Find and commit staging table with the same staging location
-              StagingTableDAO stagingTableDAO = STAGING_TABLE_REPOSITORY.commitStagingTable(session, createTable.getStorageLocation());
+              StagingTableDAO stagingTableDAO = STAGING_TABLE_REPOSITORY.commitStagingTable(session, tableInfo.getStorageLocation());
               tableId = stagingTableDAO.getId().toString();
               tableInfoDAO.setUrl(tableInfo.getStorageLocation());
             } else {
