@@ -37,8 +37,7 @@ tags:
       In Unity Catalog, data is secure by default. Access can be granted.
   - name: Metastores
     description: |
-      A metastore is the top-level container of objects in Unity Catalog. It stores data assets (tables and views) and the permissions that govern access to them. 
-      Each metastore is configured with a root storage location. This storage location is used for metadata and managed tables data.
+      A metastore is the top-level container of objects in Unity Catalog that stores all UC assets.
 paths:
   /catalogs:
     post:
@@ -1125,7 +1124,7 @@ paths:
       operationId: summary
       summary: Get a metastore summary
       description: |
-        Gets information about a metastore. This summary includes the storage credential, the cloud vendor, the cloud region, and the global metastore ID.
+        Gets information about a metastore. The summary includes the metastore id, name, creation time and update time.
       responses:
         '200':
           description: The metastore summary was successfully retrieved.
@@ -2102,9 +2101,6 @@ components:
     UpdateRegisteredModel:
       type: object
       properties:
-        full_name:
-          description: The full name of the registered model to update.
-          type: string
         comment:
           description: User-provided free-form text description.
           type: string
@@ -2152,13 +2148,6 @@ components:
     UpdateModelVersion:
       type: object
       properties:
-        full_name:
-          description: The full name of the registered model to update.
-          type: string
-        version:
-          description: Version number of the version to update.
-          type: integer
-          format:  int64
         comment:
           description: User-provided free-form text description.
           type: string
@@ -2311,10 +2300,10 @@ components:
       type: object
       properties:
         metastore_id:
-          description: Unique identifier for the metastore.
+          description: Unique identifier of metastore.
           type: string
         name:
-          description: User-specified name of the metastore.
+          description: The user-specified name of the metastore.
           type: string
         created_at:
           description: Time at which this metastore was created, in epoch milliseconds.

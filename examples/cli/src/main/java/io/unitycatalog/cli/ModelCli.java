@@ -104,7 +104,6 @@ public class ModelCli {
     }
     UpdateRegisteredModel updateRegisteredModel =
         objectMapper.readValue(json.toString(), UpdateRegisteredModel.class);
-    updateRegisteredModel.setFullName(registeredModelFullName);
     return objectWriter.writeValueAsString(
         registeredModelsApi.updateRegisteredModel(registeredModelFullName, updateRegisteredModel));
   }

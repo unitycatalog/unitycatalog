@@ -16,7 +16,9 @@ All URIs are relative to *http://localhost:8080/api/2.1/unity-catalog*
 *FunctionsApi* | [**deleteFunction**](Apis/FunctionsApi.md#deletefunction) | **DELETE** /functions/{name} | Delete a function |
 *FunctionsApi* | [**getFunction**](Apis/FunctionsApi.md#getfunction) | **GET** /functions/{name} | Get a function |
 *FunctionsApi* | [**listFunctions**](Apis/FunctionsApi.md#listfunctions) | **GET** /functions | List functions |
-| *MetastoresApi* | [**summary**](Apis/MetastoresApi.md#summary) | **GET** /metastore_summary | Get a metastore summary |
+| *GrantsApi* | [**get**](Apis/GrantsApi.md#get) | **GET** /permissions/{securable_type}/{full_name} | Get permissions |
+*GrantsApi* | [**update**](Apis/GrantsApi.md#update) | **PATCH** /permissions/{securable_type}/{full_name} | Update a permission |
+| *MetastoresApi* | [**summary**](Apis/MetastoresApi.md#summary) | **GET** /metastore_summary | Get the summary of a metastore |
 | *ModelVersionsApi* | [**createModelVersion**](Apis/ModelVersionsApi.md#createmodelversion) | **POST** /models/versions | Create a model version.  |
 *ModelVersionsApi* | [**deleteModelVersion**](Apis/ModelVersionsApi.md#deletemodelversion) | **DELETE** /models/{full_name}/versions/{version} | Delete a model version |
 *ModelVersionsApi* | [**finalizeModelVersion**](Apis/ModelVersionsApi.md#finalizemodelversion) | **PATCH** /models/{full_name}/versions/{version}/finalize | Finalize a model version |
@@ -91,8 +93,14 @@ All URIs are relative to *http://localhost:8080/api/2.1/unity-catalog*
  - [ModelVersionOperation](./Models/ModelVersionOperation.md)
  - [ModelVersionStatus](./Models/ModelVersionStatus.md)
  - [PathOperation](./Models/PathOperation.md)
+ - [PermissionsChange](./Models/PermissionsChange.md)
+ - [PermissionsList](./Models/PermissionsList.md)
+ - [PrincipalType](./Models/PrincipalType.md)
+ - [Privilege](./Models/Privilege.md)
+ - [PrivilegeAssignment](./Models/PrivilegeAssignment.md)
  - [RegisteredModelInfo](./Models/RegisteredModelInfo.md)
  - [SchemaInfo](./Models/SchemaInfo.md)
+ - [SecurableType](./Models/SecurableType.md)
  - [TableDependency](./Models/TableDependency.md)
  - [TableInfo](./Models/TableInfo.md)
  - [TableOperation](./Models/TableOperation.md)
@@ -100,6 +108,7 @@ All URIs are relative to *http://localhost:8080/api/2.1/unity-catalog*
  - [TemporaryCredentials](./Models/TemporaryCredentials.md)
  - [UpdateCatalog](./Models/UpdateCatalog.md)
  - [UpdateModelVersion](./Models/UpdateModelVersion.md)
+ - [UpdatePermissions](./Models/UpdatePermissions.md)
  - [UpdateRegisteredModel](./Models/UpdateRegisteredModel.md)
  - [UpdateSchema](./Models/UpdateSchema.md)
  - [UpdateVolumeRequestContent](./Models/UpdateVolumeRequestContent.md)

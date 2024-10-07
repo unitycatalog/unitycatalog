@@ -4,16 +4,16 @@ All URIs are relative to *http://localhost:8080/api/2.1/unity-catalog*
 
 | Method | HTTP request | Description |
 |------------- | ------------- | -------------|
-| [**summary**](MetastoresApi.md#summary) | **GET** /metastore_summary | Get a metastore summary |
+| [**summary**](MetastoresApi.md#summary) | **GET** /metastore_summary | Get the summary of a metastore |
 
 
 <a name="summary"></a>
 # **summary**
 > GetMetastoreSummaryResponse summary()
 
-Get a metastore summary
+Get the summary of a metastore
 
-    Gets information about a metastore. This summary includes the storage credential, the cloud vendor, the cloud region, and the global metastore ID. 
+    Gets information about a metastore. The summary includes the metastore id, name, creation time and update time. 
 
 ### Parameters
 This endpoint does not need any parameter.
