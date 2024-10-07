@@ -88,6 +88,7 @@ public class PermissionService {
     return getAuthorization(TABLE, name);
   }
 
+  @Get("/function/{name}")
   public HttpResponse getFunctionAuthorization(
       @Param("name") String name) {
     return getAuthorization(FUNCTION, name);

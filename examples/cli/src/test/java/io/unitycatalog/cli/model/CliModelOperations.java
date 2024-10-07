@@ -119,7 +119,9 @@ public class CliModelOperations implements ModelOperations {
                 "--schema",
                 createModelVersion.getSchemaName(),
                 "--catalog",
-                createModelVersion.getCatalogName()));
+                createModelVersion.getCatalogName(),
+                "--source",
+                createModelVersion.getSource()));
     if (createModelVersion.getComment() != null) {
       argsList.add("--comment");
       argsList.add(createModelVersion.getComment());
@@ -127,10 +129,6 @@ public class CliModelOperations implements ModelOperations {
     if (createModelVersion.getRunId() != null) {
       argsList.add("--run_id");
       argsList.add(createModelVersion.getRunId());
-    }
-    if (createModelVersion.getSource() != null) {
-      argsList.add("--source");
-      argsList.add(createModelVersion.getSource());
     }
     String[] args = addServerAndAuthParams(argsList, config);
     JsonNode modelVersionInfoJson = executeCLICommand(args);

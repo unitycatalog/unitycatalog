@@ -125,7 +125,9 @@ public class CliAccessControlModelCrudTest extends CliAccessControlBaseCrudTest 
                   "--schema",
                   "sch_pr1",
                   "--name",
-                  "mod_pr1"));
+                  "mod_pr1",
+                  "--source",
+                  "model_source"));
 
           add(TokenStep.of(SUCCEED, "principal-2@localhost"));
           add(
@@ -138,7 +140,9 @@ public class CliAccessControlModelCrudTest extends CliAccessControlBaseCrudTest 
                   "--schema",
                   "sch_pr1",
                   "--name",
-                  "mod_pr1"));
+                  "mod_pr1",
+                  "--source",
+                  "model_source"));
 
           add(TokenStep.of(SUCCEED, "principal-1@localhost"));
           add(
