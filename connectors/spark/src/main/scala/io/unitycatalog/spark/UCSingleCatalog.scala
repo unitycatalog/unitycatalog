@@ -104,14 +104,24 @@ class UCSingleCatalog extends TableCatalog with SupportsNamespaces with Logging 
       // `PROP_IS_MANAGED_LOCATION` is used to indicate that the table location is not
       // user-specified but system-generated, which is exactly the case here.
       newProps.put(TableCatalog.PROP_IS_MANAGED_LOCATION, "true")
-      UCSingleCatalog.setCredentialProps(newProps, temporaryCredentialsApi, stagingTableInfo.getStagingLocation)
+      val temporaryCredentials = temporaryCredentialsApi.generateTemporaryTableCredentials(
+        new GenerateTemporaryTableCredential()
+          .tableId(stagingTableInfo.getId)
+          .operation(TableOperation.READ_WRITE)
+      )
+      UCSingleCatalog.setCredentialProps(newProps, temporaryCredentials, stagingTableInfo.getStagingLocation)
       delegate.createTable(ident, columns, partitions, newProps)
     } else if (hasLocationClause) {
       val location = properties.get(TableCatalog.PROP_LOCATION)
       assert(location != null)
       val newProps = new JMap[String, String]
       newProps.putAll(properties)
-      UCSingleCatalog.setCredentialProps(newProps, temporaryCredentialsApi, location)
+      val temporaryCredentials = temporaryCredentialsApi.generateTemporaryPathCredentials(
+        new GenerateTemporaryPathCredential()
+          .url(location)
+          .operation(PathOperation.PATH_CREATE_TABLE)
+      )
+      UCSingleCatalog.setCredentialProps(newProps, temporaryCredentials, location)
       delegate.createTable(ident, columns, partitions, newProps)
     } else {
       // TODO: for path-based tables, Spark should generate a location property using the qualified
@@ -199,15 +209,10 @@ object UCSingleCatalog {
 
   def setCredentialProps(
       props: JMap[String, String],
-      temporaryCredentialsApi: TemporaryCredentialsApi,
+      temporaryCredentials: TemporaryCredentials,
       location: String): Unit = {
-    val cred = temporaryCredentialsApi.generateTemporaryPathCredentials(
-      new GenerateTemporaryPathCredential()
-        .url(location)
-        .operation(PathOperation.PATH_CREATE_TABLE)
-    )
     val credentialProps =
-      UCSingleCatalog.generateCredentialProps(CatalogUtils.stringToURI(location).getScheme, cred)
+      UCSingleCatalog.generateCredentialProps(CatalogUtils.stringToURI(location).getScheme, temporaryCredentials)
     props.putAll(credentialProps.asJava)
     // TODO: Delta requires the options to be set twice in the properties, with and without the
     //       `option.` prefix. We should revisit this in Delta.
