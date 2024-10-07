@@ -1,6 +1,5 @@
 package io.unitycatalog.server.service;
 
-import static com.unboundid.scim2.common.exceptions.BadRequestException.INVALID_SYNTAX;
 import static io.unitycatalog.server.model.SecurableType.METASTORE;
 
 import com.auth0.jwt.interfaces.Claim;
@@ -231,11 +230,10 @@ public class Scim2UserService {
   private HttpResponse handleExceptionDuringPatch(Exception ex) {
     if (ex instanceof ScimException) {
       throw new Scim2RuntimeException((ScimException) ex);
-    } else if (ex instanceof JsonProcessingException) {
+    } else   {
       throw new Scim2RuntimeException(
-          new ServerErrorException("Problem with patch operation", INVALID_SYNTAX, ex));
+          new ServerErrorException("Problem with patch operation",ex.getMessage(), ex));
     }
-    return HttpResponse.of(HttpStatus.INTERNAL_SERVER_ERROR);
   }
 
   public UserResource asUserResource(User user) {
