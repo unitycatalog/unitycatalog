@@ -37,8 +37,8 @@ export CATALOG_NAME=<my-catalog-name>
 ```
 
 ## Run the tests
+By default, tests will run against the local filesystem. To run against cloud storage, set the following *optional* environment variables:
 
-Access to these locations should be configured in the UC server:
 ```shell
 export S3_BASE_LOCATION=s3://<my-bucket>/<optional>/<path>/
 export GS_BASE_LOCATION=gs://<my-bucket>/<optional>/<path>/
