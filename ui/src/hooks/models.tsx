@@ -273,3 +273,36 @@ export function useUpdateModelVersion({
     },
   });
 }
+
+// update model
+interface UpdateModelParams {
+  catalog: string;
+  schema: string;
+  model: string;
+}
+export interface UpdateModelMutationParams
+  extends Pick<ModelVersionInterface, 'comment'> {}
+
+export function useUpdateModel({ catalog, schema, model }: UpdateModelParams) {
+  const queryClient = useQueryClient();
+
+  return useMutation<ModelInterface, Error, UpdateModelMutationParams>({
+    mutationFn: async (params: UpdateModelMutationParams) => {
+      const fullName = [catalog, schema, model].join('.');
+
+      return apiClient
+        .patch(`/models/${fullName}`, JSON.stringify(params))
+        .then((response) => response.data)
+        .catch((e) => {
+          throw new Error(
+            e.response?.data?.message || 'Failed to update model',
+          );
+        });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({
+        queryKey: ['getModel', catalog, schema, model],
+      });
+    },
+  });
+}
