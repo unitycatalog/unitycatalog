@@ -24,7 +24,8 @@ public class FileUtils {
   private FileUtils() {}
 
   private static String getStorageRoot() {
-    return properties.getProperty("storageRoot");
+    // Use local tmp directory as default storage root
+    return properties.getProperty("storageRoot", "file:/tmp");
   }
 
   public static String createTableDirectory(String tableId) {

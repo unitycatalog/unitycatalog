@@ -104,8 +104,8 @@ public class TableCli {
       handleTableStorageLocation(createTable.getStorageLocation(), columnInfoList);
     } else {
       // handle delta managed tables
-      String stagingTableId = null;
-      String stagingLocation = null;
+      String stagingTableId;
+      String stagingLocation;
       // Create staging table if format is delta
       if (DataSourceFormat.DELTA.name().equals(format.toUpperCase())) {
         CreateStagingTable createStagingTable =
@@ -122,10 +122,10 @@ public class TableCli {
         }
         AwsCredentials awsCredentials =
             temporaryCredentialsApi
-                .generateTemporaryPathCredentials(
-                    new GenerateTemporaryPathCredential()
-                        .url(stagingLocation)
-                        .operation(PathOperation.PATH_CREATE_TABLE))
+                .generateTemporaryTableCredentials(
+                    new GenerateTemporaryTableCredential()
+                        .tableId(stagingTableId)
+                        .operation(TableOperation.READ_WRITE))
                 .getAwsTempCredentials();
         DeltaKernelUtils.createDeltaTable(stagingLocation, columnInfoList, awsCredentials);
         createTable.setStorageLocation(stagingLocation);
