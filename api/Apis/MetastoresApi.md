@@ -4,14 +4,14 @@ All URIs are relative to *http://localhost:8080/api/2.1/unity-catalog*
 
 | Method | HTTP request | Description |
 |------------- | ------------- | -------------|
-| [**summary**](MetastoresApi.md#summary) | **GET** /metastore_summary | Get the summary of a metastore |
+| [**summary**](MetastoresApi.md#summary) | **GET** /metastore_summary | Get a metastore summary |
 
 
 <a name="summary"></a>
 # **summary**
 > GetMetastoreSummaryResponse summary()
 
-Get the summary of a metastore
+Get a metastore summary
 
     Gets information about a metastore. The summary includes the metastore id, name, creation time and update time. 
 

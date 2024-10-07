@@ -3,8 +3,8 @@
 
 | Name | Type | Description | Notes |
 |------------ | ------------- | ------------- | -------------|
-| **metastore\_id** | **String** | Unique identifier for the metastore. | [optional] [default to null] |
-| **name** | **String** | User-specified name of the metastore. | [optional] [default to null] |
+| **metastore\_id** | **String** | Unique identifier of metastore. | [optional] [default to null] |
+| **name** | **String** | The user-specified name of the metastore. | [optional] [default to null] |
 | **created\_at** | **Long** | Time at which this metastore was created, in epoch milliseconds. | [optional] [default to null] |
 | **updated\_at** | **Long** | Time at which this metastore was last modified, in epoch milliseconds. | [optional] [default to null] |
 
