@@ -227,3 +227,49 @@ export function useDeleteModel({ catalog, schema, model }: DeleteModelParams) {
     },
   });
 }
+
+// update model version
+interface UpdateModelVersionParams {
+  catalog: string;
+  schema: string;
+  model: string;
+  version: number;
+}
+export interface UpdateModelVersionMutationParams
+  extends Pick<ModelVersionInterface, 'comment'> {}
+
+export function useUpdateModelVersion({
+  catalog,
+  schema,
+  model,
+  version,
+}: UpdateModelVersionParams) {
+  const queryClient = useQueryClient();
+
+  return useMutation<
+    ModelVersionInterface,
+    Error,
+    UpdateModelVersionMutationParams
+  >({
+    mutationFn: async (params: UpdateModelVersionMutationParams) => {
+      const fullName = [catalog, schema, model].join('.');
+
+      return apiClient
+        .patch(
+          `/models/${fullName}/versions/${version}`,
+          JSON.stringify(params),
+        )
+        .then((response) => response.data)
+        .catch((e) => {
+          throw new Error(
+            e.response?.data?.message || 'Failed to update model version',
+          );
+        });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({
+        queryKey: ['getVersion', catalog, schema, model, version],
+      });
+    },
+  });
+}
