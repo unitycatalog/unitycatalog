@@ -44,8 +44,6 @@ lazy val commonSettings = Seq(
     "org.apache.logging.log4j" % "log4j-api" % "2.23.1"
   ),
   resolvers += Resolver.mavenLocal,
-  // TODO: remove the following resolver once the official releases are out
-  resolvers += "Delta 3.2.1 Staging" at "https://oss.sonatype.org/content/repositories/iodelta-1168",
   autoScalaLibrary := false,
   crossPaths := false,  // No scala cross building
   assembly / assemblyMergeStrategy := {
@@ -114,7 +112,7 @@ def javaCheckstyleSettings(configLocation: File) = Seq(
 
 // enforce java code style
 def javafmtCheckSettings() = Seq(
-  (Compile / compile) := ((Compile / compile) dependsOn (Compile / javafmtCheckAll)).value
+  (Compile / compile) := ((Compile / compile) dependsOn (Compile / javafmtAll)).value
 )
 
 lazy val controlApi = (project in file("target/control/java"))

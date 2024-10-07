@@ -2083,9 +2083,6 @@ components:
     UpdateRegisteredModel:
       type: object
       properties:
-        full_name:
-          description: The full name of the registered model to update.
-          type: string
         comment:
           description: User-provided free-form text description.
           type: string
@@ -2130,16 +2127,10 @@ components:
         - model_name
         - catalog_name
         - schema_name
+        - source
     UpdateModelVersion:
       type: object
       properties:
-        full_name:
-          description: The full name of the registered model to update.
-          type: string
-        version:
-          description: Version number of the version to update.
-          type: integer
-          format:  int64
         comment:
           description: User-provided free-form text description.
           type: string
@@ -2201,7 +2192,6 @@ components:
         - PATH_READ
         - PATH_READ_WRITE
         - PATH_CREATE_TABLE
-        - PATH_REFRESH
       type: string
     PrincipalType:
       type: string

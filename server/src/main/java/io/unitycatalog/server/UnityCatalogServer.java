@@ -138,11 +138,11 @@ public class UnityCatalogServer {
     ModelService modelService = new ModelService(authorizer);
     // TODO: combine these into a single service in a follow-up PR
     TemporaryTableCredentialsService temporaryTableCredentialsService =
-        new TemporaryTableCredentialsService(credentialOperations);
+        new TemporaryTableCredentialsService(authorizer, credentialOperations);
     TemporaryVolumeCredentialsService temporaryVolumeCredentialsService =
-        new TemporaryVolumeCredentialsService(credentialOperations);
+        new TemporaryVolumeCredentialsService(authorizer, credentialOperations);
     TemporaryModelVersionCredentialsService temporaryModelVersionCredentialsService =
-        new TemporaryModelVersionCredentialsService(credentialOperations);
+        new TemporaryModelVersionCredentialsService(authorizer, credentialOperations);
     TemporaryPathCredentialsService temporaryPathCredentialsService =
         new TemporaryPathCredentialsService(credentialOperations);
     sb.service("/", (ctx, req) -> HttpResponse.of("Hello, Unity Catalog!"))
@@ -197,10 +197,6 @@ public class UnityCatalogServer {
 
       AuthDecorator authDecorator = new AuthDecorator();
       sb.routeDecorator().pathPrefix(basePath).build(authDecorator);
-      sb.routeDecorator()
-          .pathPrefix(controlPath)
-          .exclude(controlPath + "auth/tokens")
-          .build(authDecorator);
       sb.routeDecorator()
           .pathPrefix(controlPath)
           .exclude(controlPath + "auth/tokens")
