@@ -234,8 +234,12 @@ public class CliUtils {
                   put(
                       CREATE,
                       new CliOptions(
-                          List.of(CliParams.CATALOG_NAME, CliParams.SCHEMA_NAME, CliParams.NAME),
-                          List.of(CliParams.COMMENT, CliParams.RUN_ID, CliParams.SOURCE)));
+                          List.of(
+                              CliParams.CATALOG_NAME,
+                              CliParams.SCHEMA_NAME,
+                              CliParams.NAME,
+                              CliParams.SOURCE),
+                          List.of(CliParams.COMMENT, CliParams.RUN_ID)));
                   put(
                       LIST,
                       new CliOptions(List.of(CliParams.FULL_NAME), List.of(CliParams.MAX_RESULTS)));

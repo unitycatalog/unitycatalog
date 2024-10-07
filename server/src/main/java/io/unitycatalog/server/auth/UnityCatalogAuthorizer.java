@@ -16,29 +16,29 @@ import java.util.UUID;
  * relationships.
  */
 public interface UnityCatalogAuthorizer {
-  public boolean grantAuthorization(UUID principal, UUID resource, Privileges action);
+  boolean grantAuthorization(UUID principal, UUID resource, Privileges action);
 
-  public boolean revokeAuthorization(UUID principal, UUID resource, Privileges action);
+  boolean revokeAuthorization(UUID principal, UUID resource, Privileges action);
 
-  public boolean clearAuthorizationsForPrincipal(UUID principal);
+  boolean clearAuthorizationsForPrincipal(UUID principal);
 
-  public boolean clearAuthorizationsForResource(UUID resource);
+  boolean clearAuthorizationsForResource(UUID resource);
 
-  public boolean addHierarchyChild(UUID parent, UUID child);
+  boolean addHierarchyChild(UUID parent, UUID child);
 
-  public boolean removeHierarchyChild(UUID parent, UUID child);
+  boolean removeHierarchyChild(UUID parent, UUID child);
 
-  public boolean removeHierarchyChildren(UUID resource);
+  boolean removeHierarchyChildren(UUID resource);
 
-  public UUID getHierarchyParent(UUID resource);
+  UUID getHierarchyParent(UUID resource);
 
-  public boolean authorize(UUID principal, UUID resource, Privileges action);
+  boolean authorize(UUID principal, UUID resource, Privileges action);
 
-  public boolean authorizeAny(UUID principal, UUID resource, Privileges... actions);
+  boolean authorizeAny(UUID principal, UUID resource, Privileges... actions);
 
-  public boolean authorizeAll(UUID principal, UUID resource, Privileges... actions);
+  boolean authorizeAll(UUID principal, UUID resource, Privileges... actions);
 
-  public List<Privileges> listAuthorizations(UUID principal, UUID resource);
+  List<Privileges> listAuthorizations(UUID principal, UUID resource);
 
-  public Map<UUID, List<Privileges>> listAuthorizations(UUID resource);
+  Map<UUID, List<Privileges>> listAuthorizations(UUID resource);
 }
