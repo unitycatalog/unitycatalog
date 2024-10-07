@@ -137,6 +137,10 @@ public class ModelService {
           @AuthorizeKey(value = REGISTERED_MODEL, key = "model_name")})
           CreateModelVersion createModelVersion) {
     assert createModelVersion != null;
+    assert createModelVersion.getModelName() != null;
+    assert createModelVersion.getCatalogName() != null;
+    assert createModelVersion.getSchemaName() != null;
+    assert createModelVersion.getSource() != null;
     ModelVersionInfo createModelVersionResponse =
         MODEL_REPOSITORY.createModelVersion(createModelVersion);
     return HttpResponse.ofJson(createModelVersionResponse);
