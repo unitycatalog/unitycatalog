@@ -22,7 +22,7 @@ import io.unitycatalog.server.exception.BaseException;
 import io.unitycatalog.server.exception.ErrorCode;
 import io.unitycatalog.server.exception.ExceptionHandlingDecorator;
 import io.unitycatalog.server.exception.GlobalExceptionHandler;
-import io.unitycatalog.server.persist.utils.ServerPropertiesUtils;
+import io.unitycatalog.server.utils.ServerProperties;
 import io.unitycatalog.server.security.SecurityConfiguration;
 import io.unitycatalog.server.security.SecurityContext;
 import io.unitycatalog.server.service.AuthDecorator;
@@ -110,13 +110,12 @@ public class UnityCatalogServer {
     // Credentials Service
     CredentialOperations credentialOperations = new CredentialOperations();
 
-    ServerPropertiesUtils serverPropertiesUtils = ServerPropertiesUtils.getInstance();
-    String authorization = serverPropertiesUtils.getProperty("server.authorization", "disable");
-    boolean enableAuthorization = authorization.equalsIgnoreCase("enable");
+    ServerProperties serverProperties = ServerProperties.getInstance();
+    boolean authorizationEnabled = serverProperties.isAuthorizationEnabled();
 
     UnityCatalogAuthorizer authorizer = null;
     try {
-      if (enableAuthorization) {
+      if (authorizationEnabled) {
         authorizer = new JCasbinAuthorizer();
         UnityAccessUtil.initializeAdmin(authorizer);
       } else {

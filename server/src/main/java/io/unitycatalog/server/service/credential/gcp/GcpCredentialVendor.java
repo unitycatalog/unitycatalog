@@ -11,7 +11,7 @@ import com.google.auth.oauth2.ServiceAccountCredentials;
 import com.google.common.base.CharMatcher;
 import io.unitycatalog.server.exception.BaseException;
 import io.unitycatalog.server.exception.ErrorCode;
-import io.unitycatalog.server.persist.utils.ServerPropertiesUtils;
+import io.unitycatalog.server.utils.ServerProperties;
 import io.unitycatalog.server.service.credential.CredentialContext;
 import java.io.IOException;
 import java.net.URI;
@@ -31,7 +31,7 @@ public class GcpCredentialVendor {
   private final Map<String, String> gcsConfigurations;
 
   public GcpCredentialVendor() {
-    this.gcsConfigurations = ServerPropertiesUtils.getInstance().getGcsConfigurations();
+    this.gcsConfigurations = ServerProperties.getInstance().getGcsConfigurations();
   }
 
   @SneakyThrows
