@@ -120,7 +120,7 @@ public class CoordinatedCommitsService {
                       .filter(
                           c ->
                               c.getCommitVersion() >= startVersion
-                                  && c.getCommitVersion() < endVersionFilter)
+                                  && c.getCommitVersion() <= endVersionFilter)
                       .map(CommitDAO::toCommitInfo)
                       .collect(Collectors.toList()))
               .latestTableVersion(commits.get(0).getCommitVersion()));

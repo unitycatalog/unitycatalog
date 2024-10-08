@@ -7,7 +7,6 @@ import io.unitycatalog.server.exception.ErrorCode;
 import io.unitycatalog.server.model.Commit;
 import io.unitycatalog.server.model.DataSourceFormat;
 import io.unitycatalog.server.model.TableInfo;
-import io.unitycatalog.server.model.TableType;
 import io.unitycatalog.server.persist.CommitRepository;
 import io.unitycatalog.server.persist.TableRepository;
 import io.unitycatalog.server.persist.dao.CommitDAO;
@@ -55,12 +54,13 @@ public class CoordinatedCommitsHandler {
     }
   }
 
-  public static void validateCommitTable(Commit commit) {
+  public static void validateTablePath(Commit commit) {
     TableInfo tableInfo = TABLE_REPOSITORY.getTableById(commit.getTableId());
-    ValidationUtils.validateEquals(
-        tableInfo.getTableType(),
-        TableType.MANAGED,
-        "Only managed tables are supported for coordinated commits");
+    // TODO: once creating managed table is enabled, uncomment the below line
+    //    ValidationUtils.validateEquals(
+    //        tableInfo.getTableType(),
+    //        TableType.MANAGED,
+    //        "Only managed tables are supported for coordinated commits");
     ValidationUtils.validateEquals(
         tableInfo.getDataSourceFormat(),
         DataSourceFormat.DELTA,
