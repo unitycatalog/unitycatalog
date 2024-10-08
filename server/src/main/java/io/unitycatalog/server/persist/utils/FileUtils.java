@@ -1,28 +1,19 @@
 package io.unitycatalog.server.persist.utils;
 
-import com.amazonaws.auth.AWSStaticCredentialsProvider;
-import com.amazonaws.auth.BasicSessionCredentials;
-import com.amazonaws.services.s3.AmazonS3;
-import com.amazonaws.services.s3.AmazonS3ClientBuilder;
-import com.amazonaws.services.s3.model.ListObjectsRequest;
-import com.amazonaws.services.s3.model.ObjectListing;
-import com.amazonaws.services.s3.model.ObjectMetadata;
-import com.amazonaws.services.s3.model.PutObjectRequest;
 import io.unitycatalog.server.exception.BaseException;
 import io.unitycatalog.server.exception.ErrorCode;
 import io.unitycatalog.server.service.credential.CredentialOperations;
 import io.unitycatalog.server.service.iceberg.FileIOFactory;
 import io.unitycatalog.server.utils.Constants;
-import java.io.ByteArrayInputStream;
-import java.net.URI;
-import java.net.URISyntaxException;
-import java.nio.file.Paths;
-
 import org.apache.iceberg.io.FileIO;
 import org.apache.iceberg.io.InputFile;
 import org.apache.iceberg.io.OutputFile;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+
+import java.net.URI;
+import java.net.URISyntaxException;
+import java.nio.file.Paths;
 
 public class FileUtils {
   private static final Logger LOGGER = LoggerFactory.getLogger(FileUtils.class);
@@ -33,11 +24,12 @@ public class FileUtils {
   private FileUtils() {}
 
   private static String getStorageRoot() {
-    return properties.getProperty("storageRoot");
+    // Use local tmp directory as default storage root
+    return properties.getProperty("storageRoot", "file:/tmp");
   }
 
-  public static String createEntityDirectory(String entityId) {
-    URI standardURI = URI.create(toStandardizedURIString(getStorageRoot() + "/" + entityId));
+  public static String createTableDirectory(String tableId) {
+    URI standardURI = URI.create(toStandardizedURIString(getStorageRoot() + "/tables/" + tableId));
     return createDirectory(standardURI).toString();
   }
 
