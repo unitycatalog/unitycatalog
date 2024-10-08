@@ -13,7 +13,7 @@ All URIs are relative to *http://localhost:8080/api/2.1/unity-catalog*
 
 Get a metastore summary
 
-    Gets information about a metastore. The summary includes the metastore id, name, creation time and update time. 
+    Gets information about a metastore. 
 
 ### Parameters
 This endpoint does not need any parameter.
