@@ -2394,6 +2394,12 @@ components:
     Metadata:
       description: Represents a Delta metadata action (see https://github.com/delta-io/delta/blob/master/PROTOCOL.md#change-metadata for more information).
       properties:
+        name:
+          type: string
+          description: User-provided identifier for this table. (should be set if changed).
+        description:
+          type: string
+          description: User-provided description for this table. (should be set if changed).
         delta_table_id:
           type: string
           description: The table ID (this is the internal table ID created by Delta).

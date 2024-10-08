@@ -12,7 +12,7 @@ import org.hibernate.annotations.UuidGenerator;
 @Table(
     name = "uc_commits",
     uniqueConstraints = {
-      @UniqueConstraint(columnNames = {"metastore_id", "table_id", "commit_version"})
+      @UniqueConstraint(columnNames = {"table_id", "commit_version"})
     })
 // Lombok
 @Getter
@@ -44,7 +44,7 @@ public class CommitDAO {
   @Column(name = "commit_timestamp", nullable = false)
   private Date commitTimestamp;
 
-  @Column(name = "is_backfilled_latest_commit")
+  @Column(name = "is_backfilled_latest_commit", nullable = false)
   private Boolean isBackfilledLatestCommit;
 
   @Column(name = "is_disown_commit")
