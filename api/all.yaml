@@ -2145,6 +2145,7 @@ components:
         - model_name
         - catalog_name
         - schema_name
+        - source
     UpdateModelVersion:
       type: object
       properties:

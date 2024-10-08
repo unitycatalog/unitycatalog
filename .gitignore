@@ -27,3 +27,19 @@ connectors/spark/etc/conf/certs.json
 connectors/spark/etc/conf/*.txt
 connectors/spark/etc/conf/*.der
 .java-version
+
+# test
+.pytest_cache/
+
+# Byte-compiled files
+__pycache__
+*.pyc
+
+# Editor files
+*.vscode
+.metals/
+
+# packaging
+dist/
+*.egg-info/
+Pipfile

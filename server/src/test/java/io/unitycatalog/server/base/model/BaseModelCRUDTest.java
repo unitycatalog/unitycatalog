@@ -243,6 +243,14 @@ public abstract class BaseModelCRUDTest extends BaseCRUDTest {
     ModelVersionInfo mvInfo2 = modelOperations.createModelVersion(createMv);
     assertThat(mvInfo2.getVersion()).isEqualTo(2L);
 
+    // Verify that null source triggers an exception on create
+    System.out.println("Testing that null source on create triggers exception...");
+    createMv.setSource(null);
+    assertThatThrownBy(() -> modelOperations.createModelVersion(createMv))
+        .isInstanceOf(Exception.class);
+    // replace the source in the createMv
+    createMv.setSource(MV_SOURCE);
+
     // Test get a model version
     System.out.println("Testing get model version...");
     ModelVersionInfo mvInfo2Again = modelOperations.getModelVersion(MODEL_FULL_NAME, 2L);
