@@ -20,6 +20,7 @@ public class MetastoreRepository {
   private static final MetastoreRepository INSTANCE = new MetastoreRepository();
   private static final Logger LOGGER = LoggerFactory.getLogger(MetastoreRepository.class);
   private static final SessionFactory SESSION_FACTORY = HibernateUtils.getSessionFactory();
+  private static MetastoreDAO CACHED_METASTORE_DAO = null;
 
   private MetastoreRepository() {}
 
@@ -28,12 +29,16 @@ public class MetastoreRepository {
   }
 
   public GetMetastoreSummaryResponse getMetastoreSummary() {
+    if (CACHED_METASTORE_DAO != null) {
+      return CACHED_METASTORE_DAO.toGetMetastoreSummaryResponse();
+    }
     try (Session session = SESSION_FACTORY.openSession()) {
       session.setDefaultReadOnly(true);
       MetastoreDAO metastoreDAO = getMetastoreDAO(session);
       if (metastoreDAO == null) {
         throw new BaseException(ErrorCode.NOT_FOUND, "No metastore found!");
       }
+      CACHED_METASTORE_DAO = metastoreDAO;
       return metastoreDAO.toGetMetastoreSummaryResponse();
     }
   }
@@ -64,6 +69,7 @@ public class MetastoreRepository {
           tx.commit();
         }
         LOGGER.info("Server initialized with metastore id: {}", metastoreDAO.getId());
+        CACHED_METASTORE_DAO = metastoreDAO;
         return metastoreDAO;
       } catch (Exception e) {
         tx.rollback();
