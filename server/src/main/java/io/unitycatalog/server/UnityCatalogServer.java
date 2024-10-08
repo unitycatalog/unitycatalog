@@ -183,7 +183,7 @@ public class UnityCatalogServer {
         icebergResponseConverter);
 
     // TODO: eventually might want to make this secure-by-default.
-    if (enableAuthorization) {
+    if (authorizationEnabled) {
       LOGGER.info("Authorization enabled.");
 
       // Note: Decorators are applied in reverse order.
