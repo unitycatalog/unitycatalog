@@ -7,14 +7,12 @@ authors = [
     { name="Ben Wilson", email="benjamin.wilson@databricks.com" }
 ]
 readme = "README.md"
+license = { text="Apache-2.0" }
 requires-python = ">=3.9"
 dependencies = [
   "typing_extensions",
   "pydantic"
 ]
-
-[project.license]
-file = "LICENSE.txt"
 
 [build-system]
 requires = ["hatchling"]

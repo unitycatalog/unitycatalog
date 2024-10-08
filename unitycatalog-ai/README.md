@@ -1,7 +1,7 @@
 # Unity Catalog AI Core library
 
 The Unity Catalog AI Core library provides convenient APIs to interact with Unity Catalog functions, including the creation, retrieval and execution of functions.
-The library includes clients for interacting with both the Open-Source Unity Catalog server and the Databricks-managed Unity Catalog service.
+The library includes clients for interacting with both the Open-Source Unity Catalog server and the Databricks-managed Unity Catalog service, in support of UC functions as tools in agents.
 
 ## Installation
 
