@@ -33,6 +33,7 @@ public class CliUtils {
   public static final String FUNCTION = "function";
   public static final String REGISTERED_MODEL = "registered_model";
   public static final String MODEL_VERSION = "model_version";
+  public static final String PERMISSION = "permission";
   public static final String USER = "user";
   public static final String CREATE = "create";
   public static final String LIST = "list";
@@ -233,8 +234,12 @@ public class CliUtils {
                   put(
                       CREATE,
                       new CliOptions(
-                          List.of(CliParams.CATALOG_NAME, CliParams.SCHEMA_NAME, CliParams.NAME),
-                          List.of(CliParams.COMMENT, CliParams.RUN_ID, CliParams.SOURCE)));
+                          List.of(
+                              CliParams.CATALOG_NAME,
+                              CliParams.SCHEMA_NAME,
+                              CliParams.NAME,
+                              CliParams.SOURCE),
+                          List.of(CliParams.COMMENT, CliParams.RUN_ID)));
                   put(
                       LIST,
                       new CliOptions(List.of(CliParams.FULL_NAME), List.of(CliParams.MAX_RESULTS)));
@@ -275,6 +280,35 @@ public class CliUtils {
                           List.of(CliParams.ID),
                           List.of(CliParams.NAME, CliParams.EXTERNAL_ID, CliParams.EMAIL)));
                   put(DELETE, new CliOptions(List.of(CliParams.ID), List.of()));
+                }
+              });
+          put(
+              PERMISSION,
+              new HashMap<String, CliOptions>() {
+                {
+                  put(
+                      CREATE,
+                      new CliOptions(
+                          List.of(
+                              CliParams.SECURABLE_TYPE,
+                              CliParams.NAME,
+                              CliParams.PRINCIPAL,
+                              CliParams.PRIVILEGE),
+                          List.of()));
+                  put(
+                      DELETE,
+                      new CliOptions(
+                          List.of(
+                              CliParams.SECURABLE_TYPE,
+                              CliParams.NAME,
+                              CliParams.PRINCIPAL,
+                              CliParams.PRIVILEGE),
+                          List.of()));
+                  put(
+                      GET,
+                      new CliOptions(
+                          List.of(CliParams.SECURABLE_TYPE, CliParams.NAME),
+                          List.of(CliParams.PRINCIPAL)));
                 }
               });
         }

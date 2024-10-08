@@ -1,12 +1,19 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import DetailsLayout from '../components/layouts/DetailsLayout';
 import DescriptionBox from '../components/DescriptionBox';
 import { Flex, Table, TableProps, Typography } from 'antd';
 import { DeploymentUnitOutlined } from '@ant-design/icons';
-import { useGetModelVersion } from '../hooks/models';
+import {
+  ModelVersionInterface,
+  useGetModelVersion,
+  useUpdateModelVersion,
+} from '../hooks/models';
 import ModelSidebar from '../components/models/ModelSidebar';
 import { formatTimestamp } from '../utils/formatTimestamp';
+import VersionActionsDropdown from '../components/models/VersionActionsDropdown';
+import { useNotification } from '../utils/NotificationContext';
+import { EditVersionDescriptionModal } from '../components/modals/EditVersionDescriptionModal';
 
 interface DataType {
   versionKey: string;
@@ -19,12 +26,20 @@ export default function ModelVersionDetails() {
   if (!schema) throw new Error('Schema name is required');
   if (!model) throw new Error('Model name is required');
   if (!version) throw new Error('Version number is required');
-
-  const { data } = useGetModelVersion({
+  const versionNumber = Number(version);
+  const { data, refetch } = useGetModelVersion({
     catalog,
     schema,
     model,
     version,
+  });
+  const [open, setOpen] = useState<boolean>(false);
+  const { setNotification } = useNotification();
+  const mutation = useUpdateModelVersion({
+    catalog,
+    schema,
+    model,
+    version: versionNumber,
   });
 
   if (!data) return null;
@@ -67,56 +82,87 @@ export default function ModelVersionDetails() {
   ];
 
   return (
-    <DetailsLayout
-      title={
-        <Flex justify="space-between" align="flex-start" gap="middle">
-          <Typography.Title level={3}>
-            <DeploymentUnitOutlined /> {`${model} version ${version}`}
-          </Typography.Title>
-        </Flex>
-      }
-      breadcrumbs={[
-        { title: <Link to="/">Catalogs</Link>, key: '_home' },
-        {
-          title: <Link to={`/data/${catalog}`}>{catalog}</Link>,
-          key: '_catalog',
-        },
-        {
-          title: <Link to={`/data/${catalog}/${schema}`}>{schema}</Link>,
-          key: '_schema',
-        },
-        {
-          title: (
-            <Link to={`/models/${catalog}/${schema}/${model}`}>{model}</Link>
-          ),
-          key: '_model',
-        },
-        { title: `version ${version}`, key: '_version' },
-      ]}
-    >
-      <DetailsLayout.Content>
-        <Flex vertical gap={60}>
-          <div>
-            <Typography.Title level={5}>Description</Typography.Title>
-            <Typography.Text type="secondary">{data?.comment}</Typography.Text>
-          </div>
-          <div>
-            <Typography.Title level={5} style={{ marginBottom: 16 }}>
-              Version details
+    <>
+      {' '}
+      <DetailsLayout
+        title={
+          <Flex justify="space-between" align="flex-start" gap="middle">
+            <Typography.Title level={3}>
+              <DeploymentUnitOutlined /> {`${model} version ${version}`}
             </Typography.Title>
-            <Table
-              columns={columns}
-              dataSource={versionData}
-              pagination={false}
-              showHeader={false}
-              bordered
+            <VersionActionsDropdown
+              catalog={catalog}
+              schema={schema}
+              model={model}
+              version={Number(version)}
             />
-          </div>
-        </Flex>
-      </DetailsLayout.Content>
-      <DetailsLayout.Aside>
-        <ModelSidebar catalog={catalog} schema={schema} model={model} />
-      </DetailsLayout.Aside>
-    </DetailsLayout>
+          </Flex>
+        }
+        breadcrumbs={[
+          { title: <Link to="/">Catalogs</Link>, key: '_home' },
+          {
+            title: <Link to={`/data/${catalog}`}>{catalog}</Link>,
+            key: '_catalog',
+          },
+          {
+            title: <Link to={`/data/${catalog}/${schema}`}>{schema}</Link>,
+            key: '_schema',
+          },
+          {
+            title: (
+              <Link to={`/models/${catalog}/${schema}/${model}`}>{model}</Link>
+            ),
+            key: '_model',
+          },
+          { title: `version ${version}`, key: '_version' },
+        ]}
+      >
+        <DetailsLayout.Content>
+          <Flex vertical gap={60}>
+            <DescriptionBox
+              comment={data.comment}
+              onEdit={() => setOpen(true)}
+            />
+            <div>
+              <Typography.Title level={5} style={{ marginBottom: 16 }}>
+                Version details
+              </Typography.Title>
+              <Table
+                columns={columns}
+                dataSource={versionData}
+                pagination={false}
+                showHeader={false}
+                bordered
+              />
+            </div>
+          </Flex>
+        </DetailsLayout.Content>
+        <DetailsLayout.Aside>
+          <ModelSidebar catalog={catalog} schema={schema} model={model} />
+        </DetailsLayout.Aside>
+      </DetailsLayout>
+      <EditVersionDescriptionModal
+        open={open}
+        version={data}
+        closeModal={() => setOpen(false)}
+        onSubmit={(values) =>
+          mutation.mutate(values, {
+            onError: (error: Error) => {
+              setNotification(error.message, 'error');
+            },
+            onSuccess: (version) => {
+              refetch().then(() => {
+                setNotification(
+                  `Model version ${version.version} successfully updated`,
+                  'success',
+                );
+                setOpen(false);
+              });
+            },
+          })
+        }
+        loading={mutation.isPending}
+      />
+    </>
   );
 }

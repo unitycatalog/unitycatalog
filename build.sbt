@@ -19,6 +19,9 @@ lazy val javacRelease17 = Seq("--release", "17")
 lazy val scala212 = "2.12.15"
 lazy val scala213 = "2.13.14"
 
+lazy val deltaVersion = "3.2.1"
+lazy val sparkVersion = "3.5.3"
+
 lazy val commonSettings = Seq(
   organization := orgName,
   // Compilation configs
@@ -44,9 +47,6 @@ lazy val commonSettings = Seq(
     "org.apache.logging.log4j" % "log4j-api" % "2.23.1"
   ),
   resolvers += Resolver.mavenLocal,
-  // TODO: remove the following two resolvers once the official releases are out
-  resolvers += "Apache Spark 3.5.3 Staging" at "https://repository.apache.org/content/repositories/orgapachespark-1467/",
-  resolvers += "Delta 3.2.1 Staging" at "https://oss.sonatype.org/content/repositories/iodelta-1168",
   autoScalaLibrary := false,
   crossPaths := false,  // No scala cross building
   assembly / assemblyMergeStrategy := {
@@ -84,6 +84,7 @@ lazy val commonSettings = Seq(
     case DepModuleInfo("org.hibernate.orm", _, _) => true
     case DepModuleInfo("com.unboundid.scim2", _, _) => true
     case DepModuleInfo("com.unboundid.product.scim2", _, _) => true
+    case DepModuleInfo("com.googlecode.aviator", _, _) => true
     // Duo license:
     //  - Eclipse Public License 2.0
     //  - GNU General Public License, version 2 with the GNU Classpath Exception
@@ -114,7 +115,7 @@ def javaCheckstyleSettings(configLocation: File) = Seq(
 
 // enforce java code style
 def javafmtCheckSettings() = Seq(
-  (Compile / compile) := ((Compile / compile) dependsOn (Compile / javafmtCheckAll)).value
+  (Compile / compile) := ((Compile / compile) dependsOn (Compile / javafmtAll)).value
 )
 
 lazy val controlApi = (project in file("target/control/java"))
@@ -301,6 +302,10 @@ lazy val server = (project in file("server"))
 
       // Auth dependencies
       "com.unboundid.product.scim2" % "scim2-sdk-common" % "3.1.0",
+      "org.casbin" % "jcasbin" % "1.55.0",
+      "org.casbin" % "jdbc-adapter" % "2.7.0"
+        exclude("com.microsoft.sqlserver", "mssql-jdbc")
+        exclude("com.oracle.database.jdbc", "ojdbc6"),
       "org.springframework" % "spring-expression" % "6.1.11",
       "com.auth0" % "java-jwt" % "4.4.0",
       "com.auth0" % "jwks-rsa" % "0.22.1",
@@ -430,10 +435,9 @@ lazy val cli = (project in file("examples") / "cli")
       "com.fasterxml.jackson.datatype" % "jackson-datatype-jsr310" % jacksonVersion,
       "org.openapitools" % "jackson-databind-nullable" % openApiToolsJacksonBindNullableVersion,
       "org.yaml" % "snakeyaml" % "2.2",
-
-      "io.delta" % "delta-kernel-api" % "3.2.0",
-      "io.delta" % "delta-kernel-defaults" % "3.2.0",
-      "io.delta" % "delta-storage" % "3.2.0",
+      "io.delta" % "delta-kernel-api" % deltaVersion,
+      "io.delta" % "delta-kernel-defaults" % deltaVersion,
+      "io.delta" % "delta-storage" % deltaVersion,
       "org.apache.hadoop" % "hadoop-client-api" % "3.4.0",
       "org.apache.hadoop" % "hadoop-client-runtime" % "3.4.0",
       "de.vandermeer" % "asciitable" % "0.3.2",
@@ -478,7 +482,6 @@ lazy val serverShaded = (project in file("server-shaded"))
     }
   )
 
-val sparkVersion = "3.5.3"
 lazy val spark = (project in file("connectors/spark"))
   .dependsOn(client)
   .settings(
@@ -513,7 +516,7 @@ lazy val spark = (project in file("connectors/spark"))
       "org.mockito" % "mockito-junit-jupiter" % "5.12.0" % Test,
       "net.aichler" % "jupiter-interface" % JupiterKeys.jupiterVersion.value % Test,
       "org.apache.hadoop" % "hadoop-client-runtime" % "3.4.0",
-      "io.delta" %% "delta-spark" % "3.2.1" % Test,
+      "io.delta" %% "delta-spark" % deltaVersion % Test,
     ),
     dependencyOverrides ++= Seq(
       "com.fasterxml.jackson.core" % "jackson-databind" % "2.15.0",

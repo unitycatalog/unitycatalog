@@ -364,18 +364,18 @@ public class ModelRepository {
     return new ListRegisteredModelsResponse().registeredModels(result).nextPageToken(nextPageToken);
   }
 
-  public RegisteredModelInfo updateRegisteredModel(UpdateRegisteredModel updateRegisteredModel) {
+  public RegisteredModelInfo updateRegisteredModel(
+      String fullName, UpdateRegisteredModel updateRegisteredModel) {
     if (updateRegisteredModel.getNewName() != null) {
       ValidationUtils.validateSqlObjectName(updateRegisteredModel.getNewName());
     }
-    if (updateRegisteredModel.getFullName() == null) {
+    if (fullName == null) {
       throw new BaseException(ErrorCode.INVALID_ARGUMENT, "No three tier full name specified.");
     }
     if (updateRegisteredModel.getNewName() == null && updateRegisteredModel.getComment() == null) {
       throw new BaseException(ErrorCode.INVALID_ARGUMENT, "No updated fields defined.");
     }
 
-    String fullName = updateRegisteredModel.getFullName();
     LOGGER.info("Updating Registered Model: " + fullName);
     RegisteredModelInfo registeredModelInfo;
     String callerId = IdentityUtils.findPrincipalEmailAddress();
@@ -678,21 +678,19 @@ public class ModelRepository {
     }
   }
 
-  public ModelVersionInfo updateModelVersion(UpdateModelVersion updateModelVersion) {
-    if (updateModelVersion.getFullName() == null) {
+  public ModelVersionInfo updateModelVersion(
+      String fullName, Long version, UpdateModelVersion updateModelVersion) {
+    if (fullName == null) {
       throw new BaseException(ErrorCode.INVALID_ARGUMENT, "No model specified.");
     }
-    if (updateModelVersion.getVersion() == null || updateModelVersion.getVersion() < 1) {
+    if (version == null || version < 1) {
       throw new BaseException(
-          ErrorCode.INVALID_ARGUMENT,
-          "No valid model version specified: " + updateModelVersion.getVersion());
+          ErrorCode.INVALID_ARGUMENT, "No valid model version specified: " + version);
     }
     if (updateModelVersion.getComment() == null) {
       throw new BaseException(ErrorCode.INVALID_ARGUMENT, "No updated fields defined.");
     }
 
-    String fullName = updateModelVersion.getFullName();
-    Long version = updateModelVersion.getVersion();
     LOGGER.info("Updating Model Version: " + fullName + "/" + version);
     ModelVersionInfo modelVersionInfo;
     String callerId = IdentityUtils.findPrincipalEmailAddress();

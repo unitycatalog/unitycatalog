@@ -1,4 +1,9 @@
-import { useQuery, UseQueryOptions } from '@tanstack/react-query';
+import {
+  useMutation,
+  useQuery,
+  useQueryClient,
+  UseQueryOptions,
+} from '@tanstack/react-query';
 import apiClient from '../context/client';
 
 export interface ModelInterface {
@@ -135,6 +140,169 @@ export function useGetModelVersion({
       return apiClient
         .get(`/models/${fullModelName}/versions/${version}`)
         .then((response) => response.data);
+    },
+  });
+}
+
+export interface DeleteModelVersionMutationParams
+  extends Pick<
+    ModelVersionInterface,
+    'catalog_name' | 'schema_name' | 'model_name' | 'version'
+  > {}
+
+interface DeleteModelVersionParams {
+  catalog: string;
+  schema: string;
+  model: string;
+  version: number;
+}
+
+// Delete a model version
+export function useDeleteModelVersion({
+  catalog,
+  schema,
+  model,
+  version,
+}: DeleteModelVersionParams) {
+  const queryClient = useQueryClient();
+
+  return useMutation<void, Error, DeleteModelVersionMutationParams>({
+    mutationFn: async ({
+      catalog_name,
+      schema_name,
+      model_name,
+      version,
+    }: DeleteModelVersionMutationParams) => {
+      const fullName = [catalog_name, schema_name, model_name].join('.');
+      return apiClient
+        .delete(`/models/${fullName}/versions/${version}`)
+        .then((response) => response.data)
+        .catch((e) => {
+          throw new Error(
+            e.response?.data?.message || 'Failed to delete model version',
+          );
+        });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({
+        queryKey: ['listModelVersions', catalog, schema, model],
+      });
+    },
+  });
+}
+
+export interface DeleteModelMutationParams
+  extends Pick<ModelInterface, 'catalog_name' | 'schema_name' | 'name'> {}
+
+interface DeleteModelParams {
+  catalog: string;
+  schema: string;
+  model: string;
+}
+
+// Delete a model
+export function useDeleteModel({ catalog, schema, model }: DeleteModelParams) {
+  const queryClient = useQueryClient();
+
+  return useMutation<void, Error, DeleteModelMutationParams>({
+    mutationFn: async ({
+      catalog_name,
+      schema_name,
+      name,
+    }: DeleteModelMutationParams) => {
+      const fullName = [catalog_name, schema_name, name].join('.');
+      return apiClient
+        .delete(`/models/${fullName}`)
+        .then((response) => response.data)
+        .catch((e) => {
+          throw new Error(
+            e.response?.data?.message || 'Failed to delete model',
+          );
+        });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({
+        queryKey: ['listModels', catalog, schema],
+      });
+    },
+  });
+}
+
+// update model version
+interface UpdateModelVersionParams {
+  catalog: string;
+  schema: string;
+  model: string;
+  version: number;
+}
+export interface UpdateModelVersionMutationParams
+  extends Pick<ModelVersionInterface, 'comment'> {}
+
+export function useUpdateModelVersion({
+  catalog,
+  schema,
+  model,
+  version,
+}: UpdateModelVersionParams) {
+  const queryClient = useQueryClient();
+
+  return useMutation<
+    ModelVersionInterface,
+    Error,
+    UpdateModelVersionMutationParams
+  >({
+    mutationFn: async (params: UpdateModelVersionMutationParams) => {
+      const fullName = [catalog, schema, model].join('.');
+
+      return apiClient
+        .patch(
+          `/models/${fullName}/versions/${version}`,
+          JSON.stringify(params),
+        )
+        .then((response) => response.data)
+        .catch((e) => {
+          throw new Error(
+            e.response?.data?.message || 'Failed to update model version',
+          );
+        });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({
+        queryKey: ['getVersion', catalog, schema, model, version],
+      });
+    },
+  });
+}
+
+// update model
+interface UpdateModelParams {
+  catalog: string;
+  schema: string;
+  model: string;
+}
+export interface UpdateModelMutationParams
+  extends Pick<ModelVersionInterface, 'comment'> {}
+
+export function useUpdateModel({ catalog, schema, model }: UpdateModelParams) {
+  const queryClient = useQueryClient();
+
+  return useMutation<ModelInterface, Error, UpdateModelMutationParams>({
+    mutationFn: async (params: UpdateModelMutationParams) => {
+      const fullName = [catalog, schema, model].join('.');
+
+      return apiClient
+        .patch(`/models/${fullName}`, JSON.stringify(params))
+        .then((response) => response.data)
+        .catch((e) => {
+          throw new Error(
+            e.response?.data?.message || 'Failed to update model',
+          );
+        });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({
+        queryKey: ['getModel', catalog, schema, model],
+      });
     },
   });
 }

@@ -1,7 +1,10 @@
 package io.unitycatalog.server.service;
 
+import static io.unitycatalog.server.model.SecurableType.METASTORE;
+
 import com.auth0.jwt.interfaces.Claim;
 import com.auth0.jwt.interfaces.DecodedJWT;
+import com.fasterxml.jackson.core.JsonProcessingException;
 import com.linecorp.armeria.common.HttpResponse;
 import com.linecorp.armeria.common.HttpStatus;
 import com.linecorp.armeria.server.ServiceRequestContext;
@@ -10,8 +13,12 @@ import com.unboundid.scim2.common.exceptions.BadRequestException;
 import com.unboundid.scim2.common.exceptions.PreconditionFailedException;
 import com.unboundid.scim2.common.exceptions.ResourceConflictException;
 import com.unboundid.scim2.common.exceptions.ScimException;
+import com.unboundid.scim2.common.exceptions.ServerErrorException;
 import com.unboundid.scim2.common.filters.Filter;
 import com.unboundid.scim2.common.messages.ListResponse;
+import com.unboundid.scim2.common.messages.PatchOpType;
+import com.unboundid.scim2.common.messages.PatchOperation;
+import com.unboundid.scim2.common.messages.PatchRequest;
 import com.unboundid.scim2.common.types.Email;
 import com.unboundid.scim2.common.types.Meta;
 import com.unboundid.scim2.common.types.Photo;
@@ -19,6 +26,9 @@ import com.unboundid.scim2.common.types.UserResource;
 import com.unboundid.scim2.common.utils.FilterEvaluator;
 import com.unboundid.scim2.common.utils.Parser;
 import io.unitycatalog.control.model.User;
+import io.unitycatalog.server.auth.UnityCatalogAuthorizer;
+import io.unitycatalog.server.auth.annotation.AuthorizeExpression;
+import io.unitycatalog.server.auth.annotation.AuthorizeKey;
 import io.unitycatalog.server.exception.BaseException;
 import io.unitycatalog.server.exception.ErrorCode;
 import io.unitycatalog.server.exception.GlobalExceptionHandler;
@@ -26,10 +36,13 @@ import io.unitycatalog.server.exception.Scim2RuntimeException;
 import io.unitycatalog.server.persist.UserRepository;
 import io.unitycatalog.server.persist.model.CreateUser;
 import io.unitycatalog.server.persist.model.UpdateUser;
+import io.unitycatalog.server.security.JwtClaim;
 import java.net.URI;
 import java.util.Calendar;
 import java.util.List;
+import java.util.Objects;
 import java.util.Optional;
+import java.util.UUID;
 
 /**
  * SCIM2-compliant user management.
@@ -48,12 +61,17 @@ import java.util.Optional;
 @ExceptionHandler(GlobalExceptionHandler.class)
 public class Scim2UserService {
   private static final UserRepository USER_REPOSITORY = UserRepository.getInstance();
+  private final UnityCatalogAuthorizer authorizer;
 
-  public Scim2UserService() {}
+  public Scim2UserService(UnityCatalogAuthorizer authorizer) {
+    this.authorizer = authorizer;
+  }
 
   @Get("")
   @Produces("application/scim+json")
   @StatusCode(200)
+  @AuthorizeExpression("#principal != null")
+  @AuthorizeKey(METASTORE)
   public ListResponse<UserResource> getScimUsers(
       @Param("filter") Optional<String> filter,
       @Param("startIndex") Optional<Integer> startIndex,
@@ -90,6 +108,8 @@ public class Scim2UserService {
   @Post("")
   @Produces("application/scim+json")
   @StatusCode(201)
+  @AuthorizeExpression("#authorize(#principal, #metastore, OWNER)")
+  @AuthorizeKey(METASTORE)
   public UserResource createScimUser(UserResource userResource) {
     // Get primary email address
     Email primaryEmail =
@@ -128,12 +148,14 @@ public class Scim2UserService {
   @Get("/self")
   @Produces("application/scim+json")
   @StatusCode(200)
+  @AuthorizeExpression("#principal != null")
+  @AuthorizeKey(METASTORE)
   public UserResource getCurrentUser() {
     // TODO: will make this a util method in the access control PR
     ServiceRequestContext ctx = ServiceRequestContext.current();
     DecodedJWT decodedJWT = ctx.attr(AuthDecorator.DECODED_JWT_ATTR);
     if (decodedJWT != null) {
-      Claim sub = decodedJWT.getClaim("sub");
+      Claim sub = decodedJWT.getClaim(JwtClaim.SUBJECT.key());
       return asUserResource(USER_REPOSITORY.getUserByEmail(sub.asString()));
     } else {
       throw new Scim2RuntimeException(new BadRequestException("No user found."));
@@ -143,6 +165,8 @@ public class Scim2UserService {
   @Get("/{id}")
   @Produces("application/scim+json")
   @StatusCode(200)
+  @AuthorizeExpression("#principal != null")
+  @AuthorizeKey(METASTORE)
   public UserResource getUser(@Param("id") String id) {
     return asUserResource(USER_REPOSITORY.getUser(id));
   }
@@ -150,6 +174,8 @@ public class Scim2UserService {
   @Put("/{id}")
   @Produces("application/scim+json")
   @StatusCode(200)
+  @AuthorizeExpression("#authorize(#principal, #metastore, OWNER)")
+  @AuthorizeKey(METASTORE)
   public UserResource updateUser(@Param("id") String id, UserResource userResource) {
     UserResource user = asUserResource(USER_REPOSITORY.getUser(id));
     if (!id.equals(userResource.getId())) {
@@ -167,10 +193,47 @@ public class Scim2UserService {
   }
 
   @Delete("/{id}")
+  @AuthorizeExpression("#authorizeAny(#principal, #metastore, OWNER)")
+  @AuthorizeKey(METASTORE)
   public HttpResponse deleteUser(@Param("id") String id) {
     User user = USER_REPOSITORY.getUser(id);
+    authorizer.clearAuthorizationsForPrincipal(
+        UUID.fromString(Objects.requireNonNull(user.getId())));
     USER_REPOSITORY.deleteUser(user.getId());
     return HttpResponse.of(HttpStatus.OK);
+  }
+
+  @Patch("/{id}")
+  public HttpResponse patchUser(@Param("id") String id, PatchRequest patchRequest) {
+
+    return patchRequest.getOperations().stream()
+        .filter(
+            op ->
+                op.getOpType() == PatchOpType.REPLACE
+                    && op.getPath() == null) // Only support patch for okta
+        .findFirst()
+        .map(op -> handleUserUpdate(id, op))
+        .orElse(HttpResponse.of(HttpStatus.NOT_IMPLEMENTED));
+  }
+
+  private HttpResponse handleUserUpdate(String id, PatchOperation operation) {
+    try {
+      Boolean value = operation.getValues(Boolean.class).get(0);
+      UpdateUser updateUser = UpdateUser.builder().active(value).build();
+      USER_REPOSITORY.updateUser(id, updateUser);
+      return HttpResponse.of(HttpStatus.OK);
+    } catch (ScimException | JsonProcessingException e) {
+      return handleExceptionDuringPatch(e);
+    }
+  }
+
+  private HttpResponse handleExceptionDuringPatch(Exception ex) {
+    if (ex instanceof ScimException) {
+      throw new Scim2RuntimeException((ScimException) ex);
+    } else   {
+      throw new Scim2RuntimeException(
+          new ServerErrorException("Problem with patch operation",ex.getMessage(), ex));
+    }
   }
 
   public UserResource asUserResource(User user) {
