@@ -5,9 +5,6 @@ import io.unitycatalog.server.exception.ErrorCode;
 import io.unitycatalog.server.model.GetMetastoreSummaryResponse;
 import io.unitycatalog.server.persist.dao.MetastoreDAO;
 import io.unitycatalog.server.persist.utils.HibernateUtils;
-import io.unitycatalog.server.utils.Constants;
-import java.time.Instant;
-import java.util.Date;
 import java.util.UUID;
 import org.hibernate.Session;
 import org.hibernate.SessionFactory;
@@ -58,8 +55,6 @@ public class MetastoreRepository {
           LOGGER.info("No metastore found, initializing a metastore for the server...");
           metastoreDAO = new MetastoreDAO();
           metastoreDAO.setId(UUID.randomUUID());
-          metastoreDAO.setName(Constants.DEFAULT_METASTORE_NAME);
-          metastoreDAO.setCreatedAt(Date.from(Instant.now()));
           session.persist(metastoreDAO);
           tx.commit();
         }

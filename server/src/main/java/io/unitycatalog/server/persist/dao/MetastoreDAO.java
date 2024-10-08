@@ -3,9 +3,13 @@ package io.unitycatalog.server.persist.dao;
 import io.unitycatalog.server.model.GetMetastoreSummaryResponse;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
+import jakarta.persistence.Id;
 import jakarta.persistence.Table;
-import java.util.Date;
-import lombok.*;
+import java.util.UUID;
+import lombok.EqualsAndHashCode;
+import lombok.Getter;
+import lombok.NoArgsConstructor;
+import lombok.Setter;
 import lombok.experimental.SuperBuilder;
 
 @Entity
@@ -15,19 +19,13 @@ import lombok.experimental.SuperBuilder;
 @Setter
 @NoArgsConstructor
 @SuperBuilder
-@EqualsAndHashCode(callSuper = true)
-public class MetastoreDAO extends IdentifiableDAO {
-  @Column(name = "created_at")
-  private Date createdAt;
-
-  @Column(name = "updated_at")
-  private Date updatedAt;
+@EqualsAndHashCode
+public class MetastoreDAO {
+  @Id
+  @Column(name = "id")
+  private UUID id;
 
   public GetMetastoreSummaryResponse toGetMetastoreSummaryResponse() {
-    return new GetMetastoreSummaryResponse()
-        .metastoreId(getId().toString())
-        .name(getName())
-        .createdAt(getCreatedAt() != null ? getCreatedAt().getTime() : null)
-        .updatedAt(getUpdatedAt() != null ? getUpdatedAt().getTime() : null);
+    return new GetMetastoreSummaryResponse().metastoreId(getId().toString());
   }
 }
