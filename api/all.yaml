@@ -35,6 +35,9 @@ tags:
   - name: Permissions
     description: |
       In Unity Catalog, data is secure by default. Access can be granted.
+  - name: Metastores
+    description: |
+      A metastore is the top-level container of objects in Unity Catalog that stores all UC assets.
 paths:
   /catalogs:
     post:
@@ -1114,6 +1117,21 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/PermissionsList'
+  /metastore_summary:
+    get:
+      tags:
+        - Metastores
+      operationId: summary
+      summary: Get a metastore summary
+      description: |
+        Gets information about a metastore. The summary includes the metastore id, name, creation time and update time.
+      responses:
+        '200':
+          description: The metastore summary was successfully retrieved.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GetMetastoreSummaryResponse'
 components:
   schemas:
     SecurablePropertiesMap:
@@ -2279,6 +2297,23 @@ components:
       required:
         - principal
         - privileges
+    GetMetastoreSummaryResponse:
+      type: object
+      properties:
+        metastore_id:
+          description: Unique identifier of metastore.
+          type: string
+        name:
+          description: The user-specified name of the metastore.
+          type: string
+        created_at:
+          description: Time at which this metastore was created, in epoch milliseconds.
+          type: integer
+          format: int64
+        updated_at:
+          description: Time at which this metastore was last modified, in epoch milliseconds.
+          type: integer
+          format: int64
 info:
   title: Unity Catalog API
   version: '0.1'

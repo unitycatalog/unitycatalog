@@ -7,6 +7,7 @@ public class Constants {
   public static final String SCHEMA = "schema";
   public static final String TABLE = "table";
   public static final String FUNCTION = "function";
+  public static final String DEFAULT_METASTORE_NAME = "uc_oss_metastore";
 
   public static final String URI_SCHEME_ABFS = "abfs";
   public static final String URI_SCHEME_ABFSS = "abfss";
