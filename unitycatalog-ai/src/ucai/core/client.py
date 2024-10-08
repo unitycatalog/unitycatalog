@@ -18,7 +18,7 @@ _client_lock = threading.Lock()
 class FunctionExecutionResult:
     """
     Result of executing a function.
-    Value is always string, even if the function returns a scalar.
+    Value is always string, even if the function returns a scalar or a collection.
     """
 
     error: Optional[str] = None
