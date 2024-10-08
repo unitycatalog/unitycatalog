@@ -125,6 +125,8 @@ def construct_original_function_name(tool_name: str) -> str:
         Original function name in the form of `catalog.schema.function`.
     """
     parts = tool_name.split("__")
+    if len(parts) != 3:
+        raise ValueError(f"Invalid tool name: {tool_name}")
     return ".".join(parts)
 
 
