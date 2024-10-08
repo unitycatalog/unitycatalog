@@ -27,6 +27,8 @@ public abstract class BaseMetastoreSummaryTest extends BaseCRUDTest {
     String metastoreId1 = metastoreSummary.getMetastoreId();
     assertThat(metastoreId1).isNotNull();
     assertThat(metastoreSummary.getName()).isNotNull();
+    assertThat(metastoreSummary.getCreatedAt()).isNotNull();
+    assertThat(metastoreSummary.getUpdatedAt()).isNull();
     // Verify that it is stable
     String metastoreId2 = metastoreSummary.getMetastoreId();
     assertThat(metastoreId2).isNotNull();
