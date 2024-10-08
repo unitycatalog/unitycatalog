@@ -117,7 +117,7 @@ public class UnityCatalogServer {
     FunctionService functionService = new FunctionService(authorizer);
     ModelService modelService = new ModelService(authorizer);
     CoordinatedCommitsService coordinatedCommitsService = new CoordinatedCommitsService(authorizer);
-      // TODO: combine these into a single service in a follow-up PR
+    // TODO: combine these into a single service in a follow-up PR
     TemporaryTableCredentialsService temporaryTableCredentialsService =
         new TemporaryTableCredentialsService(authorizer, credentialOperations);
     TemporaryVolumeCredentialsService temporaryVolumeCredentialsService =

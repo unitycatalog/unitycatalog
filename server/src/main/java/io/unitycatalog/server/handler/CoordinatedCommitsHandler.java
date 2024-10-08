@@ -7,9 +7,11 @@ import io.unitycatalog.server.exception.ErrorCode;
 import io.unitycatalog.server.model.Commit;
 import io.unitycatalog.server.model.DataSourceFormat;
 import io.unitycatalog.server.model.TableInfo;
+import io.unitycatalog.server.model.TableType;
 import io.unitycatalog.server.persist.CommitRepository;
 import io.unitycatalog.server.persist.TableRepository;
 import io.unitycatalog.server.persist.dao.CommitDAO;
+import io.unitycatalog.server.utils.ValidationUtils;
 import java.util.Objects;
 import java.util.UUID;
 import org.hibernate.Session;
@@ -27,37 +29,56 @@ public class CoordinatedCommitsHandler {
       throw new CommitException(ErrorCode.UNIMPLEMENTED, "Disown commits are not supported!");
     }
     // Validate the commit object
-    assert commit.getTableId() != null;
-    //    assert commit.getTableUri() != null;
-
-    // TODO: Add other assertions like the table URI path exists
+    ValidationUtils.validateNonEmpty(commit.getTableId(), "Table ID cannot be empty");
+    ValidationUtils.validateNonEmpty(commit.getTableUri(), "Table URI cannot be empty");
 
     // Validate the commit info object
     if (commit.getCommitInfo() != null) {
-      assert commit.getCommitInfo().getIsDisownCommit() != null;
-      assert commit.getCommitInfo().getFileSize() > 0;
-      assert commit.getCommitInfo().getFileName() != null;
-      assert commit.getCommitInfo().getVersion() != null;
-      assert commit.getCommitInfo().getTimestamp() != null;
-      assert commit.getCommitInfo().getFileModificationTimestamp() != null;
+      ValidationUtils.validateNonEmpty(
+          commit.getCommitInfo().getIsDisownCommit(), "Disown commit cannot be null");
+      ValidationUtils.validateGreaterThan(
+          commit.getCommitInfo().getFileSize(), 0L, "File size should be greater than 0");
+      ValidationUtils.validateNonEmpty(
+          commit.getCommitInfo().getFileName(), "File name cannot be empty");
+      ValidationUtils.validateNonEmpty(
+          commit.getCommitInfo().getVersion(), "Version cannot be empty");
+      ValidationUtils.validateNonEmpty(
+          commit.getCommitInfo().getTimestamp(), "Timestamp cannot be empty");
+      ValidationUtils.validateNonEmpty(
+          commit.getCommitInfo().getFileModificationTimestamp(),
+          "File modification timestamp cannot be empty");
     } else {
       // If commit info is null, then it should be a backfill only commit
-      assert commit.getLatestBackfilledVersion() != null;
+      ValidationUtils.validateNonEmpty(
+          commit.getLatestBackfilledVersion(),
+          "Both commit info and latest backfilled version cannot be empty");
     }
   }
 
   public static void validateCommitTable(Commit commit) {
     TableInfo tableInfo = TABLE_REPOSITORY.getTableById(commit.getTableId());
-    //    assert tableInfo.getTableType() == TableType.MANAGED;
-    assert tableInfo.getDataSourceFormat() == DataSourceFormat.DELTA;
-
-    // TODO: Add other assertions like verifying the table path (tableInfo.getStorageLocation)
+    ValidationUtils.validateEquals(
+        tableInfo.getTableType(),
+        TableType.MANAGED,
+        "Only managed tables are supported for coordinated commits");
+    ValidationUtils.validateEquals(
+        tableInfo.getDataSourceFormat(),
+        DataSourceFormat.DELTA,
+        "Only delta tables are supported for coordinated commits");
+    ValidationUtils.validateEquals(
+        tableInfo.getStorageLocation(),
+        commit.getTableUri(),
+        "Table URI in commit does not match the table path");
   }
 
   public static void validateOnboardingCommit(Commit commit) {
-    assert commit.getCommitInfo() != null;
+    ValidationUtils.validateNonEmpty(
+        commit.getCommitInfo(), "Onboarding commit cannot have commit info null");
     // Onboarding commit cannot be a disown commit
-    assert !commit.getCommitInfo().getIsDisownCommit();
+    ValidationUtils.validateNotEquals(
+        commit.getCommitInfo().getIsDisownCommit(),
+        true,
+        "Onboarding commit cannot be a disown commit");
   }
 
   public static void handleFirstCommit(Session session, Commit commit) {

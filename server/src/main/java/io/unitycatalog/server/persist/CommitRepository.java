@@ -6,11 +6,13 @@ import io.unitycatalog.server.persist.dao.ColumnInfoDAO;
 import io.unitycatalog.server.persist.dao.CommitDAO;
 import io.unitycatalog.server.persist.dao.PropertyDAO;
 import io.unitycatalog.server.persist.dao.TableInfoDAO;
+import io.unitycatalog.server.persist.utils.HibernateUtils;
 import io.unitycatalog.server.utils.Constants;
 import java.util.Comparator;
 import java.util.List;
 import java.util.UUID;
 import org.hibernate.Session;
+import org.hibernate.SessionFactory;
 import org.hibernate.query.NativeQuery;
 import org.hibernate.query.Query;
 import org.slf4j.Logger;
@@ -19,6 +21,7 @@ import org.slf4j.LoggerFactory;
 public class CommitRepository {
   private static final CommitRepository INSTANCE = new CommitRepository();
   private static final Logger LOGGER = LoggerFactory.getLogger(CommitRepository.class);
+  private static final SessionFactory SESSION_FACTORY = HibernateUtils.getSessionFactory();
 
   // The maximum number of commits per table.
   public static final Integer MAX_NUM_COMMITS_PER_TABLE = 50;
@@ -110,5 +113,22 @@ public class CommitRepository {
     // Update name
     tableInfoDAO.setName(metadata.getName());
     session.merge(tableInfoDAO);
+  }
+
+  /**
+   * @param tableId the table id to get the latest commits for
+   * @return the latest commits for the table sorted by commit version in descending order up to
+   *     MAX_NUM_COMMITS_PER_TABLE
+   */
+  public List<CommitDAO> getLatestCommits(UUID tableId) {
+    try (Session session = SESSION_FACTORY.openSession()) {
+      Query<CommitDAO> query =
+          session.createQuery(
+              "FROM CommitDAO WHERE tableId = :tableId ORDER BY commitVersion DESC",
+              CommitDAO.class);
+      query.setParameter("tableId", tableId);
+      query.setMaxResults(MAX_NUM_COMMITS_PER_TABLE);
+      return query.list();
+    }
   }
 }
