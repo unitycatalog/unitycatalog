@@ -25,21 +25,7 @@ import io.unitycatalog.server.exception.GlobalExceptionHandler;
 import io.unitycatalog.server.persist.utils.ServerPropertiesUtils;
 import io.unitycatalog.server.security.SecurityConfiguration;
 import io.unitycatalog.server.security.SecurityContext;
-import io.unitycatalog.server.service.AuthDecorator;
-import io.unitycatalog.server.service.AuthService;
-import io.unitycatalog.server.service.CatalogService;
-import io.unitycatalog.server.service.FunctionService;
-import io.unitycatalog.server.service.IcebergRestCatalogService;
-import io.unitycatalog.server.service.ModelService;
-import io.unitycatalog.server.service.PermissionService;
-import io.unitycatalog.server.service.SchemaService;
-import io.unitycatalog.server.service.Scim2UserService;
-import io.unitycatalog.server.service.TableService;
-import io.unitycatalog.server.service.TemporaryModelVersionCredentialsService;
-import io.unitycatalog.server.service.TemporaryPathCredentialsService;
-import io.unitycatalog.server.service.TemporaryTableCredentialsService;
-import io.unitycatalog.server.service.TemporaryVolumeCredentialsService;
-import io.unitycatalog.server.service.VolumeService;
+import io.unitycatalog.server.service.*;
 import io.unitycatalog.server.service.credential.CredentialOperations;
 import io.unitycatalog.server.service.iceberg.FileIOFactory;
 import io.unitycatalog.server.service.iceberg.MetadataService;
@@ -49,13 +35,7 @@ import io.unitycatalog.server.utils.VersionUtils;
 import io.vertx.core.Verticle;
 import io.vertx.core.Vertx;
 import java.nio.file.Path;
-import org.apache.commons.cli.CommandLine;
-import org.apache.commons.cli.CommandLineParser;
-import org.apache.commons.cli.DefaultParser;
-import org.apache.commons.cli.HelpFormatter;
-import org.apache.commons.cli.Option;
-import org.apache.commons.cli.Options;
-import org.apache.commons.cli.ParseException;
+import org.apache.commons.cli.*;
 import org.apache.logging.log4j.core.config.Configurator;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -136,7 +116,8 @@ public class UnityCatalogServer {
     TableService tableService = new TableService(authorizer);
     FunctionService functionService = new FunctionService(authorizer);
     ModelService modelService = new ModelService(authorizer);
-    // TODO: combine these into a single service in a follow-up PR
+    CoordinatedCommitsService coordinatedCommitsService = new CoordinatedCommitsService(authorizer);
+      // TODO: combine these into a single service in a follow-up PR
     TemporaryTableCredentialsService temporaryTableCredentialsService =
         new TemporaryTableCredentialsService(authorizer, credentialOperations);
     TemporaryVolumeCredentialsService temporaryVolumeCredentialsService =
@@ -159,6 +140,8 @@ public class UnityCatalogServer {
         .annotatedService(basePath + "tables", tableService, unityConverterFunction)
         .annotatedService(basePath + "functions", functionService, unityConverterFunction)
         .annotatedService(basePath + "models", modelService, unityConverterFunction)
+        .annotatedService(
+            basePath + "delta/commits", coordinatedCommitsService, unityConverterFunction)
         .annotatedService(
             basePath + "temporary-table-credentials", temporaryTableCredentialsService)
         .annotatedService(
