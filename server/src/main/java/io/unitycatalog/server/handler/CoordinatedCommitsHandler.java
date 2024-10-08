@@ -54,7 +54,7 @@ public class CoordinatedCommitsHandler {
     }
   }
 
-  public static void validateTablePath(Commit commit) {
+  public static void validateCommitTable(Commit commit) {
     TableInfo tableInfo = TABLE_REPOSITORY.getTableById(commit.getTableId());
     // TODO: once creating managed table is enabled, uncomment the below line
     //    ValidationUtils.validateEquals(
