@@ -105,6 +105,10 @@ public class CommitRepository {
         .forEach(session::persist);
     // Update columns
     tableInfoDAO.setColumns(ColumnInfoDAO.fromList(metadata.getSchema().getColumns()));
+    // Update comment
+    tableInfoDAO.setComment(metadata.getDescription());
+    // Update name
+    tableInfoDAO.setName(metadata.getName());
     session.merge(tableInfoDAO);
   }
 }

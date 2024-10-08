@@ -21,7 +21,7 @@ public class CoordinatedCommitsHandler {
   public static final TableRepository TABLE_REPOSITORY = TableRepository.getInstance();
   public static final CommitRepository COMMIT_REPOSITORY = CommitRepository.getInstance();
 
-  public static void validate(Commit commit) {
+  public static void validateCommit(Commit commit) {
     // We do not support disown commits
     if (commit.getCommitInfo() != null && commit.getCommitInfo().getIsDisownCommit()) {
       throw new CommitException(ErrorCode.UNIMPLEMENTED, "Disown commits are not supported!");
@@ -46,7 +46,7 @@ public class CoordinatedCommitsHandler {
     }
   }
 
-  public static void validateTablePath(Commit commit) {
+  public static void validateCommitTable(Commit commit) {
     TableInfo tableInfo = TABLE_REPOSITORY.getTableById(commit.getTableId());
     //    assert tableInfo.getTableType() == TableType.MANAGED;
     assert tableInfo.getDataSourceFormat() == DataSourceFormat.DELTA;

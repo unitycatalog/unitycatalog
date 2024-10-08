@@ -43,8 +43,8 @@ public class CoordinatedCommitsService {
   @Post("")
   public HttpResponse commit(Commit commit) {
     authorizeForOperation(commit);
-    validate(commit);
-    validateTablePath(commit);
+    validateCommit(commit);
+    validateCommitTable(commit);
 
     try (Session session = SESSION_FACTORY.openSession()) {
       Transaction tx = session.beginTransaction();
