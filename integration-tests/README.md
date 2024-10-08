@@ -7,7 +7,7 @@
  
 ## Set up catalog
 
-### Option 1: Use Run localhost unity catalog server
+### Option 1: Use localhost unity catalog server
 
 First, update integration test [server.properties](./etc/conf/server.properties)
   - For S3: Set `s3.bucketPath.0`, `s3.region.0`, `s3.awsRoleArn.0`, `s3.accessKey.0`, and `s3.secretKey.0`
