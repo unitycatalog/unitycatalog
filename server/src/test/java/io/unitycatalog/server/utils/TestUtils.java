@@ -4,9 +4,7 @@ import io.unitycatalog.client.ApiClient;
 import io.unitycatalog.server.base.ServerConfig;
 import java.net.URI;
 import java.util.HashMap;
-import java.util.Iterator;
 import java.util.Map;
-import java.util.function.Function;
 
 public class TestUtils {
   public static final String CATALOG_NAME = "uc_testcatalog";
@@ -52,32 +50,6 @@ public class TestUtils {
 
   public static int getRandomPort() {
     return (int) (Math.random() * 1000) + 9000;
-  }
-
-  public static <T> int getSize(Iterable<T> iterable) {
-    int size = 0;
-    Iterator<T> iterator = iterable.iterator();
-    while (iterator.hasNext()) {
-      iterator.next();
-      size++;
-    }
-    return size;
-  }
-
-  public static <T> boolean contains(Iterable<T> iterable, T element, Function<T, Boolean> equals) {
-    Iterator<T> iterator = iterable.iterator();
-    while (iterator.hasNext()) {
-      if (equals != null) {
-        if (equals.apply(iterator.next())) {
-          return true;
-        }
-      } else {
-        if (iterator.next().equals(element)) {
-          return true;
-        }
-      }
-    }
-    return false;
   }
 
   public static ApiClient createApiClient(ServerConfig serverConfig) {
