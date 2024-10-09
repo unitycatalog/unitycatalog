@@ -14,7 +14,7 @@ Unity Catalog is the industry’s only universal catalog for data and AI.
 
 - **Unified governance** for data and AI - Govern and secure tabular data, unstructured assets, and AI assets with a single interface.
 
-The first release of Unity Catalog focuses on a core set of APIs for tables, unstructured data, and AI assets.  More will come soon on governance, access, and client interoperability. This is just the beginning!
+The first release of Unity Catalog focused on a core set of APIs for tables, unstructured data, and AI assets. v0.2 has added ML model support, Apache Spark and Delta Lake integration and Authentication/Authorization capabilitities. Find the roadmap [here](https://github.com/unitycatalog/unitycatalog/discussions/411): this is just the beginning!
 
 ![image info](./assets/images/uc.png)
 
