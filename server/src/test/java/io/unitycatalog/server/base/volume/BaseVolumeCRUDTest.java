@@ -85,8 +85,7 @@ public abstract class BaseVolumeCRUDTest extends BaseCRUDTest {
     // Calling update volume with nothing to update should not change anything
     System.out.println("Testing updating volume with nothing to update..");
     UpdateVolumeRequestContent emptyUpdateVolumeRequest = new UpdateVolumeRequestContent();
-    VolumeInfo emptyUpdatedVolumeInfo =
-        volumeOperations.updateVolume(VOLUME_FULL_NAME, emptyUpdateVolumeRequest);
+    volumeOperations.updateVolume(VOLUME_FULL_NAME, emptyUpdateVolumeRequest);
     VolumeInfo retrievedVolumeInfo2 = volumeOperations.getVolume(VOLUME_FULL_NAME);
     assertThat(retrievedVolumeInfo2).isEqualTo(volumeInfo);
 
