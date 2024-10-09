@@ -117,7 +117,7 @@ public class UnityCatalogServer {
     TableService tableService = new TableService(authorizer);
     FunctionService functionService = new FunctionService(authorizer);
     ModelService modelService = new ModelService(authorizer);
-    MetastoreService metastoreService = new MetastoreService(authorizer);
+    MetastoreService metastoreService = new MetastoreService();
     // TODO: combine these into a single service in a follow-up PR
     TemporaryTableCredentialsService temporaryTableCredentialsService =
         new TemporaryTableCredentialsService(authorizer, credentialOperations);

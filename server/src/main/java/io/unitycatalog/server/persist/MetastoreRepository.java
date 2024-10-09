@@ -29,7 +29,9 @@ public class MetastoreRepository {
       session.setDefaultReadOnly(true);
       MetastoreDAO metastoreDAO = getMetastoreDAO(session);
       if (metastoreDAO == null) {
-        throw new BaseException(ErrorCode.NOT_FOUND, "No metastore found!");
+        throw new BaseException(
+            ErrorCode.NOT_FOUND,
+            "No metastore found. Please check if the server is initialized properly.");
       }
       return metastoreDAO.toGetMetastoreSummaryResponse();
     }
