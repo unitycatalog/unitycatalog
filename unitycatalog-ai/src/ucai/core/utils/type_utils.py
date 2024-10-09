@@ -103,6 +103,7 @@ def convert_timedelta_to_interval_str(time_val: datetime.timedelta) -> str:
     microseconds = time_val.microseconds
     return f"INTERVAL '{days} {hours}:{minutes}:{seconds}.{microseconds}' DAY TO SECOND"
 
+
 def python_type_to_sql_type(py_type: Any) -> str:
     """
     Convert a Python type to its SQL equivalent. Handles nested types (e.g., List[Dict[str, int]])
