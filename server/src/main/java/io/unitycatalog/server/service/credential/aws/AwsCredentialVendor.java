@@ -2,7 +2,7 @@ package io.unitycatalog.server.service.credential.aws;
 
 import io.unitycatalog.server.exception.BaseException;
 import io.unitycatalog.server.exception.ErrorCode;
-import io.unitycatalog.server.persist.utils.ServerPropertiesUtils;
+import io.unitycatalog.server.utils.ServerProperties;
 import io.unitycatalog.server.service.credential.CredentialContext;
 import java.time.Duration;
 import java.util.Map;
@@ -20,7 +20,7 @@ public class AwsCredentialVendor {
   private final Map<String, S3StorageConfig> s3Configurations;
 
   public AwsCredentialVendor() {
-    this.s3Configurations = ServerPropertiesUtils.getInstance().getS3Configurations();
+    this.s3Configurations = ServerProperties.getInstance().getS3Configurations();
   }
 
   public Credentials vendAwsCredentials(CredentialContext context) {
