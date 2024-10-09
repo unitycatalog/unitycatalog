@@ -75,7 +75,7 @@ public class MetadataServiceTest {
     String metadataLocation =
         Objects.requireNonNull(this.getClass().getResource("/iceberg.metadata.json"))
             .toURI()
-            .toString();
+            .getPath();
     TableMetadata tableMetadata = metadataService.readTableMetadata(metadataLocation);
     assertThat(tableMetadata.uuid()).isEqualTo("55d4dc69-5b14-4483-bfc8-f33b80f99f99");
   }

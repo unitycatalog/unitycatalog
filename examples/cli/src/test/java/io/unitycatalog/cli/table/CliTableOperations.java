@@ -29,7 +29,6 @@ public class CliTableOperations implements TableOperations {
       columns.append(column.getName()).append(" ").append(column.getTypeName().name()).append(",");
     }
     columns.deleteCharAt(columns.length() - 1);
-
     List<String> argsList = new ArrayList<>();
     argsList.addAll(
         List.of(
@@ -50,6 +49,10 @@ public class CliTableOperations implements TableOperations {
     if (createTableRequest.getStorageLocation() != null) {
       argsList.add("--storage_location");
       argsList.add(createTableRequest.getStorageLocation());
+    }
+    if (createTableRequest.getTableType() != null) {
+      argsList.add("--table_type");
+      argsList.add(createTableRequest.getTableType().name());
     }
     String[] args = addServerAndAuthParams(argsList, config);
     JsonNode tableJson = executeCLICommand(args);

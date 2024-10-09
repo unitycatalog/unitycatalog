@@ -68,7 +68,7 @@ public abstract class BaseVolumeCRUDTest extends BaseCRUDTest {
     assertThat(volumeInfo.getSchemaName()).isEqualTo(createVolumeRequest.getSchemaName());
     assertThat(volumeInfo.getVolumeType()).isEqualTo(createVolumeRequest.getVolumeType());
     assertThat(volumeInfo.getStorageLocation())
-        .isEqualTo(FileUtils.convertRelativePathToURI(createVolumeRequest.getStorageLocation()));
+        .isEqualTo(FileUtils.toStandardizedURIString(createVolumeRequest.getStorageLocation()));
     assertThat(volumeInfo.getFullName()).isEqualTo(VOLUME_FULL_NAME);
     assertThat(volumeInfo.getCreatedAt()).isNotNull();
 
@@ -141,7 +141,7 @@ public abstract class BaseVolumeCRUDTest extends BaseCRUDTest {
     VolumeInfo managedVolumeInfo = volumeOperations.getVolume(VOLUME_FULL_NAME);
     assertThat(managedVolumeInfo.getVolumeType()).isEqualTo(VolumeType.MANAGED);
     assertThat(managedVolumeInfo.getStorageLocation())
-        .isEqualTo(FileUtils.convertRelativePathToURI("/tmp/managed_volume"));
+        .isEqualTo(FileUtils.toStandardizedURIString("/tmp/managed_volume"));
     assertThat(managedVolumeInfo.getFullName()).isEqualTo(VOLUME_FULL_NAME);
     assertThat(managedVolumeInfo.getName()).isEqualTo(VOLUME_NAME);
     assertThat(managedVolumeInfo.getCatalogName()).isEqualTo(CATALOG_NAME);
