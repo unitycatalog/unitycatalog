@@ -7,6 +7,7 @@ import io.unitycatalog.server.persist.FileUtils;
 import io.unitycatalog.server.persist.HibernateUtil;
 import io.unitycatalog.server.persist.dao.VolumeInfoDAO;
 import io.unitycatalog.server.utils.TestUtils;
+import org.assertj.core.api.Assertions;
 import org.hibernate.Session;
 import org.hibernate.SessionFactory;
 import org.junit.*;
@@ -133,7 +134,7 @@ public abstract class BaseVolumeCRUDTest extends BaseCRUDTest {
         // Delete volume
         System.out.println("Testing delete volume..");
         volumeOperations.deleteVolume(VOLUME_NEW_FULL_NAME);
-        assertEquals(0, getSize(volumeOperations.listVolumes(CATALOG_NAME, SCHEMA_NAME)));
+        assertThat(volumeOperations.listVolumes(CATALOG_NAME, SCHEMA_NAME)).isEmpty();
 
 
         // Testing Managed Volume
@@ -169,7 +170,7 @@ public abstract class BaseVolumeCRUDTest extends BaseCRUDTest {
         // List volumes
         System.out.println("Testing list managed volumes..");
         Iterable<VolumeInfo> volumeInfosManaged = volumeOperations.listVolumes(CATALOG_NAME, SCHEMA_NAME);
-        assertEquals(1, getSize(volumeInfosManaged));
+        assertThat(volumeInfosManaged).hasSize(1);
         assertTrue(contains(volumeInfosManaged, managedVolumeInfo, (volume) -> {
             assertThat(volume.getName()).isNotNull();
             return volume.getName().equals(VOLUME_NAME);
@@ -186,6 +187,6 @@ public abstract class BaseVolumeCRUDTest extends BaseCRUDTest {
         // Delete volume
         System.out.println("Testing delete volume..");
         volumeOperations.deleteVolume(CATALOG_NAME + "." + SCHEMA_NEW_NAME + "." + VOLUME_NAME);
-        assertEquals(0, getSize(volumeOperations.listVolumes(CATALOG_NAME, SCHEMA_NEW_NAME)));
+        assertThat(volumeOperations.listVolumes(CATALOG_NAME, SCHEMA_NEW_NAME)).isEmpty();
     }
 }

@@ -35,16 +35,6 @@ public class TestUtils {
         return (int) (Math.random() * 1000) + 9000;
     }
 
-    public static <T> int getSize(Iterable<T> iterable) {
-        int size = 0;
-        Iterator<T> iterator = iterable.iterator();
-        while (iterator.hasNext()) {
-            iterator.next();
-            size++;
-        }
-        return size;
-    }
-
     public static <T> boolean contains(Iterable<T> iterable, T element, Function<T, Boolean> equals) {
         Iterator<T> iterator = iterable.iterator();
         while (iterator.hasNext()) {
