@@ -306,3 +306,32 @@ export function useUpdateModel({ catalog, schema, model }: UpdateModelParams) {
     },
   });
 }
+
+//create model
+export interface CreateModelMutationParams
+  extends Pick<
+    ModelInterface,
+    'name' | 'catalog_name' | 'schema_name' | 'comment'
+  > {}
+
+export function useCreateModel() {
+  const queryClient = useQueryClient();
+
+  return useMutation<ModelInterface, Error, CreateModelMutationParams>({
+    mutationFn: async (params: CreateModelMutationParams) => {
+      return apiClient
+        .post(`/models`, JSON.stringify(params))
+        .then((response) => response.data)
+        .catch((e) => {
+          throw new Error(
+            e.response?.data?.message || 'Failed to create model',
+          );
+        });
+    },
+    onSuccess: (model) => {
+      queryClient.invalidateQueries({
+        queryKey: ['listModels', model.catalog_name, model.schema_name],
+      });
+    },
+  });
+}

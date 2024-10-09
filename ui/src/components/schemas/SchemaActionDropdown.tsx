@@ -1,7 +1,12 @@
-import { DeleteOutlined, MoreOutlined } from '@ant-design/icons';
+import {
+  DeleteOutlined,
+  DeploymentUnitOutlined,
+  MoreOutlined,
+} from '@ant-design/icons';
 import { Button, Dropdown, MenuProps } from 'antd';
-import { useMemo, useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import { DeleteSchemaModal } from '../modals/DeleteSchemaModal';
+import CreateModelModal from '../modals/CreateModelModal';
 
 interface SchemaActionDropdownProps {
   catalog: string;
@@ -10,6 +15,7 @@ interface SchemaActionDropdownProps {
 
 enum SchemaActionsEnum {
   Delete,
+  CreateModel,
 }
 
 export default function SchemaActionsDropdown({
@@ -21,6 +27,13 @@ export default function SchemaActionsDropdown({
 
   const menuItems = useMemo(
     (): MenuProps['items'] => [
+      {
+        key: 'createModel',
+        label: 'Create Registered Model',
+        onClick: () => setAction(SchemaActionsEnum.CreateModel),
+        icon: <DeploymentUnitOutlined />,
+        danger: false,
+      },
       {
         key: 'deleteSchema',
         label: 'Delete Schema',
@@ -51,6 +64,12 @@ export default function SchemaActionsDropdown({
       </Dropdown>
       <DeleteSchemaModal
         open={action === SchemaActionsEnum.Delete}
+        closeModal={() => setAction(null)}
+        catalog={catalog}
+        schema={schema}
+      />
+      <CreateModelModal
+        open={action === SchemaActionsEnum.CreateModel}
         closeModal={() => setAction(null)}
         catalog={catalog}
         schema={schema}
