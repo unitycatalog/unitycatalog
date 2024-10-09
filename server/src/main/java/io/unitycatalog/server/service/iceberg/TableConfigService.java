@@ -1,7 +1,7 @@
 package io.unitycatalog.server.service.iceberg;
 
 import com.google.auth.oauth2.AccessToken;
-import io.unitycatalog.server.persist.utils.ServerPropertiesUtils;
+import io.unitycatalog.server.utils.ServerProperties;
 import io.unitycatalog.server.service.credential.CredentialContext;
 import io.unitycatalog.server.service.credential.CredentialOperations;
 import io.unitycatalog.server.service.credential.aws.S3StorageConfig;
@@ -15,7 +15,6 @@ import org.apache.iceberg.gcp.GCPProperties;
 import software.amazon.awssdk.services.sts.model.Credentials;
 
 import java.net.URI;
-import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
@@ -31,7 +30,7 @@ public class TableConfigService {
   private final Map<String, S3StorageConfig> s3Configurations;
 
   public TableConfigService(CredentialOperations credentialOperations) {
-    this.s3Configurations = ServerPropertiesUtils.getInstance().getS3Configurations();
+    this.s3Configurations = ServerProperties.getInstance().getS3Configurations();
     this.credentialOperations = credentialOperations;
   }
 
