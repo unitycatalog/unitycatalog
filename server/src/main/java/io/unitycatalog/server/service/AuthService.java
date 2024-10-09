@@ -16,7 +16,7 @@ import io.unitycatalog.server.exception.ErrorCode;
 import io.unitycatalog.server.exception.GlobalExceptionHandler;
 import io.unitycatalog.server.exception.OAuthInvalidRequestException;
 import io.unitycatalog.server.persist.UserRepository;
-import io.unitycatalog.server.persist.utils.ServerPropertiesUtils;
+import io.unitycatalog.server.utils.ServerProperties;
 import io.unitycatalog.server.security.JwtClaim;
 import io.unitycatalog.server.security.SecurityContext;
 import io.unitycatalog.server.utils.JwksOperations;
@@ -128,9 +128,8 @@ public class AuthService {
           ErrorCode.INVALID_ARGUMENT, "Actor tokens not currently supported");
     }
 
-    String authorization =
-        ServerPropertiesUtils.getInstance().getProperty("server.authorization", "disable");
-    if (!authorization.equals("enable")) {
+    boolean authorizationEnabled = ServerProperties.getInstance().isAuthorizationEnabled();
+    if (!authorizationEnabled) {
       throw new OAuthInvalidRequestException(
           ErrorCode.INVALID_ARGUMENT, "Authorization is disabled");
     }
