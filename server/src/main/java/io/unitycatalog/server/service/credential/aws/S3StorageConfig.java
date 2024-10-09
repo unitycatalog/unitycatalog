@@ -2,9 +2,11 @@ package io.unitycatalog.server.service.credential.aws;
 
 import lombok.Builder;
 import lombok.Getter;
+import lombok.ToString;
 
 @Getter
 @Builder
+@ToString
 public class S3StorageConfig {
   private final String bucketPath;
   private final String region;
