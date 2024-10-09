@@ -4,9 +4,12 @@ import threading
 from abc import ABC, abstractmethod
 from copy import deepcopy
 from dataclasses import dataclass
-from typing import Any, Dict, Literal, Optional
+from typing import TYPE_CHECKING, Any, Callable, Dict, Literal, Optional
 
 from ucai.core.paged_list import PagedList
+
+if TYPE_CHECKING:
+    from databricks.sdk.service.catalog import FunctionInfo
 
 _logger = logging.getLogger(__name__)
 
@@ -42,6 +45,23 @@ class BaseFunctionClient(ABC):
     @abstractmethod
     def create_function(self, *args: Any, **kwargs: Any) -> Any:
         """Create a function"""
+    
+    @abstractmethod
+    def create_python_function(
+        self, *, func: Callable[..., Any], catalog: str, schema: str, replace: bool = False
+    ) -> "FunctionInfo":
+        """
+        Create a Python function
+
+        Args:
+            func: A Python Callable object to be converted into a UC function.
+            catalog: The catalog name.
+            schema: The schema name.
+            replace: Whether to replace the function if it already exists. Defaults to False.
+
+        Returns:
+            FunctionInfo: The UC function information metadata.
+        """
 
     @abstractmethod
     def get_function(self, function_name: str, **kwargs: Any) -> Any:
