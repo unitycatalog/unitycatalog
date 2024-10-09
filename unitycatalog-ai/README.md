@@ -15,6 +15,10 @@ pip install git+https://github.com/unitycatalog/unitycatalog.git@ucai-core#subdi
 
 ## Get started
 
+### OSS UC
+
+TODO: fill this section once OSS UC client implementation is done.
+
 ### Databricks-managed UC
 
 To use Databricks-managed Unity Catalog with this package, follow the [instructions](https://docs.databricks.com/en/dev-tools/cli/authentication.html#authentication-for-the-databricks-cli) to authenticate to your workspace and ensure that your access token has workspace-level privilege for managing UC functions.
