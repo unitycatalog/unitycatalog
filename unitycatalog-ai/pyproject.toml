@@ -30,6 +30,20 @@ exclude = [
 packages = ["src/ucai"]
 
 [project.optional-dependencies]
+databricks = [
+  "databricks-sdk>=0.32.0",
+  "pandas",
+  "databricks-connect==15.1.0"
+]
+databricks-dev = [
+  "hatch",
+  "pytest",
+  "databricks-sdk>=0.32.0",
+  # Note: databricks-connect 15.1 is recommended for serverless, databricks-connect>=14.0.0 requires python>=3.10
+  "databricks-connect==15.1.0",
+  "pandas",
+  "ruff==0.6.4",
+]
 dev = [
   "hatch",
   "pytest",
