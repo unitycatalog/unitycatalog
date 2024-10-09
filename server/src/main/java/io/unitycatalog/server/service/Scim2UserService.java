@@ -230,9 +230,9 @@ public class Scim2UserService {
   private HttpResponse handleExceptionDuringPatch(Exception ex) {
     if (ex instanceof ScimException) {
       throw new Scim2RuntimeException((ScimException) ex);
-    } else   {
+    } else {
       throw new Scim2RuntimeException(
-          new ServerErrorException("Problem with patch operation",ex.getMessage(), ex));
+          new ServerErrorException("Problem with patch operation", ex.getMessage(), ex));
     }
   }
 
