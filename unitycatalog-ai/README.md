@@ -90,6 +90,18 @@ result = client.execute_function(full_func_name, {"s": "some_string"})
 assert result.value == "some_string"
 ```
 
+##### Function execution arguments configuration
+
+To manage the function execution behavior using Databricks client under different configurations, we offer the following environment variables:
+
+| Configuration Type                                | Environment Variable                                                | Description                                                                                                                                                                                                                                               | Default Value |
+|---------------------------------------------------|---------------------------------------------------------------------|-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|---------------|
+| **Warehouse Execution**                           | `UCAI_DATABRICKS_WAREHOUSE_EXECUTE_FUNCTION_WAIT_TIMEOUT`            | Time in seconds the call will wait for the function to execute. Set as `Ns` where `N` can be 0 or between 5 and 50.                                                                                                                                         | `30s`         |
+|                                                   | `UCAI_DATABRICKS_WAREHOUSE_EXECUTE_FUNCTION_ROW_LIMIT`               | Maximum number of rows in the function execution result. Also sets the `truncated` field in the response to indicate if the result was trimmed due to the limit.                                                                                            | 100           |
+|                                                   | `UCAI_DATABRICKS_WAREHOUSE_EXECUTE_FUNCTION_BYTE_LIMIT`              | Maximum byte size of the function execution result. If truncated due to this limit, the `truncated` field in the response is set to `true`.                                                                                                                | 4096          |
+|                                                   | `UCAI_DATABRICKS_WAREHOUSE_RETRY_TIMEOUT`                            | Client-side retry timeout for function execution. If execution doesn't complete within `UCAI_DATABRICKS_WAREHOUSE_EXECUTE_FUNCTION_WAIT_TIMEOUT`, client retries with exponential wait times until this timeout is reached.                                  | 120           |
+| **Serverless Compute Execution**                  | `UCAI_DATABRICKS_SERVERLESS_EXECUTION_RESULT_ROW_LIMIT`              | Maximum number of rows in the function execution result.                                                                                                                                                                                                  | 100           |
+
 #### Reminders
 
 - If the function contains a `DECIMAL` type parameter, it is converted to python `float` for execution, and this conversion may lose precision.
