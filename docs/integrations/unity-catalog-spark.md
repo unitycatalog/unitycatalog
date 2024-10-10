@@ -229,7 +229,7 @@ Let’s query the first five rows of the `marksheet` table.
 === "PySpark"
 
     ```python
-    sql("SELECT * FROM default.marksheet LIMIT5;").show()
+    sql("SELECT * FROM default.marksheet LIMIT 5").show()
     ```
 
 
@@ -247,75 +247,190 @@ With the output looking similar to the following.
 ```
 
 
-## Running CRUD Operations on a Unity Catalog table
+## Running CRUD Operations on a Unity Catalog Table
 
 Let’s extend this example by executing various CRUD operations on our UC tables.  
 
-```sql title="Create new schema"
--- Create new schema
-CREATE SCHEMA demo;
+### Create New Schema
 
--- Should now show two schemas: default and demo
-SHOW SCHEMAS;
-```
+=== "Spark SQL"
 
-```sql title="Create new table"
--- Create a new table
-CREATE TABLE
-demo.mytable (id INT, desc STRING) 
-USING delta 
-LOCATION '<LOCATION>';
--- Example location:
--- LOCATION '/tmp/tables/mytable';
-```
+    ```sql
+    -- Create new schema
+    CREATE SCHEMA demo;
+    
+    -- Should now show two schemas: default and demo
+    SHOW SCHEMAS;
+    ```
 
-```sql title="Insert new rows into table"
--- Insert new rows
-INSERT INTO demo.mytable VALUES (1, "test 1");
-INSERT INTO demo.mytable VALUES (2, "test 2");
-INSERT INTO demo.mytable VALUES (3, "test 3");
-INSERT INTO demo.mytable VALUES (4, "test 4");
+=== "PySpark"
 
--- Read table
-SELECT * FROM demo.mytable;
-```
+    ```python
+    # Create new schema
+    spark.sql("CREATE SCHEMA demo")
+    
+    # Should now show two schemas: default and demo
+    spark.sql("SHOW SCHEMAS").show()
+    ```
 
-```sql title="Update row in table"
--- Update row in table
-UPDATE demo.mytable SET id = 5 WHERE id = 4;
-```
+### Create New Table
 
-```sql title="Delete row from table"
--- Delete rows
-DELETE FROM demo.mytable WHERE id = 5;
-```
+=== "Spark SQL"
 
-```sql title="Merge mytable with srctable"
--- Create secondary table (we will use this as the source for merge)
-CREATE TABLE
-demo.srctable (id INT, desc STRING) 
-USING delta
-LOCATION '<LOCATION>';
--- Example location:
--- LOCATION '/tmp/tables/srctable';
+    ```sql
+    -- Create a new table
+    CREATE TABLE demo.mytable (id INT, desc STRING) 
+    USING delta 
+    LOCATION '<LOCATION>';
+    -- Example location:
+    -- LOCATION '/tmp/tables/mytable';
+    ```
 
--- Insert new rows
-INSERT INTO demo.srctable VALUES (3, "updated");
-INSERT INTO demo.srctable VALUES (4, "inserted");
+=== "PySpark"
+    
+    ```python
+    # Create a new table
+    spark.sql("""
+    CREATE TABLE demo.mytable (id INT, desc STRING)
+    USING delta
+    LOCATION '<LOCATION>'
+    """)
+    # Example location:
+    # LOCATION '/tmp/tables/mytable'
+    ```
 
--- Merge
-MERGE INTO demo.mytable as target
-USING demo.srctable as source
-   ON target.id = source.id
- WHEN MATCHED THEN
-      UPDATE SET *
- WHEN NOT MATCHED THEN
-      INSERT *
-;
+### Insert New Rows into Table
 
--- Check results
-SELECT * FROM demo.mytable;
-```
+=== "Spark SQL"
+    
+    ```sql
+    -- Insert new rows
+    INSERT INTO demo.mytable VALUES (1, "test 1");
+    INSERT INTO demo.mytable VALUES (2, "test 2");
+    INSERT INTO demo.mytable VALUES (3, "test 3");
+    INSERT INTO demo.mytable VALUES (4, "test 4");
+    
+    -- Read table
+    SELECT * FROM demo.mytable;
+    ```
+ 
+=== "PySpark"
+
+    ```python
+    # Insert new rows
+    spark.sql("INSERT INTO demo.mytable VALUES (1, 'test 1')")
+    spark.sql("INSERT INTO demo.mytable VALUES (2, 'test 2')")
+    spark.sql("INSERT INTO demo.mytable VALUES (3, 'test 3')")
+    spark.sql("INSERT INTO demo.mytable VALUES (4, 'test 4')")
+    
+    # Read table
+    spark.sql("SELECT * FROM demo.mytable").show()
+    ```
+
+### Update Row in Table
+
+=== "Spark SQL"
+
+    ```sql
+    -- Update row in table
+    UPDATE demo.mytable SET id = 5 WHERE id = 4;
+    ```
+
+=== "PySpark"
+
+    ```python
+    # Update row in table
+    spark.sql("UPDATE demo.mytable SET id = 5 WHERE id = 4")
+    ```
+
+### Delete Row from Table
+
+=== "Spark SQL"
+
+    ```sql
+    -- Delete rows
+    DELETE FROM demo.mytable WHERE id = 5;
+    ```
+
+=== "PySpark"
+
+    ```python
+    # Delete rows
+    spark.sql("DELETE FROM demo.mytable WHERE id = 5")
+    ```
+
+### Merge `mytable` with `srctable`
+
+Create Secondary Table
+
+=== "Spark SQL"
+
+    ```sql
+    -- Create secondary table (we will use this as the source for merge)
+    CREATE TABLE demo.srctable (id INT, desc STRING) 
+    USING delta
+    LOCATION '<LOCATION>';
+    -- Example location:
+    -- LOCATION '/tmp/tables/srctable';
+    
+    -- Insert new rows
+    INSERT INTO demo.srctable VALUES (3, "updated");
+    INSERT INTO demo.srctable VALUES (4, "inserted");
+    ```
+
+=== "PySpark"
+
+    ```python
+    # Create secondary table (we will use this as the source for merge)
+    spark.sql("""
+    CREATE TABLE demo.srctable (id INT, desc STRING)
+    USING delta
+    LOCATION '<LOCATION>'
+    """)
+    # Example location:
+    # LOCATION '/tmp/tables/srctable';
+    
+    # Insert new rows
+    spark.sql("INSERT INTO demo.srctable VALUES (3, 'updated')")
+    spark.sql("INSERT INTO demo.srctable VALUES (4, 'inserted')")
+    ```
+
+Merge Command
+
+=== "Spark SQL"
+
+    ```sql
+    -- Merge
+    MERGE INTO demo.mytable as target
+    USING demo.srctable as source
+        ON target.id = source.id
+    WHEN MATCHED THEN
+        UPDATE SET *
+    WHEN NOT MATCHED THEN
+        INSERT *
+    ;
+    
+    -- Check results
+    SELECT * FROM demo.mytable;
+    ```
+
+=== "PySpark"
+
+    ```python
+    # Merge
+    spark.sql("""
+    MERGE INTO demo.mytable AS target
+    USING demo.srctable AS source
+        ON target.id = source.id
+    WHEN MATCHED THEN 
+        UPDATE SET *
+    WHEN NOT MATCHED THEN 
+        INSERT *
+    """)
+    
+    # Check results
+    spark.sql("SELECT * FROM demo.mytable").show()
+    ```
 
 ```console title="Merged Results"
 3       updated
@@ -324,14 +439,28 @@ SELECT * FROM demo.mytable;
 2       test 2
 ```
 
-```sql title="Drop table"
+Drop Table
 
--- Drop tables
-DROP TABLE demo.srctable;
+=== "Spark SQL"
 
--- Check results
-SHOW TABLES IN default;
-```
+    ```sql
+    
+    -- Drop tables
+    DROP TABLE demo.srctable;
+    
+    -- Check results
+    SHOW TABLES IN default;
+    ```
+
+=== "PySpark"
+
+    ```python
+    # Drop tables
+    spark.sql("DROP TABLE demo.srctable")
+    
+    # Check results
+    spark.sql("SHOW TABLES IN default").show()
+    ```
 
 !!! warning 
     Note, this action will only drop the table from UC, it will not remove the data from the file system
