@@ -1,6 +1,7 @@
 package io.unitycatalog.cli.table;
 
 import static io.unitycatalog.server.utils.TestUtils.*;
+import static org.apache.commons.io.FileUtils.deleteDirectory;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.Assertions.fail;
@@ -16,7 +17,6 @@ import io.unitycatalog.server.base.schema.SchemaOperations;
 import io.unitycatalog.server.base.table.TableOperations;
 import java.io.IOException;
 import java.nio.file.*;
-import java.nio.file.attribute.BasicFileAttributes;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -108,26 +108,7 @@ public class CliExternalTableCreationTest extends BaseServerTest {
                 DeltaKernelUtils.readDeltaTable(
                     tableOperations.getTable(TABLE_FULL_NAME).getStorageLocation(), null, 100))
         .doesNotThrowAnyException();
-    assertThatCode(() -> deleteDirectory(Paths.get(tablePath))).doesNotThrowAnyException();
+    assertThatCode(() -> deleteDirectory(Paths.get(tablePath).toFile())).doesNotThrowAnyException();
     assertThatCode(() -> tableOperations.deleteTable(TABLE_FULL_NAME)).doesNotThrowAnyException();
-  }
-
-  public static void deleteDirectory(Path path) throws IOException {
-    Files.walkFileTree(
-        path,
-        new SimpleFileVisitor<Path>() {
-          @Override
-          public FileVisitResult visitFile(Path file, BasicFileAttributes attrs)
-              throws IOException {
-            Files.delete(file);
-            return FileVisitResult.CONTINUE;
-          }
-
-          @Override
-          public FileVisitResult postVisitDirectory(Path dir, IOException exc) throws IOException {
-            Files.delete(dir);
-            return FileVisitResult.CONTINUE;
-          }
-        });
   }
 }
