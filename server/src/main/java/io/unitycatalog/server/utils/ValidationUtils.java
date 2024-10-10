@@ -25,4 +25,41 @@ public class ValidationUtils {
           "Name cannot contain a period, space, forward-slash, or control characters");
     }
   }
+
+  public static void validateNonEmpty(String value, String message) {
+    if (value == null || value.isEmpty()) {
+      throw new BaseException(ErrorCode.INVALID_ARGUMENT, message);
+    }
+  }
+
+  public static void validateNonEmpty(Object value, String message) {
+    if (value == null) {
+      throw new BaseException(ErrorCode.INVALID_ARGUMENT, message);
+    }
+  }
+
+  public static void validateGreaterThanEqualTo(
+      Long value, Long greaterThanEqualTo, String message) {
+    if (value == null || value < greaterThanEqualTo) {
+      throw new BaseException(ErrorCode.INVALID_ARGUMENT, message);
+    }
+  }
+
+  public static void validateGreaterThan(Long value, Long greaterThan, String message) {
+    if (value == null || value <= greaterThan) {
+      throw new BaseException(ErrorCode.INVALID_ARGUMENT, message);
+    }
+  }
+
+  public static void validateEquals(Object value1, Object value2, String message) {
+    if (value1 == null || !value1.equals(value2)) {
+      throw new BaseException(ErrorCode.INVALID_ARGUMENT, message);
+    }
+  }
+
+  public static void validateNotEquals(Object value1, Object value2, String message) {
+    if (value1 == null || value1.equals(value2)) {
+      throw new BaseException(ErrorCode.INVALID_ARGUMENT, message);
+    }
+  }
 }

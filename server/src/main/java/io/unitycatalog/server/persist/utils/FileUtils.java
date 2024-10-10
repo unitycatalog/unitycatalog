@@ -114,7 +114,7 @@ public class FileUtils {
                 });
       }
     } else {
-      throw new IOException("Directory does not exist: " + dirPath);
+      LOGGER.info("Directory does not exist: {}", dirPath);
     }
   }
 
