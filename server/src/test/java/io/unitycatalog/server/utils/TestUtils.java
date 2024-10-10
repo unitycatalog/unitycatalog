@@ -5,11 +5,8 @@ import io.unitycatalog.server.base.ServerConfig;
 import java.net.URI;
 import java.util.HashMap;
 import java.util.Iterator;
-import java.util.List;
 import java.util.Map;
 import java.util.function.Function;
-import java.util.stream.Collectors;
-import java.util.stream.StreamSupport;
 
 public class TestUtils {
   public static final String CATALOG_NAME = "uc_testcatalog";
@@ -81,11 +78,6 @@ public class TestUtils {
       }
     }
     return false;
-  }
-
-  // Generic function to convert Iterable to List using Stream API
-  public static <T> List<T> toList(Iterable<T> iterable) {
-    return StreamSupport.stream(iterable.spliterator(), false).collect(Collectors.toList());
   }
 
   public static ApiClient createApiClient(ServerConfig serverConfig) {

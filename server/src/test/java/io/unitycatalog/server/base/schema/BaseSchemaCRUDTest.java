@@ -112,9 +112,8 @@ public abstract class BaseSchemaCRUDTest extends BaseCRUDTest {
         .noneSatisfy(schema -> assertThat(schema.getName()).isEqualTo(TestUtils.SCHEMA_NEW_NAME));
 
     // Delete parent entity when schema exists
-    SchemaInfo schemaInfo2 =
-        schemaOperations.createSchema(
-            new CreateSchema().name(TestUtils.SCHEMA_NAME).catalogName(TestUtils.CATALOG_NEW_NAME));
+    schemaOperations.createSchema(
+        new CreateSchema().name(TestUtils.SCHEMA_NAME).catalogName(TestUtils.CATALOG_NEW_NAME));
     assertThatThrownBy(
             () -> catalogOperations.deleteCatalog(TestUtils.CATALOG_NEW_NAME, Optional.of(false)))
         .isInstanceOf(Exception.class);
@@ -128,9 +127,8 @@ public abstract class BaseSchemaCRUDTest extends BaseCRUDTest {
     // Test force delete of parent entity when schema exists
     catalogOperations.createCatalog(
         new CreateCatalog().name(TestUtils.CATALOG_NEW_NAME).comment("Common catalog for schemas"));
-    SchemaInfo schemaInfo3 =
-        schemaOperations.createSchema(
-            new CreateSchema().name(TestUtils.SCHEMA_NAME).catalogName(TestUtils.CATALOG_NEW_NAME));
+    schemaOperations.createSchema(
+        new CreateSchema().name(TestUtils.SCHEMA_NAME).catalogName(TestUtils.CATALOG_NEW_NAME));
     catalogOperations.deleteCatalog(TestUtils.CATALOG_NEW_NAME, Optional.of(true));
     assertThatThrownBy(
             () ->
