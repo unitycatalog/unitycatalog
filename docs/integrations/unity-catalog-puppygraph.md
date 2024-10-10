@@ -192,4 +192,4 @@ You can also use [Web UI](https://docs.puppygraph.com/user-interface/puppygraph-
 ## See Also
 
 - [Querying Unity Catalog Data as a Graph](https://docs.puppygraph.com/getting-started/querying-unity-catalog-data-as-a-graph)
-- [The Internals of Unity Catalog | Spark Integration](https://books.japila.pl/unity-catalog-internals/spark-integration/)
+- [The Internals of Unity Catalog | Spark Connector](https://books.japila.pl/unity-catalog-internals/spark-connector/)
