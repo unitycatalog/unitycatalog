@@ -3,14 +3,10 @@ package io.unitycatalog.spark;
 import static io.unitycatalog.server.utils.TestUtils.*;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertFalse;
-import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import io.unitycatalog.client.ApiException;
 import io.unitycatalog.client.model.*;
 import io.unitycatalog.server.base.table.TableOperations;
-import io.unitycatalog.server.sdk.schema.SdkSchemaOperations;
 import io.unitycatalog.server.sdk.tables.SdkTableOperations;
 import java.io.File;
 import java.io.IOException;
@@ -57,7 +53,7 @@ public class TableReadWriteTest extends BaseSparkIntegrationTest {
     SparkSession session = builder.getOrCreate();
     setupExternalParquetTable(PARQUET_TABLE, new ArrayList<>(0));
     testTableReadWrite(SPARK_CATALOG + "." + SCHEMA_NAME + "." + PARQUET_TABLE, session);
-    assertEquals(false, UCSingleCatalog.DELTA_CATALOG_LOADED().get());
+    assertThat(UCSingleCatalog.DELTA_CATALOG_LOADED().get()).isEqualTo(false);
     session.close();
   }
 
@@ -202,7 +198,7 @@ public class TableReadWriteTest extends BaseSparkIntegrationTest {
     String t3 = CATALOG_NAME + "." + SCHEMA_NAME + "." + ANOTHER_DELTA_TABLE;
     session.sql(String.format("CREATE TABLE %s(i INT) USING delta LOCATION '%s'", t3, loc3));
     List<Row> rows = session.table(t3).collectAsList();
-    assertThat(0 == rows.size());
+    assertThat(rows).isEmpty();
 
     session.stop();
   }
@@ -219,7 +215,7 @@ public class TableReadWriteTest extends BaseSparkIntegrationTest {
 
     session.sql(String.format("DELETE FROM %s WHERE i = 1", t1));
     List<Row> rows = session.sql("SELECT * FROM " + t1).collectAsList();
-    assertThat(0 == rows.size());
+    assertThat(rows).isEmpty();
 
     session.stop();
   }
@@ -245,7 +241,7 @@ public class TableReadWriteTest extends BaseSparkIntegrationTest {
             "MERGE INTO %s USING %s ON %s.i = %s.i WHEN NOT MATCHED THEN INSERT *",
             t1, t2, t1, t2));
     List<Row> rows = session.sql("SELECT * FROM " + t1).collectAsList();
-    assertThat(2 == rows.size());
+    assertThat(rows).hasSize(2);
 
     session.stop();
   }
@@ -262,8 +258,8 @@ public class TableReadWriteTest extends BaseSparkIntegrationTest {
 
     session.sql(String.format("UPDATE %s SET i = 2 WHERE i = 1", t1));
     List<Row> rows = session.sql("SELECT * FROM " + t1).collectAsList();
-    assertThat(1 == rows.size());
-    assertThat(2 == rows.get(0).getInt(0));
+    assertThat(rows).hasSize(1);
+    assertThat(rows.get(0).getInt(0)).isEqualTo(2);
     session.stop();
   }
 
@@ -289,9 +285,9 @@ public class TableReadWriteTest extends BaseSparkIntegrationTest {
     SparkSession session = createSparkSessionWithCatalogs(SPARK_CATALOG);
     setupExternalParquetTable(PARQUET_TABLE, new ArrayList<>(0));
     String fullName = String.join(".", SPARK_CATALOG, SCHEMA_NAME, PARQUET_TABLE);
-    assertTrue(session.catalog().tableExists(fullName));
+    assertThat(session.catalog().tableExists(fullName)).isTrue();
     session.sql("DROP TABLE " + fullName).collect();
-    assertFalse(session.catalog().tableExists(fullName));
+    assertThat(session.catalog().tableExists(fullName)).isFalse();
     assertThatThrownBy(() -> session.sql("DROP TABLE a.b.c.d").collect())
         .isInstanceOf(ApiException.class)
         .hasMessageContaining("Invalid table name");
@@ -334,7 +330,7 @@ public class TableReadWriteTest extends BaseSparkIntegrationTest {
               + " USING parquet LOCATION '"
               + path
               + "' as SELECT 1, 2, 3");
-      assertThat(session.sql("SELECT * FROM " + fullTableName).collectAsList().size() == 1);
+      assertThat(session.sql("SELECT * FROM " + fullTableName).collectAsList()).hasSize(1);
       String path2 = generateTableLocation(testCatalog, ANOTHER_PARQUET_TABLE);
       session
           .sql(
@@ -361,26 +357,26 @@ public class TableReadWriteTest extends BaseSparkIntegrationTest {
     String fullTableName1 = SPARK_CATALOG + "." + SCHEMA_NAME + "." + DELTA_TABLE;
     session.sql(
         "CREATE TABLE " + fullTableName1 + "(name STRING) USING delta LOCATION '" + path1 + "'");
-    assertTrue(session.catalog().tableExists(fullTableName1));
+    assertThat(session.catalog().tableExists(fullTableName1)).isTrue();
     TableInfo tableInfo1 = tableOperations.getTable(fullTableName1);
     // By default, Delta tables do not store schema in the catalog.
-    assertTrue(tableInfo1.getColumns().isEmpty());
-    assertTrue(session.table(fullTableName1).collectAsList().isEmpty());
+    assertThat(tableInfo1.getColumns()).isEmpty();
+    assertThat(session.table(fullTableName1).collectAsList()).isEmpty();
     StructType schema1 = session.table(fullTableName1).schema();
-    assertEquals("name", schema1.apply(0).name());
-    assertEquals(DataTypes.StringType, schema1.apply(0).dataType());
+    assertThat(schema1.apply(0).name()).isEqualTo("name");
+    assertThat(schema1.apply(0).dataType()).isEqualTo(DataTypes.StringType);
 
     String fullTableName2 = CATALOG_NAME + "." + SCHEMA_NAME + "." + DELTA_TABLE;
     session.sql(
         "CREATE TABLE " + fullTableName2 + "(name STRING) USING delta LOCATION '" + path2 + "'");
-    assertTrue(session.catalog().tableExists(fullTableName2));
+    assertThat(session.catalog().tableExists(fullTableName2)).isTrue();
     TableInfo tableInfo2 = tableOperations.getTable(fullTableName2);
     // By default, Delta tables do not store schema in the catalog.
-    assertTrue(tableInfo2.getColumns().isEmpty());
-    assertTrue(session.table(fullTableName2).collectAsList().isEmpty());
+    assertThat(tableInfo2.getColumns()).isEmpty();
+    assertThat(session.table(fullTableName2).collectAsList()).isEmpty();
     StructType schema2 = session.table(fullTableName2).schema();
-    assertEquals("name", schema2.apply(0).name());
-    assertEquals(DataTypes.StringType, schema2.apply(0).dataType());
+    assertThat(schema2.apply(0).name()).isEqualTo("name");
+    assertThat(schema2.apply(0).dataType()).isEqualTo(DataTypes.StringType);
 
     session.stop();
   }

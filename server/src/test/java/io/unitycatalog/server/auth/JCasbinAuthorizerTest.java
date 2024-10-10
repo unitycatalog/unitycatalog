@@ -1,8 +1,6 @@
 package io.unitycatalog.server.auth;
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertFalse;
-import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.assertj.core.api.Assertions.assertThat;
 
 import io.unitycatalog.server.persist.model.Privileges;
 import java.util.Arrays;
@@ -28,7 +26,7 @@ public class JCasbinAuthorizerTest {
     Privileges action = Privileges.CREATE_CATALOG;
 
     authenticator.grantAuthorization(principal, resource, action);
-    assertTrue(authenticator.authorize(principal, resource, action));
+    assertThat(authenticator.authorize(principal, resource, action)).isTrue();
   }
 
   @Test
@@ -38,9 +36,9 @@ public class JCasbinAuthorizerTest {
     Privileges action = Privileges.CREATE_CATALOG;
 
     authenticator.grantAuthorization(principal, resource, action);
-    assertTrue(authenticator.authorize(principal, resource, action));
+    assertThat(authenticator.authorize(principal, resource, action)).isTrue();
     authenticator.revokeAuthorization(principal, resource, action);
-    assertFalse(authenticator.authorize(principal, resource, action));
+    assertThat(authenticator.authorize(principal, resource, action)).isFalse();
   }
 
   @Test
@@ -52,15 +50,15 @@ public class JCasbinAuthorizerTest {
 
     authenticator.grantAuthorization(principal, resource, action);
     authenticator.grantAuthorization(principal2, resource, action);
-    assertTrue(authenticator.authorize(principal, resource, action));
-    assertTrue(authenticator.authorize(principal2, resource, action));
+    assertThat(authenticator.authorize(principal, resource, action)).isTrue();
+    assertThat(authenticator.authorize(principal2, resource, action)).isTrue();
 
     authenticator.clearAuthorizationsForPrincipal(principal);
-    assertFalse(authenticator.authorize(principal, resource, action));
-    assertTrue(authenticator.authorize(principal2, resource, action));
+    assertThat(authenticator.authorize(principal, resource, action)).isFalse();
+    assertThat(authenticator.authorize(principal2, resource, action)).isTrue();
 
     authenticator.clearAuthorizationsForPrincipal(principal2);
-    assertFalse(authenticator.authorize(principal2, resource, action));
+    assertThat(authenticator.authorize(principal2, resource, action)).isFalse();
   }
 
   @Test
@@ -72,7 +70,7 @@ public class JCasbinAuthorizerTest {
 
     authenticator.addHierarchyChild(catalog, schema);
     authenticator.grantAuthorization(principal, catalog, action);
-    assertTrue(authenticator.authorize(principal, schema, action));
+    assertThat(authenticator.authorize(principal, schema, action)).isTrue();
   }
 
   @Test
@@ -84,9 +82,9 @@ public class JCasbinAuthorizerTest {
 
     authenticator.addHierarchyChild(catalog, schema);
     authenticator.grantAuthorization(principal, catalog, action);
-    assertTrue(authenticator.authorize(principal, schema, action));
+    assertThat(authenticator.authorize(principal, schema, action)).isTrue();
     authenticator.removeHierarchyChild(catalog, schema);
-    assertFalse(authenticator.authorize(principal, schema, action));
+    assertThat(authenticator.authorize(principal, schema, action)).isFalse();
   }
 
   @Test
@@ -98,9 +96,9 @@ public class JCasbinAuthorizerTest {
 
     authenticator.addHierarchyChild(catalog, schema);
     authenticator.grantAuthorization(principal, catalog, action);
-    assertTrue(authenticator.authorize(principal, schema, action));
+    assertThat(authenticator.authorize(principal, schema, action)).isTrue();
     authenticator.removeHierarchyChildren(catalog);
-    assertFalse(authenticator.authorize(principal, schema, action));
+    assertThat(authenticator.authorize(principal, schema, action)).isFalse();
   }
 
   @Test
@@ -108,13 +106,15 @@ public class JCasbinAuthorizerTest {
     UUID principal = UUID.randomUUID();
     UUID resource = UUID.randomUUID();
 
-    assertFalse(
-        authenticator.authorizeAny(
-            principal, resource, Privileges.USE_CATALOG, Privileges.CREATE_CATALOG));
+    assertThat(
+            authenticator.authorizeAny(
+                principal, resource, Privileges.USE_CATALOG, Privileges.CREATE_CATALOG))
+        .isFalse();
     authenticator.grantAuthorization(principal, resource, Privileges.USE_CATALOG);
-    assertTrue(
-        authenticator.authorizeAny(
-            principal, resource, Privileges.USE_CATALOG, Privileges.CREATE_CATALOG));
+    assertThat(
+            authenticator.authorizeAny(
+                principal, resource, Privileges.USE_CATALOG, Privileges.CREATE_CATALOG))
+        .isTrue();
   }
 
   @Test
@@ -122,17 +122,20 @@ public class JCasbinAuthorizerTest {
     UUID principal = UUID.randomUUID();
     UUID resource = UUID.randomUUID();
 
-    assertFalse(
-        authenticator.authorizeAll(
-            principal, resource, Privileges.USE_CATALOG, Privileges.CREATE_CATALOG));
+    assertThat(
+            authenticator.authorizeAll(
+                principal, resource, Privileges.USE_CATALOG, Privileges.CREATE_CATALOG))
+        .isFalse();
     authenticator.grantAuthorization(principal, resource, Privileges.USE_CATALOG);
-    assertFalse(
-        authenticator.authorizeAll(
-            principal, resource, Privileges.USE_CATALOG, Privileges.CREATE_CATALOG));
+    assertThat(
+            authenticator.authorizeAll(
+                principal, resource, Privileges.USE_CATALOG, Privileges.CREATE_CATALOG))
+        .isFalse();
     authenticator.grantAuthorization(principal, resource, Privileges.CREATE_CATALOG);
-    assertTrue(
-        authenticator.authorizeAll(
-            principal, resource, Privileges.USE_CATALOG, Privileges.CREATE_CATALOG));
+    assertThat(
+            authenticator.authorizeAll(
+                principal, resource, Privileges.USE_CATALOG, Privileges.CREATE_CATALOG))
+        .isTrue();
   }
 
   @Test
@@ -141,10 +144,10 @@ public class JCasbinAuthorizerTest {
     UUID resource = UUID.randomUUID();
     List<Privileges> actions = Arrays.asList(Privileges.USE_CATALOG, Privileges.CREATE_CATALOG);
 
-    assertTrue(authenticator.listAuthorizations(principal, resource).isEmpty());
+    assertThat(authenticator.listAuthorizations(principal, resource)).isEmpty();
     actions.forEach(action -> authenticator.grantAuthorization(principal, resource, action));
     List<Privileges> result = authenticator.listAuthorizations(principal, resource);
-    assertEquals(actions, result);
+    assertThat(result).isEqualTo(actions);
   }
 
   @Test
@@ -157,12 +160,12 @@ public class JCasbinAuthorizerTest {
     List<Privileges> actions = Arrays.asList(Privileges.USE_CATALOG, Privileges.CREATE_CATALOG);
     List<Privileges> actions2 = Arrays.asList(Privileges.CREATE_CATALOG, Privileges.SELECT);
     Map<UUID, List<Privileges>> empty = authenticator.listAuthorizations(resource);
-    assertTrue(empty.isEmpty());
+    assertThat(empty).isEmpty();
 
     actions.forEach(action -> authenticator.grantAuthorization(principal, resource, action));
     actions.forEach(action -> authenticator.grantAuthorization(principal, resource2, action));
     actions2.forEach(action -> authenticator.grantAuthorization(principal2, resource, action));
     Map<UUID, List<Privileges>> expected = Map.of(principal, actions, principal2, actions2);
-    assertEquals(expected, authenticator.listAuthorizations(resource));
+    assertThat(authenticator.listAuthorizations(resource)).isEqualTo(expected);
   }
 }
