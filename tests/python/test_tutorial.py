@@ -101,7 +101,7 @@ def test_table_create(tables_api):
             ("col1", "int", ColumnTypeName.INT),
             ("col2", "double", ColumnTypeName.DOUBLE),
         ]
-        assert table_info.storage_location == "file:///tmp/uc/mytable/"
+        assert table_info.storage_location == "file:///tmp/uc/mytable"
 
         # append some randomly generated data to the table
         subprocess.run(
