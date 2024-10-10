@@ -101,8 +101,12 @@ public class FunctionCli {
     if (json.has(CliParams.MAX_RESULTS.getServerParam())) {
       maxResults = json.getInt(CliParams.MAX_RESULTS.getServerParam());
     }
+    String pageToken = null;
+    if (json.has(CliParams.PAGE_TOKEN.getServerParam())) {
+      pageToken = json.getString(CliParams.PAGE_TOKEN.getServerParam());
+    }
     return objectWriter.writeValueAsString(
-        functionsApi.listFunctions(catalogName, schemaName, maxResults, null).getFunctions());
+        functionsApi.listFunctions(catalogName, schemaName, maxResults, pageToken).getFunctions());
   }
 
   private static String executeFunction(FunctionsApi functionsApi, JSONObject json)

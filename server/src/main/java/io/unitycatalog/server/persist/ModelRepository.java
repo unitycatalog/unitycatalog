@@ -625,7 +625,7 @@ public class ModelRepository {
         Long.parseLong(pageToken.get());
       } catch (NumberFormatException e) {
         throw new BaseException(
-            ErrorCode.INVALID_ARGUMENT, "Invalid page token recieved: " + pageToken.get());
+            ErrorCode.INVALID_ARGUMENT, "Invalid page token received: " + pageToken.get());
       }
     }
     try (Session session = SESSION_FACTORY.openSession()) {
