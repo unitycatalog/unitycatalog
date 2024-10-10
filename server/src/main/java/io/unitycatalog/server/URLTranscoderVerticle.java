@@ -62,9 +62,9 @@ class URLTranscoderVerticle extends AbstractVerticle {
         transcodePort,
         ar -> {
           if (ar.succeeded()) {
-            LOGGER.info("URL transcoder started on port " + transcodePort);
+            LOGGER.info("URL transcoder started on port {}", transcodePort);
           } else {
-            LOGGER.info("Failed to start URL transcoder: " + ar.cause());
+            LOGGER.info("Failed to start URL transcoder: {}", String.valueOf(ar.cause()));
           }
         });
   }
