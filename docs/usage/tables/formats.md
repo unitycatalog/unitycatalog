@@ -41,57 +41,57 @@ The following creates a new table in the `path/to/storage` LOCATION two colummns
 
 === "Parquet"
 
-    ```bash
-    bin/uc table create --full_name unity.default.test \
-       --columns "some_numbers INT, some_letters STRING"  \
-       --storage_location /path/to/storage \ 
-       --format PARQUET
-    ```
+```bash
+bin/uc table create --full_name unity.default.test \
+   --columns "some_numbers INT, some_letters STRING"  \
+   --storage_location /path/to/storage \ 
+   --format PARQUET
+```
 
 === "JSON"
 
-    ```bash
-    bin/uc table create --full_name unity.default.test \
-       --columns "some_numbers INT, some_letters STRING"  \
-       --storage_location /path/to/storage \ 
-       --format JSON
-    ```
+```bash
+bin/uc table create --full_name unity.default.test \
+   --columns "some_numbers INT, some_letters STRING"  \
+   --storage_location /path/to/storage \ 
+   --format JSON
+```
     
 === "CSV"
 
-    ```bash
-    bin/uc table create --full_name unity.default.test \
-       --columns "some_numbers INT, some_letters STRING"  \
-       --storage_location /path/to/storage \ 
-       --format CSV
-    ```
+```bash
+bin/uc table create --full_name unity.default.test \
+   --columns "some_numbers INT, some_letters STRING"  \
+   --storage_location /path/to/storage \ 
+   --format CSV
+```
 
 === "ORC"
 
-    ```bash
-    bin/uc table create --full_name unity.default.test \
-       --columns "some_numbers INT, some_letters STRING"  \
-       --storage_location /path/to/storage \ 
-       --format ORC
-    ```
+```bash
+bin/uc table create --full_name unity.default.test \
+   --columns "some_numbers INT, some_letters STRING"  \
+   --storage_location /path/to/storage \ 
+   --format ORC
+```
 
 === "Avro"
 
-    ```bash
-    bin/uc table create --full_name unity.default.test \
-       --columns "some_numbers INT, some_letters STRING"  \
-       --storage_location /path/to/storage \ 
-       --format AVRO
-    ```
+```bash
+bin/uc table create --full_name unity.default.test \
+   --columns "some_numbers INT, some_letters STRING"  \
+   --storage_location /path/to/storage \ 
+   --format AVRO
+```
       
 === "Text"
 
-    ```bash
-    bin/uc table create --full_name unity.default.test \
-       --columns "some_numbers INT, some_letters STRING"  \
-       --storage_location /path/to/storage \ 
-       --format TEXT
-    ```
+```bash
+bin/uc table create --full_name unity.default.test \
+   --columns "some_numbers INT, some_letters STRING"  \
+   --storage_location /path/to/storage \ 
+   --format TEXT
+```
 
 
 !!! Note "Setting your /path/to/storage"
