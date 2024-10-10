@@ -10,7 +10,12 @@ Start by cloning the open source Unity Catalog GitHub repository:
 git clone git@github.com:unitycatalog/unitycatalog.git
 ```
 
-To run Unity Catalog, you need **Java 17** installed on your machine.  You can always run the `java --version` command to verify that you have the right version of Java installed such as the following example output.
+> To start Unity Catalog in Docker, refer to the [Docker
+> Compose](docker_quickstart.md) docs.
+
+To run Unity Catalog, you need **Java 17** installed on your machine.  You can
+always run the `java --version` command to verify that you have the right
+version of Java installed such as the following example output. 
 
 ```bash
 % java --version
@@ -18,7 +23,6 @@ openjdk 17.0.12 2024-07-16
 OpenJDK Runtime Environment Homebrew (build 17.0.12+0)
 OpenJDK 64-Bit Server VM Homebrew (build 17.0.12+0, mixed mode, sharing)
 ```
-
 
 Change into the `unitycatalog` directory and run `bin/start-uc-server` to instantiate the server.  Here is what you should see:
 
