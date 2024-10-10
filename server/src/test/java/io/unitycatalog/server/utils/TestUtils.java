@@ -36,7 +36,6 @@ public class TestUtils {
   public static final String VOLUME_NEW_NAME = "uc_newtestvolume";
   public static final String VOLUME_NEW_FULL_NAME =
       CATALOG_NAME + "." + SCHEMA_NAME + "." + VOLUME_NEW_NAME;
-
   public static final String MV_COMMENT = "model version comment";
   public static final String MV_SOURCE = "model version source";
   public static final String MV_RUNID = "model version runId";
@@ -47,6 +46,7 @@ public class TestUtils {
       new HashMap<>(Map.of("prop1", "value1", "prop2", "value2"));
   public static final Map<String, String> NEW_PROPERTIES =
       new HashMap<>(Map.of("prop2", "value22", "prop3", "value33"));
+  public static final String COMMON_ENTITY_NAME = "zz_uc_common_entity_name";
 
   public static int getRandomPort() {
     return (int) (Math.random() * 1000) + 9000;
