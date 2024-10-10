@@ -6,7 +6,7 @@ import com.auth0.jwt.interfaces.DecodedJWT;
 import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.databind.PropertyNamingStrategies;
 import com.fasterxml.jackson.databind.annotation.JsonNaming;
-import com.linecorp.armeria.common.HttpResponse;
+import com.linecorp.armeria.common.*;
 import com.linecorp.armeria.common.annotation.Nullable;
 import com.linecorp.armeria.server.annotation.ExceptionHandler;
 import com.linecorp.armeria.server.annotation.Param;
@@ -104,7 +104,6 @@ public class AuthService {
   @Post("/tokens")
   public HttpResponse grantToken(OAuthTokenExchangeRequest request) {
     LOGGER.debug("Got token: {}", request);
-
     if (request.getGrantType() == null
         || !GrantTypes.TOKEN_EXCHANGE.equals(request.getGrantType())) {
       throw new OAuthInvalidRequestException(
@@ -138,7 +137,6 @@ public class AuthService {
     DecodedJWT decodedJWT = JWT.decode(request.getSubjectToken());
     String issuer = decodedJWT.getClaim("iss").asString();
     String keyId = decodedJWT.getHeaderClaim("kid").asString();
-
     LOGGER.debug("Validating token for issuer: {}", issuer);
 
     JWTVerifier jwtVerifier = jwksOperations.verifierForIssuerAndKey(issuer, keyId);
@@ -156,7 +154,14 @@ public class AuthService {
             .tokenType(AuthTypes.BEARER)
             .build();
 
-    return HttpResponse.ofJson(response);
+    Cookie cookie = Cookie.secureBuilder("UC_TOKEN", accessToken).path("/").build();
+
+    ResponseHeaders responseHeaders =
+        ResponseHeaders.builder(HttpStatus.OK)
+            .add(HttpHeaderNames.SET_COOKIE, cookie.toSetCookieHeader())
+            .build();
+
+    return HttpResponse.ofJson(responseHeaders, response);
   }
 
   private static void verifyPrincipal(DecodedJWT decodedJWT) {

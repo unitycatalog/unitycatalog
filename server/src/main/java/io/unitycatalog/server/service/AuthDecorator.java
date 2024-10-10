@@ -18,7 +18,8 @@ import io.unitycatalog.server.exception.ErrorCode;
 import io.unitycatalog.server.persist.UserRepository;
 import io.unitycatalog.server.security.JwtClaim;
 import io.unitycatalog.server.utils.JwksOperations;
-import java.util.Map;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -38,6 +39,11 @@ public class AuthDecorator implements DecoratingHttpServiceFunction {
   private static final Logger LOGGER = LoggerFactory.getLogger(AuthDecorator.class);
   private static final UserRepository USER_REPOSITORY = UserRepository.getInstance();
 
+  private static final String UC_TOKEN_KEY = "UC_TOKEN";
+
+  private static final String BEARER_PREFIX = "Bearer ";
+  private static final Pattern UC_TOKEN_KEY_PATTERN = Pattern.compile("UC_TOKEN=(\\S+)");
+
   public static final AttributeKey<DecodedJWT> DECODED_JWT_ATTR =
       AttributeKey.valueOf(DecodedJWT.class, "DECODED_JWT_ATTR");
 
@@ -45,55 +51,59 @@ public class AuthDecorator implements DecoratingHttpServiceFunction {
   public HttpResponse serve(HttpService delegate, ServiceRequestContext ctx, HttpRequest req)
       throws Exception {
     LOGGER.debug("AuthDecorator checking {}", req.path());
-    String authorization =
-        req.headers().stream()
-            .filter(h -> h.getKey().equals(HttpHeaderNames.AUTHORIZATION))
-            .map(Map.Entry::getValue)
-            .findFirst()
-            .orElse(null);
 
-    if (authorization == null) {
+    String bearerToken = req.headers().get(HttpHeaderNames.AUTHORIZATION);
+    String cookieToken = req.headers().get(HttpHeaderNames.COOKIE);
+
+    if (bearerToken == null && cookieToken == null) {
       throw new AuthorizationException(ErrorCode.UNAUTHENTICATED, "No authorization found.");
     }
 
-    String[] parts = authorization.split(" ");
+    DecodedJWT decodedJWT =
+        JWT.decode(getAccessTokenFromCookieOrAuthHeader(bearerToken, cookieToken));
 
-    if (parts.length != 2 || !parts[0].equals("Bearer")) {
-      throw new AuthorizationException(ErrorCode.UNAUTHENTICATED, "No Bearer found.");
-    } else {
-      String token = parts[1];
-      DecodedJWT decodedJWT = JWT.decode(token);
+    JwksOperations jwksOperations = new JwksOperations();
 
-      JwksOperations jwksOperations = new JwksOperations();
+    String issuer = decodedJWT.getClaim(JwtClaim.ISSUER.key()).asString();
+    String keyId = decodedJWT.getHeaderClaim(JwtClaim.KEY_ID.key()).asString();
 
-      String issuer = decodedJWT.getClaim(JwtClaim.ISSUER.key()).asString();
-      String keyId = decodedJWT.getHeaderClaim(JwtClaim.KEY_ID.key()).asString();
+    LOGGER.debug("Validating access-token for issuer: {}", issuer);
 
-      LOGGER.debug("Validating access-token for issuer: {}", issuer);
-
-      if (!issuer.equals(INTERNAL)) {
-        throw new AuthorizationException(ErrorCode.PERMISSION_DENIED, "Invalid access token.");
-      }
-
-      JWTVerifier jwtVerifier = jwksOperations.verifierForIssuerAndKey(issuer, keyId);
-      decodedJWT = jwtVerifier.verify(decodedJWT);
-
-      User user;
-      try {
-        user =
-            USER_REPOSITORY.getUserByEmail(decodedJWT.getClaim(JwtClaim.SUBJECT.key()).asString());
-      } catch (Exception e) {
-        user = null;
-      }
-      if (user == null || user.getState() != User.StateEnum.ENABLED) {
-        throw new AuthorizationException(ErrorCode.PERMISSION_DENIED, "User not allowed.");
-      }
-
-      LOGGER.debug("Access allowed for subject: {}", decodedJWT.getClaim(JwtClaim.SUBJECT.key()));
-
-      ctx.setAttr(DECODED_JWT_ATTR, decodedJWT);
+    if (!issuer.equals(INTERNAL)) {
+      throw new AuthorizationException(ErrorCode.PERMISSION_DENIED, "Invalid access token.");
     }
 
+    JWTVerifier jwtVerifier = jwksOperations.verifierForIssuerAndKey(issuer, keyId);
+    decodedJWT = jwtVerifier.verify(decodedJWT);
+
+    User user;
+    try {
+      user = USER_REPOSITORY.getUserByEmail(decodedJWT.getClaim(JwtClaim.SUBJECT.key()).asString());
+    } catch (Exception e) {
+      user = null;
+    }
+    if (user == null || user.getState() != User.StateEnum.ENABLED) {
+      throw new AuthorizationException(ErrorCode.PERMISSION_DENIED, "User not allowed.");
+    }
+
+    LOGGER.debug("Access allowed for subject: {}", decodedJWT.getClaim(JwtClaim.SUBJECT.key()));
+
+    ctx.setAttr(DECODED_JWT_ATTR, decodedJWT);
+
     return delegate.serve(ctx, req);
+  }
+
+  private String getAccessTokenFromCookieOrAuthHeader(String bearerToken, String cookieToken) {
+    if (bearerToken != null && bearerToken.startsWith(BEARER_PREFIX)) {
+      return bearerToken.substring(BEARER_PREFIX.length());
+    }
+    if (cookieToken != null && cookieToken.contains(UC_TOKEN_KEY)) {
+      LOGGER.debug("Getting Access token From the cookie");
+      Matcher matcher = UC_TOKEN_KEY_PATTERN.matcher(cookieToken);
+      if (matcher.find()) {
+        return matcher.group(1);
+      }
+    }
+    throw new AuthorizationException(ErrorCode.UNAUTHENTICATED, "No authorization found.");
   }
 }
