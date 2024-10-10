@@ -216,7 +216,8 @@ This should output something like:
 └────────────────────┴────────────────────────────────────────────────────────────────────────────────────────────────────┘
 ```
 
-You can also store more complex functions. For example, you can import Python modules and use them in your function.
+You can also store more complex functions. For example, you can import Python modules and use them in your function. Note if you have multiple lines in complex functions, you must insert "\n"
+to separate lines in the function definition. Otherwise, the function will return "invalid syntax" error when it is called.
 
 Let's take the example below of a function that uses the Numpy library to simulate a random roll of dice:
 
@@ -255,4 +256,4 @@ Optional Parameters:
 
 - `--comment`: Comment/Description of the entity.
 - `--def`: The routine definition of the function
-- `--language`: The language of the function
+- `--language`: The language of the function, currently only "python" is supported.
