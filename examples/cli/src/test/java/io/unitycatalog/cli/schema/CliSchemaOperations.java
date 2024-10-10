@@ -54,9 +54,13 @@ public class CliSchemaOperations implements SchemaOperations {
   }
 
   @Override
-  public List<SchemaInfo> listSchemas(String catalogName) {
-    String[] args =
-        addServerAndAuthParams(List.of("schema", "list", "--catalog", catalogName), config);
+  public List<SchemaInfo> listSchemas(String catalogName, Optional<String> pageToken) {
+    List<String> argsList = new ArrayList<>(List.of("schema", "list", "--catalog", catalogName));
+    if (pageToken.isPresent()) {
+      argsList.add("--page_token");
+      argsList.add(pageToken.get());
+    }
+    String[] args = addServerAndAuthParams(argsList, config);
     JsonNode schemaList = executeCLICommand(args);
     return objectMapper.convertValue(schemaList, new TypeReference<List<SchemaInfo>>() {});
   }
