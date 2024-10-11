@@ -108,13 +108,21 @@ public abstract class BaseTableCRUDTest extends BaseCRUDTest {
 
   private void verifyTablePagination() throws ApiException {
     Iterable<TableInfo> tables =
-        tableOperations.listTables(TestUtils.CATALOG_NAME, TestUtils.SCHEMA_NAME);
+        tableOperations.listTables(TestUtils.CATALOG_NAME, TestUtils.SCHEMA_NAME, Optional.empty());
     assertThat(tables).hasSize(100);
+
+    // Test list tables with page token
+    tables =
+        tableOperations.listTables(
+            TestUtils.CATALOG_NAME,
+            TestUtils.SCHEMA_NAME,
+            Optional.of(TestUtils.TABLE_NAME + "_1"));
+    assertThat(tables).noneMatch(table -> table.getName().equals(TestUtils.TABLE_NAME + "_1"));
   }
 
   private void verifyTableSorting() throws ApiException {
     Iterable<TableInfo> tables =
-        tableOperations.listTables(TestUtils.CATALOG_NAME, TestUtils.SCHEMA_NAME);
+        tableOperations.listTables(TestUtils.CATALOG_NAME, TestUtils.SCHEMA_NAME, Optional.empty());
     List<TableInfo> sortedTables = new ArrayList<>();
     tables.forEach(sortedTables::add);
     assertThat(sortedTables).isSortedAccordingTo(Comparator.comparing(TableInfo::getName));
