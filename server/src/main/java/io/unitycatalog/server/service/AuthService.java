@@ -162,7 +162,14 @@ public class AuthService {
     ResponseHeadersBuilder responseHeaders = ResponseHeaders.builder(HttpStatus.OK);
 
     if (ext.isPresent() && ext.get().equals(COOKIE)) {
-      Cookie cookie = Cookie.secureBuilder("UC_TOKEN", accessToken).path("/").build();
+
+      // Set cookie timeout to 5 days by default if not present in server.properties
+      Long cookieTimeout =
+          Long.valueOf(
+              ServerPropertiesUtils.getInstance().getProperty("server.cookie-timeout", "432000"));
+
+      Cookie cookie =
+          Cookie.secureBuilder("UC_TOKEN", accessToken).path("/").maxAge(cookieTimeout).build();
       responseHeaders.add(HttpHeaderNames.SET_COOKIE, cookie.toSetCookieHeader());
     }
 
