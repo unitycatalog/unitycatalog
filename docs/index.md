@@ -18,7 +18,7 @@ The first release of Unity Catalog focused on a core set of APIs for tables, uns
 
 - ML model support
 - Apache Spark and Delta Lake integration
-- Authentication/Authorization capabilitities,
+- Authentication/Authorization capabilitities
 - User Interface
 
 Find the roadmap [in the repo discussions](https://github.com/unitycatalog/unitycatalog/discussions/411). This is just the beginning!
