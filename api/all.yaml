@@ -1124,7 +1124,7 @@ paths:
       operationId: summary
       summary: Get metastore summary
       description: |
-        Gets information about a metastore.
+        Gets information about the metastore hosted by this Unity Catalog service (currently the service hosts only one metastore)
       responses:
         '200':
           description: The metastore summary was successfully retrieved.
