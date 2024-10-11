@@ -1122,9 +1122,9 @@ paths:
       tags:
         - Metastores
       operationId: summary
-      summary: Get a metastore summary
+      summary: Get metastore summary
       description: |
-        Gets information about a metastore.
+        Gets information about the metastore hosted by this Unity Catalog service (currently the service hosts only one metastore)
       responses:
         '200':
           description: The metastore summary was successfully retrieved.
@@ -2301,7 +2301,7 @@ components:
       type: object
       properties:
         metastore_id:
-          description: Unique identifier of metastore.
+          description: Unique identifier of the metastore.
           type: string
 info:
   title: Unity Catalog API
