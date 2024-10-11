@@ -11,6 +11,7 @@ import com.amazonaws.services.s3.model.PutObjectRequest;
 import io.unitycatalog.server.exception.BaseException;
 import io.unitycatalog.server.exception.ErrorCode;
 import io.unitycatalog.server.utils.Constants;
+import io.unitycatalog.server.utils.ServerProperties;
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.net.URI;
@@ -20,8 +21,6 @@ import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.Comparator;
 import java.util.stream.Stream;
-
-import io.unitycatalog.server.utils.ServerProperties;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -76,7 +75,7 @@ public class FileUtils {
     // Create the directory
     try {
       Files.createDirectories(dirPath);
-      LOGGER.debug("Directory created successfully: " + dirPath);
+      LOGGER.debug("Directory created successfully: {}", dirPath);
     } catch (Exception e) {
       throw new BaseException(ErrorCode.INTERNAL, "Failed to create directory: " + dirPath, e);
     }
@@ -151,7 +150,7 @@ public class FileUtils {
         ObjectMetadata metadata = new ObjectMetadata();
         metadata.setContentLength(0);
         s3Client.putObject(new PutObjectRequest(bucketName, path, emptyContentStream, metadata));
-        LOGGER.debug("Directory created successfully: " + path);
+        LOGGER.debug("Directory created successfully: {}", path);
         return URI.create(String.format("s3://%s/%s", bucketName, path));
       } catch (Exception e) {
         throw new BaseException(ErrorCode.INTERNAL, "Failed to create directory: " + path, e);
