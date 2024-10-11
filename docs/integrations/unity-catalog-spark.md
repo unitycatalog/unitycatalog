@@ -229,7 +229,7 @@ Let’s query the first five rows of the `marksheet` table.
 === "PySpark"
 
     ```python
-    sql("SELECT * FROM default.marksheet LIMIT 5").show()
+    sql("SELECT * FROM default.marksheet LIMIT 5;").show()
     ```
 
 
