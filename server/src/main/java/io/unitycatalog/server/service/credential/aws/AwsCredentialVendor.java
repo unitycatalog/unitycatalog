@@ -2,13 +2,11 @@ package io.unitycatalog.server.service.credential.aws;
 
 import io.unitycatalog.server.exception.BaseException;
 import io.unitycatalog.server.exception.ErrorCode;
-import io.unitycatalog.server.persist.utils.ServerPropertiesUtils;
+import io.unitycatalog.server.utils.ServerProperties;
 import io.unitycatalog.server.service.credential.CredentialContext;
 import java.time.Duration;
 import java.util.Map;
 import java.util.UUID;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 import software.amazon.awssdk.auth.credentials.AwsBasicCredentials;
 import software.amazon.awssdk.auth.credentials.AwsCredentialsProvider;
 import software.amazon.awssdk.auth.credentials.DefaultCredentialsProvider;
@@ -19,12 +17,10 @@ import software.amazon.awssdk.services.sts.model.Credentials;
 
 public class AwsCredentialVendor {
 
-  private static final Logger LOGGER = LoggerFactory.getLogger(AwsCredentialVendor.class);
-
   private final Map<String, S3StorageConfig> s3Configurations;
 
   public AwsCredentialVendor() {
-    this.s3Configurations = ServerPropertiesUtils.getInstance().getS3Configurations();
+    this.s3Configurations = ServerProperties.getInstance().getS3Configurations();
   }
 
   public Credentials vendAwsCredentials(CredentialContext context) {

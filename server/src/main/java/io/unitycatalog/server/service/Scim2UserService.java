@@ -4,6 +4,7 @@ import static io.unitycatalog.server.model.SecurableType.METASTORE;
 
 import com.auth0.jwt.interfaces.Claim;
 import com.auth0.jwt.interfaces.DecodedJWT;
+import com.fasterxml.jackson.core.JsonProcessingException;
 import com.linecorp.armeria.common.HttpResponse;
 import com.linecorp.armeria.common.HttpStatus;
 import com.linecorp.armeria.server.ServiceRequestContext;
@@ -12,8 +13,12 @@ import com.unboundid.scim2.common.exceptions.BadRequestException;
 import com.unboundid.scim2.common.exceptions.PreconditionFailedException;
 import com.unboundid.scim2.common.exceptions.ResourceConflictException;
 import com.unboundid.scim2.common.exceptions.ScimException;
+import com.unboundid.scim2.common.exceptions.ServerErrorException;
 import com.unboundid.scim2.common.filters.Filter;
 import com.unboundid.scim2.common.messages.ListResponse;
+import com.unboundid.scim2.common.messages.PatchOpType;
+import com.unboundid.scim2.common.messages.PatchOperation;
+import com.unboundid.scim2.common.messages.PatchRequest;
 import com.unboundid.scim2.common.types.Email;
 import com.unboundid.scim2.common.types.Meta;
 import com.unboundid.scim2.common.types.Photo;
@@ -196,6 +201,39 @@ public class Scim2UserService {
         UUID.fromString(Objects.requireNonNull(user.getId())));
     USER_REPOSITORY.deleteUser(user.getId());
     return HttpResponse.of(HttpStatus.OK);
+  }
+
+  @Patch("/{id}")
+  public HttpResponse patchUser(@Param("id") String id, PatchRequest patchRequest) {
+
+    return patchRequest.getOperations().stream()
+        .filter(
+            op ->
+                op.getOpType() == PatchOpType.REPLACE
+                    && op.getPath() == null) // Only support patch for okta
+        .findFirst()
+        .map(op -> handleUserUpdate(id, op))
+        .orElse(HttpResponse.of(HttpStatus.NOT_IMPLEMENTED));
+  }
+
+  private HttpResponse handleUserUpdate(String id, PatchOperation operation) {
+    try {
+      Boolean value = operation.getValues(Boolean.class).get(0);
+      UpdateUser updateUser = UpdateUser.builder().active(value).build();
+      USER_REPOSITORY.updateUser(id, updateUser);
+      return HttpResponse.of(HttpStatus.OK);
+    } catch (ScimException | JsonProcessingException e) {
+      return handleExceptionDuringPatch(e);
+    }
+  }
+
+  private HttpResponse handleExceptionDuringPatch(Exception ex) {
+    if (ex instanceof ScimException) {
+      throw new Scim2RuntimeException((ScimException) ex);
+    } else {
+      throw new Scim2RuntimeException(
+          new ServerErrorException("Problem with patch operation", ex.getMessage(), ex));
+    }
   }
 
   public UserResource asUserResource(User user) {

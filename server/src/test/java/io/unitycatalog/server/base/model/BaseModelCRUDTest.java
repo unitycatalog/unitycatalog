@@ -53,6 +53,19 @@ public abstract class BaseModelCRUDTest extends BaseCRUDTest {
     schemaOperations.createSchema(new CreateSchema().name(SCHEMA_NAME2).catalogName(CATALOG_NAME2));
   }
 
+  protected void assertModel(
+      RegisteredModelInfo rmInfo, CreateRegisteredModel createRm, String modelFullName) {
+    assertThat(rmInfo.getName()).isEqualTo(createRm.getName());
+    assertThat(rmInfo.getCatalogName()).isEqualTo(createRm.getCatalogName());
+    assertThat(rmInfo.getSchemaName()).isEqualTo(createRm.getSchemaName());
+    assertThat(rmInfo.getFullName()).isEqualTo(modelFullName);
+    assertThat(rmInfo.getComment()).isEqualTo(createRm.getComment());
+    assertThat(rmInfo.getCreatedAt()).isNotNull();
+    assertThat(rmInfo.getUpdatedAt()).isNotNull();
+    assertThat(rmInfo.getId()).isNotNull();
+    assertThat(rmInfo.getStorageLocation()).isNotNull();
+  }
+
   @Test
   public void testModelCRUD() throws ApiException {
 
@@ -82,29 +95,41 @@ public abstract class BaseModelCRUDTest extends BaseCRUDTest {
     // Create a registered model
     System.out.println("Testing create registered model...");
     RegisteredModelInfo rmInfo = modelOperations.createRegisteredModel(createRm);
-    assertThat(rmInfo.getName()).isEqualTo(createRm.getName());
-    assertThat(rmInfo.getCatalogName()).isEqualTo(createRm.getCatalogName());
-    assertThat(rmInfo.getSchemaName()).isEqualTo(createRm.getSchemaName());
-    assertThat(rmInfo.getFullName()).isEqualTo(MODEL_FULL_NAME);
-    assertThat(rmInfo.getComment()).isEqualTo(createRm.getComment());
-    assertThat(rmInfo.getCreatedAt()).isNotNull();
-    assertThat(rmInfo.getUpdatedAt()).isNotNull();
-    assertThat(rmInfo.getId()).isNotNull();
-    assertThat(rmInfo.getStorageLocation()).isNotNull();
+    assertModel(rmInfo, createRm, MODEL_FULL_NAME);
+
+    // Create another registered model to test pagination
+    CreateRegisteredModel createRm2 =
+        new CreateRegisteredModel()
+            .name(COMMON_ENTITY_NAME)
+            .catalogName(CATALOG_NAME)
+            .schemaName(SCHEMA_NAME)
+            .comment(COMMENT);
+    RegisteredModelInfo rmInfo2 = modelOperations.createRegisteredModel(createRm2);
+    assertModel(rmInfo2, createRm2, CATALOG_NAME + "." + SCHEMA_NAME + "." + COMMON_ENTITY_NAME);
 
     RegisteredModelInfo rmInfoNewCat = modelOperations.createRegisteredModel(createRmNewCat);
     // List registered models
     System.out.println("Testing list registered models..");
     Iterable<RegisteredModelInfo> modelList =
-        modelOperations.listRegisteredModels(Optional.of(CATALOG_NAME), Optional.of(SCHEMA_NAME));
+        modelOperations.listRegisteredModels(
+            Optional.of(CATALOG_NAME), Optional.of(SCHEMA_NAME), Optional.empty());
     assertThat(modelList).contains(rmInfo);
     Iterable<RegisteredModelInfo> modelList2 =
-        modelOperations.listRegisteredModels(Optional.of(CATALOG_NAME2), Optional.of(SCHEMA_NAME2));
+        modelOperations.listRegisteredModels(
+            Optional.of(CATALOG_NAME2), Optional.of(SCHEMA_NAME2), Optional.empty());
     assertThat(modelList2).contains(rmInfoNewCat);
     Iterable<RegisteredModelInfo> modelList3 =
-        modelOperations.listRegisteredModels(Optional.empty(), Optional.empty());
+        modelOperations.listRegisteredModels(Optional.empty(), Optional.empty(), Optional.empty());
     assertThat(modelList3).contains(rmInfo);
     assertThat(modelList3).contains(rmInfoNewCat);
+
+    // List registered models with page token
+    System.out.println("Testing list registered models with page token..");
+    modelList =
+        modelOperations.listRegisteredModels(
+            Optional.of(CATALOG_NAME), Optional.of(SCHEMA_NAME), Optional.of(MODEL_NAME));
+    assertThat(modelList).doesNotContain(rmInfo);
+    assertThat(modelList).contains(rmInfo2);
 
     // Get registered model
     System.out.println("Testing get registered model..");
@@ -163,7 +188,7 @@ public abstract class BaseModelCRUDTest extends BaseCRUDTest {
         CATALOG_NEW_NAME + "." + SCHEMA_NAME + "." + MODEL_NEW_NAME, Optional.of(false));
     assertThat(
             modelOperations.listRegisteredModels(
-                Optional.of(CATALOG_NEW_NAME), Optional.of(SCHEMA_NAME)))
+                Optional.of(CATALOG_NEW_NAME), Optional.of(SCHEMA_NAME), Optional.empty()))
         .as("Model with model name '%s' exists", MODEL_NEW_NAME)
         .noneSatisfy(modelInfo -> assertThat(modelInfo.getName()).isEqualTo(MODEL_NEW_NAME));
 
@@ -179,18 +204,18 @@ public abstract class BaseModelCRUDTest extends BaseCRUDTest {
         CATALOG_NEW_NAME + "." + SCHEMA_NAME + "." + MODEL_NEW_NAME, Optional.empty());
     assertThat(
             modelOperations.listRegisteredModels(
-                Optional.of(CATALOG_NEW_NAME), Optional.of(SCHEMA_NAME)))
+                Optional.of(CATALOG_NEW_NAME), Optional.of(SCHEMA_NAME), Optional.empty()))
         .as("Model with model name '%s' exists", MODEL_NEW_NAME)
         .noneSatisfy(modelInfo -> assertThat(modelInfo.getName()).isEqualTo(MODEL_NEW_NAME));
 
     // Test force delete of parent entity when model exists
-    CreateRegisteredModel createRm2 =
+    CreateRegisteredModel createRm3 =
         new CreateRegisteredModel()
             .name(MODEL_NAME)
             .catalogName(CATALOG_NEW_NAME)
             .schemaName(SCHEMA_NAME)
             .comment(COMMENT);
-    modelOperations.createRegisteredModel(createRm2);
+    modelOperations.createRegisteredModel(createRm3);
     catalogOperations.deleteCatalog(TestUtils.CATALOG_NEW_NAME, Optional.of(true));
     catalogOperations.deleteCatalog(TestUtils.CATALOG_NAME2, Optional.of(true));
     assertThatThrownBy(
@@ -207,16 +232,9 @@ public abstract class BaseModelCRUDTest extends BaseCRUDTest {
     // Test create model version
     // Create a registered model
     System.out.println("Testing create model version...");
-    RegisteredModelInfo rmInfo2 = modelOperations.createRegisteredModel(createRm);
-    assertThat(rmInfo2.getName()).isEqualTo(createRm.getName());
-    assertThat(rmInfo2.getCatalogName()).isEqualTo(createRm.getCatalogName());
-    assertThat(rmInfo2.getSchemaName()).isEqualTo(createRm.getSchemaName());
-    assertThat(rmInfo2.getFullName()).isEqualTo(MODEL_FULL_NAME);
-    assertThat(rmInfo2.getComment()).isEqualTo(createRm2.getComment());
-    assertThat(rmInfo2.getCreatedAt()).isNotNull();
-    assertThat(rmInfo2.getUpdatedAt()).isNotNull();
-    assertThat(rmInfo2.getId()).isNotNull();
-    assertThat(rmInfo2.getStorageLocation()).isNotNull();
+    RegisteredModelInfo rmInfo3 = modelOperations.createRegisteredModel(createRm);
+    assertModel(rmInfo3, createRm, MODEL_FULL_NAME);
+
     CreateModelVersion createMv =
         new CreateModelVersion()
             .catalogName(CATALOG_NAME)
@@ -243,6 +261,14 @@ public abstract class BaseModelCRUDTest extends BaseCRUDTest {
     ModelVersionInfo mvInfo2 = modelOperations.createModelVersion(createMv);
     assertThat(mvInfo2.getVersion()).isEqualTo(2L);
 
+    // Verify that null source triggers an exception on create
+    System.out.println("Testing that null source on create triggers exception...");
+    createMv.setSource(null);
+    assertThatThrownBy(() -> modelOperations.createModelVersion(createMv))
+        .isInstanceOf(Exception.class);
+    // replace the source in the createMv
+    createMv.setSource(MV_SOURCE);
+
     // Test get a model version
     System.out.println("Testing get model version...");
     ModelVersionInfo mvInfo2Again = modelOperations.getModelVersion(MODEL_FULL_NAME, 2L);
@@ -262,12 +288,21 @@ public abstract class BaseModelCRUDTest extends BaseCRUDTest {
     // Test list model version
     System.out.println("Testing list model versions..");
     Iterable<ModelVersionInfo> modelVersionList =
-        modelOperations.listModelVersions(MODEL_FULL_NAME);
+        modelOperations.listModelVersions(MODEL_FULL_NAME, Optional.empty());
     List<ModelVersionInfo> materializedList =
         StreamSupport.stream(modelVersionList.spliterator(), false).collect(Collectors.toList());
     assertThat(materializedList).contains(mvInfo3);
     assertThat(materializedList).contains(mvInfo);
     assertThat(materializedList.size()).isEqualTo(2);
+
+    // Test list model version with page token
+    System.out.println("Testing list model versions with page token..");
+    modelVersionList = modelOperations.listModelVersions(MODEL_FULL_NAME, Optional.of("1"));
+    materializedList =
+        StreamSupport.stream(modelVersionList.spliterator(), false).collect(Collectors.toList());
+    assertThat(materializedList).contains(mvInfo3);
+    assertThat(materializedList).doesNotContain(mvInfo);
+    assertThat(materializedList.size()).isEqualTo(1);
 
     // Update model version comment
     System.out.println("Testing update model version comment...");
