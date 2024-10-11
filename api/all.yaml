@@ -1122,7 +1122,7 @@ paths:
       tags:
         - Metastores
       operationId: summary
-      summary: Get a metastore summary
+      summary: Get metastore summary
       description: |
         Gets information about a metastore.
       responses:
