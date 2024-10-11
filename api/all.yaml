@@ -2300,7 +2300,7 @@ components:
       type: object
       properties:
         metastore_id:
-          description: Unique identifier of metastore.
+          description: Unique identifier of the metastore.
           type: string
 info:
   title: Unity Catalog API
