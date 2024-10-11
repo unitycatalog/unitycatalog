@@ -8,9 +8,9 @@ import static org.mockito.Mockito.when;
 import io.unitycatalog.server.exception.BaseException;
 import io.unitycatalog.server.model.AwsCredentials;
 import io.unitycatalog.server.model.TemporaryCredentials;
-import io.unitycatalog.server.utils.ServerProperties;
 import io.unitycatalog.server.service.credential.aws.S3StorageConfig;
 import io.unitycatalog.server.service.credential.azure.ADLSStorageConfig;
+import io.unitycatalog.server.utils.ServerProperties;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.CompletionException;
@@ -23,8 +23,7 @@ import software.amazon.awssdk.services.sts.model.StsException;
 
 @ExtendWith(MockitoExtension.class)
 public class CredentialOperationsTest {
-  @Mock
-  ServerProperties serverProperties;
+  @Mock ServerProperties serverProperties;
   CredentialOperations credentialsOperations;
 
   @Test
@@ -34,8 +33,7 @@ public class CredentialOperationsTest {
     final String SESSION_TOKEN = "sessionToken";
     final String S3_REGION = "us-west-2";
     final String ROLE_ARN = "roleArn";
-    try (MockedStatic<ServerProperties> mockedStatic =
-        mockStatic(ServerProperties.class)) {
+    try (MockedStatic<ServerProperties> mockedStatic = mockStatic(ServerProperties.class)) {
       mockedStatic.when(ServerProperties::getInstance).thenReturn(serverProperties);
       // Test session key is available
       when(serverProperties.getS3Configurations())
@@ -83,8 +81,7 @@ public class CredentialOperationsTest {
     final String CLIENT_ID = "clientId";
     final String CLIENT_SECRET = "clientSecret";
     final String TENANT_ID = "tenantId";
-    try (MockedStatic<ServerProperties> mockedStatic =
-        mockStatic(ServerProperties.class)) {
+    try (MockedStatic<ServerProperties> mockedStatic = mockStatic(ServerProperties.class)) {
       mockedStatic.when(ServerProperties::getInstance).thenReturn(serverProperties);
       // Test mode used
       when(serverProperties.getAdlsConfigurations())
@@ -120,8 +117,7 @@ public class CredentialOperationsTest {
   public void testGenerateGcpTemporaryCredentials() {
     final String PROJECT_ID = "projectId";
     final String PRIVATE_KEY_ID = "privateKeyId";
-    try (MockedStatic<ServerProperties> mockedStatic =
-        mockStatic(ServerProperties.class)) {
+    try (MockedStatic<ServerProperties> mockedStatic = mockStatic(ServerProperties.class)) {
       mockedStatic.when(ServerProperties::getInstance).thenReturn(serverProperties);
       // Test mode used
       when(serverProperties.getGcsConfigurations())

@@ -11,6 +11,7 @@ import io.unitycatalog.server.model.AwsCredentials;
 import io.unitycatalog.server.model.AzureUserDelegationSAS;
 import io.unitycatalog.server.model.GcpOauthToken;
 import io.unitycatalog.server.model.TemporaryCredentials;
+import io.unitycatalog.server.utils.ServerProperties;
 import java.io.IOException;
 import java.net.URI;
 import java.net.URISyntaxException;
@@ -21,8 +22,6 @@ import java.nio.file.Paths;
 import java.util.Comparator;
 import java.util.Optional;
 import java.util.stream.Stream;
-
-import io.unitycatalog.server.utils.ServerProperties;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
