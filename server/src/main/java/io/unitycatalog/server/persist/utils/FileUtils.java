@@ -20,12 +20,14 @@ import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.Comparator;
 import java.util.stream.Stream;
+
+import io.unitycatalog.server.utils.ServerProperties;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 public class FileUtils {
   private static final Logger LOGGER = LoggerFactory.getLogger(FileUtils.class);
-  private static final ServerPropertiesUtils properties = ServerPropertiesUtils.getInstance();
+  private static final ServerProperties properties = ServerProperties.getInstance();
 
   private FileUtils() {}
 
@@ -119,10 +121,10 @@ public class FileUtils {
   private static URI modifyS3Directory(URI parsedUri, boolean createOrDelete) {
     String bucketName = parsedUri.getHost();
     String path = parsedUri.getPath().substring(1); // Remove leading '/'
-    String accessKey = ServerPropertiesUtils.getInstance().getProperty("aws.s3.accessKey");
-    String secretKey = ServerPropertiesUtils.getInstance().getProperty("aws.s3.secretKey");
-    String sessionToken = ServerPropertiesUtils.getInstance().getProperty("aws.s3.sessionToken");
-    String region = ServerPropertiesUtils.getInstance().getProperty("aws.region");
+    String accessKey = properties.getProperty("aws.s3.accessKey");
+    String secretKey = properties.getProperty("aws.s3.secretKey");
+    String sessionToken = properties.getProperty("aws.s3.sessionToken");
+    String region = properties.getProperty("aws.region");
 
     BasicSessionCredentials sessionCredentials =
         new BasicSessionCredentials(accessKey, secretKey, sessionToken);

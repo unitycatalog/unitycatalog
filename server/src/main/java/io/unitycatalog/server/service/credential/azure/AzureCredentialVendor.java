@@ -13,7 +13,7 @@ import com.azure.storage.file.datalake.implementation.util.DataLakeSasImplUtil;
 import com.azure.storage.file.datalake.models.UserDelegationKey;
 import com.azure.storage.file.datalake.sas.DataLakeServiceSasSignatureValues;
 import com.azure.storage.file.datalake.sas.PathSasPermission;
-import io.unitycatalog.server.persist.utils.ServerPropertiesUtils;
+import io.unitycatalog.server.utils.ServerProperties;
 import io.unitycatalog.server.service.credential.CredentialContext;
 import java.net.URI;
 import java.time.OffsetDateTime;
@@ -25,7 +25,7 @@ public class AzureCredentialVendor {
   private final Map<String, ADLSStorageConfig> adlsConfigurations;
 
   public AzureCredentialVendor() {
-    this.adlsConfigurations = ServerPropertiesUtils.getInstance().getAdlsConfigurations();
+    this.adlsConfigurations = ServerProperties.getInstance().getAdlsConfigurations();
   }
 
   public AzureCredential vendAzureCredential(CredentialContext context) {
