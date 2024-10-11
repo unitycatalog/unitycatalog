@@ -46,21 +46,26 @@ public class CliModelOperations implements ModelOperations {
 
   @Override
   public List<RegisteredModelInfo> listRegisteredModels(
-      Optional<String> catalogName, Optional<String> schemaName) {
-    List<String> params;
+      Optional<String> catalogName, Optional<String> schemaName, Optional<String> pageToken) {
+    List<String> argsList;
     if (catalogName.isEmpty() || schemaName.isEmpty()) {
-      params = List.of("registered_model", "list");
+      argsList = new ArrayList<>(List.of("registered_model", "list"));
     } else {
-      params =
-          List.of(
-              "registered_model",
-              "list",
-              "--catalog",
-              catalogName.get(),
-              "--schema",
-              schemaName.get());
+      argsList =
+          new ArrayList<>(
+              List.of(
+                  "registered_model",
+                  "list",
+                  "--catalog",
+                  catalogName.get(),
+                  "--schema",
+                  schemaName.get()));
     }
-    String[] args = addServerAndAuthParams(params, config);
+    if (pageToken.isPresent()) {
+      argsList.add("--page_token");
+      argsList.add(pageToken.get());
+    }
+    String[] args = addServerAndAuthParams(argsList, config);
     JsonNode registeredModelList = executeCLICommand(args);
     return objectMapper.convertValue(
         registeredModelList, new TypeReference<List<RegisteredModelInfo>>() {});
@@ -136,10 +141,15 @@ public class CliModelOperations implements ModelOperations {
   }
 
   @Override
-  public List<ModelVersionInfo> listModelVersions(String registeredModelFullName) {
-    String[] args =
-        addServerAndAuthParams(
-            List.of("model_version", "list", "--full_name", registeredModelFullName), config);
+  public List<ModelVersionInfo> listModelVersions(
+      String registeredModelFullName, Optional<String> pageToken) {
+    List<String> argsList =
+        new ArrayList<>(List.of("model_version", "list", "--full_name", registeredModelFullName));
+    if (pageToken.isPresent()) {
+      argsList.add("--page_token");
+      argsList.add(pageToken.get());
+    }
+    String[] args = addServerAndAuthParams(argsList, config);
     JsonNode modelVersionList = executeCLICommand(args);
     return objectMapper.convertValue(
         modelVersionList, new TypeReference<List<ModelVersionInfo>>() {});
