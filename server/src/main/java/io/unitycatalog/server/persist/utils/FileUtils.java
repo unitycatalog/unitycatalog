@@ -75,7 +75,7 @@ public class FileUtils {
     // Create the directory
     try {
       Files.createDirectories(dirPath);
-      LOGGER.debug("Directory created successfully: " + dirPath);
+      LOGGER.debug("Directory created successfully: {}", dirPath);
     } catch (Exception e) {
       throw new BaseException(ErrorCode.INTERNAL, "Failed to create directory: " + dirPath, e);
     }
@@ -150,7 +150,7 @@ public class FileUtils {
         ObjectMetadata metadata = new ObjectMetadata();
         metadata.setContentLength(0);
         s3Client.putObject(new PutObjectRequest(bucketName, path, emptyContentStream, metadata));
-        LOGGER.debug("Directory created successfully: " + path);
+        LOGGER.debug("Directory created successfully: {}", path);
         return URI.create(String.format("s3://%s/%s", bucketName, path));
       } catch (Exception e) {
         throw new BaseException(ErrorCode.INTERNAL, "Failed to create directory: " + path, e);
