@@ -164,7 +164,7 @@ public class UriUtils {
       // Create the directory
       try {
         Files.createDirectories(dirPath);
-        LOGGER.debug("Directory created successfully: " + dirPath);
+        LOGGER.debug("Directory created successfully: {}", dirPath);
       } catch (Exception e) {
         throw new BaseException(ErrorCode.INTERNAL, "Failed to create directory: " + dirPath, e);
       }
