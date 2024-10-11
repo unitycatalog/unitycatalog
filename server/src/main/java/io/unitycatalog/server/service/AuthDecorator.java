@@ -94,11 +94,9 @@ public class AuthDecorator implements DecoratingHttpServiceFunction {
 
   private String getAccessTokenFromCookieOrAuthHeader(String bearerToken, String cookieToken) {
     if (bearerToken != null && bearerToken.startsWith(BEARER_PREFIX)) {
-      LOGGER.debug("Found bearer token in Authorization header using the same ");
       return bearerToken.substring(BEARER_PREFIX.length());
     }
     if (cookieToken != null) {
-      LOGGER.debug("Found bearer token in cookie");
       return cookieToken;
     }
     throw new AuthorizationException(ErrorCode.UNAUTHENTICATED, "No authorization found.");
