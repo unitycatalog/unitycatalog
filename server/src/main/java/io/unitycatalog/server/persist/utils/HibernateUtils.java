@@ -6,6 +6,8 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.Properties;
+
+import io.unitycatalog.server.utils.ServerProperties;
 import lombok.Getter;
 import org.hibernate.SessionFactory;
 import org.hibernate.boot.registry.StandardServiceRegistryBuilder;
@@ -19,11 +21,11 @@ public class HibernateUtils {
   private static final Logger LOGGER = LoggerFactory.getLogger(HibernateUtils.class);
 
   @Getter private static final SessionFactory sessionFactory;
-  private static final ServerPropertiesUtils properties;
+  private static final ServerProperties properties;
   @Getter private static final Properties hibernateProperties = new Properties();
 
   static {
-    properties = ServerPropertiesUtils.getInstance();
+    properties = ServerProperties.getInstance();
     sessionFactory = createSessionFactory();
   }
 

@@ -93,7 +93,10 @@ public class CliUtils {
                       new CliOptions(
                           List.of(CliParams.NAME),
                           List.of(CliParams.COMMENT, CliParams.PROPERTIES)));
-                  put(LIST, new CliOptions(List.of(), List.of(CliParams.MAX_RESULTS)));
+                  put(
+                      LIST,
+                      new CliOptions(
+                          List.of(), List.of(CliParams.MAX_RESULTS, CliParams.PAGE_TOKEN)));
                   put(GET, new CliOptions(List.of(CliParams.NAME), List.of()));
                   put(
                       UPDATE,
@@ -115,7 +118,8 @@ public class CliUtils {
                   put(
                       LIST,
                       new CliOptions(
-                          List.of(CliParams.CATALOG_NAME), List.of(CliParams.MAX_RESULTS)));
+                          List.of(CliParams.CATALOG_NAME),
+                          List.of(CliParams.MAX_RESULTS, CliParams.PAGE_TOKEN)));
                   put(GET, new CliOptions(List.of(CliParams.FULL_NAME), List.of()));
                   put(
                       UPDATE,
@@ -140,7 +144,7 @@ public class CliUtils {
                       LIST,
                       new CliOptions(
                           List.of(CliParams.CATALOG_NAME, CliParams.SCHEMA_NAME),
-                          List.of(CliParams.MAX_RESULTS)));
+                          List.of(CliParams.MAX_RESULTS, CliParams.PAGE_TOKEN)));
                   put(GET, new CliOptions(List.of(CliParams.FULL_NAME), List.of()));
                   put(
                       UPDATE,
@@ -166,7 +170,7 @@ public class CliUtils {
                       LIST,
                       new CliOptions(
                           List.of(CliParams.CATALOG_NAME, CliParams.SCHEMA_NAME),
-                          List.of(CliParams.MAX_RESULTS)));
+                          List.of(CliParams.MAX_RESULTS, CliParams.PAGE_TOKEN)));
                   put(GET, new CliOptions(List.of(CliParams.FULL_NAME), List.of()));
                   put(
                       READ,
@@ -191,7 +195,7 @@ public class CliUtils {
                       LIST,
                       new CliOptions(
                           List.of(CliParams.CATALOG_NAME, CliParams.SCHEMA_NAME),
-                          List.of(CliParams.MAX_RESULTS)));
+                          List.of(CliParams.MAX_RESULTS, CliParams.PAGE_TOKEN)));
                   put(GET, new CliOptions(List.of(CliParams.FULL_NAME), List.of()));
                   put(DELETE, new CliOptions(List.of(CliParams.FULL_NAME), List.of()));
                   put(
@@ -216,7 +220,8 @@ public class CliUtils {
                           List.of(
                               CliParams.CATALOG_NAME,
                               CliParams.SCHEMA_NAME,
-                              CliParams.MAX_RESULTS)));
+                              CliParams.MAX_RESULTS,
+                              CliParams.PAGE_TOKEN)));
                   put(GET, new CliOptions(List.of(CliParams.FULL_NAME), List.of()));
                   put(
                       UPDATE,
@@ -243,7 +248,9 @@ public class CliUtils {
                           List.of(CliParams.COMMENT, CliParams.RUN_ID)));
                   put(
                       LIST,
-                      new CliOptions(List.of(CliParams.FULL_NAME), List.of(CliParams.MAX_RESULTS)));
+                      new CliOptions(
+                          List.of(CliParams.FULL_NAME),
+                          List.of(CliParams.MAX_RESULTS, CliParams.PAGE_TOKEN)));
                   put(
                       GET,
                       new CliOptions(List.of(CliParams.FULL_NAME, CliParams.VERSION), List.of()));

@@ -11,7 +11,7 @@ Throughout the next set of examples, we are using an external identity provider 
 1. The user account used will **authenticate** against an external authentication provider to confirm the user is who they say they are (e.g., `bobbie@rocinante` is in fact Bobbie Draper on the Rocinante)
 2. The user account is either **authenticated** and a *user token is provided* or **not authenticated**.
 3. With the token at hand, the user account also needs to request if they are **authorized** to perform the task (e.g., the user can only read tables but not write any tables).  This authorization step is performed with the Unity Catalog database.
-4. The user account is eitehr **authorized** and they can perform the task or **not authorized**.
+4. The user account is either **authorized** and they can perform the task or **not authorized**.
 
 ## Configure your External Identity Provider
 To try out authentication and authorization, first configure your preferred external identity provider following their instructions.  Ultimately you will have configuration properties to configure:
@@ -24,7 +24,7 @@ To try out authentication and authorization, first configure your preferred exte
 
 You can follow [these instructions](./google-auth.md) if would like to use Google as your external identity provider.
 
-Once you have configured your identity provider, the next steps is to configure your Unity Catalog server settings.
+Once you have configured your identity provider, the next step is to configure your Unity Catalog server settings.
 
 
 ## Configure UC Server Settings

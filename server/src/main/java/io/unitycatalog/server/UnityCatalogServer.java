@@ -22,6 +22,7 @@ import io.unitycatalog.server.exception.BaseException;
 import io.unitycatalog.server.exception.ErrorCode;
 import io.unitycatalog.server.exception.ExceptionHandlingDecorator;
 import io.unitycatalog.server.exception.GlobalExceptionHandler;
+import io.unitycatalog.server.utils.ServerProperties;
 import io.unitycatalog.server.persist.MetastoreRepository;
 import io.unitycatalog.server.persist.utils.ServerPropertiesUtils;
 import io.unitycatalog.server.security.SecurityConfiguration;
@@ -31,6 +32,7 @@ import io.unitycatalog.server.service.credential.CredentialOperations;
 import io.unitycatalog.server.service.iceberg.FileIOFactory;
 import io.unitycatalog.server.service.iceberg.MetadataService;
 import io.unitycatalog.server.service.iceberg.TableConfigService;
+import io.unitycatalog.server.utils.OptionParser;
 import io.unitycatalog.server.utils.RESTObjectMapper;
 import io.unitycatalog.server.utils.VersionUtils;
 import io.vertx.core.Verticle;
@@ -91,13 +93,12 @@ public class UnityCatalogServer {
     // Credentials Service
     CredentialOperations credentialOperations = new CredentialOperations();
 
-    ServerPropertiesUtils serverPropertiesUtils = ServerPropertiesUtils.getInstance();
-    String authorization = serverPropertiesUtils.getProperty("server.authorization", "disable");
-    boolean enableAuthorization = authorization.equalsIgnoreCase("enable");
+    ServerProperties serverProperties = ServerProperties.getInstance();
+    boolean authorizationEnabled = serverProperties.isAuthorizationEnabled();
 
     UnityCatalogAuthorizer authorizer = null;
     try {
-      if (enableAuthorization) {
+      if (authorizationEnabled) {
         authorizer = new JCasbinAuthorizer();
         UnityAccessUtil.initializeAdmin(authorizer);
       } else {
@@ -167,7 +168,7 @@ public class UnityCatalogServer {
         icebergResponseConverter);
 
     // TODO: eventually might want to make this secure-by-default.
-    if (enableAuthorization) {
+    if (authorizationEnabled) {
       LOGGER.info("Authorization enabled.");
 
       // Note: Decorators are applied in reverse order.
@@ -192,46 +193,16 @@ public class UnityCatalogServer {
   }
 
   public static void main(String[] args) {
-    int port = 8080;
-    Options options = new Options();
-    options.addOption(
-        Option.builder("p")
-            .longOpt("port")
-            .hasArg()
-            .desc("Port number to run the server on. Default is 8080.")
-            .type(Integer.class)
-            .build());
-    options.addOption(
-        Option.builder("v")
-            .longOpt("version")
-            .hasArg(false)
-            .desc("Display the version of the Unity Catalog server")
-            .build());
-    CommandLineParser parser = new DefaultParser();
-    try {
-      CommandLine cmd = parser.parse(options, args);
-      if (cmd.hasOption("v")) {
-        System.out.println(VersionUtils.VERSION);
-        return;
-      }
-      if (cmd.hasOption("p")) {
-        port = cmd.getParsedOptionValue("p");
-      }
-    } catch (ParseException e) {
-      System.out.println();
-      System.out.println("Parsing Failed. Reason: " + e.getMessage());
-      System.out.println();
-      HelpFormatter formatter = new HelpFormatter();
-      formatter.printHelp("bin/start-uc-server", options);
-      return;
-    }
+    OptionParser options = new OptionParser();
+    options.parse(args);
     // Start Unity Catalog server
-    UnityCatalogServer unityCatalogServer = new UnityCatalogServer(port + 1);
+    UnityCatalogServer unityCatalogServer = new UnityCatalogServer(options.getPort() + 1);
     unityCatalogServer.printArt();
     unityCatalogServer.start();
     // Start URL transcoder
     Vertx vertx = Vertx.vertx();
-    Verticle transcodeVerticle = new URLTranscoderVerticle(port, port + 1);
+    Verticle transcodeVerticle =
+        new URLTranscoderVerticle(options.getPort(), options.getPort() + 1);
     vertx.deployVerticle(transcodeVerticle);
   }
 
