@@ -11,6 +11,7 @@ import com.amazonaws.services.s3.model.PutObjectRequest;
 import io.unitycatalog.server.exception.BaseException;
 import io.unitycatalog.server.exception.ErrorCode;
 import io.unitycatalog.server.utils.Constants;
+import io.unitycatalog.server.utils.ServerProperties;
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.net.URI;
@@ -20,8 +21,6 @@ import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.Comparator;
 import java.util.stream.Stream;
-
-import io.unitycatalog.server.utils.ServerProperties;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 

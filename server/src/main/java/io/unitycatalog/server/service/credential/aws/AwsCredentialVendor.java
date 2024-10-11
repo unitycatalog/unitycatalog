@@ -2,8 +2,8 @@ package io.unitycatalog.server.service.credential.aws;
 
 import io.unitycatalog.server.exception.BaseException;
 import io.unitycatalog.server.exception.ErrorCode;
-import io.unitycatalog.server.utils.ServerProperties;
 import io.unitycatalog.server.service.credential.CredentialContext;
+import io.unitycatalog.server.utils.ServerProperties;
 import java.time.Duration;
 import java.util.Map;
 import java.util.UUID;
