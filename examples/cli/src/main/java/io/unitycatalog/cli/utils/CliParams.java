@@ -21,6 +21,7 @@ public enum CliParams {
       "The storage location associated with the table. Need to be specified for external tables.",
       "storage_location"),
   MAX_RESULTS("max_results", "The maximum number of results to return.", "max_results"),
+  PAGE_TOKEN("page_token", "Opaque token to retrieve the next page of results.", "page_token"),
   TABLE_TYPE(
       "table_type",
       "The type of the table. Supported values are MANAGED and EXTERNAL. For create table only EXTERNAL tables are supported in this CLI example.",
