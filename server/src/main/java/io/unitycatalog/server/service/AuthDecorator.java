@@ -5,6 +5,7 @@ import static io.unitycatalog.server.security.SecurityContext.Issuers.INTERNAL;
 import com.auth0.jwt.JWT;
 import com.auth0.jwt.JWTVerifier;
 import com.auth0.jwt.interfaces.DecodedJWT;
+import com.linecorp.armeria.common.Cookie;
 import com.linecorp.armeria.common.HttpHeaderNames;
 import com.linecorp.armeria.common.HttpRequest;
 import com.linecorp.armeria.common.HttpResponse;
@@ -18,8 +19,6 @@ import io.unitycatalog.server.exception.ErrorCode;
 import io.unitycatalog.server.persist.UserRepository;
 import io.unitycatalog.server.security.JwtClaim;
 import io.unitycatalog.server.utils.JwksOperations;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -42,7 +41,6 @@ public class AuthDecorator implements DecoratingHttpServiceFunction {
   private static final String UC_TOKEN_KEY = "UC_TOKEN";
 
   private static final String BEARER_PREFIX = "Bearer ";
-  private static final Pattern UC_TOKEN_KEY_PATTERN = Pattern.compile("UC_TOKEN=(\\S+)");
 
   public static final AttributeKey<DecodedJWT> DECODED_JWT_ATTR =
       AttributeKey.valueOf(DecodedJWT.class, "DECODED_JWT_ATTR");
@@ -53,11 +51,12 @@ public class AuthDecorator implements DecoratingHttpServiceFunction {
     LOGGER.debug("AuthDecorator checking {}", req.path());
 
     String bearerToken = req.headers().get(HttpHeaderNames.AUTHORIZATION);
-    String cookieToken = req.headers().get(HttpHeaderNames.COOKIE);
-
-    if (bearerToken == null && cookieToken == null) {
-      throw new AuthorizationException(ErrorCode.UNAUTHENTICATED, "No authorization found.");
-    }
+    String cookieToken =
+        req.headers().cookies().stream()
+            .filter(c -> c.name().equals(UC_TOKEN_KEY))
+            .map(Cookie::name)
+            .findFirst()
+            .orElseGet(null);
 
     DecodedJWT decodedJWT =
         JWT.decode(getAccessTokenFromCookieOrAuthHeader(bearerToken, cookieToken));
@@ -95,14 +94,12 @@ public class AuthDecorator implements DecoratingHttpServiceFunction {
 
   private String getAccessTokenFromCookieOrAuthHeader(String bearerToken, String cookieToken) {
     if (bearerToken != null && bearerToken.startsWith(BEARER_PREFIX)) {
+      LOGGER.debug("Found bearer token in Authorization header using the same ");
       return bearerToken.substring(BEARER_PREFIX.length());
     }
-    if (cookieToken != null && cookieToken.contains(UC_TOKEN_KEY)) {
-      LOGGER.debug("Getting Access token From the cookie");
-      Matcher matcher = UC_TOKEN_KEY_PATTERN.matcher(cookieToken);
-      if (matcher.find()) {
-        return matcher.group(1);
-      }
+    if (cookieToken != null) {
+      LOGGER.debug("Found bearer token in cookie");
+      return cookieToken;
     }
     throw new AuthorizationException(ErrorCode.UNAUTHENTICATED, "No authorization found.");
   }

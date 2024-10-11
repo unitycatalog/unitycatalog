@@ -20,6 +20,7 @@ import io.unitycatalog.server.persist.utils.ServerPropertiesUtils;
 import io.unitycatalog.server.security.JwtClaim;
 import io.unitycatalog.server.security.SecurityContext;
 import io.unitycatalog.server.utils.JwksOperations;
+import java.util.Optional;
 import lombok.Builder;
 import lombok.Getter;
 import lombok.NonNull;
@@ -63,6 +64,8 @@ public class AuthService {
   private final SecurityContext securityContext;
   private final JwksOperations jwksOperations;
 
+  private static final String COOKIE = "cookie";
+
   public AuthService(SecurityContext securityContext) {
     this.securityContext = securityContext;
     this.jwksOperations = new JwksOperations();
@@ -102,7 +105,8 @@ public class AuthService {
    * @return The token exchange response
    */
   @Post("/tokens")
-  public HttpResponse grantToken(OAuthTokenExchangeRequest request) {
+  public HttpResponse grantToken(
+      @Param("ext") Optional<String> ext, OAuthTokenExchangeRequest request) {
     LOGGER.debug("Got token: {}", request);
     if (request.getGrantType() == null
         || !GrantTypes.TOKEN_EXCHANGE.equals(request.getGrantType())) {
@@ -154,14 +158,15 @@ public class AuthService {
             .tokenType(AuthTypes.BEARER)
             .build();
 
-    Cookie cookie = Cookie.secureBuilder("UC_TOKEN", accessToken).path("/").build();
+    // Set token as cookie if ext param is set to cookie
+    ResponseHeadersBuilder responseHeaders = ResponseHeaders.builder(HttpStatus.OK);
 
-    ResponseHeaders responseHeaders =
-        ResponseHeaders.builder(HttpStatus.OK)
-            .add(HttpHeaderNames.SET_COOKIE, cookie.toSetCookieHeader())
-            .build();
+    if (ext.isPresent() && ext.get().equals(COOKIE)) {
+      Cookie cookie = Cookie.secureBuilder("UC_TOKEN", accessToken).path("/").build();
+      responseHeaders.add(HttpHeaderNames.SET_COOKIE, cookie.toSetCookieHeader());
+    }
 
-    return HttpResponse.ofJson(responseHeaders, response);
+    return HttpResponse.ofJson(responseHeaders.build(), response);
   }
 
   private static void verifyPrincipal(DecodedJWT decodedJWT) {
