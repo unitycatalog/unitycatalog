@@ -4,9 +4,7 @@ import io.unitycatalog.client.ApiClient;
 import io.unitycatalog.server.base.ServerConfig;
 import java.net.URI;
 import java.util.HashMap;
-import java.util.Iterator;
 import java.util.Map;
-import java.util.function.Function;
 
 public class TestUtils {
   public static final String CATALOG_NAME = "uc_testcatalog";
@@ -38,7 +36,6 @@ public class TestUtils {
   public static final String VOLUME_NEW_NAME = "uc_newtestvolume";
   public static final String VOLUME_NEW_FULL_NAME =
       CATALOG_NAME + "." + SCHEMA_NAME + "." + VOLUME_NEW_NAME;
-
   public static final String MV_COMMENT = "model version comment";
   public static final String MV_SOURCE = "model version source";
   public static final String MV_RUNID = "model version runId";
@@ -49,35 +46,10 @@ public class TestUtils {
       new HashMap<>(Map.of("prop1", "value1", "prop2", "value2"));
   public static final Map<String, String> NEW_PROPERTIES =
       new HashMap<>(Map.of("prop2", "value22", "prop3", "value33"));
+  public static final String COMMON_ENTITY_NAME = "zz_uc_common_entity_name";
 
   public static int getRandomPort() {
     return (int) (Math.random() * 1000) + 9000;
-  }
-
-  public static <T> int getSize(Iterable<T> iterable) {
-    int size = 0;
-    Iterator<T> iterator = iterable.iterator();
-    while (iterator.hasNext()) {
-      iterator.next();
-      size++;
-    }
-    return size;
-  }
-
-  public static <T> boolean contains(Iterable<T> iterable, T element, Function<T, Boolean> equals) {
-    Iterator<T> iterator = iterable.iterator();
-    while (iterator.hasNext()) {
-      if (equals != null) {
-        if (equals.apply(iterator.next())) {
-          return true;
-        }
-      } else {
-        if (iterator.next().equals(element)) {
-          return true;
-        }
-      }
-    }
-    return false;
   }
 
   public static ApiClient createApiClient(ServerConfig serverConfig) {

@@ -41,7 +41,7 @@ public class ModelRepository {
     query.setParameter("schemaId", schemaId);
     query.setParameter("name", name);
     query.setMaxResults(1);
-    LOGGER.info("Finding registered model by schemaId: " + schemaId + " and name: " + name);
+    LOGGER.info("Finding registered model by schemaId: {} and name: {}",  schemaId, name);
     return query.uniqueResult(); // Returns null if no result is found
   }
 
@@ -75,8 +75,7 @@ public class ModelRepository {
     query.setParameter("registeredModelId", modelId);
     query.setParameter("version", version.toString());
     query.setMaxResults(1);
-    LOGGER.info(
-        "Finding model version by registeredModelId: " + modelId + " and version: " + version);
+    LOGGER.info("Finding model version by registeredModelId: {} and version: {}", modelId, version);
     return query.uniqueResult(); // Returns null if no result is found
   }
 
@@ -107,7 +106,7 @@ public class ModelRepository {
     query.setParameter("registeredModelId", registeredModelId);
     query.setParameter("token", Long.parseLong(token));
     query.setMaxResults(maxResults);
-    LOGGER.info("Finding model versions by registeredModelId: " + registeredModelId);
+    LOGGER.info("Finding model versions by registeredModelId: {}", registeredModelId);
     return query.getResultList(); // Returns null if no result is found
   }
 
@@ -136,7 +135,7 @@ public class ModelRepository {
 
   /** **************** Registered Model handlers ***************** */
   public RegisteredModelInfo getRegisteredModelById(String registeredModelId) {
-    LOGGER.info("Getting registered model by id: " + registeredModelId);
+    LOGGER.info("Getting registered model by id: {}", registeredModelId);
     try (Session session = SESSION_FACTORY.openSession()) {
       session.setDefaultReadOnly(true);
       Transaction tx = session.beginTransaction();
@@ -169,7 +168,7 @@ public class ModelRepository {
   }
 
   public RegisteredModelInfo getRegisteredModel(String fullName) {
-    LOGGER.info("Getting registered model: " + fullName);
+    LOGGER.info("Getting registered model: {}", fullName);
     RegisteredModelInfo registeredModelInfo = null;
     try (Session session = SESSION_FACTORY.openSession()) {
       session.setDefaultReadOnly(true);
@@ -224,7 +223,7 @@ public class ModelRepository {
             .updatedBy(callerId);
     String fullName = getRegisteredModelFullName(registeredModelInfo);
     registeredModelInfo.setFullName(fullName);
-    LOGGER.info("Creating Registered Model: " + fullName);
+    LOGGER.info("Creating Registered Model: {}", fullName);
 
     Transaction tx;
     try (Session session = SESSION_FACTORY.openSession()) {
@@ -257,11 +256,7 @@ public class ModelRepository {
             // For now, never delete.  We will implement a soft delete later.
             // UriUtils.deleteStorageLocationPath(storageLocation);
           } catch (Exception deleteErr) {
-            LOGGER.error(
-                "Unable to delete storage location "
-                    + storageLocation
-                    + " during rollback: "
-                    + deleteErr.getMessage());
+            LOGGER.error("Unable to delete storage location {} during rollback: {}", storageLocation, deleteErr.getMessage());
           }
           tx.rollback();
         }
@@ -325,7 +320,7 @@ public class ModelRepository {
               .registeredModels(result)
               .nextPageToken(nextPageToken);
         } else {
-          LOGGER.info("Listing registered models in " + catalogName.get() + "." + schemaName.get());
+          LOGGER.info("Listing registered models in {}.{}", catalogName.get(), schemaName.get());
           UUID schemaId = RepositoryUtils.getSchemaId(session, catalogName.get(), schemaName.get());
           response =
               listRegisteredModels(
@@ -376,7 +371,7 @@ public class ModelRepository {
       throw new BaseException(ErrorCode.INVALID_ARGUMENT, "No updated fields defined.");
     }
 
-    LOGGER.info("Updating Registered Model: " + fullName);
+    LOGGER.info("Updating Registered Model: {}", fullName);
     RegisteredModelInfo registeredModelInfo;
     String callerId = IdentityUtils.findPrincipalEmailAddress();
 
@@ -439,7 +434,7 @@ public class ModelRepository {
   }
 
   public void deleteRegisteredModel(String fullName, boolean force) {
-    LOGGER.info("Deleting Registered Model: " + fullName);
+    LOGGER.info("Deleting Registered Model: {}", fullName);
     try (Session session = SESSION_FACTORY.openSession()) {
       Transaction tx = session.beginTransaction();
       String[] parts = fullName.split("\\.");
@@ -493,7 +488,7 @@ public class ModelRepository {
 
   /** **************** Model version handlers ***************** */
   public ModelVersionInfo getModelVersion(String fullName, long version) {
-    LOGGER.info("Getting model version: " + fullName + "/" + version);
+    LOGGER.info("Getting model version: {}/{}", fullName, version);
     ModelVersionInfo modelVersionInfo = null;
     try (Session session = SESSION_FACTORY.openSession()) {
       session.setDefaultReadOnly(true);
@@ -551,7 +546,7 @@ public class ModelRepository {
             .updatedAt(createTime)
             .updatedBy(callerId);
     String registeredModelFullName = getRegisteredModelFullName(catalogName, schemaName, modelName);
-    LOGGER.info("Creating Registered Model: " + registeredModelFullName);
+    LOGGER.info("Creating Registered Model: {}", registeredModelFullName);
 
     Transaction tx;
     try (Session session = SESSION_FACTORY.openSession()) {
@@ -591,11 +586,7 @@ public class ModelRepository {
             // For now, never delete.  We will implement a soft delete later.
             // UriUtils.deleteStorageLocationPath(storageLocation);
           } catch (Exception deleteErr) {
-            LOGGER.error(
-                "Unable to delete storage location "
-                    + storageLocation
-                    + " during rollback: "
-                    + deleteErr.getMessage());
+            LOGGER.error("Unable to delete storage location {} during rollback: {}", storageLocation, deleteErr.getMessage());
           }
           tx.rollback();
         }
@@ -615,7 +606,7 @@ public class ModelRepository {
 
   public ListModelVersionsResponse listModelVersions(
       String registeredModelFullName, Optional<Integer> maxResults, Optional<String> pageToken) {
-    LOGGER.info("Listing model versions in " + registeredModelFullName);
+    LOGGER.info("Listing model versions in {}", registeredModelFullName);
     if (maxResults.isPresent() && maxResults.get() < 0) {
       throw new BaseException(
           ErrorCode.INVALID_ARGUMENT, "maxResults must be greater than or equal to 0");
@@ -625,7 +616,7 @@ public class ModelRepository {
         Long.parseLong(pageToken.get());
       } catch (NumberFormatException e) {
         throw new BaseException(
-            ErrorCode.INVALID_ARGUMENT, "Invalid page token recieved: " + pageToken.get());
+            ErrorCode.INVALID_ARGUMENT, "Invalid page token received: " + pageToken.get());
       }
     }
     try (Session session = SESSION_FACTORY.openSession()) {
@@ -691,7 +682,7 @@ public class ModelRepository {
       throw new BaseException(ErrorCode.INVALID_ARGUMENT, "No updated fields defined.");
     }
 
-    LOGGER.info("Updating Model Version: " + fullName + "/" + version);
+    LOGGER.info("Updating Model Version: {}/{}", fullName, version);
     ModelVersionInfo modelVersionInfo;
     String callerId = IdentityUtils.findPrincipalEmailAddress();
 
@@ -735,7 +726,7 @@ public class ModelRepository {
   }
 
   public void deleteModelVersion(String fullName, Long version) {
-    LOGGER.info("Deleting model version: " + fullName + "/" + version);
+    LOGGER.info("Deleting model version: {}/{}", fullName, version);
     String[] parts = fullName.split("\\.");
     if (parts.length != 3) {
       throw new BaseException(
@@ -782,7 +773,7 @@ public class ModelRepository {
 
     String fullName = finalizeModelVersion.getFullName();
     Long version = finalizeModelVersion.getVersion();
-    LOGGER.info("Finalize Model Version: " + fullName + "/" + version);
+    LOGGER.info("Finalize Model Version: {}/{}", fullName, version);
     ModelVersionInfo modelVersionInfo;
     String callerId = IdentityUtils.findPrincipalEmailAddress();
 

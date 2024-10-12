@@ -8,6 +8,7 @@ import io.unitycatalog.client.model.TableInfo;
 import io.unitycatalog.server.base.table.TableOperations;
 import java.util.List;
 import java.util.Objects;
+import java.util.Optional;
 
 public class SdkTableOperations implements TableOperations {
   private final TablesApi tablesApi;
@@ -21,9 +22,10 @@ public class SdkTableOperations implements TableOperations {
   }
 
   @Override
-  public List<TableInfo> listTables(String catalogName, String schemaName) throws ApiException {
+  public List<TableInfo> listTables(
+      String catalogName, String schemaName, Optional<String> pageToken) throws ApiException {
     return Objects.requireNonNull(
-        tablesApi.listTables(catalogName, schemaName, 100, null).getTables());
+        tablesApi.listTables(catalogName, schemaName, 100, pageToken.orElse(null)).getTables());
   }
 
   @Override

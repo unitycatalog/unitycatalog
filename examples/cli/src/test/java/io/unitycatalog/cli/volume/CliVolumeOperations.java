@@ -13,6 +13,7 @@ import io.unitycatalog.server.base.ServerConfig;
 import io.unitycatalog.server.base.volume.VolumeOperations;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
 
 public class CliVolumeOperations implements VolumeOperations {
 
@@ -48,10 +49,16 @@ public class CliVolumeOperations implements VolumeOperations {
   }
 
   @Override
-  public List<VolumeInfo> listVolumes(String catalogName, String schemaName) {
-    String[] args =
-        addServerAndAuthParams(
-            List.of("volume", "list", "--catalog", catalogName, "--schema", schemaName), config);
+  public List<VolumeInfo> listVolumes(
+      String catalogName, String schemaName, Optional<String> pageToken) {
+    List<String> argsList =
+        new ArrayList<>(
+            List.of("volume", "list", "--catalog", catalogName, "--schema", schemaName));
+    if (pageToken.isPresent()) {
+      argsList.add("--page_token");
+      argsList.add(pageToken.get());
+    }
+    String[] args = addServerAndAuthParams(argsList, config);
     JsonNode volumeList = executeCLICommand(args);
     return objectMapper.convertValue(volumeList, new TypeReference<List<VolumeInfo>>() {});
   }

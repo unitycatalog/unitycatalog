@@ -8,12 +8,10 @@ import io.unitycatalog.server.persist.dao.SchemaInfoDAO;
 import io.unitycatalog.server.persist.dao.VolumeInfoDAO;
 import io.unitycatalog.server.persist.utils.FileUtils;
 import io.unitycatalog.server.persist.utils.HibernateUtils;
+import io.unitycatalog.server.persist.utils.PagedListingHelper;
 import io.unitycatalog.server.utils.IdentityUtils;
 import io.unitycatalog.server.utils.ValidationUtils;
-import java.util.Date;
-import java.util.Optional;
-import java.util.UUID;
-import java.util.stream.Collectors;
+import java.util.*;
 import org.hibernate.Session;
 import org.hibernate.SessionFactory;
 import org.hibernate.Transaction;
@@ -27,6 +25,8 @@ public class VolumeRepository {
   public static final SchemaRepository SCHEMA_REPOSITORY = SchemaRepository.getInstance();
   private static final Logger LOGGER = LoggerFactory.getLogger(VolumeRepository.class);
   private static final SessionFactory SESSION_FACTORY = HibernateUtils.getSessionFactory();
+  private static final PagedListingHelper<VolumeInfoDAO> LISTING_HELPER =
+      new PagedListingHelper<>(VolumeInfoDAO.class);
 
   private VolumeRepository() {}
 
@@ -174,6 +174,30 @@ public class VolumeRepository {
     }
   }
 
+  private void addNamespaceData(VolumeInfo volumeInfo, String catalogName, String schemaName) {
+    volumeInfo.setCatalogName(catalogName);
+    volumeInfo.setSchemaName(schemaName);
+    volumeInfo.setFullName(catalogName + "." + schemaName + "." + volumeInfo.getName());
+  }
+
+  public UUID getSchemaId(Session session, String catalogName, String schemaName) {
+    SchemaInfoDAO schemaInfo = SCHEMA_REPOSITORY.getSchemaDAO(session, catalogName, schemaName);
+    if (schemaInfo == null) {
+      throw new BaseException(ErrorCode.NOT_FOUND, "Schema not found: " + schemaName);
+    }
+    return schemaInfo.getId();
+  }
+
+  /**
+   * Return the list of volumes in ascending order of volume name.
+   *
+   * @param catalogName
+   * @param schemaName
+   * @param maxResults
+   * @param pageToken
+   * @param includeBrowse
+   * @return
+   */
   public ListVolumesResponseContent listVolumes(
       String catalogName,
       String schemaName,
@@ -184,14 +208,9 @@ public class VolumeRepository {
       session.setDefaultReadOnly(true);
       Transaction tx = session.beginTransaction();
       try {
-        SchemaInfoDAO schemaInfo = SCHEMA_REPOSITORY.getSchemaDAO(session, catalogName, schemaName);
-        if (schemaInfo == null) {
-          throw new BaseException(
-              ErrorCode.NOT_FOUND, "Schema not found: " + catalogName + "." + schemaName);
-        }
+        UUID schemaId = getSchemaId(session, catalogName, schemaName);
         ListVolumesResponseContent responseContent =
-            listVolumes(
-                session, schemaInfo.getId(), catalogName, schemaName, maxResults, pageToken);
+            listVolumes(session, schemaId, catalogName, schemaName, maxResults, pageToken);
         tx.commit();
         return responseContent;
       } catch (Exception e) {
@@ -208,20 +227,16 @@ public class VolumeRepository {
       String schemaName,
       Optional<Integer> maxResults,
       Optional<String> pageToken) {
-    ListVolumesResponseContent responseContent = new ListVolumesResponseContent();
-    String queryString = "from VolumeInfoDAO v where v.schemaId = :schemaId";
-    Query<VolumeInfoDAO> query = session.createQuery(queryString, VolumeInfoDAO.class);
-    query.setParameter("schemaId", schemaId);
-    maxResults.ifPresent(query::setMaxResults);
-    if (pageToken.isPresent()) {
-      // Perform pagination logic here if needed
-      // Example: query.setFirstResult(startIndex);
+    List<VolumeInfoDAO> volumeInfoDAOList =
+        LISTING_HELPER.listEntity(session, maxResults, pageToken, schemaId);
+    String nextPageToken = LISTING_HELPER.getNextPageToken(volumeInfoDAOList, maxResults);
+    List<VolumeInfo> result = new ArrayList<>();
+    for (VolumeInfoDAO volumeInfoDAO : volumeInfoDAOList) {
+      VolumeInfo volumeInfo = volumeInfoDAO.toVolumeInfo();
+      addNamespaceData(volumeInfo, catalogName, schemaName);
+      result.add(volumeInfo);
     }
-    responseContent.setVolumes(
-        query.list().stream()
-            .map(x -> convertFromDAO(x, catalogName, schemaName))
-            .collect(Collectors.toList()));
-    return responseContent;
+    return new ListVolumesResponseContent().volumes(result).nextPageToken(nextPageToken);
   }
 
   private VolumeInfo convertFromDAO(

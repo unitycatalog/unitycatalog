@@ -8,6 +8,7 @@ import io.unitycatalog.client.model.FunctionInfo;
 import io.unitycatalog.server.base.function.FunctionOperations;
 import java.util.List;
 import java.util.Objects;
+import java.util.Optional;
 
 public class SdkFunctionOperations implements FunctionOperations {
 
@@ -24,10 +25,12 @@ public class SdkFunctionOperations implements FunctionOperations {
   }
 
   @Override
-  public List<FunctionInfo> listFunctions(String catalogName, String schemaName)
-      throws ApiException {
+  public List<FunctionInfo> listFunctions(
+      String catalogName, String schemaName, Optional<String> pageToken) throws ApiException {
     return Objects.requireNonNull(
-        functionsAPI.listFunctions(catalogName, schemaName, 100, null).getFunctions());
+        functionsAPI
+            .listFunctions(catalogName, schemaName, 100, pageToken.orElse(null))
+            .getFunctions());
   }
 
   @Override
