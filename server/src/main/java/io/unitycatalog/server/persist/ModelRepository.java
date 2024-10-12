@@ -41,7 +41,7 @@ public class ModelRepository {
     query.setParameter("schemaId", schemaId);
     query.setParameter("name", name);
     query.setMaxResults(1);
-    LOGGER.info("Finding registered model by schemaId: {} and name: {}",  schemaId, name);
+    LOGGER.info("Finding registered model by schemaId: {} and name: {}", schemaId, name);
     return query.uniqueResult(); // Returns null if no result is found
   }
 
@@ -256,7 +256,10 @@ public class ModelRepository {
             // For now, never delete.  We will implement a soft delete later.
             // UriUtils.deleteStorageLocationPath(storageLocation);
           } catch (Exception deleteErr) {
-            LOGGER.error("Unable to delete storage location {} during rollback: {}", storageLocation, deleteErr.getMessage());
+            LOGGER.error(
+                "Unable to delete storage location {} during rollback: {}",
+                storageLocation,
+                deleteErr.getMessage());
           }
           tx.rollback();
         }
@@ -586,7 +589,10 @@ public class ModelRepository {
             // For now, never delete.  We will implement a soft delete later.
             // UriUtils.deleteStorageLocationPath(storageLocation);
           } catch (Exception deleteErr) {
-            LOGGER.error("Unable to delete storage location {} during rollback: {}", storageLocation, deleteErr.getMessage());
+            LOGGER.error(
+                "Unable to delete storage location {} during rollback: {}",
+                storageLocation,
+                deleteErr.getMessage());
           }
           tx.rollback();
         }
