@@ -237,7 +237,6 @@ lazy val pythonClient = (project in file("target/clients/python"))
     openApiPackageName := s"$artifactNamePrefix",
     openApiAdditionalProperties := Map(
       "packageVersion" -> s"${version.value.replace("-SNAPSHOT", ".dev0")}",
-      "library" -> "urllib3",
     ),
     openApiGenerateApiTests := SettingDisabled,
     openApiGenerateModelTests := SettingDisabled,

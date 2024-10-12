@@ -50,7 +50,7 @@ def uc_server():
 @pytest.fixture(scope="session")
 def api_client():
     config = unitycatalog.Configuration(
-        host = "http://localhost:8080/api/2.1/unity-catalog"
+        host = "http://localhost:8081/api/2.1/unity-catalog"
     )
 
     with unitycatalog.ApiClient(config) as api_client:
