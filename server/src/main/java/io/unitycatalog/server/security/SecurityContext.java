@@ -31,7 +31,7 @@ public class SecurityContext {
   private static final ObjectMapper mapper = new ObjectMapper();
   private static final Logger LOGGER = LoggerFactory.getLogger(UnityCatalogServer.class);
 
-  private final Path certsFile;
+  @Getter private final Path certsFile;
   private final Path serviceTokenFile;
 
   @Getter private final RSAPublicKey rsaPublicKey;
