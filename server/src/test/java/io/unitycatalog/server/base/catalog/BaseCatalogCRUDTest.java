@@ -80,7 +80,6 @@ public abstract class BaseCatalogCRUDTest extends BaseCRUDTest {
     CatalogInfo catalogInfo4 = catalogOperations.getCatalog(CATALOG_NAME);
     assertThat(catalogInfo4).isEqualTo(catalogInfo);
 
-
     // Update catalog name without updating comment and properties
     System.out.println("Testing update catalog: changing name..");
     UpdateCatalog updateCatalog = new UpdateCatalog().newName(CATALOG_NEW_NAME);
