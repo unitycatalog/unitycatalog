@@ -9,7 +9,8 @@ public interface ModelOperations {
   RegisteredModelInfo createRegisteredModel(CreateRegisteredModel createModel) throws ApiException;
 
   List<RegisteredModelInfo> listRegisteredModels(
-      Optional<String> catalogName, Optional<String> schemaName) throws ApiException;
+      Optional<String> catalogName, Optional<String> schemaName, Optional<String> pageToken)
+      throws ApiException;
 
   RegisteredModelInfo getRegisteredModel(String modelFullName) throws ApiException;
 
@@ -20,7 +21,8 @@ public interface ModelOperations {
 
   ModelVersionInfo createModelVersion(CreateModelVersion createModelVersion) throws ApiException;
 
-  List<ModelVersionInfo> listModelVersions(String registeredModelFullName) throws ApiException;
+  List<ModelVersionInfo> listModelVersions(
+      String registeredModelFullName, Optional<String> pageToken) throws ApiException;
 
   ModelVersionInfo getModelVersion(String modelFullName, Long version) throws ApiException;
 

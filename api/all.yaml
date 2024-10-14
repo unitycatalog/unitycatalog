@@ -35,6 +35,9 @@ tags:
   - name: Permissions
     description: |
       In Unity Catalog, data is secure by default. Access can be granted.
+  - name: Metastores
+    description: |
+      A metastore is the top-level container of objects in Unity Catalog that stores all UC assets.
 paths:
   /catalogs:
     post:
@@ -280,7 +283,7 @@ paths:
       tags:
         - StagingTables
       description: |
-        Creates a new staging table instance.
+        Creates a new staging table instance. This table must be committed to a regular table before it can be used.
       requestBody:
         content:
           application/json:
@@ -1134,6 +1137,21 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/PermissionsList'
+  /metastore_summary:
+    get:
+      tags:
+        - Metastores
+      operationId: summary
+      summary: Get metastore summary
+      description: |
+        Gets information about the metastore hosted by this Unity Catalog service (currently the service hosts only one metastore)
+      responses:
+        '200':
+          description: The metastore summary was successfully retrieved.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GetMetastoreSummaryResponse'
 components:
   schemas:
     SecurablePropertiesMap:
@@ -1429,7 +1447,7 @@ components:
           description: URI generated for the staging table
           type: string
         metastore_id:
-          description: The metastore ID of the parent catalog
+          description: The metastore ID of the parent catalog. This is the same metastore referenced by GetMetastoreSummaryResponse.
           type: string
     CreateStagingTable:
       type: object
@@ -2336,6 +2354,12 @@ components:
       required:
         - principal
         - privileges
+    GetMetastoreSummaryResponse:
+      type: object
+      properties:
+        metastore_id:
+          description: Unique identifier of the metastore.
+          type: string
 info:
   title: Unity Catalog API
   version: '0.1'

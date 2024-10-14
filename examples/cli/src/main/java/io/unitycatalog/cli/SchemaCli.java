@@ -69,8 +69,12 @@ public class SchemaCli {
     if (json.has(CliParams.MAX_RESULTS.getServerParam())) {
       maxResults = json.getInt(CliParams.MAX_RESULTS.getServerParam());
     }
+    String pageToken = null;
+    if (json.has(CliParams.PAGE_TOKEN.getServerParam())) {
+      pageToken = json.getString(CliParams.PAGE_TOKEN.getServerParam());
+    }
     return objectWriter.writeValueAsString(
-        schemasApi.listSchemas(catalogName, maxResults, null).getSchemas());
+        schemasApi.listSchemas(catalogName, maxResults, pageToken).getSchemas());
   }
 
   private static String getSchema(SchemasApi schemasApi, JSONObject json)

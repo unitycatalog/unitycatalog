@@ -57,7 +57,7 @@ public class TableRepository {
   }
 
   public TableInfo getTableById(String tableId) {
-    LOGGER.debug("Getting table by id: " + tableId);
+    LOGGER.debug("Getting table by id: {}", tableId);
     try (Session session = SESSION_FACTORY.openSession()) {
       session.setDefaultReadOnly(true);
       TableInfoDAO tableInfoDAO = session.get(TableInfoDAO.class, UUID.fromString(tableId));
@@ -83,7 +83,7 @@ public class TableRepository {
   }
 
   public TableInfo getTable(String fullName) {
-    LOGGER.debug("Getting table: " + fullName);
+    LOGGER.debug("Getting table: {}", fullName);
     TableInfo tableInfo = null;
     try (Session session = SESSION_FACTORY.openSession()) {
       session.setDefaultReadOnly(true);
@@ -154,7 +154,7 @@ public class TableRepository {
             .updatedAt(createTime)
             .updatedBy(callerId);
     String fullName = getTableFullName(tableInfo);
-    LOGGER.debug("Creating table: " + fullName);
+    LOGGER.debug("Creating table: {}", fullName);
 
     Transaction tx;
     try (Session session = SESSION_FACTORY.openSession()) {
@@ -235,7 +235,7 @@ public class TableRepository {
     Query<TableInfoDAO> query = session.createQuery(hql, TableInfoDAO.class);
     query.setParameter("schemaId", schemaId);
     query.setParameter("name", name);
-    LOGGER.debug("Finding table by schemaId: " + schemaId + " and name: " + name);
+    LOGGER.debug("Finding table by schemaId: {} and name: {}", schemaId, name);
     return query.uniqueResult(); // Returns null if no result is found
   }
 

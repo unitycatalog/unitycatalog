@@ -5,6 +5,16 @@ import io.unitycatalog.server.exception.ErrorCode;
 import io.unitycatalog.server.service.credential.CredentialOperations;
 import io.unitycatalog.server.service.iceberg.FileIOFactory;
 import io.unitycatalog.server.utils.Constants;
+import io.unitycatalog.server.utils.ServerProperties;
+import java.io.ByteArrayInputStream;
+import java.io.IOException;
+import java.net.URI;
+import java.nio.file.FileVisitOption;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
+import java.util.Comparator;
+import java.util.stream.Stream;
 import org.apache.iceberg.io.FileIO;
 import org.apache.iceberg.io.InputFile;
 import org.apache.iceberg.io.OutputFile;
@@ -17,7 +27,7 @@ import java.nio.file.Paths;
 
 public class FileUtils {
   private static final Logger LOGGER = LoggerFactory.getLogger(FileUtils.class);
-  private static final ServerPropertiesUtils properties = ServerPropertiesUtils.getInstance();
+  private static final ServerProperties properties = ServerProperties.getInstance();
   private static final CredentialOperations credentialOps = new CredentialOperations();
   private static final FileIOFactory fileIOFactory = new FileIOFactory(credentialOps);
 
