@@ -9,7 +9,12 @@ import lombok.experimental.SuperBuilder;
 
 // Hibernate annotations
 @Entity
-@Table(name = "uc_staging_tables")
+@Table(
+    name = "uc_staging_tables",
+    indexes = {
+      @Index(name = "staging_table_name_idx", columnList = "name"),
+      @Index(name = "staging_table_storage_location_idx", columnList = "staging_location"),
+    })
 // Lombok annotations
 @Getter
 @Setter
@@ -51,24 +56,12 @@ public class StagingTableDAO extends IdentifiableDAO {
   @Column(name = "last_cleanup_at")
   private Date lastCleanupAt;
 
-  public static StagingTableDAO from(StagingTableInfo dto) {
-    if (dto == null) {
-      return null;
-    }
-    StagingTableDAO dao =
-        StagingTableDAO.builder().stagingLocation(dto.getStagingLocation()).build();
-    if (dto.getId() != null) {
-      dao.setId(UUID.fromString(dto.getId()));
-    }
-    return dao;
-  }
-
   public StagingTableInfo toStagingTableInfo() {
-    StagingTableInfo dto = new StagingTableInfo().stagingLocation(getStagingLocation());
-    if (getId() != null) {
-      dto.id(getId().toString());
-    }
-    return dto;
+    // TODO: populate metastore ID
+    return new StagingTableInfo()
+        .id(getId().toString())
+        .stagingLocation(getStagingLocation())
+        .name(getName());
   }
 
   public void setDefaultFields() {

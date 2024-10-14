@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import io.unitycatalog.server.exception.BaseException;
 import io.unitycatalog.server.persist.utils.FileUtils;
+import java.util.UUID;
 import org.junit.jupiter.api.Test;
 
 public class FileUtilsTest {
@@ -13,19 +14,14 @@ public class FileUtilsTest {
   public void testFileUtils() {
 
     System.setProperty("storageRoot", "/tmp");
-    String volumePath = FileUtils.createEntityDirectory("volume");
-    assertThat(volumePath).isEqualTo("file:///tmp/volume/");
-    FileUtils.deleteDirectory(volumePath);
+    String tableId = UUID.randomUUID().toString();
+    String tablePath = FileUtils.createTableDirectory(tableId);
+    assertThat(tablePath).isEqualTo("file:///tmp/tables/" + tableId + "/");
 
     System.setProperty("storageRoot", "file:///tmp/random");
-    volumePath = FileUtils.createEntityDirectory("volume");
-    assertThat(volumePath).isEqualTo("file:///tmp/random/volume/");
-    FileUtils.deleteDirectory(volumePath);
-
-    assertThatThrownBy(
-            () -> {
-              FileUtils.createEntityDirectory("..");
-            })
+    tablePath = FileUtils.createTableDirectory(tableId);
+    assertThat(tablePath).isEqualTo("file:///tmp/random/tables/" + tableId + "/");
+    assertThatThrownBy(() -> FileUtils.createTableDirectory(".."))
         .isInstanceOf(BaseException.class);
   }
 }

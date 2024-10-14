@@ -45,11 +45,8 @@ public class TemporaryTableCredentialsService {
   @Post("")
   public HttpResponse generateTemporaryTableCredential(GenerateTemporaryTableCredential generateTemporaryTableCredential) {
     authorizeForOperation(generateTemporaryTableCredential);
-
-    String tableId = generateTemporaryTableCredential.getTableId();
-    TableInfo tableInfo = TABLE_REPOSITORY.getTableById(tableId);
-    return HttpResponse.ofJson(credentialOps
-            .vendCredential(tableInfo.getStorageLocation(),
+    String storageLocation = TABLE_REPOSITORY.tryAndGetStorageLocationForTable(generateTemporaryTableCredential.getTableId());
+    return HttpResponse.ofJson(credentialOps.vendCredential(storageLocation,
                     tableOperationToPrivileges(generateTemporaryTableCredential.getOperation())));
   }
 
