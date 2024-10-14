@@ -16,11 +16,11 @@ public class FileUtilsTest {
     System.setProperty("storageRoot", "/tmp");
     String tableId = UUID.randomUUID().toString();
     String tablePath = FileUtils.createTableDirectory(tableId);
-    assertThat(tablePath).isEqualTo("file:///tmp/tables/" + tableId + "/");
+    assertThat(tablePath).isEqualTo("file:///tmp/tables/" + tableId);
 
     System.setProperty("storageRoot", "file:///tmp/random");
     tablePath = FileUtils.createTableDirectory(tableId);
-    assertThat(tablePath).isEqualTo("file:///tmp/random/tables/" + tableId + "/");
+    assertThat(tablePath).isEqualTo("file:///tmp/random/tables/" + tableId);
     assertThatThrownBy(() -> FileUtils.createTableDirectory(".."))
         .isInstanceOf(BaseException.class);
   }
