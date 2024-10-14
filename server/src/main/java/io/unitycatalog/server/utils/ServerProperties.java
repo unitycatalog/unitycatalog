@@ -121,14 +121,14 @@ public class ServerProperties {
 
   /**
    * Get a property value by key.
-   * <p>
-   * The key can be one of the following (in that order)
-   * before looking it up in the server properties:
+   *
+   * <p>The key can be one of the following (in that order) before looking it up in the server
+   * properties:
+   *
    * <ol>
-   *     <li>System property</li>
-   *     <li>Environment variable</li>
+   *   <li>System property
+   *   <li>Environment variable
    * </ol>
-   * </p>
    */
   public String getProperty(String key) {
     if (System.getProperty(key) != null) return System.getProperty(key);
@@ -138,6 +138,7 @@ public class ServerProperties {
 
   /**
    * Get a property value by key with a default value
+   *
    * @see Properties#getProperty(String key, String defaultValue)
    */
   public String getProperty(String key, String defaultValue) {
