@@ -19,8 +19,8 @@ import io.unitycatalog.server.persist.UserRepository;
 import io.unitycatalog.server.security.JwtClaim;
 import io.unitycatalog.server.security.SecurityContext;
 import io.unitycatalog.server.utils.JwksOperations;
-import java.util.Optional;
 import io.unitycatalog.server.utils.ServerProperties;
+import java.util.Optional;
 import lombok.Builder;
 import lombok.Getter;
 import lombok.NonNull;
@@ -165,8 +165,7 @@ public class AuthService {
       // Set cookie timeout to 5 days by default if not present in server.properties
       Long cookieTimeout =
           Long.valueOf(
-              ServerPropertiesUtils.getInstance().getProperty("server.cookie-timeout", "432000"));
-
+              ServerProperties.getInstance().getProperty("server.cookie-timeout", "432000"));
       Cookie cookie =
           Cookie.secureBuilder("UC_TOKEN", accessToken).path("/").maxAge(cookieTimeout).build();
       responseHeaders.add(HttpHeaderNames.SET_COOKIE, cookie.toSetCookieHeader());

@@ -50,16 +50,16 @@ public class AuthDecorator implements DecoratingHttpServiceFunction {
       throws Exception {
     LOGGER.debug("AuthDecorator checking {}", req.path());
 
-    String bearerToken = req.headers().get(HttpHeaderNames.AUTHORIZATION);
-    String cookieToken =
+    String authorizationHeader = req.headers().get(HttpHeaderNames.AUTHORIZATION);
+    String authorizationCookie =
         req.headers().cookies().stream()
             .filter(c -> c.name().equals(UC_TOKEN_KEY))
             .map(Cookie::name)
             .findFirst()
-            .orElseGet(null);
+            .orElse(null);
 
     DecodedJWT decodedJWT =
-        JWT.decode(getAccessTokenFromCookieOrAuthHeader(bearerToken, cookieToken));
+        JWT.decode(getAccessTokenFromCookieOrAuthHeader(authorizationHeader, authorizationCookie));
 
     JwksOperations jwksOperations = new JwksOperations();
 
@@ -92,12 +92,13 @@ public class AuthDecorator implements DecoratingHttpServiceFunction {
     return delegate.serve(ctx, req);
   }
 
-  private String getAccessTokenFromCookieOrAuthHeader(String bearerToken, String cookieToken) {
-    if (bearerToken != null && bearerToken.startsWith(BEARER_PREFIX)) {
-      return bearerToken.substring(BEARER_PREFIX.length());
+  private String getAccessTokenFromCookieOrAuthHeader(
+      String authorizationHeader, String authorizationCookie) {
+    if (authorizationHeader != null && authorizationHeader.startsWith(BEARER_PREFIX)) {
+      return authorizationHeader.substring(BEARER_PREFIX.length());
     }
-    if (cookieToken != null) {
-      return cookieToken;
+    if (authorizationCookie != null) {
+      return authorizationCookie;
     }
     throw new AuthorizationException(ErrorCode.UNAUTHENTICATED, "No authorization found.");
   }
