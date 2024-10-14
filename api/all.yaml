@@ -283,7 +283,7 @@ paths:
       tags:
         - StagingTables
       description: |
-        Creates a new staging table instance.
+        Creates a new staging table instance. This table must be committed to a regular table before it can be used.
       requestBody:
         content:
           application/json:
@@ -1447,7 +1447,7 @@ components:
           description: URI generated for the staging table
           type: string
         metastore_id:
-          description: The metastore ID of the parent catalog
+          description: The metastore ID of the parent catalog. This is the same metastore referenced by GetMetastoreSummaryResponse.
           type: string
     CreateStagingTable:
       type: object
