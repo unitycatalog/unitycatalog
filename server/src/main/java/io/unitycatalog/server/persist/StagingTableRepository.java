@@ -108,6 +108,8 @@ public class StagingTableRepository {
 
         validateIfAlreadyExists(session, schemaId, createStagingTable.getName(), stagingLocation);
 
+        StagingTableDAO stagingTableDAO = new StagingTableDAO();
+        stagingTableDAO.setId(stagingTableId);
         stagingTableDAO.setSchemaId(schemaId);
         stagingTableDAO.setName(createStagingTable.getName());
         stagingTableDAO.setStagingLocation(stagingLocation);

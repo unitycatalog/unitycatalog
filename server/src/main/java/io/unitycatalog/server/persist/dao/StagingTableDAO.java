@@ -9,7 +9,12 @@ import lombok.experimental.SuperBuilder;
 
 // Hibernate annotations
 @Entity
-@Table(name = "uc_staging_tables")
+@Table(
+    name = "uc_staging_tables",
+    indexes = {
+      @Index(name = "staging_table_name_idx", columnList = "name"),
+      @Index(name = "staging_table_storage_location_idx", columnList = "staging_location"),
+    })
 // Lombok annotations
 @Getter
 @Setter
