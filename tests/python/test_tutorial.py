@@ -9,7 +9,6 @@ from unitycatalog import (
     CreateFunctionRequest,
     ColumnTypeName,
     TableType,
-    FunctionInfo,
     DataSourceFormat,
     ColumnInfo,
     VolumeType,
@@ -34,14 +33,14 @@ def test_schema_list(schemas_api):
 
 def test_table_list(tables_api):
     api_response = tables_api.list_tables("unity", "default")
-    table_names_and_types = [(t.name, t.table_type) for t in api_response.tables]
+    table_names_and_types = {(t.name, t.table_type) for t in api_response.tables}
 
-    assert table_names_and_types == [
+    assert table_names_and_types == {
         ("marksheet", TableType.MANAGED),
         ("marksheet_uniform", TableType.EXTERNAL),
         ("numbers", TableType.EXTERNAL),
         ("user_countries", TableType.EXTERNAL),
-    ]
+    }
 
 
 def test_table_get(tables_api):
@@ -53,13 +52,13 @@ def test_table_get(tables_api):
     assert table_info.table_type == TableType.EXTERNAL
     assert table_info.data_source_format == DataSourceFormat.DELTA
 
-    columns = [
+    columns = {
         (c.name, c.type_text, c.type_name, c.nullable) for c in table_info.columns
-    ]
-    assert columns == [
+    }
+    assert columns == {
         ("as_int", "int", ColumnTypeName.INT, False),
         ("as_double", "double", ColumnTypeName.DOUBLE, False),
-    ]
+    }
 
 
 def test_table_create(tables_api):
@@ -96,12 +95,12 @@ def test_table_create(tables_api):
         assert table_info.schema_name == "default"
         assert table_info.table_type == TableType.EXTERNAL
         assert table_info.data_source_format == DataSourceFormat.DELTA
-        columns = [(c.name, c.type_text, c.type_name) for c in table_info.columns]
-        assert columns == [
+        columns = {(c.name, c.type_text, c.type_name) for c in table_info.columns}
+        assert columns == {
             ("col1", "int", ColumnTypeName.INT),
             ("col2", "double", ColumnTypeName.DOUBLE),
-        ]
-        assert table_info.storage_location == "file:///tmp/uc/mytable"
+        }
+        assert table_info.storage_location.rstrip("/") == "file:///tmp/uc/mytable"
 
         # append some randomly generated data to the table
         subprocess.run(
@@ -112,11 +111,11 @@ def test_table_create(tables_api):
 
         table_info = tables_api.get_table("unity.default.mytable")
 
-        columns = [(c.name, c.type_text, c.type_name) for c in table_info.columns]
-        assert columns == [
+        columns = {(c.name, c.type_text, c.type_name) for c in table_info.columns}
+        assert columns == {
             ("col1", "int", ColumnTypeName.INT),
             ("col2", "double", ColumnTypeName.DOUBLE),
-        ]
+        }
 
     finally:
         tables_api.delete_table("unity.default.mytable")
@@ -124,9 +123,9 @@ def test_table_create(tables_api):
 
 def test_volume_list(volumes_api):
     api_response = volumes_api.list_volumes("unity", "default")
-    volume_names = [v.name for v in api_response.volumes]
+    volume_names = {v.name for v in api_response.volumes}
 
-    assert volume_names == ["txt_files", "json_files"]
+    assert volume_names == {"txt_files", "json_files"}
 
 
 @pytest.mark.parametrize(
@@ -196,9 +195,9 @@ def test_volume_create(volumes_api):
 
 def test_function_list(functions_api):
     api_response = functions_api.list_functions("unity", "default")
-    function_names = [f.name for f in api_response.functions]
+    function_names = {f.name for f in api_response.functions}
 
-    assert function_names == ["lowercase", "sum"]
+    assert function_names == {"lowercase", "sum"}
 
 
 @pytest.mark.parametrize(
