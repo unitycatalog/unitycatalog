@@ -173,13 +173,17 @@ public class TableCli {
     if (json.has(CliParams.MAX_RESULTS.getServerParam())) {
       maxResults = json.getInt(CliParams.MAX_RESULTS.getServerParam());
     }
+    String pageToken = null;
+    if (json.has(CliParams.PAGE_TOKEN.getServerParam())) {
+      pageToken = json.getString(CliParams.PAGE_TOKEN.getServerParam());
+    }
     return objectWriter.writeValueAsString(
         tablesApi
             .listTables(
                 json.getString(CliParams.CATALOG_NAME.getServerParam()),
                 json.getString(CliParams.SCHEMA_NAME.getServerParam()),
                 maxResults,
-                null)
+                pageToken)
             .getTables());
   }
 

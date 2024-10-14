@@ -47,6 +47,20 @@ public abstract class BaseVolumeCRUDTest extends BaseCRUDTest {
             new CreateSchema().name(SCHEMA_NAME).catalogName(CATALOG_NAME));
   }
 
+  protected void assertVolume(
+      VolumeInfo volumeInfo,
+      CreateVolumeRequestContent createVolumeRequest,
+      String volumeFullName) {
+    assertThat(volumeInfo.getName()).isEqualTo(createVolumeRequest.getName());
+    assertThat(volumeInfo.getCatalogName()).isEqualTo(createVolumeRequest.getCatalogName());
+    assertThat(volumeInfo.getSchemaName()).isEqualTo(createVolumeRequest.getSchemaName());
+    assertThat(volumeInfo.getVolumeType()).isEqualTo(createVolumeRequest.getVolumeType());
+    assertThat(volumeInfo.getStorageLocation())
+        .isEqualTo(FileUtils.toStandardizedURIString(createVolumeRequest.getStorageLocation()));
+    assertThat(volumeInfo.getFullName()).isEqualTo(volumeFullName);
+    assertThat(volumeInfo.getCreatedAt()).isNotNull();
+  }
+
   @Test
   public void testVolumeCRUD() throws ApiException {
     // Create a volume
@@ -63,19 +77,33 @@ public abstract class BaseVolumeCRUDTest extends BaseCRUDTest {
 
     createCommonResources();
     VolumeInfo volumeInfo = volumeOperations.createVolume(createVolumeRequest);
-    assertThat(volumeInfo.getName()).isEqualTo(createVolumeRequest.getName());
-    assertThat(volumeInfo.getCatalogName()).isEqualTo(createVolumeRequest.getCatalogName());
-    assertThat(volumeInfo.getSchemaName()).isEqualTo(createVolumeRequest.getSchemaName());
-    assertThat(volumeInfo.getVolumeType()).isEqualTo(createVolumeRequest.getVolumeType());
-    assertThat(volumeInfo.getStorageLocation())
-        .isEqualTo(FileUtils.toStandardizedURIString(createVolumeRequest.getStorageLocation()));
-    assertThat(volumeInfo.getFullName()).isEqualTo(VOLUME_FULL_NAME);
-    assertThat(volumeInfo.getCreatedAt()).isNotNull();
+    assertVolume(volumeInfo, createVolumeRequest, VOLUME_FULL_NAME);
+
+    // Create another volume to test pagination
+    CreateVolumeRequestContent createVolumeRequest2 =
+        new CreateVolumeRequestContent()
+            .name(COMMON_ENTITY_NAME)
+            .catalogName(CATALOG_NAME)
+            .schemaName(SCHEMA_NAME)
+            .volumeType(VolumeType.EXTERNAL)
+            .storageLocation("/tmp/volume2");
+    VolumeInfo volumeInfo2 = volumeOperations.createVolume(createVolumeRequest2);
+    assertVolume(
+        volumeInfo2,
+        createVolumeRequest2,
+        CATALOG_NAME + '.' + SCHEMA_NAME + '.' + COMMON_ENTITY_NAME);
 
     // List volumes
     System.out.println("Testing list volumes..");
-    Iterable<VolumeInfo> volumeInfos = volumeOperations.listVolumes(CATALOG_NAME, SCHEMA_NAME);
+    Iterable<VolumeInfo> volumeInfos =
+        volumeOperations.listVolumes(CATALOG_NAME, SCHEMA_NAME, Optional.empty());
     assertThat(volumeInfos).contains(volumeInfo);
+
+    // List volumes with page token
+    System.out.println("Testing list volumes with page token..");
+    volumeInfos = volumeOperations.listVolumes(CATALOG_NAME, SCHEMA_NAME, Optional.of(VOLUME_NAME));
+    assertThat(volumeInfos).doesNotContain(volumeInfo);
+    assertThat(volumeInfos).contains(volumeInfo2);
 
     // Get volume
     System.out.println("Testing get volume..");
@@ -85,8 +113,7 @@ public abstract class BaseVolumeCRUDTest extends BaseCRUDTest {
     // Calling update volume with nothing to update should not change anything
     System.out.println("Testing updating volume with nothing to update..");
     UpdateVolumeRequestContent emptyUpdateVolumeRequest = new UpdateVolumeRequestContent();
-    VolumeInfo emptyUpdatedVolumeInfo =
-        volumeOperations.updateVolume(VOLUME_FULL_NAME, emptyUpdateVolumeRequest);
+    volumeOperations.updateVolume(VOLUME_FULL_NAME, emptyUpdateVolumeRequest);
     VolumeInfo retrievedVolumeInfo2 = volumeOperations.getVolume(VOLUME_FULL_NAME);
     assertThat(retrievedVolumeInfo2).isEqualTo(volumeInfo);
 
@@ -115,7 +142,8 @@ public abstract class BaseVolumeCRUDTest extends BaseCRUDTest {
     // Delete volume
     System.out.println("Testing delete volume..");
     volumeOperations.deleteVolume(VOLUME_NEW_FULL_NAME);
-    assertThat(volumeOperations.listVolumes(CATALOG_NAME, SCHEMA_NAME)).isEmpty();
+    assertThat(volumeOperations.listVolumes(CATALOG_NAME, SCHEMA_NAME, Optional.empty()))
+        .doesNotContain(volumeInfo);
 
     // Testing Managed Volume
     System.out.println("Creating managed volume..");
@@ -152,8 +180,19 @@ public abstract class BaseVolumeCRUDTest extends BaseCRUDTest {
     // List volumes
     System.out.println("Testing list managed volumes..");
     Iterable<VolumeInfo> volumeInfosManaged =
-        volumeOperations.listVolumes(CATALOG_NAME, SCHEMA_NAME);
-    assertThat(volumeInfosManaged).hasSize(1).contains(managedVolumeInfo);
+        volumeOperations.listVolumes(CATALOG_NAME, SCHEMA_NAME, Optional.empty());
+    assertThat(volumeInfosManaged).hasSize(2).contains(managedVolumeInfo);
+
+    // List volumes with page token
+    System.out.println("Testing list managed volumes with page token..");
+    Iterable<VolumeInfo> volumeInfosManaged2 =
+        volumeOperations.listVolumes(CATALOG_NAME, SCHEMA_NAME, Optional.of(VOLUME_NAME));
+    assertThat(volumeInfosManaged2).hasSize(1).contains(volumeInfo2);
+
+    // Delete the volume created to test pagination
+    volumeOperations.deleteVolume(CATALOG_NAME + '.' + SCHEMA_NAME + '.' + COMMON_ENTITY_NAME);
+    assertThat(volumeOperations.listVolumes(CATALOG_NAME, SCHEMA_NAME, Optional.empty()))
+        .doesNotContain(volumeInfo2);
 
     // NOW Update the schema name
     schemaOperations.updateSchema(
