@@ -69,8 +69,12 @@ public class ModelVersionCli {
     if (json.has(CliParams.MAX_RESULTS.getServerParam())) {
       maxResults = json.getInt(CliParams.MAX_RESULTS.getServerParam());
     }
+    String pageToken = null;
+    if (json.has(CliParams.PAGE_TOKEN.getServerParam())) {
+      pageToken = json.getString(CliParams.PAGE_TOKEN.getServerParam());
+    }
     return objectWriter.writeValueAsString(
-        modelVersionsApi.listModelVersions(fullName, maxResults, null).getModelVersions());
+        modelVersionsApi.listModelVersions(fullName, maxResults, pageToken).getModelVersions());
   }
 
   private static String getModelVersion(ModelVersionsApi modelVersionsApi, JSONObject json)
