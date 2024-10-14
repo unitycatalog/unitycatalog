@@ -13,7 +13,7 @@ All URIs are relative to *http://localhost:8080/api/2.1/unity-catalog*
 
 Create a staging table
 
-    Creates a new staging table instance. 
+    Creates a new staging table instance. This table must be committed to a regular table before it can be used. 
 
 ### Parameters
 
