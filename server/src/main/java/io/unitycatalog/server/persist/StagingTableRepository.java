@@ -101,10 +101,8 @@ public class StagingTableRepository {
         UUID schemaId =
             RepositoryUtils.getSchemaId(
                 session, createStagingTable.getCatalogName(), createStagingTable.getSchemaName());
-
-        StagingTableDAO stagingTableDAO = new StagingTableDAO();
-        stagingTableDAO.setId(UUID.randomUUID());
-        String stagingLocation = FileUtils.createTableDirectory(stagingTableDAO.getId().toString());
+        UUID stagingTableId = UUID.randomUUID();
+        String stagingLocation = FileUtils.createTableDirectory(stagingTableId.toString());
 
         validateIfAlreadyExists(session, schemaId, createStagingTable.getName(), stagingLocation);
 
