@@ -1,11 +1,13 @@
 import base64
 import datetime
 import os
+import re
 import time
 from decimal import Decimal
-from typing import Any, Callable, Dict, List, NamedTuple
+from typing import Any, Callable, Dict, List, NamedTuple, Union
 
 import pytest
+from databricks.sdk.errors import ResourceDoesNotExist
 from databricks.sdk.service.catalog import (
     ColumnTypeName,
     CreateFunctionParameterStyle,
@@ -34,6 +36,7 @@ from ucai.test_utils.client_utils import (
 )
 from ucai.test_utils.function_utils import (
     CATALOG,
+    create_python_function_and_cleanup,
     generate_func_name_and_cleanup,
     random_func_name,
 )
@@ -408,6 +411,33 @@ def test_create_and_execute_function_using_serverless(
 
 
 @requires_databricks
+@pytest.mark.parametrize(
+    "create_function",
+    [
+        python_function_with_dict_input,
+        python_function_with_array_input,
+        python_function_with_string_input,
+        python_function_with_binary_input,
+        python_function_with_interval_input,
+        python_function_with_timestamp_input,
+        python_function_with_date_input,
+        python_function_with_map_input,
+        python_function_with_decimal_input,
+    ],
+)
+def test_create_and_execute_python_function(
+    client: DatabricksFunctionClient, create_function: Callable[[], PythonFunctionInputOutput]
+):
+    function_sample = create_function()
+    with create_python_function_and_cleanup(
+        client, func=function_sample.func, schema=SCHEMA
+    ) as func_obj:
+        for input_example in function_sample.inputs:
+            result = client.execute_function(func_obj.full_function_name, input_example)
+            assert result.value == function_sample.output
+
+
+@requires_databricks
 def test_execute_function_using_serverless_row_limit(
     serverless_client: DatabricksFunctionClient,
     monkeypatch,
@@ -504,34 +534,56 @@ def test_list_functions(client: DatabricksFunctionClient):
             assert function_infos[0] != function_info
 
 
+@requires_databricks
+def test_delete_function(serverless_client: DatabricksFunctionClient):
+    function_name = random_func_name(schema=SCHEMA)
+    with pytest.raises(ResourceDoesNotExist, match=rf"'{function_name}' does not exist"):
+        serverless_client.delete_function(function_name)
+
+    serverless_client.create_function(sql_function_body=simple_function(function_name))
+    serverless_client.get_function(function_name)
+    serverless_client.delete_function(function_name)
+    with pytest.raises(ResourceDoesNotExist, match=rf"'{function_name}' does not exist"):
+        serverless_client.get_function(function_name)
+
+
 @pytest.mark.parametrize(
     ("sql_body", "function_name"),
     [
-        (
-            "CREATE OR REPLACE FUNCTION test(s STRING) RETURNS STRING LANGUAGE PYTHON AS $$ return s $$",
-            "test",
-        ),
         (
             "CREATE OR REPLACE FUNCTION a.b.test(s STRING) RETURNS STRING LANGUAGE PYTHON AS $$ return s $$",
             "a.b.test",
         ),
         (
-            "CREATE FUNCTION a.test(s STRING) RETURNS STRING LANGUAGE PYTHON AS $$ return s $$",
-            "a.test",
-        ),
-        (
             "CREATE TEMPORARY FUNCTION a.b.test(s STRING) RETURNS STRING LANGUAGE PYTHON AS $$ return s $$",
             "a.b.test",
         ),
-        (
-            "CREATE TEMPORARY FUNCTION IF NOT EXISTS test(s STRING) RETURNS STRING LANGUAGE PYTHON AS $$ return s $$",
-            "test",
-        ),
         ("CREATE FUNCTION IF NOT EXISTS a.b.test() RETURN 123", "a.b.test"),
+        (
+            "CREATE FUNCTION `some-catalog`.`some-schema`.`test_function`() RETURN 123",
+            "some-catalog.some-schema.test_function",
+        ),
+        (
+            "CREATE FUNCTION `奇怪的catalog`.`some-schema`.test_function() RETURN 123",
+            "奇怪的catalog.some-schema.test_function",
+        ),
     ],
 )
 def test_extract_function_name(sql_body, function_name):
     assert extract_function_name(sql_body) == function_name
+
+
+@pytest.mark.parametrize(
+    ("sql_body"),
+    [
+        "CREATE OR REPLACE FUNCTION test(s STRING) RETURNS STRING LANGUAGE PYTHON AS $$ return s $$",
+        "CREATE FUNCTION a.test(s STRING) RETURNS STRING LANGUAGE PYTHON AS $$ return s $$",
+        "CREATE TEMPORARY FUNCTION IF NOT EXISTS test(s STRING) RETURNS STRING LANGUAGE PYTHON AS $$ return s $$",
+    ],
+)
+def test_invalid_function_name(sql_body):
+    with pytest.raises(ValueError, match=r"Could not extract function name from the sql body"):
+        extract_function_name(sql_body)
 
 
 @pytest.mark.parametrize(
@@ -837,3 +889,233 @@ $$
         time_total2 = time.time() - time2
         # 30s - 10s = 20s, the time difference should be around 20s
         assert abs(abs(time_total2 - time_total1) - 20) < 5
+
+
+@requires_databricks
+def test_create_and_execute_python_function(client: DatabricksFunctionClient):
+    def simple_func(x: int) -> str:
+        """Test function that returns the string version of x."""
+        return str(x)
+
+    with create_python_function_and_cleanup(client, func=simple_func, schema=SCHEMA) as func_obj:
+        result = client.execute_function(func_obj.full_function_name, {"x": 10})
+        assert result.value == "10"
+
+
+def test_create_python_function_with_invalid_arguments(client: DatabricksFunctionClient):
+    def invalid_func(self, x: int) -> str:
+        """
+        Function with 'self' in the argument.
+
+        Args:
+            x: An integer to convert to a string.
+        """
+        return str(x)
+
+    with pytest.raises(
+        ValueError, match="Parameter 'self' is not allowed in the function signature."
+    ):
+        client.create_python_function(func=invalid_func, catalog=CATALOG, schema=SCHEMA)
+
+    def another_invalid_func(cls, x: int) -> str:
+        """
+        Function with 'cls' in the argument.
+
+        Args:
+            x: An integer to convert to a string.
+        """
+        return str(x)
+
+    with pytest.raises(
+        ValueError, match="Parameter 'cls' is not allowed in the function signature."
+    ):
+        client.create_python_function(func=another_invalid_func, catalog=CATALOG, schema=SCHEMA)
+
+
+@requires_databricks
+def test_create_python_function_with_complex_body(client: DatabricksFunctionClient):
+    def complex_func(a: int, b: int) -> int:
+        """A complex function that uses a try-except block and returns the sum."""
+        try:
+            return a + b
+        except Exception as e:
+            raise ValueError(f"Failed to add numbers") from e
+
+    with create_python_function_and_cleanup(client, func=complex_func, schema=SCHEMA) as func_obj:
+        result = client.execute_function(func_obj.full_function_name, {"a": 1, "b": 2})
+        assert result.value == "3"
+
+
+@requires_databricks
+def test_create_python_function_with_docstring_comments(client: DatabricksFunctionClient):
+    def documented_func(a: int, b: int) -> int:
+        """
+        Adds two integers.
+
+        Args:
+            a: The first integer.
+            b: The second integer.
+
+        Returns:
+            int: The sum of a and b.
+        """
+        return a + b
+
+    with create_python_function_and_cleanup(
+        client, func=documented_func, schema=SCHEMA
+    ) as func_obj:
+        result = client.execute_function(func_obj.full_function_name, {"a": 5, "b": 3})
+        assert result.value == "8"
+
+
+def test_create_python_function_missing_return_type(client: DatabricksFunctionClient):
+    def missing_return_type_func(a: int, b: int):
+        """A function that lacks a return type."""
+        return a + b
+
+    with pytest.raises(
+        ValueError,
+        match="Return type for function 'missing_return_type_func' is not defined. Please provide a return type.",
+    ):
+        client.create_python_function(func=missing_return_type_func, catalog=CATALOG, schema=SCHEMA)
+
+
+def test_create_python_function_not_callable(client: DatabricksFunctionClient):
+    scalar = 42
+
+    with pytest.raises(ValueError, match="The provided function is not callable"):
+        client.create_python_function(func=scalar, catalog=CATALOG, schema=SCHEMA)
+
+
+@requires_databricks
+def test_function_with_list_of_int_return(client: DatabricksFunctionClient):
+    def func_returning_list(a: int) -> List[int]:
+        """
+        A function that returns a list of integers.
+
+        Args:
+            a: An integer to generate the list.
+
+        Returns:
+            List[int]: A list of integers from 0 to a.
+        """
+        return list(range(a))
+
+    with create_python_function_and_cleanup(
+        client, func=func_returning_list, schema=SCHEMA
+    ) as func_obj:
+        result = client.execute_function(func_obj.full_function_name, {"a": 3})
+        # result wrapped as string is due to sql statement execution response parsing
+        assert result.value == '["0","1","2"]'
+
+
+@requires_databricks
+def test_function_with_dict_of_string_to_int_return(client: DatabricksFunctionClient):
+    def func_returning_map(a: int) -> Dict[str, int]:
+        """
+        A function that returns a map from string to integer.
+
+        Args:
+            a: The integer to use in generating the map.
+
+        Returns:
+            Dict[str, int]: A map of string keys to integer values.
+        """
+        return {f"key_{i}": i for i in range(a)}
+
+    with create_python_function_and_cleanup(
+        client, func=func_returning_map, schema=SCHEMA
+    ) as func_obj:
+        result = client.execute_function(func_obj.full_function_name, {"a": 3})
+        # result wrapped as string is due to sql statement execution response parsing
+        assert result.value == '{"key_0":"0","key_1":"1","key_2":"2"}'
+
+
+def test_function_with_invalid_list_return_type(client: DatabricksFunctionClient):
+    def func_with_invalid_list_return(a: int) -> List:
+        """A function returning a list without specifying the element type."""
+        return list(range(a))
+
+    with pytest.raises(
+        ValueError,
+        match=re.escape(
+            "Error in return type for function 'func_with_invalid_list_return': typing.List. Please define the inner types, e.g., List[int], Tuple[str, int], Dict[str, int]."
+        ),
+    ):
+        client.create_python_function(
+            func=func_with_invalid_list_return, catalog=CATALOG, schema=SCHEMA
+        )
+
+
+def test_function_with_invalid_dict_return_type(client: DatabricksFunctionClient):
+    def func_with_invalid_dict_return(a: int) -> Dict:
+        """A function returning a dict without specifying key and value types."""
+        return {f"key_{i}": i for i in range(a)}
+
+    with pytest.raises(
+        ValueError,
+        match=re.escape(
+            "Error in return type for function 'func_with_invalid_dict_return': typing.Dict. Please define the inner types, e.g., List[int], Tuple[str, int], Dict[str, int]."
+        ),
+    ):
+        client.create_python_function(
+            func=func_with_invalid_dict_return, catalog=CATALOG, schema=SCHEMA
+        )
+
+
+def test_function_with_union_return_type(client: DatabricksFunctionClient):
+    def func_with_union_return(a: int) -> Union[str, int]:
+        """A function returning a union type."""
+        return a if a % 2 == 0 else str(a)
+
+    with pytest.raises(
+        ValueError,
+        match=re.escape(
+            "Error in return type for function 'func_with_union_return': typing.Union[str, int]. Union types are not supported in return types."
+        ),
+    ):
+        client.create_python_function(func=func_with_union_return, catalog=CATALOG, schema=SCHEMA)
+
+
+@requires_databricks
+def test_replace_existing_function(client: DatabricksFunctionClient):
+    def simple_func(x: int) -> str:
+        """Test function that returns the string version of x."""
+        return str(x)
+
+    # Create the function for the first time
+    with create_python_function_and_cleanup(client, func=simple_func, schema=SCHEMA) as func_obj:
+        result = client.execute_function(func_obj.full_function_name, {"x": 42})
+        assert result.value == "42"
+
+        # Modify the function definition
+        def simple_func(x: int) -> str:
+            """Modified function that returns 'Modified: ' plus the string version of x."""
+            return f"Modified: {x}"
+
+        # Replace the existing function
+        client.create_python_function(
+            func=simple_func, catalog=CATALOG, schema=SCHEMA, replace=True
+        )
+
+        # Execute the function again to verify it has been replaced
+        result = client.execute_function(func_obj.full_function_name, {"x": 42})
+        assert result.value == "Modified: 42"
+
+
+@requires_databricks
+def test_create_function_without_replace(client: DatabricksFunctionClient):
+    def simple_func(x: int) -> str:
+        """Test function that returns the string version of x."""
+        return str(x)
+
+    # Create the function for the first time
+    with create_python_function_and_cleanup(client, func=simple_func, schema=SCHEMA):
+        # Attempt to create the same function again without replace
+        with pytest.raises(
+            Exception,
+            match=f"Cannot create the function `{CATALOG}`.`{SCHEMA}`.`simple_func` because it already exists",
+        ):
+            client.create_python_function(
+                func=simple_func, catalog=CATALOG, schema=SCHEMA, replace=False
+            )

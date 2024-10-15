@@ -11,9 +11,9 @@ from databricks.sdk.service.catalog import (
 from pydantic import BaseModel
 
 from ucai.core.utils.function_processing_utils import (
+    FullFunctionName,
     generate_function_input_params_schema,
     uc_type_json_to_pydantic_type,
-    validate_full_function_name,
 )
 from ucai.core.utils.type_utils import (
     column_type_to_python_type,
@@ -23,13 +23,13 @@ from ucai.core.utils.validation_utils import is_base64_encoded
 
 
 def test_full_function_name():
-    result = validate_full_function_name("catalog.schema.function")
-    assert result.catalog_name == "catalog"
-    assert result.schema_name == "schema"
-    assert result.function_name == "function"
+    result = FullFunctionName.validate_full_function_name("catalog.schema.function")
+    assert result.catalog == "catalog"
+    assert result.schema == "schema"
+    assert result.function == "function"
 
     with pytest.raises(ValueError, match=r"Invalid function name"):
-        validate_full_function_name("catalog.schema.function.extra")
+        FullFunctionName.validate_full_function_name("catalog.schema.function.extra")
 
 
 def test_column_type_to_python_type_errors():

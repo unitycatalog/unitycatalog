@@ -62,6 +62,10 @@ class MockClient(BaseFunctionClient):
         pass
 
     @override
+    def delete_function(self, function_name, **kwargs):
+        return
+
+    @override
     def to_dict(self):
         return {}
 

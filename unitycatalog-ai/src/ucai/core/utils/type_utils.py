@@ -3,7 +3,7 @@ import decimal
 from typing import Any, get_args, get_origin
 
 PYTHON_TO_SQL_TYPE_MAPPING = {
-    int: "INTEGER",
+    int: "LONG",
     float: "DOUBLE",
     str: "STRING",
     bool: "BOOLEAN",
@@ -113,7 +113,7 @@ def python_type_to_sql_type(py_type: Any) -> str:
         py_type: The Python type to be converted (e.g., List[int], Dict[str, List[int]]).
 
     Returns:
-        str: The corresponding SQL type (e.g., ARRAY<MAP<STRING, INTEGER>>).
+        str: The corresponding SQL type (e.g., ARRAY<MAP<STRING, LONG>>).
 
     Raises:
         ValueError: If the type cannot be mapped to a SQL type.
