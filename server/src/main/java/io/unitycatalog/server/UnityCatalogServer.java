@@ -22,23 +22,10 @@ import io.unitycatalog.server.exception.BaseException;
 import io.unitycatalog.server.exception.ErrorCode;
 import io.unitycatalog.server.exception.ExceptionHandlingDecorator;
 import io.unitycatalog.server.exception.GlobalExceptionHandler;
+import io.unitycatalog.server.persist.MetastoreRepository;
 import io.unitycatalog.server.security.SecurityConfiguration;
 import io.unitycatalog.server.security.SecurityContext;
-import io.unitycatalog.server.service.AuthDecorator;
-import io.unitycatalog.server.service.AuthService;
-import io.unitycatalog.server.service.CatalogService;
-import io.unitycatalog.server.service.FunctionService;
-import io.unitycatalog.server.service.IcebergRestCatalogService;
-import io.unitycatalog.server.service.ModelService;
-import io.unitycatalog.server.service.PermissionService;
-import io.unitycatalog.server.service.SchemaService;
-import io.unitycatalog.server.service.Scim2UserService;
-import io.unitycatalog.server.service.TableService;
-import io.unitycatalog.server.service.TemporaryModelVersionCredentialsService;
-import io.unitycatalog.server.service.TemporaryPathCredentialsService;
-import io.unitycatalog.server.service.TemporaryTableCredentialsService;
-import io.unitycatalog.server.service.TemporaryVolumeCredentialsService;
-import io.unitycatalog.server.service.VolumeService;
+import io.unitycatalog.server.service.*;
 import io.unitycatalog.server.service.credential.CredentialOperations;
 import io.unitycatalog.server.service.iceberg.FileIOFactory;
 import io.unitycatalog.server.service.iceberg.MetadataService;
@@ -129,6 +116,7 @@ public class UnityCatalogServer {
     TableService tableService = new TableService(authorizer);
     FunctionService functionService = new FunctionService(authorizer);
     ModelService modelService = new ModelService(authorizer);
+    MetastoreService metastoreService = new MetastoreService();
     // TODO: combine these into a single service in a follow-up PR
     TemporaryTableCredentialsService temporaryTableCredentialsService =
         new TemporaryTableCredentialsService(authorizer, credentialOperations);
@@ -152,6 +140,7 @@ public class UnityCatalogServer {
         .annotatedService(basePath + "tables", tableService, unityConverterFunction)
         .annotatedService(basePath + "functions", functionService, unityConverterFunction)
         .annotatedService(basePath + "models", modelService, unityConverterFunction)
+        .annotatedService(basePath, metastoreService, unityConverterFunction)
         .annotatedService(
             basePath + "temporary-table-credentials", temporaryTableCredentialsService)
         .annotatedService(
@@ -217,6 +206,7 @@ public class UnityCatalogServer {
 
   public void start() {
     LOGGER.info("Starting server...");
+    MetastoreRepository.getInstance().initMetastoreIfNeeded();
     server.start().join();
   }
 
