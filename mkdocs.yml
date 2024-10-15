@@ -22,6 +22,7 @@ nav:
   - Server:
       - Configuration: server/configuration.md
       - Auth: server/auth.md
+      - Google Auth: server/google-auth.md
   - Integrations:
       - Apache Spark: integrations/unity-catalog-spark.md  
       - Daft: integrations/unity-catalog-daft.md

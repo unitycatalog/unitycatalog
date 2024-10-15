@@ -286,7 +286,7 @@ yarn install
 yarn start
 ```
 
-For more information, dive deeper into the [Unity Catalog UI](./ui.md).
+For more information, dive deeper into the [Unity Catalog UI](./usage/ui.md).
 
 ## Manage models in Unity Catalog using MLflow
 
