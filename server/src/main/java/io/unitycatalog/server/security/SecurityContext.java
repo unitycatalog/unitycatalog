@@ -4,7 +4,6 @@ import com.auth0.jwt.JWT;
 import com.auth0.jwt.algorithms.Algorithm;
 import com.auth0.jwt.interfaces.DecodedJWT;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import io.unitycatalog.server.UnityCatalogServer;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.security.interfaces.RSAPrivateKey;
@@ -29,7 +28,7 @@ public class SecurityContext {
   }
 
   private static final ObjectMapper mapper = new ObjectMapper();
-  private static final Logger LOGGER = LoggerFactory.getLogger(UnityCatalogServer.class);
+  private static final Logger LOGGER = LoggerFactory.getLogger(SecurityContext.class);
 
   @Getter private final Path certsFile;
   private final Path serviceTokenFile;
