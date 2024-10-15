@@ -38,7 +38,7 @@ public class AuthDecorator implements DecoratingHttpServiceFunction {
   private static final Logger LOGGER = LoggerFactory.getLogger(AuthDecorator.class);
   private static final UserRepository USER_REPOSITORY = UserRepository.getInstance();
 
-  private static final String UC_TOKEN_KEY = "UC_TOKEN";
+  public static final String UC_TOKEN_KEY = "UC_TOKEN";
 
   private static final String BEARER_PREFIX = "Bearer ";
 

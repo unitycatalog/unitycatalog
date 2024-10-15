@@ -20,6 +20,7 @@ import io.unitycatalog.server.security.JwtClaim;
 import io.unitycatalog.server.security.SecurityContext;
 import io.unitycatalog.server.utils.JwksOperations;
 import io.unitycatalog.server.utils.ServerProperties;
+import java.time.Duration;
 import java.util.Optional;
 import lombok.Builder;
 import lombok.Getter;
@@ -159,17 +160,23 @@ public class AuthService {
 
     // Set token as cookie if ext param is set to cookie
     ResponseHeadersBuilder responseHeaders = ResponseHeaders.builder(HttpStatus.OK);
-
-    if (ext.isPresent() && ext.get().equals(COOKIE)) {
-
-      // Set cookie timeout to 5 days by default if not present in server.properties
-      Long cookieTimeout =
-          Long.valueOf(
-              ServerProperties.getInstance().getProperty("server.cookie-timeout", "432000"));
-      Cookie cookie =
-          Cookie.secureBuilder("UC_TOKEN", accessToken).path("/").maxAge(cookieTimeout).build();
-      responseHeaders.add(HttpHeaderNames.SET_COOKIE, cookie.toSetCookieHeader());
-    }
+    ext.ifPresent(
+        e -> {
+          if (e.equals(COOKIE)) {
+            // Set cookie timeout to 5 days by default if not present in server.properties
+            String cookieTimeout =
+                ServerProperties.getInstance().getProperty("server.cookie-timeout", "5D");
+            Cookie cookie =
+                Cookie.secureBuilder(AuthDecorator.UC_TOKEN_KEY, accessToken)
+                    .path("/")
+                    .maxAge(
+                        Duration.parse(
+                                "P" + (cookieTimeout.endsWith("D") ? "" : "T") + cookieTimeout)
+                            .getSeconds())
+                    .build();
+            responseHeaders.add(HttpHeaderNames.SET_COOKIE, cookie.toSetCookieHeader());
+          }
+        });
 
     return HttpResponse.ofJson(responseHeaders.build(), response);
   }
