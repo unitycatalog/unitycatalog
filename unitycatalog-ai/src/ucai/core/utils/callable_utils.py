@@ -1,22 +1,13 @@
 import ast
 import inspect
 import warnings
-from dataclasses import dataclass
 from textwrap import dedent, indent
 from typing import Any, Callable, Optional, Set, Union, get_args, get_origin, get_type_hints
 
+from ucai.core.utils.docstring_utils import DocstringInfo, parse_docstring
 from ucai.core.utils.type_utils import python_type_to_sql_type
 
 FORBIDDEN_PARAMS = ["self", "cls"]
-
-
-@dataclass
-class DocstringInfo:
-    """Dataclass to store parsed docstring information."""
-
-    description: str
-    params: Optional[dict[str, str]]
-    returns: Optional[str]
 
 
 class FunctionBodyExtractor(ast.NodeVisitor):
@@ -61,98 +52,6 @@ class FunctionBodyExtractor(ast.NodeVisitor):
         indents = [stmt.col_offset for stmt in body if stmt.col_offset is not None]
         if indents:
             self.indent_unit = min(indents)
-
-
-class State:
-    DESCRIPTION = "DESCRIPTION"
-    ARGS = "ARGS"
-    RETURNS = "RETURNS"
-    END = "END"
-
-
-def parse_docstring(docstring: str) -> DocstringInfo:
-    """
-    Parses the docstring to extract the function description, parameter comments,
-    and return value description.
-    Handles both reStructuredText and Google-style docstrings.
-
-    Args:
-        docstring: The docstring to parse.
-
-    Returns:
-        DocstringInfo: A dataclass containing the parsed information.
-
-    Raises:
-        ValueError: If the docstring is empty or missing a function description.
-    """
-
-    if not docstring or not docstring.strip():
-        raise ValueError(
-            "Docstring is empty. Please provide a docstring with a function description."
-        )
-
-    description_lines = []
-    parsed_params = {}
-    returns = None
-    current_param = None
-    param_description_lines = []
-
-    state = State.DESCRIPTION
-    lines = docstring.strip().splitlines()
-    lines.append("")  # Add an empty line to ensure the last param is processed
-    iterator = iter(lines)
-
-    for line in iterator:
-        stripped_line = line.strip()
-
-        if stripped_line in ("Args:", "Arguments:"):
-            state = State.ARGS
-            continue
-        elif stripped_line == "Returns:":
-            if current_param and param_description_lines:
-                parsed_params[current_param] = " ".join(param_description_lines).strip()
-                current_param = None
-                param_description_lines = []
-            state = State.RETURNS
-            continue
-        elif stripped_line == "" and state == State.ARGS and current_param:
-            parsed_params[current_param] = " ".join(param_description_lines).strip()
-            current_param = None
-            param_description_lines = []
-            continue
-
-        if state == State.DESCRIPTION:
-            if stripped_line:
-                description_lines.append(stripped_line)
-        elif state == State.ARGS:
-            if stripped_line:
-                if ":" in stripped_line:
-                    if current_param and param_description_lines:
-                        parsed_params[current_param] = " ".join(param_description_lines).strip()
-                    param_parts = stripped_line.split(":", 1)
-                    # Remove type hints in parentheses if any
-                    current_param = param_parts[0].strip().split()[0]
-                    param_description_lines = [param_parts[1].strip()]
-                else:
-                    param_description_lines.append(stripped_line)
-        elif state == State.RETURNS:
-            if stripped_line:
-                if returns is None:
-                    returns = stripped_line
-                else:
-                    returns += " " + stripped_line
-
-    if current_param and param_description_lines:
-        parsed_params[current_param] = " ".join(param_description_lines).strip()
-
-    description = " ".join(description_lines).strip()
-
-    if not description:
-        raise ValueError(
-            "Function description is missing in the docstring. Please provide a function description."
-        )
-
-    return DocstringInfo(description=description, params=parsed_params, returns=returns)
 
 
 def extract_function_body(func: Callable[..., Any]) -> tuple[str, int]:
