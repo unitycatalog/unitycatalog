@@ -13,6 +13,7 @@ import io.unitycatalog.server.base.ServerConfig;
 import io.unitycatalog.server.base.table.TableOperations;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
 
 public class CliTableOperations implements TableOperations {
   private final ServerConfig config;
@@ -57,10 +58,15 @@ public class CliTableOperations implements TableOperations {
   }
 
   @Override
-  public List<TableInfo> listTables(String catalogName, String schemaName) {
-    String[] args =
-        addServerAndAuthParams(
-            List.of("table", "list", "--catalog", catalogName, "--schema", schemaName), config);
+  public List<TableInfo> listTables(
+      String catalogName, String schemaName, Optional<String> pageToken) {
+    List<String> argsList =
+        new ArrayList<>(List.of("table", "list", "--catalog", catalogName, "--schema", schemaName));
+    if (pageToken.isPresent()) {
+      argsList.add("--page_token");
+      argsList.add(pageToken.get());
+    }
+    String[] args = addServerAndAuthParams(argsList, config);
     JsonNode tableListJson = executeCLICommand(args);
     return objectMapper.convertValue(tableListJson, new TypeReference<List<TableInfo>>() {});
   }

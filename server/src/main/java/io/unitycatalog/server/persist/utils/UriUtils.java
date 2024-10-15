@@ -21,12 +21,14 @@ import java.nio.file.Paths;
 import java.util.Comparator;
 import java.util.Optional;
 import java.util.stream.Stream;
+
+import io.unitycatalog.server.utils.ServerProperties;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 public class UriUtils {
   private static final Logger LOGGER = LoggerFactory.getLogger(UriUtils.class);
-  private static final ServerPropertiesUtils properties = ServerPropertiesUtils.getInstance();
+  private static final ServerProperties properties = ServerProperties.getInstance();
 
   private enum Operation {
     CREATE,

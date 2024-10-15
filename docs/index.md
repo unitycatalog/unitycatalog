@@ -19,7 +19,7 @@ Unity Catalog offers:
 - a core set of APIs for tables, unstructured data, and AI assets
 - ML model support
 - Apache Spark and Delta Lake integration
-- Authentication/Authorization capabilitities,
+- Authentication/Authorization capabilitities
 - User Interface
 
 Find the roadmap [in the repo discussions](https://github.com/unitycatalog/unitycatalog/discussions/411). This is just the beginning!
