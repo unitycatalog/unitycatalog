@@ -197,10 +197,10 @@ The following `SHOW SCHEMA` shows the `default` schema that is included in the i
 
     ```python
     # Show schemas (output = default)
-    sql("SHOW SCHEMAS").show()
+    spark.sql("SHOW SCHEMAS").show()
 
     # Show tables
-    sql("SHOW TABLES IN default").show()        
+    spark.sql("SHOW TABLES IN default").show()
     ```
 
 
@@ -229,7 +229,7 @@ Let’s query the first five rows of the `marksheet` table.
 === "PySpark"
 
     ```python
-    sql("SELECT * FROM default.marksheet LIMIT 5;").show()
+    spark.sql("SELECT * FROM default.marksheet LIMIT 5;").show()
     ```
 
 
