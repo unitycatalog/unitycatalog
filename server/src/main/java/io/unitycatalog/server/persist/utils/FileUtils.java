@@ -6,20 +6,14 @@ import io.unitycatalog.server.service.credential.CredentialOperations;
 import io.unitycatalog.server.service.iceberg.FileIOFactory;
 import io.unitycatalog.server.utils.Constants;
 import io.unitycatalog.server.utils.ServerProperties;
-import java.io.ByteArrayInputStream;
-import java.io.IOException;
-import java.net.URI;
-import java.nio.file.FileVisitOption;
-import java.nio.file.Files;
-import java.nio.file.Path;
-import java.nio.file.Paths;
-import java.util.Comparator;
-import java.util.stream.Stream;
 import org.apache.iceberg.io.FileIO;
 import org.apache.iceberg.io.InputFile;
-import org.apache.iceberg.io.OutputFile;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+
+import java.net.URI;
+import java.net.URISyntaxException;
+import java.nio.file.Paths;
 
 import java.net.URI;
 import java.net.URISyntaxException;
@@ -39,8 +33,14 @@ public class FileUtils {
   }
 
   public static String createTableDirectory(String tableId) {
-    URI standardURI = URI.create(toStandardizedURIString(getStorageRoot() + "/tables/" + tableId));
-    return toStandardizedURIString(createDirectory(standardURI).toString());
+    String directoryUriString = toStandardizedURIString(getStorageRoot() + "/tables/" + tableId);
+    URI directoryUri = URI.create(directoryUriString);
+    validateURI(directoryUri);
+    FileIO fileIO = fileIOFactory.getFileIO(directoryUri);
+    if (fileExists(fileIO, directoryUri)) {
+      throw new BaseException(ErrorCode.ALREADY_EXISTS, "Table directory already exists: " + directoryUri);
+    }
+    return directoryUriString;
   }
 
   public static boolean fileExists(FileIO fileIO, URI fileUri) {

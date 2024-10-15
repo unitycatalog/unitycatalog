@@ -12,7 +12,6 @@ public class FileUtilsTest {
 
   @Test
   public void testFileUtils() {
-
     System.setProperty("storageRoot", "/tmp");
     String tableId = UUID.randomUUID().toString();
     String tablePath = FileUtils.createTableDirectory(tableId);
