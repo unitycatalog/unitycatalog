@@ -24,3 +24,22 @@ jobs:
       - name: Run lint check
         run: |
           (cd ui && yarn install && yarn test:format)
+
+  java-fmt:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: read
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+
+      - name: Run Java format check
+        run: |
+          build/sbt javafmtCheck
