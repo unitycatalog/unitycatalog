@@ -72,9 +72,13 @@ public class ModelCli {
     if (json.has(CliParams.MAX_RESULTS.getServerParam())) {
       maxResults = json.getInt(CliParams.MAX_RESULTS.getServerParam());
     }
+    String pageToken = null;
+    if (json.has(CliParams.PAGE_TOKEN.getServerParam())) {
+      pageToken = json.getString(CliParams.PAGE_TOKEN.getServerParam());
+    }
     return objectWriter.writeValueAsString(
         registeredModelsApi
-            .listRegisteredModels(catalogName, schemaName, maxResults, null)
+            .listRegisteredModels(catalogName, schemaName, maxResults, pageToken)
             .getRegisteredModels());
   }
 
@@ -104,7 +108,6 @@ public class ModelCli {
     }
     UpdateRegisteredModel updateRegisteredModel =
         objectMapper.readValue(json.toString(), UpdateRegisteredModel.class);
-    updateRegisteredModel.setFullName(registeredModelFullName);
     return objectWriter.writeValueAsString(
         registeredModelsApi.updateRegisteredModel(registeredModelFullName, updateRegisteredModel));
   }

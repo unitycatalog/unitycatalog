@@ -69,8 +69,12 @@ public class ModelVersionCli {
     if (json.has(CliParams.MAX_RESULTS.getServerParam())) {
       maxResults = json.getInt(CliParams.MAX_RESULTS.getServerParam());
     }
+    String pageToken = null;
+    if (json.has(CliParams.PAGE_TOKEN.getServerParam())) {
+      pageToken = json.getString(CliParams.PAGE_TOKEN.getServerParam());
+    }
     return objectWriter.writeValueAsString(
-        modelVersionsApi.listModelVersions(fullName, maxResults, null).getModelVersions());
+        modelVersionsApi.listModelVersions(fullName, maxResults, pageToken).getModelVersions());
   }
 
   private static String getModelVersion(ModelVersionsApi modelVersionsApi, JSONObject json)
@@ -84,11 +88,11 @@ public class ModelVersionCli {
   private static String updateModelVersion(ModelVersionsApi modelVersionsApi, JSONObject json)
       throws JsonProcessingException, ApiException {
     String registeredModelFullName = json.getString(CliParams.FULL_NAME.getServerParam());
+    json.remove(CliParams.FULL_NAME.getServerParam());
     Long version = json.getLong(CliParams.VERSION.getServerParam());
+    json.remove(CliParams.VERSION.getServerParam());
     UpdateModelVersion updateModelVersion =
         objectMapper.readValue(json.toString(), UpdateModelVersion.class);
-    updateModelVersion.setFullName(registeredModelFullName);
-    updateModelVersion.setVersion(version);
     return objectWriter.writeValueAsString(
         modelVersionsApi.updateModelVersion(registeredModelFullName, version, updateModelVersion));
   }

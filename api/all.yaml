@@ -35,6 +35,9 @@ tags:
   - name: Permissions
     description: |
       In Unity Catalog, data is secure by default. Access can be granted.
+  - name: Metastores
+    description: |
+      A metastore is the top-level container of objects in Unity Catalog that stores all UC assets.
 paths:
   /catalogs:
     post:
@@ -1114,6 +1117,21 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/PermissionsList'
+  /metastore_summary:
+    get:
+      tags:
+        - Metastores
+      operationId: summary
+      summary: Get metastore summary
+      description: |
+        Gets information about the metastore hosted by this Unity Catalog service (currently the service hosts only one metastore)
+      responses:
+        '200':
+          description: The metastore summary was successfully retrieved.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GetMetastoreSummaryResponse'
 components:
   schemas:
     SecurablePropertiesMap:
@@ -2083,9 +2101,6 @@ components:
     UpdateRegisteredModel:
       type: object
       properties:
-        full_name:
-          description: The full name of the registered model to update.
-          type: string
         comment:
           description: User-provided free-form text description.
           type: string
@@ -2130,16 +2145,10 @@ components:
         - model_name
         - catalog_name
         - schema_name
+        - source
     UpdateModelVersion:
       type: object
       properties:
-        full_name:
-          description: The full name of the registered model to update.
-          type: string
-        version:
-          description: Version number of the version to update.
-          type: integer
-          format:  int64
         comment:
           description: User-provided free-form text description.
           type: string
@@ -2288,6 +2297,12 @@ components:
       required:
         - principal
         - privileges
+    GetMetastoreSummaryResponse:
+      type: object
+      properties:
+        metastore_id:
+          description: Unique identifier of the metastore.
+          type: string
 info:
   title: Unity Catalog API
   version: '0.1'
