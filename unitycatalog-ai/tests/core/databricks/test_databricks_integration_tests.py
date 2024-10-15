@@ -51,6 +51,7 @@ from ucai.test_utils.function_utils import (
 
 SCHEMA = os.environ.get("SCHEMA", "ucai_core_test")
 
+
 @requires_databricks
 @pytest.mark.parametrize(
     "create_function",
@@ -184,12 +185,15 @@ AS $$
         function_info = client.get_function(func_name)
         assert create_func_info == function_info
 
+
 @requires_databricks
 def test_list_functions(client: DatabricksFunctionClient):
     function_infos = client.list_functions(catalog=CATALOG, schema=SCHEMA)
 
     with generate_func_name_and_cleanup(client, schema=SCHEMA) as func_name:
-        create_func_info = client.create_function(sql_function_body=simple_sql_function_boy(func_name))
+        create_func_info = client.create_function(
+            sql_function_body=simple_sql_function_boy(func_name)
+        )
         function_info = client.get_function(func_name)
         assert create_func_info == function_info
 
@@ -219,6 +223,7 @@ def test_delete_function(serverless_client: DatabricksFunctionClient):
     serverless_client.delete_function(function_name)
     with pytest.raises(ResourceDoesNotExist, match=rf"'{function_name}' does not exist"):
         serverless_client.get_function(function_name)
+
 
 @requires_databricks
 def test_extra_params_when_executing_function_e2e(client: DatabricksFunctionClient, monkeypatch):
@@ -258,6 +263,7 @@ def test_create_and_execute_python_function(client: DatabricksFunctionClient):
         result = client.execute_function(func_obj.full_function_name, {"x": 10})
         assert result.value == "10"
 
+
 @requires_databricks
 def test_create_python_function_with_complex_body(client: DatabricksFunctionClient):
     def complex_func(a: int, b: int) -> int:
@@ -292,6 +298,7 @@ def test_create_python_function_with_docstring_comments(client: DatabricksFuncti
     ) as func_obj:
         result = client.execute_function(func_obj.full_function_name, {"a": 5, "b": 3})
         assert result.value == "8"
+
 
 @requires_databricks
 def test_function_with_list_of_int_return(client: DatabricksFunctionClient):
@@ -335,6 +342,7 @@ def test_function_with_dict_of_string_to_int_return(client: DatabricksFunctionCl
         result = client.execute_function(func_obj.full_function_name, {"a": 3})
         # result wrapped as string is due to sql statement execution response parsing
         assert result.value == '{"key_0":"0","key_1":"1","key_2":"2"}'
+
 
 @requires_databricks
 def test_replace_existing_function(client: DatabricksFunctionClient):

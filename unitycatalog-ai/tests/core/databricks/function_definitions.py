@@ -8,7 +8,8 @@ class FunctionInputOutput(NamedTuple):
     sql_body: str
     inputs: List[Dict[str, Any]]
     output: str
-    
+
+
 def function_with_struct_input(func_name: str) -> FunctionInputOutput:
     sql_body = f"""CREATE OR REPLACE FUNCTION {func_name}(s STRUCT<a: SHORT NOT NULL COMMENT 'short field', b: MAP<STRING, FLOAT>, c: INT NOT NULL>)
 RETURNS STRING
@@ -187,9 +188,6 @@ class PythonFunctionInputOutput(NamedTuple):
     func: Callable
     inputs: List[Dict[str, Any]]
     output: str
-
-
-
 
 
 def python_function_with_dict_input() -> PythonFunctionInputOutput:

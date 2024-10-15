@@ -357,9 +357,6 @@ def good_function_info():
     )
 
 
-
-
-
 def test_create_python_function_with_invalid_arguments(client: DatabricksFunctionClient):
     def invalid_func(self, x: int) -> str:
         """
@@ -390,9 +387,6 @@ def test_create_python_function_with_invalid_arguments(client: DatabricksFunctio
         client.create_python_function(func=another_invalid_func, catalog=CATALOG, schema=SCHEMA)
 
 
-
-
-
 def test_create_python_function_missing_return_type(client: DatabricksFunctionClient):
     def missing_return_type_func(a: int, b: int):
         """A function that lacks a return type."""
@@ -410,9 +404,6 @@ def test_create_python_function_not_callable(client: DatabricksFunctionClient):
 
     with pytest.raises(ValueError, match="The provided function is not callable"):
         client.create_python_function(func=scalar, catalog=CATALOG, schema=SCHEMA)
-
-
-
 
 
 def test_function_with_invalid_list_return_type(client: DatabricksFunctionClient):
