@@ -41,34 +41,25 @@ public class TableRepository {
     LOGGER.debug("Getting table by id: {}", tableId);
     try (Session session = SESSION_FACTORY.openSession()) {
       session.setDefaultReadOnly(true);
-      Transaction tx = session.beginTransaction();
-      try {
-        TableInfoDAO tableInfoDAO = session.get(TableInfoDAO.class, UUID.fromString(tableId));
-        if (tableInfoDAO == null) {
-          throw new BaseException(ErrorCode.NOT_FOUND, "Table not found: " + tableId);
-        }
-        SchemaInfoDAO schemaInfoDAO = session.get(SchemaInfoDAO.class, tableInfoDAO.getSchemaId());
-        if (schemaInfoDAO == null) {
-          throw new BaseException(
-              ErrorCode.NOT_FOUND, "Schema not found: " + tableInfoDAO.getSchemaId());
-        }
-        CatalogInfoDAO catalogInfoDAO =
-            session.get(CatalogInfoDAO.class, schemaInfoDAO.getCatalogId());
-        if (catalogInfoDAO == null) {
-          throw new BaseException(
-              ErrorCode.NOT_FOUND, "Catalog not found: " + schemaInfoDAO.getCatalogId());
-        }
-        TableInfo tableInfo = tableInfoDAO.toTableInfo(true);
-        tableInfo.setSchemaName(schemaInfoDAO.getName());
-        tableInfo.setCatalogName(catalogInfoDAO.getName());
-        tx.commit();
-        return tableInfo;
-      } catch (Exception e) {
-        if (tx != null && tx.getStatus().canRollback()) {
-          tx.rollback();
-        }
-        throw e;
+      TableInfoDAO tableInfoDAO = session.get(TableInfoDAO.class, UUID.fromString(tableId));
+      if (tableInfoDAO == null) {
+        throw new BaseException(ErrorCode.NOT_FOUND, "Table not found1: " + tableId);
       }
+      SchemaInfoDAO schemaInfoDAO = session.get(SchemaInfoDAO.class, tableInfoDAO.getSchemaId());
+      if (schemaInfoDAO == null) {
+        throw new BaseException(
+            ErrorCode.NOT_FOUND, "Schema not found: " + tableInfoDAO.getSchemaId());
+      }
+      CatalogInfoDAO catalogInfoDAO =
+          session.get(CatalogInfoDAO.class, schemaInfoDAO.getCatalogId());
+      if (catalogInfoDAO == null) {
+        throw new BaseException(
+            ErrorCode.NOT_FOUND, "Catalog not found: " + schemaInfoDAO.getCatalogId());
+      }
+      TableInfo tableInfo = tableInfoDAO.toTableInfo(true);
+      tableInfo.setSchemaName(schemaInfoDAO.getName());
+      tableInfo.setCatalogName(catalogInfoDAO.getName());
+      return tableInfo;
     }
   }
 
@@ -135,7 +126,7 @@ public class TableRepository {
             .tableType(createTable.getTableType())
             .dataSourceFormat(createTable.getDataSourceFormat())
             .columns(columnInfos)
-            .storageLocation(FileUtils.convertRelativePathToURI(createTable.getStorageLocation()))
+            .storageLocation(FileUtils.toStandardizedURIString(createTable.getStorageLocation()))
             .comment(createTable.getComment())
             .properties(createTable.getProperties())
             .owner(callerId)
