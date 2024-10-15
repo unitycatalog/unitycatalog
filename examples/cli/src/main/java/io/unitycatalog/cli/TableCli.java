@@ -103,6 +103,7 @@ public class TableCli {
       createTable.storageLocation(json.getString(CliParams.STORAGE_LOCATION.getServerParam()));
       handleTableStorageLocation(createTable.getStorageLocation(), columnInfoList);
     } else {
+
       // handle delta managed tables
       String stagingTableId;
       String stagingLocation;
@@ -129,6 +130,8 @@ public class TableCli {
                 .getAwsTempCredentials();
         DeltaKernelUtils.createDeltaTable(stagingLocation, columnInfoList, awsCredentials);
         createTable.setStorageLocation(stagingLocation);
+      } else {
+        throw new CliException("Only delta tables are supported for managed tables");
       }
     }
     TableInfo tableInfo = apiClient.createTable(createTable);

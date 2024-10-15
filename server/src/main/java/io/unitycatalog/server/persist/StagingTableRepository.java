@@ -76,6 +76,7 @@ public class StagingTableRepository {
   private void validateIfAlreadyExists(
       Session session, UUID schemaId, String tableName, String stagingLocation) {
     // check if staging table or table by the same name already exists
+    // Also ensure that no staging table exists at the same location
     StagingTableDAO existingStagingTable = findStagingTableByName(session, schemaId, tableName);
     if (existingStagingTable != null) {
       throw new BaseException(
