@@ -261,7 +261,7 @@ With this set, now you can continue your [Using Spark SQL to query Unity Catalog
 We previously configured Google as the Identity Provider and configured UC Server settings for CLI access. However, we can also apply this authentication and authorization to the Unity Catalog UI. 
 
 !!! note "First time using Unity Catalog UI?"
-     If this is your first time interacting with Unity Catalog UI, you might want to check out the [Unity Catalog UI](./ui.md) first.
+     If this is your first time interacting with Unity Catalog UI, you might want to check out the [Unity Catalog UI](../usage/ui.md) first.
 
 ### Configure and restart the Unity Catalog UI
 
