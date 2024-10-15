@@ -38,8 +38,8 @@ jobs:
     - name: Install unitycatalog Python package
       run: |
         source .venv/bin/activate
-        pip install target/clients/python/
+        pip install clients/python/target/
     - name: Run unit tests
       run: |
         source .venv/bin/activate
-        pytest tests/python
+        pytest clients/python/tests

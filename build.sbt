@@ -223,7 +223,7 @@ lazy val client = (project in file("target/clients/java"))
     }
   )
 
-lazy val pythonClient = (project in file("target/clients/python"))
+lazy val pythonClient = (project in file("clients/python/target"))
   .enablePlugins(OpenApiGeneratorPlugin)
   .settings(
     // name of the generation step. See `openApiPackageName` for the actual Python package name
@@ -234,7 +234,7 @@ lazy val pythonClient = (project in file("target/clients/python"))
     // OpenAPI generation specs
     openApiInputSpec := (file(".") / "api" / "all.yaml").toString,
     openApiGeneratorName := "python",
-    openApiOutputDir := (file("target") / "clients" / "python").toString,
+    openApiOutputDir := (file("clients") / "python" / "target").toString,
     openApiPackageName := s"$artifactNamePrefix",
     openApiAdditionalProperties := Map(
       "packageVersion" -> s"${version.value.replace("-SNAPSHOT", ".dev0")}",
