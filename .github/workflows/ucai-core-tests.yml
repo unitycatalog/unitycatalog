@@ -1,4 +1,4 @@
-name: tests
+name: UCAI Core Tests
 
 on:
   push:
@@ -19,8 +19,8 @@ jobs:
     steps:
       - name: Check out code
         uses: actions/checkout@v4
-        with:
-          path: unitycatalog/unitycatalog-ai
+      - name: Navigate to the package directory
+        run: cd unitycatalog/unitycatalog-ai
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
@@ -35,7 +35,7 @@ jobs:
       - name: Lint YAML files with yamllint
         run: yamllint .
 
-  core_test:
+  core_tests:
     runs-on: ubuntu-latest
     strategy:
       matrix:
@@ -45,8 +45,8 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
-        with:
-          path: unitycatalog/unitycatalog-ai
+      - name: Navigate to the package directory
+        run: cd unitycatalog/unitycatalog-ai
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
