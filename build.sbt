@@ -226,7 +226,8 @@ lazy val client = (project in file("target/clients/java"))
 lazy val pythonClient = (project in file("target/clients/python"))
   .enablePlugins(OpenApiGeneratorPlugin)
   .settings(
-    name := s"$artifactNamePrefix-client",
+    // name of the generation step. See `openApiPackageName` for the actual Python package name
+    name := s"$artifactNamePrefix-python-client",
     commonSettings,
     (Compile / compile) := ((Compile / compile) dependsOn generate).value,
 
