@@ -16,13 +16,13 @@ Unity Catalog is the industry’s only universal catalog for data and AI.
 
 Unity Catalog offers:
 
-- a core set of APIs for tables, unstructured data, and AI assets
+- core APIs for tables, unstructured data, and AI assets
 - ML model support
 - Apache Spark and Delta Lake integration
 - Authentication/Authorization capabilitities
 - User Interface
 
-Find the roadmap [in the repo discussions](https://github.com/unitycatalog/unitycatalog/discussions/411). This is just the beginning!
+Find thegit.alwaysSignOff roadmap [in the repo discussions](https://github.com/unitycatalog/unitycatalog/discussions/411). This is just the beginning!
 
 ![image info](./assets/images/uc.png)
 
