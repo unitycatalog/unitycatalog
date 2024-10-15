@@ -19,11 +19,12 @@ jobs:
       matrix:
         python-version: ['3.9', '3.10']
     timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: unitycatalog-ai
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
-      - name: Navigate to the package directory
-        run: cd unitycatalog/unitycatalog-ai
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
