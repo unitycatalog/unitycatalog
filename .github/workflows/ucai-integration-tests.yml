@@ -1,0 +1,38 @@
+name: UCAI Integrations Tests
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - unitycatalog-ai/integrations/**
+      - .github/workflows/ucai-integration-tests.yml
+  pull_request:
+    paths:
+      - unitycatalog-ai/integrations/**
+      - .github/workflows/ucai-integration-tests.yml
+
+jobs:
+  langchain_test:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ['3.9', '3.10']
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: unitycatalog-ai
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+      - name: Install dependencies
+        run: |
+          pip install .
+          pip install integrations/langchain[dev]
+      - name: Run tests
+        run: |
+          pytest integrations/langchain/tests
