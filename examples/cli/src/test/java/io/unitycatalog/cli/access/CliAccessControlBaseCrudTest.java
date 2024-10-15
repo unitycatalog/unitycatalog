@@ -1,5 +1,12 @@
 package io.unitycatalog.cli.access;
 
+import static io.unitycatalog.cli.TestUtils.addServerAndAuthParams;
+import static io.unitycatalog.cli.TestUtils.executeCLICommand;
+import static io.unitycatalog.cli.access.Step.Expect.FAIL;
+import static io.unitycatalog.cli.access.Step.Expect.SUCCEED;
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+
 import com.auth0.jwt.JWT;
 import com.fasterxml.jackson.databind.JsonNode;
 import io.unitycatalog.server.base.ServerConfig;
@@ -7,7 +14,6 @@ import io.unitycatalog.server.base.access.BaseAccessControlCRUDTest;
 import io.unitycatalog.server.base.catalog.CatalogOperations;
 import io.unitycatalog.server.security.JwtClaim;
 import io.unitycatalog.server.security.JwtTokenType;
-
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -17,14 +23,6 @@ import java.util.ArrayList;
 import java.util.Date;
 import java.util.List;
 import java.util.UUID;
-
-import static io.unitycatalog.cli.TestUtils.addServerAndAuthParams;
-import static io.unitycatalog.cli.TestUtils.executeCLICommand;
-import static io.unitycatalog.cli.access.Step.Expect.FAIL;
-import static io.unitycatalog.cli.access.Step.Expect.SUCCEED;
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertNotNull;
-import static org.junit.jupiter.api.Assertions.assertThrows;
 
 public class CliAccessControlBaseCrudTest extends BaseAccessControlCRUDTest {
 
@@ -173,16 +171,12 @@ public class CliAccessControlBaseCrudTest extends BaseAccessControlCRUDTest {
         System.err.format("%3d Expect: %s executing %s\n", stepNumber, commandStep.getExpectedResult(), commandStep.getArgs());
 
         if (commandStep.getExpectedResult() == FAIL) {
-          assertThrows(
-                  RuntimeException.class,
-                  () -> {
-                    JsonNode localResultJson = executeCLICommand(args);
-                  });
+          assertThatThrownBy(() -> executeCLICommand(args)).isInstanceOf(RuntimeException.class);
         } else {
           JsonNode resultJson = executeCLICommand(args);
-          assertNotNull(resultJson);
+          assertThat(resultJson).isNotNull();
           if (resultJson.isArray()) {
-            assertEquals(step.getItemCount(), resultJson.size());
+            assertThat(resultJson).hasSize(step.getItemCount());
           }
         }
       }
