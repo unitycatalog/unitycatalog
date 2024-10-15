@@ -115,7 +115,7 @@ public abstract class BaseTableCRUDTest extends BaseCRUDTest {
     assertThat(columns)
         .hasSize(2)
         .extracting(ColumnInfo::getName)
-        .as("Table should contain two colums with names '%s' and '%s'", "as_int", "as_string")
+        .as("Table should contain two columns with names '%s' and '%s'", "as_int", "as_string")
         .contains("as_int", "as_string");
   }
 
