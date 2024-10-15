@@ -6,13 +6,17 @@ Integrate Unity Catalog AI package with Langchain to allow seamless usage of UC 
 
 ```sh
 # install from the source
-pip install git+ssh://git@github.com/serena-ruan/unitycatalog-ai.git#subdirectory=integrations/langchain
+pip install git+https://github.com/unitycatalog/unitycatalog.git#subdirectory=unitycatalog-ai/integrations/langchain
 ```
 
 > [!NOTE]
 > Once this package is published to PyPI, users can install via `pip install ucai-langchain`
 
 ## Get started
+
+### OSS UC
+
+TODO: fill this section after UC OSS client is supported.
 
 ### Databricks-managed UC
 
