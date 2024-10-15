@@ -183,7 +183,7 @@ public abstract class BaseModelCRUDTest extends BaseCRUDTest {
     assertThat(updatedRegisteredModelInfo3.getCatalogName()).isEqualTo(CATALOG_NEW_NAME);
 
     // Delete registered model
-    System.out.println("Testing delete registerd model..");
+    System.out.println("Testing delete registered model..");
     modelOperations.deleteRegisteredModel(
         CATALOG_NEW_NAME + "." + SCHEMA_NAME + "." + MODEL_NEW_NAME, Optional.of(false));
     assertThat(
