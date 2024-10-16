@@ -26,3 +26,5 @@ Client tests use the `pytest` library. To run them:
     ```sh
     pytest clients/python/tests
     ```
+
+You may also run the provided `run-tests.sh` script which will, generate the client library, install it, and then run the tests.
