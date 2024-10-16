@@ -12,7 +12,7 @@ import org.junit.jupiter.api.BeforeEach;
 public abstract class BaseServerTest {
 
   public static ServerConfig serverConfig = new ServerConfig("http://localhost", "");
-  private static UnityCatalogServer unityCatalogServer;
+  protected static UnityCatalogServer unityCatalogServer;
 
   @BeforeEach
   public void setUp() {

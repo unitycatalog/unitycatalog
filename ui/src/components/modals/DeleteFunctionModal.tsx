@@ -42,7 +42,7 @@ export function DeleteFunctionModal({
         },
       },
     );
-  }, [mutation, ucFunction, setNotification, navigate]);
+  }, [mutation, ucFunction, setNotification, navigate, catalog, schema]);
 
   return (
     <Modal

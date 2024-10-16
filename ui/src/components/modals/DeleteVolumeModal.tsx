@@ -39,7 +39,7 @@ export function DeleteVolumeModal({
         },
       },
     );
-  }, [mutation, volume, setNotification, navigate]);
+  }, [mutation, volume, setNotification, navigate, catalog, schema]);
 
   return (
     <Modal
