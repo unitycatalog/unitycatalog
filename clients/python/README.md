@@ -18,13 +18,7 @@ Client tests use the `pytest` library. To run them:
     ```sh
     pip install requests pytest
     ```
-2. Install unitycatalog package
-    ```sh
-    pip install clients/python/target/
+2. Generate the client library, install it, and run the tests
     ```
-3. Run tests
-    ```sh
-    pytest clients/python/tests
+    ./run-tests.sh
     ```
-
-You may also run the provided `run-tests.sh` script which will, generate the client library, install it, and then run the tests.

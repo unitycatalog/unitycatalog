@@ -26,20 +26,8 @@ jobs:
       with:
         python-version: '3.9'
 
-    - name: Generate Python client library
-      run: build/sbt pythonClient/generate
-
     - name: Install dependencies
-      run: |
-        python -m venv .venv
-        source .venv/bin/activate
-        pip install requests
-        pip install pytest
-    - name: Install unitycatalog Python package
-      run: |
-        source .venv/bin/activate
-        pip install clients/python/target/
-    - name: Run unit tests
-      run: |
-        source .venv/bin/activate
-        pytest clients/python/tests
+      run: pip install requests pytest
+
+    - name: Generate the client library, install it, and run the tests
+      run: ./run-tests.sh
