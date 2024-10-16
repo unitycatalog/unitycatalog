@@ -12,6 +12,7 @@ import io.unitycatalog.server.base.ServerConfig;
 import io.unitycatalog.server.base.function.FunctionOperations;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
 import java.util.stream.Collectors;
 
 public class CliFunctionOperations implements FunctionOperations {
@@ -61,14 +62,16 @@ public class CliFunctionOperations implements FunctionOperations {
   }
 
   @Override
-  public List<FunctionInfo> listFunctions(String catalogName, String schemaName) {
-    String[] args =
-        addServerAndAuthParams(
-            List.of(
-                "function", "list",
-                "--catalog", catalogName,
-                "--schema", schemaName),
-            config);
+  public List<FunctionInfo> listFunctions(
+      String catalogName, String schemaName, Optional<String> pageToken) {
+    List<String> argsList =
+        new ArrayList<>(
+            List.of("function", "list", "--catalog", catalogName, "--schema", schemaName));
+    if (pageToken.isPresent()) {
+      argsList.add("--page_token");
+      argsList.add(pageToken.get());
+    }
+    String[] args = addServerAndAuthParams(argsList, config);
     JsonNode jsonNode = executeCLICommand(args);
     return objectMapper.convertValue(jsonNode, new TypeReference<List<FunctionInfo>>() {});
   }

@@ -4,7 +4,7 @@ import threading
 from abc import ABC, abstractmethod
 from copy import deepcopy
 from dataclasses import dataclass
-from typing import Any, Dict, Literal, Optional
+from typing import Any, Callable, Dict, Literal, Optional
 
 from ucai.core.paged_list import PagedList
 
@@ -42,6 +42,23 @@ class BaseFunctionClient(ABC):
     @abstractmethod
     def create_function(self, *args: Any, **kwargs: Any) -> Any:
         """Create a function"""
+
+    @abstractmethod
+    def create_python_function(
+        self, *, func: Callable[..., Any], catalog: str, schema: str, replace: bool = False
+    ) -> Any:
+        """
+        Create a Python function
+
+        Args:
+            func: A Python Callable object to be converted into a UC function.
+            catalog: The catalog name.
+            schema: The schema name.
+            replace: Whether to replace the function if it already exists. Defaults to False.
+
+        Returns:
+            The UC function information metadata for the configured UC implementation.
+        """
 
     @abstractmethod
     def get_function(self, function_name: str, **kwargs: Any) -> Any:
@@ -144,6 +161,21 @@ class BaseFunctionClient(ABC):
     ) -> FunctionExecutionResult:
         """
         Internal logic for executing a UC function.
+        """
+
+    @abstractmethod
+    def delete_function(
+        self,
+        function_name: str,
+        **kwargs,
+    ) -> None:
+        """
+        Delete a function by its full name.
+
+        Args:
+            function_name: The full name of the function to delete.
+                It should be in the format of "catalog.schema.function_name".
+            kwargs: additional key-value pairs to include when deleting the function.
         """
 
     @abstractmethod

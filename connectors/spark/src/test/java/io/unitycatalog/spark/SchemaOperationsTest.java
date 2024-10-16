@@ -4,8 +4,6 @@ import static io.unitycatalog.server.utils.TestUtils.CATALOG_NAME;
 import static io.unitycatalog.server.utils.TestUtils.SCHEMA_NAME;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
-import static org.junit.jupiter.api.Assertions.assertFalse;
-import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import io.unitycatalog.server.utils.TestUtils;
 import org.apache.spark.sql.Row;
@@ -19,15 +17,15 @@ public class SchemaOperationsTest extends BaseSparkIntegrationTest {
     SparkSession session = createSparkSessionWithCatalogs(CATALOG_NAME, SPARK_CATALOG);
     session.catalog().setCurrentCatalog(CATALOG_NAME);
     session.sql("CREATE DATABASE my_test_database;");
-    assertTrue(session.catalog().databaseExists("my_test_database"));
+    assertThat(session.catalog().databaseExists("my_test_database")).isTrue();
     session.sql(String.format("DROP DATABASE %s.my_test_database;", CATALOG_NAME));
-    assertFalse(session.catalog().databaseExists("my_test_database"));
+    assertThat(session.catalog().databaseExists("my_test_database")).isFalse();
 
     session.catalog().setCurrentCatalog(SPARK_CATALOG);
     session.sql("CREATE DATABASE my_test_database;");
-    assertTrue(session.catalog().databaseExists("my_test_database"));
+    assertThat(session.catalog().databaseExists("my_test_database")).isTrue();
     session.sql(String.format("DROP DATABASE %s.my_test_database;", SPARK_CATALOG));
-    assertFalse(session.catalog().databaseExists("my_test_database"));
+    assertThat(session.catalog().databaseExists("my_test_database")).isFalse();
     session.stop();
   }
 

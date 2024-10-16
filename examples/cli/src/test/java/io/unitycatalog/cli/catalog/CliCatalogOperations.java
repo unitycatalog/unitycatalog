@@ -46,8 +46,13 @@ public class CliCatalogOperations implements CatalogOperations {
   }
 
   @Override
-  public List<CatalogInfo> listCatalogs() {
-    String[] args = addServerAndAuthParams(List.of("catalog", "list"), config);
+  public List<CatalogInfo> listCatalogs(Optional<String> pageToken) {
+    List<String> argsList = new ArrayList<>(List.of("catalog", "list"));
+    if (pageToken.isPresent()) {
+      argsList.add("--page_token");
+      argsList.add(pageToken.get());
+    }
+    String[] args = addServerAndAuthParams(argsList, config);
     JsonNode catalogList = executeCLICommand(args);
     return objectMapper.convertValue(catalogList, new TypeReference<List<CatalogInfo>>() {});
   }
