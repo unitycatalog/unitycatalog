@@ -22,16 +22,11 @@ public class MetastoreCli {
     String output = CliUtils.EMPTY;
     switch (subCommand) {
       case CliUtils.GET:
-        output = getMetastoreSummary(metastoresApi);
+        output = objectWriter.writeValueAsString(metastoresApi.summary());
         break;
       default:
         CliUtils.printEntityHelp(CliUtils.METASTORE);
     }
     postProcessAndPrintOutput(cmd, output, subCommand);
-  }
-
-  private static String getMetastoreSummary(MetastoresApi metastoresApi)
-      throws JsonProcessingException, ApiException {
-    return objectWriter.writeValueAsString(metastoresApi.summary());
   }
 }
