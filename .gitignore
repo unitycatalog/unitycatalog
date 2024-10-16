@@ -26,6 +26,9 @@ etc/conf/*.der
 connectors/spark/etc/conf/certs.json
 connectors/spark/etc/conf/*.txt
 connectors/spark/etc/conf/*.der
+integration-tests/etc/conf/certs.json
+integration-tests/etc/conf/*.txt
+integration-tests/etc/conf/*.der
 
 # test
 .pytest_cache/
