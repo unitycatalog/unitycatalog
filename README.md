@@ -58,7 +58,7 @@ Let's take Unity Catalog for spin. In this guide, we are going to do the followi
   as well as provide a convenient way to explore the content of any UC server implementation.
 
 > If you prefer to run Unity Catalog in Docker use `docker
-> compose up`. See the [Docker Quickstart](./docs/docker_quickstart.md) for more details.
+> compose up`. See the [Docker Compose docs](./docs/docker_compose.md) for more details.
 
 ### Prerequisites
 

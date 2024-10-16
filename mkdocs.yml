@@ -10,7 +10,7 @@ nav:
   - Home: index.md
   - Getting Started: 
       - Quickstart: quickstart.md
-      - Docker Compose: docker_quickstart.md
+      - Docker Compose: docker_compose.md
   - Usage:
       - CLI: usage/cli.md
       - UI: usage/ui.md

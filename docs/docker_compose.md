@@ -1,4 +1,4 @@
-# Docker Quickstart
+# Docker Compose
 
 To start Unity Catalog in Docker Compose in one command, install the latest
 version of [Docker Desktop](https://www.docker.com/products/docker-desktop/) and
@@ -35,7 +35,7 @@ Refer the the main [Quickstart](quickstart.md) for more examples of how to
 interact with the catalog.
 
 ## Configurations
-Docker Compose is configured in the `/unitycatalog/compose.yaml` file.
+Docker Compose is configured in the `./compose.yaml` file.
 
 The configuration will create a bind mount to the local files in `./etc/conf`.
 The UC server can be configured by editing the configuration files on the host,

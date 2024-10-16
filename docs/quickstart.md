@@ -11,7 +11,7 @@ git clone git@github.com:unitycatalog/unitycatalog.git
 ```
 
 > To start Unity Catalog in Docker, refer to the [Docker
-> Compose](docker_quickstart.md) docs.
+> Compose docs](docker_compose.md).
 
 To run Unity Catalog, you need **Java 17** installed on your machine.  You can
 always run the `java --version` command to verify that you have the right
