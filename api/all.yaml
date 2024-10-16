@@ -281,7 +281,7 @@ paths:
       operationId: createStagingTable
       summary: Create a staging table
       tags:
-        - StagingTables
+        - Tables
       description: |
         Creates a new staging table instance. Staging tables are used during managed table creation. Creating a managed 
         table requires performing two actions – initializing the table data in cloud storage and creating the named 
