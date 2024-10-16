@@ -1,4 +1,4 @@
-package io.unitycatalog.server.persist.utils;
+package io.unitycatalog.server.utils;
 
 import io.unitycatalog.server.service.credential.aws.S3StorageConfig;
 import io.unitycatalog.server.service.credential.azure.ADLSStorageConfig;
@@ -14,37 +14,32 @@ import lombok.Getter;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-public class ServerPropertiesUtils {
+public class ServerProperties {
 
-  private static final Logger LOGGER = LoggerFactory.getLogger(ServerPropertiesUtils.class);
-  @Getter private static final ServerPropertiesUtils instance = new ServerPropertiesUtils();
+  private static final Logger LOGGER = LoggerFactory.getLogger(ServerProperties.class);
+  @Getter private static final ServerProperties instance = new ServerProperties();
   private final Properties properties;
 
-  private ServerPropertiesUtils() {
+  public static final String SERVER_PROPERTIES_FILE = "etc/conf/server.properties";
+
+  private ServerProperties() {
     properties = new Properties();
     loadProperties();
   }
 
   // Load properties from a configuration file
   private void loadProperties() {
-    Path path = Paths.get("etc/conf/server.properties");
+    Path path = Paths.get(SERVER_PROPERTIES_FILE);
     if (!path.toFile().exists()) {
-      LOGGER.error("Properties file not found: {}", path);
+      LOGGER.error("Server properties file not found: {}", path);
       return;
     }
     try (InputStream input = Files.newInputStream(path)) {
       properties.load(input);
-      LOGGER.debug("Properties loaded successfully");
+      LOGGER.debug("Server properties loaded successfully: {}", path);
     } catch (IOException ex) {
       LOGGER.error("Exception during loading properties", ex);
     }
-  }
-
-  // Get a property value by key
-  public String getProperty(String key) {
-    if (System.getProperty(key) != null) return System.getProperty(key);
-    if (System.getenv().containsKey(key)) return System.getenv(key);
-    return properties.getProperty(key);
   }
 
   public Map<String, S3StorageConfig> getS3Configurations() {
@@ -124,10 +119,35 @@ public class ServerPropertiesUtils {
     return adlsConfigMap;
   }
 
-  // Get a property value by key with a default value
-  public String getProperty(String key, String defaultValue) {
+  /**
+   * Get a property value by key.
+   *
+   * <p>The key can be one of the following (in that order) before looking it up in the server
+   * properties:
+   *
+   * <ol>
+   *   <li>System property
+   *   <li>Environment variable
+   * </ol>
+   */
+  public String getProperty(String key) {
     if (System.getProperty(key) != null) return System.getProperty(key);
     if (System.getenv().containsKey(key)) return System.getenv(key);
-    return properties.getProperty(key, defaultValue);
+    return properties.getProperty(key);
+  }
+
+  /**
+   * Get a property value by key with a default value
+   *
+   * @see Properties#getProperty(String key, String defaultValue)
+   */
+  public String getProperty(String key, String defaultValue) {
+    String val = getProperty(key);
+    return (val == null) ? defaultValue : val;
+  }
+
+  public boolean isAuthorizationEnabled() {
+    String authorization = instance.getProperty("server.authorization", "disable");
+    return authorization.equalsIgnoreCase("enable");
   }
 }

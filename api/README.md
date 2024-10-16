@@ -20,6 +20,7 @@ All URIs are relative to *http://localhost:8080/api/2.1/unity-catalog*
 *FunctionsApi* | [**listFunctions**](Apis/FunctionsApi.md#listfunctions) | **GET** /functions | List functions |
 | *GrantsApi* | [**get**](Apis/GrantsApi.md#get) | **GET** /permissions/{securable_type}/{full_name} | Get permissions |
 *GrantsApi* | [**update**](Apis/GrantsApi.md#update) | **PATCH** /permissions/{securable_type}/{full_name} | Update a permission |
+| *MetastoresApi* | [**summary**](Apis/MetastoresApi.md#summary) | **GET** /metastore_summary | Get metastore summary |
 | *ModelVersionsApi* | [**createModelVersion**](Apis/ModelVersionsApi.md#createmodelversion) | **POST** /models/versions | Create a model version.  |
 *ModelVersionsApi* | [**deleteModelVersion**](Apis/ModelVersionsApi.md#deletemodelversion) | **DELETE** /models/{full_name}/versions/{version} | Delete a model version |
 *ModelVersionsApi* | [**finalizeModelVersion**](Apis/ModelVersionsApi.md#finalizemodelversion) | **PATCH** /models/{full_name}/versions/{version}/finalize | Finalize a model version |
@@ -87,6 +88,7 @@ All URIs are relative to *http://localhost:8080/api/2.1/unity-catalog*
  - [GenerateTemporaryVolumeCredential](./Models/GenerateTemporaryVolumeCredential.md)
  - [GetCommits](./Models/GetCommits.md)
  - [GetCommitsResponse](./Models/GetCommitsResponse.md)
+ - [GetMetastoreSummaryResponse](./Models/GetMetastoreSummaryResponse.md)
  - [ListCatalogsResponse](./Models/ListCatalogsResponse.md)
  - [ListFunctionsResponse](./Models/ListFunctionsResponse.md)
  - [ListModelVersionsResponse](./Models/ListModelVersionsResponse.md)

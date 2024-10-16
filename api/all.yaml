@@ -35,6 +35,9 @@ tags:
   - name: Permissions
     description: |
       In Unity Catalog, data is secure by default. Access can be granted.
+  - name: Metastores
+    description: |
+      A metastore is the top-level container of objects in Unity Catalog that stores all UC assets.
   - name: CoordinatedCommits
     description: |
       "Coordinated commits" is a Delta tables feature that allows Delta tables to designate a coordinator to coordinate commits. This is Unity Catalog's API to allow Unity Catalog be the commit coordinator for managed tables.
@@ -1117,6 +1120,21 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/PermissionsList'
+  /metastore_summary:
+    get:
+      tags:
+        - Metastores
+      operationId: summary
+      summary: Get metastore summary
+      description: |
+        Gets information about the metastore hosted by this Unity Catalog service (currently the service hosts only one metastore)
+      responses:
+        '200':
+          description: The metastore summary was successfully retrieved.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GetMetastoreSummaryResponse'
   /delta/commits:
     get:
       operationId: getCommits
@@ -2352,6 +2370,12 @@ components:
       required:
         - principal
         - privileges
+    GetMetastoreSummaryResponse:
+      type: object
+      properties:
+        metastore_id:
+          description: Unique identifier of the metastore.
+          type: string
     Commit:
       type: object
       properties:

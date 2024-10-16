@@ -152,12 +152,8 @@ public abstract class BaseTemporaryModelVersionCredentialsTest extends BaseCRUDT
 
     assertThatThrownBy(
             () -> credentialsOperations.generateTemporaryModelVersionCredentials(generateFileCreds))
-        .isInstanceOf(Exception.class);
-    try {
-      credentialsOperations.generateTemporaryModelVersionCredentials(generateFileCreds);
-    } catch (ApiException e) {
-      assertThat(e.getCode()).isEqualTo(ErrorCode.INVALID_ARGUMENT.getHttpStatus().code());
-    }
+        .isInstanceOf(ApiException.class)
+        .hasFieldOrPropertyWithValue("code", ErrorCode.INVALID_ARGUMENT.getHttpStatus().code());
 
     // Cannot get credentials for a failed status model version
     GenerateTemporaryModelVersionCredential generateCloudFailedCreds =
@@ -172,12 +168,8 @@ public abstract class BaseTemporaryModelVersionCredentialsTest extends BaseCRUDT
             () ->
                 credentialsOperations.generateTemporaryModelVersionCredentials(
                     generateCloudFailedCreds))
-        .isInstanceOf(Exception.class);
-    try {
-      credentialsOperations.generateTemporaryModelVersionCredentials(generateCloudFailedCreds);
-    } catch (ApiException e) {
-      assertThat(e.getCode()).isEqualTo(ErrorCode.INVALID_ARGUMENT.getHttpStatus().code());
-    }
+        .isInstanceOf(ApiException.class)
+        .hasFieldOrPropertyWithValue("code", ErrorCode.INVALID_ARGUMENT.getHttpStatus().code());
 
     // Cannot get credentials for an unknown status model version
     GenerateTemporaryModelVersionCredential generateCloudUnknownCreds =
@@ -192,12 +184,8 @@ public abstract class BaseTemporaryModelVersionCredentialsTest extends BaseCRUDT
             () ->
                 credentialsOperations.generateTemporaryModelVersionCredentials(
                     generateCloudUnknownCreds))
-        .isInstanceOf(Exception.class);
-    try {
-      credentialsOperations.generateTemporaryModelVersionCredentials(generateCloudUnknownCreds);
-    } catch (ApiException e) {
-      assertThat(e.getCode()).isEqualTo(ErrorCode.INVALID_ARGUMENT.getHttpStatus().code());
-    }
+        .isInstanceOf(ApiException.class)
+        .hasFieldOrPropertyWithValue("code", ErrorCode.INVALID_ARGUMENT.getHttpStatus().code());
 
     // Cannot get read/write credentials for a ready status model version
     GenerateTemporaryModelVersionCredential generateCloudReadyCreds =
@@ -212,12 +200,8 @@ public abstract class BaseTemporaryModelVersionCredentialsTest extends BaseCRUDT
             () ->
                 credentialsOperations.generateTemporaryModelVersionCredentials(
                     generateCloudReadyCreds))
-        .isInstanceOf(Exception.class);
-    try {
-      credentialsOperations.generateTemporaryModelVersionCredentials(generateCloudReadyCreds);
-    } catch (ApiException e) {
-      assertThat(e.getCode()).isEqualTo(ErrorCode.INVALID_ARGUMENT.getHttpStatus().code());
-    }
+        .isInstanceOf(ApiException.class)
+        .hasFieldOrPropertyWithValue("code", ErrorCode.INVALID_ARGUMENT.getHttpStatus().code());
 
     // Cannot pass in an unknown operation
     GenerateTemporaryModelVersionCredential generateUnknownOperation =
@@ -232,11 +216,7 @@ public abstract class BaseTemporaryModelVersionCredentialsTest extends BaseCRUDT
             () ->
                 credentialsOperations.generateTemporaryModelVersionCredentials(
                     generateUnknownOperation))
-        .isInstanceOf(Exception.class);
-    try {
-      credentialsOperations.generateTemporaryModelVersionCredentials(generateUnknownOperation);
-    } catch (ApiException e) {
-      assertThat(e.getCode()).isEqualTo(ErrorCode.INVALID_ARGUMENT.getHttpStatus().code());
-    }
+        .isInstanceOf(ApiException.class)
+        .hasFieldOrPropertyWithValue("code", ErrorCode.INVALID_ARGUMENT.getHttpStatus().code());
   }
 }

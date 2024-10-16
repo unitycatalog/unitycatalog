@@ -1,6 +1,7 @@
 package io.unitycatalog.server.persist.utils;
 
 import io.unitycatalog.server.persist.dao.*;
+import io.unitycatalog.server.utils.ServerProperties;
 import java.io.InputStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -19,11 +20,11 @@ public class HibernateUtils {
   private static final Logger LOGGER = LoggerFactory.getLogger(HibernateUtils.class);
 
   @Getter private static final SessionFactory sessionFactory;
-  private static final ServerPropertiesUtils properties;
+  private static final ServerProperties properties;
   @Getter private static final Properties hibernateProperties = new Properties();
 
   static {
-    properties = ServerPropertiesUtils.getInstance();
+    properties = ServerProperties.getInstance();
     sessionFactory = createSessionFactory();
   }
 
@@ -66,6 +67,7 @@ public class HibernateUtils {
       configuration.addAnnotatedClass(FunctionParameterInfoDAO.class);
       configuration.addAnnotatedClass(VolumeInfoDAO.class);
       configuration.addAnnotatedClass(UserDAO.class);
+      configuration.addAnnotatedClass(MetastoreDAO.class);
       configuration.addAnnotatedClass(CommitDAO.class);
 
       ServiceRegistry serviceRegistry =
