@@ -14,9 +14,8 @@ pip install ucai-llamaindex
 
 To get started with the latest version, you can directly install this package from source via:
 
-<!-- TODO: update this to the actual path where the repo's main branch will live -->
 ```sh
-pip install git+https://github.com/BenWilson2/unitycatalog-ai.git@llama-tool#subdirectory=integrations/llama_index
+pip install git+https://github.com/unitycatalog/unitycatalog.git#subdirectory=unitycatalog-ai/integrations/llama_index
 ```
 
 ## Getting started
