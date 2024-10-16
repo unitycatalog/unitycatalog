@@ -27,7 +27,7 @@ jobs:
         python-version: '3.9'
 
     - name: Generate Python client library
-      run: build/sbt generate
+      run: build/sbt pythonClient/generate
 
     - name: Install dependencies
       run: |

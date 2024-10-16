@@ -6,7 +6,7 @@ The Python SDK for Unity Catalog that is published to https://pypi.org/project/u
 
 To generate the client library code from the API specification in `api/all.yaml`, run:
 ```sh
-build/sbt generate
+build/sbt pythonClient/generate
 ```
 
 The generated library will be located in `clients/python/target`.
