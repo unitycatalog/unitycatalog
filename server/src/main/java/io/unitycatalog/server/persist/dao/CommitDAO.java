@@ -11,9 +11,7 @@ import org.hibernate.annotations.UuidGenerator;
 @Entity
 @Table(
     name = "uc_commits",
-    uniqueConstraints = {
-      @UniqueConstraint(columnNames = {"table_id", "commit_version"})
-    })
+    uniqueConstraints = {@UniqueConstraint(columnNames = {"table_id", "commit_version"})})
 // Lombok
 @Getter
 @Setter
