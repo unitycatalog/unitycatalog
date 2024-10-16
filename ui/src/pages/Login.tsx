@@ -6,7 +6,7 @@ import { useAuth } from '../context/auth-context';
 import KeycloakAuthButton from '../components/login/KeycloakAuthButton';
 import { useNavigate, useLocation } from 'react-router-dom';
 
-export default function () {
+export default function LoginPage() {
   const { loginWithToken } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
