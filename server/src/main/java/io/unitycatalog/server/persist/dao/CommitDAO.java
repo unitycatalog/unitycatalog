@@ -61,7 +61,6 @@ public class CommitDAO {
   }
 
   public static CommitDAO from(Commit commit) {
-    // TODO: how to set ID and metastore ID?
     return CommitDAO.builder()
         .tableId(UUID.fromString(commit.getTableId()))
         .commitVersion(commit.getCommitInfo().getVersion())
