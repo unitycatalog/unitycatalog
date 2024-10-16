@@ -28,7 +28,7 @@ def generate_func_name_and_cleanup(client: DatabricksFunctionClient, schema: str
         yield func_name
     finally:
         try:
-            client.client.functions.delete(func_name)
+            client.delete_function(func_name)
         except Exception as e:
             _logger.warning(f"Fail to delete function: {e}")
 
@@ -72,7 +72,7 @@ $$
         )
     finally:
         try:
-            client.client.functions.delete(func_name)
+            client.delete_function(func_name)
         except Exception as e:
             _logger.warning(f"Fail to delete function: {e}")
 
@@ -94,6 +94,6 @@ def create_python_function_and_cleanup(
         )
     finally:
         try:
-            client.client.functions.delete(func_name)
+            client.delete_function(func_name)
         except Exception as e:
             _logger.warning(f"Fail to delete function: {e}")

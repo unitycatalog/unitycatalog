@@ -164,6 +164,21 @@ class BaseFunctionClient(ABC):
         """
 
     @abstractmethod
+    def delete_function(
+        self,
+        function_name: str,
+        **kwargs,
+    ) -> None:
+        """
+        Delete a function by its full name.
+
+        Args:
+            function_name: The full name of the function to delete.
+                It should be in the format of "catalog.schema.function_name".
+            kwargs: additional key-value pairs to include when deleting the function.
+        """
+
+    @abstractmethod
     def to_dict(self):
         """
         Store the client configuration in a dictionary.
