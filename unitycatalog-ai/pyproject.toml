@@ -11,7 +11,9 @@ license = { text="Apache-2.0" }
 requires-python = ">=3.9"
 dependencies = [
   "typing_extensions",
-  "pydantic"
+  "pydantic",
+  # temp needed for unitycatalog python APIs
+  "distro",
 ]
 
 [build-system]
@@ -57,6 +59,7 @@ dev = [
 [tool.ruff]
 line-length = 100
 target-version = "py39"
+exclude = ["src/unitycatalog"]
 
 [tool.ruff.lint]
 select = [
