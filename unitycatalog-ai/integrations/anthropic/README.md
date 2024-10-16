@@ -6,7 +6,7 @@ You can use the Unity Catalog AI package with the Anthropic SDK to utilize funct
 
 ```sh
 # install from the source
-pip install git+https://github.com/serena-ruan/unitycatalog-ai.git#subdirectory=integrations/anthropic
+pip install git+https://github.com/unitycatalog/unitycatalog.git#subdirectory=unitycatalog-ai/integrations/anthropic
 ```
 
 > [!NOTE]
