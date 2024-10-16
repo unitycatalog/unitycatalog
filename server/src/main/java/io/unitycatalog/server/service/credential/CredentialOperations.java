@@ -42,31 +42,28 @@ public class CredentialOperations {
 
   public TemporaryCredentials vendCredential(CredentialContext context) {
     TemporaryCredentials temporaryCredentials = new TemporaryCredentials();
-
-    if (context.getStorageScheme() == null) {
-      // For local paths, just return empty temporary credentials
-      return new TemporaryCredentials();
-    }
-    switch (context.getStorageScheme()) {
-      case URI_SCHEME_ABFS, URI_SCHEME_ABFSS -> {
-        AzureCredential azureCredential = vendAzureCredential(context);
-        temporaryCredentials.azureUserDelegationSas(new AzureUserDelegationSAS().sasToken(azureCredential.getSasToken()))
-          .expirationTime(azureCredential.getExpirationTimeInEpochMillis());
-      }
-      case URI_SCHEME_GS -> {
-        AccessToken gcpToken = vendGcpToken(context);
-        temporaryCredentials.gcpOauthToken(new GcpOauthToken().oauthToken(gcpToken.getTokenValue()))
-          .expirationTime(gcpToken.getExpirationTime().getTime());
-      }
-      case URI_SCHEME_S3 -> {
-        Credentials awsSessionCredentials = vendAwsCredential(context);
-        temporaryCredentials.awsTempCredentials(new AwsCredentials()
-          .accessKeyId(awsSessionCredentials.accessKeyId())
-          .secretAccessKey(awsSessionCredentials.secretAccessKey())
-          .sessionToken(awsSessionCredentials.sessionToken()));
+    if (context.getStorageScheme() != null) {
+      switch (context.getStorageScheme()) {
+        case URI_SCHEME_ABFS, URI_SCHEME_ABFSS -> {
+          AzureCredential azureCredential = vendAzureCredential(context);
+          temporaryCredentials.azureUserDelegationSas(new AzureUserDelegationSAS().sasToken(azureCredential.getSasToken()))
+                  .expirationTime(azureCredential.getExpirationTimeInEpochMillis());
+        }
+        case URI_SCHEME_GS -> {
+          AccessToken gcpToken = vendGcpToken(context);
+          temporaryCredentials.gcpOauthToken(new GcpOauthToken().oauthToken(gcpToken.getTokenValue()))
+                  .expirationTime(gcpToken.getExpirationTime().getTime());
+        }
+        case URI_SCHEME_S3 -> {
+          Credentials awsSessionCredentials = vendAwsCredential(context);
+          temporaryCredentials.awsTempCredentials(new AwsCredentials()
+                  .accessKeyId(awsSessionCredentials.accessKeyId())
+                  .secretAccessKey(awsSessionCredentials.secretAccessKey())
+                  .sessionToken(awsSessionCredentials.sessionToken()));
+        }
       }
     }
-
+    // For local file system, we return empty credentials
     return temporaryCredentials;
   }
 

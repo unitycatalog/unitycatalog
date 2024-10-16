@@ -40,12 +40,8 @@ public class FileUtils {
   }
 
   public static boolean fileExists(FileIO fileIO, URI fileUri) {
-    try {
-      InputFile inputFile = fileIO.newInputFile(fileUri.getPath());
-      return inputFile.exists(); // Returns true if the file exists, false otherwise
-    } catch (Exception e) {
-      return false;
-    }
+    InputFile inputFile = fileIO.newInputFile(fileUri.getPath());
+    return inputFile.exists(); // Returns true if the file exists, false otherwise
   }
 
   public static void deleteDirectory(String path) {
@@ -65,6 +61,44 @@ public class FileUtils {
     return URI.create(uriString);
   }
 
+
+  /**
+   * Converts a given input path or URI into a standardized URI string.
+   * This method ensures that local file paths are correctly formatted as file URIs
+   * and that URIs for different storage providers (e.g., S3, Azure, GCS) are handled appropriately.
+   *
+   * <p>If the input is a valid URI with a recognized scheme (e.g., "file", "s3", "abfs", etc.),
+   * the method returns a standardized version of the URI. If the input is not a valid URI,
+   * it treats the input as a local file path and converts it to a "file://" URI.</p>
+   *
+   * @param inputPath the input path or URI to be standardized.
+   * @return the standardized URI string.
+   * @throws BaseException if the input path has an unsupported URI scheme.
+   * @throws URISyntaxException if the input path is an invalid URI and cannot be parsed.
+   *
+   * <p>Examples of input and output:</p>
+   *
+   * <pre>
+   * // Local File System Example:
+   * "file:/tmp/myfile"         -> "file:///tmp/myfile"
+   *
+   * // AWS S3 Example:
+   * "s3://my-bucket/my-file"   -> "s3://my-bucket/my-file"
+   *
+   * // Azure Blob Storage Example:
+   * "abfs://my-container@my-storage.dfs.core.windows.net/my-file"
+   *                          -> "abfs://my-container@my-storage.dfs.core.windows.net/my-file"
+   *
+   * // Google Cloud Storage Example:
+   * "gs://my-bucket/my-file"   -> "gs://my-bucket/my-file"
+   *
+   * // Invalid Path Example (treated as a file path):
+   * "/local/path/to/file"      -> "file:///local/path/to/file"
+   *
+   * // Unsupported Scheme Example:
+   * "ftp://example.com/file"   -> Throws BaseException with message: "Unsupported URI scheme: ftp"
+   * </pre>
+   */
   public static String toStandardizedURIString(String inputPath) {
     try {
       // Check if the path is already a URI with a valid scheme
@@ -72,11 +106,10 @@ public class FileUtils {
       // If it's a file URI, standardize it
       if (uri.getScheme() != null) {
         return switch (uri.getScheme()) {
-          case "file" -> adjustLocalFileURI(uri).toString();
+          case Constants.URI_SCHEME_FILE -> adjustLocalFileURI(uri).toString();
           case Constants.URI_SCHEME_S3, Constants.URI_SCHEME_ABFS, Constants.URI_SCHEME_ABFSS, Constants.URI_SCHEME_GS ->
                   uri.toString();
-          default -> throw new BaseException(
-                  ErrorCode.INVALID_ARGUMENT, "Unsupported URI scheme: " + uri.getScheme());
+          default -> throw new BaseException(ErrorCode.INVALID_ARGUMENT, "Unsupported URI scheme: " + uri.getScheme());
         };
       }
     } catch (URISyntaxException e) {
