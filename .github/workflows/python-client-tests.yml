@@ -30,4 +30,4 @@ jobs:
       run: pip install requests pytest
 
     - name: Generate the client library, install it, and run the tests
-      run: ./run-tests.sh
+      run: ./clients/python/run-tests.sh
