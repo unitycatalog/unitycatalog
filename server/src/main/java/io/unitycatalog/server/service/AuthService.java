@@ -165,14 +165,11 @@ public class AuthService {
           if (e.equals(COOKIE)) {
             // Set cookie timeout to 5 days by default if not present in server.properties
             String cookieTimeout =
-                ServerProperties.getInstance().getProperty("server.cookie-timeout", "5D");
+                ServerProperties.getInstance().getProperty("server.cookie-timeout", "P5D");
             Cookie cookie =
                 Cookie.secureBuilder(AuthDecorator.UC_TOKEN_KEY, accessToken)
                     .path("/")
-                    .maxAge(
-                        Duration.parse(
-                                "P" + (cookieTimeout.endsWith("D") ? "" : "T") + cookieTimeout)
-                            .getSeconds())
+                    .maxAge(Duration.parse(cookieTimeout).getSeconds())
                     .build();
             responseHeaders.add(HttpHeaderNames.SET_COOKIE, cookie.toSetCookieHeader());
           }
