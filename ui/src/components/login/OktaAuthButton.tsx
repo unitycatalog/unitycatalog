@@ -11,28 +11,38 @@ export default function OktaAuthButton({
   onSuccess,
   onError,
 }: OktaAuthButtonProps) {
-  const widgetRef = useRef<HTMLDivElement | null>(null);
   const [widgetModalOpen, setWidgetModalOpen] = useState(false);
 
   useEffect(() => {
     if (!widgetModalOpen) return;
 
     const widget = new OktaSignIn({
-      baseUrl: process.env.REACT_APP_OKTA_DOMAIN,
+      baseUrl: 'https://' + process.env.REACT_APP_OKTA_DOMAIN,
+      // flow: 'login',
       clientId: process.env.REACT_APP_OKTA_CLIENT_ID,
-      redirectUri: window.location.origin + '/login/callback',
+      redirectUri: window.location.origin,
+        // scopes: ['openid', 'profile', 'email'],
+      useClassicEngine: true,
       authParams: {
-        issuer: process.env.REACT_APP_OKTA_DOMAIN + '/oauth2/default',
-        scopes: ['openid', 'profile', 'email'],
-      },
+        issuer: 'https://' + process.env.REACT_APP_OKTA_DOMAIN + '/oauth2/default',
+        pkce: false,
+        // responseType: 'code'
+      }
     });
 
-    widget.renderEl(
-      //@ts-ignore
-      { el: widgetRef.current },
-      onSuccess,
-      onError,
-    );
+    // widget.renderEl(
+    //   { el: '#osw-container'},
+    //   onSuccess,
+    //   onError,
+    // );
+
+
+    widget.showSignInAndRedirect({
+      el: '#osw-container',
+    }).catch((function(error) {
+      onError(error);
+      console.log('Error rendering Okta widget:', error);
+    }));
 
     return () => widget.remove();
   }, [widgetModalOpen, onSuccess, onError]);
@@ -53,7 +63,7 @@ export default function OktaAuthButton({
         Continue with Okta
       </Button>
       <Modal open={widgetModalOpen}>
-        <div ref={widgetRef} />
+        <div id={'osw-container'} />
       </Modal>
     </>
   );
