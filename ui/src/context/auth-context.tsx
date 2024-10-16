@@ -20,7 +20,7 @@ AuthContext.displayName = 'AuthContext';
 
 function AuthProvider(props: any) {
   const [accessToken, setAccessToken] = useState<string>('');
-  const { data: currentUser, refetch } = useGetCurrentUser(accessToken);
+  const { data: currentUser } = useGetCurrentUser(accessToken);
   const loginWithTokenMutation = useLoginWithToken();
   const { setNotification } = useNotification();
 
@@ -38,7 +38,7 @@ function AuthProvider(props: any) {
         },
       });
     },
-    [loginWithTokenMutation],
+    [loginWithTokenMutation, setNotification],
   );
 
   const logout = useCallback(async () => {
@@ -58,7 +58,6 @@ function AuthProvider(props: any) {
     const responseIntercept = apiClient.interceptors.response.use(
       (response) => response,
       async (error) => {
-        const prevRequest = error?.config;
         if (error?.response?.status === 403) {
           // todo if we support refresh in the future, that logic will go in here
           setAccessToken('');
@@ -80,7 +79,7 @@ function AuthProvider(props: any) {
       logout,
       currentUser,
     }),
-    [accessToken, loginWithToken, logout],
+    [accessToken, loginWithToken, logout, currentUser],
   );
 
   return <AuthContext.Provider value={value} {...props} />;
