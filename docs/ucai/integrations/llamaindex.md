@@ -1,0 +1,117 @@
+# 🦙 Using Unity Catalog AI with LlamaIndex
+
+Integrate Unity Catalog AI with [LlamaIndex](https://docs.llamaindex.ai/en/stable/) to directly use UC functions as tools in LlamaIndex-based agent applications. This guide covers installation, client setup, and examples to get started.
+
+---
+
+## Installation
+
+Install the Unity Catalog AI LlamaIndex integration from PyPI:
+
+```sh
+pip install ucai-llamaindex
+```
+
+## Prerequisites
+
+- **Python version**: Python 3.10 or higher is required.
+
+Install the LlamaIndex library if you don't already have it in your environment:
+
+```sh
+pip install llama-index
+```
+
+>Note: Depending on what you're doing with LlamaIndex, you may need to install additional packages from PyPI.
+
+### Unity Catalog Open Source
+
+Ensure that you have a functional UC server set up and that you are able to access the catalog and schema where defined functions are stored.
+
+### Databricks Unity Catalog
+
+To interact with Databricks Unity Catalog, ensure that you have both the `databricks-sdk` and the `databricks-connect` packages installed:
+
+```sh
+pip install databricks-sdk "databricks-connect>=15.1.0"
+```
+
+## Tutorial
+
+### Client Setup
+
+Create an instance of the Unity Catalog Functions client
+
+``` python
+from ucai.core.databricks import DatabricksFunctionClient
+
+client = DatabricksFunctionClient()
+```
+
+### Creating a UC function
+
+Create a Python function within Unity Catalog
+
+``` python
+CATALOG = "your_catalog"
+SCHEMA = "your_schema"
+
+func_name = f"{CATALOG}.{SCHEMA}.code_function"
+
+def code_function(code: str) -> str:
+    """
+    Executes Python code.
+
+    Args:
+        code (str): The python code to execute.
+    Returns:
+        str: The result of the execution of the Python code.
+    """
+    import sys
+    from io import StringIO
+    stdout = StringIO()
+    sys.stdout = stdout
+    exec(code)
+    return stdout.getvalue()
+
+client.create_python_function(
+    func=code_function,
+    catalog=CATALOG,
+    schema=SCHEMA
+)
+```
+
+### Creating a toolkit instance
+
+Here we create an instance of our UC function as a toolkit, then verify that the tool is behaving properly by executing the function.
+
+``` python
+from ucai_llamaindex.toolkit import UCFunctionToolkit
+
+# Create a UCFunctionToolkit that includes the UC function
+toolkit = UCFunctionToolkit(function_names=[func_name])
+
+# Fetch the tools stored in the toolkit
+tools = toolkit.tools
+python_exec_tool = tools[0]
+
+# Execute the tool directly
+result = python_exec_tool.invoke({"code": "print(1 + 1)"})
+print(result)  # Outputs: 2
+```
+
+### Using the tool in a LlamaIndex ReActAgent
+
+With our interface to our UC function defined as a LlamaIndex tool collection, we can directly use it within a LlamaIndex agent application.
+Below, we are going to create a simple `ReActAgent` and verify that our agent properly calls our UC function.
+
+```python
+from llama_index.llms.openai import OpenAI
+from llama_index.core.agent import ReActAgent
+
+llm = OpenAI()
+
+agent = ReActAgent.from_tools(tools, llm=llm, verbose=True)
+
+agent.chat("Please call a python execution tool to evaluate the result of 42 + 97.")
+```

@@ -30,6 +30,16 @@ nav:
       - SpiceAI: integrations/unity-catalog-spiceai.md
       - XTable: integrations/unity-catalog-xtable.md
   - Deployment: deployment.md
+  - Unity Catalog AI: 
+      - Quickstart: ucai/quickstart.md
+      - Usage: ucai/index.md
+      - Client: ucai/client.md
+      - AI Integrations: 
+          - Integrations: ucai/integrations/index.md
+          - LangChain: ucai/integrations/langchain.md
+          - LlamaIndex: ucai/integrations/llamaindex.md
+          - OpenAI: ucai/integrations/openai.md
+          - Anthropic: ucai/integrations/anthropic.md
 
 plugins:
   - search
