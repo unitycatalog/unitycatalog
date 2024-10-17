@@ -102,7 +102,7 @@ function AppProvider() {
         onClick: () => logout().then(() => navigate('/')),
       },
     ],
-    [currentUser],
+    [currentUser, logout, navigate],
   );
 
   // commenting login UI for now until repositories are merged
