@@ -3,6 +3,7 @@ import os
 import re
 from decimal import Decimal
 from typing import Dict, List, Union
+from unittest.mock import MagicMock, patch
 
 import pytest
 from databricks.sdk.service.catalog import (
@@ -20,7 +21,9 @@ from databricks.sdk.service.catalog import (
 from ucai.core.databricks import (
     DatabricksFunctionClient,
     extract_function_name,
+    retry_on_session_expiration,
 )
+from ucai.core.envs.databricks_env_vars import UCAI_DATABRICKS_SESSION_RETRY_MAX_ATTEMPTS
 from ucai.test_utils.client_utils import client  # noqa: F401
 from ucai.test_utils.function_utils import (
     CATALOG,
@@ -450,3 +453,220 @@ def test_function_with_union_return_type(client: DatabricksFunctionClient):
         ),
     ):
         client.create_python_function(func=func_with_union_return, catalog=CATALOG, schema=SCHEMA)
+
+
+class MockClient:
+    def __init__(self):
+        self.call_count = 0
+        self.refresh_count = 0
+        self._is_default_client = True
+
+    @retry_on_session_expiration
+    def mock_function(self):
+        if self.call_count < 2:
+            self.call_count += 1
+            raise Exception("session_id is no longer usable")
+        return "Success"
+
+    def refresh_client_and_session(self):
+        self.refresh_count += 1
+
+
+def test_retry_on_session_expiration_decorator():
+    client = MockClient()
+
+    result = client.mock_function()
+
+    assert result == "Success"
+    assert client.call_count == 2
+    assert client.refresh_count == 2
+
+
+@patch("time.sleep", return_value=None)
+def test_retry_on_session_expiration_decorator_exceeds_attempts(mock_sleep):
+    client = MockClient()
+    client._is_default_client = True
+
+    @retry_on_session_expiration
+    def mock_function_always_fail(self):
+        self.call_count += 1
+        raise Exception("session_id is no longer usable")
+
+    client.mock_function = mock_function_always_fail.__get__(client)
+
+    with pytest.raises(RuntimeError, match="Failed to execute mock_function_always_fail after"):
+        client.mock_function()
+
+    assert client.call_count == int(UCAI_DATABRICKS_SESSION_RETRY_MAX_ATTEMPTS.get())
+
+
+@pytest.fixture
+def mock_function_info():
+    mock_function_info = MagicMock()
+    mock_function_info.full_name = "catalog.schema.function_name"
+    mock_function_info.catalog_name = "catalog"
+    mock_function_info.schema_name = "schema"
+    mock_function_info.name = "function_name"
+    mock_function_info.data_type = "SCALAR"
+    mock_function_info.input_params.parameters = []
+    return mock_function_info
+
+
+@pytest.fixture
+def mock_spark_session():
+    with patch("databricks.connect.session.DatabricksSession") as mock_session:
+        mock_spark_session = mock_session.builder.getOrCreate.return_value
+        yield mock_spark_session
+
+
+@pytest.fixture
+def mock_workspace_client():
+    with patch("databricks.sdk.WorkspaceClient") as mock_workspace_client:
+        mock_client_instance = mock_workspace_client.return_value
+        yield mock_client_instance
+
+
+def test_execute_function_success(mock_workspace_client, mock_spark_session, mock_function_info):
+    class MockResult:
+        def collect(self):
+            return [[42]]
+
+    mock_spark_session.sql.return_value = MockResult()
+
+    client = DatabricksFunctionClient(client=mock_workspace_client)
+
+    client.set_default_spark_session = MagicMock()
+    client.spark = mock_spark_session
+
+    client.get_function = MagicMock(return_value=mock_function_info)
+
+    result = client.execute_function("catalog.schema.function_name")
+
+    assert result.value == "42"
+    assert result.format == "SCALAR"
+    assert not result.truncated
+
+    expected_sql = "SELECT `catalog`.`schema`.`function_name`()"
+    mock_spark_session.sql.assert_called_with(sqlQuery=expected_sql)
+
+
+def test_execute_function_with_retry(mock_workspace_client, mock_spark_session, mock_function_info):
+    with patch("time.sleep", return_value=None):
+        call_count = {"count": 0}
+
+        def side_effect(*args, **kwargs):
+            call_count["count"] += 1
+            if call_count["count"] == 1:
+                raise Exception("session_id is no longer usable")
+            else:
+
+                class MockResult:
+                    def collect(self):
+                        return [[42]]
+
+                return MockResult()
+
+        mock_spark_session.sql.side_effect = side_effect
+
+        client = DatabricksFunctionClient(client=mock_workspace_client)
+        client.set_default_spark_session = MagicMock()
+        client.spark = mock_spark_session
+        client._is_default_client = True
+
+        client.get_function = MagicMock(return_value=mock_function_info)
+        client.refresh_client_and_session = MagicMock()
+
+        result = client.execute_function("catalog.schema.function_name")
+
+        assert result.value == "42"
+        assert result.format == "SCALAR"
+        assert not result.truncated
+
+        client.refresh_client_and_session.assert_called_once()
+        expected_sql = "SELECT `catalog`.`schema`.`function_name`()"
+        mock_spark_session.sql.assert_called_with(sqlQuery=expected_sql)
+        assert mock_spark_session.sql.call_count == 2
+        assert client.refresh_client_and_session.call_count == 1
+
+
+def test_create_function_with_retry(mock_workspace_client, mock_spark_session):
+    with patch("time.sleep", return_value=None) as mock_time_sleep:
+        sql_function_body = f"""CREATE FUNCTION catalog.schema.test(s STRING)
+RETURNS STRING
+LANGUAGE PYTHON
+AS $$
+    return s
+$$
+"""
+
+        mock_spark_session.sql.side_effect = [Exception("session_id is no longer usable"), None]
+
+        client = DatabricksFunctionClient(client=mock_workspace_client)
+        client._is_default_client = True
+        client.set_default_spark_session = MagicMock()
+        client.spark = mock_spark_session
+
+        mock_function_info = MagicMock()
+        client.get_function = MagicMock(return_value=mock_function_info)
+        client.refresh_client_and_session = MagicMock()
+
+        result = client.create_function(sql_function_body=sql_function_body)
+
+        assert result == mock_function_info
+
+        client.refresh_client_and_session.assert_called_once()
+
+        assert mock_spark_session.sql.call_count == 2
+        mock_spark_session.sql.assert_called_with(sql_function_body)
+
+        expected_function_name = extract_function_name(sql_function_body)
+        client.get_function.assert_called_with(expected_function_name)
+
+        assert mock_time_sleep.call_count == 1
+
+
+def test_create_function_retry_exceeds_attempts(mock_workspace_client, mock_spark_session):
+    with patch("time.sleep", return_value=None) as mock_time_sleep:
+        sql_function_body = """CREATE FUNCTION `catalog`.`schema`.`function_name`()
+RETURNS INT
+AS $$ return 1 $$"""
+
+        mock_spark_session.sql.side_effect = Exception("session_id is no longer usable")
+
+        client = DatabricksFunctionClient(client=mock_workspace_client)
+        client._is_default_client = True
+        client.set_default_spark_session = MagicMock()
+        client.spark = mock_spark_session
+        client.refresh_client_and_session = MagicMock()
+
+        with pytest.raises(RuntimeError, match="Failed to execute create_function after"):
+            client.create_function(sql_function_body=sql_function_body)
+
+        max_attempts = int(UCAI_DATABRICKS_SESSION_RETRY_MAX_ATTEMPTS.get())
+        assert client.refresh_client_and_session.call_count == max_attempts - 1
+        assert mock_spark_session.sql.call_count == max_attempts
+        assert mock_time_sleep.call_count == max_attempts - 1
+
+
+def test_no_retry_with_custom_client(mock_workspace_client, mock_spark_session, mock_function_info):
+    mock_spark_session.sql.side_effect = Exception("session_id is no longer usable")
+
+    client = DatabricksFunctionClient(client=mock_workspace_client)
+    client.set_default_spark_session = MagicMock()
+    client.spark = mock_spark_session
+    client._is_default_client = False
+
+    client.get_function = MagicMock(return_value=mock_function_info)
+
+    client.refresh_client_and_session = MagicMock()
+
+    with pytest.raises(
+        RuntimeError,
+        match="Failed to execute _execute_uc_functions_with_serverless due to session expiration. "
+        "Unable to automatically refresh session when using a custom client.",
+    ):
+        client.execute_function("catalog.schema.function_name")
+
+    client.refresh_client_and_session.assert_not_called()
+
+    assert mock_spark_session.sql.call_count == 1
