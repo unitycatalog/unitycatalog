@@ -170,3 +170,7 @@ print(messages)
 ```
 
 If the response contains multiple choices, you could pass `choice_index` (starting from 0) to `generate_tool_call_messages` to choose one choice. Multiple choices are not supported yet.
+
+#### Configurations for UC functions execution
+
+We provide configurations for databricks client to control the function execution behaviors, check [function execution arguments section](../../README.md#function-execution-arguments-configuration).
