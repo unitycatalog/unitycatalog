@@ -46,7 +46,7 @@ export function DeleteTableModal({
         },
       },
     );
-  }, [mutation, catalog, schema, table]);
+  }, [mutation, catalog, schema, table, navigate, setNotification]);
 
   return (
     <Modal
