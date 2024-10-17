@@ -223,6 +223,32 @@ lazy val client = (project in file("target/clients/java"))
     }
   )
 
+lazy val pythonClient = (project in file("clients/python/target"))
+  .enablePlugins(OpenApiGeneratorPlugin)
+  .settings(
+    // name of the generation step. See `openApiPackageName` for the actual Python package name
+    name := s"$artifactNamePrefix-python-client",
+    commonSettings,
+    (Compile / compile) := ((Compile / compile) dependsOn generate).value,
+
+    // OpenAPI generation specs
+    openApiInputSpec := (file(".") / "api" / "all.yaml").toString,
+    openApiGeneratorName := "python",
+    openApiOutputDir := (file("clients") / "python" / "target").toString,
+    openApiPackageName := s"$artifactNamePrefix",
+    openApiAdditionalProperties := Map(
+      "packageVersion" -> s"${version.value.replace("-SNAPSHOT", ".dev0")}",
+    ),
+    openApiGenerateApiTests := SettingDisabled,
+    openApiGenerateModelTests := SettingDisabled,
+    openApiGenerateApiDocumentation := SettingDisabled,
+    openApiGenerateModelDocumentation := SettingDisabled,
+    // Define the simple generate command to generate full client codes
+    generate := {
+      val _ = openApiGenerate.value
+    }
+  )
+
 lazy val apiDocs = (project in file("api"))
   .enablePlugins(OpenApiGeneratorPlugin)
   .settings(
@@ -589,7 +615,7 @@ lazy val integrationTests = (project in file("integration-tests"))
   )
 
 lazy val root = (project in file("."))
-  .aggregate(serverModels, client, server, cli, spark, controlApi, controlModels, apiDocs)
+  .aggregate(serverModels, client, pythonClient, server, cli, spark, controlApi, controlModels, apiDocs)
   .settings(
     name := s"$artifactNamePrefix",
     createTarballSettings(),
