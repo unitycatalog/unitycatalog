@@ -1,6 +1,6 @@
 [project]
 name = "ucai-core"
-version = "0.0.1"
+version = "0.1.0"
 description = "Official Python library for Unity Catalog AI support"
 authors = [
     { name="Serena Ruan", email="serena.ruan@databricks.com" },
@@ -13,6 +13,38 @@ dependencies = [
   "typing_extensions",
   "pydantic"
 ]
+keywords = ["ucai", "unitycatalog", "ai", "databricks", "function", "tool", "genai"]
+classifiers = [
+  "Development Status :: 4 - Beta",
+  "Intended Audience :: Developers",
+  "Intended Audience :: Education",
+  "Intended Audience :: End Users/Desktop",
+  "Intended Audience :: Science/Research",
+  "Intended Audience :: Information Technology",
+  "Intended Audience :: Other Audience",
+  "License :: OSI Approved :: Apache Software License",
+  "Operating System :: OS Independent",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.9",
+  "Programming Language :: Python :: 3.10",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Topic :: Scientific/Engineering",
+  "Topic :: Scientific/Engineering :: Artificial Intelligence",
+  "Topic :: Software Development",
+  "Topic :: Software Development :: Libraries",
+  "Topic :: Software Development :: Libraries :: Python Modules",
+  "Topic :: Software Development :: User Interfaces",
+]
+maintainers = [
+  { name="Serena Ruan", email="serena.ruan@databricks.com" },
+  { name="Ben Wilson", email="benjamin.wilson@databricks.com" }
+]
+
+[project.urls]
+homepage = "https://www.unitycatalog.io/"
+issues = "https://github.com/unitycatalog/unitycatalog/issues"
+repository = "https://github.com/unitycatalog/unitycatalog"
 
 [build-system]
 requires = ["hatchling"]
@@ -39,7 +71,6 @@ databricks-dev = [
   "hatch",
   "pytest",
   "databricks-sdk>=0.32.0",
-  # Note: databricks-connect 15.1 is recommended for serverless, databricks-connect>=14.0.0 requires python>=3.10
   "databricks-connect==15.1.0",
   "pandas",
   "ruff==0.6.4",
@@ -48,7 +79,8 @@ dev = [
   "hatch",
   "pytest",
   "databricks-sdk>=0.32.0",
-  # Note: databricks-connect 15.1 is recommended for serverless, databricks-connect>=14.0.0 requires python>=3.10
+  # Note: databricks-connect 15.1 is required for serverless,
+  # databricks-connect>=14.0.0 requires python>=3.10
   "databricks-connect",
   "pandas",
   "ruff==0.6.4",

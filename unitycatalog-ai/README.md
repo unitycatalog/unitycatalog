@@ -7,7 +7,7 @@ The library includes clients for interacting with both the Open-Source Unity Cat
 
 ```sh
 # install from the source
-pip install git+https://github.com/unitycatalog/unitycatalog.git@ucai-core#subdirectory=unitycatalog-ai
+pip install git+https://github.com/unitycatalog/unitycatalog.git#subdirectory=unitycatalog-ai
 ```
 
 > [!NOTE]
