@@ -7,8 +7,6 @@ from ucai.core.databricks import DatabricksFunctionClient
 from ucai.core.utils.function_processing_utils import get_tool_name
 
 CATALOG = "integration_testing"
-# TODO
-CATALOG = "main"
 
 _logger = logging.getLogger(__name__)
 
