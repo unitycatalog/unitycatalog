@@ -12,6 +12,9 @@ on:
       - unitycatalog-ai/integrations/**
       - .github/workflows/ucai-integration-tests.yml
 
+permissions:
+  contents: read
+
 jobs:
   langchain_test:
     runs-on: ubuntu-latest
