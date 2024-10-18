@@ -35,14 +35,12 @@ def test_toolkit_e2e(use_serverless, monkeypatch):
     monkeypatch.setenv(USE_SERVERLESS, str(use_serverless))
     client = get_client()
     with set_default_client(client), create_function_and_cleanup(client, schema=SCHEMA) as func_obj:
-        toolkit = UCFunctionToolkit(
-            function_names=[func_obj.full_function_name]
-        )
+        toolkit = UCFunctionToolkit(function_names=[func_obj.full_function_name])
         tools = toolkit.tools
         assert len(tools) == 1
         tool = tools[0]
-        assert func_obj.full_function_name.replace(".", "__") in tool.description 
-        assert func_obj.comment in tool.description 
+        assert func_obj.full_function_name.replace(".", "__") in tool.description
+        assert func_obj.comment in tool.description
         assert tool.client_config == client.to_dict()
 
         input_args = {"code": "print(1)"}
@@ -60,17 +58,18 @@ def test_toolkit_e2e_manually_passing_client(use_serverless, monkeypatch):
     monkeypatch.setenv(USE_SERVERLESS, str(use_serverless))
     client = get_client()
     with set_default_client(client), create_function_and_cleanup(client, schema=SCHEMA) as func_obj:
-        toolkit = UCFunctionToolkit(
-            function_names=[func_obj.full_function_name], client=client
-        )
+        toolkit = UCFunctionToolkit(function_names=[func_obj.full_function_name], client=client)
         tools = toolkit.tools
         assert len(tools) == 1
         tool = tools[0]
         assert tool.name == func_obj.tool_name
-        # Validate CrewAI description format 
-        assert func_obj.full_function_name.replace(".", "__") in tool.description 
-        assert func_obj.comment in tool.description 
-        assert ("code: 'Python code to execute. Remember to print the final result to stdout.'" in tool.description)
+        # Validate CrewAI description format
+        assert func_obj.full_function_name.replace(".", "__") in tool.description
+        assert func_obj.comment in tool.description
+        assert (
+            "code: 'Python code to execute. Remember to print the final result to stdout.'"
+            in tool.description
+        )
         assert tool.client_config == client.to_dict()
         input_args = {"code": "print(1)"}
         result = json.loads(tool.fn(**input_args))["value"]
@@ -156,7 +155,7 @@ def test_uc_function_to_crewai_tool(client):
         assert result == "some_string"
 
         # Check defaults for parameters not defined by UC
-        assert tool.cache_function(1, {1:1})
+        assert tool.cache_function(1, {1: 1})
         assert not tool.result_as_answer
         assert not tool.description_updated
 
@@ -180,6 +179,7 @@ def test_toolkit_with_invalid_function_input(client):
         with pytest.raises(ValueError, match="Extra parameters provided that are not defined"):
             tool.fn(**invalid_inputs)
 
+
 def test_toolkit_crewai_kwarg_passthrough(client):
     """Test toolkit with invalid input parameters for function conversion."""
     mock_function_info = generate_function_info()
@@ -191,10 +191,10 @@ def test_toolkit_crewai_kwarg_passthrough(client):
         mock.patch.object(client, "get_function", return_value=mock_function_info),
     ):
         tool = UCFunctionToolkit.uc_function_to_crewai_tool(
-            function_name="catalog.schema.test", 
-            client=client, 
-            cache_function=lambda : True, 
-            result_as_answer=True, 
+            function_name="catalog.schema.test",
+            client=client,
+            cache_function=lambda: True,
+            result_as_answer=True,
             description_updated=True,
         )
 
