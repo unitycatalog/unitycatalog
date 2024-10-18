@@ -12,6 +12,8 @@ All URIs are relative to *http://localhost:8080/api/2.1/unity-catalog*
 *CatalogsApi* | [**getCatalog**](Apis/CatalogsApi.md#getcatalog) | **GET** /catalogs/{name} | Get a catalog |
 *CatalogsApi* | [**listCatalogs**](Apis/CatalogsApi.md#listcatalogs) | **GET** /catalogs | List catalogs |
 *CatalogsApi* | [**updateCatalog**](Apis/CatalogsApi.md#updatecatalog) | **PATCH** /catalogs/{name} | Update a catalog |
+| *CoordinatedCommitsApi* | [**commit**](Apis/CoordinatedCommitsApi.md#commit) | **POST** /delta/commits | Commit changes to a specified table |
+*CoordinatedCommitsApi* | [**getCommits**](Apis/CoordinatedCommitsApi.md#getcommits) | **GET** /delta/commits | List unbackfilled Delta table commits. |
 | *FunctionsApi* | [**createFunction**](Apis/FunctionsApi.md#createfunction) | **POST** /functions | Create a function. WARNING: This API is experimental and will change in future versions.  |
 *FunctionsApi* | [**deleteFunction**](Apis/FunctionsApi.md#deletefunction) | **DELETE** /functions/{name} | Delete a function |
 *FunctionsApi* | [**getFunction**](Apis/FunctionsApi.md#getfunction) | **GET** /functions/{name} | Get a function |
@@ -57,7 +59,10 @@ All URIs are relative to *http://localhost:8080/api/2.1/unity-catalog*
  - [AzureUserDelegationSAS](./Models/AzureUserDelegationSAS.md)
  - [CatalogInfo](./Models/CatalogInfo.md)
  - [ColumnInfo](./Models/ColumnInfo.md)
+ - [ColumnInfos](./Models/ColumnInfos.md)
  - [ColumnTypeName](./Models/ColumnTypeName.md)
+ - [Commit](./Models/Commit.md)
+ - [CommitInfo](./Models/CommitInfo.md)
  - [CreateCatalog](./Models/CreateCatalog.md)
  - [CreateFunction](./Models/CreateFunction.md)
  - [CreateFunctionRequest](./Models/CreateFunctionRequest.md)
@@ -81,6 +86,8 @@ All URIs are relative to *http://localhost:8080/api/2.1/unity-catalog*
  - [GenerateTemporaryPathCredential](./Models/GenerateTemporaryPathCredential.md)
  - [GenerateTemporaryTableCredential](./Models/GenerateTemporaryTableCredential.md)
  - [GenerateTemporaryVolumeCredential](./Models/GenerateTemporaryVolumeCredential.md)
+ - [GetCommits](./Models/GetCommits.md)
+ - [GetCommitsResponse](./Models/GetCommitsResponse.md)
  - [GetMetastoreSummaryResponse](./Models/GetMetastoreSummaryResponse.md)
  - [ListCatalogsResponse](./Models/ListCatalogsResponse.md)
  - [ListFunctionsResponse](./Models/ListFunctionsResponse.md)
@@ -89,6 +96,7 @@ All URIs are relative to *http://localhost:8080/api/2.1/unity-catalog*
  - [ListSchemasResponse](./Models/ListSchemasResponse.md)
  - [ListTablesResponse](./Models/ListTablesResponse.md)
  - [ListVolumesResponseContent](./Models/ListVolumesResponseContent.md)
+ - [Metadata](./Models/Metadata.md)
  - [ModelVersionInfo](./Models/ModelVersionInfo.md)
  - [ModelVersionOperation](./Models/ModelVersionOperation.md)
  - [ModelVersionStatus](./Models/ModelVersionStatus.md)
@@ -98,6 +106,7 @@ All URIs are relative to *http://localhost:8080/api/2.1/unity-catalog*
  - [PrincipalType](./Models/PrincipalType.md)
  - [Privilege](./Models/Privilege.md)
  - [PrivilegeAssignment](./Models/PrivilegeAssignment.md)
+ - [Protocol](./Models/Protocol.md)
  - [RegisteredModelInfo](./Models/RegisteredModelInfo.md)
  - [SchemaInfo](./Models/SchemaInfo.md)
  - [SecurableType](./Models/SecurableType.md)
