@@ -1,0 +1,68 @@
+[project]
+name = "ucai-crewai"
+version = "0.0.1"
+description = "Support for Unity Catalog functions as CrewAI tools"
+authors = [
+    { name="Michael Berk", email="michaelberk99@gmail.com" }
+]
+readme = "README.md"
+license = { text="MIT" }
+requires-python = ">=3.10"
+dependencies = [
+    "ucai-core",
+    "crewai>=0.67.1",
+    "crewai_tools",
+]
+
+[project.optional-dependencies]
+dev = [
+  "pytest",
+  "typing_extensions",
+  # temporarily needed until ucai-core[databricks] is released
+  "databricks-sdk>=0.32.0",
+  "databricks-connect"
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build]
+include = [
+  "src/ucai_crewai/*"
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/ucai_crewai"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py39"
+
+[tool.ruff.lint]
+select = [
+  # isort
+  "I",
+  # bugbear rules
+  "B",
+  # remove unused imports
+  "F401",
+  # bare except statements
+  "E722",
+  # print statements
+  "T201",
+  "T203",
+  # misuse of typing.TYPE_CHECKING
+  "TCH004",
+  # import rules
+  "TID251",
+  # undefined-local-with-import-star
+  "F403",
+]
+
+[tool.ruff.format]
+docstring-code-format = true
+docstring-code-line-length = 88
+
+[tool.ruff.lint.pydocstyle]
+convention = "google"
