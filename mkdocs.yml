@@ -16,7 +16,9 @@ nav:
           - Delta Lake: usage/tables/deltalake.md
           - Formats: usage/tables/formats.md
           - UniForm: usage/tables/uniform.md
-      - Volumes: usage/volumes.md
+      - Volumes:
+          - usage/volumes/index.md
+          - Managed vs External Volumes: usage/volumes/managed-external-volumes.md
       - Functions: usage/functions.md
       - Models: usage/models.md
   - Server:
