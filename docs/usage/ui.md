@@ -67,7 +67,7 @@ The following steps show how you can create, describe, and delete UC schemas.
 
 === "3. Delete a schema"
 
-    Click the *horizontal three dots* to the rightto delete your schema.
+    Click the *horizontal three dots* to the right to delete your schema.
 
     ![](../assets/images/ui/uc-ui-schema-delete.png)
 
@@ -147,16 +147,54 @@ The following steps show how you can view your UC functions metadata and descrip
 
 ### Models
 
-The following steps show how you can view your UC models and its metadata.
+The following steps show how you can list, describe and delete your UC models.
+
+=== "1. List and create models"
+    
+    After clicking on any *schema > models*, the main dialog contains the list of available models.  Click the **horizontal three dots** button to the right to create a new model.
+
+    ![](../assets/images/ui/uc-ui-models-1.png)
+
+=== "2. Create model"
+
+    Click the edit button to change its descripton.
+
+    ![](../assets/images/ui/uc-ui-model-create-1.png)
+
+=== "3. Create model dialog"
+
+    Specify the name and include any comments when creating your model.
+
+    ![](../assets/images/ui/uc-ui-model-create-2.png)
+
+=== "4. Edit model description"
+
+    Click the edit button to change its descripton.
+
+    ![](../assets/images/ui/uc-ui-model-edit.png)
+
+=== "5. Delete a model"
+
+    Click the *horizontal three dots* to the right to delete your model.
+
+    ![](../assets/images/ui/uc-ui-model-delete.png)
+
+
+
+<hr style="height:2px;border-width:0;color:gray;background-color:lightgrey">
+
+### Model Versions
+
+The following steps show how you can view your UC model versions and their metadata.
 
 === "1. Traverse to models"
-    
+
     Using the left-hand nav bar, click on *catalog > schema* (e.g., `unity` > `default`) to view the available models.
 
     ![](../assets/images/ui/uc-ui-models-1.png)
-    
+
 === "2. View model versions"
-    
+
     Click on the model (e.g., `unity.default.iris`) to view its version(s).
 
     ![](../assets/images/ui/uc-ui-models-2.png)
@@ -166,5 +204,17 @@ The following steps show how you can view your UC models and its metadata.
     Click on the model version to view its details.
 
     ![](../assets/images/ui/uc-ui-models-3.png)
+
+=== "4. Edit model version description"
+
+    Click the edit button to change its descripton.
+
+    ![](../assets/images/ui/uc-ui-model-version-edit.png)
+
+=== "5. Delete a model version"
+
+    Click the *horizontal three dots* to the right to delete your model version.
+
+    ![](../assets/images/ui/uc-ui-model-version-delete.png)
 
 <hr style="height:2px;border-width:0;color:gray;background-color:lightgrey">
