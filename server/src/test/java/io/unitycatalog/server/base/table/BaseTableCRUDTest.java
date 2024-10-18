@@ -11,7 +11,6 @@ import io.unitycatalog.server.base.ServerConfig;
 import io.unitycatalog.server.base.schema.SchemaOperations;
 import io.unitycatalog.server.persist.dao.ColumnInfoDAO;
 import io.unitycatalog.server.persist.dao.TableInfoDAO;
-import io.unitycatalog.server.persist.utils.FileUtils;
 import io.unitycatalog.server.persist.utils.HibernateUtils;
 import io.unitycatalog.server.utils.TestUtils;
 import java.io.IOException;
@@ -147,9 +146,9 @@ public abstract class BaseTableCRUDTest extends BaseCRUDTest {
   }
 
   private void testManagedTableRetrieval() throws ApiException {
+    UUID tableId = UUID.randomUUID();
     try (Session session = HibernateUtils.getSessionFactory().openSession()) {
       Transaction tx = session.beginTransaction();
-      UUID tableId = UUID.randomUUID();
 
       TableInfoDAO tableInfoDAO = createManagedTableDAO(tableId);
       session.persist(tableInfoDAO);
@@ -163,8 +162,7 @@ public abstract class BaseTableCRUDTest extends BaseCRUDTest {
     assertThat(managedTable.getName()).isEqualTo(TestUtils.TABLE_NAME);
     assertThat(managedTable.getCatalogName()).isEqualTo(TestUtils.CATALOG_NAME);
     assertThat(managedTable.getSchemaName()).isEqualTo(TestUtils.SCHEMA_NAME);
-    assertThat(managedTable.getStorageLocation())
-        .isEqualTo(FileUtils.convertRelativePathToURI("/tmp/managedStagingLocation"));
+    assertThat(managedTable.getStorageLocation()).isEqualTo("file:///tmp/tables/" + tableId);
     assertThat(managedTable.getTableType()).isEqualTo(TableType.MANAGED);
     assertThat(managedTable.getDataSourceFormat()).isEqualTo(DataSourceFormat.DELTA);
     assertThat(managedTable.getCreatedAt()).isNotNull();
@@ -177,7 +175,7 @@ public abstract class BaseTableCRUDTest extends BaseCRUDTest {
             .name(TestUtils.TABLE_NAME)
             .schemaId(UUID.fromString(schemaId))
             .comment(TestUtils.COMMENT)
-            .url("/tmp/managedStagingLocation")
+            .url("/tmp/tables/" + tableId)
             .type(TableType.MANAGED.name())
             .dataSourceFormat(DataSourceFormat.DELTA.name())
             .id(tableId)
