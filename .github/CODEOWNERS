@@ -1,5 +1,40 @@
 # This is a CODEOWNERS file for unitycatalog
 # See https://help.github.com/articles/about-codeowners/ for more information
 
-docs/ @MrPowers
-mkdocs.yml @MrPowers
+* @tdas @dennyglee @rameshchandra
+
+# Builds and tests
+build.sbt @tdas
+version.sbt @tdas
+/build/ @tdas
+/project/ @tdas
+/.github/ @tdas
+/tests/ @tdas
+/integration-tests/ @tdas
+
+# Binary scripts and configs
+/bin/ @tdas
+/etc/ @tdas
+
+# Docs
+/docs/ @dennyglee
+/mkdocs.yml @dennyglee
+
+# API
+/api/ @rameshchandra @tdas
+
+# UI
+/ui/ @yc-shawn @jamieknight-db
+
+# AI
+/unitycatalog-ai/ @dennyglee
+
+# Spark Connector
+/spark-connector/ @tdas @cloud-fan
+
+# Docker
+Dockerfile @dennyglee
+*.dockerfile @dennyglee
+
+# Clients
+/clients/ @tdas
