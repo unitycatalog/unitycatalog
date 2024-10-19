@@ -134,39 +134,6 @@ public class ModelRepository {
   }
 
   /** **************** Registered Model handlers ***************** */
-  public RegisteredModelInfo getRegisteredModelById(String registeredModelId) {
-    LOGGER.info("Getting registered model by id: {}", registeredModelId);
-    try (Session session = SESSION_FACTORY.openSession()) {
-      session.setDefaultReadOnly(true);
-      Transaction tx = session.beginTransaction();
-      try {
-        RegisteredModelInfoDAO registeredModelInfoDAO =
-            session.get(RegisteredModelInfoDAO.class, UUID.fromString(registeredModelId));
-        if (registeredModelInfoDAO == null) {
-          throw new BaseException(
-              ErrorCode.NOT_FOUND, "Registered model not found: " + registeredModelId);
-        }
-        RegisteredModelInfo registeredModelInfo = registeredModelInfoDAO.toRegisteredModelInfo();
-        SchemaInfoDAO schemaInfoDAO =
-            RepositoryUtils.getSchemaByIdOrThrow(session, registeredModelInfoDAO.getSchemaId());
-        CatalogInfoDAO catalogInfoDAO =
-            RepositoryUtils.getCatalogByIdOrThrow(session, schemaInfoDAO.getCatalogId());
-        registeredModelInfo.setSchemaName(schemaInfoDAO.getName());
-        registeredModelInfo.setCatalogName(catalogInfoDAO.getName());
-        registeredModelInfo.setFullName(
-            getRegisteredModelFullName(
-                catalogInfoDAO.getName(), schemaInfoDAO.getName(), registeredModelInfo.getName()));
-        tx.commit();
-        return registeredModelInfo;
-      } catch (Exception e) {
-        if (tx != null && tx.getStatus().canRollback()) {
-          tx.rollback();
-        }
-        throw e;
-      }
-    }
-  }
-
   public RegisteredModelInfo getRegisteredModel(String fullName) {
     LOGGER.info("Getting registered model: {}", fullName);
     RegisteredModelInfo registeredModelInfo = null;
