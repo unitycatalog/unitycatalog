@@ -75,8 +75,7 @@ public abstract class BaseCatalogCRUDTest extends BaseCRUDTest {
     // Calling update catalog with nothing to update should not change anything
     System.out.println("Testing updating catalog with nothing to update..");
     UpdateCatalog emptyUpdateCatalog = new UpdateCatalog();
-    CatalogInfo emptyUpdateCatalogInfo =
-        catalogOperations.updateCatalog(CATALOG_NAME, emptyUpdateCatalog);
+    catalogOperations.updateCatalog(CATALOG_NAME, emptyUpdateCatalog);
     CatalogInfo catalogInfo4 = catalogOperations.getCatalog(CATALOG_NAME);
     assertThat(catalogInfo4).isEqualTo(catalogInfo);
 
