@@ -1,9 +1,9 @@
 # CelerData Integration
 
-This document walks through the steps to use [CelerData Cloud BYOC](cloud.celerdata.com) to query data governed by Unity Catalog OSS. 
-[CelerData](celerdata.com) is a lakehouse query engine that delivers data warehouse performance on open data lakes.
+This document walks through the steps to use [CelerData Cloud BYOC](https://cloud.celerdata.com) to query data governed by Unity Catalog OSS. 
+[CelerData](https://celerdata.com) is a lakehouse query engine that delivers data warehouse performance on open data lakes.
 ## Pre-requisites
-- CelerData Cloud BYOC Environment: You can follow this [link](cloud.celerdata.com) to deploy one with the 30-day free trial.
+- CelerData Cloud BYOC Environment: You can follow this [link](https://cloud.celerdata.com) to deploy one with the 30-day free trial.
 
 ## Deploying Unity Catalog
 In this example, for simplicity, we query the data that comes with the  UC quickstart, which is stored on local disk. For this to work, you would need to deploy a UC server on every FE and BE/CN in your CelerData environment, under the same path. 
