@@ -40,12 +40,14 @@ public class TableReadWriteTest extends BaseSparkIntegrationTest {
   public void testNoDeltaCatalog() throws IOException, ApiException {
     UCSingleCatalog.LOAD_DELTA_CATALOG().set(false);
     UCSingleCatalog.DELTA_CATALOG_LOADED().set(false);
-    SparkSession.Builder builder = SparkSession.builder()
+    SparkSession.Builder builder =
+        SparkSession.builder()
             .appName("test")
             .master("local[*]")
             .config("spark.sql.extensions", "io.delta.sql.DeltaSparkSessionExtension");
     String catalogConf = "spark.sql.catalog.spark_catalog";
-    builder = builder
+    builder =
+        builder
             .config(catalogConf, UCSingleCatalog.class.getName())
             .config(catalogConf + ".uri", serverConfig.getServerUrl())
             .config(catalogConf + ".token", serverConfig.getAuthToken())
@@ -194,7 +196,8 @@ public class TableReadWriteTest extends BaseSparkIntegrationTest {
     assertThat(row.getInt(0)).isEqualTo(1);
 
     // Path that does not exist
-    String loc3 = scheme + "://test-bucket1" + generateTableLocation(CATALOG_NAME, ANOTHER_DELTA_TABLE);
+    String loc3 =
+        scheme + "://test-bucket1" + generateTableLocation(CATALOG_NAME, ANOTHER_DELTA_TABLE);
     String t3 = CATALOG_NAME + "." + SCHEMA_NAME + "." + ANOTHER_DELTA_TABLE;
     session.sql(String.format("CREATE TABLE %s(i INT) USING delta LOCATION '%s'", t3, loc3));
     List<Row> rows = session.table(t3).collectAsList();
