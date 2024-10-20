@@ -6,7 +6,7 @@ import com.auth0.jwt.interfaces.DecodedJWT;
 import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.databind.PropertyNamingStrategies;
 import com.fasterxml.jackson.databind.annotation.JsonNaming;
-import com.linecorp.armeria.common.HttpResponse;
+import com.linecorp.armeria.common.*;
 import com.linecorp.armeria.common.annotation.Nullable;
 import com.linecorp.armeria.server.annotation.ExceptionHandler;
 import com.linecorp.armeria.server.annotation.Param;
@@ -20,6 +20,8 @@ import io.unitycatalog.server.security.JwtClaim;
 import io.unitycatalog.server.security.SecurityContext;
 import io.unitycatalog.server.utils.JwksOperations;
 import io.unitycatalog.server.utils.ServerProperties;
+import java.time.Duration;
+import java.util.Optional;
 import lombok.Builder;
 import lombok.Getter;
 import lombok.NonNull;
@@ -63,6 +65,8 @@ public class AuthService {
   private final SecurityContext securityContext;
   private final JwksOperations jwksOperations;
 
+  private static final String COOKIE = "cookie";
+
   public AuthService(SecurityContext securityContext) {
     this.securityContext = securityContext;
     this.jwksOperations = new JwksOperations();
@@ -102,9 +106,9 @@ public class AuthService {
    * @return The token exchange response
    */
   @Post("/tokens")
-  public HttpResponse grantToken(OAuthTokenExchangeRequest request) {
+  public HttpResponse grantToken(
+      @Param("ext") Optional<String> ext, OAuthTokenExchangeRequest request) {
     LOGGER.debug("Got token: {}", request);
-
     if (request.getGrantType() == null
         || !GrantTypes.TOKEN_EXCHANGE.equals(request.getGrantType())) {
       throw new OAuthInvalidRequestException(
@@ -137,7 +141,6 @@ public class AuthService {
     DecodedJWT decodedJWT = JWT.decode(request.getSubjectToken());
     String issuer = decodedJWT.getClaim("iss").asString();
     String keyId = decodedJWT.getHeaderClaim("kid").asString();
-
     LOGGER.debug("Validating token for issuer: {}", issuer);
 
     JWTVerifier jwtVerifier = jwksOperations.verifierForIssuerAndKey(issuer, keyId);
@@ -155,7 +158,24 @@ public class AuthService {
             .tokenType(AuthTypes.BEARER)
             .build();
 
-    return HttpResponse.ofJson(response);
+    // Set token as cookie if ext param is set to cookie
+    ResponseHeadersBuilder responseHeaders = ResponseHeaders.builder(HttpStatus.OK);
+    ext.ifPresent(
+        e -> {
+          if (e.equals(COOKIE)) {
+            // Set cookie timeout to 5 days by default if not present in server.properties
+            String cookieTimeout =
+                ServerProperties.getInstance().getProperty("server.cookie-timeout", "P5D");
+            Cookie cookie =
+                Cookie.secureBuilder(AuthDecorator.UC_TOKEN_KEY, accessToken)
+                    .path("/")
+                    .maxAge(Duration.parse(cookieTimeout).getSeconds())
+                    .build();
+            responseHeaders.add(HttpHeaderNames.SET_COOKIE, cookie.toSetCookieHeader());
+          }
+        });
+
+    return HttpResponse.ofJson(responseHeaders.build(), response);
   }
 
   private static void verifyPrincipal(DecodedJWT decodedJWT) {
