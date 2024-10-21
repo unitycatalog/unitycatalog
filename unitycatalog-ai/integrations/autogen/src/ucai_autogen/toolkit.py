@@ -58,7 +58,6 @@ class UCFunctionToolkit(BaseModel):
     """
 
     function_names: List[str] = Field(
-        default_factory=list,
         description="List of function names in 'catalog.schema.function' format.",
     )
     tools_dict: Dict[str, AutogenTool] = Field(
@@ -77,6 +76,9 @@ class UCFunctionToolkit(BaseModel):
         Validates the toolkit, ensuring the client is properly set and function names are processed.
         """
         self.client = validate_or_set_default_client(self.client)
+
+        if not self.function_names:
+            raise ValueError("Cannot create tool instances without function_names being provided.")
 
         self.tools_dict = process_function_names(
             function_names=self.function_names,
