@@ -10,7 +10,7 @@ pip install git+https://github.com/unitycatalog/unitycatalog.git#subdirectory=un
 ```
 
 > [!NOTE]
-> Once this package is published to PyPI, users can install via `pip install ucai-openai`
+> Once this package is published to PyPI, users can install via `pip install unitycatalog-openai`
 
 ## Get started
 
@@ -27,8 +27,8 @@ To use Databricks-managed Unity Catalog with this package, follow the [instructi
 Initialize a client for managing UC functions in a Databricks workspace, and set it as the global client.
 
 ```python
-from ucai.core.client import set_uc_function_client
-from ucai.core.databricks import DatabricksFunctionClient
+from unitycatalog.ai.core.client import set_uc_function_client
+from unitycatalog.ai.core.databricks import DatabricksFunctionClient
 
 client = DatabricksFunctionClient(
     warehouse_id="..." # replace with the warehouse_id
@@ -73,7 +73,7 @@ Now the function is created and stored in the corresponding catalog and schema.
 [OpenAI function calling](https://platform.openai.com/docs/guides/function-calling) allows you to connect models like `gpt-4o-mini` to external tools and systems, and UCFunctionToolkit provides the ability to use UC functions as tools in OpenAI calls.
 
 ```python
-from ucai_openai.toolkit import UCFunctionToolkit
+from unitycatalog.ai.openai.toolkit import UCFunctionToolkit
 
 # create an UCFunctionToolkit that includes the above UC function
 toolkit = UCFunctionToolkit(function_names=[f"{CATALOG}.{SCHEMA}.python_exec"])
@@ -151,7 +151,7 @@ openai.chat.completions.create(
 To use different clients during toolkit creation stage, you could pass the client directly to UCFunctionToolkit:
 
 ```python
-from ucai_openai.toolkit import UCFunctionToolkit
+from unitycatalog.ai.openai.toolkit import UCFunctionToolkit
 
 toolkit = UCFunctionToolkit(function_names=[...], client=your_own_client)
 ```
@@ -163,7 +163,7 @@ Please note that this client is only used for retrieving UC functions so we can 
 We provide a helper function for converting OpenAI ChatCompletion response to messages that can be send over for response creation.
 
 ```python
-from ucai_openai.utils import generate_tool_call_messages
+from unitycatalog.ai.openai.utils import generate_tool_call_messages
 
 messages = generate_tool_call_messages(response=response, client=client)
 print(messages)

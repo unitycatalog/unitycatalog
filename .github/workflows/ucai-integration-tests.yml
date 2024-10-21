@@ -34,12 +34,12 @@ jobs:
           python-version: ${{ matrix.python-version }}
       - name: Install dependencies
         run: |
-          pip install .
+          pip install core/.
           pip install integrations/langchain[dev]
       - name: Run tests
         run: |
           pytest integrations/langchain/tests
-          
+
   anthropic_test:
     runs-on: ubuntu-latest
     strategy:
@@ -58,7 +58,7 @@ jobs:
           python-version: ${{ matrix.python-version }}
       - name: Install dependencies
         run: |
-          pip install .
+          pip install core/.
           pip install integrations/anthropic[dev]
       - name: Run tests
         run: |
@@ -82,12 +82,12 @@ jobs:
           python-version: ${{ matrix.python-version }}
       - name: Install dependencies
         run: |
-          pip install .          
+          pip install core/.
           pip install integrations/llama_index[dev]
       - name: Run tests
         run: |
           pytest integrations/llama_index/tests
-          
+
   openai_test:
     runs-on: ubuntu-latest
     strategy:
@@ -106,7 +106,7 @@ jobs:
           python-version: ${{ matrix.python-version }}
       - name: Install dependencies
         run: |
-          pip install .
+          pip install core/.
           pip install integrations/openai[dev]
       - name: Run tests
         run: |

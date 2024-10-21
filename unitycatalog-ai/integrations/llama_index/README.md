@@ -7,7 +7,7 @@ You can use functions defined within Unity Catalog (UC) directly as tools within
 ### From PyPI
 
 ```sh
-pip install ucai-llamaindex
+pip install unitycatalog-llamaindex
 ```
 
 ### From source
@@ -29,8 +29,8 @@ To use Databricks-managed UC with this package, follow the [instructions here](h
 Initialize a client for managing UC functions in a Databricks workspace, and set it as the global client.
 
 ```python
-from ucai.core.client import set_uc_function_client
-from ucai.core.databricks import DatabricksFunctionClient
+from unitycatalog.ai.core.client import set_uc_function_client
+from unitycatalog.ai.core.databricks import DatabricksFunctionClient
 
 client = DatabricksFunctionClient(
     warehouse_id="..." # replace with the warehouse_id
@@ -69,15 +69,15 @@ $$
 client.create_function(sql_function_body=sql_body)
 ```
 
-Now that the function exists within the Catalog and Schema that we defined, we can interface with it from llamaindex using the ucai_llamaindex package.
+Now that the function exists within the Catalog and Schema that we defined, we can interface with it from llamaindex using the `unitycatalog.ai.llama_index` package.
 
 #### Create an instance of a LlamaIndex compatible tool
 
 [LlamaIndex Tools](https://docs.llamaindex.ai/en/stable/module_guides/deploying/agents/tools/) are callable external functions that GenAI applications (called by
-an LLM), which are exposed with a UC interface through the use of the ucai_llamaindex package via the `UCFunctionToolkit` API.
+an LLM), which are exposed with a UC interface through the use of the `unitycatalog.ai.llama_index` package via the `UCFunctionToolkit` API.
 
 ```python
-from ucai_llamaindex.toolkit import UCFunctionToolkit
+from unitycatalog.ai.llama_index.toolkit import UCFunctionToolkit
 
 # Pass the UC function name that we created to the constructor
 toolkit = UCFunctionToolkit(function_names=[func_name])

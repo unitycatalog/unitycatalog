@@ -1,6 +1,6 @@
 [project]
-name = "ucai-langchain"
-version = "0.0.1"
+name = "unitycatalog-langchain"
+version = "0.1.0"
 description = "Support for Unity Catalog functions as LangChain tools"
 authors = [
     { name="Serena Ruan", email="serena.ruan@databricks.com" }
@@ -11,14 +11,14 @@ requires-python = ">=3.9"
 dependencies = [
     "langchain>=0.2.0",
     "langchain-community>=0.2.0",
-    "ucai-core",
+    "unitycatalog-ai",
 ]
 
 [project.optional-dependencies]
 dev = [
   "pytest",
   "typing_extensions",
-  # temp needed before ucai-core[databricks] is released
+  # temp needed before unitycatalog-ai[databricks] is released
   "databricks-sdk>=0.32.0",
   "databricks-connect",
   "ruff==0.6.4",
@@ -32,11 +32,13 @@ build-backend = "hatchling.build"
 
 [tool.hatch.build]
 include = [
-  "src/ucai_langchain/*"
+  "src/unitycatalog/ai/langchain/*"
 ]
 
 [tool.hatch.build.targets.wheel]
-packages = ["src/ucai_langchain"]
+sources = ["src"]
+only-include = ["src/unitycatalog/ai/langchain"]
+packages = ["src/unitycatalog"]
 
 [tool.ruff]
 line-length = 100

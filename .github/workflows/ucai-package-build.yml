@@ -21,7 +21,7 @@ jobs:
     timeout-minutes: 20
     defaults:
       run:
-        working-directory: unitycatalog-ai
+        working-directory: unitycatalog-ai/core
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -55,8 +55,8 @@ jobs:
       - name: Test installation from tarball
         run: |
           pip install ${{ steps.build-dist.outputs.sdist-path }}
-          python -c "import ucai.core; print(ucai.core.__version__)"
+          python -c "import unitycatalog.ai.core; print(unitycatalog.ai.core.__version__)"
       - name: Test installation from wheel
         run: |
           pip install --force-reinstall ${{ steps.build-dist.outputs.wheel-path }}
-          python -c "import ucai.core; print(ucai.core.__version__)"
+          python -c "import unitycatalog.ai.core; print(unitycatalog.ai.core.__version__)"

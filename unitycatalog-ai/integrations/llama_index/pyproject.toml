@@ -1,6 +1,6 @@
 [project]
-name = "ucai-llamaindex"
-version = "0.0.1"
+name = "unitycatalog-llamaindex"
+version = "0.1.0"
 description = "Support for Unity Catalog functions as LlamaIndex tools"
 authors = [
     { name="Ben Wilson", email="benjamin.wilson@databricks.com" }
@@ -10,14 +10,14 @@ license = { text="MIT" }
 requires-python = ">=3.9"
 dependencies = [
     "llama-index>=0.11.0",
-    "ucai-core",
+    "unitycatalog-ai",
 ]
 
 [project.optional-dependencies]
 dev = [
   "pytest",
   "typing_extensions",
-  # temporarily needed until ucai-core[databricks] is released
+  # temporarily needed until unitycatalog-ai[databricks] is released
   "databricks-sdk>=0.32.0",
   "databricks-connect"
 ]
@@ -28,11 +28,13 @@ build-backend = "hatchling.build"
 
 [tool.hatch.build]
 include = [
-  "src/ucai_llamaindex/*"
+  "src/unitycatalog/ai/llama_index/*"
 ]
 
 [tool.hatch.build.targets.wheel]
-packages = ["src/ucai_llamaindex"]
+sources = ["src"]
+only-include = ["src/unitycatalog/ai/llama_index"]
+packages = ["src/unitycatalog"]
 
 [tool.ruff]
 line-length = 100
