@@ -115,9 +115,7 @@ public class CredentialOperationsTest {
 
   @Test
   public void testGenerateGcpTemporaryCredentials() {
-    final String PROJECT_ID = "projectId";
-    final String PRIVATE_KEY_ID = "privateKeyId";
-    try (MockedStatic<ServerProperties> mockedStatic = mockStatic(ServerProperties.class)) {
+      try (MockedStatic<ServerProperties> mockedStatic = mockStatic(ServerProperties.class)) {
       mockedStatic.when(ServerProperties::getInstance).thenReturn(serverProperties);
       // Test mode used
       when(serverProperties.getGcsConfigurations())

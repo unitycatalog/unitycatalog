@@ -48,15 +48,11 @@ public class UriUtilsTest {
     UriUtils.deleteStorageLocationPath("file:/tmp/random");
 
     assertThatThrownBy(
-            () -> {
-              UriUtils.createStorageLocationPath("..");
-            })
+            () -> UriUtils.createStorageLocationPath(".."))
         .isInstanceOf(BaseException.class);
 
     assertThatThrownBy(
-            () -> {
-              UriUtils.deleteStorageLocationPath("");
-            })
+            () -> UriUtils.deleteStorageLocationPath(""))
         .isInstanceOf(BaseException.class);
   }
 }

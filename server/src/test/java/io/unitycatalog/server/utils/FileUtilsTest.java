@@ -38,9 +38,7 @@ public class FileUtilsTest {
         .isInstanceOf(BaseException.class);
 
     assertThatThrownBy(
-            () -> {
-              FileUtils.createVolumeDirectory("..");
-            })
+            () -> FileUtils.createVolumeDirectory(".."))
         .isInstanceOf(BaseException.class);
   }
 }

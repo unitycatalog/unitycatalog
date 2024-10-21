@@ -61,9 +61,7 @@ public class TestUtils {
     apiClient.setScheme(uri.getScheme());
     if (serverConfig.getAuthToken() != null && !serverConfig.getAuthToken().isEmpty()) {
       apiClient.setRequestInterceptor(
-          request -> {
-            request.header("Authorization", "Bearer " + serverConfig.getAuthToken());
-          });
+          request -> request.header("Authorization", "Bearer " + serverConfig.getAuthToken()));
     }
     return apiClient;
   }
