@@ -135,13 +135,6 @@ public class UserRepository {
     return query.uniqueResult();
   }
 
-  public UserDAO getUserByName(Session session, String name) {
-    Query<UserDAO> query = session.createQuery("FROM UserDAO WHERE name = :name", UserDAO.class);
-    query.setParameter("name", name);
-    query.setMaxResults(1);
-    return query.uniqueResult();
-  }
-
   public User getUserByEmail(String email) {
     try (Session session = SESSION_FACTORY.openSession()) {
       session.setDefaultReadOnly(true);
