@@ -32,11 +32,16 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python-version }}
-      - name: Install dependencies
+      - name: Install Core Library
         run: |
           pip install core/.
+      - name: Set PYTHONPATH for Core Library
+        run: |
+          export PYTHONPATH=$PYTHONPATH:$(pwd)/core/src
+      - name: Install Langchain Integration with Dev Dependencies
+        run: |
           pip install integrations/langchain[dev]
-      - name: Run tests
+      - name: Run Langchain Tests
         run: |
           pytest integrations/langchain/tests
 
@@ -56,11 +61,16 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python-version }}
-      - name: Install dependencies
+      - name: Install Core Library
         run: |
           pip install core/.
+      - name: Set PYTHONPATH for Core Library
+        run: |
+          export PYTHONPATH=$PYTHONPATH:$(pwd)/core/src
+      - name: Install Anthropic Integration with Dev Dependencies
+        run: |
           pip install integrations/anthropic[dev]
-      - name: Run tests
+      - name: Run Anthropic Tests
         run: |
           pytest integrations/anthropic/tests
 
@@ -80,11 +90,16 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python-version }}
-      - name: Install dependencies
+      - name: Install Core Library
         run: |
           pip install core/.
+      - name: Set PYTHONPATH for Core Library
+        run: |
+          export PYTHONPATH=$PYTHONPATH:$(pwd)/core/src
+      - name: Install LlamaIndex Integration with Dev Dependencies
+        run: |
           pip install integrations/llama_index[dev]
-      - name: Run tests
+      - name: Run LlamaIndex Tests
         run: |
           pytest integrations/llama_index/tests
 
@@ -104,10 +119,15 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python-version }}
-      - name: Install dependencies
+      - name: Install Core Library
         run: |
           pip install core/.
+      - name: Set PYTHONPATH for Core Library
+        run: |
+          export PYTHONPATH=$PYTHONPATH:$(pwd)/core/src
+      - name: Install OpenAI Integration with Dev Dependencies
+        run: |
           pip install integrations/openai[dev]
-      - name: Run tests
+      - name: Run OpenAI Tests
         run: |
           pytest integrations/openai/tests
