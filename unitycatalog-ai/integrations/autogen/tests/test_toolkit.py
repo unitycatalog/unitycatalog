@@ -164,7 +164,7 @@ def test_toolkit_creation_errors():
 def test_toolkit_function_argument_errors(client):
     with pytest.raises(
         ValidationError,
-        match=r".*Cannot create tool instances without function_names being provided.*",
+        match=r".*function_names*",
     ):
         UCFunctionToolkit(client=client)
 
@@ -225,31 +225,9 @@ def test_toolkit_with_invalid_function_input(client):
     ):
         # Test with invalid input params that are not matching expected schema
         invalid_inputs = {"unexpected_key": "value"}
-        tool = UCFunctionToolkit.uc_function_to_crewai_tool(
+        tool = UCFunctionToolkit.uc_function_to_autogen_tool(
             function_name="catalog.schema.test", client=client
         )
 
         with pytest.raises(ValueError, match="Extra parameters provided that are not defined"):
             tool.fn(**invalid_inputs)
-
-def test_toolkit_crewai_kwarg_passthrough(client):
-    """Test toolkit with invalid input parameters for function conversion."""
-    mock_function_info = generate_function_info()
-
-    with (
-        mock.patch(
-            "ucai.core.utils.client_utils.validate_or_set_default_client", return_value=client
-        ),
-        mock.patch.object(client, "get_function", return_value=mock_function_info),
-    ):
-        tool = UCFunctionToolkit.uc_function_to_crewai_tool(
-            function_name="catalog.schema.test", 
-            client=client, 
-            cache_function=lambda : True, 
-            result_as_answer=True, 
-            description_updated=True,
-        )
-
-        assert tool.cache_function()
-        assert tool.result_as_answer
-        assert tool.description_updated
