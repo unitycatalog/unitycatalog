@@ -11,6 +11,14 @@ from ucai.core.utils.function_processing_utils import (
     process_function_names,
 )
 
+from autogen import __version__ as autogen_version
+from autogen import ConversableAgent
+from packaging import version
+
+if version.parse(autogen_version) > version.parse("0.2.36"):
+    raise Exception(
+        "Autogen version should be less than 0.2.36 as the newer version has major API changes")
+
 
 class AutogenTool(BaseModel):
     """
@@ -43,9 +51,14 @@ class AutogenTool(BaseModel):
             "tool": self.tool
         }
 
-    def register_function(self, caller, executor) -> None:
+    def register_function(self, caller: ConversableAgent, executor: ConversableAgent) -> None:
         """
-        Converts the Autogen Tool instance into a dictionary for the Autogen API.
+        Registers the function associated with the Autogen tool.
+
+        This method registers the callable function (`fn`) with the provided executor. 
+        It also updates the tool signature with the caller to ensure that the function's definition
+        is correctly reflected in the overall toolset.
+
         """
         caller.update_tool_signature(self.tool, is_remove=False)
         executor.register_function(
@@ -78,7 +91,8 @@ class UCFunctionToolkit(BaseModel):
         self.client = validate_or_set_default_client(self.client)
 
         if not self.function_names:
-            raise ValueError("Cannot create tool instances without function_names being provided.")
+            raise ValueError(
+                "Cannot create tool instances without function_names being provided.")
 
         self.tools_dict = process_function_names(
             function_names=self.function_names,
