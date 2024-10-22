@@ -549,3 +549,12 @@ bin/uc user update [options]
     --external_id The identity provider's id for the user
     --email The email address for the user
 
+## 9. Metastore Management CLI Usage
+This section outlines the usage of the `bin/uc` script to handle operations related to the metastore of the UC OSS server.
+
+### 9.1 Get Metastore Information
+Gets information about the metastore hosted by this Unity Catalog service (currently the service hosts only one metastore)
+
+```sh
+bin/uc metastore get
+```
