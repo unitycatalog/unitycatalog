@@ -15,7 +15,7 @@ from ucai.core.utils.function_processing_utils import (
 )
 
 # Ensure the version of autogen is compatible
-if version.parse(autogen_version) >= version.parse("0.2.36"):
+if version.parse(autogen_version) > version.parse("0.2.36"):
     raise Exception(
         "Autogen version should be less than 0.2.36 as the newer version has major API changes"
     )
