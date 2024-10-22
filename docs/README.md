@@ -1,6 +1,6 @@
 # Documentation for Unity Catalog
 
-Unity Catalog uses **MkDocs** to manage and serve its documentation. MkDocs is a simple, static site generator that’s geared towards project documentation and is written in Python. This guide will help you set up the local environment, serve the documentation locally, and deploy it to GitHub Pages.
+Unity Catalog uses [**MkDocs**](https://www.mkdocs.org/) to manage and serve its documentation. MkDocs is a simple, static site generator that’s geared towards project documentation and is written in Python. This guide will help you set up the local environment, serve the documentation locally, and deploy it to GitHub Pages.
 
 ## Setting Up MkDocs for Local Development
 
@@ -41,10 +41,10 @@ python -m venv uc_docs_venv
 source uc_docs_venv/bin/activate
 
 # Activate virtual environment (Windows)
-uc_docs_venv\Scripts\activate
+uc_docs_venv/Scripts/activate
 ```
 
-Next, install the dependencies:
+Next, install the following dependencies into your activated virtual environment:
 
 ```bash
 pip install -r requirements-docs.txt
@@ -76,7 +76,7 @@ After making changes to the documentation, be sure to view the changes at `http:
 
 ## Deploying the Documentation
 
-After you're satisfied with the changes, you can deploy the documentation to GitHub Pages.
+After you're satisfied with the changes, please deploy the documentation to your own repo's GitHub Pages. Please include a link to this deployment for any docs PRs, as this will help streamline reviews.
 
 ### 1. Ensure GitHub Pages is Enabled
 
