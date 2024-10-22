@@ -32,14 +32,10 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python-version }}
-      - name: Install Core Library
+      - name: Install Core Library and Langchain Integration
         run: |
           pip install core/.
-      - name: Set PYTHONPATH for Core Library
-        run: |
           echo "PYTHONPATH=$(pwd)/core/src:\$PYTHONPATH" >> $GITHUB_ENV
-      - name: Install Langchain Integration with Dev Dependencies
-        run: |
           pip install integrations/langchain[dev]
       - name: Run Langchain Tests
         run: |
@@ -61,14 +57,10 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python-version }}
-      - name: Install Core Library
+      - name: Install Core Library and Anthropic Integration
         run: |
           pip install core/.
-      - name: Set PYTHONPATH for Core Library
-        run: |
           echo "PYTHONPATH=$(pwd)/core/src:\$PYTHONPATH" >> $GITHUB_ENV
-      - name: Install Anthropic Integration with Dev Dependencies
-        run: |
           pip install integrations/anthropic[dev]
       - name: Run Anthropic Tests
         run: |
@@ -90,14 +82,10 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python-version }}
-      - name: Install Core Library
+      - name: Install Core Library and LlamaIndex Integration
         run: |
           pip install core/.
-      - name: Set PYTHONPATH for Core Library
-        run: |
           echo "PYTHONPATH=$(pwd)/core/src:\$PYTHONPATH" >> $GITHUB_ENV
-      - name: Install LlamaIndex Integration with Dev Dependencies
-        run: |
           pip install integrations/llama_index[dev]
       - name: Run LlamaIndex Tests
         run: |
@@ -119,14 +107,10 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python-version }}
-      - name: Install Core Library
+      - name: Install Core Library and OpenAI Integration 
         run: |
           pip install core/.
-      - name: Set PYTHONPATH for Core Library
-        run: |
           echo "PYTHONPATH=$(pwd)/core/src:\$PYTHONPATH" >> $GITHUB_ENV
-      - name: Install OpenAI Integration with Dev Dependencies
-        run: |
           pip install integrations/openai[dev]
       - name: Run OpenAI Tests
         run: |

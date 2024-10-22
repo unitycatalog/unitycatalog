@@ -38,7 +38,6 @@ include = [
 [tool.hatch.build.targets.wheel]
 sources = ["src"]
 only-include = ["src/unitycatalog/ai/langchain"]
-packages = ["src/unitycatalog"]
 
 [tool.ruff]
 line-length = 100

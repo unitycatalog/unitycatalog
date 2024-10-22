@@ -36,7 +36,6 @@ include = [
 [tool.hatch.build.targets.wheel]
 sources = ["src"]
 only-include = ["src/unitycatalog/ai/openai"]
-packages = ["src/unitycatalog"]
 
 [tool.ruff]
 line-length = 100

@@ -34,7 +34,6 @@ include = [
 [tool.hatch.build.targets.wheel]
 sources = ["src"]
 only-include = ["src/unitycatalog/ai/llama_index"]
-packages = ["src/unitycatalog"]
 
 [tool.ruff]
 line-length = 100

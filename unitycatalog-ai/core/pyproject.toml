@@ -61,7 +61,6 @@ exclude = [
 [tool.hatch.build.targets.wheel]
 sources = ["src"]
 only-include = ["src/unitycatalog/ai/core"]
-packages = ["src/unitycatalog"]
 
 [project.optional-dependencies]
 databricks = [
