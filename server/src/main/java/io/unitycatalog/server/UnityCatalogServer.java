@@ -114,6 +114,7 @@ public class UnityCatalogServer {
     SchemaService schemaService = new SchemaService(authorizer);
     VolumeService volumeService = new VolumeService(authorizer);
     TableService tableService = new TableService(authorizer);
+    StagingTableService stagingTableService = new StagingTableService();
     FunctionService functionService = new FunctionService(authorizer);
     ModelService modelService = new ModelService(authorizer);
     MetastoreService metastoreService = new MetastoreService();
@@ -125,7 +126,7 @@ public class UnityCatalogServer {
     TemporaryModelVersionCredentialsService temporaryModelVersionCredentialsService =
         new TemporaryModelVersionCredentialsService(authorizer, credentialOperations);
     TemporaryPathCredentialsService temporaryPathCredentialsService =
-        new TemporaryPathCredentialsService(credentialOperations);
+        new TemporaryPathCredentialsService(authorizer, credentialOperations);
     sb.service("/", (ctx, req) -> HttpResponse.of("Hello, Unity Catalog!"))
         .annotatedService(controlPath + "auth", authService, unityConverterFunction)
         .annotatedService(
@@ -138,6 +139,7 @@ public class UnityCatalogServer {
         .annotatedService(basePath + "schemas", schemaService, unityConverterFunction)
         .annotatedService(basePath + "volumes", volumeService, unityConverterFunction)
         .annotatedService(basePath + "tables", tableService, unityConverterFunction)
+        .annotatedService(basePath + "staging-tables", stagingTableService, unityConverterFunction)
         .annotatedService(basePath + "functions", functionService, unityConverterFunction)
         .annotatedService(basePath + "models", modelService, unityConverterFunction)
         .annotatedService(basePath, metastoreService, unityConverterFunction)

@@ -4,19 +4,16 @@ import com.linecorp.armeria.common.HttpResponse;
 import com.linecorp.armeria.server.annotation.ExceptionHandler;
 import com.linecorp.armeria.server.annotation.Post;
 import io.unitycatalog.server.auth.UnityCatalogAuthorizer;
-import io.unitycatalog.server.auth.annotation.AuthorizeExpression;
-import io.unitycatalog.server.auth.annotation.AuthorizeKey;
 import io.unitycatalog.server.auth.decorator.KeyMapperUtil;
 import io.unitycatalog.server.auth.decorator.UnityAccessEvaluator;
 import io.unitycatalog.server.exception.BaseException;
 import io.unitycatalog.server.exception.ErrorCode;
 import io.unitycatalog.server.exception.GlobalExceptionHandler;
-import io.unitycatalog.server.model.GenerateTemporaryModelVersionCredential;
 import io.unitycatalog.server.model.GenerateTemporaryTableCredential;
-import io.unitycatalog.server.model.ModelVersionOperation;
 import io.unitycatalog.server.model.SecurableType;
 import io.unitycatalog.server.model.TableInfo;
 import io.unitycatalog.server.model.TableOperation;
+import io.unitycatalog.server.persist.StagingTableRepository;
 import io.unitycatalog.server.persist.TableRepository;
 import io.unitycatalog.server.service.credential.CredentialContext;
 import io.unitycatalog.server.service.credential.CredentialOperations;
@@ -27,10 +24,7 @@ import java.util.Collections;
 import java.util.Map;
 import java.util.Set;
 
-import static io.unitycatalog.server.model.SecurableType.CATALOG;
 import static io.unitycatalog.server.model.SecurableType.METASTORE;
-import static io.unitycatalog.server.model.SecurableType.REGISTERED_MODEL;
-import static io.unitycatalog.server.model.SecurableType.SCHEMA;
 import static io.unitycatalog.server.model.SecurableType.TABLE;
 import static io.unitycatalog.server.service.credential.CredentialContext.Privilege.SELECT;
 import static io.unitycatalog.server.service.credential.CredentialContext.Privilege.UPDATE;
@@ -52,11 +46,8 @@ public class TemporaryTableCredentialsService {
   @Post("")
   public HttpResponse generateTemporaryTableCredential(GenerateTemporaryTableCredential generateTemporaryTableCredential) {
     authorizeForOperation(generateTemporaryTableCredential);
-
-    String tableId = generateTemporaryTableCredential.getTableId();
-    TableInfo tableInfo = TABLE_REPOSITORY.getTableById(tableId);
-    return HttpResponse.ofJson(credentialOps
-            .vendCredential(tableInfo.getStorageLocation(),
+    String storageLocation = TABLE_REPOSITORY.tryAndGetStorageLocationForTable(generateTemporaryTableCredential.getTableId());
+    return HttpResponse.ofJson(credentialOps.vendCredential(storageLocation,
                     tableOperationToPrivileges(generateTemporaryTableCredential.getOperation())));
   }
 
@@ -94,5 +85,4 @@ public class TemporaryTableCredentialsService {
       throw new BaseException(ErrorCode.PERMISSION_DENIED, "Access denied.");
     }
   }
-
 }
