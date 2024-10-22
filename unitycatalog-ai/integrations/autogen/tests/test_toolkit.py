@@ -9,9 +9,7 @@ from databricks.sdk.service.catalog import (
     FunctionParameterInfos,
 )
 from pydantic import ValidationError
-from ucai.core.client import (
-    FunctionExecutionResult,
-)
+from ucai.core.client import FunctionExecutionResult
 from ucai.test_utils.client_utils import (
     USE_SERVERLESS,
     client,  # noqa: F401
@@ -19,12 +17,9 @@ from ucai.test_utils.client_utils import (
     requires_databricks,
     set_default_client,
 )
-from ucai.test_utils.function_utils import (
-    CATALOG,
-    create_function_and_cleanup,
-)
+from ucai.test_utils.function_utils import CATALOG, create_function_and_cleanup
 
-from ucai_autogen.toolkit import UCFunctionToolkit,AutogenTool
+from ucai_autogen.toolkit import AutogenTool, UCFunctionToolkit
 
 SCHEMA = os.environ.get("SCHEMA", "ucai_autogen_test")
 
@@ -33,34 +28,38 @@ SCHEMA = os.environ.get("SCHEMA", "ucai_autogen_test")
 def sample_autogen_tool():
     # Sample data for AutogenTool
     fn = mock.MagicMock()
-    name = 'sample_function'
-    description = 'A sample function for testing.'
-    tool =  {'type': 'function',
-             'function': {'name': name,
-                          'strict': True,
-                          'parameters': {'properties': {'location': {'anyOf': [{'type': 'string'},
-                           {'type': 'null'}],
-                          'description': 'Retrieves the current weather from a provided location.',
-                          'title': 'Location'}},
-             'type': 'object',
-             'additionalProperties': False,
-             'required': ['location']},
-              'description': description}}
-   
+    name = "sample_function"
+    description = "A sample function for testing."
+    tool = {
+        "type": "function",
+        "function": {
+            "name": name,
+            "strict": True,
+            "parameters": {
+                "properties": {
+                    "location": {
+                        "anyOf": [{"type": "string"}, {"type": "null"}],
+                        "description": "Retrieves the current weather from a provided location.",
+                        "title": "Location",
+                    }
+                },
+                "type": "object",
+                "additionalProperties": False,
+                "required": ["location"],
+            },
+            "description": description,
+        },
+    }
 
-    return AutogenTool(
-        fn=fn,
-        name=name,
-        description=description,
-        tool=tool
-    )
+    return AutogenTool(fn=fn, name=name, description=description, tool=tool)
+
 
 def test_autogen_tool_to_dict(sample_autogen_tool):
     # Test the to_dict method
     expected_output = {
-        'name': sample_autogen_tool.name,
-        'description': sample_autogen_tool.description,
-        'tool': sample_autogen_tool.tool
+        "name": sample_autogen_tool.name,
+        "description": sample_autogen_tool.description,
+        "tool": sample_autogen_tool.tool,
     }
     assert sample_autogen_tool.to_dict() == expected_output
 
@@ -69,7 +68,7 @@ def test_autogen_tool_register_function(sample_autogen_tool):
     # Mock caller and executor
     mock_caller = mock.MagicMock()
     mock_executor = mock.MagicMock()
-    mock_executor._wrap_function.return_value = 'wrapped_function'
+    mock_executor._wrap_function.return_value = "wrapped_function"
 
     # Invoke register_function
     sample_autogen_tool.register_function(mock_caller, mock_executor)
@@ -80,9 +79,8 @@ def test_autogen_tool_register_function(sample_autogen_tool):
     )
     mock_executor._wrap_function.assert_called_once_with(sample_autogen_tool.fn)
     mock_executor.register_function.assert_called_once_with(
-        {sample_autogen_tool.name: 'wrapped_function'}
+        {sample_autogen_tool.name: "wrapped_function"}
     )
-
 
 
 @requires_databricks
@@ -91,14 +89,12 @@ def test_toolkit_e2e(use_serverless, monkeypatch):
     monkeypatch.setenv(USE_SERVERLESS, str(use_serverless))
     client = get_client()
     with set_default_client(client), create_function_and_cleanup(client, schema=SCHEMA) as func_obj:
-        toolkit = UCFunctionToolkit(
-            function_names=[func_obj.full_function_name]
-        )
+        toolkit = UCFunctionToolkit(function_names=[func_obj.full_function_name])
         tools = toolkit.tools
         assert len(tools) == 1
         tool = tools[0]
-        assert func_obj.full_function_name.replace(".", "__") in tool.description 
-        assert func_obj.comment in tool.description 
+        assert func_obj.full_function_name.replace(".", "__") in tool.description
+        assert func_obj.comment in tool.description
         assert tool.client_config == client.to_dict()
 
         input_args = {"code": "print(1)"}
@@ -116,17 +112,18 @@ def test_toolkit_e2e_manually_passing_client(use_serverless, monkeypatch):
     monkeypatch.setenv(USE_SERVERLESS, str(use_serverless))
     client = get_client()
     with set_default_client(client), create_function_and_cleanup(client, schema=SCHEMA) as func_obj:
-        toolkit = UCFunctionToolkit(
-            function_names=[func_obj.full_function_name], client=client
-        )
+        toolkit = UCFunctionToolkit(function_names=[func_obj.full_function_name], client=client)
         tools = toolkit.tools
         assert len(tools) == 1
         tool = tools[0]
         assert tool.name == func_obj.tool_name
-        # Validate CrewAI description format 
-        assert func_obj.full_function_name.replace(".", "__") in tool.description 
-        assert func_obj.comment in tool.description 
-        assert ("code: 'Python code to execute. Remember to print the final result to stdout.'" in tool.description)
+        # Validate CrewAI description format
+        assert func_obj.full_function_name.replace(".", "__") in tool.description
+        assert func_obj.comment in tool.description
+        assert (
+            "code: 'Python code to execute. Remember to print the final result to stdout.'"
+            in tool.description
+        )
         assert tool.client_config == client.to_dict()
         input_args = {"code": "print(1)"}
         result = json.loads(tool.fn(**input_args))["value"]
@@ -210,7 +207,6 @@ def test_uc_function_to_autogen_tool(client):
         )
         result = json.loads(tool.fn(x="some_string"))["value"]
         assert result == "some_string"
-
 
 
 def test_toolkit_with_invalid_function_input(client):

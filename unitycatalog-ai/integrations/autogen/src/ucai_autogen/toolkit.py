@@ -1,8 +1,11 @@
 import json
-from typing import Any, Dict, List, Optional, Callable
+from typing import Any, Callable, Dict, List, Optional
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from autogen import ConversableAgent
+from autogen import __version__ as autogen_version
 from openai import pydantic_function_tool
+from packaging import version
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 from ucai.core.client import BaseFunctionClient
 from ucai.core.utils.client_utils import validate_or_set_default_client
 from ucai.core.utils.function_processing_utils import (
@@ -11,13 +14,11 @@ from ucai.core.utils.function_processing_utils import (
     process_function_names,
 )
 
-from autogen import __version__ as autogen_version
-from autogen import ConversableAgent
-from packaging import version
-
-if version.parse(autogen_version) > version.parse("0.2.36"):
+# Ensure the version of autogen is compatible
+if version.parse(autogen_version) >= version.parse("0.2.36"):
     raise Exception(
-        "Autogen version should be less than 0.2.36 as the newer version has major API changes")
+        "Autogen version should be less than 0.2.36 as the newer version has major API changes"
+    )
 
 
 class AutogenTool(BaseModel):
@@ -35,9 +36,7 @@ class AutogenTool(BaseModel):
     description: str = Field(
         description="A brief description of the function's purpose.",
     )
-    tool: Dict = Field(
-        description="OpenAI compatible Tool Definition"
-    )
+    tool: Dict = Field(description="OpenAI compatible Tool Definition")
 
     model_config = ConfigDict(arbitrary_types_allowed=True)
 
@@ -45,24 +44,19 @@ class AutogenTool(BaseModel):
         """
         Converts the Autogen Tool instance into a dictionary for the Autogen API.
         """
-        return {
-            "name": self.name,
-            "description": self.description,
-            "tool": self.tool
-        }
+        return {"name": self.name, "description": self.description, "tool": self.tool}
 
     def register_function(self, caller: ConversableAgent, executor: ConversableAgent) -> None:
         """
         Registers the function associated with the Autogen tool.
 
-        This method registers the callable function (`fn`) with the provided executor. 
+        This method registers the callable function (`fn`) with the provided executor.
         It also updates the tool signature with the caller to ensure that the function's definition
         is correctly reflected in the overall toolset.
 
         """
         caller.update_tool_signature(self.tool, is_remove=False)
-        executor.register_function(
-            {self.name: executor._wrap_function(self.fn)})
+        executor.register_function({self.name: executor._wrap_function(self.fn)})
 
 
 class UCFunctionToolkit(BaseModel):
@@ -91,8 +85,7 @@ class UCFunctionToolkit(BaseModel):
         self.client = validate_or_set_default_client(self.client)
 
         if not self.function_names:
-            raise ValueError(
-                "Cannot create tool instances without function_names being provided.")
+            raise ValueError("Cannot create tool instances without function_names being provided.")
 
         self.tools_dict = process_function_names(
             function_names=self.function_names,
@@ -121,8 +114,7 @@ class UCFunctionToolkit(BaseModel):
             AutogenTool: The corresponding Autogen tool.
         """
         if function_name and function_info:
-            raise ValueError(
-                "Only one of function_name or function_info should be provided.")
+            raise ValueError("Only one of function_name or function_info should be provided.")
         client = validate_or_set_default_client(client)
 
         if function_name:
@@ -130,11 +122,11 @@ class UCFunctionToolkit(BaseModel):
         elif function_info:
             function_name = function_info.full_name
         else:
-            raise ValueError(
-                "Either function_name or function_info should be provided.")
+            raise ValueError("Either function_name or function_info should be provided.")
 
         function_input_params_schema = generate_function_input_params_schema(
-            function_info, strict=True)
+            function_info, strict=True
+        )
 
         tool = pydantic_function_tool(
             function_input_params_schema.pydantic_model,
