@@ -167,7 +167,7 @@ public abstract class BaseModelCRUDTest extends BaseCRUDTest {
     UpdateRegisteredModel updateModel2 = new UpdateRegisteredModel().comment(MODEL_NEW_COMMENT);
     RegisteredModelInfo updatedRegisteredModelInfo2 =
         modelOperations.updateRegisteredModel(MODEL_NEW_FULL_NAME, updateModel2);
-    assertThat(updatedRegisteredModelInfo.getId()).isEqualTo(updatedRegisteredModelInfo.getId());
+    assertThat(updatedRegisteredModelInfo2.getId()).isEqualTo(updatedRegisteredModelInfo.getId());
     assertThat(updatedRegisteredModelInfo2.getName()).isEqualTo(MODEL_NEW_NAME);
     assertThat(updatedRegisteredModelInfo2.getComment()).isEqualTo(updateModel2.getComment());
     assertThat(updatedRegisteredModelInfo2.getFullName()).isEqualTo(MODEL_NEW_FULL_NAME);
