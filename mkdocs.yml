@@ -33,9 +33,6 @@ nav:
       - Unity Catalog Celerdata: integrations/unity-catalog-celerdata.md
   - Deployment: deployment.md
 
-exclude:
-  - README.md 
-
 plugins:
   - search
   - material-plausible
