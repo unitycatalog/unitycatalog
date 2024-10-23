@@ -6,9 +6,9 @@ from autogen import __version__ as autogen_version
 from openai import pydantic_function_tool
 from packaging import version
 from pydantic import BaseModel, ConfigDict, Field, model_validator
-from ucai.core.client import BaseFunctionClient
-from ucai.core.utils.client_utils import validate_or_set_default_client
-from ucai.core.utils.function_processing_utils import (
+from unitycatalog.ai.core.client import BaseFunctionClient
+from unitycatalog.ai.core.utils.client_utils import validate_or_set_default_client
+from unitycatalog.ai.core.utils.function_processing_utils import (
     generate_function_input_params_schema,
     get_tool_name,
     process_function_names,

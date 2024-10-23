@@ -10,16 +10,16 @@ from databricks.sdk.service.catalog import (
 )
 from pydantic import ValidationError
 from ucai.core.client import FunctionExecutionResult
-from ucai.test_utils.client_utils import (
+from unitycatalog.ai.test_utils.client_utils import (
     USE_SERVERLESS,
     client,  # noqa: F401
     get_client,
     requires_databricks,
     set_default_client,
 )
-from ucai.test_utils.function_utils import CATALOG, create_function_and_cleanup
+from unitycatalog.ai.test_utils.function_utils import CATALOG, create_function_and_cleanup
 
-from ucai_autogen.toolkit import AutogenTool, UCFunctionToolkit
+from unitycatalog.ai.autogen.toolkit import AutogenTool, UCFunctionToolkit
 
 SCHEMA = os.environ.get("SCHEMA", "ucai_autogen_test")
 
@@ -194,11 +194,11 @@ def test_uc_function_to_autogen_tool(client):
     mock_function_info = generate_function_info()
     with (
         mock.patch(
-            "ucai.core.databricks.DatabricksFunctionClient.get_function",
+            "unitycatalog.ai.core.databricks.DatabricksFunctionClient.get_function",
             return_value=mock_function_info,
         ),
         mock.patch(
-            "ucai.core.databricks.DatabricksFunctionClient.execute_function",
+            "unitycatalog.ai.core.databricks.DatabricksFunctionClient.execute_function",
             return_value=FunctionExecutionResult(format="SCALAR", value="some_string"),
         ),
     ):
@@ -215,7 +215,7 @@ def test_toolkit_with_invalid_function_input(client):
 
     with (
         mock.patch(
-            "ucai.core.utils.client_utils.validate_or_set_default_client", return_value=client
+            "unitycatalog.ai.core.utils.client_utils.validate_or_set_default_client", return_value=client
         ),
         mock.patch.object(client, "get_function", return_value=mock_function_info),
     ):
