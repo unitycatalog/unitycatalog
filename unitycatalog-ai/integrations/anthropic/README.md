@@ -10,7 +10,7 @@ pip install git+https://github.com/unitycatalog/unitycatalog.git#subdirectory=un
 ```
 
 > [!NOTE]
-> Once this package is published to PyPI, users can install via `pip install ucai-anthropic`
+> Once this package is published to PyPI, users can install via `pip install unitycatalog-anthropic`
 
 ## Get started
 
@@ -23,8 +23,8 @@ To use Databricks-managed Unity Catalog with this package, follow the [instructi
 Initialize a client for managing UC functions in a Databricks workspace, and set it as the global client.
 
 ```python
-from ucai.core.client import set_uc_function_client
-from ucai.core.databricks import DatabricksFunctionClient
+from unitycatalog.ai.core.client import set_uc_function_client
+from unitycatalog.ai.core.databricks import DatabricksFunctionClient
 
 client = DatabricksFunctionClient(
     warehouse_id="..." # replace with the warehouse_id
@@ -65,10 +65,10 @@ Now that the function is created and stored in the corresponding catalog and sch
 Tool use through the [Anthropic SDK](https://docs.anthropic.com/en/docs/build-with-claude/tool-use) allows you to connect external client-side tools and
 functions to provide [Claude](https://docs.anthropic.com/en/docs/welcome) with a greater range of capabilities to augment its ability to respond to user messages.
 
-To begin, we will need an instance of the tool function interface from the `ucai_anthropic` toolkit.
+To begin, we will need an instance of the tool function interface from the `unitycatalog.ai.anthropic` toolkit.
 
 ```python
-from ucai_anthropic.toolkit import UCFunctionToolkit
+from unitycatalog.ai.anthropic.toolkit import UCFunctionToolkit
 
 # Create an instance of the toolkit with the function that was created earlier.
 toolkit = UCFunctionToolkit(function_names=[f"{CATALOG}.{SCHEMA}.python_exec"], client=client)
@@ -127,7 +127,7 @@ other for getting the weather in Death Valley California). This utility function
 id for each that maps to the `ToolUseBlock`'s `tool_use_id` entry for each call.
 
 ```python
-from ucai_anthropic.utils import generate_tool_call_messages
+from unitycatalog.ai.anthropic.utils import generate_tool_call_messages
 
 # Call the Unity Catalog function and construct the required formatted response history for a subsequent call to Anthropic
 tool_messages = generate_tool_call_messages(response=response, client=client, conversation_history=question)
@@ -158,7 +158,7 @@ This API is useful if you need to perform validation prior to calling a function
 function call yourself. This lower-level approach and will require a more complex integration with the Anthropic SDK.
 
 ```python
-from ucai_anthropic.utils import extract_tool_call_data
+from unitycatalog.ai.anthropic.utils import extract_tool_call_data
 
 
 # This returns a List[ToolCallData] for Anthropic
