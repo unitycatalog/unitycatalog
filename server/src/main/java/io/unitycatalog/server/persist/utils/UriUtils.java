@@ -7,9 +7,6 @@ import static io.unitycatalog.server.utils.Constants.URI_SCHEME_S3;
 
 import io.unitycatalog.server.exception.BaseException;
 import io.unitycatalog.server.exception.ErrorCode;
-import io.unitycatalog.server.model.AwsCredentials;
-import io.unitycatalog.server.model.AzureUserDelegationSAS;
-import io.unitycatalog.server.model.GcpOauthToken;
 import io.unitycatalog.server.model.TemporaryCredentials;
 import io.unitycatalog.server.utils.ServerProperties;
 import java.io.IOException;
@@ -189,19 +186,6 @@ public class UriUtils {
       }
     }
     return parsedUri;
-  }
-
-  private static URI updateS3Directory(URI parsedUri, Operation op, AwsCredentials awsCredentials) {
-    throw new BaseException(ErrorCode.UNIMPLEMENTED, "Aws cloud storage updates unimplemented");
-  }
-
-  private static URI updateGcDirectory(URI parsedURI, Operation op, GcpOauthToken token) {
-    throw new BaseException(ErrorCode.UNIMPLEMENTED, "Google cloud storage updates unimplemented");
-  }
-
-  private static URI updateAbsDirectory(
-      URI parsedURI, Operation op, AzureUserDelegationSAS credential) {
-    throw new BaseException(ErrorCode.UNIMPLEMENTED, "Azure blob storage updates unimplemented");
   }
 
   private static void validateURI(URI uri) {
