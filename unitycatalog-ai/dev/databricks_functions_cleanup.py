@@ -23,7 +23,9 @@ def cleanup_functions(args):
     args = parse_args(args)
     client = WorkspaceClient()
     failed_deletions = {}
-    function_infos = client.functions.list(catalog_name=args.catalog, schema_name=args.schema)
+    function_infos = client.functions.list(
+        catalog_name=args.catalog, schema_name=args.schema
+    )
     for function_info in function_infos:
         try:
             client.functions.delete(function_info.full_name)
@@ -31,7 +33,9 @@ def cleanup_functions(args):
             failed_deletions[function_info.full_name] = str(e)
 
     if failed_deletions:
-        sys.stderr.write(f"Failed to delete the following functions: {failed_deletions}")
+        sys.stderr.write(
+            f"Failed to delete the following functions: {failed_deletions}"
+        )
         sys.exit(1)
 
 

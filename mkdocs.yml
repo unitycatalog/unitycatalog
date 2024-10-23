@@ -34,7 +34,7 @@ nav:
   - Deployment: deployment.md
 
 exclude:
-  - README.md 
+  - README.md
 
 plugins:
   - search

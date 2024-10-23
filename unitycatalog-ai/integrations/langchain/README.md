@@ -10,7 +10,7 @@ pip install git+https://github.com/unitycatalog/unitycatalog.git#subdirectory=un
 ```
 
 > [!NOTE]
-> Once this package is published to PyPI, users can install via `pip install ucai-langchain`
+> Once this package is published to PyPI, users can install via `pip install unitycatalog-langchain`
 
 ## Get started
 
@@ -27,8 +27,8 @@ To use Databricks-managed Unity Catalog with this package, follow the [instructi
 Initialize a client for managing UC functions in a Databricks workspace, and set it as the global client.
 
 ```python
-from ucai.core.client import set_uc_function_client
-from ucai.core.databricks import DatabricksFunctionClient
+from unitycatalog.ai.core.client import set_uc_function_client
+from unitycatalog.ai.core.databricks import DatabricksFunctionClient
 
 client = DatabricksFunctionClient(
     warehouse_id="..." # replace with the warehouse_id
@@ -73,7 +73,7 @@ Now the function is created and stored in the corresponding catalog and schema.
 [Langchain tools](https://python.langchain.com/v0.2/docs/concepts/#tools) are utilities designed to be called by a model, and UCFunctionToolkit provides the ability to use UC functions as tools that are recognized natively by LangChain.
 
 ```python
-from ucai_langchain.toolkit import UCFunctionToolkit
+from unitycatalog.ai.langchain.toolkit import UCFunctionToolkit
 
 # create a UCFunctionToolkit that includes the above UC function
 toolkit = UCFunctionToolkit(function_names=[f"{CATALOG}.{SCHEMA}.python_exec"])
