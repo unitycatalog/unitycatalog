@@ -16,7 +16,7 @@ from unitycatalog.ai.core.utils.function_processing_utils import (
 )
 
 # Ensure the version of autogen is compatible
-if version.parse(autogen_version) < version.parse("0.4.0"):
+if version.parse(autogen_version) >= version.parse("0.4.0"):
     raise Exception(
         "Autogen version should be less than 0.4.0 as the newer version has major API changes"
     )
