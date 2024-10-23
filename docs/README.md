@@ -1,6 +1,8 @@
 # Documentation for Unity Catalog
 
-Unity Catalog uses [**MkDocs**](https://www.mkdocs.org/) to manage and serve its documentation. MkDocs is a simple, static site generator that’s geared towards project documentation and is written in Python. This guide will help you set up the local environment, serve the documentation locally, and deploy it to GitHub Pages.
+Unity Catalog uses [**MkDocs**](https://www.mkdocs.org/) to manage and serve its documentation. MkDocs is a simple, static site generator that’s geared towards project documentation and is written in Python.
+
+This guide will help you set up the local environment, serve the documentation locally, and deploy it to GitHub Pages.
 
 ## Setting Up MkDocs for Local Development
 
@@ -8,26 +10,23 @@ To start testing or modifying the documentation locally, follow these steps:
 
 ### 1. Install MkDocs
 
-Make sure you have **MkDocs** installed in your environment. If it’s not installed, you can do so using `pip`.
+While you may install **MkDocs** directly using `pip`, it is recommended to install it along with other dependencies via the `requirements-docs.txt` file in step 3. This ensures that all necessary dependencies are handled together, especially when working in a virtual environment.
 
-```bash
-pip install mkdocs
-```
+If you prefer to use **pipx**, you can install MkDocs globally with the following command:
 
-You can verify that it is installed by running:
-
-```bash
-mkdocs --version
-```
+   ```bash
+   pipx install mkdocs
+   ```
 
 ### 2. Clone the Repository
 
-Clone the Unity Catalog repository and navigate to the documentation directory.
+Clone the Unity Catalog repository:
 
-```bash
-git clone https://github.com/unitycatalog/unitycatalog.git
-cd unitycatalog/docs
-```
+   ```bash
+   git clone https://github.com/unitycatalog/unitycatalog.git
+   ```
+
+After cloning, navigate to the top-level directory of the repository. There is no need to switch into the docs directory, as the requirements-docs.txt file is located in the top-level directory.
 
 ### 3. Install the Required Dependencies
 
@@ -92,13 +91,13 @@ mkdocs gh-deploy
 
 This command will build the documentation and push the generated files to the `gh-pages` branch. Once the command is finished, your documentation will be live on GitHub Pages at:
 
-```
+```console
 https://<your-github-username>.github.io/unitycatalog
 ```
 
 For example, if your GitHub username is `bobbiedraper`, your documentation will be available at:
 
-```
+```console
 https://bobbiedraper.github.io/unitycatalog
 ```
 
