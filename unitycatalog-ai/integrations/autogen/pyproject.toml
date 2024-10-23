@@ -1,5 +1,5 @@
 [project]
-name = "ucai-autogen"
+name = "unitycatalog-autogen"
 version = "0.0.1"
 description = "Support for Unity Catalog functions as autogen tools"
 authors = [
