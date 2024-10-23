@@ -32,7 +32,7 @@ nav:
       - XTable: integrations/unity-catalog-xtable.md
       - Unity Catalog Celerdata: integrations/unity-catalog-celerdata.md
   - Deployment: deployment.md
-
+  
 plugins:
   - search
   - material-plausible
