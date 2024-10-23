@@ -215,7 +215,8 @@ def test_toolkit_with_invalid_function_input(client):
 
     with (
         mock.patch(
-            "unitycatalog.ai.core.utils.client_utils.validate_or_set_default_client", return_value=client
+            "unitycatalog.ai.core.utils.client_utils.validate_or_set_default_client",
+            return_value=client,
         ),
         mock.patch.object(client, "get_function", return_value=mock_function_info),
     ):
