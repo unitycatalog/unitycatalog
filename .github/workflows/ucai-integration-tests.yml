@@ -134,7 +134,8 @@ jobs:
           python-version: ${{ matrix.python-version }}
       - name: Install dependencies
         run: |
-          pip install .
+          pip install core/.
+          echo "PYTHONPATH=$(pwd)/core/src:\$PYTHONPATH" >> $GITHUB_ENV
           pip install integrations/autogen[dev]
       - name: Run tests
         run: |
