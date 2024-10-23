@@ -8,32 +8,32 @@ This guide outlines how to deploy the Unity Catalog server.
 
 - To generate the tarball, run the following command in the source code:
 
-    ```sh
-    build/sbt createTarball
-    ```
+  ```sh
+  build/sbt createTarball
+  ```
 
 ### Unpacking the tarball
 
 - The tarball generated in the `target` directory can be unpacked using the following command:
 
-    ```sh
-    tar -xvf unitycatalog-<version>.tar.gz
-    ```
+  ```sh
+  tar -xvf unitycatalog-<version>.tar.gz
+  ```
 
 - Unpacking the tarball will create the following directory structure:
 
-    ```console
-    unitycatalog-<version>
-    ├── bin
-    │   ├── start-uc-server
-    │   └── uc
-    ├── etc
-    │   ├── conf
-    │   ├── data
-    │   ├── db
-    │   └── logs
-    └── jars
-    ```
+  ```console
+  unitycatalog-<version>
+  ├── bin
+  │   ├── start-uc-server
+  │   └── uc
+  ├── etc
+  │   ├── conf
+  │   ├── data
+  │   ├── db
+  │   └── logs
+  └── jars
+  ```
 
 - The `bin` directory contains the scripts that you can use to start the UC server and run the CLI.
 - The `etc` directory contains the configuration, data, database, and logs directories.
