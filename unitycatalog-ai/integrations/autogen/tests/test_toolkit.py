@@ -9,7 +9,9 @@ from databricks.sdk.service.catalog import (
     FunctionParameterInfos,
 )
 from pydantic import ValidationError
-from ucai.core.client import FunctionExecutionResult
+
+from unitycatalog.ai.autogen.toolkit import AutogenTool, UCFunctionToolkit
+from unitycatalog.ai.core.client import FunctionExecutionResult
 from unitycatalog.ai.test_utils.client_utils import (
     USE_SERVERLESS,
     client,  # noqa: F401
@@ -18,8 +20,6 @@ from unitycatalog.ai.test_utils.client_utils import (
     set_default_client,
 )
 from unitycatalog.ai.test_utils.function_utils import CATALOG, create_function_and_cleanup
-
-from unitycatalog.ai.autogen.toolkit import AutogenTool, UCFunctionToolkit
 
 SCHEMA = os.environ.get("SCHEMA", "ucai_autogen_test")
 
