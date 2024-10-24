@@ -144,7 +144,7 @@ chat_result = user_proxy.initiate_chat(assistant, message="what is the temperatu
 Output
 
 ```text
-hat is the temperature in SF?
+What is the temperature in SF?
 
 --------------------------------------------------------------------------------
 [31m
