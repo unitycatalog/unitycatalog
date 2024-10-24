@@ -5,11 +5,11 @@ on:
     branches:
       - main
     paths:
-      - unitycatalog-ai/integrations/**
+      - ai/integrations/**
       - .github/workflows/ucai-integration-tests.yml
   pull_request:
     paths:
-      - unitycatalog-ai/integrations/**
+      - ai/integrations/**
       - .github/workflows/ucai-integration-tests.yml
 
 permissions:
@@ -24,7 +24,7 @@ jobs:
     timeout-minutes: 20
     defaults:
       run:
-        working-directory: unitycatalog-ai
+        working-directory: ai
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -49,7 +49,7 @@ jobs:
     timeout-minutes: 20
     defaults:
       run:
-        working-directory: unitycatalog-ai
+        working-directory: ai
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -74,7 +74,7 @@ jobs:
     timeout-minutes: 20
     defaults:
       run:
-        working-directory: unitycatalog-ai
+        working-directory: ai
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -99,7 +99,7 @@ jobs:
     timeout-minutes: 20
     defaults:
       run:
-        working-directory: unitycatalog-ai
+        working-directory: ai
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
