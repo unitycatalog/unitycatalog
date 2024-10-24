@@ -69,7 +69,7 @@ Now that the function is created and stored in the corresponding catalog and sch
 To begin, we will need an instance of the tool function interface from the `ucai_autogen` toolkit.
 
 ```python
-from ucai_autogen.toolkit import UCFunctionToolkit
+from unitycatalog.ai.autogen.toolkit import UCFunctionToolkit
 
 # Create an instance of the toolkit with the function that was created earlier.
 toolkit = UCFunctionToolkit(function_names=[f"{CATALOG}.{SCHEMA}.python_exec"], client=client)
