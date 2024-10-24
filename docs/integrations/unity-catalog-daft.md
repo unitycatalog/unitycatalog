@@ -31,7 +31,9 @@ bin/start-uc-server
 
 Use the `UnityCatalog` abstraction to point Daft to your UC server.
 
-This object requires an `endpoint` and a `token`. If you launched the UC server locally using the command above then you can use the values below. Otherwise, substitute the `endpoint` and `token` values with the corresponding values for your UC server.
+This object requires an `endpoint` and a `token`. If you launched the UC server locally using the command above then
+you can use the values below. Otherwise, substitute the `endpoint` and `token` values with the corresponding values
+for your UC server.
 
 ```python
 # point Daft to your UC server
@@ -41,25 +43,26 @@ unity = UnityCatalog(
 )
 ```
 
-You can also connect to a Unity Catalog in your Databricks workspace by setting `endpoint = "https://<databricks_workspace_id>.cloud.databricks.com"`.
+You can also connect to a Unity Catalog in your Databricks workspace by setting
+`endpoint = "https://<databricks_workspace_id>.cloud.databricks.com"`.
 
 Once you're connected, you can list all your available catalogs using:
 
-```
+```console
 > print(unity.list_catalogs())
 ['unity']
 ```
 
 You can list all available schemas in a given catalog:
 
-```
+```console
 > print(unity.list_schemas("unity"))
 ['unity.default']
 ```
 
 And you can list all the available tables in a given schema:
 
-```
+```console
 print(unity.list_tables("unity.default"))
 ['unity.default.numbers', 'unity.default.marksheet_uniform', 'unity.default.marksheet']
 ```
@@ -100,7 +103,8 @@ as_int  as_double
 958     509.371273
 ```
 
-Any subsequent filter operations on the Daft `df` DataFrame object will be correctly optimized to take advantage of Delta Lake features.
+Any subsequent filter operations on the Daft `df` DataFrame object will be correctly optimized to take advantage of
+Delta Lake features.
 
 ```python
 > df = df.where(df["as_int"] > 500)
@@ -116,4 +120,6 @@ as_int   as_double
 958      509.371273
 ```
 
-Daft support for Unity Catalog is under rapid development. Refer to the [Daft documentation](https://www.getdaft.io/projects/docs/en/latest/user_guide/integrations/unity-catalog.html) for more information.
+Daft support for Unity Catalog is under rapid development. Refer to the
+[Daft documentation](https://www.getdaft.io/projects/docs/en/latest/user_guide/integrations/unity-catalog.html) for
+more information.
