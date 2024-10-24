@@ -9,21 +9,13 @@ import io.unitycatalog.client.model.*;
 import io.unitycatalog.server.base.BaseCRUDTest;
 import io.unitycatalog.server.base.ServerConfig;
 import io.unitycatalog.server.base.schema.SchemaOperations;
-import io.unitycatalog.server.persist.dao.ColumnInfoDAO;
-import io.unitycatalog.server.persist.dao.TableInfoDAO;
-import io.unitycatalog.server.persist.utils.FileUtils;
-import io.unitycatalog.server.persist.utils.HibernateUtils;
 import io.unitycatalog.server.utils.TestUtils;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Comparator;
-import java.util.Date;
 import java.util.List;
 import java.util.Optional;
-import java.util.UUID;
-import org.hibernate.Session;
-import org.hibernate.Transaction;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
@@ -32,6 +24,27 @@ public abstract class BaseTableCRUDTest extends BaseCRUDTest {
   protected SchemaOperations schemaOperations;
   protected TableOperations tableOperations;
   private String schemaId;
+
+  ColumnInfo columnInfo1 =
+      new ColumnInfo()
+          .name("as_int")
+          .typeText("INTEGER")
+          .typeJson("{\"type\": \"integer\"}")
+          .typeName(ColumnTypeName.INT)
+          .typePrecision(10)
+          .typeScale(0)
+          .position(0)
+          .comment("Integer column")
+          .nullable(true);
+  ColumnInfo columnInfo2 =
+      new ColumnInfo()
+          .name("as_string")
+          .typeText("VARCHAR(255)")
+          .typeJson("{\"type\": \"string\", \"length\": \"255\"}")
+          .typeName(ColumnTypeName.STRING)
+          .position(1)
+          .comment("String column")
+          .nullable(true);
 
   protected abstract SchemaOperations createSchemaOperations(ServerConfig serverConfig);
 
@@ -146,75 +159,29 @@ public abstract class BaseTableCRUDTest extends BaseCRUDTest {
         .isInstanceOf(Exception.class);
   }
 
-  private void testManagedTableRetrieval() throws ApiException {
-    try (Session session = HibernateUtils.getSessionFactory().openSession()) {
-      Transaction tx = session.beginTransaction();
-      UUID tableId = UUID.randomUUID();
-
-      TableInfoDAO tableInfoDAO = createManagedTableDAO(tableId);
-      session.persist(tableInfoDAO);
-      session.flush();
-      tx.commit();
-    } catch (Exception e) {
-      fail("Failed to set up managed table: " + e.getMessage());
-    }
+  private void testManagedTableRetrieval() throws ApiException, IOException {
+    CreateTable createTableRequest =
+        new CreateTable()
+            .name(TestUtils.TABLE_NAME)
+            .catalogName(TestUtils.CATALOG_NAME)
+            .schemaName(TestUtils.SCHEMA_NAME)
+            .columns(List.of(columnInfo1, columnInfo2))
+            .properties(TestUtils.PROPERTIES)
+            .comment(TestUtils.COMMENT)
+            .tableType(TableType.MANAGED)
+            .dataSourceFormat(DataSourceFormat.DELTA);
+    TableInfo tableInfo = tableOperations.createTable(createTableRequest);
 
     TableInfo managedTable = tableOperations.getTable(TestUtils.TABLE_FULL_NAME);
     assertThat(managedTable.getName()).isEqualTo(TestUtils.TABLE_NAME);
     assertThat(managedTable.getCatalogName()).isEqualTo(TestUtils.CATALOG_NAME);
     assertThat(managedTable.getSchemaName()).isEqualTo(TestUtils.SCHEMA_NAME);
     assertThat(managedTable.getStorageLocation())
-        .isEqualTo(FileUtils.convertRelativePathToURI("/tmp/managedStagingLocation"));
+        .isEqualTo("file:///tmp/tables/" + tableInfo.getTableId());
     assertThat(managedTable.getTableType()).isEqualTo(TableType.MANAGED);
     assertThat(managedTable.getDataSourceFormat()).isEqualTo(DataSourceFormat.DELTA);
     assertThat(managedTable.getCreatedAt()).isNotNull();
     assertThat(managedTable.getTableId()).isNotNull();
-  }
-
-  private TableInfoDAO createManagedTableDAO(UUID tableId) {
-    TableInfoDAO tableInfoDAO =
-        TableInfoDAO.builder()
-            .name(TestUtils.TABLE_NAME)
-            .schemaId(UUID.fromString(schemaId))
-            .comment(TestUtils.COMMENT)
-            .url("/tmp/managedStagingLocation")
-            .type(TableType.MANAGED.name())
-            .dataSourceFormat(DataSourceFormat.DELTA.name())
-            .id(tableId)
-            .createdAt(new Date())
-            .updatedAt(new Date())
-            .build();
-
-    ColumnInfoDAO columnInfoDAO1 =
-        ColumnInfoDAO.builder()
-            .id(UUID.randomUUID())
-            .name("as_int")
-            .typeText("INTEGER")
-            .typeJson("{\"type\": \"integer\"}")
-            .typeName(ColumnTypeName.INT.name())
-            .typePrecision(10)
-            .typeScale(0)
-            .ordinalPosition((short) 0)
-            .comment("Integer column")
-            .nullable(true)
-            .table(tableInfoDAO)
-            .build();
-
-    ColumnInfoDAO columnInfoDAO2 =
-        ColumnInfoDAO.builder()
-            .id(UUID.randomUUID())
-            .name("as_string")
-            .typeText("VARCHAR(255)")
-            .typeJson("{\"type\": \"string\", \"length\": \"255\"}")
-            .typeName(ColumnTypeName.STRING.name())
-            .ordinalPosition((short) 1)
-            .comment("String column")
-            .nullable(true)
-            .table(tableInfoDAO)
-            .build();
-
-    tableInfoDAO.setColumns(List.of(columnInfoDAO1, columnInfoDAO2));
-    return tableInfoDAO;
   }
 
   private void testTableAfterSchemaUpdateAndDeletion() throws ApiException {

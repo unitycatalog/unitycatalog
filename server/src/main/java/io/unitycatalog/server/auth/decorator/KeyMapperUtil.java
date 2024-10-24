@@ -8,20 +8,10 @@ import static io.unitycatalog.server.model.SecurableType.SCHEMA;
 import static io.unitycatalog.server.model.SecurableType.TABLE;
 import static io.unitycatalog.server.model.SecurableType.VOLUME;
 
-import io.unitycatalog.server.model.CatalogInfo;
-import io.unitycatalog.server.model.FunctionInfo;
-import io.unitycatalog.server.model.RegisteredModelInfo;
-import io.unitycatalog.server.model.SchemaInfo;
-import io.unitycatalog.server.model.SecurableType;
-import io.unitycatalog.server.model.TableInfo;
-import io.unitycatalog.server.model.VolumeInfo;
-import io.unitycatalog.server.persist.CatalogRepository;
-import io.unitycatalog.server.persist.FunctionRepository;
-import io.unitycatalog.server.persist.MetastoreRepository;
-import io.unitycatalog.server.persist.ModelRepository;
-import io.unitycatalog.server.persist.SchemaRepository;
-import io.unitycatalog.server.persist.TableRepository;
-import io.unitycatalog.server.persist.VolumeRepository;
+import io.unitycatalog.server.exception.BaseException;
+import io.unitycatalog.server.exception.ErrorCode;
+import io.unitycatalog.server.model.*;
+import io.unitycatalog.server.persist.*;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.UUID;
@@ -51,14 +41,37 @@ public class KeyMapperUtil {
         && resourceKeys.containsKey(TABLE)) {
       String fullName = (String) resourceKeys.get(TABLE);
       // If the full name contains a dot, we assume it's a full name, otherwise we assume it's an id
-      TableInfo table =
-          fullName.contains(".")
-              ? TableRepository.getInstance().getTable(fullName)
-              : TableRepository.getInstance().getTableById(fullName);
-      String fullSchemaName = table.getCatalogName() + "." + table.getSchemaName();
+      String catalogName;
+      String schemaName;
+      String tableId;
+      boolean isStagingTable = false;
+      try {
+        TableInfo table =
+            fullName.contains(".")
+                ? TableRepository.getInstance().getTable(fullName)
+                : TableRepository.getInstance().getTableById(fullName);
+        catalogName = table.getCatalogName();
+        schemaName = table.getSchemaName();
+        tableId = table.getTableId();
+      } catch (BaseException e) {
+        if (e.getErrorCode().equals(ErrorCode.NOT_FOUND)) {
+          // Check if this is actually a request for staging table
+          StagingTableInfo stagingTable =
+              StagingTableRepository.getInstance().getStagingTableById(fullName);
+          catalogName = stagingTable.getCatalogName();
+          schemaName = stagingTable.getSchemaName();
+          tableId = stagingTable.getId();
+          isStagingTable = true;
+        } else {
+          throw e;
+        }
+      }
+      String fullSchemaName = catalogName + "." + schemaName;
       SchemaInfo schema = SchemaRepository.getInstance().getSchema(fullSchemaName);
-      CatalogInfo catalog = CatalogRepository.getInstance().getCatalog(table.getCatalogName());
-      resourceIds.put(TABLE, UUID.fromString(table.getTableId()));
+      CatalogInfo catalog = CatalogRepository.getInstance().getCatalog(catalogName);
+      if (!isStagingTable) {
+        resourceIds.put(TABLE, UUID.fromString(tableId));
+      }
       resourceIds.put(SCHEMA, UUID.fromString(schema.getSchemaId()));
       resourceIds.put(CATALOG, UUID.fromString(catalog.getId()));
     }

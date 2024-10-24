@@ -43,6 +43,10 @@ public class CredentialOperations {
   public TemporaryCredentials vendCredential(CredentialContext context) {
     TemporaryCredentials temporaryCredentials = new TemporaryCredentials();
 
+    if (context.getStorageScheme() == null) {
+      // For local paths, just return empty temporary credentials
+      return new TemporaryCredentials();
+    }
     switch (context.getStorageScheme()) {
       case URI_SCHEME_ABFS, URI_SCHEME_ABFSS -> {
         AzureCredential azureCredential = vendAzureCredential(context);
