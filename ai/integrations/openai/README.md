@@ -6,7 +6,7 @@ Integrate Unity Catalog AI package with OpenAI to allow seamless usage of UC fun
 
 ```sh
 # install from the source
-pip install git+https://github.com/unitycatalog/unitycatalog.git#subdirectory=unitycatalog-ai/integrations/openai
+pip install git+https://github.com/unitycatalog/unitycatalog.git#subdirectory=ai/integrations/openai
 ```
 
 > [!NOTE]

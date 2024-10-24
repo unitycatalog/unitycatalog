@@ -6,7 +6,7 @@ Integrate Unity Catalog AI package with Langchain to allow seamless usage of UC 
 
 ```sh
 # install from the source
-pip install git+https://github.com/unitycatalog/unitycatalog.git#subdirectory=unitycatalog-ai/integrations/langchain
+pip install git+https://github.com/unitycatalog/unitycatalog.git#subdirectory=ai/integrations/langchain
 ```
 
 > [!NOTE]
