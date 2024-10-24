@@ -46,6 +46,9 @@ lazy val commonSettings = Seq(
     "org.apache.logging.log4j" % "log4j-slf4j2-impl" % "2.23.1",
     "org.apache.logging.log4j" % "log4j-api" % "2.23.1"
   ),
+  excludeDependencies ++= Seq(
+    ExclusionRule("org.slf4j", "slf4j-reload4j")
+  ),
   resolvers += Resolver.mavenLocal,
   autoScalaLibrary := false,
   crossPaths := false,  // No scala cross building
