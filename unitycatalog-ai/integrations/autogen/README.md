@@ -27,8 +27,8 @@ To use Databricks-managed Unity Catalog with this package, follow the [instructi
 Initialize a client for managing UC functions in a Databricks workspace, and set it as the global client.
 
 ```python
-from ucai.core.client import set_uc_function_client
-from ucai.core.databricks import DatabricksFunctionClient
+from unitycatalog.ai.core.client import set_uc_function_client
+from unitycatalog.ai.core.databricks import DatabricksFunctionClient
 
 client = DatabricksFunctionClient(
     warehouse_id="..." # replace with the warehouse_id
