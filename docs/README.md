@@ -10,23 +10,24 @@ To start testing or modifying the documentation locally, follow these steps:
 
 ### 1. Install MkDocs
 
-While you may install **MkDocs** directly using `pip`, it is recommended to install it along with other dependencies via the `requirements-docs.txt` file in step 3. This ensures that all necessary dependencies are handled together, especially when working in a virtual environment.
+While you may install **MkDocs** directly using `pip`, it is recommended to install it along with other dependencies via the `requirements-docs.txt` file in step 3.
+This ensures that all necessary dependencies are handled together, especially when working in a virtual environment.
 
-If you prefer to use **pipx**, you can install MkDocs globally with the following command:
+If you prefer to use pipx, you can install MkDocs globally with the following command:
 
-   ```bash
-   pipx install mkdocs
-   ```
+```bash
+pipx install mkdocs
+```
 
 ### 2. Clone the Repository
 
 Clone the Unity Catalog repository:
 
-   ```bash
-   git clone https://github.com/unitycatalog/unitycatalog.git
-   ```
+```bash
+git clone https://github.com/unitycatalog/unitycatalog.git
+```
 
-After cloning, navigate to the top-level directory of the repository. There is no need to switch into the docs directory, as the requirements-docs.txt file is located in the top-level directory.
+After cloning, navigate to the top-level directory of the repository. There is no need to switch into the docs directory, as the `requirements-docs.txt` file is located in the top-level directory.
 
 ### 3. Install the Required Dependencies
 
