@@ -17,3 +17,8 @@ MD024:
 # First line in a file should be a top-level heading
 # Ignoring to allow the logo being displayed at the top of the page
 MD041: false
+
+# Code block style
+# Ignoring as we use different styles for different purposes and at some points also mkdocs is requring different
+# styles
+MD046: false
