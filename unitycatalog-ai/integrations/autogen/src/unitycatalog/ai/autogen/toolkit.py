@@ -28,7 +28,7 @@ class AutogenTool(BaseModel):
     """
 
     fn: Callable = Field(
-        description="Callable that will be usedcto execute the UC Function and will be registered"
+        description="Callable that will be used to execute the UC Function, registered to the AutoGen Agent definition"
     )
 
     name: str = Field(
