@@ -9,6 +9,8 @@ from databricks.sdk.service.catalog import (
     FunctionParameterInfos,
 )
 from pydantic import ValidationError
+
+from src.unitycatalog.ai.crewai.toolkit import UCFunctionToolkit
 from unitycatalog.ai.core.client import (
     FunctionExecutionResult,
 )
@@ -23,8 +25,6 @@ from unitycatalog.ai.test_utils.function_utils import (
     CATALOG,
     create_function_and_cleanup,
 )
-
-from src.unitycatalog.ai.crewai.toolkit import UCFunctionToolkit
 
 SCHEMA = os.environ.get("SCHEMA", "ucai_crewai_test")
 
