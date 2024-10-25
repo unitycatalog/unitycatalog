@@ -2,7 +2,6 @@ package io.unitycatalog.server.utils;
 
 import io.unitycatalog.server.exception.BaseException;
 import io.unitycatalog.server.exception.ErrorCode;
-import io.unitycatalog.server.persist.*;
 import java.util.regex.Pattern;
 
 public class ValidationUtils {
