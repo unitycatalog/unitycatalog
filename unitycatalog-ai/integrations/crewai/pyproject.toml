@@ -29,11 +29,12 @@ build-backend = "hatchling.build"
 
 [tool.hatch.build]
 include = [
-  "src/ucai_crewai/*"
+  "src/unitycatalog/ai/crewai/*"
 ]
 
 [tool.hatch.build.targets.wheel]
-packages = ["src/ucai_crewai"]
+sources = ["src"]
+only-include = ["src/unitycatalog/ai/crewai"]
 
 [tool.ruff]
 line-length = 100

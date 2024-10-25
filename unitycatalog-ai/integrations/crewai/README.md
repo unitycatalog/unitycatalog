@@ -30,8 +30,8 @@ To use Databricks-managed UC with this package, follow the [instructions here](h
 Initialize a client for managing UC functions in a Databricks workspace, and set it as the global client.
 
 ```python
-from ucai.core.client import set_uc_function_client
-from ucai.core.databricks import DatabricksFunctionClient
+from unitycatalog.ai.core.client import set_uc_function_client
+from unitycatalog.ai.core.databricks import DatabricksFunctionClient
 
 client = DatabricksFunctionClient(
     warehouse_id="..." # replace with the warehouse_id
@@ -61,15 +61,15 @@ def make_uppercase(s: str) -> str:
 response = client.create_python_function(func=make_uppercase, catalog=CATALOG, schema=SCHEMA)
 ```
 
-Now that the function exists within the Catalog and Schema that we defined, we can interface with it from CrewAI using the ucai_crewai package.
+Now that the function exists within the Catalog and Schema that we defined, we can interface with it from CrewAI using the `unitycatalog-crewai` package.
 
 #### Create an instance of a CrewAI compatible tool
 
 [CrewAI Tools](https://docs.crewai.com/core-concepts/Tools/) are callable external functions that GenAI applications can use (called by
-an LLM), which are exposed with a UC interface through the use of the ucai_crewai package via the `UCFunctionToolkit` API.
+an LLM), which are exposed with a UC interface through the use of the `unitycatalog-crewai` package via the `UCFunctionToolkit` API.
 
 ```python
-from ucai_crewai.toolkit import UCFunctionToolkit
+from unitycatalog.ai.crewai.toolkit import UCFunctionToolkit
 
 # Pass the UC function name that we created to the constructor
 toolkit = UCFunctionToolkit(function_names=[function_name])

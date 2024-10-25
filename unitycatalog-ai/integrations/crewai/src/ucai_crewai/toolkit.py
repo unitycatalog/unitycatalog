@@ -78,17 +78,17 @@ class UCFunctionToolkit(BaseModel):
 
     # CrewAI parameters, which can be found in the link below
     # https://github.com/crewAIInc/crewAI-tools/blob/main/crewai_tools/tools/base_tool.py#L21
-    description_updated: Optional[bool] = Field(
+    description_updated: bool = Field(
         default=False, description="Flag to check if the description has been updated."
     )
-    cache_function: Optional[Callable] = Field(
+    cache_function: Callable = Field(
         default=lambda _args, _result: True,
         description=(
             "Function that will be used to determine if the tool should be cached, should return "
             "a boolean. If None, the tool will be cached."
         ),
     )
-    result_as_answer: Optional[bool] = Field(
+    result_as_answer: bool = Field(
         default=False, description="Flag to check if the tool should be the final agent answer."
     )
 
@@ -116,9 +116,9 @@ class UCFunctionToolkit(BaseModel):
         client: Optional[BaseFunctionClient] = None,
         function_name: Optional[str] = None,
         function_info: Optional[Any] = None,
-        description_updated: Optional[bool] = False,
-        cache_function: Optional[Callable] = lambda _args, _result: True,
-        result_as_answer: Optional[bool] = False,
+        description: bool = False,
+        cache_function: Callable = lambda _args, _result: True,
+        result_as_answer: bool = False,
         **kwargs,
     ) -> CrewAIBaseTool:
         """
