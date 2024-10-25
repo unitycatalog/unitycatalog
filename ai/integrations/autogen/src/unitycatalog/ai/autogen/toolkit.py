@@ -51,7 +51,8 @@ class AutogenTool(BaseModel):
         self,
         *,
         callers: Union[ConversableAgent, List[ConversableAgent]],
-        executors: Union[ConversableAgent, List[ConversableAgent]]) -> None:
+        executors: Union[ConversableAgent, List[ConversableAgent]],
+    ) -> None:
         """
         Registers the function associated with the Autogen tool for all combinations of callers and executors.
 
@@ -67,13 +68,17 @@ class AutogenTool(BaseModel):
         if isinstance(callers, ConversableAgent):
             callers = [callers]
         elif not isinstance(callers, list):
-            raise TypeError("callers must be a ConversableAgent or a list of ConversableAgent instances.")
+            raise TypeError(
+                "callers must be a ConversableAgent or a list of ConversableAgent instances."
+            )
 
         # Ensure executors is a list
         if isinstance(executors, ConversableAgent):
             executors = [executors]
         elif not isinstance(executors, list):
-            raise TypeError("executors must be a ConversableAgent or a list of ConversableAgent instances.")
+            raise TypeError(
+                "executors must be a ConversableAgent or a list of ConversableAgent instances."
+            )
 
         # Update tool signature for each caller
         for caller in callers:
@@ -184,8 +189,10 @@ class UCFunctionToolkit(BaseModel):
         Retrieves the list of Autogen tools managed by the toolkit.
         """
         return list(self.tools_dict.values())
-       
-    def register_with_agents(self, *, callers: ConversableAgent, executors: ConversableAgent) -> None:
+
+    def register_with_agents(
+        self, *, callers: ConversableAgent, executors: ConversableAgent
+    ) -> None:
         """
         Registers all tools in the toolkit with the specified caller and executor agents.
 

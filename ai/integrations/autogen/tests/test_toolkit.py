@@ -159,10 +159,11 @@ def test_toolkit_creation_errors():
         UCFunctionToolkit(function_names=[], client="client")
 
 
-
 def test_toolkit_creation_errors(client):
-    with pytest.raises(ValueError, match=r"Cannot create tool instances without function_names being provided."):
-        UCFunctionToolkit(function_names=[],client=client)
+    with pytest.raises(
+        ValueError, match=r"Cannot create tool instances without function_names being provided."
+    ):
+        UCFunctionToolkit(function_names=[], client=client)
 
 
 def test_toolkit_function_argument_errors(client):
@@ -171,7 +172,6 @@ def test_toolkit_function_argument_errors(client):
         match=r"1 validation error for UCFunctionToolkit\nfunction_names\n  Field required",
     ):
         UCFunctionToolkit(client=client)
-
 
 
 def generate_function_info():
@@ -237,38 +237,39 @@ def test_toolkit_with_invalid_function_input(client):
         with pytest.raises(ValueError, match="Extra parameters provided that are not defined"):
             tool.fn(**invalid_inputs)
 
+
 def test_register_with_agents(client):
     # Create a sample UCFunctionToolkit with mock function names
-    function_names = ['catalog.schema.function']
-    
+    function_names = ["catalog.schema.function"]
+
     # Create a realistic FunctionInfo object
     function_info = FunctionInfo(
-        catalog_name='catalog',
-        schema_name='schema',
-        name='function',
+        catalog_name="catalog",
+        schema_name="schema",
+        name="function",
         input_params=FunctionParameterInfos(parameters=[]),
         # Add other necessary attributes if required
     )
-    
+
     # Create a mock AutogenTool with a mocked register_function method
     mock_autogen_tool = mock.create_autospec(AutogenTool)
     # Ensure that register_function is a Mock
     mock_autogen_tool.register_function = mock.MagicMock()
-    
+
     with mock.patch.object(
-        UCFunctionToolkit,
-        'uc_function_to_autogen_tool',
-        return_value=mock_autogen_tool
+        UCFunctionToolkit, "uc_function_to_autogen_tool", return_value=mock_autogen_tool
     ):
-        toolkit = UCFunctionToolkit(function_names=function_names,client = client)
-        
+        toolkit = UCFunctionToolkit(function_names=function_names, client=client)
+
         # Mock agents
         mock_callers = mock.MagicMock(spec=ConversableAgent)
         mock_executors = mock.MagicMock(spec=ConversableAgent)
-        
+
         # Call register_with_agents
         toolkit.register_with_agents(callers=mock_callers, executors=mock_executors)
-        
+
         # Assert that register_function was called on the tool with the correct parameters
         for tool in toolkit.tools:
-            tool.register_function.assert_called_once_with(callers=mock_callers, executors=mock_executors)
+            tool.register_function.assert_called_once_with(
+                callers=mock_callers, executors=mock_executors
+            )
