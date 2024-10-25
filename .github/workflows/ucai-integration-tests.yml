@@ -124,7 +124,7 @@ jobs:
     timeout-minutes: 20
     defaults:
       run:
-        working-directory: unitycatalog-ai
+        working-directory: ai
     steps:
       - name: Checkout code
         uses: actions/checkout@v4

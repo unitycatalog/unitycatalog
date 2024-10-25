@@ -1,6 +1,6 @@
 [project]
 name = "unitycatalog-autogen"
-version = "0.0.1"
+version = "0.1.0"
 description = "Support for Unity Catalog functions as autogen tools"
 authors = [
     { name="Puneet Jain", email="puneet.jain@databricks.com" }

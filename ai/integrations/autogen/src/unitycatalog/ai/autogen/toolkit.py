@@ -1,5 +1,5 @@
 import json
-from typing import Any, Callable, Dict, List, Optional
+from typing import Any, Callable, Dict, List, Optional, Union
 
 from openai import pydantic_function_tool
 from packaging import version
@@ -47,17 +47,41 @@ class AutogenTool(BaseModel):
         """
         return {"name": self.name, "description": self.description, "tool": self.tool}
 
-    def register_function(self, caller: ConversableAgent, executor: ConversableAgent) -> None:
+    def register_function(
+        self,
+        *,
+        callers: Union[ConversableAgent, List[ConversableAgent]],
+        executors: Union[ConversableAgent, List[ConversableAgent]]) -> None:
         """
-        Registers the function associated with the Autogen tool.
+        Registers the function associated with the Autogen tool for all combinations of callers and executors.
 
-        This method registers the callable function (`fn`) with the provided executor.
-        It also updates the tool signature with the caller to ensure that the function's definition
+        This method registers the callable function (`fn`) with each provided executor.
+        It also updates the tool signature with each caller to ensure that the function's definition
         is correctly reflected in the overall toolset.
 
+        Args:
+            callers (ConversableAgent or List[ConversableAgent]): The agent(s) that will call the tool.
+            executors (ConversableAgent or List[ConversableAgent]): The agent(s) that will execute the tool's function.
         """
-        caller.update_tool_signature(self.tool, is_remove=False)
-        executor.register_function({self.name: executor._wrap_function(self.fn)})
+        # Ensure callers is a list
+        if isinstance(callers, ConversableAgent):
+            callers = [callers]
+        elif not isinstance(callers, list):
+            raise TypeError("callers must be a ConversableAgent or a list of ConversableAgent instances.")
+
+        # Ensure executors is a list
+        if isinstance(executors, ConversableAgent):
+            executors = [executors]
+        elif not isinstance(executors, list):
+            raise TypeError("executors must be a ConversableAgent or a list of ConversableAgent instances.")
+
+        # Update tool signature for each caller
+        for caller in callers:
+            caller.update_tool_signature(self.tool, is_remove=False)
+
+        # Register function with each executor
+        for executor in executors:
+            executor.register_function({self.name: executor._wrap_function(self.fn)})
 
 
 class UCFunctionToolkit(BaseModel):
@@ -160,3 +184,14 @@ class UCFunctionToolkit(BaseModel):
         Retrieves the list of Autogen tools managed by the toolkit.
         """
         return list(self.tools_dict.values())
+       
+    def register_with_agents(self, *, callers: ConversableAgent, executors: ConversableAgent) -> None:
+        """
+        Registers all tools in the toolkit with the specified caller and executor agents.
+
+        Args:
+            caller (ConversableAgent): The agent that will call the tools.
+            executor (ConversableAgent): The agent that will execute the tools' functions.
+        """
+        for tool in self.tools:
+            tool.register_function(callers=callers, executors=executors)
