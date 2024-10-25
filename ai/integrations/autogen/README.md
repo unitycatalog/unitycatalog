@@ -41,7 +41,7 @@ set_uc_function_client(client)
 
 #### Create a function in UC
 
-Create a python UDF in Unity Catalog with the client
+Create Python UDFs in Unity Catalog with the client.
 
 ```python
 # replace with your own catalog and schema
@@ -103,7 +103,7 @@ tools = toolkit.tools
 
 Now that we have the defined tools from Unity Catalog, we can directly pass this definition to the Conversable Agent API within Autogen.
 
-If you would like to validate that your tool is functional prior to proceeding to integrate it with LlamaIndex, you can call the tool directly:
+If you would like to validate that your tool is functional prior to proceeding to integrate it with Autogen, you can call the tool directly:
 
 ```python
 my_tool = tools[0]
@@ -116,21 +116,21 @@ my_tool.fn(**{"location": "San Francisco"})
 ```python
 
 import os
-from autogen import ConversableAgent,GroupChat, GroupChatManager
+from autogen import ConversableAgent, GroupChat, GroupChatManager
 
-OPENAI_API_KEY ='.....'
+OPENAI_API_KEY = '.....'
 
-# Let's first define the assistant agent that suggests tool calls.
+# Define the assistant agent that suggests tool calls
 assistant = ConversableAgent(
     name="Assistant",
-    system_message= """You are a helpful AI assistant.
+    system_message="""You are a helpful AI assistant.
     You can tell the temperature of a location using function calling.
-    Return 'TERMINATE' when the task is done and final answer is returned."""
+    Return 'TERMINATE' when the task is done and the final answer is returned.""",
     llm_config={"config_list": [{"model": "gpt-4", "api_key": OPENAI_API_KEY}]},
 )
 
 # The user proxy agent is used for interacting with the assistant agent
-# and executes tool calls.
+# and executes tool calls
 user_proxy = ConversableAgent(
     name="User",
     llm_config=False,
@@ -140,17 +140,18 @@ user_proxy = ConversableAgent(
 
 converter = ConversableAgent(
     name="Fahrenheit_converter",
-    system_message= """You are a helpful AI assistant.""",
+    system_message="You are a helpful AI assistant.",
     llm_config={"config_list": [{"model": "gpt-4", "api_key": OPENAI_API_KEY}]},
 )
 ```
 
-Once you have created a tool, you can register it with the agents that are involved in the conversation.
+Once you have created a tool, you can register it with the agents involved in the conversation.
 
 Similar to code executors, a tool must be registered with at least two agents for it to be useful in conversation: the agent which can call the tool and an agent which can execute the tool’s function.
 
-you can use `register_function` method to register a tool with both agents at once.
-below is an example
+You can use the `register_function` method to register a tool with both agents at once.
+
+Below are examples of registering agent pairs with their corresponding functions.
 
 ```python
 
@@ -171,25 +172,32 @@ tool_temp_c_to_f.register_function(callers = agent_pairs_temp_c_to_f['callers'],
 
 ```
 
-Alternatively, you can use the `register_with_agents` method from the UCFunctionToolkit class
-to register all tools at once:
+Alternatively, you can use the `register_with_agents` method from the UCFunctionToolkit class to register all tools at once:
 
 ```python
 
-toolkit.register_with_agents(callers = [assistant,converter],
-                           executors = [user_proxy])
+toolkit.register_with_agents(
+    callers=[assistant, converter],
+    executors=[user_proxy]
+)
 
 ```
 
 #### Calling the function
 
 ```python
-groupchat = GroupChat(agents=[user_proxy, assistant, converter], messages=[], max_round=10)
-manager = GroupChatManager(groupchat=groupchat, llm_config={"config_list": [{"model": "gpt-4", "api_key": OPENAI_API_KEY}]})
-
+groupchat = GroupChat(
+    agents=[user_proxy, assistant, converter],
+    messages=[],
+    max_round=10
+)
+manager = GroupChatManager(
+    groupchat=groupchat,
+    llm_config={"config_list": [{"model": "gpt-4", "api_key": OPENAI_API_KEY}]}
+)
 
 user_proxy.initiate_chat(
-    manager, message="what is the temperature in SF in Fahrenheit?"
+    manager, message="What is the temperature in SF in Fahrenheit?"
 )
 
 ```
@@ -197,102 +205,71 @@ user_proxy.initiate_chat(
 Output
 
 ```text
-what is the temperature in SF in Fahrenheit?
+What is the temperature in SF in Fahrenheit?
 
 --------------------------------------------------------------------------------
-[32m
 Next speaker: Assistant
-[0m
-[31m
->>>>>>>> USING AUTO REPLY...[0m
-[33mAssistant[0m (to chat_manager):
+>>>>>>>>> USING AUTO REPLY...
+Assistant (to chat_manager):
 
-[32m***** Suggested tool call (call_H2zLxWFnnA3m5LXlrM6npeID): puneetjain_uc__autogen_ucai__get_temperature *****[0m
+***** Suggested tool call: get_temperature *****
 Arguments: 
 {
   "location": "SF"
 }
-[32m*************************************************************************************************************[0m
+***********************************************
 
 --------------------------------------------------------------------------------
-[32m
 Next speaker: User
-[0m
-[35m
->>>>>>>> EXECUTING FUNCTION puneetjain_uc__autogen_ucai__get_temperature...[0m
-[33mUser[0m (to chat_manager):
+>>>>>>>>> EXECUTING FUNCTION get_temperature...
+User (to chat_manager):
 
-[33mUser[0m (to chat_manager):
-
-[32m***** Response from calling tool (call_H2zLxWFnnA3m5LXlrM6npeID) *****[0m
+***** Response from calling tool *****
 {"format": "SCALAR", "value": "31.9 C", "truncated": false}
-[32m**********************************************************************[0m
+***********************************************
 
 --------------------------------------------------------------------------------
-[32m
 Next speaker: Fahrenheit_converter
-[0m
-[31m
->>>>>>>> USING AUTO REPLY...[0m
-[33mFahrenheit_converter[0m (to chat_manager):
+>>>>>>>>> USING AUTO REPLY...
+Fahrenheit_converter (to chat_manager):
 
-[32m***** Suggested tool call (call_3p8qKSQ5QCe6d5ep7JrvFadc): puneetjain_uc__autogen_ucai__TempCtoF *****[0m
+***** Suggested tool call: temp_c_to_f *****
 Arguments: 
 {
-  "Celsius": "31.9"
+  "celsius": "31.9"
 }
-[32m******************************************************************************************************[0m
+***********************************************
 
 --------------------------------------------------------------------------------
-[32m
 Next speaker: User
-[0m
-[35m
->>>>>>>> EXECUTING FUNCTION puneetjain_uc__autogen_ucai__TempCtoF...[0m
-[33mUser[0m (to chat_manager):
+>>>>>>>>> EXECUTING FUNCTION temp_c_to_f...
+User (to chat_manager):
 
-[33mUser[0m (to chat_manager):
-
-[32m***** Response from calling tool (call_3p8qKSQ5QCe6d5ep7JrvFadc) *****[0m
+***** Response from calling tool *****
 {"format": "SCALAR", "value": "89.42", "truncated": false}
-[32m**********************************************************************[0m
+***********************************************
 
 --------------------------------------------------------------------------------
-[32m
 Next speaker: Assistant
-[0m
-[31m
->>>>>>>> USING AUTO REPLY...[0m
-[33mAssistant[0m (to chat_manager):
+>>>>>>>>> USING AUTO REPLY...
+Assistant (to chat_manager):
 
 The temperature in SF is 89.42°F.
 
 --------------------------------------------------------------------------------
-[32m
 Next speaker: User
-[0m
-[33mUser[0m (to chat_manager):
-
-
+User (to chat_manager):
 
 --------------------------------------------------------------------------------
-[32m
 Next speaker: User
-[0m
-[33mUser[0m (to chat_manager):
-
-
+User (to chat_manager):
 
 --------------------------------------------------------------------------------
-[32m
 Next speaker: Assistant
-[0m
-[31m
->>>>>>>> USING AUTO REPLY...[0m
-[33mAssistant[0m (to chat_manager):
+>>>>>>>>> USING AUTO REPLY...
+Assistant (to chat_manager):
 
 TERMINATE
-
 --------------------------------------------------------------------------------
 
 
