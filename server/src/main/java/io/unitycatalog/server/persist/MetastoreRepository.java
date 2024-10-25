@@ -63,6 +63,7 @@ public class MetastoreRepository {
         LOGGER.info("Server initialized with metastore id: {}", metastoreDAO.getId());
         return metastoreDAO;
       } catch (Exception e) {
+        LOGGER.error("Failed to initialize metastore", e);
         tx.rollback();
         throw e;
       }

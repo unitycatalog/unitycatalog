@@ -33,6 +33,9 @@ nav:
       - XTable: integrations/unity-catalog-xtable.md
   - Deployment: deployment.md
 
+exclude_docs: |
+  README.md
+
 plugins:
   - search
   - material-plausible
