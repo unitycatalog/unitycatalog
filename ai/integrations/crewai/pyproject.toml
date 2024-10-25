@@ -1,5 +1,5 @@
 [project]
-name = "ucai-crewai"
+name = "unitycatalog-crewai"
 version = "0.1.0"
 description = "Support for Unity Catalog functions as CrewAI tools"
 authors = [
@@ -18,7 +18,6 @@ dependencies = [
 dev = [
   "pytest",
   "typing_extensions",
-  # temporarily needed until ucai-core[databricks] is released
   "databricks-sdk>=0.32.0",
   "databricks-connect",
   "ruff==0.6.4",
