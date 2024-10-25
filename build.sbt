@@ -445,6 +445,12 @@ lazy val cli = (project in file("examples") / "cli")
       "org.fusesource.jansi" % "jansi" % "2.4.1",
       "com.amazonaws" % "aws-java-sdk-core" % "1.12.728",
       "org.apache.hadoop" % "hadoop-aws" % "3.4.0",
+      "org.apache.hadoop" % "hadoop-azure-dls" % "3.3.1",
+      "com.google.cloud.bigdataoss" % "gcs-connector" % "hadoop3-2.2.8" exclude("io.grpc", "grpc-context") exclude("io.grpc", "grpc-api"),
+      "io.grpc" % "grpc-context" % "1.65.1",
+      "io.grpc" % "grpc-api" % "1.65.1",
+      "com.google.cloud" % "google-cloud-core" % "2.41.0",
+      "com.google.api" % "gax-grpc" % "2.48.0",
       "com.google.guava" % "guava" % "31.0.1-jre",
       // Test dependencies
       "org.junit.jupiter" % "junit-jupiter" % "5.10.3" % Test,

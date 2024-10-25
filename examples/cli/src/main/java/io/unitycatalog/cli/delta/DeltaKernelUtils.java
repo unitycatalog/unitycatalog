@@ -9,8 +9,8 @@ import io.delta.kernel.defaults.engine.DefaultEngine;
 import io.delta.kernel.engine.Engine;
 import io.delta.kernel.types.*;
 import io.delta.kernel.utils.CloseableIterable;
-import io.unitycatalog.client.model.AwsCredentials;
 import io.unitycatalog.client.model.ColumnInfo;
+import io.unitycatalog.client.model.TemporaryCredentials;
 import java.net.URI;
 import java.util.*;
 import java.util.stream.IntStream;
@@ -28,38 +28,32 @@ import org.apache.hadoop.fs.FileSystem;
 public class DeltaKernelUtils {
 
   public static String createDeltaTable(
-      String tablePath, List<ColumnInfo> columns, AwsCredentials awsTempCredentials) {
-    try {
-      URI tablePathUri = URI.create(tablePath);
-      Engine engine = getEngine(tablePathUri, awsTempCredentials);
-      Table table = Table.forPath(engine, substituteSchemeForS3(tablePath));
-      // construct the schema
-      StructType tableSchema = getSchema(columns);
-      TransactionBuilder txnBuilder =
-          table.createTransactionBuilder(engine, "UnityCatalogCli", Operation.CREATE_TABLE);
-      // Set the schema of the new table on the transaction builder
-      txnBuilder = txnBuilder.withSchema(engine, tableSchema);
-      // Build the transaction
-      Transaction txn = txnBuilder.build(engine);
-      // create an empty table
-      TransactionCommitResult commitResult = txn.commit(engine, CloseableIterable.emptyIterable());
-      if (commitResult.getVersion() >= 0) {
-        System.out.println("Table created successfully at: " + tablePath);
-      } else {
-        throw new RuntimeException("Table creation failed");
-      }
-    } catch (Exception e) {
-      throw new IllegalArgumentException("Failed to create delta table", e);
+      String tablePath, List<ColumnInfo> columns, TemporaryCredentials temporaryCredentials) {
+    tablePath = tablePath.replace("s3://", "s3a://");
+    URI tableUri = URI.create(tablePath);
+    Configuration conf = getHDFSConfiguration(tableUri, temporaryCredentials);
+    Engine engine = DefaultEngine.create(conf);
+    Table table = Table.forPath(engine, tableUri.toString());
+    // construct the schema
+    StructType tableSchema = getSchema(columns);
+    TransactionBuilder txnBuilder =
+        table.createTransactionBuilder(engine, "UnityCatalogCli", Operation.CREATE_TABLE);
+    // Set the schema of the new table on the transaction builder
+    txnBuilder = txnBuilder.withSchema(engine, tableSchema);
+    // Build the transaction
+    Transaction txn = txnBuilder.build(engine);
+    // create an empty table
+    TransactionCommitResult commitResult = txn.commit(engine, CloseableIterable.emptyIterable());
+    if (commitResult.getVersion() >= 0) {
+      System.out.println("Table created successfully at: " + tableUri);
+    } else {
+      throw new RuntimeException("Table creation failed");
     }
     return EMPTY;
   }
 
   public static String substituteSchemeForS3(String tablePath) {
     return tablePath.replace("s3://", "s3a://");
-  }
-
-  public static Engine getEngine(URI tablePathUri, AwsCredentials awsTempCredentials) {
-    return DefaultEngine.create(getHDFSConfiguration(tablePathUri, awsTempCredentials));
   }
 
   public static FileSystem getFileSystem(URI tablePathURI, Configuration conf) {
@@ -71,30 +65,81 @@ public class DeltaKernelUtils {
   }
 
   public static Configuration getHDFSConfiguration(
-      URI tablePathUri, AwsCredentials awsTempCredentials) {
+      URI tablePathUri, TemporaryCredentials temporaryCredentials) {
     Configuration conf = new Configuration();
-    if (tablePathUri.getScheme() != null
-        && tablePathUri.getScheme().equals("s3")
-        && awsTempCredentials == null) {
-      throw new IllegalArgumentException("AWS temporary credentials are missing");
+
+    String scheme = tablePathUri.getScheme();
+    if (scheme == null) {
+      throw new IllegalArgumentException("URI scheme is missing");
     }
-    if (tablePathUri.getScheme().equals("s3")) {
-      conf.set("fs.s3a.access.key", awsTempCredentials.getAccessKeyId());
-      conf.set("fs.s3a.secret.key", awsTempCredentials.getSecretAccessKey());
-      conf.set("fs.s3a.session.token", awsTempCredentials.getSessionToken());
-      conf.set("fs.s3a.impl", "org.apache.hadoop.fs.s3a.S3AFileSystem");
-      conf.set("fs.s3a.path.style.access", "true");
-    } else if (tablePathUri.getScheme().equals("file")) {
-      conf.set("fs.file.impl", "org.apache.hadoop.fs.LocalFileSystem");
-    } else {
-      throw new IllegalArgumentException("Unsupported URI scheme: " + tablePathUri.getScheme());
+
+    System.out.println(temporaryCredentials);
+
+    switch (scheme) {
+      case "s3":
+      case "s3a":
+        if (temporaryCredentials.getAwsTempCredentials() == null) {
+          throw new IllegalArgumentException("AWS temporary credentials are missing");
+        }
+        conf.set(
+            "fs.s3a.access.key", temporaryCredentials.getAwsTempCredentials().getAccessKeyId());
+        conf.set(
+            "fs.s3a.secret.key", temporaryCredentials.getAwsTempCredentials().getSecretAccessKey());
+        conf.set(
+            "fs.s3a.session.token", temporaryCredentials.getAwsTempCredentials().getSessionToken());
+        conf.set("fs.s3a.impl", "org.apache.hadoop.fs.s3a.S3AFileSystem");
+        conf.set("fs.s3a.path.style.access", "true");
+        break;
+
+      case "gs":
+        if (temporaryCredentials.getGcpOauthToken() == null) {
+          throw new IllegalArgumentException("GCP OAuth token is missing");
+        }
+        conf.set("fs.gs.impl", "com.google.cloud.hadoop.fs.gcs.GoogleHadoopFileSystem");
+        conf.set("fs.AbstractFileSystem.gs.impl", "com.google.cloud.hadoop.fs.gcs.GoogleHadoopFS");
+        conf.set("fs.gs.auth.type", "USER_CREDENTIALS");
+        conf.set(
+            "fs.gs.auth.refresh.token", temporaryCredentials.getGcpOauthToken().getOauthToken());
+        break;
+
+      case "abfs":
+      case "abfss":
+        String accountName = null;
+        String authority = tablePathUri.getAuthority();
+        if (authority != null && authority.contains(".dfs.core.windows.net")) {
+          accountName = authority.split("\\.")[0].split("@")[1];
+        }
+        System.out.println(accountName);
+        if (accountName == null) {
+          throw new IllegalArgumentException("Unable to extract account name from URI");
+        }
+        if (temporaryCredentials.getAzureUserDelegationSas() == null) {
+          throw new IllegalArgumentException("Azure User Delegation SAS token is missing");
+        }
+        conf.set("fs.azure.account.auth.type." + accountName + ".dfs.core.windows.net", "SAS");
+        conf.set(
+            "fs.azure.sas.token.provider.type." + accountName + ".dfs.core.windows.net",
+            "org.apache.hadoop.fs.azurebfs.sas.FixedSASTokenProvider");
+        conf.set(
+            "fs.azure.sas.fixed.token." + accountName + ".dfs.core.windows.net",
+            temporaryCredentials.getAzureUserDelegationSas().getSasToken());
+        break;
+
+      case "file":
+        conf.set("fs.file.impl", "org.apache.hadoop.fs.LocalFileSystem");
+        break;
+
+      default:
+        throw new IllegalArgumentException("Unsupported URI scheme: " + scheme);
     }
+
     return conf;
   }
 
   public static String readDeltaTable(
-      String tablePath, AwsCredentials awsCredentials, int maxResults) {
-    Engine engine = getEngine(URI.create(tablePath), awsCredentials);
+      String tablePath, TemporaryCredentials temporaryCredentials, int maxResults) {
+    Configuration conf = getHDFSConfiguration(URI.create(tablePath), temporaryCredentials);
+    Engine engine = DefaultEngine.create(conf);
     try {
       Table table = Table.forPath(engine, substituteSchemeForS3(tablePath));
       Snapshot snapshot = table.getLatestSnapshot(engine);
