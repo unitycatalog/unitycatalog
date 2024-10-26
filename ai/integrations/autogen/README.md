@@ -118,8 +118,9 @@ my_tool.fn(**{"location": "San Francisco"})
 import os
 from autogen import ConversableAgent, GroupChat, GroupChatManager
 
+
 # Set up API keys
-os.environ["OPENAI_API_KEY"] = "your key"
+OPENAI_API_KEY = os.environ["OPENAI_API_KEY"]
 
 # Define the assistant agent that suggests tool calls
 assistant = ConversableAgent(
