@@ -118,7 +118,6 @@ def test_toolkit_e2e_manually_passing_client(use_serverless, monkeypatch):
         assert len(tools) == 1
         tool = tools[0]
         assert tool.name == func_obj.tool_name
-        # Validate CrewAI description format
         assert func_obj.full_function_name.replace(".", "__") in tool.description
         assert func_obj.comment in tool.description
         assert (
