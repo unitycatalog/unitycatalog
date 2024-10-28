@@ -223,6 +223,32 @@ lazy val client = (project in file("target/clients/java"))
     }
   )
 
+lazy val pythonClient = (project in file("clients/python/target"))
+  .enablePlugins(OpenApiGeneratorPlugin)
+  .settings(
+    // name of the generation step. See `openApiPackageName` for the actual Python package name
+    name := s"$artifactNamePrefix-python-client",
+    commonSettings,
+    (Compile / compile) := ((Compile / compile) dependsOn generate).value,
+
+    // OpenAPI generation specs
+    openApiInputSpec := (file(".") / "api" / "all.yaml").toString,
+    openApiGeneratorName := "python",
+    openApiOutputDir := (file("clients") / "python" / "target").toString,
+    openApiPackageName := s"$artifactNamePrefix",
+    openApiAdditionalProperties := Map(
+      "packageVersion" -> s"${version.value.replace("-SNAPSHOT", ".dev0")}",
+    ),
+    openApiGenerateApiTests := SettingDisabled,
+    openApiGenerateModelTests := SettingDisabled,
+    openApiGenerateApiDocumentation := SettingDisabled,
+    openApiGenerateModelDocumentation := SettingDisabled,
+    // Define the simple generate command to generate full client codes
+    generate := {
+      val _ = openApiGenerate.value
+    }
+  )
+
 lazy val apiDocs = (project in file("api"))
   .enablePlugins(OpenApiGeneratorPlugin)
   .settings(
@@ -286,6 +312,9 @@ lazy val server = (project in file("server"))
 
       //For s3 access
       "com.amazonaws" % "aws-java-sdk-s3" % "1.12.728",
+      "software.amazon.awssdk" % "sso" % "2.27.12",
+      "software.amazon.awssdk" % "ssooidc" % "2.27.12",
+
       "org.apache.httpcomponents" % "httpcore" % "4.4.16",
       "org.apache.httpcomponents" % "httpclient" % "4.5.14",
 
@@ -445,7 +474,7 @@ lazy val cli = (project in file("examples") / "cli")
       "org.fusesource.jansi" % "jansi" % "2.4.1",
       "com.amazonaws" % "aws-java-sdk-core" % "1.12.728",
       "org.apache.hadoop" % "hadoop-aws" % "3.4.0",
-      "org.apache.hadoop" % "hadoop-azure" % "3.3.1",
+      "org.apache.hadoop" % "hadoop-azure" % "3.4.0",
       "com.google.cloud.bigdataoss" % "gcs-connector" % "hadoop3-2.2.8" exclude("io.grpc", "grpc-context") exclude("io.grpc", "grpc-api"),
       "io.grpc" % "grpc-context" % "1.65.1",
       "io.grpc" % "grpc-api" % "1.65.1",
@@ -557,8 +586,41 @@ lazy val spark = (project in file("connectors/spark"))
     }
   )
 
+lazy val integrationTests = (project in file("integration-tests"))
+  .settings(
+    name := s"$artifactNamePrefix-integration-tests",
+    commonSettings,
+    javaOptions ++= Seq(
+      "--add-exports=java.base/sun.nio.ch=ALL-UNNAMED",
+    ),
+    skipReleaseSettings,
+    libraryDependencies ++= Seq(
+      "org.junit.jupiter" % "junit-jupiter" % "5.10.3" % Test,
+      "net.aichler" % "jupiter-interface" % JupiterKeys.jupiterVersion.value % Test,
+      "org.assertj" % "assertj-core" % "3.26.3" % Test,
+      "org.projectlombok" % "lombok" % "1.18.32" % Provided,
+      "org.apache.spark" %% "spark-sql" % "3.5.3" % Test,
+      "io.delta" %% "delta-spark" % "3.2.1" % Test,
+      "org.apache.hadoop" % "hadoop-aws" % "3.3.6" % Test,
+      "org.apache.hadoop" % "hadoop-azure" % "3.3.6" % Test,
+      "com.google.cloud.bigdataoss" % "gcs-connector" % "3.0.2" % Test classifier "shaded",
+      "io.unitycatalog" %% "unitycatalog-spark" % "0.2.0" % Test,
+    ),
+    dependencyOverrides ++= Seq(
+      "com.fasterxml.jackson.core" % "jackson-databind" % "2.15.0",
+      "com.fasterxml.jackson.module" %% "jackson-module-scala" % "2.15.0",
+      "com.fasterxml.jackson.core" % "jackson-annotations" % "2.15.0",
+      "com.fasterxml.jackson.core" % "jackson-core" % "2.15.0",
+      "com.fasterxml.jackson.dataformat" % "jackson-dataformat-xml" % "2.15.0",
+      "org.antlr" % "antlr4-runtime" % "4.9.3",
+      "org.antlr" % "antlr4" % "4.9.3",
+      "org.apache.hadoop" % "hadoop-client-api" % "3.3.6",
+    ),
+    Test / javaOptions += s"-Duser.dir=${((ThisBuild / baseDirectory).value / "integration-tests").getAbsolutePath}",
+  )
+
 lazy val root = (project in file("."))
-  .aggregate(serverModels, client, server, cli, spark, controlApi, controlModels, apiDocs)
+  .aggregate(serverModels, client, pythonClient, server, cli, spark, controlApi, controlModels, apiDocs)
   .settings(
     name := s"$artifactNamePrefix",
     createTarballSettings(),

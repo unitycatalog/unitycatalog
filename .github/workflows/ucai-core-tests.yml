@@ -1,0 +1,66 @@
+name: UCAI Core Tests
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - ai/**
+      - .github/workflows/ucai-*.yml
+  pull_request:
+    paths:
+      - ai/**
+      - .github/workflows/ucai-*.yml
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: ai
+    steps:
+      - name: Check out code
+        uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.9'
+      - name: Install dependencies
+        run: |
+          pip install -r requirements/lint-requirements.txt
+      - name: Lint Python code with ruff
+        run: |
+          ruff check .
+          ruff format --check .
+      - name: Lint YAML files with yamllint
+        run: yamllint .
+
+  core_tests:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ['3.9', '3.10']
+        pydantic-version: [1, 2]
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: ai/core
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+      - name: Install dependencies
+        run: |
+          pip install .[dev]
+          if [ ${{ matrix.pydantic-version }} == 1 ]; then
+            pip install 'pydantic<2'
+          else
+            pip install 'pydantic<3,>=2'
+          fi
+      - name: Run tests
+        run: |
+          pytest tests/

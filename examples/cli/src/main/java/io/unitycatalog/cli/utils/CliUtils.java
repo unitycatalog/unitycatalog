@@ -29,6 +29,7 @@ public class CliUtils {
   public static final String SCHEMA = "schema";
   public static final String VOLUME = "volume";
   public static final String TABLE = "table";
+  public static final String METASTORE = "metastore";
 
   public static final String FUNCTION = "function";
   public static final String REGISTERED_MODEL = "registered_model";
@@ -316,6 +317,13 @@ public class CliUtils {
                       new CliOptions(
                           List.of(CliParams.SECURABLE_TYPE, CliParams.NAME),
                           List.of(CliParams.PRINCIPAL)));
+                }
+              });
+          put(
+              METASTORE,
+              new HashMap<String, CliOptions>() {
+                {
+                  put(GET, new CliOptions(List.of(), List.of()));
                 }
               });
         }

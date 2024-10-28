@@ -9,7 +9,7 @@ import TablesList from '../components/tables/TablesList';
 import VolumesList from '../components/volumes/VolumesList';
 import FunctionsList from '../components/functions/FunctionsList';
 import { DatabaseOutlined } from '@ant-design/icons';
-import CreateAssetsDropdown from '../components/schemas/CreateAssetsDropdown';
+// import CreateAssetsDropdown from '../components/schemas/CreateAssetsDropdown';
 import SchemaActionsDropdown from '../components/schemas/SchemaActionDropdown';
 import { EditSchemaDescriptionModal } from '../components/modals/EditSchemaDescriptionModal';
 import { useNotification } from '../utils/NotificationContext';
@@ -40,7 +40,7 @@ export default function SchemaDetails() {
     if (location?.state?.tab && location?.state?.tab !== activeTab) {
       setActiveTab(location.state.tab);
     }
-  }, [location]);
+  }, [location, activeTab]);
 
   if (!catalog) throw new Error('Catalog name is required');
   if (!schema) throw new Error('Schema name is required');
