@@ -15,9 +15,6 @@ import io.unitycatalog.client.ApiException;
 import io.unitycatalog.client.api.TablesApi;
 import io.unitycatalog.client.api.TemporaryCredentialsApi;
 import io.unitycatalog.client.model.*;
-import java.net.URI;
-import java.nio.file.Path;
-import java.nio.file.Paths;
 import java.util.List;
 import org.apache.commons.cli.CommandLine;
 import org.json.JSONException;
@@ -102,14 +99,6 @@ public class TableCli {
     DeltaKernelUtils.createDeltaTable(
         tableInfo.getStorageLocation(), columnInfoList, temporaryCredentials);
     return objectWriter.writeValueAsString(tableInfo);
-  }
-
-  private static Path getLocalPath(String path) {
-    if (path.startsWith("file:")) {
-      return Paths.get(URI.create(path));
-    } else {
-      return Paths.get(path);
-    }
   }
 
   private static String listTables(TablesApi tablesApi, JSONObject json)

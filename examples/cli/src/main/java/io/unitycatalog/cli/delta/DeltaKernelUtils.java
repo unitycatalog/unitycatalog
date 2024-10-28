@@ -2,6 +2,7 @@ package io.unitycatalog.cli.delta;
 
 import static io.unitycatalog.cli.utils.CliUtils.EMPTY;
 
+import com.google.cloud.hadoop.util.AccessTokenProvider;
 import de.vandermeer.asciitable.AsciiTable;
 import io.delta.kernel.*;
 import io.delta.kernel.data.Row;
@@ -11,11 +12,14 @@ import io.delta.kernel.types.*;
 import io.delta.kernel.utils.CloseableIterable;
 import io.unitycatalog.client.model.ColumnInfo;
 import io.unitycatalog.client.model.TemporaryCredentials;
+import java.io.IOException;
 import java.net.URI;
 import java.util.*;
 import java.util.stream.IntStream;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.FileSystem;
+import org.apache.hadoop.fs.azurebfs.extensions.SASTokenProvider;
+import org.apache.hadoop.security.AccessControlException;
 
 /**
  * Utility class to create and read Delta tables. The create method creates a Delta table with the
@@ -95,11 +99,16 @@ public class DeltaKernelUtils {
         if (temporaryCredentials.getGcpOauthToken() == null) {
           throw new IllegalArgumentException("GCP OAuth token is missing");
         }
-        conf.set("fs.gs.impl", "com.google.cloud.hadoop.fs.gcs.GoogleHadoopFileSystem");
-        conf.set("fs.AbstractFileSystem.gs.impl", "com.google.cloud.hadoop.fs.gcs.GoogleHadoopFS");
-        conf.set("fs.gs.auth.type", "USER_CREDENTIALS");
         conf.set(
-            "fs.gs.auth.refresh.token", temporaryCredentials.getGcpOauthToken().getOauthToken());
+            GcsVendedTokenProvider.ACCESS_TOKEN_KEY,
+            temporaryCredentials.getGcpOauthToken().getOauthToken());
+        conf.set(
+            GcsVendedTokenProvider.ACCESS_TOKEN_EXPIRATION_KEY,
+            temporaryCredentials.getExpirationTime().toString());
+        conf.set("fs.gs.create.items.conflict.check.enable", "false");
+        conf.set("fs.gs.auth.type", "ACCESS_TOKEN_PROVIDER");
+        conf.set("fs.gs.impl.disable.cache", "true");
+        conf.set("fs.gs.auth.access.token.provider", GcsVendedTokenProvider.class.getName());
         break;
 
       case "abfs":
@@ -116,13 +125,14 @@ public class DeltaKernelUtils {
         if (temporaryCredentials.getAzureUserDelegationSas() == null) {
           throw new IllegalArgumentException("Azure User Delegation SAS token is missing");
         }
-        conf.set("fs.azure.account.auth.type." + accountName + ".dfs.core.windows.net", "SAS");
+        conf.set("fs.azure.account.auth.type", "SAS");
+        conf.set("fs.azure.account.hns.enabled", "true");
         conf.set(
-            "fs.azure.sas.token.provider.type." + accountName + ".dfs.core.windows.net",
-            "org.apache.hadoop.fs.azurebfs.sas.FixedSASTokenProvider");
-        conf.set(
-            "fs.azure.sas.fixed.token." + accountName + ".dfs.core.windows.net",
+            AbfsVendedTokenProvider.ACCESS_TOKEN_KEY,
             temporaryCredentials.getAzureUserDelegationSas().getSasToken());
+        conf.set("fs.abfs.impl.disable.cache", "true");
+        conf.set("fs.abfss.impl.disable.cache", "true");
+        conf.set("fs.azure.sas.token.provider.type", AbfsVendedTokenProvider.class.getName());
         break;
 
       case "file":
@@ -211,5 +221,49 @@ public class DeltaKernelUtils {
         throw new IllegalArgumentException("Unsupported basic data type: " + typeText);
     }
     return dataType;
+  }
+
+  public static class AbfsVendedTokenProvider implements SASTokenProvider {
+    private Configuration conf;
+    protected static final String ACCESS_TOKEN_KEY = "fs.azure.sas.fixed.token";
+
+    @Override
+    public String getSASToken(String account, String fileSystem, String path, String operation)
+        throws IOException, AccessControlException {
+      return conf.get(ACCESS_TOKEN_KEY);
+    }
+
+    @Override
+    public void initialize(Configuration configuration, String accountName) throws IOException {
+      this.conf = configuration;
+    }
+  }
+
+  public static class GcsVendedTokenProvider implements AccessTokenProvider {
+    protected static final String ACCESS_TOKEN_KEY = "fs.gs.auth.access.token.credential";
+    protected static final String ACCESS_TOKEN_EXPIRATION_KEY =
+        "fs.gs.auth.access.token.expiration";
+    private Configuration conf;
+
+    @Override
+    public AccessToken getAccessToken() {
+      return new AccessToken(
+          conf.get(ACCESS_TOKEN_KEY), Long.parseLong(conf.get(ACCESS_TOKEN_EXPIRATION_KEY)));
+    }
+
+    @Override
+    public void refresh() throws IOException {
+      throw new IOException("Temporary token, not refreshable");
+    }
+
+    @Override
+    public void setConf(Configuration configuration) {
+      conf = configuration;
+    }
+
+    @Override
+    public Configuration getConf() {
+      return conf;
+    }
   }
 }
