@@ -32,7 +32,8 @@ include = [
 ]
 
 [tool.hatch.build.targets.wheel]
-packages = ["src/unitycatalog/ai/litellm"]
+sources = ["src"]
+only-include = ["src/unitycatalog/ai/litellm"]
 
 [tool.ruff]
 line-length = 100
