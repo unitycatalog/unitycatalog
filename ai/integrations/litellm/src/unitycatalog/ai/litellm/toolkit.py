@@ -36,7 +36,7 @@ class LiteLLMTool(BaseModel):
         Converts the LiteLLM instance into a dictionary for the LiteLLM API. Note that LiteLLM API
         supports arbitrary JSON schemas, but here we adhere to the OpenAI tool schema.
         """
-        return {"name": self.name, "description": self.description, "tool": self.tool}
+        return self.tool
 
 
 class UCFunctionToolkit(BaseModel):
