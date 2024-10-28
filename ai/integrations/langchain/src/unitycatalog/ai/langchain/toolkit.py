@@ -14,6 +14,9 @@ from unitycatalog.ai.core.utils.function_processing_utils import (
 
 
 class UnityCatalogTool(StructuredTool):
+    uc_function_name: str = Field(
+        description="The full name of the function in the form of 'catalog.schema.function'",
+    )
     client_config: Dict[str, Any] = Field(
         description="Configuration of the client for managing the tool",
     )
@@ -104,6 +107,7 @@ class UCFunctionToolkit(BaseModel):
             description=function_info.comment or "",
             func=func,
             args_schema=generate_function_input_params_schema(function_info).pydantic_model,
+            uc_function_name=function_name,
             client_config=client.to_dict(),
         )
 
