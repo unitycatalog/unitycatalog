@@ -23,7 +23,7 @@ class UnityCatalogTool(FunctionTool):
         uc_function_name (str): The full name of the function in the form of 'catalog.schema.function'.
         client_config (Dict[str, Any]): Configuration of the client for managing the tool.
     """
-    
+
     uc_function_name: str = Field(
         description="The full name of the function in the form of 'catalog.schema.function'",
     )
@@ -33,7 +33,13 @@ class UnityCatalogTool(FunctionTool):
     )
 
     def __init__(
-        self, fn: Callable, metadata: ToolMetadata, uc_function_name: str, client_config: Dict[str, Any], *args, **kwargs
+        self,
+        fn: Callable,
+        metadata: ToolMetadata,
+        uc_function_name: str,
+        client_config: Dict[str, Any],
+        *args,
+        **kwargs,
     ):
         """
         Initializes the UnityCatalogTool.
