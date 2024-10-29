@@ -298,13 +298,15 @@ def sanitize_string_inputs_of_function_params(function_params: Dict[str, Any]) -
     for key, value in function_params.items():
         if isinstance(value, str):
             # Escape single quotes, backslashes, and control characters that would otherwise break Python code execution
-            sanitized_params[key] = (
+            parsed = (
                 value.replace("'", "''")
                 .replace("\\", "\\\\")
                 .replace("\r", "\\r")
                 .replace("\n", "\\n")
                 .replace("\t", "\\t")
             )
+            sanitized_params[key] = f"""{parsed}"""
+
         else:
             sanitized_params[key] = value
     return sanitized_params

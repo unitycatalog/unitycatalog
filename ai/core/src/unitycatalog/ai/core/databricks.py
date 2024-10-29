@@ -849,8 +849,6 @@ def get_execute_function_sql_command(function: "FunctionInfo", parameters: Dict[
                         param_value = base64.b64encode(param_value).decode("utf-8")
                     # Use ubbase64 to restore binary values.
                     arg_clause += f"unbase64('{param_value}')"
-                elif param_info.type_name == ColumnTypeName.STRING:
-                    arg_clause += f"'{param_value}'"
                 elif is_time_type(param_info.type_name.value):
                     date_str = (
                         param_value if isinstance(param_value, str) else param_value.isoformat()
