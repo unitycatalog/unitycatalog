@@ -516,11 +516,7 @@ test_cases = [
 
 @pytest.mark.parametrize("code_input, expected_output", test_cases)
 def test_code_execution(code_input: str, expected_output: str):
-    # Escape the code string as it would be for SQL inclusion
     escaped_code = sanitize_string_inputs_of_function_params({"code": code_input})
-    # Simulate SQL parsing which unescapes the string
     code_to_execute = unescape_sql_string(escaped_code["code"])
-    # Execute the code
     output = mock_execute_function(code_to_execute)
-    # Assert the output matches the expected output
     assert output == expected_output
