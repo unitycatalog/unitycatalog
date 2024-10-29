@@ -282,3 +282,29 @@ def supported_function_info_types():
         pass
 
     return types
+
+
+def sanitize_string_inputs_of_function_params(function_params: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Sanitize string inputs of function parameters to prevent injection attacks.
+
+    Args:
+        function_params: A dictionary of function parameters.
+
+    Returns:
+        A sanitized dictionary of function parameters.
+    """
+    sanitized_params = {}
+    for key, value in function_params.items():
+        if isinstance(value, str):
+            # Escape single quotes, backslashes, and control characters that would otherwise break Python code execution
+            sanitized_params[key] = (
+                value.replace("'", "''")
+                .replace("\\", "\\\\")
+                .replace("\r", "\\r")
+                .replace("\n", "\\n")
+                .replace("\t", "\\t")
+            )
+        else:
+            sanitized_params[key] = value
+    return sanitized_params
