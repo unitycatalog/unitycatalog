@@ -5,7 +5,7 @@ import os
 from hashlib import md5
 from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
-from pydantic import BaseModel, Field, create_model
+from pydantic import Field, create_model
 
 from unitycatalog.ai.core.utils.config import JSON_SCHEMA_TYPE, UC_LIST_FUNCTIONS_MAX_RESULTS
 from unitycatalog.ai.core.utils.pydantic_utils import (
@@ -239,8 +239,11 @@ def generate_function_input_params_schema(
     """
     if not isinstance(function_info, supported_function_info_types()):
         raise TypeError(f"Unsupported function info type: {type(function_info)}")
+    params_name = (
+        f"{function_info.catalog_name}__{function_info.schema_name}__{function_info.name}__params"
+    )
     if function_info.input_params is None:
-        return PydanticFunctionInputParams(pydantic_model=BaseModel, strict=strict)
+        return PydanticFunctionInputParams(pydantic_model=create_model(params_name), strict=strict)
     param_infos = function_info.input_params.parameters
     if param_infos is None:
         raise ValueError("Function input parameters are None.")
@@ -251,10 +254,7 @@ def generate_function_input_params_schema(
             pydantic_field.pydantic_type,
             Field(default=pydantic_field.default, description=pydantic_field.description),
         )
-    model = create_model(
-        f"{function_info.catalog_name}__{function_info.schema_name}__{function_info.name}__params",
-        **fields,
-    )
+    model = create_model(params_name, **fields)
     return PydanticFunctionInputParams(pydantic_model=model, strict=pydantic_field.strict)
 
 
