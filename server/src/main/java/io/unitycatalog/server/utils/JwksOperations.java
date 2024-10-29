@@ -1,5 +1,7 @@
 package io.unitycatalog.server.utils;
 
+import static io.unitycatalog.server.security.SecurityContext.Issuers.INTERNAL;
+
 import com.auth0.jwk.Jwk;
 import com.auth0.jwk.JwkProvider;
 import com.auth0.jwk.JwkProviderBuilder;
@@ -12,15 +14,11 @@ import com.linecorp.armeria.client.WebClient;
 import io.unitycatalog.server.exception.ErrorCode;
 import io.unitycatalog.server.exception.OAuthInvalidClientException;
 import io.unitycatalog.server.exception.OAuthInvalidRequestException;
-import io.unitycatalog.server.security.SecurityContext;
-import lombok.SneakyThrows;
-
 import java.net.URL;
 import java.nio.file.Path;
 import java.security.interfaces.RSAPublicKey;
 import java.util.Map;
-
-import static io.unitycatalog.server.security.SecurityContext.Issuers.INTERNAL;
+import lombok.SneakyThrows;
 
 public class JwksOperations {
 
