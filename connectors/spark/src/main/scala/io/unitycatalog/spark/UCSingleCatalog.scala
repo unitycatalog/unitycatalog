@@ -1,7 +1,9 @@
 package io.unitycatalog.spark
 
+import com.fasterxml.jackson.databind.ObjectMapper
+import com.fasterxml.jackson.module.scala.{DefaultScalaModule, ScalaObjectMapper}
 import io.unitycatalog.client.{ApiClient, ApiException}
-import io.unitycatalog.client.api.{SchemasApi, StagingTablesApi, TablesApi, TemporaryCredentialsApi}
+import io.unitycatalog.client.api.{MetastoresApi, SchemasApi, StagingTablesApi, TablesApi, TemporaryCredentialsApi}
 import io.unitycatalog.client.model.{ColumnInfo, ColumnTypeName, CreateSchema, CreateStagingTable, CreateTable, DataSourceFormat, GenerateTemporaryPathCredential, GenerateTemporaryTableCredential, ListTablesResponse, PathOperation, SchemaInfo, TableOperation, TableType, TemporaryCredentials}
 
 import java.net.URI
@@ -110,6 +112,14 @@ class UCSingleCatalog extends TableCatalog with SupportsNamespaces with Logging 
           .operation(TableOperation.READ_WRITE)
       )
       UCSingleCatalog.setCredentialProps(newProps, temporaryCredentials, stagingTableInfo.getStagingLocation)
+      // Add coordinated commits properties
+
+      newProps.put("delta.coordinatedCommits.tableConf-preview",
+        JsonUtils.toJson(Map("ucTableId" -> stagingTableInfo.getId)))
+      newProps.put("delta.coordinatedCommits.commitCoordinatorConf-preview",
+        JsonUtils.toJson(Map("ucMetastoreId" -> new MetastoresApi(apiClient).summary().getMetastoreId)))
+      newProps.put("delta.coordinatedCommits.commitCoordinator-preview",
+        "org.apache.spark.sql.delta.coordinatedcommits.UCCommitCoordinatorBuilder")
       delegate.createTable(ident, columns, partitions, newProps)
     } else if (hasLocationClause) {
       val location = properties.get(TableCatalog.PROP_LOCATION)
@@ -161,6 +171,15 @@ class UCSingleCatalog extends TableCatalog with SupportsNamespaces with Logging 
 
   override def dropNamespace(namespace: Array[String], cascade: Boolean): Boolean = {
     delegate.asInstanceOf[DelegatingCatalogExtension].dropNamespace(namespace, cascade)
+  }
+}
+
+object JsonUtils {
+  private val mapper = new ObjectMapper() with ScalaObjectMapper
+  mapper.registerModule(DefaultScalaModule)
+
+  def toJson(map: Map[String, Any]): String = {
+    mapper.writeValueAsString(map)
   }
 }
 
