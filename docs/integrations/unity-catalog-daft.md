@@ -43,8 +43,11 @@ unity = UnityCatalog(
 )
 ```
 
-You can also connect to a Unity Catalog in your Databricks workspace by setting
-`endpoint = "https://<databricks_workspace_id>.cloud.databricks.com"`.
+You can also connect to a Unity Catalog in your Databricks workspace by using the following setting:
+
+```python
+endpoint = "https://<databricks_workspace_id>.cloud.databricks.com"
+```
 
 Once you're connected, you can list all your available catalogs using:
 
