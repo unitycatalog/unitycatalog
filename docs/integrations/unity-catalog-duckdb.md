@@ -1,8 +1,9 @@
 # Unity Catalog DuckDB Integration
 
-### Operate on Delta tables with DuckDB
+## Operate on Delta tables with DuckDB
 
-To try operating on Delta tables with DuckDB, you will have to [install it](https://duckdb.org/docs/installation/) (at least version 1.0).
+To try operating on Delta tables with DuckDB, you will have to [install it](https://duckdb.org/docs/installation/)
+(at least version 1.0).
 
 Let's start DuckDB and install a couple of extensions. To start DuckDB, run the command `duckdb` in the terminal.
 

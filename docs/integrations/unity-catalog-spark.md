@@ -10,10 +10,8 @@ Integrating Apache Spark with Unity Catalog offers significant advantages over t
 * Make it easier to decouple business logic from file paths.  
 * Provides easy access to different file formats without end users needing to know how the data is stored.
 
-
 !!! warning "Prerequisites"
     For Apache Spark and Delta Lake to work together with Unity Catalog, you will need atleast Apache Spark 3.5.3 and Delta Lake 3.2.1.
-
 
 ## Download and Configure Unity Catalog for Apache Spark
 
@@ -54,7 +52,7 @@ To have Unity Catalog work with cloud object storage as the storage location for
     adls.clientSecret.0=<SECRET>
     ```
 
-=== "Google Cloud Storage"    
+=== "Google Cloud Storage"
 
     ```bash
     ## GCS Storage Config (Multiple configs can be added by incrementing the index)
@@ -71,7 +69,6 @@ If the UC Server is already started, please restart it to account for the cloud 
 cd unitycatalog/
 bin/start-uc-server
 ```
-
 
 ## Working with Unity Catalog Tables with Apache Spark and Delta Lake Locally
 
@@ -105,10 +102,8 @@ Let’s start running some Spark SQL queries in the Spark SQL shell (`bin/spark-
         --conf "spark.sql.defaultCatalog=unity"
     ```
 
-
 !!! tip "Tip"
      Initially, this may take a few minutes to run to download the necessary dependencies.  Afterwards, you can run some quick commands to see your UC assets within Spark SQL shell.
-
 
 Notice the following packages (`--packages`) and configurations (`--conf`)
 
@@ -117,13 +112,11 @@ Notice the following packages (`--packages`) and configurations (`--conf`)
 * `spark.sql.catalog.unity.token` is empty indicating there is no authentication; refer to [auth](../server/auth.md) for more information.
 * `spark.sql.defaultCatalog=unity` must be filled out to indicate the default catalog.
 
-
 ??? note "Three-part and two-part naming conventions"
 
     ![](https://cdn.prod.website-files.com/66954b344e907bd91f1c8027/66e2bafe16edde34db6395f2_AD_4nXdgqGKSeR2abf7zutk0fiALAs6vejg6EgUDgD_Ud9Xjy7nNkapMePCNH0zJw9Wv0uh6LYn7vlGYrRn4H74G9d0CouV0PWKsUTGkjfBKM5y4Br64B2P5Eapv97bCw0swV4pddsemaWU2zyYYlkKT6Ymxu2YO.png)
 
     As noted in [Unity Catalog 101](https://www.unitycatalog.io/blogs/unity-catalog-oss), UC has a three-part naming convention of [`catalog`].[`schema`].[`asset`].  In the following examples, you can use the three-part notation such as `SELECT * FROM unity.default.marksheet;` or the two-part notation `SELECT * FROM default.marksheet;` as the `defaultCatalog` is already configured.
-
 
 ### [Optional] Running Spark SQL for Cloud Object Stores
 
@@ -175,13 +168,11 @@ If you would like to run this against cloud object storage, the following versio
         --conf "spark.sql.defaultCatalog=unity"
     ```
 
-
-
 ## Using Spark SQL to query Unity Catalog schemas and tables
 
 Let’s start by running some quick commands from the Spark SQL and pyspark shells.
 
-The following `SHOW SCHEMA` shows the `default` schema that is included in the initial UC configuration. 
+The following `SHOW SCHEMA` shows the `default` schema that is included in the initial UC configuration.
 
 === "Spark SQL"
 
@@ -203,7 +194,6 @@ The following `SHOW SCHEMA` shows the `default` schema that is included in the i
     spark.sql("SHOW TABLES IN default").show()
     ```
 
-
 with the output similar to:
 
 ```console
@@ -219,7 +209,6 @@ with the output similar to:
 
 Let’s query the first five rows of the `marksheet` table.
 
-
 === "Spark SQL"
 
     ```sql
@@ -232,8 +221,8 @@ Let’s query the first five rows of the `marksheet` table.
     spark.sql("SELECT * FROM default.marksheet LIMIT 5;").show()
     ```
 
-
 With the output looking similar to the following.
+
 ```console
 +---+----------+-----+
 | id|      name|marks|
@@ -245,7 +234,6 @@ With the output looking similar to the following.
 |  5|VsslXsUIDZ|  993|
 +---+----------+-----+
 ```
-
 
 ## Running CRUD Operations on a Unity Catalog Table
 
@@ -287,7 +275,7 @@ Let’s extend this example by executing various CRUD operations on our UC table
     ```
 
 === "PySpark"
-    
+
     ```python
     # Create a new table
     spark.sql("""
@@ -302,7 +290,7 @@ Let’s extend this example by executing various CRUD operations on our UC table
 ### Insert New Rows into Table
 
 === "Spark SQL"
-    
+
     ```sql
     -- Insert new rows
     INSERT INTO demo.mytable VALUES (1, "test 1");
@@ -313,7 +301,7 @@ Let’s extend this example by executing various CRUD operations on our UC table
     -- Read table
     SELECT * FROM demo.mytable;
     ```
- 
+
 === "PySpark"
 
     ```python
@@ -462,22 +450,17 @@ Drop Table
     spark.sql("SHOW TABLES IN default").show()
     ```
 
-!!! warning 
+!!! warning
     Note, this action will only drop the table from UC, it will not remove the data from the file system
-
 
 <!--
 ## Benefits of using Unity Catalog for Spark
-
-
 
 > Rather the major reasons to focus on are
 > - credential vending - no more need to configure a single set of s3/azure/gcs creds for all your tables in your spark app. UC will automatically provide creds for each table in each query.
 > - governance and access control - admins can centrally control who has access to which tables
 
 -->
-
-
 
 <!-- 
 
@@ -521,8 +504,6 @@ voided.write.format("parquet").saveAsTable("stores.us_east.voided")
 ```
 
 > we need to cover both parquet and delta
-
-
 
 Here’s a visualization of the tables.  
 
@@ -602,7 +583,6 @@ Unity Catalog has many advantages for Spark users.
 >   - thats general reason for using any catalog including HMS. not specific to UC.
 > - Making it easier to organize and find datasets
 >   - does not quite help users who just want to use tables. this would be great once we have other assets within the UC spark integration, but we are not there yet.
-
 
 You don’t want to hardcode file paths in your code because then the location of your data becomes coupled with your business logic.  Here’s an example of bad code:
 
