@@ -284,29 +284,26 @@ def supported_function_info_types():
     return types
 
 
-def sanitize_string_inputs_of_function_params(function_params: Dict[str, Any]) -> Dict[str, Any]:
+def sanitize_string_inputs_of_function_params(param_value: Any) -> str:
     """
-    Sanitize string inputs of function parameters to prevent injection attacks.
+    Sanitize string inputs of function parameters to allow for code block submission.
 
     Args:
-        function_params: A dictionary of function parameters.
+        param_value: The value of the parameter to sanitize.
 
     Returns:
-        A sanitized dictionary of function parameters.
+        A sanitized string of the argument value.
     """
-    sanitized_params = {}
-    for key, value in function_params.items():
-        if isinstance(value, str):
-            # Escape single quotes, backslashes, and control characters that would otherwise break Python code execution
-            parsed = (
-                value.replace("'", "''")
-                .replace("\\", "\\\\")
-                .replace("\r", "\\r")
-                .replace("\n", "\\n")
-                .replace("\t", "\\t")
-            )
-            sanitized_params[key] = f"""{parsed}"""
 
-        else:
-            sanitized_params[key] = value
-    return sanitized_params
+    if isinstance(param_value, str):
+        # Escape single quotes, backslashes, and control characters that would otherwise break Python code execution
+        parsed = (
+            param_value.replace("'", "''")
+            .replace("\\", "\\\\")
+            .replace("\r", "\\r")
+            .replace("\n", "\\n")
+            .replace("\t", "\\t")
+        )
+        param_value = f"""{parsed}"""
+
+    return str(param_value)
