@@ -71,10 +71,9 @@ const router = createBrowserRouter([
 ]);
 
 function AppProvider() {
-  const { accessToken, logout, currentUser } = useAuth();
+  const { logout, currentUser } = useAuth();
   const navigate = useNavigate();
   const authEnabled = process.env.REACT_APP_GOOGLE_AUTH_ENABLED === 'true';
-  const loggedIn = accessToken !== '';
 
   const profileMenuItems = useMemo(
     (): MenuProps['items'] => [
@@ -106,7 +105,7 @@ function AppProvider() {
   );
 
   // commenting login UI for now until repositories are merged
-  return authEnabled && !loggedIn ? (
+  return authEnabled && !currentUser ? (
     <Login />
   ) : (
     <ConfigProvider
@@ -207,7 +206,6 @@ function AppProvider() {
       </Layout>
     </ConfigProvider>
   );
-  // );
 }
 
 function App() {

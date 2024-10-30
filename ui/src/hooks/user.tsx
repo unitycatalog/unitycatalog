@@ -25,7 +25,7 @@ export function useLoginWithToken() {
       };
 
       return apiClient
-        .post(`/auth/tokens`, JSON.stringify(params), {
+        .post(`/auth/tokens?ext=cookie`, JSON.stringify(params), {
           baseURL: `${UC_AUTH_API_PREFIX}`,
         })
         .then((response) => response.data)
@@ -36,16 +36,16 @@ export function useLoginWithToken() {
   });
 }
 
-export function useGetCurrentUser(access_token: string) {
+export function useGetCurrentUser() {
   return useQuery<UserInterface>({
-    queryKey: ['getUser', access_token],
+    queryKey: ['getUser'],
     queryFn: async () => {
       return apiClient
         .get(`/scim2/Users/self`, {
           baseURL: `${UC_AUTH_API_PREFIX}`,
         })
         .then((response) => response.data)
-        .catch((e) => {
+        .catch(() => {
           throw new Error('Failed to fetch user');
         });
     },
