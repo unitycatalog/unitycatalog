@@ -43,7 +43,6 @@ function AuthProvider(props: any) {
     return refetch();
   }, [refetch]);
 
-
   const value = useMemo(
     () => ({
       loginWithToken,
