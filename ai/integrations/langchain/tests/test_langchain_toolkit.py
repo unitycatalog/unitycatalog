@@ -28,6 +28,7 @@ from unitycatalog.ai.test_utils.client_utils import (
 from unitycatalog.ai.test_utils.function_utils import (
     CATALOG,
     create_function_and_cleanup,
+    create_python_function_and_cleanup,
 )
 
 try:
@@ -70,7 +71,7 @@ def test_toolkit_e2e(use_serverless, monkeypatch):
 def test_toolkit_e2e_manually_passing_client(use_serverless, monkeypatch):
     monkeypatch.setenv(USE_SERVERLESS, str(use_serverless))
     client = get_client()
-    with set_default_client(client), create_function_and_cleanup(client, schema=SCHEMA) as func_obj:
+    with create_function_and_cleanup(client, schema=SCHEMA) as func_obj:
         toolkit = UCFunctionToolkit(function_names=[func_obj.full_function_name], client=client)
         tools = toolkit.tools
         assert len(tools) == 1
@@ -90,10 +91,17 @@ def test_toolkit_e2e_manually_passing_client(use_serverless, monkeypatch):
 
 @requires_databricks
 @pytest.mark.parametrize("use_serverless", [True, False])
-def test_toolkit_e2e_manually_passing_client(use_serverless, monkeypatch):
+def test_toolkit_e2e_tools_with_no_params(use_serverless, monkeypatch):
     monkeypatch.setenv(USE_SERVERLESS, str(use_serverless))
     client = get_client()
-    with set_default_client(client), create_function_and_cleanup(client, schema=SCHEMA) as func_obj:
+
+    def get_weather() -> str:
+        """
+        Get the weather.
+        """
+        return "sunny"
+
+    with create_python_function_and_cleanup(client, schema=SCHEMA, func=get_weather) as func_obj:
         toolkit = UCFunctionToolkit(function_names=[func_obj.full_function_name], client=client)
         tools = toolkit.tools
         assert len(tools) == 1
@@ -102,9 +110,9 @@ def test_toolkit_e2e_manually_passing_client(use_serverless, monkeypatch):
         assert tool.description == func_obj.comment
         assert tool.uc_function_name == func_obj.full_function_name
         assert tool.client_config == client.to_dict()
-        tool.args_schema(**{"code": "print(1)"})
-        result = json.loads(tool.func(code="print(1)"))["value"]
-        assert result == "1\n"
+        tool.args_schema()
+        result = json.loads(tool.func())["value"]
+        assert result == "sunny"
 
         toolkit = UCFunctionToolkit(function_names=[f"{CATALOG}.{SCHEMA}.*"], client=client)
         assert len(toolkit.tools) >= 1
