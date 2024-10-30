@@ -55,7 +55,7 @@ class UCFunctionToolkit(BaseModel):
         tools_dict (Dict[str, FunctionTool]): A dictionary mapping function names to their
             corresponding tools.
         client (Optional[BaseFunctionClient]): The client used to manage functions.
-        description (Optional[Bool]): Flag to check if the description has been updated.
+        description_updated (Optional[Bool]): Flag to check if the description has been updated.
         cache_function (Optional[Callable]): Function that will be used to determine if the tool
             should be cached, should return a boolean. If None, the tool will be cached.
         result_as_answer (Optional[Bool]): Flag to check if the tool should be the final
