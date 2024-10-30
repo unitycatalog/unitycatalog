@@ -7,6 +7,7 @@ from typing_extensions import override
 
 from unitycatalog.ai.core.client import BaseFunctionClient, FunctionExecutionResult
 from unitycatalog.ai.core.paged_list import PagedList
+from unitycatalog.ai.core.utils.callable_utils import ReturnParamFormat, parse_callable
 from unitycatalog.ai.core.utils.type_utils import column_type_to_python_type
 from unitycatalog.ai.core.utils.validation_utils import FullFunctionName
 
@@ -138,7 +139,18 @@ class UnitycatalogFunctionClient(BaseFunctionClient):
     def create_python_function(
         self, *, func: Callable[..., Any], catalog: str, schema: str, replace: bool = False
     ) -> FunctionInfo:
-        raise NotImplementedError()
+        if not callable(func):
+            raise ValueError("The provided function is not callable.")
+        parsed_callable = parse_callable(
+            func, return_format=ReturnParamFormat.FUNCTION_INFO_INPUT_PARAMETER_DICT
+        )
+        return self.create_function(
+            function_name=f"{catalog}.{schema}.{parsed_callable.function_name}",
+            routine_definition=parsed_callable.function_body,
+            data_type=parsed_callable.return_type,
+            parameters=parsed_callable.input_params,
+            replace=replace,
+        )
 
     @override
     def get_function(self, function_name: str, timeout: Optional[float] = None) -> FunctionInfo:

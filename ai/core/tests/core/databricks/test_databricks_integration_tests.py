@@ -5,7 +5,7 @@ from typing import Callable, Dict, List
 import pytest
 from databricks.sdk.errors import ResourceDoesNotExist
 
-from tests.core.databricks.function_definitions import (
+from tests.core.function_definitions import (
     FunctionInputOutput,
     PythonFunctionInputOutput,
     function_with_array_input,

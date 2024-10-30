@@ -3,10 +3,19 @@ import decimal
 import logging
 from contextlib import contextmanager
 from dataclasses import dataclass
-from typing import Any, Dict, List
+from typing import Any, Callable, Dict, List
 
 import pytest
 
+from tests.core.function_definitions import (
+    PythonFunctionInputOutput,
+    python_function_with_array_input,
+    python_function_with_decimal_input,
+    python_function_with_dict_input,
+    python_function_with_interval_input,
+    python_function_with_map_input,
+    python_function_with_string_input,
+)
 from unitycatalog.ai.core.oss import UnitycatalogFunctionClient
 from unitycatalog.ai.test_utils.function_utils import CATALOG, random_func_name
 
@@ -300,6 +309,81 @@ def test_function_creation_and_execution(
             function_name=function_name, parameters=function_object.input_data
         )
         assert result.value == function_object.expected_result
+
+
+def python_function_with_binary_input() -> PythonFunctionInputOutput:
+    def function_with_binary_input(s: bytes) -> str:
+        """Python function with binary input"""
+        return s.decode("utf-8")
+
+    return PythonFunctionInputOutput(
+        func=function_with_binary_input,
+        inputs=[
+            {"s": b"Hello"},
+        ],
+        output="Hello",
+    )
+
+
+def python_function_with_timestamp_input() -> PythonFunctionInputOutput:
+    def function_with_timestamp_input(x: datetime.datetime, y: datetime.datetime) -> str:
+        """Python function with timestamp input"""
+        return str(x.isoformat()) + "; " + str(y.isoformat())
+
+    return PythonFunctionInputOutput(
+        func=function_with_timestamp_input,
+        inputs=[
+            {
+                "x": datetime.datetime(2024, 8, 19, 11, 2, 3),
+                "y": datetime.datetime(2024, 8, 19, 11, 2, 3),
+            },
+        ],
+        output="2024-08-19T11:02:03; 2024-08-19T11:02:03",
+    )
+
+
+def python_function_with_date_input() -> PythonFunctionInputOutput:
+    def function_with_date_input(s: datetime.date) -> str:
+        """Python function with date input"""
+        return s.isoformat()
+
+    return PythonFunctionInputOutput(
+        func=function_with_date_input,
+        inputs=[{"s": datetime.date(2024, 8, 19)}],
+        output="2024-08-19",
+    )
+
+
+@pytest.mark.parametrize(
+    "python_function",
+    [
+        python_function_with_dict_input,
+        python_function_with_array_input,
+        python_function_with_string_input,
+        python_function_with_binary_input,
+        python_function_with_interval_input,
+        python_function_with_timestamp_input,
+        python_function_with_date_input,
+        python_function_with_map_input,
+        python_function_with_decimal_input,
+    ],
+)
+def test_python_function_creation_and_execution(
+    uc_client: UnitycatalogFunctionClient, python_function: Callable[[], PythonFunctionInputOutput]
+):
+    python_func_input_output = python_function()
+    func_name = f"{CATALOG}.{SCHEMA}.{python_func_input_output.func.__name__}"
+    try:
+        # TODO: test replace
+        function_info = uc_client.create_python_function(
+            func=python_func_input_output.func, catalog=CATALOG, schema=SCHEMA, replace=True
+        )
+        assert function_info.full_name == func_name
+        for input_example in python_func_input_output.inputs:
+            result = uc_client.execute_function(function_info.full_name, input_example)
+            assert result.value == python_func_input_output.output
+    finally:
+        try_delete_function(uc_client, func_name)
 
 
 def test_list_functions(uc_client: UnitycatalogFunctionClient):
