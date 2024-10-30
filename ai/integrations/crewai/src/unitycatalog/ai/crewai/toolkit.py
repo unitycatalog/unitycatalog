@@ -38,7 +38,6 @@ class UnityCatalogTool(CrewAIBaseTool):
             fn (Callable): The function that represents the tool's functionality.
             metadata (ToolMetadata): Metadata about the tool, including name, description, and schema.
             client_config (Dict[str, Any]): Configuration dictionary for the client used to manage the tool.
-            *args: Additional positional arguments.
             **kwargs: Additional keyword arguments.
         """
         super().__init__(fn=fn, client_config=client_config, **kwargs)
