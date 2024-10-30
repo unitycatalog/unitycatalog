@@ -724,9 +724,9 @@ test_cases_string_inputs = [
     (
         {
             "a": 1,
-            "b": "def calculate_sum(numbers):\n\ttotal = 0\n\tfor num in numbers:\n\t\ttotal += num\n\treturn total",
+            "b": "def calculate_sum(numbers):\n\ttotal = 0\n\tfor num in numbers:\n\t\ttotal += num\n\treturn total\nprint(calculate_sum([1, 2]))",
         },
-        '''SELECT `catalog`.`schema`.`mock_function`("""1""","""def calculate_sum(numbers):\n\ttotal = 0\n\tfor num in numbers:\n\t\ttotal += num\n\treturn total""")''',
+        '''SELECT `catalog`.`schema`.`mock_function`("""1""","""def calculate_sum(numbers):\n\ttotal = 0\n\tfor num in numbers:\n\t\ttotal += num\n\treturn total\nprint(calculate_sum([1, 2]))""")''',
     ),
 ]
 

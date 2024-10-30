@@ -386,3 +386,51 @@ def test_create_function_without_replace(client: DatabricksFunctionClient):
             client.create_python_function(
                 func=simple_func, catalog=CATALOG, schema=SCHEMA, replace=False
             )
+
+
+integration_test_cases = [
+    ("\nprint('Hello World!')", "Hello World!"),
+    ("def greet(name='Bob'):\n    return f'Hello {name}!'\nprint(greet())", "Hello Bob!"),
+    ("for i in range(5):\n\tif i % 2 == 0:\n\t\tprint(i)", "0\n2\n4"),
+    (
+        """def calculate_sum(numbers):
+\t\ttotal = 0
+\t\tfor num in numbers:
+\t\t\ttotal += num
+\t\treturn total
+print(calculate_sum([1, 2, 3, 4, 5]))""",
+        "15",
+    ),
+]
+
+
+@requires_databricks
+@pytest.mark.parametrize("code, expected_output", integration_test_cases)
+def test_execute_python_code_integration(
+    client: DatabricksFunctionClient, code: str, expected_output: str
+):
+    def python_exec(code: str) -> str:
+        """
+        Execute the provided Python code and return the output.
+        """
+        import sys
+        from io import StringIO
+
+        sys_stdout = sys.stdout
+        redirected_output = StringIO()
+        sys.stdout = redirected_output
+
+        exec(code)
+        sys.stdout = sys_stdout
+        return redirected_output.getvalue()
+
+    function_full_name = f"{CATALOG}.{SCHEMA}.python_exec"
+
+    with create_python_function_and_cleanup(client, func=python_exec, schema=SCHEMA):
+        result = client.execute_function(
+            function_name=function_full_name, parameters={"code": code}
+        )
+
+        assert result.error is None, f"Function execution failed with error: {result.error}"
+
+        assert result.value == expected_output
