@@ -5,17 +5,19 @@ from typing import Any, Callable, Dict, List, NamedTuple, Optional, Union
 
 from typing_extensions import override
 
-from unitycatalog import InternalServerError, Unitycatalog
 from unitycatalog.ai.core.client import BaseFunctionClient, FunctionExecutionResult
 from unitycatalog.ai.core.paged_list import PagedList
 from unitycatalog.ai.core.utils.type_utils import column_type_to_python_type
 from unitycatalog.ai.core.utils.validation_utils import FullFunctionName
-from unitycatalog.types.function_create_params import FunctionInfo as CreateFunctionInfo
-from unitycatalog.types.function_create_params import (
+
+# TODO: namespace to be changed
+from unitycatalog.python import InternalServerError, Unitycatalog
+from unitycatalog.python.types.function_create_params import FunctionInfo as CreateFunctionInfo
+from unitycatalog.python.types.function_create_params import (
     FunctionInfoInputParams,
     FunctionInfoInputParamsParameter,
 )
-from unitycatalog.types.function_info import FunctionInfo, InputParamsParameter
+from unitycatalog.python.types.function_info import FunctionInfo, InputParamsParameter
 
 ALLOWED_DATA_TYPES = {
     "BOOLEAN",

@@ -7,10 +7,12 @@ from typing import Any, Dict, List
 
 import pytest
 
-from unitycatalog import Unitycatalog
 from unitycatalog.ai.core.oss import UnitycatalogFunctionClient
 from unitycatalog.ai.test_utils.function_utils import CATALOG, random_func_name
-from unitycatalog.types.function_create_params import (
+
+# TODO: namespace to be changed
+from unitycatalog.python import Unitycatalog
+from unitycatalog.python.types.function_create_params import (
     FunctionInfoInputParamsParameter,
 )
 
