@@ -78,6 +78,7 @@ def test_toolkit_e2e_manually_passing_client(use_serverless, monkeypatch):
         tool = tools[0]
         assert tool.name == func_obj.tool_name
         assert tool.description == func_obj.comment
+        assert tool.uc_function_name == func_obj.full_function_name
         assert tool.client_config == client.to_dict()
         tool.args_schema(**{"code": "print(1)"})
         result = json.loads(tool.func(code="print(1)"))["value"]
@@ -107,6 +108,7 @@ def test_toolkit_e2e_tools_with_no_params(use_serverless, monkeypatch):
         tool = tools[0]
         assert tool.name == func_obj.tool_name
         assert tool.description == func_obj.comment
+        assert tool.uc_function_name == func_obj.full_function_name
         assert tool.client_config == client.to_dict()
         tool.args_schema()
         result = json.loads(tool.func())["value"]

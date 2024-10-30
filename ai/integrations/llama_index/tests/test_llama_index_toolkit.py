@@ -138,6 +138,7 @@ def test_toolkit_e2e(use_serverless, monkeypatch):
         assert tool.metadata.name == func_obj.tool_name
         assert tool.metadata.return_direct
         assert tool.metadata.description == func_obj.comment
+        assert tool.uc_function_name == func_obj.full_function_name
         assert tool.client_config == client.to_dict()
 
         input_args = {"code": "print(1)"}
@@ -164,6 +165,7 @@ def test_toolkit_e2e_manually_passing_client(use_serverless, monkeypatch):
         assert tool.metadata.name == func_obj.tool_name
         assert tool.metadata.return_direct
         assert tool.metadata.description == func_obj.comment
+        assert tool.uc_function_name == func_obj.full_function_name
         assert tool.client_config == client.to_dict()
         input_args = {"code": "print(1)"}
         result = json.loads(tool.fn(**input_args))["value"]

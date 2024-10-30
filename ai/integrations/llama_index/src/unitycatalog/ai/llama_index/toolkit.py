@@ -20,15 +20,26 @@ class UnityCatalogTool(FunctionTool):
     A tool class that integrates Unity Catalog functions into a tool structure.
 
     Attributes:
+        uc_function_name (str): The full name of the function in the form of 'catalog.schema.function'.
         client_config (Dict[str, Any]): Configuration of the client for managing the tool.
     """
+
+    uc_function_name: str = Field(
+        description="The full name of the function in the form of 'catalog.schema.function'",
+    )
 
     client_config: Dict[str, Any] = Field(
         description="Configuration of the client for managing the tool",
     )
 
     def __init__(
-        self, fn: Callable, metadata: ToolMetadata, client_config: Dict[str, Any], *args, **kwargs
+        self,
+        fn: Callable,
+        metadata: ToolMetadata,
+        uc_function_name: str,
+        client_config: Dict[str, Any],
+        *args,
+        **kwargs,
     ):
         """
         Initializes the UnityCatalogTool.
@@ -36,11 +47,13 @@ class UnityCatalogTool(FunctionTool):
         Args:
             fn (Callable): The function that represents the tool's functionality.
             metadata (ToolMetadata): Metadata about the tool, including name, description, and schema.
+            uc_function_name (str): The full name of the function in the form of 'catalog.schema.function'.
             client_config (Dict[str, Any]): Configuration dictionary for the client used to manage the tool.
             *args: Additional positional arguments.
             **kwargs: Additional keyword arguments.
         """
         super().__init__(*args, fn=fn, metadata=metadata, **kwargs)
+        self.uc_function_name = uc_function_name
         self.client_config = client_config
 
     def __repr__(self) -> str:
@@ -177,6 +190,7 @@ class UCFunctionToolkit(BaseModel):
         return UnityCatalogTool(
             fn=func,
             metadata=metadata,
+            uc_function_name=function_name,
             client_config=client.to_dict(),
         )
 
