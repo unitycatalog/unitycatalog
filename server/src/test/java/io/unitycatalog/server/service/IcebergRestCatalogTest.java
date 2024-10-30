@@ -80,7 +80,6 @@ public class IcebergRestCatalogTest extends BaseServerTest {
 
   @Test
   public void testConfig() {
-
     AggregatedHttpResponse resp =
         client.get("/v1/config?warehouse=" + TestUtils.CATALOG_NAME).aggregate().join();
     assertThat(resp.contentUtf8())
@@ -141,33 +140,6 @@ public class IcebergRestCatalogTest extends BaseServerTest {
                   .build()
                   .toString());
     }
-    // ListNamespaces from catalog
-    /*{
-      AggregatedHttpResponse resp =
-          client.get("/v1/namespaces?parent=" + TestUtils.CATALOG_NAME).aggregate().join();
-      assertThat(resp.status().code()).isEqualTo(200);
-      assertThat(
-              RESTObjectMapper.mapper().readValue(resp.contentUtf8(), ListNamespacesResponse.class))
-          .asString()
-          .isEqualTo(
-              ListNamespacesResponse.builder()
-                  .add(Namespace.of(TestUtils.CATALOG_NAME, TestUtils.SCHEMA_NAME))
-                  .build()
-                  .toString());
-    }
-    // ListNamespaces from schema
-    {
-      AggregatedHttpResponse resp =
-          client
-              .get("/v1/namespaces?parent=" + TestUtils.CATALOG_NAME + "." + TestUtils.SCHEMA_NAME)
-              .aggregate()
-              .join();
-      assertThat(resp.status().code()).isEqualTo(200);
-      assertThat(
-              RESTObjectMapper.mapper().readValue(resp.contentUtf8(), ListNamespacesResponse.class))
-          .asString()
-          .isEqualTo(ListNamespacesResponse.builder().build().toString());
-    }*/
   }
 
   @Test
