@@ -24,6 +24,7 @@ nav:
       - Auth: server/auth.md
   - Integrations:
       - Apache Spark: integrations/unity-catalog-spark.md
+      - CelerData: integrations/unity-catalog-celerdata.md
       - Daft: integrations/unity-catalog-daft.md
       - DuckDB: integrations/unity-catalog-duckdb.md
       - PuppyGraph: integrations/unity-catalog-puppygraph.md
