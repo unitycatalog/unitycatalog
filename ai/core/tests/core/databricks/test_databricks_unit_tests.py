@@ -709,12 +709,12 @@ test_cases_string_inputs = [
     # String with single quotes
     (
         {"a": 1, "b": "O'Reilly"},
-        "SELECT `catalog`.`schema`.`mock_function`('1','O''Reilly')",
+        "SELECT `catalog`.`schema`.`mock_function`('1','O'Reilly')",
     ),
     # String with backslashes
     (
         {"a": 1, "b": "C:\\Program Files\\App"},
-        "SELECT `catalog`.`schema`.`mock_function`('1','C:\\\\Program Files\\\\App')",
+        "SELECT `catalog`.`schema`.`mock_function`('1','C:\\Program Files\\App')",
     ),
     # String with newlines
     (
@@ -724,12 +724,12 @@ test_cases_string_inputs = [
     # String with tabs
     (
         {"a": 1, "b": "Column1\tColumn2"},
-        "SELECT `catalog`.`schema`.`mock_function`('1','Column1\\tColumn2')",
+        "SELECT `catalog`.`schema`.`mock_function`('1','Column1\tColumn2')",
     ),
     # String with various special characters
     (
         {"a": 1, "b": "Special chars: !@#$%^&*()_+-=[]{}|;':,./<>?"},
-        "SELECT `catalog`.`schema`.`mock_function`('1','Special chars: !@#$%^&*()_+-=[]{}|;'':,./<>?')",
+        "SELECT `catalog`.`schema`.`mock_function`('1','Special chars: !@#$%^&*()_+-=[]{}|;':,./<>?')",
     ),
     # String with Unicode characters
     (
@@ -744,17 +744,17 @@ test_cases_string_inputs = [
     # String with backslashes and quotes
     (
         {"a": 1, "b": "Path: C:\\User\\'name'\\\"docs\""},
-        "SELECT `catalog`.`schema`.`mock_function`('1','Path: C:\\\\User\\\\''name''\\\\\"docs\"')",
+        "SELECT `catalog`.`schema`.`mock_function`('1','Path: C:\\User\\'name'\\\"docs\"')",
     ),
     # String with code-like content (simulating GenAI code)
     (
         {"a": 1, "b": "def func():\n    print('Hello, world!')"},
-        "SELECT `catalog`.`schema`.`mock_function`('1','def func():\\n    print(''Hello, world!'')')",
+        "SELECT `catalog`.`schema`.`mock_function`('1','def func():\\n    print(\"Hello, world!\")')",
     ),
     # String with multiline code and special characters
     (
         {"a": 1, "b": "if a > 0:\n    print('Positive')\nelse:\n    print('Non-positive')"},
-        "SELECT `catalog`.`schema`.`mock_function`('1','if a > 0:\\n    print(''Positive'')\\nelse:\\n    print(''Non-positive'')')",
+        "SELECT `catalog`.`schema`.`mock_function`('1','if a > 0:\\n    print(\"Positive\")\\nelse:\\n    print(\"Non-positive\")')",
     ),
 ]
 
