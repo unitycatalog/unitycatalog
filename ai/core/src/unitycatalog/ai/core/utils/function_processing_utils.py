@@ -5,7 +5,7 @@ import os
 from hashlib import md5
 from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
-from pydantic import BaseModel, Field, create_model
+from pydantic import Field, create_model
 
 from unitycatalog.ai.core.utils.config import JSON_SCHEMA_TYPE, UC_LIST_FUNCTIONS_MAX_RESULTS
 from unitycatalog.ai.core.utils.pydantic_utils import (
@@ -239,8 +239,11 @@ def generate_function_input_params_schema(
     """
     if not isinstance(function_info, supported_function_info_types()):
         raise TypeError(f"Unsupported function info type: {type(function_info)}")
+    params_name = (
+        f"{function_info.catalog_name}__{function_info.schema_name}__{function_info.name}__params"
+    )
     if function_info.input_params is None:
-        return PydanticFunctionInputParams(pydantic_model=BaseModel, strict=strict)
+        return PydanticFunctionInputParams(pydantic_model=create_model(params_name), strict=strict)
     param_infos = function_info.input_params.parameters
     if param_infos is None:
         raise ValueError("Function input parameters are None.")
@@ -251,10 +254,7 @@ def generate_function_input_params_schema(
             pydantic_field.pydantic_type,
             Field(default=pydantic_field.default, description=pydantic_field.description),
         )
-    model = create_model(
-        f"{function_info.catalog_name}__{function_info.schema_name}__{function_info.name}__params",
-        **fields,
-    )
+    model = create_model(params_name, **fields)
     return PydanticFunctionInputParams(pydantic_model=model, strict=pydantic_field.strict)
 
 
@@ -282,3 +282,31 @@ def supported_function_info_types():
         pass
 
     return types
+
+
+def sanitize_string_inputs_of_function_params(function_params: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Sanitize string inputs of function parameters to prevent injection attacks.
+
+    Args:
+        function_params: A dictionary of function parameters.
+
+    Returns:
+        A sanitized dictionary of function parameters.
+    """
+    sanitized_params = {}
+    for key, value in function_params.items():
+        if isinstance(value, str):
+            # Escape single quotes, backslashes, and control characters that would otherwise break Python code execution
+            parsed = (
+                value.replace("'", "''")
+                .replace("\\", "\\\\")
+                .replace("\r", "\\r")
+                .replace("\n", "\\n")
+                .replace("\t", "\\t")
+            )
+            sanitized_params[key] = f"""{parsed}"""
+
+        else:
+            sanitized_params[key] = value
+    return sanitized_params
