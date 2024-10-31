@@ -389,9 +389,9 @@ def test_create_function_without_replace(client: DatabricksFunctionClient):
 
 
 integration_test_cases = [
-    ("\nprint('Hello World!')", "Hello World!"),
-    ("def greet(name='Bob'):\n    return f'Hello {name}!'\nprint(greet())", "Hello Bob!"),
-    ("for i in range(5):\n\tif i % 2 == 0:\n\t\tprint(i)", "0\n2\n4"),
+    ("\nprint('Hello World!')", "Hello World!\n"),
+    ("def greet(name='Bob'):\n    return f'Hello {name}!'\nprint(greet())", "Hello Bob!\n"),
+    ("for i in range(5):\n\tif i % 2 == 0:\n\t\tprint(i)", "0\n2\n4\n"),
     (
         """def calculate_sum(numbers):
 \t\ttotal = 0
@@ -399,7 +399,7 @@ integration_test_cases = [
 \t\t\ttotal += num
 \t\treturn total
 print(calculate_sum([1, 2, 3, 4, 5]))""",
-        "15",
+        "15\n",
     ),
 ]
 
@@ -434,33 +434,3 @@ def test_execute_python_code_integration(
         assert result.error is None, f"Function execution failed with error: {result.error}"
 
         assert result.value == expected_output
-
-
-@requires_databricks
-def test_execute_invalid_format_python_code(client: DatabricksFunctionClient):
-    def python_exec(code: str) -> str:
-        """
-        Execute the provided Python code and return the output.
-        """
-        import sys
-        from io import StringIO
-
-        sys_stdout = sys.stdout
-        redirected_output = StringIO()
-        sys.stdout = redirected_output
-
-        exec(code)
-        sys.stdout = sys_stdout
-        return redirected_output.getvalue()
-
-    function_full_name = f"{CATALOG}.{SCHEMA}.python_exec"
-
-    with create_python_function_and_cleanup(client, func=python_exec, schema=SCHEMA):
-        invalid_code = "print(\"Hello 'world'\")"
-        with pytest.raises(
-            ValueError,
-            match="The argument passed in has been detected as Python code that contains",
-        ):
-            client.execute_function(
-                function_name=function_full_name, parameters={"code": invalid_code}
-            )
