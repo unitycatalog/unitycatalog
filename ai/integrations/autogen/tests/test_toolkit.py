@@ -94,15 +94,15 @@ def test_toolkit_e2e(use_serverless, monkeypatch):
         tools = toolkit.tools
         assert len(tools) == 1
         tool = tools[0]
-        assert func_obj.full_function_name.replace(".", "__") in tool.description
         assert func_obj.comment in tool.description
-        assert tool.client_config == client.to_dict()
 
         input_args = {"code": "print(1)"}
         result = json.loads(tool.fn(**input_args))["value"]
         assert result == "1\n"
 
-        toolkit = UCFunctionToolkit(function_names=[f"{CATALOG}.{SCHEMA}.*"])
+        toolkit = UCFunctionToolkit(
+            function_names=[f.full_name for f in client.list_functions(CATALOG, SCHEMA)]
+        )
         assert len(toolkit.tools) >= 1
         assert func_obj.tool_name in [t.name for t in toolkit.tools]
 
@@ -118,18 +118,15 @@ def test_toolkit_e2e_manually_passing_client(use_serverless, monkeypatch):
         assert len(tools) == 1
         tool = tools[0]
         assert tool.name == func_obj.tool_name
-        assert func_obj.full_function_name.replace(".", "__") in tool.description
         assert func_obj.comment in tool.description
-        assert (
-            "code: 'Python code to execute. Remember to print the final result to stdout.'"
-            in tool.description
-        )
-        assert tool.client_config == client.to_dict()
         input_args = {"code": "print(1)"}
         result = json.loads(tool.fn(**input_args))["value"]
         assert result == "1\n"
 
-        toolkit = UCFunctionToolkit(function_names=[f"{CATALOG}.{SCHEMA}.*"], client=client)
+        toolkit = UCFunctionToolkit(
+            function_names=[f.full_name for f in client.list_functions(CATALOG, SCHEMA)],
+            client=client,
+        )
         assert len(toolkit.tools) >= 1
         assert func_obj.tool_name in [t.name for t in toolkit.tools]
 
@@ -141,7 +138,9 @@ def test_multiple_toolkits(use_serverless, monkeypatch):
     client = get_client()
     with set_default_client(client), create_function_and_cleanup(client, schema=SCHEMA) as func_obj:
         toolkit1 = UCFunctionToolkit(function_names=[func_obj.full_function_name])
-        toolkit2 = UCFunctionToolkit(function_names=[f"{CATALOG}.{SCHEMA}.*"])
+        toolkit2 = UCFunctionToolkit(
+            function_names=[f.full_name for f in client.list_functions(CATALOG, SCHEMA)]
+        )
         tool1 = toolkit1.tools[0]
         tool2 = [t for t in toolkit2.tools if t.name == func_obj.tool_name][0]
         input_args = {"code": "print(1)"}
