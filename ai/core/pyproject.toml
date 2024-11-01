@@ -1,0 +1,123 @@
+[project]
+name = "unitycatalog-ai"
+version = "0.1.0"
+description = "Official Python library for Unity Catalog AI support"
+authors = [
+    { name="Serena Ruan", email="serena.ruan@databricks.com" },
+    { name="Ben Wilson", email="benjamin.wilson@databricks.com" }
+]
+readme = "README.md"
+license = { text="Apache-2.0" }
+requires-python = ">=3.9"
+dependencies = [
+  "typing_extensions",
+  "pydantic"
+]
+keywords = ["unitycatalog", "ai", "databricks", "function", "tool", "genai"]
+classifiers = [
+  "Development Status :: 4 - Beta",
+  "Intended Audience :: Developers",
+  "Intended Audience :: Education",
+  "Intended Audience :: End Users/Desktop",
+  "Intended Audience :: Science/Research",
+  "Intended Audience :: Information Technology",
+  "Intended Audience :: Other Audience",
+  "License :: OSI Approved :: Apache Software License",
+  "Operating System :: OS Independent",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.9",
+  "Programming Language :: Python :: 3.10",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Topic :: Scientific/Engineering",
+  "Topic :: Scientific/Engineering :: Artificial Intelligence",
+  "Topic :: Software Development",
+  "Topic :: Software Development :: Libraries",
+  "Topic :: Software Development :: Libraries :: Python Modules",
+  "Topic :: Software Development :: User Interfaces",
+]
+maintainers = [
+  { name="Serena Ruan", email="serena.ruan@databricks.com" },
+  { name="Ben Wilson", email="benjamin.wilson@databricks.com" }
+]
+
+[project.urls]
+homepage = "https://www.unitycatalog.io/"
+issues = "https://github.com/unitycatalog/unitycatalog/issues"
+repository = "https://github.com/unitycatalog/unitycatalog"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build]
+include = [
+  "src/*"
+]
+exclude = [
+  "src/unitycatalog/ai/test_utils/*"
+]
+
+[tool.hatch.build.targets.wheel]
+sources = ["src"]
+only-include = ["src/unitycatalog/ai/core"]
+
+[project.optional-dependencies]
+databricks = [
+  "databricks-sdk>=0.32.0",
+  "pandas",
+  "databricks-connect==15.1.0"
+]
+databricks-dev = [
+  "hatch",
+  "pytest",
+  "databricks-sdk>=0.32.0",
+  "databricks-connect==15.1.0",
+  "pandas",
+  "ruff==0.6.4",
+]
+dev = [
+  "hatch",
+  "pytest",
+  "databricks-sdk>=0.32.0",
+  # Note: databricks-connect 15.1 is required for serverless,
+  # databricks-connect>=14.0.0 requires python>=3.10
+  "databricks-connect",
+  "pandas",
+  "ruff==0.6.4",
+]
+
+[tool.ruff]
+line-length = 100
+target-version = "py39"
+
+[tool.ruff.lint]
+select = [
+  # isort
+  "I",
+  # bugbear rules
+  "B",
+  # remove unused imports
+  "F401",
+  # bare except statements
+  "E722",
+  # print statements
+  "T201",
+  "T203",
+  # misuse of typing.TYPE_CHECKING
+  "TCH004",
+  # import rules
+  "TID251",
+  # undefined-local-with-import-star
+  "F403",
+]
+
+[tool.ruff.format]
+docstring-code-format = true
+docstring-code-line-length = 88
+
+[tool.ruff.lint.pydocstyle]
+convention = "google"
+
+[tool.pytest.ini_options]
+pythonpath = ["src"]
