@@ -45,3 +45,6 @@ __pycache__
 dist/
 *.egg-info/
 Pipfile
+
+#docs site
+site
