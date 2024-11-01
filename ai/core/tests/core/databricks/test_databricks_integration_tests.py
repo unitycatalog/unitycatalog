@@ -40,6 +40,7 @@ from unitycatalog.ai.core.envs.databricks_env_vars import (
 from unitycatalog.ai.test_utils.client_utils import (
     client,  # noqa: F401
     requires_databricks,
+    retry_flaky_test,
     serverless_client,  # noqa: F401
 )
 from unitycatalog.ai.test_utils.function_utils import (
@@ -52,6 +53,7 @@ from unitycatalog.ai.test_utils.function_utils import (
 SCHEMA = os.environ.get("SCHEMA", "ucai_core_test")
 
 
+@retry_flaky_test()
 @requires_databricks
 @pytest.mark.parametrize(
     "create_function",
@@ -79,6 +81,7 @@ def test_create_and_execute_function(
             assert result.value == function_sample.output
 
 
+@retry_flaky_test()
 @requires_databricks
 @pytest.mark.parametrize(
     "create_function",
@@ -107,6 +110,7 @@ def test_create_and_execute_function_using_serverless(
             assert result.value == function_sample.output
 
 
+@retry_flaky_test()
 @requires_databricks
 @pytest.mark.parametrize(
     "create_function",
@@ -134,6 +138,7 @@ def test_create_and_execute_python_function(
             assert result.value == function_sample.output
 
 
+@retry_flaky_test()
 @requires_databricks
 def test_execute_function_using_serverless_row_limit(
     serverless_client: DatabricksFunctionClient,
@@ -148,6 +153,7 @@ def test_execute_function_using_serverless_row_limit(
         assert result.truncated is True
 
 
+@retry_flaky_test()
 @requires_databricks
 def test_execute_function_with_timeout(client: DatabricksFunctionClient, monkeypatch):
     monkeypatch.setenv(UCAI_DATABRICKS_WAREHOUSE_RETRY_TIMEOUT.name, "5")
@@ -171,6 +177,7 @@ $$
         assert result.value == "10"
 
 
+@retry_flaky_test()
 @requires_databricks
 def test_get_function(client: DatabricksFunctionClient):
     with generate_func_name_and_cleanup(client, schema=SCHEMA) as func_name:
@@ -186,6 +193,7 @@ AS $$
         assert create_func_info == function_info
 
 
+@retry_flaky_test()
 @requires_databricks
 def test_list_functions(client: DatabricksFunctionClient):
     function_infos = client.list_functions(catalog=CATALOG, schema=SCHEMA)
@@ -212,6 +220,7 @@ def test_list_functions(client: DatabricksFunctionClient):
             assert function_infos[0] != function_info
 
 
+@retry_flaky_test()
 @requires_databricks
 def test_delete_function(serverless_client: DatabricksFunctionClient):
     function_name = random_func_name(schema=SCHEMA)
@@ -225,6 +234,7 @@ def test_delete_function(serverless_client: DatabricksFunctionClient):
         serverless_client.get_function(function_name)
 
 
+@retry_flaky_test()
 @requires_databricks
 def test_extra_params_when_executing_function_e2e(client: DatabricksFunctionClient, monkeypatch):
     monkeypatch.setenv(UCAI_DATABRICKS_WAREHOUSE_RETRY_TIMEOUT.name, "5")
@@ -253,6 +263,7 @@ $$
         assert abs(abs(time_total2 - time_total1) - 20) < 5
 
 
+@retry_flaky_test()
 @requires_databricks
 def test_create_and_execute_python_function(client: DatabricksFunctionClient):
     def simple_func(x: int) -> str:
@@ -264,6 +275,7 @@ def test_create_and_execute_python_function(client: DatabricksFunctionClient):
         assert result.value == "10"
 
 
+@retry_flaky_test()
 @requires_databricks
 def test_create_python_function_with_complex_body(client: DatabricksFunctionClient):
     def complex_func(a: int, b: int) -> int:
@@ -278,6 +290,7 @@ def test_create_python_function_with_complex_body(client: DatabricksFunctionClie
         assert result.value == "3"
 
 
+@retry_flaky_test()
 @requires_databricks
 def test_create_python_function_with_docstring_comments(client: DatabricksFunctionClient):
     def documented_func(a: int, b: int) -> int:
@@ -300,6 +313,7 @@ def test_create_python_function_with_docstring_comments(client: DatabricksFuncti
         assert result.value == "8"
 
 
+@retry_flaky_test()
 @requires_databricks
 def test_function_with_list_of_int_return(client: DatabricksFunctionClient):
     def func_returning_list(a: int) -> List[int]:
@@ -322,6 +336,7 @@ def test_function_with_list_of_int_return(client: DatabricksFunctionClient):
         assert result.value == '["0","1","2"]'
 
 
+@retry_flaky_test()
 @requires_databricks
 def test_function_with_dict_of_string_to_int_return(client: DatabricksFunctionClient):
     def func_returning_map(a: int) -> Dict[str, int]:
@@ -344,6 +359,7 @@ def test_function_with_dict_of_string_to_int_return(client: DatabricksFunctionCl
         assert result.value == '{"key_0":"0","key_1":"1","key_2":"2"}'
 
 
+@retry_flaky_test()
 @requires_databricks
 def test_replace_existing_function(client: DatabricksFunctionClient):
     def simple_func(x: int) -> str:
@@ -370,6 +386,7 @@ def test_replace_existing_function(client: DatabricksFunctionClient):
         assert result.value == "Modified: 42"
 
 
+@retry_flaky_test()
 @requires_databricks
 def test_create_function_without_replace(client: DatabricksFunctionClient):
     def simple_func(x: int) -> str:
