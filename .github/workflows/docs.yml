@@ -33,12 +33,6 @@ jobs:
           source venv/bin/activate
           pip install -r docs/requirements.txt
 
-      - name: Verify Installed Packages
-        run: |
-          source venv/bin/activate
-          echo "Verifying installed dependencies..."
-          pip list | grep -E 'mkdocs'
-
       - name: Build documentation
         run: |
           source venv/bin/activate
