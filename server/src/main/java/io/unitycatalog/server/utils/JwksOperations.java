@@ -14,10 +14,12 @@ import com.linecorp.armeria.client.WebClient;
 import io.unitycatalog.server.exception.ErrorCode;
 import io.unitycatalog.server.exception.OAuthInvalidClientException;
 import io.unitycatalog.server.exception.OAuthInvalidRequestException;
+import io.unitycatalog.server.security.SecurityContext;
 import java.net.URL;
 import java.nio.file.Path;
 import java.security.interfaces.RSAPublicKey;
 import java.util.Map;
+
 import lombok.SneakyThrows;
 
 public class JwksOperations {

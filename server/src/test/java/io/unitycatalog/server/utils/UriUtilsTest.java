@@ -47,12 +47,10 @@ public class UriUtilsTest {
     // cleanup the created catalog
     UriUtils.deleteStorageLocationPath("file:/tmp/random");
 
-    assertThatThrownBy(
-            () -> UriUtils.createStorageLocationPath(".."))
+    assertThatThrownBy(() -> UriUtils.createStorageLocationPath(".."))
         .isInstanceOf(BaseException.class);
 
-    assertThatThrownBy(
-            () -> UriUtils.deleteStorageLocationPath(""))
+    assertThatThrownBy(() -> UriUtils.deleteStorageLocationPath(""))
         .isInstanceOf(BaseException.class);
   }
 }
