@@ -5,7 +5,6 @@ import static io.unitycatalog.cli.utils.CliUtils.EMPTY;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.ObjectWriter;
-import io.delta.kernel.exceptions.TableAlreadyExistsException;
 import io.unitycatalog.cli.delta.DeltaKernelUtils;
 import io.unitycatalog.cli.delta.DeltaKernelWriteUtils;
 import io.unitycatalog.cli.utils.CliException;
@@ -16,9 +15,6 @@ import io.unitycatalog.client.ApiException;
 import io.unitycatalog.client.api.TablesApi;
 import io.unitycatalog.client.api.TemporaryCredentialsApi;
 import io.unitycatalog.client.model.*;
-import java.net.URI;
-import java.nio.file.Path;
-import java.nio.file.Paths;
 import java.util.List;
 import org.apache.commons.cli.CommandLine;
 import org.json.JSONException;
@@ -39,7 +35,7 @@ public class TableCli {
     String output = EMPTY;
     switch (subCommand) {
       case CliUtils.CREATE:
-        output = createTable(tablesApi, json);
+        output = createTable(temporaryCredentialsApi, tablesApi, json);
         break;
       case CliUtils.LIST:
         output = listTables(tablesApi, json);
@@ -62,7 +58,8 @@ public class TableCli {
     CliUtils.postProcessAndPrintOutput(cmd, output, subCommand);
   }
 
-  private static String createTable(TablesApi apiClient, JSONObject json)
+  private static String createTable(
+      TemporaryCredentialsApi temporaryCredentialsApi, TablesApi tablesApi, JSONObject json)
       throws JsonProcessingException, ApiException {
     CliUtils.resolveFullNameToThreeLevelNamespace(json);
     try {
@@ -92,42 +89,16 @@ public class TableCli {
             .dataSourceFormat(DataSourceFormat.valueOf(format.toUpperCase()));
     if (createTable.getTableType() == TableType.EXTERNAL) {
       createTable.storageLocation(json.getString(CliParams.STORAGE_LOCATION.getServerParam()));
-      handleTableStorageLocation(createTable.getStorageLocation(), columnInfoList);
     }
-    TableInfo tableInfo = apiClient.createTable(createTable);
+    TableInfo tableInfo = tablesApi.createTable(createTable);
+    TemporaryCredentials temporaryCredentials =
+        temporaryCredentialsApi.generateTemporaryTableCredentials(
+            new GenerateTemporaryTableCredential()
+                .tableId(tableInfo.getTableId())
+                .operation(TableOperation.READ_WRITE));
+    DeltaKernelUtils.createDeltaTable(
+        tableInfo.getStorageLocation(), columnInfoList, temporaryCredentials);
     return objectWriter.writeValueAsString(tableInfo);
-  }
-
-  private static Path getLocalPath(String path) {
-    if (path.startsWith("file:")) {
-      return Paths.get(URI.create(path));
-    } else {
-      return Paths.get(path);
-    }
-  }
-
-  private static void handleTableStorageLocation(
-      String storageLocation, List<ColumnInfo> columnInfos) {
-    if (!(storageLocation.startsWith("s3://")
-        || storageLocation.startsWith("file:/")
-        || storageLocation.startsWith("/"))) {
-      throw new CliException(
-          "Storage location must start with s3:// or file:/ or be an absolute local filesystem path.");
-    }
-    if (!storageLocation.startsWith("s3://")) {
-      // local filesystem path
-      Path path = getLocalPath(storageLocation);
-      // try and initialize the directory and initiate delta log at the location
-      try {
-        DeltaKernelUtils.createDeltaTable(path.toUri().toString(), columnInfos, null);
-      } catch (Exception e) {
-        if (e.getCause() instanceof TableAlreadyExistsException) {
-          // TODO confirm the schema of the existing table matches the schema of the new table
-        } else {
-          throw new CliException("Failed to create delta table at " + path, e);
-        }
-      }
-    }
   }
 
   private static String listTables(TablesApi tablesApi, JSONObject json)
@@ -170,10 +141,13 @@ public class TableCli {
       maxResults = json.getInt(CliParams.MAX_RESULTS.getServerParam());
     }
     try {
+      TemporaryCredentials temporaryCredentials =
+          temporaryCredentialsApi.generateTemporaryTableCredentials(
+              new GenerateTemporaryTableCredential()
+                  .tableId(tableId)
+                  .operation(TableOperation.READ_WRITE));
       return DeltaKernelUtils.readDeltaTable(
-          info.getStorageLocation(),
-          getTemporaryTableCredentials(temporaryCredentialsApi, tableId, TableOperation.READ),
-          maxResults);
+          info.getStorageLocation(), temporaryCredentials, maxResults);
     } catch (Exception e) {
       throw new CliException("Failed to read delta table " + info.getStorageLocation(), e);
     }
@@ -189,11 +163,13 @@ public class TableCli {
     }
     String tableId = info.getTableId();
     try {
+      TemporaryCredentials temporaryCredentials =
+          temporaryCredentialsApi.generateTemporaryTableCredentials(
+              new GenerateTemporaryTableCredential()
+                  .tableId(tableId)
+                  .operation(TableOperation.READ_WRITE));
       DeltaKernelWriteUtils.writeSampleDataToDeltaTable(
-          info.getStorageLocation(),
-          info.getColumns(),
-          getTemporaryTableCredentials(
-              temporaryCredentialsApi, tableId, TableOperation.READ_WRITE));
+          info.getStorageLocation(), info.getColumns(), temporaryCredentials);
     } catch (Exception e) {
       throw new CliException(
           "Failed to write sample data to delta table " + info.getStorageLocation(), e);
@@ -204,14 +180,5 @@ public class TableCli {
   private static String deleteTable(TablesApi tablesApi, JSONObject json) throws ApiException {
     tablesApi.deleteTable(json.getString(CliParams.FULL_NAME.getServerParam()));
     return EMPTY;
-  }
-
-  public static AwsCredentials getTemporaryTableCredentials(
-      TemporaryCredentialsApi apiClient, String tableId, TableOperation operation)
-      throws ApiException {
-    TemporaryCredentials temporaryTableCredentials =
-        apiClient.generateTemporaryTableCredentials(
-            new GenerateTemporaryTableCredential().tableId(tableId).operation(operation));
-    return temporaryTableCredentials.getAwsTempCredentials();
   }
 }

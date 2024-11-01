@@ -1,12 +1,14 @@
 package io.unitycatalog.cli.delta;
 
 import static io.delta.kernel.internal.util.Utils.toCloseableIterator;
+import static io.unitycatalog.cli.delta.DeltaKernelUtils.getHDFSConfiguration;
 
 import io.delta.kernel.*;
 import io.delta.kernel.data.ColumnVector;
 import io.delta.kernel.data.ColumnarBatch;
 import io.delta.kernel.data.FilteredColumnarBatch;
 import io.delta.kernel.data.Row;
+import io.delta.kernel.defaults.engine.DefaultEngine;
 import io.delta.kernel.defaults.internal.data.DefaultColumnarBatch;
 import io.delta.kernel.engine.Engine;
 import io.delta.kernel.types.*;
@@ -14,13 +16,14 @@ import io.delta.kernel.utils.CloseableIterable;
 import io.delta.kernel.utils.CloseableIterator;
 import io.delta.kernel.utils.DataFileStatus;
 import io.unitycatalog.cli.UnityCatalogCli;
-import io.unitycatalog.client.model.AwsCredentials;
 import io.unitycatalog.client.model.ColumnInfo;
+import io.unitycatalog.client.model.TemporaryCredentials;
 import java.io.File;
 import java.io.IOException;
 import java.net.URI;
 import java.util.*;
 import java.util.stream.Collectors;
+import org.apache.hadoop.conf.Configuration;
 
 /**
  * Helper class to write a sample Delta table. Generates random data conforming to the given schema
@@ -36,11 +39,12 @@ public class DeltaKernelWriteUtils {
   private static final Random random = new Random();
 
   public static String writeSampleDataToDeltaTable(
-      String tablePath, List<ColumnInfo> columns, AwsCredentials tempCredentialResponse) {
+      String tablePath, List<ColumnInfo> columns, TemporaryCredentials temporaryCredentials) {
     try {
       StructType schema = DeltaKernelUtils.getSchema(columns);
       URI tablePathUri = URI.create(tablePath);
-      Engine engine = DeltaKernelUtils.getEngine(tablePathUri, tempCredentialResponse);
+      Configuration conf = getHDFSConfiguration(tablePathUri, temporaryCredentials);
+      Engine engine = DefaultEngine.create(conf);
       boolean createVsUpdate = true;
       if (tablePathUri.getScheme().equals("file")) {
         createVsUpdate = !(new File(tablePathUri).isDirectory());

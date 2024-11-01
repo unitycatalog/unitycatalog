@@ -106,12 +106,10 @@ public class VolumeCli {
     Configuration conf =
         DeltaKernelUtils.getHDFSConfiguration(
             baseURI,
-            tempCredApi
-                .generateTemporaryVolumeCredentials(
-                    new GenerateTemporaryVolumeCredential()
-                        .volumeId(volumeInfo.getVolumeId())
-                        .operation(VolumeOperation.WRITE_VOLUME))
-                .getAwsTempCredentials());
+            tempCredApi.generateTemporaryVolumeCredentials(
+                new GenerateTemporaryVolumeCredential()
+                    .volumeId(volumeInfo.getVolumeId())
+                    .operation(VolumeOperation.WRITE_VOLUME)));
     FileSystem fs =
         DeltaKernelUtils.getFileSystem(
             URI.create(DeltaKernelUtils.substituteSchemeForS3(volumeLocation)), conf);
@@ -167,12 +165,10 @@ public class VolumeCli {
     Configuration conf =
         DeltaKernelUtils.getHDFSConfiguration(
             relativeURI,
-            tempCredApi
-                .generateTemporaryVolumeCredentials(
-                    new GenerateTemporaryVolumeCredential()
-                        .volumeId(volumeInfo.getVolumeId())
-                        .operation(VolumeOperation.READ_VOLUME))
-                .getAwsTempCredentials());
+            tempCredApi.generateTemporaryVolumeCredentials(
+                new GenerateTemporaryVolumeCredential()
+                    .volumeId(volumeInfo.getVolumeId())
+                    .operation(VolumeOperation.READ_VOLUME)));
     URI relativeURIWithS3AScheme =
         URI.create(DeltaKernelUtils.substituteSchemeForS3(relativeURI.toString()));
     FileSystem fs =
