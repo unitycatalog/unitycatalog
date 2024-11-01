@@ -119,6 +119,17 @@ For more detailed instructions on using MkDocs, check out the official MkDocs do
 
 This section mentions guidelines to follow for a proper formatting of Markdown in our documentation.
 
+As general guideline we are using [markdownlint](https://github.com/DavidAnson/markdownlint) to ensure a common
+formatting of Markdown files. Due to the usage of [MkDocs](https://www.mkdocs.org/) we define a custom definition of
+rules. The definition is done in the `.markdownlint.yaml` file in the repository root directory. The reasoning of
+specific configuration for rules is also documented there.
+
+markdownlint can be executed locally by installing it directly or run it via `npx`, as shown below
+
+```sh
+npx markdownlint-cli docs/README.md
+```
+
 ### Formatting code snippets within a list
 
 If code snippets are present within a list, they should be aligned with the content of the list. The following section
