@@ -9,6 +9,7 @@ import com.fasterxml.jackson.databind.annotation.JsonNaming;
 import com.linecorp.armeria.common.*;
 import com.linecorp.armeria.common.annotation.Nullable;
 import com.linecorp.armeria.server.annotation.ExceptionHandler;
+import com.linecorp.armeria.server.annotation.Get;
 import com.linecorp.armeria.server.annotation.Param;
 import com.linecorp.armeria.server.annotation.Post;
 import io.unitycatalog.control.model.User;
@@ -167,15 +168,35 @@ public class AuthService {
             String cookieTimeout =
                 ServerProperties.getInstance().getProperty("server.cookie-timeout", "P5D");
             Cookie cookie =
-                Cookie.secureBuilder(AuthDecorator.UC_TOKEN_KEY, accessToken)
-                    .path("/")
-                    .maxAge(Duration.parse(cookieTimeout).getSeconds())
-                    .build();
+                createCookie(
+                    AuthDecorator.UC_TOKEN_KEY,
+                    accessToken,
+                    "/",
+                    Duration.parse(cookieTimeout).getSeconds());
             responseHeaders.add(HttpHeaderNames.SET_COOKIE, cookie.toSetCookieHeader());
           }
         });
 
     return HttpResponse.ofJson(responseHeaders.build(), response);
+  }
+
+  @Get("/logout")
+  public HttpResponse logout(HttpRequest request) {
+    String authorizationCookie =
+        request.headers().cookies().stream()
+            .filter(c -> c.name().equals(AuthDecorator.UC_TOKEN_KEY))
+            .map(Cookie::name)
+            .findFirst()
+            .orElse(null);
+
+    if (authorizationCookie != null) {
+      Cookie expiredCookie = createCookie(AuthDecorator.UC_TOKEN_KEY, "", "/", 0L);
+      ResponseHeaders headers =
+          ResponseHeaders.of(
+              HttpStatus.OK, HttpHeaderNames.SET_COOKIE, expiredCookie.toSetCookieHeader());
+      return HttpResponse.of(headers);
+    }
+    return HttpResponse.of(HttpStatus.OK);
   }
 
   private static void verifyPrincipal(DecodedJWT decodedJWT) {
@@ -199,6 +220,10 @@ public class AuthService {
 
     throw new OAuthInvalidRequestException(
         ErrorCode.INVALID_ARGUMENT, "User not allowed: " + subject);
+  }
+
+  private Cookie createCookie(String key, String value, String path, Long maxAge) {
+    return Cookie.secureBuilder(key, value).path(path).maxAge(maxAge).build();
   }
 
   // TODO: This should be probably integrated into the OpenAPI spec.
