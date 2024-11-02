@@ -4,10 +4,12 @@ import com.google.auth.oauth2.AccessToken;
 import io.unitycatalog.server.exception.BaseException;
 import io.unitycatalog.server.exception.ErrorCode;
 import io.unitycatalog.server.model.*;
+import io.unitycatalog.server.persist.utils.FileUtils;
 import io.unitycatalog.server.service.credential.aws.AwsCredentialVendor;
 import io.unitycatalog.server.service.credential.azure.AzureCredential;
 import io.unitycatalog.server.service.credential.azure.AzureCredentialVendor;
 import io.unitycatalog.server.service.credential.gcp.GcpCredentialVendor;
+import io.unitycatalog.server.utils.Constants;
 import software.amazon.awssdk.services.sts.model.Credentials;
 
 import java.net.URI;
@@ -41,9 +43,17 @@ public class CredentialOperations {
   }
 
   public TemporaryCredentials vendCredential(CredentialContext context) {
+    var location = context.getLocations().get(0);
+    if (!FileUtils.isSupportedCloudStorageUri(location)) {
+      throw new BaseException(
+              ErrorCode.INVALID_ARGUMENT,
+              "Invalid storage location: " + location + ". The scheme must be one of " + Constants.SUPPORTED_SCHEMES);
+    }
+
+    var storageScheme = context.getStorageScheme();
     TemporaryCredentials temporaryCredentials = new TemporaryCredentials();
 
-    switch (context.getStorageScheme()) {
+    switch (storageScheme) {
       case URI_SCHEME_ABFS, URI_SCHEME_ABFSS -> {
         AzureCredential azureCredential = vendAzureCredential(context);
         temporaryCredentials.azureUserDelegationSas(new AzureUserDelegationSAS().sasToken(azureCredential.getSasToken()))
