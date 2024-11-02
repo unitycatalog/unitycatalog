@@ -177,7 +177,7 @@ public class UnityCatalogServer {
           .exclude(controlPath + "auth/tokens")
           .build(accessDecorator);
 
-      AuthDecorator authDecorator = new AuthDecorator();
+      AuthDecorator authDecorator = new AuthDecorator(securityContext);
       sb.routeDecorator().pathPrefix(basePath).build(authDecorator);
       sb.routeDecorator()
           .pathPrefix(controlPath)
