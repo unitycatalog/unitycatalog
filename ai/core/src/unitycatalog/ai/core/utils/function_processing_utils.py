@@ -1,3 +1,4 @@
+import ast
 import decimal
 import json
 import logging
@@ -5,7 +6,7 @@ import os
 from hashlib import md5
 from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
-from pydantic import BaseModel, Field, create_model
+from pydantic import Field, create_model
 
 from unitycatalog.ai.core.utils.config import JSON_SCHEMA_TYPE, UC_LIST_FUNCTIONS_MAX_RESULTS
 from unitycatalog.ai.core.utils.pydantic_utils import (
@@ -239,8 +240,11 @@ def generate_function_input_params_schema(
     """
     if not isinstance(function_info, supported_function_info_types()):
         raise TypeError(f"Unsupported function info type: {type(function_info)}")
+    params_name = (
+        f"{function_info.catalog_name}__{function_info.schema_name}__{function_info.name}__params"
+    )
     if function_info.input_params is None:
-        return PydanticFunctionInputParams(pydantic_model=BaseModel, strict=strict)
+        return PydanticFunctionInputParams(pydantic_model=create_model(params_name), strict=strict)
     param_infos = function_info.input_params.parameters
     if param_infos is None:
         raise ValueError("Function input parameters are None.")
@@ -251,10 +255,7 @@ def generate_function_input_params_schema(
             pydantic_field.pydantic_type,
             Field(default=pydantic_field.default, description=pydantic_field.description),
         )
-    model = create_model(
-        f"{function_info.catalog_name}__{function_info.schema_name}__{function_info.name}__params",
-        **fields,
-    )
+    model = create_model(params_name, **fields)
     return PydanticFunctionInputParams(pydantic_model=model, strict=pydantic_field.strict)
 
 
@@ -282,3 +283,63 @@ def supported_function_info_types():
         pass
 
     return types
+
+
+def is_python_code(code_str: str) -> bool:
+    """Check if the provided string is valid Python code."""
+    try:
+        ast.parse(code_str)
+        return True
+    except SyntaxError:
+        return False
+
+
+def convert_quoting_to_sql_safe_format(string_value: str) -> str:
+    """
+    Convert a string to a SQL-safe format by escaping single quotes.
+
+    Args:
+        string_value: The string to be converted.
+
+    Returns:
+        str: The SQL-safe string.
+    """
+    has_single_quote = "'" in string_value
+    has_double_quote = '"' in string_value
+
+    if not has_single_quote and not has_double_quote:
+        return string_value
+
+    if has_single_quote and not has_double_quote:
+        string_value = string_value.replace("'", '"')
+    elif has_single_quote and has_double_quote:
+        raise ValueError(
+            "The argument passed in has been detected as Python code that contains both single and double quotes. "
+            "This is not supported. Code must use only one style of quotation. Please fix the code and try again."
+        )
+    return string_value
+
+
+def sanitize_string_inputs_of_function_params(param_value: Any) -> str:
+    """
+    Sanitize string inputs of function parameters to allow for code block submission.
+
+    Args:
+        param_value: The value of the parameter to sanitize.
+
+    Returns:
+        A sanitized string of the argument value.
+    """
+
+    if isinstance(param_value, str) and is_python_code(param_value):
+        # Escape single quotes, backslashes, and control characters that would otherwise break Python code execution
+        parsed = (
+            param_value.replace("\\", "\\\\")
+            .replace("\r", "\\r")
+            .replace("\n", "\\n")
+            .replace("\t", "\\t")
+        )
+        quotes_parsed = convert_quoting_to_sql_safe_format(parsed)
+    else:
+        quotes_parsed = param_value
+    return str(quotes_parsed)

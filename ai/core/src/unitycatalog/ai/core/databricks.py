@@ -22,6 +22,9 @@ from unitycatalog.ai.core.envs.databricks_env_vars import (
 )
 from unitycatalog.ai.core.paged_list import PagedList
 from unitycatalog.ai.core.utils.callable_utils import generate_sql_function_body
+from unitycatalog.ai.core.utils.function_processing_utils import (
+    sanitize_string_inputs_of_function_params,
+)
 from unitycatalog.ai.core.utils.type_utils import (
     column_type_to_python_type,
     convert_timedelta_to_interval_str,
@@ -824,6 +827,7 @@ def get_execute_function_sql_command(function: "FunctionInfo", parameters: Dict[
     if parameters and function.input_params and function.input_params.parameters:
         args: List[str] = []
         use_named_args = False
+
         for param_info in function.input_params.parameters:
             if param_info.name not in parameters:
                 use_named_args = True
@@ -861,7 +865,10 @@ def get_execute_function_sql_command(function: "FunctionInfo", parameters: Dict[
                         param_value, Decimal
                     ):
                         param_value = float(param_value)
-                    arg_clause += f"'{str(param_value)}'"
+                    # Handle all other types as string types and santitize escape characters
+                    # since this is likely a code block being executed
+                    param_value = sanitize_string_inputs_of_function_params(param_value)
+                    arg_clause += f"'{param_value}'"
                 args.append(arg_clause)
         sql_query += ",".join(args)
     sql_query += ")"
