@@ -37,8 +37,7 @@ public class FileUtilsTest {
     assertThatThrownBy(() -> FileUtils.createTableDirectory("..", "schema", "table"))
         .isInstanceOf(BaseException.class);
 
-    assertThatThrownBy(
-            () -> FileUtils.createVolumeDirectory(".."))
+    assertThatThrownBy(() -> FileUtils.createVolumeDirectory(".."))
         .isInstanceOf(BaseException.class);
   }
 }
