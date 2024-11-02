@@ -1,0 +1,71 @@
+[project]
+name = "unitycatalog-autogen"
+version = "0.1.0"
+description = "Support for Unity Catalog functions as autogen tools"
+authors = [
+    { name="Puneet Jain", email="puneet.jain@databricks.com" }
+]
+readme = "README.md"
+license = { text="Apache-2.0" }
+requires-python = ">=3.9"
+dependencies = [
+    "autogen-agentchat~=0.2",
+    "openai>=1.46.1",
+    "unitycatalog-ai",
+    "pydantic<3,>=2",
+]
+
+[project.optional-dependencies]
+dev = [
+  "pytest",
+  "typing_extensions",
+  # temp needed before unitycatalog-ai[databricks] is released
+  "databricks-sdk>=0.32.0",
+  "databricks-connect",
+  "ruff==0.6.4"
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build]
+include = [
+  "src/unitycatalog/ai/autogen/*"
+]
+
+[tool.hatch.build.targets.wheel]
+sources = ["src"]
+only-include = ["src/unitycatalog/ai/autogen"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py39"
+
+[tool.ruff.lint]
+select = [
+  # isort
+  "I",
+  # bugbear rules
+  "B",
+  # remove unused imports
+  "F401",
+  # bare except statements
+  "E722",
+  # print statements
+  "T201",
+  "T203",
+  # misuse of typing.TYPE_CHECKING
+  "TCH004",
+  # import rules
+  "TID251",
+  # undefined-local-with-import-star
+  "F403",
+]
+
+[tool.ruff.format]
+docstring-code-format = true
+docstring-code-line-length = 88
+
+[tool.ruff.lint.pydocstyle]
+convention = "google"
