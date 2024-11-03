@@ -44,11 +44,7 @@ public class CredentialOperations {
 
   public TemporaryCredentials vendCredential(CredentialContext context) {
     var location = context.getLocations().get(0);
-    if (!FileUtils.isSupportedCloudStorageUri(location)) {
-      throw new BaseException(
-              ErrorCode.INVALID_ARGUMENT,
-              "Invalid storage location: " + location + ". The scheme must be one of " + Constants.SUPPORTED_SCHEMES);
-    }
+    FileUtils.assertValidLocation(location);
 
     var storageScheme = context.getStorageScheme();
     TemporaryCredentials temporaryCredentials = new TemporaryCredentials();
