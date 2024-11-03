@@ -9,7 +9,6 @@ import io.unitycatalog.server.service.credential.aws.AwsCredentialVendor;
 import io.unitycatalog.server.service.credential.azure.AzureCredential;
 import io.unitycatalog.server.service.credential.azure.AzureCredentialVendor;
 import io.unitycatalog.server.service.credential.gcp.GcpCredentialVendor;
-import io.unitycatalog.server.utils.Constants;
 import software.amazon.awssdk.services.sts.model.Credentials;
 
 import java.net.URI;
