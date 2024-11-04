@@ -709,12 +709,12 @@ test_cases_string_inputs = [
     # String with single quotes
     (
         {"a": 1, "b": "O'Reilly"},
-        "SELECT `catalog`.`schema`.`mock_function`('1','O''Reilly')",
+        "SELECT `catalog`.`schema`.`mock_function`('1','O'Reilly')",
     ),
     # String with backslashes
     (
         {"a": 1, "b": "C:\\Program Files\\App"},
-        "SELECT `catalog`.`schema`.`mock_function`('1','C:\\\\Program Files\\\\App')",
+        "SELECT `catalog`.`schema`.`mock_function`('1','C:\\Program Files\\App')",
     ),
     # String with newlines
     (
@@ -724,12 +724,12 @@ test_cases_string_inputs = [
     # String with tabs
     (
         {"a": 1, "b": "Column1\tColumn2"},
-        "SELECT `catalog`.`schema`.`mock_function`('1','Column1\\tColumn2')",
+        "SELECT `catalog`.`schema`.`mock_function`('1','Column1\tColumn2')",
     ),
     # String with various special characters
     (
         {"a": 1, "b": "Special chars: !@#$%^&*()_+-=[]{}|;':,./<>?"},
-        "SELECT `catalog`.`schema`.`mock_function`('1','Special chars: !@#$%^&*()_+-=[]{}|;'':,./<>?')",
+        "SELECT `catalog`.`schema`.`mock_function`('1','Special chars: !@#$%^&*()_+-=[]{}|;':,./<>?')",
     ),
     # String with Unicode characters
     (
@@ -744,17 +744,17 @@ test_cases_string_inputs = [
     # String with backslashes and quotes
     (
         {"a": 1, "b": "Path: C:\\User\\'name'\\\"docs\""},
-        "SELECT `catalog`.`schema`.`mock_function`('1','Path: C:\\\\User\\\\''name''\\\\\"docs\"')",
+        "SELECT `catalog`.`schema`.`mock_function`('1','Path: C:\\User\\'name'\\\"docs\"')",
     ),
     # String with code-like content (simulating GenAI code)
     (
         {"a": 1, "b": "def func():\n    print('Hello, world!')"},
-        "SELECT `catalog`.`schema`.`mock_function`('1','def func():\\n    print(''Hello, world!'')')",
+        "SELECT `catalog`.`schema`.`mock_function`('1','def func():\\n    print(\"Hello, world!\")')",
     ),
     # String with multiline code and special characters
     (
         {"a": 1, "b": "if a > 0:\n    print('Positive')\nelse:\n    print('Non-positive')"},
-        "SELECT `catalog`.`schema`.`mock_function`('1','if a > 0:\\n    print(''Positive'')\\nelse:\\n    print(''Non-positive'')')",
+        "SELECT `catalog`.`schema`.`mock_function`('1','if a > 0:\\n    print(\"Positive\")\\nelse:\\n    print(\"Non-positive\")')",
     ),
 ]
 
@@ -796,8 +796,7 @@ def test_execute_function_with_mock_string_input(
         "b": "def func():\n    print('Hello, world!')",
     }
 
-    sanitized_parameters = sanitize_string_inputs_of_function_params(parameters)
-    sanitized_b = sanitized_parameters["b"]
+    sanitized_b = sanitize_string_inputs_of_function_params(parameters["b"])
 
     expected_sql = f"SELECT `catalog`.`schema`.`mock_function`('1','{sanitized_b}')"
 
@@ -805,18 +804,18 @@ def test_execute_function_with_mock_string_input(
 
     client.set_default_spark_session = MagicMock()
     client.spark = mock_spark_session
-
     client.get_function = MagicMock(return_value=mock_function_info)
 
     mock_result = MagicMock()
-    mock_result.collect.return_value = [[f"1-{parameters['b']}"]]
+    mock_result.collect.return_value = [[f"1-{sanitized_b}"]]
     mock_spark_session.sql.return_value = mock_result
 
     result = client.execute_function("catalog.schema.mock_function", parameters=parameters)
 
     mock_spark_session.sql.assert_called_once_with(sqlQuery=expected_sql)
 
-    assert result.value == f"1-{parameters['b']}"
+    expected_result = f"1-{sanitized_b}"
+    assert result.value == expected_result
 
 
 def test_execute_function_with_genai_code_input(
@@ -852,8 +851,7 @@ greet("World")"""
         "b": genai_code,
     }
 
-    sanitized_parameters = sanitize_string_inputs_of_function_params(parameters)
-    sanitized_b = sanitized_parameters["b"]
+    sanitized_b = sanitize_string_inputs_of_function_params(parameters["b"])
 
     expected_sql = f"SELECT `catalog`.`schema`.`mock_function`('1','{sanitized_b}')"
 

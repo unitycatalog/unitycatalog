@@ -827,16 +827,15 @@ def get_execute_function_sql_command(function: "FunctionInfo", parameters: Dict[
     if parameters and function.input_params and function.input_params.parameters:
         args: List[str] = []
         use_named_args = False
-        sanitized_parameters = sanitize_string_inputs_of_function_params(parameters)
 
         for param_info in function.input_params.parameters:
-            if param_info.name not in sanitized_parameters:
+            if param_info.name not in parameters:
                 use_named_args = True
             else:
                 arg_clause = ""
                 if use_named_args:
                     arg_clause += f"{param_info.name} => "
-                param_value = sanitized_parameters[param_info.name]
+                param_value = parameters[param_info.name]
                 if param_info.type_name in (
                     ColumnTypeName.ARRAY,
                     ColumnTypeName.MAP,
@@ -866,7 +865,10 @@ def get_execute_function_sql_command(function: "FunctionInfo", parameters: Dict[
                         param_value, Decimal
                     ):
                         param_value = float(param_value)
-                    arg_clause += f"'{str(param_value)}'"
+                    # Handle all other types as string types and santitize escape characters
+                    # since this is likely a code block being executed
+                    param_value = sanitize_string_inputs_of_function_params(param_value)
+                    arg_clause += f"'{param_value}'"
                 args.append(arg_clause)
         sql_query += ",".join(args)
     sql_query += ")"
