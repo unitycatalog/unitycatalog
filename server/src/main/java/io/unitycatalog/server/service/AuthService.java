@@ -70,7 +70,7 @@ public class AuthService {
 
   public AuthService(SecurityContext securityContext) {
     this.securityContext = securityContext;
-    this.jwksOperations = new JwksOperations();
+    this.jwksOperations = new JwksOperations(securityContext);
   }
 
   /**

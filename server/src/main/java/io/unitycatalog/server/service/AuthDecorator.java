@@ -18,6 +18,7 @@ import io.unitycatalog.server.exception.AuthorizationException;
 import io.unitycatalog.server.exception.ErrorCode;
 import io.unitycatalog.server.persist.UserRepository;
 import io.unitycatalog.server.security.JwtClaim;
+import io.unitycatalog.server.security.SecurityContext;
 import io.unitycatalog.server.utils.JwksOperations;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -45,6 +46,12 @@ public class AuthDecorator implements DecoratingHttpServiceFunction {
   public static final AttributeKey<DecodedJWT> DECODED_JWT_ATTR =
       AttributeKey.valueOf(DecodedJWT.class, "DECODED_JWT_ATTR");
 
+  private final JwksOperations jwksOperations;
+
+  public AuthDecorator(SecurityContext securityContext) {
+    this.jwksOperations = new JwksOperations(securityContext);
+  }
+
   @Override
   public HttpResponse serve(HttpService delegate, ServiceRequestContext ctx, HttpRequest req)
       throws Exception {
@@ -60,8 +67,6 @@ public class AuthDecorator implements DecoratingHttpServiceFunction {
 
     DecodedJWT decodedJWT =
         JWT.decode(getAccessTokenFromCookieOrAuthHeader(authorizationHeader, authorizationCookie));
-
-    JwksOperations jwksOperations = new JwksOperations();
 
     String issuer = decodedJWT.getClaim(JwtClaim.ISSUER.key()).asString();
     String keyId = decodedJWT.getHeaderClaim(JwtClaim.KEY_ID.key()).asString();
