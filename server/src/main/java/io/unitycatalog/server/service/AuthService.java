@@ -185,7 +185,7 @@ public class AuthService {
     String authorizationCookie =
         request.headers().cookies().stream()
             .filter(c -> c.name().equals(AuthDecorator.UC_TOKEN_KEY))
-            .map(Cookie::name)
+            .map(Cookie::value)
             .findFirst()
             .orElse(null);
 
