@@ -47,7 +47,7 @@ def uc_server():
             for _ in range(90):
                 try:
                     response = requests.head(
-                        "http://localhost:8081/api/2.1/unity-catalog/catalogs",
+                        "http://localhost:8080/api/2.1/unity-catalog/catalogs",
                         timeout=5,
                     )
                     if response.status_code == 200:
