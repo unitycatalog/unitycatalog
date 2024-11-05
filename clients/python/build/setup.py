@@ -1,9 +1,9 @@
 # coding: utf-8
 
 """
-    Unity Catalog API
+Unity Catalog API
 
-    Official Python SDK for Unity Catalog
+Official Python SDK for Unity Catalog
 """
 
 from setuptools import setup, find_packages

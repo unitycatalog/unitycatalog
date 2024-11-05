@@ -1,3 +1,4 @@
+import pytest
 import subprocess
 
 from unitycatalog.client import (
@@ -9,8 +10,9 @@ from unitycatalog.client import (
 )
 
 
-def test_table_list(tables_api):
-    api_response = tables_api.list_tables("unity", "default")
+@pytest.mark.asyncio
+async def test_table_list(tables_api):
+    api_response = await tables_api.list_tables("unity", "default")
     table_names_and_types = {(t.name, t.table_type) for t in api_response.tables}
 
     assert table_names_and_types == {
@@ -21,8 +23,9 @@ def test_table_list(tables_api):
     }
 
 
-def test_table_get(tables_api):
-    table_info = tables_api.get_table("unity.default.numbers")
+@pytest.mark.asyncio
+async def test_table_get(tables_api):
+    table_info = await tables_api.get_table("unity.default.numbers")
 
     assert table_info.name == "numbers"
     assert table_info.catalog_name == "unity"
@@ -39,8 +42,9 @@ def test_table_get(tables_api):
     }
 
 
-def test_table_create(tables_api):
-    table_info = tables_api.create_table(
+@pytest.mark.asyncio
+async def test_table_create(tables_api):
+    table_info = await tables_api.create_table(
         CreateTable(
             name="mytable",
             catalog_name="unity",
@@ -87,7 +91,7 @@ def test_table_create(tables_api):
             check=True,
         )
 
-        table_info = tables_api.get_table("unity.default.mytable")
+        table_info = await tables_api.get_table("unity.default.mytable")
 
         columns = {(c.name, c.type_text, c.type_name) for c in table_info.columns}
         assert columns == {
@@ -96,4 +100,4 @@ def test_table_create(tables_api):
         }
 
     finally:
-        tables_api.delete_table("unity.default.mytable")
+        await tables_api.delete_table("unity.default.mytable")

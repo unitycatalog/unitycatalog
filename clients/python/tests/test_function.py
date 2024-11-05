@@ -11,13 +11,15 @@ from unitycatalog.client import (
 )
 
 
-def test_function_list(functions_api):
-    api_response = functions_api.list_functions("unity", "default")
+@pytest.mark.asyncio
+async def test_function_list(functions_api):
+    api_response = await functions_api.list_functions("unity", "default")
     function_names = {f.name for f in api_response.functions}
 
     assert function_names == {"lowercase", "sum"}
 
 
+@pytest.mark.asyncio
 @pytest.mark.parametrize(
     "function_name,function_def",
     [
@@ -25,8 +27,8 @@ def test_function_list(functions_api):
         ("lowercase", "g = s.lower()\\nreturn g"),
     ],
 )
-def test_function_get(functions_api, function_name, function_def):
-    function_info = functions_api.get_function(f"unity.default.{function_name}")
+async def test_function_get(functions_api, function_name, function_def):
+    function_info = await functions_api.get_function(f"unity.default.{function_name}")
 
     assert function_info.name == function_name
     assert function_info.catalog_name == "unity"
@@ -35,8 +37,9 @@ def test_function_get(functions_api, function_name, function_def):
     assert function_info.routine_definition == function_def
 
 
-def test_function_create(functions_api):
-    function_info = functions_api.create_function(
+@pytest.mark.asyncio
+async def test_function_create(functions_api):
+    function_info = await functions_api.create_function(
         create_function_request=CreateFunctionRequest(
             function_info=CreateFunction(
                 name="myFunction",
@@ -92,4 +95,4 @@ def test_function_create(functions_api):
         )
         assert "6" in result.stdout, result
     finally:
-        functions_api.delete_function("unity.default.myFunction")
+        await functions_api.delete_function("unity.default.myFunction")
