@@ -28,13 +28,11 @@ def uc_server():
 
     try:
         script_dir = os.path.dirname(os.path.abspath(__file__))
-        project_root = os.path.abspath(os.path.join(script_dir, '..'))
+        project_root = os.path.abspath(os.path.join(script_dir, '..', '..', '..'))
         start_uc_server_path = os.path.join(project_root, 'bin', 'start-uc-server')
 
         if not os.path.exists(start_uc_server_path):
             raise FileNotFoundError(f"start-uc-server script not found at {start_uc_server_path}")
-
-        os.chmod(start_uc_server_path, 0o755)
 
         with open(log_file, 'w') as fp:
             process = subprocess.Popen(
