@@ -657,7 +657,11 @@ class DatabricksFunctionClient(BaseFunctionClient):
         _logger.info("Using databricks connect to execute functions with serverless compute.")
         self.set_default_spark_session()
         sql_command = get_execute_function_sql_command(function_info, parameters)
-        result = self.spark.sql(sqlQuery=sql_command)
+        try:
+            result = self.spark.sql(sqlQuery=sql_command)
+        except Exception as e:
+            error = f"Failed to execute function with command {sql_command}; Error: {e}"
+            return FunctionExecutionResult(error=error)
         if is_scalar(function_info):
             return FunctionExecutionResult(format="SCALAR", value=str(result.collect()[0][0]))
         else:
