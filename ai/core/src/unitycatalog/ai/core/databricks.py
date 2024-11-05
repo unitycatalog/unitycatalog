@@ -833,10 +833,10 @@ def get_execute_function_sql_command(
             f"SELECT * FROM `{function.catalog_name}`.`{function.schema_name}`.`{function.name}`("
         )
 
+    params_dict: dict[str, Any] = {}
     if parameters and function.input_params and function.input_params.parameters:
         args: List[str] = []
         use_named_args = False
-        params_dict: dict[str, Any] = {}
 
         for param_info in function.input_params.parameters:
             if param_info.name not in parameters:

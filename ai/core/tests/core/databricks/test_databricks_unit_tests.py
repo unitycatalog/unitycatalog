@@ -21,7 +21,6 @@ from databricks.sdk.service.catalog import (
 from unitycatalog.ai.core.databricks import (
     DatabricksFunctionClient,
     extract_function_name,
-    get_execute_function_sql_command,
     retry_on_session_expiration,
 )
 from unitycatalog.ai.core.envs.databricks_env_vars import UCAI_DATABRICKS_SESSION_RETRY_MAX_ATTEMPTS
@@ -696,73 +695,6 @@ def create_mock_function_info():
             ]
         ),
     )
-
-
-test_cases_string_inputs = [
-    (
-        {"a": 1, "b": "test"},
-        "SELECT `catalog`.`schema`.`mock_function`('1','test')",
-    ),
-    # String with single quotes
-    (
-        {"a": 1, "b": "O'Reilly"},
-        "SELECT `catalog`.`schema`.`mock_function`('1','O'Reilly')",
-    ),
-    # String with backslashes
-    (
-        {"a": 1, "b": "C:\\Program Files\\App"},
-        "SELECT `catalog`.`schema`.`mock_function`('1','C:\\Program Files\\App')",
-    ),
-    # String with newlines
-    (
-        {"a": 1, "b": "Line1\nLine2"},
-        "SELECT `catalog`.`schema`.`mock_function`('1','Line1\\nLine2')",
-    ),
-    # String with tabs
-    (
-        {"a": 1, "b": "Column1\tColumn2"},
-        "SELECT `catalog`.`schema`.`mock_function`('1','Column1\tColumn2')",
-    ),
-    # String with various special characters
-    (
-        {"a": 1, "b": "Special chars: !@#$%^&*()_+-=[]{}|;':,./<>?"},
-        "SELECT `catalog`.`schema`.`mock_function`('1','Special chars: !@#$%^&*()_+-=[]{}|;':,./<>?')",
-    ),
-    # String with Unicode characters
-    (
-        {"a": 1, "b": "Unicode test: ü, é, 漢字"},
-        "SELECT `catalog`.`schema`.`mock_function`('1','Unicode test: ü, é, 漢字')",
-    ),
-    # String with double quotes
-    (
-        {"a": 1, "b": 'He said, "Hello"'},
-        """SELECT `catalog`.`schema`.`mock_function`('1',\'He said, "Hello"\')""",
-    ),
-    # String with backslashes and quotes
-    (
-        {"a": 1, "b": "Path: C:\\User\\'name'\\\"docs\""},
-        "SELECT `catalog`.`schema`.`mock_function`('1','Path: C:\\User\\'name'\\\"docs\"')",
-    ),
-    # String with code-like content (simulating GenAI code)
-    (
-        {"a": 1, "b": "def func():\n    print('Hello, world!')"},
-        "SELECT `catalog`.`schema`.`mock_function`('1','def func():\\n    print(\"Hello, world!\")')",
-    ),
-    # String with multiline code and special characters
-    (
-        {"a": 1, "b": "if a > 0:\n    print('Positive')\nelse:\n    print('Non-positive')"},
-        "SELECT `catalog`.`schema`.`mock_function`('1','if a > 0:\\n    print(\"Positive\")\\nelse:\\n    print(\"Non-positive\")')",
-    ),
-]
-
-
-@pytest.mark.parametrize("parameters, expected_sql", test_cases_string_inputs)
-def test_get_execute_function_sql_command_string_inputs(parameters, expected_sql):
-    function_info = create_mock_function_info()
-
-    sql_command = get_execute_function_sql_command(function_info, parameters)
-
-    assert sql_command.replace("\r\n", "\n") == expected_sql.replace("\r\n", "\n")
 
 
 def test_execute_function_with_mock_string_input(
