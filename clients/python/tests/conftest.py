@@ -79,7 +79,7 @@ async def api_client():
     """
     Asynchronous fixture to initialize and yield the ApiClient.
     """
-    config = Configuration(host="http://localhost:8081/api/2.1/unity-catalog")
+    config = Configuration(host="http://localhost:8080/api/2.1/unity-catalog")
     client = ApiClient(config)
     yield client
     await client.close()
