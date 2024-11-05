@@ -25,9 +25,6 @@ from unitycatalog.ai.core.databricks import (
     retry_on_session_expiration,
 )
 from unitycatalog.ai.core.envs.databricks_env_vars import UCAI_DATABRICKS_SESSION_RETRY_MAX_ATTEMPTS
-from unitycatalog.ai.core.utils.function_processing_utils import (
-    sanitize_string_inputs_of_function_params,
-)
 from unitycatalog.ai.test_utils.client_utils import client  # noqa: F401
 from unitycatalog.ai.test_utils.function_utils import (
     CATALOG,
@@ -795,10 +792,7 @@ def test_execute_function_with_mock_string_input(
         "a": 1,
         "b": "def func():\n    print('Hello, world!')",
     }
-
-    sanitized_b = sanitize_string_inputs_of_function_params(parameters["b"])
-
-    expected_sql = f"SELECT `catalog`.`schema`.`mock_function`('1','{sanitized_b}')"
+    expected_sql = f"SELECT `catalog`.`schema`.`mock_function`(:a,:b)"
 
     client = DatabricksFunctionClient(client=mock_workspace_client)
 
@@ -807,14 +801,14 @@ def test_execute_function_with_mock_string_input(
     client.get_function = MagicMock(return_value=mock_function_info)
 
     mock_result = MagicMock()
-    mock_result.collect.return_value = [[f"1-{sanitized_b}"]]
+    mock_result.collect.return_value = [[f"1-{parameters['b']}"]]
     mock_spark_session.sql.return_value = mock_result
 
     result = client.execute_function("catalog.schema.mock_function", parameters=parameters)
 
-    mock_spark_session.sql.assert_called_once_with(sqlQuery=expected_sql)
+    mock_spark_session.sql.assert_called_once_with(sqlQuery=expected_sql, args=parameters)
 
-    expected_result = f"1-{sanitized_b}"
+    expected_result = f"1-{parameters['b']}"
     assert result.value == expected_result
 
 
@@ -850,10 +844,7 @@ greet("World")"""
         "a": 1,
         "b": genai_code,
     }
-
-    sanitized_b = sanitize_string_inputs_of_function_params(parameters["b"])
-
-    expected_sql = f"SELECT `catalog`.`schema`.`mock_function`('1','{sanitized_b}')"
+    expected_sql = f"SELECT `catalog`.`schema`.`mock_function`(:a,:b)"
 
     client = DatabricksFunctionClient(client=mock_workspace_client)
 
@@ -868,6 +859,6 @@ greet("World")"""
 
     result = client.execute_function("catalog.schema.mock_function", parameters=parameters)
 
-    mock_spark_session.sql.assert_called_once_with(sqlQuery=expected_sql)
+    mock_spark_session.sql.assert_called_once_with(sqlQuery=expected_sql, args=parameters)
 
     assert result.value == f"1-{genai_code}"
