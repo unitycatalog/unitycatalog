@@ -871,3 +871,60 @@ greet("World")"""
     mock_spark_session.sql.assert_called_once_with(sqlQuery=expected_sql)
 
     assert result.value == f"1-{genai_code}"
+
+
+def test_execute_function_warnings_missing_descriptions(mock_workspace_client, mock_spark_session):
+    import warnings
+
+    # Create a FunctionInfo object without parameter or function descriptions
+    func_info = FunctionInfo(
+        catalog_name="catalog",
+        schema_name="schema",
+        name="mock_function",
+        data_type=ColumnTypeName.STRING,
+        input_params=FunctionParameterInfos(
+            parameters=[
+                FunctionParameterInfo(
+                    name="a",
+                    type_name=ColumnTypeName.INT,
+                    type_text="int",
+                    position=0,
+                    comment=None,
+                ),
+                FunctionParameterInfo(
+                    name="b",
+                    type_name=ColumnTypeName.STRING,
+                    type_text="string",
+                    position=1,
+                    comment="",
+                ),
+            ]
+        ),
+        comment=None,
+    )
+
+    client = DatabricksFunctionClient(client=mock_workspace_client)
+    client.set_default_spark_session = MagicMock()
+    client.spark = mock_spark_session
+    client.get_function = MagicMock(return_value=func_info)
+
+    mock_result = MagicMock()
+    mock_result.collect.return_value = [["test_result"]]
+    mock_spark_session.sql.return_value = mock_result
+
+    with warnings.catch_warnings(record=True) as w:
+        warnings.simplefilter("always")
+
+        client.execute_function("catalog.schema.mock_function", parameters={"a": 1, "b": "test"})
+
+        assert len(w) == 2
+
+        messages = [str(warning.message) for warning in w]
+
+        assert any(
+            "The following parameters do not have descriptions: a, b" in msg for msg in messages
+        ), "Warning about missing parameter descriptions was not issued."
+
+        assert any(
+            "The function mock_function does not have a description." in msg for msg in messages
+        ), "Warning about missing function description was not issued."

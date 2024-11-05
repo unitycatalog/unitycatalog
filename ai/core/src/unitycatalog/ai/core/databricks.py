@@ -32,6 +32,7 @@ from unitycatalog.ai.core.utils.type_utils import (
 )
 from unitycatalog.ai.core.utils.validation_utils import (
     FullFunctionName,
+    check_function_info,
     validate_param,
 )
 
@@ -552,6 +553,7 @@ class DatabricksFunctionClient(BaseFunctionClient):
     def _execute_uc_function(
         self, function_info: "FunctionInfo", parameters: Dict[str, Any], **kwargs: Any
     ) -> Any:
+        check_function_info(function_info)
         if self.warehouse_id:
             return self._execute_uc_functions_with_warehouse(function_info, parameters)
         else:
