@@ -1,7 +1,8 @@
-import java.nio.file.Files
+import java.nio.file.{Files, Path, Paths, StandardCopyOption}
 import java.io.File
 import Tarball.createTarballSettings
 import sbt.util
+import sbt.Keys._
 import sbtlicensereport.license.{DepModuleInfo, LicenseCategory, LicenseInfo}
 import ReleaseSettings.*
 
@@ -223,31 +224,85 @@ lazy val client = (project in file("target/clients/java"))
     }
   )
 
-lazy val pythonClient = (project in file("clients/python/target"))
+lazy val buildPyprojectPath = settingKey[File]("Path to the build pyproject.toml")
+lazy val buildReadmePath = settingKey[File]("Path to the build README.md")
+lazy val buildSetupPyPath = settingKey[File]("Path to the build setup.py")
+
+lazy val pythonClient = (project in file("clients/python"))
   .enablePlugins(OpenApiGeneratorPlugin)
   .settings(
-    // name of the generation step. See `openApiPackageName` for the actual Python package name
     name := s"$artifactNamePrefix-python-client",
-    commonSettings,
-    (Compile / compile) := ((Compile / compile) dependsOn generate).value,
-
-    // OpenAPI generation specs
-    openApiInputSpec := (file(".") / "api" / "all.yaml").toString,
+        commonSettings,
+    Compile / compile := (Compile / compile).dependsOn(generate).value,
+    openApiInputSpec := (baseDirectory.value.getParentFile.getParentFile / "api" / "all.yaml").getAbsolutePath,
     openApiGeneratorName := "python",
-    openApiOutputDir := (file("clients") / "python" / "target").toString,
-    openApiPackageName := s"$artifactNamePrefix",
+    openApiOutputDir := (baseDirectory.value / "target").getAbsolutePath,
+    openApiPackageName := s"$artifactNamePrefix.client",
     openApiAdditionalProperties := Map(
       "packageVersion" -> s"${version.value.replace("-SNAPSHOT", ".dev0")}",
+      "library" -> "asyncio"
     ),
     openApiGenerateApiTests := SettingDisabled,
     openApiGenerateModelTests := SettingDisabled,
     openApiGenerateApiDocumentation := SettingDisabled,
     openApiGenerateModelDocumentation := SettingDisabled,
-    // Define the simple generate command to generate full client codes
-    generate := {
-      val _ = openApiGenerate.value
-    }
+
+    buildPyprojectPath := baseDirectory.value / "build" / "pyproject.toml", 
+    buildReadmePath := baseDirectory.value / "build" / "README.md",
+    buildSetupPyPath := baseDirectory.value / "build" / "setup.py",
+
+    generate := Def.task {
+      val log = streams.value.log
+
+      openApiGenerate.value
+      log.info("OpenAPI client generation completed.")
+
+      def replaceFileOrFail(source: Path, target: Path, description: String): Unit = {
+        if (Files.exists(source)) {
+          Files.copy(source, target, StandardCopyOption.REPLACE_EXISTING)
+          log.info(s"Replaced generated ${target.getFileName.toString} with $description.")
+        } else {
+          sys.error(s"Required $description not found! Expected at: ${source.toString}")
+        }
+      }
+
+      def removeFile(source: Path, description: String): Unit = {
+        if (Files.exists(source)) {
+          Files.delete(source)
+          log.info(s"Removed ${description} at ${source}")
+        } else {
+          sys.error(s"File ${description} at ${source} is not present. Please verify the path.")
+        }
+      }
+
+      val generatedInitPath: Path = Paths.get(
+        openApiOutputDir.value,
+        openApiPackageName.value.split("\\.")(0),
+        "__init__.py"
+      )
+      removeFile(generatedInitPath, "root __init__.py file")
+
+      val generatedGitPushPath: Path = Paths.get(openApiOutputDir.value, "git_push.sh")
+      removeFile(generatedGitPushPath, "git push script")
+
+      // Replace pyproject.toml with deployable namespace package configuration
+      val generatedPyproject: Path = Paths.get(openApiOutputDir.value, "pyproject.toml")
+      val clientPyproject: Path = buildPyprojectPath.value.toPath
+      replaceFileOrFail(clientPyproject, generatedPyproject, "distributable pyproject.toml")
+
+      // Replace the generated README.md with the package README.md for deployment
+      val generatedReadme: Path = Paths.get(openApiOutputDir.value, "README.md")
+      val projectReadme: Path = buildReadmePath.value.toPath
+      replaceFileOrFail(projectReadme, generatedReadme, "distributable README.md")
+
+      // Replace the setup.py entry
+      val generatedSetupPy: Path = Paths.get(openApiOutputDir.value, "setup.py")
+      val clientSetupPy: Path = buildSetupPyPath.value.toPath
+      replaceFileOrFail(clientSetupPy, generatedSetupPy, "distributable setup.py")
+
+    }.dependsOn(openApiGenerate).value
   )
+
 
 lazy val apiDocs = (project in file("api"))
   .enablePlugins(OpenApiGeneratorPlugin)
