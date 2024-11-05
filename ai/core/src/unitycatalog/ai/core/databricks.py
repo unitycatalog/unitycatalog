@@ -657,7 +657,7 @@ class DatabricksFunctionClient(BaseFunctionClient):
         try:
             result = self.spark.sql(sqlQuery=sql_command.sql_query, args=sql_command.args or None)
         except Exception as e:
-            error = f"Failed to execute function with command {sql_command}; Error: {e}"
+            error = f"Failed to execute function with command `{sql_command}`; Error: {e}"
             return FunctionExecutionResult(error=error)
         if is_scalar(function_info):
             return FunctionExecutionResult(format="SCALAR", value=str(result.collect()[0][0]))
