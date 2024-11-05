@@ -5,7 +5,19 @@ import time
 import requests
 import signal
 
-import unitycatalog
+from unitycatalog.client import (
+    ApiClient,
+    CatalogsApi,
+    Configuration,
+    FunctionsApi,
+    GrantsApi,
+    ModelVersionsApi,
+    RegisteredModelsApi,
+    SchemasApi,
+    TablesApi,
+    TemporaryCredentialsApi,
+    VolumesApi
+)
 
 @pytest.fixture(scope="session", autouse=True)
 def uc_server():
@@ -49,45 +61,45 @@ def uc_server():
 
 @pytest.fixture(scope="session")
 def api_client():
-    config = unitycatalog.Configuration(
+    config = Configuration(
         host = "http://localhost:8081/api/2.1/unity-catalog"
     )
 
-    with unitycatalog.ApiClient(config) as api_client:
+    with ApiClient(config) as api_client:
         yield api_client
 
 @pytest.fixture(scope="session")
 def catalogs_api(api_client):
-    yield unitycatalog.CatalogsApi(api_client)
+    yield CatalogsApi(api_client)
 
 @pytest.fixture(scope="session")
 def functions_api(api_client):
-    yield unitycatalog.FunctionsApi(api_client)
+    yield FunctionsApi(api_client)
 
 @pytest.fixture(scope="session")
 def grants_api(api_client):
-    yield unitycatalog.GrantsApi(api_client)
+    yield GrantsApi(api_client)
 
 @pytest.fixture(scope="session")
 def model_versions_api(api_client):
-    yield unitycatalog.ModelVersionsApi(api_client)
+    yield ModelVersionsApi(api_client)
 
 @pytest.fixture(scope="session")
 def registered_models_api(api_client):
-    yield unitycatalog.RegisteredModelsApi(api_client)
+    yield RegisteredModelsApi(api_client)
 
 @pytest.fixture(scope="session")
 def schemas_api(api_client):
-    yield unitycatalog.SchemasApi(api_client)
+    yield SchemasApi(api_client)
 
 @pytest.fixture(scope="session")
 def tables_api(api_client):
-    yield unitycatalog.TablesApi(api_client)
+    yield TablesApi(api_client)
 
 @pytest.fixture(scope="session")
 def temporary_credentials_api(api_client):
-    yield unitycatalog.TemporaryCredentialsApi(api_client)
+    yield TemporaryCredentialsApi(api_client)
 
 @pytest.fixture(scope="session")
 def volumes_api(api_client):
-    yield unitycatalog.VolumesApi(api_client)
+    yield VolumesApi(api_client)

@@ -2,7 +2,7 @@ import pytest
 
 import subprocess
 
-from unitycatalog import (
+from unitycatalog.client import (
     CreateVolumeRequestContent,
     VolumeType,
 )

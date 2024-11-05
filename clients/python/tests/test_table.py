@@ -1,6 +1,6 @@
 import subprocess
 
-from unitycatalog import (
+from unitycatalog.client import (
     CreateTable,
     ColumnTypeName,
     TableType,
