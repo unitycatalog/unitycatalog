@@ -20,6 +20,10 @@ This library is generated using the [OpenAPI Generator](https://openapi-generato
 
 ## Installation
 
+The Python SDK and associated shared namespace package for Unity Catalog use [hatch](https://hatch.pypa.io/latest/) as their supported build backend.
+
+To ensure that you can install the Python client SDK for Unity Catalog, install hatch via any of the listed options [here](https://hatch.pypa.io/latest/install/)
+
 To use the `unitycatalog-client` SDK, you can install directly from PyPI:
 
 ```sh

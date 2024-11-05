@@ -1,9 +1,9 @@
 # coding: utf-8
 
 """
-Unity Catalog API
+    Unity Catalog API
 
-Official Python SDK for Unity Catalog
+    Official Python SDK for Unity Catalog
 """
 
 from setuptools import setup, find_packages
@@ -24,6 +24,8 @@ setup(
     python_requires=">=3.7",
     install_requires=[
         "urllib3>=1.25.3",
+        "aiohttp>=3.8.4",
+        "aiohttp-retry>=2.8.3",
         "python-dateutil>=2.8.2",
         "typing-extensions>=4.7.1",
         "pydantic<3,>=2",
@@ -66,6 +68,7 @@ setup(
     extras_require={
         "test": [
             "pytest>=7.2.1",
+            "pytest-asyncio>=0.24.0",
             "tox>=3.9.0",
             "flake8>=4.0.0",
             "types-python-dateutil>=2.8.19.14",
