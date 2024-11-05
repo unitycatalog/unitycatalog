@@ -143,7 +143,10 @@ def retry_on_session_expiration(func):
     def wrapper(self, *args, **kwargs):
         for attempt in range(1, max_attempts + 1):
             try:
-                return func(self, *args, **kwargs)
+                result = func(self, *args, **kwargs)
+                if isinstance(result, FunctionExecutionResult) and result.error:
+                    raise Exception(result.error)
+                return result
             except Exception as e:
                 error_message = str(e)
                 if SESSION_EXCEPTION_MESSAGE in error_message:

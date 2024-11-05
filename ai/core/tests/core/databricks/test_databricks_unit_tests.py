@@ -547,7 +547,7 @@ def test_execute_function_success(mock_workspace_client, mock_spark_session, moc
     assert not result.truncated
 
     expected_sql = "SELECT `catalog`.`schema`.`function_name`()"
-    mock_spark_session.sql.assert_called_with(sqlQuery=expected_sql)
+    mock_spark_session.sql.assert_called_with(sqlQuery=expected_sql, args=None)
 
 
 def test_execute_function_with_retry(mock_workspace_client, mock_spark_session, mock_function_info):
@@ -584,7 +584,7 @@ def test_execute_function_with_retry(mock_workspace_client, mock_spark_session, 
 
         client.refresh_client_and_session.assert_called_once()
         expected_sql = "SELECT `catalog`.`schema`.`function_name`()"
-        mock_spark_session.sql.assert_called_with(sqlQuery=expected_sql)
+        mock_spark_session.sql.assert_called_with(sqlQuery=expected_sql, args=None)
         assert mock_spark_session.sql.call_count == 2
         assert client.refresh_client_and_session.call_count == 1
 
