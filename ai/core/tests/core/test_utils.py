@@ -465,58 +465,68 @@ def mock_execute_function(code: str) -> str:
 
 # Test cases
 test_cases = [
-    # 1. Simple print statement
+    # Simple print statement
     ("print('Hello, world!')", "Hello, world!\n"),
-    # 2. Code with single quotes
-    ("print('It\\'s a sunny day')", "It's a sunny day\n"),
-    # 3. Code with double quotes
+    # Code with double quotes
     ('print("He said, \\"Hi!\\"")', 'He said, "Hi!"\n'),
-    # 4. Code with backslashes
+    # Code with backslashes
     (r"print('C:\\path\\into\\dir')", "C:\\path\\into\\dir\n"),
-    # 5. Multi-line code with newlines
+    # Multi-line code with newlines
     ("for i in range(3):\n    print(i)", "0\n1\n2\n"),
-    # 6. Code with tabs and indents
+    # Code with tabs and indents
     ("def greet(name):\n    print(f'Hello, {name}!')\ngreet('Alice')", "Hello, Alice!\n"),
-    # 7. Code with special characters
+    # Code with special characters
     ("print('Special chars: !@#$%^&*()')", "Special chars: !@#$%^&*()\n"),
-    # 8. Unicode characters
+    # Unicode characters
     ("print('Unicode test: ü, é, 漢字')", "Unicode test: ü, é, 漢字\n"),
-    # 9. Code with comments
+    # Code with comments
     ("# This is a comment\nprint('Comment test')", "Comment test\n"),
-    # 10. Code raising an exception
+    # Code raising an exception
     (
         "try:\n    raise ValueError('Test error')\nexcept Exception as e:\n    print(f'Caught an error: {e}')",
         "Caught an error: Test error\n",
     ),
-    # 11. Code with triple quotes
+    # Code with triple quotes
     ('print("""Triple quote test""")', "Triple quote test\n"),
-    # 12. Code with raw strings
+    # Code with raw strings
     ("print('Raw string: \\\\n new line')", "Raw string:  new line\n"),
-    # 13. Empty code string
+    # Empty code string
     ("", ""),
-    # 14. Code with carriage return
+    # Code with carriage return
     ("print('Line1\\\\rLine2')", "Line1\\rLine2\n"),
-    # 15. Code with multiple special characters
-    (r"print('Mix: \\\\ \\\' \\\" \\\\n \\\\t')", """Mix: \\\\ \\\' \\" \\ \\\\\t\n"""),
-    # 16. Code with encoding declarations (Note: encoding declarations should be in the first or second line)
+    # Code with encoding declarations (Note: encoding declarations should be in the first or second line)
     ("# -*- coding: utf-8 -*-\nprint('Encoding test')", "Encoding test\n"),
-    # 17. Code importing a standard library
+    # Code importing a standard library
     ("import math\nprint(math.pi)", f"{math.pi}\n"),
-    # 18. Code with nested functions
+    # Code with nested functions
     (
         "def outer():\n    def inner():\n        return 'Nested'\n    return inner()\nprint(outer())",
         "Nested\n",
     ),
-    # 19. Code with list comprehensions
+    # Code with list comprehensions
     ("squares = [x**2 for x in range(5)]\nprint(squares)", "[0, 1, 4, 9, 16]\n"),
-    # 20. Code with multi-line strings
+    # Code with multi-line strings
     ("multi_line = '''Line1\nLine2\nLine3'''\nprint(multi_line)", "Line1\nLine2\nLine3\n"),
 ]
 
 
 @pytest.mark.parametrize("code_input, expected_output", test_cases)
 def test_code_execution(code_input: str, expected_output: str):
-    escaped_code = sanitize_string_inputs_of_function_params({"code": code_input})
-    code_to_execute = unescape_sql_string(escaped_code["code"])
+    escaped_code = sanitize_string_inputs_of_function_params(code_input)
+    code_to_execute = unescape_sql_string(escaped_code)
     output = mock_execute_function(code_to_execute)
     assert output == expected_output
+
+
+@pytest.mark.parametrize(
+    "code_input",
+    [
+        "print('Hello, \"world!\"')",
+        'return \'2\' + """3"""',
+    ],
+)
+def test_rejected_code_execution(code_input: str):
+    with pytest.raises(
+        ValueError, match="The argument passed in has been detected as Python code that contains"
+    ):
+        sanitize_string_inputs_of_function_params(code_input)
