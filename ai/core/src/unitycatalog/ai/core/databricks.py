@@ -658,7 +658,7 @@ class DatabricksFunctionClient(BaseFunctionClient):
         self.set_default_spark_session()
         sql_command = get_execute_function_sql_command(function_info, parameters)
         try:
-            result = self.spark.sql(sqlQuery=sql_command)
+            result = self.spark.sql(sqlQuery=sql_command.sql_query, args=sql_command.args or None)
         except Exception as e:
             error = f"Failed to execute function with command {sql_command}; Error: {e}"
             return FunctionExecutionResult(error=error)
@@ -817,7 +817,15 @@ def get_execute_function_sql_stmt(
     return ParameterizedStatement(statement=statement, parameters=output_params)
 
 
-def get_execute_function_sql_command(function: "FunctionInfo", parameters: Dict[str, Any]) -> str:
+@dataclass
+class SparkSqlCommand:
+    sql_query: str
+    args: dict[str, Any]
+
+
+def get_execute_function_sql_command(
+    function: "FunctionInfo", parameters: Dict[str, Any]
+) -> SparkSqlCommand:
     from databricks.sdk.service.catalog import ColumnTypeName
 
     sql_query = ""
@@ -831,6 +839,7 @@ def get_execute_function_sql_command(function: "FunctionInfo", parameters: Dict[
     if parameters and function.input_params and function.input_params.parameters:
         args: List[str] = []
         use_named_args = False
+        params_dict: dict[str, Any] = {}
 
         for param_info in function.input_params.parameters:
             if param_info.name not in parameters:
@@ -869,11 +878,12 @@ def get_execute_function_sql_command(function: "FunctionInfo", parameters: Dict[
                         param_value, Decimal
                     ):
                         param_value = float(param_value)
+                    arg_clause += f":{param_info.name}"
                     # Handle all other types as string types and santitize escape characters
                     # since this is likely a code block being executed
                     param_value = sanitize_string_inputs_of_function_params(param_value)
-                    arg_clause += f"'{param_value}'"
+                    params_dict[param_info.name] = param_value
                 args.append(arg_clause)
         sql_query += ",".join(args)
     sql_query += ")"
-    return sql_query
+    return SparkSqlCommand(sql_query=sql_query, args=params_dict)
