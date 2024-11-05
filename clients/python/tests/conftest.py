@@ -21,57 +21,64 @@ from unitycatalog.client import (
 )
 
 
-@pytest.fixture()
+@pytest.fixture(scope="session", autouse=True)
 def uc_server():
-    """
-    Fixture to start and stop the Unity Catalog server for testing.
-    """
+    process = None
+    log_file = "/tmp/server_log.txt"
+
     try:
-        log_file = "/tmp/server_log.txt"
-        with open(log_file, "w") as fp:
+        script_dir = os.path.dirname(os.path.abspath(__file__))
+        project_root = os.path.abspath(os.path.join(script_dir, '..'))
+        start_uc_server_path = os.path.join(project_root, 'bin', 'start-uc-server')
+
+        if not os.path.exists(start_uc_server_path):
+            raise FileNotFoundError(f"start-uc-server script not found at {start_uc_server_path}")
+
+        os.chmod(start_uc_server_path, 0o755)
+
+        with open(log_file, 'w') as fp:
             process = subprocess.Popen(
-                "bin/start-uc-server",
-                shell=True,
+                [start_uc_server_path],
                 stdout=fp,
                 stderr=fp,
-                preexec_fn=os.setsid,
+                preexec_fn=os.setsid
             )
             print(f">> Started server with PID {process.pid}")
+            time.sleep(2)
             return_code = process.poll()
             if return_code is not None:
-                with open(log_file, "r") as lf:
+                with open(log_file, 'r') as lf:
                     print(f"Error starting process:\n{lf.read()}")
                 raise Exception(f"Failed to start server. Return code: {return_code}")
-
+            
             print(">> Waiting for server to accept connections ...")
-            for _ in range(90):
+            for _ in range(180):
                 try:
-                    response = requests.head(
-                        "http://localhost:8080/api/2.1/unity-catalog/catalogs",
-                        timeout=5,
-                    )
+                    response = requests.head("http://localhost:8080/api/2.1/unity-catalog/catalogs", timeout=5)
                     if response.status_code == 200:
                         print("Server is running.")
                         break
-                except requests.RequestException:
+                except requests.RequestException as e:
+                    print(f"Waiting for server... {e}")
                     pass
                 time.sleep(2)
             else:
-                with open(log_file, "r") as lf:
-                    print(
-                        f">> Server is taking too long to get ready, failing tests. Log:\n{lf.read()}"
-                    )
-                raise Exception(
-                    f"Server took too long to start. Check log at {log_file}"
-                )
+                with open(log_file, 'r') as lf:
+                    server_log = lf.read()
+                    print(f">> Server is taking too long to get ready, failing tests. Log:\n{server_log}")
+                raise Exception(f"Server took too long to start. Check log at {log_file}")
         yield
     finally:
-        try:
-            os.killpg(os.getpgid(process.pid), signal.SIGTERM)
-            print(">> Stopped the server")
-        except ProcessLookupError:
-            # Process already terminated
-            pass
+        if process and process.poll() is None:
+            try:
+                os.killpg(os.getpgid(process.pid), signal.SIGTERM)
+                print(">> Stopped the server")
+            except ProcessLookupError:
+                pass
+        # Print server logs after tests
+        if os.path.exists(log_file):
+            with open(log_file, 'r') as lf:
+                print(f"Server log:\n{lf.read()}")
 
 
 @pytest_asyncio.fixture()
