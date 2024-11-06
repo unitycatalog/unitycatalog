@@ -1,4 +1,3 @@
-import ast
 import decimal
 import json
 import logging
@@ -283,63 +282,3 @@ def supported_function_info_types():
         pass
 
     return types
-
-
-def is_python_code(code_str: str) -> bool:
-    """Check if the provided string is valid Python code."""
-    try:
-        ast.parse(code_str)
-        return True
-    except SyntaxError:
-        return False
-
-
-def convert_quoting_to_sql_safe_format(string_value: str) -> str:
-    """
-    Convert a string to a SQL-safe format by escaping single quotes.
-
-    Args:
-        string_value: The string to be converted.
-
-    Returns:
-        str: The SQL-safe string.
-    """
-    has_single_quote = "'" in string_value
-    has_double_quote = '"' in string_value
-
-    if not has_single_quote and not has_double_quote:
-        return string_value
-
-    if has_single_quote and not has_double_quote:
-        string_value = string_value.replace("'", '"')
-    elif has_single_quote and has_double_quote:
-        raise ValueError(
-            "The argument passed in has been detected as Python code that contains both single and double quotes. "
-            "This is not supported. Code must use only one style of quotation. Please fix the code and try again."
-        )
-    return string_value
-
-
-def sanitize_string_inputs_of_function_params(param_value: Any) -> str:
-    """
-    Sanitize string inputs of function parameters to allow for code block submission.
-
-    Args:
-        param_value: The value of the parameter to sanitize.
-
-    Returns:
-        A sanitized string of the argument value.
-    """
-
-    if isinstance(param_value, str) and is_python_code(param_value):
-        # Escape single quotes, backslashes, and control characters that would otherwise break Python code execution
-        parsed = (
-            param_value.replace("\\", "\\\\")
-            .replace("\r", "\\r")
-            .replace("\n", "\\n")
-            .replace("\t", "\\t")
-        )
-        quotes_parsed = convert_quoting_to_sql_safe_format(parsed)
-    else:
-        quotes_parsed = param_value
-    return str(quotes_parsed)

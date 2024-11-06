@@ -86,7 +86,9 @@ def create_python_function_and_cleanup(
 ) -> Generator[FunctionObj, None, None]:
     func_name = f"{CATALOG}.{schema}.{func.__name__}"
     try:
-        func_info = client.create_python_function(func=func, catalog=CATALOG, schema=schema)
+        func_info = client.create_python_function(
+            func=func, catalog=CATALOG, schema=schema, replace=True
+        )
         yield FunctionObj(
             full_function_name=func_name,
             comment=func_info.comment,
