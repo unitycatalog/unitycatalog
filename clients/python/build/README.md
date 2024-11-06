@@ -1,6 +1,6 @@
-# Unity Catalog Python SDK
+# Unity Catalog Python Client SDK
 
-Welcome to the official Python SDK for Unity Catalog!
+Welcome to the official Python Client SDK for Unity Catalog!
 
 Unity Catalog is the industry's only universal catalog for data and AI.
 
@@ -11,7 +11,7 @@ Unity Catalog is the industry's only universal catalog for data and AI.
 - **Open source API and implementation** - OpenAPI spec and OSS implementation (Apache 2.0 license). It is also compatible with Apache Hive's metastore API and Apache Iceberg's REST catalog API. Unity Catalog is currently a sandbox project with LF AI and Data Foundation (part of the Linux Foundation).
 - **Unified governance** for data and AI - Govern and secure tabular data, unstructured assets, and AI assets with a single interface.
 
-## Python SDK
+## Python Client SDK
 
 The Unity Catalog Python SDK provides a convenient Python-native interface to all of the functionality of the Unity Catalog
 REST APIs. The library includes interfaces for all supported public modules.
@@ -20,9 +20,9 @@ This library is generated using the [OpenAPI Generator](https://openapi-generato
 
 ## Installation
 
-The Python SDK and associated shared namespace package for Unity Catalog use [hatch](https://hatch.pypa.io/latest/) as their supported build backend.
+The Python Client SDK and associated shared namespace package for Unity Catalog use [hatch](https://hatch.pypa.io/latest/) as their supported build backend.
 
-To ensure that you can install the Python client SDK for Unity Catalog, install hatch via any of the listed options [here](https://hatch.pypa.io/latest/install/)
+To ensure that you can install the package, install `hatch` via any of the listed options [here](https://hatch.pypa.io/latest/install/).
 
 To use the `unitycatalog-client` SDK, you can install directly from PyPI:
 
@@ -35,7 +35,7 @@ To install from source, you will need to fork and clone the [unitycatalog reposi
 To build the Python source locally, you will need to have `JDK17` installed and activated.
 
 Once your configuration supports the execution of [sbt](https://www.scala-sbt.org/), you can run the following within the root
-of the repository to generate the Python SDK source:
+of the repository to generate the Python Client SDK source:
 
 ```sh
 build/sbt pythonClient/generate
@@ -51,7 +51,7 @@ pip install -e clients/python/target
 
 ## Usage
 
-To get started with using the Python SDK, first ensure that you have a running Unity Catalog server to connect to.
+To get started with using the Python Client SDK, first ensure that you have a running Unity Catalog server to connect to.
 You can follow instructions [here](https://docs.unitycatalog.io/quickstart/) to quickly get started with setting up
 a local Unity Catalog server if needed.
 

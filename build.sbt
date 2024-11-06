@@ -5,7 +5,7 @@ import sbt.util
 import sbt.Keys._
 import sbtlicensereport.license.{DepModuleInfo, LicenseCategory, LicenseInfo}
 import ReleaseSettings.*
-import PythonPostBuild.*
+import PythonClientPostBuild.*
 
 import scala.language.implicitConversions
 
@@ -225,6 +225,8 @@ lazy val client = (project in file("target/clients/java"))
     }
   )
 
+lazy val prepareGeneration = taskKey[Unit]("Prepare the environment for OpenAPI code generation")
+
 lazy val pythonClient = (project in file("clients/python"))
   .enablePlugins(OpenApiGeneratorPlugin)
   .settings(
@@ -237,28 +239,37 @@ lazy val pythonClient = (project in file("clients/python"))
     openApiPackageName := s"$artifactNamePrefix.client",
     openApiAdditionalProperties := Map(
       "packageVersion" -> s"${version.value.replace("-SNAPSHOT", ".dev0")}",
-      "library" -> "asyncio"
+      "library"        -> "asyncio"
     ),
-    openApiGenerateApiTests := SettingDisabled,
-    openApiGenerateModelTests := SettingDisabled,
-    openApiGenerateApiDocumentation := SettingDisabled,
+    openApiGenerateApiTests           := SettingDisabled,
+    openApiGenerateModelTests         := SettingDisabled,
+    openApiGenerateApiDocumentation   := SettingDisabled,
     openApiGenerateModelDocumentation := SettingDisabled,
 
-    generate := Def.task {
-      val log = streams.value.log
+    prepareGeneration := {
+      val log       = streams.value.log
+      val baseDir   = baseDirectory.value
+      val targetDir = openApiOutputDir.value
 
-      openApiGenerate.value
-      log.info("OpenAPI client generation completed.")
+      PythonClientPostBuild.prepareGeneration(log, baseDir, targetDir)
+    },
 
-      PythonPostBuild.processGeneratedFiles(
-        log,
-        openApiOutputDir.value,
-        openApiPackageName.value,
-        baseDirectory.value
-      )
-    }.dependsOn(openApiGenerate).value
+    generate := Def.sequential(
+      prepareGeneration,
+      openApiGenerate,
+      Def.task {
+        val log = streams.value.log
+
+        PythonClientPostBuild.processGeneratedFiles(
+          log,
+          openApiOutputDir.value,
+          baseDirectory.value,
+          version.value
+        )
+        log.info("OpenAPI Python client generation completed.")
+      }
+    ).value
   )
-
 
 lazy val apiDocs = (project in file("api"))
   .enablePlugins(OpenApiGeneratorPlugin)
