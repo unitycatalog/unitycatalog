@@ -144,7 +144,7 @@ def retry_on_session_expiration(func):
         for attempt in range(1, max_attempts + 1):
             try:
                 result = func(self, *args, **kwargs)
-                # for non-seession related error in the result, we should directly return the result
+                # for non-session related error in the result, we should directly return the result
                 if (
                     isinstance(result, FunctionExecutionResult)
                     and result.error
