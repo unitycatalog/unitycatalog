@@ -22,9 +22,6 @@ from unitycatalog.ai.core.envs.databricks_env_vars import (
 )
 from unitycatalog.ai.core.paged_list import PagedList
 from unitycatalog.ai.core.utils.callable_utils import generate_sql_function_body
-from unitycatalog.ai.core.utils.function_processing_utils import (
-    sanitize_string_inputs_of_function_params,
-)
 from unitycatalog.ai.core.utils.type_utils import (
     column_type_to_python_type,
     convert_timedelta_to_interval_str,
@@ -147,7 +144,15 @@ def retry_on_session_expiration(func):
     def wrapper(self, *args, **kwargs):
         for attempt in range(1, max_attempts + 1):
             try:
-                return func(self, *args, **kwargs)
+                result = func(self, *args, **kwargs)
+                # for non-session related error in the result, we should directly return the result
+                if (
+                    isinstance(result, FunctionExecutionResult)
+                    and result.error
+                    and SESSION_EXCEPTION_MESSAGE in result.error
+                ):
+                    raise Exception(result.error)
+                return result
             except Exception as e:
                 error_message = str(e)
                 if SESSION_EXCEPTION_MESSAGE in error_message:
@@ -659,7 +664,11 @@ class DatabricksFunctionClient(BaseFunctionClient):
         _logger.info("Using databricks connect to execute functions with serverless compute.")
         self.set_default_spark_session()
         sql_command = get_execute_function_sql_command(function_info, parameters)
-        result = self.spark.sql(sqlQuery=sql_command)
+        try:
+            result = self.spark.sql(sqlQuery=sql_command.sql_query, args=sql_command.args or None)
+        except Exception as e:
+            error = f"Failed to execute function with command `{sql_command}`; Error: {e}"
+            return FunctionExecutionResult(error=error)
         if is_scalar(function_info):
             return FunctionExecutionResult(format="SCALAR", value=str(result.collect()[0][0]))
         else:
@@ -815,7 +824,15 @@ def get_execute_function_sql_stmt(
     return ParameterizedStatement(statement=statement, parameters=output_params)
 
 
-def get_execute_function_sql_command(function: "FunctionInfo", parameters: Dict[str, Any]) -> str:
+@dataclass
+class SparkSqlCommand:
+    sql_query: str
+    args: dict[str, Any]
+
+
+def get_execute_function_sql_command(
+    function: "FunctionInfo", parameters: Dict[str, Any]
+) -> SparkSqlCommand:
     from databricks.sdk.service.catalog import ColumnTypeName
 
     sql_query = ""
@@ -826,6 +843,7 @@ def get_execute_function_sql_command(function: "FunctionInfo", parameters: Dict[
             f"SELECT * FROM `{function.catalog_name}`.`{function.schema_name}`.`{function.name}`("
         )
 
+    params_dict: dict[str, Any] = {}
     if parameters and function.input_params and function.input_params.parameters:
         args: List[str] = []
         use_named_args = False
@@ -867,11 +885,9 @@ def get_execute_function_sql_command(function: "FunctionInfo", parameters: Dict[
                         param_value, Decimal
                     ):
                         param_value = float(param_value)
-                    # Handle all other types as string types and santitize escape characters
-                    # since this is likely a code block being executed
-                    param_value = sanitize_string_inputs_of_function_params(param_value)
-                    arg_clause += f"'{param_value}'"
+                    arg_clause += f":{param_info.name}"
+                    params_dict[param_info.name] = param_value
                 args.append(arg_clause)
         sql_query += ",".join(args)
     sql_query += ")"
-    return sql_query
+    return SparkSqlCommand(sql_query=sql_query, args=params_dict)

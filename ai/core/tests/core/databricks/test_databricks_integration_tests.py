@@ -1,3 +1,4 @@
+import math
 import os
 import time
 from typing import Callable, Dict, List
@@ -38,13 +39,16 @@ from unitycatalog.ai.core.envs.databricks_env_vars import (
     UCAI_DATABRICKS_WAREHOUSE_RETRY_TIMEOUT,
 )
 from unitycatalog.ai.test_utils.client_utils import (
+    USE_SERVERLESS,
     client,  # noqa: F401
+    get_client,
     requires_databricks,
     retry_flaky_test,
     serverless_client,  # noqa: F401
 )
 from unitycatalog.ai.test_utils.function_utils import (
     CATALOG,
+    create_function_and_cleanup,
     create_python_function_and_cleanup,
     generate_func_name_and_cleanup,
     random_func_name,
@@ -418,14 +422,60 @@ integration_test_cases = [
 print(calculate_sum([1, 2, 3, 4, 5]))""",
         "15\n",
     ),
+    # Simple print statement
+    ("print('Hello, world!')", "Hello, world!\n"),
+    # Code with double quotes
+    ('print("He said, \\"Hi!\\"")', 'He said, "Hi!"\n'),
+    # Code with backslashes
+    (r"print('C:\\path\\into\\dir')", "C:\\path\\into\\dir\n"),
+    # Multi-line code with newlines
+    ("for i in range(3):\n    print(i)", "0\n1\n2\n"),
+    # Code with tabs and indents
+    ("def greet(name):\n    print(f'Hello, {name}!')\ngreet('Alice')", "Hello, Alice!\n"),
+    # Code with special characters
+    ("print('Special chars: !@#$%^&*()')", "Special chars: !@#$%^&*()\n"),
+    # Unicode characters
+    ("print('Unicode test: ü, é, 漢字')", "Unicode test: ü, é, 漢字\n"),
+    # Code with comments
+    ("# This is a comment\nprint('Comment test')", "Comment test\n"),
+    # Code raising an exception
+    (
+        "try:\n    raise ValueError('Test error')\nexcept Exception as e:\n    print(f'Caught an error: {e}')",
+        "Caught an error: Test error\n",
+    ),
+    # Code with triple quotes
+    ('print("""Triple quote test""")', "Triple quote test\n"),
+    # Code with raw strings
+    ("print('Raw string: \\\\n new line')", "Raw string: \\n new line\n"),
+    # Empty code string
+    ("", ""),
+    # Code with carriage return
+    ("print('Line1\\\\rLine2')", "Line1\\rLine2\n"),
+    # Code with encoding declarations (Note: encoding declarations should be in the first or second line)
+    ("# -*- coding: utf-8 -*-\nprint('Encoding test')", "Encoding test\n"),
+    # Code importing a standard library
+    ("import math\nprint(math.pi)", f"{math.pi}\n"),
+    # Code with nested functions
+    (
+        "def outer():\n    def inner():\n        return 'Nested'\n    return inner()\nprint(outer())",
+        "Nested\n",
+    ),
+    # Code with list comprehensions
+    ("squares = [x**2 for x in range(5)]\nprint(squares)", "[0, 1, 4, 9, 16]\n"),
+    # Code with multi-line strings
+    ("multi_line = '''Line1\nLine2\nLine3'''\nprint(multi_line)", "Line1\nLine2\nLine3\n"),
 ]
 
 
 @requires_databricks
 @pytest.mark.parametrize("code, expected_output", integration_test_cases)
+@pytest.mark.parametrize("use_serverless", [True, False])
 def test_execute_python_code_integration(
-    client: DatabricksFunctionClient, code: str, expected_output: str
+    code: str, expected_output: str, use_serverless: bool, monkeypatch
 ):
+    monkeypatch.setenv(USE_SERVERLESS, str(use_serverless))
+    client = get_client()
+
     def python_exec(code: str) -> str:
         """
         Execute the provided Python code and return the output.
@@ -451,3 +501,28 @@ def test_execute_python_code_integration(
         assert result.error is None, f"Function execution failed with error: {result.error}"
 
         assert result.value == expected_output
+
+
+@requires_databricks
+@pytest.mark.parametrize("use_serverless", [True, False])
+@pytest.mark.parametrize(
+    "text",
+    [
+        "MLflow is an open-source platform for managing the end-to-end machine learning lifecycle. It was developed by Databricks and is now a part of the Linux Foundation's AI Foundation.",
+        "print('Hello, \"world!\"')",
+        "'return '2' + \"" '3"' "' is a valid input to this function",
+    ],
+)
+def test_string_param_passing_work(text: str, use_serverless: bool, monkeypatch):
+    monkeypatch.setenv(USE_SERVERLESS, str(use_serverless))
+    client = get_client()
+    function_name = random_func_name(schema=SCHEMA)
+    summarize_in_20_words = f"""CREATE OR REPLACE FUNCTION {function_name}(text STRING)
+RETURNS STRING
+RETURN SELECT ai_summarize(text, 20)
+"""
+    with create_function_and_cleanup(client=client, schema=SCHEMA, sql_body=summarize_in_20_words):
+        result = client.execute_function(function_name, {"text": text})
+        assert result.error is None, f"Function execution failed with error: {result.error}"
+        # number of words should be no more than 20
+        assert len(result.value.split(" ")) <= 20
