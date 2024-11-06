@@ -19,7 +19,7 @@ dependencies = [
 maintainers = [
   {name="Denny Lee", email="denny.lee@databricks.com"},
   {name="Ben Wilson", email="benjamin.wilson@databricks.com"},
-  {name="Tathagata Das", email="tdas@databricks.com"}
+  {name="Tathagata Das", email="tathagata.das1565@gmail.com"}
 ]
 
 keywords = ["unitycatalog", "sdk"]
