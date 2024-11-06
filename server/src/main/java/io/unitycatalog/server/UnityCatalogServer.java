@@ -94,6 +94,9 @@ public class UnityCatalogServer {
     ServerProperties serverProperties = ServerProperties.getInstance();
     boolean authorizationEnabled = serverProperties.isAuthorizationEnabled();
 
+    // Create a Metastore if one does not exist
+    MetastoreRepository.getInstance().initMetastoreIfNeeded();
+
     UnityCatalogAuthorizer authorizer = null;
     try {
       if (authorizationEnabled) {
@@ -206,7 +209,6 @@ public class UnityCatalogServer {
 
   public void start() {
     LOGGER.info("Starting server...");
-    MetastoreRepository.getInstance().initMetastoreIfNeeded();
     server.start().join();
   }
 
