@@ -269,7 +269,7 @@ bin/uc table read --full_name unity.default.mytable
 Delete the table to clean up:
 
 ```bash
-bin/uc table delete --full_name unity.default.my_table
+bin/uc table delete --full_name unity.default.mytable
 ```
 
 > Note, while you have deleted the table from Unity Catalog, the underlying file system may still have the files (i.e.,
