@@ -46,7 +46,7 @@ jobs:
           # "refs/tags/v0.2.0" would result the tagged image
           # "unitycatalog/unitycatalog:v0.2.0".
           # See here for more info: https://tinyurl.com/yh8252m2
-          push: ${{ github.event_name == 'push' && contains(github.ref, 'refs/tags/' }}
+          push: ${{ github.event_name == 'push' && contains(github.ref, 'refs/tags/') }}
           platforms: linux/amd64,linux/arm64
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
