@@ -100,7 +100,7 @@ def check_function_info(func_info):
 
     if params_with_no_description:
         warnings.warn(
-            f"The following parameters do not have descriptions: {', '.join(params_with_no_description)} for the function {func_info.name}. "
+            f"The following parameters do not have descriptions: {', '.join(params_with_no_description)} for the function {func_info.full_name}. "
             "Using Unity Catalog functions that do not have parameter descriptions limits the functionality "
             "for an LLM to understand how to call your function. To improve tool calling accuracy, provide "
             "verbose parameter descriptions that fully explain what the expected usage of the function arguments are.",
