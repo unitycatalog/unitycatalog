@@ -32,7 +32,7 @@ object PythonClientPostBuild {
     Files.createDirectories(targetPath)
     log.info(s"Ensured target directory exists at $openApiOutputDir")
 
-    val ignoreFileSource = baseDir.toPath.resolve("build/.openapi-generator-ignore")
+    val ignoreFileSource = baseDir.toPath.resolve("build").resolve(".openapi-generator-ignore")
     val ignoreFileTarget = targetPath.resolve(".openapi-generator-ignore")
 
     if (Files.exists(ignoreFileSource)) {
