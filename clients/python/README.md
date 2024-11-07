@@ -24,21 +24,21 @@ unitycatalog official packages (`unitycatalog-ai`, `unitycatalog-openai`, etc.).
 
 The sbt generation process for this SDK will:
 
-1. Exclude the creation of the root `__init__.py` file from the shared namespace root (`unitycatalog`).
-2. Exclude the creation of package building files (`pyproject.toml` and `setup.py`) in favor of the distribution versions of these files.
-3. Remove additional irrelevant files (for details, see the definitions within the [.openapi-generator-ignore](.openapi-generator-ignore) file).
-4. Copy over the release versions of `pyproject.toml`, `setup.py`, and the release package `README.md` file to the correct locations within
+1. Copy over the ignore rules for the OpenAPI Generator to the `target` directory from the [build location](build/).
+2. Exclude the creation of the root `__init__.py` file from the shared namespace root (`unitycatalog`).
+3. Exclude the creation of package building files (`pyproject.toml` and `setup.py`) in favor of the distribution versions of these files.
+4. Remove additional irrelevant files (for details, see the definitions within the [.openapi-generator-ignore](build/.openapi-generator-ignore) file).
+5. Copy over the release versions of `pyproject.toml`, `setup.py`, and the release package `README.md` file to the correct locations within
 the generated code directories.
 
 For details on what operations are performed in the build process, see the [processing script](../../project/PythonPostBuild.scala) to learn more.
 
 ## Updating deployment build files
 
-If you are updating requirements, modifying the release version, or are providing additional
-guidance within the distributed package's PyPI README.md, ensure that you make
-updates to:
+If you are updating requirements, modifying the release version, or are providing additional guidance within the distributed package's PyPI
+README.md, ensure that you make updates to:
 
-1. The [pyproject.toml](build/pyproject.toml) file. If you are releasing a new version of the SDK, the `version` field is updated properly to the appropriate version of Unity Catalog's release when generating the distributable package code (it will match the release version specified within the [version.sbt](../../version.sbt) file).
+1. The [pyproject.toml](build/pyproject.toml) file. If you are releasing a new version of the SDK, the `version` field is updated properly to the appropriate version of Unity Catalog's release when generating the distributable package code (it will match the release version specified within the [version.sbt](../../version.sbt) file). This does not need to be manually updated.
 2. The `setup.py` file. This file's version is updated automatically during the build process with the version specified in the [version.sbt](../../version.sbt).
 3. The [README.md](build/README.md) file. This file is not updated with releases, but is the source of the landing page at [PyPI](https://pypi.org/project/unitycatalog-client/).
 
@@ -72,3 +72,15 @@ Client tests use the `pytest` library. To run them:
     ```sh
     ./run-tests.sh
     ```
+
+## Building docs for release
+
+To generate the API documentation for the Unity Catalog Client SDK, simply execute from repository root:
+
+> Note: you will need to ensure that the client package code is generated before building the docs.
+
+```sh
+clients/python/build/build-docs.sh
+```
+
+The generated documentation will be in the `target` directory.
