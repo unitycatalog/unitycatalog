@@ -1,10 +1,9 @@
-import os
 import json
+import os
 from contextlib import contextmanager
 from unittest.mock import MagicMock, patch
 
 import pytest
-
 from databricks.sdk.service.catalog import (
     FunctionInfo,
     FunctionParameterInfo,
@@ -12,9 +11,10 @@ from databricks.sdk.service.catalog import (
 )
 from pydantic import ValidationError
 
+from unitycatalog.ai.core.client import FunctionExecutionResult
+
 # TODO
 from unitycatalog.ai.lite_llm.toolkit import UCFunctionToolkit
-from unitycatalog.ai.core.client import FunctionExecutionResult
 from unitycatalog.ai.test_utils.client_utils import (
     USE_SERVERLESS,
     client,  # noqa: F401
