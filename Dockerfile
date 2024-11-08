@@ -11,11 +11,9 @@ ENV HOME=$HOME
 
 WORKDIR $HOME
 
-RUN apk add --no-cache bash python3
-
 COPY --parents build/ project/ examples/ server/ api/ clients/python/ version.sbt build.sbt ./
 
-RUN ./build/sbt -info clean package
+RUN apk add --no-cache && ./build/sbt -info clean package
 
 # Small runtime image
 FROM alpine:${ALPINE_VERSION} as runtime

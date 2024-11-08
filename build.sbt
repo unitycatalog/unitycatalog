@@ -241,9 +241,9 @@ lazy val pythonClient = (project in file("clients/python"))
       "packageVersion" -> s"${version.value.replace("-SNAPSHOT", ".dev0")}",
       "library"        -> "asyncio"
     ),
-    openApiGenerateApiTests           := SettingDisabled,
-    openApiGenerateModelTests         := SettingDisabled,
-    openApiGenerateApiDocumentation   := SettingDisabled,
+    openApiGenerateApiTests := SettingDisabled,
+    openApiGenerateModelTests := SettingDisabled,
+    openApiGenerateApiDocumentation := SettingDisabled,
     openApiGenerateModelDocumentation := SettingDisabled,
 
     prepareGeneration := {

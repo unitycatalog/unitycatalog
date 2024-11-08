@@ -69,14 +69,14 @@ object PythonClientPostBuild {
   ): Unit = {
 
     val buildDir = baseDir.toPath.resolve("build")
-    val pythonScriptName = "update_version.py"
-    val pythonScriptPath = buildDir.resolve(pythonScriptName)
+    val versionScriptName = "update-python-versions.sh"
+    val versionScriptPath = buildDir.resolve(versionScriptName)
 
-    if (!Files.exists(pythonScriptPath)) {
-      sys.error(s"Python script not found at ${pythonScriptPath.toAbsolutePath}")
+    if (!Files.exists(versionScriptPath)) {
+      sys.error(s"Version updating script not found at ${versionScriptPath.toAbsolutePath}")
     }
 
-    val command = Seq("python3", pythonScriptPath.toString)
+    val command = Seq("bash", versionScriptPath.toString)
     log.info(s"Executing version update script: ${command.mkString(" ")}")
 
     val exitCode = Try(Process(command, buildDir.toFile).!) match {
@@ -107,6 +107,41 @@ object PythonClientPostBuild {
       } else {
         sys.error(s"The file $fileName was not found. Expected at: $sourcePath")
       }
+    }
+    moveGeneratedUnityCatalog(log, openApiOutputDir)
+  }
+
+    /**
+   * Moves the generated 'unitycatalog' directory from target/unitycatalog to target/src/unitycatalog.
+   * This is required for hatch to properly build a shared namespace package without conflicts.
+   *
+   * @param log              The logger to output informational messages.
+   * @param openApiOutputDir The directory where the OpenAPI generator outputs the files (target/).
+   */
+  def moveGeneratedUnityCatalog(
+      log: Logger,
+      openApiOutputDir: String
+  ): Unit = {
+    val sourceDir = Paths.get(openApiOutputDir, "unitycatalog")
+    val targetDir = Paths.get(openApiOutputDir, "src", "unitycatalog")
+
+    if (!Files.exists(sourceDir)) {
+      sys.error(s"Generated 'unitycatalog' directory not found at $sourceDir")
+    }
+
+    val targetParentDir = targetDir.getParent
+    Try(Files.createDirectories(targetParentDir)) match {
+      case Success(_) =>
+        log.info(s"Ensured target directory exists at $targetParentDir")
+      case Failure(exception) =>
+        sys.error(s"Failed to create target directory at $targetParentDir: ${exception.getMessage}")
+    }
+
+    Try(Files.move(sourceDir, targetDir, StandardCopyOption.REPLACE_EXISTING)) match {
+      case Success(_) =>
+        log.info(s"Moved 'unitycatalog' from $sourceDir to $targetDir")
+      case Failure(exception) =>
+        sys.error(s"Failed to move 'unitycatalog' to $targetDir: ${exception.getMessage}")
     }
   }
 }
