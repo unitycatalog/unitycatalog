@@ -97,14 +97,8 @@ object PythonClientPostBuild {
       val targetPath = Paths.get(openApiOutputDir, fileName)
 
       if (Files.exists(sourcePath)) {
-        Try {
           Files.copy(sourcePath, targetPath, StandardCopyOption.REPLACE_EXISTING)
-        } match {
-          case Success(_) =>
-            log.info(s"Copied $fileName to $targetPath.")
-          case Failure(exception) =>
-            sys.error(s"Failed to copy $fileName to $targetPath: ${exception.getMessage}")
-        }
+          log.info(s"Copied $fileName to $targetPath.")
       } else {
         sys.error(s"The file $fileName was not found. Expected at: $sourcePath")
       }
