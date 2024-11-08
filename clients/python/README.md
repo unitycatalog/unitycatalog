@@ -30,8 +30,48 @@ The sbt generation process for this SDK will:
 4. Remove additional irrelevant files (for details, see the definitions within the [.openapi-generator-ignore](build/.openapi-generator-ignore) file).
 5. Copy over the release versions of `pyproject.toml`, `setup.py`, and the release package `README.md` file to the correct locations within
 the generated code directories.
+6. Place the generated source code into a hatch-compatible `src` directory for packaging of a shared namespace package.
 
 For details on what operations are performed in the build process, see the [processing script](../../project/PythonPostBuild.scala) to learn more.
+
+### Packaging the Client SDK into distribution formats
+
+If you would like to generate the distributable artifacts (required for deploying `unitycatalog-client` to PyPI), simply execute the
+packaging script, located [here](./build/build-python-package.sh). This will create both a `.whl` artifact and a `bdist` archive for deploying
+to PyPI.
+
+If modifying the `pyproject.toml` file, please verify that the generated `.whl` file contains all required modules by running (from repo root):
+
+```sh
+unzip -l clients/python/target/dist/unitycatalog_client-0.3.0.dev0-py3-none-any.whl
+```
+
+The above example is for development version 0.3.0.dev0. Update accordingly with the version that you are generating. The output of this command
+should provide a full listing of the namespace directories:
+
+```sh
+➜ unzip -l clients/python/target/dist/unitycatalog_client-0.3.0.dev0-py3-none-any.whl
+Archive:  clients/python/target/dist/unitycatalog_client-0.3.0.dev0-py3-none-any.whl
+  Length      Date    Time    Name
+---------  ---------- -----   ----
+     6485  02-02-2020 00:00   unitycatalog/client/__init__.py
+    26492  02-02-2020 00:00   unitycatalog/client/api_client.py
+      652  02-02-2020 00:00   unitycatalog/client/api_response.py
+...
+      846  02-02-2020 00:00   unitycatalog/client/models/volume_operation.py
+      769  02-02-2020 00:00   unitycatalog/client/models/volume_type.py
+     7823  02-02-2020 00:00   unitycatalog_client-0.3.0.dev0.dist-info/METADATA
+       87  02-02-2020 00:00   unitycatalog_client-0.3.0.dev0.dist-info/WHEEL
+     8651  02-02-2020 00:00   unitycatalog_client-0.3.0.dev0.dist-info/RECORD
+---------                     -------
+   752681                     84 files
+```
+
+**Important: Ensure that there is no `__init__.py` residing in `unitycatalog/` root directory**. This will break the shared namespace behavior
+with other `unitycatalog-x` packages on PyPI, rendering the usage of all installed libraries broken.
+
+If there is an issue with the build pathing resolution, this archive will only contain the `METADATA`, `WHEEL`, and `RECORD` files, making
+the library unusable.
 
 ## Updating deployment build files
 

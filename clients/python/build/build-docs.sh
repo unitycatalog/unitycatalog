@@ -53,7 +53,7 @@ fi
 # Step 2: Verify Generated SDK Files
 # ==========================
 
-SDK_DIR="clients/python/target/unitycatalog"
+SDK_DIR="clients/python/target/src/unitycatalog"
 
 if [ ! -d "$SDK_DIR" ]; then
     error "SDK directory '${SDK_DIR}' does not exist. Please generate the Python Client SDK by running 'build/sbt pythonClient/generate' from the repository root."
