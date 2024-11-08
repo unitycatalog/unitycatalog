@@ -1,6 +1,6 @@
 # Using Unity Catalog AI with the LiteLLM SDK
 
-You can use the Unity Catalog AI package with the LiteLLM inegration to utilize functions that are defined in Unity Catalog to be used as tools within [LiteLLM](https://github.com/shubhamagarwal92/LitLLM) LLM calls.
+You can use the Unity Catalog AI package with the LiteLLM integration to utilize functions that are defined in Unity Catalog to be used as tools within [LiteLLM](https://github.com/shubhamagarwal92/LitLLM) LLM calls.
 
 ## Installation
 
@@ -10,7 +10,7 @@ pip install git+https://github.com/unitycatalog/unitycatalog.git#subdirectory=un
 ```
 
 > [!NOTE]
-> Once this package is published to PyPI, users can install via `pip install ucai-litellm`
+> Once this package is published to PyPI, users can install via `pip install unitycatalog-litellm`
 
 ## Get started
 
