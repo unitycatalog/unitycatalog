@@ -12,7 +12,6 @@ from litellm.types.utils import (
 
 from unitycatalog.ai.core.client import BaseFunctionClient
 
-# TODO: update namespace
 from unitycatalog.ai.litellm.utils import (
     ToolCallData,
     extract_tool_call_data,

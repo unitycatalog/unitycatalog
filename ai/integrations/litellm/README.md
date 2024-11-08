@@ -6,7 +6,6 @@ You can use the Unity Catalog AI package with the [LiteLLM inegration to utilize
 
 ```sh
 # install from the source
-# TODO: update namespace
 pip install git+https://github.com/unitycatalog/unitycatalog.git#subdirectory=unitycatalog-ai/integrations/litellm
 ```
 
@@ -68,8 +67,7 @@ Now that the function exists within the Catalog and Schema that we defined, we c
 their many [supported LLMs](https://docs.litellm.ai/docs/providers)), which are exposed with a UC interface through the use of the `unitycatalog-litellm` package via the `UCFunctionToolkit` API.
 
 ```python
-# TODO: namespace update
-from unitycatalog.ai.lite_llm.toolkit import UCFunctionToolkit
+from unitycatalog.ai.litellm.toolkit import UCFunctionToolkit
 
 # Pass the UC function name that we created to the constructor
 toolkit = UCFunctionToolkit(function_names=[f"{CATALOG}.{SCHEMA}.sf_weather_lookup_litellm"])
@@ -189,8 +187,7 @@ correctly. LiteLLM requires the full scope of the history, including both the to
 providing an answer. In the example below, the only history that we have is the original initial user question.
 
 ```python
-# TODO: update namespace
-from unitycatalog.ai.lite_llm.utils import generate_tool_call_messages
+from unitycatalog.ai.litellm.utils import generate_tool_call_messages
 
 # Call the Unity Catalog function and construct the required formatted response history for a subsequent call to LiteLLM 
 tool_messages = generate_tool_call_messages(response=response, client=client, conversation_history=question)
@@ -252,8 +249,7 @@ This API is useful if you need to perform validation prior to calling a function
 function call yourself. This lower-level approach and will require a more complex integration with the LiteLLM.
 
 ```python
-# TODO: update namespace
-from unitycatalog.ai.lite_llm.utils import extract_tool_call_data
+from unitycatalog.ai.litellm.utils import extract_tool_call_data
 
 
 # This returns a List[ToolCallData] for LiteLLM

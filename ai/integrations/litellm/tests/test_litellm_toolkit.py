@@ -12,8 +12,6 @@ from databricks.sdk.service.catalog import (
 from pydantic import ValidationError
 
 from unitycatalog.ai.core.client import FunctionExecutionResult
-
-# TODO
 from unitycatalog.ai.litellm.toolkit import UCFunctionToolkit
 from unitycatalog.ai.test_utils.client_utils import (
     USE_SERVERLESS,
