@@ -264,7 +264,6 @@ lazy val pythonClient = (project in file("clients/python"))
           log,
           openApiOutputDir.value,
           baseDirectory.value,
-          version.value
         )
         log.info("OpenAPI Python client generation completed.")
       }
