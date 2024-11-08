@@ -1,5 +1,5 @@
 import json
-from typing import Any, Callable, Dict, List, Optional
+from typing import Any, Callable, Optional
 
 from openai import pydantic_function_tool
 from pydantic import BaseModel, ConfigDict, Field, model_validator
@@ -14,12 +14,8 @@ from unitycatalog.ai.core.utils.function_processing_utils import (
 
 
 class LiteLLMTool(BaseModel):
-    """
-    Model representing an Lite LLM tool.
-    """
-
-    fn: Callable = Field(
-        description="Callable that will be used to execute the UC Function, registered to the AutoGen Agent definition"
+    fn: Callable[..., str] = Field(
+        description="Callable that will be used to execute the UC Function, registered to the LiteLLM definition."
     )
     name: str = Field(
         description="The name of the function.",
@@ -27,28 +23,28 @@ class LiteLLMTool(BaseModel):
     description: str = Field(
         description="A brief description of the function's purpose.",
     )
-    tool: Dict = Field(description="OpenAI compatible Tool Definition")
+    tool: dict = Field(description="OpenAI-compatible Tool Definition")
 
     model_config = ConfigDict(arbitrary_types_allowed=True)
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         """
         Converts the LiteLLM instance into a dictionary for the LiteLLM API. Note that LiteLLM API
-        supports arbitrary JSON schemas, but here we adhere to the OpenAI tool schema.
+        supports arbitrary JSON schemas, but here we adhere to the OpenAI tool spec.
         """
         return self.tool
 
 
 class UCFunctionToolkit(BaseModel):
     """
-    A toolkit for managing Unity Catalog functions and converting them into Lite LLM tools.
+    A toolkit for managing Unity Catalog functions and converting them into LiteLLM tools.
     """
 
-    function_names: List[str] = Field(
+    function_names: list[str] = Field(
         default_factory=list,
         description="List of function names in 'catalog.schema.function' format.",
     )
-    tools_dict: Dict[str, LiteLLMTool] = Field(
+    tools_dict: dict[str, LiteLLMTool] = Field(
         default_factory=dict,
         description="Dictionary mapping function names to their corresponding LiteLLM tools.",
     )
@@ -74,7 +70,6 @@ class UCFunctionToolkit(BaseModel):
             client=self.client,
             uc_function_to_tool_func=self.uc_function_to_litellm_tool,
         )
-        return self
 
     @staticmethod
     def uc_function_to_litellm_tool(
@@ -138,7 +133,7 @@ class UCFunctionToolkit(BaseModel):
         )
 
     @property
-    def tools(self) -> List[LiteLLMTool]:
+    def tools(self) -> list[LiteLLMTool]:
         """
         Retrieves the list of Lite LLM tools managed by the toolkit.
         """

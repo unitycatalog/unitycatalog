@@ -164,7 +164,7 @@ def test_extract_tool_call_data_single_tool(mock_message_single_tool):
     assert isinstance(tool_call, ToolCallData)
     assert tool_call.function_name == "main.default.get_current_weather"
     assert tool_call.arguments == {"location": "San Francisco"}
-    assert tool_call.tool_use_id == "call_HSQTsZTvFfLySGY250051VQz"
+    assert tool_call.tool_call_id == "call_HSQTsZTvFfLySGY250051VQz"
 
 
 def test_extract_tool_call_data_multiple_tools(mock_message_multiple_tools):
@@ -178,17 +178,17 @@ def test_extract_tool_call_data_multiple_tools(mock_message_multiple_tools):
         {
             "function_name": "main.default.get_current_weather",
             "arguments": {"location": "San Francisco"},
-            "tool_use_id": "call_HSQTsZTvFfLySGY250051VQz",
+            "tool_call_id": "call_HSQTsZTvFfLySGY250051VQz",
         },
         {
             "function_name": "main.default.get_current_weather",
             "arguments": {"location": "Tokyo"},
-            "tool_use_id": "call_Ozd6L5vXIuKPlsmomMVPsHFM",
+            "tool_call_id": "call_Ozd6L5vXIuKPlsmomMVPsHFM",
         },
         {
             "function_name": "main.default.get_current_weather",
             "arguments": {"location": "Paris"},
-            "tool_use_id": "call_MKQQrCiQhKXM6ZWtGTsASIXd",
+            "tool_call_id": "call_MKQQrCiQhKXM6ZWtGTsASIXd",
         },
     ]
 
@@ -197,7 +197,7 @@ def test_extract_tool_call_data_multiple_tools(mock_message_multiple_tools):
         assert isinstance(tool_call, ToolCallData)
         assert tool_call.function_name == expected["function_name"]
         assert tool_call.arguments == expected["arguments"]
-        assert tool_call.tool_use_id == expected["tool_use_id"]
+        assert tool_call.tool_call_id == expected["tool_call_id"]
 
 
 def test_extract_tool_call_data_multiple_choices_multiple_tools(
@@ -212,17 +212,17 @@ def test_extract_tool_call_data_multiple_choices_multiple_tools(
         {
             "function_name": "main.default.get_current_weather",
             "arguments": {"location": "San Francisco"},
-            "tool_use_id": "call_HSQTsZTvFfLySGY250051VQz",
+            "tool_call_id": "call_HSQTsZTvFfLySGY250051VQz",
         },
         {
             "function_name": "main.default.get_current_weather",
             "arguments": {"location": "Tokyo"},
-            "tool_use_id": "call_Ozd6L5vXIuKPlsmomMVPsHFM",
+            "tool_call_id": "call_Ozd6L5vXIuKPlsmomMVPsHFM",
         },
         {
             "function_name": "main.default.get_current_weather",
             "arguments": {"location": "Paris"},
-            "tool_use_id": "call_MKQQrCiQhKXM6ZWtGTsASIXd",
+            "tool_call_id": "call_MKQQrCiQhKXM6ZWtGTsASIXd",
         },
     ]
 
@@ -231,14 +231,14 @@ def test_extract_tool_call_data_multiple_choices_multiple_tools(
             assert isinstance(tool_call, ToolCallData)
             assert tool_call.function_name == expected["function_name"]
             assert tool_call.arguments == expected["arguments"]
-            assert tool_call.tool_use_id == expected["tool_use_id"]
+            assert tool_call.tool_call_id == expected["tool_call_id"]
 
 
 def test_tool_call_data_execute(mock_client):
     tool_call = ToolCallData(
         function_name="catalog__schema__get_weather",
         arguments={"location": "San Francisco, CA", "unit": "celsius"},
-        tool_use_id="toolu_01A09q90qw90lq917835lq9",
+        tool_call_id="toolu_01A09q90qw90lq917835lq9",
     )
     result = tool_call.execute(mock_client)
 

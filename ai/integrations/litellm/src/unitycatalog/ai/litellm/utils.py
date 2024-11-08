@@ -30,10 +30,10 @@ class ToolCallData:
     Class representing a tool call, encapsulating the function name, arguments, and tool use ID.
     """
 
-    def __init__(self, function_name: str, arguments: dict[str, Any], tool_use_id: str):
+    def __init__(self, function_name: str, arguments: dict[str, Any], tool_call_id: str):
         self.function_name = function_name
         self.arguments = arguments
-        self.tool_use_id = tool_use_id
+        self.tool_call_id = tool_call_id
 
     def to_dict(self) -> dict[str, Any]:
         """
@@ -45,7 +45,7 @@ class ToolCallData:
         return {
             "function_name": self.function_name,
             "arguments": self.arguments,
-            "tool_use_id": self.tool_use_id,
+            "tool_call_id": self.tool_call_id,
         }
 
     def execute(self, client: BaseFunctionClient) -> str:
@@ -73,7 +73,7 @@ class ToolCallData:
         """
         return {
             "role": "tool",
-            "tool_call_id": self.tool_use_id,
+            "tool_call_id": self.tool_call_id,
             "name": self.function_name,
             "content": result,
         }
@@ -90,7 +90,7 @@ def _extract_tool_call_data_from_choice(choice: Choices) -> list[ToolCallData]:
                         ToolCallData(
                             function_name=construct_original_function_name(tool_call.function.name),
                             arguments=json.loads(tool_call.function.arguments),
-                            tool_use_id=tool_call.id,
+                            tool_call_id=tool_call.id,
                         )
                     )
 
@@ -106,13 +106,11 @@ def extract_tool_call_data(response: Message) -> list[list[ToolCallData]]:
         response (Message): The response from LiteLLM optionally containing tool usage blocks.
 
     Returns:
-        List[List[ToolCallData]]: A list of ToolCallData objects containing function names,
+        list[list[ToolCallData]]: A list of ToolCallData objects containing function names,
         arguments, and tool use IDs.
     """
-    if choices := response.choices:
-        return [_extract_tool_call_data_from_choice(choice) for choice in choices]
+    return [_extract_tool_call_data_from_choice(choice) for choice in response.choices or []]
 
-    return []
 
 
 def generate_tool_call_messages(
@@ -131,8 +129,8 @@ def generate_tool_call_messages(
     `conversation_history` and `response` list. 
 
     [
-        {"role", "user": "content": "function_1_response"}, 
-        {"role", "user": "content": "function_2_response"}
+        {"role", "user": "content": "function_1_response_as_a_string"}, 
+        {"role", "user": "content": "function_2_response_as_a_string"}
     ]
 
     Note:
