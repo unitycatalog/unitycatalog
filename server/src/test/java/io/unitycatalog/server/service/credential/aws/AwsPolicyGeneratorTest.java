@@ -24,23 +24,11 @@ public class AwsPolicyGeneratorTest {
 
   @Test
   public void testPoliciesTemplatesYaml() {
-    assertThatNoException()
-        .isThrownBy(
-            () -> {
-              YAML_MAPPER.readTree(POLICY_STATEMENT);
-            });
+    assertThatNoException().isThrownBy(() -> YAML_MAPPER.readTree(POLICY_STATEMENT));
 
-    assertThatNoException()
-        .isThrownBy(
-            () -> {
-              YAML_MAPPER.readTree(BUCKET_STATEMENT);
-            });
+    assertThatNoException().isThrownBy(() -> YAML_MAPPER.readTree(BUCKET_STATEMENT));
 
-    assertThatNoException()
-        .isThrownBy(
-            () -> {
-              YAML_MAPPER.readTree(OPERATION_STATEMENT);
-            });
+    assertThatNoException().isThrownBy(() -> YAML_MAPPER.readTree(OPERATION_STATEMENT));
   }
 
   @SneakyThrows

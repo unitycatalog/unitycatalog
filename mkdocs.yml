@@ -8,7 +8,9 @@ site_author: unitycatalog
 
 nav:
   - Home: index.md
-  - Quickstart: quickstart.md
+  - Getting Started: 
+      - Quickstart: quickstart.md
+      - Docker Compose: docker_compose.md
   - Usage:
       - CLI: usage/cli.md
       - UI: usage/ui.md
@@ -23,7 +25,8 @@ nav:
       - Configuration: server/configuration.md
       - Auth: server/auth.md
   - Integrations:
-      - Apache Spark: integrations/unity-catalog-spark.md  
+      - Apache Spark: integrations/unity-catalog-spark.md
+      - CelerData: integrations/unity-catalog-celerdata.md
       - Daft: integrations/unity-catalog-daft.md
       - DuckDB: integrations/unity-catalog-duckdb.md
       - PuppyGraph: integrations/unity-catalog-puppygraph.md
@@ -41,6 +44,9 @@ nav:
           - OpenAI: ucai/integrations/openai.md
           - Anthropic: ucai/integrations/anthropic.md
 
+exclude_docs: |
+  README.md
+
 plugins:
   - search
   - material-plausible
@@ -51,15 +57,15 @@ theme:
   favicon: assets/images/unitycatalog_256x256.png
   font:
     text: Plus Jakarta Sans
-    code: Consolas  
+    code: Consolas
   features:
     - content.action.edit
     - content.code.copy
-    - content.tabs.link    
+    - content.tabs.link
     - navigation.footer
     - navigation.expand
     - navigation.indexes
-    - content.code.annotate    
+    - content.code.annotate
   palette:
     - media: "(prefers-color-scheme: light)"
       scheme: default
@@ -110,7 +116,7 @@ markdown_extensions:
   - md_in_html
   - toc:
       permalink: true
-  - pymdownx.details      
+  - pymdownx.details
   - pymdownx.tabbed:
       alternate_style: true
   - pymdownx.superfences:
