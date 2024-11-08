@@ -11,6 +11,8 @@ ENV HOME=$HOME
 
 WORKDIR $HOME
 
+RUN apk add --no-cache bash python3
+
 COPY --parents build/ project/ examples/ server/ api/ clients/python/ version.sbt build.sbt ./
 
 RUN apk add --no-cache bash && ./build/sbt -info clean package
