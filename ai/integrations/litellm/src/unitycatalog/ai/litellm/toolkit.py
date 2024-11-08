@@ -87,7 +87,7 @@ class UCFunctionToolkit(BaseModel):
             function_info (Optional[Any]): The function info object returned by the client.
 
         Returns:
-            LiteLLM: The corresponding Lite LLM tool.
+            LiteLLMTool: The corresponding Lite LLM tool.
         """
         if function_name and function_info:
             raise ValueError("Only one of function_name or function_info should be provided.")
