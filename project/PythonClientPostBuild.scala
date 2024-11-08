@@ -1,6 +1,7 @@
 import sbt._
 import sbt.Keys._
-import java.nio.file.{Files, Paths, StandardCopyOption}
+import java.nio.file.{Files, Path, Paths, StandardCopyOption}
+import java.util.Comparator
 import scala.sys.process._
 import scala.util.{Try, Success, Failure}
 
@@ -129,6 +130,16 @@ object PythonClientPostBuild {
       sys.error(s"Generated 'unitycatalog' directory not found at $sourceDir")
     }
 
+    if (Files.exists(targetDir)) {
+      log.info(s"Target directory $targetDir already exists. Deleting it to overwrite.")
+      deleteRecursively(targetDir) match {
+        case Success(_) =>
+          log.info(s"Successfully deleted existing target directory at $targetDir")
+        case Failure(exception) =>
+          sys.error(s"Failed to delete existing target directory at $targetDir: ${exception.getMessage}")
+      }
+    }
+
     val targetParentDir = targetDir.getParent
     Try(Files.createDirectories(targetParentDir)) match {
       case Success(_) =>
@@ -142,6 +153,21 @@ object PythonClientPostBuild {
         log.info(s"Moved 'unitycatalog' from $sourceDir to $targetDir")
       case Failure(exception) =>
         sys.error(s"Failed to move 'unitycatalog' to $targetDir: ${exception.getMessage}")
+    }
+  }
+
+  def deleteRecursively(path: Path): Try[Unit] = {
+    Try {
+      if (Files.exists(path)) {
+        Files.walk(path)
+          .sorted(Comparator.reverseOrder())
+          .forEach { p =>
+            Try(Files.delete(p)) match {
+              case Success(_) => // Deleted successfully
+              case Failure(e) => sys.error(s"Failed to delete $p: ${e.getMessage}")
+            }
+          }
+      }
     }
   }
 }

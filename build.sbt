@@ -1,4 +1,4 @@
-import java.nio.file.{Files, Path, Paths, StandardCopyOption}
+import java.nio.file.Files
 import java.io.File
 import Tarball.createTarballSettings
 import sbt.util
@@ -246,13 +246,7 @@ lazy val pythonClient = (project in file("clients/python"))
     openApiGenerateApiDocumentation := SettingDisabled,
     openApiGenerateModelDocumentation := SettingDisabled,
 
-    prepareGeneration := {
-      val log       = streams.value.log
-      val baseDir   = baseDirectory.value
-      val targetDir = openApiOutputDir.value
-
-      PythonClientPostBuild.prepareGeneration(log, baseDir, targetDir)
-    },
+    prepareGeneration := PythonClientPostBuild.prepareGeneration(streams.value.log, baseDirectory.value, openApiOutputDir.value),
 
     generate := Def.sequential(
       prepareGeneration,
