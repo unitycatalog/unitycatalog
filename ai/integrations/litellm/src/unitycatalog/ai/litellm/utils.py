@@ -1,9 +1,9 @@
 import json
 from typing import Any, Optional, Union
 
-from litellm.types.utils import ChatCompletionMessageToolCall, Choices, Message
 from pydantic import BaseModel, Field, ValidationError
 
+from litellm.types.utils import ChatCompletionMessageToolCall, Choices, Message
 from unitycatalog.ai.core.client import BaseFunctionClient
 from unitycatalog.ai.core.utils.client_utils import validate_or_set_default_client
 from unitycatalog.ai.core.utils.function_processing_utils import construct_original_function_name
@@ -123,7 +123,17 @@ def generate_tool_call_messages(
     choice_index: int = 0,
 ) -> list[dict[str, Any]]:
     """
-    Generate tool call messages from the response.
+    Generate tool call messages from the response. 
+    
+    If there are multiple tool calls in the selected Choice, each tool's function call response will
+    be appended to the messages as a unique message. For instance, if there are 2 tool calls
+    requested by the LiteLLM response, we will append the following payload to the
+    `conversation_history` and `response` list. 
+
+    [
+        {"role", "user": "content": "function_1_response"}, 
+        {"role", "user": "content": "function_2_response"}
+    ]
 
     Note:
         This function relies on that the UC function names don't contain '__' in the catalog, schema
@@ -162,5 +172,4 @@ def generate_tool_call_messages(
         function_calls.append(tool_call_data.to_tool_result_message(result))
 
     assistant_message = choice.message.to_dict()
-    # TODO: validate that this is how function calls should be passed for mulitple tools
     return [*validated_history, assistant_message, *function_calls]

@@ -11,7 +11,6 @@ from litellm.types.utils import (
 )
 
 from unitycatalog.ai.core.client import BaseFunctionClient
-
 from unitycatalog.ai.litellm.utils import (
     ToolCallData,
     extract_tool_call_data,
@@ -274,7 +273,6 @@ def test_generate_tool_call_messages_multiple_tools(
         response=mock_message_multiple_tools, conversation_history=dummy_history, client=mock_client
     )
 
-    # TODO: currently we append tool calls as new messages. This might not be correct
     assert len(result) == 5
     conversational_history, assistant_message, *tool_response_message = result
 
