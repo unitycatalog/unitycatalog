@@ -112,7 +112,6 @@ def extract_tool_call_data(response: Message) -> list[list[ToolCallData]]:
     return [_extract_tool_call_data_from_choice(choice) for choice in response.choices or []]
 
 
-
 def generate_tool_call_messages(
     *,
     response: Message,
@@ -121,15 +120,15 @@ def generate_tool_call_messages(
     choice_index: int = 0,
 ) -> list[dict[str, Any]]:
     """
-    Generate tool call messages from the response. 
-    
+    Generate tool call messages from the response.
+
     If there are multiple tool calls in the selected Choice, each tool's function call response will
     be appended to the messages as a unique message. For instance, if there are 2 tool calls
     requested by the LiteLLM response, we will append the following payload to the
-    `conversation_history` and `response` list. 
+    `conversation_history` and `response` list.
 
     [
-        {"role", "user": "content": "function_1_response_as_a_string"}, 
+        {"role", "user": "content": "function_1_response_as_a_string"},
         {"role", "user": "content": "function_2_response_as_a_string"}
     ]
 
