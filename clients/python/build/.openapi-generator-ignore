@@ -1,0 +1,15 @@
+# OpenApi Generator Ignore configuration for the Unity Catalog Python Client SDK
+
+## Do not generate files we will be manually inserting
+
+README.md
+pyproject.toml
+setup.py
+
+## Do not generate the root __init__.py file for shared namespace packages
+
+unitycatalog/__init__.py
+
+## Do not generate files that have no purpose
+
+git_push.sh
