@@ -14,7 +14,7 @@ from pydantic import ValidationError
 from unitycatalog.ai.core.client import FunctionExecutionResult
 
 # TODO
-from unitycatalog.ai.lite_llm.toolkit import UCFunctionToolkit
+from unitycatalog.ai.litellm.toolkit import UCFunctionToolkit
 from unitycatalog.ai.test_utils.client_utils import (
     USE_SERVERLESS,
     client,  # noqa: F401
