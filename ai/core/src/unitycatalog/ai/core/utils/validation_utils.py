@@ -1,5 +1,6 @@
 import base64
 import datetime
+import warnings
 from typing import Any, NamedTuple
 
 from unitycatalog.ai.core.utils.type_utils import is_time_type
@@ -76,4 +77,44 @@ def validate_param(param: Any, column_type: str, param_type_text: str) -> None:
         # the string value for BINARY column must be base64 encoded
         raise ValueError(
             f"The string input for column type BINARY must be base64 encoded, invalid input: {param}."
+        )
+
+
+def check_function_info(func_info):
+    """
+    Checks a FunctionInfo object for missing parameter descriptions and a function description.
+    If these are missing, issue a warning to instruct users on how beneficial to their GenAI
+    applications these properties are.
+
+    Parameters:
+        func_info (FunctionInfo): The function information to check.
+
+    Uses:
+        warnings.warn to issue warnings if any parameters or the function itself lack descriptions.
+    """
+    params_with_no_description = []
+
+    for param_info in func_info.input_params.parameters:
+        if not param_info.comment:
+            params_with_no_description.append(param_info.name)
+
+    if params_with_no_description:
+        warnings.warn(
+            f"The following parameters do not have descriptions: {', '.join(params_with_no_description)} for the function {func_info.full_name}. "
+            "Using Unity Catalog functions that do not have parameter descriptions limits the functionality "
+            "for an LLM to understand how to call your function. To improve tool calling accuracy, provide "
+            "verbose parameter descriptions that fully explain what the expected usage of the function arguments are.",
+            UserWarning,
+            stacklevel=2,
+        )
+
+    if not func_info.comment:
+        warnings.warn(
+            f"The function {func_info.name} does not have a description. "
+            "Using Unity Catalog functions that do not have function descriptions limits the functionality "
+            "for an LLM to understand when it is appropriate to call your function as a tool and how to properly interface with the function. "
+            "Update your function's description with a verbose entry in the 'comments' parameter to improve the usage characterstics of this function "
+            "as a tool.",
+            UserWarning,
+            stacklevel=2,
         )
