@@ -11,6 +11,7 @@ requires-python = ">=3.9"
 dependencies = [
     "dspy-ai>=2.5.29",
     "unitycatalog-ai",
+    "pydantic<3,>=2",
 ]
 
 [project.optional-dependencies]

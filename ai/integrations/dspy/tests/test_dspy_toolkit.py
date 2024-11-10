@@ -1,11 +1,3 @@
-import os
-
-os.environ["WAREHOUSE_ID"] = "475b94ddc7cd5211"
-os.environ["CATALOG"] = "main"
-os.environ["SCHEMA"] = "default"
-os.environ["TEST_IN_DATABRICKS"] = "true"
-
-# MAIN
 import json
 import os
 from unittest.mock import patch
@@ -31,8 +23,6 @@ from unitycatalog.ai.test_utils.function_utils import create_function_and_cleanu
 
 CATALOG = os.environ.get("CATALOG", "integration_testing")
 SCHEMA = os.environ.get("SCHEMA", "ucai_core_test")
-# TODO
-CATALOG = "main"
 
 
 @pytest.fixture

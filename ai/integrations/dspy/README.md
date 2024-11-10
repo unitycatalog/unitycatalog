@@ -68,7 +68,7 @@ Now that the function exists within the Catalog and Schema that we defined, we c
 
 #### Create an instance of a DSPy compatible tool
 
-DSPy Tools are primarily used with [ReAct Agents](https://dspy-docs.vercel.app/deep-dive/modules/react/). In short, they are callable external functions that GenAI applications can be called by. Through the us of the `unitycatalog-dspy` package via the `UCFunctionToolkit` API, the below code snippet exposes UC functions as DSPy-compatible tools. 
+DSPy Tools are typically used with [ReAct Agents](https://dspy-docs.vercel.app/deep-dive/modules/react/). In short, they are callable external functions that GenAI applications can be called by. Through the use of the `unitycatalog-dspy` package via the `UCFunctionToolkit` API, the below code snippet exposes UC functions as DSPy-compatible tools. 
 
 ```python
 from unitycatalog.ai.dspy.toolkit import UCFunctionToolkit
@@ -85,7 +85,7 @@ If you would like to validate that your tool is functional prior to integrating 
 ```python
 my_tool = tools[0]
 
-my_tool.fn(**{"question": "Am I good at coding?"})
+my_tool.func(**{"question": "Am I good at coding?"})
 ```
 
 Output
@@ -98,9 +98,6 @@ Output
 With our interface to our UC function defined as a JSON tool collection, we can directly use it within a DSPy LM call.
 
 ```python
-import dspy 
-
-# Set up API keys
 import dspy 
 
 # Set up API keys
