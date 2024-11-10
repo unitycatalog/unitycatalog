@@ -1,5 +1,0 @@
-mkdocs==1.5.3
-mkdocstrings[python]==0.23.0
-mkdocs-material==9.4.5
-mkdocs-git-revision-date-localized-plugin
-material-plausible-plugin
