@@ -94,9 +94,10 @@ def check_function_info(func_info):
     """
     params_with_no_description = []
 
-    for param_info in func_info.input_params.parameters:
-        if not param_info.comment:
-            params_with_no_description.append(param_info.name)
+    if parameters := func_info.input_params:
+        for param_info in parameters:
+            if not param_info.comment:
+                params_with_no_description.append(param_info.name)
 
     if params_with_no_description:
         warnings.warn(
