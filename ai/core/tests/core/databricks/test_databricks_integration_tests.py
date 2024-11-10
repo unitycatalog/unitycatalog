@@ -183,6 +183,25 @@ $$
 
 @retry_flaky_test()
 @requires_databricks
+def test_execute_function_no_parameters(client: DatabricksFunctionClient):
+    with generate_func_name_and_cleanup(client, schema=SCHEMA) as func_name:
+        sql_body = f"""CREATE FUNCTION {func_name}()
+RETURNS STRING
+LANGUAGE PYTHON
+AS $$
+return f"Hello!"
+$$
+"""
+        client.create_function(sql_function_body=sql_body)
+        result = client.execute_function(func_name)
+        result.value = "Hello!"
+
+        result = client.execute_function(func_name, parameters=[])
+        result.value = "Hello!"
+
+
+@retry_flaky_test()
+@requires_databricks
 def test_get_function(client: DatabricksFunctionClient):
     with generate_func_name_and_cleanup(client, schema=SCHEMA) as func_name:
         sql_body = f"""CREATE FUNCTION {func_name}(s STRING)

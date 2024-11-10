@@ -1,6 +1,7 @@
 import datetime
 import decimal
 from typing import Dict, List, Optional, Tuple, Union
+from unittest.mock import MagicMock
 
 import pytest
 from databricks.sdk.service.catalog import (
@@ -19,7 +20,7 @@ from unitycatalog.ai.core.utils.type_utils import (
     column_type_to_python_type,
     convert_timedelta_to_interval_str,
 )
-from unitycatalog.ai.core.utils.validation_utils import is_base64_encoded
+from unitycatalog.ai.core.utils.validation_utils import check_function_info, is_base64_encoded
 
 
 def test_full_function_name():
@@ -40,6 +41,30 @@ def test_column_type_to_python_type_errors():
 def test_is_base64_encoded():
     assert is_base64_encoded("aGVsbG8=")
     assert not is_base64_encoded("hello")
+
+
+@pytest.fixture
+def mock_function_info():
+    mock_function_info = MagicMock()
+    mock_function_info.full_name = "catalog.schema.function_name"
+    mock_function_info.catalog_name = "catalog"
+    mock_function_info.schema_name = "schema"
+    mock_function_info.name = "function_name"
+    mock_function_info.data_type = "SCALAR"
+    mock_function_info.input_params.parameters = []
+    return mock_function_info
+
+
+def test_check_function_info_no_parameters_no_description(mock_function_info):
+    mock_function_info.input_params = None
+    check_function_info(mock_function_info)
+
+
+def test_check_function_info_with_fully_described_parameters(mock_function_info):
+    param1 = MagicMock(name="param1", comment="Description for param1")
+    param2 = MagicMock(name="param2", comment="Description for param2")
+    mock_function_info.input_params.parameters = [param1, param2]
+    check_function_info(mock_function_info)
 
 
 @pytest.mark.parametrize(
