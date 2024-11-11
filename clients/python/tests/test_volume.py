@@ -2,19 +2,21 @@ import pytest
 
 import subprocess
 
-from unitycatalog import (
+from unitycatalog.client import (
     CreateVolumeRequestContent,
     VolumeType,
 )
 
 
-def test_volume_list(volumes_api):
-    api_response = volumes_api.list_volumes("unity", "default")
+@pytest.mark.asyncio
+async def test_volume_list(volumes_api):
+    api_response = await volumes_api.list_volumes("unity", "default")
     volume_names = {v.name for v in api_response.volumes}
 
     assert volume_names == {"txt_files", "json_files"}
 
 
+@pytest.mark.asyncio
 @pytest.mark.parametrize(
     "volume_name,volume_type",
     [
@@ -22,8 +24,8 @@ def test_volume_list(volumes_api):
         ("json_files", VolumeType.EXTERNAL),
     ],
 )
-def test_volume_get(volumes_api, volume_name, volume_type):
-    volume_info = volumes_api.get_volume(f"unity.default.{volume_name}")
+async def test_volume_get(volumes_api, volume_name, volume_type):
+    volume_info = await volumes_api.get_volume(f"unity.default.{volume_name}")
 
     assert volume_info.name == volume_name
     assert volume_info.catalog_name == "unity"
@@ -31,7 +33,8 @@ def test_volume_get(volumes_api, volume_name, volume_type):
     assert volume_info.volume_type == volume_type
 
 
-def test_volume_create(volumes_api):
+@pytest.mark.asyncio
+async def test_volume_create(volumes_api):
     subprocess.run("mkdir -p /tmp/uc/myVolume", shell=True, check=True)
     subprocess.run(
         "cp etc/data/external/unity/default/volumes/json_files/c.json /tmp/uc/myVolume/",
@@ -39,7 +42,7 @@ def test_volume_create(volumes_api):
         check=True,
     )
 
-    volume_info = volumes_api.create_volume(
+    volume_info = await volumes_api.create_volume(
         CreateVolumeRequestContent(
             name="myVolume",
             catalog_name="unity",
@@ -77,4 +80,4 @@ def test_volume_create(volumes_api):
         subprocess.run("rm -rf /tmp/uc/myVolume", shell=True, check=True)
 
     finally:
-        volumes_api.delete_volume("unity.default.myVolume")
+        await volumes_api.delete_volume("unity.default.myVolume")
