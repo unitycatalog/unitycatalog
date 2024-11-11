@@ -55,7 +55,7 @@ def mock_function_info():
     return mock_function_info
 
 
-def test_check_function_info_no_parameters_no_description(mock_function_info):
+def test_check_function_info_no_input_params(mock_function_info):
     mock_function_info.input_params = None
     check_function_info(mock_function_info)
 
