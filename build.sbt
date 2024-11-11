@@ -229,6 +229,7 @@ lazy val pythonClient = (project in file("clients/python/target"))
     // name of the generation step. See `openApiPackageName` for the actual Python package name
     name := s"$artifactNamePrefix-python-client",
     commonSettings,
+    skipReleaseSettings,
     (Compile / compile) := ((Compile / compile) dependsOn generate).value,
 
     // OpenAPI generation specs
