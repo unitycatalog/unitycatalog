@@ -4,11 +4,7 @@ import DetailsLayout from '../components/layouts/DetailsLayout';
 import DescriptionBox from '../components/DescriptionBox';
 import { Flex, Table, TableProps, Typography } from 'antd';
 import { DeploymentUnitOutlined } from '@ant-design/icons';
-import {
-  ModelVersionInterface,
-  useGetModelVersion,
-  useUpdateModelVersion,
-} from '../hooks/models';
+import { useGetModelVersion, useUpdateModelVersion } from '../hooks/models';
 import ModelSidebar from '../components/models/ModelSidebar';
 import { formatTimestamp } from '../utils/formatTimestamp';
 import VersionActionsDropdown from '../components/models/VersionActionsDropdown';

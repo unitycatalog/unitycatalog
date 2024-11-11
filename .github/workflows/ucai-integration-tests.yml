@@ -1,0 +1,142 @@
+name: UnityCatalog AI Integration Tests
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - ai/integrations/**
+      - .github/workflows/ucai-integration-tests.yml
+  pull_request:
+    paths:
+      - ai/integrations/**
+      - .github/workflows/ucai-integration-tests.yml
+
+permissions:
+  contents: read
+
+jobs:
+  langchain_test:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ['3.9', '3.10']
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: ai
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+      - name: Install Core Library and Langchain Integration
+        run: |
+          pip install core/.
+          echo "PYTHONPATH=$(pwd)/core/src:\$PYTHONPATH" >> $GITHUB_ENV
+          pip install integrations/langchain[dev]
+      - name: Run Langchain Tests
+        run: |
+          pytest integrations/langchain/tests
+
+  anthropic_test:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ['3.9', '3.10']
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: ai
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+      - name: Install Core Library and Anthropic Integration
+        run: |
+          pip install core/.
+          echo "PYTHONPATH=$(pwd)/core/src:\$PYTHONPATH" >> $GITHUB_ENV
+          pip install integrations/anthropic[dev]
+      - name: Run Anthropic Tests
+        run: |
+          pytest integrations/anthropic/tests
+
+  llamaindex_test:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ['3.9', '3.10']
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: ai
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+      - name: Install Core Library and LlamaIndex Integration
+        run: |
+          pip install core/.
+          echo "PYTHONPATH=$(pwd)/core/src:\$PYTHONPATH" >> $GITHUB_ENV
+          pip install integrations/llama_index[dev]
+      - name: Run LlamaIndex Tests
+        run: |
+          pytest integrations/llama_index/tests
+
+  openai_test:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ['3.9', '3.10']
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: ai
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+      - name: Install Core Library and OpenAI Integration 
+        run: |
+          pip install core/.
+          echo "PYTHONPATH=$(pwd)/core/src:\$PYTHONPATH" >> $GITHUB_ENV
+          pip install integrations/openai[dev]
+      - name: Run OpenAI Tests
+        run: |
+          pytest integrations/openai/tests
+
+  autogen_test:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ['3.9', '3.10']
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: ai
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+      - name: Install dependencies
+        run: |
+          pip install core/.
+          echo "PYTHONPATH=$(pwd)/core/src:\$PYTHONPATH" >> $GITHUB_ENV
+          pip install integrations/autogen[dev]
+      - name: Run tests
+        run: |
+          pytest integrations/autogen/tests
