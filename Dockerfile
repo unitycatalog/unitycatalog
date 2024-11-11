@@ -11,7 +11,7 @@ ENV HOME=$HOME
 
 WORKDIR $HOME
 
-COPY --parents build/ project/ examples/ server/ api/ version.sbt build.sbt ./
+COPY --parents build/ project/ examples/ server/ api/ clients/python/ version.sbt build.sbt ./
 
 RUN apk add --no-cache bash && ./build/sbt -info clean package
 
