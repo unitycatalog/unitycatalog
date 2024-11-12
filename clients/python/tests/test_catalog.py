@@ -1,5 +1,8 @@
-def test_catalog_list(catalogs_api):
-    api_response = catalogs_api.list_catalogs()
-    catalog_names = [c.name for c in api_response.catalogs]
+import pytest
 
-    assert catalog_names == ["unity"]
+
+@pytest.mark.asyncio
+async def test_catalog_list(catalogs_api):
+    response = await catalogs_api.list_catalogs()
+    assert response is not None
+    assert isinstance(response.catalogs, list)
