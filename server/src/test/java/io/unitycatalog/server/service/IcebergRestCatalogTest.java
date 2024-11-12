@@ -135,9 +135,9 @@ public class IcebergRestCatalogTest extends BaseServerTest {
                   .build()
                   .toString());
 
-      // non-prefixed URL should result in 400
+      // non-prefixed URL should result in 404
       resp = client.get(TEST_BASE_NON_PREFIX + "/namespaces/" + TestUtils.SCHEMA_NAME).aggregate().join();
-      assertThat(resp.status().code()).isEqualTo(400);
+      assertThat(resp.status().code()).isEqualTo(404);
     }
 
     // ListNamespaces
@@ -153,9 +153,9 @@ public class IcebergRestCatalogTest extends BaseServerTest {
                   .build()
                   .toString());
 
-      // non-prefixed URL should result in 400
+      // non-prefixed URL should result in 404
       resp = client.get(TEST_BASE_NON_PREFIX + "/namespaces").aggregate().join();
-      assertThat(resp.status().code()).isEqualTo(400);
+      assertThat(resp.status().code()).isEqualTo(404);
     }
   }
 
@@ -277,14 +277,14 @@ public class IcebergRestCatalogTest extends BaseServerTest {
               Objects.requireNonNull(this.getClass().getResource("/iceberg.metadata.json"))
                   .getPath());
 
-      // non-prefixed URL should result in 400
+      // non-prefixed URL should result in 404
       resp = client.get(TEST_BASE_NON_PREFIX + "/namespaces/"
           + TestUtils.SCHEMA_NAME
           + "/tables/"
           + TestUtils.TABLE_NAME)
         .aggregate()
         .join();
-      assertThat(resp.status().code()).isEqualTo(400);
+      assertThat(resp.status().code()).isEqualTo(404);
     }
 
     // List uniform tables
@@ -300,9 +300,9 @@ public class IcebergRestCatalogTest extends BaseServerTest {
       assertThat(loadTableResponse.identifiers())
           .containsExactly(TableIdentifier.of(TestUtils.SCHEMA_NAME, TestUtils.TABLE_NAME));
 
-      // non-prefixed URL should result in 400
+      // non-prefixed URL should result in 404
       resp = client.get(TEST_BASE_NON_PREFIX + "/namespaces/" + TestUtils.SCHEMA_NAME + "/tables").aggregate().join();
-      assertThat(resp.status().code()).isEqualTo(400);
+      assertThat(resp.status().code()).isEqualTo(404);
     }
   }
 }
