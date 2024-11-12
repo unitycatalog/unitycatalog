@@ -45,7 +45,14 @@ public class TableService {
   }
 
   @Patch("/{full_name}")
+  @AuthorizeExpression("""
+          #authorize(#principal, #catalog, OWNER) ||
+          (#authorize(#principal, #schema, OWNER) && #authorize(#principal, #catalog, USE_CATALOG)) ||
+          (#authorize(#principal, #schema, USE_SCHEMA) && #authorize(#principal, #catalog, USE_CATALOG) && #authorize(#principal, #table, OWNER))
+          """)
   public HttpResponse updateTable(@Param("full_name") @AuthorizeKey(TABLE) String fullName, UpdateTable updateTable) {
+    assert fullName != null;
+    assert updateTable != null;
     TableInfo tableInfo = TABLE_REPOSITORY.updateTable(fullName, updateTable);
     return HttpResponse.ofJson(tableInfo);
   }
