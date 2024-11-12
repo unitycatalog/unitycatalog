@@ -2,22 +2,14 @@ package io.unitycatalog.server.service;
 
 import com.linecorp.armeria.common.HttpResponse;
 import com.linecorp.armeria.common.HttpStatus;
-import com.linecorp.armeria.server.annotation.Delete;
-import com.linecorp.armeria.server.annotation.ExceptionHandler;
-import com.linecorp.armeria.server.annotation.Get;
-import com.linecorp.armeria.server.annotation.Param;
-import com.linecorp.armeria.server.annotation.Post;
+import com.linecorp.armeria.server.annotation.*;
 import io.unitycatalog.server.auth.UnityCatalogAuthorizer;
 import io.unitycatalog.server.auth.annotation.AuthorizeExpression;
 import io.unitycatalog.server.auth.annotation.AuthorizeKey;
 import io.unitycatalog.server.auth.annotation.AuthorizeKeys;
 import io.unitycatalog.server.auth.decorator.UnityAccessEvaluator;
 import io.unitycatalog.server.exception.GlobalExceptionHandler;
-import io.unitycatalog.server.model.CatalogInfo;
-import io.unitycatalog.server.model.CreateTable;
-import io.unitycatalog.server.model.ListTablesResponse;
-import io.unitycatalog.server.model.SchemaInfo;
-import io.unitycatalog.server.model.TableInfo;
+import io.unitycatalog.server.model.*;
 import io.unitycatalog.server.persist.CatalogRepository;
 import io.unitycatalog.server.persist.MetastoreRepository;
 import io.unitycatalog.server.persist.SchemaRepository;
@@ -50,6 +42,12 @@ public class TableService {
   public TableService(UnityCatalogAuthorizer authorizer) {
     this.authorizer = authorizer;
     evaluator = new UnityAccessEvaluator(authorizer);
+  }
+
+  @Patch("/{full_name}")
+  public HttpResponse updateTable(@Param("full_name") @AuthorizeKey(TABLE) String fullName, UpdateTable updateTable) {
+    TableInfo tableInfo = TABLE_REPOSITORY.updateTable(fullName, updateTable);
+    return HttpResponse.ofJson(tableInfo);
   }
 
   @Post("")

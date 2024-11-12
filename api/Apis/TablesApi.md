@@ -8,6 +8,7 @@ All URIs are relative to *http://localhost:8080/api/2.1/unity-catalog*
 | [**deleteTable**](TablesApi.md#deleteTable) | **DELETE** /tables/{full_name} | Delete a table |
 | [**getTable**](TablesApi.md#getTable) | **GET** /tables/{full_name} | Get a table |
 | [**listTables**](TablesApi.md#listTables) | **GET** /tables | List tables |
+| [**updateTable**](TablesApi.md#updateTable) | **PATCH** /tables/{full_name} | Update a table |
 
 
 <a name="createTable"></a>
@@ -119,5 +120,33 @@ No authorization required
 ### HTTP request headers
 
 - **Content-Type**: Not defined
+- **Accept**: application/json
+
+<a name="updateTable"></a>
+# **updateTable**
+> TableInfo updateTable(full\_name, UpdateTable)
+
+Update a table
+
+    Updates the specified table. 
+
+### Parameters
+
+|Name | Type | Description  | Notes |
+|------------- | ------------- | ------------- | -------------|
+| **full\_name** | **String**| Full name of the table. | [default to null] |
+| **UpdateTable** | [**UpdateTable**](../Models/UpdateTable.md)|  | [optional] |
+
+### Return type
+
+[**TableInfo**](../Models/TableInfo.md)
+
+### Authorization
+
+No authorization required
+
+### HTTP request headers
+
+- **Content-Type**: application/json
 - **Accept**: application/json
 
