@@ -1430,6 +1430,14 @@ components:
     UpdateTable:
       type: object
       properties:
+        columns:
+          description: The array of __ColumnInfo__ definitions of the table's columns.
+          type: array
+          items:
+            $ref: '#/components/schemas/ColumnInfo'
+        storage_location:
+          description: Storage root URL for external table
+          type: string
         comment:
           description: User-provided free-form text description.
           type: string
