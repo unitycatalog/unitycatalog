@@ -9,6 +9,7 @@ import com.linecorp.armeria.server.annotation.ExceptionHandlerFunction;
 import io.unitycatalog.server.utils.RESTObjectMapper;
 import lombok.SneakyThrows;
 import org.apache.iceberg.exceptions.AlreadyExistsException;
+import org.apache.iceberg.exceptions.BadRequestException;
 import org.apache.iceberg.exceptions.CommitFailedException;
 import org.apache.iceberg.exceptions.NamespaceNotEmptyException;
 import org.apache.iceberg.exceptions.NoSuchNamespaceException;
@@ -31,7 +32,8 @@ public class IcebergRestExceptionHandler implements ExceptionHandlerFunction {
           || cause instanceof NamespaceNotEmptyException
           || cause instanceof CommitFailedException) {
         return createErrorResponse(HttpStatus.CONFLICT, cause);
-      } else if (cause instanceof IllegalArgumentException) {
+      } else if (cause instanceof IllegalArgumentException
+          || cause instanceof BadRequestException) {
         return createErrorResponse(HttpStatus.BAD_REQUEST, cause);
       } else {
         return createErrorResponse(HttpStatus.INTERNAL_SERVER_ERROR, cause);

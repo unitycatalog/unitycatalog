@@ -136,7 +136,11 @@ public class IcebergRestCatalogTest extends BaseServerTest {
                   .toString());
 
       // non-prefixed URL should result in 404
-      resp = client.get(TEST_BASE_NON_PREFIX + "/namespaces/" + TestUtils.SCHEMA_NAME).aggregate().join();
+      resp =
+          client
+              .get(TEST_BASE_NON_PREFIX + "/namespaces/" + TestUtils.SCHEMA_NAME)
+              .aggregate()
+              .join();
       assertThat(resp.status().code()).isEqualTo(404);
     }
 
@@ -278,12 +282,16 @@ public class IcebergRestCatalogTest extends BaseServerTest {
                   .getPath());
 
       // non-prefixed URL should result in 404
-      resp = client.get(TEST_BASE_NON_PREFIX + "/namespaces/"
-          + TestUtils.SCHEMA_NAME
-          + "/tables/"
-          + TestUtils.TABLE_NAME)
-        .aggregate()
-        .join();
+      resp =
+          client
+              .get(
+                  TEST_BASE_NON_PREFIX
+                      + "/namespaces/"
+                      + TestUtils.SCHEMA_NAME
+                      + "/tables/"
+                      + TestUtils.TABLE_NAME)
+              .aggregate()
+              .join();
       assertThat(resp.status().code()).isEqualTo(404);
     }
 
@@ -301,7 +309,11 @@ public class IcebergRestCatalogTest extends BaseServerTest {
           .containsExactly(TableIdentifier.of(TestUtils.SCHEMA_NAME, TestUtils.TABLE_NAME));
 
       // non-prefixed URL should result in 404
-      resp = client.get(TEST_BASE_NON_PREFIX + "/namespaces/" + TestUtils.SCHEMA_NAME + "/tables").aggregate().join();
+      resp =
+          client
+              .get(TEST_BASE_NON_PREFIX + "/namespaces/" + TestUtils.SCHEMA_NAME + "/tables")
+              .aggregate()
+              .join();
       assertThat(resp.status().code()).isEqualTo(404);
     }
   }
