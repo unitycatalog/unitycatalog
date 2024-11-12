@@ -35,6 +35,7 @@ import java.util.Optional;
 import java.util.UUID;
 import org.apache.iceberg.catalog.Namespace;
 import org.apache.iceberg.catalog.TableIdentifier;
+import org.apache.iceberg.exceptions.BadRequestException;
 import org.apache.iceberg.exceptions.NoSuchTableException;
 import org.apache.iceberg.rest.responses.ErrorResponse;
 import org.apache.iceberg.rest.responses.ErrorResponseParser;
@@ -50,6 +51,7 @@ import org.junit.jupiter.api.Test;
 public class IcebergRestCatalogTest extends BaseServerTest {
 
   private static final String TEST_BASE_PREFIX = "/v1/catalogs/" + TestUtils.CATALOG_NAME;
+  private static final String TEST_BASE_NON_PREFIX = "/v1";
 
   protected CatalogOperations catalogOperations;
   protected SchemaOperations schemaOperations;
@@ -80,6 +82,7 @@ public class IcebergRestCatalogTest extends BaseServerTest {
 
   @Test
   public void testConfig() {
+    // successful test of getting client config with prefix when passing in warehouse param
     AggregatedHttpResponse resp =
         client.get("/v1/config?warehouse=" + TestUtils.CATALOG_NAME).aggregate().join();
     assertThat(resp.contentUtf8())
@@ -87,6 +90,12 @@ public class IcebergRestCatalogTest extends BaseServerTest {
             "{\"defaults\":{},\"overrides\":{\"prefix\":\"catalogs/"
                 + TestUtils.CATALOG_NAME
                 + "\"}}");
+
+    // not setting warehouse param should result in 400 BadRequestException
+    resp = client.get("/v1/config").aggregate().join();
+    assertThat(resp.status().code()).isEqualTo(400);
+    ErrorResponse errorResponse = ErrorResponseParser.fromJson(resp.contentUtf8());
+    assertThat(errorResponse.type()).isEqualTo(BadRequestException.class.getSimpleName());
   }
 
   @Test
@@ -125,6 +134,10 @@ public class IcebergRestCatalogTest extends BaseServerTest {
                   .setProperties(TestUtils.PROPERTIES)
                   .build()
                   .toString());
+
+      // non-prefixed URL should result in 400
+      resp = client.get(TEST_BASE_NON_PREFIX + "/namespaces/" + TestUtils.SCHEMA_NAME).aggregate().join();
+      assertThat(resp.status().code()).isEqualTo(400);
     }
 
     // ListNamespaces
@@ -139,6 +152,10 @@ public class IcebergRestCatalogTest extends BaseServerTest {
                   .add(Namespace.of(TestUtils.SCHEMA_NAME))
                   .build()
                   .toString());
+
+      // non-prefixed URL should result in 400
+      resp = client.get(TEST_BASE_NON_PREFIX + "/namespaces").aggregate().join();
+      assertThat(resp.status().code()).isEqualTo(400);
     }
   }
 
@@ -259,6 +276,15 @@ public class IcebergRestCatalogTest extends BaseServerTest {
           .isEqualTo(
               Objects.requireNonNull(this.getClass().getResource("/iceberg.metadata.json"))
                   .getPath());
+
+      // non-prefixed URL should result in 400
+      resp = client.get(TEST_BASE_NON_PREFIX + "/namespaces/"
+          + TestUtils.SCHEMA_NAME
+          + "/tables/"
+          + TestUtils.TABLE_NAME)
+        .aggregate()
+        .join();
+      assertThat(resp.status().code()).isEqualTo(400);
     }
 
     // List uniform tables
@@ -273,6 +299,10 @@ public class IcebergRestCatalogTest extends BaseServerTest {
           RESTObjectMapper.mapper().readValue(resp.contentUtf8(), ListTablesResponse.class);
       assertThat(loadTableResponse.identifiers())
           .containsExactly(TableIdentifier.of(TestUtils.SCHEMA_NAME, TestUtils.TABLE_NAME));
+
+      // non-prefixed URL should result in 400
+      resp = client.get(TEST_BASE_NON_PREFIX + "/namespaces/" + TestUtils.SCHEMA_NAME + "/tables").aggregate().join();
+      assertThat(resp.status().code()).isEqualTo(400);
     }
   }
 }
