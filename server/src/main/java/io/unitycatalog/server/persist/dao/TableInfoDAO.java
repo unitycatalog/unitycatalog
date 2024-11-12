@@ -108,4 +108,8 @@ public class TableInfoDAO extends IdentifiableDAO {
     }
     return tableInfo;
   }
+
+  public void addColumns(List<ColumnInfoDAO> column) {
+    columns.addAll(column);
+  }
 }

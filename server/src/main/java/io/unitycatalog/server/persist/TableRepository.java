@@ -3,10 +3,7 @@ package io.unitycatalog.server.persist;
 import io.unitycatalog.server.exception.BaseException;
 import io.unitycatalog.server.exception.ErrorCode;
 import io.unitycatalog.server.model.*;
-import io.unitycatalog.server.persist.dao.CatalogInfoDAO;
-import io.unitycatalog.server.persist.dao.PropertyDAO;
-import io.unitycatalog.server.persist.dao.SchemaInfoDAO;
-import io.unitycatalog.server.persist.dao.TableInfoDAO;
+import io.unitycatalog.server.persist.dao.*;
 import io.unitycatalog.server.persist.utils.FileUtils;
 import io.unitycatalog.server.persist.utils.HibernateUtils;
 import io.unitycatalog.server.persist.utils.PagedListingHelper;
@@ -137,13 +134,33 @@ public class TableRepository {
           throw new BaseException(ErrorCode.NOT_FOUND, "Table not found: " + tableName);
         }
 
+        // Update the columns
+        if (updateTable.getColumns() != null) {
+          tableInfoDAO.getColumns().forEach(session::remove);
+          tableInfoDAO.getColumns().clear();
+          session.flush();
+          tableInfoDAO.addColumns(ColumnInfoDAO.fromList(updateTable.getColumns()));
+          tableInfoDAO
+              .getColumns()
+              .forEach(
+                  c -> {
+                    c.setId(UUID.randomUUID());
+                    c.setTable(tableInfoDAO);
+                  });
+        }
+
+        // Update the storage_location
+        if (updateTable.getStorageLocation() != null) {
+          tableInfoDAO.setUrl(FileUtils.convertRelativePathToURI(updateTable.getStorageLocation()));
+        }
+
         // Update the comment
         if (updateTable.getComment() != null) {
           tableInfoDAO.setComment(updateTable.getComment());
         }
 
         // Update the props
-        if (updateTable.getProperties() != null && !updateTable.getProperties().isEmpty()) {
+        if (updateTable.getProperties() != null) {
           PropertyRepository.findProperties(session, tableInfoDAO.getId(), Constants.TABLE)
               .forEach(session::remove);
           session.flush();
