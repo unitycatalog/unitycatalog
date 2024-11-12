@@ -92,21 +92,22 @@ def check_function_info(func_info):
     Uses:
         warnings.warn to issue warnings if any parameters or the function itself lack descriptions.
     """
-    params_with_no_description = []
+    if func_info.input_params:
+        params_with_no_description = []
 
-    for param_info in func_info.input_params.parameters:
-        if not param_info.comment:
-            params_with_no_description.append(param_info.name)
+        for param_info in func_info.input_params.parameters:
+            if not param_info.comment:
+                params_with_no_description.append(param_info.name)
 
-    if params_with_no_description:
-        warnings.warn(
-            f"The following parameters do not have descriptions: {', '.join(params_with_no_description)} for the function {func_info.full_name}. "
-            "Using Unity Catalog functions that do not have parameter descriptions limits the functionality "
-            "for an LLM to understand how to call your function. To improve tool calling accuracy, provide "
-            "verbose parameter descriptions that fully explain what the expected usage of the function arguments are.",
-            UserWarning,
-            stacklevel=2,
-        )
+        if params_with_no_description:
+            warnings.warn(
+                f"The following parameters do not have descriptions: {', '.join(params_with_no_description)} for the function {func_info.full_name}. "
+                "Using Unity Catalog functions that do not have parameter descriptions limits the functionality "
+                "for an LLM to understand how to call your function. To improve tool calling accuracy, provide "
+                "verbose parameter descriptions that fully explain what the expected usage of the function arguments are.",
+                UserWarning,
+                stacklevel=2,
+            )
 
     if not func_info.comment:
         warnings.warn(
