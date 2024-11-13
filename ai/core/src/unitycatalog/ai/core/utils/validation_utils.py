@@ -1,9 +1,12 @@
 import base64
 import datetime
 import warnings
-from typing import Any, NamedTuple
+from typing import TYPE_CHECKING, Any, NamedTuple
 
 from unitycatalog.ai.core.utils.type_utils import is_time_type
+
+if TYPE_CHECKING:
+    from databricks.sdk.service.catalog import FunctionInfo
 
 
 class FullFunctionName(NamedTuple):
@@ -80,7 +83,7 @@ def validate_param(param: Any, column_type: str, param_type_text: str) -> None:
         )
 
 
-def check_function_info(func_info):
+def check_function_info(func_info: "FunctionInfo") -> None:
     """
     Checks a FunctionInfo object for missing parameter descriptions and a function description.
     If these are missing, issue a warning to instruct users on how beneficial to their GenAI
