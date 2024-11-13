@@ -87,7 +87,17 @@ def _try_get_spark_session_in_dbr() -> Any:
     try:
         # if in Databricks, fetch the current active session
         from databricks.sdk.runtime import spark
+        from pyspark.sql.connect.session import SparkSession
 
+        if not isinstance(spark, SparkSession):
+            _logger.warning(
+                "Current spark session in the active Databricks runtime is not a "
+                "pyspark.sql.connect.session.SparkSession instance, it's probably "
+                "because you're not using a Serverless compute. To use the full "
+                "functionality of this package please switch to a Serverless cluster, "
+                "check https://docs.databricks.com/en/compute/serverless/index.html#connect-to-serverless-compute "
+                "for more details."
+            )
         return spark
     except Exception:
         return
@@ -212,8 +222,15 @@ class DatabricksFunctionClient(BaseFunctionClient):
         self._is_default_client = client is None
         super().__init__()
 
+    def _is_spark_session_active(self):
+        if self.spark is None:
+            return False
+        if hasattr(self.spark, "is_stopped"):
+            return not self.spark.is_stopped
+        return self.spark.getActiveSession() is not None
+
     def set_default_spark_session(self):
-        if self.spark is None or self.spark.is_stopped:
+        if not self._is_spark_session_active():
             _validate_databricks_connect_available()
             from databricks.connect.session import DatabricksSession as SparkSession
 
@@ -224,7 +241,7 @@ class DatabricksFunctionClient(BaseFunctionClient):
             self.spark = builder.serverless(True).getOrCreate()
 
     def stop_spark_session(self):
-        if self.spark is not None and not self.spark.is_stopped:
+        if self._is_spark_session_active():
             self.spark.stop()
 
     def _validate_warehouse_type(self):
