@@ -182,21 +182,19 @@ public class AuthService {
 
   @Get("/logout")
   public HttpResponse logout(HttpRequest request) {
-    String authorizationCookie =
-        request.headers().cookies().stream()
-            .filter(c -> c.name().equals(AuthDecorator.UC_TOKEN_KEY))
-            .map(Cookie::value)
-            .findFirst()
-            .orElse(null);
-
-    if (authorizationCookie != null) {
-      Cookie expiredCookie = createCookie(AuthDecorator.UC_TOKEN_KEY, "", "/", 0L);
-      ResponseHeaders headers =
-          ResponseHeaders.of(
-              HttpStatus.OK, HttpHeaderNames.SET_COOKIE, expiredCookie.toSetCookieHeader());
-      return HttpResponse.of(headers);
-    }
-    return HttpResponse.of(HttpStatus.OK);
+    return request.headers().cookies().stream()
+        .filter(c -> c.name().equals(AuthDecorator.UC_TOKEN_KEY))
+        .map(Cookie::value)
+        .findFirst()
+        .map(
+            authorizationCookie -> {
+              Cookie expiredCookie = createCookie(AuthDecorator.UC_TOKEN_KEY, "", "/", 0L);
+              ResponseHeaders headers =
+                  ResponseHeaders.of(
+                      HttpStatus.OK, HttpHeaderNames.SET_COOKIE, expiredCookie.toSetCookieHeader());
+              return HttpResponse.of(headers);
+            })
+        .orElse(HttpResponse.of(HttpStatus.OK));
   }
 
   private static void verifyPrincipal(DecodedJWT decodedJWT) {
