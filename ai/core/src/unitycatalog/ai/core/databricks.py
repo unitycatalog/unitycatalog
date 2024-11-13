@@ -94,7 +94,7 @@ def _try_get_spark_session_in_dbr() -> Any:
                 "Current spark session in the active Databricks runtime is not a "
                 "pyspark.sql.connect.session.SparkSession instance, it's probably "
                 "because you're not using a Serverless compute. To use the full "
-                "functionality of this package please switch to a Serverless cluster, "
+                "functionalities of this package please switch to a Serverless cluster, "
                 "check https://docs.databricks.com/en/compute/serverless/index.html#connect-to-serverless-compute "
                 "for more details."
             )
@@ -683,20 +683,20 @@ class DatabricksFunctionClient(BaseFunctionClient):
         sql_command = get_execute_function_sql_command(function_info, parameters)
         try:
             result = self.spark.sql(sqlQuery=sql_command.sql_query, args=sql_command.args or None)
+            if is_scalar(function_info):
+                return FunctionExecutionResult(format="SCALAR", value=str(result.collect()[0][0]))
+            else:
+                row_limit = int(UCAI_DATABRICKS_SERVERLESS_EXECUTION_RESULT_ROW_LIMIT.get())
+                truncated = result.count() > row_limit
+                pdf = result.limit(row_limit).toPandas()
+                csv_buffer = StringIO()
+                pdf.to_csv(csv_buffer, index=False)
+                return FunctionExecutionResult(
+                    format="CSV", value=csv_buffer.getvalue(), truncated=truncated
+                )
         except Exception as e:
             error = f"Failed to execute function with command `{sql_command}`; Error: {e}"
             return FunctionExecutionResult(error=error)
-        if is_scalar(function_info):
-            return FunctionExecutionResult(format="SCALAR", value=str(result.collect()[0][0]))
-        else:
-            row_limit = int(UCAI_DATABRICKS_SERVERLESS_EXECUTION_RESULT_ROW_LIMIT.get())
-            truncated = result.count() > row_limit
-            pdf = result.limit(row_limit).toPandas()
-            csv_buffer = StringIO()
-            pdf.to_csv(csv_buffer, index=False)
-            return FunctionExecutionResult(
-                format="CSV", value=csv_buffer.getvalue(), truncated=truncated
-            )
 
     @override
     def delete_function(
