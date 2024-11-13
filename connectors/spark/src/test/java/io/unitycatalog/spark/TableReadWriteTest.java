@@ -51,10 +51,11 @@ public class TableReadWriteTest extends BaseSparkIntegrationTest {
             .config(catalogConf, UCSingleCatalog.class.getName())
             .config(catalogConf + ".uri", serverConfig.getServerUrl())
             .config(catalogConf + ".token", serverConfig.getAuthToken())
+            .config(catalogConf + ".warehouse", CATALOG_NAME)
             .config(catalogConf + ".__TEST_NO_DELTA__", "true");
     SparkSession session = builder.getOrCreate();
     setupExternalParquetTable(PARQUET_TABLE, new ArrayList<>(0));
-    testTableReadWrite(SPARK_CATALOG + "." + SCHEMA_NAME + "." + PARQUET_TABLE, session);
+    testTableReadWrite("spark_catalog." + SCHEMA_NAME + "." + PARQUET_TABLE, session);
     assertThat(UCSingleCatalog.DELTA_CATALOG_LOADED().get()).isEqualTo(false);
     session.close();
   }
