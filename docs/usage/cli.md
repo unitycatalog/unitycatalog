@@ -199,7 +199,7 @@ bin/uc table create --full_name <full_name> --columns <columns> --storage_locati
     `TIMESTAMP_NTZ`, `STRING`, `BINARY`, `DECIMAL`. Separate multiple columns with a comma
     (e.g., `"id INT, name STRING"`).
 - `format`: *\[Optional\]* The format of the data source. Supported values are `DELTA`, `PARQUET`, `ORC`, `JSON`,
-  `CSV`, `AVRO`, and `TEXT`. If not specified the default format is `DELTA`.
+    `CSV`, `AVRO`, and `TEXT`. If not specified the default format is `DELTA`.
 - `storage_location`: The storage location associated with the table. It is a mandatory field for `EXTERNAL` tables.
 - `properties`:  *\[Optional\]* The properties of the table in JSON format
     (e.g., `'{"key1": "value1", "key2": "value2"}'`). Make sure to either escape the double quotes(`\"`) inside the
