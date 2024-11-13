@@ -227,6 +227,7 @@ lazy val pythonClient = (project in file("clients/python"))
   .settings(
     name := s"$artifactNamePrefix-python-client",
     commonSettings,
+    skipReleaseSettings,
     Compile / compile := (Compile / compile).dependsOn(generate).value,
     openApiInputSpec := (baseDirectory.value.getParentFile.getParentFile / "api" / "all.yaml").getAbsolutePath,
     openApiGeneratorName := "python",
