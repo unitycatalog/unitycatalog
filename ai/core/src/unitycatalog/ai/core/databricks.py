@@ -695,7 +695,12 @@ class DatabricksFunctionClient(BaseFunctionClient):
                     format="CSV", value=csv_buffer.getvalue(), truncated=truncated
                 )
         except Exception as e:
-            error = f"Failed to execute function with command `{sql_command}`; Error: {e}"
+            sql_command_msg = (
+                f"spark.sql({sql_command.sql_query}" + f", args={sql_command.args})"
+                if sql_command.args
+                else ")"
+            )
+            error = f"Failed to execute function with command `{sql_command_msg}`\nError: {e}"
             return FunctionExecutionResult(error=error)
 
     @override
