@@ -110,7 +110,7 @@ public abstract class BaseSchemaCRUDTest extends BaseCRUDTest {
 
     // Update schema properties without updating name and comment
     System.out.println("Testing update schema: changing properties..");
-    UpdateSchema updateSchema3 = new UpdateSchema().properties(TestUtils.NEW_PROPERTIES);
+    UpdateSchema updateSchema3 = new UpdateSchema().properties(TestUtils.PROPERTIES2);
     SchemaInfo updatedSchemaInfo3 =
         schemaOperations.updateSchema(TestUtils.SCHEMA_NEW_FULL_NAME, updateSchema3);
     assertThat(updatedSchemaInfo3.getName()).isEqualTo(TestUtils.SCHEMA_NEW_NAME);
