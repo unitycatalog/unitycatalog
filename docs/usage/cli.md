@@ -198,8 +198,6 @@ bin/uc table create --full_name <full_name> --columns <columns> --storage_locati
     Supported data types include `BOOLEAN`, `BYTE`, `SHORT`, `INT`, `LONG`, `FLOAT`, `DOUBLE`, `DATE`, `TIMESTAMP`,
     `TIMESTAMP_NTZ`, `STRING`, `BINARY`, `DECIMAL`. Separate multiple columns with a comma
     (e.g., `"id INT, name STRING"`).
-- `format`: *\[Optional\]* The format of the data source. Supported values are `DELTA`, `PARQUET`, `ORC`, `JSON`,
-    `CSV`, `AVRO`, and `TEXT`. If not specified the default format is `DELTA`.
 - `storage_location`: The storage location associated with the table. It is a mandatory field for `EXTERNAL` tables.
 - `properties`:  *\[Optional\]* The properties of the table in JSON format
     (e.g., `'{"key1": "value1", "key2": "value2"}'`). Make sure to either escape the double quotes(`\"`) inside the
@@ -218,7 +216,34 @@ When running against UC server, the storage location can be a local path(absolut
 When S3 path is provided, the [server configuration](../server/configuration.md) will vend temporary credentials to
 access the S3 bucket and server properties must be set up accordingly.
 
-### 3.4 Read a DELTA Table
+### 3.4 Update a Table
+
+```sh
+bin/uc table update --full_name <full_name> [--columns <columns>] [--storage_location <storage_location>] [--properties <properties>] [--comment <comment>]
+```
+
+- `full_name`: The full name of the table, which is a concatenation of the catalog name,
+  schema name, and table name separated by dots (e.g., `catalog_name.schema_name.table_name`).
+- `columns`: *\[Optional\]* The columns of the table in SQL-like format `"column_name column_data_type"`.
+  Supported data types include `BOOLEAN`, `BYTE`, `SHORT`, `INT`, `LONG`, `FLOAT`, `DOUBLE`, `DATE`, `TIMESTAMP`,
+  `TIMESTAMP_NTZ`, `STRING`, `BINARY`, `DECIMAL`. Separate multiple columns with a comma
+  (e.g., `"id INT, name STRING"`).
+- `storage_location`: *\[Optional\]* The storage location associated with the table. It is a mandatory field for `EXTERNAL` tables.
+- `properties`:  *\[Optional\]* The properties of the table in JSON format
+  (e.g., `'{"key1": "value1", "key2": "value2"}'`). Make sure to either escape the double quotes(`\"`) inside the
+  properties string or just use single quotes(`''`) around the same.
+- `comment`: *\[Optional\]* The new description of the table.
+
+Example:
+
+- Create an external DELTA table with columns `id` and `name` in the schema `my_schema` of catalog `my_catalog` with
+  storage location `/path/to/storage`:
+
+```sh
+bin/uc table update --full_name my_catalog.my_schema.my_table --columns "id INT, name STRING" --storage_location "/path/to/storage"
+```
+
+### 3.5 Read a DELTA Table
 
 ```sh
 bin/uc table read --full_name <catalog>.<schema>.<table> [--max_results <max_results>]
@@ -229,7 +254,7 @@ bin/uc table read --full_name <catalog>.<schema>.<table> [--max_results <max_res
 - `table`: The name of the table.
 - `max_results`: *\[Optional\]* The maximum number of rows to return.
 
-### 3.5 Write Sample Data to a DELTA Table
+### 3.6 Write Sample Data to a DELTA Table
 
 ```sh
 bin/uc table write --full_name <catalog>.<schema>.<table>
@@ -241,7 +266,7 @@ bin/uc table write --full_name <catalog>.<schema>.<table>
 
 This is an experimental feature and only some primitive types are supported for writing sample data.
 
-### 3.6 Delete a Table
+### 3.7 Delete a Table
 
 ```sh
 bin/uc table delete --full_name <catalog>.<schema>.<table>
