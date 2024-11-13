@@ -238,7 +238,7 @@ bin/uc table update --full_name <full_name> [--columns <columns>] [--storage_loc
 
 Example:
 
-- Create an external DELTA table with columns `id` and `name` in the schema `my_schema` of catalog `my_catalog` with
+- Update a DELTA table with columns `id` and `name` in the schema `my_schema` of catalog `my_catalog` with
   storage location `/path/to/storage`:
 
 ```sh
