@@ -168,11 +168,7 @@ public class AuthService {
             String cookieTimeout =
                 ServerProperties.getInstance().getProperty("server.cookie-timeout", "P5D");
             Cookie cookie =
-                createCookie(
-                    AuthDecorator.UC_TOKEN_KEY,
-                    accessToken,
-                    "/",
-                    Duration.parse(cookieTimeout).getSeconds());
+                createCookie(AuthDecorator.UC_TOKEN_KEY, accessToken, "/", cookieTimeout);
             responseHeaders.add(HttpHeaderNames.SET_COOKIE, cookie.toSetCookieHeader());
           }
         });
@@ -180,15 +176,14 @@ public class AuthService {
     return HttpResponse.ofJson(responseHeaders.build(), response);
   }
 
-  @Get("/logout")
+  @Post("/logout")
   public HttpResponse logout(HttpRequest request) {
     return request.headers().cookies().stream()
         .filter(c -> c.name().equals(AuthDecorator.UC_TOKEN_KEY))
-        .map(Cookie::value)
         .findFirst()
         .map(
             authorizationCookie -> {
-              Cookie expiredCookie = createCookie(AuthDecorator.UC_TOKEN_KEY, "", "/", 0L);
+              Cookie expiredCookie = createCookie(AuthDecorator.UC_TOKEN_KEY, "", "/", "PT0S");
               ResponseHeaders headers =
                   ResponseHeaders.of(
                       HttpStatus.OK, HttpHeaderNames.SET_COOKIE, expiredCookie.toSetCookieHeader());
@@ -220,8 +215,11 @@ public class AuthService {
         ErrorCode.INVALID_ARGUMENT, "User not allowed: " + subject);
   }
 
-  private Cookie createCookie(String key, String value, String path, Long maxAge) {
-    return Cookie.secureBuilder(key, value).path(path).maxAge(maxAge).build();
+  private Cookie createCookie(String key, String value, String path, String maxAge) {
+    return Cookie.secureBuilder(key, value)
+        .path(path)
+        .maxAge(Duration.parse(maxAge).getSeconds())
+        .build();
   }
 
   // TODO: This should be probably integrated into the OpenAPI spec.
