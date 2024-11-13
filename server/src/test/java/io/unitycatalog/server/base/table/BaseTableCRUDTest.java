@@ -66,8 +66,15 @@ public abstract class BaseTableCRUDTest extends BaseCRUDTest {
     TableInfo createdTable = createAndVerifyTable();
 
     // Get table and verify columns
-    TableInfo retrievedTable = tableOperations.getTable(TestUtils.TABLE_FULL_NAME);
-    verifyTableInfo(retrievedTable, createdTable);
+    TableInfo retrievedTableAfterCreate = tableOperations.getTable(TestUtils.TABLE_FULL_NAME);
+    verifyTableInfo(retrievedTableAfterCreate, createdTable);
+
+    // Update and verify a table
+    TableInfo updatedTable = updateAndVerifyTable();
+
+    // Get table and verify columns
+    TableInfo retrievedTableAfterUpdate = tableOperations.getTable(TestUtils.TABLE_FULL_NAME);
+    verifyTableInfo(retrievedTableAfterUpdate, updatedTable);
 
     // Create multiple tables and verify pagination
     List<TableInfo> createdTables = createMultipleTestingTables(111);
@@ -96,14 +103,31 @@ public abstract class BaseTableCRUDTest extends BaseCRUDTest {
     return tableInfo;
   }
 
+  private TableInfo updateAndVerifyTable() throws IOException, ApiException {
+    TableInfo tableInfo = updateTestingTable(TestUtils.TABLE_FULL_NAME);
+    assertThat(tableInfo.getName()).isEqualTo(TestUtils.TABLE_NAME);
+    assertThat(tableInfo.getCatalogName()).isEqualTo(TestUtils.CATALOG_NAME);
+    assertThat(tableInfo.getSchemaName()).isEqualTo(TestUtils.SCHEMA_NAME);
+    assertThat(tableInfo.getStorageLocation()).isEqualTo(TestUtils.STORAGE_LOCATION2);
+    assertThat(tableInfo.getProperties()).isEqualTo(TestUtils.PROPERTIES2);
+    assertThat(tableInfo.getComment()).isEqualTo(TestUtils.COMMENT2);
+    assertThat(tableInfo.getTableId()).isNotNull();
+    return tableInfo;
+  }
+
   private void verifyTableInfo(TableInfo retrievedTable, TableInfo expectedTable) {
     assertThat(retrievedTable).isEqualTo(expectedTable);
-    Collection<ColumnInfo> columns = retrievedTable.getColumns();
-    assertThat(columns)
+    Collection<ColumnInfo> retrievedColumns = retrievedTable.getColumns();
+    assertThat(expectedTable.getColumns()).isNotNull();
+    String[] expectedColumns =
+        expectedTable.getColumns().stream().map(ColumnInfo::getName).toArray(String[]::new);
+    assertThat(retrievedColumns)
         .hasSize(2)
         .extracting(ColumnInfo::getName)
-        .as("Table should contain two columns with names '%s' and '%s'", "as_int", "as_string")
-        .contains("as_int", "as_string");
+        .as(
+            "Table should contain two columns with names '%s' and '%s'"
+                .formatted((Object[]) expectedColumns))
+        .contains(expectedColumns);
   }
 
   private void verifyTablePagination() throws ApiException {
@@ -286,6 +310,39 @@ public abstract class BaseTableCRUDTest extends BaseCRUDTest {
             .dataSourceFormat(DataSourceFormat.DELTA);
 
     return tableOperations.createTable(createTableRequest);
+  }
+
+  protected TableInfo updateTestingTable(String tableFullName) throws IOException, ApiException {
+    ColumnInfo columnInfo1 =
+        new ColumnInfo()
+            .name("as_int2")
+            .typeText("INTEGER")
+            .typeJson("{\"type\": \"integer\"}")
+            .typeName(ColumnTypeName.INT)
+            .typePrecision(10)
+            .typeScale(0)
+            .position(0)
+            .comment("Integer column")
+            .nullable(true);
+
+    ColumnInfo columnInfo2 =
+        new ColumnInfo()
+            .name("as_string2")
+            .typeText("VARCHAR(255)")
+            .typeJson("{\"type\": \"string\", \"length\": \"255\"}")
+            .typeName(ColumnTypeName.STRING)
+            .position(1)
+            .comment("String column")
+            .nullable(true);
+
+    UpdateTable updateTableRequest =
+        new UpdateTable()
+            .columns(List.of(columnInfo1, columnInfo2))
+            .properties(TestUtils.PROPERTIES2)
+            .comment(TestUtils.COMMENT2)
+            .storageLocation(TestUtils.STORAGE_LOCATION2);
+
+    return tableOperations.updateTable(tableFullName, updateTableRequest);
   }
 
   protected List<TableInfo> createMultipleTestingTables(int numberOfTables)

@@ -135,7 +135,7 @@ public class TableRepository {
         }
 
         // Update the columns
-        if (updateTable.getColumns() != null) {
+        if (updateTable.getColumns() != null && !updateTable.getProperties().isEmpty()) {
           tableInfoDAO.getColumns().forEach(session::remove);
           tableInfoDAO.getColumns().clear();
           session.flush();
@@ -160,7 +160,7 @@ public class TableRepository {
         }
 
         // Update the props
-        if (updateTable.getProperties() != null) {
+        if (updateTable.getProperties() != null && !updateTable.getProperties().isEmpty()) {
           PropertyRepository.findProperties(session, tableInfoDAO.getId(), Constants.TABLE)
               .forEach(session::remove);
           session.flush();
