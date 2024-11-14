@@ -2,9 +2,10 @@
 
 ## Setting up REST Catalog with Trino
 
-After setting up Trino, REST Catalog connection can be setup by adding a `etc/catalog/iceberg.properties` file to configure Trino to use Unity Catalog's Iceberg REST API Catalog endpoint.
+After setting up Trino, REST Catalog connection can be setup by adding a `etc/catalog/iceberg.properties` file to
+configure Trino to use Unity Catalog's Iceberg REST API Catalog endpoint.
 
-```
+```console
 connector.name=iceberg
 iceberg.catalog.type=rest
 iceberg.rest-catalog.uri=http://127.0.0.1:8080/api/2.1/unity-catalog/iceberg
