@@ -46,7 +46,7 @@ function creation APIs while attached to a classic SQL Warehouse.
 - **SQL Warehouse**: Needed for executing UC functions.
 
 Create a serverless SQL warehouse as per [this guide](https://docs.databricks.com/en/compute/sql-warehouse/create.html). After creating the warehouse,
-note down the `warehouse id` for use within the `DatabricksFunctionClient`. 
+note down the `warehouse id` for use within the `DatabricksFunctionClient`.
 
 ## Using a function with LangChain
 
@@ -89,7 +89,7 @@ use of this API:
 - **no variable arguments**: All arguments must be defined. `*args` and `**kwargs` are not permitted.
 - **type compatibility**: Not all python types are supported in SQL. Ensure that your function is using compatible types according to the
  [compatibility matrix](index.md#python-to-sql-compatiblity-matrix).
-- **docstring verbosity and formatting**: The UC functions toolkit will read, parse, and extract important information from your docstring. 
+- **docstring verbosity and formatting**: The UC functions toolkit will read, parse, and extract important information from your docstring.
     - Docstrings must be formatted according to the [Google docstring syntax](https://sphinxcontrib-napoleon.readthedocs.io/en/latest/example_google.html) (shown below).
     - The more descriptive the function description and argument descriptions that your docstring provides, the greater the chances are that an LLM will understand when and how to use your function.
 

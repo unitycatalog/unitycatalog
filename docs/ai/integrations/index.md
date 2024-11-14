@@ -47,7 +47,7 @@ To learn more about this integration:
 
 ## Anthropic
 
-Anthropic offers cutting-edge language models designed with a focus on safety and reliability. The Unity Catalog AI integration with Anthropic enables you to utilize UC functions as tools within Anthropic's language model calls, enhancing the functionality and control of your AI applications.
+[Anthropic](https://www.anthropic.com/) offers cutting-edge language models designed with a focus on safety and reliability. The Unity Catalog AI integration with Anthropic enables you to utilize UC functions as tools within Anthropic's language model calls, enhancing the functionality and control of your AI applications.
 
 Installation:
 
@@ -64,6 +64,12 @@ To learn more about this integration:
 
 [CrewAI](https://www.crewai.com/) is a collaborative AI framework that allows multiple agents to work together to accomplish complex tasks. The Unity Catalog AI integration with CrewAI enables you to define CrewAI Tools directly within your agent definitions, leveraging UC functions to enhance agent capabilities and streamline workflows.
 
+Installation:
+
+```sh
+pip install unitycatalog-crewai
+```
+
 To learn more about this integration:
 
 [Guide](crewai.md): Detailed guide on integrating Unity Catalog AI with CrewAI Agents.
@@ -71,6 +77,12 @@ To learn more about this integration:
 ## AutoGen
 
 [AutoGen](https://microsoft.github.io/autogen/0.2/) is a framework designed to facilitate the creation of multi-agent workflows. The Unity Catalog AI integration with AutoGen allows for the direct application of UC functions to distinct agents within AutoGen applications or via universal application mapping, enhancing the capabilities of multi-turn agentic workflows.
+
+Installation:
+
+```sh
+pip install unitycatalog-autogen
+```
 
 To learn more about using UC functions as tools within AutoGen's framework:
 

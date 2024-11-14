@@ -1,14 +1,14 @@
-# Using Unity Catalog AI with the Autogen SDK
+# Using Unity Catalog AI with AutoGen
 
-Integrate Unity Catalog AI with the [Autogen SDK](https://github.com/microsoft/autogen) to utilize functions defined in Unity Catalog as tools in Autogen Agent Application calls. This guide covers the installation, setup, caveats, environment variables, public APIs, and examples to help you get started.
+Integrate Unity Catalog AI with the [AutoGen SDK](https://github.com/microsoft/autogen) to utilize functions defined in Unity Catalog as tools in AutoGen Agent Application calls. This guide covers the installation, setup, caveats, environment variables, public APIs, and examples to help you get started.
 
-> **NOTE:** Ensure that the base Autogen package is installed with version `autogen-agentchat~=0.2` or earlier, as there are significant changes in the API after this release.
+> **NOTE:** Ensure that the base AutoGen package is installed with version `autogen-agentchat~=0.2` or earlier, as there are significant changes in the API after this release.
 
 ---
 
 ## Installation
 
-Install the Unity Catalog AI Autogen integration from PyPI:
+Install the Unity Catalog AI AutoGen integration from PyPI:
 
 ```sh
 pip install unitycatalog-autogen
@@ -97,7 +97,7 @@ function_info_get_temp = client.create_python_function(
 )
 ```
 
-### Create a Toolkit instace
+### Create a Toolkit instance
 
 Create an instance of the toolkit to interface with the defined UC functions. This definition will be the bridge
 between UC functions and AutoGen's tool calling interface.

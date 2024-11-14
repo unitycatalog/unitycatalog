@@ -17,7 +17,7 @@ The `DatabricksFunctionClient` is a core component of the Unity Catalog AI Core 
 - **Python Version**: Python 3.10 or higher is **required** when using `databricks-connect` for serverless compute.
 - **Databricks Connect**: To create UC functions using SQL body definitions or to execute functions using serverless compute, `databricks-connect` version `15.1.0` is required. This is the only supported version that is compatible.
 - **Serverless Compute**: Function creation and execution using `databricks-connect` require serverless compute.
-- **Warehouse**: If the `warehouse_id` is not provided during client initialization, `databricks-connect` with serverless compute will be used. 
+- **Warehouse**: If the `warehouse_id` is not provided during client initialization, `databricks-connect` with serverless compute will be used.
     - Classic SQL Warehouses are not supported for function execution due to excessive latency, long startup times, and noticeable overhead with executing functions.
     Function creation can run on any Warehouse type.
     - The SQL Warehouse must be of a serverless type for function execution. To learn more about the different warehouse types, see [the docs](https://docs.databricks.com/en/admin/sql/warehouse-types.html).
@@ -75,7 +75,7 @@ parsing the contents of your function definition and extracting the relevant inf
 - **type hints in collections**: If you are using a collection (`tuple`, `list`, or `dict`), all internal types **must be defined**. Generic collections are not permitted.
 - **generics**: the `Any` type is not supported. All types must be concrete.
 - **defaults**: Default values that are defined in your function signature will be extracted as UC function `DEFAULT` entries in your function. Ensure that the default values are valid for your function and that your type hints are correct (using `Optional[<type>]`).
-- **docstring formatting**: In order for relevant information to be extracted from the docstring, the syntax of your docstring must match the [Google Docstring]() conventions. `reST`, `Epytext` and `Numpydoc` style docstrings are **not supported**.
+- **docstring formatting**: In order for relevant information to be extracted from the docstring, the syntax of your docstring must match the [Google Docstring](https://sphinxcontrib-napoleon.readthedocs.io/en/latest/example_google.html) conventions. `reST`, `Epytext` and `Numpydoc` style docstrings are **not supported**.
 - **external dependencies**: There is limited library support within the function execution environment. The list of supported available libraries [can be seen here](https://docs.databricks.com/en/sql/language-manual/sql-ref-syntax-ddl-create-sql-function.html#supported-libraries-in-python-udfs) and is subject to change over time.
 - **overwriting functions**: To replace an existing function, specify the argument `replace=True` when calling `create_python_function`.
 
@@ -232,7 +232,7 @@ print(result.value)  # Outputs: 16.0
 
 ### Using Environment Variables
 
-Adjust the function execution timeout value by overriding the default via the environment variable. 
+Adjust the function execution timeout value by overriding the default via the environment variable.
 
 ``` python
 import os
@@ -254,4 +254,3 @@ result = client.execute_function(
 
 - **Error Handling**: If a function execution fails, `FunctionExecutionResult` will contain an `error` attribute with details on the failure.
 - **Asynchronous Execution**: Setting UCAI_DATABRICKS_WAREHOUSE_EXECUTE_FUNCTION_WAIT_TIMEOUT to 0s will execute the function asynchronously. The call will immediately return in async mode and the result will need to be polled and fetched for its completed state when executing in async mode.
-
