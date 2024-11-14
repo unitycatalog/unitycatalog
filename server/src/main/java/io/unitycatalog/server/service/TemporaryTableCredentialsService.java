@@ -77,9 +77,9 @@ public class TemporaryTableCredentialsService {
           #authorizeAny(#principal, #schema, OWNER, USE_SCHEMA) && #authorizeAny(#principal, #catalog, OWNER, USE_CATALOG) && #authorizeAny(#principal, #table, OWNER, SELECT)
           """;
 
-    // TODO: add MODIFY to the expression
     String writeExpression = """
-          #authorizeAny(#principal, #schema, OWNER, USE_SCHEMA) && #authorizeAny(#principal, #catalog, OWNER, USE_CATALOG) && #authorize(#principal, #table, OWNER)
+          #authorizeAny(#principal, #schema, OWNER, USE_SCHEMA) && #authorizeAny(#principal, #catalog, OWNER, USE_CATALOG) &&
+          (#authorize(#principal, #table, OWNER) || #authorizeAll(#principal, #table, SELECT, MODIFY))
           """;
 
     String authorizeExpression =
