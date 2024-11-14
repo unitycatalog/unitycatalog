@@ -54,7 +54,7 @@ client = DatabricksFunctionClient()
 ## Caveats
 
 - **Type Annotations**: When creating functions from Python code, all parameters and return types must have type annotations.
-- **Supported Types**: Not all Python types are supported in SQL. Refer to the [Python to SQL Compatibility Matrix](index.md#python-to-sql-compatibility-matrix) for supported types.
+- **Supported Types**: Not all Python types are supported in SQL. Refer to the [Python to SQL Compatibility Matrix](usage.md#python-to-sql-compatibility-matrix) for supported types.
 - **Docstrings**: Use Google-style docstrings to provide metadata for functions. This enhances function discoverability and usability in GenAI applications.
 
 ---

@@ -80,7 +80,6 @@ Unity Catalog AI is designed for:
 
 ## Learn More
 
-- **[Comprehensive Documentation](./index.md)**: Dive deeper into the features and capabilities of Unity Catalog AI.
 - **[Support](mailto:support@unitycatalog.com)**: Reach out to our support team for assistance.
 - **[GitHub Repository](https://github.com/unitycatalog/unitycatalog)**: Explore the source code, report issues, and contribute to the project.
 
@@ -91,12 +90,6 @@ Unity Catalog AI is designed for:
 Join our community to stay updated on the latest developments, share your experiences, and collaborate with other users:
 
 - **[Community Forum](https://community.unitycatalog.com/)**
-
----
-
-## License
-
-Unity Catalog AI is licensed under [Apache 2.0](./LICENSE).
 
 ---
 

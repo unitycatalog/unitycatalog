@@ -88,7 +88,7 @@ use of this API:
 - **type hints**: The function signature must define valid Python type hints. Both the named arguments and the return value must have their types defined.
 - **no variable arguments**: All arguments must be defined. `*args` and `**kwargs` are not permitted.
 - **type compatibility**: Not all python types are supported in SQL. Ensure that your function is using compatible types according to the
- [compatibility matrix](index.md#python-to-sql-compatiblity-matrix).
+ [compatibility matrix](usage.md#python-to-sql-compatiblity-matrix).
 - **docstring verbosity and formatting**: The UC functions toolkit will read, parse, and extract important information from your docstring.
     - Docstrings must be formatted according to the [Google docstring syntax](https://sphinxcontrib-napoleon.readthedocs.io/en/latest/example_google.html) (shown below).
     - The more descriptive the function description and argument descriptions that your docstring provides, the greater the chances are that an LLM will understand when and how to use your function.
@@ -166,5 +166,5 @@ agent_executor.invoke({"input": "What is the sum of 4321.9876 and 1234.5678?"})
 
 ## Next Steps
 
-- To learn more about Unity Catalog AI functionality, see [the main guide](index.md).
+- To learn more about Unity Catalog AI functionality, see [the main guide](usage.md).
 - To explore the available GenAI framework integrations, see [the integrations guide](integrations/index.md).
