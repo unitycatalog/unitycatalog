@@ -9,7 +9,7 @@ Integrate Unity Catalog AI with [OpenAI](https://platform.openai.com/docs/api-re
 Install the Unity Catalog AI OpenAI integration from PyPI:
 
 ```sh
-pip install ucai-openai
+pip install unitycatalog-openai
 ```
 
 ## Prerequisites
@@ -31,7 +31,7 @@ Ensure that you have a functional UC server set up and that you are able to acce
 To interact with Databricks Unity Catalog, ensure that you have both the `databricks-sdk` and the `databricks-connect` packages installed:
 
 ```sh
-pip install databricks-sdk "databricks-connect>=15.1.0"
+pip install databricks-sdk "databricks-connect==15.1.0"
 ```
 
 ## Tutorial
@@ -41,7 +41,7 @@ pip install databricks-sdk "databricks-connect>=15.1.0"
 Create an instance of the Unity Catalog Functions client
 
 ``` python
-from ucai.core.databricks import DatabricksFunctionClient
+from unitycatalog.ai.core.databricks import DatabricksFunctionClient
 
 client = DatabricksFunctionClient()
 ```
@@ -86,7 +86,7 @@ Here we create an instance of our UC function as a toolkit, then verify that the
 calling capabilities. Ensure that the model that you are selecting to interface with has the capability to accept tool definitions.
 
 ``` python
-from ucai_openai.toolkit import UCFunctionToolkit
+from unitycatalog.ai.openai.toolkit import UCFunctionToolkit
 
 # Create a UCFunctionToolkit that includes the UC function
 toolkit = UCFunctionToolkit(function_names=[func_name])
@@ -166,11 +166,11 @@ To simplify the process of crafting the tool response, the ucai-openai package h
 `ChatCompletion` response message from OpenAI so that it can be used for response generation.
 
 ``` python
-from ucai_openai.utils import generate_tool_call_messages
+from unitycatalog.ai.openai.utils import generate_tool_call_messages
 
 messages = generate_tool_call_messages(response=response, client=client)
 print(messages)
 ```
 
->Note: if the response contains multiple `choice` entries, you can pass the `choice_index` argument when calling `generate_tool_call_messages` to choose
+> Note: if the response contains multiple `choice` entries, you can pass the `choice_index` argument when calling `generate_tool_call_messages` to choose
 which `choice` entry to utilize. There is currently no support for processing multiple `choice` entries.

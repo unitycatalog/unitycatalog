@@ -10,7 +10,7 @@ as tools in Anthropic LLM calls. This guide covers installation, setup, caveats,
 Install the Unity Catalog AI Anthropic integration from PyPI:
 
 ```sh
-pip install ucai-anthropic
+pip install unitycatalog-anthropic
 ```
 
 ## Prerequisites
@@ -43,7 +43,7 @@ pip install databricks-sdk "databricks-connect>=15.1.0"
 Create an instance of the Unity Catalog Functions client
 
 ``` python
-from ucai.core.databricks import DatabricksFunctionClient
+from unitycatalog.ai.core.databricks import DatabricksFunctionClient
 
 client = DatabricksFunctionClient()
 ```
@@ -79,7 +79,7 @@ client.create_python_function(
 ### Creating a toolkit instance from a UC function
 
 ``` python
-from ucai_anthropic.toolkit import UCFunctionToolkit
+from unitycatalog.ai.anthropic.toolkit import UCFunctionToolkit
 
 # Create an instance of the toolkit
 toolkit = UCFunctionToolkit(function_names=[func_name], client=client)
@@ -118,7 +118,7 @@ Claude models require the initialization of the conversation (the original user 
 and multi-turn tool call results.
 
 ``` python
-from ucai_anthropic.utils import generate_tool_call_messages
+from unitycatalog.ai.anthropic.utils import generate_tool_call_messages
 
 # Call the UC function and construct the required formatted response
 tool_messages = generate_tool_call_messages(
@@ -146,7 +146,7 @@ history for multi-turn conversations with Claude.
 For access to the lower-level API for more control over tool calling execution with Anthropic, you can use the `extract_tool_call_data` utility:
 
 ``` python
-from ucai_anthropic.utils import extract_tool_call_data
+from unitycatalog.ai.anthropic.utils import extract_tool_call_data
 
 # This returns a List[ToolCallData]
 parsed_messages = extract_tool_call_data(response)

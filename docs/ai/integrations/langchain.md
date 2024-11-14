@@ -1,28 +1,26 @@
-# 🦙 Using Unity Catalog AI with LlamaIndex
+# 🦜🔗 Using Unity Catalog AI with LangChain
 
-Integrate Unity Catalog AI with [LlamaIndex](https://docs.llamaindex.ai/en/stable/) to directly use UC functions as tools in LlamaIndex-based agent applications. This guide covers installation, client setup, and examples to get started.
+Integrate Unity Catalog AI with [LangChain](https://python.langchain.com) to seamlessly use Unity Catalog (UC) functions as tools in agent applications. This guide covers installation, setup, and examples to help you get started.
 
 ---
 
 ## Installation
 
-Install the Unity Catalog AI LlamaIndex integration from PyPI:
+Install the Unity Catalog AI LangChain integration from PyPI:
 
 ```sh
-pip install ucai-llamaindex
+pip install unitycatalog-langchain
 ```
 
 ## Prerequisites
 
 - **Python version**: Python 3.10 or higher is required.
 
-Install the LlamaIndex library if you don't already have it in your environment:
+Install LangChain if you don't already have it in your environment:
 
 ```sh
-pip install llama-index
+pip install langchain
 ```
-
->Note: Depending on what you're doing with LlamaIndex, you may need to install additional packages from PyPI.
 
 ### Unity Catalog Open Source
 
@@ -43,7 +41,7 @@ pip install databricks-sdk "databricks-connect>=15.1.0"
 Create an instance of the Unity Catalog Functions client
 
 ``` python
-from ucai.core.databricks import DatabricksFunctionClient
+from unitycatalog.ai.core.databricks import DatabricksFunctionClient
 
 client = DatabricksFunctionClient()
 ```
@@ -86,7 +84,7 @@ client.create_python_function(
 Here we create an instance of our UC function as a toolkit, then verify that the tool is behaving properly by executing the function.
 
 ``` python
-from ucai_llamaindex.toolkit import UCFunctionToolkit
+from unitycatalog.ai.langchain.toolkit import UCFunctionToolkit
 
 # Create a UCFunctionToolkit that includes the UC function
 toolkit = UCFunctionToolkit(function_names=[func_name])
@@ -100,18 +98,33 @@ result = python_exec_tool.invoke({"code": "print(1 + 1)"})
 print(result)  # Outputs: 2
 ```
 
-### Using the tool in a LlamaIndex ReActAgent
+### Using the tool in a LangChain Agent
 
-With our interface to our UC function defined as a LlamaIndex tool collection, we can directly use it within a LlamaIndex agent application.
-Below, we are going to create a simple `ReActAgent` and verify that our agent properly calls our UC function.
+``` python
+from langchain.agents import AgentExecutor, create_tool_agent
+from langchain.llms import OpenAI
+from langchain.prompts import ChatPromptTemplate
 
-```python
-from llama_index.llms.openai import OpenAI
-from llama_index.core.agent import ReActAgent
+# Initialize the LLM (replace with your LLM of choice, if desired)
+llm = OpenAI(temperature=0)
 
-llm = OpenAI()
+# Define the prompt
+prompt = ChatPromptTemplate.from_messages(
+    [
+        (
+            "system",
+            "You are a helpful assistant. Make sure to use tool for information.",
+        ),
+        ("placeholder", "{chat_history}"),
+        ("human", "{input}"),
+        ("placeholder", "{agent_scratchpad}"),
+    ]
+)
 
-agent = ReActAgent.from_tools(tools, llm=llm, verbose=True)
+# Define the agent, specifying the tools from the toolkit above
+agent = create_tool_calling_agent(llm, tools, prompt)
 
-agent.chat("Please call a python execution tool to evaluate the result of 42 + 97.")
+# Create the agent executor
+agent_executor = AgentExecutor(agent=agent, tools=tools, verbose=True)
+agent_executor.invoke({"input": "What is 36939 * 8922.4?"})
 ```

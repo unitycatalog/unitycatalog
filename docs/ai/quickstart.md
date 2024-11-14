@@ -9,7 +9,7 @@ Welcome to the **Unity Catalog AI Core Library**! This guide will help you get s
 Install the Unity Catalog AI Core library directly from PyPI:
 
 ```sh
-pip install ucai-core
+pip install unitycatalog-ai
 ```
 
 ## Prerequisites
@@ -35,7 +35,7 @@ pip install databricks-sdk
 **Databricks Connect** (Optional): This package is required if you are going to create UC functions direclty using a SQL body definition.
 
 ```sh
-pip install databricks-connect>=15.1.0
+pip install "databricks-connect==15.1.0"
 ```
 
 >Note: Python 3.10 or higher is required to use `databricks-connect` with serverless compute.
@@ -53,11 +53,11 @@ note down the `warehouse id` for use within the `DatabricksFunctionClient`.
 ### Integration package installation
 
 For this quick example with [LangChain](https://python.langchain.com/v0.2/docs/introduction/), we're first going to need to install the Unity Catalog
-AI LangChain Integration package, `ucai-langchain`. This package contains the tool definition logic specifically for LangChain, allowing you to
+AI LangChain Integration package, `unitycatalog-langchain`. This package contains the tool definition logic specifically for LangChain, allowing you to
 seamlessly define a native LangChain tool that can interface with functions stored in Unity Catalog and be used in your GenAI applications.
 
 ``` sh
-pip install ucai-langchain
+pip install unitycatalog-langchain
 ```
 
 ### Client Setup
@@ -68,7 +68,7 @@ defined as tools. When accessing functions by name, we will need to specify whic
 to store those values.
 
 ``` python
-from ucai.core.databricks import DatabricksFunctionClient
+from unitycatalog.ai.core.databricks import DatabricksFunctionClient
 
 client = DatabricksFunctionClient(warehouse_id="YOUR_WAREHOUSE_ID")
 
@@ -123,7 +123,7 @@ The example below shows a single UC function for simplicity. If you're defining 
 names within the `function_names` list.
 
 ``` python
-from ucai_langchain.toolkit import UCFunctionToolkit
+from unitycatalog.ai.langchain.toolkit import UCFunctionToolkit
 
 # Define the UC function to be used as a tool
 func_name = f"{CATALOG}.{SCHEMA}.add_numbers"

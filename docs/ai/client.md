@@ -15,9 +15,12 @@ The `DatabricksFunctionClient` is a core component of the Unity Catalog AI Core 
 ### Caveats for Databricks
 
 - **Python Version**: Python 3.10 or higher is **required** when using `databricks-connect` for serverless compute.
-- **Databricks Connect**: To create UC functions using SQL body definitions or to execute functions using serverless compute, `databricks-connect` version `15.1.0` or higher is required.
-- **Serverless Compute**: Function creation and execution using `databricks-connect` require serverless compute. Classic SQL Warehouses are not supported.
-- **Warehouse**: If the `warehouse_id` is not provided during client initialization, `databricks-connect` with serverless compute will be used.
+- **Databricks Connect**: To create UC functions using SQL body definitions or to execute functions using serverless compute, `databricks-connect` version `15.1.0` is required. This is the only supported version that is compatible.
+- **Serverless Compute**: Function creation and execution using `databricks-connect` require serverless compute.
+- **Warehouse**: If the `warehouse_id` is not provided during client initialization, `databricks-connect` with serverless compute will be used. 
+    - Classic SQL Warehouses are not supported for function execution due to excessive latency, long startup times, and noticeable overhead with executing functions.
+    Function creation can run on any Warehouse type.
+    - The SQL Warehouse must be of a serverless type for function execution. To learn more about the different warehouse types, see [the docs](https://docs.databricks.com/en/admin/sql/warehouse-types.html).
 
 ### Environment Variables for Databricks
 
@@ -73,7 +76,7 @@ parsing the contents of your function definition and extracting the relevant inf
 - **generics**: the `Any` type is not supported. All types must be concrete.
 - **defaults**: Default values that are defined in your function signature will be extracted as UC function `DEFAULT` entries in your function. Ensure that the default values are valid for your function and that your type hints are correct (using `Optional[<type>]`).
 - **docstring formatting**: In order for relevant information to be extracted from the docstring, the syntax of your docstring must match the [Google Docstring]() conventions. `reST`, `Epytext` and `Numpydoc` style docstrings are **not supported**.
-- **external dependencies**: There is limited library support within the function execution environment. Ensure that the environment.
+- **external dependencies**: There is limited library support within the function execution environment. The list of supported available libraries [can be seen here](https://docs.databricks.com/en/sql/language-manual/sql-ref-syntax-ddl-create-sql-function.html#supported-libraries-in-python-udfs) and is subject to change over time.
 - **overwriting functions**: To replace an existing function, specify the argument `replace=True` when calling `create_python_function`.
 
 #### Example of a Valid Function
@@ -120,7 +123,7 @@ client.create_python_function(
 
 ### Creating functions from a SQL Body statement
 
-If you prefer to have full control over your function definition, the `create_function` API in the client allows you to submit your function definition as a SQL Body statement.
+If you prefer to have full control over your function definition, the `create_function` API in the client allows you to submit your function definition as a [SQL Body statement](https://docs.databricks.com/en/sql/language-manual/sql-ref-syntax-ddl-create-sql-function.html#syntax).
 
 ``` python
 sql_body = """
@@ -138,10 +141,14 @@ client.create_function(sql_function_body=sql_body)
 
 The general guidelines for function creation within UC apply to the SQL Body statement. There are no additional restrictions applied to this API.
 
->Note: It is highly recommended to provide verbose and accurate `COMMENT` blocks to both the function and the parameters configured. This information is
+> Note: It is highly recommended to provide verbose and accurate `COMMENT` blocks to both the function and the parameters configured. This information is
 provided to LLMs that will be deciding on whether it is appropriate to call the defined tool. Detailed descriptions can reduce the chances of a tool call
 failing due to ambiguous references on how to use the tool.
 
+If you create a function without both a `COMMENT` block (the function description) and `COMMENT` entries for each parameter defined for your function,
+a warning will be issued upon creation. It is **highly advised** to correct your function definition and overwrite your function when you see this warning.
+Most LLM's will not be able to effectively use your defined function as a tool if the description is a placeholder or is lacking appropriate information
+that describes the purpose of and how to use your defined function as a tool.
 
 ## Retrieving Functions
 
