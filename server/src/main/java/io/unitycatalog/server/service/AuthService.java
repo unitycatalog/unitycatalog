@@ -9,7 +9,6 @@ import com.fasterxml.jackson.databind.annotation.JsonNaming;
 import com.linecorp.armeria.common.*;
 import com.linecorp.armeria.common.annotation.Nullable;
 import com.linecorp.armeria.server.annotation.ExceptionHandler;
-import com.linecorp.armeria.server.annotation.Get;
 import com.linecorp.armeria.server.annotation.Param;
 import com.linecorp.armeria.server.annotation.Post;
 import io.unitycatalog.control.model.User;
