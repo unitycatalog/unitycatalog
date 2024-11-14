@@ -54,7 +54,7 @@ public class AuthDecorator implements DecoratingHttpServiceFunction {
     String authorizationCookie =
         req.headers().cookies().stream()
             .filter(c -> c.name().equals(UC_TOKEN_KEY))
-            .map(Cookie::name)
+            .map(Cookie::value)
             .findFirst()
             .orElse(null);
 
