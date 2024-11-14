@@ -91,11 +91,12 @@ def _try_get_spark_session_in_dbr() -> Any:
 
         if not isinstance(spark, SparkSession):
             _logger.warning(
-                "Current spark session in the active Databricks runtime is not a "
-                "pyspark.sql.connect.session.SparkSession instance, it's probably "
-                "because you're not using a Serverless compute. To use the full "
-                "functionalities of this package please switch to a Serverless cluster, "
-                "check https://docs.databricks.com/en/compute/serverless/index.html#connect-to-serverless-compute "
+                "Current SparkSession in the active environment is not a "
+                "pyspark.sql.connect.session.SparkSession instance. Classic runtime does not support "
+                "all functionalities of the unitycatalog-ai framework. To use the full "
+                "capabilities of unitycatalog-ai, execute your code using a client that is attached to "
+                "a Serverless runtime cluster. To learn more about serverless, see the guide at: "
+                "https://docs.databricks.com/en/compute/serverless/index.html#connect-to-serverless-compute "
                 "for more details."
             )
         return spark
