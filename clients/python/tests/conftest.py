@@ -1,11 +1,25 @@
 import pytest
+import pytest_asyncio
 import subprocess
 import os
 import time
 import requests
 import signal
 
-import unitycatalog
+from unitycatalog.client import (
+    ApiClient,
+    CatalogsApi,
+    Configuration,
+    FunctionsApi,
+    GrantsApi,
+    ModelVersionsApi,
+    RegisteredModelsApi,
+    SchemasApi,
+    TablesApi,
+    TemporaryCredentialsApi,
+    VolumesApi,
+)
+
 
 @pytest.fixture(scope="session", autouse=True)
 def uc_server():
@@ -47,47 +61,57 @@ def uc_server():
             pass
 
 
-@pytest.fixture(scope="session")
-def api_client():
-    config = unitycatalog.Configuration(
-        host = "http://localhost:8081/api/2.1/unity-catalog"
-    )
+@pytest_asyncio.fixture()
+async def api_client():
+    """
+    Asynchronous fixture to initialize and yield the ApiClient.
+    """
+    config = Configuration(host="http://localhost:8080/api/2.1/unity-catalog")
+    client = ApiClient(config)
+    yield client
+    await client.close()
 
-    with unitycatalog.ApiClient(config) as api_client:
-        yield api_client
 
-@pytest.fixture(scope="session")
-def catalogs_api(api_client):
-    yield unitycatalog.CatalogsApi(api_client)
+@pytest_asyncio.fixture()
+async def catalogs_api(api_client):
+    return CatalogsApi(api_client)
 
-@pytest.fixture(scope="session")
-def functions_api(api_client):
-    yield unitycatalog.FunctionsApi(api_client)
 
-@pytest.fixture(scope="session")
-def grants_api(api_client):
-    yield unitycatalog.GrantsApi(api_client)
+@pytest_asyncio.fixture()
+async def functions_api(api_client):
+    return FunctionsApi(api_client)
 
-@pytest.fixture(scope="session")
-def model_versions_api(api_client):
-    yield unitycatalog.ModelVersionsApi(api_client)
 
-@pytest.fixture(scope="session")
-def registered_models_api(api_client):
-    yield unitycatalog.RegisteredModelsApi(api_client)
+@pytest_asyncio.fixture()
+async def grants_api(api_client):
+    return GrantsApi(api_client)
 
-@pytest.fixture(scope="session")
-def schemas_api(api_client):
-    yield unitycatalog.SchemasApi(api_client)
 
-@pytest.fixture(scope="session")
-def tables_api(api_client):
-    yield unitycatalog.TablesApi(api_client)
+@pytest_asyncio.fixture()
+async def model_versions_api(api_client):
+    return ModelVersionsApi(api_client)
 
-@pytest.fixture(scope="session")
-def temporary_credentials_api(api_client):
-    yield unitycatalog.TemporaryCredentialsApi(api_client)
 
-@pytest.fixture(scope="session")
-def volumes_api(api_client):
-    yield unitycatalog.VolumesApi(api_client)
+@pytest_asyncio.fixture()
+async def registered_models_api(api_client):
+    return RegisteredModelsApi(api_client)
+
+
+@pytest_asyncio.fixture()
+async def schemas_api(api_client):
+    return SchemasApi(api_client)
+
+
+@pytest_asyncio.fixture()
+async def tables_api(api_client):
+    return TablesApi(api_client)
+
+
+@pytest_asyncio.fixture()
+async def temporary_credentials_api(api_client):
+    return TemporaryCredentialsApi(api_client)
+
+
+@pytest_asyncio.fixture()
+async def volumes_api(api_client):
+    return VolumesApi(api_client)

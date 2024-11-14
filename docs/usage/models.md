@@ -3,36 +3,37 @@
 This page shows you how to use Unity Catalog to store, access, and govern Registered Models and Model Versions.
 
 Registered Models are logical containers for ML models within Unity Catalog.  A registered model is comprised of any
-number of Model Versions which represent different iterations of the model that you with to keep track of from within Unity Catalog.
-
+number of Model Versions which represent different iterations of the model that you with to keep track of from within
+Unity Catalog.
 
 ## How Unity Catalog and MLflow work together
+
 The following diagram shows how Unity Catalog and MLflow work together from tracking to governance.
 
 ![Unity Catalog and MLflow](../assets/images/unitycatalog-and-mlflow.png)
 
-The MLflow client connects both MLflow and Unity Catalog services (via `port:5000` and `port:8080` respectively).  
+The MLflow client connects both MLflow and Unity Catalog services (via `port:5000` and `port:8080` respectively).
 
-1. When you are running your training runs with MLflow, the metrics generated in those training runs are stored within MLflow.
+1. When you are running your training runs with MLflow, the metrics generated in those training runs are stored within
+    MLflow.
 2. For those same training runs, models are often generated, and those models are also stored within MLflow.
 3. Once you have decided which model you want to register, you can register and store that model into Unity Catalog.
-
 
 ## Setting up MLflow and Unity Catalog
 
 !!! warning "Prerequisites"
     For Unity Catalog MLflow Integration, ensure you are using MLflow version >= 2.16.1 and Unity Catalog >= 0.2.
 
-
 ### Spin up Unity Catalog
 
 We will use a local Unity Catalog server to get started.
 
 !!! question "First time working with Unity Catalog?"
-     If this is your first time spinning up a UC server, you might want to check out the [Quickstart](../quickstart.md) first.
+     If this is your first time spinning up a UC server, you might want to check out the
+    [Quickstart](../quickstart.md) first.
 
-
-Spin up a local UC server by running the following code in a terminal from the root directory of your local `unitycatalog` repository:
+Spin up a local UC server by running the following code in a terminal from the root directory of your local
+`unitycatalog` repository:
 
 ```sh
 bin/start-uc-server
@@ -44,13 +45,15 @@ bin/start-uc-server
 pip install mlflow
 ```
 
-The installation of MLflow includes the MLflow CLI tool, so you can start a local MLflow server with UI by running the command below in your terminal:
+The installation of MLflow includes the MLflow CLI tool, so you can start a local MLflow server with UI by running the
+command below in your terminal:
 
 ```bash
 mlflow ui
 ```
 
-It will generate logs with the IP address of the newly started tracking server which can be used in your MLflow python workloads, for example:
+It will generate logs with the IP address of the newly started tracking server which can be used in your MLflow Python
+workloads, for example:
 
 ```py
 import mlflow
@@ -59,19 +62,17 @@ mlflow.set_tracking_uri("http://127.0.0.1:5000") # (1)
 mlflow.set_registry_uri("uc:http://127.0.0.1:8080") # (2)
 ```
 
-1.  Here we are specifying the MLflow tracking server to store training metrics and models.
+1. Here we are specifying the MLflow tracking server to store training metrics and models.
+2. Here we are specifying that we register our ML model in Unity Catalog.
 
-2.  Here we are specifying that we register our ML model in Unity Catalog.
-
-
-
-At this point, your MLflow environment is ready for use with the newly started MLflow tracking server and the Unity Catalog server acting as your model registry.
+At this point, your MLflow environment is ready for use with the newly started MLflow tracking server and the
+Unity Catalog server acting as your model registry.
 
 You can quickly train a test model and validate that the Unity Catalog MLflow integration is fully working.
 
-## Train and register a sample model 
+## Train and register a sample model
 
-The following code snippet creates a scikit-learn model and registers the model into Unity Catalog. 
+The following code snippet creates a scikit-learn model and registers the model into Unity Catalog.
 
 ```py
 import os
@@ -103,12 +104,12 @@ with mlflow.start_run():
     )
 ```
 
-1.  `clf` is a Random Forest Classifier and it is being trained from training data (`X_train`, `Y_train`) from the Iris dataset.
-
-2.  The `artifact_path` contains the model we just trained and it is common to have multiple training runs with multiple models generated and stored with MLflow.
-
-3.  Because we had earlier specified `mlflow.set_registry_uri("uc:http://127.0.0.1:8080")`, the MLflow client will register the model to Unity Catalog.
-
+1. `clf` is a Random Forest Classifier and it is being trained from training data (`X_train`, `Y_train`) from the Iris
+    dataset.
+2. The `artifact_path` contains the model we just trained and it is common to have multiple training runs with
+    multiple models generated and stored with MLflow.
+3. Because we had earlier specified `mlflow.set_registry_uri("uc:http://127.0.0.1:8080")`, the MLflow client will
+    register the model to Unity Catalog.
 
 Upon successful registration of the model, you should see the following output.
 
@@ -121,28 +122,34 @@ Created version '1' of model 'unity.default.iris'.
 2024/09/24 20:51:29 INFO mlflow.tracking._tracking_service.client: 🧪 View experiment at: http://127.0.0.1:5000/#/experiments/0.
 ```
 
-The results can be seen in the Unity Catalog UI at [http://localhost:3000](http://localhost:3000).  For more information, dive deeper into the [Unity Catalog UI](./ui.md).  
+The results can be seen in the Unity Catalog UI at [http://localhost:3000](http://localhost:3000). For more
+information, dive deeper into the [Unity Catalog UI](./ui.md).  
 
+![UC UI Models](../assets/images/uc_ui_models.png)
 
-![](../assets/images/uc_ui_models.png)
+---
 
-<hr/>
+As you can see in the UI, there is an implied hierarchy of a three-part naming convention within Unity Catalog that is
+applicable to data and AI assets. The hierarchy of `catalog -> schema -> asset` plays out as the `unity` catalog,
+`default` schema, and `iris` asset (in this case ML model).  
 
-As you can see in the UI, there is an implied hierarchy of a three-part naming convention within Unity Catalog that is applicable to data and AI assets.  The hierarchy of `catalog -> schema -> asset` plays out as the `unity` catalog, `default` schema, and `iris` asset (in this case ML model).  
+![Unity Catalog Model Hierarchy](../assets/images/unitycatalog-model-hierarchy.png)
 
-![](../assets/images/unitycatalog-model-hierarchy.png)
+This convention allows us to apply governance to these assets (e.g., models, tables, volumes, and functions) in a
+similar fashion. You can also see the training run(s) and model(s) in the MLflow UI at
+[http://127.0.0.1:5000/](http://127.0.0.1:5000/).  
 
-This convention allows us to apply governance to these assets (e.g., models, tables, volumes, and functions) in a similar fashion. You can also see the training run(s) and model(s) in the MLflow UI at [http://127.0.0.1:5000/](http://127.0.0.1:5000/).  
+![MLflow Unity Catalog Model View 2.0](../assets/images/mlflow-unitycatalog-model-view-2.0.gif)
 
-![](../assets/images/mlflow-unitycatalog-model-view-2.0.gif)
-
-<hr/>
+---
 
 !!! note "MLflow Guides"
-    Please see the [MLflow quickstart guides](https://mlflow.org/docs/latest/getting-started/index.html) and the [MLflow python API](https://mlflow.org/docs/latest/python_api/index.html) to learn how to use the MLflow client to train, register, and use models from with the Unity Catalog server.
+    Please see the [MLflow quickstart guides](https://mlflow.org/docs/latest/getting-started/index.html) and the
+    [MLflow python API](https://mlflow.org/docs/latest/python_api/index.html) to learn how to use the MLflow client to
+    train, register, and use models from with the Unity Catalog server.
 
+## Load the sample model
 
-## Load the sample model 
 In a new terminal, you can load your recently registered model using the following code snippet.
 
 ```py
@@ -171,11 +178,11 @@ result["predicted_class"] = predictions
 result[:4]
 ```
 
-1.  Here we are specifying that we are loading our ML model from Unity Catalog.
+1. Here we are specifying that we are loading our ML model from Unity Catalog.
+2. We are loading the ML model `unity.default.iris`, version `1` from the Unity Catalog model registry.
 
-2.  We are loading the ML model `unity.default.iris`, version `1` from the Unity Catalog model registry.
-
-This code snippet uses the `unity.default.iris` model to predict the class (`predicted_class`) using the test dataset (`X_test`) and compares it to the actual class (`actual_class`) from the Iris dataset. 
+This code snippet uses the `unity.default.iris` model to predict the class (`predicted_class`) using the test dataset
+(`X_test`) and compares it to the actual class (`actual_class`) from the Iris dataset.
 
 ```bash
      sepal length (cm)  sepal width (cm)  petal length (cm)  petal width (cm)  actual_class  predicted_class
@@ -185,12 +192,9 @@ This code snippet uses the `unity.default.iris` model to predict the class (`pre
 78                 6.0               2.9                4.5               1.5             1                1
 ```
 
-
-!!! tip 
-    The UC CLI also has support for interacting with models in the Unity Catalog server.  It is recommended that you interact with models in Unity Catalog using the MLflow client.  
-
-
-
+!!! tip
+    The UC CLI also has support for interacting with models in the Unity Catalog server. It is recommended that you
+    interact with models in Unity Catalog using the MLflow client.
 
 ## Inspecting Registered Models and Model Versions
 
@@ -234,7 +238,8 @@ bin/uc registered_model get --full_name unity.default.iris
 ```
 
 which would return something similar to this:
-```
+
+```console
 ┌──────────────────────────────────────┬──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┐
 │                 KEY                  │                                                                VALUE                                                                 │
 ├──────────────────────────────────────┼──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┤
@@ -270,7 +275,7 @@ bin/uc model_version get --full_name unity.default.iris --version 1
 
 which would return something similar to:
 
-```
+```console
 ┌──────────────────────────────────────┬─────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┐
 │                 KEY                  │                                                                                    VALUE                                                                                    │
 ├──────────────────────────────────────┼─────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┤
@@ -315,7 +320,7 @@ bin/uc registered_model update --full_name unity.default.iris --new_name iris2 -
 
 which will return the updated metadata of the registered model:
 
-```
+```console
 ┌──────────────────────────────────────┬──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┐
 │                 KEY                  │                                                                VALUE                                                                 │
 ├──────────────────────────────────────┼──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┤
@@ -351,7 +356,7 @@ bin/uc model_version --full_name unity.default.iris2 --version 1 --comment "New 
 
 which will return the updated model version metadata:
 
-```
+```console
 ┌──────────────────────────────────────┬─────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┐
 │                 KEY                  │                                                                                    VALUE                                                                                    │
 ├──────────────────────────────────────┼─────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┤
@@ -397,6 +402,6 @@ bin/uc model_version delete --full_name unity.default.iris2 --version 1
 
 and
 
-```bash title="Delete registered model" 
+```bash title="Delete registered model"
 bin/uc registered_model delete --full_name unity.default.iris2
 ```

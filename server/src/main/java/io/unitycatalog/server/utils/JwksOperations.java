@@ -14,18 +14,22 @@ import com.linecorp.armeria.client.WebClient;
 import io.unitycatalog.server.exception.ErrorCode;
 import io.unitycatalog.server.exception.OAuthInvalidClientException;
 import io.unitycatalog.server.exception.OAuthInvalidRequestException;
+import io.unitycatalog.server.security.SecurityContext;
 import java.net.URL;
 import java.nio.file.Path;
 import java.security.interfaces.RSAPublicKey;
 import java.util.Map;
+
 import lombok.SneakyThrows;
 
 public class JwksOperations {
 
   private final WebClient webClient = WebClient.builder().build();
   private static final ObjectMapper mapper = new ObjectMapper();
+  private final SecurityContext securityContext;
 
-  public JwksOperations() {
+  public JwksOperations(SecurityContext securityContext) {
+    this.securityContext = securityContext;
   }
 
   @SneakyThrows
@@ -61,7 +65,8 @@ public class JwksOperations {
     if (issuer.equals(INTERNAL)) {
       // Return our own "self-signed" provider, for easy mode.
       // TODO: This should be configurable
-      return new JwkProviderBuilder(Path.of("etc/conf/certs.json").toUri().toURL()).cached(false).build();
+      Path certsFile = securityContext.getCertsFile();
+      return new JwkProviderBuilder(certsFile.toUri().toURL()).cached(false).build();
     } else {
       // Get the JWKS from the OIDC well-known location described here
       // https://openid.net/specs/openid-connect-discovery-1_0-21.html#ProviderConfig

@@ -1,5 +1,7 @@
 import os
+import time
 from contextlib import contextmanager
+from functools import wraps
 from unittest import mock
 
 import pytest
@@ -68,3 +70,22 @@ def set_default_client(client: DatabricksFunctionClient):
         yield
     finally:
         set_uc_function_client(None)
+
+
+def retry_flaky_test(tries=3):
+    """Retries a flaky test a specified number of times."""
+
+    def flaky_test_func(test_func):
+        @wraps(test_func)
+        def decorated_func(*args, **kwargs):
+            for i in range(tries):
+                try:
+                    return test_func(*args, **kwargs)
+                except Exception as e:
+                    if i == tries - 1:
+                        raise e
+                    time.sleep(2)
+
+        return decorated_func
+
+    return flaky_test_func

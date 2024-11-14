@@ -69,7 +69,7 @@ public class AuthService {
 
   public AuthService(SecurityContext securityContext) {
     this.securityContext = securityContext;
-    this.jwksOperations = new JwksOperations();
+    this.jwksOperations = new JwksOperations(securityContext);
   }
 
   /**
@@ -167,15 +167,28 @@ public class AuthService {
             String cookieTimeout =
                 ServerProperties.getInstance().getProperty("server.cookie-timeout", "P5D");
             Cookie cookie =
-                Cookie.secureBuilder(AuthDecorator.UC_TOKEN_KEY, accessToken)
-                    .path("/")
-                    .maxAge(Duration.parse(cookieTimeout).getSeconds())
-                    .build();
+                createCookie(AuthDecorator.UC_TOKEN_KEY, accessToken, "/", cookieTimeout);
             responseHeaders.add(HttpHeaderNames.SET_COOKIE, cookie.toSetCookieHeader());
           }
         });
 
     return HttpResponse.ofJson(responseHeaders.build(), response);
+  }
+
+  @Post("/logout")
+  public HttpResponse logout(HttpRequest request) {
+    return request.headers().cookies().stream()
+        .filter(c -> c.name().equals(AuthDecorator.UC_TOKEN_KEY))
+        .findFirst()
+        .map(
+            authorizationCookie -> {
+              Cookie expiredCookie = createCookie(AuthDecorator.UC_TOKEN_KEY, "", "/", "PT0S");
+              ResponseHeaders headers =
+                  ResponseHeaders.of(
+                      HttpStatus.OK, HttpHeaderNames.SET_COOKIE, expiredCookie.toSetCookieHeader());
+              return HttpResponse.of(headers);
+            })
+        .orElse(HttpResponse.of(HttpStatus.OK));
   }
 
   private static void verifyPrincipal(DecodedJWT decodedJWT) {
@@ -199,6 +212,13 @@ public class AuthService {
 
     throw new OAuthInvalidRequestException(
         ErrorCode.INVALID_ARGUMENT, "User not allowed: " + subject);
+  }
+
+  private Cookie createCookie(String key, String value, String path, String maxAge) {
+    return Cookie.secureBuilder(key, value)
+        .path(path)
+        .maxAge(Duration.parse(maxAge).getSeconds())
+        .build();
   }
 
   // TODO: This should be probably integrated into the OpenAPI spec.

@@ -21,13 +21,9 @@ from databricks.sdk.service.catalog import (
 from unitycatalog.ai.core.databricks import (
     DatabricksFunctionClient,
     extract_function_name,
-    get_execute_function_sql_command,
     retry_on_session_expiration,
 )
 from unitycatalog.ai.core.envs.databricks_env_vars import UCAI_DATABRICKS_SESSION_RETRY_MAX_ATTEMPTS
-from unitycatalog.ai.core.utils.function_processing_utils import (
-    sanitize_string_inputs_of_function_params,
-)
 from unitycatalog.ai.test_utils.client_utils import client  # noqa: F401
 from unitycatalog.ai.test_utils.function_utils import (
     CATALOG,
@@ -551,7 +547,7 @@ def test_execute_function_success(mock_workspace_client, mock_spark_session, moc
     assert not result.truncated
 
     expected_sql = "SELECT `catalog`.`schema`.`function_name`()"
-    mock_spark_session.sql.assert_called_with(sqlQuery=expected_sql)
+    mock_spark_session.sql.assert_called_with(sqlQuery=expected_sql, args=None)
 
 
 def test_execute_function_with_retry(mock_workspace_client, mock_spark_session, mock_function_info):
@@ -588,7 +584,7 @@ def test_execute_function_with_retry(mock_workspace_client, mock_spark_session, 
 
         client.refresh_client_and_session.assert_called_once()
         expected_sql = "SELECT `catalog`.`schema`.`function_name`()"
-        mock_spark_session.sql.assert_called_with(sqlQuery=expected_sql)
+        mock_spark_session.sql.assert_called_with(sqlQuery=expected_sql, args=None)
         assert mock_spark_session.sql.call_count == 2
         assert client.refresh_client_and_session.call_count == 1
 
@@ -701,73 +697,6 @@ def create_mock_function_info():
     )
 
 
-test_cases_string_inputs = [
-    (
-        {"a": 1, "b": "test"},
-        "SELECT `catalog`.`schema`.`mock_function`('1','test')",
-    ),
-    # String with single quotes
-    (
-        {"a": 1, "b": "O'Reilly"},
-        "SELECT `catalog`.`schema`.`mock_function`('1','O''Reilly')",
-    ),
-    # String with backslashes
-    (
-        {"a": 1, "b": "C:\\Program Files\\App"},
-        "SELECT `catalog`.`schema`.`mock_function`('1','C:\\\\Program Files\\\\App')",
-    ),
-    # String with newlines
-    (
-        {"a": 1, "b": "Line1\nLine2"},
-        "SELECT `catalog`.`schema`.`mock_function`('1','Line1\\nLine2')",
-    ),
-    # String with tabs
-    (
-        {"a": 1, "b": "Column1\tColumn2"},
-        "SELECT `catalog`.`schema`.`mock_function`('1','Column1\\tColumn2')",
-    ),
-    # String with various special characters
-    (
-        {"a": 1, "b": "Special chars: !@#$%^&*()_+-=[]{}|;':,./<>?"},
-        "SELECT `catalog`.`schema`.`mock_function`('1','Special chars: !@#$%^&*()_+-=[]{}|;'':,./<>?')",
-    ),
-    # String with Unicode characters
-    (
-        {"a": 1, "b": "Unicode test: ü, é, 漢字"},
-        "SELECT `catalog`.`schema`.`mock_function`('1','Unicode test: ü, é, 漢字')",
-    ),
-    # String with double quotes
-    (
-        {"a": 1, "b": 'He said, "Hello"'},
-        """SELECT `catalog`.`schema`.`mock_function`('1',\'He said, "Hello"\')""",
-    ),
-    # String with backslashes and quotes
-    (
-        {"a": 1, "b": "Path: C:\\User\\'name'\\\"docs\""},
-        "SELECT `catalog`.`schema`.`mock_function`('1','Path: C:\\\\User\\\\''name''\\\\\"docs\"')",
-    ),
-    # String with code-like content (simulating GenAI code)
-    (
-        {"a": 1, "b": "def func():\n    print('Hello, world!')"},
-        "SELECT `catalog`.`schema`.`mock_function`('1','def func():\\n    print(''Hello, world!'')')",
-    ),
-    # String with multiline code and special characters
-    (
-        {"a": 1, "b": "if a > 0:\n    print('Positive')\nelse:\n    print('Non-positive')"},
-        "SELECT `catalog`.`schema`.`mock_function`('1','if a > 0:\\n    print(''Positive'')\\nelse:\\n    print(''Non-positive'')')",
-    ),
-]
-
-
-@pytest.mark.parametrize("parameters, expected_sql", test_cases_string_inputs)
-def test_get_execute_function_sql_command_string_inputs(parameters, expected_sql):
-    function_info = create_mock_function_info()
-
-    sql_command = get_execute_function_sql_command(function_info, parameters)
-
-    assert sql_command.replace("\r\n", "\n") == expected_sql.replace("\r\n", "\n")
-
-
 def test_execute_function_with_mock_string_input(
     mock_workspace_client, mock_spark_session, mock_function_info
 ):
@@ -795,17 +724,12 @@ def test_execute_function_with_mock_string_input(
         "a": 1,
         "b": "def func():\n    print('Hello, world!')",
     }
-
-    sanitized_parameters = sanitize_string_inputs_of_function_params(parameters)
-    sanitized_b = sanitized_parameters["b"]
-
-    expected_sql = f"SELECT `catalog`.`schema`.`mock_function`('1','{sanitized_b}')"
+    expected_sql = f"SELECT `catalog`.`schema`.`mock_function`(:a,:b)"
 
     client = DatabricksFunctionClient(client=mock_workspace_client)
 
     client.set_default_spark_session = MagicMock()
     client.spark = mock_spark_session
-
     client.get_function = MagicMock(return_value=mock_function_info)
 
     mock_result = MagicMock()
@@ -814,9 +738,10 @@ def test_execute_function_with_mock_string_input(
 
     result = client.execute_function("catalog.schema.mock_function", parameters=parameters)
 
-    mock_spark_session.sql.assert_called_once_with(sqlQuery=expected_sql)
+    mock_spark_session.sql.assert_called_once_with(sqlQuery=expected_sql, args=parameters)
 
-    assert result.value == f"1-{parameters['b']}"
+    expected_result = f"1-{parameters['b']}"
+    assert result.value == expected_result
 
 
 def test_execute_function_with_genai_code_input(
@@ -851,11 +776,7 @@ greet("World")"""
         "a": 1,
         "b": genai_code,
     }
-
-    sanitized_parameters = sanitize_string_inputs_of_function_params(parameters)
-    sanitized_b = sanitized_parameters["b"]
-
-    expected_sql = f"SELECT `catalog`.`schema`.`mock_function`('1','{sanitized_b}')"
+    expected_sql = f"SELECT `catalog`.`schema`.`mock_function`(:a,:b)"
 
     client = DatabricksFunctionClient(client=mock_workspace_client)
 
@@ -870,6 +791,63 @@ greet("World")"""
 
     result = client.execute_function("catalog.schema.mock_function", parameters=parameters)
 
-    mock_spark_session.sql.assert_called_once_with(sqlQuery=expected_sql)
+    mock_spark_session.sql.assert_called_once_with(sqlQuery=expected_sql, args=parameters)
 
     assert result.value == f"1-{genai_code}"
+
+
+def test_execute_function_warnings_missing_descriptions(mock_workspace_client, mock_spark_session):
+    import warnings
+
+    # Create a FunctionInfo object without parameter or function descriptions
+    func_info = FunctionInfo(
+        catalog_name="catalog",
+        schema_name="schema",
+        name="mock_function",
+        data_type=ColumnTypeName.STRING,
+        input_params=FunctionParameterInfos(
+            parameters=[
+                FunctionParameterInfo(
+                    name="a",
+                    type_name=ColumnTypeName.INT,
+                    type_text="int",
+                    position=0,
+                    comment=None,
+                ),
+                FunctionParameterInfo(
+                    name="b",
+                    type_name=ColumnTypeName.STRING,
+                    type_text="string",
+                    position=1,
+                    comment="",
+                ),
+            ]
+        ),
+        comment=None,
+    )
+
+    client = DatabricksFunctionClient(client=mock_workspace_client)
+    client.set_default_spark_session = MagicMock()
+    client.spark = mock_spark_session
+    client.get_function = MagicMock(return_value=func_info)
+
+    mock_result = MagicMock()
+    mock_result.collect.return_value = [["test_result"]]
+    mock_spark_session.sql.return_value = mock_result
+
+    with warnings.catch_warnings(record=True) as w:
+        warnings.simplefilter("always")
+
+        client.execute_function("catalog.schema.mock_function", parameters={"a": 1, "b": "test"})
+
+        assert len(w) == 2
+
+        messages = [str(warning.message) for warning in w]
+
+        assert any(
+            "The following parameters do not have descriptions: a, b" in msg for msg in messages
+        ), "Warning about missing parameter descriptions was not issued."
+
+        assert any(
+            "The function mock_function does not have a description." in msg for msg in messages
+        ), "Warning about missing function description was not issued."

@@ -22,9 +22,6 @@ from unitycatalog.ai.core.envs.databricks_env_vars import (
 )
 from unitycatalog.ai.core.paged_list import PagedList
 from unitycatalog.ai.core.utils.callable_utils import generate_sql_function_body
-from unitycatalog.ai.core.utils.function_processing_utils import (
-    sanitize_string_inputs_of_function_params,
-)
 from unitycatalog.ai.core.utils.type_utils import (
     column_type_to_python_type,
     convert_timedelta_to_interval_str,
@@ -32,6 +29,7 @@ from unitycatalog.ai.core.utils.type_utils import (
 )
 from unitycatalog.ai.core.utils.validation_utils import (
     FullFunctionName,
+    check_function_info,
     validate_param,
 )
 
@@ -89,7 +87,18 @@ def _try_get_spark_session_in_dbr() -> Any:
     try:
         # if in Databricks, fetch the current active session
         from databricks.sdk.runtime import spark
+        from pyspark.sql.connect.session import SparkSession
 
+        if not isinstance(spark, SparkSession):
+            _logger.warning(
+                "Current SparkSession in the active environment is not a "
+                "pyspark.sql.connect.session.SparkSession instance. Classic runtime does not support "
+                "all functionalities of the unitycatalog-ai framework. To use the full "
+                "capabilities of unitycatalog-ai, execute your code using a client that is attached to "
+                "a Serverless runtime cluster. To learn more about serverless, see the guide at: "
+                "https://docs.databricks.com/en/compute/serverless/index.html#connect-to-serverless-compute "
+                "for more details."
+            )
         return spark
     except Exception:
         return
@@ -146,7 +155,15 @@ def retry_on_session_expiration(func):
     def wrapper(self, *args, **kwargs):
         for attempt in range(1, max_attempts + 1):
             try:
-                return func(self, *args, **kwargs)
+                result = func(self, *args, **kwargs)
+                # for non-session related error in the result, we should directly return the result
+                if (
+                    isinstance(result, FunctionExecutionResult)
+                    and result.error
+                    and SESSION_EXCEPTION_MESSAGE in result.error
+                ):
+                    raise Exception(result.error)
+                return result
             except Exception as e:
                 error_message = str(e)
                 if SESSION_EXCEPTION_MESSAGE in error_message:
@@ -206,8 +223,15 @@ class DatabricksFunctionClient(BaseFunctionClient):
         self._is_default_client = client is None
         super().__init__()
 
+    def _is_spark_session_active(self):
+        if self.spark is None:
+            return False
+        if hasattr(self.spark, "is_stopped"):
+            return not self.spark.is_stopped
+        return self.spark.getActiveSession() is not None
+
     def set_default_spark_session(self):
-        if self.spark is None or self.spark.is_stopped:
+        if not self._is_spark_session_active():
             _validate_databricks_connect_available()
             from databricks.connect.session import DatabricksSession as SparkSession
 
@@ -218,7 +242,7 @@ class DatabricksFunctionClient(BaseFunctionClient):
             self.spark = builder.serverless(True).getOrCreate()
 
     def stop_spark_session(self):
-        if self.spark is not None and not self.spark.is_stopped:
+        if self._is_spark_session_active():
             self.spark.stop()
 
     def _validate_warehouse_type(self):
@@ -552,6 +576,7 @@ class DatabricksFunctionClient(BaseFunctionClient):
     def _execute_uc_function(
         self, function_info: "FunctionInfo", parameters: Dict[str, Any], **kwargs: Any
     ) -> Any:
+        check_function_info(function_info)
         if self.warehouse_id:
             return self._execute_uc_functions_with_warehouse(function_info, parameters)
         else:
@@ -657,18 +682,27 @@ class DatabricksFunctionClient(BaseFunctionClient):
         _logger.info("Using databricks connect to execute functions with serverless compute.")
         self.set_default_spark_session()
         sql_command = get_execute_function_sql_command(function_info, parameters)
-        result = self.spark.sql(sqlQuery=sql_command)
-        if is_scalar(function_info):
-            return FunctionExecutionResult(format="SCALAR", value=str(result.collect()[0][0]))
-        else:
-            row_limit = int(UCAI_DATABRICKS_SERVERLESS_EXECUTION_RESULT_ROW_LIMIT.get())
-            truncated = result.count() > row_limit
-            pdf = result.limit(row_limit).toPandas()
-            csv_buffer = StringIO()
-            pdf.to_csv(csv_buffer, index=False)
-            return FunctionExecutionResult(
-                format="CSV", value=csv_buffer.getvalue(), truncated=truncated
+        try:
+            result = self.spark.sql(sqlQuery=sql_command.sql_query, args=sql_command.args or None)
+            if is_scalar(function_info):
+                return FunctionExecutionResult(format="SCALAR", value=str(result.collect()[0][0]))
+            else:
+                row_limit = int(UCAI_DATABRICKS_SERVERLESS_EXECUTION_RESULT_ROW_LIMIT.get())
+                truncated = result.count() > row_limit
+                pdf = result.limit(row_limit).toPandas()
+                csv_buffer = StringIO()
+                pdf.to_csv(csv_buffer, index=False)
+                return FunctionExecutionResult(
+                    format="CSV", value=csv_buffer.getvalue(), truncated=truncated
+                )
+        except Exception as e:
+            sql_command_msg = (
+                f"spark.sql({sql_command.sql_query}" + f", args={sql_command.args})"
+                if sql_command.args
+                else ")"
             )
+            error = f"Failed to execute function with command `{sql_command_msg}`\nError: {e}"
+            return FunctionExecutionResult(error=error)
 
     @override
     def delete_function(
@@ -813,7 +847,15 @@ def get_execute_function_sql_stmt(
     return ParameterizedStatement(statement=statement, parameters=output_params)
 
 
-def get_execute_function_sql_command(function: "FunctionInfo", parameters: Dict[str, Any]) -> str:
+@dataclass
+class SparkSqlCommand:
+    sql_query: str
+    args: dict[str, Any]
+
+
+def get_execute_function_sql_command(
+    function: "FunctionInfo", parameters: Dict[str, Any]
+) -> SparkSqlCommand:
     from databricks.sdk.service.catalog import ColumnTypeName
 
     sql_query = ""
@@ -824,19 +866,19 @@ def get_execute_function_sql_command(function: "FunctionInfo", parameters: Dict[
             f"SELECT * FROM `{function.catalog_name}`.`{function.schema_name}`.`{function.name}`("
         )
 
+    params_dict: dict[str, Any] = {}
     if parameters and function.input_params and function.input_params.parameters:
         args: List[str] = []
         use_named_args = False
-        sanitized_parameters = sanitize_string_inputs_of_function_params(parameters)
 
         for param_info in function.input_params.parameters:
-            if param_info.name not in sanitized_parameters:
+            if param_info.name not in parameters:
                 use_named_args = True
             else:
                 arg_clause = ""
                 if use_named_args:
                     arg_clause += f"{param_info.name} => "
-                param_value = sanitized_parameters[param_info.name]
+                param_value = parameters[param_info.name]
                 if param_info.type_name in (
                     ColumnTypeName.ARRAY,
                     ColumnTypeName.MAP,
@@ -866,8 +908,9 @@ def get_execute_function_sql_command(function: "FunctionInfo", parameters: Dict[
                         param_value, Decimal
                     ):
                         param_value = float(param_value)
-                    arg_clause += f"'{str(param_value)}'"
+                    arg_clause += f":{param_info.name}"
+                    params_dict[param_info.name] = param_value
                 args.append(arg_clause)
         sql_query += ",".join(args)
     sql_query += ")"
-    return sql_query
+    return SparkSqlCommand(sql_query=sql_query, args=params_dict)

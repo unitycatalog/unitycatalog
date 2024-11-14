@@ -27,7 +27,7 @@ jobs:
         python-version: '3.9'
 
     - name: Install dependencies
-      run: pip install requests pytest
+      run: pip install requests pytest pytest-asyncio
 
     - name: Generate the client library, install it, and run the tests
       run: ./clients/python/run-tests.sh
