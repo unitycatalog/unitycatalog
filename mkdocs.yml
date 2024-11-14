@@ -8,7 +8,7 @@ site_author: unitycatalog
 
 nav:
   - Home: index.md
-  - Getting Started: 
+  - Getting Started:
       - Quickstart: quickstart.md
       - Docker Compose: docker_compose.md
   - Usage:
@@ -31,6 +31,7 @@ nav:
       - DuckDB: integrations/unity-catalog-duckdb.md
       - PuppyGraph: integrations/unity-catalog-puppygraph.md
       - SpiceAI: integrations/unity-catalog-spiceai.md
+      - Trino: integrations/unity-catalog-trino.md
       - XTable: integrations/unity-catalog-xtable.md
   - Deployment: deployment.md
 
