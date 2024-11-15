@@ -94,7 +94,7 @@ public class UnityCatalogServer {
     ServerProperties serverProperties = ServerProperties.getInstance();
     boolean authorizationEnabled = serverProperties.isAuthorizationEnabled();
 
-    // Create a Metastore if one does not exist
+    // Create a Metastore if one does not exist.
     MetastoreRepository.getInstance().initMetastoreIfNeeded();
 
     UnityCatalogAuthorizer authorizer = null;
