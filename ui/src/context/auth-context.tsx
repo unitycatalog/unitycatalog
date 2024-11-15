@@ -1,5 +1,9 @@
 import React, { useCallback, useMemo } from 'react';
-import { useGetCurrentUser, useLoginWithToken } from '../hooks/user';
+import {
+  useGetCurrentUser,
+  useLoginWithToken,
+  useLogoutCurrentUser,
+} from '../hooks/user';
 import { useNotification } from '../utils/NotificationContext';
 
 interface AuthContextProps {
@@ -20,6 +24,7 @@ AuthContext.displayName = 'AuthContext';
 function AuthProvider(props: any) {
   const { data: currentUser, refetch } = useGetCurrentUser();
   const loginWithTokenMutation = useLoginWithToken();
+  const logoutUser = useLogoutCurrentUser();
   const { setNotification } = useNotification();
 
   const loginWithToken = useCallback(
@@ -40,8 +45,18 @@ function AuthProvider(props: any) {
   );
 
   const logout = useCallback(async () => {
-    return refetch();
-  }, [refetch]);
+    return logoutUser.mutate({}, {
+      onSuccess: () => {
+        refetch();
+      },
+      onError: () => {
+        setNotification(
+          'Logout failed. Please contact your system administrator.',
+          'error',
+        );
+      },
+    });
+  }, [refetch, logoutUser, setNotification]);
 
   const value = useMemo(
     () => ({

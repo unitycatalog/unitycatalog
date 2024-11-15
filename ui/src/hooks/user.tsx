@@ -14,6 +14,19 @@ export interface UserInterface {
   photos: any;
 }
 
+enum HttpStatus {
+  OK = 200,
+  CREATED = 201,
+  BAD_REQUEST = 400,
+  UNAUTHORIZED = 401,
+  NOT_FOUND = 404,
+  INTERNAL_SERVER_ERROR = 500,
+}
+
+interface LogoutResponse {
+  response: HttpStatus
+}
+
 export function useLoginWithToken() {
   return useMutation<LoginResponse, Error, string>({
     mutationFn: async (idToken) => {
@@ -47,6 +60,21 @@ export function useGetCurrentUser() {
         .then((response) => response.data)
         .catch(() => {
           throw new Error('Failed to fetch user');
+        });
+    },
+  });
+}
+
+export function useLogoutCurrentUser() {
+  return useMutation<LogoutResponse, Error, {}>({
+    mutationFn: async () => {
+      return apiClient
+        .post(`/auth/logout`, {},{
+          baseURL: `${UC_AUTH_API_PREFIX}`,
+        })
+        .then((response) => response.data)
+        .catch((e) => {
+          throw new Error(e.response?.data?.message || 'Logout method failed');
         });
     },
   });
