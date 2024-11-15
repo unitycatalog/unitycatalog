@@ -6,6 +6,8 @@ This guide provides detailed information about the Unity Catalog AI clients, inc
 
 ## Open Source Function Client
 
+> NOTE: To be updated with the integration of UC function client with OSS UC via the unitycatalog-client SDK.
+
 ---
 
 ## Databricks Function Client

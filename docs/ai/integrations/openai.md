@@ -1,4 +1,4 @@
-# 🦙 Using Unity Catalog AI with the OpenAI SDK
+# Using Unity Catalog AI with the OpenAI SDK
 
 Integrate Unity Catalog AI with [OpenAI](https://platform.openai.com/docs/api-reference/introduction?lang=python) to directly use UC functions as tools in OpenAI interfaces. This guide covers installation, client setup, and examples to get started.
 

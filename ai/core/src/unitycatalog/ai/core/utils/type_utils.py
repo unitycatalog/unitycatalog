@@ -10,7 +10,7 @@ PYTHON_TO_SQL_TYPE_MAPPING = {
     datetime.date: "DATE",
     datetime.datetime: "TIMESTAMP",
     datetime.timedelta: "INTERVAL DAY TO SECOND",
-    decimal.Decimal: "DECIMAL(38, 18)",
+    decimal.Decimal: "DECIMAL(38, 18)",  # default to maximum precision to prevent truncation
     list: "ARRAY",
     tuple: "ARRAY",
     dict: "MAP",

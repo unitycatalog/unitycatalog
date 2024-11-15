@@ -1,6 +1,6 @@
 # Quickstart Guide
 
-Welcome to the **Unity Catalog AI Core Library**! This guide will help you get started with installing the library, setting up your environment, and creating and executing Unity Catalog (UC) functions. Whether you're using your own UC open-source server or connecting with a Databricks-managed UC, this quickstart will walk you through the essential steps.
+Welcome to the **Unity Catalog AI Core Library**! This guide will help you get started with installing the library, setting up your environment, creating and executing Unity Catalog (UC) functions. Whether you're using your own UC open-source server or connecting with a Databricks-managed UC, this quickstart will walk you through the essential steps.
 
 ---
 
@@ -25,20 +25,13 @@ If you're looking to use an Open Source Unity Catalog service, ensure that you h
 
 ### Databricks Unity Catalog
 
-If you are going to interface with ``Databricks Unity Catalog``, ensure that you have installed the ``Databricks SDK`` to enable access
-to your Databricks Unity Catalog service.
+If you are going to interface with ``Databricks Unity Catalog``, you can install the optional package extension from PyPI:
 
 ```sh
-pip install databricks-sdk
+pip install unitycatalog-ai[databricks]
 ```
 
-**Databricks Connect** (Optional): This package is required if you are going to create UC functions direclty using a SQL body definition.
-
-```sh
-pip install "databricks-connect==15.1.0"
-```
-
->Note: Python 3.10 or higher is required to use `databricks-connect` with serverless compute.
+>Note: Python 3.10 or higher is required to use `unitycatalog-ai` with Databricks serverless compute for function execution.
 
 - **Serverless Compute**: For creating UC functions directly with a SQL body definition, only serverless compute is supported. You cannot run the
 function creation APIs while attached to a classic SQL Warehouse.
