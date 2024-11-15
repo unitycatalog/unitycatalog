@@ -24,7 +24,7 @@ enum HttpStatus {
 }
 
 interface LogoutResponse {
-  response: HttpStatus
+  response: HttpStatus;
 }
 
 export function useLoginWithToken() {
@@ -69,9 +69,13 @@ export function useLogoutCurrentUser() {
   return useMutation<LogoutResponse, Error, {}>({
     mutationFn: async () => {
       return apiClient
-        .post(`/auth/logout`, {},{
-          baseURL: `${UC_AUTH_API_PREFIX}`,
-        })
+        .post(
+          `/auth/logout`,
+          {},
+          {
+            baseURL: `${UC_AUTH_API_PREFIX}`,
+          },
+        )
         .then((response) => response.data)
         .catch((e) => {
           throw new Error(e.response?.data?.message || 'Logout method failed');

@@ -45,17 +45,20 @@ function AuthProvider(props: any) {
   );
 
   const logout = useCallback(async () => {
-    return logoutUser.mutate({}, {
-      onSuccess: () => {
-        refetch();
+    return logoutUser.mutate(
+      {},
+      {
+        onSuccess: () => {
+          refetch();
+        },
+        onError: () => {
+          setNotification(
+            'Logout failed. Please contact your system administrator.',
+            'error',
+          );
+        },
       },
-      onError: () => {
-        setNotification(
-          'Logout failed. Please contact your system administrator.',
-          'error',
-        );
-      },
-    });
+    );
   }, [refetch, logoutUser, setNotification]);
 
   const value = useMemo(
