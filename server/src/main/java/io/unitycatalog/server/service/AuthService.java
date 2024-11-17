@@ -184,9 +184,12 @@ public class AuthService {
             authorizationCookie -> {
               Cookie expiredCookie = createCookie(AuthDecorator.UC_TOKEN_KEY, "", "/", "PT0S");
               ResponseHeaders headers =
-                  ResponseHeaders.of(
-                      HttpStatus.OK, HttpHeaderNames.SET_COOKIE, expiredCookie.toSetCookieHeader());
-              return HttpResponse.of(headers);
+                  ResponseHeaders.builder()
+                      .status(HttpStatus.OK)
+                      .add(HttpHeaderNames.SET_COOKIE, expiredCookie.toSetCookieHeader())
+                      .contentType(MediaType.JSON)
+                      .build();
+              return HttpResponse.of(headers, HttpData.ofUtf8("{}"));
             })
         .orElse(HttpResponse.of(HttpStatus.OK));
   }
