@@ -186,8 +186,7 @@ public class AuthService {
               ResponseHeaders headers =
                   ResponseHeaders.of(
                       HttpStatus.OK, HttpHeaderNames.SET_COOKIE, expiredCookie.toSetCookieHeader());
-              // Return some data as part of the response else the caller gets hung indefinitely
-              return HttpResponse.of(headers, HttpData.ofUtf8(" "));
+              return HttpResponse.of(headers);
             })
         .orElse(HttpResponse.of(HttpStatus.OK));
   }
