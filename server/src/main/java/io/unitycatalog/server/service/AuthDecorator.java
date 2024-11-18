@@ -60,8 +60,8 @@ public class AuthDecorator implements DecoratingHttpServiceFunction {
     String authorizationHeader = req.headers().get(HttpHeaderNames.AUTHORIZATION);
     String authorizationCookie =
         req.headers().cookies().stream()
-            .map(Cookie::name)
-            .filter(name -> name.equals(UC_TOKEN_KEY))
+            .filter(c -> c.name().equals(UC_TOKEN_KEY))
+            .map(Cookie::value)
             .findFirst()
             .orElse(null);
 

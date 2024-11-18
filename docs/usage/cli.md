@@ -472,7 +472,7 @@ The script supports various operations such as creating, getting, updating, list
 ### 8.1 Create User
 
 ```bash title="Usage"
-bin/uc create [options]
+bin/uc user create [options]
 ```
 
 *Required Params:*
