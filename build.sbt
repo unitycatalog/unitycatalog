@@ -1,11 +1,10 @@
 import java.nio.file.Files
 import java.io.File
 import Tarball.createTarballSettings
-import sbt.util
-import sbt.Keys._
+import sbt.{Attributed, util}
+import sbt.Keys.*
 import sbtlicensereport.license.{DepModuleInfo, LicenseCategory, LicenseInfo}
 import ReleaseSettings.*
-import PythonClientPostBuild.*
 
 import scala.language.implicitConversions
 
@@ -67,7 +66,9 @@ lazy val commonSettings = Seq(
     val packageFile = (Compile / packageBin).value
     generateClasspathFile(
       targetDir = packageFile.getParentFile,
-      classpath = (Runtime / dependencyClasspath).value)
+      // Also include the jar of the module in its classpath
+      classpath = (Runtime / dependencyClasspath).value :+ Attributed.blank(packageFile)
+    )
     packageFile
   },
 
@@ -285,6 +286,7 @@ lazy val populateTestDB = taskKey[Unit]("Run PopulateTestDatabase main class fro
 
 lazy val server = (project in file("server"))
   .dependsOn(client % "test->test")
+  // server and control models are added as provided to avoid them being added as maven dependencies
   .dependsOn(serverModels % "provided", controlModels % "provided")
   .settings (
     name := s"$artifactNamePrefix-server",
@@ -386,6 +388,8 @@ lazy val server = (project in file("server"))
       (Test / runMain).toTask(s" io.unitycatalog.server.utils.PopulateTestDatabase").value
     },
     Test / javaOptions += s"-Duser.dir=${(ThisBuild / baseDirectory).value.getAbsolutePath}",
+    // Include server and control models in the bin package for server
+    // This will allow us to have a single maven artifact and not 3 (server, server models, control models)
     Compile / packageBin / mappings ++= (Compile / packageBin / mappings).value ++
       (serverModels / Compile / packageBin / mappings).value ++
       (controlModels / Compile / packageBin / mappings).value
