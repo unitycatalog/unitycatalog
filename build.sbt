@@ -285,7 +285,7 @@ lazy val populateTestDB = taskKey[Unit]("Run PopulateTestDatabase main class fro
 
 lazy val server = (project in file("server"))
   .dependsOn(client % "test->test")
-  .dependsOn(serverModels)
+  .dependsOn(serverModels % "provided", controlModels % "provided")
   .settings (
     name := s"$artifactNamePrefix-server",
     mainClass := Some(orgName + ".server.UnityCatalogServer"),
@@ -385,13 +385,15 @@ lazy val server = (project in file("server"))
       val log = streams.value.log
       (Test / runMain).toTask(s" io.unitycatalog.server.utils.PopulateTestDatabase").value
     },
-    Test / javaOptions += s"-Duser.dir=${(ThisBuild / baseDirectory).value.getAbsolutePath}"
+    Test / javaOptions += s"-Duser.dir=${(ThisBuild / baseDirectory).value.getAbsolutePath}",
+    Compile / packageBin / mappings ++= (Compile / packageBin / mappings).value ++
+      (serverModels / Compile / packageBin / mappings).value ++
+      (controlModels / Compile / packageBin / mappings).value
   )
 
 lazy val serverModels = (project in file("server") / "target" / "models")
   .enablePlugins(OpenApiGeneratorPlugin)
   .disablePlugins(JavaFormatterPlugin)
-  .dependsOn(controlModels % "compile->compile")
   .settings(
     name := s"$artifactNamePrefix-servermodels",
     commonSettings,
@@ -463,6 +465,7 @@ lazy val controlModels = (project in file("server") / "target" / "controlmodels"
 
 lazy val cli = (project in file("examples") / "cli")
   .dependsOn(server % "test->test")
+  .dependsOn(serverModels, controlModels)
   .dependsOn(client % "compile->compile;test->test")
   .dependsOn(controlApi % "compile->compile")
   .settings(
@@ -604,6 +607,10 @@ lazy val integrationTests = (project in file("integration-tests"))
     javaOptions ++= Seq(
       "--add-exports=java.base/sun.nio.ch=ALL-UNNAMED",
     ),
+    resolvers ++= Seq(
+      // To test out staged release
+      "Sonatype OSS Staging Releases" at "https://s01.oss.sonatype.org/service/local/staging/deploy/maven2/"
+    ),
     skipReleaseSettings,
     libraryDependencies ++= Seq(
       "org.junit.jupiter" % "junit-jupiter" % "5.10.3" % Test,
@@ -615,7 +622,8 @@ lazy val integrationTests = (project in file("integration-tests"))
       "org.apache.hadoop" % "hadoop-aws" % "3.3.6" % Test,
       "org.apache.hadoop" % "hadoop-azure" % "3.3.6" % Test,
       "com.google.cloud.bigdataoss" % "gcs-connector" % "3.0.2" % Test classifier "shaded",
-      "io.unitycatalog" %% "unitycatalog-spark" % "0.2.0" % Test,
+      "io.unitycatalog" %% "unitycatalog-spark" % "0.2.1" % Test,
+      "io.unitycatalog" % "unitycatalog-server" % "0.2.1" % Test,
     ),
     dependencyOverrides ++= Seq(
       "com.fasterxml.jackson.core" % "jackson-databind" % "2.15.0",
