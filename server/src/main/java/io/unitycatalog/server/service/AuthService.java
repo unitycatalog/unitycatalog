@@ -139,9 +139,10 @@ public class AuthService {
     }
 
     DecodedJWT decodedJWT = JWT.decode(request.getSubjectToken());
-    String issuer = decodedJWT.getClaim("iss").asString();
-    String keyId = decodedJWT.getHeaderClaim("kid").asString();
-    LOGGER.debug("Validating token for issuer: {}", issuer);
+    String issuer = decodedJWT.getIssuer();
+    String keyId = decodedJWT.getKeyId();
+
+    LOGGER.debug("Validating token for issuer: {} and keyId: {}", issuer, keyId);
 
     JWTVerifier jwtVerifier = jwksOperations.verifierForIssuerAndKey(issuer, keyId);
     decodedJWT = jwtVerifier.verify(decodedJWT);
@@ -193,17 +194,22 @@ public class AuthService {
 
   private static void verifyPrincipal(DecodedJWT decodedJWT) {
     String subject =
-        decodedJWT.getClaim(JwtClaim.EMAIL.key()).isMissing()
-            ? decodedJWT.getClaim(JwtClaim.SUBJECT.key()).asString()
-            : decodedJWT.getClaim(JwtClaim.EMAIL.key()).asString();
+        decodedJWT
+            .getClaims()
+            .getOrDefault(JwtClaim.EMAIL.key(), decodedJWT.getClaim(JwtClaim.SUBJECT.key()))
+            .asString();
+
+    LOGGER.debug("Validating principal: {}", subject);
 
     if (subject.equals("admin")) {
+      LOGGER.debug("admin always allowed");
       return;
     }
 
     try {
       User user = USER_REPOSITORY.getUserByEmail(subject);
       if (user != null && user.getState() == User.StateEnum.ENABLED) {
+        LOGGER.debug("Principal {} is enabled", subject);
         return;
       }
     } catch (Exception e) {
