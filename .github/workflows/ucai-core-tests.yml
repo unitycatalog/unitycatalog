@@ -42,12 +42,9 @@ jobs:
       matrix:
         python-version: ['3.9', '3.10']
         pydantic-version: [1, 2]
-    timeout-minutes: 20
-    defaults:
-      run:
-        working-directory: ai/core
+    timeout-minutes: 40
     steps:
-      - name: Checkout code
+      - name: Check out code
         uses: actions/checkout@v4
       - name: Set up Python
         uses: actions/setup-python@v5
@@ -61,6 +58,20 @@ jobs:
           else
             pip install 'pydantic<3,>=2'
           fi
-      - name: Run tests
+      - name: Start Unity Catalog Service
+        run: |
+          ./ai/dev/start_unitycatalog.sh
+        working-directory: ${{ github.workspace }}
+      - name: Wait for Unity Catalog Service to be Ready
+        run: |
+          ./ai/dev/wait_unitycatalog.sh unitycatalog
+        working-directory: ${{ github.workspace }}
+      - name: Run Tests
         run: |
           pytest tests/
+        working-directory: ai/core
+      - name: Tear Down Unity Catalog Service
+        if: always()
+        run: |
+          ./ai/dev/teardown_unitycatalog.sh
+        working-directory: ${{ github.workspace }}
