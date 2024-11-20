@@ -89,7 +89,8 @@ def syncify_method(sync_method):
             # NB: For standard pythons script execution environments, a new asyncio event loop
             # can be created to handle the async call via a synchronous wrapper.
             # This cannot run in environments that already have a running asyncio event loop
-            # such as Jupyter/Ipython/Idle kernels.
+            # such as Jupyter/Ipython/Idle kernels since multiple event loops cannot run in the
+            # same thread.
             return asyncio.run(async_method(*args, **kwargs))
         else:
             # NB: Jupyter kernels use a persistent asyncio loop to handle the active REPL

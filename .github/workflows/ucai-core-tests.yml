@@ -52,18 +52,17 @@ jobs:
           python-version: ${{ matrix.python-version }}
       - name: Install dependencies
         run: |
-          pip install .[dev]
+          pip install ./ai/core/.[dev]
           if [ ${{ matrix.pydantic-version }} == 1 ]; then
             pip install 'pydantic<2'
           else
             pip install 'pydantic<3,>=2'
           fi
-         working-directory: ai/core
-      - name: Start Unity Catalog Service
+      - name: Start Unity Catalog Server
         run: |
           ./ai/dev/start_unitycatalog.sh
         working-directory: ${{ github.workspace }}
-      - name: Wait for Unity Catalog Service to be Ready
+      - name: Wait for Unity Catalog Server to be Ready
         run: |
           ./ai/dev/wait_unitycatalog.sh unitycatalog
         working-directory: ${{ github.workspace }}
@@ -71,7 +70,7 @@ jobs:
         run: |
           pytest tests/
         working-directory: ai/core
-      - name: Tear Down Unity Catalog Service
+      - name: Tear Down Unity Catalog Server
         if: always()
         run: |
           ./ai/dev/teardown_unitycatalog.sh
