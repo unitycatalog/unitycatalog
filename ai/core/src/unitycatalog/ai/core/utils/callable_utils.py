@@ -1,11 +1,15 @@
 import ast
+from dataclasses import dataclass
 import inspect
 import warnings
 from textwrap import dedent, indent
-from typing import Any, Callable, Optional, Set, Union, get_args, get_origin, get_type_hints
+from typing import Any, Callable, Dict, List, Optional, Set, Union, get_args, get_origin, get_type_hints, TYPE_CHECKING
 
 from unitycatalog.ai.core.utils.docstring_utils import DocstringInfo, parse_docstring
 from unitycatalog.ai.core.utils.type_utils import python_type_to_sql_type
+
+if TYPE_CHECKING:
+    from unitycatalog.client.models import FunctionInfo, FunctionParameterInfo
 
 FORBIDDEN_PARAMS = ["self", "cls"]
 
@@ -52,6 +56,29 @@ class FunctionBodyExtractor(ast.NodeVisitor):
         indents = [stmt.col_offset for stmt in body if stmt.col_offset is not None]
         if indents:
             self.indent_unit = min(indents)
+
+
+@dataclass
+class FunctionMetadata:
+    func_name: str
+    signature: inspect.Signature
+    type_hints: Dict[str, Any]
+    sql_return_type: str
+    base_return_type_name: str
+    docstring_info: DocstringInfo
+    parameters: List[Dict[str, Any]]
+    function_body: str
+    indent_unit: int
+
+@dataclass
+class FunctionInfoDefinition:
+    callable_name: str
+    routine_definition: str
+    data_type: str
+    full_data_type: str
+    parameters: List['FunctionParameterInfo']
+    comment: str
+
 
 
 def extract_function_body(func: Callable[..., Any]) -> tuple[str, int]:
@@ -248,6 +275,100 @@ $$;
     return sql_body
 
 
+def extract_function_metadata(func: Callable[..., Any]) -> FunctionMetadata:
+    func = unwrap_function(func)
+    func_name = func.__name__
+    signature = inspect.signature(func)
+    type_hints = get_type_hints(func)
+
+    sql_return_type = validate_return_type(func_name, type_hints)
+    if '<' in sql_return_type:
+        base_return_type_name = sql_return_type.split('<', 1)[0]
+    else:
+        base_return_type_name = sql_return_type
+
+    docstring = inspect.getdoc(func)
+    if not docstring:
+        raise ValueError(f"Function '{func_name}' must have a docstring with a description.")
+    docstring_info = parse_docstring(docstring)
+
+    params_in_signature = set(signature.parameters.keys()) - set(FORBIDDEN_PARAMS)
+    check_docstring_signature_consistency(docstring_info.params, params_in_signature, func_name)
+
+    parameters = []
+    position = 0
+    for param_name, param in signature.parameters.items():
+        if param_name in FORBIDDEN_PARAMS:
+            raise ValueError(f"Parameter '{param_name}' is not allowed in the function signature.")
+
+        if param.kind in (inspect.Parameter.VAR_POSITIONAL, inspect.Parameter.VAR_KEYWORD):
+            kind = (
+                "var-positional (*args)"
+                if param.kind == inspect.Parameter.VAR_POSITIONAL
+                else "var-keyword (**kwargs)"
+            )
+            raise ValueError(
+                f"Parameter '{param_name}' is a {kind} parameter, which is not supported in SQL functions."
+            )
+
+        if param_name not in type_hints:
+            raise ValueError(f"Missing type hint for parameter: {param_name}.")
+
+        param_hint = type_hints[param_name]
+
+        try:
+            sql_type = validate_type_hint(param_hint)
+        except ValueError as e:
+            error_message = generate_type_hint_error_message(param_name, param_hint, e)
+            raise ValueError(error_message) from e
+
+        if '<' in sql_type:
+            base_type_name = sql_type.split('<', 1)[0]
+        else:
+            base_type_name = sql_type
+
+        param_comment = docstring_info.params.get(param_name)
+        if param_comment:
+            param_comment = param_comment.replace("'", '"')
+
+        parameter_default = None
+        if param.default is not inspect.Parameter.empty:
+            if is_collection_type(param_hint):
+                raise ValueError(
+                    f"Parameter '{param_name}' of type '{param_hint}' cannot have a default value."
+                )
+            if not is_valid_default_value(param.default, param_hint):
+                raise ValueError(
+                    f"Default value for parameter '{param_name}' does not match the type hint '{param_hint}'."
+                )
+            parameter_default = format_default_value(param.default)
+
+        param_info = {
+            'name': param_name,
+            'sql_type': sql_type,
+            'base_type_name': base_type_name,
+            'comment': param_comment,
+            'parameter_default': parameter_default,
+            'param': param,  # Original inspect.Parameter object
+            'position': position,
+        }
+        parameters.append(param_info)
+        position += 1
+
+    function_body, indent_unit = extract_function_body(func)
+
+    return FunctionMetadata(
+        func_name=func_name,
+        signature=signature,
+        type_hints=type_hints,
+        sql_return_type=sql_return_type,
+        base_return_type_name=base_return_type_name,
+        docstring_info=docstring_info,
+        parameters=parameters,
+        function_body=function_body,
+        indent_unit=indent_unit,
+    )
+
 def generate_sql_function_body(
     func: Callable[..., Any], catalog: str, schema: str, replace: bool = False
 ) -> str:
@@ -262,43 +383,203 @@ def generate_sql_function_body(
     Returns:
         str: SQL statement for creating the UDF.
     """
-    func = unwrap_function(func)
-    func_name = func.__name__
-    signature = inspect.signature(func)
-    type_hints = get_type_hints(func)
-
-    sql_return_type = validate_return_type(func_name, type_hints)
-
-    docstring = inspect.getdoc(func)
-    if not docstring:
-        raise ValueError(f"Function '{func_name}' must have a docstring with a description.")
-    docstring_info = parse_docstring(docstring)
-
-    params_in_signature = set(signature.parameters.keys()) - set(FORBIDDEN_PARAMS)
-    check_docstring_signature_consistency(docstring_info.params, params_in_signature, func_name)
+    metadata = extract_function_metadata(func)
 
     sql_params = []
-    for param_name, param in signature.parameters.items():
-        sql_param = process_parameter(param_name, param, type_hints, docstring_info)
+    for param_info in metadata.parameters:
+        sql_param_parts = [param_info['name'], param_info['sql_type']]
+        if param_info['parameter_default'] is not None:
+            sql_param_parts.append(f"DEFAULT {param_info['parameter_default']}")
+        if param_info['comment']:
+            sql_param_parts.append(f"COMMENT '{param_info['comment']}'")
+        sql_param = ' '.join(sql_param_parts)
         sql_params.append(sql_param)
 
-    function_body, indent_unit = extract_function_body(func)
-    indented_body = indent(function_body, " " * indent_unit)
+    indented_body = indent(metadata.function_body, " " * metadata.indent_unit)
 
-    func_comment = docstring_info.description.replace("'", '"')
+    func_comment = metadata.docstring_info.description.replace("'", '"')
 
     sql_body = assemble_sql_body(
         catalog,
         schema,
-        func_name,
+        metadata.func_name,
         sql_params,
-        sql_return_type,
+        metadata.sql_return_type,
         func_comment,
         indented_body,
         replace,
     )
 
     return sql_body
+
+
+def generate_function_info(func: Callable[..., Any]) -> FunctionInfoDefinition:
+    from unitycatalog.client.models import FunctionParameterInfo
+
+    metadata = extract_function_metadata(func)
+
+    parameters = []
+    for param_info in metadata.parameters:
+        param = param_info['param']
+        function_param_info = FunctionParameterInfo(
+            name=param_info['name'],
+            type_name=param_info['base_type_name'],
+            type_text=param_info['sql_type'],
+            type_json=param_info['sql_type'],
+            position=param_info['position'],
+            parameter_default=param_info['parameter_default'],
+            comment=param_info['comment'],
+        )
+        parameters.append(function_param_info)
+
+    return FunctionInfoDefinition(
+        callable_name=metadata.func_name,
+        routine_definition=metadata.function_body,
+        data_type=metadata.base_return_type_name,
+        full_data_type=metadata.sql_return_type,
+        parameters=parameters,
+        comment=metadata.docstring_info.description
+    )
+
+
+# def generate_sql_function_body(
+#     func: Callable[..., Any], catalog: str, schema: str, replace: bool = False
+# ) -> str:
+#     """
+#     Generate SQL body for creating the function in Unity Catalog.
+
+#     Args:
+#         func: The Python callable function to convert into a UDF.
+#         catalog: The catalog name.
+#         schema: The schema name.
+
+#     Returns:
+#         str: SQL statement for creating the UDF.
+#     """
+#     func = unwrap_function(func)
+#     func_name = func.__name__
+#     signature = inspect.signature(func)
+#     type_hints = get_type_hints(func)
+
+#     sql_return_type = validate_return_type(func_name, type_hints)
+
+#     docstring = inspect.getdoc(func)
+#     if not docstring:
+#         raise ValueError(f"Function '{func_name}' must have a docstring with a description.")
+#     docstring_info = parse_docstring(docstring)
+
+#     params_in_signature = set(signature.parameters.keys()) - set(FORBIDDEN_PARAMS)
+#     check_docstring_signature_consistency(docstring_info.params, params_in_signature, func_name)
+
+#     sql_params = []
+#     for param_name, param in signature.parameters.items():
+#         sql_param = process_parameter(param_name, param, type_hints, docstring_info)
+#         sql_params.append(sql_param)
+
+#     function_body, indent_unit = extract_function_body(func)
+#     indented_body = indent(function_body, " " * indent_unit)
+
+#     func_comment = docstring_info.description.replace("'", '"')
+
+#     sql_body = assemble_sql_body(
+#         catalog,
+#         schema,
+#         func_name,
+#         sql_params,
+#         sql_return_type,
+#         func_comment,
+#         indented_body,
+#         replace,
+#     )
+
+#     return sql_body
+
+# def generate_function_info(
+#         func: Callable[..., Any]
+# ) -> FunctionInfoDefinition:
+    
+#     from unitycatalog.client.models import FunctionParameterInfo
+
+#     func = unwrap_function(func)
+#     func_name = func.__name__
+#     signature = inspect.signature(func)
+#     type_hints = get_type_hints(func)
+
+#     sql_return_type = validate_return_type(func_name, type_hints)
+
+#     if '<' in sql_return_type:
+#         base_return_type_name = sql_return_type.split('<', 1)[0]
+#     else:
+#         base_return_type_name = sql_return_type
+
+#     docstring = inspect.getdoc(func)
+#     if not docstring:
+#         raise ValueError(f"Function '{func_name}' must have a docstring with a description.")
+#     docstring_info = parse_docstring(docstring)
+
+#     params_in_signature = set(signature.parameters.keys()) - set(FORBIDDEN_PARAMS)
+#     check_docstring_signature_consistency(docstring_info.params, params_in_signature, func_name)
+
+#     parameters = []
+#     position = 0 
+#     for param_name, param in signature.parameters.items():
+#         if param_name in FORBIDDEN_PARAMS:
+#             continue
+
+#         if param_name not in type_hints:
+#             raise ValueError(f"Missing type hint for parameter: {param_name}.")
+
+#         param_hint = type_hints[param_name]
+
+#         try:
+#             sql_type = validate_type_hint(param_hint)
+#         except ValueError as e:
+#             error_message = generate_type_hint_error_message(param_name, param_hint, e)
+#             raise ValueError(error_message) from e
+
+#         if '<' in sql_type:
+#             base_type_name = sql_type.split('<', 1)[0]
+#         else:
+#             base_type_name = sql_type
+
+#         param_comment = docstring_info.params.get(param_name)
+#         if param_comment:
+#             param_comment = param_comment.replace("'", '"')
+
+#         parameter_default = None
+#         if param.default is not inspect.Parameter.empty:
+#             if is_collection_type(param_hint):
+#                 raise ValueError(
+#                     f"Parameter '{param_name}' of type '{param_hint}' cannot have a default value."
+#                 )
+#             if not is_valid_default_value(param.default, param_hint):
+#                 raise ValueError(
+#                     f"Default value for parameter '{param_name}' does not match the type hint '{param_hint}'."
+#                 )
+#             parameter_default = format_default_value(param.default)
+
+#         param_info = FunctionParameterInfo(
+#             name=param_name,
+#             type_name=base_type_name,
+#             type_text=sql_type,
+#             type_json=sql_type,
+#             position=position,
+#             parameter_default=parameter_default,
+#             comment=param_comment,
+#         )
+#         parameters.append(param_info)
+#         position += 1
+
+#     routine_definition, _ = extract_function_body(func)
+
+#     return FunctionInfoDefinition(
+#         callable_name=func_name,
+#         routine_definition=routine_definition,
+#         data_type=base_return_type_name,
+#         full_data_type=sql_return_type,
+#         parameters=parameters,
+#         comment=docstring_info.description
+#         )
 
 
 def validate_return_type(func_name: str, type_hints: dict[str, Any]) -> str:

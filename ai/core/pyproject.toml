@@ -11,7 +11,9 @@ license = { text="Apache-2.0" }
 requires-python = ">=3.9"
 dependencies = [
   "typing_extensions",
-  "pydantic"
+  "pydantic",
+  "asyncio",
+  "nest_asyncio"
 ]
 keywords = ["unitycatalog", "ai", "databricks", "function", "tool", "genai"]
 classifiers = [
