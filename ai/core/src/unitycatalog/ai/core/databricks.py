@@ -294,7 +294,9 @@ class DatabricksFunctionClient(BaseFunctionClient):
             self.set_default_spark_session()
             # TODO: add timeout
             self.spark.sql(sql_function_body)
-            return self.get_function(extract_function_name(sql_function_body))
+            created_function_info = self.get_function(extract_function_name(sql_function_body))
+            check_function_info(created_function_info)
+            return created_function_info
         # TODO: support creating from function_info after CreateFunction bug is fixed in databricks-sdk
         # return self.client.functions.create(function_info)
         raise ValueError("sql_function_body must be provided.")
