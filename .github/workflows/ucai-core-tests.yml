@@ -73,5 +73,5 @@ jobs:
       - name: Tear Down Unity Catalog Server
         if: always()
         run: |
-          ./ai/dev/teardown_unitycatalog.sh
+          ./ai/dev/teardown_server.sh
         working-directory: ${{ github.workspace }}
