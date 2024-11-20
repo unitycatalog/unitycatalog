@@ -66,7 +66,7 @@ lazy val commonSettings = Seq(
     val packageFile = (Compile / packageBin).value
     generateClasspathFile(
       targetDir = packageFile.getParentFile,
-      // Also include the jar of the module in its classpath
+      // Also include the jar being built (packageFile) in the classpath
       classpath = (Runtime / dependencyClasspath).value :+ Attributed.blank(packageFile)
     )
     packageFile
@@ -286,7 +286,8 @@ lazy val populateTestDB = taskKey[Unit]("Run PopulateTestDatabase main class fro
 
 lazy val server = (project in file("server"))
   .dependsOn(client % "test->test")
-  // server and control models are added as provided to avoid them being added as maven dependencies
+  // Server and control models are added as provided to avoid them being added as maven dependencies
+  // This is because the server and control models are included in the server jar
   .dependsOn(serverModels % "provided", controlModels % "provided")
   .settings (
     name := s"$artifactNamePrefix-server",
