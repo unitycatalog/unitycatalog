@@ -62,9 +62,9 @@ jobs:
         run: |
           ./ai/dev/start_unitycatalog.sh
         working-directory: ${{ github.workspace }}
-      - name: Wait for Unity Catalog Server to be Ready
+      - name: Wait for Unity Catalog Service to be Ready
         run: |
-          ./ai/dev/wait_unitycatalog.sh unitycatalog
+          ./ai/dev/wait_unitycatalog.sh
         working-directory: ${{ github.workspace }}
       - name: Run Tests
         run: |
