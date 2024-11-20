@@ -58,6 +58,7 @@ jobs:
           else
             pip install 'pydantic<3,>=2'
           fi
+         working-directory: ai/core
       - name: Start Unity Catalog Service
         run: |
           ./ai/dev/start_unitycatalog.sh
