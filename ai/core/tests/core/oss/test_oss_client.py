@@ -2,9 +2,10 @@ import asyncio
 import datetime
 import decimal
 import logging
+import re
 from contextlib import contextmanager
 from dataclasses import dataclass
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Union
 
 import pytest
 from pydantic import ValidationError
@@ -74,15 +75,16 @@ def simple_function_obj():
         routine_definition="return x",
         input_data={"x": "test"},
         expected_result="test",
-        comment="test"
+        comment="test",
     )
 
 
 @pytest.fixture
-def uc_client() -> UnitycatalogFunctionClient:
+def uc_client():
     config = Configuration()
     config.host = "http://localhost:8080/api/2.1/unity-catalog"
     uc_api_client = ApiClient(configuration=config)
+
     catalog_api = CatalogsApi(api_client=uc_api_client)
     schema_api = SchemasApi(api_client=uc_api_client)
 
@@ -94,14 +96,22 @@ def uc_client() -> UnitycatalogFunctionClient:
             await catalog_api.create_catalog(create_catalog=create_catalog)
 
         try:
-            await schema_api.get_schema(f"{CATALOG}.{SCHEMA}")
+            await schema_api.get_schema(full_name=f"{CATALOG}.{SCHEMA}")
         except Exception:
             create_schema = CreateSchema(name=SCHEMA, catalog_name=CATALOG, comment="")
             await schema_api.create_schema(create_schema=create_schema)
 
     asyncio.run(setup_catalog_and_schema())
 
-    return UnitycatalogFunctionClient(uc=uc_api_client)
+    uc_client = UnitycatalogFunctionClient(uc=uc_api_client)
+
+    yield uc_client
+
+    async def teardown():
+        await uc_client.close_async()
+        await uc_api_client.close()
+
+    asyncio.run(teardown())
 
 
 def test_create_function(uc_client):
@@ -109,7 +119,7 @@ def test_create_function(uc_client):
     routine_definition = "return str(x)"
     data_type = "STRING"
     full_data_type = "STRING"
-    comment="test"
+    comment = "test"
     parameters = [
         FunctionParameterInfo(
             name="x",
@@ -181,7 +191,6 @@ def test_list_functions(uc_client: UnitycatalogFunctionClient):
             assert function_infos[0] != function_info
 
 
-# command to start UC server: bin/start-uc-server
 @pytest.mark.parametrize(
     "function_object",
     [
@@ -535,7 +544,6 @@ def test_execute_function_with_error(uc_client):
     assert result.value is None
 
 
-
 def test_validate_input_parameter_invalid():
     invalid_parameter = {
         "type_text": "string",
@@ -626,3 +634,149 @@ def test_to_dict(uc_client):
     assert isinstance(client_dict, dict)
     if "uc" in client_dict:
         assert isinstance(client_dict["uc"], FunctionsApi)
+
+
+def test_create_and_execute_python_function(uc_client):
+    def test_simple_func(a: str, b: str) -> str:
+        """
+        Returns an upper case concatenation of two strings separated by a space.
+
+        Args:
+            a: the first string
+            b: the second string
+
+        Returns:
+            Uppercased concatenation of the two strings.
+        """
+        concatenated = f"{a} {b}"
+
+        return concatenated.upper()
+
+    stored_func = uc_client.create_python_function(
+        func=test_simple_func,
+        catalog=CATALOG,
+        schema=SCHEMA,
+        replace=True,
+    )
+
+    function_name = f"{CATALOG}.{SCHEMA}.test_simple_func"
+
+    assert stored_func.full_name == function_name
+
+    retrieved_func = uc_client.get_function(function_name=function_name)
+
+    assert retrieved_func.name == "test_simple_func"
+    assert retrieved_func.full_name == function_name
+    assert (
+        retrieved_func.comment
+        == "Returns an upper case concatenation of two strings separated by a space."
+    )
+    assert retrieved_func.full_data_type == "STRING"
+    assert retrieved_func.external_language == "PYTHON"
+
+    result = uc_client.execute_function(
+        function_name=function_name, parameters={"a": "unity", "b": "catalog"}
+    )
+
+    assert result.value == "UNITY CATALOG"
+
+    uc_client.delete_function(function_name=function_name)
+
+
+def test_create_python_function_with_invalid_arguments(uc_client):
+    def invalid_func(self, x: int) -> str:
+        """
+        Function with 'self' in the argument.
+
+        Args:
+            x: An integer to convert to a string.
+        """
+        return str(x)
+
+    with pytest.raises(
+        ValueError, match="Parameter 'self' is not allowed in the function signature."
+    ):
+        uc_client.create_python_function(func=invalid_func, catalog=CATALOG, schema=SCHEMA)
+
+    def another_invalid_func(cls, x: int) -> str:
+        """
+        Function with 'cls' in the argument.
+
+        Args:
+            x: An integer to convert to a string.
+        """
+        return str(x)
+
+    with pytest.raises(
+        ValueError, match="Parameter 'cls' is not allowed in the function signature."
+    ):
+        uc_client.create_python_function(func=another_invalid_func, catalog=CATALOG, schema=SCHEMA)
+
+
+def test_create_python_function_missing_return_type(uc_client):
+    def missing_return_type_func(a: int, b: int):
+        """A function that lacks a return type."""
+        return a + b
+
+    with pytest.raises(
+        ValueError,
+        match="Return type for function 'missing_return_type_func' is not defined. Please provide a return type.",
+    ):
+        uc_client.create_python_function(
+            func=missing_return_type_func, catalog=CATALOG, schema=SCHEMA
+        )
+
+
+def test_create_python_function_not_callable(uc_client):
+    scalar = 42
+
+    with pytest.raises(ValueError, match="The provided function is not callable"):
+        uc_client.create_python_function(func=scalar, catalog=CATALOG, schema=SCHEMA)
+
+
+def test_function_with_invalid_list_return_type(uc_client):
+    def func_with_invalid_list_return(a: int) -> List:
+        """A function returning a list without specifying the element type."""
+        return list(range(a))
+
+    with pytest.raises(
+        ValueError,
+        match=re.escape(
+            "Error in return type for function 'func_with_invalid_list_return': typing.List. Please define the inner types, e.g., List[int], Tuple[str, int], Dict[str, int]."
+        ),
+    ):
+        uc_client.create_python_function(
+            func=func_with_invalid_list_return, catalog=CATALOG, schema=SCHEMA
+        )
+
+
+def test_function_with_invalid_dict_return_type(uc_client):
+    def func_with_invalid_dict_return(a: int) -> Dict:
+        """A function returning a dict without specifying key and value types."""
+        return {f"key_{i}": i for i in range(a)}
+
+    with pytest.raises(
+        ValueError,
+        match=re.escape(
+            "Error in return type for function 'func_with_invalid_dict_return': typing.Dict. Please define the inner types, e.g., List[int], Tuple[str, int], Dict[str, int]."
+        ),
+    ):
+        uc_client.create_python_function(
+            func=func_with_invalid_dict_return, catalog=CATALOG, schema=SCHEMA
+        )
+
+
+def test_function_with_union_return_type(uc_client):
+    def func_with_union_return(a: int) -> Union[str, int]:
+        """A function returning a union type."""
+        return a if a % 2 == 0 else str(a)
+
+    with pytest.raises(
+        ValueError,
+        match=re.escape(
+            "Error in return type for function 'func_with_union_return': typing.Union[str, int]. Union types are not supported in return types."
+        ),
+    ):
+        uc_client.create_python_function(
+            func=func_with_union_return, catalog=CATALOG, schema=SCHEMA
+        )

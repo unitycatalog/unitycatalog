@@ -1,4 +1,5 @@
 import asyncio
+import atexit
 import datetime
 import decimal
 import logging
@@ -85,8 +86,14 @@ def syncify_method(sync_method):
         try:
             loop = asyncio.get_running_loop()
         except RuntimeError:
+            # NB: For standard pythons script execution environments, a new asyncio event loop
+            # can be created to handle the async call via a synchronous wrapper.
+            # This cannot run in environments that already have a running asyncio event loop
+            # such as Jupyter/Ipython/Idle kernels.
             return asyncio.run(async_method(*args, **kwargs))
         else:
+            # NB: Jupyter kernels use a persistent asyncio loop to handle the active REPL
+            # context for which we can access the running loop to handle our future.
             return loop.run_until_complete(async_method(*args, **kwargs))
 
     return wrapper
@@ -102,15 +109,54 @@ class UnitycatalogFunctionClient(BaseFunctionClient):
         Initialize the UnitycatalogFunctionClient.
 
         Args:
-            uc: An instance of unitycatalog.client.ApiClient that has been constructed with
+            uc: An instance of unitycatalog.client.ApiClient that has been constructed with the desired Configuration.
             **kwargs: Additional keyword arguments.
         """
+
         if not isinstance(uc, ApiClient):
             raise ValueError("The 'uc' client must be an instance of unitycatalog.client.ApiClient")
+
         self.uc = FunctionsApi(api_client=uc)
-        # host all python functions within this cache, managed by an lru_cache
         self.func_cache = {}
         super().__init__()
+
+        # Clean up the ApiClient instance for aiohttp to ensure that we're not leaking resources
+        # and preventing Python's GC operator as well as to ensure that multiple instances of
+        # this client are not present within a thread (eliminate a potential memory leak).
+        atexit.register(self.close)
+
+    async def close_async(self):
+        """Asynchronously close the underlying ApiClient."""
+        if hasattr(self, "_closed") and self._closed:
+            return
+        self._closed = True
+        try:
+            await self.uc.api_client.close()
+            _logger.info("ApiClient successfully closed.")
+        except Exception as e:
+            _logger.error(f"Error while closing ApiClient: {e}")
+
+    def close(self):
+        """Synchronously close the underlying ApiClient."""
+        if hasattr(self, "_closed") and self._closed:
+            return
+        self._closed = True
+        try:
+            loop = asyncio.get_event_loop()
+            if loop.is_running():
+                asyncio.ensure_future(self.close_async())
+            else:
+                loop.run_until_complete(self.close_async())
+        except Exception as e:
+            _logger.error(f"Error while closing ApiClient: {e}")
+
+    def __enter__(self):
+        """Enter the context manager."""
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        """Exit the context manager and close the ApiClient."""
+        self.close()
 
     async def create_function_async(
         self,
@@ -146,11 +192,8 @@ class UnitycatalogFunctionClient(BaseFunctionClient):
 
         Returns:
             The created FunctionInfo object.
-
-        Raises:
-            ValueError: If the data_type is invalid.
-            ServiceException: If an error occurs while creating the function.
         """
+
         name_length = len(function_name)
         if name_length > 255:
             raise ValueError(
@@ -236,11 +279,8 @@ class UnitycatalogFunctionClient(BaseFunctionClient):
 
         Returns:
             The created FunctionInfo object.
-
-        Raises:
-            ValueError: If the data_type is invalid.
-            ServiceException: If an error occurs while creating the function.
         """
+
         pass
 
     async def create_python_function_async(
@@ -267,7 +307,11 @@ class UnitycatalogFunctionClient(BaseFunctionClient):
         Returns:
             The created FunctionInfo object.
         """
-        callable_info = generate_function_info(callable=func)
+
+        if not callable(func):
+            raise ValueError("The provided function is not callable.")
+
+        callable_info = generate_function_info(func=func)
 
         function_name = f"{catalog}.{schema}.{callable_info.callable_name}"
 
@@ -280,7 +324,7 @@ class UnitycatalogFunctionClient(BaseFunctionClient):
             parameters=callable_info.parameters,
             properties=properties,
             timeout=timeout,
-            replace=replace
+            replace=replace,
         )
 
     @override
@@ -311,6 +355,7 @@ class UnitycatalogFunctionClient(BaseFunctionClient):
         Returns:
             The created FunctionInfo object.
         """
+
         pass
 
     async def get_function_async(
@@ -326,11 +371,8 @@ class UnitycatalogFunctionClient(BaseFunctionClient):
 
         Returns:
             The FunctionInfo object representing the function.
-
-        Raises:
-            NotFoundException: If the function does not exist.
-            ServiceException: If an error occurs while retrieving the function.
         """
+
         try:
             return await self.uc.get_function(function_name, _request_timeout=timeout)
         except NotFoundException as e:
@@ -354,11 +396,8 @@ class UnitycatalogFunctionClient(BaseFunctionClient):
 
         Returns:
             The FunctionInfo object representing the function.
-
-        Raises:
-            NotFoundException: If the function does not exist.
-            ServiceException: If an error occurs while retrieving the function.
         """
+
         pass
 
     async def list_functions_async(
@@ -467,15 +506,13 @@ class UnitycatalogFunctionClient(BaseFunctionClient):
 
         Returns:
             None
-
-        Raises:
-            ServiceException: If an error occurs while deleting the function.
         """
+
         await self.uc.delete_function(function_name, _request_timeout=timeout)
 
     @override
     @syncify_method
-    def delete_function(self, function_name: str, timeout: Optional[float] = None):
+    def delete_function(self, function_name: str, timeout: Optional[float] = None) -> None:
         """
         Delete a function by its full name.
 
@@ -488,15 +525,12 @@ class UnitycatalogFunctionClient(BaseFunctionClient):
 
         Returns:
             None
-
-        Raises:
-            ServiceException: If an error occurs while deleting the function.
         """
+
         pass
 
     @override
-    def to_dict(self):
-        # TODO: check what other attributes need to be saved
+    def to_dict(self) -> Dict[str, Any]:
         return {k: getattr(self, k) for k in ["uc"] if getattr(self, k) is not None}
 
 
@@ -522,10 +556,8 @@ def dynamically_construct_python_function(function_info: FunctionInfo) -> Functi
 
     Returns:
         A FunctionDefinition named tuple containing the function definition and function head.
-
-    Raises:
-        NotImplementedError: If the routine_body is not supported.
     """
+
     param_names = []
     if function_info.input_params and function_info.input_params.parameters:
         param_names = [param.name for param in function_info.input_params.parameters]
@@ -551,11 +583,8 @@ def validate_input_parameter(
 
     Returns:
         The validated FunctionParameterInfo.
-
-    Raises:
-        TypeError: If the input parameter is neither a dict nor a FunctionParameterInfo instance.
-        ValueError: If required fields are missing or invalid.
     """
+
     if isinstance(parameter, dict):
         parameter = FunctionParameterInfo(**parameter)
     elif not isinstance(parameter, FunctionParameterInfo):
@@ -605,6 +634,7 @@ def validate_param(param: Any, column_type: str, param_type_text: str) -> None:
         column_type: The column type name.
         param_type_text: The parameter type text.
     """
+
     if (
         column_type == "INTERVAL"
         and isinstance(param, datetime.timedelta)
