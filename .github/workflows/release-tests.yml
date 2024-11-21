@@ -26,5 +26,5 @@ jobs:
           VERSION_TO_USE_FOR_INTEGRATION_TESTS: 0.2.1
           STAGING_REPOSITORY_VERSION: 1020
         run: |
-          chmod +x ./scripts/run_integration_tests.sh
-          ./scripts/run_integration_tests.sh $VERSION_TO_USE_FOR_INTEGRATION_TESTS $STAGING_REPOSITORY_VERSION
+          chmod +x integration-tests/bin/run-integration-tests
+          integration-tests/bin/run-integration-tests $VERSION_TO_USE_FOR_INTEGRATION_TESTS $STAGING_REPOSITORY_VERSION
