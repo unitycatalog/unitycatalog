@@ -67,6 +67,7 @@ lazy val commonSettings = Seq(
     generateClasspathFile(
       targetDir = packageFile.getParentFile,
       // Also include the jar being built (packageFile) in the classpath
+      // This is specifically required by the server project since the server and control models are provided dependencies
       classpath = (Runtime / dependencyClasspath).value :+ Attributed.blank(packageFile)
     )
     packageFile
