@@ -6,11 +6,15 @@ interface LoginResponse {
   access_token: string;
 }
 
+export interface EmailInterface {
+  value: string;
+}
+
 export interface UserInterface {
   id: string;
   userName: string;
   displayName: string;
-  emails: any;
+  emails: EmailInterface[];
   photos: any;
 }
 
@@ -58,8 +62,12 @@ export function useGetCurrentUser() {
           baseURL: `${UC_AUTH_API_PREFIX}`,
         })
         .then((response) => response.data)
-        .catch(() => {
-          throw new Error('Failed to fetch user');
+        .catch((error) => {
+          if (error?.status === HttpStatus.UNAUTHORIZED) {
+            return null;
+          } else {
+            throw new Error('Failed to fetch user');
+          }
         });
     },
   });

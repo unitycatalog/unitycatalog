@@ -3,6 +3,7 @@ import {
   useGetCurrentUser,
   useLoginWithToken,
   useLogoutCurrentUser,
+  UserInterface,
 } from '../hooks/user';
 import { useNotification } from '../utils/NotificationContext';
 
@@ -10,7 +11,7 @@ interface AuthContextProps {
   accessToken: any;
   loginWithToken: any;
   logout: any;
-  currentUser: any;
+  currentUser: UserInterface | null;
 }
 
 const AuthContext = React.createContext<AuthContextProps>({

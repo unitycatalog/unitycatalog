@@ -88,7 +88,7 @@ function AppProvider() {
             }}
           >
             <Typography.Text>{currentUser?.displayName}</Typography.Text>
-            <Typography.Text>{currentUser?.emails[0]?.value}</Typography.Text>
+            <Typography.Text>{currentUser?.emails?.[0]?.value}</Typography.Text>
           </div>
         ),
       },
@@ -104,7 +104,6 @@ function AppProvider() {
     [currentUser, logout, navigate],
   );
 
-  // commenting login UI for now until repositories are merged
   return authEnabled && !currentUser ? (
     <Login />
   ) : (
