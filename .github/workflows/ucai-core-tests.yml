@@ -43,6 +43,9 @@ jobs:
         python-version: ['3.9', '3.10']
         pydantic-version: [1, 2]
     timeout-minutes: 40
+    defaults:
+      run:
+        working-directory: ai
     steps:
       - name: Check out code
         uses: actions/checkout@v4
@@ -64,21 +67,14 @@ jobs:
           fi
       - name: Install Unity Catalog Python Libraries
         run: |
-          ./ai/dev/install_client.sh
+          dev/install_client.sh
       - name: Start Unity Catalog Server
         run: |
-          ./ai/dev/start_unitycatalog.sh
-        working-directory: ${{ github.workspace }}
-      # - name: Wait for Unity Catalog Service to be Ready
-      #   run: |
-      #     ./ai/dev/wait_unitycatalog.sh
-        # working-directory: ${{ github.workspace }}
+          dev/start_unitycatalog.sh
       - name: Run Tests
         run: |
-          pytest tests/
-        working-directory: ai/core
-      # - name: Tear Down Unity Catalog Server
-      #   if: always()
-      #   run: |
-      #     ./ai/dev/teardown_server.sh
-      #   working-directory: ${{ github.workspace }}
+          pytest core/tests
+      - name: Stop Unity Catalog Server
+        if: always()
+        run: |
+          dev/teardown_server.sh

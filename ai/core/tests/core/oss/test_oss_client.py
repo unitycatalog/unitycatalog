@@ -88,7 +88,6 @@ async def uc_client():
     catalog_api = CatalogsApi(api_client=uc_api_client)
     schema_api = SchemasApi(api_client=uc_api_client)
 
-    # Setup: Create catalog and schema if they don't exist
     try:
         await catalog_api.get_catalog(name=CATALOG)
     except Exception:
@@ -103,9 +102,8 @@ async def uc_client():
 
     uc_client = UnitycatalogFunctionClient(uc=uc_api_client)
 
-    yield uc_client  # This will now yield the client instance
+    yield uc_client
 
-    # Teardown: Close clients
     await uc_client.close_async()
     await uc_api_client.close()
 
@@ -625,14 +623,12 @@ async def test_function_caching(uc_client):
         comment="test",
     )
 
-    # Execute the function multiple times
     result1 = uc_client.execute_function(function_name=function_name, parameters={"x": 2})
     result2 = uc_client.execute_function(function_name=function_name, parameters={"x": 3})
 
     assert result1.value == "4"
     assert result2.value == "6"
 
-    # Check if the function is cached
     assert function_name.split(".")[-1] in uc_client.func_cache
 
 
