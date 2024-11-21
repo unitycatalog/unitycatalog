@@ -16,7 +16,6 @@ from unitycatalog.ai.core.utils.callable_utils import generate_function_info
 from unitycatalog.ai.core.utils.type_utils import column_type_to_python_type
 from unitycatalog.ai.core.utils.validation_utils import (
     FullFunctionName,
-    maybe_truncate_comment,
     validate_function_name_length,
 )
 from unitycatalog.client import (
@@ -200,8 +199,6 @@ class UnitycatalogFunctionClient(BaseFunctionClient):
         """
 
         validate_function_name_length(function_name=function_name)
-
-        comment = maybe_truncate_comment(comment=comment, function_name=function_name)
 
         function_name = FullFunctionName.validate_full_function_name(function_name)
         parameters = [validate_input_parameter(param) for param in parameters]

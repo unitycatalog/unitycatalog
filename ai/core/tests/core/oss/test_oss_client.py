@@ -689,57 +689,6 @@ async def test_create_and_execute_python_function(uc_client):
 
 
 @pytest.mark.asyncio
-async def test_create_python_function_with_long_comment(uc_client):
-    def test_long_comment_func(a: str, b: str) -> str:
-        """
-        This is a very long comment block that should exceed the capacity
-        of the UnityCatalog server's ability to store a comment string due
-        to the maximum field width of 255 for function comments. While this
-        is not a typical description of a function, some people like to include
-        examples within their function descriptions or otherwise have very long
-        and verbose comments that help to explain complex code.
-
-        Args:
-            a: the first string
-            b: the second string
-
-        Returns:
-            Uppercased concatenation of the two strings.
-        """
-        concatenated = f"{a} {b}"
-
-        return concatenated.upper()
-
-    with pytest.warns(
-        UserWarning, match=f"The comment for the function {CATALOG}.{SCHEMA}.test_long_comment_func"
-    ):
-        stored_func = uc_client.create_python_function(
-            func=test_long_comment_func,
-            catalog=CATALOG,
-            schema=SCHEMA,
-            replace=True,
-        )
-
-    function_name = f"{CATALOG}.{SCHEMA}.test_long_comment_func"
-
-    assert stored_func.full_name == function_name
-
-    retrieved_func = uc_client.get_function(function_name=function_name)
-
-    assert retrieved_func.name == "test_long_comment_func"
-    assert retrieved_func.full_name == function_name
-    assert len(retrieved_func.comment) == 255
-
-    result = uc_client.execute_function(
-        function_name=function_name, parameters={"a": "unity", "b": "catalog"}
-    )
-
-    assert result.value == "UNITY CATALOG"
-
-    uc_client.delete_function(function_name=function_name)
-
-
-@pytest.mark.asyncio
 async def test_create_python_function_with_invalid_arguments(uc_client):
     def invalid_func(self, x: int) -> str:
         """

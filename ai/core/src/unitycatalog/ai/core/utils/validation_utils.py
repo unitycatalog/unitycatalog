@@ -140,31 +140,3 @@ def validate_function_name_length(function_name: str) -> None:
             f"The maximum length of a function name is {OSS_MAX_COMMENT_OR_NAME_LENGTH}. "
             f"The name supplied is {name_length} characters long."
         )
-
-
-def maybe_truncate_comment(comment: str, function_name: str) -> str:
-    """
-    Verifies the length of the function comment provided. If the comment exceeds 255 characters, the comment is
-    truncated and a warning is issued regarding the truncation.
-    This behavior is only relevant to OSS UnityCatalog due to the storage field width for the comment data within
-    the OSS database.
-
-    Args:
-        comment: The function comment that is being supplied during function creation.
-        function_name: The name of the function being created.
-    """
-
-    comment_length = len(comment)
-    if comment_length > OSS_MAX_COMMENT_OR_NAME_LENGTH:
-        comment = comment[:OSS_MAX_COMMENT_OR_NAME_LENGTH]
-        warnings.warn(
-            f"The comment for the function {function_name} has a length exceeding the maximum permissible"
-            "comment length for Unity Catalog functions. Comments must be less than "
-            f"{OSS_MAX_COMMENT_OR_NAME_LENGTH}. The comment is being truncated to fit this restriction, but "
-            "it is recommended to condense the comment to a succinct description that captures the functionality "
-            "of your function and avoid the use of superfluous text or examples that do not provide critically "
-            "important context for the function to be used as a GenAI tool.",
-            UserWarning,
-            stacklevel=2,
-        )
-    return comment
