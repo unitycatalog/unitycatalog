@@ -23,7 +23,7 @@ public class FunctionInfoDAO extends IdentifiableDAO {
   @Column(name = "schema_id")
   private UUID schemaId;
 
-  @Column(name = "comment")
+  @Column(name = "comment", length = 65535)
   private String comment;
 
   @Column(name = "owner")
@@ -59,10 +59,12 @@ public class FunctionInfoDAO extends IdentifiableDAO {
   @Column(name = "parameter_style")
   private FunctionInfo.ParameterStyleEnum parameterStyle;
 
-  @Column(name = "routine_body")
+  @Lob
+  @Column(name = "routine_body", length = 16777215)
   private FunctionInfo.RoutineBodyEnum routineBody;
 
-  @Column(name = "routine_definition")
+  @Lob
+  @Column(name = "routine_definition", length = 16777215)
   private String routineDefinition;
 
   @Column(name = "sql_data_access")
