@@ -77,8 +77,8 @@ jobs:
         run: |
           pytest tests/
         working-directory: ai/core
-      - name: Tear Down Unity Catalog Server
-        if: always()
-        run: |
-          ./ai/dev/teardown_server.sh
-        working-directory: ${{ github.workspace }}
+      # - name: Tear Down Unity Catalog Server
+      #   if: always()
+      #   run: |
+      #     ./ai/dev/teardown_server.sh
+      #   working-directory: ${{ github.workspace }}
