@@ -66,6 +66,7 @@ public class AuthService {
   private final JwksOperations jwksOperations;
 
   private static final String COOKIE = "cookie";
+  private static final String EMPTY_RESPONSE = "{}";
 
   public AuthService(SecurityContext securityContext) {
     this.securityContext = securityContext;
@@ -190,9 +191,10 @@ public class AuthService {
                       .add(HttpHeaderNames.SET_COOKIE, expiredCookie.toSetCookieHeader())
                       .contentType(MediaType.JSON)
                       .build();
-              return HttpResponse.of(headers, HttpData.ofUtf8("{}"));
+              // Armeria requires a non-empty response payload, so an empty JSON is sent
+              return HttpResponse.of(headers, HttpData.ofUtf8(EMPTY_RESPONSE));
             })
-        .orElse(HttpResponse.of(HttpStatus.OK));
+        .orElse(HttpResponse.of(HttpStatus.OK, MediaType.JSON, EMPTY_RESPONSE));
   }
 
   private static void verifyPrincipal(DecodedJWT decodedJWT) {

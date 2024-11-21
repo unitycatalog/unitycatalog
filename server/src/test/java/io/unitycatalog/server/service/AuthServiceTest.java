@@ -20,6 +20,8 @@ public class AuthServiceTest extends BaseServerTest {
 
   private static final String LOGOUT_ENDPOINT = "/api/1.0/unity-control/auth/logout";
   private WebClient client;
+  private static final String EMPTY_RESPONSE = "{}";
+
 
   @BeforeEach
   public void setUp() {
@@ -37,13 +39,13 @@ public class AuthServiceTest extends BaseServerTest {
 
     AggregatedHttpResponse response = client.execute(headersWithCookie).aggregate().join();
     assertEquals(HttpStatus.OK, response.status());
-    assertThat(response.contentUtf8()).isEqualTo("{}");
+    assertThat(response.contentUtf8()).isEqualTo(EMPTY_RESPONSE);
 
     // Logout without cookie should return 200 status
     RequestHeaders headersWithoutCookie = buildRequestHeader(false);
     response = client.execute(headersWithoutCookie).aggregate().join();
     assertEquals(HttpStatus.OK, response.status());
-    assertThat(response.contentUtf8()).isEqualTo(HttpStatus.OK.toString());
+    assertThat(response.contentUtf8()).isEqualTo(EMPTY_RESPONSE);
   }
 
   public RequestHeaders buildRequestHeader(boolean includeCookie) {
