@@ -3,6 +3,7 @@ package io.unitycatalog.integrationtests;
 import lombok.Getter;
 import lombok.SneakyThrows;
 import org.apache.spark.sql.SparkSession;
+import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
 
 import java.io.IOException;
@@ -13,7 +14,8 @@ import java.util.Objects;
 
 public class BaseSparkTest {
     // todo: parameterize such that catalogs can be specified per cloud provider if desired
-    private static final String ServerUrl = System.getenv().getOrDefault("CATALOG_URI", "http://localhost:8080");
+    private static final int testServerPort = 8080;//(int) (Math.random() * 1000) + 9000;
+    private static final String ServerUrl = System.getenv().getOrDefault("CATALOG_URI", "http://localhost:" + testServerPort);
     private static final String AuthToken = System.getenv().getOrDefault("CATALOG_AUTH_TOKEN", "");
     private static final String CatalogName = System.getenv().getOrDefault("CATALOG_NAME", "unity");
     protected static SparkSession spark;
@@ -21,6 +23,13 @@ public class BaseSparkTest {
     @BeforeAll
     public static void setup() {
         spark = createSparkSessionWithCatalogs(CatalogName);
+    }
+
+    @AfterAll
+    public static void tearDown() {
+        if (spark != null) {
+            spark.stop();
+        }
     }
 
     protected static SparkSession createSparkSessionWithCatalogs(String... catalogs) {
