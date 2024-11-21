@@ -14,8 +14,7 @@ import java.util.Objects;
 
 public class BaseSparkTest {
     // todo: parameterize such that catalogs can be specified per cloud provider if desired
-    private static final int testServerPort = 8080;//(int) (Math.random() * 1000) + 9000;
-    private static final String ServerUrl = System.getenv().getOrDefault("CATALOG_URI", "http://localhost:" + testServerPort);
+    private static final String ServerUrl = System.getenv().getOrDefault("CATALOG_URI", "http://localhost:8080");
     private static final String AuthToken = System.getenv().getOrDefault("CATALOG_AUTH_TOKEN", "");
     private static final String CatalogName = System.getenv().getOrDefault("CATALOG_NAME", "unity");
     protected static SparkSession spark;
