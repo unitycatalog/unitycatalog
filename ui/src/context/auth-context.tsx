@@ -1,13 +1,17 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { useGetCurrentUser, useLoginWithToken } from '../hooks/user';
-import apiClient from './client';
+import React, { useCallback, useMemo } from 'react';
+import {
+  useGetCurrentUser,
+  useLoginWithToken,
+  useLogoutCurrentUser,
+  UserInterface,
+} from '../hooks/user';
 import { useNotification } from '../utils/NotificationContext';
 
 interface AuthContextProps {
   accessToken: any;
   loginWithToken: any;
   logout: any;
-  currentUser: any;
+  currentUser: UserInterface | null;
 }
 
 const AuthContext = React.createContext<AuthContextProps>({
@@ -19,18 +23,18 @@ const AuthContext = React.createContext<AuthContextProps>({
 AuthContext.displayName = 'AuthContext';
 
 function AuthProvider(props: any) {
-  const [accessToken, setAccessToken] = useState<string>('');
-  const { data: currentUser } = useGetCurrentUser(accessToken);
+  const { data: currentUser, refetch } = useGetCurrentUser();
   const loginWithTokenMutation = useLoginWithToken();
+  const logoutUser = useLogoutCurrentUser();
   const { setNotification } = useNotification();
 
   const loginWithToken = useCallback(
     async (idToken: string) => {
       return loginWithTokenMutation.mutate(idToken, {
-        onSuccess: (response) => {
-          setAccessToken(response.access_token);
+        onSuccess: () => {
+          refetch();
         },
-        onError: (error) => {
+        onError: () => {
           setNotification(
             'Login failed. Please contact your system administrator.',
             'error',
@@ -38,48 +42,33 @@ function AuthProvider(props: any) {
         },
       });
     },
-    [loginWithTokenMutation, setNotification],
+    [loginWithTokenMutation, setNotification, refetch],
   );
 
   const logout = useCallback(async () => {
-    return setAccessToken('');
-  }, []);
-
-  useEffect(() => {
-    const requestIntercept = apiClient.interceptors.request.use(
-      (config) => {
-        if (accessToken) {
-          config.headers['Authorization'] = `Bearer ${accessToken}`;
-        }
-        return config;
-      },
-      (error) => Promise.reject(error),
-    );
-    const responseIntercept = apiClient.interceptors.response.use(
-      (response) => response,
-      async (error) => {
-        if (error?.response?.status === 403) {
-          // todo if we support refresh in the future, that logic will go in here
-          setAccessToken('');
-        }
-        return Promise.reject(error);
+    return logoutUser.mutate(
+      {},
+      {
+        onSuccess: () => {
+          refetch();
+        },
+        onError: () => {
+          setNotification(
+            'Logout failed. Please contact your system administrator.',
+            'error',
+          );
+        },
       },
     );
-
-    return () => {
-      apiClient.interceptors.request.eject(requestIntercept);
-      apiClient.interceptors.response.eject(responseIntercept);
-    };
-  }, [accessToken]);
+  }, [refetch, logoutUser, setNotification]);
 
   const value = useMemo(
     () => ({
-      accessToken,
       loginWithToken,
       logout,
       currentUser,
     }),
-    [accessToken, loginWithToken, logout, currentUser],
+    [loginWithToken, logout, currentUser],
   );
 
   return <AuthContext.Provider value={value} {...props} />;
