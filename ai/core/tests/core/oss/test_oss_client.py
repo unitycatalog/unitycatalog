@@ -1,4 +1,3 @@
-import asyncio
 import datetime
 import decimal
 import logging
@@ -8,6 +7,7 @@ from dataclasses import dataclass
 from typing import Any, Dict, List, Union
 
 import pytest
+import pytest_asyncio
 from pydantic import ValidationError
 
 from unitycatalog.ai.core.oss import (
@@ -79,8 +79,8 @@ def simple_function_obj():
     )
 
 
-@pytest.fixture
-def uc_client():
+@pytest_asyncio.fixture
+async def uc_client():
     config = Configuration()
     config.host = "http://localhost:8080/api/2.1/unity-catalog"
     uc_api_client = ApiClient(configuration=config)
@@ -88,33 +88,30 @@ def uc_client():
     catalog_api = CatalogsApi(api_client=uc_api_client)
     schema_api = SchemasApi(api_client=uc_api_client)
 
-    async def setup_catalog_and_schema():
-        try:
-            await catalog_api.get_catalog(name=CATALOG)
-        except Exception:
-            create_catalog = CreateCatalog(name=CATALOG, comment="")
-            await catalog_api.create_catalog(create_catalog=create_catalog)
+    # Setup: Create catalog and schema if they don't exist
+    try:
+        await catalog_api.get_catalog(name=CATALOG)
+    except Exception:
+        create_catalog = CreateCatalog(name=CATALOG, comment="")
+        await catalog_api.create_catalog(create_catalog=create_catalog)
 
-        try:
-            await schema_api.get_schema(full_name=f"{CATALOG}.{SCHEMA}")
-        except Exception:
-            create_schema = CreateSchema(name=SCHEMA, catalog_name=CATALOG, comment="")
-            await schema_api.create_schema(create_schema=create_schema)
-
-    asyncio.run(setup_catalog_and_schema())
+    try:
+        await schema_api.get_schema(full_name=f"{CATALOG}.{SCHEMA}")
+    except Exception:
+        create_schema = CreateSchema(name=SCHEMA, catalog_name=CATALOG, comment="")
+        await schema_api.create_schema(create_schema=create_schema)
 
     uc_client = UnitycatalogFunctionClient(uc=uc_api_client)
 
-    yield uc_client
+    yield uc_client  # This will now yield the client instance
 
-    async def teardown():
-        await uc_client.close_async()
-        await uc_api_client.close()
-
-    asyncio.run(teardown())
+    # Teardown: Close clients
+    await uc_client.close_async()
+    await uc_api_client.close()
 
 
-def test_create_function(uc_client):
+@pytest.mark.asyncio
+async def test_create_function(uc_client):
     function_name = f"{CATALOG}.{SCHEMA}.test_function"
     routine_definition = "return str(x)"
     data_type = "STRING"
@@ -149,7 +146,8 @@ def test_create_function(uc_client):
     assert func_info.comment == comment
 
 
-def test_list_functions(uc_client: UnitycatalogFunctionClient):
+@pytest.mark.asyncio
+async def test_list_functions(uc_client: UnitycatalogFunctionClient):
     function_infos = uc_client.list_functions(catalog=CATALOG, schema=SCHEMA)
     func_obj = simple_function_obj()
     with generate_func_name_and_cleanup(uc_client) as func_name:
@@ -191,6 +189,7 @@ def test_list_functions(uc_client: UnitycatalogFunctionClient):
             assert function_infos[0] != function_info
 
 
+@pytest.mark.asyncio
 @pytest.mark.parametrize(
     "function_object",
     [
@@ -463,7 +462,7 @@ def test_list_functions(uc_client: UnitycatalogFunctionClient):
         ),
     ],
 )
-def test_function_creation_and_execution(
+async def test_function_creation_and_execution(
     uc_client: UnitycatalogFunctionClient, function_object: FunctionObj
 ):
     with generate_func_name_and_cleanup(uc_client) as function_name:
@@ -481,7 +480,8 @@ def test_function_creation_and_execution(
         assert result.value == function_object.expected_result
 
 
-def test_create_function_invalid_data_type(uc_client):
+@pytest.mark.asyncio
+async def test_create_function_invalid_data_type(uc_client):
     function_name = f"{CATALOG}.{SCHEMA}.invalid_function"
     routine_definition = "return x"
     data_type = "INVALID_TYPE"  # Invalid data type
@@ -508,21 +508,24 @@ def test_create_function_invalid_data_type(uc_client):
         )
 
 
-def test_get_nonexistent_function(uc_client):
+@pytest.mark.asyncio
+async def test_get_nonexistent_function(uc_client):
     function_name = f"{CATALOG}.{SCHEMA}.nonexistent_function"
 
     with pytest.raises(ServiceException, match="(500)"):
         uc_client.get_function(function_name=function_name)
 
 
-def test_delete_nonexistent_function(uc_client):
+@pytest.mark.asyncio
+async def test_delete_nonexistent_function(uc_client):
     function_name = f"{CATALOG}.{SCHEMA}.nonexistent_function"
 
     with pytest.raises(NotFoundException):
         uc_client.delete_function(function_name=function_name)
 
 
-def test_execute_function_with_error(uc_client):
+@pytest.mark.asyncio
+async def test_execute_function_with_error(uc_client):
     function_name = f"{CATALOG}.{SCHEMA}.error_function"
     routine_definition = "raise ValueError('Intentional Error')"
     data_type = "STRING"
@@ -544,7 +547,8 @@ def test_execute_function_with_error(uc_client):
     assert result.value is None
 
 
-def test_validate_input_parameter_invalid():
+@pytest.mark.asyncio
+async def test_validate_input_parameter_invalid():
     invalid_parameter = {
         "type_text": "string",
         # Missing 'name' field
@@ -557,7 +561,8 @@ def test_validate_input_parameter_invalid():
         validate_input_parameter(invalid_parameter)
 
 
-def test_validate_param_invalid_interval():
+@pytest.mark.asyncio
+async def test_validate_param_invalid_interval():
     param = datetime.timedelta(days=1)
     column_type = "INTERVAL"
     param_type_text = "interval year to month"  # Invalid for timedelta
@@ -566,7 +571,8 @@ def test_validate_param_invalid_interval():
         validate_param(param, column_type, param_type_text)
 
 
-def test_create_function_long_name(uc_client):
+@pytest.mark.asyncio
+async def test_create_function_long_name(uc_client):
     long_function_name = f"{CATALOG}.{SCHEMA}." + "a" * 256  # Function name exceeds typical limits
     routine_definition = "return x"
     data_type = "STRING"
@@ -593,7 +599,8 @@ def test_create_function_long_name(uc_client):
         )
 
 
-def test_function_caching(uc_client):
+@pytest.mark.asyncio
+async def test_function_caching(uc_client):
     function_name = f"{CATALOG}.{SCHEMA}.cached_function"
     routine_definition = "return x * 2"
     data_type = "INT"
@@ -629,14 +636,16 @@ def test_function_caching(uc_client):
     assert function_name.split(".")[-1] in uc_client.func_cache
 
 
-def test_to_dict(uc_client):
+@pytest.mark.asyncio
+async def test_to_dict(uc_client):
     client_dict = uc_client.to_dict()
     assert isinstance(client_dict, dict)
     if "uc" in client_dict:
         assert isinstance(client_dict["uc"], FunctionsApi)
 
 
-def test_create_and_execute_python_function(uc_client):
+@pytest.mark.asyncio
+async def test_create_and_execute_python_function(uc_client):
     def test_simple_func(a: str, b: str) -> str:
         """
         Returns an upper case concatenation of two strings separated by a space.
@@ -683,7 +692,8 @@ def test_create_and_execute_python_function(uc_client):
     uc_client.delete_function(function_name=function_name)
 
 
-def test_create_python_function_with_invalid_arguments(uc_client):
+@pytest.mark.asyncio
+async def test_create_python_function_with_invalid_arguments(uc_client):
     def invalid_func(self, x: int) -> str:
         """
         Function with 'self' in the argument.
@@ -713,7 +723,8 @@ def test_create_python_function_with_invalid_arguments(uc_client):
         uc_client.create_python_function(func=another_invalid_func, catalog=CATALOG, schema=SCHEMA)
 
 
-def test_create_python_function_missing_return_type(uc_client):
+@pytest.mark.asyncio
+async def test_create_python_function_missing_return_type(uc_client):
     def missing_return_type_func(a: int, b: int):
         """A function that lacks a return type."""
         return a + b
@@ -727,14 +738,16 @@ def test_create_python_function_missing_return_type(uc_client):
         )
 
 
-def test_create_python_function_not_callable(uc_client):
+@pytest.mark.asyncio
+async def test_create_python_function_not_callable(uc_client):
     scalar = 42
 
     with pytest.raises(ValueError, match="The provided function is not callable"):
         uc_client.create_python_function(func=scalar, catalog=CATALOG, schema=SCHEMA)
 
 
-def test_function_with_invalid_list_return_type(uc_client):
+@pytest.mark.asyncio
+async def test_function_with_invalid_list_return_type(uc_client):
     def func_with_invalid_list_return(a: int) -> List:
         """A function returning a list without specifying the element type."""
         return list(range(a))
@@ -750,7 +763,8 @@ def test_function_with_invalid_list_return_type(uc_client):
         )
 
 
-def test_function_with_invalid_dict_return_type(uc_client):
+@pytest.mark.asyncio
+async def test_function_with_invalid_dict_return_type(uc_client):
     def func_with_invalid_dict_return(a: int) -> Dict:
         """A function returning a dict without specifying key and value types."""
         return {f"key_{i}": i for i in range(a)}
@@ -766,7 +780,8 @@ def test_function_with_invalid_dict_return_type(uc_client):
         )
 
 
-def test_function_with_union_return_type(uc_client):
+@pytest.mark.asyncio
+async def test_function_with_union_return_type(uc_client):
     def func_with_union_return(a: int) -> Union[str, int]:
         """A function returning a union type."""
         return a if a % 2 == 0 else str(a)
