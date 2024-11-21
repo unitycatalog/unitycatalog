@@ -81,6 +81,7 @@ databricks-dev = [
 dev = [
   "hatch",
   "pytest",
+  "pytest-asyncio",
   "databricks-sdk>=0.32.0",
   # Note: databricks-connect 15.1 is required for serverless,
   # databricks-connect>=14.0.0 requires python>=3.10
