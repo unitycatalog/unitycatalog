@@ -1,11 +1,10 @@
 #!/bin/bash
-
-# Exit immediately if a command exits with a non-zero status
 set -e
 
+LOOP_COUNT=36
+SLEEP_DURATION=5
+
 ROOT_DIR="${1:-$GITHUB_WORKSPACE}"
-MAX_RETRY="36"
-CHECK_INTERVAL="5"
 
 echo "Building and starting the Unity Catalog Server"
 
@@ -23,18 +22,18 @@ check_server() {
 }
 
 echo "Waiting for UC server to be ready..."
-for i in {1..MAX_RETRY}; do
+for (( i=1; i<=LOOP_COUNT; i++ )); do
   if check_server; then
     echo "UC server is ready"
     break
   else
-    echo "Waiting for UC server... ($i/${MAX_RETRY})"
-    sleep $CHECK_INTERVAL
+    echo "Waiting for UC server... ($i/$LOOP_COUNT)"
+    sleep "$SLEEP_DURATION"
   fi
 
-  if [ $i -eq 36 ]; then
-    echo "UC server failed to start within 3 minutes"
-    kill $UC_SERVER_PID
+  if [ "$i" -eq "$LOOP_COUNT" ]; then
+    echo "UC server failed to start within $((LOOP_COUNT * SLEEP_DURATION)) seconds"
+    kill "$UC_SERVER_PID"
     exit 1
   fi
 done
