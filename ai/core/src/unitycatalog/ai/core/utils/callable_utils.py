@@ -594,9 +594,7 @@ def generate_function_info(func: Callable[..., Any]) -> FunctionInfoDefinition:
             "name": param_info["name"],
             "type": param_info["base_type_name"].lower(),
             "nullable": param_info["parameter_default"] is not None,
-            "metadata": {
-                "comment": param_info["comment"] or ""
-            }
+            "metadata": {"comment": param_info["comment"] or ""},
         }
         type_json_str = json.dumps(type_json_dict)
 

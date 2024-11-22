@@ -144,9 +144,9 @@ async def test_create_function(uc_client):
     assert func_info.routine_definition == routine_definition
     assert func_info.comment == comment
 
+
 @pytest.mark.asyncio
 async def test_parameter_metadata_correctness(uc_client: UnitycatalogFunctionClient):
-
     function_obj = FunctionObj(
         input_params=[
             FunctionParameterInfo(
@@ -186,8 +186,12 @@ async def test_parameter_metadata_correctness(uc_client: UnitycatalogFunctionCli
 
         for expected_param in function_obj.input_params:
             retrieved_param = next(
-                (p for p in retrieved_func.input_params.parameters if p.name == expected_param.name),
-                None
+                (
+                    p
+                    for p in retrieved_func.input_params.parameters
+                    if p.name == expected_param.name
+                ),
+                None,
             )
             assert retrieved_param is not None
 
@@ -201,8 +205,7 @@ async def test_parameter_metadata_correctness(uc_client: UnitycatalogFunctionCli
             )
 
         result = uc_client.execute_function(
-            function_name=function_name,
-            parameters=function_obj.input_data
+            function_name=function_name, parameters=function_obj.input_data
         )
         assert result.value == function_obj.expected_result, "Function execution result mismatch."
         assert result.error is None, "Function execution should not have errors."
