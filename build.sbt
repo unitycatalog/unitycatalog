@@ -1,11 +1,10 @@
 import java.nio.file.Files
 import java.io.File
 import Tarball.createTarballSettings
-import sbt.util
-import sbt.Keys._
+import sbt.{Attributed, util}
+import sbt.Keys.*
 import sbtlicensereport.license.{DepModuleInfo, LicenseCategory, LicenseInfo}
 import ReleaseSettings.*
-import PythonClientPostBuild.*
 
 import scala.language.implicitConversions
 
@@ -70,7 +69,9 @@ lazy val commonSettings = Seq(
     val packageFile = (Compile / packageBin).value
     generateClasspathFile(
       targetDir = packageFile.getParentFile,
-      classpath = (Runtime / dependencyClasspath).value)
+      // Also include the jar being built (packageFile) in the classpath
+      classpath = (Runtime / dependencyClasspath).value :+ Attributed.blank(packageFile)
+    )
     packageFile
   },
 
@@ -288,7 +289,9 @@ lazy val populateTestDB = taskKey[Unit]("Run PopulateTestDatabase main class fro
 
 lazy val server = (project in file("server"))
   .dependsOn(client % "test->test")
-  .dependsOn(serverModels)
+  // Server and control models are added as provided to avoid them being added as maven dependencies
+  // This is because the server and control models are included in the server jar
+  .dependsOn(serverModels % "provided", controlModels % "provided")
   .settings (
     name := s"$artifactNamePrefix-server",
     mainClass := Some(orgName + ".server.UnityCatalogServer"),
@@ -388,13 +391,17 @@ lazy val server = (project in file("server"))
       val log = streams.value.log
       (Test / runMain).toTask(s" io.unitycatalog.server.utils.PopulateTestDatabase").value
     },
-    Test / javaOptions += s"-Duser.dir=${(ThisBuild / baseDirectory).value.getAbsolutePath}"
+    Test / javaOptions += s"-Duser.dir=${(ThisBuild / baseDirectory).value.getAbsolutePath}",
+    // Include server and control models in the bin package for server
+    // This will allow us to have a single maven artifact and not 3 (server, server models, control models)
+    Compile / packageBin / mappings ++= (Compile / packageBin / mappings).value ++
+      (serverModels / Compile / packageBin / mappings).value ++
+      (controlModels / Compile / packageBin / mappings).value
   )
 
 lazy val serverModels = (project in file("server") / "target" / "models")
   .enablePlugins(OpenApiGeneratorPlugin)
   .disablePlugins(JavaFormatterPlugin)
-  .dependsOn(controlModels % "compile->compile")
   .settings(
     name := s"$artifactNamePrefix-servermodels",
     commonSettings,
@@ -466,6 +473,7 @@ lazy val controlModels = (project in file("server") / "target" / "controlmodels"
 
 lazy val cli = (project in file("examples") / "cli")
   .dependsOn(server % "test->test")
+  .dependsOn(serverModels, controlModels)
   .dependsOn(client % "compile->compile;test->test")
   .dependsOn(controlApi % "compile->compile")
   .settings(
@@ -600,12 +608,56 @@ lazy val spark = (project in file("connectors/spark"))
     }
   )
 
+lazy val versionToUseForIntegrationTests = settingKey[String]("Version to use for integration tests")
+lazy val stagingRepositoryVersion = settingKey[String]("Staging repository version")
+
+ThisBuild / versionToUseForIntegrationTests := sys.props.getOrElse("versionToUseForIntegrationTests", "0.2.1")
+ThisBuild / stagingRepositoryVersion := sys.props.getOrElse("stagingRepositoryVersion", "1020")
+
+// This needs to be a separate project because of the version conflicts between the server and the spark connector
+// See the serverShaded being used in the spark connector module for more details
+lazy val integrationTestsServer = (project in file("integration-tests/target/server"))
+  .settings(
+    name := s"$artifactNamePrefix-integration-tests-server",
+    commonSettings,
+    skipReleaseSettings,
+    libraryDependencies ++= Seq(
+      "io.unitycatalog" % "unitycatalog-server" % (ThisBuild / versionToUseForIntegrationTests).value,
+      "io.unitycatalog" % "unitycatalog-client" % (ThisBuild / versionToUseForIntegrationTests).value
+    ),
+    resolvers ++= Seq(
+      "Sonatype OSS Staging Releases" at s"https://s01.oss.sonatype.org/service/local/repositories/iounitycatalog-${(ThisBuild / stagingRepositoryVersion).value}/content/"
+    ),
+    fork := true,
+    Compile / run := {
+      val log = streams.value.log
+      val classpath = (Compile / fullClasspath).value.files.map(_.getAbsolutePath).mkString(java.io.File.pathSeparator)
+      val workingDir = (ThisBuild / baseDirectory).value / "integration-tests"
+      val mainClass = "io.unitycatalog.server.UnityCatalogServer"
+
+      log.info(s"Running $mainClass with working directory: $workingDir")
+      val process = new java.lang.ProcessBuilder()
+        .command("java", "-cp", classpath, mainClass)
+        .directory(workingDir)
+        .inheritIO()
+        .start()
+
+      val exitCode = process.waitFor()
+      if (exitCode != 0) {
+        throw new RuntimeException(s"Process exited with code $exitCode")
+      }
+    }
+  )
+
 lazy val integrationTests = (project in file("integration-tests"))
   .settings(
     name := s"$artifactNamePrefix-integration-tests",
     commonSettings,
     javaOptions ++= Seq(
       "--add-exports=java.base/sun.nio.ch=ALL-UNNAMED",
+    ),
+    resolvers ++= Seq(
+      "Sonatype OSS Staging Releases" at s"https://s01.oss.sonatype.org/service/local/repositories/iounitycatalog-${(ThisBuild / stagingRepositoryVersion).value}/content/"
     ),
     skipReleaseSettings,
     libraryDependencies ++= Seq(
@@ -618,7 +670,7 @@ lazy val integrationTests = (project in file("integration-tests"))
       "org.apache.hadoop" % "hadoop-aws" % "3.3.6" % Test,
       "org.apache.hadoop" % "hadoop-azure" % "3.3.6" % Test,
       "com.google.cloud.bigdataoss" % "gcs-connector" % "3.0.2" % Test classifier "shaded",
-      "io.unitycatalog" %% "unitycatalog-spark" % "0.2.0" % Test,
+      "io.unitycatalog" %% "unitycatalog-spark" % (ThisBuild / versionToUseForIntegrationTests).value % Test
     ),
     dependencyOverrides ++= Seq(
       "com.fasterxml.jackson.core" % "jackson-databind" % "2.15.0",

@@ -3,6 +3,7 @@ package io.unitycatalog.integrationtests;
 import lombok.Getter;
 import lombok.SneakyThrows;
 import org.apache.spark.sql.SparkSession;
+import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
 
 import java.io.IOException;
@@ -21,6 +22,13 @@ public class BaseSparkTest {
     @BeforeAll
     public static void setup() {
         spark = createSparkSessionWithCatalogs(CatalogName);
+    }
+
+    @AfterAll
+    public static void tearDown() {
+        if (spark != null) {
+            spark.stop();
+        }
     }
 
     protected static SparkSession createSparkSessionWithCatalogs(String... catalogs) {
