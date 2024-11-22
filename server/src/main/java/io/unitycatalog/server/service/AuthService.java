@@ -66,6 +66,7 @@ public class AuthService {
   private final JwksOperations jwksOperations;
 
   private static final String COOKIE = "cookie";
+  private static final String EMPTY_RESPONSE = "{}";
 
   public AuthService(SecurityContext securityContext) {
     this.securityContext = securityContext;
@@ -139,9 +140,10 @@ public class AuthService {
     }
 
     DecodedJWT decodedJWT = JWT.decode(request.getSubjectToken());
-    String issuer = decodedJWT.getClaim("iss").asString();
-    String keyId = decodedJWT.getHeaderClaim("kid").asString();
-    LOGGER.debug("Validating token for issuer: {}", issuer);
+    String issuer = decodedJWT.getIssuer();
+    String keyId = decodedJWT.getKeyId();
+
+    LOGGER.debug("Validating token for issuer: {} and keyId: {}", issuer, keyId);
 
     JWTVerifier jwtVerifier = jwksOperations.verifierForIssuerAndKey(issuer, keyId);
     decodedJWT = jwtVerifier.verify(decodedJWT);
@@ -184,26 +186,35 @@ public class AuthService {
             authorizationCookie -> {
               Cookie expiredCookie = createCookie(AuthDecorator.UC_TOKEN_KEY, "", "/", "PT0S");
               ResponseHeaders headers =
-                  ResponseHeaders.of(
-                      HttpStatus.OK, HttpHeaderNames.SET_COOKIE, expiredCookie.toSetCookieHeader());
-              return HttpResponse.of(headers);
+                  ResponseHeaders.builder()
+                      .status(HttpStatus.OK)
+                      .add(HttpHeaderNames.SET_COOKIE, expiredCookie.toSetCookieHeader())
+                      .contentType(MediaType.JSON)
+                      .build();
+              // Armeria requires a non-empty response payload, so an empty JSON is sent
+              return HttpResponse.of(headers, HttpData.ofUtf8(EMPTY_RESPONSE));
             })
-        .orElse(HttpResponse.of(HttpStatus.OK));
+        .orElse(HttpResponse.of(HttpStatus.OK, MediaType.JSON, EMPTY_RESPONSE));
   }
 
   private static void verifyPrincipal(DecodedJWT decodedJWT) {
     String subject =
-        decodedJWT.getClaim(JwtClaim.EMAIL.key()).isMissing()
-            ? decodedJWT.getClaim(JwtClaim.SUBJECT.key()).asString()
-            : decodedJWT.getClaim(JwtClaim.EMAIL.key()).asString();
+        decodedJWT
+            .getClaims()
+            .getOrDefault(JwtClaim.EMAIL.key(), decodedJWT.getClaim(JwtClaim.SUBJECT.key()))
+            .asString();
+
+    LOGGER.debug("Validating principal: {}", subject);
 
     if (subject.equals("admin")) {
+      LOGGER.debug("admin always allowed");
       return;
     }
 
     try {
       User user = USER_REPOSITORY.getUserByEmail(subject);
       if (user != null && user.getState() == User.StateEnum.ENABLED) {
+        LOGGER.debug("Principal {} is enabled", subject);
         return;
       }
     } catch (Exception e) {
