@@ -59,8 +59,7 @@ public class FunctionInfoDAO extends IdentifiableDAO {
   @Column(name = "parameter_style")
   private FunctionInfo.ParameterStyleEnum parameterStyle;
 
-  @Lob
-  @Column(name = "routine_body", length = 16777215)
+  @Column(name = "routine_body")
   private FunctionInfo.RoutineBodyEnum routineBody;
 
   @Lob
