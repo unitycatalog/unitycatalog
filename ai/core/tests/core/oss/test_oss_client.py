@@ -1,5 +1,6 @@
 import datetime
 import decimal
+import json
 import logging
 import re
 from contextlib import contextmanager
@@ -142,6 +143,69 @@ async def test_create_function(uc_client):
     assert func_info.full_data_type == full_data_type
     assert func_info.routine_definition == routine_definition
     assert func_info.comment == comment
+
+@pytest.mark.asyncio
+async def test_parameter_metadata_correctness(uc_client: UnitycatalogFunctionClient):
+
+    function_obj = FunctionObj(
+        input_params=[
+            FunctionParameterInfo(
+                name="x",
+                type_name="STRING",
+                type_text="string",
+                type_json='{"name":"x","type":"string","nullable":false,"metadata":{}}',
+                position=0,
+            ),
+            FunctionParameterInfo(
+                name="y",
+                type_name="INT",
+                type_text="int",
+                type_json='{"name":"y","type":"int","nullable":false,"metadata":{}}',
+                position=1,
+            ),
+        ],
+        data_type="INT",
+        full_data_type="INT",
+        routine_definition="return x * y",
+        input_data={"x": "hello", "y": 2},
+        expected_result="hellohello",
+        comment="Concatenates a string and an integer.",
+    )
+
+    with generate_func_name_and_cleanup(uc_client) as function_name:
+        uc_client.create_function(
+            function_name=function_name,
+            routine_definition=function_obj.routine_definition,
+            data_type=function_obj.data_type,
+            full_data_type=function_obj.full_data_type,
+            comment=function_obj.comment,
+            parameters=function_obj.input_params,
+        )
+
+        retrieved_func = uc_client.get_function(function_name=function_name)
+
+        for expected_param in function_obj.input_params:
+            retrieved_param = next(
+                (p for p in retrieved_func.input_params.parameters if p.name == expected_param.name),
+                None
+            )
+            assert retrieved_param is not None
+
+            expected_type_json = json.loads(expected_param.type_json)
+            retrieved_type_json = json.loads(retrieved_param.type_json)
+
+            assert retrieved_type_json == expected_type_json, (
+                f"type_json mismatch for parameter '{expected_param.name}'.\n"
+                f"Expected: {expected_type_json}\n"
+                f"Found: {retrieved_type_json}"
+            )
+
+        result = uc_client.execute_function(
+            function_name=function_name,
+            parameters=function_obj.input_data
+        )
+        assert result.value == function_obj.expected_result, "Function execution result mismatch."
+        assert result.error is None, "Function execution should not have errors."
 
 
 @pytest.mark.asyncio

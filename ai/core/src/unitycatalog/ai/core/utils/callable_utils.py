@@ -1,5 +1,6 @@
 import ast
 import inspect
+import json
 import warnings
 from dataclasses import dataclass
 from textwrap import dedent, indent
@@ -589,11 +590,21 @@ def generate_function_info(func: Callable[..., Any]) -> FunctionInfoDefinition:
 
     parameters = []
     for param_info in metadata.parameters:
+        type_json_dict = {
+            "name": param_info["name"],
+            "type": param_info["base_type_name"].lower(),
+            "nullable": param_info["parameter_default"] is not None,
+            "metadata": {
+                "comment": param_info["comment"] or ""
+            }
+        }
+        type_json_str = json.dumps(type_json_dict)
+
         function_param_info = FunctionParameterInfo(
             name=param_info["name"],
             type_name=param_info["base_type_name"],
             type_text=param_info["sql_type"],
-            type_json=param_info["sql_type"],
+            type_json=type_json_str,
             position=param_info["position"],
             parameter_default=param_info["parameter_default"],
             comment=param_info["comment"],
