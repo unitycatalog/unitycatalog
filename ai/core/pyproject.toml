@@ -85,6 +85,8 @@ dev = [
   "databricks-connect",
   "pandas",
   "ruff==0.6.4",
+  # temp needed for unitycatalog python APIs
+  "distro",
 ]
 
 [tool.ruff]
