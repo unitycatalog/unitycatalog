@@ -1132,6 +1132,238 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/GetMetastoreSummaryResponse'
+  /storage-credentials:
+    post:
+      tags:
+        - Storage Credentials
+      operationId: createStorageCredential
+      summary: Create a storage credential
+      description: Creates a new storage credential.
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateStorageCredential"
+      responses:
+        200:
+          description: The new storage credential was successfully created.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StorageCredentialInfo"
+    get:
+      tags:
+        - Storage Credentials
+      operationId: listStorageCredentials
+      summary: List credentials
+      description: |
+        Gets an array of storage credentials (as __StorageCredentialInfo__ objects).
+        The array is limited to only those storage credentials the caller has permission to access.
+        If the caller is a metastore admin, retrieval of credentials is unrestricted.
+        There is no guarantee of a specific ordering of the elements in the array.
+      parameters:
+        - name: max_results
+          in: query
+          description: |
+            Maximum number of storage credentials to return.
+            If not set, all the storage credentials are returned (not recommended).
+            - when set to a value greater than 0, the page length is the minimum of this value and a server configured value;
+            - when set to 0, the page length is set to a server configured value (recommended);
+            - when set to a value less than 0, an invalid parameter error is returned;
+          schema:
+            type: integer
+            format: int32
+            maximum: 1000
+          required: false
+        - name: page_token
+          in: query
+          description: Opaque pagination token to go to next page based on previous query.
+          schema:
+            type: string
+          required: false
+      responses:
+        200:
+          description: The storage credentials list was successfully retrieved.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ListStorageCredentialsResponse"
+  /storage-credentials/{name}:
+    parameters:
+      - name: name
+        in: path
+        description: Name of the storage credential.
+        required: true
+        schema:
+          type: string
+    get:
+      tags:
+        - Storage Credentials
+      operationId: getStorageCredential
+      summary: Get a credential
+      description: |
+        Gets a storage credential from the metastore.
+        The caller must be a metastore admin, the owner of the storage credential, or have some permission on the storage credential.
+      responses:
+        200:
+          description: The storage credential was successfully retrieved.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StorageCredentialInfo"
+    patch:
+      tags:
+        - Storage Credentials
+      operationId: updateStorageCredential
+      summary: Update a credential
+      description: Updates a storage credential on the metastore.
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateStorageCredential"
+      responses:
+        200:
+          description: The storage credential was successfully updated.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StorageCredentialInfo"
+    delete:
+      tags:
+        - Storage Credentials
+      operationId: deleteStorageCredential
+      summary: Delete a credential
+      description: Deletes a storage credential from the metastore. The caller must be an owner of the storage credential.
+      parameters:
+        - name: force
+          in: query
+          description: Force deletion even if there are dependent external locations or external tables.
+          required: false
+          schema:
+            type: boolean
+      responses:
+        200:
+          description: The storage credential was successfully deleted.
+          content:
+            application/json:
+              schema: {}
+  /external-locations:
+    post:
+      tags:
+        - External Locations
+      summary: Create an external location
+      description: |
+        Creates a new external location entry in the metastore. The caller must be a metastore admin or have the **CREATE_EXTERNAL_LOCATION** privilege on both the metastore and the associated storage credential.
+      operationId: createExternalLocation
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateExternalLocation"
+      responses:
+        '200':
+          description: The new external location was successfully created.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ExternalLocationInfo"
+    get:
+      tags:
+        - External Locations
+      summary: List external locations
+      description: |
+        Gets an array of external locations (ExternalLocationInfo objects) from the metastore. The caller must be a metastore admin, the owner of the external location, or a user with some privilege on the external location.
+      operationId: listExternalLocations
+      parameters:
+        - name: max_results
+          in: query
+          description: |
+            Maximum number of external locations to return. If not set, all external locations are returned.
+          schema:
+            type: integer
+            format: int32
+            maximum: 1000
+          required: false
+        - name: page_token
+          in: query
+          description: Opaque pagination token to go to the next page.
+          schema:
+            type: string
+          required: false
+        - name: include_browse
+          in: query
+          description: Whether to include external locations in the response for which the principal can only access selective metadata.
+          required: false
+          schema:
+            type: boolean
+      responses:
+        '200':
+          description: The external location list was successfully retrieved.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ListExternalLocationsResponse"
+  /external-locations/{name}:
+    parameters:
+      - name: name
+        in: path
+        description: Name of the external location.
+        required: true
+        schema:
+          type: string
+    get:
+      tags:
+        - External Locations
+      summary: Get an external location
+      description: |
+        Gets an external location from the metastore. The caller must be a metastore admin, the owner of the external location, or a user with some privilege on the external location.
+      operationId: getExternalLocation
+      responses:
+        '200':
+          description: The external location was successfully retrieved.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ExternalLocationInfo"
+    delete:
+      tags:
+        - External Locations
+      summary: Delete an external location
+      description: Deletes the specified external location from the metastore. The caller must be the owner of the external location.
+      operationId: deleteExternalLocation
+      parameters:
+        - name: force
+          in: query
+          description: Force deletion even if there are dependent external tables or mounts.
+          required: false
+          schema:
+            type: boolean
+      responses:
+        '200':
+          description: The external location was successfully deleted.
+    patch:
+      tags:
+        - External Locations
+      summary: Update an external location
+      description: |
+        Updates an external location in the metastore. The caller must be the owner of the external location or a metastore admin.
+      operationId: updateExternalLocation
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateExternalLocation"
+      responses:
+        '200':
+          description: The external location was successfully updated.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ExternalLocationInfo"
+
 components:
   schemas:
     SecurablePropertiesMap:
@@ -2304,6 +2536,310 @@ components:
         metastore_id:
           description: Unique identifier of the metastore.
           type: string
+    StorageCredentialInfo:
+      type: object
+      properties:
+        name:
+          description: The credential name. The name must be unique within the metastore.
+          type: string
+        aws_iam_role:
+          $ref: '#/components/schemas/AwsIamRoleResponse'
+        azure_service_principal:
+          $ref: '#/components/schemas/AzureServicePrincipal'
+        azure_managed_identity:
+          $ref: '#/components/schemas/AzureManagedIdentityResponse'
+        databricks_gcp_service_account:
+          $ref: '#/components/schemas/DatabricksGcpServiceAccountResponse'
+        comment:
+          description: Comment associated with the credential.
+          type: string
+        read_only:
+          description: Whether the storage credential is only usable for read operations.
+          type: boolean
+        owner:
+          description: Username of current owner of credential.
+          type: string
+        full_name:
+          description: The full name of the credential.
+          type: string
+        id:
+          description: The unique identifier of the credential.
+          type: string
+        created_at:
+          description: Time at which this Credential was created, in epoch milliseconds.
+          type: integer
+          format: int64
+        created_by:
+          description: Username of credential creator.
+          type: string
+        updated_at:
+          description: Time at which this credential was last modified, in epoch milliseconds.
+          type: integer
+          format: int64
+        updated_by:
+          description: Username of user who last modified the credential.
+          type: string
+        used_for_managed_storage:
+          description: Whether this credential is the current metastore's root storage credential.
+          type: boolean
+    CreateStorageCredential:
+      type: object
+      required:
+        - name
+      properties:
+        name:
+          description: The credential name. The name must be unique within the metastore.
+          type: string
+        comment:
+          description: Comment associated with the credential.
+          type: string
+        read_only:
+          description: Whether the storage credential is only usable for read operations.
+          type: boolean
+        aws_iam_role:
+          $ref: '#/components/schemas/AwsIamRoleRequest'
+        azure_service_principal:
+          $ref: '#/components/schemas/AzureServicePrincipal'
+        azure_managed_identity:
+          $ref: '#/components/schemas/AzureManagedIdentityRequest'
+        databricks_gcp_service_account:
+          $ref: '#/components/schemas/DatabricksGcpServiceAccountRequest'
+        skip_validation:
+          description: Supplying true to this argument skips validation of the created credential.
+          type: boolean
+          default: false
+    UpdateStorageCredential:
+      type: object
+      properties:
+        comment:
+          description: Comment associated with the credential.
+          type: string
+        read_only:
+          description: Whether the storage credential is only usable for read operations.
+          type: boolean
+        owner:
+          description: Username of current owner of credential.
+          type: string
+        aws_iam_role:
+          $ref: '#/components/schemas/AwsIamRoleRequest'
+        azure_service_principal:
+          $ref: '#/components/schemas/AzureServicePrincipal'
+        azure_managed_identity:
+          $ref: '#/components/schemas/AzureManagedIdentityRequest'
+        new_name:
+          description: New name for the storage credential.
+          type: string
+        databricks_gcp_service_account:
+          $ref: '#/components/schemas/DatabricksGcpServiceAccountRequest'
+        skip_validation:
+          description: Supplying true to this argument skips validation of the updated credential.
+          type: boolean
+          default: false
+        force:
+          description: Force update even if there are dependent external locations or external tables.
+          type: boolean
+    AwsIamRoleArn:
+      description: The Amazon Resource Name (ARN) of the AWS IAM role for S3 data access.
+      type: string
+    AwsIamRoleRequest:
+      type: object
+      required:
+        - role_arn
+      properties:
+        role_arn:
+          $ref: "#/components/schemas/AwsIamRoleArn"
+    AwsIamRoleResponse:
+      type: object
+      required:
+        - role_arn
+      properties:
+        role_arn:
+          $ref: "#/components/schemas/AwsIamRoleArn"
+        unity_catalog_iam_arn:
+          description: The Amazon Resource Name (ARN) of the AWS IAM used by the Unity Catalog Server. This is the identity that is going to assume the AWS IAM role.
+          type: string
+        external_id:
+          description: The external ID used in role assumption to prevent confused deputy problem.
+          type: string
+    AzureServicePrincipal:
+      type: object
+      required:
+        - directory_id
+        - application_id
+        - client_secret
+      properties:
+        directory_id:
+          description: The directory ID corresponding to the Azure Active Directory (AAD) tenant of the application.
+          type: string
+        application_id:
+          description: The application ID of the application registration within the referenced AAD tenant.
+          type: string
+        client_secret:
+          description: The client secret generated for the above app ID in AAD.
+          type: string
+    AzureManagedIdentityRequest:
+      type: object
+      required:
+        - access_connector_id
+      properties:
+        access_connector_id:
+          description: The Azure resource ID of the Azure Databricks Access Connector. Use the format /subscriptions/{guid}/resourceGroups/{rg-name}/providers/Microsoft.Databricks/accessConnectors/{connector-name}.
+          type: string
+        managed_identity_id:
+          description: |
+            The Azure resource ID of the managed identity. Use the format /subscriptions/{guid}/resourceGroups/{rg-name}/providers/Microsoft.ManagedIdentity/userAssignedIdentities/{identity-name}.
+            This is only available for user-assigned identities. For system-assigned identities, the access_connector_id is used to identify the identity.
+            If this field is not provided, then we assume the AzureManagedIdentity is for a system-assigned identity.
+          type: string
+    AzureManagedIdentityResponse:
+      type: object
+      required:
+        - access_connector_id
+      properties:
+        access_connector_id:
+          type: string
+          description: The Azure resource ID of the Azure Databricks Access Connector. Use the format /subscriptions/{guid}/resourceGroups/{rg-name}/providers/Microsoft.Databricks/accessConnectors/{connector-name}.
+        managed_identity_id:
+          type: string
+          description: |
+            The Azure resource ID of the managed identity. Use the format /subscriptions/{guid}/resourceGroups/{rg-name}/providers/Microsoft.ManagedIdentity/userAssignedIdentities/{identity-name}.
+            This is only available for user-assigned identities. For system-assigned identities, the access_connector_id is used to identify the identity.
+            If this field is not provided, then we assume the AzureManagedIdentity is for a system-assigned identity.
+        credential_id:
+          type: string
+          description: The Databricks internal ID that represents this managed identity.
+    DatabricksGcpServiceAccountRequest:
+      type: object
+      properties: { }
+    DatabricksGcpServiceAccountResponse:
+      type: object
+      properties:
+        email:
+          type: string
+          description: The email of the service account. This is an output-only field.
+        credential_id:
+          type: string
+          description: The Databricks internal ID representing the service account. This is an output-only field.
+    ListStorageCredentialsResponse:
+      type: object
+      properties:
+        storage_credentials:
+          description: An array of storage credential information objects.
+          type: array
+          items:
+            $ref: '#/components/schemas/StorageCredentialInfo'
+        next_page_token:
+          type: string
+          description: |
+            Opaque token to retrieve the next page of results. Absent if there are no more pages.
+            __page_token__ should be set to this value for the next request (for the next page of results).
+    ExternalLocationInfo:
+      type: object
+      properties:
+        name:
+          description: Name of the external location.
+          type: string
+        url:
+          description: Path URL of the external location.
+          type: string
+        read_only:
+          description: Indicates whether the external location is read-only.
+          type: boolean
+        comment:
+          description: User-provided free-form text description.
+          type: string
+        owner:
+          description: The owner of the external location.
+          type: string
+        access_point:
+          description: The AWS access point to use when accessing s3 for this external location.
+          type: string
+        credential_id:
+          description: Unique ID of the location's storage credential.
+          type: string
+        created_at:
+          description: Time at which this external location was created, in epoch milliseconds.
+          type: integer
+          format: int64
+        created_by:
+          description: Username of external location creator.
+          type: string
+        updated_at:
+          description: Time at which external location this was last modified, in epoch milliseconds.
+          type: integer
+          format: int64
+        updated_by:
+          description: Username of user who last modified the external location.
+          type: string
+    CreateExternalLocation:
+      type: object
+      required:
+        - name
+        - url
+        - credential_name
+      properties:
+        name:
+          description: Name of the external location.
+          type: string
+        url:
+          description: Path URL of the external location.
+          type: string
+        credential_name:
+          description: Name of the storage credential used with this location.
+          type: string
+        read_only:
+          description: Indicates whether the external location is read-only.
+          type: boolean
+        comment:
+          description: User-provided free-form text description.
+          type: string
+        access_point:
+          description: The AWS access point to use when accessing s3 for this external location.
+          type: string
+        skip_validation:
+          description: Skips validation of the storage credential associated with the external location.
+          type: boolean
+    UpdateExternalLocation:
+      type: object
+      properties:
+        url:
+          description: Path URL of the external location.
+          type: string
+        credential_name:
+          description: Name of the storage credential used with this location.
+          type: string
+        read_only:
+          description: Indicates whether the external location is read-only.
+          type: boolean
+        comment:
+          description: User-provided free-form text description.
+          type: string
+        owner:
+          description: The owner of the external location.
+          type: string
+        access_point:
+          description: The AWS access point to use when accessing s3 for this external location.
+          type: string
+        new_name:
+          description: New name for the external location.
+          type: string
+        force:
+          description: Force update even if changing url invalidates dependent external tables or mounts.
+          type: boolean
+        skip_validation:
+          description: Skips validation of the storage credential associated with the external location.
+          type: boolean
+    ListExternalLocationsResponse:
+      type: object
+      properties:
+        external_locations:
+          description: An array of external locations.
+          type: array
+          items:
+            $ref: '#/components/schemas/ExternalLocationInfo'
+        next_page_token:
+          type: string
+          description: Opaque token to retrieve the next page of results. Absent if there are no more pages. __page_token__ should be set to this value for the next request (for the next page of results).
 info:
   title: Unity Catalog API
   version: '0.1'
