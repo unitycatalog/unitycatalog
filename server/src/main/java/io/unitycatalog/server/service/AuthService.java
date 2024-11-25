@@ -6,7 +6,7 @@ import com.auth0.jwt.interfaces.DecodedJWT;
 import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.databind.PropertyNamingStrategies;
 import com.fasterxml.jackson.databind.annotation.JsonNaming;
-import com.linecorp.armeria.common.HttpResponse;
+import com.linecorp.armeria.common.*;
 import com.linecorp.armeria.common.annotation.Nullable;
 import com.linecorp.armeria.server.annotation.ExceptionHandler;
 import com.linecorp.armeria.server.annotation.Param;
@@ -20,6 +20,8 @@ import io.unitycatalog.server.persist.utils.ServerPropertiesUtils;
 import io.unitycatalog.server.security.JwtClaim;
 import io.unitycatalog.server.security.SecurityContext;
 import io.unitycatalog.server.utils.JwksOperations;
+import java.time.Duration;
+import java.util.Optional;
 import lombok.Builder;
 import lombok.Getter;
 import lombok.NonNull;
@@ -63,6 +65,9 @@ public class AuthService {
   private final SecurityContext securityContext;
   private final JwksOperations jwksOperations;
 
+  private static final String COOKIE = "cookie";
+  private static final String EMPTY_RESPONSE = "{}";
+
   public AuthService(SecurityContext securityContext) {
     this.securityContext = securityContext;
     this.jwksOperations = new JwksOperations();
@@ -102,9 +107,9 @@ public class AuthService {
    * @return The token exchange response
    */
   @Post("/tokens")
-  public HttpResponse grantToken(OAuthTokenExchangeRequest request) {
+  public HttpResponse grantToken(
+      @Param("ext") Optional<String> ext, OAuthTokenExchangeRequest request) {
     LOGGER.debug("Got token: {}", request);
-
     if (request.getGrantType() == null
         || !GrantTypes.TOKEN_EXCHANGE.equals(request.getGrantType())) {
       throw new OAuthInvalidRequestException(
@@ -138,7 +143,6 @@ public class AuthService {
     DecodedJWT decodedJWT = JWT.decode(request.getSubjectToken());
     String issuer = decodedJWT.getClaim("iss").asString();
     String keyId = decodedJWT.getHeaderClaim("kid").asString();
-
     LOGGER.debug("Validating token for issuer: {}", issuer);
 
     JWTVerifier jwtVerifier = jwksOperations.verifierForIssuerAndKey(issuer, keyId);
@@ -156,7 +160,41 @@ public class AuthService {
             .tokenType(AuthTypes.BEARER)
             .build();
 
-    return HttpResponse.ofJson(response);
+    // Set token as cookie if ext param is set to cookie
+    ResponseHeadersBuilder responseHeaders = ResponseHeaders.builder(HttpStatus.OK);
+    ext.ifPresent(
+        e -> {
+          if (e.equals(COOKIE)) {
+            // Set cookie timeout to 5 days by default if not present in server.properties
+            String cookieTimeout =
+                ServerPropertiesUtils.getInstance().getProperty("server.cookie-timeout", "P5D");
+            Cookie cookie =
+                createCookie(AuthDecorator.UC_TOKEN_KEY, accessToken, "/", cookieTimeout);
+            responseHeaders.add(HttpHeaderNames.SET_COOKIE, cookie.toSetCookieHeader());
+          }
+        });
+
+    return HttpResponse.ofJson(responseHeaders.build(), response);
+  }
+
+  @Post("/logout")
+  public HttpResponse logout(HttpRequest request) {
+    return request.headers().cookies().stream()
+        .filter(c -> c.name().equals(AuthDecorator.UC_TOKEN_KEY))
+        .findFirst()
+        .map(
+            authorizationCookie -> {
+              Cookie expiredCookie = createCookie(AuthDecorator.UC_TOKEN_KEY, "", "/", "PT0S");
+              ResponseHeaders headers =
+                  ResponseHeaders.builder()
+                      .status(HttpStatus.OK)
+                      .add(HttpHeaderNames.SET_COOKIE, expiredCookie.toSetCookieHeader())
+                      .contentType(MediaType.JSON)
+                      .build();
+              // Armeria requires a non-empty response payload, so an empty JSON is sent
+              return HttpResponse.of(headers, HttpData.ofUtf8(EMPTY_RESPONSE));
+            })
+        .orElse(HttpResponse.of(HttpStatus.OK, MediaType.JSON, EMPTY_RESPONSE));
   }
 
   private static void verifyPrincipal(DecodedJWT decodedJWT) {
@@ -180,6 +218,13 @@ public class AuthService {
 
     throw new OAuthInvalidRequestException(
         ErrorCode.INVALID_ARGUMENT, "User not allowed: " + subject);
+  }
+
+  private Cookie createCookie(String key, String value, String path, String maxAge) {
+    return Cookie.secureBuilder(key, value)
+        .path(path)
+        .maxAge(Duration.parse(maxAge).getSeconds())
+        .build();
   }
 
   // TODO: This should be probably integrated into the OpenAPI spec.
