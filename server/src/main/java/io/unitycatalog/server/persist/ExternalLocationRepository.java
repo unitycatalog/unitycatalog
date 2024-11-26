@@ -11,15 +11,12 @@ import io.unitycatalog.server.persist.utils.HibernateUtils;
 import io.unitycatalog.server.persist.utils.PagedListingHelper;
 import io.unitycatalog.server.utils.IdentityUtils;
 import io.unitycatalog.server.utils.ValidationUtils;
-import java.time.Instant;
-import java.util.ArrayList;
-import java.util.Date;
-import java.util.List;
-import java.util.Optional;
 import org.hibernate.Session;
 import org.hibernate.SessionFactory;
 import org.hibernate.Transaction;
 import org.hibernate.query.Query;
+
+import java.util.*;
 
 public class ExternalLocationRepository {
   private static final ExternalLocationRepository INSTANCE = new ExternalLocationRepository();
@@ -35,7 +32,7 @@ public class ExternalLocationRepository {
     return INSTANCE;
   }
 
-  public ExternalLocationInfo addExternalLocation(CreateExternalLocation createExternalLocation) {
+  public ExternalLocationDAO addExternalLocation(CreateExternalLocation createExternalLocation) {
     ValidationUtils.validateSqlObjectName(createExternalLocation.getName());
     String callerId = IdentityUtils.findPrincipalEmailAddress();
 
@@ -43,17 +40,20 @@ public class ExternalLocationRepository {
       StorageCredentialDAO storageCredentialDAO =
           STORAGE_CREDENTIAL_REPOSITORY.getStorageCredentialDAO(
               session, createExternalLocation.getCredentialName());
-      ExternalLocationInfo externalLocationInfo =
-          new ExternalLocationInfo()
+      UUID externalLocationId = UUID.randomUUID();
+      ExternalLocationDAO externalLocationDAO =
+          ExternalLocationDAO.builder()
+              .id(externalLocationId)
               .name(createExternalLocation.getName())
               .url(createExternalLocation.getUrl())
               .readOnly(createExternalLocation.getReadOnly())
               .comment(createExternalLocation.getComment())
               .owner(callerId)
               .accessPoint(createExternalLocation.getAccessPoint())
-              .credentialId(storageCredentialDAO.getId().toString())
-              .createdAt(Instant.now().toEpochMilli())
-              .createdBy(callerId);
+              .credentialId(storageCredentialDAO.getId())
+              .createdAt(new Date())
+              .createdBy(callerId)
+              .build();
       Transaction tx = session.beginTransaction();
       try {
         if (getExternalLocationDAO(session, createExternalLocation.getName()) != null) {
@@ -61,9 +61,9 @@ public class ExternalLocationRepository {
               ErrorCode.ALREADY_EXISTS,
               "External location already exists: " + createExternalLocation.getName());
         }
-        session.persist(ExternalLocationDAO.from(externalLocationInfo));
+        session.persist(externalLocationDAO);
         tx.commit();
-        return externalLocationInfo;
+        return externalLocationDAO;
       } catch (Exception e) {
         tx.rollback();
         throw e;
@@ -89,7 +89,7 @@ public class ExternalLocationRepository {
     }
   }
 
-  private ExternalLocationDAO getExternalLocationDAO(Session session, String name) {
+  public ExternalLocationDAO getExternalLocationDAO(Session session, String name) {
     Query<ExternalLocationDAO> query =
         session.createQuery(
             "FROM ExternalLocationDAO WHERE name = :value", ExternalLocationDAO.class);
@@ -178,7 +178,7 @@ public class ExternalLocationRepository {
     }
   }
 
-  public void deleteExternalLocation(String name) {
+  public ExternalLocationDAO deleteExternalLocation(String name) {
     try (Session session = SESSION_FACTORY.openSession()) {
       Transaction tx = session.beginTransaction();
       try {
@@ -188,6 +188,7 @@ public class ExternalLocationRepository {
         }
         session.remove(existingLocation);
         tx.commit();
+        return existingLocation;
       } catch (Exception e) {
         tx.rollback();
         throw e;

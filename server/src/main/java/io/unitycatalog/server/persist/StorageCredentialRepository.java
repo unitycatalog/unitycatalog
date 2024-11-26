@@ -11,12 +11,13 @@ import io.unitycatalog.server.persist.utils.PagedListingHelper;
 import io.unitycatalog.server.persist.utils.StorageCredentialUtils;
 import io.unitycatalog.server.utils.IdentityUtils;
 import io.unitycatalog.server.utils.ValidationUtils;
-import java.time.Instant;
-import java.util.*;
 import org.hibernate.Session;
 import org.hibernate.SessionFactory;
 import org.hibernate.Transaction;
 import org.hibernate.query.Query;
+
+import java.time.Instant;
+import java.util.*;
 
 public class StorageCredentialRepository {
   private static final StorageCredentialRepository INSTANCE = new StorageCredentialRepository();
@@ -197,7 +198,7 @@ public class StorageCredentialRepository {
     }
   }
 
-  public void deleteStorageCredential(String name) {
+  public StorageCredentialInfo deleteStorageCredential(String name) {
     try (Session session = SESSION_FACTORY.openSession()) {
       Transaction tx = session.beginTransaction();
       try {
@@ -207,6 +208,7 @@ public class StorageCredentialRepository {
         }
         session.remove(existingCredential);
         tx.commit();
+        return existingCredential.toStorageCredentialInfo();
       } catch (Exception e) {
         tx.rollback();
         throw e;
