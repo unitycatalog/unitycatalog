@@ -1,17 +1,33 @@
 import { useMutation, useQuery } from '@tanstack/react-query';
-import catalogClient from '../context/catalog';
-import { UC_AUTH_API_PREFIX } from '../utils/constants';
+import controlClient from '../context/control';
 
 interface LoginResponse {
   access_token: string;
+}
+
+export interface EmailInterface {
+  value: string;
 }
 
 export interface UserInterface {
   id: string;
   userName: string;
   displayName: string;
-  emails: any;
+  emails: EmailInterface[];
   photos: any;
+}
+
+enum HttpStatus {
+  OK = 200,
+  CREATED = 201,
+  BAD_REQUEST = 400,
+  UNAUTHORIZED = 401,
+  NOT_FOUND = 404,
+  INTERNAL_SERVER_ERROR = 500,
+}
+
+interface LogoutResponse {
+  response: HttpStatus;
 }
 
 export function useLoginWithToken() {
@@ -24,10 +40,8 @@ export function useLoginWithToken() {
         subjectToken: idToken,
       };
 
-      return catalogClient
-        .post(`/auth/tokens`, JSON.stringify(params), {
-          baseURL: `${UC_AUTH_API_PREFIX}`,
-        })
+      return controlClient
+        .post(`/auth/tokens?ext=cookie`, JSON.stringify(params))
         .then((response) => response.data)
         .catch((e) => {
           throw new Error(e.response?.data?.message || 'Failed to log in');
@@ -36,17 +50,32 @@ export function useLoginWithToken() {
   });
 }
 
-export function useGetCurrentUser(access_token: string) {
+export function useGetCurrentUser() {
   return useQuery<UserInterface>({
-    queryKey: ['getUser', access_token],
+    queryKey: ['getUser'],
     queryFn: async () => {
-      return catalogClient
-        .get(`/scim2/Users/self`, {
-          baseURL: `${UC_AUTH_API_PREFIX}`,
-        })
+      return controlClient
+        .get(`/scim2/Users/self`)
+        .then((response) => response.data)
+        .catch((error) => {
+          if (error?.status === HttpStatus.UNAUTHORIZED) {
+            return null;
+          } else {
+            throw new Error('Failed to fetch user');
+          }
+        });
+    },
+  });
+}
+
+export function useLogoutCurrentUser() {
+  return useMutation<LogoutResponse, Error, {}>({
+    mutationFn: async () => {
+      return controlClient
+        .post(`/auth/logout`, {})
         .then((response) => response.data)
         .catch((e) => {
-          throw new Error('Failed to fetch user');
+          throw new Error(e.response?.data?.message || 'Logout method failed');
         });
     },
   });
