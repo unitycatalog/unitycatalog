@@ -2,56 +2,103 @@
 
 This page shows you how to use the Unity Catalog CLI.
 
-The CLI tool allows users to interact with a Unity Catalog server to create and manage catalogs, schemas, tables across different formats, volumes with unstructured data, and functions.
+The CLI tool allows users to interact with a Unity Catalog server to create and manage catalogs, schemas, tables across different formats, volumes with unstructured data, functions, ML and AI models, and control catalog server and metastore configuration.
 
 !!! note "Specify token for authenticated access"
 
-    For all the following commands, you will need to provide an authentication token when executng these commands.
+    If you have set up authentication, you will need to provide an authentication token when executng all of the following commands on this page.
     For example, in the following section, to run the catalog list command, you would specify:
 
     ```bash
     bin/uc --auth_token $token catalog list
     ```
 
-    where $token is the authentication token provided by an identity provider. For more information on how to support
-    both authentication and authorization, please refer to the [auth](../server/auth.md).
+    where `$token` is the authentication token provided by an identity provider. For more information on how to support both authentication and authorization, please refer to the [auth](../server/auth.md) documentation.
 
 ## Catalog Management CLI Usage
 
-This section outlines the usage of the `bin/uc` script for managing catalogs within your system.
-The script supports various operations such as creating, retrieving, listing and updating catalogs.
+You can use the Unity Catalog CLI to manage catalogs within your system. The `bin/uc` script supports various operations such as creating, retrieving, listing, updating and deleting catalogs. Let's take a look at each function.
+
+!!! note "Default local Unity Catalog instance"
+
+    All examples on this page will use the local Unity Catalog instance which comes pre-loaded with a default catalog (`unity`), schema (`default`) and some default assets.
 
 ### List Catalogs
 
 Here's how to list catalogs contained in a Unity Catalog instance.
 
 ```sh
-bin/uc catalog list [--max_results <max_results>]
+bin/uc catalog list \
+  [--max_results <max_results>] # (1)
 ```
 
-- `max_results`: _\[Optional\]_ The maximum number of results to return.
+1. `max_results`: optional flag to set the maximum number of results to return.
+
+This will output:
+
+```sh
+┌─────┬────────────┬──────────┬─────┬─────────────┬──────────┬──────────┬──────────┬────────────────────────────────────┐
+│NAME │  COMMENT   │PROPERTIES│OWNER│ CREATED_AT  │CREATED_BY│UPDATED_AT│UPDATED_BY│                 ID                 │
+├─────┼────────────┼──────────┼─────┼─────────────┼──────────┼──────────┼──────────┼────────────────────────────────────┤
+│unity│Main catalog│{}        │null │1721238005334│null      │null      │null      │f029b870-9468-4f10-badc-630b41e5690d│
+└─────┴────────────┴──────────┴─────┴─────────────┴──────────┴──────────┴──────────┴────────────────────────────────────┘
+```
 
 ### Get details of a Catalog
 
+Here's how to retrieve the details of a catalog:
+
 ```sh
-bin/uc catalog get --name <name>
+bin/uc catalog get \
+  --name <name> # (1)
 ```
 
-- `name`: The name of the catalog.
+1. `name`: The name of the catalog.
+
+This should output:
+
+```sh
+┌─────────────────────┬──────────────────────────────────────────┐
+│         KEY         │                  VALUE                   │
+├─────────────────────┼──────────────────────────────────────────┤
+│NAME                 │unity                                     │
+├─────────────────────┼──────────────────────────────────────────┤
+│COMMENT              │Main catalog                              │
+├─────────────────────┼──────────────────────────────────────────┤
+│PROPERTIES           │{}                                        │
+├─────────────────────┼──────────────────────────────────────────┤
+│OWNER                │null                                      │
+├─────────────────────┼──────────────────────────────────────────┤
+│CREATED_AT           │1721238005334                             │
+├─────────────────────┼──────────────────────────────────────────┤
+│CREATED_BY           │null                                      │
+├─────────────────────┼──────────────────────────────────────────┤
+│UPDATED_AT           │null                                      │
+├─────────────────────┼──────────────────────────────────────────┤
+│UPDATED_BY           │null                                      │
+├─────────────────────┼──────────────────────────────────────────┤
+│ID                   │f029b870-9468-4f10-badc-630b41e5690d      │
+└─────────────────────┴──────────────────────────────────────────┘
+```
 
 ### Create a Catalog
 
+You can create a new catalog using:
+
 ```sh
-bin/uc catalog create --name <name> [--comment <comment>] [--properties <properties>]
+bin/uc catalog create \
+  --name <name> \ # (1)
+  [--comment <comment>] \ # (2)
+  [--properties <properties>] # (3)
 ```
 
-- `name`: The name of the catalog.
-- `comment`: _\[Optional\]_ The description of the catalog.
-- `properties`: _\[Optional\]_ The properties of the catalog in JSON format
-  (e.g., `'{"key1": "value1", "key2": "value2"}'`). Make sure to either escape the double quotes(`\"`) inside the
-  properties string or just use single quotes(`''`) around the same.
+1. `name`: The name of the catalog.
+2. `comment`: _\[Optional\]_ The description of the catalog.
+3. `properties`: _\[Optional\]_ The properties of the catalog in JSON format
+   (e.g., `'{"key1": "value1", "key2": "value2"}'`). Make sure to either escape the double quotes(`\"`) inside the
+   properties string or just use single quotes(`''`) around the same.
 
-Example:
+Here's an example:
 
 ```sh
 bin/uc catalog create --name my_catalog --comment "My First Catalog" --properties '{"key1": "value1", "key2": "value2"}'
@@ -59,37 +106,49 @@ bin/uc catalog create --name my_catalog --comment "My First Catalog" --propertie
 
 ### Update a Catalog
 
+You can update an existing catalog using:
+
 ```sh
-bin/uc catalog update --name <name> [--new_name <new_name>] [--comment <comment>] [--properties <properties>]
+bin/uc catalog update \
+--name <name> \ # (1)
+[--new_name <new_name>] \ # (2)
+[--comment <comment>] \ # (3)
+[--properties <properties>] # (4)
 ```
 
-- `name`: The name of the existing catalog.
-- `new_name`: _\[Optional\]_ The new name of the catalog.
-- `comment`: _\[Optional\]_ The new description of the catalog.
-- `properties`: _\[Optional\]_ The new properties of the catalog in JSON format
-  (e.g., `'{"key1": "value1", "key2": "value2"}'`). Make sure to either escape the double quotes(`\"`) inside the
-  properties string or just use single quotes(`''`) around the same.
+1. `name`: The name of the existing catalog.
+2. `new_name`: _\[Optional\]_ The new name of the catalog.
+3. `comment`: _\[Optional\]_ The new description of the catalog.
+4. `properties`: _\[Optional\]_ The new properties of the catalog in JSON format
+   (e.g., `'{"key1": "value1", "key2": "value2"}'`). Make sure to either escape the double quotes(`\"`) inside the
+   properties string or just use single quotes(`''`) around the same.
 
 **\*Note:** At least one of the optional parameters must be specified.\*
 
-Example:
+Here's an example:
 
 ```sh
-bin/uc catalog update --name my_catalog --new_name my_updated_catalog --comment "Updated Catalog" --properties '{"updated_key": "updated_value"}'
+bin/uc catalog update \
+  --name my_catalog \
+  --new_name my_updated_catalog \
+  --comment "Updated Catalog" \
+  --properties '{"updated_key": "updated_value"}'
 ```
 
 ### Delete a Catalog
 
+You can delete an existing catalog using:
+
 ```sh
-bin/uc catalog delete --name <name>
+bin/uc catalog delete \
+  --name <name> # (1)
 ```
 
-- `name`: The name of the catalog.
+1. `name`: The name of the catalog.
 
 ## Schema Management CLI Usage
 
-This section outlines the usage of the `bin/uc` script for managing schemas within your system.
-The script supports various operations such as creating, retrieving, listing, updating and deleting schemas.
+You can use the Unity Catalog CLI to manage schemas within your catalog. The `bin/uc` script supports various operations such as creating, retrieving, listing, updating and deleting schemas. Let's take a look at each function.
 
 ### List Schemas
 
