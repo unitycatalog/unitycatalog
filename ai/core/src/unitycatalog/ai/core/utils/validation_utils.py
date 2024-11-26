@@ -50,6 +50,7 @@ def is_base64_encoded(s: str) -> bool:
 def validate_param(param: Any, column_type: str, param_type_text: str) -> None:
     """
     Validate the parameter against the parameter info.
+    This function is used when the parameter is passed to SQL UDF for execution.
 
     Args:
         param (Any): The parameter to validate.

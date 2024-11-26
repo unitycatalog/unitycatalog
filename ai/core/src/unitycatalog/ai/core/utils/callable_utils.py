@@ -1,13 +1,31 @@
 import ast
 import inspect
 import warnings
+from enum import Enum
 from textwrap import dedent, indent
-from typing import Any, Callable, Optional, Set, Union, get_args, get_origin, get_type_hints
+from typing import (
+    Any,
+    Callable,
+    Dict,
+    List,
+    NamedTuple,
+    Optional,
+    Set,
+    Union,
+    get_args,
+    get_origin,
+    get_type_hints,
+)
 
 from unitycatalog.ai.core.utils.docstring_utils import DocstringInfo, parse_docstring
 from unitycatalog.ai.core.utils.type_utils import python_type_to_sql_type
 
 FORBIDDEN_PARAMS = ["self", "cls"]
+
+
+class ReturnParamFormat(Enum):
+    SQL = "sql"
+    FUNCTION_INFO_INPUT_PARAMETER_DICT = "input_param_dict"
 
 
 class FunctionBodyExtractor(ast.NodeVisitor):
@@ -178,8 +196,9 @@ def process_parameter(
     param: inspect.Parameter,
     type_hints: dict[str, Any],
     docstring_info: DocstringInfo,
+    return_format: ReturnParamFormat,
 ) -> str:
-    """Processes a single parameter and returns its SQL definition."""
+    """Processes a single parameter and returns output in return_format."""
     if param_name in FORBIDDEN_PARAMS:
         raise ValueError(f"Parameter '{param_name}' is not allowed in the function signature.")
 
@@ -208,6 +227,11 @@ def process_parameter(
         "'", '"'
     )
 
+    if not isinstance(return_format, ReturnParamFormat):
+        raise TypeError(
+            f"Invalid return format: {return_format}; must be a ReturnParamFormat enum value."
+        )
+
     if param.default is not inspect.Parameter.empty:
         if is_collection_type(param_hint):
             raise ValueError(
@@ -218,9 +242,26 @@ def process_parameter(
                 f"Default value for parameter '{param_name}' does not match the type hint '{param_hint}'."
             )
         default_value = format_default_value(param.default)
-        return f"{param_name} {sql_type} DEFAULT {default_value} COMMENT '{param_comment}'"
+        if return_format == ReturnParamFormat.FUNCTION_INFO_INPUT_PARAMETER_DICT:
+            return {
+                "name": param_name,
+                "type_name": sql_type,
+                "type_text": sql_type.lower(),
+                "parameter_default": default_value,
+                "comment": param_comment,
+            }
+        elif return_format == ReturnParamFormat.SQL:
+            return f"{param_name} {sql_type} DEFAULT {default_value} COMMENT '{param_comment}'"
     else:
-        return f"{param_name} {sql_type} COMMENT '{param_comment}'"
+        if return_format == ReturnParamFormat.FUNCTION_INFO_INPUT_PARAMETER_DICT:
+            return {
+                "name": param_name,
+                "type_name": sql_type,
+                "type_text": sql_type.lower(),
+                "comment": param_comment,
+            }
+        elif return_format == ReturnParamFormat.SQL:
+            return f"{param_name} {sql_type} COMMENT '{param_comment}'"
 
 
 def assemble_sql_body(
@@ -248,20 +289,15 @@ $$;
     return sql_body
 
 
-def generate_sql_function_body(
-    func: Callable[..., Any], catalog: str, schema: str, replace: bool = False
-) -> str:
-    """
-    Generate SQL body for creating the function in Unity Catalog.
+class ParsedCallable(NamedTuple):
+    function_name: str
+    function_description: str
+    input_params: List[Union[str, Dict[str, str]]]
+    function_body: str
+    return_type: str
 
-    Args:
-        func: The Python callable function to convert into a UDF.
-        catalog: The catalog name.
-        schema: The schema name.
 
-    Returns:
-        str: SQL statement for creating the UDF.
-    """
+def parse_callable(func: Callable[..., Any], return_format: ReturnParamFormat) -> ParsedCallable:
     func = unwrap_function(func)
     func_name = func.__name__
     signature = inspect.signature(func)
@@ -277,25 +313,51 @@ def generate_sql_function_body(
     params_in_signature = set(signature.parameters.keys()) - set(FORBIDDEN_PARAMS)
     check_docstring_signature_consistency(docstring_info.params, params_in_signature, func_name)
 
-    sql_params = []
+    input_params = []
     for param_name, param in signature.parameters.items():
-        sql_param = process_parameter(param_name, param, type_hints, docstring_info)
-        sql_params.append(sql_param)
+        input_params.append(
+            process_parameter(param_name, param, type_hints, docstring_info, return_format)
+        )
 
     function_body, indent_unit = extract_function_body(func)
     indented_body = indent(function_body, " " * indent_unit)
-
     func_comment = docstring_info.description.replace("'", '"')
+
+    return ParsedCallable(
+        function_name=func_name,
+        function_description=func_comment,
+        input_params=input_params,
+        function_body=indented_body,
+        return_type=sql_return_type,
+    )
+
+
+def generate_sql_function_body(
+    func: Callable[..., Any], catalog: str, schema: str, replace: bool = False
+) -> str:
+    """
+    Generate SQL body for creating the function in Unity Catalog.
+
+    Args:
+        func: The Python callable function to convert into a UDF.
+        catalog: The catalog name.
+        schema: The schema name.
+        replace: If True, the function will be created or replaced.
+
+    Returns:
+        str: SQL statement for creating the UDF.
+    """
+    parsed_function = parse_callable(func, return_format=ReturnParamFormat.SQL)
 
     sql_body = assemble_sql_body(
         catalog,
         schema,
-        func_name,
-        sql_params,
-        sql_return_type,
-        func_comment,
-        indented_body,
-        replace,
+        func_name=parsed_function.function_name,
+        sql_params=parsed_function.input_params,
+        sql_return_type=parsed_function.return_type,
+        func_comment=parsed_function.function_description,
+        indented_body=parsed_function.function_body,
+        replace=replace,
     )
 
     return sql_body
