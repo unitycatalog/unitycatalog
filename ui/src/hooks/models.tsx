@@ -4,300 +4,208 @@ import {
   useQueryClient,
   UseQueryOptions,
 } from '@tanstack/react-query';
-import apiClient from '../context/client';
+import { CLIENT } from '../context/catalog';
+import { route } from '../utils/openapi';
+import type {
+  paths as CatalogApi,
+  components as CatalogComponent,
+} from '../types/api/catalog.gen';
+import type {
+  ApiInterface,
+  ApiSuccessResponse,
+  ApiRequestPathParam,
+  ApiRequestQueryParam,
+  ApiRequestBody,
+} from '../utils/openapi';
 
-export interface ModelInterface {
-  name: string;
-  catalog_name: string;
-  schema_name: string;
-  storage_location: string;
-  comment: string;
-  full_name: string;
-  created_at: number;
-  created_by: string | null;
-  updated_at: number | null;
-  updated_by: string | null;
-  registered_model_id: string;
-  owner: string | null;
-}
+export type ModelInterface = ApiInterface<
+  CatalogComponent,
+  'RegisteredModelInfo'
+>;
 
-export enum ModelVersionStatus {
-  PENDING_REGISTRATION = 'PENDING_REGISTRATION',
-  FAILED_REGISTRATION = 'FAILED_REGISTRATION',
-  READY = 'READY',
-}
+// TODO:
+// The queries `max_results` and `page_token` are not properly handled as of [25/11/2024].
+// These queries need to be implemented.
+export type UseListModelsArgs = ApiRequestQueryParam<
+  CatalogApi,
+  '/models',
+  'get'
+> & {
+  options?: Omit<
+    UseQueryOptions<ApiSuccessResponse<CatalogApi, '/models', 'get'>>,
+    'queryKey' | 'queryFn'
+  >;
+};
 
-export interface ModelVersionInterface {
-  model_name: string;
-  catalog_name: string;
-  schema_name: string;
-  version: number | null;
-  source: string;
-  run_id: string;
-  storage_location: string;
-  status: ModelVersionStatus;
-  comment: string;
-  created_at: number;
-  created_by: string;
-  updated_at: number | null;
-  updated_by: string | null;
-  registered_model_id: string;
-}
-
-interface ListModelsResponse {
-  registered_models: ModelInterface[];
-  next_page_token: string | null;
-}
-
-interface ListModelVersionsResponse {
-  model_versions: ModelVersionInterface[];
-  next_page_token: string | null;
-}
-
-interface ListModelsParams {
-  catalog: string;
-  schema: string;
-  options?: Omit<UseQueryOptions<ListModelsResponse>, 'queryKey' | 'queryFn'>;
-}
-
-export function useListModels({ catalog, schema, options }: ListModelsParams) {
-  return useQuery<ListModelsResponse>({
-    queryKey: ['listModels', catalog, schema],
+export function useListModels({
+  catalog_name,
+  schema_name,
+  max_results,
+  page_token,
+  options,
+}: UseListModelsArgs) {
+  return useQuery<ApiSuccessResponse<CatalogApi, '/models', 'get'>>({
+    queryKey: ['listModels', catalog_name, schema_name],
     queryFn: async () => {
-      const searchParams = new URLSearchParams({
-        catalog_name: catalog,
-        schema_name: schema,
+      const api = route(CLIENT, {
+        path: '/models',
+        method: 'get',
+        params: {
+          query: {
+            catalog_name,
+            schema_name,
+            max_results,
+            page_token,
+          },
+        },
       });
-
-      return apiClient
-        .get(`/models?${searchParams.toString()}`)
-        .then((response) => response.data);
+      const response = await api.call();
+      if (response.result !== 'success') {
+        // NOTE:
+        // When an expected error occurs, as defined in the OpenAPI specification, the following line will
+        // be executed. Unexpected errors will throw `Error("Unexpected error")`. The following block serves
+        // as a placeholder for expected errors.
+        throw new Error('Failed to list models');
+      }
+      return response.data;
     },
     ...options,
   });
 }
 
-interface GetModelParams {
-  catalog: string;
-  schema: string;
-  model: string;
-}
+export type UseGetModelArgs = ApiRequestPathParam<
+  CatalogApi,
+  '/models/{full_name}',
+  'get'
+>;
 
-export function useGetModel({ catalog, schema, model }: GetModelParams) {
-  return useQuery<ModelInterface>({
-    queryKey: ['getModel', catalog, schema, model],
-    queryFn: async () => {
-      const fullModelName = [catalog, schema, model].join('.');
+export function useGetModel({ full_name }: UseGetModelArgs) {
+  const [catalog, schema, model] = full_name.split('.');
 
-      return apiClient
-        .get(`/models/${fullModelName}`)
-        .then((response) => response.data);
-    },
-  });
-}
-
-interface ListModelVersionsParams {
-  catalog: string;
-  schema: string;
-  model: string;
-}
-
-export function useListModelVersions({
-  catalog,
-  schema,
-  model,
-}: ListModelVersionsParams) {
-  return useQuery<ListModelVersionsResponse>({
-    queryKey: ['listModelVersions', catalog, schema, model],
-    queryFn: async () => {
-      const fullModelName = [catalog, schema, model].join('.');
-
-      return apiClient
-        .get(`/models/${fullModelName}/versions`)
-        .then((response) => response.data);
-    },
-  });
-}
-
-interface GetVersionParams {
-  catalog: string;
-  schema: string;
-  model: string;
-  version: string;
-}
-
-export function useGetModelVersion({
-  catalog,
-  schema,
-  model,
-  version,
-}: GetVersionParams) {
-  return useQuery<ModelVersionInterface>({
-    queryKey: ['getVersion', catalog, schema, model, version],
-    queryFn: async () => {
-      const fullModelName = [catalog, schema, model].join('.');
-
-      return apiClient
-        .get(`/models/${fullModelName}/versions/${version}`)
-        .then((response) => response.data);
-    },
-  });
-}
-
-export interface DeleteModelVersionMutationParams
-  extends Pick<
-    ModelVersionInterface,
-    'catalog_name' | 'schema_name' | 'model_name' | 'version'
-  > {}
-
-interface DeleteModelVersionParams {
-  catalog: string;
-  schema: string;
-  model: string;
-  version: number;
-}
-
-// Delete a model version
-export function useDeleteModelVersion({
-  catalog,
-  schema,
-  model,
-  version,
-}: DeleteModelVersionParams) {
-  const queryClient = useQueryClient();
-
-  return useMutation<void, Error, DeleteModelVersionMutationParams>({
-    mutationFn: async ({
-      catalog_name,
-      schema_name,
-      model_name,
-      version,
-    }: DeleteModelVersionMutationParams) => {
-      const fullName = [catalog_name, schema_name, model_name].join('.');
-      return apiClient
-        .delete(`/models/${fullName}/versions/${version}`)
-        .then((response) => response.data)
-        .catch((e) => {
-          throw new Error(
-            e.response?.data?.message || 'Failed to delete model version',
-          );
+  return useQuery<ApiSuccessResponse<CatalogApi, '/models/{full_name}', 'get'>>(
+    {
+      queryKey: ['getModel', catalog, schema, model],
+      queryFn: async () => {
+        const api = route(CLIENT, {
+          path: '/models/{full_name}',
+          method: 'get',
+          params: {
+            paths: {
+              full_name,
+            },
+          },
         });
+        const response = await api.call();
+        if (response.result !== 'success') {
+          // NOTE:
+          // When an expected error occurs, as defined in the OpenAPI specification, the following line will
+          // be executed. Unexpected errors will throw `Error("Unexpected error")`. The following block serves
+          // as a placeholder for expected errors.
+          throw new Error('Failed to fetch model');
+        }
+        return response.data;
+      },
     },
-    onSuccess: () => {
-      queryClient.invalidateQueries({
-        queryKey: ['listModelVersions', catalog, schema, model],
-      });
-    },
-  });
+  );
 }
 
-export interface DeleteModelMutationParams
-  extends Pick<ModelInterface, 'catalog_name' | 'schema_name' | 'name'> {}
+export type CreateModelMutationParams = ApiRequestBody<
+  CatalogApi,
+  '/models',
+  'post'
+>;
 
-interface DeleteModelParams {
-  catalog: string;
-  schema: string;
-  model: string;
-}
-
-// Delete a model
-export function useDeleteModel({ catalog, schema, model }: DeleteModelParams) {
-  const queryClient = useQueryClient();
-
-  return useMutation<void, Error, DeleteModelMutationParams>({
-    mutationFn: async ({
-      catalog_name,
-      schema_name,
-      name,
-    }: DeleteModelMutationParams) => {
-      const fullName = [catalog_name, schema_name, name].join('.');
-      return apiClient
-        .delete(`/models/${fullName}`)
-        .then((response) => response.data)
-        .catch((e) => {
-          throw new Error(
-            e.response?.data?.message || 'Failed to delete model',
-          );
-        });
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({
-        queryKey: ['listModels', catalog, schema],
-      });
-    },
-  });
-}
-
-// update model version
-interface UpdateModelVersionParams {
-  catalog: string;
-  schema: string;
-  model: string;
-  version: number;
-}
-export interface UpdateModelVersionMutationParams
-  extends Pick<ModelVersionInterface, 'comment'> {}
-
-export function useUpdateModelVersion({
-  catalog,
-  schema,
-  model,
-  version,
-}: UpdateModelVersionParams) {
+//create model
+export function useCreateModel() {
   const queryClient = useQueryClient();
 
   return useMutation<
-    ModelVersionInterface,
+    ApiSuccessResponse<CatalogApi, '/models', 'post'>,
     Error,
-    UpdateModelVersionMutationParams
+    CreateModelMutationParams
   >({
-    mutationFn: async (params: UpdateModelVersionMutationParams) => {
-      const fullName = [catalog, schema, model].join('.');
-
-      return apiClient
-        .patch(
-          `/models/${fullName}/versions/${version}`,
-          JSON.stringify(params),
-        )
-        .then((response) => response.data)
-        .catch((e) => {
-          throw new Error(
-            e.response?.data?.message || 'Failed to update model version',
-          );
-        });
+    mutationFn: async ({
+      name,
+      catalog_name,
+      schema_name,
+      comment,
+    }: CreateModelMutationParams) => {
+      const api = route(CLIENT, {
+        path: '/models',
+        method: 'post',
+        params: {
+          body: {
+            name,
+            catalog_name,
+            schema_name,
+            comment,
+          },
+        },
+      });
+      const response = await api.call();
+      if (response.result !== 'success') {
+        // NOTE:
+        // When an expected error occurs, as defined in the OpenAPI specification, the following line will
+        // be executed. Unexpected errors will throw `Error("Unexpected error")`. The following block serves
+        // as a placeholder for expected errors.
+        throw new Error('Failed to create model');
+      }
+      return response.data;
     },
-    onSuccess: () => {
+    onSuccess: (model) => {
       queryClient.invalidateQueries({
-        queryKey: ['getVersion', catalog, schema, model, version],
+        queryKey: ['listModels', model.catalog_name, model.schema_name],
       });
     },
   });
 }
 
-// update model
-interface UpdateModelParams {
-  catalog: string;
-  schema: string;
-  model: string;
-}
-export interface UpdateModelMutationParams
-  extends Pick<ModelVersionInterface, 'comment'> {}
+export type UseUpdateModelArgs = ApiRequestPathParam<
+  CatalogApi,
+  '/models/{full_name}',
+  'patch'
+>;
 
-export function useUpdateModel({ catalog, schema, model }: UpdateModelParams) {
+export type UpdateModelMutationParams = ApiRequestBody<
+  CatalogApi,
+  '/models/{full_name}',
+  'patch'
+>;
+
+// update model
+export function useUpdateModel({ full_name }: UseUpdateModelArgs) {
   const queryClient = useQueryClient();
 
-  return useMutation<ModelInterface, Error, UpdateModelMutationParams>({
-    mutationFn: async (params: UpdateModelMutationParams) => {
-      const fullName = [catalog, schema, model].join('.');
+  const [catalog, schema, model] = full_name.split('.');
 
-      return apiClient
-        .patch(`/models/${fullName}`, JSON.stringify(params))
-        .then((response) => response.data)
-        .catch((e) => {
-          throw new Error(
-            e.response?.data?.message || 'Failed to update model',
-          );
-        });
+  return useMutation<
+    ApiSuccessResponse<CatalogApi, '/models/{full_name}', 'patch'>,
+    Error,
+    UpdateModelMutationParams
+  >({
+    mutationFn: async ({ comment, new_name }: UpdateModelMutationParams) => {
+      const api = route(CLIENT, {
+        path: '/models/{full_name}',
+        method: 'patch',
+        params: {
+          paths: {
+            full_name,
+          },
+          body: {
+            comment,
+            new_name,
+          },
+        },
+      });
+      const response = await api.call();
+      if (response.result !== 'success') {
+        // NOTE:
+        // When an expected error occurs, as defined in the OpenAPI specification, the following line will
+        // be executed. Unexpected errors will throw `Error("Unexpected error")`. The following block serves
+        // as a placeholder for expected errors.
+        throw new Error('Failed to update model');
+      }
+      return response.data;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({
@@ -307,30 +215,278 @@ export function useUpdateModel({ catalog, schema, model }: UpdateModelParams) {
   });
 }
 
-//create model
-export interface CreateModelMutationParams
-  extends Pick<
-    ModelInterface,
-    'name' | 'catalog_name' | 'schema_name' | 'comment'
-  > {}
+export type UseDeleteModelArgs = ApiRequestPathParam<
+  CatalogApi,
+  '/models/{full_name}',
+  'delete'
+>;
 
-export function useCreateModel() {
+export type DeleteModelMutationParams = ApiRequestPathParam<
+  CatalogApi,
+  '/models/{full_name}',
+  'delete'
+>;
+
+// Delete a model
+export function useDeleteModel({ full_name }: UseDeleteModelArgs) {
   const queryClient = useQueryClient();
 
-  return useMutation<ModelInterface, Error, CreateModelMutationParams>({
-    mutationFn: async (params: CreateModelMutationParams) => {
-      return apiClient
-        .post(`/models`, JSON.stringify(params))
-        .then((response) => response.data)
-        .catch((e) => {
-          throw new Error(
-            e.response?.data?.message || 'Failed to create model',
-          );
-        });
+  const [catalog, schema] = full_name.split('.');
+
+  return useMutation<
+    ApiSuccessResponse<CatalogApi, '/models/{full_name}', 'delete'>,
+    Error,
+    DeleteModelMutationParams
+  >({
+    mutationFn: async ({ full_name }: DeleteModelMutationParams) => {
+      const api = route(CLIENT, {
+        path: '/models/{full_name}',
+        method: 'delete',
+        params: {
+          paths: {
+            full_name,
+          },
+        },
+      });
+      const response = await api.call();
+      if (response.result !== 'success') {
+        // NOTE:
+        // When an expected error occurs, as defined in the OpenAPI specification, the following line will
+        // be executed. Unexpected errors will throw `Error("Unexpected error")`. The following block serves
+        // as a placeholder for expected errors.
+        throw new Error('Failed to delete model');
+      }
+      return response.data;
     },
-    onSuccess: (model) => {
+    onSuccess: () => {
       queryClient.invalidateQueries({
-        queryKey: ['listModels', model.catalog_name, model.schema_name],
+        queryKey: ['listModels', catalog, schema],
+      });
+    },
+  });
+}
+
+export type ModelVersionStatus = ApiInterface<
+  CatalogComponent,
+  'ModelVersionStatus'
+>;
+
+export type ModelVersionInterface = ApiInterface<
+  CatalogComponent,
+  'ModelVersionInfo'
+>;
+
+// TODO:
+// The queries `max_results` and `page_token` are not properly handled as of [25/11/2024].
+// These queries need to be implemented.
+export type UseListModelVersionsArgs = ApiRequestPathParam<
+  CatalogApi,
+  '/models/{full_name}/versions',
+  'get'
+> &
+  ApiRequestQueryParam<CatalogApi, '/models/{full_name}/versions', 'get'>;
+
+export function useListModelVersions({
+  full_name,
+  max_results,
+  page_token,
+}: UseListModelVersionsArgs) {
+  const [catalog, schema, model] = full_name.split('.');
+
+  return useQuery<
+    ApiSuccessResponse<CatalogApi, '/models/{full_name}/versions', 'get'>
+  >({
+    queryKey: ['listModelVersions', catalog, schema, model],
+    queryFn: async () => {
+      const api = route(CLIENT, {
+        path: '/models/{full_name}/versions',
+        method: 'get',
+        params: {
+          paths: {
+            full_name,
+          },
+          query: {
+            max_results,
+            page_token,
+          },
+        },
+      });
+      const response = await api.call();
+      if (response.result !== 'success') {
+        // NOTE:
+        // When an expected error occurs, as defined in the OpenAPI specification, the following line will
+        // be executed. Unexpected errors will throw `Error("Unexpected error")`. The following block serves
+        // as a placeholder for expected errors.
+        throw new Error('Failed to fetch model version');
+      }
+      return response.data;
+    },
+  });
+}
+
+export type UseGetModelVersionArgs = ApiRequestPathParam<
+  CatalogApi,
+  '/models/{full_name}/versions/{version}',
+  'get'
+>;
+
+export function useGetModelVersion({
+  full_name,
+  version,
+}: UseGetModelVersionArgs) {
+  const [catalog, schema, model] = full_name.split('.');
+
+  return useQuery<
+    ApiSuccessResponse<
+      CatalogApi,
+      '/models/{full_name}/versions/{version}',
+      'get'
+    >
+  >({
+    queryKey: ['getVersion', catalog, schema, model, version],
+    queryFn: async () => {
+      const api = route(CLIENT, {
+        path: '/models/{full_name}/versions/{version}',
+        method: 'get',
+        params: {
+          paths: {
+            full_name,
+            version,
+          },
+        },
+      });
+      const response = await api.call();
+      if (response.result !== 'success') {
+        // NOTE:
+        // When an expected error occurs, as defined in the OpenAPI specification, the following line will
+        // be executed. Unexpected errors will throw `Error("Unexpected error")`. The following block serves
+        // as a placeholder for expected errors.
+        throw new Error('Failed to fetch model version');
+      }
+      return response.data;
+    },
+  });
+}
+
+export type UseUpdateModelVersionArgs = ApiRequestPathParam<
+  CatalogApi,
+  '/models/{full_name}/versions/{version}',
+  'patch'
+>;
+
+export type UpdateModelVersionMutationParams = ApiRequestBody<
+  CatalogApi,
+  '/models/{full_name}/versions/{version}',
+  'patch'
+>;
+
+// update model version
+export function useUpdateModelVersion({
+  full_name,
+  version,
+}: UseUpdateModelVersionArgs) {
+  const queryClient = useQueryClient();
+
+  const [catalog, schema, model] = full_name.split('.');
+
+  return useMutation<
+    ApiSuccessResponse<
+      CatalogApi,
+      '/models/{full_name}/versions/{version}',
+      'patch'
+    >,
+    Error,
+    UpdateModelVersionMutationParams
+  >({
+    mutationFn: async ({ comment }: UpdateModelVersionMutationParams) => {
+      const api = route(CLIENT, {
+        path: '/models/{full_name}/versions/{version}',
+        method: 'patch',
+        params: {
+          paths: {
+            full_name,
+            version,
+          },
+          body: {
+            comment,
+          },
+        },
+      });
+      const response = await api.call();
+      if (response.result !== 'success') {
+        // NOTE:
+        // When an expected error occurs, as defined in the OpenAPI specification, the following line will
+        // be executed. Unexpected errors will throw `Error("Unexpected error")`. The following block serves
+        // as a placeholder for expected errors.
+        throw new Error('Failed to update model version');
+      }
+      return response.data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({
+        queryKey: ['getVersion', catalog, schema, model, version],
+      });
+    },
+  });
+}
+
+export type UseDeleteModelVersionArgs = ApiRequestPathParam<
+  CatalogApi,
+  '/models/{full_name}/versions/{version}',
+  'delete'
+>;
+
+export type DeleteModelVersionMutationParams = ApiRequestPathParam<
+  CatalogApi,
+  '/models/{full_name}/versions/{version}',
+  'delete'
+>;
+
+// Delete a model version
+export function useDeleteModelVersion({
+  full_name,
+  version,
+}: UseDeleteModelVersionArgs) {
+  const queryClient = useQueryClient();
+
+  const [catalog, schema, model] = full_name.split('.');
+
+  return useMutation<
+    ApiSuccessResponse<
+      CatalogApi,
+      '/models/{full_name}/versions/{version}',
+      'delete'
+    >,
+    Error,
+    DeleteModelVersionMutationParams
+  >({
+    mutationFn: async ({
+      full_name,
+      version,
+    }: DeleteModelVersionMutationParams) => {
+      const api = route(CLIENT, {
+        path: '/models/{full_name}/versions/{version}',
+        method: 'delete',
+        params: {
+          paths: {
+            full_name,
+            version,
+          },
+        },
+      });
+      const response = await api.call();
+      if (response.result !== 'success') {
+        // NOTE:
+        // When an expected error occurs, as defined in the OpenAPI specification, the following line will
+        // be executed. Unexpected errors will throw `Error("Unexpected error")`. The following block serves
+        // as a placeholder for expected errors.
+        throw new Error('Failed to delete model version');
+      }
+      return response.data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({
+        queryKey: ['listModelVersions', catalog, schema, model],
       });
     },
   });

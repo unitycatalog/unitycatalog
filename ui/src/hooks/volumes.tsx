@@ -4,101 +4,151 @@ import {
   useQueryClient,
   UseQueryOptions,
 } from '@tanstack/react-query';
-import apiClient from '../context/client';
+import { CLIENT } from '../context/catalog';
+import { route } from '../utils/openapi';
+import type {
+  paths as CatalogApi,
+  components as CatalogComponent,
+} from '../types/api/catalog.gen';
+import type {
+  ApiInterface,
+  ApiSuccessResponse,
+  ApiRequestPathParam,
+  ApiRequestQueryParam,
+  ApiRequestBody,
+} from '../utils/openapi';
 
-export interface VolumeInterface {
-  volume_id: string;
-  volume_type: string;
-  catalog_name: string;
-  schema_name: string;
-  name: string;
-  comment: string;
-  created_at: number;
-  updated_at: number | null;
-  owner: string | null;
-  created_by: string | null;
-  updated_by: string | null;
-}
+export type VolumeInterface = ApiInterface<CatalogComponent, 'VolumeInfo'>;
 
-interface ListVolumesResponse {
-  volumes: VolumeInterface[];
-  next_page_token: string | null;
-}
-
-interface ListVolumesParams {
-  catalog: string;
-  schema: string;
-  options?: Omit<UseQueryOptions<ListVolumesResponse>, 'queryKey' | 'queryFn'>;
-}
+// TODO:
+// The queries `max_results` and `page_token` are not properly handled as of [25/11/2024].
+// These queries need to be implemented.
+export type UseListVolumesArgs = ApiRequestQueryParam<
+  CatalogApi,
+  '/volumes',
+  'get'
+> & {
+  options?: Omit<
+    UseQueryOptions<ApiSuccessResponse<CatalogApi, '/volumes', 'get'>>,
+    'queryKey' | 'queryFn'
+  >;
+};
 
 export function useListVolumes({
-  catalog,
-  schema,
+  catalog_name,
+  schema_name,
+  max_results,
+  page_token,
   options,
-}: ListVolumesParams) {
-  return useQuery<ListVolumesResponse>({
-    queryKey: ['listVolumes', catalog, schema],
+}: UseListVolumesArgs) {
+  return useQuery<ApiSuccessResponse<CatalogApi, '/volumes', 'get'>>({
+    queryKey: ['listVolumes', catalog_name, schema_name],
     queryFn: async () => {
-      const searchParams = new URLSearchParams({
-        catalog_name: catalog,
-        schema_name: schema,
+      const api = route(CLIENT, {
+        path: '/volumes',
+        method: 'get',
+        params: {
+          query: {
+            catalog_name,
+            schema_name,
+            max_results,
+            page_token,
+          },
+        },
       });
-
-      return apiClient
-        .get(`/volumes?${searchParams.toString()}`)
-        .then((response) => response.data);
+      const response = await api.call();
+      if (response.result !== 'success') {
+        // NOTE:
+        // When an expected error occurs, as defined in the OpenAPI specification, the following line will
+        // be executed. Unexpected errors will throw `Error("Unexpected error")`. The following block serves
+        // as a placeholder for expected errors.
+        throw new Error('Failed to list volumes');
+      }
+      return response.data;
     },
     ...options,
   });
 }
 
-interface GetVolumeParams {
-  catalog: string;
-  schema: string;
-  volume: string;
-}
+export type UseGetVolumeArgs = ApiRequestPathParam<
+  CatalogApi,
+  '/volumes/{name}',
+  'get'
+>;
 
-export function useGetVolume({ catalog, schema, volume }: GetVolumeParams) {
+export function useGetVolume({ name }: UseGetVolumeArgs) {
+  const [catalog, schema, volume] = name.split('.');
+
   return useQuery<VolumeInterface>({
     queryKey: ['getVolume', catalog, schema, volume],
     queryFn: async () => {
-      const fullVolumeName = [catalog, schema, volume].join('.');
-
-      return apiClient
-        .get(`/volumes/${fullVolumeName}`)
-        .then((response) => response.data);
+      const api = route(CLIENT, {
+        path: '/volumes/{name}',
+        method: 'get',
+        params: {
+          paths: {
+            name,
+          },
+        },
+      });
+      const response = await api.call();
+      if (response.result !== 'success') {
+        // NOTE:
+        // When an expected error occurs, as defined in the OpenAPI specification, the following line will
+        // be executed. Unexpected errors will throw `Error("Unexpected error")`. The following block serves
+        // as a placeholder for expected errors.
+        throw new Error('Failed to fetch volume');
+      }
+      return response.data;
     },
   });
 }
 
-interface UpdateVolumeParams {
-  catalog: string;
-  schema: string;
-  volume: string;
-}
+export type UseUpdateVolumeArgs = ApiRequestPathParam<
+  CatalogApi,
+  '/volumes/{name}',
+  'patch'
+>;
 
-export interface UpdateVolumeMutationParams
-  extends Pick<VolumeInterface, 'comment'> {}
+export type UpdateVolumeMutationParams = ApiRequestBody<
+  CatalogApi,
+  '/volumes/{name}',
+  'patch'
+>;
 
-export function useUpdateVolume({
-  catalog,
-  schema,
-  volume,
-}: UpdateVolumeParams) {
+export function useUpdateVolume({ name }: UseUpdateVolumeArgs) {
   const queryClient = useQueryClient();
 
-  return useMutation<VolumeInterface, Error, UpdateVolumeMutationParams>({
-    mutationFn: async (params: UpdateVolumeMutationParams) => {
-      const fullVolumeName = [catalog, schema, volume].join('.');
+  const [catalog, schema, volume] = name.split('.');
 
-      return apiClient
-        .patch(`/volumes/${fullVolumeName}`, JSON.stringify(params))
-        .then((response) => response.data)
-        .catch((e) => {
-          throw new Error(
-            e.response?.data?.message || 'Failed to update volume',
-          );
-        });
+  return useMutation<
+    ApiSuccessResponse<CatalogApi, '/volumes/{name}', 'patch'>,
+    Error,
+    UpdateVolumeMutationParams
+  >({
+    mutationFn: async ({ comment, new_name }: UpdateVolumeMutationParams) => {
+      const api = route(CLIENT, {
+        path: '/volumes/{name}',
+        method: 'patch',
+        params: {
+          paths: {
+            name,
+          },
+          body: {
+            comment,
+            new_name,
+          },
+        },
+      });
+      const response = await api.call();
+      if (response.result !== 'success') {
+        // NOTE:
+        // When an expected error occurs, as defined in the OpenAPI specification, the following line will
+        // be executed. Unexpected errors will throw `Error("Unexpected error")`. The following block serves
+        // as a placeholder for expected errors.
+        throw new Error('Failed to update volume');
+      }
+      return response.data;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({
@@ -108,32 +158,48 @@ export function useUpdateVolume({
   });
 }
 
-export interface DeleteVolumeMutationParams
-  extends Pick<VolumeInterface, 'catalog_name' | 'schema_name' | 'name'> {}
+export type UseDeleteVolumeArgs = ApiRequestPathParam<
+  CatalogApi,
+  '/volumes/{name}',
+  'delete'
+>;
 
-interface DeleteVolumeParams {
-  catalog: string;
-  schema: string;
-}
+export type DeleteVolumeMutationParams = ApiRequestPathParam<
+  CatalogApi,
+  '/volumes/{name}',
+  'delete'
+>;
 
 // Delete a volume
-export function useDeleteVolume({ catalog, schema }: DeleteVolumeParams) {
+export function useDeleteVolume({ name }: UseDeleteVolumeArgs) {
   const queryClient = useQueryClient();
 
-  return useMutation<void, Error, DeleteVolumeMutationParams>({
-    mutationFn: async ({
-      catalog_name,
-      schema_name,
-      name,
-    }: DeleteVolumeMutationParams) => {
-      return apiClient
-        .delete(`/volumes/${catalog_name}.${schema_name}.${name}`)
-        .then((response) => response.data)
-        .catch((e) => {
-          throw new Error(
-            e.response?.data?.message || 'Failed to delete volume',
-          );
-        });
+  const [catalog, schema] = name.split('.');
+
+  return useMutation<
+    ApiSuccessResponse<CatalogApi, '/volumes/{name}', 'delete'>,
+    Error,
+    DeleteVolumeMutationParams
+  >({
+    mutationFn: async ({ name }: DeleteVolumeMutationParams) => {
+      const api = route(CLIENT, {
+        path: '/volumes/{name}',
+        method: 'delete',
+        params: {
+          paths: {
+            name,
+          },
+        },
+      });
+      const response = await api.call();
+      if (response.result !== 'success') {
+        // NOTE:
+        // When an expected error occurs, as defined in the OpenAPI specification, the following line will
+        // be executed. Unexpected errors will throw `Error("Unexpected error")`. The following block serves
+        // as a placeholder for expected errors.
+        throw new Error('Failed to delete volume');
+      }
+      return response.data;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({

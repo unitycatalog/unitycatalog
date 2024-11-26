@@ -1,5 +1,5 @@
 import { useMutation, useQuery } from '@tanstack/react-query';
-import apiClient from '../context/client';
+import catalogClient from '../context/catalog';
 import { UC_AUTH_API_PREFIX } from '../utils/constants';
 
 interface LoginResponse {
@@ -24,7 +24,7 @@ export function useLoginWithToken() {
         subjectToken: idToken,
       };
 
-      return apiClient
+      return catalogClient
         .post(`/auth/tokens`, JSON.stringify(params), {
           baseURL: `${UC_AUTH_API_PREFIX}`,
         })
@@ -40,7 +40,7 @@ export function useGetCurrentUser(access_token: string) {
   return useQuery<UserInterface>({
     queryKey: ['getUser', access_token],
     queryFn: async () => {
-      return apiClient
+      return catalogClient
         .get(`/scim2/Users/self`, {
           baseURL: `${UC_AUTH_API_PREFIX}`,
         })

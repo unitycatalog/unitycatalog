@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { useGetCurrentUser, useLoginWithToken } from '../hooks/user';
-import apiClient from './client';
+import catalogClient from './catalog';
 import { useNotification } from '../utils/NotificationContext';
 
 interface AuthContextProps {
@@ -46,7 +46,7 @@ function AuthProvider(props: any) {
   }, []);
 
   useEffect(() => {
-    const requestIntercept = apiClient.interceptors.request.use(
+    const requestIntercept = catalogClient.interceptors.request.use(
       (config) => {
         if (accessToken) {
           config.headers['Authorization'] = `Bearer ${accessToken}`;
@@ -55,7 +55,7 @@ function AuthProvider(props: any) {
       },
       (error) => Promise.reject(error),
     );
-    const responseIntercept = apiClient.interceptors.response.use(
+    const responseIntercept = catalogClient.interceptors.response.use(
       (response) => response,
       async (error) => {
         if (error?.response?.status === 403) {
@@ -67,8 +67,8 @@ function AuthProvider(props: any) {
     );
 
     return () => {
-      apiClient.interceptors.request.eject(requestIntercept);
-      apiClient.interceptors.response.eject(responseIntercept);
+      catalogClient.interceptors.request.eject(requestIntercept);
+      catalogClient.interceptors.response.eject(responseIntercept);
     };
   }, [accessToken]);
 
