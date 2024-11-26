@@ -123,7 +123,7 @@ bin/uc catalog update \
    (e.g., `'{"key1": "value1", "key2": "value2"}'`). Make sure to either escape the double quotes(`\"`) inside the
    properties string or just use single quotes(`''`) around the same.
 
-**\*Note:** At least one of the optional parameters must be specified.\*
+!!! note "At least one of the optional parameters must be specified."
 
 Here's an example:
 
@@ -222,7 +222,7 @@ bin/uc schema update \
    (e.g., `'{"key1": "value1", "key2": "value2"}'`). Make sure to either escape the double quotes(`\"`) inside the
    properties string or just use single quotes(`''`) around the same.
 
-**\*Note:** At least one of the optional parameters must be specified.\*
+!!! note "At least one of the optional parameters must be specified."
 
 Here's an example:
 
@@ -247,200 +247,236 @@ bin/uc schema delete \
 
 ## Table Management CLI Usage
 
-This section outlines the usage of the `bin/uc` script for managing tables within your system.
-The script supports various operations such as creating, retrieving, listing and deleting tables.
-There's additional functionality to write sample data to a DELTA table and read data from a DELTA table.
+You can use the Unity Catalog CLI to manage tables within your schema. The `bin/uc` script supports various operations such as creating, retrieving, listing, updating and deleting tables. Let's take a look at each function.
+
+You can also read more in the [Tables](./tables/deltalake.md) section.
 
 ### List Tables
 
+You can list tables stored in a schema using:
+
 ```sh
-bin/uc table list --catalog <catalog> --schema <schema> [--max_results <max_results>]
+bin/uc table list \
+  --catalog <catalog> \ # (1)
+  --schema <schema> \ # (2)
+  [--max_results <max_results>] # (3)
 ```
 
-- `catalog`: The name of the catalog.
-- `schema`: The name of the schema.
-- `max_results`: _\[Optional\]_ The maximum number of results to return.
+1. `catalog`: The name of the catalog.
+2. `schema`: The name of the schema.
+3. `max_results`: _\[Optional\]_ The maximum number of results to return.
 
 ### Retrieve Table Information
 
+You can retrieve table information using:
+
 ```sh
-bin/uc table get --full_name <catalog>.<schema>.<table>
+bin/uc table get \
+  --full_name <full_name> # (1)
 ```
 
-- `catalog`: The name of the catalog.
-- `schema`: The name of the schema.
-- `table`: The name of the table.
+1. `full_name`: The full name of an existing table. The full name is the concatenation of the catalog name, schema name and table name separated by dots (e.g., `catalog_name.schema_name.table_name`).
 
 ### Create a Table
 
+You can create a table using:
+
 ```sh
-bin/uc table create --full_name <full_name> --columns <columns> --storage_location <storage_location> [--format <format>] [--properties <properties>]
+bin/uc table create \
+  --full_name <full_name> \ # (1)
+  --columns <columns> \ # (2)
+  --storage_location <storage_location> \ # (3)
+  [--format <format>] \ # (4)
+  [--properties <properties>] # (5)
 ```
 
-- `full_name`: The full name of the table, which is a concatenation of the catalog name,
-  schema name, and table name separated by dots (e.g., `catalog_name.schema_name.table_name`).
-- `columns`: The columns of the table in SQL-like format `"column_name column_data_type"`.
-  Supported data types include `BOOLEAN`, `BYTE`, `SHORT`, `INT`, `LONG`, `FLOAT`, `DOUBLE`, `DATE`, `TIMESTAMP`,
-  `TIMESTAMP_NTZ`, `STRING`, `BINARY`, `DECIMAL`. Separate multiple columns with a comma
-  (e.g., `"id INT, name STRING"`).
-- `format`: _\[Optional\]_ The format of the data source. Supported values are `DELTA`, `PARQUET`, `ORC`, `JSON`,
-  `CSV`, `AVRO`, and `TEXT`. If not specified the default format is `DELTA`.
-- `storage_location`: The storage location associated with the table. It is a mandatory field for `EXTERNAL` tables.
-- `properties`: _\[Optional\]_ The properties of the table in JSON format
-  (e.g., `'{"key1": "value1", "key2": "value2"}'`). Make sure to either escape the double quotes(`\"`) inside the
-  properties string or just use single quotes(`''`) around the same.
+1. `full_name`: The full name of the table, which is a concatenation of the catalog name,
+   schema name, and table name separated by dots (e.g., `catalog_name.schema_name.table_name`).
+2. `columns`: The columns of the table in SQL-like format `"column_name column_data_type"`.
+   Supported data types include `BOOLEAN`, `BYTE`, `SHORT`, `INT`, `LONG`, `FLOAT`, `DOUBLE`, `DATE`, `TIMESTAMP`, `TIMESTAMP_NTZ`, `STRING`, `BINARY`, `DECIMAL`. Separate multiple columns with a comma
+   (e.g., `"id INT, name STRING"`).
+3. `format`: _\[Optional\]_ The format of the data source. Supported values are `DELTA`, `PARQUET`, `ORC`, `JSON`,`CSV`, `AVRO`, and `TEXT`. If not specified the default format is `DELTA`.
+4. `storage_location`: The storage location associated with the table. It is a mandatory field for `EXTERNAL` tables.
+5. `properties`: _\[Optional\]_ The properties of the table in JSON format
+   (e.g., `'{"key1": "value1", "key2": "value2"}'`). Make sure to either escape the double quotes(`\"`) inside the properties string or just use single quotes(`''`) around the same.
 
-Example:
-
-- Create an external DELTA table with columns `id` and `name` in the schema `my_schema` of catalog `my_catalog` with
-  storage location `/path/to/storage`:
+Here's an example to create an external DELTA table with columns `id` and `name` in the schema `my_schema` of catalog `my_catalog` with storage location `/path/to/storage`:
 
 ```sh
-bin/uc table create --full_name my_catalog.my_schema.my_table --columns "id INT, name STRING" --storage_location "/path/to/storage"
+bin/uc table create \
+  --full_name my_catalog.my_schema.my_table \
+  --columns "id INT, name STRING" \
+  --storage_location "/path/to/storage"
 ```
 
 When running against UC server, the storage location can be a local path(absolute path) or an S3 path.
-When S3 path is provided, the [server configuration](../server/configuration.md) will vend temporary credentials to
-access the S3 bucket and server properties must be set up accordingly.
+When S3 path is provided, the [server configuration](../server/configuration.md) will vend temporary credentials to access the S3 bucket and server properties must be set up accordingly.
 
-### Read a DELTA Table
+### Read a Delta Table
 
-```sh
-bin/uc table read --full_name <catalog>.<schema>.<table> [--max_results <max_results>]
-```
-
-- `catalog`: The name of the catalog.
-- `schema`: The name of the schema.
-- `table`: The name of the table.
-- `max_results`: _\[Optional\]_ The maximum number of rows to return.
-
-### Write Sample Data to a DELTA Table
+You can read a Delta table using:
 
 ```sh
-bin/uc table write --full_name <catalog>.<schema>.<table>
+bin/uc table read \
+  --full_name <full_name> \ # (1)
+  [--max_results <max_results>] # (2)
 ```
 
-- `catalog`: The name of the catalog.
-- `schema`: The name of the schema.
-- `table`: The name of the table.
+1. `full_name`: The full name of the table, which is a concatenation of the catalog name,
+   schema name, and table name separated by dots (e.g., `catalog_name.schema_name.table_name`).
+2. `max_results`: _\[Optional\]_ The maximum number of rows to return.
+
+### Write Sample Data to a Delta Table
+
+You can write sample data to a Delta table using:
+
+```sh
+bin/uc table write \
+  --full_name <catalog>.<schema>.<table> # (1)
+```
+
+1. `full_name`: The full name of the table, which is a concatenation of the catalog name,
+   schema name, and table name separated by dots (e.g., `catalog_name.schema_name.table_name`).
 
 This is an experimental feature and only some primitive types are supported for writing sample data.
 
 ### Delete a Table
 
+You can delete an existing table using:
+
 ```sh
-bin/uc table delete --full_name <catalog>.<schema>.<table>
+bin/uc table delete \
+  --full_name <full_name> #(1)
 ```
 
-- `catalog`: The name of the catalog.
-- `schema`: The name of the schema.
-- `table`: The name of the table.
+1. `full_name`: The full name of the table, which is a concatenation of the catalog name,
+   schema name, and table name separated by dots (e.g., `catalog_name.schema_name.table_name`).
 
 ## Volume Management CLI Usage
 
-This section outlines the usage of the `bin/uc` script for managing volumes within your system.
-The script supports various operations such as creating, retrieving, listing and deleting volumes.
+You can use the Unity Catalog CLI to manage volumes within your schema. The `bin/uc` script supports various operations such as creating, retrieving, listing, updating and deleting volumes. Let's take a look at each function.
+
+You can also read more in the [Volumes](./volumes.md) section.
 
 ### List Volumes
 
+You can list all volumes stored in a Unity Catalog schema using:
+
 ```sh
-bin/uc volume list --catalog <catalog> --schema <schema> [--max_results <max_results>]
+bin/uc volume list \
+  --catalog <catalog> \ # (1)
+  --schema <schema> \ # (2)
+  [--max_results <max_results>] # (3)
 ```
 
-- `catalog`: The name of the catalog.
-- `schema`: The name of the schema.
-- `max_results`: _\[Optional\]_ The maximum number of results to return.
+1. `catalog`: The name of the catalog.
+2. `schema`: The name of the schema.
+3. `max_results`: _\[Optional\]_ The maximum number of results to return.
 
 ### Retrieve Volume Information
 
+You can inspect information about your volume using:
+
 ```sh
-bin/uc volume get --full_name <catalog>.<schema>.<volume>
+bin/uc volume get \
+  --full_name <full_name> # (1)
 ```
 
-- `catalog`: The name of the catalog.
-- `schema`: The name of the schema.
-- `volume`: The name of the volume.
+1. `full_name`: The full name of the volume, which is a concatenation of the catalog name,
+   schema name, and volume name separated by dots (e.g., `catalog_name.schema_name.volume_name`).
 
 ### Create a Volume
 
+You can create a new volume using:
+
 ```sh
-bin/uc volume create --full_name <catalog>.<schema>.<volume> --storage_location <storage_location> [--comment <comment>]
+bin/uc volume create \
+  --full_name <full_name> \ # (1)
+  --storage_location <storage_location> \ # (2)
+  [--comment <comment>] # (3)
 ```
 
-- `catalog`: The name of the catalog.
-- `schema`: The name of the schema.
-- `volume`: The name of the volume.
-- `storage_location`: The storage location associated with the volume. When running against UC OSS server,
-  the storage location can be a local path(absolute path) or an S3 path. When S3 path is provided, the
-  [server configuration](../server/configuration.md) will vend temporary credentials to access the S3 bucket and
-  server properties must be set up accordingly. When running against Databricks Unity Catalog, the storage location
-  for EXTERNAL volume can only be an S3 location which has been configured as an `external location` in your
-  Databricks workspace.
-- `comment`: _\[Optional\]_ The description of the volume.
+1. `full_name`: The full name of the volume, which is a concatenation of the catalog name,
+   schema name, and volume name separated by dots (e.g., `catalog_name.schema_name.volume_name`).
+2. `storage_location`: The storage location associated with the volume. When running against UC OSS server,
+   the storage location can be a local path(absolute path) or an S3 path. When S3 path is provided, the
+   [server configuration](../server/configuration.md) will vend temporary credentials to access the S3 bucket and server properties must be set up accordingly. When running against Databricks Unity Catalog, the storage location for EXTERNAL volume can only be an S3 location which has been configured as an `external location` in your Databricks workspace.
+3. `comment`: _\[Optional\]_ The description of the volume.
 
-Example:
-
-- Create an external volume with full name `my_catalog.my_schema.my_volume` with storage location `/path/to/storage`:
+Here's an example that creates an external volume with full name `my_catalog.my_schema.my_volume` with storage location `/path/to/storage`:
 
 ```sh
-bin/uc volume create --full_name my_catalog.my_schema.my_volume --storage_location "/path/to/storage"
+bin/uc volume create \
+  --full_name my_catalog.my_schema.my_volume \
+  --storage_location "/path/to/storage"
 ```
 
 ### Update a Volume
 
+You can update an existing volume using:
+
 ```sh
-bin/uc volume update --full_name <catalog>.<schema>.<volume> --new_name <new_name> [--comment <comment>]
+bin/uc volume update \
+  --full_name <catalog>.<schema>.<volume> \ # (1)
+  --new_name <new_name> \ # (2)
+  [--comment <comment>] # (3)
 ```
 
-- `catalog`: The name of the catalog.
-- `schema`: The name of the schema.
-- `volume`: The name of the volume.
-- `new_name`: _\[Optional\]_ The new name of the volume.
-- `comment`: _\[Optional\]_ The new description of the volume.
+1. `full_name`: The full name of the volume, which is a concatenation of the catalog name,
+   schema name, and volume name separated by dots (e.g., `catalog_name.schema_name.volume_name`).
+2. `new_name`: _\[Optional\]_ The new name of the volume.
+3. `comment`: _\[Optional\]_ The new description of the volume.
 
-_Note:_ at least one of the optional parameters must be specified.
+!!! note "At least one of the optional parameters must be specified."
 
-Example:
+Here's an example:
 
 ```sh
-bin/uc volume update --full_name my_catalog.my_schema.my_volume --new_name my_updated_volume --comment "Updated Volume"
+bin/uc volume update \
+  --full_name my_catalog.my_schema.my_volume \
+  --new_name my_updated_volume \
+  --comment "Updated Volume"
 ```
 
 ### Read Volume content
 
+Here's how you can access the contens of a volume:
+
 ```sh
-bin/uc volume read --full_name <catalog>.<schema>.<volume> [--path <path>]
+bin/uc volume read \
+  --full_name <catalog>.<schema>.<volume> \ # (1)
+  [--path <path>] # (2)
 ```
 
-- `catalog`: The name of the catalog.
-- `schema`: The name of the schema.
-- `volume`: The name of the volume.
-- `path`: _\[Optional\]_ The path relative to the volume root.
-  If no path is provided, the volume root is read.
-  If the final path is a directory, the contents of the directory are listed(`ls`).
-  If the final path is a file, the contents of the file are displayed(`cat`).
+1. `full_name`: The full name of the volume, which is a concatenation of the catalog name,
+   schema name, and volume name separated by dots (e.g., `catalog_name.schema_name.volume_name`).
+2. `path`: _\[Optional\]_ The path relative to the volume root. If no path is provided, the volume root is read. If the final path is a directory, the contents of the directory are listed(`ls`). If the final path is a file, the contents of the file are displayed(`cat`).
 
 ### Write Sample Data to a Volume
 
+Here's how you can write sample date to a volume:
+
 ```sh
-bin/uc volume write --full_name <catalog>.<schema>.<volume>
+bin/uc volume write \
+  --full_name <full_name> # (1)
 ```
 
-- `catalog`: The name of the catalog.
-- `schema`: The name of the schema.
-- `volume`: The name of the volume.
+1. `full_name`: The full name of the volume, which is a concatenation of the catalog name,
+   schema name, and volume name separated by dots (e.g., `catalog_name.schema_name.volume_name`).
 
-Writes sample text data to a randomly generated file name(UUID) in the volume. This is an experimental feature.
+This operation will write sample text data to a randomly generated file name(UUID) in the volume. This is an experimental feature.
 
 ### Delete a Volume
 
+You can delete an existing volume using:
+
 ```sh
-bin/uc volume delete --full_name <catalog>.<schema>.<volume>
+bin/uc volume delete \
+  --full_name <full_name> # (1)
 ```
 
-- `catalog`: The name of the catalog.
-- `schema`: The name of the schema.
-- `volume`: The name of the volume.
+1. `full_name`: The full name of the volume, which is a concatenation of the catalog name,
+   schema name, and volume name separated by dots (e.g., `catalog_name.schema_name.volume_name`).
 
 ## Function Management CLI Usage
 
