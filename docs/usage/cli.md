@@ -152,73 +152,98 @@ You can use the Unity Catalog CLI to manage schemas within your catalog. The `bi
 
 ### List Schemas
 
+You can list schemas within your catalog using:
+
 ```sh
-bin/uc schema list --catalog <catalog> [--max_results <max_results>]
+bin/uc schema list \
+  --catalog <catalog> \ # (1)
+  [--max_results <max_results>] # (2)
 ```
 
-- `catalog`: The name of the catalog.
-- `max_results`: _\[Optional\]_ The maximum number of results to return.
+1. `catalog`: The name of the catalog.
+2. `max_results`: _\[Optional\]_ The maximum number of results to return.
 
 ### Get a Schema
 
-Retrieve the details of a schema using the full name of the schema.
+You can retrieve the details of a schema using:
 
 ```sh
-bin/uc schema get --full_name <catalog>.<schema>
+bin/uc schema get \
+  --full_name <full_name> # (1)
 ```
 
-- `catalog`: The name of the catalog.
-- `schema`: The name of the schema.
+1. `full_name`: The full name of the existing schema. The full name is the concatenation of the catalog name and schema name separated by a dot (e.g., `catalog_name.schema_name`).
 
 ### Create a Schema
 
+You can create a new schema stored within a catalog using:
+
 ```sh
-bin/uc schema create --catalog <catalog> --name <name> [--comment <comment>] [--properties <properties>]
+bin/uc schema create \
+  --catalog <catalog> \ # (1)
+  --name <name> \ # (2)
+  [--comment <comment>] \ # (3)
+  [--properties <properties>] # (4)
 ```
 
-- `catalog`: The name of the catalog.
-- `name`: The name of the schema.
-- `comment`: _\[Optional\]_ The description of the schema.
-- `properties`: _\[Optional\]_ The properties of the schema in JSON format
-  (e.g., `'{"key1": "value1", "key2": "value2"}'`). Make sure to either escape the double quotes(`\"`) inside the
-  properties string or just use single quotes(`''`) around the same.
+1. `catalog`: The name of the catalog.
+2. `name`: The name of the schema.
+3. `comment`: _\[Optional\]_ The description of the schema.
+4. `properties`: _\[Optional\]_ The properties of the schema in JSON format
+   (e.g., `'{"key1": "value1", "key2": "value2"}'`). Make sure to either escape the double quotes(`\"`) inside the
+   properties string or just use single quotes(`''`) around the same.
 
-Example:
+Here's an example:
 
 ```sh
-bin/uc schema create --catalog my_catalog --name my_schema --comment "My Schema" --properties '{"key1": "value1", "key2": "value2"}'
+bin/uc schema create \
+  --catalog my_catalog \
+  --name my_schema \
+  --comment "My Schema"
+  --properties '{"key1": "value1", "key2": "value2"}'
 ```
 
 ### Update a Schema
 
+You can update an existing schema using:
+
 ```sh
-bin/uc schema update --full_name <full_name> [--new_name <new_name>] [--comment <comment>] [--properties <properties>]
+bin/uc schema update \
+  --full_name <full_name> \ # (1)
+  [--new_name <new_name>] \ # (2)
+  [--comment <comment>] \ # (3)
+  [--properties <properties>] # (4)
 ```
 
-- `full_name`: The full name of the existing schema. The full name is the concatenation of the catalog name and schema
-  name separated by a dot (e.g., `catalog_name.schema_name`).
-- `new_name`: _\[Optional\]_ The new name of the schema.
-- `comment`: _\[Optional\]_ The new description of the schema.
-- `properties`: _\[Optional\]_ The new properties of the schema in JSON format
-  (e.g., `'{"key1": "value1", "key2": "value2"}'`). Make sure to either escape the double quotes(`\"`) inside the
-  properties string or just use single quotes(`''`) around the same.
+1. `full_name`: The full name of the existing schema. The full name is the concatenation of the catalog name and schema name separated by a dot (e.g., `catalog_name.schema_name`).
+2. `new_name`: _\[Optional\]_ The new name of the schema.
+3. `comment`: _\[Optional\]_ The new description of the schema.
+4. `properties`: _\[Optional\]_ The new properties of the schema in JSON format
+   (e.g., `'{"key1": "value1", "key2": "value2"}'`). Make sure to either escape the double quotes(`\"`) inside the
+   properties string or just use single quotes(`''`) around the same.
 
 **\*Note:** At least one of the optional parameters must be specified.\*
 
-Example:
+Here's an example:
 
 ```sh
-bin/uc schema update --full_name my_catalog.my_schema --new_name my_updated_schema --comment "Updated Schema" --properties '{"updated_key": "updated_value"}'
+bin/uc schema update \
+  --full_name my_catalog.my_schema \
+  --new_name my_updated_schema \
+  --comment "Updated Schema" \
+  --properties '{"updated_key": "updated_value"}'
 ```
 
 ### Delete a Schema
 
+You can delete an existing schema using:
+
 ```sh
-bin/uc schema delete --full_name <catalog>.<schema>
+bin/uc schema delete \
+  --full_name <full_name> # (1)
 ```
 
-- `catalog`: The name of the catalog.
-- `schema`: The name of the schema.
+1. `full_name`: The full name of the existing schema. The full name is the concatenation of the catalog name and schema name separated by a dot (e.g., `catalog_name.schema_name`).
 
 ## Table Management CLI Usage
 
