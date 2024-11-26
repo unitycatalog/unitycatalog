@@ -65,8 +65,9 @@ This will start a local development server. By default, the docs will be served 
 You can make changes to the documentation by editing the markdown files under the `docs` directory. MkDocs will watch for changes and automatically refresh your browser.
 
 - **Structure of the documentation** is controlled by the `mkdocs.yml` file located at the root of the repository. This file defines the site structure, theme, and various configurations.
-  
 - **Adding new pages**: Add new markdown files to the `docs` folder and then update the `mkdocs.yml` file to include the new pages in the navigation.
+
+> Note when **adding new a Integrations page**: Please include a reference to the new page in the `integrations/index.md` overview file to make it easier for users to find your integration from linked tutorials and blogs.
 
 ### 6. Testing Locally
 
@@ -137,24 +138,24 @@ shows an example of a proper formatting:
 
 - The tarball generated in the `target` directory can be unpacked using the following command:
 
-    ```sh
-    tar -xvf unitycatalog-<version>.tar.gz
-    ```
+  ```sh
+  tar -xvf unitycatalog-<version>.tar.gz
+  ```
 
 - Unpacking the tarball will create the following directory structure:
 
-    ```console
-    unitycatalog-<version>
-    ├── bin
-    │   ├── start-uc-server
-    │   └── uc
-    ├── etc
-    │   ├── conf
-    │   ├── data
-    │   ├── db
-    │   └── logs
-    └── jars
-    ```
+  ```console
+  unitycatalog-<version>
+  ├── bin
+  │   ├── start-uc-server
+  │   └── uc
+  ├── etc
+  │   ├── conf
+  │   ├── data
+  │   ├── db
+  │   └── logs
+  └── jars
+  ```
 
 Please note that this ensures that the code snippet is aligned with the text in the bullet points. The final result
 should look similar to the following
