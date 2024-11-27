@@ -118,7 +118,9 @@ class UnitycatalogFunctionClient(BaseFunctionClient):
         """
 
         if not isinstance(api_client, ApiClient):
-            raise ValueError("The 'uc' client must be an instance of unitycatalog.client.ApiClient")
+            raise ValueError(
+                "The 'api_client' must be an instance of unitycatalog.client.ApiClient"
+            )
 
         self.uc = FunctionsApi(api_client=api_client)
         self.func_cache = {}

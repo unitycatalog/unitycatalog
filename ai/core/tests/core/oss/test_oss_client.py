@@ -110,6 +110,12 @@ async def uc_client():
 
 
 @pytest.mark.asyncio
+async def test_handle_invalid_client():
+    with pytest.raises(ValueError, match="The 'api_client' must be an instance of"):
+        UnitycatalogFunctionClient(api_client="client")
+
+
+@pytest.mark.asyncio
 async def test_create_function(uc_client):
     function_name = f"{CATALOG}.{SCHEMA}.test_function"
     routine_definition = "return str(x)"
