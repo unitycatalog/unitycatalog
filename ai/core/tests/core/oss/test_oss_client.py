@@ -101,7 +101,7 @@ async def uc_client():
         create_schema = CreateSchema(name=SCHEMA, catalog_name=CATALOG, comment="")
         await schema_api.create_schema(create_schema=create_schema)
 
-    uc_client = UnitycatalogFunctionClient(uc=uc_api_client)
+    uc_client = UnitycatalogFunctionClient(api_client=uc_api_client)
 
     yield uc_client
 

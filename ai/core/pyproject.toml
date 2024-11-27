@@ -65,6 +65,9 @@ sources = ["src"]
 only-include = ["src/unitycatalog/ai/core"]
 
 [project.optional-dependencies]
+oss = [
+  "unitycatalog-client"
+]
 databricks = [
   "databricks-sdk>=0.32.0",
   "pandas",

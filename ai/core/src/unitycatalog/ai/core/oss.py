@@ -12,7 +12,7 @@ from typing_extensions import override
 
 from unitycatalog.ai.core.client import BaseFunctionClient, FunctionExecutionResult
 from unitycatalog.ai.core.paged_list import PagedList
-from unitycatalog.ai.core.utils.callable_utils import generate_function_info
+from unitycatalog.ai.core.utils.callable_utils_oss import generate_function_info
 from unitycatalog.ai.core.utils.type_utils import column_type_to_python_type
 from unitycatalog.ai.core.utils.validation_utils import (
     FullFunctionName,
@@ -108,19 +108,19 @@ class UnitycatalogFunctionClient(BaseFunctionClient):
     Unity Catalog function client for managing and executing functions in Unity Catalog OSS.
     """
 
-    def __init__(self, uc: ApiClient, **kwargs: Any) -> None:
+    def __init__(self, api_client: ApiClient, **kwargs: Any) -> None:
         """
         Initialize the UnitycatalogFunctionClient.
 
         Args:
-            uc: An instance of unitycatalog.client.ApiClient that has been constructed with the desired Configuration.
+            api_client: An instance of unitycatalog.client.ApiClient that has been constructed with the desired Configuration.
             **kwargs: Additional keyword arguments.
         """
 
-        if not isinstance(uc, ApiClient):
+        if not isinstance(api_client, ApiClient):
             raise ValueError("The 'uc' client must be an instance of unitycatalog.client.ApiClient")
 
-        self.uc = FunctionsApi(api_client=uc)
+        self.uc = FunctionsApi(api_client=api_client)
         self.func_cache = {}
         super().__init__()
 
@@ -131,7 +131,7 @@ class UnitycatalogFunctionClient(BaseFunctionClient):
 
     async def close_async(self):
         """Asynchronously close the underlying ApiClient."""
-        if hasattr(self, "_closed") and self._closed:
+        if getattr(self, "_closed", None):
             return
         self._closed = True
         try:
@@ -142,7 +142,7 @@ class UnitycatalogFunctionClient(BaseFunctionClient):
 
     def close(self):
         """Synchronously close the underlying ApiClient."""
-        if hasattr(self, "_closed") and self._closed:
+        if getattr(self, "_closed", None):
             return
         self._closed = True
         try:
@@ -302,7 +302,9 @@ class UnitycatalogFunctionClient(BaseFunctionClient):
             catalog: The catalog name.
             schema: The schema name.
             replace: Whether to replace the function if it already exists. Defaults to False.
-            properties: JSON-serialized key-value pair map encoded as a string.
+            properties: JSON-serialized key-value pair map encoded as a string. Currently serves
+                as a reserved field for future functionality. Required in the client API, but defaulted
+                to "null" in this API.
             timeout: The timeout in seconds.
 
         Returns:
@@ -480,7 +482,7 @@ class UnitycatalogFunctionClient(BaseFunctionClient):
             return FunctionExecutionResult(format="SCALAR", value=str(result))
         else:
             python_function = dynamically_construct_python_function(function_info)
-            exec(python_function.function_def, self.func_cache)
+            exec(python_function, self.func_cache)
             try:
                 func = self.func_cache[function_info.name]
 
@@ -535,20 +537,7 @@ class UnitycatalogFunctionClient(BaseFunctionClient):
         return {k: getattr(self, k) for k in ["uc"] if getattr(self, k) is not None}
 
 
-class FunctionDefinition(NamedTuple):
-    """
-    A named tuple representing a dynamically constructed Python function.
-
-    Attributes:
-        function_def: The function definition as a string.
-        function_head: The function signature as a string.
-    """
-
-    function_def: str
-    function_head: str
-
-
-def dynamically_construct_python_function(function_info: FunctionInfo) -> FunctionDefinition:
+def dynamically_construct_python_function(function_info: FunctionInfo) -> str:
     """
     Construct a Python function from the given FunctionInfo.
 
@@ -556,7 +545,7 @@ def dynamically_construct_python_function(function_info: FunctionInfo) -> Functi
         function_info: The FunctionInfo object containing the function metadata.
 
     Returns:
-        A FunctionDefinition named tuple containing the function definition and function head.
+        The re-constructed function definition.
     """
 
     param_names = []
@@ -570,7 +559,7 @@ def dynamically_construct_python_function(function_info: FunctionInfo) -> Functi
     else:
         raise NotImplementedError(f"routine_body {function_info.routine_body} not supported")
 
-    return FunctionDefinition(function_def=func_def, function_head=function_head)
+    return func_def
 
 
 def validate_input_parameter(
@@ -600,7 +589,7 @@ def validate_input_parameter(
         field for field in required_fields if getattr(parameter, field, None) is None
     ]:
         raise ValueError(
-            f"Missing required fields in input parameter '{getattr(parameter, 'name', '')}': {missing_fields}."
+            f"Missing required fields in input parameter '{parameter}': {missing_fields}."
         )
 
     if isinstance(type_name := parameter.type_name, Enum):
@@ -611,13 +600,10 @@ def validate_input_parameter(
         )
 
     complex_type_names = ["ARRAY", "MAP", "STRUCT", "DECIMAL", "INTERVAL"]
-    if any(type_name.startswith(complex_type_name) for complex_type_name in complex_type_names):
-        parameter.type_name = next(
-            complex_type_name
-            for complex_type_name in complex_type_names
-            if type_name.startswith(complex_type_name)
-        )
-        return parameter
+    for complex_type_name in complex_type_names:
+        if type_name.startswith(complex_type_name):
+            parameter.type_name = complex_type_name
+            return parameter
 
     if type_name not in ALLOWED_DATA_TYPES:
         raise ValueError(

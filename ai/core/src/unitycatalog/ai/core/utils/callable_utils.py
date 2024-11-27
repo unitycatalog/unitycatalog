@@ -1,11 +1,9 @@
 import ast
 import inspect
-import json
 import warnings
 from dataclasses import dataclass
 from textwrap import dedent, indent
 from typing import (
-    TYPE_CHECKING,
     Any,
     Callable,
     Dict,
@@ -21,8 +19,6 @@ from typing import (
 from unitycatalog.ai.core.utils.docstring_utils import DocstringInfo, parse_docstring
 from unitycatalog.ai.core.utils.type_utils import python_type_to_sql_type
 
-if TYPE_CHECKING:
-    from unitycatalog.client.models import FunctionParameterInfo
 
 FORBIDDEN_PARAMS = ["self", "cls"]
 
@@ -107,29 +103,6 @@ class FunctionMetadata:
     parameters: List[Dict[str, Any]]
     function_body: str
     indent_unit: int
-
-
-@dataclass
-class FunctionInfoDefinition:
-    """
-    Dataclass to define information about a function for Unity Catalog.
-
-    Attributes:
-        callable_name: The name of the callable function.
-        routine_definition: The body of the function.
-        data_type: The base SQL data type of the function's return value.
-        full_data_type: The full SQL data type of the function's return value.
-        parameters: List of function parameter information.
-        comment: Description of the function.
-    """
-
-    callable_name: str
-    routine_definition: str
-    data_type: str
-    full_data_type: str
-    parameters: List["FunctionParameterInfo"]
-    comment: str
-
 
 def extract_function_body(func: Callable[..., Any]) -> tuple[str, int]:
     """
@@ -436,10 +409,8 @@ def extract_function_metadata(func: Callable[..., Any]) -> FunctionMetadata:
     type_hints = get_type_hints(func)
 
     sql_return_type = validate_return_type(func_name, type_hints)
-    if "<" in sql_return_type:
-        base_return_type_name = sql_return_type.split("<", 1)[0]
-    else:
-        base_return_type_name = sql_return_type
+
+    base_return_type_name = sql_return_type.split("<", 1)[0]
 
     docstring = inspect.getdoc(func)
     if not docstring:
@@ -476,10 +447,7 @@ def extract_function_metadata(func: Callable[..., Any]) -> FunctionMetadata:
             error_message = generate_type_hint_error_message(param_name, param_hint, e)
             raise ValueError(error_message) from e
 
-        if "<" in sql_type:
-            base_type_name = sql_type.split("<", 1)[0]
-        else:
-            base_type_name = sql_type
+        base_type_name = sql_type.split("<", 1)[0]
 
         param_comment = docstring_info.params.get(param_name)
         if param_comment:
@@ -567,56 +535,6 @@ def generate_sql_function_body(
     )
 
     return sql_body
-
-
-def generate_function_info(func: Callable[..., Any]) -> FunctionInfoDefinition:
-    """
-    Generates a FunctionInfoDefinition object for a given Python function.
-
-    This object encapsulates all necessary information about the function,
-    including its name, definition, data types, parameters, and comments,
-    which can be used for integration with Unity Catalog.
-
-    Args:
-        func: The Python function to generate information for.
-
-    Returns:
-        An object containing detailed information about the function.
-    """
-
-    from unitycatalog.client.models import FunctionParameterInfo
-
-    metadata = extract_function_metadata(func)
-
-    parameters = []
-    for param_info in metadata.parameters:
-        type_json_dict = {
-            "name": param_info["name"],
-            "type": param_info["base_type_name"].lower(),
-            "nullable": param_info["parameter_default"] is not None,
-            "metadata": {"comment": param_info["comment"] or ""},
-        }
-        type_json_str = json.dumps(type_json_dict)
-
-        function_param_info = FunctionParameterInfo(
-            name=param_info["name"],
-            type_name=param_info["base_type_name"],
-            type_text=param_info["sql_type"],
-            type_json=type_json_str,
-            position=param_info["position"],
-            parameter_default=param_info["parameter_default"],
-            comment=param_info["comment"],
-        )
-        parameters.append(function_param_info)
-
-    return FunctionInfoDefinition(
-        callable_name=metadata.func_name,
-        routine_definition=metadata.function_body,
-        data_type=metadata.base_return_type_name,
-        full_data_type=metadata.sql_return_type,
-        parameters=parameters,
-        comment=metadata.docstring_info.description,
-    )
 
 
 def validate_return_type(func_name: str, type_hints: dict[str, Any]) -> str:
