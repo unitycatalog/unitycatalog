@@ -21,8 +21,6 @@ from unitycatalog.client import (
     ApiClient,
     CatalogsApi,
     Configuration,
-    CreateCatalog,
-    CreateSchema,
     FunctionParameterInfo,
     FunctionsApi,
     SchemasApi,
@@ -86,22 +84,9 @@ async def uc_client():
     config.host = "http://localhost:8080/api/2.1/unity-catalog"
     uc_api_client = ApiClient(configuration=config)
 
-    catalog_api = CatalogsApi(api_client=uc_api_client)
-    schema_api = SchemasApi(api_client=uc_api_client)
-
-    try:
-        await catalog_api.get_catalog(name=CATALOG)
-    except Exception:
-        create_catalog = CreateCatalog(name=CATALOG, comment="")
-        await catalog_api.create_catalog(create_catalog=create_catalog)
-
-    try:
-        await schema_api.get_schema(full_name=f"{CATALOG}.{SCHEMA}")
-    except Exception:
-        create_schema = CreateSchema(name=SCHEMA, catalog_name=CATALOG, comment="")
-        await schema_api.create_schema(create_schema=create_schema)
-
     uc_client = UnitycatalogFunctionClient(api_client=uc_api_client)
+    uc_client.create_catalog(name=CATALOG)
+    uc_client.create_schema(name=SCHEMA, catalog_name=CATALOG)
 
     yield uc_client
 
@@ -113,6 +98,62 @@ async def uc_client():
 async def test_handle_invalid_client():
     with pytest.raises(ValueError, match="The 'api_client' must be an instance of"):
         UnitycatalogFunctionClient(api_client="client")
+
+
+@pytest.mark.asyncio
+async def test_create_catalog(uc_client):
+    test_catalog = "CatalogCreate"
+    catalog_comment = "Testing the catalog creation"
+    properties = {"test": "test"}
+    catalog_info = uc_client.create_catalog(
+        name=test_catalog, comment=catalog_comment, properties=properties
+    )
+
+    assert catalog_info.name == test_catalog
+    assert catalog_info.comment == catalog_comment
+    assert catalog_info.properties == properties
+
+    with pytest.warns(UserWarning, match=f"The catalog '{test_catalog}' already exists."):
+        uc_client.create_catalog(name=test_catalog)
+
+    await uc_client.catalogs_client.delete_catalog(name=test_catalog, force=True)
+
+
+@pytest.mark.asyncio
+async def test_create_schema(uc_client):
+    test_catalog = "SchemaCreate"
+    test_schema = "TestSchema"
+    schema_comment = "Testing the schema creation"
+    properties = {"test": "test"}
+
+    uc_client.create_catalog(name=test_catalog)
+
+    schema_info = uc_client.create_schema(
+        name=test_schema, catalog_name=test_catalog, comment=schema_comment, properties=properties
+    )
+
+    assert schema_info.name == test_schema
+    assert schema_info.catalog_name == test_catalog
+    assert schema_info.comment == schema_comment
+    assert schema_info.properties == properties
+
+    with pytest.warns(
+        UserWarning,
+        match=f"The schema '{test_schema}' already exists in the catalog '{test_catalog}'",
+    ):
+        existing = uc_client.create_schema(name=test_schema, catalog_name=test_catalog)
+
+    assert existing.name == test_schema
+    assert existing.comment == schema_comment
+
+    non_existent_catalog = "NotARealCatalog"
+    with pytest.raises(
+        ValueError,
+        match=f"The Catalog that you specified: '{non_existent_catalog}' does not exist on this server.",
+    ):
+        uc_client.create_schema(name="MySchema", catalog_name=non_existent_catalog)
+
+    await uc_client.catalogs_client.delete_catalog(name=test_catalog, force=True)
 
 
 @pytest.mark.asyncio
@@ -709,8 +750,9 @@ async def test_function_caching(uc_client):
 async def test_to_dict(uc_client):
     client_dict = uc_client.to_dict()
     assert isinstance(client_dict, dict)
-    if "uc" in client_dict:
-        assert isinstance(client_dict["uc"], FunctionsApi)
+    assert isinstance(client_dict["functions_client"], FunctionsApi)
+    assert isinstance(client_dict["catalogs_client"], CatalogsApi)
+    assert isinstance(client_dict["schemas_client"], SchemasApi)
 
 
 @pytest.mark.asyncio

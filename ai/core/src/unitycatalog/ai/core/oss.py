@@ -3,6 +3,7 @@ import atexit
 import datetime
 import decimal
 import logging
+import warnings
 from enum import Enum
 from functools import lru_cache, wraps
 from typing import Any, Callable, Dict, List, Optional, Union
@@ -20,12 +21,18 @@ from unitycatalog.ai.core.utils.validation_utils import (
 )
 from unitycatalog.client import (
     ApiClient,
+    CatalogInfo,
+    CatalogsApi,
+    CreateCatalog,
     CreateFunction,
     CreateFunctionRequest,
+    CreateSchema,
     FunctionInfo,
     FunctionParameterInfo,
     FunctionParameterInfos,
     FunctionsApi,
+    SchemaInfo,
+    SchemasApi,
 )
 from unitycatalog.client.exceptions import NotFoundException, ServiceException
 
@@ -122,12 +129,14 @@ class UnitycatalogFunctionClient(BaseFunctionClient):
                 "The 'api_client' must be an instance of unitycatalog.client.ApiClient"
             )
 
-        self.uc = FunctionsApi(api_client=api_client)
+        self.functions_client = FunctionsApi(api_client=api_client)
+        self.catalogs_client = CatalogsApi(api_client=api_client)
+        self.schemas_client = SchemasApi(api_client=api_client)
         self.func_cache = {}
         super().__init__()
 
         # Clean up the ApiClient instance for aiohttp to ensure that we're not leaking resources
-        # and preventing Python's GC operator as well as to ensure that multiple instances of
+        # and preventing Python's GC operation as well as to ensure that multiple instances of
         # this client are not present within a thread (eliminate a potential memory leak).
         atexit.register(self.close)
 
@@ -137,7 +146,7 @@ class UnitycatalogFunctionClient(BaseFunctionClient):
             return
         self._closed = True
         try:
-            await self.uc.api_client.close()
+            await self.functions_client.api_client.close()
             _logger.info("ApiClient successfully closed.")
         except Exception as e:
             _logger.error(f"Error while closing ApiClient: {e}")
@@ -242,7 +251,9 @@ class UnitycatalogFunctionClient(BaseFunctionClient):
             comment=comment,
         )
         function_request = CreateFunctionRequest(function_info=function_info)
-        return await self.uc.create_function(function_request, _request_timeout=timeout)
+        return await self.functions_client.create_function(
+            function_request, _request_timeout=timeout
+        )
 
     @override
     @syncify_method
@@ -379,7 +390,7 @@ class UnitycatalogFunctionClient(BaseFunctionClient):
         """
 
         try:
-            return await self.uc.get_function(function_name, _request_timeout=timeout)
+            return await self.functions_client.get_function(function_name, _request_timeout=timeout)
         except NotFoundException as e:
             _logger.warning(
                 f"Failed to retrieve function {function_name} from Unity Catalog, the function may not exist. "
@@ -426,7 +437,7 @@ class UnitycatalogFunctionClient(BaseFunctionClient):
         Returns:
             A PagedList of FunctionInfo objects.
         """
-        resp = await self.uc.list_functions(
+        resp = await self.functions_client.list_functions(
             catalog_name=catalog,
             schema_name=schema,
             max_results=max_results,
@@ -513,7 +524,7 @@ class UnitycatalogFunctionClient(BaseFunctionClient):
             None
         """
 
-        await self.uc.delete_function(function_name, _request_timeout=timeout)
+        await self.functions_client.delete_function(function_name, _request_timeout=timeout)
 
     @override
     @syncify_method
@@ -536,7 +547,188 @@ class UnitycatalogFunctionClient(BaseFunctionClient):
 
     @override
     def to_dict(self) -> Dict[str, Any]:
-        return {k: getattr(self, k) for k in ["uc"] if getattr(self, k) is not None}
+        elements = ["functions_client", "catalogs_client", "schemas_client"]
+        return {k: getattr(self, k) for k in elements if getattr(self, k) is not None}
+
+    async def create_catalog_async(
+        self,
+        name: str,
+        comment: Optional[str] = None,
+        properties: Optional[Dict[str, Any]] = None,
+        **kwargs,
+    ) -> CatalogInfo:
+        """
+        Create a catalog in Unity Catalog asynchronously.
+
+        Args:
+            name: The name of the catalog to create.
+            comment: An optional comment (description) for the catalog.
+            properties: Optional dictionary of properties for the catalog. Property options are validated
+                through the REST interface and can be discovered via the Unity Catalog Server API documentation.
+            **kwargs: Additional keyword arguments for the creation call (defined as overridable private methods)
+                the optional values (i.e., _request_timeout, _headers, _host_index) can be found in the
+                Unity Catalog Server API documentation. These parameters are in an experimental state and are
+                subject to change.
+
+        Returns:
+            The created CatalogInfo object.
+
+        Raises:
+            ValueError: If the catalog already exists.
+        """
+
+        catalog = None
+        try:
+            catalog = await self._get_catalog(name)
+        except NotFoundException:
+            pass
+
+        if catalog:
+            warnings.warn(
+                f"The catalog '{name}' already exists.", category=UserWarning, stacklevel=1
+            )
+            return catalog
+
+        catalog_create_request = CreateCatalog(
+            name=name,
+            comment=comment,
+            properties=properties,
+        )
+
+        return await self.catalogs_client.create_catalog(
+            create_catalog=catalog_create_request, **kwargs
+        )
+
+    @syncify_method
+    def create_catalog(
+        self,
+        name: str,
+        comment: Optional[str] = None,
+        properties: Optional[Dict[str, Any]] = None,
+        **kwargs,
+    ) -> CatalogInfo:
+        """
+        Create a catalog in Unity Catalog.
+
+        This is a synchronous version of `create_catalog_async`.
+
+        Args:
+            name: The name of the catalog to create.
+            comment: An optional comment (description) for the catalog.
+            properties: Optional dictionary of properties for the catalog. Property options are validated
+                through the REST interface and can be discovered via the Unity Catalog Server API documentation.
+            **kwargs: Additional keyword arguments for the creation call (defined as overridable private methods)
+                the optional values (i.e., _request_timeout, _headers, _host_index) can be found in the
+                Unity Catalog Server API documentation. These parameters are in an experimental state and are
+                subject to change.
+
+        Returns:
+            The created CatalogInfo object.
+        """
+
+        pass
+
+    async def create_schema_async(
+        self,
+        name: str,
+        catalog_name: str,
+        comment: Optional[str] = None,
+        properties: Optional[Dict[str, Any]] = None,
+        **kwargs,
+    ) -> SchemaInfo:
+        """
+        Create a schema within a catalog in Unity Catalog asynchronously.
+
+        Args:
+            name: The name of the schema to create.
+            catalog_name: The name of the catalog where the schema will be created.
+            comment: An optional comment (description) for the schema.
+            properties: Optional dictionary of properties for the schema. Property options are validated
+                through the REST interface and can be discovered through the Unity Catalog Server API
+                documentation.
+            **kwargs: Additional keyword arguments for the creation call (defined as overridable private methods)
+                the optional values (i.e., _request_timeout, _headers, _host_index) can be found in the
+                Unity Catalog Server API documentation. These parameters are in an experimental state and are
+                subject to change.
+
+        Returns:
+            The created SchemaInfo object.
+
+        Raises:
+            ValueError: If the specified catalog does not exist.
+        """
+
+        try:
+            await self._get_catalog(catalog_name)
+        except NotFoundException as e:
+            raise ValueError(
+                f"The Catalog that you specified: '{catalog_name}' does not exist on this server."
+            ) from e
+
+        schema = None
+        try:
+            schema = await self._get_schema(name=name, catalog_name=catalog_name)
+        except NotFoundException:
+            pass
+
+        if schema:
+            warnings.warn(
+                f"The schema '{name}' already exists in the catalog '{catalog_name}'",
+                category=UserWarning,
+                stacklevel=1,
+            )
+            return schema
+
+        schema_create_request = CreateSchema(
+            name=name,
+            catalog_name=catalog_name,
+            comment=comment,
+            properties=properties,
+        )
+
+        return await self.schemas_client.create_schema(
+            create_schema=schema_create_request, **kwargs
+        )
+
+    @syncify_method
+    def create_schema(
+        self,
+        name: str,
+        catalog_name: str,
+        comment: Optional[str] = None,
+        properties: Optional[Dict[str, Any]] = None,
+        **kwargs,
+    ) -> SchemaInfo:
+        """
+        Create a schema within a catalog in Unity Catalog.
+
+        This is a synchronous version of `create_schema_async`.
+
+        Args:
+            name: The name of the schema to create.
+            catalog_name: The name of the catalog where the schema will be created.
+            comment: An optional comment (description) for the schema.
+            properties: Optional dictionary of properties for the schema. Property options are validated
+                through the REST interface and can be discovered through the Unity Catalog Server API
+                documentation.
+            **kwargs: Additional keyword arguments for the creation call (defined as overridable private methods)
+                the optional values (i.e., _request_timeout, _headers, _host_index) can be found in the
+                Unity Catalog Server API documentation. These parameters are in an experimental state and are
+                subject to change.
+
+        Returns:
+            The created SchemaInfo object.
+        """
+
+        pass
+
+    async def _get_schema(self, name: str, catalog_name: str) -> SchemaInfo:
+        """ """
+        return await self.schemas_client.get_schema(full_name=f"{catalog_name}.{name}")
+
+    async def _get_catalog(self, name: str) -> CatalogInfo:
+        """ """
+        return await self.catalogs_client.get_catalog(name=name)
 
 
 def dynamically_construct_python_function(function_info: FunctionInfo) -> str:
