@@ -34,6 +34,18 @@ nav:
       - Trino: integrations/unity-catalog-trino.md
       - XTable: integrations/unity-catalog-xtable.md
   - Deployment: deployment.md
+  - AI: 
+      - Quickstart: ai/quickstart.md
+      - Usage: ai/usage.md
+      - AI Client: ai/client.md
+      - AI Integrations: 
+          - Integrations: ai/integrations/index.md
+          - LangChain: ai/integrations/langchain.md
+          - LlamaIndex: ai/integrations/llamaindex.md
+          - OpenAI: ai/integrations/openai.md
+          - Anthropic: ai/integrations/anthropic.md
+          - CrewAI: ai/integrations/crewai.md
+          - AutoGen: ai/integrations/autogen.md
 
 exclude_docs: |
   README.md
