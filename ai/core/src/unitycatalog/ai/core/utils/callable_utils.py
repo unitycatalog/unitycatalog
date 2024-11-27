@@ -19,7 +19,6 @@ from typing import (
 from unitycatalog.ai.core.utils.docstring_utils import DocstringInfo, parse_docstring
 from unitycatalog.ai.core.utils.type_utils import python_type_to_sql_type
 
-
 FORBIDDEN_PARAMS = ["self", "cls"]
 
 
@@ -103,6 +102,7 @@ class FunctionMetadata:
     parameters: List[Dict[str, Any]]
     function_body: str
     indent_unit: int
+
 
 def extract_function_body(func: Callable[..., Any]) -> tuple[str, int]:
     """

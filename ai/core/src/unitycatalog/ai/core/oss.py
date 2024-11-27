@@ -5,7 +5,7 @@ import decimal
 import logging
 from enum import Enum
 from functools import lru_cache, wraps
-from typing import Any, Callable, Dict, List, NamedTuple, Optional, Union
+from typing import Any, Callable, Dict, List, Optional, Union
 
 import nest_asyncio
 from typing_extensions import override

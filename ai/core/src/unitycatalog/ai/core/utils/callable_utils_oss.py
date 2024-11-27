@@ -1,17 +1,12 @@
-from dataclasses import dataclass
 import json
-from typing import (
-    TYPE_CHECKING,
-    Any,
-    Callable,
-    List
-)
+from dataclasses import dataclass
+from typing import TYPE_CHECKING, Any, Callable, List
 
 from unitycatalog.ai.core.utils.callable_utils import extract_function_metadata
 
-
 if TYPE_CHECKING:
     from unitycatalog.client.models import FunctionParameterInfo
+
 
 @dataclass
 class FunctionInfoDefinition:
