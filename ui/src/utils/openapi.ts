@@ -18,61 +18,61 @@ export type HttpMethod =
  * Represents the type of HTTP success codes.
  */
 export type HttpSuccessCode =
-  | 200
-  | 201
-  | 202
-  | 203
-  | 204
-  | 205
-  | 206
-  | 207
-  | 208
-  | 226;
+  | 200 // OK
+  | 201 // CREATED
+  | 202 // ACCEPTED
+  | 203 // NON_AUTHORITATIVE_INFORMATION
+  | 204 // NO_CONTENT
+  | 205 // RESET_CONTENT
+  | 206 // PARTIAL_CONTENT
+  | 207 // MULTI_STATUS
+  | 208 // ALREADY_REPORTED
+  | 226; // IM_USED
 
 /**
  * Represents the type of HTTP error codes.
  */
 export type HttpErrorCode =
-  | 400
-  | 401
-  | 402
-  | 403
-  | 404
-  | 405
-  | 406
-  | 407
-  | 408
-  | 409
-  | 410
-  | 411
-  | 412
-  | 413
-  | 414
-  | 415
-  | 416
-  | 417
-  | 418
-  | 421
-  | 422
-  | 423
-  | 424
-  | 425
-  | 426
-  | 428
-  | 429
-  | 431
-  | 451
-  | 500
-  | 501
-  | 502
-  | 503
-  | 504
-  | 505
-  | 506
-  | 507
-  | 508
-  | 510
-  | 511;
+  | 400 // BAD_REQUEST
+  | 401 // UNAUTHORIZED
+  | 402 // PAYMENT_REQUIRED
+  | 403 // FORBIDDEN
+  | 404 // NOT_FOUND
+  | 405 // METHOD_NOT_ALLOWED
+  | 406 // NOT_ACCEPTABLE
+  | 407 // PROXY_AUTHENTICATION_REQUIRED
+  | 408 // REQUEST_TIMEOUT
+  | 409 // CONFLICT
+  | 410 // GONE
+  | 411 // LENGTH_REQUIRED
+  | 412 // PRECONDITION_FAILED
+  | 413 // PAYLOAD_TOO_LARGE
+  | 414 // URI_TOO_LONG
+  | 415 // UNSUPPORTED_MEDIA_TYPE
+  | 416 // RANGE_NOT_SATISFIABLE
+  | 417 // EXPECTATION_FAILED
+  | 418 // IM_A_TEAPOT
+  | 421 // MISDIRECTED_REQUEST
+  | 422 // UNPROCESSABLE_CONTENT
+  | 423 // LOCKED
+  | 424 // FAILED_DEPENDENCY
+  | 425 // TOO_EARLY
+  | 426 // UPGRADE_REQUIRED
+  | 428 // PRECONDITION_REQUIRED
+  | 429 // TOO_MANY_REQUESTS
+  | 431 // REQUEST_HEADER_FIELDS_TOO_LARGE
+  | 451 // UNAVAILABLE_FOR_LEGAL_REASONS
+  | 500 // INTERNAL_SERVER_ERROR
+  | 501 // NOT_IMPLEMENTED
+  | 502 // BAD_GATEWAY
+  | 503 // SERVICE_UNAVAILABLE
+  | 504 // GATEWAY_TIMEOUT
+  | 505 // HTTP_VERSION_NOT_SUPPORTED
+  | 506 // VARIANT_ALSO_NEGOTIATES
+  | 507 // INSUFFICIENT_STORAGE
+  | 508 // LOOP_DETECTED
+  | 510 // NOT_EXTENDED
+  | 511; // NETWORK_AUTHENTICATION_REQUIRED
 
 /**
  * Utility type that converts a union (A | B | C) into an intersection ( A & B & C ).
