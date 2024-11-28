@@ -42,10 +42,10 @@ lazy val commonSettings = Seq(
     "-ea",
   ),
   libraryDependencies ++= Seq(
-    "org.slf4j" % "slf4j-api" % "2.0.13",
-    "org.slf4j" % "slf4j-log4j12" % "2.0.13" % Test,
-    "org.apache.logging.log4j" % "log4j-slf4j2-impl" % "2.23.1",
-    "org.apache.logging.log4j" % "log4j-api" % "2.23.1"
+    "org.slf4j" % "slf4j-api" % slf4jVersion,
+    "org.slf4j" % "slf4j-log4j12" % slf4jVersion % Test,
+    "org.apache.logging.log4j" % "log4j-slf4j2-impl" % log4jVersion,
+    "org.apache.logging.log4j" % "log4j-api" % log4jVersion
   ),
   excludeDependencies ++= Seq(
     ExclusionRule("org.slf4j", "slf4j-reload4j")
@@ -133,7 +133,7 @@ lazy val controlApi = (project in file("target/control/java"))
     commonSettings,
     skipReleaseSettings,
     libraryDependencies ++= Seq(
-      "jakarta.annotation" % "jakarta.annotation-api" % "3.0.0" % Provided,
+      "jakarta.annotation" % "jakarta.annotation-api" % jakartaAnnotationVersion % Provided,
       "com.fasterxml.jackson.core" % "jackson-annotations" % jacksonVersion,
       "com.fasterxml.jackson.core" % "jackson-databind" % jacksonVersion,
       "com.fasterxml.jackson.datatype" % "jackson-datatype-jsr310" % jacksonVersion,
@@ -181,13 +181,13 @@ lazy val client = (project in file("target/clients/java"))
       "com.fasterxml.jackson.core" % "jackson-databind" % jacksonVersion,
       "com.fasterxml.jackson.datatype" % "jackson-datatype-jsr310" % jacksonVersion,
       "org.openapitools" % "jackson-databind-nullable" % openApiToolsJacksonBindNullableVersion,
-      "com.google.code.findbugs" % "jsr305" % "3.0.2",
-      "jakarta.annotation" % "jakarta.annotation-api" % "3.0.0" % Provided,
+      "com.google.code.findbugs" % "jsr305" % findbugsVersion,
+      "jakarta.annotation" % "jakarta.annotation-api" % jakartaAnnotationVersion % Provided,
 
       // Test dependencies
-      "org.junit.jupiter" % "junit-jupiter" % "5.10.3" % Test,
+      "org.junit.jupiter" % "junit-jupiter" % junitVersion % Test,
       "net.aichler" % "jupiter-interface" % JupiterKeys.jupiterVersion.value % Test,
-      "org.assertj" % "assertj-core" % "3.26.3" % Test,
+      "org.assertj" % "assertj-core" % assertJVersion % Test,
     ),
     (Compile / compile) := ((Compile / compile) dependsOn generate).value,
 
@@ -305,10 +305,10 @@ lazy val server = (project in file("server"))
       "lombok.launch.AnnotationProcessorHider$AnnotationProcessor"
     ) ++ javacRelease17,
     libraryDependencies ++= Seq(
-      "com.linecorp.armeria" %  "armeria" % "1.28.4",
+      "com.linecorp.armeria" %  "armeria" % armeriaVersion,
       // Netty dependencies
-      "io.netty" % "netty-all" % "4.1.111.Final",
-      "jakarta.annotation" % "jakarta.annotation-api" % "3.0.0" % Provided,
+      "io.netty" % "netty-all" % nettyVersion,
+      "jakarta.annotation" % "jakarta.annotation-api" % jakartaAnnotationVersion % Provided,
       // Jackson dependencies
       "com.fasterxml.jackson.core" % "jackson-annotations" % jacksonVersion,
       "com.fasterxml.jackson.core" % "jackson-core" % jacksonVersion,
@@ -316,65 +316,65 @@ lazy val server = (project in file("server"))
       "com.fasterxml.jackson.dataformat" % "jackson-dataformat-yaml" % jacksonVersion,
       "com.fasterxml.jackson.datatype" % "jackson-datatype-jsr310" % jacksonVersion,
 
-      "com.google.code.findbugs" % "jsr305" % "3.0.2",
-      "com.h2database" %  "h2" % "2.2.224",
+      "com.google.code.findbugs" % "jsr305" % findbugsVersion,
+      "com.h2database" %  "h2" % h2Version,
 
-      "org.hibernate.orm" % "hibernate-core" % "6.5.0.Final",
+      "org.hibernate.orm" % "hibernate-core" % hibernateVersion,
 
-      "jakarta.activation" % "jakarta.activation-api" % "2.1.3",
-      "net.bytebuddy" % "byte-buddy" % "1.14.15",
-      "org.projectlombok" % "lombok" % "1.18.32" % Provided,
+      "jakarta.activation" % "jakarta.activation-api" % jakartaVersion,
+      "net.bytebuddy" % "byte-buddy" % bytebuddyVersion,
+      "org.projectlombok" % "lombok" % lombokVersion % Provided,
 
       // For ALDS access
-      "com.azure" % "azure-identity" % "1.13.2",
-      "com.azure" % "azure-storage-file-datalake" % "12.20.0",
+      "com.azure" % "azure-identity" % azureIdentityVersion,
+      "com.azure" % "azure-storage-file-datalake" % azureStorageFileDatalakeVersion,
 
       // For GCS Access
-      "com.google.cloud" % "google-cloud-storage" % "2.30.1",
-      "com.google.auth" % "google-auth-library-oauth2-http" % "1.20.0",
+      "com.google.cloud" % "google-cloud-storage" % googleCloudStorage,
+      "com.google.auth" % "google-auth-library-oauth2-http" % googleAuthLibraryOauth2HttpVersion,
 
       //For s3 access
-      "com.amazonaws" % "aws-java-sdk-s3" % "1.12.728",
-      "software.amazon.awssdk" % "sso" % "2.27.12",
-      "software.amazon.awssdk" % "ssooidc" % "2.27.12",
+      "com.amazonaws" % "aws-java-sdk-s3" % awsJavaSdkVersion,
+      "software.amazon.awssdk" % "sso" % awsSdkSsoVersion,
+      "software.amazon.awssdk" % "ssooidc" % awsSdkSsoVersion,
 
-      "org.apache.httpcomponents" % "httpcore" % "4.4.16",
-      "org.apache.httpcomponents" % "httpclient" % "4.5.14",
+      "org.apache.httpcomponents" % "httpcore" % httpcoreVersion,
+      "org.apache.httpcomponents" % "httpclient" % httpclientVersion,
 
       // Iceberg REST Catalog dependencies
-      "org.apache.iceberg" % "iceberg-core" % "1.5.2",
-      "org.apache.iceberg" % "iceberg-aws" % "1.5.2",
-      "org.apache.iceberg" % "iceberg-azure" % "1.5.2",
-      "org.apache.iceberg" % "iceberg-gcp" % "1.5.2",
-      "software.amazon.awssdk" % "s3" % "2.24.0",
-      "software.amazon.awssdk" % "sts" % "2.24.0",
-      "io.vertx" % "vertx-core" % "4.3.5",
-      "io.vertx" % "vertx-web" % "4.3.5",
-      "io.vertx" % "vertx-web-client" % "4.3.5",
+      "org.apache.iceberg" % "iceberg-core" % icebergVersion,
+      "org.apache.iceberg" % "iceberg-aws" % icebergVersion,
+      "org.apache.iceberg" % "iceberg-azure" % icebergVersion,
+      "org.apache.iceberg" % "iceberg-gcp" % icebergVersion,
+      "software.amazon.awssdk" % "s3" % awssdkS3Version,
+      "software.amazon.awssdk" % "sts" % awssdkStsVersion,
+      "io.vertx" % "vertx-core" % vertxVersion,
+      "io.vertx" % "vertx-web" % vertxVersion,
+      "io.vertx" % "vertx-web-client" % vertxVersion,
 
       // Auth dependencies
-      "com.unboundid.product.scim2" % "scim2-sdk-common" % "3.1.0",
-      "org.casbin" % "jcasbin" % "1.55.0",
-      "org.casbin" % "jdbc-adapter" % "2.7.0"
+      "com.unboundid.product.scim2" % "scim2-sdk-common" % scim2SdkCommonVersion,
+      "org.casbin" % "jcasbin" % jcasbinVersion,
+      "org.casbin" % "jdbc-adapter" % jdbcAdapterVersion
         exclude("com.microsoft.sqlserver", "mssql-jdbc")
         exclude("com.oracle.database.jdbc", "ojdbc6"),
-      "org.springframework" % "spring-expression" % "6.1.11",
-      "com.auth0" % "java-jwt" % "4.4.0",
-      "com.auth0" % "jwks-rsa" % "0.22.1",
+      "org.springframework" % "spring-expression" % springExpressionVersion,
+      "com.auth0" % "java-jwt" % javaJwtVersion,
+      "com.auth0" % "jwks-rsa" % jwksRsaVersion,
 
       // Test dependencies
-      "org.junit.jupiter" %  "junit-jupiter" % "5.10.3" % Test,
-      "org.mockito" % "mockito-core" % "5.11.0" % Test,
-      "org.mockito" % "mockito-inline" % "5.2.0" % Test,
-      "org.mockito" % "mockito-junit-jupiter" % "5.12.0" % Test,
+      "org.junit.jupiter" %  "junit-jupiter" % junitVersion % Test,
+      "org.mockito" % "mockito-core" % mockitoCoreVersion % Test,
+      "org.mockito" % "mockito-inline" % mockitoInlineVersion % Test,
+      "org.mockito" % "mockito-junit-jupiter" % mockitoJunitJupiterVersion % Test,
       "net.aichler" % "jupiter-interface" % JupiterKeys.jupiterVersion.value % Test,
-      "com.adobe.testing" % "s3mock-junit5" % "3.9.1" % Test
+      "com.adobe.testing" % "s3mock-junit5" % s3mockJunit5Version % Test
         exclude("ch.qos.logback", "logback-classic")
         exclude("org.apache.logging.log4j", "log4j-to-slf4j"),
-      "javax.xml.bind" % "jaxb-api" % "2.3.1" % Test,
+      "javax.xml.bind" % "jaxb-api" % jaxbApiVersion % Test,
 
       // CLI dependencies
-      "commons-cli" % "commons-cli" % "1.7.0"
+      "commons-cli" % "commons-cli" % commonsCliVersion
     ),
 
     Compile / sourceGenerators += Def.task {
@@ -410,7 +410,7 @@ lazy val serverModels = (project in file("server") / "target" / "models")
     (Compile / compile) := ((Compile / compile) dependsOn generate).value,
     Compile / compile / javacOptions ++= javacRelease17,
     libraryDependencies ++= Seq(
-      "jakarta.annotation" % "jakarta.annotation-api" % "3.0.0" % Provided,
+      "jakarta.annotation" % "jakarta.annotation-api" % jakartaAnnotationVersion % Provided,
       "com.fasterxml.jackson.core" % "jackson-annotations" % jacksonVersion,
     ),
     // OpenAPI generation configs for generating model codes from the spec
@@ -446,7 +446,7 @@ lazy val controlModels = (project in file("server") / "target" / "controlmodels"
     (Compile / compile) := ((Compile / compile) dependsOn generate).value,
     Compile / compile / javacOptions ++= javacRelease17,
     libraryDependencies ++= Seq(
-      "jakarta.annotation" % "jakarta.annotation-api" % "3.0.0" % Provided,
+      "jakarta.annotation" % "jakarta.annotation-api" % jakartaAnnotationVersion % Provided,
       "com.fasterxml.jackson.core" % "jackson-annotations" % jacksonVersion,
     ),
     // OpenAPI generation configs for generating model codes from the spec
@@ -486,26 +486,26 @@ lazy val cli = (project in file("examples") / "cli")
     javaCheckstyleSettings(file("dev") / "checkstyle-config.xml"),
     Compile / compile / javacOptions ++= javacRelease17,
     libraryDependencies ++= Seq(
-      "commons-cli" % "commons-cli" % "1.7.0",
-      "org.json" % "json" % "20240303",
+      "commons-cli" % "commons-cli" % commonsCliVersion,
+      "org.json" % "json" % jsonVersion,
       "com.fasterxml.jackson.core" % "jackson-databind" % jacksonVersion,
       "com.fasterxml.jackson.datatype" % "jackson-datatype-jsr310" % jacksonVersion,
       "org.openapitools" % "jackson-databind-nullable" % openApiToolsJacksonBindNullableVersion,
-      "org.yaml" % "snakeyaml" % "2.2",
+      "org.yaml" % "snakeyaml" % snakeyamlVersion,
       "io.delta" % "delta-kernel-api" % deltaVersion,
       "io.delta" % "delta-kernel-defaults" % deltaVersion,
       "io.delta" % "delta-storage" % deltaVersion,
-      "org.apache.hadoop" % "hadoop-client-api" % "3.4.0",
-      "org.apache.hadoop" % "hadoop-client-runtime" % "3.4.0",
-      "de.vandermeer" % "asciitable" % "0.3.2",
+      "org.apache.hadoop" % "hadoop-client-api" % hadoopVersion,
+      "org.apache.hadoop" % "hadoop-client-runtime" % hadoopVersion,
+      "de.vandermeer" % "asciitable" % asciitableVersion,
       // for s3 access
-      "org.fusesource.jansi" % "jansi" % "2.4.1",
-      "com.amazonaws" % "aws-java-sdk-core" % "1.12.728",
-      "org.apache.hadoop" % "hadoop-aws" % "3.4.0",
-      "org.apache.hadoop" % "hadoop-azure" % "3.4.0",
-      "com.google.guava" % "guava" % "31.0.1-jre",
+      "org.fusesource.jansi" % "jansi" % jansiVersion,
+      "com.amazonaws" % "aws-java-sdk-core" % awsJavaSdkVersion,
+      "org.apache.hadoop" % "hadoop-aws" % hadoopVersion,
+      "org.apache.hadoop" % "hadoop-azure" % hadoopVersion,
+      "com.google.guava" % "guava" % guavaVersion,
       // Test dependencies
-      "org.junit.jupiter" % "junit-jupiter" % "5.10.3" % Test,
+      "org.junit.jupiter" % "junit-jupiter" % junitVersion % Test,
       "net.aichler" % "jupiter-interface" % JupiterKeys.jupiterVersion.value % Test,
     ),
     Test / javaOptions += s"-Duser.dir=${(ThisBuild / baseDirectory).value.getAbsolutePath}",
@@ -555,35 +555,35 @@ lazy val spark = (project in file("connectors/spark"))
     Compile / compile / javacOptions ++= javacRelease11,
     libraryDependencies ++= Seq(
       "org.apache.spark" %% "spark-sql" % sparkVersion % Provided,
-      "com.fasterxml.jackson.core" % "jackson-databind" % "2.15.0",
-      "com.fasterxml.jackson.module" %% "jackson-module-scala" % "2.15.0",
-      "com.fasterxml.jackson.core" % "jackson-annotations" % "2.15.0",
-      "com.fasterxml.jackson.core" % "jackson-core" % "2.15.0",
-      "com.fasterxml.jackson.dataformat" % "jackson-dataformat-xml" % "2.15.0",
-      "org.antlr" % "antlr4-runtime" % "4.9.3",
-      "org.antlr" % "antlr4" % "4.9.3",
-      "com.google.cloud.bigdataoss" % "util-hadoop" % "3.0.2" % Provided,
-      "org.apache.hadoop" % "hadoop-azure" % "3.4.0" % Provided,
+      "com.fasterxml.jackson.core" % "jackson-databind" % jacksonVersion,
+      "com.fasterxml.jackson.module" %% "jackson-module-scala" % jacksonVersion,
+      "com.fasterxml.jackson.core" % "jackson-annotations" % jacksonVersion,
+      "com.fasterxml.jackson.core" % "jackson-core" % jacksonVersion,
+      "com.fasterxml.jackson.dataformat" % "jackson-dataformat-xml" % jacksonVersion,
+      "org.antlr" % "antlr4-runtime" % antlr4Version,
+      "org.antlr" % "antlr4" % antlr4Version,
+      "com.google.cloud.bigdataoss" % "util-hadoop" % utilHadoopVersion % Provided,
+      "org.apache.hadoop" % "hadoop-azure" % hadoopVersion % Provided,
     ),
     libraryDependencies ++= Seq(
       // Test dependencies
-      "org.junit.jupiter" % "junit-jupiter" % "5.10.3" % Test,
-      "org.assertj" % "assertj-core" % "3.26.3" % Test,
-      "org.mockito" % "mockito-core" % "5.11.0" % Test,
-      "org.mockito" % "mockito-inline" % "5.2.0" % Test,
-      "org.mockito" % "mockito-junit-jupiter" % "5.12.0" % Test,
+      "org.junit.jupiter" % "junit-jupiter" % junitVersion % Test,
+      "org.assertj" % "assertj-core" % assertJVersion % Test,
+      "org.mockito" % "mockito-core" % mockitoCoreVersion % Test,
+      "org.mockito" % "mockito-inline" % mockitoInlineVersion % Test,
+      "org.mockito" % "mockito-junit-jupiter" % mockitoJunitJupiterVersion % Test,
       "net.aichler" % "jupiter-interface" % JupiterKeys.jupiterVersion.value % Test,
-      "org.apache.hadoop" % "hadoop-client-runtime" % "3.4.0",
+      "org.apache.hadoop" % "hadoop-client-runtime" % hadoopVersion,
       "io.delta" %% "delta-spark" % deltaVersion % Test,
     ),
     dependencyOverrides ++= Seq(
-      "com.fasterxml.jackson.core" % "jackson-databind" % "2.15.0",
-      "com.fasterxml.jackson.module" %% "jackson-module-scala" % "2.15.0",
-      "com.fasterxml.jackson.core" % "jackson-annotations" % "2.15.0",
-      "com.fasterxml.jackson.core" % "jackson-core" % "2.15.0",
-      "com.fasterxml.jackson.dataformat" % "jackson-dataformat-xml" % "2.15.0",
-      "org.antlr" % "antlr4-runtime" % "4.9.3",
-      "org.antlr" % "antlr4" % "4.9.3",
+      "com.fasterxml.jackson.core" % "jackson-databind" % jacksonVersion,
+      "com.fasterxml.jackson.module" %% "jackson-module-scala" % jacksonVersion,
+      "com.fasterxml.jackson.core" % "jackson-annotations" % jacksonVersion,
+      "com.fasterxml.jackson.core" % "jackson-core" % jacksonVersion,
+      "com.fasterxml.jackson.dataformat" % "jackson-dataformat-xml" % jacksonVersion,
+      "org.antlr" % "antlr4-runtime" % antlr4Version,
+      "org.antlr" % "antlr4" % antlr4Version,
     ),
     Test / unmanagedJars += (serverShaded / assembly).value,
     licenseDepExclusions := {
@@ -618,26 +618,26 @@ lazy val integrationTests = (project in file("integration-tests"))
     ),
     skipReleaseSettings,
     libraryDependencies ++= Seq(
-      "org.junit.jupiter" % "junit-jupiter" % "5.10.3" % Test,
+      "org.junit.jupiter" % "junit-jupiter" % junitVersion % Test,
       "net.aichler" % "jupiter-interface" % JupiterKeys.jupiterVersion.value % Test,
-      "org.assertj" % "assertj-core" % "3.26.3" % Test,
-      "org.projectlombok" % "lombok" % "1.18.32" % Provided,
-      "org.apache.spark" %% "spark-sql" % "3.5.3" % Test,
-      "io.delta" %% "delta-spark" % "3.2.1" % Test,
-      "org.apache.hadoop" % "hadoop-aws" % "3.3.6" % Test,
-      "org.apache.hadoop" % "hadoop-azure" % "3.3.6" % Test,
-      "com.google.cloud.bigdataoss" % "gcs-connector" % "3.0.2" % Test classifier "shaded",
-      "io.unitycatalog" %% "unitycatalog-spark" % "0.2.0" % Test,
+      "org.assertj" % "assertj-core" % assertJVersion % Test,
+      "org.projectlombok" % "lombok" % lombokVersion % Provided,
+      "org.apache.spark" %% "spark-sql" % sparkVersion % Test,
+      "io.delta" %% "delta-spark" % deltaVersion % Test,
+      "org.apache.hadoop" % "hadoop-aws" % hadoopVersion % Test,
+      "org.apache.hadoop" % "hadoop-azure" % hadoopVersion % Test,
+      "com.google.cloud.bigdataoss" % "gcs-connector" % gcsConnectorVersion % Test classifier "shaded",
+      "io.unitycatalog" %% "unitycatalog-spark" % unitycatalogSparkVersion % Test,
     ),
     dependencyOverrides ++= Seq(
-      "com.fasterxml.jackson.core" % "jackson-databind" % "2.15.0",
-      "com.fasterxml.jackson.module" %% "jackson-module-scala" % "2.15.0",
-      "com.fasterxml.jackson.core" % "jackson-annotations" % "2.15.0",
-      "com.fasterxml.jackson.core" % "jackson-core" % "2.15.0",
-      "com.fasterxml.jackson.dataformat" % "jackson-dataformat-xml" % "2.15.0",
-      "org.antlr" % "antlr4-runtime" % "4.9.3",
-      "org.antlr" % "antlr4" % "4.9.3",
-      "org.apache.hadoop" % "hadoop-client-api" % "3.3.6",
+      "com.fasterxml.jackson.core" % "jackson-databind" % jacksonVersion,
+      "com.fasterxml.jackson.module" %% "jackson-module-scala" % jacksonVersion,
+      "com.fasterxml.jackson.core" % "jackson-annotations" % jacksonVersion,
+      "com.fasterxml.jackson.core" % "jackson-core" % jacksonVersion,
+      "com.fasterxml.jackson.dataformat" % "jackson-dataformat-xml" % jacksonVersion,
+      "org.antlr" % "antlr4-runtime" % antlr4Version,
+      "org.antlr" % "antlr4" % antlr4Version,
+      "org.apache.hadoop" % "hadoop-client-api" % hadoopVersion,
     ),
     Test / javaOptions += s"-Duser.dir=${((ThisBuild / baseDirectory).value / "integration-tests").getAbsolutePath}",
   )
@@ -662,6 +662,52 @@ def generateClasspathFile(targetDir: File, classpath: Classpath): Unit = {
 val generate = taskKey[Unit]("generate code from APIs")
 
 // Library versions
+val antlr4Version = "4.9.3"
+val armeriaVersion = "1.28.4"
+val asciitableVersion = "0.3.2"
+val assertJVersion = "3.26.3"
+val awsJavaSdkVersion = "1.12.728"
+val awsSdkSsoVersion = "2.27.12"
+val awssdkS3Version = "2.24.0"
+val awssdkStsVersion = "2.24.0"
+val azureIdentityVersion = "1.13.2"
+val azureStorageFileDatalakeVersion = "12.20.0"
+val bytebuddyVersion = "1.14.15"
+val commonsCliVersion = "1.7.0"
+val findbugsVersion = "3.0.2"
+val gcsConnectorVersion = "3.0.2"
+val googleAuthLibraryOauth2HttpVersion = "1.20.0"
+val googleCloudStorage = "2.30.1"
+val guavaVersion = "31.0.1-jre"
+val h2Version = "2.2.224"
+val hibernateVersion = "6.5.0.Final"
+val hadoopVersion = "3.4.0"
+val httpclientVersion = "4.5.14"
+val httpcoreVersion = "4.4.16"
+val icebergVersion = "1.5.2"
 val jacksonVersion = "2.17.0"
-val openApiToolsJacksonBindNullableVersion = "0.2.6"
+val jakartaVersion = "2.1.3"
+val jakartaAnnotationVersion = "3.0.0"
+val jansiVersion = "2.4.1"
+val javaJwtVersion = "4.4.0"
+val jaxbApiVersion = "2.3.1"
+val jcasbinVersion = "1.55.0"
+val jdbcAdapterVersion = "2.7.0"
+val jsonVersion = "20240303"
+val junitVersion = "5.10.3"
+val jwksRsaVersion = "0.22.1"
 val log4jVersion = "2.23.1"
+val lombokVersion = "1.18.32"
+val mockitoCoreVersion = "5.11.0"
+val mockitoInlineVersion = "5.2.0"
+val mockitoJunitJupiterVersion = "5.12.0"
+val nettyVersion = "4.1.111.Final"
+val openApiToolsJacksonBindNullableVersion = "0.2.6"
+val s3mockJunit5Version = "3.9.1"
+val scim2SdkCommonVersion = "3.1.0"
+val slf4jVersion = "2.0.13"
+val snakeyamlVersion = "2.2"
+val springExpressionVersion = "6.1.11"
+val unitycatalogSparkVersion = "0.2.0"
+val utilHadoopVersion = "3.0.2"
+val vertxVersion = "4.3.5"
