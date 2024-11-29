@@ -1,9 +1,14 @@
 import base64
 import datetime
 import warnings
-from typing import Any, NamedTuple
+from typing import TYPE_CHECKING, Any, NamedTuple
 
 from unitycatalog.ai.core.utils.type_utils import is_time_type
+
+if TYPE_CHECKING:
+    from databricks.sdk.service.catalog import FunctionInfo
+
+OSS_MAX_FUNCTION_NAME_LENGTH = 255
 
 
 class FullFunctionName(NamedTuple):
@@ -80,7 +85,7 @@ def validate_param(param: Any, column_type: str, param_type_text: str) -> None:
         )
 
 
-def check_function_info(func_info):
+def check_function_info(func_info: "FunctionInfo") -> None:
     """
     Checks a FunctionInfo object for missing parameter descriptions and a function description.
     If these are missing, issue a warning to instruct users on how beneficial to their GenAI
@@ -118,4 +123,20 @@ def check_function_info(func_info):
             "as a tool.",
             UserWarning,
             stacklevel=2,
+        )
+
+
+def validate_function_name_length(function_name: str) -> None:
+    """
+    Verifies that the name of the function does not exceed the maximum allowable storage field length in the
+    Database. This restriction only applies to OSS UnityCatalog.
+
+    Args:
+        function_name: The name of the function being created within Unity Catalog.
+    """
+    name_length = len(function_name)
+    if name_length > OSS_MAX_FUNCTION_NAME_LENGTH:
+        raise ValueError(
+            f"The maximum length of a function name is {OSS_MAX_FUNCTION_NAME_LENGTH}. "
+            f"The name supplied is {name_length} characters long."
         )

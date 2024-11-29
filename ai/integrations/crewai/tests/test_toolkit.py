@@ -67,7 +67,7 @@ def test_toolkit_e2e_manually_passing_client(use_serverless, monkeypatch):
         assert func_obj.full_function_name.replace(".", "__") in tool.description
         assert func_obj.comment in tool.description
         assert (
-            "code: 'Python code to execute. Remember to print the final result to stdout.'"
+            "{'code': {'description': 'Python code to execute. Remember to print the final result to stdout.'"
             in tool.description
         )
         assert tool.client_config == client.to_dict()
