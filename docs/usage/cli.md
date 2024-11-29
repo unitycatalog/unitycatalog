@@ -17,7 +17,7 @@ The CLI tool allows users to interact with a Unity Catalog server to create and 
 
 ## Catalog Management CLI Usage
 
-You can use the Unity Catalog CLI to manage catalogs within your system. The `bin/uc` script supports various operations such as creating, retrieving, listing, updating and deleting catalogs. Let's take a look at each function.
+You can use the Unity Catalog CLI to manage catalogs within your system. The `bin/uc` script supports various operations such as creating, retrieving, listing, updating and deleting catalogs. Let's take a look at each operation.
 
 !!! note "Default local Unity Catalog instance"
 
@@ -148,7 +148,7 @@ bin/uc catalog delete \
 
 ## Schema Management CLI Usage
 
-You can use the Unity Catalog CLI to manage schemas within your catalog. The `bin/uc` script supports various operations such as creating, retrieving, listing, updating and deleting schemas. Let's take a look at each function.
+You can use the Unity Catalog CLI to manage schemas within your catalog. The `bin/uc` script supports various operations such as creating, retrieving, listing, updating and deleting schemas. Let's take a look at each operation.
 
 ### List Schemas
 
@@ -247,7 +247,7 @@ bin/uc schema delete \
 
 ## Table Management CLI Usage
 
-You can use the Unity Catalog CLI to manage tables within your schema. The `bin/uc` script supports various operations such as creating, retrieving, listing, updating and deleting tables. Let's take a look at each function.
+You can use the Unity Catalog CLI to manage tables within your schema. The `bin/uc` script supports various operations such as creating, retrieving, listing, updating and deleting tables. Let's take a look at each operation.
 
 You can also read more in the [Tables](./tables/deltalake.md) section.
 
@@ -354,7 +354,7 @@ bin/uc table delete \
 
 ## Volume Management CLI Usage
 
-You can use the Unity Catalog CLI to manage volumes within your schema. The `bin/uc` script supports various operations such as creating, retrieving, listing, updating and deleting volumes. Let's take a look at each function.
+You can use the Unity Catalog CLI to manage volumes within your schema. The `bin/uc` script supports various operations such as creating, retrieving, listing, updating and deleting volumes. Let's take a look at each operation.
 
 You can also read more in the [Volumes](./volumes.md) section.
 
@@ -480,89 +480,159 @@ bin/uc volume delete \
 
 ## Function Management CLI Usage
 
-This section outlines the usage of the `bin/uc` script for managing functions within your catalog.
-The script supports various operations such as creating, retrieving, listing and deleting functions.
+You can use the Unity Catalog CLI to manage functions within your schema. The `bin/uc` script supports various operations such as creating, retrieving, listing, updating and deleting function. Let's take a look at each operation.
+
+You can also read more in the [Functions](./functions.md) section.
 
 ### List Functions
 
+You can list functions stored in a Unity Catalog schema using:
+
 ```sh
-bin/uc function list --catalog <catalog> --schema <schema> [--max_results <max_results>]
+bin/uc function list \
+  --catalog <catalog> \ # (1)
+  --schema <schema> \ # (2)
+  [--max_results <max_results>] # (3)
 ```
 
-- `catalog`: The name of the catalog.
-- `schema`: The name of the schema.
-- `max_results`: _\[Optional\]_ The maximum number of results to return.
+1. `catalog`: The name of the catalog.
+2. `schema`: The name of the schema.
+3. `max_results`: _\[Optional\]_ The maximum number of results to return.
 
 ### Retrieve Function Information
 
+You can inspect metadata about your function stored in Unity Catalog using:
+
 ```sh
-bin/uc function get --full_name <catalog>.<schema>.<function_name>
+bin/uc function get \
+  --full_name <full_name> # (1)
 ```
 
-- `catalog`: The name of the catalog.
-- `schema`: The name of the schema.
-- `function_name`: The name of the function.
+1. `full_name`: The full name of the function, which is a concatenation of the catalog name,
+   schema name, and function name separated by dots (e.g., `catalog_name.schema_name.function_name`).
 
 ### Create a Function
 
+You can create a new function using:
+
 ```sh
-bin/uc function create --full_name <catalog>.<schema>.<function_name> --input_params <input_params> --data_type <data_type> --def <definition> [--comment <comment>] [--language <language>]
+bin/uc function create \
+  --full_name <full_name> \ # (1)
+  --input_params <input_params> \ # (2)
+  --data_type <data_type> \ # (3)
+  --def <definition> \ # (4)
+  [--comment <comment>] \ # (5)
+  [--language <language>] # 6)
 ```
 
-- `full_name`: The full name of the function, which is a concatenation of the catalog name, schema name, and function
-  name separated by dots (e.g., `catalog_name.schema_name.function_name`).
-- `input_params`: The input parameters to the function in SQL-like format `"param_name param_data_type"`.
-  Multiple input parameters should be separated by a comma (e.g., `"param1 INT, param2 STRING"`).
-- `data_type`: The data type of the function. Either a type_name (for e.g. `INT`,`DOUBLE`, `BOOLEAN`, `DATE`), or
-  `TABLE_TYPE` if this is a table valued function.
-- `def`: The definition of the function. The definition should be a valid SQL statement or a python routine with the
-  function logic and return statement.
-- `comment`: _\[Optional\]_ The description of the function.
-- `language`: _\[Optional\]_ The language of the function. If not specified, the default value is `PYTHON`.
+1. `full_name`: The full name of the function, which is a concatenation of the catalog name, schema name, and function
+   name separated by dots (e.g., `catalog_name.schema_name.function_name`).
+2. `input_params`: The input parameters to the function in SQL-like format `"param_name param_data_type"`.
+   Multiple input parameters should be separated by a comma (e.g., `"param1 INT, param2 STRING"`).
+3. `data_type`: The data type of the function. Either a type_name (for e.g. `INT`,`DOUBLE`, `BOOLEAN`, `DATE`), or
+   `TABLE_TYPE` if this is a table valued function.
+4. `def`: The definition of the function. The definition should be a valid SQL statement or a python routine with the
+   function logic and return statement.
+5. `comment`: _\[Optional\]_ The description of the function.
+6. `language`: _\[Optional\]_ The language of the function. If not specified, the default value is `PYTHON`.
 
-Example:
-
-- Create a python function that takes two integer inputs and returns the sum of the inputs:
+Here's an example that creates a Python function that takes two integer inputs and returns the sum of the inputs:
 
 ```sh
-bin/uc function create --full_name my_catalog.my_schema.my_function --input_params "param1 INT, param2 INT" --data_type INT --def "return param1 + param2" --comment "Sum Function"
+bin/uc function create \
+  --full_name my_catalog.my_schema.my_function \
+  --input_params "param1 INT, param2 INT" \
+  --data_type INT \
+  --def "return param1 + param2" \
+  --comment "Sum Function"
 ```
 
 ### Invoke a Function
 
+You can invoke a function stored in Unity Catalog using:
+
 ```sh
-bin/uc function call --full_name <catalog>.<schema>.<function_name> --input_params <input_params>
+bin/uc function call \
+  --full_name <catalog>.<schema>.<function_name> \ # (1)
+  --input_params <input_params> # (2)
 ```
 
-- `full_name`: The full name of the function, which is a concatenation of the catalog name, schema name, and function
-  name separated by dots (e.g., `catalog_name.schema_name.function_name`).
-- `input_params` : The value of input parameters to the function separated by a comma (e.g., `"param1,param2"`).
+1. `full_name`: The full name of the function, which is a concatenation of the catalog name, schema name, and function name separated by dots (e.g., `catalog_name.schema_name.function_name`).
+2. `input_params` : The value of input parameters to the function separated by a comma (e.g., `"param1,param2"`).
 
-This is an experimental feature and only supported for python functions that take in primitive types as input
-parameters. It runs the functions using the python engine script at `etc/data/function/python_engine.py`.
+This is an experimental feature and only supported for Python functions that take in primitive types as input
+parameters. It runs the functions using the Python engine script at `etc/data/function/python_engine.py`.
 
-Example:
-
-- Invoke a python sum function that takes two integer inputs:
+Here's an example that invokes a Python sum function that takes two integer inputs:
 
 ```sh
-bin/uc function call --full_name my_catalog.my_schema.my_function --input_params "1,2"
+bin/uc function call \
+  --full_name my_catalog.my_schema.my_function \
+  --input_params "1,2"
 ```
 
 ### Delete a Function
 
+You can delete a function using:
+
 ```sh
-bin/uc function delete --full_name <catalog>.<schema>.<function_name>
+bin/uc function delete \
+  --full_name <full_name> # (1)
 ```
 
-- `catalog` : The name of the catalog.
-- `schema` : The name of the schema.
-- `function_name` : The name of the function.
+1. `full_name`: The full name of the function, which is a concatenation of the catalog name, schema name, and function
+   name separated by dots (e.g., `catalog_name.schema_name.function_name`).
 
 ## Registered model and model version management
 
+You can use Unity Catalog with MLflow to govern and access your ML and AI models. Read more
+
 Please refer to [MLflow documentation](https://mlflow.org/docs/latest/index.html) to learn how to use MLflow to create,
 register, update, use, and delete registered models and model versions.
+
+You can list the registered models in your UC namespace using:
+
+```bash title="List registered models"
+bin/uc registered_model list \
+  --catalog <catalog_name> \ # (1)
+  --schema <schema_name> # (2)
+```
+
+1. `catalog`: The name of the catalog.
+2. `schema`: The name of the schema.
+
+You can list the model versions under a registered model using:
+
+```bash title="List model versions"
+bin/uc model_version list \
+  --full_name <full_name> # (1)
+```
+
+1. `full_name`: The full name of the model, which is a concatenation of the catalog name, schema name, and model name separated by dots (e.g., `catalog_name.schema_name.model_name`).
+
+You can get the metadata of registered models or model versions using:
+
+```bash title="View registered model metadata"
+bin/uc registered_model get \
+  --full_name <full_name> # (1)
+```
+
+1. `full_name`: The full name of the model, which is a concatenation of the catalog name, schema name, and model name separated by dots (e.g., `catalog_name.schema_name.model_name`).
+
+You can update the comment or name of a registered models using:
+
+```bash title="Comment a registered model"
+bin/uc registered_model update \
+  --full_name <full_name> \ # (1)
+  --new_name <new_name> \ # (2)
+  [--comment <comment>] # (3)
+```
+
+1. `full_name`: The full name of the model, which is a concatenation of the catalog name, schema name, and model name separated by dots (e.g., `catalog_name.schema_name.model_name`).
+2. `new_name`: _\[Optional\]_ The new name of the volume.
+3. `comment`: _\[Optional\]_ The description of the function.
+
+Read more in the [Models](models.md) documentatino.
 
 ## CLI Server Configuration
 
@@ -581,9 +651,7 @@ The CLI will prioritize the values provided from the CLI over the configuration 
 
 !!! feedback "Different look for users CLI commands"
 
-    We're trying out a different look for the CLI commands - which do you prefer - the format above this or the format
-    below? Chime in UC GitHub discussion [529](https://github.com/unitycatalog/unitycatalog/discussions/529) and let
-    us know!
+    We're trying out a different look for the CLI commands - which do you prefer - the format above this or the format below? Chime in UC GitHub discussion [529](https://github.com/unitycatalog/unitycatalog/discussions/529) and let us know!
 
 ## Manage Users
 
