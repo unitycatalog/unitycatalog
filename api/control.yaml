@@ -132,6 +132,55 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/UserResource'
+  /auth/tokens:
+    post:
+      tags:
+        - OAuth2
+      operationId: getToken
+      summary: Get a token using an OAuth2 flow
+      description: |
+        Exchange credentials for a token using the OAuth2 client credentials flow or token exchange.
+      requestBody:
+        required: true
+        # NOTE:
+        # According to the RFC (https://datatracker.ietf.org/doc/html/rfc8693#section-2), the Content-Type
+        # should be `application/x-www-form-urlencoded`. However, we followed the existing implementation
+        # and used `application/json`. If we switch to `application/x-www-form-urlencoded`, OpenAPI Generator
+        # might generate code that depends on the `org.apache.http` package.
+        content:
+#          application/x-www-form-urlencoded:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/OAuthTokenExchangeRequest'
+      responses:
+        '200':
+          $ref: '#/components/responses/OAuthTokenExchangeResponse'
+  /auth/logout:
+    post:
+      tags:
+        - OAuth2
+      operationId: logout
+      summary: Expire the access token
+      description: |
+        Exchange credentials for a token using the OAuth2 client credentials flow or token exchange.
+      requestBody:
+        # NOTE:
+        # OAS 3.0 allows empty request bodies. In other words:
+        #```
+        #  requestBody:
+        #    content:
+        #    application/json: {}
+        #```
+        # should be permissible. However, due to the limitations of the OpenAPI Generator (https://github.com/OpenAPITools/openapi-generator/blob/v5.1.0/docs/generators/java.md#parameter-feature),
+        # which only accepts OAS 2-style notation, this is a workaround.
+        content:
+          application/json:
+            schema:
+              type: object
+              nullable: true
+      responses:
+        '200':
+          description: The access token will be expired.
 
 components:
   schemas:
@@ -256,6 +305,106 @@ components:
         primary:
           description: If the email is primary.
           type: boolean
+    GrantType:
+      description: |
+        Grant type identifier, from RFC 8693 Section 2.
+        See https://datatracker.ietf.org/doc/html/rfc8693#section-2
+      type: string
+      enum:
+        - urn:ietf:params:oauth:grant-type:token-exchange
+      # NOTE:
+      # OpenAPI 3.0/2.0 do not have a way to define custom names for enum values,
+      # but some tools (e.g., openapi-generator and openapi-typescript) provide
+      # x-prefixed extensions for this purpose.
+      x-enum-varnames:
+        - TOKEN_EXCHANGE
+    TokenType:
+      description: |
+        Token type identifier, from RFC 8693 Section 3.
+        See https://datatracker.ietf.org/doc/html/rfc8693#section-3
+      type: string
+      enum:
+        - urn:ietf:params:oauth:token-type:access_token
+        - urn:ietf:params:oauth:token-type:refresh_token
+        - urn:ietf:params:oauth:token-type:id_token
+        - urn:ietf:params:oauth:token-type:saml1
+        - urn:ietf:params:oauth:token-type:saml2
+        - urn:ietf:params:oauth:token-type:jwt
+      # NOTE:
+      # OpenAPI 3.0/2.0 do not have a way to define custom names for enum values,
+      # but some tools (e.g., openapi-generator and openapi-typescript) provide
+      # x-prefixed extensions for this purpose.
+      x-enum-varnames:
+        - ACCESS_TOKEN
+        - REFRESH_TOKEN
+        - ID_TOKEN
+        - SAML1
+        - SAML2
+        - JWT
+    AccessTokenType:
+      description: |
+        Access token type identifier, from RFC 8693 Section 2.
+        See https://datatracker.ietf.org/doc/html/rfc8693#section-2
+      type: string
+      enum:
+        - Bearer
+        - MAC
+        - N_A
+    OAuthTokenExchangeRequest:
+      description: |
+        OAuth2 token exchange request.
+        See https://datatracker.ietf.org/doc/html/rfc8693
+      type: object
+      required:
+        - grant_type
+        - subject_token
+        - subject_token_type
+      properties:
+        grant_type:
+          $ref: "#/components/schemas/GrantType"
+        scope:
+          description: Authorization scope for client credentials or token exchange.
+          type: string
+        requested_token_type:
+          $ref: '#/components/schemas/TokenType'
+        subject_token:
+          description: Subject token for token exchange request.
+          type: string
+        subject_token_type:
+          $ref: '#/components/schemas/TokenType'
+        actor_token:
+          description: Actor token for token exchange request.
+          type: string
+        actor_token_type:
+          $ref: '#/components/schemas/TokenType'
+    OAuthTokenExchangeResponse:
+      description: |
+        OAuth2 token exchange response.
+        See https://datatracker.ietf.org/doc/html/rfc8693
+      type: object
+      required:
+        - access_token
+        - issued_token_type
+        - token_type
+      properties:
+        access_token:
+          description: Access token for token exchange request.
+          type: string
+        issued_token_type:
+          $ref: '#/components/schemas/TokenType'
+        token_type:
+          $ref: '#/components/schemas/AccessTokenType'
+        expires_in:
+          description: Lifetime of the access token in seconds for client credentials or token exchange.
+          type: integer
+          format: int64
+        scope:
+          description: Authorization scope for client credentials or token exchange.
+          type: string
+        refresh_token:
+          description: Refresh token for client credentials or token exchange.
+          type: string
+
 info:
   title: Unity Control API
   version: '0.1'
