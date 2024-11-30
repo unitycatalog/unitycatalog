@@ -139,17 +139,11 @@ paths:
       operationId: getToken
       summary: Get a token using an OAuth2 flow
       description: |
-        Exchange credentials for a token using the OAuth2 client credentials flow or token exchange.
+        Exchanges credentials for a token using the OAuth2 token exchange.
       requestBody:
         required: true
-        # NOTE:
-        # According to the RFC (https://datatracker.ietf.org/doc/html/rfc8693#section-2), the Content-Type
-        # should be `application/x-www-form-urlencoded`. However, we followed the existing implementation
-        # and used `application/json`. If we switch to `application/x-www-form-urlencoded`, OpenAPI Generator
-        # might generate code that depends on the `org.apache.http` package.
         content:
-#          application/x-www-form-urlencoded:
-          application/json:
+          application/x-www-form-urlencoded:
             schema:
               $ref: '#/components/schemas/OAuthTokenExchangeRequest'
       responses:
@@ -160,9 +154,9 @@ paths:
       tags:
         - OAuth2
       operationId: logout
-      summary: Expire the access token
+      summary: Expires the access token
       description: |
-        Exchange credentials for a token using the OAuth2 client credentials flow or token exchange.
+        Expires the authorixation cookie.
       requestBody:
         # NOTE:
         # OAS 3.0 allows empty request bodies. In other words:

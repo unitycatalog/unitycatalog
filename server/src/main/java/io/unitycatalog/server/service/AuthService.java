@@ -3,14 +3,15 @@ package io.unitycatalog.server.service;
 import com.auth0.jwt.JWT;
 import com.auth0.jwt.JWTVerifier;
 import com.auth0.jwt.interfaces.DecodedJWT;
-import com.fasterxml.jackson.annotation.JsonInclude;
-import com.fasterxml.jackson.databind.PropertyNamingStrategies;
-import com.fasterxml.jackson.databind.annotation.JsonNaming;
 import com.linecorp.armeria.common.*;
 import com.linecorp.armeria.common.annotation.Nullable;
 import com.linecorp.armeria.server.annotation.ExceptionHandler;
 import com.linecorp.armeria.server.annotation.Param;
 import com.linecorp.armeria.server.annotation.Post;
+import io.unitycatalog.control.model.AccessTokenType;
+import io.unitycatalog.control.model.GrantType;
+import io.unitycatalog.control.model.OAuthTokenExchangeResponse;
+import io.unitycatalog.control.model.TokenType;
 import io.unitycatalog.control.model.User;
 import io.unitycatalog.server.exception.ErrorCode;
 import io.unitycatalog.server.exception.GlobalExceptionHandler;
@@ -22,41 +23,52 @@ import io.unitycatalog.server.utils.JwksOperations;
 import io.unitycatalog.server.utils.ServerProperties;
 import java.time.Duration;
 import java.util.Optional;
-import lombok.Builder;
 import lombok.Getter;
-import lombok.NonNull;
 import lombok.ToString;
-import lombok.extern.jackson.Jacksonized;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 @ExceptionHandler(GlobalExceptionHandler.class)
 public class AuthService {
+  // NOTE:
+  // Unfortunately, when specifying `application/x-www-form-urlencoded` for content in the OpenAPI
+  // schema,
+  // the OpenAPI Generator does not generate response models from that schema. Additionally, when
+  // accessing
+  // each parameter directly from the body without using a model, Armelia fails to handle them
+  // correctly if
+  // the `ext` query parameter is present. Therefore, the request model is implemented manually
+  // here.
+  //
+  // SEE:
+  // - https://armeria.dev/docs/server-annotated-service/#getting-a-query-parameter
+  @ToString
+  static class OAuthTokenExchangeRequest {
+    @Param("grant_type")
+    @Getter
+    private String grantType;
 
-  // TODO: need common module for these constants, they are reused in the CLI
-  interface Fields {
-    String GRANT_TYPE = "grant_type";
-    String CLIENT_ID = "client_id";
-    String CLIENT_SECRET = "client_secret";
-    String SUBJECT_TOKEN = "subject_token";
-    String SUBJECT_TOKEN_TYPE = "subject_token_type";
-    String ACTOR_TOKEN = "actor_token";
-    String ACTOR_TOKEN_TYPE = "actor_token_type";
-    String REQUESTED_TOKEN_TYPE = "requested_token_type";
-  }
+    @Param("requested_token_type")
+    @Getter
+    private String requestedTokenType;
 
-  interface GrantTypes {
-    String TOKEN_EXCHANGE = "urn:ietf:params:oauth:grant-type:token-exchange";
-  }
+    @Param("subject_token_type")
+    @Getter
+    private String subjectTokenType;
 
-  interface TokenTypes {
-    String ACCESS = "urn:ietf:params:oauth:token-type:access_token";
-    String ID = "urn:ietf:params:oauth:token-type:id_token";
-    String JWT = "urn:ietf:params:oauth:token-type:jwt";
-  }
+    @Param("subject_token")
+    @Getter
+    private String subjectToken;
 
-  interface AuthTypes {
-    String BEARER = "Bearer";
+    @Param("actor_token_type")
+    @Nullable
+    @Getter
+    private String actorTokenType;
+
+    @Param("actor_token")
+    @Nullable
+    @Getter
+    private String actorToken;
   }
 
   private static final Logger LOGGER = LoggerFactory.getLogger(AuthService.class);
@@ -101,7 +113,11 @@ public class AuthService {
    * the incoming identity (email, subject) matches a specific user in the system, once a user
    * management system is in place.
    *
-   * <p>TODO: This could probably be integrated into the OpenAPI spec.
+   * <p>NOTE: Armelia does not convert some `Enum` values properly; hence, we should treat them as
+   * `String` here.
+   *
+   * <p>SEE:
+   * https://armeria.dev/docs/server-annotated-service/#injecting-a-parameter-as-an-enum-type
    *
    * @param request The token exchange parameters
    * @return The token exchange response
@@ -110,14 +126,15 @@ public class AuthService {
   public HttpResponse grantToken(
       @Param("ext") Optional<String> ext, OAuthTokenExchangeRequest request) {
     LOGGER.debug("Got token: {}", request);
+
     if (request.getGrantType() == null
-        || !GrantTypes.TOKEN_EXCHANGE.equals(request.getGrantType())) {
+        || !GrantType.TOKEN_EXCHANGE.getValue().equals(request.getGrantType())) {
       throw new OAuthInvalidRequestException(
           ErrorCode.INVALID_ARGUMENT, "Unsupported grant type: " + request.getGrantType());
     }
 
     if (request.getRequestedTokenType() == null
-        || !TokenTypes.ACCESS.equals(request.getRequestedTokenType())) {
+        || !TokenType.ACCESS_TOKEN.getValue().equals(request.getRequestedTokenType())) {
       throw new OAuthInvalidRequestException(
           ErrorCode.INVALID_ARGUMENT,
           "Unsupported requested token type: " + request.getRequestedTokenType());
@@ -154,11 +171,10 @@ public class AuthService {
     String accessToken = securityContext.createAccessToken(decodedJWT);
 
     OAuthTokenExchangeResponse response =
-        OAuthTokenExchangeResponse.builder()
+        new OAuthTokenExchangeResponse()
             .accessToken(accessToken)
-            .issuedTokenType(TokenTypes.ACCESS)
-            .tokenType(AuthTypes.BEARER)
-            .build();
+            .issuedTokenType(TokenType.ACCESS_TOKEN)
+            .tokenType(AccessTokenType.BEARER);
 
     // Set token as cookie if ext param is set to cookie
     ResponseHeadersBuilder responseHeaders = ResponseHeaders.builder(HttpStatus.OK);
@@ -230,50 +246,5 @@ public class AuthService {
         .path(path)
         .maxAge(Duration.parse(maxAge).getSeconds())
         .build();
-  }
-
-  // TODO: This should be probably integrated into the OpenAPI spec.
-  @ToString
-  static class OAuthTokenExchangeRequest {
-    @Param(Fields.GRANT_TYPE)
-    @Getter
-    private String grantType;
-
-    @Param(Fields.REQUESTED_TOKEN_TYPE)
-    @Getter
-    private String requestedTokenType;
-
-    @Param(Fields.SUBJECT_TOKEN_TYPE)
-    @Getter
-    private String subjectTokenType;
-
-    @Param(Fields.SUBJECT_TOKEN)
-    @Getter
-    private String subjectToken;
-
-    @Param(Fields.ACTOR_TOKEN_TYPE)
-    @Nullable
-    @Getter
-    private String actorTokenType;
-
-    @Param(Fields.ACTOR_TOKEN)
-    @Nullable
-    @Getter
-    private String actorToken;
-  }
-
-  // TODO: This should be probably integrated into the OpenAPI spec.
-  @Jacksonized
-  @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
-  @JsonInclude(JsonInclude.Include.NON_NULL)
-  @Builder
-  @Getter
-  public static class OAuthTokenExchangeResponse {
-    @NonNull private String accessToken;
-    @NonNull private String issuedTokenType;
-    @NonNull private String tokenType;
-    private Long expiresIn;
-    private String scope;
-    private String refreshToken;
   }
 }
