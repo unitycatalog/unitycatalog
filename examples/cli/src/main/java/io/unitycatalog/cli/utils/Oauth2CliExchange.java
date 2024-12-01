@@ -12,6 +12,8 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpHandler;
 import com.sun.net.httpserver.HttpServer;
+import io.unitycatalog.control.model.GrantType;
+import io.unitycatalog.control.model.TokenType;
 import java.io.BufferedOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
@@ -49,15 +51,97 @@ public class Oauth2CliExchange {
     String REDIRECT_URL = "redirect_uri";
   }
 
-  public interface TokenTypes {
-    String ACCESS = "urn:ietf:params:oauth:token-type:access_token";
-    String ID = "urn:ietf:params:oauth:token-type:id_token";
-    String JWT = "urn:ietf:params:oauth:token-type:jwt";
+  public static class RequestBody {
+    private GrantType grantType;
+    private TokenType requestedTokenType;
+    private TokenType subjectTokenType;
+    private String subjectToken;
+    private TokenType actorTokenType;
+    private String actorToken;
+
+    public RequestBody grantType(GrantType grantType) {
+      this.grantType = grantType;
+      return this;
+    }
+
+    public RequestBody requestedTokenType(TokenType requestedTokenType) {
+      this.requestedTokenType = requestedTokenType;
+      return this;
+    }
+
+    public RequestBody subjectTokenType(TokenType subjectTokenType) {
+      this.subjectTokenType = subjectTokenType;
+      return this;
+    }
+
+    public RequestBody subjectToken(String subjectToken) {
+      this.subjectToken = subjectToken;
+      return this;
+    }
+
+    public RequestBody actorTokenType(TokenType actorTokenType) {
+      this.actorTokenType = actorTokenType;
+      return this;
+    }
+
+    public RequestBody actorToken(String actorToken) {
+      this.actorToken = actorToken;
+      return this;
+    }
+
+    public String encode() {
+      StringBuilder builder = new StringBuilder();
+
+      if (this.grantType == null) {
+        throw new RuntimeException(
+            "The 'grant_token' parameter is required and must be specified.");
+      }
+      builder
+          .append("grant_type=")
+          .append(URLEncoder.encode(this.grantType.getValue(), StandardCharsets.UTF_8));
+
+      if (this.requestedTokenType == null) {
+        throw new RuntimeException(
+            "The 'requested_token_type' parameter is required and must be specified.");
+      }
+      builder
+          .append("&requested_token_type=")
+          .append(URLEncoder.encode(this.requestedTokenType.getValue(), StandardCharsets.UTF_8));
+
+      if (this.subjectTokenType == null) {
+        throw new RuntimeException(
+            "The 'subject_token_type' parameter is required and must be specified.");
+      }
+      builder
+          .append("&subject_token_type=")
+          .append(URLEncoder.encode(this.subjectTokenType.getValue(), StandardCharsets.UTF_8));
+
+      if (this.subjectToken == null) {
+        throw new RuntimeException(
+            "The 'subject_token' parameter is required and must be specified.");
+      }
+      builder
+          .append("&subject_token=")
+          .append(URLEncoder.encode(this.subjectToken, StandardCharsets.UTF_8));
+
+      if (this.actorTokenType != null) {
+        builder
+            .append("&actor_token_type=")
+            .append(URLEncoder.encode(this.actorTokenType.getValue(), StandardCharsets.UTF_8));
+      }
+
+      if (this.actorToken != null) {
+        builder
+            .append("&actor_token=")
+            .append(URLEncoder.encode(this.actorToken, StandardCharsets.UTF_8));
+      }
+
+      return builder.toString();
+    }
   }
 
-  public interface GrantTypes {
-    String TOKEN_EXCHANGE = "urn:ietf:params:oauth:grant-type:token-exchange";
-  }
+  // Change name.
+  public static class OAuthURL {}
 
   private static final ObjectMapper mapper = new ObjectMapper();
 

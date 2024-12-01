@@ -32,7 +32,7 @@ import org.slf4j.LoggerFactory;
 public class AuthService {
   // NOTE:
   // Unfortunately, when specifying `application/x-www-form-urlencoded` for content in the OpenAPI
-  // schema, the OpenAPI Generator does not generate response models from that schema.
+  // schema, the OpenAPI Generator does not generate request models from that schema.
   // Additionally, when accessing each parameter directly from the body without using a model,
   // Armelia fails to handle them correctly if the `ext` query parameter is present. Therefore,
   // the request model is implemented manually here.

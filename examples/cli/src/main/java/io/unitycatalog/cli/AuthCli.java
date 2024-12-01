@@ -11,16 +11,14 @@ import com.fasterxml.jackson.databind.ObjectWriter;
 import io.unitycatalog.cli.utils.CliParams;
 import io.unitycatalog.cli.utils.CliUtils;
 import io.unitycatalog.cli.utils.Oauth2CliExchange;
-import io.unitycatalog.cli.utils.Oauth2CliExchange.GrantTypes;
-import io.unitycatalog.cli.utils.Oauth2CliExchange.TokenTypes;
 import io.unitycatalog.client.ApiClient;
 import io.unitycatalog.client.ApiException;
+import io.unitycatalog.control.model.GrantType;
+import io.unitycatalog.control.model.TokenType;
 import java.io.IOException;
 import java.net.URI;
-import java.net.URLEncoder;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
-import java.nio.charset.StandardCharsets;
 import java.util.HashMap;
 import java.util.Map;
 import org.apache.commons.cli.CommandLine;
@@ -77,22 +75,17 @@ public class AuthCli {
 
     URI tokensEndpoint = URI.create(apiClient.getBaseUri() + "/auth/tokens");
 
-    StringBuilder builder = new StringBuilder();
-    builder
-        .append("grant_type=")
-        .append(URLEncoder.encode(GrantTypes.TOKEN_EXCHANGE, StandardCharsets.UTF_8))
-        .append("&requested_token_type=")
-        .append(URLEncoder.encode(TokenTypes.ACCESS, StandardCharsets.UTF_8))
-        .append("&subject_token_type=")
-        .append(URLEncoder.encode(TokenTypes.ID, StandardCharsets.UTF_8))
-        .append("&subject_token=")
-        .append(URLEncoder.encode(login.get("identityToken"), StandardCharsets.UTF_8));
+    Oauth2CliExchange.RequestBody body = new Oauth2CliExchange.RequestBody()
+      .grantType(GrantType.TOKEN_EXCHANGE)
+      .requestedTokenType(TokenType.ACCESS_TOKEN)
+      .subjectTokenType(TokenType.ID_TOKEN)
+      .subjectToken(login.get("identityToken"));
 
     HttpRequest request =
         HttpRequest.newBuilder()
             .uri(tokensEndpoint)
             .header("Content-Type", "application/x-www-form-urlencoded")
-            .POST(HttpRequest.BodyPublishers.ofString(builder.toString()))
+            .POST(HttpRequest.BodyPublishers.ofString(body.encode()))
             .build();
 
     try {
