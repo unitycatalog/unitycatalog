@@ -15,7 +15,7 @@ The `UnitycatalogFunctionClient` is a specialized client within the Unity Catalo
 When using the `UnitycatalogFunctionClient` be aware of the following points:
 
 1. **Asynchronous API usage**: The `unitycatalog-client` SDK is based on aiohttp, making it an async client. The `UnitycatalogFuncitonClient` exposes async methods for nearly all of its interfaces (except for `execute_function`) to provide seamless experience for asynchronous calls to a Unity Catalog server. If you are using asynchronous methods within an environment that has a running event loop (such as a Jupyter Notebook), ensure that you are not attempting to create additional event loops for async method calls. Additionally, all methods within `unitycatalog-ai` offer **synchronous** versions, in case you prefer a simpler interface.
-2. **Security Considerations**: Function execution occurs within the environment where a Unity Catalog function is called for execution. Be aware of the contents of any function prior to execution by checking the `routine_definition` entry by calling the `get_function` API if you did not author the function. Additionally, be aware that GenAI-generated Python code (for the use case of building a Unity Catalog function whose sole purpose is to execute arbitrary code) execution is inherently unsafe and should be performed in an isolated VM that is not connected to user data or is in an environment that is not ephemeral (a VM is ideal for this use case).
+2. **Security Considerations**: Function execution occurs within the environment where a Unity Catalog function is called for execution. Be aware of the contents of any function prior to execution by checking the `routine_definition` entry by calling the `get_function` API if you did not author the function. Additionally, be aware that GenAI-generated Python code (for the use case of building a Unity Catalog function whose sole purpose is to execute arbitrary code) execution is **inherently unsafe and should be performed in an isolated VM** that is not connected to user data or is in an environment that is not ephemeral (a VM is ideal for this use case).
 3. **External Dependencies**: The environment that is executing the function that you're calling needs to have the appropriate packages pre-installed in order for functions that use external non-core-Python import statements. Ensure that dependent libraries are installed via `pip`. Additionally, import statements should be contained within the function body (using local imports) to ensure that the dependency is available for use by your function's internal logic.
 4. **Function overwriting**: The `create_function` and `create_function_async` APIs expose the ability to overwrite a function definition for convenience. Ensure that you are fully aware of the implications of replacing a function as this operation is permanent and could be disruptive to other Agent workflows that are dependent on existing functionality.
 
@@ -45,7 +45,7 @@ associated with GenAI-generated Python code execution from within Unity Catalog 
 - **Installation**: ensure that you have the following packages installed from PyPI:
 
 ```shell
-pip install unitycatalog-client unitycatalog-ai unitycatalog-openai aiohttp nest_asyncio
+pip install unitycatalog-client unitycatalog-ai unitycatalog-openai
 ```
 
 #### Initialization
@@ -63,15 +63,40 @@ config.host = "http://localhost:8080/api/2.1/unity-catalog"
 # The base ApiClient is async
 api_client = ApiClient(configuration=config)
 
-uc_client = UnitycatalogFunctionClient(uc=api_client)
+uc_client = UnitycatalogFunctionClient(api_client=api_client)
 
 CATALOG = "my_catalog"
 SCHEMA = "my_schema"
 ```
 
-> Tip: Ensure that you have created a catalog and a schema before attempting to create functions. The `ApiClient` via
-the `unitycatalog-client` package can be used to instantiate the `CatalogApi` and the `SchemaApi` via async calls for
-creating both a catalog and a schema respectively.
+> Tip: Ensure that you have created a catalog and a schema before attempting to create functions.
+
+The `UnitycatalogFunctionClient` provides helper methods for creating both Catalogs and Schemas in Unity Catalog. For full
+API-based CRUD operations, you will need to use the `unitycatalog-client` package.
+
+To create a Catalog, you can call the `create_catalog` method:
+
+```python
+uc_client.create_catalog(
+    name=CATALOG,
+    comment="A catalog for demonstrating the use of Unity Catalog function usage in GenAI applications",
+)
+```
+
+> NOTE: If the Catalog already exists, you will receive a warning and the existing `CatalogInfo` metadata will be returned.
+
+To create a Schema, you can call the `create_schema` method:
+
+```python
+uc_client.create_schema(
+    name=SCHEMA,
+    catalog_name=CATALOG,
+    comment="A schema for holding UC functions for GenAI use cases",
+)
+```
+
+> NOTE: Similar to the `create_catalog` API, if a schema exists with the name that you specify, you will receive a warning
+and the existing schema's metadata will be returned.
 
 #### Creating Functions for tool use
 
@@ -103,7 +128,6 @@ my_function = await uc_client.create_python_function_async(
     func=my_test_func,
     catalog=CATALOG,
     schema=SCHEMA,
-    replace=True,
 )
 ```
 
@@ -117,7 +141,6 @@ my_function = uc_client.create_python_function(
     func=my_test_func,
     catalog=CATALOG,
     schema=SCHEMA,
-    replace=True,
 )
 ```
 

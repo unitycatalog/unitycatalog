@@ -63,7 +63,7 @@ config.host = "http://localhost:8080/api/2.1/unity-catalog"
 api_client = ApiClient(configuration=config)
 
 # Use the UnityCatalog client to create an instance of the AI function client
-client = UnitycatalogFunctionClient(uc=api_client)
+client = UnitycatalogFunctionClient(api_client=api_client)
 ```
 
 ### Client Setup - Databricks
