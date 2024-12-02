@@ -57,7 +57,7 @@ public class UnityCatalogServer {
   private static final String controlPath = "/api/1.0/unity-control/";
 
   public UnityCatalogServer() {
-    new UnityCatalogServer(8080);
+    this(8080);
   }
 
   public UnityCatalogServer(int port) {

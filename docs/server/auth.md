@@ -212,7 +212,7 @@ permissions.
 
 ### Try to access your table using DuckDB
 
-First, let’s give our user account (`bobbie@rocinante`) `USE CATALOG`, `USE` `SCHEMA`, and `SELECT` permissions.
+First, let’s give our user account (`bobbie@rocinante`) `USE CATALOG`, `USE SCHEMA`, and `SELECT` permissions.
 Notice how we’re providing access using the three-part naming convention of *catalog, schema, and table*. As we provide
 each level of permissions, we progress down the three parts.
 
