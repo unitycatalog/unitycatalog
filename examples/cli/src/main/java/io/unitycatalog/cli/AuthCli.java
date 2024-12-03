@@ -108,19 +108,6 @@ public class AuthCli {
     }
   }
 
-  static class Login {
-    @JsonProperty("identity_token")
-    private String identity_token;
-
-    public void setIdentity_token(String identity_token) {
-      this.identity_token = identity_token;
-    }
-
-    public String getIdentity_token() {
-      return identity_token;
-    }
-  }
-
   static class LoginInfo {
     @JsonProperty("access_token")
     private String accessToken;
