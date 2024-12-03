@@ -74,7 +74,7 @@ public class Oauth2CliExchange {
       }
     }
 
-    public static String encode(Map<String, String> parameters) {
+    public static String ofMap(Map<String, String> parameters) {
       return URLEncodedUtils.format(
           parameters.entrySet().stream()
               .map(p -> new Entry(p.getKey(), p.getValue()))
@@ -130,7 +130,7 @@ public class Oauth2CliExchange {
     String authUrl =
         authBaseUrl
             + "?"
-            + URLEncodedForm.encode(
+            + URLEncodedForm.ofMap(
                 Map.ofEntries(
                     entry("client_id", clientId),
                     entry("redirect_uri", redirectUrl),
