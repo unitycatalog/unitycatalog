@@ -228,3 +228,10 @@ def test_toolkit_fields_validation(client):
 
     with pytest.raises(ValidationError, match=r"instance of BaseFunctionClient expected"):
         UCFunctionToolkit(client=test_tool, function_names=[])
+
+
+def test_toolkit_prohibits_wildcard_functions(client):
+    with pytest.raises(
+        ValidationError, match=r"Function names with wildcard characters '\*' are not supported"
+    ):
+        UCFunctionToolkit(client=client, function_names=["catalog.schema.*"])

@@ -203,3 +203,11 @@ def test_toolkit_crewai_kwarg_passthrough(client):
         assert tool.cache_function()
         assert tool.result_as_answer
         assert tool.description_updated
+
+
+def test_toolkit_prohibits_wildcard_functions():
+    client = get_client()
+    with pytest.raises(
+        ValidationError, match=r"Function names with wildcard characters '\*' are not supported"
+    ):
+        UCFunctionToolkit(client=client, function_names=["catalog.schema.*"])

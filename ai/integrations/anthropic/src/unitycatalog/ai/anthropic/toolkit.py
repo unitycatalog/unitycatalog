@@ -9,6 +9,7 @@ from unitycatalog.ai.core.utils.function_processing_utils import (
     get_tool_name,
     process_function_names,
 )
+from unitycatalog.ai.core.utils.validation_utils import check_wildcard_function_name_listing
 
 
 class AnthropicTool(BaseModel):
@@ -64,6 +65,8 @@ class UCFunctionToolkit(BaseModel):
         Validates the toolkit, ensuring the client is properly set and function names are processed.
         """
         self.client = validate_or_set_default_client(self.client)
+
+        check_wildcard_function_name_listing(self.function_names)
 
         self.tools_dict = process_function_names(
             function_names=self.function_names,

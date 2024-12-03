@@ -11,6 +11,7 @@ from unitycatalog.ai.core.utils.function_processing_utils import (
     get_tool_name,
     process_function_names,
 )
+from unitycatalog.ai.core.utils.validation_utils import check_wildcard_function_name_listing
 
 
 class UnityCatalogTool(StructuredTool):
@@ -47,6 +48,9 @@ class UCFunctionToolkit(BaseModel):
         values["client"] = client
 
         function_names = values["function_names"]
+
+        check_wildcard_function_name_listing(function_names)
+
         tools_dict = values.get("tools_dict", {})
 
         values["tools_dict"] = process_function_names(

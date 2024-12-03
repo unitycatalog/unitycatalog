@@ -12,6 +12,7 @@ from unitycatalog.ai.core.utils.function_processing_utils import (
     get_tool_name,
     process_function_names,
 )
+from unitycatalog.ai.core.utils.validation_utils import check_wildcard_function_name_listing
 
 _logger = logging.getLogger(__name__)
 
@@ -99,6 +100,8 @@ class UCFunctionToolkit(BaseModel):
 
         if not self.function_names:
             raise ValueError("Cannot create tool instances without function_names being provided.")
+
+        check_wildcard_function_name_listing(self.function_names)
 
         self.tools_dict = process_function_names(
             function_names=self.function_names,

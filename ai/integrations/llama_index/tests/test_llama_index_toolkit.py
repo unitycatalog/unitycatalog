@@ -505,3 +505,10 @@ def test_toolkit_with_invalid_function_input_mocked():
         mock_client.execute_function.assert_called_once_with(
             function_name="catalog.schema.test_function", parameters=invalid_inputs
         )
+
+
+def test_toolkit_prohibits_wildcard_functions(client):
+    with pytest.raises(
+        ValidationError, match=r"Function names with wildcard characters '\*' are not supported"
+    ):
+        UCFunctionToolkit(client=client, function_names=["catalog.schema.*"])

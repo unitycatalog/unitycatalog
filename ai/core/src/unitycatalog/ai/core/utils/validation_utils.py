@@ -1,7 +1,7 @@
 import base64
 import datetime
 import warnings
-from typing import TYPE_CHECKING, Any, NamedTuple
+from typing import TYPE_CHECKING, Any, List, NamedTuple
 
 from unitycatalog.ai.core.utils.type_utils import is_time_type
 
@@ -140,3 +140,17 @@ def validate_function_name_length(function_name: str) -> None:
             f"The maximum length of a function name is {OSS_MAX_FUNCTION_NAME_LENGTH}. "
             f"The name supplied is {name_length} characters long."
         )
+
+
+def check_wildcard_function_name_listing(function_names: List[str]) -> None:
+    """
+    Checks if the function names contain wildcard characters and raises an error if they do.
+
+    Args:
+        function_names: The list of function names to check.
+    """
+    for function_name in function_names:
+        if "*" in function_name:
+            raise ValueError(
+                f"Function names with wildcard characters '*' are not supported: {function_name}"
+            )

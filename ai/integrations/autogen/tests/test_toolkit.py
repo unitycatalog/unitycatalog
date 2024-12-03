@@ -241,7 +241,7 @@ def test_register_with_agents(client):
     function_names = ["catalog.schema.function"]
 
     # Create a realistic FunctionInfo object
-    function_info = FunctionInfo(
+    FunctionInfo(
         catalog_name="catalog",
         schema_name="schema",
         name="function",
@@ -271,3 +271,11 @@ def test_register_with_agents(client):
             tool.register_function.assert_called_once_with(
                 callers=mock_callers, executors=mock_executors
             )
+
+
+def test_toolkit_prohibits_wildcard_functions():
+    client = get_client()
+    with pytest.raises(
+        ValidationError, match=r"Function names with wildcard characters '\*' are not supported"
+    ):
+        UCFunctionToolkit(client=client, function_names=["catalog.schema.*"])

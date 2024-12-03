@@ -27,6 +27,13 @@ from unitycatalog.ai.test_utils.function_utils import (
     random_func_name,
 )
 
+try:
+    # v2
+    from pydantic_core._pydantic_core import ValidationError
+except ImportError:
+    # v1
+    from pydantic.error_wrappers import ValidationError
+
 SCHEMA = os.environ.get("SCHEMA", "ucai_openai_test")
 
 
@@ -421,3 +428,11 @@ def test_function_definition_generation(use_serverless, monkeypatch):
                 },
             },
         }
+
+
+def test_toolkit_prohibits_wildcard_functions():
+    client = get_client()
+    with pytest.raises(
+        ValidationError, match=r"Function names with wildcard characters '\*' are not supported"
+    ):
+        UCFunctionToolkit(client=client, function_names=["catalog.schema.*"])
