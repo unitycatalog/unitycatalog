@@ -23,6 +23,12 @@ Before you begin, ensure you have the following:
 If you're looking to use an Open Source Unity Catalog service, ensure that you have met all of the prerequisites and have followed the
 [Unity Catalog Quickstart Guide](../quickstart.md). Once your server is up and running and you are able to create a catalog, schemas, and functions, you're all set to continue with this guide.
 
+To interface with the Python APIs, you will need to install the UnityCatalog Python Client SDK:
+
+```sh
+pip install unitycatalog-client
+```
+
 ### Databricks Unity Catalog
 
 If you are going to interface with ``Databricks Unity Catalog``, you can install the optional package extension from PyPI:
@@ -53,7 +59,30 @@ seamlessly define a native LangChain tool that can interface with functions stor
 pip install unitycatalog-langchain
 ```
 
-### Client Setup
+### Client Setup - OSS Unity Catalog
+
+Create an instance of the Functions Client
+
+```python
+from unitycatalog.client import ApiClient, Configuration
+from unitycatalog.ai.core.oss import UnitycatalogFunctionClient
+
+config = Configuration()
+# This is the default address when starting a UnityCatalog server locally. Update this to the uri
+# of your running UnityCatalog server.
+config.host = "http://localhost:8080/api/2.1/unity-catalog"
+
+# Create the UnityCatalog client
+api_client = ApiClient(configuration=config)
+
+# Use the UnityCatalog client to create an instance of the AI function client
+client = UnitycatalogFunctionClient(api_client=api_client)
+
+CATALOG = "my_catalog"
+SCHEMA = "my_schema"
+```
+
+### Client Setup - Databricks
 
 For us to be able to both create and execute a function defined within UC as a tool in LangChain, we need to initialize the UC function client.
 In this example, we're connecting to Databricks UC and specifying a `warehouse_id` that will be used for executing the functions that are
@@ -105,7 +134,7 @@ def add_numbers(number_1: float, number_2: float) -> float:
 function_info = client.create_python_function(
     func=add_numbers,
     catalog=CATALOG,
-    schema=SCHEMA
+    schema=SCHEMA,
 )
 ```
 
@@ -122,7 +151,7 @@ from unitycatalog.ai.langchain.toolkit import UCFunctionToolkit
 func_name = f"{CATALOG}.{SCHEMA}.add_numbers"
 
 # Create a toolkit with the UC function
-toolkit = UCFunctionToolkit(function_names=[func_name])
+toolkit = UCFunctionToolkit(function_names=[func_name], client=client)
 ```
 
 ### Use the tool in an agent
