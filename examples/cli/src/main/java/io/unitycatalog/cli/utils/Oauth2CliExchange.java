@@ -2,6 +2,7 @@ package io.unitycatalog.cli.utils;
 
 import static java.net.HttpURLConnection.HTTP_OK;
 import static java.net.URLDecoder.decode;
+import static java.util.Map.entry;
 import static java.util.stream.Collectors.groupingBy;
 import static java.util.stream.Collectors.mapping;
 import static java.util.stream.Collectors.toList;
@@ -12,8 +13,6 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpHandler;
 import com.sun.net.httpserver.HttpServer;
-import io.unitycatalog.control.model.GrantType;
-import io.unitycatalog.control.model.TokenType;
 import java.io.BufferedOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
@@ -38,7 +37,10 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Future;
 import java.util.regex.Pattern;
+import java.util.stream.Collectors;
 import org.apache.commons.codec.binary.Hex;
+import org.apache.http.NameValuePair;
+import org.apache.http.client.utils.URLEncodedUtils;
 
 /** Simple OAuth2 authentication flow for the CLI. */
 public class Oauth2CliExchange {
@@ -51,97 +53,35 @@ public class Oauth2CliExchange {
     String REDIRECT_URL = "redirect_uri";
   }
 
-  public static class RequestBody {
-    private GrantType grantType;
-    private TokenType requestedTokenType;
-    private TokenType subjectTokenType;
-    private String subjectToken;
-    private TokenType actorTokenType;
-    private String actorToken;
+  public static class QueryParams {
+    private static class Entry implements NameValuePair {
+      private String name;
+      private String value;
 
-    public RequestBody grantType(GrantType grantType) {
-      this.grantType = grantType;
-      return this;
-    }
-
-    public RequestBody requestedTokenType(TokenType requestedTokenType) {
-      this.requestedTokenType = requestedTokenType;
-      return this;
-    }
-
-    public RequestBody subjectTokenType(TokenType subjectTokenType) {
-      this.subjectTokenType = subjectTokenType;
-      return this;
-    }
-
-    public RequestBody subjectToken(String subjectToken) {
-      this.subjectToken = subjectToken;
-      return this;
-    }
-
-    public RequestBody actorTokenType(TokenType actorTokenType) {
-      this.actorTokenType = actorTokenType;
-      return this;
-    }
-
-    public RequestBody actorToken(String actorToken) {
-      this.actorToken = actorToken;
-      return this;
-    }
-
-    public String encode() {
-      StringBuilder builder = new StringBuilder();
-
-      if (this.grantType == null) {
-        throw new RuntimeException(
-            "The 'grant_token' parameter is required and must be specified.");
-      }
-      builder
-          .append("grant_type=")
-          .append(URLEncoder.encode(this.grantType.getValue(), StandardCharsets.UTF_8));
-
-      if (this.requestedTokenType == null) {
-        throw new RuntimeException(
-            "The 'requested_token_type' parameter is required and must be specified.");
-      }
-      builder
-          .append("&requested_token_type=")
-          .append(URLEncoder.encode(this.requestedTokenType.getValue(), StandardCharsets.UTF_8));
-
-      if (this.subjectTokenType == null) {
-        throw new RuntimeException(
-            "The 'subject_token_type' parameter is required and must be specified.");
-      }
-      builder
-          .append("&subject_token_type=")
-          .append(URLEncoder.encode(this.subjectTokenType.getValue(), StandardCharsets.UTF_8));
-
-      if (this.subjectToken == null) {
-        throw new RuntimeException(
-            "The 'subject_token' parameter is required and must be specified.");
-      }
-      builder
-          .append("&subject_token=")
-          .append(URLEncoder.encode(this.subjectToken, StandardCharsets.UTF_8));
-
-      if (this.actorTokenType != null) {
-        builder
-            .append("&actor_token_type=")
-            .append(URLEncoder.encode(this.actorTokenType.getValue(), StandardCharsets.UTF_8));
+      public Entry(String name, String value) {
+        this.name = name;
+        this.value = value;
       }
 
-      if (this.actorToken != null) {
-        builder
-            .append("&actor_token=")
-            .append(URLEncoder.encode(this.actorToken, StandardCharsets.UTF_8));
+      @Override
+      public String getName() {
+        return this.name;
       }
 
-      return builder.toString();
+      @Override
+      public String getValue() {
+        return this.value;
+      }
+    }
+
+    public static String encode(Map<String, String> parameters) {
+      return URLEncodedUtils.format(
+          parameters.entrySet().stream()
+              .map(p -> new Entry(p.getKey(), p.getValue()))
+              .collect(Collectors.toList()),
+          StandardCharsets.UTF_8);
     }
   }
-
-  // Change name.
-  public static class OAuthURL {}
 
   private static final ObjectMapper mapper = new ObjectMapper();
 
@@ -158,7 +98,7 @@ public class Oauth2CliExchange {
   public String authenticate() throws IOException {
 
     // TODO: These properties, especially client-secret should probably be server side.
-    String authorizationUrl = serverProperties.getProperty("server.authorization-url");
+    String authBaseUrl = serverProperties.getProperty("server.authorization-url");
     String tokenUrl = serverProperties.getProperty("server.token-url");
     String clientId = serverProperties.getProperty("server.client-id");
     String clientSecret = serverProperties.getProperty("server.client-secret");
@@ -186,14 +126,17 @@ public class Oauth2CliExchange {
     byte[] stateBytes = new byte[16];
     new SecureRandom().nextBytes(stateBytes);
 
+    // NOTE: The `scope` is Google OAuth2 specific. We might need more versatile code here.
     String authUrl =
-        String.format(
-            "%s?client_id=%s&redirect_uri=%s&response_type=code&scope=%s&state=%s",
-            authorizationUrl,
-            URLEncoder.encode(clientId, StandardCharsets.UTF_8),
-            URLEncoder.encode(redirectUrl, StandardCharsets.UTF_8),
-            URLEncoder.encode("openid profile email", StandardCharsets.UTF_8),
-            Hex.encodeHexString(stateBytes));
+        authBaseUrl
+            + "?"
+            + QueryParams.encode(
+                Map.ofEntries(
+                    entry("client_id", clientId),
+                    entry("redirect_uri", redirectUrl),
+                    entry("response_type", "code"),
+                    entry("scope", "openid profile email"),
+                    entry("state", Hex.encodeHexString(stateBytes))));
 
     System.out.println("Attempting to open the authorization page in your default browser.");
     System.out.println("If the browser does not open, you can manually open the following URL:");

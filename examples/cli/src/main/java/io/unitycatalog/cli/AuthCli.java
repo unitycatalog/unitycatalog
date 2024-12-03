@@ -2,6 +2,7 @@ package io.unitycatalog.cli;
 
 import static io.unitycatalog.cli.utils.CliUtils.postProcessAndPrintOutput;
 import static java.net.HttpURLConnection.HTTP_OK;
+import static java.util.Map.entry;
 
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.fasterxml.jackson.core.JsonProcessingException;
@@ -75,18 +76,19 @@ public class AuthCli {
 
     URI tokensEndpoint = URI.create(apiClient.getBaseUri() + "/auth/tokens");
 
-    Oauth2CliExchange.RequestBody body =
-        new Oauth2CliExchange.RequestBody()
-            .grantType(GrantType.TOKEN_EXCHANGE)
-            .requestedTokenType(TokenType.ACCESS_TOKEN)
-            .subjectTokenType(TokenType.ID_TOKEN)
-            .subjectToken(login.get("identityToken"));
+    String body =
+        Oauth2CliExchange.QueryParams.encode(
+            Map.ofEntries(
+                entry("grant_type", GrantType.TOKEN_EXCHANGE.getValue()),
+                entry("requested_token_type", TokenType.ACCESS_TOKEN.getValue()),
+                entry("subject_token_type", TokenType.ID_TOKEN.getValue()),
+                entry("subject_token", login.get("identityToken"))));
 
     HttpRequest request =
         HttpRequest.newBuilder()
             .uri(tokensEndpoint)
             .header("Content-Type", "application/x-www-form-urlencoded")
-            .POST(HttpRequest.BodyPublishers.ofString(body.encode()))
+            .POST(HttpRequest.BodyPublishers.ofString(body))
             .build();
 
     try {
