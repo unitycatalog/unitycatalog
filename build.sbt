@@ -609,7 +609,7 @@ lazy val versionToUseForIntegrationTests = settingKey[String]("Version to use fo
 lazy val stagingRepositoryVersion = settingKey[String]("Staging repository version")
 
 ThisBuild / versionToUseForIntegrationTests := sys.props.getOrElse("versionToUseForIntegrationTests", "0.2.1")
-ThisBuild / stagingRepositoryVersion := sys.props.getOrElse("stagingRepositoryVersion", "1020")
+ThisBuild / stagingRepositoryVersion := sys.props.getOrElse("stagingRepositoryVersion", "1021")
 
 // This needs to be a separate project because of the version conflicts between the server and the spark connector
 // See the serverShaded being used in the spark connector module for more details
@@ -666,6 +666,7 @@ lazy val integrationTests = (project in file("integration-tests"))
       "io.delta" %% "delta-spark" % "3.2.1" % Test,
       "org.apache.hadoop" % "hadoop-aws" % "3.3.6" % Test,
       "org.apache.hadoop" % "hadoop-azure" % "3.3.6" % Test,
+      "org.apache.httpcomponents" % "httpcore" % "4.4.16" % Test,
       "com.google.cloud.bigdataoss" % "gcs-connector" % "3.0.2" % Test classifier "shaded",
       "io.unitycatalog" %% "unitycatalog-spark" % (ThisBuild / versionToUseForIntegrationTests).value % Test
     ),

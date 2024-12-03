@@ -18,7 +18,7 @@ build/sbt -DversionToUseForIntegrationTests="$VERSION_TO_USE_FOR_INTEGRATION_TES
 # Capture the server's process ID (PID) to kill it later if needed
 SERVER_PID=$!
 
-# Give the server a few seconds to start (you can adjust the sleep duration as needed)
+# Give the server a few seconds to start
 sleep 60
 
 # Function to perform the curl command and check for success
