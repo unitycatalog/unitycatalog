@@ -53,7 +53,7 @@ public class Oauth2CliExchange {
     String REDIRECT_URL = "redirect_uri";
   }
 
-  public static class QueryParams {
+  public static class URLEncodedForm {
     private static class Entry implements NameValuePair {
       private String name;
       private String value;
@@ -130,7 +130,7 @@ public class Oauth2CliExchange {
     String authUrl =
         authBaseUrl
             + "?"
-            + QueryParams.encode(
+            + URLEncodedForm.encode(
                 Map.ofEntries(
                     entry("client_id", clientId),
                     entry("redirect_uri", redirectUrl),

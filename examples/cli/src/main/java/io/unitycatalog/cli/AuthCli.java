@@ -77,7 +77,7 @@ public class AuthCli {
     URI tokensEndpoint = URI.create(apiClient.getBaseUri() + "/auth/tokens");
 
     String body =
-        Oauth2CliExchange.QueryParams.encode(
+        Oauth2CliExchange.URLEncodedForm.encode(
             Map.ofEntries(
                 entry("grant_type", GrantType.TOKEN_EXCHANGE.getValue()),
                 entry("requested_token_type", TokenType.ACCESS_TOKEN.getValue()),
