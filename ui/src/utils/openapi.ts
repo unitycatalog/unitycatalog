@@ -75,6 +75,16 @@ export type HttpErrorCode =
   | 511; // NETWORK_AUTHENTICATION_REQUIRED
 
 /**
+ * Represents the type of application media-types (not exhaustive).
+ *
+ * See also:
+ * - {@link https://www.iana.org/assignments/media-types/media-types.xhtml#application | Application Media Types }
+ */
+export type MediaType =
+  | 'application/json' // JSON
+  | 'application/x-www-form-urlencoded'; // URL Encoded Form
+
+/**
  * Utility type that converts a union (A | B | C) into an intersection ( A & B & C ).
  *
  * See also:
@@ -157,8 +167,9 @@ type GetContent<
   Api extends Specification,
   Path extends ApiPath<Api>,
   Method extends HttpMethod,
-  Code extends number,
-> = Get<Api, [Path, Method, 'responses', Code, 'content', 'application/json']>;
+  Code extends HttpSuccessCode | HttpErrorCode,
+  ContentType extends MediaType,
+> = Get<Api, [Path, Method, 'responses', Code, 'content', ContentType]>;
 
 /**
  * Utility type that expands the HTTP error responses of given `Api`, `Path` and `Method` with a given `ErrorCode`.
@@ -170,8 +181,9 @@ type ExpandApiError<
   Path extends ApiPath<Api>,
   Method extends HttpMethod,
   ErrorCode extends HttpErrorCode,
+  ContentType extends MediaType = 'application/json',
 > = ErrorCode extends number
-  ? GetContent<Api, Path, Method, ErrorCode> extends never
+  ? GetContent<Api, Path, Method, ErrorCode, ContentType> extends never
     ? {
         status: ErrorCode;
         data: {
@@ -180,7 +192,7 @@ type ExpandApiError<
       }
     : {
         status: ErrorCode;
-        data: GetContent<Api, Path, Method, ErrorCode>;
+        data: GetContent<Api, Path, Method, ErrorCode, ContentType>;
       }
   : never;
 
@@ -209,7 +221,8 @@ export type ApiRequestBody<
   Api extends Specification,
   Path extends ApiPath<Api>,
   Method extends HttpMethod,
-> = Get<Api, [Path, Method, 'requestBody', 'content', 'application/json']>;
+  ContentType extends MediaType = 'application/json',
+> = Get<Api, [Path, Method, 'requestBody', 'content', ContentType]>;
 
 /**
  * Represents the type of predefined API responses of given `Api`, `Path` and `Method`.
@@ -218,7 +231,8 @@ export type ApiSuccessResponse<
   Api extends Specification,
   Path extends ApiPath<Api>,
   Method extends HttpMethod,
-> = GetContent<Api, Path, Method, GetCode<Api, Path, Method> & HttpSuccessCode>;
+  ContentType extends MediaType = 'application/json',
+> = GetContent<Api, Path, Method, GetCode<Api, Path, Method> & HttpSuccessCode, ContentType>;
 
 /**
  * Represents the type of predefined API errors of given `Api`, `Path` and `Method`.
