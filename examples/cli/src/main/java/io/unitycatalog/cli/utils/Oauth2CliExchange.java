@@ -7,7 +7,6 @@ import static java.util.stream.Collectors.groupingBy;
 import static java.util.stream.Collectors.mapping;
 import static java.util.stream.Collectors.toList;
 
-import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.sun.net.httpserver.HttpExchange;
@@ -22,14 +21,12 @@ import java.net.HttpURLConnection;
 import java.net.InetSocketAddress;
 import java.net.ServerSocket;
 import java.net.URL;
-import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Paths;
 import java.security.SecureRandom;
 import java.util.Arrays;
 import java.util.Base64;
-import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Properties;
@@ -45,39 +42,23 @@ import org.apache.http.client.utils.URLEncodedUtils;
 /** Simple OAuth2 authentication flow for the CLI. */
 public class Oauth2CliExchange {
 
-  // TODO: need common module for these constants, they are reused in AuthService
-  public interface Fields {
-    String GRANT_TYPE = "grant_type";
-    String CLIENT_ID = "client_id";
-    String CLIENT_SECRET = "client_secret";
-    String REDIRECT_URL = "redirect_uri";
-  }
-
   public static class URLEncodedForm {
-    private static class Entry implements NameValuePair {
-      private String name;
-      private String value;
-
-      public Entry(String name, String value) {
-        this.name = name;
-        this.value = value;
-      }
-
-      @Override
-      public String getName() {
-        return this.name;
-      }
-
-      @Override
-      public String getValue() {
-        return this.value;
-      }
-    }
-
     public static String ofMap(Map<String, String> parameters) {
       return URLEncodedUtils.format(
           parameters.entrySet().stream()
-              .map(p -> new Entry(p.getKey(), p.getValue()))
+              .map(
+                  p ->
+                      new NameValuePair() {
+                        @Override
+                        public String getName() {
+                          return p.getKey();
+                        }
+
+                        @Override
+                        public String getValue() {
+                          return p.getValue();
+                        }
+                      })
               .collect(Collectors.toList()),
           StandardCharsets.UTF_8);
     }
@@ -173,15 +154,15 @@ public class Oauth2CliExchange {
 
     server.stop(0);
 
-    Map<String, String> tokenParams = new HashMap<>();
-    tokenParams.put("code", authCode);
-    tokenParams.put(Fields.CLIENT_ID, clientId);
-    tokenParams.put(Fields.CLIENT_SECRET, clientSecret);
-    tokenParams.put(Fields.GRANT_TYPE, "authorization_code");
-    tokenParams.put(Fields.REDIRECT_URL, redirectUrl);
+    String tokenBody =
+        URLEncodedForm.ofMap(
+            Map.ofEntries(
+                entry("code", authCode),
+                entry("grant_type", "authorization_code"),
+                entry("redirect_uri", redirectUrl)));
 
-    String tokenBody = buildTokenBody(tokenParams);
-    String authorization = buildAuthorization(tokenParams);
+    String authorization =
+        "Basic " + Base64.getEncoder().encodeToString((clientId + ":" + clientSecret).getBytes());
 
     // TODO: Replace this with a more modern web-client
     HttpURLConnection urlConnection = (HttpURLConnection) new URL(tokenUrl).openConnection();
@@ -228,25 +209,6 @@ public class Oauth2CliExchange {
         return serverSocket.getLocalPort();
       }
     }
-  }
-
-  private String buildTokenBody(Map<String, String> tokenParams) throws JsonProcessingException {
-    return tokenParams.entrySet().stream()
-        .filter(
-            p -> !p.getKey().equals(Fields.CLIENT_ID) && !p.getKey().equals(Fields.CLIENT_SECRET))
-        .map(
-            p ->
-                URLEncoder.encode(p.getKey(), StandardCharsets.UTF_8)
-                    + "="
-                    + URLEncoder.encode(p.getValue(), StandardCharsets.UTF_8))
-        .reduce((p1, p2) -> p1 + "&" + p2)
-        .orElse("");
-  }
-
-  private String buildAuthorization(Map<String, String> tokenParams) {
-    String authorizationValue =
-        tokenParams.get(Fields.CLIENT_ID) + ":" + tokenParams.get(Fields.CLIENT_SECRET);
-    return "Basic " + Base64.getEncoder().encodeToString(authorizationValue.getBytes());
   }
 
   static class AuthCallbackHandler implements HttpHandler {
