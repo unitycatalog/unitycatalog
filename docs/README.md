@@ -15,7 +15,7 @@ This ensures that all necessary dependencies are handled together, especially wh
 
 If you prefer to use pipx, you can install MkDocs globally with the following command:
 
-```bash
+```sh
 pipx install mkdocs
 ```
 
@@ -23,7 +23,7 @@ pipx install mkdocs
 
 Clone the Unity Catalog repository:
 
-```bash
+```sh
 git clone https://github.com/unitycatalog/unitycatalog.git
 ```
 
@@ -33,7 +33,7 @@ After cloning, navigate to the top-level directory of the repository. There is n
 
 The `requirements-docs.txt` file contains all the dependencies necessary for serving the documentation, including **MkDocs** and its plugins. First, create a virtual environment:
 
-```bash
+```sh
 # Create virtual environment
 python -m venv uc_docs_venv
 
@@ -46,7 +46,7 @@ uc_docs_venv/Scripts/activate
 
 Next, install the following dependencies into your activated virtual environment:
 
-```bash
+```sh
 pip install -r requirements-docs.txt
 ```
 
@@ -54,7 +54,7 @@ pip install -r requirements-docs.txt
 
 After installing all dependencies, you can now serve the documentation locally. Run the following command:
 
-```bash
+```sh
 mkdocs serve
 ```
 
@@ -86,7 +86,7 @@ Make sure GitHub Pages is enabled in your repository settings. To do this, go to
 
 MkDocs can automatically deploy the site to the `gh-pages` branch of your repository. To do so, simply run:
 
-```bash
+```sh
 mkdocs gh-deploy
 ```
 

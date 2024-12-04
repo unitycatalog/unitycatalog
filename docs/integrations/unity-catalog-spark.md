@@ -21,7 +21,7 @@ The following steps are required to download and configure Unity Catalog for Apa
 
 [Download](https://spark.apache.org/downloads.html) the latest version of Apache Spark >= 3.5.3 or using the following command.
 
-```bash title="Download Apache Spark 3.5.3 using curl"
+```sh title="Download Apache Spark 3.5.3 using curl"
 curl -O https://archive.apache.org/dist/spark/spark-3.5.3/spark-3.5.3-bin-hadoop3.tgz
 tar xzf spark-3.5.3-bin-hadoop3.tgz
 ```
@@ -32,7 +32,7 @@ To have Unity Catalog work with cloud object storage as the storage location for
 
 === "AWS S3"
 
-    ```bash
+    ```sh
     ## S3 Storage Config (Multiple configs can be added by incrementing the index)
     s3.bucketPath.0=<S3_BUCKET>
     s3.region.0=<S3_REGION>
@@ -44,7 +44,7 @@ To have Unity Catalog work with cloud object storage as the storage location for
 
 === "Azure ADLSgen2"
 
-    ```bash
+    ```sh
     ## ADLS Storage Config (Multiple configs can be added by incrementing the index)
     adls.storageAccountName.0=<ADLS_STORAGEACCOUNTNAME>
     adls.tenantId.0=<ADLS_TENANTID>
@@ -54,7 +54,7 @@ To have Unity Catalog work with cloud object storage as the storage location for
 
 === "Google Cloud Storage"
 
-    ```bash
+    ```sh
     ## GCS Storage Config (Multiple configs can be added by incrementing the index)
     gcs.bucketPath.0=<GCS_BUCKET>
     # Optional (If blank, it will use Default Application chain to find credentials)
@@ -65,7 +65,7 @@ To have Unity Catalog work with cloud object storage as the storage location for
 
 If the UC Server is already started, please restart it to account for the cloud storage server properties.  
 
-```bash
+```sh
 cd unitycatalog/
 bin/start-uc-server
 ```
@@ -76,7 +76,7 @@ Let’s start running some Spark SQL queries in the Spark SQL shell (`bin/spark-
 
 === "Spark SQL"
 
-    ```bash
+    ```sh
     bin/spark-sql --name "local-uc-test" \
         --master "local[*]" \
         --packages "io.delta:delta-spark_2.12:3.2.1,io.unitycatalog:unitycatalog-spark_2.12:0.2.0" \
@@ -90,7 +90,7 @@ Let’s start running some Spark SQL queries in the Spark SQL shell (`bin/spark-
 
 === "PySpark"
 
-    ```bash
+    ```sh
     bin/pyspark --name "local-uc-test" \
         --master "local[*]" \
         --packages "io.delta:delta-spark_2.12:3.2.1,io.unitycatalog:unitycatalog-spark_2.12:0.2.0" \
@@ -124,7 +124,7 @@ If you would like to run this against cloud object storage, the following versio
 
 === "AWS S3"
 
-    ```bash
+    ```sh
     bin/spark-sql --name "s3-uc-test" \
         --master "local[*]" \
         --packages "org.apache.hadoop:hadoop-aws:3.3.4,io.delta:delta-spark_2.12:3.2.1,io.unitycatalog:unitycatalog-spark_2.12:0.2.0" \
@@ -139,7 +139,7 @@ If you would like to run this against cloud object storage, the following versio
 
 === "Azure ADLSgen2"
 
-    ```bash
+    ```sh
     bin/spark-sql --name "azure-uc-test" \
         --master "local[*]" \
         --packages "org.apache.hadoop:hadoop-azure:3.3.6,io.delta:delta-spark_2.12:3.2.1,io.unitycatalog:unitycatalog-spark_2.12:0.2.0" \
@@ -153,7 +153,7 @@ If you would like to run this against cloud object storage, the following versio
 
 === "Google Cloud Storage"
 
-    ```bash
+    ```sh
     bin/spark-sql --name "gcs-uc-test" \
         --master "local[*]" \
         --jars "https://repo1.maven.org/maven2/com/google/cloud/bigdataoss/gcs-connector/3.0.2/gcs-connector-3.0.2-shaded.jar" \

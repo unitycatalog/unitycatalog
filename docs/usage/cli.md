@@ -8,7 +8,7 @@ different formats (DELTA, UNIFORM, PARQUET, JSON, and CSV), volumes with unstruc
     For all the following commands, you will need to provide an authentication token when executng these commands.
     For example, in the following section, to run the catalog list command, you would specify:
 
-    ```bash
+    ```sh
     bin/uc --auth_token $token catalog list
     ```
 
@@ -471,7 +471,7 @@ The script supports various operations such as creating, getting, updating, list
 
 ### 8.1 Create User
 
-```bash title="Usage"
+```sh title="Usage"
 bin/uc user create [options]
 ```
 
@@ -489,7 +489,7 @@ bin/uc user create [options]
 
 ### 8.2 Delete User
 
-```bash title="Usage"
+```sh title="Usage"
 bin/uc user delete [options]
 ```
 
@@ -505,7 +505,7 @@ bin/uc user delete [options]
 
 ### 8.3 Get User
 
-```bash title="Usage"
+```sh title="Usage"
 bin/uc user get [options]
 ```
 
@@ -521,7 +521,7 @@ bin/uc user get [options]
 
 ### 8.4 List Users
 
-```bash title="Usage"
+```sh title="Usage"
 bin/uc user list [options]
 ```
 
@@ -540,7 +540,7 @@ bin/uc user list [options]
 
 ### 8.5 Update User
 
-```bash title="Usage"
+```sh title="Usage"
 bin/uc user update [options]
 ```
 
