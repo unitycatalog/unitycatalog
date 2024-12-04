@@ -104,6 +104,7 @@ object PythonClientPostBuild {
       }
     }
     moveGeneratedUnityCatalog(log, openApiOutputDir)
+    deleteStreamsDirectory(log, openApiOutputDir)
   }
 
     /**
@@ -162,6 +163,31 @@ object PythonClientPostBuild {
             }
           }
       }
+    }
+  }
+
+  /**
+   * Deletes the 'streams' directory from the target folder.
+   *
+   * @param log            The logger to output informational messages.
+   * @param targetDir      The target directory where 'streams' is located.
+   */
+  def deleteStreamsDirectory(
+      log: Logger,
+      targetDir: String
+  ): Unit = {
+    val streamsDir = Paths.get(targetDir, "streams")
+
+    if (Files.exists(streamsDir)) {
+      log.info(s"Deleting 'streams' directory at $streamsDir")
+      deleteRecursively(streamsDir) match {
+        case Success(_) =>
+          log.info(s"Successfully deleted 'streams' directory at $streamsDir")
+        case Failure(exception) =>
+          sys.error(s"Failed to delete 'streams' directory at $streamsDir: ${exception.getMessage}")
+      }
+    } else {
+      log.info(s"No 'streams' directory found at $streamsDir. Skipping deletion.")
     }
   }
 }
