@@ -167,6 +167,15 @@ public class CliUtils {
                               CliParams.FULL_NAME, CliParams.COLUMNS, CliParams.STORAGE_LOCATION),
                           List.of(CliParams.DATA_SOURCE_FORMAT, CliParams.PROPERTIES)));
                   put(
+                      UPDATE,
+                      new CliOptions(
+                          List.of(CliParams.FULL_NAME),
+                          List.of(
+                              CliParams.COMMENT,
+                              CliParams.PROPERTIES,
+                              CliParams.COLUMNS,
+                              CliParams.STORAGE_LOCATION)));
+                  put(
                       LIST,
                       new CliOptions(
                           List.of(CliParams.CATALOG_NAME, CliParams.SCHEMA_NAME),

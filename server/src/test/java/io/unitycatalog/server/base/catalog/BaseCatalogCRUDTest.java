@@ -94,10 +94,10 @@ public abstract class BaseCatalogCRUDTest extends BaseCRUDTest {
 
     // Update catalog properties without updating name and comment
     System.out.println("Testing update catalog: changing properties..");
-    UpdateCatalog updateCatalog3 = new UpdateCatalog().properties(NEW_PROPERTIES);
+    UpdateCatalog updateCatalog3 = new UpdateCatalog().properties(PROPERTIES2);
     CatalogInfo updatedCatalogInfo3 =
         catalogOperations.updateCatalog(CATALOG_NEW_NAME, updateCatalog3);
-    assertCatalog(updatedCatalogInfo3, CATALOG_NEW_NAME, CATALOG_NEW_COMMENT, NEW_PROPERTIES);
+    assertCatalog(updatedCatalogInfo3, CATALOG_NEW_NAME, CATALOG_NEW_COMMENT, PROPERTIES2);
 
     // Delete catalog
     System.out.println("Testing delete catalog..");

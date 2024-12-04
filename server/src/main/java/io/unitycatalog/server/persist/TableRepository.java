@@ -3,10 +3,7 @@ package io.unitycatalog.server.persist;
 import io.unitycatalog.server.exception.BaseException;
 import io.unitycatalog.server.exception.ErrorCode;
 import io.unitycatalog.server.model.*;
-import io.unitycatalog.server.persist.dao.CatalogInfoDAO;
-import io.unitycatalog.server.persist.dao.PropertyDAO;
-import io.unitycatalog.server.persist.dao.SchemaInfoDAO;
-import io.unitycatalog.server.persist.dao.TableInfoDAO;
+import io.unitycatalog.server.persist.dao.*;
 import io.unitycatalog.server.persist.utils.FileUtils;
 import io.unitycatalog.server.persist.utils.HibernateUtils;
 import io.unitycatalog.server.persist.utils.PagedListingHelper;
@@ -116,6 +113,77 @@ public class TableRepository {
       Session session, String catalogName, String schemaName, String tableName) {
     UUID schemaId = getSchemaId(session, catalogName, schemaName);
     return findBySchemaIdAndName(session, schemaId, tableName);
+  }
+
+  public TableInfo updateTable(String fullName, UpdateTable updateTable) {
+    TableInfo tableInfo = null;
+    String callerId = IdentityUtils.findPrincipalEmailAddress();
+    try (Session session = SESSION_FACTORY.openSession()) {
+      Transaction tx = session.beginTransaction();
+      String[] parts = fullName.split("\\.");
+      if (parts.length != 3) {
+        throw new BaseException(ErrorCode.INVALID_ARGUMENT, "Invalid table name: " + fullName);
+      }
+      String catalogName = parts[0];
+      String schemaName = parts[1];
+      String tableName = parts[2];
+      try {
+        UUID schemaId = getSchemaId(session, catalogName, schemaName);
+        TableInfoDAO tableInfoDAO = findBySchemaIdAndName(session, schemaId, tableName);
+        if (tableInfoDAO == null) {
+          throw new BaseException(ErrorCode.NOT_FOUND, "Table not found: " + tableName);
+        }
+
+        // Update the columns
+        if (updateTable.getColumns() != null && !updateTable.getProperties().isEmpty()) {
+          tableInfoDAO.getColumns().forEach(session::remove);
+          tableInfoDAO.getColumns().clear();
+          session.flush();
+          tableInfoDAO.addColumns(ColumnInfoDAO.fromList(updateTable.getColumns()));
+          tableInfoDAO
+              .getColumns()
+              .forEach(
+                  c -> {
+                    c.setId(UUID.randomUUID());
+                    c.setTable(tableInfoDAO);
+                  });
+        }
+
+        // Update the storage_location
+        if (updateTable.getStorageLocation() != null) {
+          tableInfoDAO.setUrl(FileUtils.convertRelativePathToURI(updateTable.getStorageLocation()));
+        }
+
+        // Update the comment
+        if (updateTable.getComment() != null) {
+          tableInfoDAO.setComment(updateTable.getComment());
+        }
+
+        // Update the props
+        if (updateTable.getProperties() != null && !updateTable.getProperties().isEmpty()) {
+          PropertyRepository.findProperties(session, tableInfoDAO.getId(), Constants.TABLE)
+              .forEach(session::remove);
+          session.flush();
+          PropertyDAO.from(updateTable.getProperties(), tableInfoDAO.getId(), Constants.TABLE)
+              .forEach(session::persist);
+        }
+
+        tableInfoDAO.setUpdatedAt(new Date());
+        tableInfoDAO.setUpdatedBy(callerId);
+        session.merge(tableInfoDAO);
+
+        tableInfo = tableInfoDAO.toTableInfo(true);
+        tableInfo.setCatalogName(catalogName);
+        tableInfo.setSchemaName(schemaName);
+        RepositoryUtils.attachProperties(
+            tableInfo, tableInfo.getTableId(), Constants.TABLE, session);
+        tx.commit();
+        return tableInfo;
+      } catch (Exception e) {
+        tx.rollback();
+        throw e;
+      }
+    }
   }
 
   public TableInfo createTable(CreateTable createTable) {

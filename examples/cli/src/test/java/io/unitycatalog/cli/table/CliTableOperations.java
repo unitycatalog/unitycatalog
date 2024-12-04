@@ -6,9 +6,11 @@ import static io.unitycatalog.cli.TestUtils.executeCLICommand;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import io.unitycatalog.client.ApiException;
 import io.unitycatalog.client.model.ColumnInfo;
 import io.unitycatalog.client.model.CreateTable;
 import io.unitycatalog.client.model.TableInfo;
+import io.unitycatalog.client.model.UpdateTable;
 import io.unitycatalog.server.base.ServerConfig;
 import io.unitycatalog.server.base.table.TableOperations;
 import java.util.ArrayList;
@@ -84,5 +86,39 @@ public class CliTableOperations implements TableOperations {
     String[] args =
         addServerAndAuthParams(List.of("table", "delete", "--full_name", tableFullName), config);
     executeCLICommand(args);
+  }
+
+  @Override
+  public TableInfo updateTable(String tableFullName, UpdateTable updateTableRequest)
+      throws ApiException {
+    StringBuilder columns = new StringBuilder();
+    for (ColumnInfo column : updateTableRequest.getColumns()) {
+      columns.append(column.getName()).append(" ").append(column.getTypeName().name()).append(",");
+    }
+    columns.deleteCharAt(columns.length() - 1);
+
+    List<String> argsList = new ArrayList<>();
+    argsList.addAll(
+        List.of("table", "update", "--full_name", tableFullName, "--columns", columns.toString()));
+    if (updateTableRequest.getStorageLocation() != null) {
+      argsList.add("--storage_location");
+      argsList.add(updateTableRequest.getStorageLocation());
+    }
+    if (updateTableRequest.getComment() != null) {
+      argsList.add("--comment");
+      argsList.add(updateTableRequest.getComment());
+    }
+    if (updateTableRequest.getProperties() != null) {
+      argsList.add("--properties");
+      try {
+        String jsonstring = objectMapper.writeValueAsString(updateTableRequest.getProperties());
+        argsList.add(jsonstring);
+      } catch (Exception e) {
+        argsList.add("{}");
+      }
+    }
+    String[] args = addServerAndAuthParams(argsList, config);
+    JsonNode tableJson = executeCLICommand(args);
+    return objectMapper.convertValue(tableJson, TableInfo.class);
   }
 }

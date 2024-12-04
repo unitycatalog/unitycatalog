@@ -41,6 +41,9 @@ public class TableCli {
       case CliUtils.CREATE:
         output = createTable(tablesApi, json);
         break;
+      case CliUtils.UPDATE:
+        output = updateTable(tablesApi, json);
+        break;
       case CliUtils.LIST:
         output = listTables(tablesApi, json);
         break;
@@ -95,6 +98,38 @@ public class TableCli {
       handleTableStorageLocation(createTable.getStorageLocation(), columnInfoList);
     }
     TableInfo tableInfo = apiClient.createTable(createTable);
+    return objectWriter.writeValueAsString(tableInfo);
+  }
+
+  private static String updateTable(TablesApi apiClient, JSONObject json)
+      throws JsonProcessingException, ApiException {
+
+    UpdateTable updateTable = new UpdateTable().columns(null);
+    try {
+      List<ColumnInfo> columnInfoList =
+          CliUtils.parseColumns(json.getString(CliParams.COLUMNS.getServerParam()));
+      updateTable.columns(columnInfoList);
+    } catch (JSONException e) {
+      // ignore (data source format already set)
+    }
+    try {
+      updateTable.comment(json.getString(CliParams.COMMENT.getServerParam()));
+    } catch (JSONException e) {
+      // ignore (data source format already set)
+    }
+    try {
+      updateTable.properties(CliUtils.extractProperties(objectMapper, json));
+    } catch (JSONException e) {
+      // ignore (data source format already set)
+    }
+    try {
+      updateTable.storageLocation(json.getString(CliParams.STORAGE_LOCATION.getServerParam()));
+      handleTableStorageLocation(updateTable.getStorageLocation(), updateTable.getColumns());
+    } catch (JSONException e) {
+      // ignore (data source format already set)
+    }
+    String tableFullName = json.getString(CliParams.FULL_NAME.getServerParam());
+    TableInfo tableInfo = apiClient.updateTable(tableFullName, updateTable);
     return objectWriter.writeValueAsString(tableInfo);
   }
 

@@ -367,6 +367,25 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/TableInfo'
+    patch:
+      tags:
+        - Tables
+      operationId: updateTable
+      summary: Update a table
+      description: |
+        Updates the specified table.
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateTable'
+      responses:
+        '200':
+          description: The table was successfully updated.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TableInfo'
     delete:
       tags:
         - Tables
@@ -1408,6 +1427,22 @@ components:
         - data_source_format
         - columns
         - storage_location
+    UpdateTable:
+      type: object
+      properties:
+        columns:
+          description: The array of __ColumnInfo__ definitions of the table's columns.
+          type: array
+          items:
+            $ref: '#/components/schemas/ColumnInfo'
+        storage_location:
+          description: Storage root URL for external table
+          type: string
+        comment:
+          description: User-provided free-form text description.
+          type: string
+        properties:
+          $ref: '#/components/schemas/SecurablePropertiesMap'
     ListTablesResponse:
       type: object
       properties:

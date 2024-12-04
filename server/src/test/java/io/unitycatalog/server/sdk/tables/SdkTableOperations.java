@@ -5,6 +5,7 @@ import io.unitycatalog.client.ApiException;
 import io.unitycatalog.client.api.TablesApi;
 import io.unitycatalog.client.model.CreateTable;
 import io.unitycatalog.client.model.TableInfo;
+import io.unitycatalog.client.model.UpdateTable;
 import io.unitycatalog.server.base.table.TableOperations;
 import java.util.List;
 import java.util.Objects;
@@ -36,5 +37,11 @@ public class SdkTableOperations implements TableOperations {
   @Override
   public void deleteTable(String tableFullName) throws ApiException {
     tablesApi.deleteTable(tableFullName);
+  }
+
+  @Override
+  public TableInfo updateTable(String tableFullName, UpdateTable updateTableRequest)
+      throws ApiException {
+    return tablesApi.updateTable(tableFullName, updateTableRequest);
   }
 }
