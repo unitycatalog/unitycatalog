@@ -36,7 +36,7 @@ UCAI_DATABRICKS_WAREHOUSE_EXECUTE_FUNCTION_ROW_LIMIT = _EnvironmentVariable(
 )
 UCAI_DATABRICKS_WAREHOUSE_EXECUTE_FUNCTION_BYTE_LIMIT = _EnvironmentVariable(
     "UCAI_DATABRICKS_WAREHOUSE_EXECUTE_FUNCTION_BYTE_LIMIT",
-    "4096",
+    "1048576",  # 1MB = 1024 * 1024
     "Maximum byte size of the function execution result using Databricks client with warehouse_id; "
     "If the result was truncated due to the byte limit, then `truncated` in the response is set to `true`.",
 )

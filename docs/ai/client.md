@@ -69,6 +69,35 @@ CATALOG = "my_catalog"
 SCHEMA = "my_schema"
 ```
 
+##### Catalog and Schema Handlers
+
+As a measure of convenience, a catalog and schema handler class is available. This can either be instantiated independently:
+
+```python
+from unitycatalog.ai.core.oss import UnitycatalogClient
+from unitycatalog.client import ApiClient, Configuration
+
+config = Configuration(host="http://localhost:8080/api/2.1/unity-catalog")
+api_client = ApiClient(configuration=config)
+
+# Instantiate the catalog and schema handler directly to create catalogs and schemas as needed
+core_client = UnitycatalogClient(api_client=api_client)
+
+catalog_info = core_client.create_catalog(
+    name="MyTestCatalog",
+    comment="A catalog used for testing purposes",
+    properties={"key": "value"},
+)
+schema_info = core_client.create_schema(
+    name="MyTestSchema",
+    catalog_name="MyTestCatalog",
+    comment="A schema for testing",
+    properties={"key": "value"},
+)
+```
+
+Alternatively, these same APIs are available by accessing the `uc` property on the instance of `UnitycatalogFunctionClient`, as shown below.
+
 > Tip: Ensure that you have created a catalog and a schema before attempting to create functions.
 
 The `UnitycatalogFunctionClient` provides helper methods for creating both Catalogs and Schemas in Unity Catalog. For full
@@ -77,7 +106,7 @@ API-based CRUD operations, you will need to use the `unitycatalog-client` packag
 To create a Catalog, you can call the `create_catalog` method:
 
 ```python
-uc_client.create_catalog(
+uc_client.uc.create_catalog(
     name=CATALOG,
     comment="A catalog for demonstrating the use of Unity Catalog function usage in GenAI applications",
 )
@@ -88,7 +117,7 @@ uc_client.create_catalog(
 To create a Schema, you can call the `create_schema` method:
 
 ```python
-uc_client.create_schema(
+uc_client.uc.create_schema(
     name=SCHEMA,
     catalog_name=CATALOG,
     comment="A schema for holding UC functions for GenAI use cases",
@@ -242,7 +271,7 @@ You can configure the behavior of function execution using the following environ
 |---------------------------------------------------------------------|---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|---------------|
 | `UCAI_DATABRICKS_WAREHOUSE_EXECUTE_FUNCTION_WAIT_TIMEOUT`           | Time in seconds to wait for function execution. Format: `Ns` where `N` is between 0 and 50. Setting to `0s` executes asynchronously.                                            | `30s`         |
 | `UCAI_DATABRICKS_WAREHOUSE_EXECUTE_FUNCTION_ROW_LIMIT`              | Maximum number of rows in the function execution result.                                                                                                                        | `100`         |
-| `UCAI_DATABRICKS_WAREHOUSE_EXECUTE_FUNCTION_BYTE_LIMIT`             | Maximum byte size of the function execution result. If exceeded, the `truncated` field in the response is set to `true`.                                                        | `4096`        |
+| `UCAI_DATABRICKS_WAREHOUSE_EXECUTE_FUNCTION_BYTE_LIMIT`             | Maximum byte size of the function execution result. If exceeded, the `truncated` field in the response is set to `true`.                                                        | `1048576`     |
 | `UCAI_DATABRICKS_WAREHOUSE_RETRY_TIMEOUT`                           | Client-side retry timeout in seconds for function execution. If execution doesn't complete within `wait_timeout`, the client retries until this timeout is reached.             | `120`         |
 | `UCAI_DATABRICKS_SERVERLESS_EXECUTION_RESULT_ROW_LIMIT`             | Maximum number of rows when executing functions using serverless compute with `databricks-connect`.                                                                              | `100`         |
 
