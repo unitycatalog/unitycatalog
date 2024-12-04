@@ -232,7 +232,13 @@ export type ApiSuccessResponse<
   Path extends ApiPath<Api>,
   Method extends HttpMethod,
   ContentType extends MediaType = 'application/json',
-> = GetContent<Api, Path, Method, GetCode<Api, Path, Method> & HttpSuccessCode, ContentType>;
+> = GetContent<
+  Api,
+  Path,
+  Method,
+  GetCode<Api, Path, Method> & HttpSuccessCode,
+  ContentType
+>;
 
 /**
  * Represents the type of predefined API errors of given `Api`, `Path` and `Method`.
