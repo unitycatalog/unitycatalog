@@ -79,7 +79,7 @@ public class Oauth2CliExchange {
   public String authenticate() throws IOException {
 
     // TODO: These properties, especially client-secret should probably be server side.
-    String authBaseUrl = serverProperties.getProperty("server.authorization-url");
+    String authorizationUrl = serverProperties.getProperty("server.authorization-url");
     String tokenUrl = serverProperties.getProperty("server.token-url");
     String clientId = serverProperties.getProperty("server.client-id");
     String clientSecret = serverProperties.getProperty("server.client-secret");
@@ -109,7 +109,7 @@ public class Oauth2CliExchange {
 
     // NOTE: The `scope` is Google OAuth2 specific. We might need more versatile code here.
     String authUrl =
-        authBaseUrl
+        authorizationUrl
             + "?"
             + URLEncodedForm.ofMap(
                 Map.ofEntries(

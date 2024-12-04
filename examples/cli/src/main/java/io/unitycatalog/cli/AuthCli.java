@@ -74,7 +74,7 @@ public class AuthCli {
   private static String doExchange(ApiClient apiClient, Map<String, String> login)
       throws JsonProcessingException, ApiException {
 
-    URI tokensEndpoint = URI.create(apiClient.getBaseUri() + "/auth/tokens");
+    URI endpoint = URI.create(apiClient.getBaseUri() + "/auth/tokens");
 
     String body =
         Oauth2CliExchange.URLEncodedForm.ofMap(
@@ -86,7 +86,7 @@ public class AuthCli {
 
     HttpRequest request =
         HttpRequest.newBuilder()
-            .uri(tokensEndpoint)
+            .uri(endpoint)
             .header("Content-Type", "application/x-www-form-urlencoded")
             .POST(HttpRequest.BodyPublishers.ofString(body))
             .build();
