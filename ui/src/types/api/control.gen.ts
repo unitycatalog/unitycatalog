@@ -102,7 +102,7 @@ export interface components {
        * @description The state of the account.
        * @enum {string}
        */
-      state?: 'ENABLED' | 'DISABLED';
+      state?: UserState;
       /** @description The URL of the user's profile picture. */
       picture_url?: string;
       /**
@@ -329,4 +329,8 @@ export interface operations {
       };
     };
   };
+}
+export enum UserState {
+  ENABLED = 'ENABLED',
+  DISABLED = 'DISABLED',
 }

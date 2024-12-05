@@ -1,6 +1,6 @@
 import { useMutation, useQuery } from '@tanstack/react-query';
 import { CLIENT } from '../context/control';
-import { route } from '../utils/openapi';
+import { route, assertNever } from '../utils/openapi';
 import type {
   paths as ControlApi,
   components as ControlComponent,
@@ -74,7 +74,6 @@ export type UserInterface = ApiInterface<ControlComponent, 'UserResource'>;
 export function useGetCurrentUser() {
   const expectedErrorCodes = [
     401, // UNAUTHORIZED
-    404, // NOT_FOUND
   ] as const;
 
   type ErrorCode = (typeof expectedErrorCodes)[number];
@@ -92,26 +91,23 @@ export function useGetCurrentUser() {
   return useQuery<ApiSuccessResponse<ControlApi, '/scim2/Users/self', 'get'>>({
     queryKey: ['getUser'],
     queryFn: async () => {
-      const api = route(
-        CLIENT,
-        {
+      const api = route({
+        client: CLIENT,
+        request: {
           path: '/scim2/Users/self',
           method: 'get',
         },
-        isExpectedError,
-      );
+        unexpectedErrorMessage: 'Failed to fetch user',
+        errorTypeGuard: isExpectedError,
+      });
       const response = await api.call();
       if (response.result !== 'success') {
-        // NOTE:
-        // To the best of my knowledge, most HTTP error codes are not explicitly defined in the OpenAPI
-        // specification. I reviewed the server implementation and identified the error codes related to
-        // authentication by examining the codebase. Relevant details can be found here:
-        // - https://github.com/search?q=repo%3Aunitycatalog%2Funitycatalog%20UNAUTHENTICATED&type=code
-        // - https://github.com/search?q=repo%3Aunitycatalog%2Funitycatalog+NOT_FOUND&type=code
-        if (response.data.status === 401 || response.data.status === 404) {
-          return null;
+        switch (response.data.status) {
+          case 401:
+            return null;
+          default:
+            assertNever(response.data.status);
         }
-        throw new Error('Failed to fetch user');
       }
       return response.data;
     },

@@ -44,25 +44,27 @@ export function useListVolumes({
   return useQuery<ApiSuccessResponse<CatalogApi, '/volumes', 'get'>>({
     queryKey: ['listVolumes', catalog_name, schema_name],
     queryFn: async () => {
-      const api = route(CLIENT, {
-        path: '/volumes',
-        method: 'get',
-        params: {
-          query: {
-            catalog_name,
-            schema_name,
-            max_results,
-            page_token,
+      const api = route({
+        client: CLIENT,
+        request: {
+          path: '/volumes',
+          method: 'get',
+          params: {
+            query: {
+              catalog_name,
+              schema_name,
+              max_results,
+              page_token,
+            },
           },
         },
+        unexpectedErrorMessage: 'Failed to list volumes',
       });
       const response = await api.call();
       if (response.result !== 'success') {
         // NOTE:
         // When an expected error occurs, as defined in the OpenAPI specification, the following line will
-        // be executed. Unexpected errors will throw `Error("Unexpected error")`. The following block serves
-        // as a placeholder for expected errors.
-        throw new Error('Failed to list volumes');
+        // be executed. This block serves as a placeholder for expected errors.
       }
       return response.data;
     },
@@ -82,22 +84,24 @@ export function useGetVolume({ name }: UseGetVolumeArgs) {
   return useQuery<VolumeInterface>({
     queryKey: ['getVolume', catalog, schema, volume],
     queryFn: async () => {
-      const api = route(CLIENT, {
-        path: '/volumes/{name}',
-        method: 'get',
-        params: {
-          paths: {
-            name,
+      const api = route({
+        client: CLIENT,
+        request: {
+          path: '/volumes/{name}',
+          method: 'get',
+          params: {
+            paths: {
+              name,
+            },
           },
         },
+        unexpectedErrorMessage: 'Failed to fetch volume',
       });
       const response = await api.call();
       if (response.result !== 'success') {
         // NOTE:
         // When an expected error occurs, as defined in the OpenAPI specification, the following line will
-        // be executed. Unexpected errors will throw `Error("Unexpected error")`. The following block serves
-        // as a placeholder for expected errors.
-        throw new Error('Failed to fetch volume');
+        // be executed. This block serves as a placeholder for expected errors.
       }
       return response.data;
     },
@@ -127,26 +131,28 @@ export function useUpdateVolume({ name }: UseUpdateVolumeArgs) {
     UpdateVolumeMutationParams
   >({
     mutationFn: async ({ comment, new_name }: UpdateVolumeMutationParams) => {
-      const api = route(CLIENT, {
-        path: '/volumes/{name}',
-        method: 'patch',
-        params: {
-          paths: {
-            name,
-          },
-          body: {
-            comment,
-            new_name,
+      const api = route({
+        client: CLIENT,
+        request: {
+          path: '/volumes/{name}',
+          method: 'patch',
+          params: {
+            paths: {
+              name,
+            },
+            body: {
+              comment,
+              new_name,
+            },
           },
         },
+        unexpectedErrorMessage: 'Failed to update volume',
       });
       const response = await api.call();
       if (response.result !== 'success') {
         // NOTE:
         // When an expected error occurs, as defined in the OpenAPI specification, the following line will
-        // be executed. Unexpected errors will throw `Error("Unexpected error")`. The following block serves
-        // as a placeholder for expected errors.
-        throw new Error('Failed to update volume');
+        // be executed. This block serves as a placeholder for expected errors.
       }
       return response.data;
     },
@@ -182,22 +188,24 @@ export function useDeleteVolume({ name }: UseDeleteVolumeArgs) {
     DeleteVolumeMutationParams
   >({
     mutationFn: async ({ name }: DeleteVolumeMutationParams) => {
-      const api = route(CLIENT, {
-        path: '/volumes/{name}',
-        method: 'delete',
-        params: {
-          paths: {
-            name,
+      const api = route({
+        client: CLIENT,
+        request: {
+          path: '/volumes/{name}',
+          method: 'delete',
+          params: {
+            paths: {
+              name,
+            },
           },
         },
+        unexpectedErrorMessage: 'Failed to delete volume',
       });
       const response = await api.call();
       if (response.result !== 'success') {
         // NOTE:
         // When an expected error occurs, as defined in the OpenAPI specification, the following line will
-        // be executed. Unexpected errors will throw `Error("Unexpected error")`. The following block serves
-        // as a placeholder for expected errors.
-        throw new Error('Failed to delete volume');
+        // be executed. This block serves as a placeholder for expected errors.
       }
       return response.data;
     },

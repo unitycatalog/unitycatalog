@@ -43,25 +43,27 @@ export function useListFunctions({
   return useQuery<ApiSuccessResponse<CatalogApi, '/functions', 'get'>>({
     queryKey: ['listFunctions', catalog_name, schema_name],
     queryFn: async () => {
-      const api = route(CLIENT, {
-        path: '/functions',
-        method: 'get',
-        params: {
-          query: {
-            catalog_name,
-            schema_name,
-            max_results,
-            page_token,
+      const api = route({
+        client: CLIENT,
+        request: {
+          path: '/functions',
+          method: 'get',
+          params: {
+            query: {
+              catalog_name,
+              schema_name,
+              max_results,
+              page_token,
+            },
           },
         },
+        unexpectedErrorMessage: 'Failed to list functions',
       });
       const response = await api.call();
       if (response.result !== 'success') {
         // NOTE:
         // When an expected error occurs, as defined in the OpenAPI specification, the following line will
-        // be executed. Unexpected errors will throw `Error("Unexpected error")`. The following block serves
-        // as a placeholder for expected errors.
-        throw new Error('Failed to list functions');
+        // be executed. This block serves as a placeholder for expected errors.
       }
       return response.data;
     },
@@ -81,22 +83,24 @@ export function useGetFunction({ name }: UseGetFunctionArgs) {
   return useQuery<ApiSuccessResponse<CatalogApi, '/functions/{name}', 'get'>>({
     queryKey: ['getFunction', catalog, schema, ucFunction],
     queryFn: async () => {
-      const api = route(CLIENT, {
-        path: '/functions/{name}',
-        method: 'get',
-        params: {
-          paths: {
-            name,
+      const api = route({
+        client: CLIENT,
+        request: {
+          path: '/functions/{name}',
+          method: 'get',
+          params: {
+            paths: {
+              name,
+            },
           },
         },
+        unexpectedErrorMessage: 'Failed to fetch function',
       });
       const response = await api.call();
       if (response.result !== 'success') {
         // NOTE:
         // When an expected error occurs, as defined in the OpenAPI specification, the following line will
-        // be executed. Unexpected errors will throw `Error("Unexpected error")`. The following block serves
-        // as a placeholder for expected errors.
-        throw new Error('Failed to fetch function');
+        // be executed. This block serves as a placeholder for expected errors.
       }
       return response.data;
     },
@@ -127,22 +131,24 @@ export function useDeleteFunction({ name }: UseDeleteFunctionArgs) {
     DeleteFunctionMutationParams
   >({
     mutationFn: async ({ name }: DeleteFunctionMutationParams) => {
-      const api = route(CLIENT, {
-        path: '/functions/{name}',
-        method: 'delete',
-        params: {
-          paths: {
-            name,
+      const api = route({
+        client: CLIENT,
+        request: {
+          path: '/functions/{name}',
+          method: 'delete',
+          params: {
+            paths: {
+              name,
+            },
           },
         },
+        unexpectedErrorMessage: 'Failed to delete function',
       });
       const response = await api.call();
       if (response.result !== 'success') {
         // NOTE:
         // When an expected error occurs, as defined in the OpenAPI specification, the following line will
-        // be executed. Unexpected errors will throw `Error("Unexpected error")`. The following block serves
-        // as a placeholder for expected errors.
-        throw new Error('Failed to delete function');
+        // be executed. This block serves as a placeholder for expected errors.
       }
       return response.data;
     },

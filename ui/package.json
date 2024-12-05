@@ -29,8 +29,8 @@
     "format": "prettier --write 'src/**/*.{js,ts,jsx,tsx,json,html}' && eslint 'src/**/*.{js,ts,jsx,tsx,json,html}' --fix",
     "test:format": "prettier --check 'src/**/*.{js,ts,jsx,tsx,json,html}' && eslint 'src/**/*.{js,ts,jsx,tsx,json,html}'",
     "generate": "run-p generate:*",
-    "generate:catalog": "npx --yes openapi-typescript ../api/all.yaml -o src/types/api/catalog.gen.ts",
-    "generate:control": "npx --yes openapi-typescript ../api/control.yaml -o src/types/api/control.gen.ts"
+    "generate:catalog": "npx --yes openapi-typescript --enum ../api/all.yaml -o src/types/api/catalog.gen.ts",
+    "generate:control": "npx --yes openapi-typescript --enum ../api/control.yaml -o src/types/api/control.gen.ts"
   },
   "eslintConfig": {
     "extends": [

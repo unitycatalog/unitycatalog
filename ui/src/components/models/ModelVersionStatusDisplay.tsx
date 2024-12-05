@@ -13,26 +13,26 @@ export default function ModelVersionStatusDisplay({
   status: ModelVersionStatus;
 }) {
   switch (status) {
-    case 'READY':
+    case ModelVersionStatus.READY:
       return (
         <Tooltip title={`READY`}>
           <CheckCircleOutlined style={{ fontSize: '18px', color: 'green' }} />
         </Tooltip>
       );
-    case 'PENDING_REGISTRATION':
+    case ModelVersionStatus.PENDING_REGISTRATION:
       return (
         <Tooltip title={`PENDING REGISTRATION`}>
           <MinusCircleOutlined style={{ fontSize: '18px', color: 'gray' }} />
         </Tooltip>
       );
-    case 'FAILED_REGISTRATION':
+    case ModelVersionStatus.FAILED_REGISTRATION:
       return (
         <Tooltip title={`FAILED REGISTRATION`}>
           <CloseCircleOutlined style={{ fontSize: '18px', color: 'red' }} />
         </Tooltip>
       );
     // NOTE:
-    // As of [25/11/2024], `MODEL_VERSION_STATUS` is not handled here.
+    // As of [25/11/2024], `MODEL_VERSION_STATUS_UNKNOWN` is not handled here.
     // If exhaustive handling of the status is required, add `assertNever(status)` here.
     default:
       return <Typography.Text type="secondary">UNKNOWN</Typography.Text>;

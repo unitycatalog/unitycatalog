@@ -296,6 +296,13 @@ export type ApiInterface<
 > = Get<Api, ['schemas', Component]>;
 
 /**
+ * Ensures that the relevant statement is exhaustive.
+ */
+export const assertNever = (value: never) => {
+  throw new Error('Unexpected value: ' + value);
+};
+
+/**
  * Configures the API `client` using the specified `request` context.
  */
 export const route = <
@@ -303,22 +310,23 @@ export const route = <
   Path extends ApiPath<Api>,
   Method extends HttpMethod,
   ErrorCode extends HttpErrorCode,
->(
-  client: AxiosInstance,
-  request: ApiRequest<Api, Path, Method>,
-  isExpectedError: (response: {
-    status: number;
-    data: any;
-  }) => response is ApiErrorResponse<
-    Api,
-    Path,
-    Method,
-    ErrorCode
-  > = (response: {
+>({
+  client,
+  request,
+  unexpectedErrorMessage = 'Unexpected error',
+  errorTypeGuard = (response: {
     status: number;
     data: any;
   }): response is ApiErrorResponse<Api, Path, Method, ErrorCode> => false,
-) => {
+}: {
+  client: AxiosInstance;
+  request: ApiRequest<Api, Path, Method>;
+  unexpectedErrorMessage?: string;
+  errorTypeGuard?: (response: {
+    status: number;
+    data: any;
+  }) => response is ApiErrorResponse<Api, Path, Method, ErrorCode>;
+}) => {
   // Converts a path like {key} into its actual value.
   const path = () => {
     const fullPath = Object.entries(request.params?.paths ?? {}).reduce(
@@ -356,14 +364,14 @@ export const route = <
     } catch (e) {
       if (axios.isAxiosError(e) && !!e.response) {
         const error = { status: e.response.status, data: e.response.data };
-        if (isExpectedError(error)) {
+        if (errorTypeGuard(error)) {
           return {
             result: 'error',
             data: error,
           };
         }
       }
-      throw new Error('Unexpected error');
+      throw new Error(unexpectedErrorMessage);
     }
   };
 

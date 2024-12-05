@@ -19,17 +19,19 @@ export function useListCatalogs() {
   return useQuery<ApiSuccessResponse<CatalogApi, '/catalogs', 'get'>>({
     queryKey: ['listCatalogs'],
     queryFn: async () => {
-      const api = route(CLIENT, {
-        path: '/catalogs',
-        method: 'get',
+      const api = route({
+        client: CLIENT,
+        request: {
+          path: '/catalogs',
+          method: 'get',
+        },
+        unexpectedErrorMessage: 'Failed to fetch catalogs',
       });
       const response = await api.call();
       if (response.result !== 'success') {
         // NOTE:
         // When an expected error occurs, as defined in the OpenAPI specification, the following line will
-        // be executed. Unexpected errors will throw `Error("Unexpected error")`. The following block serves
-        // as a placeholder for expected errors.
-        throw new Error('Failed to fetch catalogs');
+        // be executed. This block serves as a placeholder for expected errors.
       }
       return response.data;
     },
@@ -47,22 +49,24 @@ export function useGetCatalog({ name }: UseGetCatalogArgs) {
   return useQuery<ApiSuccessResponse<CatalogApi, '/catalogs/{name}', 'get'>>({
     queryKey: ['getCatalog', name],
     queryFn: async () => {
-      const api = route(CLIENT, {
-        path: '/catalogs/{name}',
-        method: 'get',
-        params: {
-          paths: {
-            name,
+      const api = route({
+        client: CLIENT,
+        request: {
+          path: '/catalogs/{name}',
+          method: 'get',
+          params: {
+            paths: {
+              name,
+            },
           },
         },
+        unexpectedErrorMessage: 'Failed to fetch catalog',
       });
       const response = await api.call();
       if (response.result !== 'success') {
         // NOTE:
         // When an expected error occurs, as defined in the OpenAPI specification, the following line will
-        // be executed. Unexpected errors will throw `Error("Unexpected error")`. The following block serves
-        // as a placeholder for expected errors.
-        throw new Error('Failed to fetch catalog');
+        // be executed. This block serves as a placeholder for expected errors.
       }
       return response.data;
     },
@@ -89,24 +93,26 @@ export function useCreateCatalog() {
       comment,
       properties,
     }: CreateCatalogMutationParams) => {
-      const api = route(CLIENT, {
-        path: '/catalogs',
-        method: 'post',
-        params: {
-          body: {
-            name,
-            comment,
-            properties,
+      const api = route({
+        client: CLIENT,
+        request: {
+          path: '/catalogs',
+          method: 'post',
+          params: {
+            body: {
+              name,
+              comment,
+              properties,
+            },
           },
         },
+        unexpectedErrorMessage: 'Failed to create catalog',
       });
       const response = await api.call();
       if (response.result !== 'success') {
         // NOTE:
         // When an expected error occurs, as defined in the OpenAPI specification, the following line will
-        // be executed. Unexpected errors will throw `Error("Unexpected error")`. The following block serves
-        // as a placeholder for expected errors.
-        throw new Error('Failed to create catalog');
+        // be executed. This block serves as a placeholder for expected errors.
       }
       return response.data;
     },
@@ -144,27 +150,29 @@ export function useUpdateCatalog({ name }: UseUpdateCatalogArgs) {
       properties,
       new_name,
     }: UpdateCatalogMutationParams) => {
-      const api = route(CLIENT, {
-        path: '/catalogs/{name}',
-        method: 'patch',
-        params: {
-          paths: {
-            name,
-          },
-          body: {
-            comment,
-            properties,
-            new_name,
+      const api = route({
+        client: CLIENT,
+        request: {
+          path: '/catalogs/{name}',
+          method: 'patch',
+          params: {
+            paths: {
+              name,
+            },
+            body: {
+              comment,
+              properties,
+              new_name,
+            },
           },
         },
+        unexpectedErrorMessage: 'Failed to update catalog',
       });
       const response = await api.call();
       if (response.result !== 'success') {
         // NOTE:
         // When an expected error occurs, as defined in the OpenAPI specification, the following line will
-        // be executed. Unexpected errors will throw `Error("Unexpected error")`. The following block serves
-        // as a placeholder for expected errors.
-        throw new Error('Failed to update catalog');
+        // be executed. This block serves as a placeholder for expected errors.
       }
       return response.data;
     },
@@ -192,22 +200,24 @@ export function useDeleteCatalog() {
     DeleteCatalogMutationParams
   >({
     mutationFn: async ({ name }: DeleteCatalogMutationParams) => {
-      const api = route(CLIENT, {
-        path: '/catalogs/{name}',
-        method: 'delete',
-        params: {
-          paths: {
-            name,
+      const api = route({
+        client: CLIENT,
+        request: {
+          path: '/catalogs/{name}',
+          method: 'delete',
+          params: {
+            paths: {
+              name,
+            },
           },
         },
+        unexpectedErrorMessage: 'Failed to delete catalog',
       });
       const response = await api.call();
       if (response.result !== 'success') {
         // NOTE:
         // When an expected error occurs, as defined in the OpenAPI specification, the following line will
-        // be executed. Unexpected errors will throw `Error("Unexpected error")`. The following block serves
-        // as a placeholder for expected errors.
-        throw new Error('Failed to delete catalog');
+        // be executed. This block serves as a placeholder for expected errors.
       }
       return response.data;
     },

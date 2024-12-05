@@ -618,7 +618,7 @@ export interface components {
      * @description The type of the volume
      * @enum {string}
      */
-    VolumeType: 'MANAGED' | 'EXTERNAL';
+    VolumeType: VolumeType;
     CreateVolumeRequestContent: {
       /** @description The name of the catalog where the schema and the volume are */
       catalog_name: string;
@@ -682,28 +682,7 @@ export interface components {
      * @description Name of type (INT, STRUCT, MAP, etc.).
      * @enum {string}
      */
-    ColumnTypeName:
-      | 'BOOLEAN'
-      | 'BYTE'
-      | 'SHORT'
-      | 'INT'
-      | 'LONG'
-      | 'FLOAT'
-      | 'DOUBLE'
-      | 'DATE'
-      | 'TIMESTAMP'
-      | 'TIMESTAMP_NTZ'
-      | 'STRING'
-      | 'BINARY'
-      | 'DECIMAL'
-      | 'INTERVAL'
-      | 'ARRAY'
-      | 'STRUCT'
-      | 'MAP'
-      | 'CHAR'
-      | 'NULL'
-      | 'USER_DEFINED_TYPE'
-      | 'TABLE_TYPE';
+    ColumnTypeName: ColumnTypeName;
     ColumnInfo: {
       /** @description Name of Column. */
       name?: string;
@@ -743,19 +722,12 @@ export interface components {
       partition_index?: number;
     };
     /** @enum {string} */
-    TableType: 'MANAGED' | 'EXTERNAL';
+    TableType: TableType;
     /**
      * @description Data source format
      * @enum {string}
      */
-    DataSourceFormat:
-      | 'DELTA'
-      | 'CSV'
-      | 'JSON'
-      | 'AVRO'
-      | 'PARQUET'
-      | 'ORC'
-      | 'TEXT';
+    DataSourceFormat: DataSourceFormat;
     TableInfo: {
       /** @description Name of table, relative to parent schema. */
       name?: string;
@@ -920,12 +892,12 @@ export interface components {
      * @description The type of function parameter.
      * @enum {string}
      */
-    FunctionParameterType: 'PARAM' | 'COLUMN';
+    FunctionParameterType: FunctionParameterType;
     /**
      * @description The mode of the function parameter.
      * @enum {string}
      */
-    FunctionParameterMode: 'IN';
+    FunctionParameterMode: FunctionParameterMode;
     FunctionParameterInfo: {
       /** @description Name of parameter. */
       name: string;
@@ -1004,7 +976,7 @@ export interface components {
        *
        * @enum {string}
        */
-      routine_body: 'SQL' | 'EXTERNAL';
+      routine_body: CreateFunctionRoutine_body;
       /** @description Function body. */
       routine_definition: string;
       routine_dependencies?: components['schemas']['DependencyList'];
@@ -1012,21 +984,21 @@ export interface components {
        * @description Function parameter style. **S** is the value for SQL.
        * @enum {string}
        */
-      parameter_style: 'S';
+      parameter_style: CreateFunctionParameter_style;
       /** @description Whether the function is deterministic. */
       is_deterministic: boolean;
       /**
        * @description Function SQL data access.
        * @enum {string}
        */
-      sql_data_access: 'CONTAINS_SQL' | 'READS_SQL_DATA' | 'NO_SQL';
+      sql_data_access: CreateFunctionSql_data_access;
       /** @description Function null call. */
       is_null_call: boolean;
       /**
        * @description Function security type.
        * @enum {string}
        */
-      security_type: 'DEFINER';
+      security_type: CreateFunctionSecurity_type;
       /** @description Specific name of the function; Reserved for future use. */
       specific_name: string;
       /** @description User-provided free-form text description. */
@@ -1055,7 +1027,7 @@ export interface components {
        *
        * @enum {string}
        */
-      routine_body?: 'SQL' | 'EXTERNAL';
+      routine_body?: FunctionInfoRoutine_body;
       /** @description Function body. */
       routine_definition?: string;
       routine_dependencies?: components['schemas']['DependencyList'];
@@ -1063,21 +1035,21 @@ export interface components {
        * @description Function parameter style. **S** is the value for SQL.
        * @enum {string}
        */
-      parameter_style?: 'S';
+      parameter_style?: FunctionInfoParameter_style;
       /** @description Whether the function is deterministic. */
       is_deterministic?: boolean;
       /**
        * @description Function SQL data access.
        * @enum {string}
        */
-      sql_data_access?: 'CONTAINS_SQL' | 'READS_SQL_DATA' | 'NO_SQL';
+      sql_data_access?: FunctionInfoSql_data_access;
       /** @description Function null call. */
       is_null_call?: boolean;
       /**
        * @description Function security type.
        * @enum {string}
        */
-      security_type?: 'DEFINER';
+      security_type?: FunctionInfoSecurity_type;
       /** @description Specific name of the function; Reserved for future use. */
       specific_name?: string;
       /** @description User-provided free-form text description. */
@@ -1144,10 +1116,7 @@ export interface components {
       operation: components['schemas']['ModelVersionOperation'];
     };
     /** @enum {string} */
-    ModelVersionOperation:
-      | 'UNKNOWN_MODEL_VERSION_OPERATION'
-      | 'READ_MODEL_VERSION'
-      | 'READ_WRITE_MODEL_VERSION';
+    ModelVersionOperation: ModelVersionOperation;
     /** @example {
      *       "table_id": "table_id",
      *       "operation": null
@@ -1160,7 +1129,7 @@ export interface components {
       operation: components['schemas']['TableOperation'];
     };
     /** @enum {string} */
-    TableOperation: 'UNKNOWN_TABLE_OPERATION' | 'READ' | 'READ_WRITE';
+    TableOperation: TableOperation;
     AwsCredentials: {
       /** @description The access key ID that identifies the temporary credentials. */
       access_key_id?: string;
@@ -1185,10 +1154,7 @@ export interface components {
       operation: components['schemas']['VolumeOperation'];
     };
     /** @enum {string} */
-    VolumeOperation:
-      | 'UNKNOWN_VOLUME_OPERATION'
-      | 'READ_VOLUME'
-      | 'WRITE_VOLUME';
+    VolumeOperation: VolumeOperation;
     RegisteredModelInfo: {
       /** @description The name of the registered model */
       name?: string;
@@ -1267,11 +1233,7 @@ export interface components {
      *
      * @enum {string}
      */
-    ModelVersionStatus:
-      | 'MODEL_VERSION_STATUS_UNKNOWN'
-      | 'PENDING_REGISTRATION'
-      | 'FAILED_REGISTRATION'
-      | 'READY';
+    ModelVersionStatus: ModelVersionStatus;
     CreateRegisteredModel: {
       /** @description Name of model, relative to parent schema. */
       name: string;
@@ -1349,45 +1311,22 @@ export interface components {
       expiration_time?: number;
     };
     /** @enum {string} */
-    PathOperation:
-      | 'UNKNOWN_PATH_OPERATION'
-      | 'PATH_READ'
-      | 'PATH_READ_WRITE'
-      | 'PATH_CREATE_TABLE';
+    PathOperation: PathOperation;
     /**
      * @description The type of the principal.
      * @enum {string}
      */
-    PrincipalType: 'USER' | 'GROUP';
+    PrincipalType: PrincipalType;
     /**
      * @description The type of the resource.
      * @enum {string}
      */
-    SecurableType:
-      | 'metastore'
-      | 'catalog'
-      | 'schema'
-      | 'table'
-      | 'function'
-      | 'volume'
-      | 'registered_model';
+    SecurableType: SecurableType;
     /**
      * @description The privilege to grant.
      * @enum {string}
      */
-    Privilege:
-      | 'CREATE CATALOG'
-      | 'USE CATALOG'
-      | 'CREATE SCHEMA'
-      | 'USE SCHEMA'
-      | 'CREATE TABLE'
-      | 'SELECT'
-      | 'MODIFY'
-      | 'CREATE FUNCTION'
-      | 'EXECUTE'
-      | 'CREATE VOLUME'
-      | 'READ VOLUME'
-      | 'CREATE MODEL';
+    Privilege: Privilege;
     UpdatePermissions: {
       /** @description Array of permissions change objects. */
       changes: components['schemas']['PermissionsChange'][];
@@ -2497,4 +2436,135 @@ export interface operations {
       };
     };
   };
+}
+export enum VolumeType {
+  MANAGED = 'MANAGED',
+  EXTERNAL = 'EXTERNAL',
+}
+export enum ColumnTypeName {
+  BOOLEAN = 'BOOLEAN',
+  BYTE = 'BYTE',
+  SHORT = 'SHORT',
+  INT = 'INT',
+  LONG = 'LONG',
+  FLOAT = 'FLOAT',
+  DOUBLE = 'DOUBLE',
+  DATE = 'DATE',
+  TIMESTAMP = 'TIMESTAMP',
+  TIMESTAMP_NTZ = 'TIMESTAMP_NTZ',
+  STRING = 'STRING',
+  BINARY = 'BINARY',
+  DECIMAL = 'DECIMAL',
+  INTERVAL = 'INTERVAL',
+  ARRAY = 'ARRAY',
+  STRUCT = 'STRUCT',
+  MAP = 'MAP',
+  CHAR = 'CHAR',
+  NULL = 'NULL',
+  USER_DEFINED_TYPE = 'USER_DEFINED_TYPE',
+  TABLE_TYPE = 'TABLE_TYPE',
+}
+export enum TableType {
+  MANAGED = 'MANAGED',
+  EXTERNAL = 'EXTERNAL',
+}
+export enum DataSourceFormat {
+  DELTA = 'DELTA',
+  CSV = 'CSV',
+  JSON = 'JSON',
+  AVRO = 'AVRO',
+  PARQUET = 'PARQUET',
+  ORC = 'ORC',
+  TEXT = 'TEXT',
+}
+export enum FunctionParameterType {
+  PARAM = 'PARAM',
+  COLUMN = 'COLUMN',
+}
+export enum FunctionParameterMode {
+  IN = 'IN',
+}
+export enum CreateFunctionRoutine_body {
+  SQL = 'SQL',
+  EXTERNAL = 'EXTERNAL',
+}
+export enum CreateFunctionParameter_style {
+  S = 'S',
+}
+export enum CreateFunctionSql_data_access {
+  CONTAINS_SQL = 'CONTAINS_SQL',
+  READS_SQL_DATA = 'READS_SQL_DATA',
+  NO_SQL = 'NO_SQL',
+}
+export enum CreateFunctionSecurity_type {
+  DEFINER = 'DEFINER',
+}
+export enum FunctionInfoRoutine_body {
+  SQL = 'SQL',
+  EXTERNAL = 'EXTERNAL',
+}
+export enum FunctionInfoParameter_style {
+  S = 'S',
+}
+export enum FunctionInfoSql_data_access {
+  CONTAINS_SQL = 'CONTAINS_SQL',
+  READS_SQL_DATA = 'READS_SQL_DATA',
+  NO_SQL = 'NO_SQL',
+}
+export enum FunctionInfoSecurity_type {
+  DEFINER = 'DEFINER',
+}
+export enum ModelVersionOperation {
+  UNKNOWN_MODEL_VERSION_OPERATION = 'UNKNOWN_MODEL_VERSION_OPERATION',
+  READ_MODEL_VERSION = 'READ_MODEL_VERSION',
+  READ_WRITE_MODEL_VERSION = 'READ_WRITE_MODEL_VERSION',
+}
+export enum TableOperation {
+  UNKNOWN_TABLE_OPERATION = 'UNKNOWN_TABLE_OPERATION',
+  READ = 'READ',
+  READ_WRITE = 'READ_WRITE',
+}
+export enum VolumeOperation {
+  UNKNOWN_VOLUME_OPERATION = 'UNKNOWN_VOLUME_OPERATION',
+  READ_VOLUME = 'READ_VOLUME',
+  WRITE_VOLUME = 'WRITE_VOLUME',
+}
+export enum ModelVersionStatus {
+  MODEL_VERSION_STATUS_UNKNOWN = 'MODEL_VERSION_STATUS_UNKNOWN',
+  PENDING_REGISTRATION = 'PENDING_REGISTRATION',
+  FAILED_REGISTRATION = 'FAILED_REGISTRATION',
+  READY = 'READY',
+}
+export enum PathOperation {
+  UNKNOWN_PATH_OPERATION = 'UNKNOWN_PATH_OPERATION',
+  PATH_READ = 'PATH_READ',
+  PATH_READ_WRITE = 'PATH_READ_WRITE',
+  PATH_CREATE_TABLE = 'PATH_CREATE_TABLE',
+}
+export enum PrincipalType {
+  USER = 'USER',
+  GROUP = 'GROUP',
+}
+export enum SecurableType {
+  metastore = 'metastore',
+  catalog = 'catalog',
+  schema = 'schema',
+  table = 'table',
+  function = 'function',
+  volume = 'volume',
+  registered_model = 'registered_model',
+}
+export enum Privilege {
+  CREATE_CATALOG = 'CREATE CATALOG',
+  USE_CATALOG = 'USE CATALOG',
+  CREATE_SCHEMA = 'CREATE SCHEMA',
+  USE_SCHEMA = 'USE SCHEMA',
+  CREATE_TABLE = 'CREATE TABLE',
+  SELECT = 'SELECT',
+  MODIFY = 'MODIFY',
+  CREATE_FUNCTION = 'CREATE FUNCTION',
+  EXECUTE = 'EXECUTE',
+  CREATE_VOLUME = 'CREATE VOLUME',
+  READ_VOLUME = 'READ VOLUME',
+  CREATE_MODEL = 'CREATE MODEL',
 }

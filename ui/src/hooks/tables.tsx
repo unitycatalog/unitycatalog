@@ -43,25 +43,27 @@ export function useListTables({
   return useQuery<ApiSuccessResponse<CatalogApi, '/tables', 'get'>>({
     queryKey: ['listTables', catalog_name, schema_name],
     queryFn: async () => {
-      const api = route(CLIENT, {
-        path: '/tables',
-        method: 'get',
-        params: {
-          query: {
-            catalog_name,
-            schema_name,
-            max_results,
-            page_token,
+      const api = route({
+        client: CLIENT,
+        request: {
+          path: '/tables',
+          method: 'get',
+          params: {
+            query: {
+              catalog_name,
+              schema_name,
+              max_results,
+              page_token,
+            },
           },
         },
+        unexpectedErrorMessage: 'Failed to list tables',
       });
       const response = await api.call();
       if (response.result !== 'success') {
         // NOTE:
         // When an expected error occurs, as defined in the OpenAPI specification, the following line will
-        // be executed. Unexpected errors will throw `Error("Unexpected error")`. The following block serves
-        // as a placeholder for expected errors.
-        throw new Error('Failed to list tables');
+        // be executed. This block serves as a placeholder for expected errors.
       }
       return response.data;
     },
@@ -82,22 +84,24 @@ export function useGetTable({ full_name }: UseGetTableArgs) {
     {
       queryKey: ['getTable', catalog, schema, table],
       queryFn: async () => {
-        const api = route(CLIENT, {
-          path: '/tables/{full_name}',
-          method: 'get',
-          params: {
-            paths: {
-              full_name,
+        const api = route({
+          client: CLIENT,
+          request: {
+            path: '/tables/{full_name}',
+            method: 'get',
+            params: {
+              paths: {
+                full_name,
+              },
             },
           },
+          unexpectedErrorMessage: 'Failed to fetch table',
         });
         const response = await api.call();
         if (response.result !== 'success') {
           // NOTE:
           // When an expected error occurs, as defined in the OpenAPI specification, the following line will
-          // be executed. Unexpected errors will throw `Error("Unexpected error")`. The following block serves
-          // as a placeholder for expected errors.
-          throw new Error('Failed to fetch table');
+          // be executed. This block serves as a placeholder for expected errors.
         }
         return response.data;
       },
@@ -130,22 +134,24 @@ export function useDeleteTable({ full_name }: UseDeleteTableArgs) {
     mutationFn: async ({
       full_name,
     }: DeleteTableMutationParams): Promise<void> => {
-      const api = route(CLIENT, {
-        path: '/tables/{full_name}',
-        method: 'delete',
-        params: {
-          paths: {
-            full_name,
+      const api = route({
+        client: CLIENT,
+        request: {
+          path: '/tables/{full_name}',
+          method: 'delete',
+          params: {
+            paths: {
+              full_name,
+            },
           },
         },
+        unexpectedErrorMessage: 'Failed to delete schema',
       });
       const response = await api.call();
       if (response.result !== 'success') {
         // NOTE:
         // When an expected error occurs, as defined in the OpenAPI specification, the following line will
-        // be executed. Unexpected errors will throw `Error("Unexpected error")`. The following block serves
-        // as a placeholder for expected errors.
-        throw new Error('Failed to delete schema');
+        // be executed. This block serves as a placeholder for expected errors.
       }
       return response.data;
     },

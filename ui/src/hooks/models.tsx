@@ -47,25 +47,27 @@ export function useListModels({
   return useQuery<ApiSuccessResponse<CatalogApi, '/models', 'get'>>({
     queryKey: ['listModels', catalog_name, schema_name],
     queryFn: async () => {
-      const api = route(CLIENT, {
-        path: '/models',
-        method: 'get',
-        params: {
-          query: {
-            catalog_name,
-            schema_name,
-            max_results,
-            page_token,
+      const api = route({
+        client: CLIENT,
+        request: {
+          path: '/models',
+          method: 'get',
+          params: {
+            query: {
+              catalog_name,
+              schema_name,
+              max_results,
+              page_token,
+            },
           },
         },
+        unexpectedErrorMessage: 'Failed to list models',
       });
       const response = await api.call();
       if (response.result !== 'success') {
         // NOTE:
         // When an expected error occurs, as defined in the OpenAPI specification, the following line will
-        // be executed. Unexpected errors will throw `Error("Unexpected error")`. The following block serves
-        // as a placeholder for expected errors.
-        throw new Error('Failed to list models');
+        // be executed. This block serves as a placeholder for expected errors.
       }
       return response.data;
     },
@@ -86,22 +88,24 @@ export function useGetModel({ full_name }: UseGetModelArgs) {
     {
       queryKey: ['getModel', catalog, schema, model],
       queryFn: async () => {
-        const api = route(CLIENT, {
-          path: '/models/{full_name}',
-          method: 'get',
-          params: {
-            paths: {
-              full_name,
+        const api = route({
+          client: CLIENT,
+          request: {
+            path: '/models/{full_name}',
+            method: 'get',
+            params: {
+              paths: {
+                full_name,
+              },
             },
           },
+          unexpectedErrorMessage: 'Failed to fetch model',
         });
         const response = await api.call();
         if (response.result !== 'success') {
           // NOTE:
           // When an expected error occurs, as defined in the OpenAPI specification, the following line will
-          // be executed. Unexpected errors will throw `Error("Unexpected error")`. The following block serves
-          // as a placeholder for expected errors.
-          throw new Error('Failed to fetch model');
+          // be executed. This block serves as a placeholder for expected errors.
         }
         return response.data;
       },
@@ -130,25 +134,27 @@ export function useCreateModel() {
       schema_name,
       comment,
     }: CreateModelMutationParams) => {
-      const api = route(CLIENT, {
-        path: '/models',
-        method: 'post',
-        params: {
-          body: {
-            name,
-            catalog_name,
-            schema_name,
-            comment,
+      const api = route({
+        client: CLIENT,
+        request: {
+          path: '/models',
+          method: 'post',
+          params: {
+            body: {
+              name,
+              catalog_name,
+              schema_name,
+              comment,
+            },
           },
         },
+        unexpectedErrorMessage: 'Failed to create model',
       });
       const response = await api.call();
       if (response.result !== 'success') {
         // NOTE:
         // When an expected error occurs, as defined in the OpenAPI specification, the following line will
-        // be executed. Unexpected errors will throw `Error("Unexpected error")`. The following block serves
-        // as a placeholder for expected errors.
-        throw new Error('Failed to create model');
+        // be executed. This block serves as a placeholder for expected errors.
       }
       return response.data;
     },
@@ -184,26 +190,28 @@ export function useUpdateModel({ full_name }: UseUpdateModelArgs) {
     UpdateModelMutationParams
   >({
     mutationFn: async ({ comment, new_name }: UpdateModelMutationParams) => {
-      const api = route(CLIENT, {
-        path: '/models/{full_name}',
-        method: 'patch',
-        params: {
-          paths: {
-            full_name,
-          },
-          body: {
-            comment,
-            new_name,
+      const api = route({
+        client: CLIENT,
+        request: {
+          path: '/models/{full_name}',
+          method: 'patch',
+          params: {
+            paths: {
+              full_name,
+            },
+            body: {
+              comment,
+              new_name,
+            },
           },
         },
+        unexpectedErrorMessage: 'Failed to update model',
       });
       const response = await api.call();
       if (response.result !== 'success') {
         // NOTE:
         // When an expected error occurs, as defined in the OpenAPI specification, the following line will
-        // be executed. Unexpected errors will throw `Error("Unexpected error")`. The following block serves
-        // as a placeholder for expected errors.
-        throw new Error('Failed to update model');
+        // be executed. This block serves as a placeholder for expected errors.
       }
       return response.data;
     },
@@ -239,22 +247,24 @@ export function useDeleteModel({ full_name }: UseDeleteModelArgs) {
     DeleteModelMutationParams
   >({
     mutationFn: async ({ full_name }: DeleteModelMutationParams) => {
-      const api = route(CLIENT, {
-        path: '/models/{full_name}',
-        method: 'delete',
-        params: {
-          paths: {
-            full_name,
+      const api = route({
+        client: CLIENT,
+        request: {
+          path: '/models/{full_name}',
+          method: 'delete',
+          params: {
+            paths: {
+              full_name,
+            },
           },
         },
+        unexpectedErrorMessage: 'Failed to delete model',
       });
       const response = await api.call();
       if (response.result !== 'success') {
         // NOTE:
         // When an expected error occurs, as defined in the OpenAPI specification, the following line will
-        // be executed. Unexpected errors will throw `Error("Unexpected error")`. The following block serves
-        // as a placeholder for expected errors.
-        throw new Error('Failed to delete model');
+        // be executed. This block serves as a placeholder for expected errors.
       }
       return response.data;
     },
@@ -266,10 +276,9 @@ export function useDeleteModel({ full_name }: UseDeleteModelArgs) {
   });
 }
 
-export type ModelVersionStatus = ApiInterface<
-  CatalogComponent,
-  'ModelVersionStatus'
->;
+// NOTE:
+// TypeScript enums require their values, so re-exported here as `const`.
+export { ModelVersionStatus } from '../types/api/catalog.gen';
 
 export type ModelVersionInterface = ApiInterface<
   CatalogComponent,
@@ -298,26 +307,28 @@ export function useListModelVersions({
   >({
     queryKey: ['listModelVersions', catalog, schema, model],
     queryFn: async () => {
-      const api = route(CLIENT, {
-        path: '/models/{full_name}/versions',
-        method: 'get',
-        params: {
-          paths: {
-            full_name,
-          },
-          query: {
-            max_results,
-            page_token,
+      const api = route({
+        client: CLIENT,
+        request: {
+          path: '/models/{full_name}/versions',
+          method: 'get',
+          params: {
+            paths: {
+              full_name,
+            },
+            query: {
+              max_results,
+              page_token,
+            },
           },
         },
+        unexpectedErrorMessage: 'Failed to fetch model version',
       });
       const response = await api.call();
       if (response.result !== 'success') {
         // NOTE:
         // When an expected error occurs, as defined in the OpenAPI specification, the following line will
-        // be executed. Unexpected errors will throw `Error("Unexpected error")`. The following block serves
-        // as a placeholder for expected errors.
-        throw new Error('Failed to fetch model version');
+        // be executed. This block serves as a placeholder for expected errors.
       }
       return response.data;
     },
@@ -345,23 +356,25 @@ export function useGetModelVersion({
   >({
     queryKey: ['getVersion', catalog, schema, model, version],
     queryFn: async () => {
-      const api = route(CLIENT, {
-        path: '/models/{full_name}/versions/{version}',
-        method: 'get',
-        params: {
-          paths: {
-            full_name,
-            version,
+      const api = route({
+        client: CLIENT,
+        request: {
+          path: '/models/{full_name}/versions/{version}',
+          method: 'get',
+          params: {
+            paths: {
+              full_name,
+              version,
+            },
           },
         },
+        unexpectedErrorMessage: 'Failed to fetch model version',
       });
       const response = await api.call();
       if (response.result !== 'success') {
         // NOTE:
         // When an expected error occurs, as defined in the OpenAPI specification, the following line will
-        // be executed. Unexpected errors will throw `Error("Unexpected error")`. The following block serves
-        // as a placeholder for expected errors.
-        throw new Error('Failed to fetch model version');
+        // be executed. This block serves as a placeholder for expected errors.
       }
       return response.data;
     },
@@ -399,26 +412,28 @@ export function useUpdateModelVersion({
     UpdateModelVersionMutationParams
   >({
     mutationFn: async ({ comment }: UpdateModelVersionMutationParams) => {
-      const api = route(CLIENT, {
-        path: '/models/{full_name}/versions/{version}',
-        method: 'patch',
-        params: {
-          paths: {
-            full_name,
-            version,
-          },
-          body: {
-            comment,
+      const api = route({
+        client: CLIENT,
+        request: {
+          path: '/models/{full_name}/versions/{version}',
+          method: 'patch',
+          params: {
+            paths: {
+              full_name,
+              version,
+            },
+            body: {
+              comment,
+            },
           },
         },
+        unexpectedErrorMessage: 'Failed to update model version',
       });
       const response = await api.call();
       if (response.result !== 'success') {
         // NOTE:
         // When an expected error occurs, as defined in the OpenAPI specification, the following line will
-        // be executed. Unexpected errors will throw `Error("Unexpected error")`. The following block serves
-        // as a placeholder for expected errors.
-        throw new Error('Failed to update model version');
+        // be executed. This block serves as a placeholder for expected errors.
       }
       return response.data;
     },
@@ -464,23 +479,25 @@ export function useDeleteModelVersion({
       full_name,
       version,
     }: DeleteModelVersionMutationParams) => {
-      const api = route(CLIENT, {
-        path: '/models/{full_name}/versions/{version}',
-        method: 'delete',
-        params: {
-          paths: {
-            full_name,
-            version,
+      const api = route({
+        client: CLIENT,
+        request: {
+          path: '/models/{full_name}/versions/{version}',
+          method: 'delete',
+          params: {
+            paths: {
+              full_name,
+              version,
+            },
           },
         },
+        unexpectedErrorMessage: 'Failed to delete model version',
       });
       const response = await api.call();
       if (response.result !== 'success') {
         // NOTE:
         // When an expected error occurs, as defined in the OpenAPI specification, the following line will
-        // be executed. Unexpected errors will throw `Error("Unexpected error")`. The following block serves
-        // as a placeholder for expected errors.
-        throw new Error('Failed to delete model version');
+        // be executed. This block serves as a placeholder for expected errors.
       }
       return response.data;
     },

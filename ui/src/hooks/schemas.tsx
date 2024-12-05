@@ -43,24 +43,26 @@ export function useListSchemas({
   return useQuery<ApiSuccessResponse<CatalogApi, '/schemas', 'get'>>({
     queryKey: ['listSchemas', catalog_name],
     queryFn: async () => {
-      const api = route(CLIENT, {
-        path: '/schemas',
-        method: 'get',
-        params: {
-          query: {
-            catalog_name,
-            max_results,
-            page_token,
+      const api = route({
+        client: CLIENT,
+        request: {
+          path: '/schemas',
+          method: 'get',
+          params: {
+            query: {
+              catalog_name,
+              max_results,
+              page_token,
+            },
           },
         },
+        unexpectedErrorMessage: 'Failed to list schemas',
       });
       const response = await api.call();
       if (response.result !== 'success') {
         // NOTE:
         // When an expected error occurs, as defined in the OpenAPI specification, the following line will
-        // be executed. Unexpected errors will throw `Error("Unexpected error")`. The following block serves
-        // as a placeholder for expected errors.
-        throw new Error('Failed to list schemas');
+        // be executed. This block serves as a placeholder for expected errors.
       }
       return response.data;
     },
@@ -82,22 +84,24 @@ export function useGetSchema({ full_name }: UseGetSchemaArgs) {
   >({
     queryKey: ['getSchema', catalog, schema],
     queryFn: async () => {
-      const api = route(CLIENT, {
-        path: '/schemas/{full_name}',
-        method: 'get',
-        params: {
-          paths: {
-            full_name,
+      const api = route({
+        client: CLIENT,
+        request: {
+          path: '/schemas/{full_name}',
+          method: 'get',
+          params: {
+            paths: {
+              full_name,
+            },
           },
         },
+        unexpectedErrorMessage: 'Failed to fetch schema',
       });
       const response = await api.call();
       if (response.result !== 'success') {
         // NOTE:
         // When an expected error occurs, as defined in the OpenAPI specification, the following line will
-        // be executed. Unexpected errors will throw `Error("Unexpected error")`. The following block serves
-        // as a placeholder for expected errors.
-        throw new Error('Failed to fetch schema');
+        // be executed. This block serves as a placeholder for expected errors.
       }
       return response.data;
     },
@@ -124,25 +128,27 @@ export function useCreateSchema() {
       comment,
       properties,
     }: CreateSchemaMutationParams) => {
-      const api = route(CLIENT, {
-        path: '/schemas',
-        method: 'post',
-        params: {
-          body: {
-            name,
-            catalog_name,
-            comment,
-            properties,
+      const api = route({
+        client: CLIENT,
+        request: {
+          path: '/schemas',
+          method: 'post',
+          params: {
+            body: {
+              name,
+              catalog_name,
+              comment,
+              properties,
+            },
           },
         },
+        unexpectedErrorMessage: 'Failed to create schema',
       });
       const response = await api.call();
       if (response.result !== 'success') {
         // NOTE:
         // When an expected error occurs, as defined in the OpenAPI specification, the following line will
-        // be executed. Unexpected errors will throw `Error("Unexpected error")`. The following block serves
-        // as a placeholder for expected errors.
-        throw new Error('Failed to create schema');
+        // be executed. This block serves as a placeholder for expected errors.
       }
       return response.data;
     },
@@ -182,27 +188,29 @@ export function useUpdateSchema({ full_name }: UseUpdateSchemaArgs) {
       properties,
       new_name,
     }: UpdateSchemaMutationParams) => {
-      const api = route(CLIENT, {
-        path: '/schemas/{full_name}',
-        method: 'patch',
-        params: {
-          paths: {
-            full_name,
-          },
-          body: {
-            comment,
-            properties,
-            new_name,
+      const api = route({
+        client: CLIENT,
+        request: {
+          path: '/schemas/{full_name}',
+          method: 'patch',
+          params: {
+            paths: {
+              full_name,
+            },
+            body: {
+              comment,
+              properties,
+              new_name,
+            },
           },
         },
+        unexpectedErrorMessage: 'Failed to update schema',
       });
       const response = await api.call();
       if (response.result !== 'success') {
         // NOTE:
         // When an expected error occurs, as defined in the OpenAPI specification, the following line will
-        // be executed. Unexpected errors will throw `Error("Unexpected error")`. The following block serves
-        // as a placeholder for expected errors.
-        throw new Error('Failed to update schema');
+        // be executed. This block serves as a placeholder for expected errors.
       }
       return response.data;
     },
@@ -237,22 +245,24 @@ export function useDeleteSchema({ full_name }: UseDeleteSchemaArgs) {
     DeleteSchemaMutationParams
   >({
     mutationFn: async ({ full_name }: DeleteSchemaMutationParams) => {
-      const api = route(CLIENT, {
-        path: '/schemas/{full_name}',
-        method: 'delete',
-        params: {
-          paths: {
-            full_name,
+      const api = route({
+        client: CLIENT,
+        request: {
+          path: '/schemas/{full_name}',
+          method: 'delete',
+          params: {
+            paths: {
+              full_name,
+            },
           },
         },
+        unexpectedErrorMessage: 'Failed to delete schema',
       });
       const response = await api.call();
       if (response.result !== 'success') {
         // NOTE:
         // When an expected error occurs, as defined in the OpenAPI specification, the following line will
-        // be executed. Unexpected errors will throw `Error("Unexpected error")`. The following block serves
-        // as a placeholder for expected errors.
-        throw new Error('Failed to delete schema');
+        // be executed. This block serves as a placeholder for expected errors.
       }
       return response.data;
     },
