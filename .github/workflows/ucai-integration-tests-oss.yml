@@ -64,7 +64,7 @@ jobs:
           pytest integrations/langchain/tests/test_langchain_toolkit_oss.py
       - name: Run LlamaIndex OSS Integration Tests
         run: |
-          pip install integrations/llamaindex[dev]
+          pip install integrations/llama_index[dev]
           pytest integrations/llamaindex/tests/test_llama_index_toolkit_oss.py
       - name: Stop Unity Catalog Server
         run: |
