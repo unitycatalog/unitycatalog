@@ -148,7 +148,11 @@ paths:
               $ref: '#/components/schemas/OAuthTokenExchangeRequest'
       responses:
         '200':
-          $ref: '#/components/responses/OAuthTokenExchangeResponse'
+          description: The token exchange was successfully granted.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OAuthTokenExchangeResponse'
   /auth/logout:
     post:
       tags:
@@ -344,6 +348,24 @@ components:
         - Bearer
         - MAC
         - N_A
+    ResponseType:
+      description: |
+        Authorization endpoint response type, from RFC 6749 Section 3.
+        See https://datatracker.ietf.org/doc/html/rfc6749#section-3
+      type: string
+      enum:
+        - code
+        - token
+    AuthorizationGrantType:
+      description: |
+        Authorization grant type, from RFC 6749 Section 4.
+        See https://datatracker.ietf.org/doc/html/rfc6749#section-4
+      type: string
+      enum:
+        - authorization_code
+        - implicit
+        - resource_owner_password_credentials
+        - client_credentials
     OAuthTokenExchangeRequest:
       description: |
         OAuth2 token exchange request.

@@ -12,6 +12,8 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpHandler;
 import com.sun.net.httpserver.HttpServer;
+import io.unitycatalog.control.model.AuthorizationGrantType;
+import io.unitycatalog.control.model.ResponseType;
 import java.io.BufferedOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
@@ -115,7 +117,7 @@ public class Oauth2CliExchange {
                 Map.ofEntries(
                     entry("client_id", clientId),
                     entry("redirect_uri", redirectUrl),
-                    entry("response_type", "code"),
+                    entry("response_type", ResponseType.CODE.getValue()),
                     entry("scope", "openid profile email"),
                     entry("state", Hex.encodeHexString(stateBytes))));
 
@@ -158,7 +160,7 @@ public class Oauth2CliExchange {
         URLEncodedForm.ofMap(
             Map.ofEntries(
                 entry("code", authCode),
-                entry("grant_type", "authorization_code"),
+                entry("grant_type", AuthorizationGrantType.AUTHORIZATION_CODE.getValue()),
                 entry("redirect_uri", redirectUrl)));
 
     String authorization =
