@@ -47,6 +47,12 @@ jobs:
       - name: Install Unity Catalog Python Libraries
         run: |
           dev/install_client.sh
+      - name: Install Unity Catalog AI Core Library
+        run: |
+          pip install core/.
+      - name: Install test dependencies
+        run: |
+          pip install pytest pytest-asyncio
       - name: Start Unity Catalog Server
         run: |
           dev/start_unitycatalog.sh

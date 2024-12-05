@@ -16,7 +16,7 @@ from unitycatalog.ai.core.oss import (
 from unitycatalog.ai.core.utils.function_processing_utils import get_tool_name
 from unitycatalog.ai.openai.toolkit import UCFunctionToolkit
 from unitycatalog.ai.test_utils.client_utils import set_default_client
-from unitycatalog.ai.test_utils.function_utils import (
+from unitycatalog.ai.test_utils.function_utils_oss import (
     CATALOG,
     create_function_and_cleanup_oss,
 )

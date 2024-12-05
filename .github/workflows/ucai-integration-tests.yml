@@ -139,7 +139,7 @@ jobs:
           pip install integrations/openai[dev]
       - name: Run OpenAI Tests
         run: |
-          pytest integrations/openai/tests
+          pytest integrations/openai/tests --ignore=integrations/openai/tests/test_openai_toolkit_oss.py
 
   autogen_test:
     runs-on: ubuntu-latest
