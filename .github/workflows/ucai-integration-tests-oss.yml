@@ -58,6 +58,14 @@ jobs:
         run: |
           pip install integrations/openai[dev]
           pytest integrations/openai/tests/test_openai_toolkit_oss.py
+      - name: Run LangChain OSS Integration Tests
+        run: |
+          pip install integrations/langchain[dev]
+          pytest integrations/langchain/tests/test_langchain_toolkit_oss.py
+      - name: Run LlamaIndex OSS Integration Tests
+        run: |
+          pip install integrations/llamaindex[dev]
+          pytest integrations/llamaindex/tests/test_llama_index_toolkit_oss.py
       - name: Stop Unity Catalog Server
         run: |
           dev/teardown_server.sh
