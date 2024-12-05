@@ -1,30 +1,30 @@
 package io.unitycatalog.spark
 
+import io.unitycatalog.client.api.{FunctionsApi, SchemasApi, TablesApi, TemporaryCredentialsApi}
+import io.unitycatalog.client.model._
 import io.unitycatalog.client.{ApiClient, ApiException}
-import io.unitycatalog.client.api.{SchemasApi, TablesApi, TemporaryCredentialsApi}
-import io.unitycatalog.client.model.{ColumnInfo, ColumnTypeName, CreateSchema, CreateTable, DataSourceFormat, GenerateTemporaryPathCredential, GenerateTemporaryTableCredential, ListTablesResponse, PathOperation, SchemaInfo, TableOperation, TableType, TemporaryCredentials}
-
-import java.net.URI
-import java.util
 import org.apache.hadoop.fs.Path
 import org.apache.hadoop.fs.azurebfs.constants.ConfigurationKeys.{FS_AZURE_ACCOUNT_AUTH_TYPE_PROPERTY_NAME, FS_AZURE_ACCOUNT_IS_HNS_ENABLED, FS_AZURE_SAS_TOKEN_PROVIDER_TYPE}
 import org.apache.spark.internal.Logging
-import org.apache.spark.sql.catalyst.TableIdentifier
+import org.apache.spark.sql.catalyst.{InternalRow, TableIdentifier}
 import org.apache.spark.sql.catalyst.analysis.{NoSuchNamespaceException, NoSuchTableException}
 import org.apache.spark.sql.catalyst.catalog.{CatalogStorageFormat, CatalogTable, CatalogTableType, CatalogUtils}
 import org.apache.spark.sql.connector.catalog._
+import org.apache.spark.sql.connector.catalog.functions.{BoundFunction, ScalarFunction, UnboundFunction}
 import org.apache.spark.sql.connector.expressions.Transform
-import org.apache.spark.sql.types.{BinaryType, BooleanType, ByteType, DataType, DoubleType, FloatType, IntegerType, LongType, ShortType, StringType, StructField, StructType, TimestampNTZType, TimestampType}
+import org.apache.spark.sql.types._
 import org.apache.spark.sql.util.CaseInsensitiveStringMap
 
-import scala.collection.convert.ImplicitConversions._
+import java.net.URI
+import java.util
 import scala.collection.JavaConverters._
+import scala.collection.convert.ImplicitConversions._
 import scala.language.existentials
 
 /**
  * A Spark catalog plugin to get/manage tables in Unity Catalog.
  */
-class UCSingleCatalog extends TableCatalog with SupportsNamespaces with Logging {
+class UCSingleCatalog extends TableCatalog with SupportsNamespaces with FunctionCatalog with Logging {
 
   private[this] var apiClient: ApiClient = null;
   private[this] var temporaryCredentialsApi: TemporaryCredentialsApi = null
@@ -155,6 +155,14 @@ class UCSingleCatalog extends TableCatalog with SupportsNamespaces with Logging 
   override def dropNamespace(namespace: Array[String], cascade: Boolean): Boolean = {
     delegate.asInstanceOf[DelegatingCatalogExtension].dropNamespace(namespace, cascade)
   }
+
+  override def listFunctions(namespace: Array[String]): Array[Identifier] = {
+    delegate.asInstanceOf[DelegatingCatalogExtension].listFunctions(namespace)
+  }
+
+  override def loadFunction(ident: Identifier): UnboundFunction = {
+    delegate.asInstanceOf[DelegatingCatalogExtension].loadFunction(ident)
+  }
 }
 
 object UCSingleCatalog {
@@ -204,15 +212,17 @@ object UCSingleCatalog {
 // An internal proxy to talk to the UC client.
 private class UCProxy(
     apiClient: ApiClient,
-    temporaryCredentialsApi: TemporaryCredentialsApi) extends TableCatalog with SupportsNamespaces {
+    temporaryCredentialsApi: TemporaryCredentialsApi) extends TableCatalog with SupportsNamespaces with FunctionCatalog {
   private[this] var name: String = null
   private[this] var tablesApi: TablesApi = null
   private[this] var schemasApi: SchemasApi = null
+  private[this] var functionsApi: FunctionsApi = null
 
   override def initialize(name: String, options: CaseInsensitiveStringMap): Unit = {
     this.name = name
     tablesApi = new TablesApi(apiClient)
     schemasApi = new SchemasApi(apiClient)
+    functionsApi = new FunctionsApi(apiClient)
   }
 
   override def name(): String = {
@@ -431,4 +441,69 @@ private class UCProxy(
     schemasApi.deleteSchema(name + "." + namespace.head, cascade)
     true
   }
+
+  override def listFunctions(namespace: Array[String]): Array[Identifier] = {
+    val catalogName = this.name
+    val schemaName = namespace.headOption.getOrElse(throw new Exception("Schema Name undefined."))
+    val maxResults = 0
+    val pageToken = null
+    functionsApi.listFunctions(catalogName, schemaName, maxResults, pageToken).getFunctions.toSeq.map(function => Identifier.of(namespace, function.getName)).toArray
+  }
+
+  override def loadFunction(ident: Identifier): UnboundFunction = {
+    try {
+      // Fetch the function details using the API
+      val functionResponse = functionsApi.getFunction(
+        Seq(this.name, ident.namespace()(0), ident.name()).mkString(".")
+      )
+      
+//      new UnboundFunction {
+//        override def bind(inputType: StructType): BoundFunction = new ScalarFunction[Any] {
+//          override def produceResult(input: InternalRow): Any =  {
+//            null
+//          }
+//          override def inputTypes(): Array[DataType] = {
+//            println(s"inputType = ${inputType.toString()}")
+//            val inputParams = functionResponse.getInputParams
+//            if (inputParams != null) {
+//              println(s"inputParams = ${inputParams.toString}")
+//              val paramsInfo = inputParams.getParameters
+//
+//              paramsInfo.asScala.map(x =>
+//                scala.util.Try(
+//                  DataType.fromDDL(x.getTypeText)
+//                ).getOrElse(
+//                  DataType.fromJson(x.getTypeJson)
+//                )
+//              ).toArray
+//            } else Array.empty
+//          } // Replace with actual types
+//          println(s"functionResponse = ${functionResponse.toString}")
+//          override def resultType(): DataType = {
+//            scala.util.Try(
+//              DataType.fromDDL(functionResponse.getFullDataType)
+//            ).orElse(
+//              scala.util.Try(
+//                DataType.fromDDL(functionResponse.getDataType.getValue)
+//              )).getOrElse(
+//              DataType.fromJson(functionResponse.getFullDataType)
+//            )
+//          }
+//
+//          override def name(): String = functionResponse.getName
+//        }
+//
+//        override def description(): String = functionResponse.getComment
+//
+//        override def name(): String = functionResponse.getName
+//      }
+      new ProphecyUnboundFunction(functionResponse)
+    } catch {
+      case e: ApiException if e.getCode == 404 =>
+        throw new RuntimeException(s"Function not found: ${ident.toString}", e)
+      case e: Exception =>
+        throw new RuntimeException(s"Error loading function: ${ident.toString}", e)
+    }
+  }
+
 }
