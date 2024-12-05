@@ -56,6 +56,11 @@ public class UnityCatalogServer {
   private static final String basePath = "/api/2.1/unity-catalog/";
   private static final String controlPath = "/api/1.0/unity-control/";
 
+  public static void bootstrap() {
+    LOGGER.info("Bootstrapping server...");
+    MetastoreRepository.getInstance().initMetastoreIfNeeded();
+  }
+
   public UnityCatalogServer() {
     this(8080);
   }
@@ -193,6 +198,8 @@ public class UnityCatalogServer {
   public static void main(String[] args) {
     OptionParser options = new OptionParser();
     options.parse(args);
+    // Bootstrap Unity Catalog server
+    UnityCatalogServer.bootstrap();
     // Start Unity Catalog server
     UnityCatalogServer unityCatalogServer = new UnityCatalogServer(options.getPort() + 1);
     unityCatalogServer.printArt();
@@ -206,7 +213,6 @@ public class UnityCatalogServer {
 
   public void start() {
     LOGGER.info("Starting server...");
-    MetastoreRepository.getInstance().initMetastoreIfNeeded();
     server.start().join();
   }
 

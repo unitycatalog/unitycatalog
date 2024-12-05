@@ -2,16 +2,18 @@ package io.unitycatalog.cli.utils;
 
 import static java.net.HttpURLConnection.HTTP_OK;
 import static java.net.URLDecoder.decode;
+import static java.util.Map.entry;
 import static java.util.stream.Collectors.groupingBy;
 import static java.util.stream.Collectors.mapping;
 import static java.util.stream.Collectors.toList;
 
-import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpHandler;
 import com.sun.net.httpserver.HttpServer;
+import io.unitycatalog.control.model.AuthorizationGrantType;
+import io.unitycatalog.control.model.ResponseType;
 import java.io.BufferedOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
@@ -21,14 +23,12 @@ import java.net.HttpURLConnection;
 import java.net.InetSocketAddress;
 import java.net.ServerSocket;
 import java.net.URL;
-import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Paths;
 import java.security.SecureRandom;
 import java.util.Arrays;
 import java.util.Base64;
-import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Properties;
@@ -36,28 +36,13 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Future;
 import java.util.regex.Pattern;
+import java.util.stream.Collectors;
 import org.apache.commons.codec.binary.Hex;
+import org.apache.http.NameValuePair;
+import org.apache.http.client.utils.URLEncodedUtils;
 
 /** Simple OAuth2 authentication flow for the CLI. */
 public class Oauth2CliExchange {
-
-  // TODO: need common module for these constants, they are reused in AuthService
-  public interface Fields {
-    String GRANT_TYPE = "grant_type";
-    String CLIENT_ID = "client_id";
-    String CLIENT_SECRET = "client_secret";
-    String REDIRECT_URL = "redirect_uri";
-  }
-
-  public interface TokenTypes {
-    String ACCESS = "urn:ietf:params:oauth:token-type:access_token";
-    String ID = "urn:ietf:params:oauth:token-type:id_token";
-    String JWT = "urn:ietf:params:oauth:token-type:jwt";
-  }
-
-  public interface GrantTypes {
-    String TOKEN_EXCHANGE = "urn:ietf:params:oauth:grant-type:token-exchange";
-  }
 
   private static final ObjectMapper mapper = new ObjectMapper();
 
@@ -102,14 +87,17 @@ public class Oauth2CliExchange {
     byte[] stateBytes = new byte[16];
     new SecureRandom().nextBytes(stateBytes);
 
+    // NOTE: The `scope` is Google OAuth2 specific. We might need more versatile code here.
     String authUrl =
-        String.format(
-            "%s?client_id=%s&redirect_uri=%s&response_type=code&scope=%s&state=%s",
-            authorizationUrl,
-            URLEncoder.encode(clientId, StandardCharsets.UTF_8),
-            URLEncoder.encode(redirectUrl, StandardCharsets.UTF_8),
-            URLEncoder.encode("openid profile email", StandardCharsets.UTF_8),
-            Hex.encodeHexString(stateBytes));
+        authorizationUrl
+            + "?"
+            + URLEncodedForm.ofMap(
+                Map.ofEntries(
+                    entry("client_id", clientId),
+                    entry("redirect_uri", redirectUrl),
+                    entry("response_type", ResponseType.CODE.getValue()),
+                    entry("scope", "openid profile email"),
+                    entry("state", Hex.encodeHexString(stateBytes))));
 
     System.out.println("Attempting to open the authorization page in your default browser.");
     System.out.println("If the browser does not open, you can manually open the following URL:");
@@ -146,15 +134,15 @@ public class Oauth2CliExchange {
 
     server.stop(0);
 
-    Map<String, String> tokenParams = new HashMap<>();
-    tokenParams.put("code", authCode);
-    tokenParams.put(Fields.CLIENT_ID, clientId);
-    tokenParams.put(Fields.CLIENT_SECRET, clientSecret);
-    tokenParams.put(Fields.GRANT_TYPE, "authorization_code");
-    tokenParams.put(Fields.REDIRECT_URL, redirectUrl);
+    String tokenBody =
+        URLEncodedForm.ofMap(
+            Map.ofEntries(
+                entry("code", authCode),
+                entry("grant_type", AuthorizationGrantType.AUTHORIZATION_CODE.getValue()),
+                entry("redirect_uri", redirectUrl)));
 
-    String tokenBody = buildTokenBody(tokenParams);
-    String authorization = buildAuthorization(tokenParams);
+    String authorization =
+        "Basic " + Base64.getEncoder().encodeToString((clientId + ":" + clientSecret).getBytes());
 
     // TODO: Replace this with a more modern web-client
     HttpURLConnection urlConnection = (HttpURLConnection) new URL(tokenUrl).openConnection();
@@ -203,23 +191,26 @@ public class Oauth2CliExchange {
     }
   }
 
-  private String buildTokenBody(Map<String, String> tokenParams) throws JsonProcessingException {
-    return tokenParams.entrySet().stream()
-        .filter(
-            p -> !p.getKey().equals(Fields.CLIENT_ID) && !p.getKey().equals(Fields.CLIENT_SECRET))
-        .map(
-            p ->
-                URLEncoder.encode(p.getKey(), StandardCharsets.UTF_8)
-                    + "="
-                    + URLEncoder.encode(p.getValue(), StandardCharsets.UTF_8))
-        .reduce((p1, p2) -> p1 + "&" + p2)
-        .orElse("");
-  }
+  public static class URLEncodedForm {
+    public static String ofMap(Map<String, String> parameters) {
+      return URLEncodedUtils.format(
+          parameters.entrySet().stream()
+              .map(
+                  p ->
+                      new NameValuePair() {
+                        @Override
+                        public String getName() {
+                          return p.getKey();
+                        }
 
-  private String buildAuthorization(Map<String, String> tokenParams) {
-    String authorizationValue =
-        tokenParams.get(Fields.CLIENT_ID) + ":" + tokenParams.get(Fields.CLIENT_SECRET);
-    return "Basic " + Base64.getEncoder().encodeToString(authorizationValue.getBytes());
+                        @Override
+                        public String getValue() {
+                          return p.getValue();
+                        }
+                      })
+              .collect(Collectors.toList()),
+          StandardCharsets.UTF_8);
+    }
   }
 
   static class AuthCallbackHandler implements HttpHandler {

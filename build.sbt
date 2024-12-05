@@ -137,6 +137,8 @@ lazy val controlApi = (project in file("target/control/java"))
       "com.fasterxml.jackson.core" % "jackson-annotations" % jacksonVersion,
       "com.fasterxml.jackson.core" % "jackson-databind" % jacksonVersion,
       "com.fasterxml.jackson.datatype" % "jackson-datatype-jsr310" % jacksonVersion,
+      "org.apache.httpcomponents" % "httpclient" % orgApacheHttpVersion,
+      "org.apache.httpcomponents" % "httpmime" % orgApacheHttpVersion,
     ),
     (Compile / compile) := ((Compile / compile) dependsOn generate).value,
 
@@ -498,6 +500,7 @@ lazy val cli = (project in file("examples") / "cli")
       "org.apache.hadoop" % "hadoop-client-api" % "3.4.0",
       "org.apache.hadoop" % "hadoop-client-runtime" % "3.4.0",
       "de.vandermeer" % "asciitable" % "0.3.2",
+      "org.apache.httpcomponents" % "httpclient" % orgApacheHttpVersion,
       // for s3 access
       "org.fusesource.jansi" % "jansi" % "2.4.1",
       "com.amazonaws" % "aws-java-sdk-core" % "1.12.728",
@@ -665,3 +668,4 @@ val generate = taskKey[Unit]("generate code from APIs")
 val jacksonVersion = "2.17.0"
 val openApiToolsJacksonBindNullableVersion = "0.2.6"
 val log4jVersion = "2.23.1"
+val orgApacheHttpVersion = "4.5.14"
