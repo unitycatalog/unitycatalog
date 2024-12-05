@@ -44,28 +44,6 @@ import org.apache.http.client.utils.URLEncodedUtils;
 /** Simple OAuth2 authentication flow for the CLI. */
 public class Oauth2CliExchange {
 
-  public static class URLEncodedForm {
-    public static String ofMap(Map<String, String> parameters) {
-      return URLEncodedUtils.format(
-          parameters.entrySet().stream()
-              .map(
-                  p ->
-                      new NameValuePair() {
-                        @Override
-                        public String getName() {
-                          return p.getKey();
-                        }
-
-                        @Override
-                        public String getValue() {
-                          return p.getValue();
-                        }
-                      })
-              .collect(Collectors.toList()),
-          StandardCharsets.UTF_8);
-    }
-  }
-
   private static final ObjectMapper mapper = new ObjectMapper();
 
   Properties serverProperties = new Properties();
@@ -210,6 +188,28 @@ public class Oauth2CliExchange {
       try (ServerSocket serverSocket = new ServerSocket(0)) {
         return serverSocket.getLocalPort();
       }
+    }
+  }
+
+  public static class URLEncodedForm {
+    public static String ofMap(Map<String, String> parameters) {
+      return URLEncodedUtils.format(
+          parameters.entrySet().stream()
+              .map(
+                  p ->
+                      new NameValuePair() {
+                        @Override
+                        public String getName() {
+                          return p.getKey();
+                        }
+
+                        @Override
+                        public String getValue() {
+                          return p.getValue();
+                        }
+                      })
+              .collect(Collectors.toList()),
+          StandardCharsets.UTF_8);
     }
   }
 

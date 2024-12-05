@@ -30,44 +30,6 @@ import org.slf4j.LoggerFactory;
 
 @ExceptionHandler(GlobalExceptionHandler.class)
 public class AuthService {
-  // NOTE:
-  // Unfortunately, when specifying `application/x-www-form-urlencoded` for content in the OpenAPI
-  // schema, the OpenAPI Generator does not generate request models from that schema.
-  // Additionally, when accessing each parameter directly from the body without using a model,
-  // Armelia fails to handle them correctly if the `ext` query parameter is present. Therefore,
-  // the request model is implemented manually here.
-  //
-  // SEE:
-  // - https://armeria.dev/docs/server-annotated-service/#getting-a-query-parameter
-  @ToString
-  private static class OAuthTokenExchangeRequest {
-    @Param("grant_type")
-    @Getter
-    private String grantType;
-
-    @Param("requested_token_type")
-    @Getter
-    private String requestedTokenType;
-
-    @Param("subject_token_type")
-    @Getter
-    private String subjectTokenType;
-
-    @Param("subject_token")
-    @Getter
-    private String subjectToken;
-
-    @Param("actor_token_type")
-    @Nullable
-    @Getter
-    private String actorTokenType;
-
-    @Param("actor_token")
-    @Nullable
-    @Getter
-    private String actorToken;
-  }
-
   private static final Logger LOGGER = LoggerFactory.getLogger(AuthService.class);
   private static final UserRepository USER_REPOSITORY = UserRepository.getInstance();
 
@@ -243,5 +205,44 @@ public class AuthService {
         .path(path)
         .maxAge(Duration.parse(maxAge).getSeconds())
         .build();
+  }
+
+  // NOTE:
+  // Unfortunately, when specifying `application/x-www-form-urlencoded` for content in the OpenAPI
+  // schema, the OpenAPI Generator does not generate request models from that schema.
+  // Additionally, when accessing each parameter directly from the body without using a model,
+  // Armelia fails to handle them correctly if the `ext` query parameter is present. Therefore,
+  // the request model is implemented manually here.
+  //
+  // SEE:
+  // - https://armeria.dev/docs/server-annotated-service/#getting-a-query-parameter
+  // - https://armeria.dev/docs/server-annotated-service/#injecting-a-parameter-as-an-enum-type
+  @ToString
+  private static class OAuthTokenExchangeRequest {
+    @Param("grant_type")
+    @Getter
+    private String grantType;
+
+    @Param("requested_token_type")
+    @Getter
+    private String requestedTokenType;
+
+    @Param("subject_token_type")
+    @Getter
+    private String subjectTokenType;
+
+    @Param("subject_token")
+    @Getter
+    private String subjectToken;
+
+    @Param("actor_token_type")
+    @Nullable
+    @Getter
+    private String actorTokenType;
+
+    @Param("actor_token")
+    @Nullable
+    @Getter
+    private String actorToken;
   }
 }
