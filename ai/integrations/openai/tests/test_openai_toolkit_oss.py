@@ -15,7 +15,6 @@ from unitycatalog.ai.core.oss import (
 )
 from unitycatalog.ai.core.utils.function_processing_utils import get_tool_name
 from unitycatalog.ai.openai.toolkit import UCFunctionToolkit
-from unitycatalog.ai.test_utils.client_utils import set_default_client
 from unitycatalog.ai.test_utils.function_utils_oss import (
     CATALOG,
     create_function_and_cleanup_oss,
@@ -55,11 +54,10 @@ async def uc_client():
 @pytest.mark.asyncio
 async def test_tool_calling(uc_client):
     with (
-        set_default_client(uc_client),
         create_function_and_cleanup_oss(uc_client, schema=SCHEMA) as func_obj,
     ):
         func_name = func_obj.full_function_name
-        toolkit = UCFunctionToolkit(function_names=[func_name])
+        toolkit = UCFunctionToolkit(function_names=[func_name], client=uc_client)
         tools = toolkit.tools
         assert len(tools) == 1
 
@@ -116,11 +114,10 @@ async def test_tool_calling(uc_client):
 @pytest.mark.asyncio
 async def test_tool_calling_with_multiple_choices(uc_client):
     with (
-        set_default_client(uc_client),
         create_function_and_cleanup_oss(uc_client, schema=SCHEMA) as func_obj,
     ):
         func_name = func_obj.full_function_name
-        toolkit = UCFunctionToolkit(function_names=[func_name])
+        toolkit = UCFunctionToolkit(function_names=[func_name], client=uc_client)
         tools = toolkit.tools
         assert len(tools) == 1
 
@@ -311,44 +308,43 @@ def generate_function_info(parameters: List[Dict], catalog="catalog", schema="sc
 # the Tookit interface integrations.
 @pytest.mark.asyncio
 async def test_function_definition_generation(uc_client):
-    with set_default_client(uc_client):
-        function_info = generate_function_info(
-            [
-                {
-                    "name": "code",
-                    "type_text": "string",
-                    "type_json": '{"name":"code","type":"string","nullable":true,"metadata":{"comment":"Python code to execute. Remember to print the final result to stdout."}}',
-                    "type_name": "STRING",
-                    "type_precision": 0,
-                    "type_scale": 0,
-                    "position": 0,
-                    "parameter_type": "PARAM",
-                    "comment": "Python code to execute. Remember to print the final result to stdout.",
-                }
-            ]
-        )
+    function_info = generate_function_info(
+        [
+            {
+                "name": "code",
+                "type_text": "string",
+                "type_json": '{"name":"code","type":"string","nullable":true,"metadata":{"comment":"Python code to execute. Remember to print the final result to stdout."}}',
+                "type_name": "STRING",
+                "type_precision": 0,
+                "type_scale": 0,
+                "position": 0,
+                "parameter_type": "PARAM",
+                "comment": "Python code to execute. Remember to print the final result to stdout.",
+            }
+        ]
+    )
 
-        function_definition = UCFunctionToolkit.uc_function_to_openai_function_definition(
-            function_info=function_info
-        )
-        assert function_definition == {
-            "type": "function",
-            "function": {
-                "name": get_tool_name(function_info.full_name),
-                "description": function_info.comment,
-                "strict": True,
-                "parameters": {
-                    "properties": {
-                        "code": {
-                            "anyOf": [{"type": "string"}, {"type": "null"}],
-                            "description": "Python code to execute. Remember to print the final result to stdout.",
-                            "title": "Code",
-                        }
-                    },
-                    "title": get_tool_name(function_info.full_name) + "__params",
-                    "type": "object",
-                    "additionalProperties": False,
-                    "required": ["code"],
+    function_definition = UCFunctionToolkit(
+        client=uc_client
+    ).uc_function_to_openai_function_definition(function_info=function_info, client=uc_client)
+    assert function_definition == {
+        "type": "function",
+        "function": {
+            "name": get_tool_name(function_info.full_name),
+            "description": function_info.comment,
+            "strict": True,
+            "parameters": {
+                "properties": {
+                    "code": {
+                        "anyOf": [{"type": "string"}, {"type": "null"}],
+                        "description": "Python code to execute. Remember to print the final result to stdout.",
+                        "title": "Code",
+                    }
                 },
+                "title": get_tool_name(function_info.full_name) + "__params",
+                "type": "object",
+                "additionalProperties": False,
+                "required": ["code"],
             },
-        }
+        },
+    }

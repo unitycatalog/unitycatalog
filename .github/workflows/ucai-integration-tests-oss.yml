@@ -50,9 +50,7 @@ jobs:
       - name: Install Unity Catalog AI Core Library
         run: |
           pip install core/.
-      - name: Install test dependencies
-        run: |
-          pip install pytest pytest-asyncio
+          echo "PYTHONPATH=$(pwd)/core/src:\$PYTHONPATH" >> $GITHUB_ENV
       - name: Start Unity Catalog Server
         run: |
           dev/start_unitycatalog.sh
