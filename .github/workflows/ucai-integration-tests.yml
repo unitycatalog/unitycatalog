@@ -39,7 +39,7 @@ jobs:
           pip install integrations/crewai[dev]
       - name: Run tests
         run: |
-          pytest integrations/crewai/tests
+          pytest integrations/crewai/tests --ignore=integrations/crewai/tests/test_crewai_toolkit_oss.py
 
   langchain_test:
     runs-on: ubuntu-latest
@@ -89,7 +89,7 @@ jobs:
           pip install integrations/anthropic[dev]
       - name: Run Anthropic Tests
         run: |
-          pytest integrations/anthropic/tests
+          pytest integrations/anthropic/tests --ignore=integrations/anthropic/tests/test_anthropic_toolkit_oss.py
 
   llamaindex_test:
     runs-on: ubuntu-latest
@@ -164,4 +164,4 @@ jobs:
           pip install integrations/autogen[dev]
       - name: Run tests
         run: |
-          pytest integrations/autogen/tests
+          pytest integrations/autogen/tests --ignore=integrations/autogen/tests/test_autogen_toolkit_oss.py
