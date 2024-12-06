@@ -75,6 +75,7 @@ jobs:
           pip install integrations/autogen[dev]
           pytest integrations/autogen/tests/test_autogen_toolkit_oss.py
       - name: Run CrewAI OSS Integration Tests
+        if: matrix.python-version == '3.10'
         run: |
           pip install integrations/crewai[dev]
           pytest integrations/crewai/tests/test_crewai_toolkit_oss.py
