@@ -47,6 +47,7 @@ public class Oauth2CliExchange {
     String CLIENT_ID = "client_id";
     String CLIENT_SECRET = "client_secret";
     String REDIRECT_URL = "redirect_uri";
+    String CODE = "code";
   }
 
   public interface TokenTypes {
@@ -104,10 +105,13 @@ public class Oauth2CliExchange {
 
     String authUrl =
         String.format(
-            "%s?client_id=%s&redirect_uri=%s&response_type=code&scope=%s&state=%s",
+            "%s?%s=%s&%s=%s&response_type=%s&scope=%s&state=%s",
             authorizationUrl,
+            Fields.CLIENT_ID,
             URLEncoder.encode(clientId, StandardCharsets.UTF_8),
+            Fields.REDIRECT_URL,
             URLEncoder.encode(redirectUrl, StandardCharsets.UTF_8),
+            Fields.CODE,
             URLEncoder.encode("openid profile email", StandardCharsets.UTF_8),
             Hex.encodeHexString(stateBytes));
 
@@ -147,7 +151,7 @@ public class Oauth2CliExchange {
     server.stop(0);
 
     Map<String, String> tokenParams = new HashMap<>();
-    tokenParams.put("code", authCode);
+    tokenParams.put(Fields.CODE, authCode);
     tokenParams.put(Fields.CLIENT_ID, clientId);
     tokenParams.put(Fields.CLIENT_SECRET, clientSecret);
     tokenParams.put(Fields.GRANT_TYPE, "authorization_code");

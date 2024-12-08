@@ -53,7 +53,7 @@ public class CatalogService {
   }
 
   @Get("")
-  @AuthorizeExpression("#defer")
+  @AuthorizeExpression
   public HttpResponse listCatalogs(
       @Param("max_results") Optional<Integer> maxResults,
       @Param("page_token") Optional<String> pageToken) {

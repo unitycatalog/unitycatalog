@@ -42,7 +42,8 @@ public class TemporaryModelVersionCredentialsService {
     }
 
     @Post("")
-    public HttpResponse generateTemporaryModelVersionCredentials(GenerateTemporaryModelVersionCredential generateTemporaryModelVersionCredentials) {
+    public HttpResponse generateTemporaryModelVersionCredentials(
+            GenerateTemporaryModelVersionCredential generateTemporaryModelVersionCredentials) {
         authorizeForOperation(generateTemporaryModelVersionCredentials);
 
         long modelVersion = generateTemporaryModelVersionCredentials.getVersion();
@@ -71,7 +72,8 @@ public class TemporaryModelVersionCredentialsService {
                         modelVersionOperationToPrivileges(requestedOperation)));
     }
 
-    private Set<CredentialContext.Privilege> modelVersionOperationToPrivileges(ModelVersionOperation modelVersionOperation) {
+    private Set<CredentialContext.Privilege> modelVersionOperationToPrivileges(
+            ModelVersionOperation modelVersionOperation) {
         return switch (modelVersionOperation) {
             case READ_MODEL_VERSION -> Set.of(SELECT);
             case READ_WRITE_MODEL_VERSION -> Set.of(SELECT, UPDATE);
@@ -80,17 +82,22 @@ public class TemporaryModelVersionCredentialsService {
         };
     }
 
-    private void authorizeForOperation(GenerateTemporaryModelVersionCredential generateTemporaryModelVersionCredentials) {
+    private void authorizeForOperation(
+            GenerateTemporaryModelVersionCredential generateTemporaryModelVersionCredentials) {
 
         // TODO: This is a short term solution to conditional expression evaluation based on additional request parameters.
         // This should be replaced with more direct annotations and syntax in the future.
 
         String readExpression = """
-          #authorizeAny(#principal, #registered_model, OWNER, EXECUTE) && #authorizeAny(#principal, #schema, OWNER, USE_SCHEMA) && #authorizeAny(#principal, #catalog, OWNER, USE_CATALOG)
+          #authorizeAny(#principal, #registered_model, OWNER, EXECUTE) &&
+          #authorizeAny(#principal, #schema, OWNER, USE_SCHEMA) &&
+          #authorizeAny(#principal, #catalog, OWNER, USE_CATALOG)
           """;
 
         String writeExpression = """
-          (#authorize(#principal, #registered_model, OWNER) && #authorizeAny(#principal, #schema, OWNER, USE_SCHEMA) && #authorizeAny(#principal, #catalog, OWNER, USE_CATALOG))
+          #authorize(#principal, #registered_model, OWNER) &&
+          #authorizeAny(#principal, #schema, OWNER, USE_SCHEMA) &&
+          #authorizeAny(#principal, #catalog, OWNER, USE_CATALOG)
           """;
 
         String authorizeExpression =

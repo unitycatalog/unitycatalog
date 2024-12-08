@@ -22,7 +22,6 @@ public class AuthServiceTest extends BaseServerTest {
   private WebClient client;
   private static final String EMPTY_RESPONSE = "{}";
 
-
   @BeforeEach
   public void setUp() {
     super.setUp();
