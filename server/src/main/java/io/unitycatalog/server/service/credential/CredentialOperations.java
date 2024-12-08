@@ -42,10 +42,10 @@ public class CredentialOperations {
   }
 
   public TemporaryCredentials vendCredential(CredentialContext context) {
-    var location = context.getLocations().get(0);
+    String location = context.getLocations().get(0);
     FileUtils.assertValidLocation(location);
 
-    var storageScheme = context.getStorageScheme();
+    String storageScheme = context.getStorageScheme();
     TemporaryCredentials temporaryCredentials = new TemporaryCredentials();
 
     switch (storageScheme) {
