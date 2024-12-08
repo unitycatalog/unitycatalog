@@ -562,7 +562,7 @@ class DatabricksFunctionClient(BaseFunctionClient):
                     Applies the given row limit to the statement's result set, but unlike the `LIMIT` clause in SQL, it
                     also sets the `truncated` field in the response to indicate whether the result was trimmed due to
                     the limit or not.
-                - byte_limit: int (default to 4096)
+                - byte_limit: int (default to 1048576 = 1MB)
                     Applies the given byte limit to the statement's result size. Byte counts are based on internal data
                     representations and might not match the final size in the requested `format`. If the result was
                     truncated due to the byte limit, then `truncated` in the response is set to `true`. When using
