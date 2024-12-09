@@ -23,9 +23,6 @@ export type ModelInterface = ApiInterface<
   'RegisteredModelInfo'
 >;
 
-// TODO:
-// The queries `max_results` and `page_token` are not properly handled as of [25/11/2024].
-// These queries need to be implemented.
 export type UseListModelsArgs = ApiRequestQueryParam<
   CatalogApi,
   '/models',
@@ -40,8 +37,8 @@ export type UseListModelsArgs = ApiRequestQueryParam<
 export function useListModels({
   catalog_name,
   schema_name,
-  max_results,
-  page_token,
+  max_results: _max_results,
+  page_token: _page_token,
   options,
 }: UseListModelsArgs) {
   return useQuery<ApiSuccessResponse<CatalogApi, '/models', 'get'>>({
@@ -56,8 +53,6 @@ export function useListModels({
             query: {
               catalog_name,
               schema_name,
-              max_results,
-              page_token,
             },
           },
         },
@@ -189,7 +184,7 @@ export function useUpdateModel({ full_name }: UseUpdateModelArgs) {
     Error,
     UpdateModelMutationParams
   >({
-    mutationFn: async ({ comment, new_name }: UpdateModelMutationParams) => {
+    mutationFn: async ({ comment, new_name: _new_name }: UpdateModelMutationParams) => {
       const api = route({
         client: CLIENT,
         request: {
@@ -201,7 +196,6 @@ export function useUpdateModel({ full_name }: UseUpdateModelArgs) {
             },
             body: {
               comment,
-              new_name,
             },
           },
         },
@@ -285,9 +279,6 @@ export type ModelVersionInterface = ApiInterface<
   'ModelVersionInfo'
 >;
 
-// TODO:
-// The queries `max_results` and `page_token` are not properly handled as of [25/11/2024].
-// These queries need to be implemented.
 export type UseListModelVersionsArgs = ApiRequestPathParam<
   CatalogApi,
   '/models/{full_name}/versions',
@@ -297,8 +288,8 @@ export type UseListModelVersionsArgs = ApiRequestPathParam<
 
 export function useListModelVersions({
   full_name,
-  max_results,
-  page_token,
+  max_results: _max_results,
+  page_token: _page_token,
 }: UseListModelVersionsArgs) {
   const [catalog, schema, model] = full_name.split('.');
 
@@ -315,10 +306,6 @@ export function useListModelVersions({
           params: {
             paths: {
               full_name,
-            },
-            query: {
-              max_results,
-              page_token,
             },
           },
         },

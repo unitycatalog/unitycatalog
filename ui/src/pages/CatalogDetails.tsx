@@ -59,7 +59,7 @@ export default function CatalogDetails() {
           This inconsistency can still be addressed at the interface level. */}
       <EditCatalogDescriptionModal
         open={open}
-        catalog={{ new_name: data.name, ...data }}
+        catalog={{ comment: data.comment }}
         closeModal={() => setOpen(false)}
         onSubmit={(values) =>
           mutation.mutate(values, {

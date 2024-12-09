@@ -19,9 +19,6 @@ import type {
 
 export type FunctionInterface = ApiInterface<CatalogComponent, 'FunctionInfo'>;
 
-// TODO:
-// The queries `max_results` and `page_token` are not properly handled as of [25/11/2024].
-// These queries need to be implemented.
 export type UseListFunctionsArgs = ApiRequestQueryParam<
   CatalogApi,
   '/functions',
@@ -36,8 +33,8 @@ export type UseListFunctionsArgs = ApiRequestQueryParam<
 export function useListFunctions({
   catalog_name,
   schema_name,
-  max_results,
-  page_token,
+  max_results: _max_results,
+  page_token: _page_token,
   options,
 }: UseListFunctionsArgs) {
   return useQuery<ApiSuccessResponse<CatalogApi, '/functions', 'get'>>({
@@ -52,8 +49,6 @@ export function useListFunctions({
             query: {
               catalog_name,
               schema_name,
-              max_results,
-              page_token,
             },
           },
         },

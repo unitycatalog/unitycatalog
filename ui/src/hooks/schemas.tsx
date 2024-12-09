@@ -20,9 +20,6 @@ import type {
 
 export type SchemaInterface = ApiInterface<CatalogComponent, 'SchemaInfo'>;
 
-// TODO:
-// The queries `max_results` and `page_token` are not properly handled as of [25/11/2024].
-// These queries need to be implemented.
 export type UseListSchemasArgs = ApiRequestQueryParam<
   CatalogApi,
   '/schemas',
@@ -36,8 +33,8 @@ export type UseListSchemasArgs = ApiRequestQueryParam<
 
 export function useListSchemas({
   catalog_name,
-  max_results,
-  page_token,
+  max_results: _max_results,
+  page_token: _page_token,
   options,
 }: UseListSchemasArgs) {
   return useQuery<ApiSuccessResponse<CatalogApi, '/schemas', 'get'>>({
@@ -51,8 +48,6 @@ export function useListSchemas({
           params: {
             query: {
               catalog_name,
-              max_results,
-              page_token,
             },
           },
         },
@@ -185,8 +180,8 @@ export function useUpdateSchema({ full_name }: UseUpdateSchemaArgs) {
   >({
     mutationFn: async ({
       comment,
-      properties,
-      new_name,
+      properties: _properties,
+      new_name: _new_name,
     }: UpdateSchemaMutationParams) => {
       const api = route({
         client: CLIENT,
@@ -199,8 +194,6 @@ export function useUpdateSchema({ full_name }: UseUpdateSchemaArgs) {
             },
             body: {
               comment,
-              properties,
-              new_name,
             },
           },
         },

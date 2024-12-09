@@ -20,9 +20,6 @@ import type {
 
 export type VolumeInterface = ApiInterface<CatalogComponent, 'VolumeInfo'>;
 
-// TODO:
-// The queries `max_results` and `page_token` are not properly handled as of [25/11/2024].
-// These queries need to be implemented.
 export type UseListVolumesArgs = ApiRequestQueryParam<
   CatalogApi,
   '/volumes',
@@ -37,8 +34,8 @@ export type UseListVolumesArgs = ApiRequestQueryParam<
 export function useListVolumes({
   catalog_name,
   schema_name,
-  max_results,
-  page_token,
+  max_results: _max_results,
+  page_token: _page_token,
   options,
 }: UseListVolumesArgs) {
   return useQuery<ApiSuccessResponse<CatalogApi, '/volumes', 'get'>>({
@@ -53,8 +50,6 @@ export function useListVolumes({
             query: {
               catalog_name,
               schema_name,
-              max_results,
-              page_token,
             },
           },
         },
@@ -130,7 +125,7 @@ export function useUpdateVolume({ name }: UseUpdateVolumeArgs) {
     Error,
     UpdateVolumeMutationParams
   >({
-    mutationFn: async ({ comment, new_name }: UpdateVolumeMutationParams) => {
+    mutationFn: async ({ comment, new_name: _new_name }: UpdateVolumeMutationParams) => {
       const api = route({
         client: CLIENT,
         request: {
@@ -142,7 +137,6 @@ export function useUpdateVolume({ name }: UseUpdateVolumeArgs) {
             },
             body: {
               comment,
-              new_name,
             },
           },
         },
