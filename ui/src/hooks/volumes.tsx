@@ -125,7 +125,10 @@ export function useUpdateVolume({ name }: UseUpdateVolumeArgs) {
     Error,
     UpdateVolumeMutationParams
   >({
-    mutationFn: async ({ comment, new_name: _new_name }: UpdateVolumeMutationParams) => {
+    mutationFn: async ({
+      comment,
+      new_name: _new_name,
+    }: UpdateVolumeMutationParams) => {
       const api = route({
         client: CLIENT,
         request: {

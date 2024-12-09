@@ -184,7 +184,10 @@ export function useUpdateModel({ full_name }: UseUpdateModelArgs) {
     Error,
     UpdateModelMutationParams
   >({
-    mutationFn: async ({ comment, new_name: _new_name }: UpdateModelMutationParams) => {
+    mutationFn: async ({
+      comment,
+      new_name: _new_name,
+    }: UpdateModelMutationParams) => {
       const api = route({
         client: CLIENT,
         request: {
