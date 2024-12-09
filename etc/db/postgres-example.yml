@@ -1,6 +1,6 @@
 
 services:
-  db:
+  postgresql-db:
     image: postgres:16.3
     restart: always
     environment:
@@ -8,7 +8,7 @@ services:
       POSTGRES_USER: uc_default_user
       POSTGRES_PASSWORD: uc_default_password
     volumes:
-      - postgres_data:/var/lib/postgres
+      - postgres_data:/var/lib/postgresql/data
     ports:
       - 5432:5432
 
