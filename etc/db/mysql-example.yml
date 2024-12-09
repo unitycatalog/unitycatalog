@@ -1,6 +1,6 @@
 
 services:
-  db:
+  mysql-db:
     image: mysql:8.4.1
     restart: always
     environment:
