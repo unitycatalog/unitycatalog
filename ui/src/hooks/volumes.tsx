@@ -34,8 +34,6 @@ export type UseListVolumesArgs = ApiRequestQueryParam<
 export function useListVolumes({
   catalog_name,
   schema_name,
-  max_results: _max_results,
-  page_token: _page_token,
   options,
 }: UseListVolumesArgs) {
   return useQuery<ApiSuccessResponse<CatalogApi, '/volumes', 'get'>>({
@@ -125,10 +123,7 @@ export function useUpdateVolume({ name }: UseUpdateVolumeArgs) {
     Error,
     UpdateVolumeMutationParams
   >({
-    mutationFn: async ({
-      comment,
-      new_name: _new_name,
-    }: UpdateVolumeMutationParams) => {
+    mutationFn: async ({ comment }: UpdateVolumeMutationParams) => {
       const api = route({
         client: CLIENT,
         request: {

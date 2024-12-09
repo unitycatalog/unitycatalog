@@ -19,9 +19,6 @@ import type {
 
 export type TableInterface = ApiInterface<CatalogComponent, 'TableInfo'>;
 
-// TODO:
-// The queries `max_results` and `page_token` are not properly handled as of [25/11/2024].
-// These queries need to be implemented.
 export type UseListTablesArgs = ApiRequestQueryParam<
   CatalogApi,
   '/tables',
@@ -36,8 +33,6 @@ export type UseListTablesArgs = ApiRequestQueryParam<
 export function useListTables({
   catalog_name,
   schema_name,
-  max_results,
-  page_token,
   options,
 }: UseListTablesArgs) {
   return useQuery<ApiSuccessResponse<CatalogApi, '/tables', 'get'>>({
@@ -52,8 +47,6 @@ export function useListTables({
             query: {
               catalog_name,
               schema_name,
-              max_results,
-              page_token,
             },
           },
         },

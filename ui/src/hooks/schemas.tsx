@@ -31,12 +31,7 @@ export type UseListSchemasArgs = ApiRequestQueryParam<
   >;
 };
 
-export function useListSchemas({
-  catalog_name,
-  max_results: _max_results,
-  page_token: _page_token,
-  options,
-}: UseListSchemasArgs) {
+export function useListSchemas({ catalog_name, options }: UseListSchemasArgs) {
   return useQuery<ApiSuccessResponse<CatalogApi, '/schemas', 'get'>>({
     queryKey: ['listSchemas', catalog_name],
     queryFn: async () => {
@@ -178,11 +173,7 @@ export function useUpdateSchema({ full_name }: UseUpdateSchemaArgs) {
     Error,
     UpdateSchemaMutationParams
   >({
-    mutationFn: async ({
-      comment,
-      properties: _properties,
-      new_name: _new_name,
-    }: UpdateSchemaMutationParams) => {
+    mutationFn: async ({ comment }: UpdateSchemaMutationParams) => {
       const api = route({
         client: CLIENT,
         request: {

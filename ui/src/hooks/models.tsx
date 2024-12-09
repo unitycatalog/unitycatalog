@@ -37,8 +37,6 @@ export type UseListModelsArgs = ApiRequestQueryParam<
 export function useListModels({
   catalog_name,
   schema_name,
-  max_results: _max_results,
-  page_token: _page_token,
   options,
 }: UseListModelsArgs) {
   return useQuery<ApiSuccessResponse<CatalogApi, '/models', 'get'>>({
@@ -184,10 +182,7 @@ export function useUpdateModel({ full_name }: UseUpdateModelArgs) {
     Error,
     UpdateModelMutationParams
   >({
-    mutationFn: async ({
-      comment,
-      new_name: _new_name,
-    }: UpdateModelMutationParams) => {
+    mutationFn: async ({ comment }: UpdateModelMutationParams) => {
       const api = route({
         client: CLIENT,
         request: {
@@ -289,11 +284,7 @@ export type UseListModelVersionsArgs = ApiRequestPathParam<
 > &
   ApiRequestQueryParam<CatalogApi, '/models/{full_name}/versions', 'get'>;
 
-export function useListModelVersions({
-  full_name,
-  max_results: _max_results,
-  page_token: _page_token,
-}: UseListModelVersionsArgs) {
+export function useListModelVersions({ full_name }: UseListModelVersionsArgs) {
   const [catalog, schema, model] = full_name.split('.');
 
   return useQuery<

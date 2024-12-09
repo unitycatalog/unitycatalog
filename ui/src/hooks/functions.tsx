@@ -33,8 +33,6 @@ export type UseListFunctionsArgs = ApiRequestQueryParam<
 export function useListFunctions({
   catalog_name,
   schema_name,
-  max_results: _max_results,
-  page_token: _page_token,
   options,
 }: UseListFunctionsArgs) {
   return useQuery<ApiSuccessResponse<CatalogApi, '/functions', 'get'>>({
