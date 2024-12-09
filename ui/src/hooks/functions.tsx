@@ -4,106 +4,146 @@ import {
   useQueryClient,
   UseQueryOptions,
 } from '@tanstack/react-query';
-import apiClient from '../context/client';
+import { CLIENT } from '../context/catalog';
+import { route } from '../utils/openapi';
+import type {
+  paths as CatalogApi,
+  components as CatalogComponent,
+} from '../types/api/catalog.gen';
+import type {
+  ApiInterface,
+  ApiSuccessResponse,
+  ApiRequestPathParam,
+  ApiRequestQueryParam,
+} from '../utils/openapi';
 
-export interface FunctionInterface {
-  function_id: string;
-  catalog_name: string;
-  schema_name: string;
-  name: string;
-  comment: string;
-  external_language: string;
-  routine_definition: string;
-  created_at: number;
-  updated_at: number | null;
-  owner: string | null;
-  created_by: string | null;
-  updated_by: string | null;
-}
-interface ListFunctionsResponse {
-  functions: FunctionInterface[];
-  next_page_token: string | null;
-}
+export type FunctionInterface = ApiInterface<CatalogComponent, 'FunctionInfo'>;
 
-interface ListFunctionsParams {
-  catalog: string;
-  schema: string;
+export type UseListFunctionsArgs = ApiRequestQueryParam<
+  CatalogApi,
+  '/functions',
+  'get'
+> & {
   options?: Omit<
-    UseQueryOptions<ListFunctionsResponse>,
+    UseQueryOptions<ApiSuccessResponse<CatalogApi, '/functions', 'get'>>,
     'queryKey' | 'queryFn'
   >;
-}
+};
 
 export function useListFunctions({
-  catalog,
-  schema,
+  catalog_name,
+  schema_name,
   options,
-}: ListFunctionsParams) {
-  return useQuery<ListFunctionsResponse>({
-    queryKey: ['listFunctions', catalog, schema],
+}: UseListFunctionsArgs) {
+  return useQuery<ApiSuccessResponse<CatalogApi, '/functions', 'get'>>({
+    queryKey: ['listFunctions', catalog_name, schema_name],
     queryFn: async () => {
-      const searchParams = new URLSearchParams({
-        catalog_name: catalog,
-        schema_name: schema,
+      const api = route({
+        client: CLIENT,
+        request: {
+          path: '/functions',
+          method: 'get',
+          params: {
+            query: {
+              catalog_name,
+              schema_name,
+            },
+          },
+        },
+        errorMessage: 'Failed to list functions',
       });
-
-      return apiClient
-        .get(`/functions?${searchParams.toString()}`)
-        .then((response) => response.data);
+      const response = await api.call();
+      if (response.result !== 'success') {
+        // NOTE:
+        // When an expected error occurs, as defined in the OpenAPI specification, the following line will
+        // be executed. This block serves as a placeholder for expected errors.
+      }
+      return response.data;
     },
     ...options,
   });
 }
 
-interface GetFunctionParams {
-  catalog: string;
-  schema: string;
-  ucFunction: string;
-}
+export type UseGetFunctionArgs = ApiRequestPathParam<
+  CatalogApi,
+  '/functions/{name}',
+  'get'
+>;
 
-export function useGetFunction({
-  catalog,
-  schema,
-  ucFunction,
-}: GetFunctionParams) {
-  return useQuery<FunctionInterface>({
+export function useGetFunction({ name }: UseGetFunctionArgs) {
+  const [catalog, schema, ucFunction] = name.split('.');
+
+  return useQuery<ApiSuccessResponse<CatalogApi, '/functions/{name}', 'get'>>({
     queryKey: ['getFunction', catalog, schema, ucFunction],
     queryFn: async () => {
-      const fullFunctionName = [catalog, schema, ucFunction].join('.');
-
-      return apiClient
-        .get(`/functions/${fullFunctionName}`)
-        .then((response) => response.data);
+      const api = route({
+        client: CLIENT,
+        request: {
+          path: '/functions/{name}',
+          method: 'get',
+          params: {
+            paths: {
+              name,
+            },
+          },
+        },
+        errorMessage: 'Failed to fetch function',
+      });
+      const response = await api.call();
+      if (response.result !== 'success') {
+        // NOTE:
+        // When an expected error occurs, as defined in the OpenAPI specification, the following line will
+        // be executed. This block serves as a placeholder for expected errors.
+      }
+      return response.data;
     },
   });
 }
 
-export interface DeleteFunctionMutationParams
-  extends Pick<FunctionInterface, 'catalog_name' | 'schema_name' | 'name'> {}
+export type UseDeleteFunctionArgs = ApiRequestPathParam<
+  CatalogApi,
+  '/functions/{name}',
+  'delete'
+>;
 
-interface DeleteFunctionParams {
-  catalog: string;
-  schema: string;
-}
+export type DeleteFunctionMutationParams = ApiRequestPathParam<
+  CatalogApi,
+  '/functions/{name}',
+  'delete'
+>;
 
 // Delete a function
-export function useDeleteFunction({ catalog, schema }: DeleteFunctionParams) {
+export function useDeleteFunction({ name }: UseDeleteFunctionArgs) {
   const queryClient = useQueryClient();
 
-  return useMutation<void, Error, DeleteFunctionMutationParams>({
-    mutationFn: async ({
-      catalog_name,
-      schema_name,
-      name,
-    }: DeleteFunctionMutationParams) => {
-      return apiClient
-        .delete(`/functions/${catalog_name}.${schema_name}.${name}`)
-        .then((response) => response.data)
-        .catch((e) => {
-          throw new Error(
-            e.response?.data?.message || 'Failed to delete function',
-          );
-        });
+  const [catalog, schema] = name.split('.');
+
+  return useMutation<
+    ApiSuccessResponse<CatalogApi, '/functions/{name}', 'delete'>,
+    Error,
+    DeleteFunctionMutationParams
+  >({
+    mutationFn: async ({ name }: DeleteFunctionMutationParams) => {
+      const api = route({
+        client: CLIENT,
+        request: {
+          path: '/functions/{name}',
+          method: 'delete',
+          params: {
+            paths: {
+              name,
+            },
+          },
+        },
+        errorMessage: 'Failed to delete function',
+      });
+      const response = await api.call();
+      if (response.result !== 'success') {
+        // NOTE:
+        // When an expected error occurs, as defined in the OpenAPI specification, the following line will
+        // be executed. This block serves as a placeholder for expected errors.
+      }
+      return response.data;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({

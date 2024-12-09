@@ -16,10 +16,10 @@ export default function CatalogDetails() {
   const { catalog } = useParams();
   if (!catalog) throw new Error('Catalog name is required');
 
-  const { data } = useGetCatalog({ catalog });
+  const { data } = useGetCatalog({ name: catalog });
   const [open, setOpen] = useState<boolean>(false);
   const { setNotification } = useNotification();
-  const mutation = useUpdateCatalog(catalog);
+  const mutation = useUpdateCatalog({ name: catalog });
 
   if (!data) return null;
 
@@ -45,7 +45,7 @@ export default function CatalogDetails() {
         <DetailsLayout.Content>
           <Flex vertical gap="middle">
             <DescriptionBox
-              comment={data.comment}
+              comment={data.comment ?? ''}
               onEdit={() => setOpen(true)}
             />
             <SchemasList catalog={catalog} />
@@ -55,9 +55,11 @@ export default function CatalogDetails() {
           <CatalogSidebar catalog={catalog} />
         </DetailsLayout.Aside>
       </DetailsLayout>
+      {/* NOTE: Due to inconsistencies in the API specification, the following workaround is necessary. 
+          This inconsistency can still be addressed at the interface level. */}
       <EditCatalogDescriptionModal
         open={open}
-        catalog={data}
+        catalog={{ comment: data.comment }}
         closeModal={() => setOpen(false)}
         onSubmit={(values) =>
           mutation.mutate(values, {

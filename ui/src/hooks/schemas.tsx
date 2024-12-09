@@ -4,76 +4,143 @@ import {
   useQueryClient,
   UseQueryOptions,
 } from '@tanstack/react-query';
-import apiClient from '../context/client';
+import { CLIENT } from '../context/catalog';
+import { route } from '../utils/openapi';
+import type {
+  paths as CatalogApi,
+  components as CatalogComponent,
+} from '../types/api/catalog.gen';
+import type {
+  ApiInterface,
+  ApiSuccessResponse,
+  ApiRequestPathParam,
+  ApiRequestQueryParam,
+  ApiRequestBody,
+} from '../utils/openapi';
 
-export interface SchemaInterface {
-  schema_id: string;
-  catalog_name: string;
-  name: string;
-  comment: string;
-  created_at: number;
-  updated_at: number | null;
-  owner: string | null;
-  created_by: string | null;
-  updated_by: string | null;
-}
-interface ListSchemasResponse {
-  schemas: SchemaInterface[];
-  next_page_token: string | null;
-}
+export type SchemaInterface = ApiInterface<CatalogComponent, 'SchemaInfo'>;
 
-interface ListSchemasParams {
-  catalog: string;
-  options?: Omit<UseQueryOptions<ListSchemasResponse>, 'queryKey' | 'queryFn'>;
-}
+export type UseListSchemasArgs = ApiRequestQueryParam<
+  CatalogApi,
+  '/schemas',
+  'get'
+> & {
+  options?: Omit<
+    UseQueryOptions<ApiSuccessResponse<CatalogApi, '/schemas', 'get'>>,
+    'queryKey' | 'queryFn'
+  >;
+};
 
-export function useListSchemas({ catalog, options }: ListSchemasParams) {
-  return useQuery<ListSchemasResponse>({
-    queryKey: ['listSchemas', catalog],
+export function useListSchemas({ catalog_name, options }: UseListSchemasArgs) {
+  return useQuery<ApiSuccessResponse<CatalogApi, '/schemas', 'get'>>({
+    queryKey: ['listSchemas', catalog_name],
     queryFn: async () => {
-      const searchParams = new URLSearchParams({ catalog_name: catalog });
-
-      return apiClient
-        .get(`/schemas?${searchParams.toString()}`)
-        .then((response) => response.data);
+      const api = route({
+        client: CLIENT,
+        request: {
+          path: '/schemas',
+          method: 'get',
+          params: {
+            query: {
+              catalog_name,
+            },
+          },
+        },
+        errorMessage: 'Failed to list schemas',
+      });
+      const response = await api.call();
+      if (response.result !== 'success') {
+        // NOTE:
+        // When an expected error occurs, as defined in the OpenAPI specification, the following line will
+        // be executed. This block serves as a placeholder for expected errors.
+      }
+      return response.data;
     },
     ...options,
   });
 }
 
-interface GetSchemaParams {
-  catalog: string;
-  schema: string;
-}
-export function useGetSchema({ catalog, schema }: GetSchemaParams) {
-  return useQuery<SchemaInterface>({
+export type UseGetSchemaArgs = ApiRequestPathParam<
+  CatalogApi,
+  '/schemas/{full_name}',
+  'get'
+>;
+
+export function useGetSchema({ full_name }: UseGetSchemaArgs) {
+  const [catalog, schema] = full_name.split('.');
+
+  return useQuery<
+    ApiSuccessResponse<CatalogApi, '/schemas/{full_name}', 'get'>
+  >({
     queryKey: ['getSchema', catalog, schema],
     queryFn: async () => {
-      const fullName = [catalog, schema].join('.');
-
-      return apiClient
-        .get(`/schemas/${fullName}`)
-        .then((response) => response.data);
+      const api = route({
+        client: CLIENT,
+        request: {
+          path: '/schemas/{full_name}',
+          method: 'get',
+          params: {
+            paths: {
+              full_name,
+            },
+          },
+        },
+        errorMessage: 'Failed to fetch schema',
+      });
+      const response = await api.call();
+      if (response.result !== 'success') {
+        // NOTE:
+        // When an expected error occurs, as defined in the OpenAPI specification, the following line will
+        // be executed. This block serves as a placeholder for expected errors.
+      }
+      return response.data;
     },
   });
 }
 
-export interface CreateSchemaMutationParams
-  extends Pick<SchemaInterface, 'name' | 'catalog_name' | 'comment'> {}
+export type CreateSchemaMutationParams = ApiRequestBody<
+  CatalogApi,
+  '/schemas',
+  'post'
+>;
 
 export function useCreateSchema() {
   const queryClient = useQueryClient();
 
-  return useMutation<SchemaInterface, Error, CreateSchemaMutationParams>({
-    mutationFn: async (params: CreateSchemaMutationParams) => {
-      return apiClient
-        .post(`/schemas`, JSON.stringify(params))
-        .then((response) => response.data)
-        .catch((e) => {
-          throw new Error(
-            e.response?.data?.message || 'Failed to create schema',
-          );
-        });
+  return useMutation<
+    ApiSuccessResponse<CatalogApi, '/schemas', 'post'>,
+    Error,
+    CreateSchemaMutationParams
+  >({
+    mutationFn: async ({
+      name,
+      catalog_name,
+      comment,
+      properties,
+    }: CreateSchemaMutationParams) => {
+      const api = route({
+        client: CLIENT,
+        request: {
+          path: '/schemas',
+          method: 'post',
+          params: {
+            body: {
+              name,
+              catalog_name,
+              comment,
+              properties,
+            },
+          },
+        },
+        errorMessage: 'Failed to create schema',
+      });
+      const response = await api.call();
+      if (response.result !== 'success') {
+        // NOTE:
+        // When an expected error occurs, as defined in the OpenAPI specification, the following line will
+        // be executed. This block serves as a placeholder for expected errors.
+      }
+      return response.data;
     },
     onSuccess: (schema) => {
       queryClient.invalidateQueries({
@@ -82,30 +149,54 @@ export function useCreateSchema() {
     },
   });
 }
-// =========================
-interface UpdateSchemaParams {
-  catalog: string;
-  schema: string;
-}
-export interface UpdateSchemaMutationParams
-  extends Pick<SchemaInterface, 'comment'> {}
+
+export type UseUpdateSchemaArgs = ApiRequestPathParam<
+  CatalogApi,
+  '/schemas/{full_name}',
+  'patch'
+>;
+
+export type UpdateSchemaMutationParams = ApiRequestBody<
+  CatalogApi,
+  '/schemas/{full_name}',
+  'patch'
+>;
 
 // Update a new schema
-export function useUpdateSchema({ catalog, schema }: UpdateSchemaParams) {
+export function useUpdateSchema({ full_name }: UseUpdateSchemaArgs) {
   const queryClient = useQueryClient();
 
-  return useMutation<SchemaInterface, Error, UpdateSchemaMutationParams>({
-    mutationFn: async (params: UpdateSchemaMutationParams) => {
-      const fullSchemaName = [catalog, schema].join('.');
+  const [catalog, schema] = full_name.split('.');
 
-      return apiClient
-        .patch(`/schemas/${fullSchemaName}`, JSON.stringify(params))
-        .then((response) => response.data)
-        .catch((e) => {
-          throw new Error(
-            e.response?.data?.message || 'Failed to update schema',
-          );
-        });
+  return useMutation<
+    ApiSuccessResponse<CatalogApi, '/schemas/{full_name}', 'patch'>,
+    Error,
+    UpdateSchemaMutationParams
+  >({
+    mutationFn: async ({ comment }: UpdateSchemaMutationParams) => {
+      const api = route({
+        client: CLIENT,
+        request: {
+          path: '/schemas/{full_name}',
+          method: 'patch',
+          params: {
+            paths: {
+              full_name,
+            },
+            body: {
+              comment,
+            },
+          },
+        },
+        errorMessage: 'Failed to update schema',
+      });
+      const response = await api.call();
+      if (response.result !== 'success') {
+        // NOTE:
+        // When an expected error occurs, as defined in the OpenAPI specification, the following line will
+        // be executed. This block serves as a placeholder for expected errors.
+      }
+      return response.data;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({
@@ -115,28 +206,49 @@ export function useUpdateSchema({ catalog, schema }: UpdateSchemaParams) {
   });
 }
 
-// =========================
+export type UseDeleteSchemaArgs = ApiRequestPathParam<
+  CatalogApi,
+  '/schemas/{full_name}',
+  'delete'
+>;
 
-export interface DeleteSchemaMutationParams
-  extends Pick<SchemaInterface, 'catalog_name' | 'name'> {}
+export type DeleteSchemaMutationParams = ApiRequestPathParam<
+  CatalogApi,
+  '/schemas/{full_name}',
+  'delete'
+>;
 
-interface DeleteSchemaParams {
-  catalog: string;
-}
-
-export function useDeleteSchema({ catalog }: DeleteSchemaParams) {
+export function useDeleteSchema({ full_name }: UseDeleteSchemaArgs) {
   const queryClient = useQueryClient();
 
-  return useMutation<void, Error, DeleteSchemaMutationParams>({
-    mutationFn: async (params: DeleteSchemaMutationParams) => {
-      return apiClient
-        .delete(`/schemas/${params.catalog_name}.${params.name}`)
-        .then((response) => response.data)
-        .catch((e) => {
-          throw new Error(
-            e.response?.data?.message || 'Failed to delete schema',
-          );
-        });
+  const [catalog] = full_name.split('.');
+
+  return useMutation<
+    ApiSuccessResponse<CatalogApi, '/schemas/{full_name}', 'delete'>,
+    Error,
+    DeleteSchemaMutationParams
+  >({
+    mutationFn: async ({ full_name }: DeleteSchemaMutationParams) => {
+      const api = route({
+        client: CLIENT,
+        request: {
+          path: '/schemas/{full_name}',
+          method: 'delete',
+          params: {
+            paths: {
+              full_name,
+            },
+          },
+        },
+        errorMessage: 'Failed to delete schema',
+      });
+      const response = await api.call();
+      if (response.result !== 'success') {
+        // NOTE:
+        // When an expected error occurs, as defined in the OpenAPI specification, the following line will
+        // be executed. This block serves as a placeholder for expected errors.
+      }
+      return response.data;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({

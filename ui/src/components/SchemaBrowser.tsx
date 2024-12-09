@@ -32,13 +32,13 @@ export default function SchemaBrowser() {
 
   const listCatalogsRequest = useListCatalogs();
   const listSchemasRequest = useListSchemas({
-    catalog: catalogToExpand!,
+    catalog_name: catalogToExpand!,
     options: { enabled: !!catalogToExpand },
   });
 
   const listTablesRequest = useListTables({
-    catalog: entityToExpand.catalog,
-    schema: entityToExpand.schema,
+    catalog_name: entityToExpand.catalog,
+    schema_name: entityToExpand.schema,
     options: {
       enabled:
         !!entityToExpand.catalog &&
@@ -48,8 +48,8 @@ export default function SchemaBrowser() {
   });
 
   const listVolumesRequest = useListVolumes({
-    catalog: entityToExpand.catalog,
-    schema: entityToExpand.schema,
+    catalog_name: entityToExpand.catalog,
+    schema_name: entityToExpand.schema,
     options: {
       enabled:
         !!entityToExpand.catalog &&
@@ -59,8 +59,8 @@ export default function SchemaBrowser() {
   });
 
   const listFunctionsRequest = useListFunctions({
-    catalog: entityToExpand.catalog,
-    schema: entityToExpand.schema,
+    catalog_name: entityToExpand.catalog,
+    schema_name: entityToExpand.schema,
     options: {
       enabled:
         !!entityToExpand.catalog &&
@@ -70,8 +70,8 @@ export default function SchemaBrowser() {
   });
 
   const listModelsRequest = useListModels({
-    catalog: entityToExpand.catalog,
-    schema: entityToExpand.schema,
+    catalog_name: entityToExpand.catalog,
+    schema_name: entityToExpand.schema,
     options: {
       enabled:
         !!entityToExpand.catalog &&
@@ -83,14 +83,14 @@ export default function SchemaBrowser() {
   useEffect(() => {
     setExpendedKeys([]); // Collapse all nodes when list catalog updates
     setTreeData(
-      listCatalogsRequest.data?.catalogs.map((catalog) => {
+      listCatalogsRequest.data?.catalogs?.map((catalog) => {
         const catalogNode: TreeDataNode = {
           title: (
             <>
               <ProductOutlined /> {catalog.name}
             </>
           ),
-          key: catalog.name,
+          key: `${catalog.name}`,
           children: [
             {
               title: <LoadingOutlined />,

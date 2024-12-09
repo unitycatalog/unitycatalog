@@ -27,7 +27,7 @@ const CATALOG_METADATA: MetadataListType<CatalogInterface> = [
 ];
 
 export default function CatalogSidebar({ catalog }: CatalogSidebarProps) {
-  const { data } = useGetCatalog({ catalog });
+  const { data } = useGetCatalog({ name: catalog });
 
   if (!data) return null;
 

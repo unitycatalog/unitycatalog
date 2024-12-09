@@ -13,7 +13,9 @@ export default function ColumnsList({
   schema,
   table,
 }: ColumnsListProps) {
-  const { data, isLoading } = useGetTable({ catalog, schema, table });
+  const { data, isLoading } = useGetTable({
+    full_name: [catalog, schema, table].join('.'),
+  });
 
   return (
     <ListLayout
