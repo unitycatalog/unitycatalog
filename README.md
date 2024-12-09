@@ -57,6 +57,9 @@ Let's take Unity Catalog for spin. In this guide, we are going to do the followi
   An example project is provided to demonstrate how to use the UC SDK for various assets
   as well as provide a convenient way to explore the content of any UC server implementation.
 
+> If you prefer to run Unity Catalog in Docker use `docker
+> compose up`. See the [Docker Compose docs](./docs/docker_compose.md) for more details.
+
 ### Prerequisites
 
 You have to ensure that your local environment has the following:
@@ -65,7 +68,6 @@ You have to ensure that your local environment has the following:
 - Ensure the `JAVA_HOME` environment variable your terminal is configured to point to JDK17.
 - Compile the project using `build/sbt package`
 
-> If you prefer to run this using the Unity Catalog Dockerized Environment, please refer to the Docker [README.md](./docker/README.md)
 
 ### Run the UC Server
 
@@ -244,27 +246,5 @@ imposes an upper bound. Please check the [JDK compatibility](https://docs.scala-
 
 ### Serving the documentation with mkdocs
 
-Create a virtual environment:
-
-```sh
-# Create virtual environment
-python -m venv uc_docs_venv
-
-# Activate virtual environment (Linux/macOS)
-source uc_docs_venv/bin/activate
-
-# Activate virtual environment (Windows)
-uc_docs_venv\Scripts\activate
-```
-
-Install the required dependencies:
-
-```sh
-pip install -r requirements-docs.txt
-```
-
-Then serve the docs with
-
-```sh
-mkdocs serve
-```
+For an overview of how to contribute to the documentation, please see our introduction [here](./docs/README.md).
+For the official documentation, please take a look at [https://docs.unitycatalog.io/](https://docs.unitycatalog.io/).

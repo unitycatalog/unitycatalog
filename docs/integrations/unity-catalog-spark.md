@@ -10,10 +10,8 @@ Integrating Apache Spark with Unity Catalog offers significant advantages over t
 * Make it easier to decouple business logic from file paths.  
 * Provides easy access to different file formats without end users needing to know how the data is stored.
 
-
 !!! warning "Prerequisites"
     For Apache Spark and Delta Lake to work together with Unity Catalog, you will need atleast Apache Spark 3.5.3 and Delta Lake 3.2.1.
-
 
 ## Download and Configure Unity Catalog for Apache Spark
 
@@ -54,7 +52,7 @@ To have Unity Catalog work with cloud object storage as the storage location for
     adls.clientSecret.0=<SECRET>
     ```
 
-=== "Google Cloud Storage"    
+=== "Google Cloud Storage"
 
     ```bash
     ## GCS Storage Config (Multiple configs can be added by incrementing the index)
@@ -71,7 +69,6 @@ If the UC Server is already started, please restart it to account for the cloud 
 cd unitycatalog/
 bin/start-uc-server
 ```
-
 
 ## Working with Unity Catalog Tables with Apache Spark and Delta Lake Locally
 
@@ -105,10 +102,8 @@ Let’s start running some Spark SQL queries in the Spark SQL shell (`bin/spark-
         --conf "spark.sql.defaultCatalog=unity"
     ```
 
-
 !!! tip "Tip"
      Initially, this may take a few minutes to run to download the necessary dependencies.  Afterwards, you can run some quick commands to see your UC assets within Spark SQL shell.
-
 
 Notice the following packages (`--packages`) and configurations (`--conf`)
 
@@ -117,13 +112,11 @@ Notice the following packages (`--packages`) and configurations (`--conf`)
 * `spark.sql.catalog.unity.token` is empty indicating there is no authentication; refer to [auth](../server/auth.md) for more information.
 * `spark.sql.defaultCatalog=unity` must be filled out to indicate the default catalog.
 
-
 ??? note "Three-part and two-part naming conventions"
 
     ![](https://cdn.prod.website-files.com/66954b344e907bd91f1c8027/66e2bafe16edde34db6395f2_AD_4nXdgqGKSeR2abf7zutk0fiALAs6vejg6EgUDgD_Ud9Xjy7nNkapMePCNH0zJw9Wv0uh6LYn7vlGYrRn4H74G9d0CouV0PWKsUTGkjfBKM5y4Br64B2P5Eapv97bCw0swV4pddsemaWU2zyYYlkKT6Ymxu2YO.png)
 
     As noted in [Unity Catalog 101](https://www.unitycatalog.io/blogs/unity-catalog-oss), UC has a three-part naming convention of [`catalog`].[`schema`].[`asset`].  In the following examples, you can use the three-part notation such as `SELECT * FROM unity.default.marksheet;` or the two-part notation `SELECT * FROM default.marksheet;` as the `defaultCatalog` is already configured.
-
 
 ### [Optional] Running Spark SQL for Cloud Object Stores
 
@@ -175,13 +168,11 @@ If you would like to run this against cloud object storage, the following versio
         --conf "spark.sql.defaultCatalog=unity"
     ```
 
-
-
 ## Using Spark SQL to query Unity Catalog schemas and tables
 
 Let’s start by running some quick commands from the Spark SQL and pyspark shells.
 
-The following `SHOW SCHEMA` shows the `default` schema that is included in the initial UC configuration. 
+The following `SHOW SCHEMA` shows the `default` schema that is included in the initial UC configuration.
 
 === "Spark SQL"
 
@@ -197,12 +188,11 @@ The following `SHOW SCHEMA` shows the `default` schema that is included in the i
 
     ```python
     # Show schemas (output = default)
-    sql("SHOW SCHEMAS").show()
+    spark.sql("SHOW SCHEMAS").show()
 
     # Show tables
-    sql("SHOW TABLES IN default").show()        
+    spark.sql("SHOW TABLES IN default").show()
     ```
-
 
 with the output similar to:
 
@@ -219,7 +209,6 @@ with the output similar to:
 
 Let’s query the first five rows of the `marksheet` table.
 
-
 === "Spark SQL"
 
     ```sql
@@ -229,11 +218,11 @@ Let’s query the first five rows of the `marksheet` table.
 === "PySpark"
 
     ```python
-    sql("SELECT * FROM default.marksheet LIMIT5;").show()
+    spark.sql("SELECT * FROM default.marksheet LIMIT 5;").show()
     ```
 
-
 With the output looking similar to the following.
+
 ```console
 +---+----------+-----+
 | id|      name|marks|
@@ -246,76 +235,190 @@ With the output looking similar to the following.
 +---+----------+-----+
 ```
 
-
-## Running CRUD Operations on a Unity Catalog table
+## Running CRUD Operations on a Unity Catalog Table
 
 Let’s extend this example by executing various CRUD operations on our UC tables.  
 
-```sql title="Create new schema"
--- Create new schema
-CREATE SCHEMA demo;
+### Create New Schema
 
--- Should now show two schemas: default and demo
-SHOW SCHEMAS;
-```
+=== "Spark SQL"
 
-```sql title="Create new table"
--- Create a new table
-CREATE TABLE
-demo.mytable (id INT, desc STRING) 
-USING delta 
-LOCATION '<LOCATION>';
--- Example location:
--- LOCATION '/tmp/tables/mytable';
-```
+    ```sql
+    -- Create new schema
+    CREATE SCHEMA demo;
+    
+    -- Should now show two schemas: default and demo
+    SHOW SCHEMAS;
+    ```
 
-```sql title="Insert new rows into table"
--- Insert new rows
-INSERT INTO demo.mytable VALUES (1, "test 1");
-INSERT INTO demo.mytable VALUES (2, "test 2");
-INSERT INTO demo.mytable VALUES (3, "test 3");
-INSERT INTO demo.mytable VALUES (4, "test 4");
+=== "PySpark"
 
--- Read table
-SELECT * FROM demo.mytable;
-```
+    ```python
+    # Create new schema
+    spark.sql("CREATE SCHEMA demo")
+    
+    # Should now show two schemas: default and demo
+    spark.sql("SHOW SCHEMAS").show()
+    ```
 
-```sql title="Update row in table"
--- Update row in table
-UPDATE demo.mytable SET id = 5 WHERE id = 4;
-```
+### Create New Table
 
-```sql title="Delete row from table"
--- Delete rows
-DELETE FROM demo.mytable WHERE id = 5;
-```
+=== "Spark SQL"
 
-```sql title="Merge mytable with srctable"
--- Create secondary table (we will use this as the source for merge)
-CREATE TABLE
-demo.srctable (id INT, desc STRING) 
-USING delta
-LOCATION '<LOCATION>';
--- Example location:
--- LOCATION '/tmp/tables/srctable';
+    ```sql
+    -- Create a new table
+    CREATE TABLE demo.mytable (id INT, desc STRING) 
+    USING delta 
+    LOCATION '<LOCATION>';
+    -- Example location:
+    -- LOCATION '/tmp/tables/mytable';
+    ```
 
--- Insert new rows
-INSERT INTO demo.srctable VALUES (3, "updated");
-INSERT INTO demo.srctable VALUES (4, "inserted");
+=== "PySpark"
 
--- Merge
-MERGE INTO demo.mytable as target
-USING demo.srctable as source
-   ON target.id = source.id
- WHEN MATCHED THEN
-      UPDATE SET *
- WHEN NOT MATCHED THEN
-      INSERT *
-;
+    ```python
+    # Create a new table
+    spark.sql("""
+    CREATE TABLE demo.mytable (id INT, desc STRING)
+    USING delta
+    LOCATION '<LOCATION>'
+    """)
+    # Example location:
+    # LOCATION '/tmp/tables/mytable'
+    ```
 
--- Check results
-SELECT * FROM demo.mytable;
-```
+### Insert New Rows into Table
+
+=== "Spark SQL"
+
+    ```sql
+    -- Insert new rows
+    INSERT INTO demo.mytable VALUES (1, "test 1");
+    INSERT INTO demo.mytable VALUES (2, "test 2");
+    INSERT INTO demo.mytable VALUES (3, "test 3");
+    INSERT INTO demo.mytable VALUES (4, "test 4");
+    
+    -- Read table
+    SELECT * FROM demo.mytable;
+    ```
+
+=== "PySpark"
+
+    ```python
+    # Insert new rows
+    spark.sql("INSERT INTO demo.mytable VALUES (1, 'test 1')")
+    spark.sql("INSERT INTO demo.mytable VALUES (2, 'test 2')")
+    spark.sql("INSERT INTO demo.mytable VALUES (3, 'test 3')")
+    spark.sql("INSERT INTO demo.mytable VALUES (4, 'test 4')")
+    
+    # Read table
+    spark.sql("SELECT * FROM demo.mytable").show()
+    ```
+
+### Update Row in Table
+
+=== "Spark SQL"
+
+    ```sql
+    -- Update row in table
+    UPDATE demo.mytable SET id = 5 WHERE id = 4;
+    ```
+
+=== "PySpark"
+
+    ```python
+    # Update row in table
+    spark.sql("UPDATE demo.mytable SET id = 5 WHERE id = 4")
+    ```
+
+### Delete Row from Table
+
+=== "Spark SQL"
+
+    ```sql
+    -- Delete rows
+    DELETE FROM demo.mytable WHERE id = 5;
+    ```
+
+=== "PySpark"
+
+    ```python
+    # Delete rows
+    spark.sql("DELETE FROM demo.mytable WHERE id = 5")
+    ```
+
+### Merge `mytable` with `srctable`
+
+Create Secondary Table
+
+=== "Spark SQL"
+
+    ```sql
+    -- Create secondary table (we will use this as the source for merge)
+    CREATE TABLE demo.srctable (id INT, desc STRING) 
+    USING delta
+    LOCATION '<LOCATION>';
+    -- Example location:
+    -- LOCATION '/tmp/tables/srctable';
+    
+    -- Insert new rows
+    INSERT INTO demo.srctable VALUES (3, "updated");
+    INSERT INTO demo.srctable VALUES (4, "inserted");
+    ```
+
+=== "PySpark"
+
+    ```python
+    # Create secondary table (we will use this as the source for merge)
+    spark.sql("""
+    CREATE TABLE demo.srctable (id INT, desc STRING)
+    USING delta
+    LOCATION '<LOCATION>'
+    """)
+    # Example location:
+    # LOCATION '/tmp/tables/srctable';
+    
+    # Insert new rows
+    spark.sql("INSERT INTO demo.srctable VALUES (3, 'updated')")
+    spark.sql("INSERT INTO demo.srctable VALUES (4, 'inserted')")
+    ```
+
+Merge Command
+
+=== "Spark SQL"
+
+    ```sql
+    -- Merge
+    MERGE INTO demo.mytable as target
+    USING demo.srctable as source
+        ON target.id = source.id
+    WHEN MATCHED THEN
+        UPDATE SET *
+    WHEN NOT MATCHED THEN
+        INSERT *
+    ;
+    
+    -- Check results
+    SELECT * FROM demo.mytable;
+    ```
+
+=== "PySpark"
+
+    ```python
+    # Merge
+    spark.sql("""
+    MERGE INTO demo.mytable AS target
+    USING demo.srctable AS source
+        ON target.id = source.id
+    WHEN MATCHED THEN 
+        UPDATE SET *
+    WHEN NOT MATCHED THEN 
+        INSERT *
+    """)
+    
+    # Check results
+    spark.sql("SELECT * FROM demo.mytable").show()
+    ```
 
 ```console title="Merged Results"
 3       updated
@@ -324,31 +427,40 @@ SELECT * FROM demo.mytable;
 2       test 2
 ```
 
-```sql title="Drop table"
+Drop Table
 
--- Drop tables
-DROP TABLE demo.srctable;
+=== "Spark SQL"
 
--- Check results
-SHOW TABLES IN default;
-```
+    ```sql
+    
+    -- Drop tables
+    DROP TABLE demo.srctable;
+    
+    -- Check results
+    SHOW TABLES IN default;
+    ```
 
-!!! warning 
+=== "PySpark"
+
+    ```python
+    # Drop tables
+    spark.sql("DROP TABLE demo.srctable")
+    
+    # Check results
+    spark.sql("SHOW TABLES IN default").show()
+    ```
+
+!!! warning
     Note, this action will only drop the table from UC, it will not remove the data from the file system
-
 
 <!--
 ## Benefits of using Unity Catalog for Spark
-
-
 
 > Rather the major reasons to focus on are
 > - credential vending - no more need to configure a single set of s3/azure/gcs creds for all your tables in your spark app. UC will automatically provide creds for each table in each query.
 > - governance and access control - admins can centrally control who has access to which tables
 
 -->
-
-
 
 <!-- 
 
@@ -392,8 +504,6 @@ voided.write.format("parquet").saveAsTable("stores.us_east.voided")
 ```
 
 > we need to cover both parquet and delta
-
-
 
 Here’s a visualization of the tables.  
 
@@ -473,7 +583,6 @@ Unity Catalog has many advantages for Spark users.
 >   - thats general reason for using any catalog including HMS. not specific to UC.
 > - Making it easier to organize and find datasets
 >   - does not quite help users who just want to use tables. this would be great once we have other assets within the UC spark integration, but we are not there yet.
-
 
 You don’t want to hardcode file paths in your code because then the location of your data becomes coupled with your business logic.  Here’s an example of bad code:
 

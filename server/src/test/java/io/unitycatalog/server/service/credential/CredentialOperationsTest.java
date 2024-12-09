@@ -8,9 +8,9 @@ import static org.mockito.Mockito.when;
 import io.unitycatalog.server.exception.BaseException;
 import io.unitycatalog.server.model.AwsCredentials;
 import io.unitycatalog.server.model.TemporaryCredentials;
-import io.unitycatalog.server.persist.utils.ServerPropertiesUtils;
 import io.unitycatalog.server.service.credential.aws.S3StorageConfig;
 import io.unitycatalog.server.service.credential.azure.ADLSStorageConfig;
+import io.unitycatalog.server.utils.ServerProperties;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.CompletionException;
@@ -23,7 +23,7 @@ import software.amazon.awssdk.services.sts.model.StsException;
 
 @ExtendWith(MockitoExtension.class)
 public class CredentialOperationsTest {
-  @Mock ServerPropertiesUtils serverPropertiesUtils;
+  @Mock ServerProperties serverProperties;
   CredentialOperations credentialsOperations;
 
   @Test
@@ -33,11 +33,10 @@ public class CredentialOperationsTest {
     final String SESSION_TOKEN = "sessionToken";
     final String S3_REGION = "us-west-2";
     final String ROLE_ARN = "roleArn";
-    try (MockedStatic<ServerPropertiesUtils> mockedStatic =
-        mockStatic(ServerPropertiesUtils.class)) {
-      mockedStatic.when(ServerPropertiesUtils::getInstance).thenReturn(serverPropertiesUtils);
+    try (MockedStatic<ServerProperties> mockedStatic = mockStatic(ServerProperties.class)) {
+      mockedStatic.when(ServerProperties::getInstance).thenReturn(serverProperties);
       // Test session key is available
-      when(serverPropertiesUtils.getS3Configurations())
+      when(serverProperties.getS3Configurations())
           .thenReturn(
               Map.of(
                   "s3://storageBase",
@@ -58,7 +57,7 @@ public class CredentialOperationsTest {
                   .sessionToken(SESSION_TOKEN));
 
       // Test when sts client is called
-      when(serverPropertiesUtils.getS3Configurations())
+      when(serverProperties.getS3Configurations())
           .thenReturn(
               Map.of(
                   "s3://storageBase",
@@ -82,11 +81,10 @@ public class CredentialOperationsTest {
     final String CLIENT_ID = "clientId";
     final String CLIENT_SECRET = "clientSecret";
     final String TENANT_ID = "tenantId";
-    try (MockedStatic<ServerPropertiesUtils> mockedStatic =
-        mockStatic(ServerPropertiesUtils.class)) {
-      mockedStatic.when(ServerPropertiesUtils::getInstance).thenReturn(serverPropertiesUtils);
+    try (MockedStatic<ServerProperties> mockedStatic = mockStatic(ServerProperties.class)) {
+      mockedStatic.when(ServerProperties::getInstance).thenReturn(serverProperties);
       // Test mode used
-      when(serverPropertiesUtils.getAdlsConfigurations())
+      when(serverProperties.getAdlsConfigurations())
           .thenReturn(Map.of("uctest", ADLSStorageConfig.builder().testMode(true).build()));
       credentialsOperations = new CredentialOperations();
       TemporaryCredentials azureTemporaryCredentials =
@@ -96,7 +94,7 @@ public class CredentialOperationsTest {
       assertThat(azureTemporaryCredentials.getAzureUserDelegationSas().getSasToken()).isNotNull();
 
       // Use datalake service client
-      when(serverPropertiesUtils.getAdlsConfigurations())
+      when(serverProperties.getAdlsConfigurations())
           .thenReturn(
               Map.of(
                   "uctest",
@@ -117,13 +115,10 @@ public class CredentialOperationsTest {
 
   @Test
   public void testGenerateGcpTemporaryCredentials() {
-    final String PROJECT_ID = "projectId";
-    final String PRIVATE_KEY_ID = "privateKeyId";
-    try (MockedStatic<ServerPropertiesUtils> mockedStatic =
-        mockStatic(ServerPropertiesUtils.class)) {
-      mockedStatic.when(ServerPropertiesUtils::getInstance).thenReturn(serverPropertiesUtils);
+    try (MockedStatic<ServerProperties> mockedStatic = mockStatic(ServerProperties.class)) {
+      mockedStatic.when(ServerProperties::getInstance).thenReturn(serverProperties);
       // Test mode used
-      when(serverPropertiesUtils.getGcsConfigurations())
+      when(serverProperties.getGcsConfigurations())
           .thenReturn(Map.of("gs://uctest", "testing://test"));
       credentialsOperations = new CredentialOperations();
       TemporaryCredentials gcpTemporaryCredentials =
@@ -132,7 +127,7 @@ public class CredentialOperationsTest {
       assertThat(gcpTemporaryCredentials.getGcpOauthToken().getOauthToken()).isNotNull();
 
       // Use default creds
-      when(serverPropertiesUtils.getGcsConfigurations()).thenReturn(Map.of("gs://uctest", ""));
+      when(serverProperties.getGcsConfigurations()).thenReturn(Map.of("gs://uctest", ""));
       credentialsOperations = new CredentialOperations();
       assertThatThrownBy(
               () ->

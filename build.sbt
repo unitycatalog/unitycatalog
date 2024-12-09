@@ -1,7 +1,8 @@
 import java.nio.file.Files
 import java.io.File
 import Tarball.createTarballSettings
-import sbt.util
+import sbt.{Attributed, util}
+import sbt.Keys.*
 import sbtlicensereport.license.{DepModuleInfo, LicenseCategory, LicenseInfo}
 import ReleaseSettings.*
 
@@ -46,6 +47,9 @@ lazy val commonSettings = Seq(
     "org.apache.logging.log4j" % "log4j-slf4j2-impl" % "2.23.1",
     "org.apache.logging.log4j" % "log4j-api" % "2.23.1"
   ),
+  excludeDependencies ++= Seq(
+    ExclusionRule("org.slf4j", "slf4j-reload4j")
+  ),
   resolvers += Resolver.mavenLocal,
   autoScalaLibrary := false,
   crossPaths := false,  // No scala cross building
@@ -65,7 +69,10 @@ lazy val commonSettings = Seq(
     val packageFile = (Compile / packageBin).value
     generateClasspathFile(
       targetDir = packageFile.getParentFile,
-      classpath = (Runtime / dependencyClasspath).value)
+      // Also include the jar being built (packageFile) in the classpath
+      // This is specifically required by the server project since the server and control models are provided dependencies
+      classpath = (Runtime / dependencyClasspath).value :+ Attributed.blank(packageFile)
+    )
     packageFile
   },
 
@@ -223,6 +230,46 @@ lazy val client = (project in file("target/clients/java"))
     }
   )
 
+lazy val prepareGeneration = taskKey[Unit]("Prepare the environment for OpenAPI code generation")
+
+lazy val pythonClient = (project in file("clients/python"))
+  .enablePlugins(OpenApiGeneratorPlugin)
+  .settings(
+    name := s"$artifactNamePrefix-python-client",
+    commonSettings,
+    skipReleaseSettings,
+    Compile / compile := (Compile / compile).dependsOn(generate).value,
+    openApiInputSpec := (baseDirectory.value.getParentFile.getParentFile / "api" / "all.yaml").getAbsolutePath,
+    openApiGeneratorName := "python",
+    openApiOutputDir := (baseDirectory.value / "target").getAbsolutePath,
+    openApiPackageName := s"$artifactNamePrefix.client",
+    openApiAdditionalProperties := Map(
+      "packageVersion" -> s"${version.value.replace("-SNAPSHOT", ".dev0")}",
+      "library"        -> "asyncio"
+    ),
+    openApiGenerateApiTests := SettingDisabled,
+    openApiGenerateModelTests := SettingDisabled,
+    openApiGenerateApiDocumentation := SettingDisabled,
+    openApiGenerateModelDocumentation := SettingDisabled,
+
+    prepareGeneration := PythonClientPostBuild.prepareGeneration(streams.value.log, baseDirectory.value, openApiOutputDir.value),
+
+    generate := Def.sequential(
+      prepareGeneration,
+      openApiGenerate,
+      Def.task {
+        val log = streams.value.log
+
+        PythonClientPostBuild.processGeneratedFiles(
+          log,
+          openApiOutputDir.value,
+          baseDirectory.value,
+        )
+        log.info("OpenAPI Python client generation completed.")
+      }
+    ).value
+  )
+
 lazy val apiDocs = (project in file("api"))
   .enablePlugins(OpenApiGeneratorPlugin)
   .settings(
@@ -243,7 +290,9 @@ lazy val populateTestDB = taskKey[Unit]("Run PopulateTestDatabase main class fro
 
 lazy val server = (project in file("server"))
   .dependsOn(client % "test->test")
-  .dependsOn(serverModels)
+  // Server and control models are added as provided to avoid them being added as maven dependencies
+  // This is because the server and control models are included in the server jar
+  .dependsOn(serverModels % "provided", controlModels % "provided")
   .settings (
     name := s"$artifactNamePrefix-server",
     mainClass := Some(orgName + ".server.UnityCatalogServer"),
@@ -286,6 +335,9 @@ lazy val server = (project in file("server"))
 
       //For s3 access
       "com.amazonaws" % "aws-java-sdk-s3" % "1.12.728",
+      "software.amazon.awssdk" % "sso" % "2.27.12",
+      "software.amazon.awssdk" % "ssooidc" % "2.27.12",
+
       "org.apache.httpcomponents" % "httpcore" % "4.4.16",
       "org.apache.httpcomponents" % "httpclient" % "4.5.14",
 
@@ -340,13 +392,17 @@ lazy val server = (project in file("server"))
       val log = streams.value.log
       (Test / runMain).toTask(s" io.unitycatalog.server.utils.PopulateTestDatabase").value
     },
-    Test / javaOptions += s"-Duser.dir=${(ThisBuild / baseDirectory).value.getAbsolutePath}"
+    Test / javaOptions += s"-Duser.dir=${(ThisBuild / baseDirectory).value.getAbsolutePath}",
+    // Include server and control models in the bin package for server
+    // This will allow us to have a single maven artifact and not 3 (server, server models, control models)
+    Compile / packageBin / mappings ++= (Compile / packageBin / mappings).value ++
+      (serverModels / Compile / packageBin / mappings).value ++
+      (controlModels / Compile / packageBin / mappings).value
   )
 
 lazy val serverModels = (project in file("server") / "target" / "models")
   .enablePlugins(OpenApiGeneratorPlugin)
   .disablePlugins(JavaFormatterPlugin)
-  .dependsOn(controlModels % "compile->compile")
   .settings(
     name := s"$artifactNamePrefix-servermodels",
     commonSettings,
@@ -418,6 +474,7 @@ lazy val controlModels = (project in file("server") / "target" / "controlmodels"
 
 lazy val cli = (project in file("examples") / "cli")
   .dependsOn(server % "test->test")
+  .dependsOn(serverModels, controlModels)
   .dependsOn(client % "compile->compile;test->test")
   .dependsOn(controlApi % "compile->compile")
   .settings(
@@ -445,6 +502,7 @@ lazy val cli = (project in file("examples") / "cli")
       "org.fusesource.jansi" % "jansi" % "2.4.1",
       "com.amazonaws" % "aws-java-sdk-core" % "1.12.728",
       "org.apache.hadoop" % "hadoop-aws" % "3.4.0",
+      "org.apache.hadoop" % "hadoop-azure" % "3.4.0",
       "com.google.guava" % "guava" % "31.0.1-jre",
       // Test dependencies
       "org.junit.jupiter" % "junit-jupiter" % "5.10.3" % Test,
@@ -551,8 +609,41 @@ lazy val spark = (project in file("connectors/spark"))
     }
   )
 
+lazy val integrationTests = (project in file("integration-tests"))
+  .settings(
+    name := s"$artifactNamePrefix-integration-tests",
+    commonSettings,
+    javaOptions ++= Seq(
+      "--add-exports=java.base/sun.nio.ch=ALL-UNNAMED",
+    ),
+    skipReleaseSettings,
+    libraryDependencies ++= Seq(
+      "org.junit.jupiter" % "junit-jupiter" % "5.10.3" % Test,
+      "net.aichler" % "jupiter-interface" % JupiterKeys.jupiterVersion.value % Test,
+      "org.assertj" % "assertj-core" % "3.26.3" % Test,
+      "org.projectlombok" % "lombok" % "1.18.32" % Provided,
+      "org.apache.spark" %% "spark-sql" % "3.5.3" % Test,
+      "io.delta" %% "delta-spark" % "3.2.1" % Test,
+      "org.apache.hadoop" % "hadoop-aws" % "3.3.6" % Test,
+      "org.apache.hadoop" % "hadoop-azure" % "3.3.6" % Test,
+      "com.google.cloud.bigdataoss" % "gcs-connector" % "3.0.2" % Test classifier "shaded",
+      "io.unitycatalog" %% "unitycatalog-spark" % "0.2.0" % Test,
+    ),
+    dependencyOverrides ++= Seq(
+      "com.fasterxml.jackson.core" % "jackson-databind" % "2.15.0",
+      "com.fasterxml.jackson.module" %% "jackson-module-scala" % "2.15.0",
+      "com.fasterxml.jackson.core" % "jackson-annotations" % "2.15.0",
+      "com.fasterxml.jackson.core" % "jackson-core" % "2.15.0",
+      "com.fasterxml.jackson.dataformat" % "jackson-dataformat-xml" % "2.15.0",
+      "org.antlr" % "antlr4-runtime" % "4.9.3",
+      "org.antlr" % "antlr4" % "4.9.3",
+      "org.apache.hadoop" % "hadoop-client-api" % "3.3.6",
+    ),
+    Test / javaOptions += s"-Duser.dir=${((ThisBuild / baseDirectory).value / "integration-tests").getAbsolutePath}",
+  )
+
 lazy val root = (project in file("."))
-  .aggregate(serverModels, client, server, cli, spark, controlApi, controlModels, apiDocs)
+  .aggregate(serverModels, client, pythonClient, server, cli, spark, controlApi, controlModels, apiDocs)
   .settings(
     name := s"$artifactNamePrefix",
     createTarballSettings(),

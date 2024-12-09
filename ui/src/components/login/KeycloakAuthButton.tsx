@@ -1,7 +1,7 @@
 import { Avatar, Button } from 'antd';
 // getting errors with node version in jwt-decode dependency, removed package for now
 // import Keycloak from 'keycloak-js';
-import { useState } from 'react';
+// import { useState } from 'react';
 
 export default function KeycloakAuthButton() {
   // const [keycloak, setKeycloak] = useState<Keycloak | null>(null);

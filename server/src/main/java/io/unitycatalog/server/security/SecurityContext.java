@@ -4,7 +4,6 @@ import com.auth0.jwt.JWT;
 import com.auth0.jwt.algorithms.Algorithm;
 import com.auth0.jwt.interfaces.DecodedJWT;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import io.unitycatalog.server.UnityCatalogServer;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.security.interfaces.RSAPrivateKey;
@@ -29,9 +28,9 @@ public class SecurityContext {
   }
 
   private static final ObjectMapper mapper = new ObjectMapper();
-  private static final Logger LOGGER = LoggerFactory.getLogger(UnityCatalogServer.class);
+  private static final Logger LOGGER = LoggerFactory.getLogger(SecurityContext.class);
 
-  private final Path certsFile;
+  @Getter private final Path certsFile;
   private final Path serviceTokenFile;
 
   @Getter private final RSAPublicKey rsaPublicKey;
@@ -73,9 +72,10 @@ public class SecurityContext {
   public String createAccessToken(DecodedJWT decodedJWT) {
 
     String subject =
-        decodedJWT.getClaim(JwtClaim.EMAIL.key()).isMissing()
-            ? decodedJWT.getClaim(JwtClaim.SUBJECT.key()).asString()
-            : decodedJWT.getClaim(JwtClaim.EMAIL.key()).asString();
+        decodedJWT
+            .getClaims()
+            .getOrDefault(JwtClaim.EMAIL.key(), decodedJWT.getClaim(JwtClaim.SUBJECT.key()))
+            .asString();
 
     return JWT.create()
         .withSubject(serviceName)

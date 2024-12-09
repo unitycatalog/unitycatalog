@@ -47,24 +47,37 @@ public abstract class BaseCatalogCRUDTest extends BaseCRUDTest {
     CatalogInfo catalogInfo = catalogOperations.createCatalog(createCatalog);
     assertCatalog(catalogInfo, CATALOG_NAME, COMMENT, PROPERTIES);
 
+    // Create another catalog to test pagination
+    CreateCatalog createCatalog2 =
+        new CreateCatalog().name(COMMON_ENTITY_NAME).comment(COMMENT).properties(PROPERTIES);
+    CatalogInfo catalogInfo2 = catalogOperations.createCatalog(createCatalog2);
+    assertCatalog(catalogInfo2, COMMON_ENTITY_NAME, COMMENT, PROPERTIES);
+
     // List catalogs
     System.out.println("Testing list catalogs..");
-    List<CatalogInfo> catalogList = catalogOperations.listCatalogs();
+    List<CatalogInfo> catalogList = catalogOperations.listCatalogs(Optional.empty());
     assertThat(catalogList).isNotNull();
     assertCatalogExists(catalogList, CATALOG_NAME, COMMENT, PROPERTIES);
+    assertCatalogExists(catalogList, COMMON_ENTITY_NAME, COMMENT, PROPERTIES);
+
+    // List catalogs with page token
+    System.out.println("Testing list catalogs with page token..");
+    catalogList = catalogOperations.listCatalogs(Optional.of(CATALOG_NAME));
+    assertThat(catalogList).isNotNull();
+    assertCatalogNotExists(catalogList, CATALOG_NAME);
+    assertCatalogExists(catalogList, COMMON_ENTITY_NAME, COMMENT, PROPERTIES);
 
     // Get catalog
     System.out.println("Testing get catalog..");
-    CatalogInfo catalogInfo2 = catalogOperations.getCatalog(CATALOG_NAME);
-    assertThat(catalogInfo2).isEqualTo(catalogInfo);
+    CatalogInfo catalogInfo3 = catalogOperations.getCatalog(CATALOG_NAME);
+    assertThat(catalogInfo3).isEqualTo(catalogInfo);
 
     // Calling update catalog with nothing to update should not change anything
     System.out.println("Testing updating catalog with nothing to update..");
     UpdateCatalog emptyUpdateCatalog = new UpdateCatalog();
-    CatalogInfo emptyUpdateCatalogInfo =
-        catalogOperations.updateCatalog(CATALOG_NAME, emptyUpdateCatalog);
-    CatalogInfo catalogInfo3 = catalogOperations.getCatalog(CATALOG_NAME);
-    assertThat(catalogInfo3).isEqualTo(catalogInfo);
+    catalogOperations.updateCatalog(CATALOG_NAME, emptyUpdateCatalog);
+    CatalogInfo catalogInfo4 = catalogOperations.getCatalog(CATALOG_NAME);
+    assertThat(catalogInfo4).isEqualTo(catalogInfo);
 
     // Update catalog name without updating comment and properties
     System.out.println("Testing update catalog: changing name..");
@@ -89,8 +102,10 @@ public abstract class BaseCatalogCRUDTest extends BaseCRUDTest {
     // Delete catalog
     System.out.println("Testing delete catalog..");
     catalogOperations.deleteCatalog(CATALOG_NEW_NAME, Optional.of(false));
-    catalogList = catalogOperations.listCatalogs();
+    catalogOperations.deleteCatalog(COMMON_ENTITY_NAME, Optional.of(false));
+    catalogList = catalogOperations.listCatalogs(Optional.empty());
     assertThat(catalogList).isNotNull();
     assertCatalogNotExists(catalogList, CATALOG_NEW_NAME);
+    assertCatalogNotExists(catalogList, COMMON_ENTITY_NAME);
   }
 }

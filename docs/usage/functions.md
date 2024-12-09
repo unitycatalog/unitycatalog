@@ -19,9 +19,11 @@ Let's look at how this works.
 
 We'll use a local Unity Catalog server to get started. The default local UC server comes with some sample data.
 
-> If this is your first time spinning up a UC server, you might want to check out the [Quickstart](../quickstart.md) first.
+> If this is your first time spinning up a UC server, you might want to check out the [Quickstart](../quickstart.md)
+    first.
 
-Spin up a local UC server by running the following code in a terminal from the root directory of your local `unitycatalog` repository:
+Spin up a local UC server by running the following code in a terminal from the root directory of your local
+`unitycatalog` repository:
 
 ```sh
 bin/start-uc-server
@@ -39,7 +41,7 @@ bin/uc function list --catalog unity --schema default
 
 You should see something that looks like:
 
-```
+```console
 ┌────────────┬────────┬────────┬────────┬────────┬────────┬────────┬────────┬────────┬────────┬────────┬────────┬────────┬────────┬────────┬────────┬────────┬────────┬────────┬────────┬────────┬────────┬────────┐
 │    NAME    │CATALOG_│SCHEMA_N│INPUT_PA│DATA_TYP│FULL_DAT│RETURN_P│ROUTINE_│ROUTINE_│ROUTINE_│PARAMETE│IS_DETER│SQL_DATA│IS_NULL_│SECURITY│SPECIFIC│COMMENT │PROPERTI│FULL_NAM│CREATED_│UPDATED_│FUNCTION│EXTERNAL│
 │            │  NAME  │  AME   │  RAMS  │   E    │ A_TYPE │ ARAMS  │  BODY  │DEFINITI│DEPENDEN│R_STYLE │MINISTIC│_ACCESS │  CALL  │ _TYPE  │ _NAME  │        │   ES   │   E    │   AT   │   AT   │  _ID   │_LANGUAG│
@@ -59,7 +61,7 @@ bin/uc function get --full_name unity.default.sum
 
 You should see something that looks like:
 
-```
+```console
 ┌────────────────────┬────────────────────────────────────────────────────────────────────────────────────────────────────┐
 │        KEY         │                                               VALUE                                                │
 ├────────────────────┼────────────────────────────────────────────────────────────────────────────────────────────────────┤
@@ -120,9 +122,10 @@ You should see something that looks like:
 └────────────────────┴────────────────────────────────────────────────────────────────────────────────────────────────────┘
 ```
 
-The `routine definition` is probably most helpful here: `t = x + y + z\nreturn t `
+The `routine definition` is probably most helpful here: `t = x + y + z\nreturn t`
 
-It looks like this functions takes in 3 arguments and returns their sum. The `DATA_TYPE` field tells us that the output should be of `INT` data type.
+It looks like this functions takes in 3 arguments and returns their sum. The `DATA_TYPE` field tells us that the
+output should be of `INT` data type.
 
 ## Calling Functions from Unity Catalog
 
@@ -148,7 +151,8 @@ We'll start with a basic example using only scalar values.
 
 Suppose you want to register the following function to Unity Catalog: `c = a * b`
 
-To do so, define a new Function by its full name, specify the data type of the output, the input parameters and their data types, and define the function.
+To do so, define a new Function by its full name, specify the data type of the output, the input parameters and their
+data types, and define the function.
 
 ```sh
 bin/uc function create --full_name unity.default.my_function \
@@ -158,7 +162,6 @@ bin/uc function create --full_name unity.default.my_function \
 This should output something like:
 
 ```sh
-
 ┌────────────────────┬────────────────────────────────────────────────────────────────────────────────────────────────────┐
 │        KEY         │                                               VALUE                                                │
 ├────────────────────┼────────────────────────────────────────────────────────────────────────────────────────────────────┤
@@ -217,6 +220,8 @@ This should output something like:
 ```
 
 You can also store more complex functions. For example, you can import Python modules and use them in your function.
+Note if you have multiple lines in complex functions, you must insert "\n" to separate lines in the function
+definition. Otherwise, the function will return "invalid syntax" error when it is called.
 
 Let's take the example below of a function that uses the Numpy library to simulate a random roll of dice:
 
@@ -247,12 +252,13 @@ This will simulate rolling a single die with 6 sides.
 
 Required Parameters:
 
-- `--full_name`: The full name of the table. The full name is the concatenation of the catalog name, schema name, and table/volume name separated by a dot. For example, catalog_name.schema_name.table_name.
-- `--input_params`: The input parameters of the function, 
+- `--full_name`: The full name of the table. The full name is the concatenation of the catalog name, schema name, and
+    table/volume name separated by a dot. For example, catalog_name.schema_name.table_name.
+- `--input_params`: The input parameters of the function,
 - `--data_type`: The data type of the function.
 
 Optional Parameters:
 
 - `--comment`: Comment/Description of the entity.
 - `--def`: The routine definition of the function
-- `--language`: The language of the function
+- `--language`: The language of the function, currently only "python" is supported.

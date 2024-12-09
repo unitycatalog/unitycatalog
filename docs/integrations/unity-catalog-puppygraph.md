@@ -50,7 +50,7 @@ Run the command from the Spark folder to start a Spark SQL shell .
     io.delta:delta-spark_2.12:3.2.0,io.unitycatalog:unitycatalog-spark:0.2.0-SNAPSHOT \
   --conf spark.sql.extensions=io.delta.sql.DeltaSparkSessionExtension \
   --conf spark.sql.catalog.spark_catalog=org.apache.spark.sql.delta.catalog.DeltaCatalog \
-  --conf spark.sql.catalog.puppygraph=io.unitycatalog.connectors.spark.UCSingleCatalog \
+  --conf spark.sql.catalog.puppygraph=io.unitycatalog.spark.UCSingleCatalog \
   --conf spark.sql.catalog.puppygraph.uri=http://localhost:8080
 ```
 
@@ -192,4 +192,4 @@ You can also use [Web UI](https://docs.puppygraph.com/user-interface/puppygraph-
 ## See Also
 
 - [Querying Unity Catalog Data as a Graph](https://docs.puppygraph.com/getting-started/querying-unity-catalog-data-as-a-graph)
-- [The Internals of Unity Catalog | Spark Integration](https://books.japila.pl/unity-catalog-internals/spark-integration/)
+- [The Internals of Unity Catalog | Spark Connector](https://books.japila.pl/unity-catalog-internals/spark-connector/)

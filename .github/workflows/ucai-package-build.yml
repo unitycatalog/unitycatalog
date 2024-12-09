@@ -1,0 +1,62 @@
+name: Test package build
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - ai/**
+      - .github/workflows/ucai-*.yml
+  pull_request:
+    paths:
+      - ai/**
+      - .github/workflows/ucai-*.yml
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ['3.9', '3.10']
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: ai/core
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+      - name: Install dependencies
+        run: |
+          pip install hatch
+      - name: Build distribution files
+        id: build-dist
+        run: |
+          hatch build
+          # List distribution files and check their file sizes
+          ls -lh dist
+          # Set step outputs
+          sdist_path=$(find dist -type f -name "*.tar.gz")
+          wheel_path=$(find dist -type f -name "*.whl")
+          wheel_name=$(basename $wheel_path)
+          wheel_size=$(stat -c %s $wheel_path)
+          echo "sdist-path=${sdist_path}" >> $GITHUB_OUTPUT
+          echo "wheel-path=${wheel_path}" >> $GITHUB_OUTPUT
+          echo "wheel-name=${wheel_name}" >> $GITHUB_OUTPUT
+          echo "wheel-size=${wheel_size}" >> $GITHUB_OUTPUT
+      - name: Compare files in source and binary distributions
+        run: |
+          tar -tzf ${{ steps.build-dist.outputs.sdist-path }} | grep -v '/$' | cut -d'/' -f2- | sort > /tmp/source.txt
+          zipinfo -1 ${{ steps.build-dist.outputs.wheel-path }} | sort > /tmp/wheel.txt
+          diff /tmp/source.txt /tmp/wheel.txt || true
+      - name: Test installation from tarball
+        run: |
+          pip install ${{ steps.build-dist.outputs.sdist-path }}
+          python -c "import unitycatalog.ai.core; print(unitycatalog.ai.core.__version__)"
+      - name: Test installation from wheel
+        run: |
+          pip install --force-reinstall ${{ steps.build-dist.outputs.wheel-path }}
+          python -c "import unitycatalog.ai.core; print(unitycatalog.ai.core.__version__)"

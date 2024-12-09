@@ -11,6 +11,7 @@ import com.amazonaws.services.s3.model.PutObjectRequest;
 import io.unitycatalog.server.exception.BaseException;
 import io.unitycatalog.server.exception.ErrorCode;
 import io.unitycatalog.server.utils.Constants;
+import io.unitycatalog.server.utils.ServerProperties;
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.net.URI;
@@ -25,7 +26,7 @@ import org.slf4j.LoggerFactory;
 
 public class FileUtils {
   private static final Logger LOGGER = LoggerFactory.getLogger(FileUtils.class);
-  private static final ServerPropertiesUtils properties = ServerPropertiesUtils.getInstance();
+  private static final ServerProperties properties = ServerProperties.getInstance();
 
   private FileUtils() {}
 
@@ -74,7 +75,7 @@ public class FileUtils {
     // Create the directory
     try {
       Files.createDirectories(dirPath);
-      LOGGER.debug("Directory created successfully: " + dirPath);
+      LOGGER.debug("Directory created successfully: {}", dirPath);
     } catch (Exception e) {
       throw new BaseException(ErrorCode.INTERNAL, "Failed to create directory: " + dirPath, e);
     }
@@ -119,10 +120,10 @@ public class FileUtils {
   private static URI modifyS3Directory(URI parsedUri, boolean createOrDelete) {
     String bucketName = parsedUri.getHost();
     String path = parsedUri.getPath().substring(1); // Remove leading '/'
-    String accessKey = ServerPropertiesUtils.getInstance().getProperty("aws.s3.accessKey");
-    String secretKey = ServerPropertiesUtils.getInstance().getProperty("aws.s3.secretKey");
-    String sessionToken = ServerPropertiesUtils.getInstance().getProperty("aws.s3.sessionToken");
-    String region = ServerPropertiesUtils.getInstance().getProperty("aws.region");
+    String accessKey = properties.getProperty("aws.s3.accessKey");
+    String secretKey = properties.getProperty("aws.s3.secretKey");
+    String sessionToken = properties.getProperty("aws.s3.sessionToken");
+    String region = properties.getProperty("aws.region");
 
     BasicSessionCredentials sessionCredentials =
         new BasicSessionCredentials(accessKey, secretKey, sessionToken);
@@ -149,7 +150,7 @@ public class FileUtils {
         ObjectMetadata metadata = new ObjectMetadata();
         metadata.setContentLength(0);
         s3Client.putObject(new PutObjectRequest(bucketName, path, emptyContentStream, metadata));
-        LOGGER.debug("Directory created successfully: " + path);
+        LOGGER.debug("Directory created successfully: {}", path);
         return URI.create(String.format("s3://%s/%s", bucketName, path));
       } catch (Exception e) {
         throw new BaseException(ErrorCode.INTERNAL, "Failed to create directory: " + path, e);
