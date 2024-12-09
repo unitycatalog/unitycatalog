@@ -56,7 +56,7 @@ export function useListSchemas({
             },
           },
         },
-        unexpectedErrorMessage: 'Failed to list schemas',
+        errorMessage: 'Failed to list schemas',
       });
       const response = await api.call();
       if (response.result !== 'success') {
@@ -95,7 +95,7 @@ export function useGetSchema({ full_name }: UseGetSchemaArgs) {
             },
           },
         },
-        unexpectedErrorMessage: 'Failed to fetch schema',
+        errorMessage: 'Failed to fetch schema',
       });
       const response = await api.call();
       if (response.result !== 'success') {
@@ -142,7 +142,7 @@ export function useCreateSchema() {
             },
           },
         },
-        unexpectedErrorMessage: 'Failed to create schema',
+        errorMessage: 'Failed to create schema',
       });
       const response = await api.call();
       if (response.result !== 'success') {
@@ -204,7 +204,7 @@ export function useUpdateSchema({ full_name }: UseUpdateSchemaArgs) {
             },
           },
         },
-        unexpectedErrorMessage: 'Failed to update schema',
+        errorMessage: 'Failed to update schema',
       });
       const response = await api.call();
       if (response.result !== 'success') {
@@ -256,7 +256,7 @@ export function useDeleteSchema({ full_name }: UseDeleteSchemaArgs) {
             },
           },
         },
-        unexpectedErrorMessage: 'Failed to delete schema',
+        errorMessage: 'Failed to delete schema',
       });
       const response = await api.call();
       if (response.result !== 'success') {

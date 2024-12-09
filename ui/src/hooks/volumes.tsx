@@ -58,7 +58,7 @@ export function useListVolumes({
             },
           },
         },
-        unexpectedErrorMessage: 'Failed to list volumes',
+        errorMessage: 'Failed to list volumes',
       });
       const response = await api.call();
       if (response.result !== 'success') {
@@ -95,7 +95,7 @@ export function useGetVolume({ name }: UseGetVolumeArgs) {
             },
           },
         },
-        unexpectedErrorMessage: 'Failed to fetch volume',
+        errorMessage: 'Failed to fetch volume',
       });
       const response = await api.call();
       if (response.result !== 'success') {
@@ -146,7 +146,7 @@ export function useUpdateVolume({ name }: UseUpdateVolumeArgs) {
             },
           },
         },
-        unexpectedErrorMessage: 'Failed to update volume',
+        errorMessage: 'Failed to update volume',
       });
       const response = await api.call();
       if (response.result !== 'success') {
@@ -199,7 +199,7 @@ export function useDeleteVolume({ name }: UseDeleteVolumeArgs) {
             },
           },
         },
-        unexpectedErrorMessage: 'Failed to delete volume',
+        errorMessage: 'Failed to delete volume',
       });
       const response = await api.call();
       if (response.result !== 'success') {

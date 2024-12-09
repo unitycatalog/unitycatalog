@@ -61,7 +61,7 @@ export function useListModels({
             },
           },
         },
-        unexpectedErrorMessage: 'Failed to list models',
+        errorMessage: 'Failed to list models',
       });
       const response = await api.call();
       if (response.result !== 'success') {
@@ -99,7 +99,7 @@ export function useGetModel({ full_name }: UseGetModelArgs) {
               },
             },
           },
-          unexpectedErrorMessage: 'Failed to fetch model',
+          errorMessage: 'Failed to fetch model',
         });
         const response = await api.call();
         if (response.result !== 'success') {
@@ -148,7 +148,7 @@ export function useCreateModel() {
             },
           },
         },
-        unexpectedErrorMessage: 'Failed to create model',
+        errorMessage: 'Failed to create model',
       });
       const response = await api.call();
       if (response.result !== 'success') {
@@ -205,7 +205,7 @@ export function useUpdateModel({ full_name }: UseUpdateModelArgs) {
             },
           },
         },
-        unexpectedErrorMessage: 'Failed to update model',
+        errorMessage: 'Failed to update model',
       });
       const response = await api.call();
       if (response.result !== 'success') {
@@ -258,7 +258,7 @@ export function useDeleteModel({ full_name }: UseDeleteModelArgs) {
             },
           },
         },
-        unexpectedErrorMessage: 'Failed to delete model',
+        errorMessage: 'Failed to delete model',
       });
       const response = await api.call();
       if (response.result !== 'success') {
@@ -322,7 +322,7 @@ export function useListModelVersions({
             },
           },
         },
-        unexpectedErrorMessage: 'Failed to fetch model version',
+        errorMessage: 'Failed to fetch model version',
       });
       const response = await api.call();
       if (response.result !== 'success') {
@@ -368,7 +368,7 @@ export function useGetModelVersion({
             },
           },
         },
-        unexpectedErrorMessage: 'Failed to fetch model version',
+        errorMessage: 'Failed to fetch model version',
       });
       const response = await api.call();
       if (response.result !== 'success') {
@@ -427,7 +427,7 @@ export function useUpdateModelVersion({
             },
           },
         },
-        unexpectedErrorMessage: 'Failed to update model version',
+        errorMessage: 'Failed to update model version',
       });
       const response = await api.call();
       if (response.result !== 'success') {
@@ -491,7 +491,7 @@ export function useDeleteModelVersion({
             },
           },
         },
-        unexpectedErrorMessage: 'Failed to delete model version',
+        errorMessage: 'Failed to delete model version',
       });
       const response = await api.call();
       if (response.result !== 'success') {

@@ -57,7 +57,7 @@ export function useListTables({
             },
           },
         },
-        unexpectedErrorMessage: 'Failed to list tables',
+        errorMessage: 'Failed to list tables',
       });
       const response = await api.call();
       if (response.result !== 'success') {
@@ -95,7 +95,7 @@ export function useGetTable({ full_name }: UseGetTableArgs) {
               },
             },
           },
-          unexpectedErrorMessage: 'Failed to fetch table',
+          errorMessage: 'Failed to fetch table',
         });
         const response = await api.call();
         if (response.result !== 'success') {
@@ -145,7 +145,7 @@ export function useDeleteTable({ full_name }: UseDeleteTableArgs) {
             },
           },
         },
-        unexpectedErrorMessage: 'Failed to delete schema',
+        errorMessage: 'Failed to delete schema',
       });
       const response = await api.call();
       if (response.result !== 'success') {

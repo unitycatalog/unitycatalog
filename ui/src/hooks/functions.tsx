@@ -57,7 +57,7 @@ export function useListFunctions({
             },
           },
         },
-        unexpectedErrorMessage: 'Failed to list functions',
+        errorMessage: 'Failed to list functions',
       });
       const response = await api.call();
       if (response.result !== 'success') {
@@ -94,7 +94,7 @@ export function useGetFunction({ name }: UseGetFunctionArgs) {
             },
           },
         },
-        unexpectedErrorMessage: 'Failed to fetch function',
+        errorMessage: 'Failed to fetch function',
       });
       const response = await api.call();
       if (response.result !== 'success') {
@@ -142,7 +142,7 @@ export function useDeleteFunction({ name }: UseDeleteFunctionArgs) {
             },
           },
         },
-        unexpectedErrorMessage: 'Failed to delete function',
+        errorMessage: 'Failed to delete function',
       });
       const response = await api.call();
       if (response.result !== 'success') {

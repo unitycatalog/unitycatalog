@@ -313,7 +313,7 @@ export const route = <
 >({
   client,
   request,
-  unexpectedErrorMessage = 'Unexpected error',
+  errorMessage = 'Unexpected error',
   errorTypeGuard = (response: {
     status: number;
     data: any;
@@ -321,7 +321,7 @@ export const route = <
 }: {
   client: AxiosInstance;
   request: ApiRequest<Api, Path, Method>;
-  unexpectedErrorMessage?: string;
+  errorMessage?: string;
   errorTypeGuard?: (response: {
     status: number;
     data: any;
@@ -371,7 +371,7 @@ export const route = <
           };
         }
       }
-      throw new Error(unexpectedErrorMessage);
+      throw new Error(errorMessage);
     }
   };
 

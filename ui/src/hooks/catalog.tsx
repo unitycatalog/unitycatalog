@@ -25,7 +25,7 @@ export function useListCatalogs() {
           path: '/catalogs',
           method: 'get',
         },
-        unexpectedErrorMessage: 'Failed to fetch catalogs',
+        errorMessage: 'Failed to fetch catalogs',
       });
       const response = await api.call();
       if (response.result !== 'success') {
@@ -60,7 +60,7 @@ export function useGetCatalog({ name }: UseGetCatalogArgs) {
             },
           },
         },
-        unexpectedErrorMessage: 'Failed to fetch catalog',
+        errorMessage: 'Failed to fetch catalog',
       });
       const response = await api.call();
       if (response.result !== 'success') {
@@ -106,7 +106,7 @@ export function useCreateCatalog() {
             },
           },
         },
-        unexpectedErrorMessage: 'Failed to create catalog',
+        errorMessage: 'Failed to create catalog',
       });
       const response = await api.call();
       if (response.result !== 'success') {
@@ -166,7 +166,7 @@ export function useUpdateCatalog({ name }: UseUpdateCatalogArgs) {
             },
           },
         },
-        unexpectedErrorMessage: 'Failed to update catalog',
+        errorMessage: 'Failed to update catalog',
       });
       const response = await api.call();
       if (response.result !== 'success') {
@@ -211,7 +211,7 @@ export function useDeleteCatalog() {
             },
           },
         },
-        unexpectedErrorMessage: 'Failed to delete catalog',
+        errorMessage: 'Failed to delete catalog',
       });
       const response = await api.call();
       if (response.result !== 'success') {

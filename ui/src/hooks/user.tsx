@@ -97,7 +97,7 @@ export function useGetCurrentUser() {
           path: '/scim2/Users/self',
           method: 'get',
         },
-        unexpectedErrorMessage: 'Failed to fetch user',
+        errorMessage: 'Failed to fetch user',
         errorTypeGuard: isExpectedError,
       });
       const response = await api.call();
