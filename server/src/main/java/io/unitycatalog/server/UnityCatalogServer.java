@@ -116,6 +116,8 @@ public class UnityCatalogServer {
     TableService tableService = new TableService(authorizer);
     FunctionService functionService = new FunctionService(authorizer);
     ModelService modelService = new ModelService(authorizer);
+    ExternalLocationService externalLocationService = new ExternalLocationService(authorizer);
+    StorageCredentialService storageCredentialService = new StorageCredentialService(authorizer);
     MetastoreService metastoreService = new MetastoreService();
     // TODO: combine these into a single service in a follow-up PR
     TemporaryTableCredentialsService temporaryTableCredentialsService =
@@ -148,7 +150,11 @@ public class UnityCatalogServer {
         .annotatedService(
             basePath + "temporary-model-version-credentials",
             temporaryModelVersionCredentialsService)
-        .annotatedService(basePath + "temporary-path-credentials", temporaryPathCredentialsService);
+        .annotatedService(basePath + "temporary-path-credentials", temporaryPathCredentialsService)
+        .annotatedService(
+            basePath + "external-locations", externalLocationService, unityConverterFunction)
+        .annotatedService(
+            basePath + "storage-credentials", storageCredentialService, unityConverterFunction);
 
     // Add support for Iceberg REST APIs
     ObjectMapper icebergMapper = RESTObjectMapper.mapper();
