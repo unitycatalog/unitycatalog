@@ -58,7 +58,7 @@ export function useGetCurrentUser() {
     queryKey: ['getUser'],
     queryFn: async () => {
       return apiClient
-        .get(`/scim2/Users/self`, {
+        .get(`/scim2/Me`, {
           baseURL: `${UC_AUTH_API_PREFIX}`,
         })
         .then((response) => response.data)
