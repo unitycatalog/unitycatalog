@@ -5,12 +5,9 @@ You can use the Unity Catalog AI package with the LiteLLM integration to utilize
 ## Installation
 
 ```sh
-# install from the source
-pip install git+https://github.com/unitycatalog/unitycatalog.git#subdirectory=unitycatalog-ai/integrations/litellm
+pip install unitycatalog-litellm
 ```
 
-> [!NOTE]
-> Once this package is published to PyPI, users can install via `pip install unitycatalog-litellm`
 
 ## Get started
 

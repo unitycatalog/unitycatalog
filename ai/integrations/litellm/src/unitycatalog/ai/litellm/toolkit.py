@@ -29,8 +29,12 @@ class LiteLLMTool(BaseModel):
 
     def to_dict(self) -> dict[str, Any]:
         """
-        Converts the LiteLLM instance into a dictionary for the LiteLLM API. Note that LiteLLM API
-        supports arbitrary JSON schemas, but here we adhere to the OpenAI tool spec.
+        Converts the LiteLLM instance into a dictionary for the LiteLLM API. 
+        Note: the LiteLLM API supports arbitrary JSON for tool definitions, but this interface 
+        adheres to the OpenAI tool spec.
+        
+        Returns: 
+            The tool definition as a Dict
         """
         return self.tool
 
@@ -106,7 +110,7 @@ class UCFunctionToolkit(BaseModel):
             # NB: Pydantic BaseModel.schema(), which is used by LiteLLM, requires a subclass
             # of BaseClass. When function_info.input_params is None, we return a BaseModel as the
             # pydantic_model
-            class _BaseModelWrapper(generated_model): ...
+            _BaseModelWrapper = type('BaseModelWrapper', (generated_model,), {})
 
             generated_model = _BaseModelWrapper
 
