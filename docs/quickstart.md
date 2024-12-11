@@ -15,7 +15,7 @@ git clone git@github.com:unitycatalog/unitycatalog.git
 
 To run Unity Catalog, you need **Java 17** installed on your machine.  You can
 always run the `java --version` command to verify that you have the right
-version of Java installed such as the following example output. 
+version of Java installed such as the following example output.
 
 ```bash
 % java --version
@@ -23,7 +23,6 @@ openjdk 17.0.12 2024-07-16
 OpenJDK Runtime Environment Homebrew (build 17.0.12+0)
 OpenJDK 64-Bit Server VM Homebrew (build 17.0.12+0, mixed mode, sharing)
 ```
-
 
 Change into the `unitycatalog` directory and run `bin/start-uc-server` to instantiate the server. Here is what you
 should see:
@@ -269,7 +268,7 @@ bin/uc table read --full_name unity.default.mytable
 Delete the table to clean up:
 
 ```bash
-bin/uc table delete --full_name unity.default.my_table
+bin/uc table delete --full_name unity.default.mytable
 ```
 
 > Note, while you have deleted the table from Unity Catalog, the underlying file system may still have the files (i.e.,

@@ -87,7 +87,18 @@ def _try_get_spark_session_in_dbr() -> Any:
     try:
         # if in Databricks, fetch the current active session
         from databricks.sdk.runtime import spark
+        from pyspark.sql.connect.session import SparkSession
 
+        if not isinstance(spark, SparkSession):
+            _logger.warning(
+                "Current SparkSession in the active environment is not a "
+                "pyspark.sql.connect.session.SparkSession instance. Classic runtime does not support "
+                "all functionalities of the unitycatalog-ai framework. To use the full "
+                "capabilities of unitycatalog-ai, execute your code using a client that is attached to "
+                "a Serverless runtime cluster. To learn more about serverless, see the guide at: "
+                "https://docs.databricks.com/en/compute/serverless/index.html#connect-to-serverless-compute "
+                "for more details."
+            )
         return spark
     except Exception:
         return
@@ -212,8 +223,15 @@ class DatabricksFunctionClient(BaseFunctionClient):
         self._is_default_client = client is None
         super().__init__()
 
+    def _is_spark_session_active(self):
+        if self.spark is None:
+            return False
+        if hasattr(self.spark, "is_stopped"):
+            return not self.spark.is_stopped
+        return self.spark.getActiveSession() is not None
+
     def set_default_spark_session(self):
-        if self.spark is None or self.spark.is_stopped:
+        if not self._is_spark_session_active():
             _validate_databricks_connect_available()
             from databricks.connect.session import DatabricksSession as SparkSession
 
@@ -224,7 +242,7 @@ class DatabricksFunctionClient(BaseFunctionClient):
             self.spark = builder.serverless(True).getOrCreate()
 
     def stop_spark_session(self):
-        if self.spark is not None and not self.spark.is_stopped:
+        if self._is_spark_session_active():
             self.spark.stop()
 
     def _validate_warehouse_type(self):
@@ -276,7 +294,9 @@ class DatabricksFunctionClient(BaseFunctionClient):
             self.set_default_spark_session()
             # TODO: add timeout
             self.spark.sql(sql_function_body)
-            return self.get_function(extract_function_name(sql_function_body))
+            created_function_info = self.get_function(extract_function_name(sql_function_body))
+            check_function_info(created_function_info)
+            return created_function_info
         # TODO: support creating from function_info after CreateFunction bug is fixed in databricks-sdk
         # return self.client.functions.create(function_info)
         raise ValueError("sql_function_body must be provided.")
@@ -542,7 +562,7 @@ class DatabricksFunctionClient(BaseFunctionClient):
                     Applies the given row limit to the statement's result set, but unlike the `LIMIT` clause in SQL, it
                     also sets the `truncated` field in the response to indicate whether the result was trimmed due to
                     the limit or not.
-                - byte_limit: int (default to 4096)
+                - byte_limit: int (default to 1048576 = 1MB)
                     Applies the given byte limit to the statement's result size. Byte counts are based on internal data
                     representations and might not match the final size in the requested `format`. If the result was
                     truncated due to the byte limit, then `truncated` in the response is set to `true`. When using
@@ -666,20 +686,25 @@ class DatabricksFunctionClient(BaseFunctionClient):
         sql_command = get_execute_function_sql_command(function_info, parameters)
         try:
             result = self.spark.sql(sqlQuery=sql_command.sql_query, args=sql_command.args or None)
+            if is_scalar(function_info):
+                return FunctionExecutionResult(format="SCALAR", value=str(result.collect()[0][0]))
+            else:
+                row_limit = int(UCAI_DATABRICKS_SERVERLESS_EXECUTION_RESULT_ROW_LIMIT.get())
+                truncated = result.count() > row_limit
+                pdf = result.limit(row_limit).toPandas()
+                csv_buffer = StringIO()
+                pdf.to_csv(csv_buffer, index=False)
+                return FunctionExecutionResult(
+                    format="CSV", value=csv_buffer.getvalue(), truncated=truncated
+                )
         except Exception as e:
-            error = f"Failed to execute function with command `{sql_command}`; Error: {e}"
-            return FunctionExecutionResult(error=error)
-        if is_scalar(function_info):
-            return FunctionExecutionResult(format="SCALAR", value=str(result.collect()[0][0]))
-        else:
-            row_limit = int(UCAI_DATABRICKS_SERVERLESS_EXECUTION_RESULT_ROW_LIMIT.get())
-            truncated = result.count() > row_limit
-            pdf = result.limit(row_limit).toPandas()
-            csv_buffer = StringIO()
-            pdf.to_csv(csv_buffer, index=False)
-            return FunctionExecutionResult(
-                format="CSV", value=csv_buffer.getvalue(), truncated=truncated
+            sql_command_msg = (
+                f"spark.sql({sql_command.sql_query}" + f", args={sql_command.args})"
+                if sql_command.args
+                else ")"
             )
+            error = f"Failed to execute function with command `{sql_command_msg}`\nError: {e}"
+            return FunctionExecutionResult(error=error)
 
     @override
     def delete_function(

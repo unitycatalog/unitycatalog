@@ -268,6 +268,13 @@ def supported_param_info_types():
     except ImportError:
         pass
 
+    try:
+        from unitycatalog.client.models import FunctionParameterInfo as UCFunctionParameterInfo
+
+        types += (UCFunctionParameterInfo,)
+    except ImportError:
+        pass
+
     return types
 
 
@@ -278,6 +285,12 @@ def supported_function_info_types():
         from databricks.sdk.service.catalog import FunctionInfo
 
         types += (FunctionInfo,)
+    except ImportError:
+        pass
+    try:
+        from unitycatalog.client.models import FunctionInfo as UCFunctionInfo
+
+        types += (UCFunctionInfo,)
     except ImportError:
         pass
 

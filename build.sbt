@@ -1,11 +1,10 @@
 import java.nio.file.Files
 import java.io.File
 import Tarball.createTarballSettings
-import sbt.util
-import sbt.Keys._
+import sbt.{Attributed, util}
+import sbt.Keys.*
 import sbtlicensereport.license.{DepModuleInfo, LicenseCategory, LicenseInfo}
 import ReleaseSettings.*
-import PythonClientPostBuild.*
 
 import scala.language.implicitConversions
 
@@ -48,6 +47,9 @@ lazy val commonSettings = Seq(
     "org.apache.logging.log4j" % "log4j-slf4j2-impl" % "2.23.1",
     "org.apache.logging.log4j" % "log4j-api" % "2.23.1"
   ),
+  excludeDependencies ++= Seq(
+    ExclusionRule("org.slf4j", "slf4j-reload4j")
+  ),
   resolvers += Resolver.mavenLocal,
   autoScalaLibrary := false,
   crossPaths := false,  // No scala cross building
@@ -67,7 +69,10 @@ lazy val commonSettings = Seq(
     val packageFile = (Compile / packageBin).value
     generateClasspathFile(
       targetDir = packageFile.getParentFile,
-      classpath = (Runtime / dependencyClasspath).value)
+      // Also include the jar being built (packageFile) in the classpath
+      // This is specifically required by the server project since the server and control models are provided dependencies
+      classpath = (Runtime / dependencyClasspath).value :+ Attributed.blank(packageFile)
+    )
     packageFile
   },
 
@@ -285,7 +290,9 @@ lazy val populateTestDB = taskKey[Unit]("Run PopulateTestDatabase main class fro
 
 lazy val server = (project in file("server"))
   .dependsOn(client % "test->test")
-  .dependsOn(serverModels)
+  // Server and control models are added as provided to avoid them being added as maven dependencies
+  // This is because the server and control models are included in the server jar
+  .dependsOn(serverModels % "provided", controlModels % "provided")
   .settings (
     name := s"$artifactNamePrefix-server",
     mainClass := Some(orgName + ".server.UnityCatalogServer"),
@@ -385,13 +392,17 @@ lazy val server = (project in file("server"))
       val log = streams.value.log
       (Test / runMain).toTask(s" io.unitycatalog.server.utils.PopulateTestDatabase").value
     },
-    Test / javaOptions += s"-Duser.dir=${(ThisBuild / baseDirectory).value.getAbsolutePath}"
+    Test / javaOptions += s"-Duser.dir=${(ThisBuild / baseDirectory).value.getAbsolutePath}",
+    // Include server and control models in the bin package for server
+    // This will allow us to have a single maven artifact and not 3 (server, server models, control models)
+    Compile / packageBin / mappings ++= (Compile / packageBin / mappings).value ++
+      (serverModels / Compile / packageBin / mappings).value ++
+      (controlModels / Compile / packageBin / mappings).value
   )
 
 lazy val serverModels = (project in file("server") / "target" / "models")
   .enablePlugins(OpenApiGeneratorPlugin)
   .disablePlugins(JavaFormatterPlugin)
-  .dependsOn(controlModels % "compile->compile")
   .settings(
     name := s"$artifactNamePrefix-servermodels",
     commonSettings,
@@ -463,6 +474,7 @@ lazy val controlModels = (project in file("server") / "target" / "controlmodels"
 
 lazy val cli = (project in file("examples") / "cli")
   .dependsOn(server % "test->test")
+  .dependsOn(serverModels, controlModels)
   .dependsOn(client % "compile->compile;test->test")
   .dependsOn(controlApi % "compile->compile")
   .settings(
