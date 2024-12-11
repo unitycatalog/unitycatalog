@@ -37,7 +37,7 @@ def uc_server():
             print(">> Waiting for server to accept connections ...")
             for _ in range(90):
                 try:
-                    response = requests.head("http://localhost:8081", timeout=60)
+                    response = requests.head("http://localhost:8080", timeout=60)
                     if response.status_code == 200:
                         print("Server is running.")
                         break
