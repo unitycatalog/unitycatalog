@@ -5,20 +5,91 @@ You can use the Unity Catalog AI package with the autogen SDK to utilize functio
 > [!NOTE]
 > Ensure that the base Autogen package is installed with version `autogen-agentchat~=0.2` or earlier, as there are significant changes in the API after this release.
 
-
 ## Installation
 
+### Client Library
+
+To use this package with **Open Source Unity Catalog**, you will need to install:
+
 ```sh
-# install from the source
-pip install git+https://github.com/puneet-jain159/unitycatalog.git@autogen_ucai#subdirectory=unitycatalog-ai/integrations/autogen
+pip install unitycatalog-ai[oss]
 ```
 
-> [!NOTE]
-> Once this package is published to PyPI, users can install via `pip install unitycatalog-autogen`
+To use this package with **Databricks Unity Catalog**, you will need to install:
 
-## Get started
+```sh
+pip install unitycatalog-ai[databricks]
+```
 
-### Databricks-managed UC
+### Integration Library
+
+With the appropriate client installed for the AI functionality for Unity Catalog, you can then install the `AutoGen` integration library:
+
+```sh
+pip install unitycatalog-autogen
+```
+
+## Getting started
+
+### Open Source Unity Catalog
+
+#### Creating a Client
+
+To interact with OSS UC, initialize the `UnitycatalogFunctionClient` as shown below:
+
+```python
+import asyncio
+from unitycatalog.ai.core.oss import UnitycatalogFunctionClient
+from unitycatalog.client import ApiClient, Configuration
+
+# Configure the Unity Catalog API client
+config = Configuration(
+    host="http://localhost:8080/api/2.1/unity-catalog"  # Replace with your UC server URL
+)
+
+# Initialize the asynchronous ApiClient
+api_client = ApiClient(configuration=config)
+
+# Instantiate the UnitycatalogFunctionClient
+uc_client = UnitycatalogFunctionClient(api_client=api_client)
+
+# Example catalog and schema names
+CATALOG = "my_catalog"
+SCHEMA = "my_schema"
+```
+
+#### Creating a Function in UC OSS
+
+You can create a UC function either by providing a Python callable or by submitting a `FunctionInfo` object. Below is an example (recommended) of using the `create_python_function` API that accepts a Python callable (function) as input.
+
+To create a UC function from a Python function, define your function with appropriate type hints and a Google-style docstring:
+
+```python
+def add_numbers(a: float, b: float) -> float:
+    """
+    Adds two numbers and returns the result.
+
+    Args:
+        a (float): First number.
+        b (float): Second number.
+
+    Returns:
+        float: The sum of the two numbers.
+    """
+    return a + b
+
+# Create the function within the Unity Catalog catalog and schema specified
+function_info = uc_client.create_python_function(
+    func=add_numbers,
+    catalog=CATALOG,
+    schema=SCHEMA,
+    replace=False,  # Set to True to overwrite if the function already exists
+)
+
+print(function_info)
+```
+
+### Databricks-managed Unity Catalog
 
 To use Databricks-managed Unity Catalog with this package, follow the [instructions](https://docs.databricks.com/en/dev-tools/cli/authentication.html#authentication-for-the-databricks-cli) to authenticate to your workspace and ensure that your access token has workspace-level privilege for managing UC functions.
 
@@ -39,7 +110,7 @@ client = DatabricksFunctionClient(
 set_uc_function_client(client)
 ```
 
-#### Create a function in UC
+#### Create a Function in UC
 
 Create Python UDFs in Unity Catalog with the client.
 
@@ -80,7 +151,9 @@ function_info_get_temp = client.create_python_function(
 
 Now that the functions are created and stored in the corresponding catalog and schema, we can use it within autogen's SDK.
 
-#### Create a UCFunctionToolkit instance
+## Using the Function as a GenAI Tool
+
+### Create a UCFunctionToolkit instance
 
 To begin, we will need an instance of the tool function interface from the `unitycatalog_autogen` toolkit.
 
@@ -111,7 +184,7 @@ my_tool = tools[0]
 my_tool.fn(**{"location": "San Francisco"})
 ```
 
-#### Use the tools with a conversable Agent
+### Use the tools with a conversable Agent
 
 ```python
 
@@ -185,7 +258,7 @@ toolkit.register_with_agents(
 
 ```
 
-#### Calling the function
+### Calling the function
 
 ```python
 groupchat = GroupChat(
@@ -277,7 +350,6 @@ TERMINATE
 
 ```
 
-
-#### Configurations for UC functions execution
+### Configurations for UC functions execution
 
 We provide configurations for databricks client to control the function execution behaviors, check [function execution arguments section](../../README.md#function-execution-arguments-configuration).

@@ -6,7 +6,7 @@ authors = [
     { name="Michael Berk", email="michaelberk99@gmail.com" }
 ]
 readme = "README.md"
-license = { text="MIT" }
+license = { text="Apache-2.0" }
 requires-python = ">=3.10"
 dependencies = [
     "unitycatalog-ai",
