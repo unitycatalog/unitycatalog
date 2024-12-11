@@ -34,8 +34,6 @@ import io.unitycatalog.server.utils.OptionParser;
 import io.unitycatalog.server.utils.RESTObjectMapper;
 import io.unitycatalog.server.utils.ServerProperties;
 import io.unitycatalog.server.utils.VersionUtils;
-import io.vertx.core.Verticle;
-import io.vertx.core.Vertx;
 import java.nio.file.Path;
 import org.apache.logging.log4j.core.config.Configurator;
 import org.slf4j.Logger;
@@ -200,14 +198,9 @@ public class UnityCatalogServer {
     OptionParser options = new OptionParser();
     options.parse(args);
     // Start Unity Catalog server
-    UnityCatalogServer unityCatalogServer = new UnityCatalogServer(options.getPort() + 1);
+    UnityCatalogServer unityCatalogServer = new UnityCatalogServer(options.getPort());
     unityCatalogServer.printArt();
     unityCatalogServer.start();
-    // Start URL transcoder
-    Vertx vertx = Vertx.vertx();
-    Verticle transcodeVerticle =
-        new URLTranscoderVerticle(options.getPort(), options.getPort() + 1);
-    vertx.deployVerticle(transcodeVerticle);
   }
 
   public void start() {
