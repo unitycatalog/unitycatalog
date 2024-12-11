@@ -1,4 +1,5 @@
 import logging
+import os
 import uuid
 from contextlib import contextmanager
 from typing import Any, Callable, Generator, NamedTuple, Optional
@@ -21,7 +22,8 @@ from unitycatalog.client import (
     FunctionParameterInfos as OSSFunctionParameterInfos,
 )
 
-CATALOG = "integration_testing"
+CATALOG = os.getenv("CATALOG", "integration_testing")
+
 
 
 RETRIEVER_OUTPUT_SCALAR = '[{"page_content": "# Technology partners\\n## What is Databricks Partner Connect?\\n", "metadata": {"similarity_score": 0.010178182, "chunk_id": "0217a07ba2fec61865ce408043acf1cf"}}, {"page_content": "# Technology partners\\n## What is Databricks?\\n", "metadata": {"similarity_score": 0.010178183, "chunk_id": "0217a07ba2fec61865ce408043acf1cd"}}]'

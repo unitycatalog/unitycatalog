@@ -150,6 +150,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
+<<<<<<< HEAD
         python-version: ['3.10']
     timeout-minutes: 20
     defaults:
@@ -219,4 +220,28 @@ jobs:
           pip install mlflow
       - name: Run tests
         run: |
-          pytest integrations/gemini/tests --ignore=integrations/gemini/tests/test_gemini_toolkit_oss.py
+
+  litellm_test:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ['3.9', '3.10']
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: ai
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+      - name: Install dependencies
+        run: |
+          pip install core/.
+          echo "PYTHONPATH=$(pwd)/core/src:\$PYTHONPATH" >> $GITHUB_ENV
+          pip install integrations/litellm[dev]
+      - name: Run tests
+        run: |
+          pytest integrations/litellm/tests
