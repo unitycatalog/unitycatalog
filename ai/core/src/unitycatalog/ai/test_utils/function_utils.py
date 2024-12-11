@@ -1,4 +1,5 @@
 import logging
+import os
 import uuid
 from contextlib import contextmanager
 from typing import Any, Callable, Generator, NamedTuple, Optional
@@ -6,7 +7,7 @@ from typing import Any, Callable, Generator, NamedTuple, Optional
 from unitycatalog.ai.core.databricks import DatabricksFunctionClient
 from unitycatalog.ai.core.utils.function_processing_utils import get_tool_name
 
-CATALOG = "integration_testing"
+CATALOG = os.getenv("CATLAOG", "integration_testing")
 
 _logger = logging.getLogger(__name__)
 
