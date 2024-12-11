@@ -243,7 +243,8 @@ def test_tool_call_data_execute(mock_client):
     result = tool_call.execute(mock_client)
 
     mock_client.execute_function.assert_called_once_with(
-        "catalog__schema__get_weather", {"location": "San Francisco, CA", "unit": "celsius"}
+        "catalog__schema__get_weather",
+        {"location": "San Francisco, CA", "unit": "celsius"},
     )
     assert result == "65 degrees"
 
@@ -252,7 +253,9 @@ def test_generate_tool_call_messages_single_tool(
     mock_message_single_tool, mock_client, dummy_history
 ):
     result = generate_tool_call_messages(
-        response=mock_message_single_tool, conversation_history=dummy_history, client=mock_client
+        response=mock_message_single_tool,
+        conversation_history=dummy_history,
+        client=mock_client,
     )
 
     assert len(result) == 3
@@ -270,7 +273,9 @@ def test_generate_tool_call_messages_multiple_tools(
     mock_message_multiple_tools, mock_client, dummy_history
 ):
     result = generate_tool_call_messages(
-        response=mock_message_multiple_tools, conversation_history=dummy_history, client=mock_client
+        response=mock_message_multiple_tools,
+        conversation_history=dummy_history,
+        client=mock_client,
     )
 
     assert len(result) == 5
@@ -333,5 +338,7 @@ def test_generate_tool_call_messages_validate_default_client(
 
     with pytest.raises(ValueError, match="No client provided"):
         generate_tool_call_messages(
-            response=mock_message_single_tool, conversation_history=dummy_history, client=client
+            response=mock_message_single_tool,
+            conversation_history=dummy_history,
+            client=client,
         )

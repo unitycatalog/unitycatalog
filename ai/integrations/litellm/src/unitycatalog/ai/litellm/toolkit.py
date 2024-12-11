@@ -1,5 +1,4 @@
-import json
-from typing import Any, Callable, Optional
+from typing import Any, Optional
 
 from openai import pydantic_function_tool
 from pydantic import BaseModel, ConfigDict, Field, model_validator
@@ -14,9 +13,6 @@ from unitycatalog.ai.core.utils.function_processing_utils import (
 
 
 class LiteLLMTool(BaseModel):
-    fn: Callable[..., str] = Field(
-        description="Callable that will be used to execute the UC Function, registered to the LiteLLM definition."
-    )
     name: str = Field(
         description="The name of the function.",
     )
@@ -29,11 +25,11 @@ class LiteLLMTool(BaseModel):
 
     def to_dict(self) -> dict[str, Any]:
         """
-        Converts the LiteLLM instance into a dictionary for the LiteLLM API. 
-        Note: the LiteLLM API supports arbitrary JSON for tool definitions, but this interface 
+        Converts the LiteLLM instance into a dictionary for the LiteLLM API.
+        Note: the LiteLLM API supports arbitrary JSON for tool definitions, but this interface
         adheres to the OpenAI tool spec.
-        
-        Returns: 
+
+        Returns:
             The tool definition as a Dict
         """
         return self.tool
@@ -110,7 +106,7 @@ class UCFunctionToolkit(BaseModel):
             # NB: Pydantic BaseModel.schema(), which is used by LiteLLM, requires a subclass
             # of BaseClass. When function_info.input_params is None, we return a BaseModel as the
             # pydantic_model
-            _BaseModelWrapper = type('BaseModelWrapper', (generated_model,), {})
+            _BaseModelWrapper = type("BaseModelWrapper", (generated_model,), {})
 
             generated_model = _BaseModelWrapper
 
@@ -120,17 +116,7 @@ class UCFunctionToolkit(BaseModel):
             description=function_info.comment or "",
         )
 
-        def func(**kwargs: Any) -> str:
-            args_json = json.loads(json.dumps(kwargs, default=str))
-            result = client.execute_function(
-                function_name=function_name,
-                parameters=args_json,
-            )
-
-            return result.to_json()
-
         return LiteLLMTool(
-            fn=func,
             name=get_tool_name(function_name),
             description=function_info.comment or "",
             tool=tool,

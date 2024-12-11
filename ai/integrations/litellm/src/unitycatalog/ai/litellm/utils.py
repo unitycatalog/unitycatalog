@@ -6,7 +6,9 @@ from pydantic import BaseModel, Field, ValidationError
 from litellm.types.utils import ChatCompletionMessageToolCall, Choices, Message
 from unitycatalog.ai.core.client import BaseFunctionClient
 from unitycatalog.ai.core.utils.client_utils import validate_or_set_default_client
-from unitycatalog.ai.core.utils.function_processing_utils import construct_original_function_name
+from unitycatalog.ai.core.utils.function_processing_utils import (
+    construct_original_function_name,
+)
 
 
 class ConversationMessage(BaseModel):
@@ -131,11 +133,6 @@ def generate_tool_call_messages(
         {"role", "user": "content": "function_1_response_as_a_string"},
         {"role", "user": "content": "function_2_response_as_a_string"}
     ]
-
-    Note:
-        This function relies on that the UC function names don't contain '__' in the catalog, schema
-        or function names, and the total length of the function name is less than 64 characters.
-        Otherwise, the original function name is not guaranteed to be correctly reconstructed.
 
     Args:
         response: The chat completion response object returned by the LiteLLM.completion API.

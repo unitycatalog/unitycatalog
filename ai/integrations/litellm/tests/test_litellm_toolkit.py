@@ -1,4 +1,3 @@
-import json
 import os
 from contextlib import contextmanager
 from unittest.mock import MagicMock, patch
@@ -12,7 +11,7 @@ from databricks.sdk.service.catalog import (
 from pydantic import ValidationError
 
 from unitycatalog.ai.core.client import FunctionExecutionResult
-from unitycatalog.ai.litellm.toolkit import UCFunctionToolkit
+from unitycatalog.ai.litellm.toolkit import LiteLLMTool, UCFunctionToolkit
 from unitycatalog.ai.test_utils.client_utils import (
     USE_SERVERLESS,
     client,  # noqa: F401
@@ -24,7 +23,6 @@ from unitycatalog.ai.test_utils.function_utils import create_function_and_cleanu
 
 CATALOG = os.environ.get("CATALOG", "integration_testing")
 SCHEMA = os.environ.get("SCHEMA", "ucai_core_test")
-
 
 @pytest.fixture
 def tools_mock():
@@ -96,11 +94,11 @@ def test_uc_function_to_litellm_tool(function_info, client):
             return_value=FunctionExecutionResult(format="SCALAR", value="some_string"),
         ),
     ):
+        function_name = f"{CATALOG}.{SCHEMA}.test"
         tool = UCFunctionToolkit.uc_function_to_litellm_tool(
-            function_name=f"{CATALOG}.{SCHEMA}.test", client=client
+            function_name=function_name, client=client
         )
-        result = json.loads(tool.fn(x="some_string"))["value"]
-        assert result == "some_string"
+        assert tool.name == function_name.replace(".", "__")
 
 
 @requires_databricks
@@ -116,9 +114,6 @@ def test_toolkit_e2e(use_serverless, monkeypatch):
         assert tool.name == func_obj.tool_name
         assert tool.description == func_obj.comment
 
-        result = json.loads(tool.fn(code="print(1)"))["value"]
-        assert result == "1\n"
-
         toolkit = UCFunctionToolkit(function_names=[f"{CATALOG}.{SCHEMA}.*"])
         assert func_obj.tool_name in [t.name for t in toolkit.tools]
 
@@ -130,14 +125,13 @@ def test_toolkit_e2e_with_client(use_serverless, monkeypatch):
     client = get_client()
     with set_default_client(client), create_function_and_cleanup(client, schema=SCHEMA) as func_obj:
         toolkit = UCFunctionToolkit(
-            function_names=[func_obj.full_function_name], return_direct=True, client=client
+            function_names=[func_obj.full_function_name],
+            return_direct=True,
+            client=client,
         )
         tool = toolkit.tools[0]
         assert tool.name == func_obj.tool_name
         assert tool.description == func_obj.comment
-
-        result = json.loads(tool.fn(code="print(1)"))["value"]
-        assert result == "1\n"
 
         toolkit = UCFunctionToolkit(function_names=[f"{CATALOG}.{SCHEMA}.*"])
         assert func_obj.tool_name in [t.name for t in toolkit.tools]
@@ -151,14 +145,9 @@ def test_multiple_toolkits(use_serverless, monkeypatch):
     with set_default_client(client), create_function_and_cleanup(client, schema=SCHEMA) as func_obj:
         toolkit1 = UCFunctionToolkit(function_names=[func_obj.full_function_name])
         toolkit2 = UCFunctionToolkit(function_names=[f"{CATALOG}.{SCHEMA}.*"])
+        toolkits = [toolkit1, toolkit2]
 
-        input_args = {"code": "print(1)"}
-        assert (
-            json.loads(toolkit1.tools[0].fn(**input_args))["value"]
-            == json.loads(
-                [t for t in toolkit2.tools if t.name == func_obj.tool_name][0].fn(**input_args)
-            )["value"]
-        )
+        assert all(isinstance(toolkit.tools[0], LiteLLMTool) for toolkit in toolkits)
 
 
 def test_toolkit_creation_errors():
@@ -171,6 +160,7 @@ def test_toolkit_creation_errors():
 
 def test_toolkit_creation_errors_with_client(client):
     with pytest.raises(
-        ValueError, match="Cannot create tool instances without function_names being provided."
+        ValueError,
+        match="Cannot create tool instances without function_names being provided.",
     ):
         UCFunctionToolkit(function_names=[], client=client)

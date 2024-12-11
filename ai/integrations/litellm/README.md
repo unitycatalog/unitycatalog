@@ -11,13 +11,30 @@ pip install unitycatalog-litellm
 
 ## Get started
 
-### Databricks-managed UC
+### Client Setup - OSS Unity Catalog
+To use open source Unity Catalog with this package, create an instance of the Functions Client that is in accordance with your deployment, as shown below.
+
+```python
+from unitycatalog.client import ApiClient, Configuration
+from unitycatalog.ai.core.oss import UnitycatalogFunctionClient
+
+config = Configuration()
+# This is the default address when starting a UnityCatalog server locally. Update this to the uri
+# of your running UnityCatalog server.
+config.host = "http://localhost:8080/api/2.1/unity-catalog"
+
+# Create the UnityCatalog client
+api_client = ApiClient(configuration=config)
+
+# Use the UnityCatalog client to create an instance of the AI function client
+client = UnitycatalogFunctionClient(api_client=api_client)
+```
+
+### Client Setup - Databricks-managed UC
 
 To use Databricks-managed Unity Catalog with this package, follow the [instructions](https://docs.databricks.com/en/dev-tools/cli/authentication.html#authentication-for-the-databricks-cli) to authenticate to your workspace and ensure that your access token has workspace-level privilege for managing UC functions.
 
-#### Client setup
-
-Initialize a client for managing UC functions in a Databricks workspace, and set it as the global client.
+First, initialize a client for managing UC functions in a Databricks workspace, and set it as the global client.
 
 ```python
 from unitycatalog.ai.core.client import set_uc_function_client
@@ -112,7 +129,7 @@ tools_litellm_format = [tool.to_dict() for tool in tools]
 
 # Show the response
 response = litellm.completion(
-    model="gpt-3.5-turbo-1106",
+    model="gpt-4o-mini",
     messages=messages,
     tools=tools_litellm_format,
     tool_choice="auto",  # auto is default, but we'll be explicit
@@ -146,7 +163,7 @@ ModelResponse(
         )
     ],
     created=1731020991,
-    model="gpt-3.5-turbo-1106",
+    model="gpt-4o-mini",
     object="chat.completion",
     system_fingerprint="fp_e7d4a5f731",
     usage=Usage(
@@ -171,9 +188,9 @@ ModelResponse(
 
 #### Calling the function
 
-There are two ways of calling the function within UC:
+There are two ways of calling the function within UC: using the `generate_tool_call_messages` function on the response and manually, via the returned values of `extract_tool_call_data`.
 
-- Use the `generate_tool_call_messages` function on the response.
+##### Use the `generate_tool_call_messages` function on the response
 
 **This is the recommended API to use to simplify your workstream**. This option will extract the tool calling instructions, execute the appropriate
 functions in Unity Catalog, and return the payload needed to call the `litellm.create` API directly. If there are no tool
@@ -192,7 +209,7 @@ tool_messages = generate_tool_call_messages(response=response, client=client, co
 # Call the LiteLLM client with the parsed tool response from executing the Unity Catalog function
 # Show the response
 response_2 = litellm.completion(
-    model="gpt-3.5-turbo-1106",
+    model="gpt-4o-mini",
     messages=tool_messages,
 )
 print("\nSecond LLM Response:\n", response_2)
@@ -215,7 +232,7 @@ ModelResponse(
         )
     ],
     created=1731021033,
-    model="gpt-3.5-turbo-1106",
+    model="gpt-4o-mini",
     object="chat.completion",
     system_fingerprint="fp_e7d4a5f731",
     usage=Usage(
@@ -237,7 +254,7 @@ ModelResponse(
 )
 ```
 
-- Manually, via the returned values of `extract_tool_call_data`.
+##### Use the returned values of `extract_tool_call_data`
 
 **Note** this is a lower-level API and is intended for advanced use cases where logic needs to exist between the tool call request, its response,
 and the construction of a subsequent call to LiteLLM.
