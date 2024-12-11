@@ -38,8 +38,6 @@ import io.unitycatalog.server.utils.OptionParser;
 import io.unitycatalog.server.utils.RESTObjectMapper;
 import io.unitycatalog.server.utils.ServerProperties;
 import io.unitycatalog.server.utils.VersionUtils;
-import io.vertx.core.Verticle;
-import io.vertx.core.Vertx;
 import java.nio.file.Path;
 import org.apache.logging.log4j.core.config.Configurator;
 import org.slf4j.Logger;
@@ -302,7 +300,7 @@ public class UnityCatalogServer {
     options.parse(args);
     // Start Unity Catalog server
     UnityCatalogServer unityCatalogServer =
-        UnityCatalogServer.builder().port(options.getPort() + 1).build();
+        UnityCatalogServer.builder().port(options.getPort()).build();
     unityCatalogServer.printArt();
     unityCatalogServer.start();
     // Start URL transcoder
