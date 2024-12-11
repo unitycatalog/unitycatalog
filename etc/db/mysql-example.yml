@@ -2,7 +2,7 @@
 services:
   mysql-db:
     image: mysql:8.4.1
-    restart: always
+    restart: unless-stopped
     environment:
       MYSQL_ROOT_PASSWORD: root
       MYSQL_DATABASE: ucdb
