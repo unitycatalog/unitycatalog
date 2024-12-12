@@ -30,7 +30,7 @@ def generate_func_name_and_cleanup(client: DatabricksFunctionClient, schema: str
         try:
             client.delete_function(func_name)
         except Exception as e:
-            _logger.warning(f"Fail to delete function: {e}")
+            _logger.warning(f"Failed to delete function: {e}")
 
 
 class FunctionObj(NamedTuple):
@@ -74,7 +74,7 @@ $$
         try:
             client.delete_function(func_name)
         except Exception as e:
-            _logger.warning(f"Fail to delete function: {e}")
+            _logger.warning(f"Failed to delete function: {e}")
 
 
 @contextmanager
@@ -98,4 +98,4 @@ def create_python_function_and_cleanup(
         try:
             client.delete_function(func_name)
         except Exception as e:
-            _logger.warning(f"Fail to delete function: {e}")
+            _logger.warning(f"Failed to delete function: {e}")
