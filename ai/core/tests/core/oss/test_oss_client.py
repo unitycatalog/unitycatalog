@@ -11,7 +11,7 @@ import pytest
 import pytest_asyncio
 from pydantic import ValidationError
 
-from unitycatalog.ai.core.oss import (
+from unitycatalog.ai.core.client import (
     UnitycatalogClient,
     UnitycatalogFunctionClient,
     validate_input_parameter,

@@ -6,37 +6,27 @@ You can use the Unity Catalog AI package with the Anthropic SDK to utilize funct
 
 ### Client Library
 
-To use this package with **Open Source Unity Catalog**, you will need to install:
-
-```sh
-pip install unitycatalog-ai[oss]
-```
-
-To use this package with **Databricks Unity Catalog**, you will need to install:
-
-```sh
-pip install unitycatalog-ai[databricks]
-```
-
-### Integration Library
-
-With the appropriate client installed for the AI functionality for Unity Catalog, you can then install the `Anthropic` integration library:
+To use this package with **Unity Catalog**, you will need to install:
 
 ```sh
 pip install unitycatalog-anthropic
 ```
 
+To use this package with **Databricks Unity Catalog**, you will need to install:
+
+```sh
+pip install unitycatalog-anthropic[databricks]
+```
+
 ## Getting started
 
-### Open Source Unity Catalog
+### Creating a Unity Catalog Client
 
-#### Creating a Client
-
-To interact with OSS UC, initialize the `UnitycatalogFunctionClient` as shown below:
+To interact with your Unity Catalog server, initialize the `UnitycatalogFunctionClient` as shown below:
 
 ```python
 import asyncio
-from unitycatalog.ai.core.oss import UnitycatalogFunctionClient
+from unitycatalog.ai.core.client import UnitycatalogFunctionClient
 from unitycatalog.client import ApiClient, Configuration
 
 # Configure the Unity Catalog API client
@@ -55,7 +45,7 @@ CATALOG = "my_catalog"
 SCHEMA = "my_schema"
 ```
 
-#### Creating a Function in UC OSS
+### Creating a Unity Catalog Function
 
 You can create a UC function either by providing a Python callable or by submitting a `FunctionInfo` object. Below is an example (recommended) of using the `create_python_function` API that accepts a Python callable (function) as input.
 
@@ -86,16 +76,16 @@ function_info = uc_client.create_python_function(
 print(function_info)
 ```
 
-### Databricks-managed Unity Catalog
+## Databricks-managed Unity Catalog
 
 To use Databricks-managed Unity Catalog with this package, follow the [instructions](https://docs.databricks.com/en/dev-tools/cli/authentication.html#authentication-for-the-databricks-cli) to authenticate to your workspace and ensure that your access token has workspace-level privilege for managing UC functions.
 
-#### Client setup
+### Client setup
 
 Initialize a client for managing UC functions in a Databricks workspace, and set it as the global client.
 
 ```python
-from unitycatalog.ai.core.client import set_uc_function_client
+from unitycatalog.ai.core.base import set_uc_function_client
 from unitycatalog.ai.core.databricks import DatabricksFunctionClient
 
 client = DatabricksFunctionClient(
@@ -107,7 +97,7 @@ client = DatabricksFunctionClient(
 set_uc_function_client(client)
 ```
 
-#### Create a Function in UC
+### Create a Function in UC
 
 Create a python UDF in Unity Catalog with the client
 
@@ -254,3 +244,7 @@ for message in parsed_messages:
 
 print(results)
 ```
+
+### Configurations for Databricks-only UC function execution
+
+We provide configurations for the Databricks Client to control the function execution behaviors, check [function execution arguments section](../../README.md#function-execution-arguments-configuration).

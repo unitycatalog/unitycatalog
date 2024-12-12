@@ -9,7 +9,7 @@ from unitycatalog.ai.anthropic.utils import (
     extract_tool_call_data,
     generate_tool_call_messages,
 )
-from unitycatalog.ai.core.client import BaseFunctionClient
+from unitycatalog.ai.core.base import BaseFunctionClient
 
 
 @pytest.fixture

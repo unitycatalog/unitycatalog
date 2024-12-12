@@ -6,37 +6,27 @@ Integrate Unity Catalog AI package with OpenAI to allow seamless usage of UC fun
 
 ### Client Library
 
-To use this package with **Open Source Unity Catalog**, you will need to install:
-
-```sh
-pip install unitycatalog-ai[oss]
-```
-
-To use this package with **Databricks Unity Catalog**, you will need to install:
-
-```sh
-pip install unitycatalog-ai[databricks]
-```
-
-### Integration Library
-
-With the appropriate client installed for the AI functionality for Unity Catalog, you can then install the `OpenAI` integration library:
+To install the Unity Catalog function client SDK and the `OpenAI` integration, simply install from PyPI:
 
 ```sh
 pip install unitycatalog-openai
 ```
 
+If you are working with **Databricks Unity Catalog**, you can install the optional package:
+
+```sh
+pip install unitycatalog-openai[databricks]
+```
+
 ## Getting started
 
-### Open Source Unity Catalog
+### Creating a Unity Catalog Client
 
-#### Creating a Client
-
-To interact with OSS UC, initialize the `UnitycatalogFunctionClient` as shown below:
+To interact with your Unity Catalog server, initialize the `UnitycatalogFunctionClient` as shown below:
 
 ```python
 import asyncio
-from unitycatalog.ai.core.oss import UnitycatalogFunctionClient
+from unitycatalog.ai.core.client import UnitycatalogFunctionClient
 from unitycatalog.client import ApiClient, Configuration
 
 # Configure the Unity Catalog API client
@@ -55,7 +45,7 @@ CATALOG = "my_catalog"
 SCHEMA = "my_schema"
 ```
 
-#### Creating a Function in UC OSS
+### Creating a Unity Catalog Function
 
 You can create a UC function either by providing a Python callable or by submitting a `FunctionInfo` object. Below is an example (recommended) of using the `create_python_function` API that accepts a Python callable (function) as input.
 
@@ -230,7 +220,7 @@ Please note that this client is only used for retrieving UC functions so we can 
 
 #### How should I handle the tool call response?
 
-We provide a helper function for converting OpenAI ChatCompletion response to messages that can be send over for response creation.
+We provide a helper function for converting OpenAI ChatCompletion response to messages that can be sent over for response creation.
 
 ```python
 from unitycatalog.ai.openai.utils import generate_tool_call_messages
@@ -241,6 +231,6 @@ print(messages)
 
 If the response contains multiple choices, you could pass `choice_index` (starting from 0) to `generate_tool_call_messages` to choose a single choice. Multiple choices are not supported yet.
 
-#### Configurations for UC functions execution
+#### Configurations for UC functions execution within Databricks
 
 We provide configurations for databricks client to control the function execution behaviors, check [function execution arguments section](../../README.md#function-execution-arguments-configuration).

@@ -9,37 +9,27 @@ You can use the Unity Catalog AI package with the autogen SDK to utilize functio
 
 ### Client Library
 
-To use this package with **Open Source Unity Catalog**, you will need to install:
-
-```sh
-pip install unitycatalog-ai[oss]
-```
-
-To use this package with **Databricks Unity Catalog**, you will need to install:
-
-```sh
-pip install unitycatalog-ai[databricks]
-```
-
-### Integration Library
-
-With the appropriate client installed for the AI functionality for Unity Catalog, you can then install the `AutoGen` integration library:
+To install the Unity Catalog function client SDK and the `AutoGen` integration, simply install from PyPI:
 
 ```sh
 pip install unitycatalog-autogen
 ```
 
+If you are working with **Databricks Unity Catalog**, you can install the optional package:
+
+```sh
+pip install unitycatalog-autogen[databricks]
+```
+
 ## Getting started
 
-### Open Source Unity Catalog
+### Creating a Unity Catalog Client
 
-#### Creating a Client
-
-To interact with OSS UC, initialize the `UnitycatalogFunctionClient` as shown below:
+To interact with your Unity Catalog server, initialize the `UnitycatalogFunctionClient` as shown below:
 
 ```python
 import asyncio
-from unitycatalog.ai.core.oss import UnitycatalogFunctionClient
+from unitycatalog.ai.core.client import UnitycatalogFunctionClient
 from unitycatalog.client import ApiClient, Configuration
 
 # Configure the Unity Catalog API client
@@ -58,7 +48,7 @@ CATALOG = "my_catalog"
 SCHEMA = "my_schema"
 ```
 
-#### Creating a Function in UC OSS
+### Creating a Unity Catalog Function
 
 You can create a UC function either by providing a Python callable or by submitting a `FunctionInfo` object. Below is an example (recommended) of using the `create_python_function` API that accepts a Python callable (function) as input.
 
@@ -98,7 +88,7 @@ To use Databricks-managed Unity Catalog with this package, follow the [instructi
 Initialize a client for managing UC functions in a Databricks workspace, and set it as the global client.
 
 ```python
-from unitycatalog.ai.core.client import set_uc_function_client
+from unitycatalog.ai.core.base import set_uc_function_client
 from unitycatalog.ai.core.databricks import DatabricksFunctionClient
 
 client = DatabricksFunctionClient(
@@ -350,6 +340,6 @@ TERMINATE
 
 ```
 
-### Configurations for UC functions execution
+### Configurations for Databricks-only UC function execution
 
-We provide configurations for databricks client to control the function execution behaviors, check [function execution arguments section](../../README.md#function-execution-arguments-configuration).
+We provide configurations for the Databricks Client to control the function execution behaviors, check [function execution arguments section](../../README.md#function-execution-arguments-configuration).
