@@ -73,7 +73,9 @@ const router = createBrowserRouter([
 function AppProvider() {
   const { logout, currentUser } = useAuth();
   const navigate = useNavigate();
-  const authEnabled = process.env.REACT_APP_GOOGLE_AUTH_ENABLED === 'true' || process.env.REACT_APP_OKTA_AUTH_ENABLED === 'true';
+  const authEnabled =
+    process.env.REACT_APP_GOOGLE_AUTH_ENABLED === 'true' ||
+    process.env.REACT_APP_OKTA_AUTH_ENABLED === 'true';
 
   const profileMenuItems = useMemo(
     (): MenuProps['items'] => [

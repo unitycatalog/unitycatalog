@@ -1,1 +1,4 @@
 @import '~antd/dist/reset.css';
+/* copied from node modules package based on solution from this issue */
+/* https://github.com/okta/okta-signin-widget/issues/2429 */
+@import '../src/components/login/okta-css/dist/css/okta-sign-in.min.css';

@@ -1,5 +1,5 @@
 import { Avatar, Button, Modal } from 'antd';
-import { useEffect, useRef, useState } from 'react';
+import { useState } from 'react';
 import OktaSignIn from '@okta/okta-signin-widget';
 
 interface OktaAuthButtonProps {
@@ -13,39 +13,30 @@ export default function OktaAuthButton({
 }: OktaAuthButtonProps) {
   const [widgetModalOpen, setWidgetModalOpen] = useState(false);
 
-  useEffect(() => {
-    if (!widgetModalOpen) return;
+  const handleOnClick = () => {
+    setWidgetModalOpen(true);
 
-    const widget = new OktaSignIn({
-      baseUrl: 'https://' + process.env.REACT_APP_OKTA_DOMAIN,
-      // flow: 'login',
-      clientId: process.env.REACT_APP_OKTA_CLIENT_ID,
-      redirectUri: window.location.origin,
-        // scopes: ['openid', 'profile', 'email'],
-      useClassicEngine: true,
-      authParams: {
-        issuer: 'https://' + process.env.REACT_APP_OKTA_DOMAIN + '/oauth2/default',
-        pkce: false,
-        // responseType: 'code'
-      }
-    });
+    setTimeout(() => {
+      const widget = new OktaSignIn({
+        clientId: process.env.REACT_APP_OKTA_CLIENT_ID,
+        redirectUri: window.location.origin,
+        issuer:
+          'https://' + process.env.REACT_APP_OKTA_DOMAIN + '/oauth2/default',
+      });
 
-    // widget.renderEl(
-    //   { el: '#osw-container'},
-    //   onSuccess,
-    //   onError,
-    // );
-
-
-    widget.showSignInAndRedirect({
-      el: '#osw-container',
-    }).catch((function(error) {
-      onError(error);
-      console.log('Error rendering Okta widget:', error);
-    }));
-
-    return () => widget.remove();
-  }, [widgetModalOpen, onSuccess, onError]);
+      widget
+        .showSignInToGetTokens({
+          el: '#osw-container',
+        })
+        .then(function (res) {
+          onSuccess(res?.idToken?.idToken);
+          widget.remove();
+        })
+        .catch(function (error) {
+          onError(error);
+        });
+    }, 1000);
+  };
 
   return (
     <>
@@ -58,11 +49,16 @@ export default function OktaAuthButton({
         }
         iconPosition={'start'}
         style={{ width: 240, height: 40, justifyContent: 'flex-start' }}
-        onClick={() => setWidgetModalOpen(true)}
+        onClick={() => handleOnClick()}
       >
         Continue with Okta
       </Button>
-      <Modal open={widgetModalOpen}>
+      <Modal
+        open={widgetModalOpen}
+        footer={null}
+        onCancel={() => setWidgetModalOpen(false)}
+        destroyOnClose={true}
+      >
         <div id={'osw-container'} />
       </Modal>
     </>
