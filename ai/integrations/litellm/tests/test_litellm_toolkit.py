@@ -24,6 +24,7 @@ from unitycatalog.ai.test_utils.function_utils import create_function_and_cleanu
 CATALOG = os.environ.get("CATALOG", "integration_testing")
 SCHEMA = os.environ.get("SCHEMA", "ucai_core_test")
 
+
 @pytest.fixture
 def tools_mock():
     """Fixture that returns a mock list of tool call responses."""
