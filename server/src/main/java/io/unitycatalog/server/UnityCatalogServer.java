@@ -110,6 +110,7 @@ public class UnityCatalogServer {
     AuthService authService = new AuthService(securityContext);
     PermissionService permissionService = new PermissionService(authorizer);
     Scim2UserService scim2UserService = new Scim2UserService(authorizer);
+    Scim2SelfService scim2SelfService = new Scim2SelfService(authorizer);
     CatalogService catalogService = new CatalogService(authorizer);
     SchemaService schemaService = new SchemaService(authorizer);
     VolumeService volumeService = new VolumeService(authorizer);
@@ -131,6 +132,11 @@ public class UnityCatalogServer {
         .annotatedService(
             controlPath + "scim2/Users",
             scim2UserService,
+            unityConverterFunction,
+            scimResponseFunction)
+        .annotatedService(
+            controlPath + "scim2/Me",
+            scim2SelfService,
             unityConverterFunction,
             scimResponseFunction)
         .annotatedService(basePath + "permissions", permissionService)

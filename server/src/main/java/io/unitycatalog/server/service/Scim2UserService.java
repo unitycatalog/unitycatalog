@@ -1,13 +1,11 @@
 package io.unitycatalog.server.service;
 
 import static io.unitycatalog.server.model.SecurableType.METASTORE;
+import static io.unitycatalog.server.utils.Scim2Utils.asUserResource;
 
-import com.auth0.jwt.interfaces.Claim;
-import com.auth0.jwt.interfaces.DecodedJWT;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.linecorp.armeria.common.HttpResponse;
 import com.linecorp.armeria.common.HttpStatus;
-import com.linecorp.armeria.server.ServiceRequestContext;
 import com.linecorp.armeria.server.annotation.*;
 import com.unboundid.scim2.common.exceptions.BadRequestException;
 import com.unboundid.scim2.common.exceptions.PreconditionFailedException;
@@ -21,7 +19,6 @@ import com.unboundid.scim2.common.messages.PatchOperation;
 import com.unboundid.scim2.common.messages.PatchRequest;
 import com.unboundid.scim2.common.types.Email;
 import com.unboundid.scim2.common.types.Meta;
-import com.unboundid.scim2.common.types.Photo;
 import com.unboundid.scim2.common.types.UserResource;
 import com.unboundid.scim2.common.utils.FilterEvaluator;
 import com.unboundid.scim2.common.utils.Parser;
@@ -36,8 +33,7 @@ import io.unitycatalog.server.exception.Scim2RuntimeException;
 import io.unitycatalog.server.persist.UserRepository;
 import io.unitycatalog.server.persist.model.CreateUser;
 import io.unitycatalog.server.persist.model.UpdateUser;
-import io.unitycatalog.server.security.JwtClaim;
-import java.net.URI;
+import io.unitycatalog.server.utils.Scim2Utils;
 import java.util.Calendar;
 import java.util.List;
 import java.util.Objects;
@@ -86,7 +82,7 @@ public class Scim2UserService {
                 count.orElse(50),
                 m -> match(filterEvaluator, userFilter, asUserResource(m)))
             .stream()
-            .map(this::asUserResource)
+            .map(Scim2Utils::asUserResource)
             .toList();
 
     Meta meta = new Meta();
@@ -142,23 +138,6 @@ public class Scim2UserService {
       } else {
         throw new Scim2RuntimeException(new BadRequestException(e.getMessage()));
       }
-    }
-  }
-
-  @Get("/self")
-  @Produces("application/scim+json")
-  @StatusCode(200)
-  @AuthorizeExpression("#principal != null")
-  @AuthorizeKey(METASTORE)
-  public UserResource getCurrentUser() {
-    // TODO: will make this a util method in the access control PR
-    ServiceRequestContext ctx = ServiceRequestContext.current();
-    DecodedJWT decodedJWT = ctx.attr(AuthDecorator.DECODED_JWT_ATTR);
-    if (decodedJWT != null) {
-      Claim sub = decodedJWT.getClaim(JwtClaim.SUBJECT.key());
-      return asUserResource(USER_REPOSITORY.getUserByEmail(sub.asString()));
-    } else {
-      throw new Scim2RuntimeException(new BadRequestException("No user found."));
     }
   }
 
@@ -234,39 +213,6 @@ public class Scim2UserService {
       throw new Scim2RuntimeException(
           new ServerErrorException("Problem with patch operation", ex.getMessage(), ex));
     }
-  }
-
-  public UserResource asUserResource(User user) {
-    Meta meta = new Meta();
-    Calendar created = Calendar.getInstance();
-    if (user.getCreatedAt() != null) {
-      created.setTimeInMillis(user.getCreatedAt());
-    }
-    meta.setCreated(created);
-    Calendar lastModified = Calendar.getInstance();
-    if (user.getUpdatedAt() != null) {
-      lastModified.setTimeInMillis(user.getUpdatedAt());
-    }
-    meta.setLastModified(lastModified);
-    meta.setResourceType("User");
-
-    String pictureUrl = user.getPictureUrl();
-    if (pictureUrl == null) {
-      pictureUrl = "";
-    }
-
-    UserResource userResource = new UserResource();
-    userResource
-        .setUserName(user.getEmail())
-        .setDisplayName(user.getName())
-        .setEmails(List.of(new Email().setValue(user.getEmail()).setPrimary(true)))
-        .setPhotos(List.of(new Photo().setValue(URI.create(pictureUrl))));
-    userResource.setId(user.getId());
-    userResource.setMeta(meta);
-    userResource.setActive(user.getState() == User.StateEnum.ENABLED);
-    userResource.setExternalId(user.getExternalId());
-
-    return userResource;
   }
 
   private Filter parseFilter(String filter) {
