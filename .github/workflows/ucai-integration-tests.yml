@@ -1,4 +1,4 @@
-name: UnityCatalog AI Integration Tests
+name: UnityCatalog AI Databricks Integration Tests
 
 on:
   push:
