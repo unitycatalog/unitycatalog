@@ -66,6 +66,19 @@ jobs:
         run: |
           pip install integrations/llama_index[dev]
           pytest integrations/llama_index/tests/test_llama_index_toolkit_oss.py
+      - name: Run Anthropic OSS Integration Tests
+        run: |
+          pip install integrations/anthropic[dev]
+          pytest integrations/anthropic/tests/test_anthropic_toolkit_oss.py
+      - name: Run AutoGen OSS Integration Tests
+        run: |
+          pip install integrations/autogen[dev]
+          pytest integrations/autogen/tests/test_autogen_toolkit_oss.py
+      - name: Run CrewAI OSS Integration Tests
+        if: matrix.python-version == '3.10'
+        run: |
+          pip install integrations/crewai[dev]
+          pytest integrations/crewai/tests/test_crewai_toolkit_oss.py
       - name: Stop Unity Catalog Server
         run: |
           dev/teardown_server.sh
