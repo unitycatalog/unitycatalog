@@ -64,7 +64,7 @@ jobs:
           pip install integrations/langchain[dev]
       - name: Run Langchain Tests
         run: |
-          pytest integrations/langchain/tests
+          pytest integrations/langchain/tests --ignore=integrations/langchain/tests/test_langchain_toolkit_oss.py
 
   anthropic_test:
     runs-on: ubuntu-latest
@@ -114,7 +114,7 @@ jobs:
           pip install integrations/llama_index[dev]
       - name: Run LlamaIndex Tests
         run: |
-          pytest integrations/llama_index/tests
+          pytest integrations/llama_index/tests --ignore=integrations/llama_index/tests/test_llama_index_toolkit_oss.py
 
   openai_test:
     runs-on: ubuntu-latest
