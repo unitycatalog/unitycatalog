@@ -12,10 +12,10 @@ from langchain_databricks.chat_models import ChatGeneration as LangChainChatGene
 from langgraph.prebuilt import create_react_agent
 
 from tests.helper_functions import wrap_output
-from unitycatalog.ai.core.client import (
+from unitycatalog.ai.core.base import (
     FunctionExecutionResult,
 )
-from unitycatalog.ai.core.oss import (
+from unitycatalog.ai.core.client import (
     UnitycatalogFunctionClient,
 )
 from unitycatalog.ai.core.utils.function_processing_utils import get_tool_name

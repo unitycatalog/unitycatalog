@@ -7,11 +7,11 @@ import pytest
 import pytest_asyncio
 from pydantic import BaseModel
 
-from unitycatalog.ai.core.client import (
+from unitycatalog.ai.core.base import (
     BaseFunctionClient,
     FunctionExecutionResult,
 )
-from unitycatalog.ai.core.oss import (
+from unitycatalog.ai.core.client import (
     UnitycatalogFunctionClient,
 )
 from unitycatalog.ai.llama_index.toolkit import UCFunctionToolkit

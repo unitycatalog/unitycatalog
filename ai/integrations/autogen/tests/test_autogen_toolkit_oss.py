@@ -7,8 +7,8 @@ import pytest_asyncio
 from autogen import ConversableAgent
 
 from unitycatalog.ai.autogen.toolkit import AutogenTool, UCFunctionToolkit
-from unitycatalog.ai.core.client import FunctionExecutionResult
-from unitycatalog.ai.core.oss import UnitycatalogFunctionClient
+from unitycatalog.ai.core.base import FunctionExecutionResult
+from unitycatalog.ai.core.client import UnitycatalogFunctionClient
 from unitycatalog.ai.test_utils.function_utils_oss import (
     CATALOG,
     create_function_and_cleanup_oss,
