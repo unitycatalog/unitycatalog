@@ -1,8 +1,54 @@
 # Unity Catalog Python Client SDK
 
-The Python SDK for Unity Catalog that is published to https://pypi.org/project/unitycatalog-client/.
+The Python SDK for Unity Catalog that is published to [PyPI](https://pypi.org/project/unitycatalog-client/).
 
-## Generate Client Library
+## Quick Guide to releasing the Unity Catalog Python Client SDK
+
+### Generate the Client Library
+
+```sh
+build/sbt pythonClient/generate
+```
+
+### Prepare the Release Version
+
+```sh
+clients/python/build/prepare-release.sh <release version>
+```
+
+Example: releasing a release candidate version for Unity Catalog version 1.2.3 would use `1.2.3rc0`
+
+### Build the Package for Distribution
+
+```sh
+clients/python/build/build-python-package.sh
+```
+
+### Validate the package contents
+
+```sh
+unzip -l clients/python/target/dist/unitycatalog_client-<version>.whl
+```
+
+Check that the package contents match the expected directories and files in the `target/src/*` directory
+
+### Run Tests
+
+```sh
+./run-tests.sh
+```
+
+### Build Documentation (future)
+
+> Note: API Documentation is not currently hosted for the Unity Catalog Python Client. When a hosting solution is selected, run the following:
+
+```sh
+clients/python/build/build-docs.sh
+```
+
+-----------
+
+## Detailed Instructions and Guidance for Maintainers
 
 To generate the client library code from the API specification in `api/all.yaml`, run:
 
@@ -55,7 +101,7 @@ clients/python/build/prepare-release.sh 0.3.1rc0
 ### Packaging the Client SDK into distribution formats
 
 If you would like to generate the distributable artifacts (required for deploying `unitycatalog-client` to PyPI), simply execute the
-packaging script, located [here](./build/build-python-package.sh). 
+packaging script, located [here](./build/build-python-package.sh).
 
 ```sh
 clients/python/build/build-python-package.sh
