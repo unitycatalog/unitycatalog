@@ -7,8 +7,8 @@ from anthropic import Anthropic
 from anthropic.types import Message, TextBlock, ToolUseBlock
 
 from unitycatalog.ai.anthropic.toolkit import UCFunctionToolkit
-from unitycatalog.ai.core.client import set_uc_function_client
-from unitycatalog.ai.core.oss import (
+from unitycatalog.ai.core.base import set_uc_function_client
+from unitycatalog.ai.core.client import (
     UnitycatalogFunctionClient,
 )
 from unitycatalog.ai.core.utils.function_processing_utils import get_tool_name

@@ -11,7 +11,7 @@ from databricks.sdk.service.catalog import (
 from pydantic import ValidationError
 
 from src.unitycatalog.ai.crewai.toolkit import UCFunctionToolkit
-from unitycatalog.ai.core.client import (
+from unitycatalog.ai.core.base import (
     FunctionExecutionResult,
 )
 from unitycatalog.ai.test_utils.client_utils import (
