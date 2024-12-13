@@ -22,6 +22,8 @@ from unitycatalog.ai.test_utils.function_utils import (
     RETRIEVER_TABLE_FULL_DATA_TYPE,
     RETRIEVER_TABLE_RETURN_PARAMS_OSS,
 )
+from unitycatalog.ai.core.base import FunctionExecutionResult
+from unitycatalog.ai.core.client import UnitycatalogFunctionClient
 from unitycatalog.ai.test_utils.function_utils_oss import (
     CATALOG,
     create_function_and_cleanup_oss,
@@ -264,12 +266,12 @@ async def test_autogen_tool_with_tracing_as_retriever(
 
     with (
         mock.patch(
-            "unitycatalog.ai.core.client.UnitycatalogFunctionClient.get_function",
+            "unitycatalog.ai.core.oss.UnitycatalogFunctionClient.get_function",
             return_value=mock_function_info,
         ),
         mock.patch(
-            "unitycatalog.ai.core.client.UnitycatalogFunctionClient._execute_uc_function",
-            return_value=FunctionExecutionResult(format=format, value=function_output),
+            "unitycatalog.ai.core.oss.UnitycatalogFunctionClient.execute_function",
+            return_value=FunctionExecutionResult(format="SCALAR", value="some_string"),
         ),
         mock.patch("unitycatalog.ai.core.client.UnitycatalogFunctionClient.validate_input_params"),
     ):
