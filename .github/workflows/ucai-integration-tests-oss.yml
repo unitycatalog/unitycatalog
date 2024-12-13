@@ -1,4 +1,4 @@
-name: UCAI Integration Tests OSS
+name: Unity Catalog AI Integration Tests
 
 on:
   push:

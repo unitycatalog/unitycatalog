@@ -12,10 +12,10 @@ from langchain_databricks.chat_models import ChatGeneration as LangChainChatGene
 from langgraph.prebuilt import create_react_agent
 
 from tests.helper_functions import wrap_output
-from unitycatalog.ai.core.client import (
+from unitycatalog.ai.core.base import (
     FunctionExecutionResult,
 )
-from unitycatalog.ai.core.oss import (
+from unitycatalog.ai.core.client import (
     UnitycatalogFunctionClient,
 )
 from unitycatalog.ai.core.utils.function_processing_utils import get_tool_name
@@ -179,11 +179,11 @@ def test_uc_function_to_langchain_tool(uc_client):
     mock_function_info = generate_function_info()
     with (
         mock.patch(
-            "unitycatalog.ai.core.oss.UnitycatalogFunctionClient.get_function",
+            "unitycatalog.ai.core.client.UnitycatalogFunctionClient.get_function",
             return_value=mock_function_info,
         ),
         mock.patch(
-            "unitycatalog.ai.core.oss.UnitycatalogFunctionClient.execute_function",
+            "unitycatalog.ai.core.client.UnitycatalogFunctionClient.execute_function",
             return_value=FunctionExecutionResult(format="SCALAR", value="some_string"),
         ),
     ):

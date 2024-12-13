@@ -11,7 +11,7 @@ from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional
 
 from typing_extensions import override
 
-from unitycatalog.ai.core.client import BaseFunctionClient, FunctionExecutionResult
+from unitycatalog.ai.core.base import BaseFunctionClient, FunctionExecutionResult
 from unitycatalog.ai.core.envs.databricks_env_vars import (
     UCAI_DATABRICKS_SERVERLESS_EXECUTION_RESULT_ROW_LIMIT,
     UCAI_DATABRICKS_SESSION_RETRY_MAX_ATTEMPTS,
