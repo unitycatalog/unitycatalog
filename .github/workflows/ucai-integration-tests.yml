@@ -244,4 +244,4 @@ jobs:
           pip install integrations/litellm[dev]
       - name: Run tests
         run: |
-          pytest integrations/litellm/tests
+          pytest integrations/litellm/tests --ignore=integrations/autogen/tests/test_autogen_toolkit_oss.py
