@@ -2,23 +2,35 @@ import os
 from unittest import mock
 
 import pytest
+import pytest_asyncio
 from anthropic import Anthropic
 from anthropic.types import Message, TextBlock, ToolUseBlock
-from databricks.sdk.service.catalog import (
+
+from unitycatalog.ai.anthropic.toolkit import UCFunctionToolkit
+from unitycatalog.ai.core.base import set_uc_function_client
+from unitycatalog.ai.core.client import (
+    UnitycatalogFunctionClient,
+)
+from unitycatalog.ai.core.utils.function_processing_utils import get_tool_name
+from unitycatalog.ai.test_utils.function_utils_oss import (
+    CATALOG,
+    create_function_and_cleanup_oss,
+)
+from unitycatalog.client import (
+    ApiClient,
+    Configuration,
     FunctionInfo,
     FunctionParameterInfo,
     FunctionParameterInfos,
 )
 
-from unitycatalog.ai.anthropic.toolkit import UCFunctionToolkit
-from unitycatalog.ai.core.base import set_uc_function_client
-from unitycatalog.ai.core.utils.function_processing_utils import get_tool_name
-from unitycatalog.ai.test_utils.client_utils import (
-    get_client,
-    requires_databricks,
-    set_default_client,
-)
-from unitycatalog.ai.test_utils.function_utils import create_function_and_cleanup
+try:
+    # v2
+    from pydantic_core._pydantic_core import ValidationError
+except ImportError:
+    # v1
+    from pydantic.error_wrappers import ValidationError
+
 
 SCHEMA = os.environ.get("SCHEMA", "ucai_core_test")
 
@@ -49,17 +61,27 @@ def mock_anthropic_tool_response(function_name, input_data, message_id):
     )
 
 
-@requires_databricks
-@pytest.mark.parametrize("use_serverless", [True, False])
-def test_tool_calling_with_anthropic(use_serverless, monkeypatch):
-    monkeypatch.setenv("USE_SERVERLESS", str(use_serverless))
-    client = get_client()
-    with (
-        set_default_client(client),
-        create_function_and_cleanup(client, schema=SCHEMA) as func_obj,
-    ):
+@pytest_asyncio.fixture
+async def uc_client():
+    config = Configuration()
+    config.host = "http://localhost:8080/api/2.1/unity-catalog"
+    uc_api_client = ApiClient(configuration=config)
+
+    uc_client = UnitycatalogFunctionClient(api_client=uc_api_client)
+    uc_client.uc.create_catalog(name=CATALOG)
+    uc_client.uc.create_schema(name=SCHEMA, catalog_name=CATALOG)
+
+    yield uc_client
+
+    uc_client.close()
+    uc_api_client.close()
+
+
+@pytest.mark.asyncio
+async def test_tool_calling_with_anthropic(uc_client):
+    with create_function_and_cleanup_oss(uc_client, schema=SCHEMA) as func_obj:
         func_name = func_obj.full_function_name
-        toolkit = UCFunctionToolkit(function_names=[func_name])
+        toolkit = UCFunctionToolkit(function_names=[func_name], client=uc_client)
         tools = toolkit.tools
         assert len(tools) == 1
 
@@ -89,7 +111,7 @@ def test_tool_calling_with_anthropic(use_serverless, monkeypatch):
             arguments = tool_calls[1].input
             assert isinstance(arguments.get("code"), str)
 
-            result = client.execute_function(func_name, arguments)
+            result = uc_client.execute_function(func_name, arguments)
             assert result.value.strip() == "Hello, World!"
 
             function_call_result_message = {
@@ -139,17 +161,11 @@ def test_tool_calling_with_anthropic(use_serverless, monkeypatch):
                 )
 
 
-@requires_databricks
-@pytest.mark.parametrize("use_serverless", [True, False])
-def test_tool_calling_with_multiple_tools_anthropic(use_serverless, monkeypatch):
-    monkeypatch.setenv("USE_SERVERLESS", str(use_serverless))
-    client = get_client()
-    with (
-        set_default_client(client),
-        create_function_and_cleanup(client, schema=SCHEMA) as func_obj,
-    ):
+@pytest.mark.asyncio
+async def test_tool_calling_with_multiple_tools_anthropic(uc_client):
+    with create_function_and_cleanup_oss(uc_client, schema=SCHEMA) as func_obj:
         func_name = func_obj.full_function_name
-        toolkit = UCFunctionToolkit(function_names=[func_name])
+        toolkit = UCFunctionToolkit(function_names=[func_name], client=uc_client)
         tools = toolkit.tools
         assert len(tools) == 1
 
@@ -180,7 +196,7 @@ def test_tool_calling_with_multiple_tools_anthropic(use_serverless, monkeypatch)
             arguments = tool_calls[1].input
             assert isinstance(arguments.get("code"), str)
 
-            result = client.execute_function(func_name, arguments)
+            result = uc_client.execute_function(func_name, arguments)
             assert result.value.strip() == "Hello, World!"
 
             function_call_result_message = {
@@ -221,7 +237,7 @@ def test_tool_calling_with_multiple_tools_anthropic(use_serverless, monkeypatch)
                 arguments_second = final_tool_calls[1].input
                 assert isinstance(arguments_second.get("code"), str)
 
-                result_second = client.execute_function(func_name, arguments_second)
+                result_second = uc_client.execute_function(func_name, arguments_second)
 
                 assert result_second.value.strip() == "Hello, World!"
 
@@ -276,23 +292,20 @@ def test_tool_calling_with_multiple_tools_anthropic(use_serverless, monkeypatch)
                     )
 
 
-@pytest.mark.parametrize("use_serverless", [True, False])
-def test_anthropic_toolkit_initialization(use_serverless, monkeypatch):
-    monkeypatch.setenv("USE_SERVERLESS", str(use_serverless))
-    client = get_client()
-
+@pytest.mark.asyncio
+async def test_anthropic_toolkit_initialization(uc_client):
     with pytest.raises(
-        ValueError,
+        ValidationError,
         match=r"No client provided, either set the client when creating a toolkit or set the default client",
     ):
         toolkit = UCFunctionToolkit(function_names=[])
 
-    set_uc_function_client(client)
+    set_uc_function_client(uc_client)
     toolkit = UCFunctionToolkit(function_names=[])
     assert len(toolkit.tools) == 0
     set_uc_function_client(None)
 
-    toolkit = UCFunctionToolkit(function_names=[], client=client)
+    toolkit = UCFunctionToolkit(function_names=[], client=uc_client)
     assert len(toolkit.tools) == 0
 
 
@@ -309,44 +322,41 @@ def generate_function_info(parameters, catalog="catalog", schema="schema"):
     )
 
 
-@pytest.mark.parametrize("use_serverless", [True, False])
-def test_anthropic_tool_definition_generation(use_serverless, monkeypatch):
-    monkeypatch.setenv("USE_SERVERLESS", str(use_serverless))
-    client = get_client()
-    with set_default_client(client):
-        function_info = generate_function_info(
-            [
-                {
-                    "name": "code",
-                    "type_text": "string",
-                    "type_json": '{"name":"code","type":"string","nullable":true,"metadata":{"comment":"Python code to execute. Remember to print the final result to stdout."}}',
-                    "type_name": "STRING",
-                    "type_precision": 0,
-                    "type_scale": 0,
-                    "position": 0,
-                    "parameter_type": "PARAM",
-                    "comment": "Python code to execute. Remember to print the final result to stdout.",
+@pytest.mark.asyncio
+async def test_anthropic_tool_definition_generation(uc_client):
+    function_info = generate_function_info(
+        [
+            {
+                "name": "code",
+                "type_text": "string",
+                "type_json": '{"name":"code","type":"string","nullable":true,"metadata":{"comment":"Python code to execute. Remember to print the final result to stdout."}}',
+                "type_name": "STRING",
+                "type_precision": 0,
+                "type_scale": 0,
+                "position": 0,
+                "parameter_type": "PARAM",
+                "comment": "Python code to execute. Remember to print the final result to stdout.",
+            }
+        ]
+    )
+
+    function_definition = UCFunctionToolkit(client=uc_client).uc_function_to_anthropic_tool(
+        function_info=function_info, client=uc_client
+    )
+
+    assert function_definition.to_dict() == {
+        "name": get_tool_name(function_info.full_name),
+        "description": function_info.comment,
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "code": {
+                    "anyOf": [{"type": "string"}, {"type": "null"}],
+                    "default": None,
+                    "description": "Python code to execute. Remember to print the final result to stdout.",
+                    "title": "Code",
                 }
-            ]
-        )
-
-        function_definition = UCFunctionToolkit.uc_function_to_anthropic_tool(
-            function_info=function_info, client=client
-        )
-
-        assert function_definition.to_dict() == {
-            "name": get_tool_name(function_info.full_name),
-            "description": function_info.comment,
-            "input_schema": {
-                "type": "object",
-                "properties": {
-                    "code": {
-                        "anyOf": [{"type": "string"}, {"type": "null"}],
-                        "default": None,
-                        "description": "Python code to execute. Remember to print the final result to stdout.",
-                        "title": "Code",
-                    }
-                },
-                "required": [],
             },
-        }
+            "required": [],
+        },
+    }

@@ -24,7 +24,11 @@ pip install openai
 
 ### Unity Catalog Open Source
 
-Ensure that you have a functional UC server set up and that you are able to access the catalog and schema where defined functions are stored.
+Ensure that you have a functional UC server set up and that you are able to access the catalog and schema where defined functions are stored and that you install the Unity Catalog Python SDK:
+
+```sh
+pip install unitycatalog-client
+```
 
 ### Databricks Unity Catalog
 
@@ -36,7 +40,27 @@ pip install databricks-sdk "databricks-connect==15.1.0"
 
 ## Tutorial
 
-### Client Setup
+### Client Setup - OSS Unity Catalog
+
+Create an instance of the Functions Client
+
+```python
+from unitycatalog.client import ApiClient, Configuration
+from unitycatalog.ai.core.oss import UnitycatalogFunctionClient
+
+config = Configuration()
+# This is the default address when starting a UnityCatalog server locally. Update this to the uri
+# of your running UnityCatalog server.
+config.host = "http://localhost:8080/api/2.1/unity-catalog"
+
+# Create the UnityCatalog client
+api_client = ApiClient(configuration=config)
+
+# Use the UnityCatalog client to create an instance of the AI function client
+client = UnitycatalogFunctionClient(api_client=api_client)
+```
+
+### Client Setup - Databricks
 
 Create an instance of the Unity Catalog Functions client
 
