@@ -204,7 +204,7 @@ providing an answer. In the example below, the only history that we have is the 
 from unitycatalog.ai.litellm.utils import generate_tool_call_messages
 
 # Call the Unity Catalog function and construct the required formatted response history for a subsequent call to LiteLLM 
-tool_messages = generate_tool_call_messages(response=response, client=client, conversation_history=question)
+tool_messages = generate_tool_call_messages(response=response, client=client, conversation_history=messages)
 
 # Call the LiteLLM client with the parsed tool response from executing the Unity Catalog function
 # Show the response
