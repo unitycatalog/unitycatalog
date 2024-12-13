@@ -9,8 +9,8 @@ import pytest_asyncio
 from openai.types.chat.chat_completion_message_tool_call import Function
 
 from tests.helper_functions import mock_chat_completion_response, mock_choice
-from unitycatalog.ai.core.client import set_uc_function_client
-from unitycatalog.ai.core.oss import (
+from unitycatalog.ai.core.base import set_uc_function_client
+from unitycatalog.ai.core.client import (
     UnitycatalogFunctionClient,
 )
 from unitycatalog.ai.core.utils.function_processing_utils import get_tool_name

@@ -1,31 +1,40 @@
 # Unity Catalog AI Core library
 
 The Unity Catalog AI Core library provides convenient APIs to interact with Unity Catalog functions, including the creation, retrieval and execution of functions.
-The library includes clients for interacting with both the Open-Source Unity Catalog server and the Databricks-managed Unity Catalog service, in support of UC functions as tools in agents.
+The library includes clients for interacting with both Unity Catalog servers and Databricks-managed Unity Catalog services, in support of UC functions as tools in agents.
 
 ## Installation
 
 ```sh
-# install for OSS Unity Catalog
-pip install unitycatalog-ai[oss]
+pip install unitycatalog-ai
+```
 
-# install for Databricks Unity Catalog
+If you are using the Databricks-managed version of Unity Catalog, you can install the optional additional Databricks dependencies by providing the option:
+
+```sh
 pip install unitycatalog-ai[databricks]
 ```
 
 ## Get started
 
-### Unity Catalog Open Source
+### Unity Catalog Function Client
 
-The Open-Source Unity Catalog (OSS UC) client is a core component of the Unity Catalog AI Core Library, enabling seamless interaction with the open-source version of Unity Catalog. This client allows you to manage and execute UC functions, providing both asynchronous and synchronous interfaces to cater to various application needs. Whether you're integrating UC functions into GenAI workflows or managing them directly, the OSS UC client offers robust and flexible APIs to facilitate your development process.
+The Unity Catalog (UC) function client is a core component of the Unity Catalog AI Core Library, enabling seamless interaction with a Unity Catalog server. This client allows you to manage and execute UC functions, providing both asynchronous and synchronous interfaces to cater to various application needs. Whether you're integrating UC functions into GenAI workflows or managing them directly, the UC client offers robust and flexible APIs to facilitate your development process.
+
+#### Key Features
+
+- **Asynchronous and Synchronous Operations**: Flexibly choose between async and sync methods based on your application's concurrency requirements.
+- **Comprehensive Function Management**: Easily create, retrieve, list, execute, and delete UC functions.
+- **Integration with GenAI**: Seamlessly integrate UC functions as tools within Generative AI agents, enhancing intelligent automation workflows.
+- **Type Safety and Caching**: Enforce strict type validation and utilize caching mechanisms to optimize performance and reduce redundant executions.
 
 #### Caveats
 
-When using the `UnitycatalogFunctionClient` for OSS UC, be mindful of the following considerations:
+When using the `UnitycatalogFunctionClient` for UC, be mindful of the following considerations:
 
 - **Asynchronous API Usage**:
-    - The `UnitycatalogFunctionClient` is built on top of the asynchronous unitycatalog-client SDK, which utilizes aiohttp.
-    - The function client for OSS Unity Catalog offers **both asynchronous and synchronous methods**. The synchronous methods are wrappers around the asynchronous counterparts, ensuring compatibility with environments that may not support asynchronous operations.
+    - The `UnitycatalogFunctionClient` is built on top of the asynchronous [unitycatalog-client SDK](https://pypi.org/project/unitycatalog/), which utilizes aiohttp for REST communication with the UC server.
+    - The function client for Unity Catalog offers **both asynchronous and synchronous methods**. The synchronous methods are wrappers around the asynchronous counterparts, ensuring compatibility with environments that may not support asynchronous operations.
     - **Important**: Avoid creating additional event loops in environments that already have a running loop (e.g., Jupyter Notebooks) to prevent conflicts and potential runtime errors.
 - **Security Considerations**:
     - **WARNING** Function execution occurs **locally** within the environment where your application is running.
@@ -40,34 +49,27 @@ When using the `UnitycatalogFunctionClient` for OSS UC, be mindful of the follow
 - **Type Validation and Compatibility**:
     - The client performs strict type validation based on the defined schemas. Ensure that your function parameters and return types adhere to the expected types to prevent execution errors.
 
-#### Key Features
-
-- **Asynchronous and Synchronous Operations**: Flexibly choose between async and sync methods based on your application's concurrency requirements.
-- **Comprehensive Function Management**: Easily create, retrieve, list, execute, and delete UC functions.
-- **Integration with GenAI**: Seamlessly integrate UC functions as tools within Generative AI agents, enhancing intelligent automation workflows.
-- **Type Safety and Caching**: Enforce strict type validation and utilize caching mechanisms to optimize performance and reduce redundant executions.
-
 #### Prerequisites
 
-Before using the OSS UC client, ensure that your environment meets the following requirements:
+Before using the UC functions client, ensure that your environment meets the following requirements:
 
 - **Python Version**: Python 3.10 or higher is recommended to leverage all functionalities, including function creation and execution.
 
 - **Dependencies**: Install the necessary packages using pip:
 
     ```sh
-    pip install unitycatalog-client unitycatalog-ai[oss]
+    pip install unitycatalog-client unitycatalog-ai
     ```
 
-- **Unity Catalog Server**: Ensure that you have access to a running instance of the open-source Unity Catalog server. Follow the Unity Catalog OSS Installation Guide to set up your server if you haven't already.
+- **Unity Catalog Server**: Ensure that you have access to a running instance of the open-source Unity Catalog server. Follow the [Unity Catalog Installation Guide](https://docs.unitycatalog.io/quickstart/) to set up your server if you haven't already.
 
 #### Client Initialization
 
-To interact with OSS UC functions, initialize the `UnitycatalogFunctionClient` as shown below:
+To interact with UC functions, initialize the `UnitycatalogFunctionClient` as shown below:
 
 ```python
 import asyncio
-from unitycatalog.ai.core.oss import UnitycatalogFunctionClient
+from unitycatalog.ai.core.client import UnitycatalogFunctionClient
 from unitycatalog.client import ApiClient, Configuration
 
 # Configure the Unity Catalog API client
@@ -175,10 +177,9 @@ To use Databricks-managed Unity Catalog with this package, follow the [instructi
 #### Prerequisites
 
 - **[Highly recommended]** Use python>=3.10 for accessing all functionalities including function creation and function execution.
-- Install databricks-sdk package with `pip install databricks-sdk`.
-- For creating UC functions with SQL body, **only [serverless compute](https://docs.databricks.com/en/compute/use-compute.html#use-serverless-compute) is supported**.
-  Install databricks-connect package with `pip install databricks-connect==15.1.0`, **python>=3.10** is a requirement to install this version.
-- For executing the UC functions in Databricks, use either SQL warehouse or Databricks Connect with serverless:
+- For creating UC functions with a SQL body definition, **only [serverless compute](https://docs.databricks.com/en/compute/use-compute.html#use-serverless-compute) is supported**.
+  Install databricks-connect package with `pip install databricks-connect==15.1.0` to access serverless compute. **python>=3.10** is a requirement to install this version of the package.
+- For executing the UC functions within Databricks, use either SQL warehouse or Databricks Connect with serverless:
     - SQL warehouse: create a SQL warehouse following [this instruction](https://docs.databricks.com/en/compute/sql-warehouse/create.html), and use the warehouse id when initializing the client.
     NOTE: **only `serverless` [SQL warehouse type](https://docs.databricks.com/en/admin/sql/warehouse-types.html#sql-warehouse-types) is supported** because of performance concerns.
     - Databricks connect with serverless: Install databricks-connect package with `pip install databricks-connect==15.1.0`. No config needs to be passed when initializing the client.
