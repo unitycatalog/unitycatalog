@@ -64,7 +64,7 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
-  '/scim2/Users/self': {
+  '/scim2/Me': {
     parameters: {
       query?: never;
       header?: never;

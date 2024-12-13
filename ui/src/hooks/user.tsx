@@ -81,20 +81,16 @@ export function useGetCurrentUser() {
   const isExpectedError = (response: {
     status: number;
     data: any;
-  }): response is ApiErrorResponse<
-    ControlApi,
-    '/scim2/Me',
-    'get',
-    ErrorCode
-  > => expectedErrorCodes.map(Number).includes(response.status);
+  }): response is ApiErrorResponse<ControlApi, '/scim2/Me', 'get', ErrorCode> =>
+    expectedErrorCodes.map(Number).includes(response.status);
 
-  return useQuery<ApiSuccessResponse<ControlApi, '/scim2/Users/self', 'get'>>({
+  return useQuery<ApiSuccessResponse<ControlApi, '/scim2/Me', 'get'>>({
     queryKey: ['getUser'],
     queryFn: async () => {
       const api = route({
         client: CLIENT,
         request: {
-          path: '/scim2/Users/self',
+          path: '/scim2/Me',
           method: 'get',
         },
         errorMessage: 'Failed to fetch user',
