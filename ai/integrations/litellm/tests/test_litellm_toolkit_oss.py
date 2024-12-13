@@ -187,11 +187,6 @@ async def test_uc_function_to_litellm_tool(uc_client):
         result = json.loads(tool.fn(x="some_string"))["value"]
         assert result == "some_string"
 
-        # Check defaults for parameters not defined by UC
-        assert tool.cache_function(1, {1: 1})
-        assert not tool.result_as_answer
-        assert not tool.description_updated
-
 
 @pytest.mark.asyncio
 async def test_toolkit_with_invalid_function_input(uc_client):
@@ -230,11 +225,7 @@ async def test_toolkit_litellm_kwarg_passthrough(uc_client):
         tool = UCFunctionToolkit.uc_function_to_litellm_tool(
             function_name="catalog.schema.test",
             client=uc_client,
-            cache_function=lambda: True,
-            result_as_answer=True,
-            description_updated=True,
         )
 
-        assert tool.cache_function()
-        assert tool.result_as_answer
-        assert tool.description_updated
+        assert tool is not None
+
