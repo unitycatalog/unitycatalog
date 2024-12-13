@@ -7,8 +7,13 @@ import pytest_asyncio
 from autogen import ConversableAgent
 
 from unitycatalog.ai.autogen.toolkit import AutogenTool, UCFunctionToolkit
+<<<<<<< HEAD
 from unitycatalog.ai.core.base import FunctionExecutionResult
 from unitycatalog.ai.core.client import UnitycatalogFunctionClient
+=======
+from unitycatalog.ai.core.client import FunctionExecutionResult
+from unitycatalog.ai.core.oss import UnitycatalogFunctionClient
+>>>>>>> ed0a9af (Handle merge conflict)
 from unitycatalog.ai.test_utils.function_utils_oss import (
     CATALOG,
     create_function_and_cleanup_oss,
@@ -230,11 +235,19 @@ async def test_uc_function_to_autogen_tool(uc_client):
     mock_function_info = generate_function_info()
     with (
         mock.patch(
+<<<<<<< HEAD
             "unitycatalog.ai.core.client.UnitycatalogFunctionClient.get_function",
             return_value=mock_function_info,
         ),
         mock.patch(
             "unitycatalog.ai.core.client.UnitycatalogFunctionClient.execute_function",
+=======
+            "unitycatalog.ai.core.oss.UnitycatalogFunctionClient.get_function",
+            return_value=mock_function_info,
+        ),
+        mock.patch(
+            "unitycatalog.ai.core.oss.UnitycatalogFunctionClient.execute_function",
+>>>>>>> ed0a9af (Handle merge conflict)
             return_value=FunctionExecutionResult(format="SCALAR", value="some_string"),
         ),
     ):
