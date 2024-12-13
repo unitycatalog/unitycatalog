@@ -83,7 +83,7 @@ export function useGetCurrentUser() {
     data: any;
   }): response is ApiErrorResponse<
     ControlApi,
-    '/scim2/Users/self',
+    '/scim2/Me',
     'get',
     ErrorCode
   > => expectedErrorCodes.map(Number).includes(response.status);
