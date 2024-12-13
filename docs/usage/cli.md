@@ -36,7 +36,7 @@ bin/uc catalog list \
 
 This will output:
 
-```sh
+```console
 ┌─────┬────────────┬──────────┬─────┬─────────────┬──────────┬──────────┬──────────┬────────────────────────────────────┐
 │NAME │  COMMENT   │PROPERTIES│OWNER│ CREATED_AT  │CREATED_BY│UPDATED_AT│UPDATED_BY│                 ID                 │
 ├─────┼────────────┼──────────┼─────┼─────────────┼──────────┼──────────┼──────────┼────────────────────────────────────┤
@@ -57,7 +57,7 @@ bin/uc catalog get \
 
 This should output:
 
-```sh
+```console
 ┌─────────────────────┬──────────────────────────────────────────┐
 │         KEY         │                  VALUE                   │
 ├─────────────────────┼──────────────────────────────────────────┤
@@ -592,7 +592,7 @@ register, update, use, and delete registered models and model versions.
 
 You can list the registered models in your UC namespace using:
 
-```bash title="List registered models"
+```sh
 bin/uc registered_model list \
   --catalog <catalog_name> \ # (1)
   --schema <schema_name> # (2)
@@ -603,7 +603,7 @@ bin/uc registered_model list \
 
 You can list the model versions under a registered model using:
 
-```bash title="List model versions"
+```sh
 bin/uc model_version list \
   --full_name <full_name> # (1)
 ```
@@ -612,7 +612,7 @@ bin/uc model_version list \
 
 You can get the metadata of registered models or model versions using:
 
-```bash title="View registered model metadata"
+```sh
 bin/uc registered_model get \
   --full_name <full_name> # (1)
 ```
@@ -621,7 +621,7 @@ bin/uc registered_model get \
 
 You can update the comment or name of a registered models using:
 
-```bash title="Comment a registered model"
+```sh
 bin/uc registered_model update \
   --full_name <full_name> \ # (1)
   --new_name <new_name> \ # (2)
@@ -660,7 +660,7 @@ The script supports various operations such as creating, getting, updating, list
 
 ### Create User
 
-```bash title="Usage"
+```sh
 bin/uc user create [options]
 ```
 
@@ -678,7 +678,7 @@ _Optional Params:_
 
 ### Delete User
 
-```bash title="Usage"
+```sh
 bin/uc user delete [options]
 ```
 
@@ -694,7 +694,7 @@ _Optional Params:_
 
 ### Get User
 
-```bash title="Usage"
+```sh
 bin/uc user get [options]
 ```
 
@@ -710,7 +710,7 @@ _Optional Params:_
 
 ### List Users
 
-```bash title="Usage"
+```sh
 bin/uc user list [options]
 ```
 
@@ -729,7 +729,7 @@ _Optional Params:_
 
 ### Update User
 
-```bash title="Usage"
+```sh
 bin/uc user update [options]
 ```
 
