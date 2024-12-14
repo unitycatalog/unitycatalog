@@ -5,7 +5,7 @@ import {
   UseQueryOptions,
 } from '@tanstack/react-query';
 import { CLIENT } from '../context/catalog';
-import { route, isError } from '../utils/openapi';
+import { route, isError, assertNever } from '../utils/openapi';
 import type {
   paths as CatalogApi,
   components as CatalogComponent,
@@ -35,7 +35,7 @@ export function useListVolumes({
   return useQuery<SuccessResponseBody<CatalogApi, '/volumes', 'get'>>({
     queryKey: ['listVolumes', catalog_name, schema_name],
     queryFn: async () => {
-      const api = route({
+      const api = route<CatalogApi, '/volumes', 'get'>({
         client: CLIENT,
         request: {
           path: '/volumes',
@@ -54,15 +54,10 @@ export function useListVolumes({
         // NOTE:
         // When an expected error occurs, as defined in the OpenAPI specification, the following line will
         // be executed. This block serves as a placeholder for expected errors.
-        //
-        // NOTE:
-        // As of 14/12/2024, all properties of the models defined in the OpenAPI specification are marked as
-        // optional. Consequently, any `object` can match the type of the `SuccessResponseBody` for any API
-        // (effectively disabling meaningful type checking). In the future, as the OpenAPI specification is
-        // updated, additional changes may be required for this type guard clause, such as incorporating
-        // `return response.data` below.
+        return assertNever(response.data.status);
+      } else {
+        return response.data;
       }
-      return response.data;
     },
     ...options,
   });
@@ -73,10 +68,10 @@ export type UseGetVolumeArgs = PathParam<CatalogApi, '/volumes/{name}', 'get'>;
 export function useGetVolume({ name }: UseGetVolumeArgs) {
   const [catalog, schema, volume] = name.split('.');
 
-  return useQuery<VolumeInterface>({
+  return useQuery<SuccessResponseBody<CatalogApi, '/volumes/{name}', 'get'>>({
     queryKey: ['getVolume', catalog, schema, volume],
     queryFn: async () => {
-      const api = route({
+      const api = route<CatalogApi, '/volumes/{name}', 'get'>({
         client: CLIENT,
         request: {
           path: '/volumes/{name}',
@@ -94,15 +89,10 @@ export function useGetVolume({ name }: UseGetVolumeArgs) {
         // NOTE:
         // When an expected error occurs, as defined in the OpenAPI specification, the following line will
         // be executed. This block serves as a placeholder for expected errors.
-        //
-        // NOTE:
-        // As of 14/12/2024, all properties of the models defined in the OpenAPI specification are marked as
-        // optional. Consequently, any `object` can match the type of the `SuccessResponseBody` for any API
-        // (effectively disabling meaningful type checking). In the future, as the OpenAPI specification is
-        // updated, additional changes may be required for this type guard clause, such as incorporating
-        // `return response.data` below.
+        return assertNever(response.data.status);
+      } else {
+        return response.data;
       }
-      return response.data;
     },
   });
 }
@@ -130,7 +120,7 @@ export function useUpdateVolume({ name }: UseUpdateVolumeArgs) {
     UpdateVolumeMutationParams
   >({
     mutationFn: async ({ comment }: UpdateVolumeMutationParams) => {
-      const api = route({
+      const api = route<CatalogApi, '/volumes/{name}', 'patch'>({
         client: CLIENT,
         request: {
           path: '/volumes/{name}',
@@ -151,15 +141,10 @@ export function useUpdateVolume({ name }: UseUpdateVolumeArgs) {
         // NOTE:
         // When an expected error occurs, as defined in the OpenAPI specification, the following line will
         // be executed. This block serves as a placeholder for expected errors.
-        //
-        // NOTE:
-        // As of 14/12/2024, all properties of the models defined in the OpenAPI specification are marked as
-        // optional. Consequently, any `object` can match the type of the `SuccessResponseBody` for any API
-        // (effectively disabling meaningful type checking). In the future, as the OpenAPI specification is
-        // updated, additional changes may be required for this type guard clause, such as incorporating
-        // `return response.data` below.
+        return assertNever(response.data.status);
+      } else {
+        return response.data;
       }
-      return response.data;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({
@@ -192,7 +177,7 @@ export function useDeleteVolume({ name }: UseDeleteVolumeArgs) {
     DeleteVolumeMutationParams
   >({
     mutationFn: async ({ name }: DeleteVolumeMutationParams) => {
-      const api = route({
+      const api = route<CatalogApi, '/volumes/{name}', 'delete'>({
         client: CLIENT,
         request: {
           path: '/volumes/{name}',
@@ -210,15 +195,10 @@ export function useDeleteVolume({ name }: UseDeleteVolumeArgs) {
         // NOTE:
         // When an expected error occurs, as defined in the OpenAPI specification, the following line will
         // be executed. This block serves as a placeholder for expected errors.
-        //
-        // NOTE:
-        // As of 14/12/2024, all properties of the models defined in the OpenAPI specification are marked as
-        // optional. Consequently, any `object` can match the type of the `SuccessResponseBody` for any API
-        // (effectively disabling meaningful type checking). In the future, as the OpenAPI specification is
-        // updated, additional changes may be required for this type guard clause, such as incorporating
-        // `return response.data` below.
+        return assertNever(response.data.status);
+      } else {
+        return response.data;
       }
-      return response.data;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({

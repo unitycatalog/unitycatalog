@@ -5,7 +5,7 @@ import {
   UseQueryOptions,
 } from '@tanstack/react-query';
 import { CLIENT } from '../context/catalog';
-import { route, isError } from '../utils/openapi';
+import { route, isError, assertNever } from '../utils/openapi';
 import type {
   paths as CatalogApi,
   components as CatalogComponent,
@@ -31,7 +31,7 @@ export function useListSchemas({ catalog_name, options }: UseListSchemasArgs) {
   return useQuery<SuccessResponseBody<CatalogApi, '/schemas', 'get'>>({
     queryKey: ['listSchemas', catalog_name],
     queryFn: async () => {
-      const api = route({
+      const api = route<CatalogApi, '/schemas', 'get'>({
         client: CLIENT,
         request: {
           path: '/schemas',
@@ -49,15 +49,10 @@ export function useListSchemas({ catalog_name, options }: UseListSchemasArgs) {
         // NOTE:
         // When an expected error occurs, as defined in the OpenAPI specification, the following line will
         // be executed. This block serves as a placeholder for expected errors.
-        //
-        // NOTE:
-        // As of 14/12/2024, all properties of the models defined in the OpenAPI specification are marked as
-        // optional. Consequently, any `object` can match the type of the `SuccessResponseBody` for any API
-        // (effectively disabling meaningful type checking). In the future, as the OpenAPI specification is
-        // updated, additional changes may be required for this type guard clause, such as incorporating
-        // `return response.data` below.
+        return assertNever(response.data.status);
+      } else {
+        return response.data;
       }
-      return response.data;
     },
     ...options,
   });
@@ -77,7 +72,7 @@ export function useGetSchema({ full_name }: UseGetSchemaArgs) {
   >({
     queryKey: ['getSchema', catalog, schema],
     queryFn: async () => {
-      const api = route({
+      const api = route<CatalogApi, '/schemas/{full_name}', 'get'>({
         client: CLIENT,
         request: {
           path: '/schemas/{full_name}',
@@ -95,15 +90,10 @@ export function useGetSchema({ full_name }: UseGetSchemaArgs) {
         // NOTE:
         // When an expected error occurs, as defined in the OpenAPI specification, the following line will
         // be executed. This block serves as a placeholder for expected errors.
-        //
-        // NOTE:
-        // As of 14/12/2024, all properties of the models defined in the OpenAPI specification are marked as
-        // optional. Consequently, any `object` can match the type of the `SuccessResponseBody` for any API
-        // (effectively disabling meaningful type checking). In the future, as the OpenAPI specification is
-        // updated, additional changes may be required for this type guard clause, such as incorporating
-        // `return response.data` below.
+        return assertNever(response.data.status);
+      } else {
+        return response.data;
       }
-      return response.data;
     },
   });
 }
@@ -128,7 +118,7 @@ export function useCreateSchema() {
       comment,
       properties,
     }: CreateSchemaMutationParams) => {
-      const api = route({
+      const api = route<CatalogApi, '/schemas', 'post'>({
         client: CLIENT,
         request: {
           path: '/schemas',
@@ -149,15 +139,10 @@ export function useCreateSchema() {
         // NOTE:
         // When an expected error occurs, as defined in the OpenAPI specification, the following line will
         // be executed. This block serves as a placeholder for expected errors.
-        //
-        // NOTE:
-        // As of 14/12/2024, all properties of the models defined in the OpenAPI specification are marked as
-        // optional. Consequently, any `object` can match the type of the `SuccessResponseBody` for any API
-        // (effectively disabling meaningful type checking). In the future, as the OpenAPI specification is
-        // updated, additional changes may be required for this type guard clause, such as incorporating
-        // `return response.data` below.
+        return assertNever(response.data.status);
+      } else {
+        return response.data;
       }
-      return response.data;
     },
     onSuccess: (schema) => {
       queryClient.invalidateQueries({
@@ -190,7 +175,7 @@ export function useUpdateSchema({ full_name }: UseUpdateSchemaArgs) {
     UpdateSchemaMutationParams
   >({
     mutationFn: async ({ comment }: UpdateSchemaMutationParams) => {
-      const api = route({
+      const api = route<CatalogApi, '/schemas/{full_name}', 'patch'>({
         client: CLIENT,
         request: {
           path: '/schemas/{full_name}',
@@ -211,15 +196,10 @@ export function useUpdateSchema({ full_name }: UseUpdateSchemaArgs) {
         // NOTE:
         // When an expected error occurs, as defined in the OpenAPI specification, the following line will
         // be executed. This block serves as a placeholder for expected errors.
-        //
-        // NOTE:
-        // As of 14/12/2024, all properties of the models defined in the OpenAPI specification are marked as
-        // optional. Consequently, any `object` can match the type of the `SuccessResponseBody` for any API
-        // (effectively disabling meaningful type checking). In the future, as the OpenAPI specification is
-        // updated, additional changes may be required for this type guard clause, such as incorporating
-        // `return response.data` below.
+        return assertNever(response.data.status);
+      } else {
+        return response.data;
       }
-      return response.data;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({
@@ -252,7 +232,7 @@ export function useDeleteSchema({ full_name }: UseDeleteSchemaArgs) {
     DeleteSchemaMutationParams
   >({
     mutationFn: async ({ full_name }: DeleteSchemaMutationParams) => {
-      const api = route({
+      const api = route<CatalogApi, '/schemas/{full_name}', 'delete'>({
         client: CLIENT,
         request: {
           path: '/schemas/{full_name}',
@@ -270,15 +250,10 @@ export function useDeleteSchema({ full_name }: UseDeleteSchemaArgs) {
         // NOTE:
         // When an expected error occurs, as defined in the OpenAPI specification, the following line will
         // be executed. This block serves as a placeholder for expected errors.
-        //
-        // NOTE:
-        // As of 14/12/2024, all properties of the models defined in the OpenAPI specification are marked as
-        // optional. Consequently, any `object` can match the type of the `SuccessResponseBody` for any API
-        // (effectively disabling meaningful type checking). In the future, as the OpenAPI specification is
-        // updated, additional changes may be required for this type guard clause, such as incorporating
-        // `return response.data` below.
+        return assertNever(response.data.status);
+      } else {
+        return response.data;
       }
-      return response.data;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({

@@ -5,7 +5,7 @@ import {
   UseQueryOptions,
 } from '@tanstack/react-query';
 import { CLIENT } from '../context/catalog';
-import { route, isError } from '../utils/openapi';
+import { route, isError, assertNever } from '../utils/openapi';
 import type {
   paths as CatalogApi,
   components as CatalogComponent,
@@ -34,7 +34,7 @@ export function useListTables({
   return useQuery<SuccessResponseBody<CatalogApi, '/tables', 'get'>>({
     queryKey: ['listTables', catalog_name, schema_name],
     queryFn: async () => {
-      const api = route({
+      const api = route<CatalogApi, '/tables', 'get'>({
         client: CLIENT,
         request: {
           path: '/tables',
@@ -53,15 +53,10 @@ export function useListTables({
         // NOTE:
         // When an expected error occurs, as defined in the OpenAPI specification, the following line will
         // be executed. This block serves as a placeholder for expected errors.
-        //
-        // NOTE:
-        // As of 14/12/2024, all properties of the models defined in the OpenAPI specification are marked as
-        // optional. Consequently, any `object` can match the type of the `SuccessResponseBody` for any API
-        // (effectively disabling meaningful type checking). In the future, as the OpenAPI specification is
-        // updated, additional changes may be required for this type guard clause, such as incorporating
-        // `return response.data` below.
+        return assertNever(response.data.status);
+      } else {
+        return response.data;
       }
-      return response.data;
     },
     ...options,
   });
@@ -81,7 +76,7 @@ export function useGetTable({ full_name }: UseGetTableArgs) {
   >({
     queryKey: ['getTable', catalog, schema, table],
     queryFn: async () => {
-      const api = route({
+      const api = route<CatalogApi, '/tables/{full_name}', 'get'>({
         client: CLIENT,
         request: {
           path: '/tables/{full_name}',
@@ -99,15 +94,10 @@ export function useGetTable({ full_name }: UseGetTableArgs) {
         // NOTE:
         // When an expected error occurs, as defined in the OpenAPI specification, the following line will
         // be executed. This block serves as a placeholder for expected errors.
-        //
-        // NOTE:
-        // As of 14/12/2024, all properties of the models defined in the OpenAPI specification are marked as
-        // optional. Consequently, any `object` can match the type of the `SuccessResponseBody` for any API
-        // (effectively disabling meaningful type checking). In the future, as the OpenAPI specification is
-        // updated, additional changes may be required for this type guard clause, such as incorporating
-        // `return response.data` below.
+        return assertNever(response.data.status);
+      } else {
+        return response.data;
       }
-      return response.data;
     },
   });
 }
@@ -134,10 +124,8 @@ export function useDeleteTable({ full_name }: UseDeleteTableArgs) {
     Error,
     DeleteTableMutationParams
   >({
-    mutationFn: async ({
-      full_name,
-    }: DeleteTableMutationParams): Promise<void> => {
-      const api = route({
+    mutationFn: async ({ full_name }: DeleteTableMutationParams) => {
+      const api = route<CatalogApi, '/tables/{full_name}', 'delete'>({
         client: CLIENT,
         request: {
           path: '/tables/{full_name}',
@@ -155,15 +143,10 @@ export function useDeleteTable({ full_name }: UseDeleteTableArgs) {
         // NOTE:
         // When an expected error occurs, as defined in the OpenAPI specification, the following line will
         // be executed. This block serves as a placeholder for expected errors.
-        //
-        // NOTE:
-        // As of 14/12/2024, all properties of the models defined in the OpenAPI specification are marked as
-        // optional. Consequently, any `object` can match the type of the `SuccessResponseBody` for any API
-        // (effectively disabling meaningful type checking). In the future, as the OpenAPI specification is
-        // updated, additional changes may be required for this type guard clause, such as incorporating
-        // `return response.data` below.
+        return assertNever(response.data.status);
+      } else {
+        return response.data;
       }
-      return response.data;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({

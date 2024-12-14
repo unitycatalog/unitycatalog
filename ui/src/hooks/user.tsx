@@ -91,7 +91,7 @@ export function useGetCurrentUser() {
   return useQuery<SuccessResponseBody<ControlApi, '/scim2/Me', 'get'> | null>({
     queryKey: ['getUser'],
     queryFn: async () => {
-      const api = route({
+      const api = route<ControlApi, '/scim2/Me', 'get', ErrorCode>({
         client: CLIENT,
         request: {
           path: '/scim2/Me',

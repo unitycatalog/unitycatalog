@@ -300,7 +300,7 @@ export const route = <
   Api extends Spec,
   Path extends PathOf<Api>,
   Method extends HttpMethod,
-  ErrorCode extends HttpErrorCode,
+  ErrorCode extends HttpErrorCode = never,
 >({
   client,
   request,
