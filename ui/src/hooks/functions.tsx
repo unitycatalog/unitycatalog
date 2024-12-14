@@ -5,27 +5,27 @@ import {
   UseQueryOptions,
 } from '@tanstack/react-query';
 import { CLIENT } from '../context/catalog';
-import { route } from '../utils/openapi';
+import { route, isError } from '../utils/openapi';
 import type {
   paths as CatalogApi,
   components as CatalogComponent,
 } from '../types/api/catalog.gen';
 import type {
-  ApiInterface,
-  ApiSuccessResponse,
-  ApiRequestPathParam,
-  ApiRequestQueryParam,
+  Model,
+  PathParam,
+  QueryParam,
+  SuccessResponseBody,
 } from '../utils/openapi';
 
-export type FunctionInterface = ApiInterface<CatalogComponent, 'FunctionInfo'>;
+export type FunctionInterface = Model<CatalogComponent, 'FunctionInfo'>;
 
-export type UseListFunctionsArgs = ApiRequestQueryParam<
+export type UseListFunctionsArgs = QueryParam<
   CatalogApi,
   '/functions',
   'get'
 > & {
   options?: Omit<
-    UseQueryOptions<ApiSuccessResponse<CatalogApi, '/functions', 'get'>>,
+    UseQueryOptions<SuccessResponseBody<CatalogApi, '/functions', 'get'>>,
     'queryKey' | 'queryFn'
   >;
 };
@@ -35,7 +35,7 @@ export function useListFunctions({
   schema_name,
   options,
 }: UseListFunctionsArgs) {
-  return useQuery<ApiSuccessResponse<CatalogApi, '/functions', 'get'>>({
+  return useQuery<SuccessResponseBody<CatalogApi, '/functions', 'get'>>({
     queryKey: ['listFunctions', catalog_name, schema_name],
     queryFn: async () => {
       const api = route({
@@ -53,10 +53,17 @@ export function useListFunctions({
         errorMessage: 'Failed to list functions',
       });
       const response = await api.call();
-      if (response.result !== 'success') {
+      if (isError(response)) {
         // NOTE:
         // When an expected error occurs, as defined in the OpenAPI specification, the following line will
         // be executed. This block serves as a placeholder for expected errors.
+        //
+        // NOTE:
+        // As of 14/12/2024, all properties of the models defined in the OpenAPI specification are marked as
+        // optional. Consequently, any `object` can match the type of the `SuccessResponseBody` for any API
+        // (effectively disabling meaningful type checking). In the future, as the OpenAPI specification is
+        // updated, additional changes may be required for this type guard clause, such as incorporating
+        // `return response.data` below.
       }
       return response.data;
     },
@@ -64,7 +71,7 @@ export function useListFunctions({
   });
 }
 
-export type UseGetFunctionArgs = ApiRequestPathParam<
+export type UseGetFunctionArgs = PathParam<
   CatalogApi,
   '/functions/{name}',
   'get'
@@ -73,7 +80,7 @@ export type UseGetFunctionArgs = ApiRequestPathParam<
 export function useGetFunction({ name }: UseGetFunctionArgs) {
   const [catalog, schema, ucFunction] = name.split('.');
 
-  return useQuery<ApiSuccessResponse<CatalogApi, '/functions/{name}', 'get'>>({
+  return useQuery<SuccessResponseBody<CatalogApi, '/functions/{name}', 'get'>>({
     queryKey: ['getFunction', catalog, schema, ucFunction],
     queryFn: async () => {
       const api = route({
@@ -90,36 +97,42 @@ export function useGetFunction({ name }: UseGetFunctionArgs) {
         errorMessage: 'Failed to fetch function',
       });
       const response = await api.call();
-      if (response.result !== 'success') {
+      if (isError(response)) {
         // NOTE:
         // When an expected error occurs, as defined in the OpenAPI specification, the following line will
         // be executed. This block serves as a placeholder for expected errors.
+        //
+        // NOTE:
+        // As of 14/12/2024, all properties of the models defined in the OpenAPI specification are marked as
+        // optional. Consequently, any `object` can match the type of the `SuccessResponseBody` for any API
+        // (effectively disabling meaningful type checking). In the future, as the OpenAPI specification is
+        // updated, additional changes may be required for this type guard clause, such as incorporating
+        // `return response.data` below.
       }
       return response.data;
     },
   });
 }
 
-export type UseDeleteFunctionArgs = ApiRequestPathParam<
+export type UseDeleteFunctionArgs = PathParam<
   CatalogApi,
   '/functions/{name}',
   'delete'
 >;
 
-export type DeleteFunctionMutationParams = ApiRequestPathParam<
+export type DeleteFunctionMutationParams = PathParam<
   CatalogApi,
   '/functions/{name}',
   'delete'
 >;
 
-// Delete a function
 export function useDeleteFunction({ name }: UseDeleteFunctionArgs) {
   const queryClient = useQueryClient();
 
   const [catalog, schema] = name.split('.');
 
   return useMutation<
-    ApiSuccessResponse<CatalogApi, '/functions/{name}', 'delete'>,
+    SuccessResponseBody<CatalogApi, '/functions/{name}', 'delete'>,
     Error,
     DeleteFunctionMutationParams
   >({
@@ -138,10 +151,17 @@ export function useDeleteFunction({ name }: UseDeleteFunctionArgs) {
         errorMessage: 'Failed to delete function',
       });
       const response = await api.call();
-      if (response.result !== 'success') {
+      if (isError(response)) {
         // NOTE:
         // When an expected error occurs, as defined in the OpenAPI specification, the following line will
         // be executed. This block serves as a placeholder for expected errors.
+        //
+        // NOTE:
+        // As of 14/12/2024, all properties of the models defined in the OpenAPI specification are marked as
+        // optional. Consequently, any `object` can match the type of the `SuccessResponseBody` for any API
+        // (effectively disabling meaningful type checking). In the future, as the OpenAPI specification is
+        // updated, additional changes may be required for this type guard clause, such as incorporating
+        // `return response.data` below.
       }
       return response.data;
     },

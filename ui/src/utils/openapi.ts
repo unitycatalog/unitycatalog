@@ -85,19 +85,6 @@ export type MediaType =
   | 'application/x-www-form-urlencoded'; // URL Encoded Form
 
 /**
- * Utility type that converts a union (A | B | C) into an intersection ( A & B & C ).
- *
- * See also:
- * - {@link https://www.typescriptlang.org/docs/handbook/2/conditional-types.html#distributive-conditional-types | Distributive Conditional Types }
- * - {@link https://www.typescriptlang.org/docs/handbook/2/conditional-types.html#inferring-within-conditional-types | Inferring Within Conditional Types }
- */
-type UnionToIntersection<T> = (T extends any ? (k: T) => void : never) extends (
-  k: infer U,
-) => void
-  ? U
-  : never;
-
-/**
  * Utility type that extracts the type specified by a given `Path` from `T`.
  *
  * Example:
@@ -119,71 +106,51 @@ type Get<
 /**
  * Represents the type of predefined API schemas.
  */
-export type Specification = Record<string | number | symbol, any>;
+export type Spec = Record<string | number | symbol, any>;
 
 /**
  * Represents the type of predefined API paths of a given `Api`.
  */
-export type ApiPath<Api extends Specification> = keyof Api;
-
-/**
- * Represents the type of predefined HTTP methods of given `Api` and `Path`.
- */
-export type ApiMethodOf<
-  Api extends Specification,
-  Path extends ApiPath<Api>,
-> = HttpMethod & keyof UnionToIntersection<Api[Path]>;
-
-/**
- * Represents the type of predefined API paths of given `Api` and `Method`.
- *
- * See also:
- * - {@link https://www.typescriptlang.org/docs/handbook/2/mapped-types.html#key-remapping-via-as | Key Remapping via as }
- */
-export type ApiPathOf<
-  Api extends Specification,
-  Method extends HttpMethod,
-> = Method extends any
-  ? keyof {
-      [K in keyof Api as Api[K] extends Record<Method, any>
-        ? K
-        : never]: Api[K];
-    }
-  : never;
+export type PathOf<Api extends Spec> = keyof Api;
 
 /**
  * Utility type that extracts the HTTP status codes of given `Api`, `Path` and `Method`.
  */
-type GetCode<
-  Api extends Specification,
-  Path extends ApiPath<Api>,
+type CodeOf<
+  Api extends Spec,
+  Path extends PathOf<Api>,
   Method extends HttpMethod,
 > = keyof Get<Api, [Path, Method, 'responses']>;
 
 /**
  * Utility type that extracts the JSON responses of given `Api`, `Path`, `Method` and `Code`.
  */
-type GetContent<
-  Api extends Specification,
-  Path extends ApiPath<Api>,
+type ContentOf<
+  Api extends Spec,
+  Path extends PathOf<Api>,
   Method extends HttpMethod,
   Code extends HttpSuccessCode | HttpErrorCode,
   ContentType extends MediaType,
 > = Get<Api, [Path, Method, 'responses', Code, 'content', ContentType]>;
 
 /**
+ * Represents the type of predefined API components of a given `Api`.
+ */
+type ComponentOf<Api extends Spec> = keyof Api['schemas'];
+
+/**
  * Utility type that expands the HTTP error responses of given `Api`, `Path` and `Method` with a given `ErrorCode`.
  * If an error response is defined in the schema, its type is applied to `data`.
  * Otherwise, the type `{ message: string }` is applied to `data`.
  */
-type ExpandApiError<
-  Api extends Specification,
-  Path extends ApiPath<Api>,
+type ErrorWithStatus<
+  Api extends Spec,
+  Path extends PathOf<Api>,
   Method extends HttpMethod,
   ErrorCode extends HttpErrorCode,
   ContentType extends MediaType = 'application/json',
-> = ErrorCode extends number
-  ? GetContent<Api, Path, Method, ErrorCode, ContentType> extends never
+> =
+  ContentOf<Api, Path, Method, ErrorCode, ContentType> extends never
     ? {
         status: ErrorCode;
         data: {
@@ -192,108 +159,132 @@ type ExpandApiError<
       }
     : {
         status: ErrorCode;
-        data: GetContent<Api, Path, Method, ErrorCode, ContentType>;
-      }
-  : never;
+        data: ContentOf<Api, Path, Method, ErrorCode, ContentType>;
+      };
 
 /**
  * Represents the type of predefined API path parameters of given `Api`, `Path` and `Method`.
  */
-export type ApiRequestPathParam<
-  Api extends Specification,
-  Path extends ApiPath<Api>,
+export type PathParam<
+  Api extends Spec,
+  Path extends PathOf<Api>,
   Method extends HttpMethod,
 > = Get<Api, [Path, Method, 'parameters', 'path']>;
 
 /**
  * Represents the type of predefined API query parameters of given `Api`, `Path` and `Method`.
  */
-export type ApiRequestQueryParam<
-  Api extends Specification,
-  Path extends ApiPath<Api>,
+export type QueryParam<
+  Api extends Spec,
+  Path extends PathOf<Api>,
   Method extends HttpMethod,
 > = Get<Api, [Path, Method, 'parameters', 'query']>;
 
 /**
  * Represents the type of predefined API bodies of given `Api`, `Path` and `Method`.
  */
-export type ApiRequestBody<
-  Api extends Specification,
-  Path extends ApiPath<Api>,
+export type RequestBody<
+  Api extends Spec,
+  Path extends PathOf<Api>,
   Method extends HttpMethod,
   ContentType extends MediaType = 'application/json',
 > = Get<Api, [Path, Method, 'requestBody', 'content', ContentType]>;
 
 /**
- * Represents the type of predefined API responses of given `Api`, `Path` and `Method`.
+ * Represents the type of predefined API success bodies of given `Api`, `Path` and `Method`.
  */
-export type ApiSuccessResponse<
-  Api extends Specification,
-  Path extends ApiPath<Api>,
+export type SuccessResponseBody<
+  Api extends Spec,
+  Path extends PathOf<Api>,
   Method extends HttpMethod,
   ContentType extends MediaType = 'application/json',
-> = GetContent<
+> = ContentOf<
   Api,
   Path,
   Method,
-  GetCode<Api, Path, Method> & HttpSuccessCode,
+  CodeOf<Api, Path, Method> & HttpSuccessCode,
   ContentType
 >;
 
 /**
- * Represents the type of predefined API errors of given `Api`, `Path` and `Method`.
+ * Represents the type of predefined API error bodies of given `Api`, `Path` and `Method`.
  */
-export type ApiErrorResponse<
-  Api extends Specification,
-  Path extends ApiPath<Api>,
+export type ErrorResponseBody<
+  Api extends Spec,
+  Path extends PathOf<Api>,
   Method extends HttpMethod,
   ErrorCode extends HttpErrorCode,
-> = ExpandApiError<Api, Path, Method, ErrorCode>;
+> = ErrorWithStatus<Api, Path, Method, ErrorCode>;
+
+/**
+ * Represents the type of predefined API responses of given `Api`, `Path` and `Method`.
+ */
+export type SuccessResponse<
+  Api extends Spec,
+  Path extends PathOf<Api>,
+  Method extends HttpMethod,
+> = {
+  result: 'success';
+  data: SuccessResponseBody<Api, Path, Method>;
+};
+
+/**
+ * Represents the type of predefined API responses of given `Api`, `Path`, `Method` and `ErrorCode`.
+ */
+export type ErrorResponse<
+  Api extends Spec,
+  Path extends PathOf<Api>,
+  Method extends HttpMethod,
+  ErrorCode extends HttpErrorCode,
+> = {
+  result: 'error';
+  data: ErrorResponseBody<Api, Path, Method, ErrorCode>;
+};
 
 /**
  * Represents the type of the predefined API request of given `Api`, `Path` and `Method`.
  */
-export type ApiRequest<
-  Api extends Specification,
-  Path extends ApiPath<Api>,
+export type Request<
+  Api extends Spec,
+  Path extends PathOf<Api>,
   Method extends HttpMethod,
 > = {
   path: Path;
   method: Method;
   params?: {
-    paths?: ApiRequestPathParam<Api, Path, Method>;
-    query?: ApiRequestQueryParam<Api, Path, Method>;
-    body?: ApiRequestBody<Api, Path, Method>;
+    paths?: PathParam<Api, Path, Method>;
+    query?: QueryParam<Api, Path, Method>;
+    body?: RequestBody<Api, Path, Method>;
   };
 };
 
 /**
  * Represents the type of predefined API responses of given `Api`, `Path`, `Method` and `ErrorCode`.
  */
-export type ApiResponse<
-  Api extends Specification,
-  Path extends ApiPath<Api>,
+export type Response<
+  Api extends Spec,
+  Path extends PathOf<Api>,
   Method extends HttpMethod,
   ErrorCode extends HttpErrorCode,
 > =
-  | { result: 'success'; data: ApiSuccessResponse<Api, Path, Method> }
-  | {
-      result: 'error';
-      data: ApiErrorResponse<Api, Path, Method, ErrorCode>;
-    };
-
-/**
- * Represents the type of predefined API components of a given `Api`.
- */
-export type ApiComponent<Api extends Specification> = keyof Api['schemas'];
+  | SuccessResponse<Api, Path, Method>
+  | ErrorResponse<Api, Path, Method, ErrorCode>;
 
 /**
  * Represents the type of predefined API components of given `Api` and `Component`.
  */
-export type ApiInterface<
-  Api extends Specification,
-  Component extends ApiComponent<Api>,
-> = Get<Api, ['schemas', Component]>;
+export type Model<Api extends Spec, Component extends ComponentOf<Api>> = Get<
+  Api,
+  ['schemas', Component]
+>;
+
+/**
+ * Type-guard for the `ErrorResponse`.
+ */
+export const isError = <Api extends Spec, ErrorCode extends HttpErrorCode>(
+  response: Response<Api, PathOf<Api>, HttpMethod, ErrorCode>,
+): response is ErrorResponse<Api, PathOf<Api>, HttpMethod, ErrorCode> =>
+  response.result === 'error';
 
 /**
  * Ensures that the relevant statement is exhaustive.
@@ -306,8 +297,8 @@ export const assertNever = (value: never) => {
  * Configures the API `client` using the specified `request` context.
  */
 export const route = <
-  Api extends Specification,
-  Path extends ApiPath<Api>,
+  Api extends Spec,
+  Path extends PathOf<Api>,
   Method extends HttpMethod,
   ErrorCode extends HttpErrorCode,
 >({
@@ -317,15 +308,15 @@ export const route = <
   errorTypeGuard = (response: {
     status: number;
     data: any;
-  }): response is ApiErrorResponse<Api, Path, Method, ErrorCode> => false,
+  }): response is ErrorResponseBody<Api, Path, Method, ErrorCode> => false,
 }: {
   client: AxiosInstance;
-  request: ApiRequest<Api, Path, Method>;
+  request: Request<Api, Path, Method>;
   errorMessage?: string;
   errorTypeGuard?: (response: {
     status: number;
     data: any;
-  }) => response is ApiErrorResponse<Api, Path, Method, ErrorCode>;
+  }) => response is ErrorResponseBody<Api, Path, Method, ErrorCode>;
 }) => {
   // Converts a path like {key} into its actual value.
   const path = () => {
@@ -347,10 +338,10 @@ export const route = <
   };
 
   // Conducts the actual API call.
-  const call = async (): Promise<ApiResponse<Api, Path, Method, ErrorCode>> => {
+  const call = async (): Promise<Response<Api, Path, Method, ErrorCode>> => {
     try {
       const response = await client.request<
-        ApiSuccessResponse<Api, Path, Method>
+        SuccessResponseBody<Api, Path, Method>
       >({
         url: path(),
         method: request.method,

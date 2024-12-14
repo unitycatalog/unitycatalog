@@ -5,34 +5,30 @@ import {
   UseQueryOptions,
 } from '@tanstack/react-query';
 import { CLIENT } from '../context/catalog';
-import { route } from '../utils/openapi';
+import { route, isError } from '../utils/openapi';
 import type {
   paths as CatalogApi,
   components as CatalogComponent,
 } from '../types/api/catalog.gen';
 import type {
-  ApiInterface,
-  ApiSuccessResponse,
-  ApiRequestPathParam,
-  ApiRequestQueryParam,
-  ApiRequestBody,
+  Model,
+  PathParam,
+  QueryParam,
+  RequestBody,
+  SuccessResponseBody,
 } from '../utils/openapi';
 
-export type SchemaInterface = ApiInterface<CatalogComponent, 'SchemaInfo'>;
+export type SchemaInterface = Model<CatalogComponent, 'SchemaInfo'>;
 
-export type UseListSchemasArgs = ApiRequestQueryParam<
-  CatalogApi,
-  '/schemas',
-  'get'
-> & {
+export type UseListSchemasArgs = QueryParam<CatalogApi, '/schemas', 'get'> & {
   options?: Omit<
-    UseQueryOptions<ApiSuccessResponse<CatalogApi, '/schemas', 'get'>>,
+    UseQueryOptions<SuccessResponseBody<CatalogApi, '/schemas', 'get'>>,
     'queryKey' | 'queryFn'
   >;
 };
 
 export function useListSchemas({ catalog_name, options }: UseListSchemasArgs) {
-  return useQuery<ApiSuccessResponse<CatalogApi, '/schemas', 'get'>>({
+  return useQuery<SuccessResponseBody<CatalogApi, '/schemas', 'get'>>({
     queryKey: ['listSchemas', catalog_name],
     queryFn: async () => {
       const api = route({
@@ -49,10 +45,17 @@ export function useListSchemas({ catalog_name, options }: UseListSchemasArgs) {
         errorMessage: 'Failed to list schemas',
       });
       const response = await api.call();
-      if (response.result !== 'success') {
+      if (isError(response)) {
         // NOTE:
         // When an expected error occurs, as defined in the OpenAPI specification, the following line will
         // be executed. This block serves as a placeholder for expected errors.
+        //
+        // NOTE:
+        // As of 14/12/2024, all properties of the models defined in the OpenAPI specification are marked as
+        // optional. Consequently, any `object` can match the type of the `SuccessResponseBody` for any API
+        // (effectively disabling meaningful type checking). In the future, as the OpenAPI specification is
+        // updated, additional changes may be required for this type guard clause, such as incorporating
+        // `return response.data` below.
       }
       return response.data;
     },
@@ -60,7 +63,7 @@ export function useListSchemas({ catalog_name, options }: UseListSchemasArgs) {
   });
 }
 
-export type UseGetSchemaArgs = ApiRequestPathParam<
+export type UseGetSchemaArgs = PathParam<
   CatalogApi,
   '/schemas/{full_name}',
   'get'
@@ -70,7 +73,7 @@ export function useGetSchema({ full_name }: UseGetSchemaArgs) {
   const [catalog, schema] = full_name.split('.');
 
   return useQuery<
-    ApiSuccessResponse<CatalogApi, '/schemas/{full_name}', 'get'>
+    SuccessResponseBody<CatalogApi, '/schemas/{full_name}', 'get'>
   >({
     queryKey: ['getSchema', catalog, schema],
     queryFn: async () => {
@@ -88,17 +91,24 @@ export function useGetSchema({ full_name }: UseGetSchemaArgs) {
         errorMessage: 'Failed to fetch schema',
       });
       const response = await api.call();
-      if (response.result !== 'success') {
+      if (isError(response)) {
         // NOTE:
         // When an expected error occurs, as defined in the OpenAPI specification, the following line will
         // be executed. This block serves as a placeholder for expected errors.
+        //
+        // NOTE:
+        // As of 14/12/2024, all properties of the models defined in the OpenAPI specification are marked as
+        // optional. Consequently, any `object` can match the type of the `SuccessResponseBody` for any API
+        // (effectively disabling meaningful type checking). In the future, as the OpenAPI specification is
+        // updated, additional changes may be required for this type guard clause, such as incorporating
+        // `return response.data` below.
       }
       return response.data;
     },
   });
 }
 
-export type CreateSchemaMutationParams = ApiRequestBody<
+export type CreateSchemaMutationParams = RequestBody<
   CatalogApi,
   '/schemas',
   'post'
@@ -108,7 +118,7 @@ export function useCreateSchema() {
   const queryClient = useQueryClient();
 
   return useMutation<
-    ApiSuccessResponse<CatalogApi, '/schemas', 'post'>,
+    SuccessResponseBody<CatalogApi, '/schemas', 'post'>,
     Error,
     CreateSchemaMutationParams
   >({
@@ -135,10 +145,17 @@ export function useCreateSchema() {
         errorMessage: 'Failed to create schema',
       });
       const response = await api.call();
-      if (response.result !== 'success') {
+      if (isError(response)) {
         // NOTE:
         // When an expected error occurs, as defined in the OpenAPI specification, the following line will
         // be executed. This block serves as a placeholder for expected errors.
+        //
+        // NOTE:
+        // As of 14/12/2024, all properties of the models defined in the OpenAPI specification are marked as
+        // optional. Consequently, any `object` can match the type of the `SuccessResponseBody` for any API
+        // (effectively disabling meaningful type checking). In the future, as the OpenAPI specification is
+        // updated, additional changes may be required for this type guard clause, such as incorporating
+        // `return response.data` below.
       }
       return response.data;
     },
@@ -150,26 +167,25 @@ export function useCreateSchema() {
   });
 }
 
-export type UseUpdateSchemaArgs = ApiRequestPathParam<
+export type UseUpdateSchemaArgs = PathParam<
   CatalogApi,
   '/schemas/{full_name}',
   'patch'
 >;
 
-export type UpdateSchemaMutationParams = ApiRequestBody<
+export type UpdateSchemaMutationParams = RequestBody<
   CatalogApi,
   '/schemas/{full_name}',
   'patch'
 >;
 
-// Update a new schema
 export function useUpdateSchema({ full_name }: UseUpdateSchemaArgs) {
   const queryClient = useQueryClient();
 
   const [catalog, schema] = full_name.split('.');
 
   return useMutation<
-    ApiSuccessResponse<CatalogApi, '/schemas/{full_name}', 'patch'>,
+    SuccessResponseBody<CatalogApi, '/schemas/{full_name}', 'patch'>,
     Error,
     UpdateSchemaMutationParams
   >({
@@ -191,10 +207,17 @@ export function useUpdateSchema({ full_name }: UseUpdateSchemaArgs) {
         errorMessage: 'Failed to update schema',
       });
       const response = await api.call();
-      if (response.result !== 'success') {
+      if (isError(response)) {
         // NOTE:
         // When an expected error occurs, as defined in the OpenAPI specification, the following line will
         // be executed. This block serves as a placeholder for expected errors.
+        //
+        // NOTE:
+        // As of 14/12/2024, all properties of the models defined in the OpenAPI specification are marked as
+        // optional. Consequently, any `object` can match the type of the `SuccessResponseBody` for any API
+        // (effectively disabling meaningful type checking). In the future, as the OpenAPI specification is
+        // updated, additional changes may be required for this type guard clause, such as incorporating
+        // `return response.data` below.
       }
       return response.data;
     },
@@ -206,13 +229,13 @@ export function useUpdateSchema({ full_name }: UseUpdateSchemaArgs) {
   });
 }
 
-export type UseDeleteSchemaArgs = ApiRequestPathParam<
+export type UseDeleteSchemaArgs = PathParam<
   CatalogApi,
   '/schemas/{full_name}',
   'delete'
 >;
 
-export type DeleteSchemaMutationParams = ApiRequestPathParam<
+export type DeleteSchemaMutationParams = PathParam<
   CatalogApi,
   '/schemas/{full_name}',
   'delete'
@@ -224,7 +247,7 @@ export function useDeleteSchema({ full_name }: UseDeleteSchemaArgs) {
   const [catalog] = full_name.split('.');
 
   return useMutation<
-    ApiSuccessResponse<CatalogApi, '/schemas/{full_name}', 'delete'>,
+    SuccessResponseBody<CatalogApi, '/schemas/{full_name}', 'delete'>,
     Error,
     DeleteSchemaMutationParams
   >({
@@ -243,10 +266,17 @@ export function useDeleteSchema({ full_name }: UseDeleteSchemaArgs) {
         errorMessage: 'Failed to delete schema',
       });
       const response = await api.call();
-      if (response.result !== 'success') {
+      if (isError(response)) {
         // NOTE:
         // When an expected error occurs, as defined in the OpenAPI specification, the following line will
         // be executed. This block serves as a placeholder for expected errors.
+        //
+        // NOTE:
+        // As of 14/12/2024, all properties of the models defined in the OpenAPI specification are marked as
+        // optional. Consequently, any `object` can match the type of the `SuccessResponseBody` for any API
+        // (effectively disabling meaningful type checking). In the future, as the OpenAPI specification is
+        // updated, additional changes may be required for this type guard clause, such as incorporating
+        // `return response.data` below.
       }
       return response.data;
     },

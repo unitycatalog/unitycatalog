@@ -5,27 +5,23 @@ import {
   UseQueryOptions,
 } from '@tanstack/react-query';
 import { CLIENT } from '../context/catalog';
-import { route } from '../utils/openapi';
+import { route, isError } from '../utils/openapi';
 import type {
   paths as CatalogApi,
   components as CatalogComponent,
 } from '../types/api/catalog.gen';
 import type {
-  ApiInterface,
-  ApiSuccessResponse,
-  ApiRequestPathParam,
-  ApiRequestQueryParam,
+  Model,
+  PathParam,
+  QueryParam,
+  SuccessResponseBody,
 } from '../utils/openapi';
 
-export type TableInterface = ApiInterface<CatalogComponent, 'TableInfo'>;
+export type TableInterface = Model<CatalogComponent, 'TableInfo'>;
 
-export type UseListTablesArgs = ApiRequestQueryParam<
-  CatalogApi,
-  '/tables',
-  'get'
-> & {
+export type UseListTablesArgs = QueryParam<CatalogApi, '/tables', 'get'> & {
   options?: Omit<
-    UseQueryOptions<ApiSuccessResponse<CatalogApi, '/tables', 'get'>>,
+    UseQueryOptions<SuccessResponseBody<CatalogApi, '/tables', 'get'>>,
     'queryKey' | 'queryFn'
   >;
 };
@@ -35,7 +31,7 @@ export function useListTables({
   schema_name,
   options,
 }: UseListTablesArgs) {
-  return useQuery<ApiSuccessResponse<CatalogApi, '/tables', 'get'>>({
+  return useQuery<SuccessResponseBody<CatalogApi, '/tables', 'get'>>({
     queryKey: ['listTables', catalog_name, schema_name],
     queryFn: async () => {
       const api = route({
@@ -53,10 +49,17 @@ export function useListTables({
         errorMessage: 'Failed to list tables',
       });
       const response = await api.call();
-      if (response.result !== 'success') {
+      if (isError(response)) {
         // NOTE:
         // When an expected error occurs, as defined in the OpenAPI specification, the following line will
         // be executed. This block serves as a placeholder for expected errors.
+        //
+        // NOTE:
+        // As of 14/12/2024, all properties of the models defined in the OpenAPI specification are marked as
+        // optional. Consequently, any `object` can match the type of the `SuccessResponseBody` for any API
+        // (effectively disabling meaningful type checking). In the future, as the OpenAPI specification is
+        // updated, additional changes may be required for this type guard clause, such as incorporating
+        // `return response.data` below.
       }
       return response.data;
     },
@@ -64,7 +67,7 @@ export function useListTables({
   });
 }
 
-export type UseGetTableArgs = ApiRequestPathParam<
+export type UseGetTableArgs = PathParam<
   CatalogApi,
   '/tables/{full_name}',
   'get'
@@ -73,42 +76,49 @@ export type UseGetTableArgs = ApiRequestPathParam<
 export function useGetTable({ full_name }: UseGetTableArgs) {
   const [catalog, schema, table] = full_name.split('.');
 
-  return useQuery<ApiSuccessResponse<CatalogApi, '/tables/{full_name}', 'get'>>(
-    {
-      queryKey: ['getTable', catalog, schema, table],
-      queryFn: async () => {
-        const api = route({
-          client: CLIENT,
-          request: {
-            path: '/tables/{full_name}',
-            method: 'get',
-            params: {
-              paths: {
-                full_name,
-              },
+  return useQuery<
+    SuccessResponseBody<CatalogApi, '/tables/{full_name}', 'get'>
+  >({
+    queryKey: ['getTable', catalog, schema, table],
+    queryFn: async () => {
+      const api = route({
+        client: CLIENT,
+        request: {
+          path: '/tables/{full_name}',
+          method: 'get',
+          params: {
+            paths: {
+              full_name,
             },
           },
-          errorMessage: 'Failed to fetch table',
-        });
-        const response = await api.call();
-        if (response.result !== 'success') {
-          // NOTE:
-          // When an expected error occurs, as defined in the OpenAPI specification, the following line will
-          // be executed. This block serves as a placeholder for expected errors.
-        }
-        return response.data;
-      },
+        },
+        errorMessage: 'Failed to fetch table',
+      });
+      const response = await api.call();
+      if (isError(response)) {
+        // NOTE:
+        // When an expected error occurs, as defined in the OpenAPI specification, the following line will
+        // be executed. This block serves as a placeholder for expected errors.
+        //
+        // NOTE:
+        // As of 14/12/2024, all properties of the models defined in the OpenAPI specification are marked as
+        // optional. Consequently, any `object` can match the type of the `SuccessResponseBody` for any API
+        // (effectively disabling meaningful type checking). In the future, as the OpenAPI specification is
+        // updated, additional changes may be required for this type guard clause, such as incorporating
+        // `return response.data` below.
+      }
+      return response.data;
     },
-  );
+  });
 }
 
-export type UseDeleteTableArgs = ApiRequestPathParam<
+export type UseDeleteTableArgs = PathParam<
   CatalogApi,
   '/tables/{full_name}',
   'delete'
 >;
 
-export type DeleteTableMutationParams = ApiRequestPathParam<
+export type DeleteTableMutationParams = PathParam<
   CatalogApi,
   '/tables/{full_name}',
   'delete'
@@ -120,7 +130,7 @@ export function useDeleteTable({ full_name }: UseDeleteTableArgs) {
   const [catalog, schema] = full_name.split('.');
 
   return useMutation<
-    ApiSuccessResponse<CatalogApi, '/tables/{full_name}', 'delete'>,
+    SuccessResponseBody<CatalogApi, '/tables/{full_name}', 'delete'>,
     Error,
     DeleteTableMutationParams
   >({
@@ -141,10 +151,17 @@ export function useDeleteTable({ full_name }: UseDeleteTableArgs) {
         errorMessage: 'Failed to delete schema',
       });
       const response = await api.call();
-      if (response.result !== 'success') {
+      if (isError(response)) {
         // NOTE:
         // When an expected error occurs, as defined in the OpenAPI specification, the following line will
         // be executed. This block serves as a placeholder for expected errors.
+        //
+        // NOTE:
+        // As of 14/12/2024, all properties of the models defined in the OpenAPI specification are marked as
+        // optional. Consequently, any `object` can match the type of the `SuccessResponseBody` for any API
+        // (effectively disabling meaningful type checking). In the future, as the OpenAPI specification is
+        // updated, additional changes may be required for this type guard clause, such as incorporating
+        // `return response.data` below.
       }
       return response.data;
     },

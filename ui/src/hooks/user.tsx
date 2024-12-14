@@ -1,14 +1,14 @@
 import { useMutation, useQuery } from '@tanstack/react-query';
 import { CLIENT } from '../context/control';
-import { route, assertNever } from '../utils/openapi';
+import { route, isError, assertNever } from '../utils/openapi';
 import type {
   paths as ControlApi,
   components as ControlComponent,
 } from '../types/api/control.gen';
 import type {
-  ApiInterface,
-  ApiSuccessResponse,
-  ApiErrorResponse,
+  Model,
+  ErrorResponseBody,
+  SuccessResponseBody,
 } from '../utils/openapi';
 
 // TODO:
@@ -69,7 +69,7 @@ export function useLogoutCurrentUser() {
   });
 }
 
-export type UserInterface = ApiInterface<ControlComponent, 'UserResource'>;
+export type UserInterface = Model<ControlComponent, 'UserResource'>;
 
 export function useGetCurrentUser() {
   const expectedErrorCodes = [
@@ -81,10 +81,14 @@ export function useGetCurrentUser() {
   const isExpectedError = (response: {
     status: number;
     data: any;
-  }): response is ApiErrorResponse<ControlApi, '/scim2/Me', 'get', ErrorCode> =>
-    expectedErrorCodes.map(Number).includes(response.status);
+  }): response is ErrorResponseBody<
+    ControlApi,
+    '/scim2/Me',
+    'get',
+    ErrorCode
+  > => expectedErrorCodes.map(Number).includes(response.status);
 
-  return useQuery<ApiSuccessResponse<ControlApi, '/scim2/Me', 'get'>>({
+  return useQuery<SuccessResponseBody<ControlApi, '/scim2/Me', 'get'> | null>({
     queryKey: ['getUser'],
     queryFn: async () => {
       const api = route({
@@ -97,15 +101,16 @@ export function useGetCurrentUser() {
         errorTypeGuard: isExpectedError,
       });
       const response = await api.call();
-      if (response.result !== 'success') {
+      if (isError(response)) {
         switch (response.data.status) {
           case 401:
             return null;
           default:
-            assertNever(response.data.status);
+            return assertNever(response.data.status);
         }
+      } else {
+        return response.data;
       }
-      return response.data;
     },
   });
 }

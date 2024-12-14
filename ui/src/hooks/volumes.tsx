@@ -5,28 +5,24 @@ import {
   UseQueryOptions,
 } from '@tanstack/react-query';
 import { CLIENT } from '../context/catalog';
-import { route } from '../utils/openapi';
+import { route, isError } from '../utils/openapi';
 import type {
   paths as CatalogApi,
   components as CatalogComponent,
 } from '../types/api/catalog.gen';
 import type {
-  ApiInterface,
-  ApiSuccessResponse,
-  ApiRequestPathParam,
-  ApiRequestQueryParam,
-  ApiRequestBody,
+  Model,
+  PathParam,
+  QueryParam,
+  RequestBody,
+  SuccessResponseBody,
 } from '../utils/openapi';
 
-export type VolumeInterface = ApiInterface<CatalogComponent, 'VolumeInfo'>;
+export type VolumeInterface = Model<CatalogComponent, 'VolumeInfo'>;
 
-export type UseListVolumesArgs = ApiRequestQueryParam<
-  CatalogApi,
-  '/volumes',
-  'get'
-> & {
+export type UseListVolumesArgs = QueryParam<CatalogApi, '/volumes', 'get'> & {
   options?: Omit<
-    UseQueryOptions<ApiSuccessResponse<CatalogApi, '/volumes', 'get'>>,
+    UseQueryOptions<SuccessResponseBody<CatalogApi, '/volumes', 'get'>>,
     'queryKey' | 'queryFn'
   >;
 };
@@ -36,7 +32,7 @@ export function useListVolumes({
   schema_name,
   options,
 }: UseListVolumesArgs) {
-  return useQuery<ApiSuccessResponse<CatalogApi, '/volumes', 'get'>>({
+  return useQuery<SuccessResponseBody<CatalogApi, '/volumes', 'get'>>({
     queryKey: ['listVolumes', catalog_name, schema_name],
     queryFn: async () => {
       const api = route({
@@ -54,10 +50,17 @@ export function useListVolumes({
         errorMessage: 'Failed to list volumes',
       });
       const response = await api.call();
-      if (response.result !== 'success') {
+      if (isError(response)) {
         // NOTE:
         // When an expected error occurs, as defined in the OpenAPI specification, the following line will
         // be executed. This block serves as a placeholder for expected errors.
+        //
+        // NOTE:
+        // As of 14/12/2024, all properties of the models defined in the OpenAPI specification are marked as
+        // optional. Consequently, any `object` can match the type of the `SuccessResponseBody` for any API
+        // (effectively disabling meaningful type checking). In the future, as the OpenAPI specification is
+        // updated, additional changes may be required for this type guard clause, such as incorporating
+        // `return response.data` below.
       }
       return response.data;
     },
@@ -65,11 +68,7 @@ export function useListVolumes({
   });
 }
 
-export type UseGetVolumeArgs = ApiRequestPathParam<
-  CatalogApi,
-  '/volumes/{name}',
-  'get'
->;
+export type UseGetVolumeArgs = PathParam<CatalogApi, '/volumes/{name}', 'get'>;
 
 export function useGetVolume({ name }: UseGetVolumeArgs) {
   const [catalog, schema, volume] = name.split('.');
@@ -91,23 +90,30 @@ export function useGetVolume({ name }: UseGetVolumeArgs) {
         errorMessage: 'Failed to fetch volume',
       });
       const response = await api.call();
-      if (response.result !== 'success') {
+      if (isError(response)) {
         // NOTE:
         // When an expected error occurs, as defined in the OpenAPI specification, the following line will
         // be executed. This block serves as a placeholder for expected errors.
+        //
+        // NOTE:
+        // As of 14/12/2024, all properties of the models defined in the OpenAPI specification are marked as
+        // optional. Consequently, any `object` can match the type of the `SuccessResponseBody` for any API
+        // (effectively disabling meaningful type checking). In the future, as the OpenAPI specification is
+        // updated, additional changes may be required for this type guard clause, such as incorporating
+        // `return response.data` below.
       }
       return response.data;
     },
   });
 }
 
-export type UseUpdateVolumeArgs = ApiRequestPathParam<
+export type UseUpdateVolumeArgs = PathParam<
   CatalogApi,
   '/volumes/{name}',
   'patch'
 >;
 
-export type UpdateVolumeMutationParams = ApiRequestBody<
+export type UpdateVolumeMutationParams = RequestBody<
   CatalogApi,
   '/volumes/{name}',
   'patch'
@@ -119,7 +125,7 @@ export function useUpdateVolume({ name }: UseUpdateVolumeArgs) {
   const [catalog, schema, volume] = name.split('.');
 
   return useMutation<
-    ApiSuccessResponse<CatalogApi, '/volumes/{name}', 'patch'>,
+    SuccessResponseBody<CatalogApi, '/volumes/{name}', 'patch'>,
     Error,
     UpdateVolumeMutationParams
   >({
@@ -141,10 +147,17 @@ export function useUpdateVolume({ name }: UseUpdateVolumeArgs) {
         errorMessage: 'Failed to update volume',
       });
       const response = await api.call();
-      if (response.result !== 'success') {
+      if (isError(response)) {
         // NOTE:
         // When an expected error occurs, as defined in the OpenAPI specification, the following line will
         // be executed. This block serves as a placeholder for expected errors.
+        //
+        // NOTE:
+        // As of 14/12/2024, all properties of the models defined in the OpenAPI specification are marked as
+        // optional. Consequently, any `object` can match the type of the `SuccessResponseBody` for any API
+        // (effectively disabling meaningful type checking). In the future, as the OpenAPI specification is
+        // updated, additional changes may be required for this type guard clause, such as incorporating
+        // `return response.data` below.
       }
       return response.data;
     },
@@ -156,26 +169,25 @@ export function useUpdateVolume({ name }: UseUpdateVolumeArgs) {
   });
 }
 
-export type UseDeleteVolumeArgs = ApiRequestPathParam<
+export type UseDeleteVolumeArgs = PathParam<
   CatalogApi,
   '/volumes/{name}',
   'delete'
 >;
 
-export type DeleteVolumeMutationParams = ApiRequestPathParam<
+export type DeleteVolumeMutationParams = PathParam<
   CatalogApi,
   '/volumes/{name}',
   'delete'
 >;
 
-// Delete a volume
 export function useDeleteVolume({ name }: UseDeleteVolumeArgs) {
   const queryClient = useQueryClient();
 
   const [catalog, schema] = name.split('.');
 
   return useMutation<
-    ApiSuccessResponse<CatalogApi, '/volumes/{name}', 'delete'>,
+    SuccessResponseBody<CatalogApi, '/volumes/{name}', 'delete'>,
     Error,
     DeleteVolumeMutationParams
   >({
@@ -194,10 +206,17 @@ export function useDeleteVolume({ name }: UseDeleteVolumeArgs) {
         errorMessage: 'Failed to delete volume',
       });
       const response = await api.call();
-      if (response.result !== 'success') {
+      if (isError(response)) {
         // NOTE:
         // When an expected error occurs, as defined in the OpenAPI specification, the following line will
         // be executed. This block serves as a placeholder for expected errors.
+        //
+        // NOTE:
+        // As of 14/12/2024, all properties of the models defined in the OpenAPI specification are marked as
+        // optional. Consequently, any `object` can match the type of the `SuccessResponseBody` for any API
+        // (effectively disabling meaningful type checking). In the future, as the OpenAPI specification is
+        // updated, additional changes may be required for this type guard clause, such as incorporating
+        // `return response.data` below.
       }
       return response.data;
     },

@@ -5,31 +5,24 @@ import {
   UseQueryOptions,
 } from '@tanstack/react-query';
 import { CLIENT } from '../context/catalog';
-import { route } from '../utils/openapi';
+import { route, isError } from '../utils/openapi';
 import type {
   paths as CatalogApi,
   components as CatalogComponent,
 } from '../types/api/catalog.gen';
 import type {
-  ApiInterface,
-  ApiSuccessResponse,
-  ApiRequestPathParam,
-  ApiRequestQueryParam,
-  ApiRequestBody,
+  Model,
+  PathParam,
+  QueryParam,
+  RequestBody,
+  SuccessResponseBody,
 } from '../utils/openapi';
 
-export type ModelInterface = ApiInterface<
-  CatalogComponent,
-  'RegisteredModelInfo'
->;
+export type ModelInterface = Model<CatalogComponent, 'RegisteredModelInfo'>;
 
-export type UseListModelsArgs = ApiRequestQueryParam<
-  CatalogApi,
-  '/models',
-  'get'
-> & {
+export type UseListModelsArgs = QueryParam<CatalogApi, '/models', 'get'> & {
   options?: Omit<
-    UseQueryOptions<ApiSuccessResponse<CatalogApi, '/models', 'get'>>,
+    UseQueryOptions<SuccessResponseBody<CatalogApi, '/models', 'get'>>,
     'queryKey' | 'queryFn'
   >;
 };
@@ -39,7 +32,7 @@ export function useListModels({
   schema_name,
   options,
 }: UseListModelsArgs) {
-  return useQuery<ApiSuccessResponse<CatalogApi, '/models', 'get'>>({
+  return useQuery<SuccessResponseBody<CatalogApi, '/models', 'get'>>({
     queryKey: ['listModels', catalog_name, schema_name],
     queryFn: async () => {
       const api = route({
@@ -57,10 +50,17 @@ export function useListModels({
         errorMessage: 'Failed to list models',
       });
       const response = await api.call();
-      if (response.result !== 'success') {
+      if (isError(response)) {
         // NOTE:
         // When an expected error occurs, as defined in the OpenAPI specification, the following line will
         // be executed. This block serves as a placeholder for expected errors.
+        //
+        // NOTE:
+        // As of 14/12/2024, all properties of the models defined in the OpenAPI specification are marked as
+        // optional. Consequently, any `object` can match the type of the `SuccessResponseBody` for any API
+        // (effectively disabling meaningful type checking). In the future, as the OpenAPI specification is
+        // updated, additional changes may be required for this type guard clause, such as incorporating
+        // `return response.data` below.
       }
       return response.data;
     },
@@ -68,7 +68,7 @@ export function useListModels({
   });
 }
 
-export type UseGetModelArgs = ApiRequestPathParam<
+export type UseGetModelArgs = PathParam<
   CatalogApi,
   '/models/{full_name}',
   'get'
@@ -77,47 +77,53 @@ export type UseGetModelArgs = ApiRequestPathParam<
 export function useGetModel({ full_name }: UseGetModelArgs) {
   const [catalog, schema, model] = full_name.split('.');
 
-  return useQuery<ApiSuccessResponse<CatalogApi, '/models/{full_name}', 'get'>>(
-    {
-      queryKey: ['getModel', catalog, schema, model],
-      queryFn: async () => {
-        const api = route({
-          client: CLIENT,
-          request: {
-            path: '/models/{full_name}',
-            method: 'get',
-            params: {
-              paths: {
-                full_name,
-              },
+  return useQuery<
+    SuccessResponseBody<CatalogApi, '/models/{full_name}', 'get'>
+  >({
+    queryKey: ['getModel', catalog, schema, model],
+    queryFn: async () => {
+      const api = route({
+        client: CLIENT,
+        request: {
+          path: '/models/{full_name}',
+          method: 'get',
+          params: {
+            paths: {
+              full_name,
             },
           },
-          errorMessage: 'Failed to fetch model',
-        });
-        const response = await api.call();
-        if (response.result !== 'success') {
-          // NOTE:
-          // When an expected error occurs, as defined in the OpenAPI specification, the following line will
-          // be executed. This block serves as a placeholder for expected errors.
-        }
-        return response.data;
-      },
+        },
+        errorMessage: 'Failed to fetch model',
+      });
+      const response = await api.call();
+      if (isError(response)) {
+        // NOTE:
+        // When an expected error occurs, as defined in the OpenAPI specification, the following line will
+        // be executed. This block serves as a placeholder for expected errors.
+        //
+        // NOTE:
+        // As of 14/12/2024, all properties of the models defined in the OpenAPI specification are marked as
+        // optional. Consequently, any `object` can match the type of the `SuccessResponseBody` for any API
+        // (effectively disabling meaningful type checking). In the future, as the OpenAPI specification is
+        // updated, additional changes may be required for this type guard clause, such as incorporating
+        // `return response.data` below.
+      }
+      return response.data;
     },
-  );
+  });
 }
 
-export type CreateModelMutationParams = ApiRequestBody<
+export type CreateModelMutationParams = RequestBody<
   CatalogApi,
   '/models',
   'post'
 >;
 
-//create model
 export function useCreateModel() {
   const queryClient = useQueryClient();
 
   return useMutation<
-    ApiSuccessResponse<CatalogApi, '/models', 'post'>,
+    SuccessResponseBody<CatalogApi, '/models', 'post'>,
     Error,
     CreateModelMutationParams
   >({
@@ -144,10 +150,17 @@ export function useCreateModel() {
         errorMessage: 'Failed to create model',
       });
       const response = await api.call();
-      if (response.result !== 'success') {
+      if (isError(response)) {
         // NOTE:
         // When an expected error occurs, as defined in the OpenAPI specification, the following line will
         // be executed. This block serves as a placeholder for expected errors.
+        //
+        // NOTE:
+        // As of 14/12/2024, all properties of the models defined in the OpenAPI specification are marked as
+        // optional. Consequently, any `object` can match the type of the `SuccessResponseBody` for any API
+        // (effectively disabling meaningful type checking). In the future, as the OpenAPI specification is
+        // updated, additional changes may be required for this type guard clause, such as incorporating
+        // `return response.data` below.
       }
       return response.data;
     },
@@ -159,26 +172,25 @@ export function useCreateModel() {
   });
 }
 
-export type UseUpdateModelArgs = ApiRequestPathParam<
+export type UseUpdateModelArgs = PathParam<
   CatalogApi,
   '/models/{full_name}',
   'patch'
 >;
 
-export type UpdateModelMutationParams = ApiRequestBody<
+export type UpdateModelMutationParams = RequestBody<
   CatalogApi,
   '/models/{full_name}',
   'patch'
 >;
 
-// update model
 export function useUpdateModel({ full_name }: UseUpdateModelArgs) {
   const queryClient = useQueryClient();
 
   const [catalog, schema, model] = full_name.split('.');
 
   return useMutation<
-    ApiSuccessResponse<CatalogApi, '/models/{full_name}', 'patch'>,
+    SuccessResponseBody<CatalogApi, '/models/{full_name}', 'patch'>,
     Error,
     UpdateModelMutationParams
   >({
@@ -200,10 +212,17 @@ export function useUpdateModel({ full_name }: UseUpdateModelArgs) {
         errorMessage: 'Failed to update model',
       });
       const response = await api.call();
-      if (response.result !== 'success') {
+      if (isError(response)) {
         // NOTE:
         // When an expected error occurs, as defined in the OpenAPI specification, the following line will
         // be executed. This block serves as a placeholder for expected errors.
+        //
+        // NOTE:
+        // As of 14/12/2024, all properties of the models defined in the OpenAPI specification are marked as
+        // optional. Consequently, any `object` can match the type of the `SuccessResponseBody` for any API
+        // (effectively disabling meaningful type checking). In the future, as the OpenAPI specification is
+        // updated, additional changes may be required for this type guard clause, such as incorporating
+        // `return response.data` below.
       }
       return response.data;
     },
@@ -215,26 +234,25 @@ export function useUpdateModel({ full_name }: UseUpdateModelArgs) {
   });
 }
 
-export type UseDeleteModelArgs = ApiRequestPathParam<
+export type UseDeleteModelArgs = PathParam<
   CatalogApi,
   '/models/{full_name}',
   'delete'
 >;
 
-export type DeleteModelMutationParams = ApiRequestPathParam<
+export type DeleteModelMutationParams = PathParam<
   CatalogApi,
   '/models/{full_name}',
   'delete'
 >;
 
-// Delete a model
 export function useDeleteModel({ full_name }: UseDeleteModelArgs) {
   const queryClient = useQueryClient();
 
   const [catalog, schema] = full_name.split('.');
 
   return useMutation<
-    ApiSuccessResponse<CatalogApi, '/models/{full_name}', 'delete'>,
+    SuccessResponseBody<CatalogApi, '/models/{full_name}', 'delete'>,
     Error,
     DeleteModelMutationParams
   >({
@@ -253,10 +271,17 @@ export function useDeleteModel({ full_name }: UseDeleteModelArgs) {
         errorMessage: 'Failed to delete model',
       });
       const response = await api.call();
-      if (response.result !== 'success') {
+      if (isError(response)) {
         // NOTE:
         // When an expected error occurs, as defined in the OpenAPI specification, the following line will
         // be executed. This block serves as a placeholder for expected errors.
+        //
+        // NOTE:
+        // As of 14/12/2024, all properties of the models defined in the OpenAPI specification are marked as
+        // optional. Consequently, any `object` can match the type of the `SuccessResponseBody` for any API
+        // (effectively disabling meaningful type checking). In the future, as the OpenAPI specification is
+        // updated, additional changes may be required for this type guard clause, such as incorporating
+        // `return response.data` below.
       }
       return response.data;
     },
@@ -272,23 +297,20 @@ export function useDeleteModel({ full_name }: UseDeleteModelArgs) {
 // TypeScript enums require their values, so re-exported here as `const`.
 export { ModelVersionStatus } from '../types/api/catalog.gen';
 
-export type ModelVersionInterface = ApiInterface<
-  CatalogComponent,
-  'ModelVersionInfo'
->;
+export type ModelVersionInterface = Model<CatalogComponent, 'ModelVersionInfo'>;
 
-export type UseListModelVersionsArgs = ApiRequestPathParam<
+export type UseListModelVersionsArgs = PathParam<
   CatalogApi,
   '/models/{full_name}/versions',
   'get'
 > &
-  ApiRequestQueryParam<CatalogApi, '/models/{full_name}/versions', 'get'>;
+  QueryParam<CatalogApi, '/models/{full_name}/versions', 'get'>;
 
 export function useListModelVersions({ full_name }: UseListModelVersionsArgs) {
   const [catalog, schema, model] = full_name.split('.');
 
   return useQuery<
-    ApiSuccessResponse<CatalogApi, '/models/{full_name}/versions', 'get'>
+    SuccessResponseBody<CatalogApi, '/models/{full_name}/versions', 'get'>
   >({
     queryKey: ['listModelVersions', catalog, schema, model],
     queryFn: async () => {
@@ -306,17 +328,24 @@ export function useListModelVersions({ full_name }: UseListModelVersionsArgs) {
         errorMessage: 'Failed to fetch model version',
       });
       const response = await api.call();
-      if (response.result !== 'success') {
+      if (isError(response)) {
         // NOTE:
         // When an expected error occurs, as defined in the OpenAPI specification, the following line will
         // be executed. This block serves as a placeholder for expected errors.
+        //
+        // NOTE:
+        // As of 14/12/2024, all properties of the models defined in the OpenAPI specification are marked as
+        // optional. Consequently, any `object` can match the type of the `SuccessResponseBody` for any API
+        // (effectively disabling meaningful type checking). In the future, as the OpenAPI specification is
+        // updated, additional changes may be required for this type guard clause, such as incorporating
+        // `return response.data` below.
       }
       return response.data;
     },
   });
 }
 
-export type UseGetModelVersionArgs = ApiRequestPathParam<
+export type UseGetModelVersionArgs = PathParam<
   CatalogApi,
   '/models/{full_name}/versions/{version}',
   'get'
@@ -329,7 +358,7 @@ export function useGetModelVersion({
   const [catalog, schema, model] = full_name.split('.');
 
   return useQuery<
-    ApiSuccessResponse<
+    SuccessResponseBody<
       CatalogApi,
       '/models/{full_name}/versions/{version}',
       'get'
@@ -352,29 +381,35 @@ export function useGetModelVersion({
         errorMessage: 'Failed to fetch model version',
       });
       const response = await api.call();
-      if (response.result !== 'success') {
+      if (isError(response)) {
         // NOTE:
         // When an expected error occurs, as defined in the OpenAPI specification, the following line will
         // be executed. This block serves as a placeholder for expected errors.
+        //
+        // NOTE:
+        // As of 14/12/2024, all properties of the models defined in the OpenAPI specification are marked as
+        // optional. Consequently, any `object` can match the type of the `SuccessResponseBody` for any API
+        // (effectively disabling meaningful type checking). In the future, as the OpenAPI specification is
+        // updated, additional changes may be required for this type guard clause, such as incorporating
+        // `return response.data` below.
       }
       return response.data;
     },
   });
 }
 
-export type UseUpdateModelVersionArgs = ApiRequestPathParam<
+export type UseUpdateModelVersionArgs = PathParam<
   CatalogApi,
   '/models/{full_name}/versions/{version}',
   'patch'
 >;
 
-export type UpdateModelVersionMutationParams = ApiRequestBody<
+export type UpdateModelVersionMutationParams = RequestBody<
   CatalogApi,
   '/models/{full_name}/versions/{version}',
   'patch'
 >;
 
-// update model version
 export function useUpdateModelVersion({
   full_name,
   version,
@@ -384,7 +419,7 @@ export function useUpdateModelVersion({
   const [catalog, schema, model] = full_name.split('.');
 
   return useMutation<
-    ApiSuccessResponse<
+    SuccessResponseBody<
       CatalogApi,
       '/models/{full_name}/versions/{version}',
       'patch'
@@ -411,10 +446,17 @@ export function useUpdateModelVersion({
         errorMessage: 'Failed to update model version',
       });
       const response = await api.call();
-      if (response.result !== 'success') {
+      if (isError(response)) {
         // NOTE:
         // When an expected error occurs, as defined in the OpenAPI specification, the following line will
         // be executed. This block serves as a placeholder for expected errors.
+        //
+        // NOTE:
+        // As of 14/12/2024, all properties of the models defined in the OpenAPI specification are marked as
+        // optional. Consequently, any `object` can match the type of the `SuccessResponseBody` for any API
+        // (effectively disabling meaningful type checking). In the future, as the OpenAPI specification is
+        // updated, additional changes may be required for this type guard clause, such as incorporating
+        // `return response.data` below.
       }
       return response.data;
     },
@@ -426,19 +468,18 @@ export function useUpdateModelVersion({
   });
 }
 
-export type UseDeleteModelVersionArgs = ApiRequestPathParam<
+export type UseDeleteModelVersionArgs = PathParam<
   CatalogApi,
   '/models/{full_name}/versions/{version}',
   'delete'
 >;
 
-export type DeleteModelVersionMutationParams = ApiRequestPathParam<
+export type DeleteModelVersionMutationParams = PathParam<
   CatalogApi,
   '/models/{full_name}/versions/{version}',
   'delete'
 >;
 
-// Delete a model version
 export function useDeleteModelVersion({
   full_name,
   version,
@@ -448,7 +489,7 @@ export function useDeleteModelVersion({
   const [catalog, schema, model] = full_name.split('.');
 
   return useMutation<
-    ApiSuccessResponse<
+    SuccessResponseBody<
       CatalogApi,
       '/models/{full_name}/versions/{version}',
       'delete'
@@ -475,10 +516,17 @@ export function useDeleteModelVersion({
         errorMessage: 'Failed to delete model version',
       });
       const response = await api.call();
-      if (response.result !== 'success') {
+      if (isError(response)) {
         // NOTE:
         // When an expected error occurs, as defined in the OpenAPI specification, the following line will
         // be executed. This block serves as a placeholder for expected errors.
+        //
+        // NOTE:
+        // As of 14/12/2024, all properties of the models defined in the OpenAPI specification are marked as
+        // optional. Consequently, any `object` can match the type of the `SuccessResponseBody` for any API
+        // (effectively disabling meaningful type checking). In the future, as the OpenAPI specification is
+        // updated, additional changes may be required for this type guard clause, such as incorporating
+        // `return response.data` below.
       }
       return response.data;
     },

@@ -1,22 +1,21 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { CLIENT } from '../context/catalog';
-import { route } from '../utils/openapi';
+import { route, isError } from '../utils/openapi';
 import type {
   paths as CatalogApi,
   components as CatalogComponent,
 } from '../types/api/catalog.gen';
 import type {
-  ApiInterface,
-  ApiSuccessResponse,
-  ApiRequestPathParam,
-  ApiRequestBody,
+  Model,
+  PathParam,
+  RequestBody,
+  SuccessResponseBody,
 } from '../utils/openapi';
 
-export type CatalogInterface = ApiInterface<CatalogComponent, 'CatalogInfo'>;
+export type CatalogInterface = Model<CatalogComponent, 'CatalogInfo'>;
 
-// Fetch the list of catalogs
 export function useListCatalogs() {
-  return useQuery<ApiSuccessResponse<CatalogApi, '/catalogs', 'get'>>({
+  return useQuery<SuccessResponseBody<CatalogApi, '/catalogs', 'get'>>({
     queryKey: ['listCatalogs'],
     queryFn: async () => {
       const api = route({
@@ -28,25 +27,31 @@ export function useListCatalogs() {
         errorMessage: 'Failed to fetch catalogs',
       });
       const response = await api.call();
-      if (response.result !== 'success') {
+      if (isError(response)) {
         // NOTE:
         // When an expected error occurs, as defined in the OpenAPI specification, the following line will
         // be executed. This block serves as a placeholder for expected errors.
+        //
+        // NOTE:
+        // As of 14/12/2024, all properties of the models defined in the OpenAPI specification are marked as
+        // optional. Consequently, any `object` can match the type of the `SuccessResponseBody` for any API
+        // (effectively disabling meaningful type checking). In the future, as the OpenAPI specification is
+        // updated, additional changes may be required for this type guard clause, such as incorporating
+        // `return response.data` below.
       }
       return response.data;
     },
   });
 }
 
-export type UseGetCatalogArgs = ApiRequestPathParam<
+export type UseGetCatalogArgs = PathParam<
   CatalogApi,
   '/catalogs/{name}',
   'get'
 >;
 
-// Fetch a single catalog by name
 export function useGetCatalog({ name }: UseGetCatalogArgs) {
-  return useQuery<ApiSuccessResponse<CatalogApi, '/catalogs/{name}', 'get'>>({
+  return useQuery<SuccessResponseBody<CatalogApi, '/catalogs/{name}', 'get'>>({
     queryKey: ['getCatalog', name],
     queryFn: async () => {
       const api = route({
@@ -63,28 +68,34 @@ export function useGetCatalog({ name }: UseGetCatalogArgs) {
         errorMessage: 'Failed to fetch catalog',
       });
       const response = await api.call();
-      if (response.result !== 'success') {
+      if (isError(response)) {
         // NOTE:
         // When an expected error occurs, as defined in the OpenAPI specification, the following line will
         // be executed. This block serves as a placeholder for expected errors.
+        //
+        // NOTE:
+        // As of 14/12/2024, all properties of the models defined in the OpenAPI specification are marked as
+        // optional. Consequently, any `object` can match the type of the `SuccessResponseBody` for any API
+        // (effectively disabling meaningful type checking). In the future, as the OpenAPI specification is
+        // updated, additional changes may be required for this type guard clause, such as incorporating
+        // `return response.data` below.
       }
       return response.data;
     },
   });
 }
 
-export type CreateCatalogMutationParams = ApiRequestBody<
+export type CreateCatalogMutationParams = RequestBody<
   CatalogApi,
   '/catalogs',
   'post'
 >;
 
-// Create a new catalog
 export function useCreateCatalog() {
   const queryClient = useQueryClient();
 
   return useMutation<
-    ApiSuccessResponse<CatalogApi, '/catalogs', 'post'>,
+    SuccessResponseBody<CatalogApi, '/catalogs', 'post'>,
     Error,
     CreateCatalogMutationParams
   >({
@@ -109,10 +120,17 @@ export function useCreateCatalog() {
         errorMessage: 'Failed to create catalog',
       });
       const response = await api.call();
-      if (response.result !== 'success') {
+      if (isError(response)) {
         // NOTE:
         // When an expected error occurs, as defined in the OpenAPI specification, the following line will
         // be executed. This block serves as a placeholder for expected errors.
+        //
+        // NOTE:
+        // As of 14/12/2024, all properties of the models defined in the OpenAPI specification are marked as
+        // optional. Consequently, any `object` can match the type of the `SuccessResponseBody` for any API
+        // (effectively disabling meaningful type checking). In the future, as the OpenAPI specification is
+        // updated, additional changes may be required for this type guard clause, such as incorporating
+        // `return response.data` below.
       }
       return response.data;
     },
@@ -124,24 +142,23 @@ export function useCreateCatalog() {
   });
 }
 
-export type UseUpdateCatalogArgs = ApiRequestPathParam<
+export type UseUpdateCatalogArgs = PathParam<
   CatalogApi,
   '/catalogs/{name}',
   'patch'
 >;
 
-export type UpdateCatalogMutationParams = ApiRequestBody<
+export type UpdateCatalogMutationParams = RequestBody<
   CatalogApi,
   '/catalogs/{name}',
   'patch'
 >;
 
-// Update a new catalog
 export function useUpdateCatalog({ name }: UseUpdateCatalogArgs) {
   const queryClient = useQueryClient();
 
   return useMutation<
-    ApiSuccessResponse<CatalogApi, '/catalogs/{name}', 'patch'>,
+    SuccessResponseBody<CatalogApi, '/catalogs/{name}', 'patch'>,
     Error,
     UpdateCatalogMutationParams
   >({
@@ -169,10 +186,17 @@ export function useUpdateCatalog({ name }: UseUpdateCatalogArgs) {
         errorMessage: 'Failed to update catalog',
       });
       const response = await api.call();
-      if (response.result !== 'success') {
+      if (isError(response)) {
         // NOTE:
         // When an expected error occurs, as defined in the OpenAPI specification, the following line will
         // be executed. This block serves as a placeholder for expected errors.
+        //
+        // NOTE:
+        // As of 14/12/2024, all properties of the models defined in the OpenAPI specification are marked as
+        // optional. Consequently, any `object` can match the type of the `SuccessResponseBody` for any API
+        // (effectively disabling meaningful type checking). In the future, as the OpenAPI specification is
+        // updated, additional changes may be required for this type guard clause, such as incorporating
+        // `return response.data` below.
       }
       return response.data;
     },
@@ -184,18 +208,17 @@ export function useUpdateCatalog({ name }: UseUpdateCatalogArgs) {
   });
 }
 
-export type DeleteCatalogMutationParams = ApiRequestPathParam<
+export type DeleteCatalogMutationParams = PathParam<
   CatalogApi,
   '/catalogs/{name}',
   'patch'
 >;
 
-// Delete a catalog
 export function useDeleteCatalog() {
   const queryClient = useQueryClient();
 
   return useMutation<
-    ApiSuccessResponse<CatalogApi, '/catalogs/{name}', 'delete'>,
+    SuccessResponseBody<CatalogApi, '/catalogs/{name}', 'delete'>,
     Error,
     DeleteCatalogMutationParams
   >({
@@ -214,10 +237,17 @@ export function useDeleteCatalog() {
         errorMessage: 'Failed to delete catalog',
       });
       const response = await api.call();
-      if (response.result !== 'success') {
+      if (isError(response)) {
         // NOTE:
         // When an expected error occurs, as defined in the OpenAPI specification, the following line will
         // be executed. This block serves as a placeholder for expected errors.
+        //
+        // NOTE:
+        // As of 14/12/2024, all properties of the models defined in the OpenAPI specification are marked as
+        // optional. Consequently, any `object` can match the type of the `SuccessResponseBody` for any API
+        // (effectively disabling meaningful type checking). In the future, as the OpenAPI specification is
+        // updated, additional changes may be required for this type guard clause, such as incorporating
+        // `return response.data` below.
       }
       return response.data;
     },
