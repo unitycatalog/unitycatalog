@@ -2,7 +2,7 @@ import logging
 from contextlib import contextmanager
 from typing import Any, Callable, Generator, NamedTuple
 
-from unitycatalog.ai.core.oss import UnitycatalogFunctionClient
+from unitycatalog.ai.core.client import UnitycatalogFunctionClient
 from unitycatalog.ai.core.utils.function_processing_utils import get_tool_name
 
 CATALOG = "integration_testing"

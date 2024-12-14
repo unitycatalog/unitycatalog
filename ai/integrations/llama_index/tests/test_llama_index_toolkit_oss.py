@@ -7,11 +7,11 @@ import pytest
 import pytest_asyncio
 from pydantic import BaseModel
 
-from unitycatalog.ai.core.client import (
+from unitycatalog.ai.core.base import (
     BaseFunctionClient,
     FunctionExecutionResult,
 )
-from unitycatalog.ai.core.oss import (
+from unitycatalog.ai.core.client import (
     UnitycatalogFunctionClient,
 )
 from unitycatalog.ai.llama_index.toolkit import UCFunctionToolkit
@@ -229,11 +229,11 @@ def test_uc_function_to_llama_tool(uc_client):
     mock_function_info = generate_function_info()
     with (
         mock.patch(
-            "unitycatalog.ai.core.oss.UnitycatalogFunctionClient.get_function",
+            "unitycatalog.ai.core.client.UnitycatalogFunctionClient.get_function",
             return_value=mock_function_info,
         ),
         mock.patch(
-            "unitycatalog.ai.core.oss.UnitycatalogFunctionClient.execute_function",
+            "unitycatalog.ai.core.client.UnitycatalogFunctionClient.execute_function",
             return_value=FunctionExecutionResult(format="SCALAR", value="some_string"),
         ),
     ):

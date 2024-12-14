@@ -3,7 +3,7 @@ from typing import Any, Dict, List, Optional, Union
 from pydantic import BaseModel, Field, ValidationError
 
 from anthropic.types import ContentBlock, Message, MessageParam, ToolUseBlock
-from unitycatalog.ai.core.client import BaseFunctionClient
+from unitycatalog.ai.core.base import BaseFunctionClient
 from unitycatalog.ai.core.utils.client_utils import validate_or_set_default_client
 from unitycatalog.ai.core.utils.function_processing_utils import construct_original_function_name
 
