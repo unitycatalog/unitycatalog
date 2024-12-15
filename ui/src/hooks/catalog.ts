@@ -188,7 +188,7 @@ export function useUpdateCatalog({ name }: UseUpdateCatalogArgs) {
 export type DeleteCatalogMutationParams = PathParam<
   CatalogApi,
   '/catalogs/{name}',
-  'patch'
+  'delete'
 >;
 
 export function useDeleteCatalog() {
