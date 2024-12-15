@@ -1,6 +1,6 @@
 import { useMutation, useQuery } from '@tanstack/react-query';
 import { CLIENT } from '../context/control';
-import { route, isError, assertNever, Router } from '../utils/openapi';
+import { route, isError, assertNever } from '../utils/openapi';
 import type {
   paths as ControlApi,
   components as ControlComponent,
@@ -8,6 +8,7 @@ import type {
 import type {
   Model,
   ErrorResponseBody,
+  Route,
   SuccessResponseBody,
 } from '../utils/openapi';
 
@@ -91,7 +92,7 @@ export function useGetCurrentUser() {
   return useQuery<SuccessResponseBody<ControlApi, '/scim2/Me', 'get'> | null>({
     queryKey: ['getUser'],
     queryFn: async () => {
-      const api = (route as Router<ControlApi>)({
+      const response = await (route as Route<ControlApi>)({
         client: CLIENT,
         request: {
           path: '/scim2/Me',
@@ -99,8 +100,7 @@ export function useGetCurrentUser() {
         },
         errorMessage: 'Failed to fetch user',
         errorTypeGuard: isExpectedError,
-      });
-      const response = await api.call();
+      }).call();
       if (isError(response)) {
         switch (response.data.status) {
           case 401:

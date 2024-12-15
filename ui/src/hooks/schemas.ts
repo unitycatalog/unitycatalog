@@ -5,7 +5,7 @@ import {
   UseQueryOptions,
 } from '@tanstack/react-query';
 import { CLIENT } from '../context/catalog';
-import { route, isError, assertNever, Router } from '../utils/openapi';
+import { route, isError, assertNever } from '../utils/openapi';
 import type {
   paths as CatalogApi,
   components as CatalogComponent,
@@ -15,6 +15,7 @@ import type {
   PathParam,
   QueryParam,
   RequestBody,
+  Route,
   SuccessResponseBody,
 } from '../utils/openapi';
 
@@ -31,7 +32,7 @@ export function useListSchemas({ catalog_name, options }: UseListSchemasArgs) {
   return useQuery<SuccessResponseBody<CatalogApi, '/schemas', 'get'>>({
     queryKey: ['listSchemas', catalog_name],
     queryFn: async () => {
-      const api = (route as Router<CatalogApi>)({
+      const response = await (route as Route<CatalogApi>)({
         client: CLIENT,
         request: {
           path: '/schemas',
@@ -43,8 +44,7 @@ export function useListSchemas({ catalog_name, options }: UseListSchemasArgs) {
           },
         },
         errorMessage: 'Failed to list schemas',
-      });
-      const response = await api.call();
+      }).call();
       if (isError(response)) {
         // NOTE:
         // When an expected error occurs, as defined in the OpenAPI specification, the following line will
@@ -72,7 +72,7 @@ export function useGetSchema({ full_name }: UseGetSchemaArgs) {
   >({
     queryKey: ['getSchema', catalog, schema],
     queryFn: async () => {
-      const api = (route as Router<CatalogApi>)({
+      const response = await (route as Route<CatalogApi>)({
         client: CLIENT,
         request: {
           path: '/schemas/{full_name}',
@@ -84,8 +84,7 @@ export function useGetSchema({ full_name }: UseGetSchemaArgs) {
           },
         },
         errorMessage: 'Failed to fetch schema',
-      });
-      const response = await api.call();
+      }).call();
       if (isError(response)) {
         // NOTE:
         // When an expected error occurs, as defined in the OpenAPI specification, the following line will
@@ -118,7 +117,7 @@ export function useCreateSchema() {
       comment,
       properties,
     }: CreateSchemaMutationParams) => {
-      const api = (route as Router<CatalogApi>)({
+      const response = await (route as Route<CatalogApi>)({
         client: CLIENT,
         request: {
           path: '/schemas',
@@ -133,8 +132,7 @@ export function useCreateSchema() {
           },
         },
         errorMessage: 'Failed to create schema',
-      });
-      const response = await api.call();
+      }).call();
       if (isError(response)) {
         // NOTE:
         // When an expected error occurs, as defined in the OpenAPI specification, the following line will
@@ -175,7 +173,7 @@ export function useUpdateSchema({ full_name }: UseUpdateSchemaArgs) {
     UpdateSchemaMutationParams
   >({
     mutationFn: async ({ comment }: UpdateSchemaMutationParams) => {
-      const api = (route as Router<CatalogApi>)({
+      const response = await (route as Route<CatalogApi>)({
         client: CLIENT,
         request: {
           path: '/schemas/{full_name}',
@@ -190,8 +188,7 @@ export function useUpdateSchema({ full_name }: UseUpdateSchemaArgs) {
           },
         },
         errorMessage: 'Failed to update schema',
-      });
-      const response = await api.call();
+      }).call();
       if (isError(response)) {
         // NOTE:
         // When an expected error occurs, as defined in the OpenAPI specification, the following line will
@@ -232,7 +229,7 @@ export function useDeleteSchema({ full_name }: UseDeleteSchemaArgs) {
     DeleteSchemaMutationParams
   >({
     mutationFn: async ({ full_name }: DeleteSchemaMutationParams) => {
-      const api = (route as Router<CatalogApi>)({
+      const response = await (route as Route<CatalogApi>)({
         client: CLIENT,
         request: {
           path: '/schemas/{full_name}',
@@ -244,8 +241,7 @@ export function useDeleteSchema({ full_name }: UseDeleteSchemaArgs) {
           },
         },
         errorMessage: 'Failed to delete schema',
-      });
-      const response = await api.call();
+      }).call();
       if (isError(response)) {
         // NOTE:
         // When an expected error occurs, as defined in the OpenAPI specification, the following line will

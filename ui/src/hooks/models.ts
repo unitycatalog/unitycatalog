@@ -5,7 +5,7 @@ import {
   UseQueryOptions,
 } from '@tanstack/react-query';
 import { CLIENT } from '../context/catalog';
-import { route, isError, assertNever, Router } from '../utils/openapi';
+import { route, isError, assertNever } from '../utils/openapi';
 import type {
   paths as CatalogApi,
   components as CatalogComponent,
@@ -15,6 +15,7 @@ import type {
   PathParam,
   QueryParam,
   RequestBody,
+  Route,
   SuccessResponseBody,
 } from '../utils/openapi';
 
@@ -35,7 +36,7 @@ export function useListModels({
   return useQuery<SuccessResponseBody<CatalogApi, '/models', 'get'>>({
     queryKey: ['listModels', catalog_name, schema_name],
     queryFn: async () => {
-      const api = (route as Router<CatalogApi>)({
+      const response = await (route as Route<CatalogApi>)({
         client: CLIENT,
         request: {
           path: '/models',
@@ -48,8 +49,7 @@ export function useListModels({
           },
         },
         errorMessage: 'Failed to list models',
-      });
-      const response = await api.call();
+      }).call();
       if (isError(response)) {
         // NOTE:
         // When an expected error occurs, as defined in the OpenAPI specification, the following line will
@@ -77,7 +77,7 @@ export function useGetModel({ full_name }: UseGetModelArgs) {
   >({
     queryKey: ['getModel', catalog, schema, model],
     queryFn: async () => {
-      const api = (route as Router<CatalogApi>)({
+      const response = await (route as Route<CatalogApi>)({
         client: CLIENT,
         request: {
           path: '/models/{full_name}',
@@ -89,8 +89,7 @@ export function useGetModel({ full_name }: UseGetModelArgs) {
           },
         },
         errorMessage: 'Failed to fetch model',
-      });
-      const response = await api.call();
+      }).call();
       if (isError(response)) {
         // NOTE:
         // When an expected error occurs, as defined in the OpenAPI specification, the following line will
@@ -123,7 +122,7 @@ export function useCreateModel() {
       schema_name,
       comment,
     }: CreateModelMutationParams) => {
-      const api = (route as Router<CatalogApi>)({
+      const response = await (route as Route<CatalogApi>)({
         client: CLIENT,
         request: {
           path: '/models',
@@ -138,8 +137,7 @@ export function useCreateModel() {
           },
         },
         errorMessage: 'Failed to create model',
-      });
-      const response = await api.call();
+      }).call();
       if (isError(response)) {
         // NOTE:
         // When an expected error occurs, as defined in the OpenAPI specification, the following line will
@@ -180,7 +178,7 @@ export function useUpdateModel({ full_name }: UseUpdateModelArgs) {
     UpdateModelMutationParams
   >({
     mutationFn: async ({ comment }: UpdateModelMutationParams) => {
-      const api = (route as Router<CatalogApi>)({
+      const response = await (route as Route<CatalogApi>)({
         client: CLIENT,
         request: {
           path: '/models/{full_name}',
@@ -195,8 +193,7 @@ export function useUpdateModel({ full_name }: UseUpdateModelArgs) {
           },
         },
         errorMessage: 'Failed to update model',
-      });
-      const response = await api.call();
+      }).call();
       if (isError(response)) {
         // NOTE:
         // When an expected error occurs, as defined in the OpenAPI specification, the following line will
@@ -237,7 +234,7 @@ export function useDeleteModel({ full_name }: UseDeleteModelArgs) {
     DeleteModelMutationParams
   >({
     mutationFn: async ({ full_name }: DeleteModelMutationParams) => {
-      const api = (route as Router<CatalogApi>)({
+      const response = await (route as Route<CatalogApi>)({
         client: CLIENT,
         request: {
           path: '/models/{full_name}',
@@ -249,8 +246,7 @@ export function useDeleteModel({ full_name }: UseDeleteModelArgs) {
           },
         },
         errorMessage: 'Failed to delete model',
-      });
-      const response = await api.call();
+      }).call();
       if (isError(response)) {
         // NOTE:
         // When an expected error occurs, as defined in the OpenAPI specification, the following line will
@@ -289,7 +285,7 @@ export function useListModelVersions({ full_name }: UseListModelVersionsArgs) {
   >({
     queryKey: ['listModelVersions', catalog, schema, model],
     queryFn: async () => {
-      const api = (route as Router<CatalogApi>)({
+      const response = await (route as Route<CatalogApi>)({
         client: CLIENT,
         request: {
           path: '/models/{full_name}/versions',
@@ -301,8 +297,7 @@ export function useListModelVersions({ full_name }: UseListModelVersionsArgs) {
           },
         },
         errorMessage: 'Failed to fetch model version',
-      });
-      const response = await api.call();
+      }).call();
       if (isError(response)) {
         // NOTE:
         // When an expected error occurs, as defined in the OpenAPI specification, the following line will
@@ -336,7 +331,7 @@ export function useGetModelVersion({
   >({
     queryKey: ['getVersion', catalog, schema, model, version],
     queryFn: async () => {
-      const api = (route as Router<CatalogApi>)({
+      const response = await (route as Route<CatalogApi>)({
         client: CLIENT,
         request: {
           path: '/models/{full_name}/versions/{version}',
@@ -349,8 +344,7 @@ export function useGetModelVersion({
           },
         },
         errorMessage: 'Failed to fetch model version',
-      });
-      const response = await api.call();
+      }).call();
       if (isError(response)) {
         // NOTE:
         // When an expected error occurs, as defined in the OpenAPI specification, the following line will
@@ -393,7 +387,7 @@ export function useUpdateModelVersion({
     UpdateModelVersionMutationParams
   >({
     mutationFn: async ({ comment }: UpdateModelVersionMutationParams) => {
-      const api = (route as Router<CatalogApi>)({
+      const response = await (route as Route<CatalogApi>)({
         client: CLIENT,
         request: {
           path: '/models/{full_name}/versions/{version}',
@@ -409,8 +403,7 @@ export function useUpdateModelVersion({
           },
         },
         errorMessage: 'Failed to update model version',
-      });
-      const response = await api.call();
+      }).call();
       if (isError(response)) {
         // NOTE:
         // When an expected error occurs, as defined in the OpenAPI specification, the following line will
@@ -461,7 +454,7 @@ export function useDeleteModelVersion({
       full_name,
       version,
     }: DeleteModelVersionMutationParams) => {
-      const api = (route as Router<CatalogApi>)({
+      const response = await (route as Route<CatalogApi>)({
         client: CLIENT,
         request: {
           path: '/models/{full_name}/versions/{version}',
@@ -474,8 +467,7 @@ export function useDeleteModelVersion({
           },
         },
         errorMessage: 'Failed to delete model version',
-      });
-      const response = await api.call();
+      }).call();
       if (isError(response)) {
         // NOTE:
         // When an expected error occurs, as defined in the OpenAPI specification, the following line will

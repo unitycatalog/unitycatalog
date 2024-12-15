@@ -5,7 +5,7 @@ import {
   UseQueryOptions,
 } from '@tanstack/react-query';
 import { CLIENT } from '../context/catalog';
-import { route, isError, assertNever, Router } from '../utils/openapi';
+import { route, isError, assertNever } from '../utils/openapi';
 import type {
   paths as CatalogApi,
   components as CatalogComponent,
@@ -14,6 +14,7 @@ import type {
   Model,
   PathParam,
   QueryParam,
+  Route,
   SuccessResponseBody,
 } from '../utils/openapi';
 
@@ -34,7 +35,7 @@ export function useListTables({
   return useQuery<SuccessResponseBody<CatalogApi, '/tables', 'get'>>({
     queryKey: ['listTables', catalog_name, schema_name],
     queryFn: async () => {
-      const api = (route as Router<CatalogApi>)({
+      const response = await (route as Route<CatalogApi>)({
         client: CLIENT,
         request: {
           path: '/tables',
@@ -47,8 +48,7 @@ export function useListTables({
           },
         },
         errorMessage: 'Failed to list tables',
-      });
-      const response = await api.call();
+      }).call();
       if (isError(response)) {
         // NOTE:
         // When an expected error occurs, as defined in the OpenAPI specification, the following line will
@@ -76,7 +76,7 @@ export function useGetTable({ full_name }: UseGetTableArgs) {
   >({
     queryKey: ['getTable', catalog, schema, table],
     queryFn: async () => {
-      const api = (route as Router<CatalogApi>)({
+      const response = await (route as Route<CatalogApi>)({
         client: CLIENT,
         request: {
           path: '/tables/{full_name}',
@@ -88,8 +88,7 @@ export function useGetTable({ full_name }: UseGetTableArgs) {
           },
         },
         errorMessage: 'Failed to fetch table',
-      });
-      const response = await api.call();
+      }).call();
       if (isError(response)) {
         // NOTE:
         // When an expected error occurs, as defined in the OpenAPI specification, the following line will
@@ -125,7 +124,7 @@ export function useDeleteTable({ full_name }: UseDeleteTableArgs) {
     DeleteTableMutationParams
   >({
     mutationFn: async ({ full_name }: DeleteTableMutationParams) => {
-      const api = (route as Router<CatalogApi>)({
+      const response = await (route as Route<CatalogApi>)({
         client: CLIENT,
         request: {
           path: '/tables/{full_name}',
@@ -137,8 +136,7 @@ export function useDeleteTable({ full_name }: UseDeleteTableArgs) {
           },
         },
         errorMessage: 'Failed to delete schema',
-      });
-      const response = await api.call();
+      }).call();
       if (isError(response)) {
         // NOTE:
         // When an expected error occurs, as defined in the OpenAPI specification, the following line will

@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { CLIENT } from '../context/catalog';
-import { route, isError, assertNever, Router } from '../utils/openapi';
+import { route, isError, assertNever } from '../utils/openapi';
 import type {
   paths as CatalogApi,
   components as CatalogComponent,
@@ -9,6 +9,7 @@ import type {
   Model,
   PathParam,
   RequestBody,
+  Route,
   SuccessResponseBody,
 } from '../utils/openapi';
 
@@ -18,15 +19,14 @@ export function useListCatalogs() {
   return useQuery<SuccessResponseBody<CatalogApi, '/catalogs', 'get'>>({
     queryKey: ['listCatalogs'],
     queryFn: async () => {
-      const api = (route as Router<CatalogApi>)({
+      const response = await (route as Route<CatalogApi>)({
         client: CLIENT,
         request: {
           path: '/catalogs',
           method: 'get',
         },
         errorMessage: 'Failed to fetch catalogs',
-      });
-      const response = await api.call();
+      }).call();
       if (isError(response)) {
         // NOTE:
         // When an expected error occurs, as defined in the OpenAPI specification, the following line will
@@ -49,7 +49,7 @@ export function useGetCatalog({ name }: UseGetCatalogArgs) {
   return useQuery<SuccessResponseBody<CatalogApi, '/catalogs/{name}', 'get'>>({
     queryKey: ['getCatalog', name],
     queryFn: async () => {
-      const api = (route as Router<CatalogApi>)({
+      const response = await (route as Route<CatalogApi>)({
         client: CLIENT,
         request: {
           path: '/catalogs/{name}',
@@ -61,8 +61,7 @@ export function useGetCatalog({ name }: UseGetCatalogArgs) {
           },
         },
         errorMessage: 'Failed to fetch catalog',
-      });
-      const response = await api.call();
+      }).call();
       if (isError(response)) {
         // NOTE:
         // When an expected error occurs, as defined in the OpenAPI specification, the following line will
@@ -94,7 +93,7 @@ export function useCreateCatalog() {
       comment,
       properties,
     }: CreateCatalogMutationParams) => {
-      const api = (route as Router<CatalogApi>)({
+      const response = await (route as Route<CatalogApi>)({
         client: CLIENT,
         request: {
           path: '/catalogs',
@@ -108,8 +107,7 @@ export function useCreateCatalog() {
           },
         },
         errorMessage: 'Failed to create catalog',
-      });
-      const response = await api.call();
+      }).call();
       if (isError(response)) {
         // NOTE:
         // When an expected error occurs, as defined in the OpenAPI specification, the following line will
@@ -152,7 +150,7 @@ export function useUpdateCatalog({ name }: UseUpdateCatalogArgs) {
       properties,
       new_name,
     }: UpdateCatalogMutationParams) => {
-      const api = (route as Router<CatalogApi>)({
+      const response = await (route as Route<CatalogApi>)({
         client: CLIENT,
         request: {
           path: '/catalogs/{name}',
@@ -169,8 +167,7 @@ export function useUpdateCatalog({ name }: UseUpdateCatalogArgs) {
           },
         },
         errorMessage: 'Failed to update catalog',
-      });
-      const response = await api.call();
+      }).call();
       if (isError(response)) {
         // NOTE:
         // When an expected error occurs, as defined in the OpenAPI specification, the following line will
@@ -203,7 +200,7 @@ export function useDeleteCatalog() {
     DeleteCatalogMutationParams
   >({
     mutationFn: async ({ name }: DeleteCatalogMutationParams) => {
-      const api = (route as Router<CatalogApi>)({
+      const response = await (route as Route<CatalogApi>)({
         client: CLIENT,
         request: {
           path: '/catalogs/{name}',
@@ -215,8 +212,7 @@ export function useDeleteCatalog() {
           },
         },
         errorMessage: 'Failed to delete catalog',
-      });
-      const response = await api.call();
+      }).call();
       if (isError(response)) {
         // NOTE:
         // When an expected error occurs, as defined in the OpenAPI specification, the following line will

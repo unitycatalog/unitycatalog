@@ -299,7 +299,7 @@ export const assertNever = (value: never) => {
  * See also:
  * - {@link https://github.com/microsoft/TypeScript/issues/26242 | Partial Type Argument Inference }
  */
-export type Router<Api extends Spec> = {
+export type Route<Api extends Spec> = {
   <
     Path extends PathOf<Api>,
     Method extends HttpMethod,

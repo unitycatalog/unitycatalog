@@ -5,7 +5,7 @@ import {
   UseQueryOptions,
 } from '@tanstack/react-query';
 import { CLIENT } from '../context/catalog';
-import { route, isError, assertNever, Router } from '../utils/openapi';
+import { route, isError, assertNever } from '../utils/openapi';
 import type {
   paths as CatalogApi,
   components as CatalogComponent,
@@ -15,6 +15,7 @@ import type {
   PathParam,
   QueryParam,
   RequestBody,
+  Route,
   SuccessResponseBody,
 } from '../utils/openapi';
 
@@ -35,7 +36,7 @@ export function useListVolumes({
   return useQuery<SuccessResponseBody<CatalogApi, '/volumes', 'get'>>({
     queryKey: ['listVolumes', catalog_name, schema_name],
     queryFn: async () => {
-      const api = (route as Router<CatalogApi>)({
+      const response = await (route as Route<CatalogApi>)({
         client: CLIENT,
         request: {
           path: '/volumes',
@@ -48,8 +49,7 @@ export function useListVolumes({
           },
         },
         errorMessage: 'Failed to list volumes',
-      });
-      const response = await api.call();
+      }).call();
       if (isError(response)) {
         // NOTE:
         // When an expected error occurs, as defined in the OpenAPI specification, the following line will
@@ -71,7 +71,7 @@ export function useGetVolume({ name }: UseGetVolumeArgs) {
   return useQuery<SuccessResponseBody<CatalogApi, '/volumes/{name}', 'get'>>({
     queryKey: ['getVolume', catalog, schema, volume],
     queryFn: async () => {
-      const api = (route as Router<CatalogApi>)({
+      const response = await (route as Route<CatalogApi>)({
         client: CLIENT,
         request: {
           path: '/volumes/{name}',
@@ -83,8 +83,7 @@ export function useGetVolume({ name }: UseGetVolumeArgs) {
           },
         },
         errorMessage: 'Failed to fetch volume',
-      });
-      const response = await api.call();
+      }).call();
       if (isError(response)) {
         // NOTE:
         // When an expected error occurs, as defined in the OpenAPI specification, the following line will
@@ -120,7 +119,7 @@ export function useUpdateVolume({ name }: UseUpdateVolumeArgs) {
     UpdateVolumeMutationParams
   >({
     mutationFn: async ({ comment }: UpdateVolumeMutationParams) => {
-      const api = (route as Router<CatalogApi>)({
+      const response = await (route as Route<CatalogApi>)({
         client: CLIENT,
         request: {
           path: '/volumes/{name}',
@@ -135,8 +134,7 @@ export function useUpdateVolume({ name }: UseUpdateVolumeArgs) {
           },
         },
         errorMessage: 'Failed to update volume',
-      });
-      const response = await api.call();
+      }).call();
       if (isError(response)) {
         // NOTE:
         // When an expected error occurs, as defined in the OpenAPI specification, the following line will
@@ -177,7 +175,7 @@ export function useDeleteVolume({ name }: UseDeleteVolumeArgs) {
     DeleteVolumeMutationParams
   >({
     mutationFn: async ({ name }: DeleteVolumeMutationParams) => {
-      const api = (route as Router<CatalogApi>)({
+      const response = await (route as Route<CatalogApi>)({
         client: CLIENT,
         request: {
           path: '/volumes/{name}',
@@ -189,8 +187,7 @@ export function useDeleteVolume({ name }: UseDeleteVolumeArgs) {
           },
         },
         errorMessage: 'Failed to delete volume',
-      });
-      const response = await api.call();
+      }).call();
       if (isError(response)) {
         // NOTE:
         // When an expected error occurs, as defined in the OpenAPI specification, the following line will

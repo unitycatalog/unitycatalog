@@ -5,7 +5,7 @@ import {
   UseQueryOptions,
 } from '@tanstack/react-query';
 import { CLIENT } from '../context/catalog';
-import { route, isError, assertNever, Router } from '../utils/openapi';
+import { route, isError, assertNever } from '../utils/openapi';
 import type {
   paths as CatalogApi,
   components as CatalogComponent,
@@ -14,6 +14,7 @@ import type {
   Model,
   PathParam,
   QueryParam,
+  Route,
   SuccessResponseBody,
 } from '../utils/openapi';
 
@@ -38,7 +39,7 @@ export function useListFunctions({
   return useQuery<SuccessResponseBody<CatalogApi, '/functions', 'get'>>({
     queryKey: ['listFunctions', catalog_name, schema_name],
     queryFn: async () => {
-      const api = (route as Router<CatalogApi>)({
+      const response = await (route as Route<CatalogApi>)({
         client: CLIENT,
         request: {
           path: '/functions',
@@ -51,8 +52,7 @@ export function useListFunctions({
           },
         },
         errorMessage: 'Failed to list functions',
-      });
-      const response = await api.call();
+      }).call();
       if (isError(response)) {
         // NOTE:
         // When an expected error occurs, as defined in the OpenAPI specification, the following line will
@@ -78,7 +78,7 @@ export function useGetFunction({ name }: UseGetFunctionArgs) {
   return useQuery<SuccessResponseBody<CatalogApi, '/functions/{name}', 'get'>>({
     queryKey: ['getFunction', catalog, schema, ucFunction],
     queryFn: async () => {
-      const api = (route as Router<CatalogApi>)({
+      const response = await (route as Route<CatalogApi>)({
         client: CLIENT,
         request: {
           path: '/functions/{name}',
@@ -90,8 +90,7 @@ export function useGetFunction({ name }: UseGetFunctionArgs) {
           },
         },
         errorMessage: 'Failed to fetch function',
-      });
-      const response = await api.call();
+      }).call();
       if (isError(response)) {
         // NOTE:
         // When an expected error occurs, as defined in the OpenAPI specification, the following line will
@@ -127,7 +126,7 @@ export function useDeleteFunction({ name }: UseDeleteFunctionArgs) {
     DeleteFunctionMutationParams
   >({
     mutationFn: async ({ name }: DeleteFunctionMutationParams) => {
-      const api = (route as Router<CatalogApi>)({
+      const response = await (route as Route<CatalogApi>)({
         client: CLIENT,
         request: {
           path: '/functions/{name}',
@@ -139,8 +138,7 @@ export function useDeleteFunction({ name }: UseDeleteFunctionArgs) {
           },
         },
         errorMessage: 'Failed to delete function',
-      });
-      const response = await api.call();
+      }).call();
       if (isError(response)) {
         // NOTE:
         // When an expected error occurs, as defined in the OpenAPI specification, the following line will
