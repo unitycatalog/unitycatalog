@@ -1,4 +1,4 @@
-name: UnityCatalog AI Integration Tests
+name: Unity Catalog AI Databricks Integration Tests
 
 on:
   push:
@@ -39,7 +39,7 @@ jobs:
           pip install integrations/crewai[dev]
       - name: Run tests
         run: |
-          pytest integrations/crewai/tests
+          pytest integrations/crewai/tests --ignore=integrations/crewai/tests/test_crewai_toolkit_oss.py
 
   langchain_test:
     runs-on: ubuntu-latest
@@ -64,7 +64,7 @@ jobs:
           pip install integrations/langchain[dev]
       - name: Run Langchain Tests
         run: |
-          pytest integrations/langchain/tests
+          pytest integrations/langchain/tests --ignore=integrations/langchain/tests/test_langchain_toolkit_oss.py
 
   anthropic_test:
     runs-on: ubuntu-latest
@@ -89,7 +89,7 @@ jobs:
           pip install integrations/anthropic[dev]
       - name: Run Anthropic Tests
         run: |
-          pytest integrations/anthropic/tests
+          pytest integrations/anthropic/tests --ignore=integrations/anthropic/tests/test_anthropic_toolkit_oss.py
 
   llamaindex_test:
     runs-on: ubuntu-latest
@@ -114,7 +114,7 @@ jobs:
           pip install integrations/llama_index[dev]
       - name: Run LlamaIndex Tests
         run: |
-          pytest integrations/llama_index/tests
+          pytest integrations/llama_index/tests --ignore=integrations/llama_index/tests/test_llama_index_toolkit_oss.py
 
   openai_test:
     runs-on: ubuntu-latest
@@ -139,7 +139,7 @@ jobs:
           pip install integrations/openai[dev]
       - name: Run OpenAI Tests
         run: |
-          pytest integrations/openai/tests
+          pytest integrations/openai/tests --ignore=integrations/openai/tests/test_openai_toolkit_oss.py
 
   autogen_test:
     runs-on: ubuntu-latest
@@ -164,4 +164,4 @@ jobs:
           pip install integrations/autogen[dev]
       - name: Run tests
         run: |
-          pytest integrations/autogen/tests
+          pytest integrations/autogen/tests --ignore=integrations/autogen/tests/test_autogen_toolkit_oss.py
