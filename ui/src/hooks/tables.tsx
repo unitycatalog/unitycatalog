@@ -5,17 +5,20 @@ import {
   UseQueryOptions,
 } from '@tanstack/react-query';
 import { CLIENT } from '../context/catalog';
-import { route, isError, assertNever } from '../utils/openapi';
+import { route as _route, isError, assertNever } from '../utils/openapi';
 import type {
   paths as CatalogApi,
   components as CatalogComponent,
 } from '../types/api/catalog.gen';
 import type {
+  Router,
   Model,
   PathParam,
   QueryParam,
   SuccessResponseBody,
 } from '../utils/openapi';
+
+const route: Router<CatalogApi> = _route;
 
 export type TableInterface = Model<CatalogComponent, 'TableInfo'>;
 
@@ -34,7 +37,7 @@ export function useListTables({
   return useQuery<SuccessResponseBody<CatalogApi, '/tables', 'get'>>({
     queryKey: ['listTables', catalog_name, schema_name],
     queryFn: async () => {
-      const api = route<CatalogApi, '/tables', 'get'>({
+      const api = route({
         client: CLIENT,
         request: {
           path: '/tables',
@@ -76,7 +79,7 @@ export function useGetTable({ full_name }: UseGetTableArgs) {
   >({
     queryKey: ['getTable', catalog, schema, table],
     queryFn: async () => {
-      const api = route<CatalogApi, '/tables/{full_name}', 'get'>({
+      const api = route({
         client: CLIENT,
         request: {
           path: '/tables/{full_name}',
@@ -125,7 +128,7 @@ export function useDeleteTable({ full_name }: UseDeleteTableArgs) {
     DeleteTableMutationParams
   >({
     mutationFn: async ({ full_name }: DeleteTableMutationParams) => {
-      const api = route<CatalogApi, '/tables/{full_name}', 'delete'>({
+      const api = route({
         client: CLIENT,
         request: {
           path: '/tables/{full_name}',

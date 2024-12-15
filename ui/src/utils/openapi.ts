@@ -294,6 +294,36 @@ export const assertNever = (value: never) => {
 };
 
 /**
+ * Utility type that simulates partial type argument inference.
+ *
+ * See also:
+ * - {@link https://github.com/microsoft/TypeScript/issues/26242 | Partial Type Argument Inference }
+ */
+export type Router<Api extends Spec> = {
+  <
+    Path extends PathOf<Api>,
+    Method extends HttpMethod,
+    ErrorCode extends HttpErrorCode = never,
+  >({
+    client,
+    request,
+    errorMessage,
+    errorTypeGuard,
+  }: {
+    client: AxiosInstance;
+    request: Request<Api, Path, Method>;
+    errorMessage?: string;
+    errorTypeGuard?: (response: {
+      status: number;
+      data: any;
+    }) => response is ErrorResponseBody<Api, Path, Method, ErrorCode>;
+  }): {
+    path: () => string;
+    call: () => Promise<Response<Api, Path, Method, ErrorCode>>;
+  };
+};
+
+/**
  * Configures the API `client` using the specified `request` context.
  */
 export const route = <

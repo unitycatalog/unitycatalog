@@ -5,18 +5,21 @@ import {
   UseQueryOptions,
 } from '@tanstack/react-query';
 import { CLIENT } from '../context/catalog';
-import { route, isError, assertNever } from '../utils/openapi';
+import { route as _route, isError, assertNever } from '../utils/openapi';
 import type {
   paths as CatalogApi,
   components as CatalogComponent,
 } from '../types/api/catalog.gen';
 import type {
+  Router,
   Model,
   PathParam,
   QueryParam,
   RequestBody,
   SuccessResponseBody,
 } from '../utils/openapi';
+
+const route: Router<CatalogApi> = _route;
 
 export type VolumeInterface = Model<CatalogComponent, 'VolumeInfo'>;
 
@@ -35,7 +38,7 @@ export function useListVolumes({
   return useQuery<SuccessResponseBody<CatalogApi, '/volumes', 'get'>>({
     queryKey: ['listVolumes', catalog_name, schema_name],
     queryFn: async () => {
-      const api = route<CatalogApi, '/volumes', 'get'>({
+      const api = route({
         client: CLIENT,
         request: {
           path: '/volumes',
@@ -71,7 +74,7 @@ export function useGetVolume({ name }: UseGetVolumeArgs) {
   return useQuery<SuccessResponseBody<CatalogApi, '/volumes/{name}', 'get'>>({
     queryKey: ['getVolume', catalog, schema, volume],
     queryFn: async () => {
-      const api = route<CatalogApi, '/volumes/{name}', 'get'>({
+      const api = route({
         client: CLIENT,
         request: {
           path: '/volumes/{name}',
@@ -120,7 +123,7 @@ export function useUpdateVolume({ name }: UseUpdateVolumeArgs) {
     UpdateVolumeMutationParams
   >({
     mutationFn: async ({ comment }: UpdateVolumeMutationParams) => {
-      const api = route<CatalogApi, '/volumes/{name}', 'patch'>({
+      const api = route({
         client: CLIENT,
         request: {
           path: '/volumes/{name}',
@@ -177,7 +180,7 @@ export function useDeleteVolume({ name }: UseDeleteVolumeArgs) {
     DeleteVolumeMutationParams
   >({
     mutationFn: async ({ name }: DeleteVolumeMutationParams) => {
-      const api = route<CatalogApi, '/volumes/{name}', 'delete'>({
+      const api = route({
         client: CLIENT,
         request: {
           path: '/volumes/{name}',

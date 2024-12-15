@@ -5,17 +5,20 @@ import {
   UseQueryOptions,
 } from '@tanstack/react-query';
 import { CLIENT } from '../context/catalog';
-import { route, isError, assertNever } from '../utils/openapi';
+import { route as _route, isError, assertNever } from '../utils/openapi';
 import type {
   paths as CatalogApi,
   components as CatalogComponent,
 } from '../types/api/catalog.gen';
 import type {
+  Router,
   Model,
   PathParam,
   QueryParam,
   SuccessResponseBody,
 } from '../utils/openapi';
+
+const route: Router<CatalogApi> = _route;
 
 export type FunctionInterface = Model<CatalogComponent, 'FunctionInfo'>;
 
@@ -38,7 +41,7 @@ export function useListFunctions({
   return useQuery<SuccessResponseBody<CatalogApi, '/functions', 'get'>>({
     queryKey: ['listFunctions', catalog_name, schema_name],
     queryFn: async () => {
-      const api = route<CatalogApi, '/functions', 'get'>({
+      const api = route({
         client: CLIENT,
         request: {
           path: '/functions',
@@ -78,7 +81,7 @@ export function useGetFunction({ name }: UseGetFunctionArgs) {
   return useQuery<SuccessResponseBody<CatalogApi, '/functions/{name}', 'get'>>({
     queryKey: ['getFunction', catalog, schema, ucFunction],
     queryFn: async () => {
-      const api = route<CatalogApi, '/functions/{name}', 'get'>({
+      const api = route({
         client: CLIENT,
         request: {
           path: '/functions/{name}',
@@ -127,7 +130,7 @@ export function useDeleteFunction({ name }: UseDeleteFunctionArgs) {
     DeleteFunctionMutationParams
   >({
     mutationFn: async ({ name }: DeleteFunctionMutationParams) => {
-      const api = route<CatalogApi, '/functions/{name}', 'delete'>({
+      const api = route({
         client: CLIENT,
         request: {
           path: '/functions/{name}',

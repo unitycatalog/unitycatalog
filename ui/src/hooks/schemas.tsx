@@ -5,18 +5,21 @@ import {
   UseQueryOptions,
 } from '@tanstack/react-query';
 import { CLIENT } from '../context/catalog';
-import { route, isError, assertNever } from '../utils/openapi';
+import { route as _route, isError, assertNever } from '../utils/openapi';
 import type {
   paths as CatalogApi,
   components as CatalogComponent,
 } from '../types/api/catalog.gen';
 import type {
+  Router,
   Model,
   PathParam,
   QueryParam,
   RequestBody,
   SuccessResponseBody,
 } from '../utils/openapi';
+
+const route: Router<CatalogApi> = _route;
 
 export type SchemaInterface = Model<CatalogComponent, 'SchemaInfo'>;
 
@@ -31,7 +34,7 @@ export function useListSchemas({ catalog_name, options }: UseListSchemasArgs) {
   return useQuery<SuccessResponseBody<CatalogApi, '/schemas', 'get'>>({
     queryKey: ['listSchemas', catalog_name],
     queryFn: async () => {
-      const api = route<CatalogApi, '/schemas', 'get'>({
+      const api = route({
         client: CLIENT,
         request: {
           path: '/schemas',
@@ -72,7 +75,7 @@ export function useGetSchema({ full_name }: UseGetSchemaArgs) {
   >({
     queryKey: ['getSchema', catalog, schema],
     queryFn: async () => {
-      const api = route<CatalogApi, '/schemas/{full_name}', 'get'>({
+      const api = route({
         client: CLIENT,
         request: {
           path: '/schemas/{full_name}',
@@ -118,7 +121,7 @@ export function useCreateSchema() {
       comment,
       properties,
     }: CreateSchemaMutationParams) => {
-      const api = route<CatalogApi, '/schemas', 'post'>({
+      const api = route({
         client: CLIENT,
         request: {
           path: '/schemas',
@@ -175,7 +178,7 @@ export function useUpdateSchema({ full_name }: UseUpdateSchemaArgs) {
     UpdateSchemaMutationParams
   >({
     mutationFn: async ({ comment }: UpdateSchemaMutationParams) => {
-      const api = route<CatalogApi, '/schemas/{full_name}', 'patch'>({
+      const api = route({
         client: CLIENT,
         request: {
           path: '/schemas/{full_name}',
@@ -232,7 +235,7 @@ export function useDeleteSchema({ full_name }: UseDeleteSchemaArgs) {
     DeleteSchemaMutationParams
   >({
     mutationFn: async ({ full_name }: DeleteSchemaMutationParams) => {
-      const api = route<CatalogApi, '/schemas/{full_name}', 'delete'>({
+      const api = route({
         client: CLIENT,
         request: {
           path: '/schemas/{full_name}',
