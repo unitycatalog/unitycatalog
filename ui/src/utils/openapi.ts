@@ -382,7 +382,7 @@ export const route = <
         result: 'success',
         data: response.data,
       };
-    } catch (e) {
+    } catch (e: any) {
       if (axios.isAxiosError(e) && !!e.response) {
         const error = { status: e.response.status, data: e.response.data };
         if (errorTypeGuard(error)) {
@@ -392,7 +392,7 @@ export const route = <
           };
         }
       }
-      throw new Error(errorMessage);
+      throw new Error(e.response?.data?.message || errorMessage);
     }
   };
 
