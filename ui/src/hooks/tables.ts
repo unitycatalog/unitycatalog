@@ -5,46 +5,39 @@ import {
   UseQueryOptions,
 } from '@tanstack/react-query';
 import { CLIENT } from '../context/catalog';
-import { route as _route, isError, assertNever } from '../utils/openapi';
+import { route, isError, assertNever, Router } from '../utils/openapi';
 import type {
   paths as CatalogApi,
   components as CatalogComponent,
 } from '../types/api/catalog.gen';
 import type {
-  Router,
   Model,
   PathParam,
   QueryParam,
   SuccessResponseBody,
 } from '../utils/openapi';
 
-const route: Router<CatalogApi> = _route;
+export type TableInterface = Model<CatalogComponent, 'TableInfo'>;
 
-export type FunctionInterface = Model<CatalogComponent, 'FunctionInfo'>;
-
-export type UseListFunctionsArgs = QueryParam<
-  CatalogApi,
-  '/functions',
-  'get'
-> & {
+export type UseListTablesArgs = QueryParam<CatalogApi, '/tables', 'get'> & {
   options?: Omit<
-    UseQueryOptions<SuccessResponseBody<CatalogApi, '/functions', 'get'>>,
+    UseQueryOptions<SuccessResponseBody<CatalogApi, '/tables', 'get'>>,
     'queryKey' | 'queryFn'
   >;
 };
 
-export function useListFunctions({
+export function useListTables({
   catalog_name,
   schema_name,
   options,
-}: UseListFunctionsArgs) {
-  return useQuery<SuccessResponseBody<CatalogApi, '/functions', 'get'>>({
-    queryKey: ['listFunctions', catalog_name, schema_name],
+}: UseListTablesArgs) {
+  return useQuery<SuccessResponseBody<CatalogApi, '/tables', 'get'>>({
+    queryKey: ['listTables', catalog_name, schema_name],
     queryFn: async () => {
-      const api = route({
+      const api = (route as Router<CatalogApi>)({
         client: CLIENT,
         request: {
-          path: '/functions',
+          path: '/tables',
           method: 'get',
           params: {
             query: {
@@ -53,7 +46,7 @@ export function useListFunctions({
             },
           },
         },
-        errorMessage: 'Failed to list functions',
+        errorMessage: 'Failed to list tables',
       });
       const response = await api.call();
       if (isError(response)) {
@@ -69,30 +62,32 @@ export function useListFunctions({
   });
 }
 
-export type UseGetFunctionArgs = PathParam<
+export type UseGetTableArgs = PathParam<
   CatalogApi,
-  '/functions/{name}',
+  '/tables/{full_name}',
   'get'
 >;
 
-export function useGetFunction({ name }: UseGetFunctionArgs) {
-  const [catalog, schema, ucFunction] = name.split('.');
+export function useGetTable({ full_name }: UseGetTableArgs) {
+  const [catalog, schema, table] = full_name.split('.');
 
-  return useQuery<SuccessResponseBody<CatalogApi, '/functions/{name}', 'get'>>({
-    queryKey: ['getFunction', catalog, schema, ucFunction],
+  return useQuery<
+    SuccessResponseBody<CatalogApi, '/tables/{full_name}', 'get'>
+  >({
+    queryKey: ['getTable', catalog, schema, table],
     queryFn: async () => {
-      const api = route({
+      const api = (route as Router<CatalogApi>)({
         client: CLIENT,
         request: {
-          path: '/functions/{name}',
+          path: '/tables/{full_name}',
           method: 'get',
           params: {
             paths: {
-              name,
+              full_name,
             },
           },
         },
-        errorMessage: 'Failed to fetch function',
+        errorMessage: 'Failed to fetch table',
       });
       const response = await api.call();
       if (isError(response)) {
@@ -107,41 +102,41 @@ export function useGetFunction({ name }: UseGetFunctionArgs) {
   });
 }
 
-export type UseDeleteFunctionArgs = PathParam<
+export type UseDeleteTableArgs = PathParam<
   CatalogApi,
-  '/functions/{name}',
+  '/tables/{full_name}',
   'delete'
 >;
 
-export type DeleteFunctionMutationParams = PathParam<
+export type DeleteTableMutationParams = PathParam<
   CatalogApi,
-  '/functions/{name}',
+  '/tables/{full_name}',
   'delete'
 >;
 
-export function useDeleteFunction({ name }: UseDeleteFunctionArgs) {
+export function useDeleteTable({ full_name }: UseDeleteTableArgs) {
   const queryClient = useQueryClient();
 
-  const [catalog, schema] = name.split('.');
+  const [catalog, schema] = full_name.split('.');
 
   return useMutation<
-    SuccessResponseBody<CatalogApi, '/functions/{name}', 'delete'>,
+    SuccessResponseBody<CatalogApi, '/tables/{full_name}', 'delete'>,
     Error,
-    DeleteFunctionMutationParams
+    DeleteTableMutationParams
   >({
-    mutationFn: async ({ name }: DeleteFunctionMutationParams) => {
-      const api = route({
+    mutationFn: async ({ full_name }: DeleteTableMutationParams) => {
+      const api = (route as Router<CatalogApi>)({
         client: CLIENT,
         request: {
-          path: '/functions/{name}',
+          path: '/tables/{full_name}',
           method: 'delete',
           params: {
             paths: {
-              name,
+              full_name,
             },
           },
         },
-        errorMessage: 'Failed to delete function',
+        errorMessage: 'Failed to delete schema',
       });
       const response = await api.call();
       if (isError(response)) {
@@ -155,7 +150,7 @@ export function useDeleteFunction({ name }: UseDeleteFunctionArgs) {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({
-        queryKey: ['listFunctions', catalog, schema],
+        queryKey: ['listTables', catalog, schema],
       });
     },
   });

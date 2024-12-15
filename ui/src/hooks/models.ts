@@ -5,21 +5,18 @@ import {
   UseQueryOptions,
 } from '@tanstack/react-query';
 import { CLIENT } from '../context/catalog';
-import { route as _route, isError, assertNever } from '../utils/openapi';
+import { route, isError, assertNever, Router } from '../utils/openapi';
 import type {
   paths as CatalogApi,
   components as CatalogComponent,
 } from '../types/api/catalog.gen';
 import type {
-  Router,
   Model,
   PathParam,
   QueryParam,
   RequestBody,
   SuccessResponseBody,
 } from '../utils/openapi';
-
-const route: Router<CatalogApi> = _route;
 
 export type ModelInterface = Model<CatalogComponent, 'RegisteredModelInfo'>;
 
@@ -38,7 +35,7 @@ export function useListModels({
   return useQuery<SuccessResponseBody<CatalogApi, '/models', 'get'>>({
     queryKey: ['listModels', catalog_name, schema_name],
     queryFn: async () => {
-      const api = route({
+      const api = (route as Router<CatalogApi>)({
         client: CLIENT,
         request: {
           path: '/models',
@@ -80,7 +77,7 @@ export function useGetModel({ full_name }: UseGetModelArgs) {
   >({
     queryKey: ['getModel', catalog, schema, model],
     queryFn: async () => {
-      const api = route({
+      const api = (route as Router<CatalogApi>)({
         client: CLIENT,
         request: {
           path: '/models/{full_name}',
@@ -126,7 +123,7 @@ export function useCreateModel() {
       schema_name,
       comment,
     }: CreateModelMutationParams) => {
-      const api = route({
+      const api = (route as Router<CatalogApi>)({
         client: CLIENT,
         request: {
           path: '/models',
@@ -183,7 +180,7 @@ export function useUpdateModel({ full_name }: UseUpdateModelArgs) {
     UpdateModelMutationParams
   >({
     mutationFn: async ({ comment }: UpdateModelMutationParams) => {
-      const api = route({
+      const api = (route as Router<CatalogApi>)({
         client: CLIENT,
         request: {
           path: '/models/{full_name}',
@@ -240,7 +237,7 @@ export function useDeleteModel({ full_name }: UseDeleteModelArgs) {
     DeleteModelMutationParams
   >({
     mutationFn: async ({ full_name }: DeleteModelMutationParams) => {
-      const api = route({
+      const api = (route as Router<CatalogApi>)({
         client: CLIENT,
         request: {
           path: '/models/{full_name}',
@@ -292,7 +289,7 @@ export function useListModelVersions({ full_name }: UseListModelVersionsArgs) {
   >({
     queryKey: ['listModelVersions', catalog, schema, model],
     queryFn: async () => {
-      const api = route({
+      const api = (route as Router<CatalogApi>)({
         client: CLIENT,
         request: {
           path: '/models/{full_name}/versions',
@@ -339,7 +336,7 @@ export function useGetModelVersion({
   >({
     queryKey: ['getVersion', catalog, schema, model, version],
     queryFn: async () => {
-      const api = route({
+      const api = (route as Router<CatalogApi>)({
         client: CLIENT,
         request: {
           path: '/models/{full_name}/versions/{version}',
@@ -396,7 +393,7 @@ export function useUpdateModelVersion({
     UpdateModelVersionMutationParams
   >({
     mutationFn: async ({ comment }: UpdateModelVersionMutationParams) => {
-      const api = route({
+      const api = (route as Router<CatalogApi>)({
         client: CLIENT,
         request: {
           path: '/models/{full_name}/versions/{version}',
@@ -464,7 +461,7 @@ export function useDeleteModelVersion({
       full_name,
       version,
     }: DeleteModelVersionMutationParams) => {
-      const api = route({
+      const api = (route as Router<CatalogApi>)({
         client: CLIENT,
         request: {
           path: '/models/{full_name}/versions/{version}',

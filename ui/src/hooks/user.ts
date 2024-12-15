@@ -1,18 +1,15 @@
 import { useMutation, useQuery } from '@tanstack/react-query';
 import { CLIENT } from '../context/control';
-import { route as _route, isError, assertNever } from '../utils/openapi';
+import { route, isError, assertNever, Router } from '../utils/openapi';
 import type {
   paths as ControlApi,
   components as ControlComponent,
 } from '../types/api/control.gen';
 import type {
-  Router,
   Model,
   ErrorResponseBody,
   SuccessResponseBody,
 } from '../utils/openapi';
-
-const route: Router<ControlApi> = _route;
 
 // TODO:
 // As of [28/11/2024], the OpenAPI specification for auth-related APIs has not been defined.
@@ -94,7 +91,7 @@ export function useGetCurrentUser() {
   return useQuery<SuccessResponseBody<ControlApi, '/scim2/Me', 'get'> | null>({
     queryKey: ['getUser'],
     queryFn: async () => {
-      const api = route({
+      const api = (route as Router<ControlApi>)({
         client: CLIENT,
         request: {
           path: '/scim2/Me',
