@@ -86,8 +86,14 @@ async def test_multiple_toolkits(uc_client):
     with create_function_and_cleanup_oss(uc_client, schema=SCHEMA) as func_obj:
         toolkit1 = UCFunctionToolkit(function_names=[func_obj.full_function_name], client=uc_client)
         toolkit2 = UCFunctionToolkit(function_names=[f"{CATALOG}.{SCHEMA}.*"], client=uc_client)
-        assert any(func_obj.full_function_name.replace(".", "__") in tool_name for tool_name in toolkit1.tools_dict)
-        assert any(f"{CATALOG}.{SCHEMA}.*".replace(".", "__") in tool_name for tool_name in toolkit2.tools_dict)
+        assert any(
+            func_obj.full_function_name.replace(".", "__") in tool_name
+            for tool_name in toolkit1.tools_dict
+        )
+        assert any(
+            f"{CATALOG}.{SCHEMA}.*".replace(".", "__") in tool_name
+            for tool_name in toolkit2.tools_dict
+        )
 
 
 def test_toolkit_creation_errors_no_client():
@@ -171,6 +177,7 @@ async def test_uc_function_to_litellm_tool(uc_client):
             function_name="catalog.schema.test", client=uc_client
         )
         assert tool.name == "catalog__schema__test"
+
 
 @pytest.mark.asyncio
 async def test_toolkit_litellm_kwarg_passthrough(uc_client):
