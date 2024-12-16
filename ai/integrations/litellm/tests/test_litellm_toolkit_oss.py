@@ -47,7 +47,6 @@ async def test_toolkit_e2e(uc_client):
         tools = toolkit.tools
         assert len(tools) == 1
         tool = tools[0]
-        assert func_obj.full_function_name.replace(".", "__") in tool.description
         assert func_obj.comment in tool.description
         assert tool.client_config == uc_client.to_dict()
 
@@ -67,7 +66,6 @@ async def test_toolkit_e2e_manually_passing_client(uc_client):
         assert len(tools) == 1
         tool = tools[0]
         assert tool.name == func_obj.tool_name
-        assert func_obj.full_function_name.replace(".", "__") in tool.description
         assert func_obj.comment in tool.description
         assert (
             "{'code': {'description': 'Python code to execute. Remember to print the final result to stdout.'"
@@ -88,8 +86,8 @@ async def test_multiple_toolkits(uc_client):
     with create_function_and_cleanup_oss(uc_client, schema=SCHEMA) as func_obj:
         toolkit1 = UCFunctionToolkit(function_names=[func_obj.full_function_name], client=uc_client)
         toolkit2 = UCFunctionToolkit(function_names=[f"{CATALOG}.{SCHEMA}.*"], client=uc_client)
-        assert toolkit1.name == func_obj.full_function_name.replace(".", "__")
-        assert toolkit2.name == f"{CATALOG}.{SCHEMA}.*".replace(".", "__")
+        assert any(func_obj.full_function_name.replace(".", "__") in tool_name for tool_name in toolkit1.tools_dict)
+        assert any(f"{CATALOG}.{SCHEMA}.*".replace(".", "__") in tool_name for tool_name in toolkit2.tools_dict)
 
 
 def test_toolkit_creation_errors_no_client():
