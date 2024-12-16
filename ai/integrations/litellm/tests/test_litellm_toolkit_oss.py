@@ -78,8 +78,8 @@ async def test_toolkit_e2e_manually_passing_client(uc_client):
 @pytest.mark.asyncio
 async def test_multiple_toolkits(uc_client):
     with create_function_and_cleanup_oss(uc_client, schema=SCHEMA) as func_obj:
-        toolkit1 = UCFunctionToolkit(function_names=[tool_1_name], client=uc_client)
-        toolkit2 = UCFunctionToolkit(function_names=[tool_2_name], client=uc_client)
+        toolkit1 = UCFunctionToolkit(function_names=[func_obj.full_function_name])
+        toolkit2 = UCFunctionToolkit(function_names=[f"{CATALOG}.{SCHEMA}.*"])
         toolkits = [toolkit1, toolkit2]
 
         assert all(isinstance(toolkit.tools[0], LiteLLMTool) for toolkit in toolkits)
