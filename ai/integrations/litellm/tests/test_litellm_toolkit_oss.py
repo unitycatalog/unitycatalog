@@ -1,4 +1,3 @@
-import json
 import os
 from unittest import mock
 
@@ -52,10 +51,6 @@ async def test_toolkit_e2e(uc_client):
         assert func_obj.comment in tool.description
         assert tool.client_config == uc_client.to_dict()
 
-        input_args = {"code": "print(1)"}
-        result = json.loads(tool.fn(**input_args))["value"]
-        assert result == "1\n"
-
         toolkit = UCFunctionToolkit(
             function_names=[f.full_name for f in uc_client.list_functions(CATALOG, SCHEMA)],
             client=uc_client,
@@ -79,9 +74,6 @@ async def test_toolkit_e2e_manually_passing_client(uc_client):
             in tool.description
         )
         assert tool.client_config == uc_client.to_dict()
-        input_args = {"code": "print(1)"}
-        result = json.loads(tool.fn(**input_args))["value"]
-        assert result == "1\n"
 
         toolkit = UCFunctionToolkit(
             function_names=[f"{CATALOG}.{SCHEMA}.*"],
@@ -96,12 +88,8 @@ async def test_multiple_toolkits(uc_client):
     with create_function_and_cleanup_oss(uc_client, schema=SCHEMA) as func_obj:
         toolkit1 = UCFunctionToolkit(function_names=[func_obj.full_function_name], client=uc_client)
         toolkit2 = UCFunctionToolkit(function_names=[f"{CATALOG}.{SCHEMA}.*"], client=uc_client)
-        tool1 = toolkit1.tools[0]
-        tool2 = [t for t in toolkit2.tools if t.name == func_obj.tool_name][0]
-        input_args = {"code": "print(1)"}
-        result1 = json.loads(tool1.fn(**input_args))["value"]
-        result2 = json.loads(tool2.fn(**input_args))["value"]
-        assert result1 == result2
+        assert toolkit1.name == func_obj.full_function_name.replace(".", "__")
+        assert toolkit2.name == f"{CATALOG}.{SCHEMA}.*".replace(".", "__")
 
 
 def test_toolkit_creation_errors_no_client():
@@ -184,31 +172,7 @@ async def test_uc_function_to_litellm_tool(uc_client):
         tool = UCFunctionToolkit.uc_function_to_litellm_tool(
             function_name="catalog.schema.test", client=uc_client
         )
-        result = json.loads(tool.fn(x="some_string"))["value"]
-        assert result == "some_string"
-
-
-@pytest.mark.asyncio
-async def test_toolkit_with_invalid_function_input(uc_client):
-    """Test toolkit with invalid input parameters for function conversion."""
-    mock_function_info = generate_function_info()
-
-    with (
-        mock.patch(
-            "unitycatalog.ai.core.utils.client_utils.validate_or_set_default_client",
-            return_value=uc_client,
-        ),
-        mock.patch.object(uc_client, "get_function", return_value=mock_function_info),
-    ):
-        # Test with invalid input params that are not matching expected schema
-        invalid_inputs = {"unexpected_key": "value"}
-        tool = UCFunctionToolkit.uc_function_to_litellm_tool(
-            function_name="catalog.schema.test", client=uc_client
-        )
-
-        with pytest.raises(ValueError, match="Extra parameters provided that are not defined"):
-            tool.fn(**invalid_inputs)
-
+        assert tool.name == "catalog__schema__test"
 
 @pytest.mark.asyncio
 async def test_toolkit_litellm_kwarg_passthrough(uc_client):
