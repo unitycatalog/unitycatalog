@@ -19,10 +19,9 @@ from unitycatalog.ai.test_utils.client_utils import (
     requires_databricks,
     set_default_client,
 )
-from unitycatalog.ai.test_utils.function_utils import create_function_and_cleanup
+from unitycatalog.ai.test_utils.function_utils import CATALOG, create_function_and_cleanup
 
-CATALOG = os.environ.get("CATALOG", "integration_testing")
-SCHEMA = os.environ.get("SCHEMA", "ucai_core_test")
+SCHEMA = os.environ.get("SCHEMA", "ucai_litellm_test")
 
 
 @pytest.fixture
