@@ -1,5 +1,4 @@
 import logging
-import os
 import uuid
 from contextlib import contextmanager
 from typing import Any, Callable, Generator, NamedTuple, Optional
@@ -22,7 +21,7 @@ from unitycatalog.client import (
     FunctionParameterInfos as OSSFunctionParameterInfos,
 )
 
-CATALOG = os.getenv("CATALOG", "integration_testing")
+CATALOG = "integration_testing"
 
 
 
