@@ -228,4 +228,3 @@ async def test_toolkit_litellm_kwarg_passthrough(uc_client):
         )
 
         assert tool is not None
-
