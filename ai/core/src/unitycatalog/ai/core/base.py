@@ -77,6 +77,7 @@ class BaseFunctionClient(ABC):
         schema: str,
         max_results: Optional[int] = None,
         page_token: Optional[str] = None,
+        **kwargs,
     ) -> PagedList[Any]:
         """
         List functions in a catalog and schema.
