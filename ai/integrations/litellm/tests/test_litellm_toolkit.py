@@ -10,7 +10,7 @@ from databricks.sdk.service.catalog import (
 )
 from pydantic import ValidationError
 
-from unitycatalog.ai.core.client import FunctionExecutionResult
+from unitycatalog.ai.core.base import FunctionExecutionResult
 from unitycatalog.ai.litellm.toolkit import LiteLLMTool, UCFunctionToolkit
 from unitycatalog.ai.test_utils.client_utils import (
     USE_SERVERLESS,
