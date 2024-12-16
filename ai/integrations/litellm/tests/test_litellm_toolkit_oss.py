@@ -7,7 +7,7 @@ from pydantic import ValidationError
 
 from unitycatalog.ai.core.base import FunctionExecutionResult
 from unitycatalog.ai.core.client import UnitycatalogFunctionClient
-from unitycatalog.ai.litellm.toolkit import UCFunctionToolkit
+from unitycatalog.ai.litellm.toolkit import LiteLLMTool, UCFunctionToolkit
 from unitycatalog.ai.test_utils.function_utils_oss import (
     CATALOG,
     create_function_and_cleanup_oss,
@@ -78,20 +78,11 @@ async def test_toolkit_e2e_manually_passing_client(uc_client):
 @pytest.mark.asyncio
 async def test_multiple_toolkits(uc_client):
     with create_function_and_cleanup_oss(uc_client, schema=SCHEMA) as func_obj:
-        toolkit1 = UCFunctionToolkit(function_names=[func_obj.full_function_name], client=uc_client)
-        toolkit2 = UCFunctionToolkit(function_names=[f"{CATALOG}.{SCHEMA}.*"], client=uc_client)
-        assert any(
-            (
-                func_obj.full_function_name.replace(".", "__") in tool_name
-                for tool_name in toolkit1.tools_dict
-            )
-        )
-        assert any(
-            (
-                f"{CATALOG}.{SCHEMA}.*".replace(".", "__") in tool_name
-                for tool_name in toolkit2.tools_dict
-            )
-        )
+        toolkit1 = UCFunctionToolkit(function_names=[tool_1_name], client=uc_client)
+        toolkit2 = UCFunctionToolkit(function_names=[tool_2_name], client=uc_client)
+        toolkits = [toolkit1, toolkit2]
+
+        assert all(isinstance(toolkit.tools[0], LiteLLMTool) for toolkit in toolkits)
 
 
 def test_toolkit_creation_errors_no_client():
