@@ -23,6 +23,7 @@ import java.net.HttpURLConnection;
 import java.net.InetSocketAddress;
 import java.net.ServerSocket;
 import java.net.URL;
+import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Paths;
@@ -36,10 +37,7 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Future;
 import java.util.regex.Pattern;
-import java.util.stream.Collectors;
 import org.apache.commons.codec.binary.Hex;
-import org.apache.http.NameValuePair;
-import org.apache.http.client.utils.URLEncodedUtils;
 
 /** Simple OAuth2 authentication flow for the CLI. */
 public class Oauth2CliExchange {
@@ -193,23 +191,13 @@ public class Oauth2CliExchange {
 
   public static class URLEncodedForm {
     public static String ofMap(Map<String, String> parameters) {
-      return URLEncodedUtils.format(
-          parameters.entrySet().stream()
-              .map(
-                  p ->
-                      new NameValuePair() {
-                        @Override
-                        public String getName() {
-                          return p.getKey();
-                        }
-
-                        @Override
-                        public String getValue() {
-                          return p.getValue();
-                        }
-                      })
-              .collect(Collectors.toList()),
-          StandardCharsets.UTF_8);
+      return parameters.entrySet().stream()
+          .map(
+              p ->
+                  URLEncoder.encode(p.getKey(), StandardCharsets.UTF_8)
+                      + "="
+                      + URLEncoder.encode(p.getValue(), StandardCharsets.UTF_8))
+          .reduce("", (lhs, rhs) -> lhs + "&" + rhs);
     }
   }
 
