@@ -107,8 +107,6 @@ class UCFunctionToolkit(BaseModel):
 
         parameters = content_types._build_schema(function_info.name, fields_dict)
 
-        # 6. Annotate required fields.
-        # Otherwise we infer it from the function signature.
         parameters["required"] = [
             k.name
             for k in param_infos

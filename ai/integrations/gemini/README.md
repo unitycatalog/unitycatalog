@@ -120,7 +120,7 @@ $$
 client.create_function(sql_function_body=sql_body)
 ```
 
-Now that the function is created and stored in the corresponding catalog and schema, we can use it within Anthropic's SDK.
+Now that the function is created and stored in the corresponding catalog and schema, we can use it within Gemini's SDK.
 
 ## Using the Function as a GenAI Tool
 
@@ -137,7 +137,7 @@ from unitycatalog.ai.gemini.toolkit import UCFunctionToolkit
 # Create an instance of the toolkit with the function that was created earlier.
 toolkit = UCFunctionToolkit(function_names=[f"{CATALOG}.{SCHEMA}.python_exec"], client=client)
 
-# Access the tool definitions that are in the interface that Anthropic's SDK expects
+# Access the tool definitions that are in the interface that Gemini's SDK expects
 tools = toolkit.generate_callable_tool_list()
 
 ```
