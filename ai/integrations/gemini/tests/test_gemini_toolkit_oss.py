@@ -67,27 +67,26 @@ async def uc_client():
 
 @pytest.fixture
 def sample_gemini_tool():
-
     def dummy_function(**kwargs):
         return "dummy_result"
-    
+
     name = "sample_function"
     description = "A sample function for testing."
     schema = {
-            "name": name,
-            "description": description,
-            "parameters": {
-                "properties": {
-                    "location": {
-                        'type': 'number',
-                        "description": "Retrieves the current weather from a provided location.",
-                        'nullable': True,
-                    }
+        "name": name,
+        "description": description,
+        "parameters": {
+            "properties": {
+                "location": {
+                    "type": "number",
+                    "description": "Retrieves the current weather from a provided location.",
+                    "nullable": True,
                 }
-            },
-            "type": "object",
-            "required": ["location"]           
-        }
+            }
+        },
+        "type": "object",
+        "required": ["location"],
+    }
 
     return GeminiTool(fn=dummy_function, name=name, description=description, schema=schema)
 
@@ -191,8 +190,8 @@ def test_toolkit_function_argument_errors(uc_client):
 
 def generate_function_info():
     parameters = [
-        {   
-            "comment" : "test comment",
+        {
+            "comment": "test comment",
             "name": "x",
             "type_text": "string",
             "type_json": '{"name":"x","type":"string","nullable":true,"metadata":{"EXISTS_DEFAULT":"\\"123\\"","default":"\\"123\\"","CURRENT_DEFAULT":"\\"123\\""}}',
@@ -200,7 +199,7 @@ def generate_function_info():
             "type_precision": 0,
             "type_scale": 0,
             "position": 17,
-            'parameter_type': FunctionParameterType.PARAM
+            "parameter_type": FunctionParameterType.PARAM,
         }
     ]
     return FunctionInfo(
@@ -211,8 +210,9 @@ def generate_function_info():
             parameters=[FunctionParameterInfo(**param) for param in parameters]
         ),
         full_name="catalog.schema.test",
-        comment="Executes Python code and returns its stdout."
+        comment="Executes Python code and returns its stdout.",
     )
+
 
 def test_convert_to_gemini_schema_with_valid_function_info():
     """
@@ -230,14 +230,17 @@ def test_convert_to_gemini_schema_with_valid_function_info():
         "description": "Executes Python code and returns its stdout.",
         "parameters": {
             "properties": {
-                "x": {"type": "string", "description": "test comment",'nullable': True},
+                "x": {"type": "string", "description": "test comment", "nullable": True},
             },
-            'type': 'object',
-            "required": ["x"]
+            "type": "object",
+            "required": ["x"],
         },
     }
 
-    assert result_schema == expected_schema, "The generated schema does not match the expected output."
+    assert (
+        result_schema == expected_schema
+    ), "The generated schema does not match the expected output."
+
 
 @pytest.mark.asyncio
 async def test_uc_function_to_gemini_tool(uc_client):
@@ -247,8 +250,10 @@ async def test_uc_function_to_gemini_tool(uc_client):
             "unitycatalog.ai.core.utils.client_utils.validate_or_set_default_client",
             return_value=uc_client,
         ),
-        mock.patch.object(uc_client, "get_function", return_value=mock_function_info),   
-        mock.patch.object(uc_client, "execute_function",
+        mock.patch.object(uc_client, "get_function", return_value=mock_function_info),
+        mock.patch.object(
+            uc_client,
+            "execute_function",
             return_value=FunctionExecutionResult(format="SCALAR", value="some_string"),
         ),
     ):
@@ -291,11 +296,16 @@ def test_generate_callable_tool_list(uc_client):
             "unitycatalog.ai.core.utils.client_utils.validate_or_set_default_client",
             return_value=uc_client,
         ),
-        mock.patch.object(uc_client, "get_function", return_value=mock_function_info),   
-        mock.patch.object(uc_client, "execute_function",return_value=FunctionExecutionResult(format="SCALAR", value="some_string")
+        mock.patch.object(uc_client, "get_function", return_value=mock_function_info),
+        mock.patch.object(
+            uc_client,
+            "execute_function",
+            return_value=FunctionExecutionResult(format="SCALAR", value="some_string"),
         ),
     ):
-        toolkit = UCFunctionToolkit(function_names=["catalog.schema.test_function"], client=uc_client)
+        toolkit = UCFunctionToolkit(
+            function_names=["catalog.schema.test_function"], client=uc_client
+        )
 
     # Generate callable tool list
     callable_tools = toolkit.generate_callable_tool_list()
@@ -306,8 +316,14 @@ def test_generate_callable_tool_list(uc_client):
 
     gemini_tool = callable_tools[0]
     tool = tools[0]
-    assert isinstance(gemini_tool, CallableFunctionDeclaration), "The tool should be a CallableFunctionDeclaration."
-    assert tool.name == "catalog__schema__test_function", "The tool's name does not match the expected name."
-    assert tool.description == "Executes Python code and returns its stdout.", "The tool's description does not match the expected description."
+    assert isinstance(
+        gemini_tool, CallableFunctionDeclaration
+    ), "The tool should be a CallableFunctionDeclaration."
+    assert (
+        tool.name == "catalog__schema__test_function"
+    ), "The tool's name does not match the expected name."
+    assert (
+        tool.description == "Executes Python code and returns its stdout."
+    ), "The tool's description does not match the expected description."
     assert "parameters" in tool.schema, "The tool's schema should include parameters."
     assert tool.schema["parameters"]["required"] == ["x"], "The required parameters do not match."

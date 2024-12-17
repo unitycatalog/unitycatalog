@@ -42,7 +42,6 @@ class GeminiTool(BaseModel):
         return {"name": self.name, "description": self.description, "schema": self.schema}
 
 
-
 class UCFunctionToolkit(BaseModel):
     """
     A toolkit for managing Unity Catalog functions and converting them into Autogen tools.
@@ -69,8 +68,7 @@ class UCFunctionToolkit(BaseModel):
         self.client = validate_or_set_default_client(self.client)
 
         if not self.function_names:
-            raise ValueError(
-                "Cannot create tool instances without function_names being provided.")
+            raise ValueError("Cannot create tool instances without function_names being provided.")
 
         self.tools_dict = process_function_names(
             function_names=self.function_names,
@@ -79,17 +77,16 @@ class UCFunctionToolkit(BaseModel):
             uc_function_to_tool_func=self.uc_function_to_gemini_tool,
         )
         return self
-    
+
     @staticmethod
-    def convert_to_gemini_schema(function_info: PydanticFunctionInputParams,
-                             strict: str = True):
+    def convert_to_gemini_schema(function_info: PydanticFunctionInputParams, strict: str = True):
         """
         Converts Unity Catalog function metadata into a Gemini-compatible schema.
 
         Args:
-            function_info (PydanticFunctionInputParams): 
+            function_info (PydanticFunctionInputParams):
                 The input parameter metadata of the UC function.
-            strict (bool): 
+            strict (bool):
                 Indicates whether to enforce strict typing rules in parameter conversion.
 
         Returns:
@@ -100,7 +97,7 @@ class UCFunctionToolkit(BaseModel):
         param_infos = function_info.input_params.parameters
         if param_infos is None:
             raise ValueError("Function input parameters are None.")
-        
+
         for param_info in param_infos:
             pydantic_field = param_info_to_pydantic_type(param_info, strict=strict)
             fields_dict[param_info.name] = (
@@ -113,12 +110,15 @@ class UCFunctionToolkit(BaseModel):
         # 6. Annotate required fields.
         # Otherwise we infer it from the function signature.
         parameters["required"] = [
-                k.name
-                for k in param_infos
-                if (
-                    k.parameter_default is None
-                    and (k.parameter_type is None or getattr(k.parameter_type, "value", None) == "PARAM")
-                )]
+            k.name
+            for k in param_infos
+            if (
+                k.parameter_default is None
+                and (
+                    k.parameter_type is None or getattr(k.parameter_type, "value", None) == "PARAM"
+                )
+            )
+        ]
         schema = dict(name=function_info.name, description=function_info.comment)
         if parameters["properties"]:
             schema["parameters"] = parameters
@@ -143,8 +143,7 @@ class UCFunctionToolkit(BaseModel):
             GeminiTool: The corresponding Autogen tool.
         """
         if function_name and function_info:
-            raise ValueError(
-                "Only one of function_name or function_info should be provided.")
+            raise ValueError("Only one of function_name or function_info should be provided.")
         client = validate_or_set_default_client(client)
 
         if function_name:
@@ -152,11 +151,9 @@ class UCFunctionToolkit(BaseModel):
         elif function_info:
             function_name = function_info.full_name
         else:
-            raise ValueError(
-                "Either function_name or function_info should be provided.")
+            raise ValueError("Either function_name or function_info should be provided.")
 
-        schema = UCFunctionToolkit.convert_to_gemini_schema(function_info,
-                                          strict=True)
+        schema = UCFunctionToolkit.convert_to_gemini_schema(function_info, strict=True)
 
         def func(**kwargs: Any) -> str:
             args_json = json.loads(json.dumps(kwargs, default=str))
@@ -181,14 +178,13 @@ class UCFunctionToolkit(BaseModel):
         """
         return list(self.tools_dict.values())
 
-    def generate_callable_tool_list(
-            self) -> None:
+    def generate_callable_tool_list(self) -> None:
         """
-        Converts all managed tools into a list of CallableFunctionDeclaration objects 
+        Converts all managed tools into a list of CallableFunctionDeclaration objects
         compatible with the Gemini agent.
 
         Returns:
-            List[CallableFunctionDeclaration]: 
+            List[CallableFunctionDeclaration]:
                 A list of CallableFunctionDeclaration instances representing the registered tools.
         """
 
