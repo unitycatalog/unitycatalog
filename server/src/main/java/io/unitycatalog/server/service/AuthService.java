@@ -30,6 +30,19 @@ import org.slf4j.LoggerFactory;
 
 @ExceptionHandler(GlobalExceptionHandler.class)
 public class AuthService {
+
+  // TODO: need common module for these constants, they are reused in the CLI
+  public interface Fields {
+    String GRANT_TYPE = "grant_type";
+    String CLIENT_ID = "client_id";
+    String CLIENT_SECRET = "client_secret";
+    String SUBJECT_TOKEN = "subject_token";
+    String SUBJECT_TOKEN_TYPE = "subject_token_type";
+    String ACTOR_TOKEN = "actor_token";
+    String ACTOR_TOKEN_TYPE = "actor_token_type";
+    String REQUESTED_TOKEN_TYPE = "requested_token_type";
+  }
+
   private static final Logger LOGGER = LoggerFactory.getLogger(AuthService.class);
   private static final UserRepository USER_REPOSITORY = UserRepository.getInstance();
 
@@ -219,28 +232,28 @@ public class AuthService {
   // - https://armeria.dev/docs/server-annotated-service/#injecting-a-parameter-as-an-enum-type
   @ToString
   private static class OAuthTokenExchangeRequest {
-    @Param("grant_type")
+    @Param(Fields.GRANT_TYPE)
     @Getter
     private String grantType;
 
-    @Param("requested_token_type")
+    @Param(Fields.REQUESTED_TOKEN_TYPE)
     @Getter
     private String requestedTokenType;
 
-    @Param("subject_token_type")
+    @Param(Fields.SUBJECT_TOKEN_TYPE)
     @Getter
     private String subjectTokenType;
 
-    @Param("subject_token")
+    @Param(Fields.SUBJECT_TOKEN)
     @Getter
     private String subjectToken;
 
-    @Param("actor_token_type")
+    @Param(Fields.ACTOR_TOKEN_TYPE)
     @Nullable
     @Getter
     private String actorTokenType;
 
-    @Param("actor_token")
+    @Param(Fields.ACTOR_TOKEN)
     @Nullable
     @Getter
     private String actorToken;

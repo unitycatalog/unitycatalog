@@ -49,7 +49,7 @@ public class Oauth2CliExchange {
     String CLIENT_SECRET = "client_secret";
     String REDIRECT_URL = "redirect_uri";
     String CODE = "code";
-    String RESPONSE_TYPE = "code";
+    String RESPONSE_TYPE = "response_type";
     String SCOPE = "scope";
     String STATE = "state";
   }
