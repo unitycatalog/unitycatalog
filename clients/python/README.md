@@ -1,8 +1,54 @@
 # Unity Catalog Python Client SDK
 
-The Python SDK for Unity Catalog that is published to https://pypi.org/project/unitycatalog-client/.
+The Python SDK for Unity Catalog that is published to [PyPI](https://pypi.org/project/unitycatalog-client/).
 
-## Generate Client Library
+## Quick Guide to releasing the Unity Catalog Python Client SDK
+
+### Generate the Client Library
+
+```sh
+build/sbt pythonClient/generate
+```
+
+### Prepare the Release Version
+
+```sh
+clients/python/build/prepare-release.sh <release version>
+```
+
+Example: releasing a release candidate version for Unity Catalog version 1.2.3 would use `1.2.3rc0`
+
+### Build the Package for Distribution
+
+```sh
+clients/python/build/build-python-package.sh
+```
+
+### Validate the package contents
+
+```sh
+unzip -l clients/python/target/dist/unitycatalog_client-<version>.whl
+```
+
+Check that the package contents match the expected directories and files in the `target/src/*` directory
+
+### Run Tests
+
+```sh
+./run-tests.sh
+```
+
+### Build Documentation (future)
+
+> Note: API Documentation is not currently hosted for the Unity Catalog Python Client. When a hosting solution is selected, run the following:
+
+```sh
+clients/python/build/build-docs.sh
+```
+
+-----------
+
+## Detailed Instructions and Guidance for Maintainers
 
 To generate the client library code from the API specification in `api/all.yaml`, run:
 
@@ -34,10 +80,34 @@ the generated code directories.
 
 For details on what operations are performed in the build process, see the [processing script](../../project/PythonPostBuild.scala) to learn more.
 
+### Updating the final release version
+
+If you are preparing for a release to either [Test PyPI](https://test.pypi.org/project/unitycatalog-client/) or [Main PyPI](https://pypi.org/project/unitycatalog-client/) you will need to run the version update script prior to building the distribution artifacts.
+
+Version conventions are as follows:
+
+**Development Build**: `<major>.<minor>.<micro>.dev0` (this should not be pushed to PyPI!)
+
+**Release Candidate**: `<major>.<minor>.<micro>rc<n>` (increment `n` but always start with `0`. RC builds should be pushed to both TestPyPI and Main PyPI to ensure adequate e2e testing prior to releasing a final version.). **Note** that an `rc` build does not have a period (`.`) between the `<micro>` version and the `rc<n>` definition!
+
+**Full Release**: `<major>.<minor>.<micro>`
+
+> Note: To update for a release, prior to running the packaging script (shown in the next section), simply run from the repo root (as an example, this is preparing the 0.3.1 first release candidate build):
+
+```sh
+clients/python/build/prepare-release.sh 0.3.1rc0
+```
+
 ### Packaging the Client SDK into distribution formats
 
 If you would like to generate the distributable artifacts (required for deploying `unitycatalog-client` to PyPI), simply execute the
-packaging script, located [here](./build/build-python-package.sh). This will create both a `.whl` artifact and a `bdist` archive for deploying
+packaging script, located [here](./build/build-python-package.sh).
+
+```sh
+clients/python/build/build-python-package.sh
+```
+
+This will create both a `.whl` artifact and a `bdist` archive for deploying
 to PyPI.
 
 If modifying the `pyproject.toml` file, please verify that the generated `.whl` file contains all required modules by running (from repo root):
@@ -78,8 +148,8 @@ the library unusable.
 If you are updating requirements, modifying the release version, or are providing additional guidance within the distributed package's PyPI
 README.md, ensure that you make updates to:
 
-1. The [pyproject.toml](build/pyproject.toml) file. If you are releasing a new version of the SDK, the `version` field is updated properly to the appropriate version of Unity Catalog's release when generating the distributable package code (it will match the release version specified within the [version.sbt](../../version.sbt) file). This does not need to be manually updated.
-2. The `setup.py` file. This file's version is updated automatically during the build process with the version specified in the [version.sbt](../../version.sbt).
+1. The [pyproject.toml](build/pyproject.toml) file. If you are releasing a new version of the SDK, the `version` field is updated properly to the appropriate version of Unity Catalog's release when generating the distributable package code (it will match the release version specified within the [version.sbt](../../version.sbt) file). This will only work for development builds. See the section above (`Updating the final release version`) for guidance on release version updates.
+2. The `setup.py` file. This file's version is updated automatically during the build process with the version specified in the [version.sbt](../../version.sbt). See the section above (`Updating the final release version`) for guidance on release version updates.
 3. The [README.md](build/README.md) file. This file is not updated with releases, but is the source of the landing page at [PyPI](https://pypi.org/project/unitycatalog-client/).
 
 ### Build definition updates
