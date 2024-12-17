@@ -16,14 +16,14 @@ export default function OktaAuthButton({
   const handleOnClick = () => {
     setWidgetModalOpen(true);
 
+    const widget = new OktaSignIn({
+      clientId: process.env.REACT_APP_OKTA_CLIENT_ID,
+      redirectUri: window.location.origin,
+      issuer:
+        'https://' + process.env.REACT_APP_OKTA_DOMAIN + '/oauth2/default',
+      logo: '/uc-logo.png',
+    });
     setTimeout(() => {
-      const widget = new OktaSignIn({
-        clientId: process.env.REACT_APP_OKTA_CLIENT_ID,
-        redirectUri: window.location.origin,
-        issuer:
-          'https://' + process.env.REACT_APP_OKTA_DOMAIN + '/oauth2/default',
-      });
-
       widget
         .showSignInToGetTokens({
           el: '#osw-container',
@@ -56,8 +56,9 @@ export default function OktaAuthButton({
       <Modal
         open={widgetModalOpen}
         footer={null}
-        onCancel={() => setWidgetModalOpen(false)}
-        destroyOnClose={true}
+        onCancel={() => {
+          setWidgetModalOpen(false);
+        }}
       >
         <div id={'osw-container'} />
       </Modal>
