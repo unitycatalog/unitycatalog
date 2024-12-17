@@ -104,6 +104,7 @@ object PythonClientPostBuild {
       }
     }
     moveGeneratedUnityCatalog(log, openApiOutputDir)
+    deleteIrrelevantFiles(log, openApiOutputDir)
   }
 
     /**
@@ -161,6 +162,39 @@ object PythonClientPostBuild {
               case Failure(e) => sys.error(s"Failed to delete $p: ${e.getMessage}")
             }
           }
+      }
+    }
+  }
+
+  /**
+   * Deletes the 'streams' directory from the target folder.
+   *
+   * @param log            The logger to output informational messages.
+   * @param targetDir      The target directory where 'streams' is located.
+   */
+  def deleteIrrelevantFiles(
+      log: Logger,
+      targetDir: String
+  ): Unit = {
+    // Define a sequence of paths to delete
+    val pathsToDelete: Seq[Path] = Seq(
+      Paths.get(targetDir, "streams"),
+      Paths.get(targetDir, ".github"),
+      Paths.get(targetDir, ".openapi-generator"),
+      Paths.get(targetDir, ".openapi-generator-ignore")
+    )
+
+    pathsToDelete.foreach { path =>
+      if (Files.exists(path)) {
+        log.info(s"Deleting '${path.getFileName}' at $path")
+        deleteRecursively(path) match {
+          case Success(_) =>
+            log.info(s"Successfully deleted '${path.getFileName}' at $path")
+          case Failure(exception) =>
+            sys.error(s"Failed to delete '${path.getFileName}' at $path: ${exception.getMessage}")
+        }
+      } else {
+        log.info(s"No '${path.getFileName}' found at $path. Skipping deletion.")
       }
     }
   }
