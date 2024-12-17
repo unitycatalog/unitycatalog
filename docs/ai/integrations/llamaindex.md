@@ -9,7 +9,7 @@ Integrate Unity Catalog AI with [LlamaIndex](https://docs.llamaindex.ai/en/stabl
 Install the Unity Catalog AI LlamaIndex integration from PyPI:
 
 ```sh
-pip install unitycatalog-llamaindex llama-index
+pip install unitycatalog-llamaindex
 ```
 
 ## Prerequisites
@@ -27,7 +27,7 @@ Ensure that you have a functional UC server set up and that you are able to acce
 To interact with Databricks Unity Catalog, install the optional package dependency when installing the integration package:
 
 ```sh
-pip install unitycatalog-llamaindex[databricks] llama-index
+pip install unitycatalog-llamaindex[databricks]
 ```
 
 ## Tutorial

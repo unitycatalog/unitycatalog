@@ -9,7 +9,7 @@ Integrate Unity Catalog AI with the [CrewAI](https://www.crewai.com/) SDK to uti
 Install the Unity Catalog AI CrewAI integration from PyPI:
 
 ```sh
-pip install unitycatalog-crewai crewai
+pip install unitycatalog-crewai
 ```
 
 ## Prerequisites
@@ -25,7 +25,7 @@ Ensure that you have a functional UC server set up and that you are able to acce
 To interact with Databricks Unity Catalog, install the optional package dependency when installing the integration package:
 
 ```sh
-pip install unitycatalog-crewai[databricks] crewai
+pip install unitycatalog-crewai[databricks]
 ```
 
 #### Authentication with Databricks Unity Catalog

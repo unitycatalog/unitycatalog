@@ -9,7 +9,7 @@ Integrate Unity Catalog AI with [LangChain](https://python.langchain.com) to sea
 Install the Unity Catalog AI LangChain integration from PyPI:
 
 ```sh
-pip install unitycatalog-langchain langchain
+pip install unitycatalog-langchain
 ```
 
 ## Prerequisites
@@ -25,7 +25,7 @@ Ensure that you have a functional UC server set up and that you are able to acce
 To interact with Databricks Unity Catalog, install the optional package dependency when installing the integration package:
 
 ```sh
-pip install unitycatalog-langchain[databricks] langchain
+pip install unitycatalog-langchain[databricks]
 ```
 
 ## Tutorial

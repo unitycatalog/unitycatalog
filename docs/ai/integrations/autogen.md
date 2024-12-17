@@ -11,7 +11,7 @@ Integrate Unity Catalog AI with the [AutoGen SDK](https://github.com/microsoft/a
 Install the Unity Catalog AI AutoGen integration from PyPI:
 
 ```sh
-pip install unitycatalog-autogen autogen autogen-agentchat~=0.2
+pip install unitycatalog-autogen
 ```
 
 ## Prerequisites
@@ -27,7 +27,7 @@ Ensure that you have a functional UC server set up and that you are able to acce
 To interact with Databricks Unity Catalog, install the optional package dependency when installing the integration package:
 
 ```sh
-pip install unitycatalog-autogen[databricks] autogen autogen-agentchat~=0.2
+pip install unitycatalog-autogen[databricks]
 ```
 
 #### Authentication with Databricks Unity Catalog

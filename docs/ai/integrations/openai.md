@@ -9,7 +9,7 @@ Integrate Unity Catalog AI with [OpenAI](https://platform.openai.com/docs/api-re
 To get started with the `unitycatalog-openai` integration, install the following packages from PyPI:
 
 ```sh
-pip install unitycatalog-openai openai
+pip install unitycatalog-openai
 ```
 
 ## Prerequisites
@@ -25,7 +25,7 @@ Ensure that you have a functional UC server set up and that you are able to acce
 To interact with Databricks Unity Catalog, install the optional package dependency when installing the integration package:
 
 ```sh
-pip install unitycatalog-openai[databricks] openai
+pip install unitycatalog-openai[databricks]
 ```
 
 ## Tutorial

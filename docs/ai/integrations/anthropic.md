@@ -10,7 +10,7 @@ as tools in Anthropic LLM calls. This guide covers installation, setup, caveats,
 Install the Unity Catalog AI Anthropic integration from PyPI:
 
 ```sh
-pip install unitycatalog-anthropic anthropic
+pip install unitycatalog-anthropic
 ```
 
 ## Prerequisites
@@ -26,7 +26,7 @@ Ensure that you have a functional UC server set up and that you are able to acce
 To interact with Databricks Unity Catalog, install the optional package dependency when installing the integration package:
 
 ```sh
-pip install unitycatalog-anthropic[databricks] anthropic
+pip install unitycatalog-anthropic[databricks]
 ```
 
 ## Tutorial
