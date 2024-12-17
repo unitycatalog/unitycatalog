@@ -5,26 +5,26 @@ from unittest import mock
 
 import openai
 import pytest
-from databricks.sdk.service.catalog import (
-    FunctionInfo,
-    FunctionParameterInfo,
-    FunctionParameterInfos,
-)
+import pytest_asyncio
 from openai.types.chat.chat_completion_message_tool_call import Function
 
 from tests.helper_functions import mock_chat_completion_response, mock_choice
 from unitycatalog.ai.core.base import set_uc_function_client
+from unitycatalog.ai.core.client import (
+    UnitycatalogFunctionClient,
+)
 from unitycatalog.ai.core.utils.function_processing_utils import get_tool_name
 from unitycatalog.ai.openai.toolkit import UCFunctionToolkit
-from unitycatalog.ai.test_utils.client_utils import (
-    USE_SERVERLESS,
-    get_client,
-    requires_databricks,
-    set_default_client,
+from unitycatalog.ai.test_utils.function_utils_oss import (
+    CATALOG,
+    create_function_and_cleanup_oss,
 )
-from unitycatalog.ai.test_utils.function_utils import (
-    create_function_and_cleanup,
-    random_func_name,
+from unitycatalog.client import (
+    ApiClient,
+    Configuration,
+    FunctionInfo,
+    FunctionParameterInfo,
+    FunctionParameterInfos,
 )
 
 SCHEMA = os.environ.get("SCHEMA", "ucai_openai_test")
@@ -35,17 +35,29 @@ def env_setup(monkeypatch):
     monkeypatch.setenv("OPENAI_API_KEY", "fake-key")
 
 
-@requires_databricks
-@pytest.mark.parametrize("use_serverless", [True, False])
-def test_tool_calling(use_serverless, monkeypatch):
-    monkeypatch.setenv(USE_SERVERLESS, str(use_serverless))
-    client = get_client()
+@pytest_asyncio.fixture
+async def uc_client():
+    config = Configuration()
+    config.host = "http://localhost:8080/api/2.1/unity-catalog"
+    uc_api_client = ApiClient(configuration=config)
+
+    uc_client = UnitycatalogFunctionClient(api_client=uc_api_client)
+    uc_client.uc.create_catalog(name=CATALOG)
+    uc_client.uc.create_schema(name=SCHEMA, catalog_name=CATALOG)
+
+    yield uc_client
+
+    await uc_client.close_async()
+    await uc_api_client.close()
+
+
+@pytest.mark.asyncio
+async def test_tool_calling(uc_client):
     with (
-        set_default_client(client),
-        create_function_and_cleanup(client, schema=SCHEMA) as func_obj,
+        create_function_and_cleanup_oss(uc_client, schema=SCHEMA) as func_obj,
     ):
         func_name = func_obj.full_function_name
-        toolkit = UCFunctionToolkit(function_names=[func_name])
+        toolkit = UCFunctionToolkit(function_names=[func_name], client=uc_client)
         tools = toolkit.tools
         assert len(tools) == 1
 
@@ -79,7 +91,7 @@ def test_tool_calling(use_serverless, monkeypatch):
             assert isinstance(arguments.get("code"), str)
 
             # execute the function based on the arguments
-            result = client.execute_function(func_name, arguments)
+            result = uc_client.execute_function(func_name, arguments)
             assert result.value == "1024\n"
 
             # Create a message containing the result of the function call
@@ -99,17 +111,13 @@ def test_tool_calling(use_serverless, monkeypatch):
             )
 
 
-@requires_databricks
-@pytest.mark.parametrize("use_serverless", [True, False])
-def test_tool_calling_with_multiple_choices(use_serverless, monkeypatch):
-    monkeypatch.setenv(USE_SERVERLESS, str(use_serverless))
-    client = get_client()
+@pytest.mark.asyncio
+async def test_tool_calling_with_multiple_choices(uc_client):
     with (
-        set_default_client(client),
-        create_function_and_cleanup(client, schema=SCHEMA) as func_obj,
+        create_function_and_cleanup_oss(uc_client, schema=SCHEMA) as func_obj,
     ):
         func_name = func_obj.full_function_name
-        toolkit = UCFunctionToolkit(function_names=[func_name])
+        toolkit = UCFunctionToolkit(function_names=[func_name], client=uc_client)
         tools = toolkit.tools
         assert len(tools) == 1
 
@@ -149,7 +157,7 @@ def test_tool_calling_with_multiple_choices(use_serverless, monkeypatch):
             assert isinstance(arguments.get("code"), str)
 
             # execute the function based on the arguments
-            result = client.execute_function(func_name, arguments)
+            result = uc_client.execute_function(func_name, arguments)
             assert result.value == "1024\n"
 
             # Create a message containing the result of the function call
@@ -169,116 +177,36 @@ def test_tool_calling_with_multiple_choices(use_serverless, monkeypatch):
             )
 
 
-@requires_databricks
-@pytest.mark.parametrize("use_serverless", [True, False])
-def test_tool_calling_work_with_non_json_schema(use_serverless, monkeypatch):
-    monkeypatch.setenv(USE_SERVERLESS, str(use_serverless))
-    func_name = random_func_name(schema=SCHEMA)
-    function_name = func_name.split(".")[-1]
-    sql_body = f"""CREATE FUNCTION {func_name}(start DATE, end DATE)
-RETURNS TABLE(day_of_week STRING, day DATE)
-COMMENT 'Calculate the weekdays between start and end, return as a table'
-RETURN SELECT extract(DAYOFWEEK_ISO FROM day), day
-            FROM (SELECT sequence({function_name}.start, {function_name}.end)) AS T(days)
-                LATERAL VIEW explode(days) AS day
-            WHERE extract(DAYOFWEEK_ISO FROM day) BETWEEN 1 AND 5;
-"""
+@pytest.mark.asyncio
+async def test_tool_choice_param(uc_client):
+    def cap_str(s: str) -> str:
+        """
+        Capitalizes the input string.
 
-    client = get_client()
+        Args:
+            s: The input string to capitalize.
+        """
+        return s.capitalize()
+
+    def upper_str(s: str) -> str:
+        """
+        Uppercases the input string.
+
+        Args:
+            s: The input string to uppercase.
+        """
+        return s.upper()
+
     with (
-        set_default_client(client),
-        create_function_and_cleanup(
-            client, func_name=func_name, sql_body=sql_body, schema=SCHEMA
-        ) as func_obj,
-    ):
-        toolkit = UCFunctionToolkit(function_names=[func_name], client=client)
-        tools = toolkit.tools
-        assert len(tools) == 1
-        assert tools[0]["function"]["strict"] is False
-
-        messages = [
-            {
-                "role": "system",
-                "content": "You are a helpful customer support assistant. Use the supplied tools to assist the user.",
-            },
-            {"role": "user", "content": "What are the weekdays between 2024-01-01 and 2024-01-07?"},
-        ]
-
-        with mock.patch(
-            "openai.chat.completions.create",
-            return_value=mock_chat_completion_response(
-                function=Function(
-                    arguments='{"start":"2024-01-01","end":"2024-01-07"}',
-                    name=func_obj.tool_name,
-                ),
-            ),
-        ):
-            response = openai.chat.completions.create(
-                model="gpt-4o-mini",
-                messages=messages,
-                tools=tools,
-            )
-            tool_calls = response.choices[0].message.tool_calls
-            assert len(tool_calls) == 1
-            tool_call = tool_calls[0]
-            assert tool_call.function.name == func_obj.tool_name
-            arguments = json.loads(tool_call.function.arguments)
-            assert isinstance(arguments.get("start"), str)
-            assert isinstance(arguments.get("end"), str)
-
-            # execute the function based on the arguments
-            result = client.execute_function(func_name, arguments)
-            assert result.value is not None
-
-            # Create a message containing the result of the function call
-            function_call_result_message = {
-                "role": "tool",
-                "content": json.dumps({"content": result.value}),
-                "tool_call_id": tool_call.id,
-            }
-            assistant_message = response.choices[0].message.to_dict()
-            completion_payload = {
-                "model": "gpt-4o-mini",
-                "messages": [*messages, assistant_message, function_call_result_message],
-            }
-            # Generate final response
-            openai.chat.completions.create(
-                model=completion_payload["model"], messages=completion_payload["messages"]
-            )
-
-
-@requires_databricks
-@pytest.mark.parametrize("use_serverless", [True, False])
-def test_tool_choice_param(use_serverless, monkeypatch):
-    monkeypatch.setenv(USE_SERVERLESS, str(use_serverless))
-    cap_func = random_func_name(schema=SCHEMA)
-    sql_body1 = f"""CREATE FUNCTION {cap_func}(s STRING)
-RETURNS STRING
-COMMENT 'Capitalizes the input string'
-LANGUAGE PYTHON
-AS $$
-  return s.capitalize()
-$$
-"""
-    upper_func = random_func_name(schema=SCHEMA)
-    sql_body2 = f"""CREATE FUNCTION {upper_func}(s STRING)
-RETURNS STRING
-COMMENT 'Uppercases the input string'
-LANGUAGE PYTHON
-AS $$
-  return s.upper()
-$$
-"""
-    client = get_client()
-    with (
-        create_function_and_cleanup(
-            client, func_name=cap_func, sql_body=sql_body1, schema=SCHEMA
-        ) as cap_func_obj,
-        create_function_and_cleanup(
-            client, func_name=upper_func, sql_body=sql_body2, schema=SCHEMA
+        create_function_and_cleanup_oss(uc_client, schema=SCHEMA, callable=cap_str) as cap_func_obj,
+        create_function_and_cleanup_oss(
+            uc_client, schema=SCHEMA, callable=upper_str
         ) as upper_func_obj,
     ):
-        toolkit = UCFunctionToolkit(function_names=[cap_func, upper_func], client=client)
+        toolkit = UCFunctionToolkit(
+            function_names=[cap_func_obj.full_function_name, upper_func_obj.full_function_name],
+            client=uc_client,
+        )
         tools = toolkit.tools
         assert len(tools) == 2
 
@@ -310,7 +238,7 @@ $$
         tool_call = tool_calls[0]
         assert tool_call.function.name == cap_func_obj.tool_name
         arguments = json.loads(tool_call.function.arguments)
-        result = client.execute_function(cap_func, arguments)
+        result = uc_client.execute_function(cap_func_obj.full_function_name, arguments)
         assert result.value == "Abc"
 
         messages = [
@@ -340,26 +268,24 @@ $$
         tool_call = tool_calls[0]
         assert tool_call.function.name == upper_func_obj.tool_name
         arguments = json.loads(tool_call.function.arguments)
-        result = client.execute_function(upper_func, arguments)
+        result = uc_client.execute_function(upper_func_obj.full_function_name, arguments)
         assert result.value == "ABC"
 
 
-@pytest.mark.parametrize("use_serverless", [True, False])
-def test_openai_toolkit_initialization(use_serverless, monkeypatch):
-    monkeypatch.setenv(USE_SERVERLESS, str(use_serverless))
-    client = get_client()
+@pytest.mark.asyncio
+async def test_openai_toolkit_initialization(uc_client):
     with pytest.raises(
         ValueError,
         match=r"No client provided, either set the client when creating a toolkit or set the default client",
     ):
         toolkit = UCFunctionToolkit(function_names=[])
 
-    set_uc_function_client(client)
+    set_uc_function_client(uc_client)
     toolkit = UCFunctionToolkit(function_names=[])
     assert len(toolkit.tools) == 0
     set_uc_function_client(None)
 
-    toolkit = UCFunctionToolkit(function_names=[], client=client)
+    toolkit = UCFunctionToolkit(function_names=[], client=uc_client)
     assert len(toolkit.tools) == 0
 
 
@@ -376,48 +302,49 @@ def generate_function_info(parameters: List[Dict], catalog="catalog", schema="sc
     )
 
 
-@pytest.mark.parametrize("use_serverless", [True, False])
-def test_function_definition_generation(use_serverless, monkeypatch):
-    monkeypatch.setenv(USE_SERVERLESS, str(use_serverless))
-    client = get_client()
-    with set_default_client(client):
-        function_info = generate_function_info(
-            [
-                {
-                    "name": "code",
-                    "type_text": "string",
-                    "type_json": '{"name":"code","type":"string","nullable":true,"metadata":{"comment":"Python code to execute. Remember to print the final result to stdout."}}',
-                    "type_name": "STRING",
-                    "type_precision": 0,
-                    "type_scale": 0,
-                    "position": 0,
-                    "parameter_type": "PARAM",
-                    "comment": "Python code to execute. Remember to print the final result to stdout.",
-                }
-            ]
-        )
+# NB: This test is replicated in ai/integrations/openai/tests/test_openai_toolkit.py
+# with the sole exception being the class statements for assembling the FunctionInfo payload
+# to ensure that the OSS implementation and the Databricks implementations are compatible with
+# the Tookit interface integrations.
+@pytest.mark.asyncio
+async def test_function_definition_generation(uc_client):
+    function_info = generate_function_info(
+        [
+            {
+                "name": "code",
+                "type_text": "string",
+                "type_json": '{"name":"code","type":"string","nullable":true,"metadata":{"comment":"Python code to execute. Remember to print the final result to stdout."}}',
+                "type_name": "STRING",
+                "type_precision": 0,
+                "type_scale": 0,
+                "position": 0,
+                "parameter_type": "PARAM",
+                "comment": "Python code to execute. Remember to print the final result to stdout.",
+            }
+        ]
+    )
 
-        function_definition = UCFunctionToolkit.uc_function_to_openai_function_definition(
-            function_info=function_info
-        )
-        assert function_definition == {
-            "type": "function",
-            "function": {
-                "name": get_tool_name(function_info.full_name),
-                "description": function_info.comment,
-                "strict": True,
-                "parameters": {
-                    "properties": {
-                        "code": {
-                            "anyOf": [{"type": "string"}, {"type": "null"}],
-                            "description": "Python code to execute. Remember to print the final result to stdout.",
-                            "title": "Code",
-                        }
-                    },
-                    "title": get_tool_name(function_info.full_name) + "__params",
-                    "type": "object",
-                    "additionalProperties": False,
-                    "required": ["code"],
+    function_definition = UCFunctionToolkit(
+        client=uc_client
+    ).uc_function_to_openai_function_definition(function_info=function_info, client=uc_client)
+    assert function_definition == {
+        "type": "function",
+        "function": {
+            "name": get_tool_name(function_info.full_name),
+            "description": function_info.comment,
+            "strict": True,
+            "parameters": {
+                "properties": {
+                    "code": {
+                        "anyOf": [{"type": "string"}, {"type": "null"}],
+                        "description": "Python code to execute. Remember to print the final result to stdout.",
+                        "title": "Code",
+                    }
                 },
+                "title": get_tool_name(function_info.full_name) + "__params",
+                "type": "object",
+                "additionalProperties": False,
+                "required": ["code"],
             },
-        }
+        },
+    }

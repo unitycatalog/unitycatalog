@@ -1,4 +1,5 @@
 import decimal
+import inspect
 import json
 import logging
 import os
@@ -163,12 +164,20 @@ def process_function_names(
             full_func_name = FullFunctionName.validate_full_function_name(name)
             if full_func_name.function == "*":
                 token = None
+                # functions with BROWSE permission should not be included since this
+                # function should include only the functions that can be executed
+                list_kwarg = (
+                    {"include_browse": False}
+                    if "include_browse" in inspect.signature(client.list_functions).parameters
+                    else {}
+                )
                 while True:
                     functions = client.list_functions(
                         catalog=full_func_name.catalog,
                         schema=full_func_name.schema,
                         max_results=max_results,
                         page_token=token,
+                        **list_kwarg,
                     )
                     for f in functions:
                         if f.full_name not in tools_dict:

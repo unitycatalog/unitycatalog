@@ -119,7 +119,7 @@ public class PermissionService {
     // TODO: could be more explicit about the hierarchy here.
     // For now this is sufficient in that it covers owner on resources parentage.
     UUID parentId = authorizer.getHierarchyParent(resourceId);
-    UUID grandparentId = (parentId != null) ? authorizer.getHierarchyParent(parentId):null;
+    UUID grandparentId = (parentId != null) ? authorizer.getHierarchyParent(parentId) : null;
 
     boolean isOwner =
             authorizer.authorize(principalId, METASTORE_REPOSITORY.getMetastoreId(), Privileges.OWNER) ||
