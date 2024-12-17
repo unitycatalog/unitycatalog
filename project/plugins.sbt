@@ -26,7 +26,7 @@ addSbtPlugin("org.xerial.sbt" % "sbt-sonatype" % "2.3")
 
 addSbtPlugin("net.aichler" % "sbt-jupiter-interface" % "0.11.1")
 
-addSbtPlugin("org.openapitools" % "sbt-openapi-generator" % "7.5.0")
+addSbtPlugin("org.openapitools" % "sbt-openapi-generator" % "7.9.0")
 
 addSbtPlugin("com.github.sbt" % "sbt-license-report" % "1.6.1")
 

@@ -10,8 +10,12 @@ Start by cloning the open source Unity Catalog GitHub repository:
 git clone git@github.com:unitycatalog/unitycatalog.git
 ```
 
-To run Unity Catalog, you need **Java 17** installed on your machine. You can always run the `java --version` command
-to verify that you have the right version of Java installed such as the following example output.
+> To start Unity Catalog in Docker, refer to the [Docker
+> Compose docs](docker_compose.md).
+
+To run Unity Catalog, you need **Java 17** installed on your machine.  You can
+always run the `java --version` command to verify that you have the right
+version of Java installed such as the following example output.
 
 ```bash
 % java --version
@@ -264,7 +268,7 @@ bin/uc table read --full_name unity.default.mytable
 Delete the table to clean up:
 
 ```bash
-bin/uc table delete --full_name unity.default.my_table
+bin/uc table delete --full_name unity.default.mytable
 ```
 
 > Note, while you have deleted the table from Unity Catalog, the underlying file system may still have the files (i.e.,

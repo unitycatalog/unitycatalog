@@ -1,5 +1,5 @@
-import ast
 import decimal
+import inspect
 import json
 import logging
 import os
@@ -164,12 +164,20 @@ def process_function_names(
             full_func_name = FullFunctionName.validate_full_function_name(name)
             if full_func_name.function == "*":
                 token = None
+                # functions with BROWSE permission should not be included since this
+                # function should include only the functions that can be executed
+                list_kwarg = (
+                    {"include_browse": False}
+                    if "include_browse" in inspect.signature(client.list_functions).parameters
+                    else {}
+                )
                 while True:
                     functions = client.list_functions(
                         catalog=full_func_name.catalog,
                         schema=full_func_name.schema,
                         max_results=max_results,
                         page_token=token,
+                        **list_kwarg,
                     )
                     for f in functions:
                         if f.full_name not in tools_dict:
@@ -269,6 +277,13 @@ def supported_param_info_types():
     except ImportError:
         pass
 
+    try:
+        from unitycatalog.client.models import FunctionParameterInfo as UCFunctionParameterInfo
+
+        types += (UCFunctionParameterInfo,)
+    except ImportError:
+        pass
+
     return types
 
 
@@ -281,65 +296,11 @@ def supported_function_info_types():
         types += (FunctionInfo,)
     except ImportError:
         pass
+    try:
+        from unitycatalog.client.models import FunctionInfo as UCFunctionInfo
+
+        types += (UCFunctionInfo,)
+    except ImportError:
+        pass
 
     return types
-
-
-def is_python_code(code_str: str) -> bool:
-    """Check if the provided string is valid Python code."""
-    try:
-        ast.parse(code_str)
-        return True
-    except SyntaxError:
-        return False
-
-
-def convert_quoting_to_sql_safe_format(string_value: str) -> str:
-    """
-    Convert a string to a SQL-safe format by escaping single quotes.
-
-    Args:
-        string_value: The string to be converted.
-
-    Returns:
-        str: The SQL-safe string.
-    """
-    has_single_quote = "'" in string_value
-    has_double_quote = '"' in string_value
-
-    if not has_single_quote and not has_double_quote:
-        return string_value
-
-    if has_single_quote and not has_double_quote:
-        string_value = string_value.replace("'", '"')
-    elif has_single_quote and has_double_quote:
-        raise ValueError(
-            "The argument passed in has been detected as Python code that contains both single and double quotes. "
-            "This is not supported. Code must use only one style of quotation. Please fix the code and try again."
-        )
-    return string_value
-
-
-def sanitize_string_inputs_of_function_params(param_value: Any) -> str:
-    """
-    Sanitize string inputs of function parameters to allow for code block submission.
-
-    Args:
-        param_value: The value of the parameter to sanitize.
-
-    Returns:
-        A sanitized string of the argument value.
-    """
-
-    if isinstance(param_value, str) and is_python_code(param_value):
-        # Escape single quotes, backslashes, and control characters that would otherwise break Python code execution
-        parsed = (
-            param_value.replace("\\", "\\\\")
-            .replace("\r", "\\r")
-            .replace("\n", "\\n")
-            .replace("\t", "\\t")
-        )
-        quotes_parsed = convert_quoting_to_sql_safe_format(parsed)
-    else:
-        quotes_parsed = param_value
-    return str(quotes_parsed)

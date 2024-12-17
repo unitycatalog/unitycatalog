@@ -30,7 +30,7 @@ public class SecurityContext {
   private static final ObjectMapper mapper = new ObjectMapper();
   private static final Logger LOGGER = LoggerFactory.getLogger(SecurityContext.class);
 
-  private final Path certsFile;
+  @Getter private final Path certsFile;
   private final Path serviceTokenFile;
 
   @Getter private final RSAPublicKey rsaPublicKey;
@@ -72,9 +72,10 @@ public class SecurityContext {
   public String createAccessToken(DecodedJWT decodedJWT) {
 
     String subject =
-        decodedJWT.getClaim(JwtClaim.EMAIL.key()).isMissing()
-            ? decodedJWT.getClaim(JwtClaim.SUBJECT.key()).asString()
-            : decodedJWT.getClaim(JwtClaim.EMAIL.key()).asString();
+        decodedJWT
+            .getClaims()
+            .getOrDefault(JwtClaim.EMAIL.key(), decodedJWT.getClaim(JwtClaim.SUBJECT.key()))
+            .asString();
 
     return JWT.create()
         .withSubject(serviceName)
