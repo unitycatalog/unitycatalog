@@ -14,7 +14,7 @@ from langchain_core.runnables import RunnableGenerator
 from langchain_databricks.chat_models import ChatDatabricks, ChatGeneration
 from langgraph.prebuilt import create_react_agent
 
-from unitycatalog.ai.core.client import (
+from unitycatalog.ai.core.base import (
     FunctionExecutionResult,
 )
 from unitycatalog.ai.core.utils.function_processing_utils import get_tool_name

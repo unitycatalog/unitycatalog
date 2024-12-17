@@ -2,16 +2,16 @@
 
 This page explains how to create Unity Catalog tables with Apache Spark™.
 
-[Apache Spark](http://spark.apache.org) is a multi-language engine for executing data engineering, data science, and machine learning on single-node machines or clusters.  
+[Apache Spark](http://spark.apache.org) is a multi-language engine for executing data engineering, data science, and machine learning on single-node machines or clusters.
 
-Integrating Apache Spark with Unity Catalog offers significant advantages over traditional catalog solutions. Unity Catalog provides unified governance across both data and AI assets, fine-grained access control down to the column level, automated data lineage tracking, and seamless interoperability with various lakehouse formats and compute engines. It enables centralized metadata management, simplified data discovery, and enhanced security.  The credential vending capability of Unity Catalog is particularly noteworthy as it allows Apache Spark to securely access data stored in Unity Catalog through a controlled mechanism.
+Integrating Apache Spark with Unity Catalog offers significant advantages over traditional catalog solutions. Unity Catalog provides unified governance across both data and AI assets, fine-grained access control down to the column level, automated data lineage tracking, and seamless interoperability with various lakehouse formats and compute engines. It enables centralized metadata management, simplified data discovery, and enhanced security. The credential vending capability of Unity Catalog is particularly noteworthy as it allows Apache Spark to securely access data stored in Unity Catalog through a controlled mechanism.
 
-* Neatly organizing data in tables and volumes in the Unity Catalog hierarchy makes it a lot easier to write Spark code.  
-* Make it easier to decouple business logic from file paths.  
-* Provides easy access to different file formats without end users needing to know how the data is stored.
+- Neatly organizing data in tables and volumes in the Unity Catalog hierarchy makes it a lot easier to write Spark code.
+- Make it easier to decouple business logic from file paths.
+- Provides easy access to different file formats without end users needing to know how the data is stored.
 
 !!! warning "Prerequisites"
-    For Apache Spark and Delta Lake to work together with Unity Catalog, you will need atleast Apache Spark 3.5.3 and Delta Lake 3.2.1.
+For Apache Spark and Delta Lake to work together with Unity Catalog, you will need atleast Apache Spark 3.5.3 and Delta Lake 3.2.1.
 
 ## Download and Configure Unity Catalog for Apache Spark
 
@@ -28,7 +28,7 @@ tar xzf spark-3.5.3-bin-hadoop3.tgz
 
 ### [Optional] Configure server properties for cloud storage
 
-To have Unity Catalog work with cloud object storage as the storage location for tables, configure the `etc/conf/server.properties` to add configuration:  
+To have Unity Catalog work with cloud object storage as the storage location for tables, configure the `etc/conf/server.properties` to add configuration:
 
 === "AWS S3"
 
@@ -63,7 +63,7 @@ To have Unity Catalog work with cloud object storage as the storage location for
 
 ### [Optional] Restart Unity Catalog Server
 
-If the UC Server is already started, please restart it to account for the cloud storage server properties.  
+If the UC Server is already started, please restart it to account for the cloud storage server properties.
 
 ```bash
 cd unitycatalog/
@@ -73,6 +73,12 @@ bin/start-uc-server
 ## Working with Unity Catalog Tables with Apache Spark and Delta Lake Locally
 
 Let’s start running some Spark SQL queries in the Spark SQL shell (`bin/spark-sql`) or PySpark shell (`bin/pyspark`) within the terminal of your Apache Spark 3.5.3 folder against your local UC.
+
+You can run the code below to work with data stored in the `unity` catalog that comes pre-loaded with the local Unity Catalog server.
+
+!!! warning "Catalog name in configs"
+
+    If you want to work with data stored in another catalog, make sure to change `unity` in the Spark configs to `<your_catalog_name>`, e.g. `spark.sql.catalog.<your_catalog_name>`.
 
 === "Spark SQL"
 
@@ -103,14 +109,15 @@ Let’s start running some Spark SQL queries in the Spark SQL shell (`bin/spark-
     ```
 
 !!! tip "Tip"
-     Initially, this may take a few minutes to run to download the necessary dependencies.  Afterwards, you can run some quick commands to see your UC assets within Spark SQL shell.
+
+    Initially, this may take a few minutes to run to download the necessary dependencies. Afterwards, you can run some quick commands to see your UC assets within Spark SQL shell.
 
 Notice the following packages (`--packages`) and configurations (`--conf`)
 
-* `--packages` points to the delta-spark and unitycatalog-spark packages; update the version numbers to your current versions.
-* `spark.sql.catalog.<catalog_name>.uri` points to your local development UC instance
-* `spark.sql.catalog.<catalog_name>.token` is empty indicating there is no authentication; refer to [auth](../server/auth.md) for more information.
-* `spark.sql.defaultCatalog=<catalog_name>` must be filled out to indicate the default catalog. The default name is `unity`.
+- `--packages` points to the delta-spark and unitycatalog-spark packages; update the version numbers to your current versions.
+- `spark.sql.catalog.<catalog_name>.uri` points to your local development UC instance
+- `spark.sql.catalog.<catalog_name>.token` is empty indicating there is no authentication; refer to [auth](../server/auth.md) for more information.
+- `spark.sql.defaultCatalog=<catalog_name>` must be filled out to indicate the default catalog. The default name is `unity`.
 
 ??? note "Three-part and two-part naming conventions"
 
@@ -237,7 +244,7 @@ With the output looking similar to the following.
 
 ## Running CRUD Operations on a Unity Catalog Table
 
-Let’s extend this example by executing various CRUD operations on our UC tables.  
+Let’s extend this example by executing various CRUD operations on our UC tables.
 
 ### Create New Schema
 
@@ -246,7 +253,7 @@ Let’s extend this example by executing various CRUD operations on our UC table
     ```sql
     -- Create new schema
     CREATE SCHEMA demo;
-    
+
     -- Should now show two schemas: default and demo
     SHOW SCHEMAS;
     ```
@@ -256,7 +263,7 @@ Let’s extend this example by executing various CRUD operations on our UC table
     ```python
     # Create new schema
     spark.sql("CREATE SCHEMA demo")
-    
+
     # Should now show two schemas: default and demo
     spark.sql("SHOW SCHEMAS").show()
     ```
@@ -267,8 +274,8 @@ Let’s extend this example by executing various CRUD operations on our UC table
 
     ```sql
     -- Create a new table
-    CREATE TABLE demo.mytable (id INT, desc STRING) 
-    USING delta 
+    CREATE TABLE demo.mytable (id INT, desc STRING)
+    USING delta
     LOCATION '<LOCATION>';
     -- Example location:
     -- LOCATION '/tmp/tables/mytable';
@@ -297,7 +304,7 @@ Let’s extend this example by executing various CRUD operations on our UC table
     INSERT INTO demo.mytable VALUES (2, "test 2");
     INSERT INTO demo.mytable VALUES (3, "test 3");
     INSERT INTO demo.mytable VALUES (4, "test 4");
-    
+
     -- Read table
     SELECT * FROM demo.mytable;
     ```
@@ -310,7 +317,7 @@ Let’s extend this example by executing various CRUD operations on our UC table
     spark.sql("INSERT INTO demo.mytable VALUES (2, 'test 2')")
     spark.sql("INSERT INTO demo.mytable VALUES (3, 'test 3')")
     spark.sql("INSERT INTO demo.mytable VALUES (4, 'test 4')")
-    
+
     # Read table
     spark.sql("SELECT * FROM demo.mytable").show()
     ```
@@ -355,12 +362,12 @@ Create Secondary Table
 
     ```sql
     -- Create secondary table (we will use this as the source for merge)
-    CREATE TABLE demo.srctable (id INT, desc STRING) 
+    CREATE TABLE demo.srctable (id INT, desc STRING)
     USING delta
     LOCATION '<LOCATION>';
     -- Example location:
     -- LOCATION '/tmp/tables/srctable';
-    
+
     -- Insert new rows
     INSERT INTO demo.srctable VALUES (3, "updated");
     INSERT INTO demo.srctable VALUES (4, "inserted");
@@ -377,7 +384,7 @@ Create Secondary Table
     """)
     # Example location:
     # LOCATION '/tmp/tables/srctable';
-    
+
     # Insert new rows
     spark.sql("INSERT INTO demo.srctable VALUES (3, 'updated')")
     spark.sql("INSERT INTO demo.srctable VALUES (4, 'inserted')")
@@ -397,7 +404,7 @@ Merge Command
     WHEN NOT MATCHED THEN
         INSERT *
     ;
-    
+
     -- Check results
     SELECT * FROM demo.mytable;
     ```
@@ -410,12 +417,12 @@ Merge Command
     MERGE INTO demo.mytable AS target
     USING demo.srctable AS source
         ON target.id = source.id
-    WHEN MATCHED THEN 
+    WHEN MATCHED THEN
         UPDATE SET *
-    WHEN NOT MATCHED THEN 
+    WHEN NOT MATCHED THEN
         INSERT *
     """)
-    
+
     # Check results
     spark.sql("SELECT * FROM demo.mytable").show()
     ```
@@ -432,10 +439,10 @@ Drop Table
 === "Spark SQL"
 
     ```sql
-    
+
     -- Drop tables
     DROP TABLE demo.srctable;
-    
+
     -- Check results
     SHOW TABLES IN default;
     ```
@@ -445,13 +452,13 @@ Drop Table
     ```python
     # Drop tables
     spark.sql("DROP TABLE demo.srctable")
-    
+
     # Check results
     spark.sql("SHOW TABLES IN default").show()
     ```
 
 !!! warning
-    Note, this action will only drop the table from UC, it will not remove the data from the file system
+Note, this action will only drop the table from UC, it will not remove the data from the file system
 
 <!--
 ## Benefits of using Unity Catalog for Spark
@@ -462,18 +469,18 @@ Drop Table
 
 -->
 
-<!-- 
+<!--
 
 ## Create a managed Unity Catalog table with Spark
 
 Let’s create a managed Unity Catalog table with Spark.
 
 ```python
-df = spark.createDataFrame([  
-    (1, "socks"),   
-    (2, "chips"),  
-    (3, "air conditioner"),  
-    (4, "tea"),  
+df = spark.createDataFrame([
+    (1, "socks"),
+    (2, "chips"),
+    (3, "air conditioner"),
+    (4, "tea"),
 ], ["transaction_id", "item_name"])
 
 df.write.format("parquet").saveAsTable("stores.us_east.transactions")
@@ -485,13 +492,13 @@ Confirm that we’re able to read the table:
 
 ```
 spark.table("stores.us_east.transactions").show()
-+--------------+---------------+  
-|transaction_id|      item_name|  
-+--------------+---------------+  
-|             1|          socks|  
-|             2|          chips|  
-|             3|air conditioner|  
-|             4|            tea|  
++--------------+---------------+
+|transaction_id|      item_name|
++--------------+---------------+
+|             1|          socks|
+|             2|          chips|
+|             3|air conditioner|
+|             4|            tea|
 +--------------+---------------+
 ```
 
@@ -505,29 +512,29 @@ voided.write.format("parquet").saveAsTable("stores.us_east.voided")
 
 > we need to cover both parquet and delta
 
-Here’s a visualization of the tables.  
+Here’s a visualization of the tables.
 
 ![UC Spark 1](../assets/images/uc_spark1.png)
 
 Suppose the transactions table represents all the transactions, and the voided table contains the transactions that were subsequently canceled.  Compute all the non-voided transactions.
 
 ```python
-transactions = spark.table("stores.us_east.transactions")  
+transactions = spark.table("stores.us_east.transactions")
 voided = spark.table("stores.us_east.voided")
 
-transactions.join(  
-    voided,   
-    transactions.transaction_id == voided.transaction_id,   
-    "leftanti"  
+transactions.join(
+    voided,
+    transactions.transaction_id == voided.transaction_id,
+    "leftanti"
 ).show()
 ```
 
 ```
-+--------------+---------------+  
-|transaction_id|      item_name|  
-+--------------+---------------+  
-|             2|          chips|  
-|             3|air conditioner|  
++--------------+---------------+
+|transaction_id|      item_name|
++--------------+---------------+
+|             2|          chips|
+|             3|air conditioner|
 +--------------+---------------+
 ```
 
@@ -538,10 +545,10 @@ Now, let’s look at how to create external Unity Catalog tables.
 Here’s how to create an external Unity Catalog table with Spark:
 
 ```python
-letters = spark.createDataFrame([  
-    (1, "a"),   
-    (2, "b"),  
-    (3, "c"),  
+letters = spark.createDataFrame([
+    (1, "a"),
+    (2, "b"),
+    (3, "c"),
 ], ["id", "letter"])
 
 letters.write.format("parquet").saveAsTable("stores.whatever.letters", path="/tmp/letters")
@@ -562,15 +569,15 @@ See this page to learn more about the difference between external and managed Un
 You can also use Spark to write data to a path and not make any Unity Catalog entries.
 
 ```python
-people = spark.createDataFrame([  
-    (1, "li"),   
-    (2, "chung"),  
+people = spark.createDataFrame([
+    (1, "li"),
+    (2, "chung"),
 ], ["id", "first_name"])
 
 people.write.format("parquet").save("/tmp/people")
 ```
 
-As you can see in the example above, writing data with Spark doesn’t necessarily create a new entry in the Unity Catalog. This writes data to a path but doesn’t create any associated entries in the Unity Catalog, burdening the user with managing the credentials and access to the data themselves. 
+As you can see in the example above, writing data with Spark doesn’t necessarily create a new entry in the Unity Catalog. This writes data to a path but doesn’t create any associated entries in the Unity Catalog, burdening the user with managing the credentials and access to the data themselves.
 
 ## Advantage of Unity Catalog for Spark
 
@@ -587,7 +594,7 @@ Unity Catalog has many advantages for Spark users.
 You don’t want to hardcode file paths in your code because then the location of your data becomes coupled with your business logic.  Here’s an example of bad code:
 
 ```python
-people = spark.read.format("parquet").load("/tmp/people")  
+people = spark.read.format("parquet").load("/tmp/people")
 ...
 ```
 
@@ -628,7 +635,7 @@ In either case, Unity Catalog still allows for the decoupling of business logic 
 When you’re reading data from paths, you need to understand the underlying data storage format.  Here are a couple of examples:
 
 ```python
-people = spark.read.format("parquet").load("/tmp/people")  
+people = spark.read.format("parquet").load("/tmp/people")
 countries = spark.read.format("csv").load("/tmp/countries")
 ```
 
@@ -637,7 +644,7 @@ Your business logic needs to know that the people dataset is stored in Parquet f
 Unity Catalog provides a much better user experience because you don’t need to know how the underlying data is stored and can write code like this:
 
 ```python
-people = spark.table("customers.us_east.people")  
+people = spark.table("customers.us_east.people")
 countries = spark.table("users.demographics.countries")
 ```
 -->
