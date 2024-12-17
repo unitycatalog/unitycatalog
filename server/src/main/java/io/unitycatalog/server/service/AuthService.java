@@ -32,10 +32,15 @@ import org.slf4j.LoggerFactory;
 public class AuthService {
 
   // TODO: need common module for these constants, they are reused in the CLI
+  // NOTE:
+  // The constants defined here would ideally be output in the model code generated
+  // by OpenAPI Generator. However, form models defined as `x-www-form-urlencoded`
+  // are not output as `objects`, and therefore, the keys of the form entries are not
+  // generated as constants. As far as I (@ognis1205) know, there is currently no
+  // clean way to output constant values using the OAS specification/OpenAPI Generator's
+  // functionality, so they are manually defined here.
   public interface Fields {
     String GRANT_TYPE = "grant_type";
-    String CLIENT_ID = "client_id";
-    String CLIENT_SECRET = "client_secret";
     String SUBJECT_TOKEN = "subject_token";
     String SUBJECT_TOKEN_TYPE = "subject_token_type";
     String ACTOR_TOKEN = "actor_token";

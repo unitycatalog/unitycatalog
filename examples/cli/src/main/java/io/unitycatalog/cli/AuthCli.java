@@ -79,10 +79,12 @@ public class AuthCli {
     String body =
         Oauth2CliExchange.URLEncodedForm.ofMap(
             Map.ofEntries(
-                entry("grant_type", GrantType.TOKEN_EXCHANGE.getValue()),
-                entry("requested_token_type", TokenType.ACCESS_TOKEN.getValue()),
-                entry("subject_token_type", TokenType.ID_TOKEN.getValue()),
-                entry("subject_token", login.get("identityToken"))));
+                entry(Oauth2CliExchange.Fields.GRANT_TYPE, GrantType.TOKEN_EXCHANGE.getValue()),
+                entry(
+                    Oauth2CliExchange.Fields.REQUESTED_TOKEN_TYPE,
+                    TokenType.ACCESS_TOKEN.getValue()),
+                entry(Oauth2CliExchange.Fields.SUBJECT_TOKEN_TYPE, TokenType.ID_TOKEN.getValue()),
+                entry(Oauth2CliExchange.Fields.SUBJECT_TOKEN, login.get("identityToken"))));
 
     HttpRequest request =
         HttpRequest.newBuilder()

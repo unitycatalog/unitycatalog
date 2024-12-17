@@ -43,15 +43,24 @@ import org.apache.commons.codec.binary.Hex;
 public class Oauth2CliExchange {
 
   // TODO: need common module for these constants, they are reused in AuthService
+  // NOTE:
+  // The constants defined here would ideally be output in the model code generated
+  // by OpenAPI Generator. However, form models defined as `x-www-form-urlencoded`
+  // are not output as `objects`, and therefore, the keys of the form entries are not
+  // generated as constants. As far as I (@ognis1205) know, there is currently no
+  // clean way to output constant values using the OAS specification/OpenAPI Generator's
+  // functionality, so they are manually defined here.
   public interface Fields {
     String GRANT_TYPE = "grant_type";
     String CLIENT_ID = "client_id";
-    String CLIENT_SECRET = "client_secret";
     String REDIRECT_URL = "redirect_uri";
     String CODE = "code";
     String RESPONSE_TYPE = "response_type";
     String SCOPE = "scope";
     String STATE = "state";
+    String SUBJECT_TOKEN = "subject_token";
+    String SUBJECT_TOKEN_TYPE = "subject_token_type";
+    String REQUESTED_TOKEN_TYPE = "requested_token_type";
   }
 
   private static final ObjectMapper mapper = new ObjectMapper();
