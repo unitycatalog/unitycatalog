@@ -3,6 +3,7 @@ import os
 from unittest import mock
 
 import pytest
+import pytest_asyncio
 from databricks.sdk.service.catalog import (
     FunctionInfo,
     FunctionParameterInfo,
@@ -11,11 +12,9 @@ from databricks.sdk.service.catalog import (
 from google.generativeai.types import CallableFunctionDeclaration
 from pydantic import ValidationError
 
-from unitycatalog.ai.core.client import FunctionExecutionResult
-from unitycatalog.ai.gemini.toolkit import GeminiTool, UCFunctionToolkit
-from unitycatalog.client.models.function_parameter_type import FunctionParameterType
 from unitycatalog.ai.core.base import FunctionExecutionResult
-from unitycatalog.ai.core.client import UnitycatalogFunctionClient
+from unitycatalog.ai.core.client import FunctionExecutionResult, UnitycatalogFunctionClient
+from unitycatalog.ai.gemini.toolkit import GeminiTool, UCFunctionToolkit
 from unitycatalog.ai.test_utils.function_utils_oss import (
     CATALOG,
     create_function_and_cleanup_oss,
@@ -27,6 +26,7 @@ from unitycatalog.client import (
     FunctionParameterInfo,
     FunctionParameterInfos,
 )
+from unitycatalog.client.models.function_parameter_type import FunctionParameterType
 
 try:
     # v2
@@ -210,8 +210,8 @@ def generate_function_info():
         input_params=FunctionParameterInfos(
             parameters=[FunctionParameterInfo(**param) for param in parameters]
         ),
-        full_name=f"catalog.schema.test",
-        comment="Executes Python code and returns its stdout.",
+        full_name="catalog.schema.test",
+        comment="Executes Python code and returns its stdout."
     )
 
 def test_convert_to_gemini_schema_with_valid_function_info():
@@ -227,7 +227,7 @@ def test_convert_to_gemini_schema_with_valid_function_info():
     # Expected output
     expected_schema = {
         "name": "test",
-        "description": None,
+        "description": "Executes Python code and returns its stdout.",
         "parameters": {
             "properties": {
                 "x": {"type": "string", "description": "test comment",'nullable': True},
@@ -240,20 +240,20 @@ def test_convert_to_gemini_schema_with_valid_function_info():
     assert result_schema == expected_schema, "The generated schema does not match the expected output."
 
 @pytest.mark.asyncio
-async def test_uc_function_to_gemini_tool(client):
+async def test_uc_function_to_gemini_tool(uc_client):
     mock_function_info = generate_function_info()
     with (
         mock.patch(
-            "unitycatalog.ai.core.databricks.DatabricksFunctionClient.get_function",
-            return_value=mock_function_info,
+            "unitycatalog.ai.core.utils.client_utils.validate_or_set_default_client",
+            return_value=uc_client,
         ),
-        mock.patch(
-            "unitycatalog.ai.core.databricks.DatabricksFunctionClient.execute_function",
+        mock.patch.object(uc_client, "get_function", return_value=mock_function_info),   
+        mock.patch.object(uc_client, "execute_function",
             return_value=FunctionExecutionResult(format="SCALAR", value="some_string"),
         ),
     ):
         tool = UCFunctionToolkit.uc_function_to_gemini_tool(
-            function_name=f"{CATALOG}.{SCHEMA}.test", client=client
+            function_name="catalog.schema.test", client=uc_client
         )
         result = json.loads(tool.fn(x="some_string"))["value"]
         assert result == "some_string"
@@ -272,7 +272,7 @@ async def test_toolkit_with_invalid_function_input(uc_client):
         mock.patch.object(uc_client, "get_function", return_value=mock_function_info),
     ):
         invalid_inputs = {"unexpected_key": "value"}
-        tool = UCFunctionToolkit.uc_function_to_autogen_tool(
+        tool = UCFunctionToolkit.uc_function_to_gemini_tool(
             function_name="catalog.schema.test", client=uc_client
         )
 
@@ -280,7 +280,7 @@ async def test_toolkit_with_invalid_function_input(uc_client):
             tool.fn(**invalid_inputs)
 
 
-def test_generate_callable_tool_list(client):
+def test_generate_callable_tool_list(uc_client):
     """
     Test the generate_callable_tool_list method of UCFunctionToolkit.
     """
@@ -288,15 +288,14 @@ def test_generate_callable_tool_list(client):
     mock_function_info = generate_function_info()
     with (
         mock.patch(
-            "unitycatalog.ai.core.databricks.DatabricksFunctionClient.get_function",
-            return_value=mock_function_info,
+            "unitycatalog.ai.core.utils.client_utils.validate_or_set_default_client",
+            return_value=uc_client,
         ),
-        mock.patch(
-            "unitycatalog.ai.core.databricks.DatabricksFunctionClient.execute_function",
-            return_value=FunctionExecutionResult(format="SCALAR", value="some_string"),
+        mock.patch.object(uc_client, "get_function", return_value=mock_function_info),   
+        mock.patch.object(uc_client, "execute_function",return_value=FunctionExecutionResult(format="SCALAR", value="some_string")
         ),
     ):
-        toolkit = UCFunctionToolkit(function_names=["catalog.schema.test_function"], client=client)
+        toolkit = UCFunctionToolkit(function_names=["catalog.schema.test_function"], client=uc_client)
 
     # Generate callable tool list
     callable_tools = toolkit.generate_callable_tool_list()
@@ -307,9 +306,8 @@ def test_generate_callable_tool_list(client):
 
     gemini_tool = callable_tools[0]
     tool = tools[0]
-    print(tool)
     assert isinstance(gemini_tool, CallableFunctionDeclaration), "The tool should be a CallableFunctionDeclaration."
     assert tool.name == "catalog__schema__test_function", "The tool's name does not match the expected name."
-    assert tool.description == "", "The tool's description does not match the expected description."
+    assert tool.description == "Executes Python code and returns its stdout.", "The tool's description does not match the expected description."
     assert "parameters" in tool.schema, "The tool's schema should include parameters."
     assert tool.schema["parameters"]["required"] == ["x"], "The required parameters do not match."

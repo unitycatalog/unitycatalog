@@ -13,7 +13,6 @@ from pydantic import ValidationError
 
 from unitycatalog.ai.core.client import FunctionExecutionResult
 from unitycatalog.ai.gemini.toolkit import GeminiTool, UCFunctionToolkit
-from unitycatalog.client.models.function_parameter_type import FunctionParameterType
 from unitycatalog.ai.test_utils.client_utils import (
     USE_SERVERLESS,
     client,  # noqa: F401
@@ -22,6 +21,7 @@ from unitycatalog.ai.test_utils.client_utils import (
     set_default_client,
 )
 from unitycatalog.ai.test_utils.function_utils import CATALOG, create_function_and_cleanup
+from unitycatalog.client.models.function_parameter_type import FunctionParameterType
 
 SCHEMA = os.environ.get("SCHEMA", "ucai_gemini_test")
 
@@ -173,6 +173,8 @@ def generate_function_info():
         input_params=FunctionParameterInfos(
             parameters=[FunctionParameterInfo(**param) for param in parameters]
         ),
+        full_name="catalog.schema.test",
+        comment="Executes Python code and returns its stdout."
     )
 
 
@@ -189,7 +191,7 @@ def test_convert_to_gemini_schema_with_valid_function_info():
     # Expected output
     expected_schema = {
         "name": "test",
-        "description": None,
+        "description": "Executes Python code and returns its stdout.",
         "parameters": {
             "properties": {
                 "x": {"type": "string", "description": "test comment",'nullable': True},
@@ -269,9 +271,8 @@ def test_generate_callable_tool_list(client):
 
     gemini_tool = callable_tools[0]
     tool = tools[0]
-    print(tool)
     assert isinstance(gemini_tool, CallableFunctionDeclaration), "The tool should be a CallableFunctionDeclaration."
     assert tool.name == "catalog__schema__test_function", "The tool's name does not match the expected name."
-    assert tool.description == "", "The tool's description does not match the expected description."
+    assert tool.description == "Executes Python code and returns its stdout.", "The tool's description does not match the expected description."
     assert "parameters" in tool.schema, "The tool's schema should include parameters."
     assert tool.schema["parameters"]["required"] == ["x"], "The required parameters do not match."

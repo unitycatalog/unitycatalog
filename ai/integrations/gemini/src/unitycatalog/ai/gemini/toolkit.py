@@ -113,14 +113,12 @@ class UCFunctionToolkit(BaseModel):
         # 6. Annotate required fields.
         # Otherwise we infer it from the function signature.
         parameters["required"] = [
-            k.name
-            for k in param_infos
-            if (
-                k.parameter_default is None
-                and k.parameter_type.value == 'PARAM'
-
-            )
-        ]
+                k.name
+                for k in param_infos
+                if (
+                    k.parameter_default is None
+                    and (k.parameter_type is None or getattr(k.parameter_type, "value", None) == "PARAM")
+                )]
         schema = dict(name=function_info.name, description=function_info.comment)
         if parameters["properties"]:
             schema["parameters"] = parameters
