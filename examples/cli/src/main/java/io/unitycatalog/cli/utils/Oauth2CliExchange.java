@@ -42,6 +42,18 @@ import org.apache.commons.codec.binary.Hex;
 /** Simple OAuth2 authentication flow for the CLI. */
 public class Oauth2CliExchange {
 
+  // TODO: need common module for these constants, they are reused in AuthService
+  public interface Fields {
+    String GRANT_TYPE = "grant_type";
+    String CLIENT_ID = "client_id";
+    String CLIENT_SECRET = "client_secret";
+    String REDIRECT_URL = "redirect_uri";
+    String CODE = "code";
+    String RESPONSE_TYPE = "code";
+    String SCOPE = "scope";
+    String STATE = "state";
+  }
+
   private static final ObjectMapper mapper = new ObjectMapper();
 
   Properties serverProperties = new Properties();
@@ -85,17 +97,17 @@ public class Oauth2CliExchange {
     byte[] stateBytes = new byte[16];
     new SecureRandom().nextBytes(stateBytes);
 
-    // NOTE: The `scope` is Google OAuth2 specific. We might need more versatile code here.
+    // NOTE: The value of `scope` is Google OAuth2 specific. We might need more versatile code here.
     String authUrl =
         authorizationUrl
             + "?"
             + URLEncodedForm.ofMap(
                 Map.ofEntries(
-                    entry("client_id", clientId),
-                    entry("redirect_uri", redirectUrl),
-                    entry("response_type", ResponseType.CODE.getValue()),
-                    entry("scope", "openid profile email"),
-                    entry("state", Hex.encodeHexString(stateBytes))));
+                    entry(Fields.CLIENT_ID, clientId),
+                    entry(Fields.REDIRECT_URL, redirectUrl),
+                    entry(Fields.RESPONSE_TYPE, ResponseType.CODE.getValue()),
+                    entry(Fields.SCOPE, "openid profile email"),
+                    entry(Fields.STATE, Hex.encodeHexString(stateBytes))));
 
     System.out.println("Attempting to open the authorization page in your default browser.");
     System.out.println("If the browser does not open, you can manually open the following URL:");
@@ -135,9 +147,9 @@ public class Oauth2CliExchange {
     String tokenBody =
         URLEncodedForm.ofMap(
             Map.ofEntries(
-                entry("code", authCode),
-                entry("grant_type", AuthorizationGrantType.AUTHORIZATION_CODE.getValue()),
-                entry("redirect_uri", redirectUrl)));
+                entry(Fields.CODE, authCode),
+                entry(Fields.GRANT_TYPE, AuthorizationGrantType.AUTHORIZATION_CODE.getValue()),
+                entry(Fields.REDIRECT_URL, redirectUrl)));
 
     String authorization =
         "Basic " + Base64.getEncoder().encodeToString((clientId + ":" + clientSecret).getBytes());
@@ -219,7 +231,7 @@ public class Oauth2CliExchange {
                       mapping(s -> decode(s[1], StandardCharsets.UTF_8), toList())));
 
       // Get the authorization flow code
-      String value = parameters.get("code").get(0);
+      String value = parameters.get(Fields.CODE).get(0);
 
       // Prepare response send to browser.
       String response = "User validated with identity provider.";
