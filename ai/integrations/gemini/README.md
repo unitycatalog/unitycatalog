@@ -132,7 +132,7 @@ functions to provide [Gemini](https://ai.google.dev/gemini-api/docs/models/gemin
 To begin, we will need an instance of the tool function interface from the `unitycatalog.ai.gemini` toolkit.
 
 ```python
-from unitycatalog.ai.anthropic.toolkit import UCFunctionToolkit
+from unitycatalog.ai.gemini.toolkit import UCFunctionToolkit
 
 # Create an instance of the toolkit with the function that was created earlier.
 toolkit = UCFunctionToolkit(function_names=[f"{CATALOG}.{SCHEMA}.python_exec"], client=client)
@@ -150,6 +150,7 @@ Gemini will generate a stopping condition of `"tool_use"` when a relevant tool d
 function's name to call and the input arguments to provide to the tool.
 
 ```python
+# Interface with Gemini via their SDK
 from google.generativeai import GenerativeModel
 
 multi = "What's the weather in Nome, AK and in Death Valley, CA?"
@@ -159,50 +160,19 @@ model = GenerativeModel(
     model_name="gemini-2.0-flash-exp", tools=tools
 )
 
-response = model.start_chat(enable_automatic_function_calling=True)
+chat = model.start_chat(enable_automatic_function_calling=True)
 
+response = chat.send_message("What's the weather in Nome, AK and in Death Valley, CA?")
 print(response)
 ```
 
-Within the response, you will see instances of `ToolUseBlock` from Google's SDK. These blocks, if present, indicate the name of the tool to use
-and the inputs to provide to the defined tool's function.
-
-### Calling the function
-
-There are two ways of calling the function within UC:
-
-- Use the `generate_tool_call_messages` function on the response.
-
-**This is the recommended API to use to simplify your workstream**. This option will extract the tool calling instructions, execute the appropriate
-functions in Unity Catalog, and return the payload needed to call the `anthropic.Anthropic.messages.create` API directly. If there are no tool
-calls to be made, this function will return the state of the conversation history up to this point.
-
-Note that the conversation history up until this point (which must start with the initial user input message) is required for this API to function
-correctly. Anthropic requires the full scope of the history, including both the tool use request and the tool response messages in order to continue
-providing an answer. In the example below, the only history that we have is the original initial user question.
-
-In the example shown here, there are two tool calls that will be requested by the Anthropic model (one for getting the weather in Nome Alaska, the
-other for getting the weather in Death Valley California). This utility function will call our Unity Catalog function twice, preserving the tool call
-id for each that maps to the `ToolUseBlock`'s `tool_use_id` entry for each call.
+### Showing Details of the Tool Call
 
 ```python
-from unitycatalog.ai.anthropic.utils import generate_tool_call_messages
-
-# Call the Unity Catalog function and construct the required formatted response history for a subsequent call to Anthropic
-tool_messages = generate_tool_call_messages(response=response, client=client, conversation_history=question)
-
-# Call the Anthropic client with the parsed tool response from executing the Unity Catalog function
-tool_response = anthropic_client.messages.create(
-    model="claude-3-5-sonnet-20240620",
-    max_tokens=1024,
-    tools=tools,
-    messages=tool_messages,
-)
-
-print(tool_response)
+for content in chat.history:
+    print(content.role, "->", [type(part).to_dict(part) for part in content.parts])
+    print("-" * 80)
 ```
-
-
 
 ### Configurations for Databricks-only UC function execution
 
