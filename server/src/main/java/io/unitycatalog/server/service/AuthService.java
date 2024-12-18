@@ -31,23 +31,6 @@ import org.slf4j.LoggerFactory;
 @ExceptionHandler(GlobalExceptionHandler.class)
 public class AuthService {
 
-  // TODO: need common module for these constants, they are reused in the CLI
-  // NOTE:
-  // The constants defined here would ideally be output in the model code generated
-  // by OpenAPI Generator. However, form models defined as `x-www-form-urlencoded`
-  // are not output as `objects`, and therefore, the keys of the form entries are not
-  // generated as constants. As far as I (@ognis1205) know, there is currently no
-  // clean way to output constant values using the OAS specification/OpenAPI Generator's
-  // functionality, so they are manually defined here.
-  public interface Fields {
-    String GRANT_TYPE = "grant_type";
-    String SUBJECT_TOKEN = "subject_token";
-    String SUBJECT_TOKEN_TYPE = "subject_token_type";
-    String ACTOR_TOKEN = "actor_token";
-    String ACTOR_TOKEN_TYPE = "actor_token_type";
-    String REQUESTED_TOKEN_TYPE = "requested_token_type";
-  }
-
   private static final Logger LOGGER = LoggerFactory.getLogger(AuthService.class);
   private static final UserRepository USER_REPOSITORY = UserRepository.getInstance();
 
@@ -90,7 +73,7 @@ public class AuthService {
    * the incoming identity (email, subject) matches a specific user in the system, once a user
    * management system is in place.
    *
-   * <p>NOTE: Armelia does not convert some `Enum` values properly; hence, we should treat them as
+   * <p>NOTE: Armeria does not convert some `Enum` values properly; hence, we should treat them as
    * `String` here.
    *
    * <p>SEE:
@@ -229,7 +212,7 @@ public class AuthService {
   // Unfortunately, when specifying `application/x-www-form-urlencoded` for content in the OpenAPI
   // schema, the OpenAPI Generator does not generate request models from that schema.
   // Additionally, when accessing each parameter directly from the body without using a model,
-  // Armelia fails to handle them correctly if the `ext` query parameter is present. Therefore,
+  // Armeria fails to handle them correctly if the `ext` query parameter is present. Therefore,
   // the request model is implemented manually here.
   //
   // SEE:
@@ -237,28 +220,28 @@ public class AuthService {
   // - https://armeria.dev/docs/server-annotated-service/#injecting-a-parameter-as-an-enum-type
   @ToString
   private static class OAuthTokenExchangeRequest {
-    @Param(Fields.GRANT_TYPE)
+    @Param("grant_type")
     @Getter
     private String grantType;
 
-    @Param(Fields.REQUESTED_TOKEN_TYPE)
+    @Param("requested_token_type")
     @Getter
     private String requestedTokenType;
 
-    @Param(Fields.SUBJECT_TOKEN_TYPE)
+    @Param("subject_token_type")
     @Getter
     private String subjectTokenType;
 
-    @Param(Fields.SUBJECT_TOKEN)
+    @Param("subject_token")
     @Getter
     private String subjectToken;
 
-    @Param(Fields.ACTOR_TOKEN_TYPE)
+    @Param("actor_token_type")
     @Nullable
     @Getter
     private String actorTokenType;
 
-    @Param(Fields.ACTOR_TOKEN)
+    @Param("actor_token")
     @Nullable
     @Getter
     private String actorToken;

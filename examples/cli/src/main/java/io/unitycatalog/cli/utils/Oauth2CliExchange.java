@@ -42,25 +42,43 @@ import org.apache.commons.codec.binary.Hex;
 /** Simple OAuth2 authentication flow for the CLI. */
 public class Oauth2CliExchange {
 
-  // TODO: need common module for these constants, they are reused in AuthService
-  // NOTE:
-  // The constants defined here would ideally be output in the model code generated
-  // by OpenAPI Generator. However, form models defined as `x-www-form-urlencoded`
-  // are not output as `objects`, and therefore, the keys of the form entries are not
-  // generated as constants. As far as I (@ognis1205) know, there is currently no
-  // clean way to output constant values using the OAS specification/OpenAPI Generator's
-  // functionality, so they are manually defined here.
-  public interface Fields {
-    String GRANT_TYPE = "grant_type";
+  // Authorization request parameters.
+  // SEE:
+  // - https://datatracker.ietf.org/doc/html/rfc6749#section-4.1.1
+  public static interface AuthorizationRequestParams {
     String CLIENT_ID = "client_id";
-    String REDIRECT_URL = "redirect_uri";
-    String CODE = "code";
     String RESPONSE_TYPE = "response_type";
+    String REDIRECT_URI = "redirect_uri";
     String SCOPE = "scope";
     String STATE = "state";
-    String SUBJECT_TOKEN = "subject_token";
-    String SUBJECT_TOKEN_TYPE = "subject_token_type";
+  }
+
+  // Authorization response parameters.
+  // SEE:
+  // - https://datatracker.ietf.org/doc/html/rfc6749#section-4.1.1
+  public static interface AuthorizationResponseParams {
+    String CODE = "code";
+  }
+
+  // Access token request parameters.
+  // SEE:
+  // - https://datatracker.ietf.org/doc/html/rfc6749#section-4.1.3
+  public static interface AccessTokenRequestParams {
+    String GRANT_TYPE = "grant_type";
+    String CODE = "code";
+    String REDIRECT_URI = "redirect_uri";
+  }
+
+  // Token exchange request parameters.
+  // TODO:
+  // We need common module for these constants, they are reused in AuthService.
+  // SEE:
+  // - https://datatracker.ietf.org/doc/html/rfc6749#section-4.1.3
+  public static interface TokenExchangeRequestParams {
+    String GRANT_TYPE = "grant_type";
     String REQUESTED_TOKEN_TYPE = "requested_token_type";
+    String SUBJECT_TOKEN_TYPE = "subject_token_type";
+    String SUBJECT_TOKEN = "subject_token";
   }
 
   private static final ObjectMapper mapper = new ObjectMapper();
@@ -112,11 +130,11 @@ public class Oauth2CliExchange {
             + "?"
             + URLEncodedForm.ofMap(
                 Map.ofEntries(
-                    entry(Fields.CLIENT_ID, clientId),
-                    entry(Fields.REDIRECT_URL, redirectUrl),
-                    entry(Fields.RESPONSE_TYPE, ResponseType.CODE.getValue()),
-                    entry(Fields.SCOPE, "openid profile email"),
-                    entry(Fields.STATE, Hex.encodeHexString(stateBytes))));
+                    entry(AuthorizationRequestParams.RESPONSE_TYPE, ResponseType.CODE.getValue()),
+                    entry(AuthorizationRequestParams.CLIENT_ID, clientId),
+                    entry(AuthorizationRequestParams.REDIRECT_URI, redirectUrl),
+                    entry(AuthorizationRequestParams.SCOPE, "openid profile email"),
+                    entry(AuthorizationRequestParams.STATE, Hex.encodeHexString(stateBytes))));
 
     System.out.println("Attempting to open the authorization page in your default browser.");
     System.out.println("If the browser does not open, you can manually open the following URL:");
@@ -156,9 +174,11 @@ public class Oauth2CliExchange {
     String tokenBody =
         URLEncodedForm.ofMap(
             Map.ofEntries(
-                entry(Fields.CODE, authCode),
-                entry(Fields.GRANT_TYPE, AuthorizationGrantType.AUTHORIZATION_CODE.getValue()),
-                entry(Fields.REDIRECT_URL, redirectUrl)));
+                entry(
+                    AccessTokenRequestParams.GRANT_TYPE,
+                    AuthorizationGrantType.AUTHORIZATION_CODE.getValue()),
+                entry(AccessTokenRequestParams.CODE, authCode),
+                entry(AccessTokenRequestParams.REDIRECT_URI, redirectUrl)));
 
     String authorization =
         "Basic " + Base64.getEncoder().encodeToString((clientId + ":" + clientSecret).getBytes());
@@ -240,7 +260,7 @@ public class Oauth2CliExchange {
                       mapping(s -> decode(s[1], StandardCharsets.UTF_8), toList())));
 
       // Get the authorization flow code
-      String value = parameters.get(Fields.CODE).get(0);
+      String value = parameters.get(AuthorizationResponseParams.CODE).get(0);
 
       // Prepare response send to browser.
       String response = "User validated with identity provider.";

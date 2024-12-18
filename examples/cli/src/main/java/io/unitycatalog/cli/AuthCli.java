@@ -1,6 +1,7 @@
 package io.unitycatalog.cli;
 
 import static io.unitycatalog.cli.utils.CliUtils.postProcessAndPrintOutput;
+import static io.unitycatalog.cli.utils.Oauth2CliExchange.TokenExchangeRequestParams;
 import static java.net.HttpURLConnection.HTTP_OK;
 import static java.util.Map.entry;
 
@@ -79,12 +80,12 @@ public class AuthCli {
     String body =
         Oauth2CliExchange.URLEncodedForm.ofMap(
             Map.ofEntries(
-                entry(Oauth2CliExchange.Fields.GRANT_TYPE, GrantType.TOKEN_EXCHANGE.getValue()),
+                entry(TokenExchangeRequestParams.GRANT_TYPE, GrantType.TOKEN_EXCHANGE.getValue()),
                 entry(
-                    Oauth2CliExchange.Fields.REQUESTED_TOKEN_TYPE,
+                    TokenExchangeRequestParams.REQUESTED_TOKEN_TYPE,
                     TokenType.ACCESS_TOKEN.getValue()),
-                entry(Oauth2CliExchange.Fields.SUBJECT_TOKEN_TYPE, TokenType.ID_TOKEN.getValue()),
-                entry(Oauth2CliExchange.Fields.SUBJECT_TOKEN, login.get("identityToken"))));
+                entry(TokenExchangeRequestParams.SUBJECT_TOKEN_TYPE, TokenType.ID_TOKEN.getValue()),
+                entry(TokenExchangeRequestParams.SUBJECT_TOKEN, login.get("identityToken"))));
 
     HttpRequest request =
         HttpRequest.newBuilder()
