@@ -18,18 +18,16 @@ import type {
   SuccessResponseBody,
 } from '../utils/openapi';
 
-export type FunctionInterface = Model<CatalogComponent, 'FunctionInfo'>;
+export interface FunctionInterface
+  extends Model<CatalogComponent, 'FunctionInfo'> {}
 
-export type UseListFunctionsArgs = QueryParam<
-  CatalogApi,
-  '/functions',
-  'get'
-> & {
+export interface UseListFunctionsArgs
+  extends QueryParam<CatalogApi, '/functions', 'get'> {
   options?: Omit<
     UseQueryOptions<SuccessResponseBody<CatalogApi, '/functions', 'get'>>,
     'queryKey' | 'queryFn'
   >;
-};
+}
 
 export function useListFunctions({
   catalog_name,
@@ -66,11 +64,8 @@ export function useListFunctions({
   });
 }
 
-export type UseGetFunctionArgs = PathParam<
-  CatalogApi,
-  '/functions/{name}',
-  'get'
->;
+export interface UseGetFunctionArgs
+  extends PathParam<CatalogApi, '/functions/{name}', 'get'> {}
 
 export function useGetFunction({ name }: UseGetFunctionArgs) {
   const [catalog, schema, ucFunction] = name.split('.');
@@ -103,17 +98,11 @@ export function useGetFunction({ name }: UseGetFunctionArgs) {
   });
 }
 
-export type UseDeleteFunctionArgs = PathParam<
-  CatalogApi,
-  '/functions/{name}',
-  'delete'
->;
+export interface UseDeleteFunctionArgs
+  extends PathParam<CatalogApi, '/functions/{name}', 'delete'> {}
 
-export type DeleteFunctionMutationParams = PathParam<
-  CatalogApi,
-  '/functions/{name}',
-  'delete'
->;
+export interface DeleteFunctionMutationParams
+  extends PathParam<CatalogApi, '/functions/{name}', 'delete'> {}
 
 export function useDeleteFunction({ name }: UseDeleteFunctionArgs) {
   const queryClient = useQueryClient();

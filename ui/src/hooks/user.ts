@@ -77,7 +77,8 @@ export function useLogoutCurrentUser() {
   });
 }
 
-export type UserInterface = Model<ControlComponent, 'UserResource'>;
+export interface UserInterface
+  extends Model<ControlComponent, 'UserResource'> {}
 
 export function useGetCurrentUser() {
   const expectedErrorCodes = [

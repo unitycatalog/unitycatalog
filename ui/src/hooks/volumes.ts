@@ -19,14 +19,16 @@ import type {
   SuccessResponseBody,
 } from '../utils/openapi';
 
-export type VolumeInterface = Model<CatalogComponent, 'VolumeInfo'>;
+export interface VolumeInterface
+  extends Model<CatalogComponent, 'VolumeInfo'> {}
 
-export type UseListVolumesArgs = QueryParam<CatalogApi, '/volumes', 'get'> & {
+export interface UseListVolumesArgs
+  extends QueryParam<CatalogApi, '/volumes', 'get'> {
   options?: Omit<
     UseQueryOptions<SuccessResponseBody<CatalogApi, '/volumes', 'get'>>,
     'queryKey' | 'queryFn'
   >;
-};
+}
 
 export function useListVolumes({
   catalog_name,
@@ -63,7 +65,8 @@ export function useListVolumes({
   });
 }
 
-export type UseGetVolumeArgs = PathParam<CatalogApi, '/volumes/{name}', 'get'>;
+export interface UseGetVolumeArgs
+  extends PathParam<CatalogApi, '/volumes/{name}', 'get'> {}
 
 export function useGetVolume({ name }: UseGetVolumeArgs) {
   const [catalog, schema, volume] = name.split('.');
@@ -96,17 +99,11 @@ export function useGetVolume({ name }: UseGetVolumeArgs) {
   });
 }
 
-export type UseUpdateVolumeArgs = PathParam<
-  CatalogApi,
-  '/volumes/{name}',
-  'patch'
->;
+export interface UseUpdateVolumeArgs
+  extends PathParam<CatalogApi, '/volumes/{name}', 'patch'> {}
 
-export type UpdateVolumeMutationParams = RequestBody<
-  CatalogApi,
-  '/volumes/{name}',
-  'patch'
->;
+export interface UpdateVolumeMutationParams
+  extends RequestBody<CatalogApi, '/volumes/{name}', 'patch'> {}
 
 export function useUpdateVolume({ name }: UseUpdateVolumeArgs) {
   const queryClient = useQueryClient();
@@ -152,17 +149,11 @@ export function useUpdateVolume({ name }: UseUpdateVolumeArgs) {
   });
 }
 
-export type UseDeleteVolumeArgs = PathParam<
-  CatalogApi,
-  '/volumes/{name}',
-  'delete'
->;
+export interface UseDeleteVolumeArgs
+  extends PathParam<CatalogApi, '/volumes/{name}', 'delete'> {}
 
-export type DeleteVolumeMutationParams = PathParam<
-  CatalogApi,
-  '/volumes/{name}',
-  'delete'
->;
+export interface DeleteVolumeMutationParams
+  extends PathParam<CatalogApi, '/volumes/{name}', 'delete'> {}
 
 export function useDeleteVolume({ name }: UseDeleteVolumeArgs) {
   const queryClient = useQueryClient();

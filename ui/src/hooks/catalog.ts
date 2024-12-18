@@ -13,7 +13,8 @@ import type {
   SuccessResponseBody,
 } from '../utils/openapi';
 
-export type CatalogInterface = Model<CatalogComponent, 'CatalogInfo'>;
+export interface CatalogInterface
+  extends Model<CatalogComponent, 'CatalogInfo'> {}
 
 export function useListCatalogs() {
   return useQuery<SuccessResponseBody<CatalogApi, '/catalogs', 'get'>>({
@@ -39,11 +40,8 @@ export function useListCatalogs() {
   });
 }
 
-export type UseGetCatalogArgs = PathParam<
-  CatalogApi,
-  '/catalogs/{name}',
-  'get'
->;
+export interface UseGetCatalogArgs
+  extends PathParam<CatalogApi, '/catalogs/{name}', 'get'> {}
 
 export function useGetCatalog({ name }: UseGetCatalogArgs) {
   return useQuery<SuccessResponseBody<CatalogApi, '/catalogs/{name}', 'get'>>({
@@ -74,11 +72,8 @@ export function useGetCatalog({ name }: UseGetCatalogArgs) {
   });
 }
 
-export type CreateCatalogMutationParams = RequestBody<
-  CatalogApi,
-  '/catalogs',
-  'post'
->;
+export interface CreateCatalogMutationParams
+  extends RequestBody<CatalogApi, '/catalogs', 'post'> {}
 
 export function useCreateCatalog() {
   const queryClient = useQueryClient();
@@ -125,17 +120,11 @@ export function useCreateCatalog() {
   });
 }
 
-export type UseUpdateCatalogArgs = PathParam<
-  CatalogApi,
-  '/catalogs/{name}',
-  'patch'
->;
+export interface UseUpdateCatalogArgs
+  extends PathParam<CatalogApi, '/catalogs/{name}', 'patch'> {}
 
-export type UpdateCatalogMutationParams = RequestBody<
-  CatalogApi,
-  '/catalogs/{name}',
-  'patch'
->;
+export interface UpdateCatalogMutationParams
+  extends RequestBody<CatalogApi, '/catalogs/{name}', 'patch'> {}
 
 export function useUpdateCatalog({ name }: UseUpdateCatalogArgs) {
   const queryClient = useQueryClient();
@@ -185,11 +174,8 @@ export function useUpdateCatalog({ name }: UseUpdateCatalogArgs) {
   });
 }
 
-export type DeleteCatalogMutationParams = PathParam<
-  CatalogApi,
-  '/catalogs/{name}',
-  'delete'
->;
+export interface DeleteCatalogMutationParams
+  extends PathParam<CatalogApi, '/catalogs/{name}', 'delete'> {}
 
 export function useDeleteCatalog() {
   const queryClient = useQueryClient();

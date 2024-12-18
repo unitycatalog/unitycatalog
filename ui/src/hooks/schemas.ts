@@ -19,14 +19,16 @@ import type {
   SuccessResponseBody,
 } from '../utils/openapi';
 
-export type SchemaInterface = Model<CatalogComponent, 'SchemaInfo'>;
+export interface SchemaInterface
+  extends Model<CatalogComponent, 'SchemaInfo'> {}
 
-export type UseListSchemasArgs = QueryParam<CatalogApi, '/schemas', 'get'> & {
+export interface UseListSchemasArgs
+  extends QueryParam<CatalogApi, '/schemas', 'get'> {
   options?: Omit<
     UseQueryOptions<SuccessResponseBody<CatalogApi, '/schemas', 'get'>>,
     'queryKey' | 'queryFn'
   >;
-};
+}
 
 export function useListSchemas({ catalog_name, options }: UseListSchemasArgs) {
   return useQuery<SuccessResponseBody<CatalogApi, '/schemas', 'get'>>({
@@ -58,11 +60,8 @@ export function useListSchemas({ catalog_name, options }: UseListSchemasArgs) {
   });
 }
 
-export type UseGetSchemaArgs = PathParam<
-  CatalogApi,
-  '/schemas/{full_name}',
-  'get'
->;
+export interface UseGetSchemaArgs
+  extends PathParam<CatalogApi, '/schemas/{full_name}', 'get'> {}
 
 export function useGetSchema({ full_name }: UseGetSchemaArgs) {
   const [catalog, schema] = full_name.split('.');
@@ -97,11 +96,8 @@ export function useGetSchema({ full_name }: UseGetSchemaArgs) {
   });
 }
 
-export type CreateSchemaMutationParams = RequestBody<
-  CatalogApi,
-  '/schemas',
-  'post'
->;
+export interface CreateSchemaMutationParams
+  extends RequestBody<CatalogApi, '/schemas', 'post'> {}
 
 export function useCreateSchema() {
   const queryClient = useQueryClient();
@@ -150,17 +146,11 @@ export function useCreateSchema() {
   });
 }
 
-export type UseUpdateSchemaArgs = PathParam<
-  CatalogApi,
-  '/schemas/{full_name}',
-  'patch'
->;
+export interface UseUpdateSchemaArgs
+  extends PathParam<CatalogApi, '/schemas/{full_name}', 'patch'> {}
 
-export type UpdateSchemaMutationParams = RequestBody<
-  CatalogApi,
-  '/schemas/{full_name}',
-  'patch'
->;
+export interface UpdateSchemaMutationParams
+  extends RequestBody<CatalogApi, '/schemas/{full_name}', 'patch'> {}
 
 export function useUpdateSchema({ full_name }: UseUpdateSchemaArgs) {
   const queryClient = useQueryClient();
@@ -206,17 +196,11 @@ export function useUpdateSchema({ full_name }: UseUpdateSchemaArgs) {
   });
 }
 
-export type UseDeleteSchemaArgs = PathParam<
-  CatalogApi,
-  '/schemas/{full_name}',
-  'delete'
->;
+export interface UseDeleteSchemaArgs
+  extends PathParam<CatalogApi, '/schemas/{full_name}', 'delete'> {}
 
-export type DeleteSchemaMutationParams = PathParam<
-  CatalogApi,
-  '/schemas/{full_name}',
-  'delete'
->;
+export interface DeleteSchemaMutationParams
+  extends PathParam<CatalogApi, '/schemas/{full_name}', 'delete'> {}
 
 export function useDeleteSchema({ full_name }: UseDeleteSchemaArgs) {
   const queryClient = useQueryClient();

@@ -19,14 +19,16 @@ import type {
   SuccessResponseBody,
 } from '../utils/openapi';
 
-export type ModelInterface = Model<CatalogComponent, 'RegisteredModelInfo'>;
+export interface ModelInterface
+  extends Model<CatalogComponent, 'RegisteredModelInfo'> {}
 
-export type UseListModelsArgs = QueryParam<CatalogApi, '/models', 'get'> & {
+export interface UseListModelsArgs
+  extends QueryParam<CatalogApi, '/models', 'get'> {
   options?: Omit<
     UseQueryOptions<SuccessResponseBody<CatalogApi, '/models', 'get'>>,
     'queryKey' | 'queryFn'
   >;
-};
+}
 
 export function useListModels({
   catalog_name,
@@ -63,11 +65,8 @@ export function useListModels({
   });
 }
 
-export type UseGetModelArgs = PathParam<
-  CatalogApi,
-  '/models/{full_name}',
-  'get'
->;
+export interface UseGetModelArgs
+  extends PathParam<CatalogApi, '/models/{full_name}', 'get'> {}
 
 export function useGetModel({ full_name }: UseGetModelArgs) {
   const [catalog, schema, model] = full_name.split('.');
@@ -102,11 +101,8 @@ export function useGetModel({ full_name }: UseGetModelArgs) {
   });
 }
 
-export type CreateModelMutationParams = RequestBody<
-  CatalogApi,
-  '/models',
-  'post'
->;
+export interface CreateModelMutationParams
+  extends RequestBody<CatalogApi, '/models', 'post'> {}
 
 export function useCreateModel() {
   const queryClient = useQueryClient();
@@ -155,17 +151,11 @@ export function useCreateModel() {
   });
 }
 
-export type UseUpdateModelArgs = PathParam<
-  CatalogApi,
-  '/models/{full_name}',
-  'patch'
->;
+export interface UseUpdateModelArgs
+  extends PathParam<CatalogApi, '/models/{full_name}', 'patch'> {}
 
-export type UpdateModelMutationParams = RequestBody<
-  CatalogApi,
-  '/models/{full_name}',
-  'patch'
->;
+export interface UpdateModelMutationParams
+  extends RequestBody<CatalogApi, '/models/{full_name}', 'patch'> {}
 
 export function useUpdateModel({ full_name }: UseUpdateModelArgs) {
   const queryClient = useQueryClient();
@@ -211,17 +201,11 @@ export function useUpdateModel({ full_name }: UseUpdateModelArgs) {
   });
 }
 
-export type UseDeleteModelArgs = PathParam<
-  CatalogApi,
-  '/models/{full_name}',
-  'delete'
->;
+export interface UseDeleteModelArgs
+  extends PathParam<CatalogApi, '/models/{full_name}', 'delete'> {}
 
-export type DeleteModelMutationParams = PathParam<
-  CatalogApi,
-  '/models/{full_name}',
-  'delete'
->;
+export interface DeleteModelMutationParams
+  extends PathParam<CatalogApi, '/models/{full_name}', 'delete'> {}
 
 export function useDeleteModel({ full_name }: UseDeleteModelArgs) {
   const queryClient = useQueryClient();
@@ -268,14 +252,11 @@ export function useDeleteModel({ full_name }: UseDeleteModelArgs) {
 // TypeScript enums require their values, so re-exported here as `const`.
 export { ModelVersionStatus } from '../types/api/catalog.gen';
 
-export type ModelVersionInterface = Model<CatalogComponent, 'ModelVersionInfo'>;
+export interface ModelVersionInterface
+  extends Model<CatalogComponent, 'ModelVersionInfo'> {}
 
-export type UseListModelVersionsArgs = PathParam<
-  CatalogApi,
-  '/models/{full_name}/versions',
-  'get'
-> &
-  QueryParam<CatalogApi, '/models/{full_name}/versions', 'get'>;
+export interface UseListModelVersionsArgs
+  extends PathParam<CatalogApi, '/models/{full_name}/versions', 'get'> {}
 
 export function useListModelVersions({ full_name }: UseListModelVersionsArgs) {
   const [catalog, schema, model] = full_name.split('.');
@@ -310,11 +291,12 @@ export function useListModelVersions({ full_name }: UseListModelVersionsArgs) {
   });
 }
 
-export type UseGetModelVersionArgs = PathParam<
-  CatalogApi,
-  '/models/{full_name}/versions/{version}',
-  'get'
->;
+export interface UseGetModelVersionArgs
+  extends PathParam<
+    CatalogApi,
+    '/models/{full_name}/versions/{version}',
+    'get'
+  > {}
 
 export function useGetModelVersion({
   full_name,
@@ -357,17 +339,19 @@ export function useGetModelVersion({
   });
 }
 
-export type UseUpdateModelVersionArgs = PathParam<
-  CatalogApi,
-  '/models/{full_name}/versions/{version}',
-  'patch'
->;
+export interface UseUpdateModelVersionArgs
+  extends PathParam<
+    CatalogApi,
+    '/models/{full_name}/versions/{version}',
+    'patch'
+  > {}
 
-export type UpdateModelVersionMutationParams = RequestBody<
-  CatalogApi,
-  '/models/{full_name}/versions/{version}',
-  'patch'
->;
+export interface UpdateModelVersionMutationParams
+  extends RequestBody<
+    CatalogApi,
+    '/models/{full_name}/versions/{version}',
+    'patch'
+  > {}
 
 export function useUpdateModelVersion({
   full_name,
@@ -421,17 +405,19 @@ export function useUpdateModelVersion({
   });
 }
 
-export type UseDeleteModelVersionArgs = PathParam<
-  CatalogApi,
-  '/models/{full_name}/versions/{version}',
-  'delete'
->;
+export interface UseDeleteModelVersionArgs
+  extends PathParam<
+    CatalogApi,
+    '/models/{full_name}/versions/{version}',
+    'delete'
+  > {}
 
-export type DeleteModelVersionMutationParams = PathParam<
-  CatalogApi,
-  '/models/{full_name}/versions/{version}',
-  'delete'
->;
+export interface DeleteModelVersionMutationParams
+  extends PathParam<
+    CatalogApi,
+    '/models/{full_name}/versions/{version}',
+    'delete'
+  > {}
 
 export function useDeleteModelVersion({
   full_name,

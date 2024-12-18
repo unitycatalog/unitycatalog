@@ -18,14 +18,15 @@ import type {
   SuccessResponseBody,
 } from '../utils/openapi';
 
-export type TableInterface = Model<CatalogComponent, 'TableInfo'>;
+export interface TableInterface extends Model<CatalogComponent, 'TableInfo'> {}
 
-export type UseListTablesArgs = QueryParam<CatalogApi, '/tables', 'get'> & {
+export interface UseListTablesArgs
+  extends QueryParam<CatalogApi, '/tables', 'get'> {
   options?: Omit<
     UseQueryOptions<SuccessResponseBody<CatalogApi, '/tables', 'get'>>,
     'queryKey' | 'queryFn'
   >;
-};
+}
 
 export function useListTables({
   catalog_name,
@@ -62,11 +63,8 @@ export function useListTables({
   });
 }
 
-export type UseGetTableArgs = PathParam<
-  CatalogApi,
-  '/tables/{full_name}',
-  'get'
->;
+export interface UseGetTableArgs
+  extends PathParam<CatalogApi, '/tables/{full_name}', 'get'> {}
 
 export function useGetTable({ full_name }: UseGetTableArgs) {
   const [catalog, schema, table] = full_name.split('.');
@@ -101,17 +99,11 @@ export function useGetTable({ full_name }: UseGetTableArgs) {
   });
 }
 
-export type UseDeleteTableArgs = PathParam<
-  CatalogApi,
-  '/tables/{full_name}',
-  'delete'
->;
+export interface UseDeleteTableArgs
+  extends PathParam<CatalogApi, '/tables/{full_name}', 'delete'> {}
 
-export type DeleteTableMutationParams = PathParam<
-  CatalogApi,
-  '/tables/{full_name}',
-  'delete'
->;
+export interface DeleteTableMutationParams
+  extends PathParam<CatalogApi, '/tables/{full_name}', 'delete'> {}
 
 export function useDeleteTable({ full_name }: UseDeleteTableArgs) {
   const queryClient = useQueryClient();

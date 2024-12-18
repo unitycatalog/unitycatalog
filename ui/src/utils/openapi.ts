@@ -327,22 +327,23 @@ export type Route<Api extends Spec> = {
 /**
  * Type-guard for the `ErrorResponse`.
  */
-export const isError = <Api extends Spec, ErrorCode extends HttpErrorCode>(
+export function isError<Api extends Spec, ErrorCode extends HttpErrorCode>(
   response: Response<Api, PathOf<Api>, HttpMethod, ErrorCode>,
-): response is ErrorResponse<Api, PathOf<Api>, HttpMethod, ErrorCode> =>
-  response.result === 'error';
+): response is ErrorResponse<Api, PathOf<Api>, HttpMethod, ErrorCode> {
+  return response.result === 'error';
+}
 
 /**
  * Ensures that the relevant statement is exhaustive.
  */
-export const assertNever = (value: never) => {
+export function assertNever(value: never): never {
   throw new Error('Unexpected value: ' + value);
-};
+}
 
 /**
  * Configures the API `client` using the specified `request` context.
  */
-export const route = <
+export function route<
   Api extends Spec,
   Path extends PathOf<Api>,
   Method extends HttpMethod,
@@ -356,7 +357,7 @@ export const route = <
     status: number;
     data: any;
   }): response is ErrorResponseBody<Api, Path, Method, ErrorCode> => false,
-}: RouteArgs<Api, Path, Method, ErrorCode>) => {
+}: RouteArgs<Api, Path, Method, ErrorCode>) {
   // Converts a path like {key} into its actual value.
   const path = () =>
     Object.entries(request.params?.paths ?? {}).reduce(
@@ -396,4 +397,4 @@ export const route = <
   };
 
   return { path, call };
-};
+}
