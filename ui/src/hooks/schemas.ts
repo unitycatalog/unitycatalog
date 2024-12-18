@@ -4,7 +4,7 @@ import {
   useQueryClient,
   UseQueryOptions,
 } from '@tanstack/react-query';
-import { CLIENT } from '../context/catalog';
+import { CLIENT } from '../context/client';
 import { route, isError, assertNever } from '../utils/openapi';
 import type {
   paths as CatalogApi,

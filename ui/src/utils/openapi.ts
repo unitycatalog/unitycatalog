@@ -1,5 +1,5 @@
 import axios from 'axios';
-import type { AxiosInstance } from 'axios';
+import type { AxiosInstance, AxiosRequestConfig } from 'axios';
 
 /**
  * Represents the type of HTTP methods.
@@ -91,7 +91,7 @@ export type MediaType =
  * - `Get<{ a: { b: { c: { someKey: someValue } } } }, ['a', 'b', 'c']>` results in `{ someKey: someValue }`.
  */
 type Get<
-  T extends Record<string, any>,
+  T extends Record<string | number | symbol, any>,
   Path extends (string | number | symbol)[],
 > = 0 extends Path['length']
   ? T
@@ -279,6 +279,52 @@ export type Model<Api extends Spec, Component extends ComponentOf<Api>> = Get<
 >;
 
 /**
+ * Represents the configuration for a client request, which is a partial type based on `AxiosRequestConfig`.
+ */
+export type RequestConfig = Omit<
+  AxiosRequestConfig,
+  'url' | 'method' | 'params' | 'data'
+>;
+
+/**
+ * Represents the arguments of `route` functions.
+ */
+export type RouteArgs<
+  Api extends Spec,
+  Path extends PathOf<Api>,
+  Method extends HttpMethod,
+  ErrorCode extends HttpErrorCode,
+> = {
+  client: AxiosInstance;
+  request: Request<Api, Path, Method>;
+  config?: RequestConfig;
+  errorMessage?: string;
+  errorTypeGuard?: (response: {
+    status: number;
+    data: any;
+  }) => response is ErrorResponseBody<Api, Path, Method, ErrorCode>;
+};
+
+/**
+ * Utility type that simulates partial type argument inference.
+ *
+ * See also:
+ * - {@link https://github.com/microsoft/TypeScript/issues/26242 | Partial Type Argument Inference }
+ */
+export type Route<Api extends Spec> = {
+  <
+    Path extends PathOf<Api>,
+    Method extends HttpMethod,
+    ErrorCode extends HttpErrorCode = never,
+  >(
+    args: RouteArgs<Api, Path, Method, ErrorCode>,
+  ): {
+    path: () => string;
+    call: () => Promise<Response<Api, Path, Method, ErrorCode>>;
+  };
+};
+
+/**
  * Type-guard for the `ErrorResponse`.
  */
 export const isError = <Api extends Spec, ErrorCode extends HttpErrorCode>(
@@ -294,36 +340,6 @@ export const assertNever = (value: never) => {
 };
 
 /**
- * Utility type that simulates partial type argument inference.
- *
- * See also:
- * - {@link https://github.com/microsoft/TypeScript/issues/26242 | Partial Type Argument Inference }
- */
-export type Route<Api extends Spec> = {
-  <
-    Path extends PathOf<Api>,
-    Method extends HttpMethod,
-    ErrorCode extends HttpErrorCode = never,
-  >({
-    client,
-    request,
-    errorMessage,
-    errorTypeGuard,
-  }: {
-    client: AxiosInstance;
-    request: Request<Api, Path, Method>;
-    errorMessage?: string;
-    errorTypeGuard?: (response: {
-      status: number;
-      data: any;
-    }) => response is ErrorResponseBody<Api, Path, Method, ErrorCode>;
-  }): {
-    path: () => string;
-    call: () => Promise<Response<Api, Path, Method, ErrorCode>>;
-  };
-};
-
-/**
  * Configures the API `client` using the specified `request` context.
  */
 export const route = <
@@ -334,38 +350,20 @@ export const route = <
 >({
   client,
   request,
+  config = {},
   errorMessage = 'Unexpected error',
   errorTypeGuard = (response: {
     status: number;
     data: any;
   }): response is ErrorResponseBody<Api, Path, Method, ErrorCode> => false,
-}: {
-  client: AxiosInstance;
-  request: Request<Api, Path, Method>;
-  errorMessage?: string;
-  errorTypeGuard?: (response: {
-    status: number;
-    data: any;
-  }) => response is ErrorResponseBody<Api, Path, Method, ErrorCode>;
-}) => {
+}: RouteArgs<Api, Path, Method, ErrorCode>) => {
   // Converts a path like {key} into its actual value.
-  const path = () => {
-    const fullPath = Object.entries(request.params?.paths ?? {}).reduce(
-      (prev, [key, value]) =>
-        prev.replace(new RegExp(`\\{${key}\\}`), String(value)),
+  const path = () =>
+    Object.entries(request.params?.paths ?? {}).reduce(
+      (acc, [key, value]) =>
+        acc.replace(new RegExp(`\\{${key}\\}`), String(value)),
       request.path as string,
     );
-    const searchParam = new URLSearchParams();
-    Object.entries(request.params?.query ?? {}).forEach(([key, value]) => {
-      if (typeof value === 'string' || typeof value === 'number') {
-        searchParam.set(key, value.toString());
-      }
-    });
-    if (searchParam.toString().length > 0) {
-      return fullPath + '?' + searchParam.toString();
-    }
-    return fullPath;
-  };
 
   // Conducts the actual API call.
   const call = async (): Promise<Response<Api, Path, Method, ErrorCode>> => {
@@ -375,8 +373,9 @@ export const route = <
       >({
         url: path(),
         method: request.method,
+        params: request.params?.query,
         data: request.params?.body,
-        withCredentials: true,
+        ...config,
       });
       return {
         result: 'success',

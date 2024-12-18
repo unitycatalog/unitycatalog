@@ -1,5 +1,6 @@
 import { useMutation, useQuery } from '@tanstack/react-query';
-import { CLIENT } from '../context/control';
+import { CLIENT } from '../context/client';
+import { UC_AUTH_API_PREFIX } from '../utils/constants';
 import { route, isError, assertNever } from '../utils/openapi';
 import type {
   paths as ControlApi,
@@ -31,7 +32,9 @@ export function useLoginWithToken() {
         subjectToken: idToken,
       };
 
-      return CLIENT.post(`/auth/tokens?ext=cookie`, JSON.stringify(params))
+      return CLIENT.post(`/auth/tokens?ext=cookie`, JSON.stringify(params), {
+        baseURL: `${UC_AUTH_API_PREFIX}`,
+      })
         .then((response) => response.data)
         .catch((e) => {
           throw new Error(e.response?.data?.message || 'Failed to log in');
@@ -61,7 +64,11 @@ interface LogoutResponse {
 export function useLogoutCurrentUser() {
   return useMutation<LogoutResponse, Error, {}>({
     mutationFn: async () => {
-      return CLIENT.post(`/auth/logout`, {})
+      return CLIENT.post(
+        `/auth/logout`,
+        {},
+        { baseURL: `${UC_AUTH_API_PREFIX}` },
+      )
         .then((response) => response.data)
         .catch((e) => {
           throw new Error(e.response?.data?.message || 'Logout method failed');
@@ -97,6 +104,9 @@ export function useGetCurrentUser() {
         request: {
           path: '/scim2/Me',
           method: 'get',
+        },
+        config: {
+          baseURL: `${UC_AUTH_API_PREFIX}`,
         },
         errorMessage: 'Failed to fetch user',
         errorTypeGuard: isExpectedError,
