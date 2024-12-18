@@ -1,9 +1,14 @@
 import base64
 import datetime
 import warnings
-from typing import Any, NamedTuple
+from typing import TYPE_CHECKING, Any, NamedTuple
 
 from unitycatalog.ai.core.utils.type_utils import is_time_type
+
+if TYPE_CHECKING:
+    from databricks.sdk.service.catalog import FunctionInfo
+
+OSS_MAX_FUNCTION_NAME_LENGTH = 255
 
 
 class FullFunctionName(NamedTuple):
@@ -80,7 +85,7 @@ def validate_param(param: Any, column_type: str, param_type_text: str) -> None:
         )
 
 
-def check_function_info(func_info):
+def check_function_info(func_info: "FunctionInfo") -> None:
     """
     Checks a FunctionInfo object for missing parameter descriptions and a function description.
     If these are missing, issue a warning to instruct users on how beneficial to their GenAI
@@ -92,21 +97,22 @@ def check_function_info(func_info):
     Uses:
         warnings.warn to issue warnings if any parameters or the function itself lack descriptions.
     """
-    params_with_no_description = []
+    if func_info.input_params:
+        params_with_no_description = []
 
-    for param_info in func_info.input_params.parameters:
-        if not param_info.comment:
-            params_with_no_description.append(param_info.name)
+        for param_info in func_info.input_params.parameters:
+            if not param_info.comment:
+                params_with_no_description.append(param_info.name)
 
-    if params_with_no_description:
-        warnings.warn(
-            f"The following parameters do not have descriptions: {', '.join(params_with_no_description)} for the function {func_info.full_name}. "
-            "Using Unity Catalog functions that do not have parameter descriptions limits the functionality "
-            "for an LLM to understand how to call your function. To improve tool calling accuracy, provide "
-            "verbose parameter descriptions that fully explain what the expected usage of the function arguments are.",
-            UserWarning,
-            stacklevel=2,
-        )
+        if params_with_no_description:
+            warnings.warn(
+                f"The following parameters do not have descriptions: {', '.join(params_with_no_description)} for the function {func_info.full_name}. "
+                "Using Unity Catalog functions that do not have parameter descriptions limits the functionality "
+                "for an LLM to understand how to call your function. To improve tool calling accuracy, provide "
+                "verbose parameter descriptions that fully explain what the expected usage of the function arguments are.",
+                UserWarning,
+                stacklevel=2,
+            )
 
     if not func_info.comment:
         warnings.warn(
@@ -117,4 +123,20 @@ def check_function_info(func_info):
             "as a tool.",
             UserWarning,
             stacklevel=2,
+        )
+
+
+def validate_function_name_length(function_name: str) -> None:
+    """
+    Verifies that the name of the function does not exceed the maximum allowable storage field length in the
+    Database. This restriction only applies to OSS UnityCatalog.
+
+    Args:
+        function_name: The name of the function being created within Unity Catalog.
+    """
+    name_length = len(function_name)
+    if name_length > OSS_MAX_FUNCTION_NAME_LENGTH:
+        raise ValueError(
+            f"The maximum length of a function name is {OSS_MAX_FUNCTION_NAME_LENGTH}. "
+            f"The name supplied is {name_length} characters long."
         )

@@ -44,7 +44,8 @@ public abstract class BaseSparkIntegrationTest extends BaseCRUDTest {
           builder
               .config(catalogConf, UCSingleCatalog.class.getName())
               .config(catalogConf + ".uri", serverConfig.getServerUrl())
-              .config(catalogConf + ".token", serverConfig.getAuthToken());
+              .config(catalogConf + ".token", serverConfig.getAuthToken())
+              .config(catalogConf + ".warehouse", catalog);
     }
     // Use fake file system for cloud storage so that we can test credentials.
     builder.config("fs.s3.impl", S3CredentialTestFileSystem.class.getName());

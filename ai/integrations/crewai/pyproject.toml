@@ -6,7 +6,7 @@ authors = [
     { name="Michael Berk", email="michaelberk99@gmail.com" }
 ]
 readme = "README.md"
-license = { text="MIT" }
+license = { text="Apache-2.0" }
 requires-python = ">=3.10"
 dependencies = [
     "unitycatalog-ai",
@@ -15,12 +15,16 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
+databricks = [
+  "unitycatalog-ai[databricks]",
+]
+
+databricks-dev = [
+  "unitycatalog-ai[databricks-dev]",
+]
+
 dev = [
-  "pytest",
-  "typing_extensions",
-  "databricks-sdk>=0.32.0",
-  "databricks-connect",
-  "ruff==0.6.4",
+  "unitycatalog-ai[dev]",
 ]
 
 [build-system]
