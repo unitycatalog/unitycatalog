@@ -39,7 +39,9 @@ export default function TableSidebar({
   schema,
   table,
 }: TableSidebarProps) {
-  const { data } = useGetTable({ catalog, schema, table });
+  const { data } = useGetTable({
+    full_name: [catalog, schema, table].join('.'),
+  });
 
   if (!data) return null;
 

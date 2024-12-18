@@ -24,19 +24,15 @@ export function DeleteModelVersionModal({
   const navigate = useNavigate();
   const { setNotification } = useNotification();
   const mutation = useDeleteModelVersion({
-    catalog,
-    schema,
-    model,
-    version,
+    full_name: [catalog, schema, model].join('.'),
+    version: Number(version),
   });
 
   const handleSubmit = useCallback(() => {
     mutation.mutate(
       {
-        catalog_name: catalog,
-        schema_name: schema,
-        model_name: model,
-        version: version,
+        full_name: [catalog, schema, model].join('.'),
+        version: Number(version),
       },
       {
         onError: (error: Error) => {
