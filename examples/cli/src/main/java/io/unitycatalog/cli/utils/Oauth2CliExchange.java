@@ -42,9 +42,7 @@ import org.apache.commons.codec.binary.Hex;
 /** Simple OAuth2 authentication flow for the CLI. */
 public class Oauth2CliExchange {
 
-  // Authorization request parameters.
-  // SEE:
-  // - https://datatracker.ietf.org/doc/html/rfc6749#section-4.1.1
+  // SEE: https://datatracker.ietf.org/doc/html/rfc6749#section-4.1.1
   public static interface AuthorizationRequestParams {
     String CLIENT_ID = "client_id";
     String RESPONSE_TYPE = "response_type";
@@ -53,27 +51,20 @@ public class Oauth2CliExchange {
     String STATE = "state";
   }
 
-  // Authorization response parameters.
-  // SEE:
-  // - https://datatracker.ietf.org/doc/html/rfc6749#section-4.1.1
+  // SEE: https://datatracker.ietf.org/doc/html/rfc6749#section-4.1.1
   public static interface AuthorizationResponseParams {
     String CODE = "code";
   }
 
-  // Access token request parameters.
-  // SEE:
-  // - https://datatracker.ietf.org/doc/html/rfc6749#section-4.1.3
+  // SEE: https://datatracker.ietf.org/doc/html/rfc6749#section-4.1.3
   public static interface AccessTokenRequestParams {
     String GRANT_TYPE = "grant_type";
     String CODE = "code";
     String REDIRECT_URI = "redirect_uri";
   }
 
-  // Token exchange request parameters.
-  // TODO:
-  // We need common module for these constants, they are reused in AuthService.
-  // SEE:
-  // - https://datatracker.ietf.org/doc/html/rfc6749#section-4.1.3
+  // TODO: We need common module for these constants, they are reused in AuthService.
+  // SEE: https://datatracker.ietf.org/doc/html/rfc6749#section-4.1.3
   public static interface TokenExchangeRequestParams {
     String GRANT_TYPE = "grant_type";
     String REQUESTED_TOKEN_TYPE = "requested_token_type";
