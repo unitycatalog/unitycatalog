@@ -2,7 +2,6 @@ package io.unitycatalog.cli.utils;
 
 import static java.net.HttpURLConnection.HTTP_OK;
 import static java.net.URLDecoder.decode;
-import static java.util.Map.entry;
 import static java.util.stream.Collectors.groupingBy;
 import static java.util.stream.Collectors.mapping;
 import static java.util.stream.Collectors.toList;
@@ -13,6 +12,9 @@ import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpHandler;
 import com.sun.net.httpserver.HttpServer;
 import io.unitycatalog.control.model.AuthorizationGrantType;
+import io.unitycatalog.control.model.OAuthAccessTokenRequest;
+import io.unitycatalog.control.model.OAuthAuthorizationRequest;
+import io.unitycatalog.control.model.OAuthAuthorizationResponse;
 import io.unitycatalog.control.model.ResponseType;
 import java.io.BufferedOutputStream;
 import java.io.IOException;
@@ -41,27 +43,6 @@ import org.apache.commons.codec.binary.Hex;
 
 /** Simple OAuth2 authentication flow for the CLI. */
 public class Oauth2CliExchange {
-
-  // SEE: https://datatracker.ietf.org/doc/html/rfc6749#section-4.1.1
-  public static interface AuthorizationRequestParams {
-    String CLIENT_ID = "client_id";
-    String RESPONSE_TYPE = "response_type";
-    String REDIRECT_URI = "redirect_uri";
-    String SCOPE = "scope";
-    String STATE = "state";
-  }
-
-  // SEE: https://datatracker.ietf.org/doc/html/rfc6749#section-4.1.1
-  public static interface AuthorizationResponseParams {
-    String CODE = "code";
-  }
-
-  // SEE: https://datatracker.ietf.org/doc/html/rfc6749#section-4.1.3
-  public static interface AccessTokenRequestParams {
-    String GRANT_TYPE = "grant_type";
-    String CODE = "code";
-    String REDIRECT_URI = "redirect_uri";
-  }
 
   private static final ObjectMapper mapper = new ObjectMapper();
 
@@ -110,13 +91,13 @@ public class Oauth2CliExchange {
     String authUrl =
         authorizationUrl
             + "?"
-            + URLEncodedForm.ofMap(
-                Map.ofEntries(
-                    entry(AuthorizationRequestParams.RESPONSE_TYPE, ResponseType.CODE.getValue()),
-                    entry(AuthorizationRequestParams.CLIENT_ID, clientId),
-                    entry(AuthorizationRequestParams.REDIRECT_URI, redirectUrl),
-                    entry(AuthorizationRequestParams.SCOPE, "openid profile email"),
-                    entry(AuthorizationRequestParams.STATE, Hex.encodeHexString(stateBytes))));
+            + URLEncodedForm.of(
+                new OAuthAuthorizationRequest()
+                    .responseType(ResponseType.CODE)
+                    .clientId(clientId)
+                    .redirectUri(redirectUrl)
+                    .scope("openid profile email")
+                    .state(Hex.encodeHexString(stateBytes)));
 
     System.out.println("Attempting to open the authorization page in your default browser.");
     System.out.println("If the browser does not open, you can manually open the following URL:");
@@ -154,13 +135,11 @@ public class Oauth2CliExchange {
     server.stop(0);
 
     String tokenBody =
-        URLEncodedForm.ofMap(
-            Map.ofEntries(
-                entry(
-                    AccessTokenRequestParams.GRANT_TYPE,
-                    AuthorizationGrantType.AUTHORIZATION_CODE.getValue()),
-                entry(AccessTokenRequestParams.CODE, authCode),
-                entry(AccessTokenRequestParams.REDIRECT_URI, redirectUrl)));
+        URLEncodedForm.of(
+            new OAuthAccessTokenRequest()
+                .grantType(AuthorizationGrantType.AUTHORIZATION_CODE)
+                .code(authCode)
+                .redirectUri(redirectUrl));
 
     String authorization =
         "Basic " + Base64.getEncoder().encodeToString((clientId + ":" + clientSecret).getBytes());
@@ -214,10 +193,10 @@ public class Oauth2CliExchange {
 
   public static class URLEncodedForm {
     public static String of(Object from) {
-      return ofMap(mapper.convertValue(from, new TypeReference<Map<String, String>>() {}));
+      return fromMap(mapper.convertValue(from, new TypeReference<Map<String, String>>() {}));
     }
 
-    public static String ofMap(Map<String, String> from) {
+    private static String fromMap(Map<String, String> from) {
       return from.entrySet().stream()
           .filter(e -> e.getValue() != null)
           .map(
@@ -247,7 +226,7 @@ public class Oauth2CliExchange {
                       mapping(s -> decode(s[1], StandardCharsets.UTF_8), toList())));
 
       // Get the authorization flow code
-      String value = parameters.get(AuthorizationResponseParams.CODE).get(0);
+      String value = parameters.get(OAuthAuthorizationResponse.JSON_PROPERTY_CODE).get(0);
 
       // Prepare response send to browser.
       String response = "User validated with identity provider.";

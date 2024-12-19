@@ -227,7 +227,7 @@ public class AuthService {
   // - https://armeria.dev/docs/server-annotated-service/#getting-a-query-parameter
   // - https://armeria.dev/docs/server-annotated-service/#injecting-a-parameter-as-an-enum-type
   private static class ToOAuthTokenExchangeRequestConverter implements RequestConverterFunction {
-    private static final ObjectMapper MAPPER = new ObjectMapper();
+    private static final ObjectMapper mapper = new ObjectMapper();
 
     @Override
     public Object convertRequest(
@@ -244,7 +244,7 @@ public class AuthService {
                     request.content(contentType.charset(StandardCharsets.UTF_8)))
                 .stream()
                 .collect(Collectors.toMap(Map.Entry::getKey, Map.Entry::getValue));
-        return MAPPER.convertValue(form, OAuthTokenExchangeRequest.class);
+        return mapper.convertValue(form, OAuthTokenExchangeRequest.class);
       }
       return RequestConverterFunction.fallthrough();
     }
