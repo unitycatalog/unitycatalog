@@ -98,10 +98,10 @@ You can run the code below to work with data stored in the `unity` catalog that 
         --packages "io.delta:delta-spark_2.12:3.2.1,io.unitycatalog:unitycatalog-spark_2.12:0.2.0" \
         --conf "spark.sql.extensions=io.delta.sql.DeltaSparkSessionExtension" \
         --conf "spark.sql.catalog.spark_catalog=io.unitycatalog.spark.UCSingleCatalog" \
-        --conf "spark.sql.catalog.unity=io.unitycatalog.spark.UCSingleCatalog" \
-        --conf "spark.sql.catalog.unity.uri=http://localhost:8080" \
-        --conf "spark.sql.catalog.unity.token=" \
-        --conf "spark.sql.defaultCatalog=unity"
+        --conf "spark.sql.catalog.<catalog_name>=io.unitycatalog.spark.UCSingleCatalog" \
+        --conf "spark.sql.catalog.<catalog_name>.uri=http://localhost:8080" \
+        --conf "spark.sql.catalog.<catalog_name>.token=" \
+        --conf "spark.sql.defaultCatalog=<catalog_name>"
     ```
 
 === "PySpark"
@@ -112,10 +112,10 @@ You can run the code below to work with data stored in the `unity` catalog that 
         --packages "io.delta:delta-spark_2.12:3.2.1,io.unitycatalog:unitycatalog-spark_2.12:0.2.0" \
         --conf "spark.sql.extensions=io.delta.sql.DeltaSparkSessionExtension" \
         --conf "spark.sql.catalog.spark_catalog=io.unitycatalog.spark.UCSingleCatalog" \
-        --conf "spark.sql.catalog.unity=io.unitycatalog.spark.UCSingleCatalog" \
-        --conf "spark.sql.catalog.unity.uri=http://localhost:8080" \
-        --conf "spark.sql.catalog.unity.token=" \
-        --conf "spark.sql.defaultCatalog=unity"
+        --conf "spark.sql.catalog.<catalog_name>=io.unitycatalog.spark.UCSingleCatalog" \
+        --conf "spark.sql.catalog.<catalog_name>.uri=http://localhost:8080" \
+        --conf "spark.sql.catalog.<catalog_name>.token=" \
+        --conf "spark.sql.defaultCatalog=<catalog_name>"
     ```
 
 !!! tip "Tip"
@@ -125,9 +125,9 @@ You can run the code below to work with data stored in the `unity` catalog that 
 Notice the following packages (`--packages`) and configurations (`--conf`)
 
 - `--packages` points to the delta-spark and unitycatalog-spark packages; update the version numbers to your current versions.
-- `spark.sql.catalog.unity.uri` points to your local development UC instance
-- `spark.sql.catalog.unity.token` is empty indicating there is no authentication; refer to [auth](../server/auth.md) for more information.
-- `spark.sql.defaultCatalog=unity` must be filled out to indicate the default catalog.
+- `spark.sql.catalog.<catalog_name>.uri` points to your local development UC instance
+- `spark.sql.catalog.<catalog_name>.token` is empty indicating there is no authentication; refer to [auth](../server/auth.md) for more information.
+- `spark.sql.defaultCatalog=<catalog_name>` must be filled out to indicate the default catalog. The default name is `unity`.
 
 ??? note "Three-part and two-part naming conventions"
 
@@ -152,10 +152,10 @@ command.
         --conf "spark.sql.extensions=io.delta.sql.DeltaSparkSessionExtension" \
         --conf "spark.sql.catalog.spark_catalog=io.unitycatalog.spark.UCSingleCatalog" \
         --conf "spark.hadoop.fs.s3.impl=org.apache.hadoop.fs.s3a.S3AFileSystem" \
-        --conf "spark.sql.catalog.unity=io.unitycatalog.spark.UCSingleCatalog" \
-        --conf "spark.sql.catalog.unity.uri=http://localhost:8080" \
-        --conf "spark.sql.catalog.unity.token=" \
-        --conf "spark.sql.defaultCatalog=unity"
+        --conf "spark.sql.catalog.<catalog_name>=io.unitycatalog.spark.UCSingleCatalog" \
+        --conf "spark.sql.catalog.<catalog_name>.uri=http://localhost:8080" \
+        --conf "spark.sql.catalog.<catalog_name>.token=" \
+        --conf "spark.sql.defaultCatalog=<catalog_name>"
     ```
 
 === "Azure ADLSgen2"
@@ -166,10 +166,10 @@ command.
         --packages "org.apache.hadoop:hadoop-azure:3.3.6,io.delta:delta-spark_2.12:3.2.1,io.unitycatalog:unitycatalog-spark_2.12:0.2.0" \
         --conf "spark.sql.extensions=io.delta.sql.DeltaSparkSessionExtension" \
         --conf "spark.sql.catalog.spark_catalog=io.unitycatalog.spark.UCSingleCatalog" \
-        --conf "spark.sql.catalog.unity=io.unitycatalog.spark.UCSingleCatalog" \
-        --conf "spark.sql.catalog.unity.uri=http://localhost:8080" \
-        --conf "spark.sql.catalog.unity.token=" \
-        --conf "spark.sql.defaultCatalog=unity"
+        --conf "spark.sql.catalog.<catalog_name>=io.unitycatalog.spark.UCSingleCatalog" \
+        --conf "spark.sql.catalog.<catalog_name>.uri=http://localhost:8080" \
+        --conf "spark.sql.catalog.<catalog_name>.token=" \
+        --conf "spark.sql.defaultCatalog=<catalog_name>"
     ```
 
 === "Google Cloud Storage"
@@ -183,10 +183,10 @@ command.
         --conf "spark.sql.catalog.spark_catalog=io.unitycatalog.spark.UCSingleCatalog" \
         --conf "spark.hadoop.fs.gs.impl=com.google.cloud.hadoop.fs.gcs.GoogleHadoopFileSystem" \
         --conf "spark.hadoop.fs.AbstractFileSystem.gs.impl=com.google.cloud.hadoop.fs.gcs.GoogleHadoopFS" \
-        --conf "spark.sql.catalog.unity=io.unitycatalog.spark.UCSingleCatalog" \
-        --conf "spark.sql.catalog.unity.uri=http://localhost:8080" \
-        --conf "spark.sql.catalog.unity.token=" \
-        --conf "spark.sql.defaultCatalog=unity"
+        --conf "spark.sql.catalog.<catalog_name>=io.unitycatalog.spark.UCSingleCatalog" \
+        --conf "spark.sql.catalog.<catalog_name>.uri=http://localhost:8080" \
+        --conf "spark.sql.catalog.<catalog_name>.token=" \
+        --conf "spark.sql.defaultCatalog=<catalog_name>"
     ```
 
 ## Using Spark SQL to query Unity Catalog schemas and tables
