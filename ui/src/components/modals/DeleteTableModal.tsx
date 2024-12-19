@@ -22,8 +22,7 @@ export function DeleteTableModal({
   const navigate = useNavigate();
   const { setNotification } = useNotification();
   const mutation = useDeleteTable({
-    catalog,
-    schema,
+    full_name: [catalog, schema, table].join('.'),
   });
   const tableFullName = useMemo(
     () => [catalog, schema, table].join('.'),
@@ -32,9 +31,7 @@ export function DeleteTableModal({
   const handleSubmit = useCallback(() => {
     mutation.mutate(
       {
-        catalog_name: catalog,
-        schema_name: schema,
-        name: table,
+        full_name: [catalog, schema, table].join('.'),
       },
       {
         onError: (error: Error) => {
