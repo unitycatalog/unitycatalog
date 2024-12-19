@@ -166,7 +166,7 @@ def test_generate_tool_call_messages_no_function_calls_in_response(
             response=example_string_response,
             conversation_history=example_conversation_history,
         )
-        print(example_string_response.candidates[0].content)
+
         # Since no function calls, just the candidate content is appended
         assert function_response_parts is None
         assert len(updated_history) == len(example_conversation_history) + 1
