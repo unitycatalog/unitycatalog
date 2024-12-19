@@ -11,7 +11,10 @@ license = { text="Apache-2.0" }
 requires-python = ">=3.9"
 dependencies = [
   "typing_extensions",
-  "pydantic"
+  "pydantic",
+  "asyncio",
+  "nest_asyncio",
+  "unitycatalog-client",
 ]
 keywords = ["unitycatalog", "ai", "databricks", "function", "tool", "genai"]
 classifiers = [
@@ -63,6 +66,7 @@ sources = ["src"]
 only-include = ["src/unitycatalog/ai/core"]
 
 [project.optional-dependencies]
+
 databricks = [
   "databricks-sdk>=0.32.0",
   "pandas",
@@ -79,6 +83,7 @@ databricks-dev = [
 dev = [
   "hatch",
   "pytest",
+  "pytest-asyncio",
   "databricks-sdk>=0.32.0",
   # Note: databricks-connect 15.1 is required for serverless,
   # databricks-connect>=14.0.0 requires python>=3.10

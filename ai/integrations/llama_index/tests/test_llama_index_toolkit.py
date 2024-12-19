@@ -13,7 +13,7 @@ from databricks.sdk.service.catalog import (
 )
 from pydantic import BaseModel, ValidationError
 
-from unitycatalog.ai.core.client import (
+from unitycatalog.ai.core.base import (
     BaseFunctionClient,
     FunctionExecutionResult,
 )

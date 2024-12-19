@@ -17,7 +17,6 @@ import io.unitycatalog.control.model.User;
 import io.unitycatalog.server.exception.AuthorizationException;
 import io.unitycatalog.server.exception.ErrorCode;
 import io.unitycatalog.server.persist.UserRepository;
-import io.unitycatalog.server.security.JwtClaim;
 import io.unitycatalog.server.security.SecurityContext;
 import io.unitycatalog.server.utils.JwksOperations;
 import org.slf4j.Logger;
@@ -68,10 +67,10 @@ public class AuthDecorator implements DecoratingHttpServiceFunction {
     DecodedJWT decodedJWT =
         JWT.decode(getAccessTokenFromCookieOrAuthHeader(authorizationHeader, authorizationCookie));
 
-    String issuer = decodedJWT.getClaim(JwtClaim.ISSUER.key()).asString();
-    String keyId = decodedJWT.getHeaderClaim(JwtClaim.KEY_ID.key()).asString();
+    String issuer = decodedJWT.getIssuer();
+    String keyId = decodedJWT.getKeyId();
 
-    LOGGER.debug("Validating access-token for issuer: {}", issuer);
+    LOGGER.debug("Validating access-token for issuer: {} and keyId: {}", issuer, keyId);
 
     if (!issuer.equals(INTERNAL)) {
       throw new AuthorizationException(ErrorCode.PERMISSION_DENIED, "Invalid access token.");
@@ -80,17 +79,20 @@ public class AuthDecorator implements DecoratingHttpServiceFunction {
     JWTVerifier jwtVerifier = jwksOperations.verifierForIssuerAndKey(issuer, keyId);
     decodedJWT = jwtVerifier.verify(decodedJWT);
 
+    String subject = decodedJWT.getSubject();
+
     User user;
     try {
-      user = USER_REPOSITORY.getUserByEmail(decodedJWT.getClaim(JwtClaim.SUBJECT.key()).asString());
+      user = USER_REPOSITORY.getUserByEmail(subject);
     } catch (Exception e) {
+      LOGGER.debug("User not found: {}", subject);
       user = null;
     }
     if (user == null || user.getState() != User.StateEnum.ENABLED) {
-      throw new AuthorizationException(ErrorCode.PERMISSION_DENIED, "User not allowed.");
+      throw new AuthorizationException(ErrorCode.PERMISSION_DENIED, "User not allowed: " + subject);
     }
 
-    LOGGER.debug("Access allowed for subject: {}", decodedJWT.getClaim(JwtClaim.SUBJECT.key()));
+    LOGGER.debug("Access allowed for subject: {}", subject);
 
     ctx.setAttr(DECODED_JWT_ATTR, decodedJWT);
 

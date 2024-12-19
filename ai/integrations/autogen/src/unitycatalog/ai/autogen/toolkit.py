@@ -7,7 +7,7 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from autogen import ConversableAgent
 from autogen import __version__ as autogen_version
-from unitycatalog.ai.core.client import BaseFunctionClient
+from unitycatalog.ai.core.base import BaseFunctionClient
 from unitycatalog.ai.core.utils.client_utils import validate_or_set_default_client
 from unitycatalog.ai.core.utils.function_processing_utils import (
     generate_function_input_params_schema,
