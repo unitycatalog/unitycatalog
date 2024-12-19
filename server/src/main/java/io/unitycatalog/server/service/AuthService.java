@@ -4,12 +4,19 @@ import com.auth0.jwt.JWT;
 import com.auth0.jwt.JWTVerifier;
 import com.auth0.jwt.interfaces.DecodedJWT;
 import com.linecorp.armeria.common.*;
+import com.linecorp.armeria.common.AggregatedHttpRequest;
+import com.linecorp.armeria.common.MediaType;
+import com.linecorp.armeria.common.QueryParams;
 import com.linecorp.armeria.common.annotation.Nullable;
+import com.linecorp.armeria.server.ServiceRequestContext;
 import com.linecorp.armeria.server.annotation.ExceptionHandler;
 import com.linecorp.armeria.server.annotation.Param;
 import com.linecorp.armeria.server.annotation.Post;
+import com.linecorp.armeria.server.annotation.RequestConverter;
+import com.linecorp.armeria.server.annotation.RequestConverterFunction;
 import io.unitycatalog.control.model.AccessTokenType;
 import io.unitycatalog.control.model.GrantType;
+import io.unitycatalog.control.model.OAuthTokenExchangeRequest;
 import io.unitycatalog.control.model.OAuthTokenExchangeResponse;
 import io.unitycatalog.control.model.TokenType;
 import io.unitycatalog.control.model.User;
@@ -21,10 +28,11 @@ import io.unitycatalog.server.security.JwtClaim;
 import io.unitycatalog.server.security.SecurityContext;
 import io.unitycatalog.server.utils.JwksOperations;
 import io.unitycatalog.server.utils.ServerProperties;
+import java.lang.reflect.ParameterizedType;
+import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.Optional;
-import lombok.Getter;
-import lombok.ToString;
+import java.util.function.Supplier;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -73,28 +81,21 @@ public class AuthService {
    * the incoming identity (email, subject) matches a specific user in the system, once a user
    * management system is in place.
    *
-   * <p>NOTE: Armeria does not convert some `Enum` values properly; hence, we should treat them as
-   * `String` here.
-   *
-   * <p>SEE:
-   * https://armeria.dev/docs/server-annotated-service/#injecting-a-parameter-as-an-enum-type
-   *
    * @param request The token exchange parameters
    * @return The token exchange response
    */
   @Post("/tokens")
+  @RequestConverter(ToOAuthTokenExchangeRequestConverter.class)
   public HttpResponse grantToken(
       @Param("ext") Optional<String> ext, OAuthTokenExchangeRequest request) {
     LOGGER.debug("Got token: {}", request);
 
-    if (request.getGrantType() == null
-        || !GrantType.TOKEN_EXCHANGE.getValue().equals(request.getGrantType())) {
+    if (GrantType.TOKEN_EXCHANGE != request.getGrantType()) {
       throw new OAuthInvalidRequestException(
           ErrorCode.INVALID_ARGUMENT, "Unsupported grant type: " + request.getGrantType());
     }
 
-    if (request.getRequestedTokenType() == null
-        || !TokenType.ACCESS_TOKEN.getValue().equals(request.getRequestedTokenType())) {
+    if (TokenType.ACCESS_TOKEN != request.getRequestedTokenType()) {
       throw new OAuthInvalidRequestException(
           ErrorCode.INVALID_ARGUMENT,
           "Unsupported requested token type: " + request.getRequestedTokenType());
@@ -209,41 +210,70 @@ public class AuthService {
   }
 
   // NOTE:
-  // Unfortunately, when specifying `application/x-www-form-urlencoded` for content in the OpenAPI
-  // schema, the OpenAPI Generator does not generate request models from that schema.
-  // Additionally, when accessing each parameter directly from the body without using a model,
-  // Armeria fails to handle them correctly if the `ext` query parameter is present. Therefore,
-  // the request model is implemented manually here.
+  // When specifying `application/x-www-form-urlencoded` as the content type in the OpenAPI schema,
+  // the OpenAPI Generator does not create request models from the schema.
+  // Moreover, directly accessing parameters from the body without a model causes issues with
+  // Armeria, particularly when the `ext` query parameter is included.
+  //
+  // To resolve this, instead of redefining a request model solely for Armeria's parameter injection,
+  // a `RequestConverterFunction` for `OAuthTokenExchangeRequest` is implemented here.
+  // This approach ensures a single model is used across both the `controlApi` and `cli` projects,
+  // preserving the principle of a single source of truth.
   //
   // SEE:
   // - https://armeria.dev/docs/server-annotated-service/#getting-a-query-parameter
   // - https://armeria.dev/docs/server-annotated-service/#injecting-a-parameter-as-an-enum-type
-  @ToString
-  private static class OAuthTokenExchangeRequest {
-    @Param("grant_type")
-    @Getter
-    private String grantType;
+  private static class ToOAuthTokenExchangeRequestConverter implements RequestConverterFunction {
+    private static <T> T IIFE(Supplier<? extends T> supplier) {
+      return supplier.get();
+    }
 
-    @Param("requested_token_type")
-    @Getter
-    private String requestedTokenType;
-
-    @Param("subject_token_type")
-    @Getter
-    private String subjectTokenType;
-
-    @Param("subject_token")
-    @Getter
-    private String subjectToken;
-
-    @Param("actor_token_type")
-    @Nullable
-    @Getter
-    private String actorTokenType;
-
-    @Param("actor_token")
-    @Nullable
-    @Getter
-    private String actorToken;
+    @Override
+    public Object convertRequest(
+        ServiceRequestContext ctx,
+        AggregatedHttpRequest request,
+        Class<?> expectedResultType,
+        @Nullable ParameterizedType expectedParameterizedResultType) {
+      MediaType contentType = request.contentType();
+      if (expectedResultType == OAuthTokenExchangeRequest.class
+          && contentType != null
+          && contentType.belongsTo(MediaType.FORM_DATA)) {
+        QueryParams form =
+            QueryParams.fromQueryString(
+                request.content(contentType.charset(StandardCharsets.UTF_8)));
+        return new OAuthTokenExchangeRequest()
+            .grantType(
+                IIFE(
+                    () -> {
+                      String value = form.get(OAuthTokenExchangeRequest.JSON_PROPERTY_GRANT_TYPE);
+                      return value != null ? GrantType.fromValue(value) : null;
+                    }))
+            .scope(form.get(OAuthTokenExchangeRequest.JSON_PROPERTY_SCOPE))
+            .requestedTokenType(
+                IIFE(
+                    () -> {
+                      String value =
+                          form.get(OAuthTokenExchangeRequest.JSON_PROPERTY_REQUESTED_TOKEN_TYPE);
+                      return value != null ? TokenType.fromValue(value) : null;
+                    }))
+            .subjectToken(form.get(OAuthTokenExchangeRequest.JSON_PROPERTY_SUBJECT_TOKEN))
+            .subjectTokenType(
+                IIFE(
+                    () -> {
+                      String value =
+                          form.get(OAuthTokenExchangeRequest.JSON_PROPERTY_SUBJECT_TOKEN_TYPE);
+                      return value != null ? TokenType.fromValue(value) : null;
+                    }))
+            .actorToken(form.get(OAuthTokenExchangeRequest.JSON_PROPERTY_ACTOR_TOKEN))
+            .actorTokenType(
+                IIFE(
+                    () -> {
+                      String value =
+                          form.get(OAuthTokenExchangeRequest.JSON_PROPERTY_ACTOR_TOKEN_TYPE);
+                      return value != null ? TokenType.fromValue(value) : null;
+                    }));
+      }
+      return RequestConverterFunction.fallthrough();
+    }
   }
 }

@@ -140,12 +140,51 @@ paths:
       summary: Get a token using an OAuth2 flow
       description: |
         Exchanges credentials for a token using the OAuth2 token exchange.
+      # NOTE:
+      # When specifying `application/x-www-form-urlencoded` as the content type in the OpenAPI schema,
+      # the OpenAPI Generator does not generate request models from the schema.
+      # Additionally, accessing parameters directly from the body without a model causes issues with
+      # Armeria, particularly when the `ext` query parameter is present.
+      #
+      # To address this, the same request model is defined here and in `components/schemas/OAuthTokenExchangeRequest`.
+      # These two definitions MUST be identical.
+      # The generated model from `components/schemas/OAuthTokenExchangeRequest` will be used
+      # in both the `controlApi` and `cli` projects.
+      #
+      # SEE:
+      # - https://armeria.dev/docs/server-annotated-service/#getting-a-query-parameter
+      # - https://armeria.dev/docs/server-annotated-service/#injecting-a-parameter-as-an-enum-type
       requestBody:
         required: true
         content:
           application/x-www-form-urlencoded:
             schema:
-              $ref: '#/components/schemas/OAuthTokenExchangeRequest'
+              description: |
+                OAuth2 token exchange request.
+                See https://datatracker.ietf.org/doc/html/rfc8693
+              type: object
+              required:
+                - grant_type
+                - subject_token
+                - subject_token_type
+              properties:
+                grant_type:
+                  $ref: "#/components/schemas/GrantType"
+                scope:
+                  description: The authorization scope for the token exchange request.
+                  type: string
+                requested_token_type:
+                  $ref: '#/components/schemas/TokenType'
+                subject_token:
+                  description: The security token that represents the identity of the party on behalf of whom the request is being made.
+                  type: string
+                subject_token_type:
+                  $ref: '#/components/schemas/TokenType'
+                actor_token:
+                  description: The security token that represents the identity of the acting party.
+                  type: string
+                actor_token_type:
+                  $ref: '#/components/schemas/TokenType'
       responses:
         '200':
           description: The token exchange was successfully granted.
@@ -158,19 +197,21 @@ paths:
       tags:
         - OAuth2
       operationId: logout
-      summary: Expires the access token
+      summary: Expire the access token
       description: |
         Expires the authorixation cookie.
+      # NOTE:
+      # OAS 3.0 allows empty request bodies. In other words:
+      #```
+      #  requestBody:
+      #    content:
+      #      application/json: {}
+      #```
+      # should be permissible. However, due to the limitations of the OpenAPI Generator, which only
+      # accepts OAS 2-style notation, this is a workaround.
+      # SEE:
+      # - https://github.com/OpenAPITools/openapi-generator/blob/v5.1.0/docs/generators/java.md#parameter-feature
       requestBody:
-        # NOTE:
-        # OAS 3.0 allows empty request bodies. In other words:
-        #```
-        #  requestBody:
-        #    content:
-        #    application/json: {}
-        #```
-        # should be permissible. However, due to the limitations of the OpenAPI Generator (https://github.com/OpenAPITools/openapi-generator/blob/v5.1.0/docs/generators/java.md#parameter-feature),
-        # which only accepts OAS 2-style notation, this is a workaround.
         content:
           application/json:
             schema:
@@ -379,17 +420,17 @@ components:
         grant_type:
           $ref: "#/components/schemas/GrantType"
         scope:
-          description: Authorization scope for client credentials or token exchange.
+          description: The authorization scope for the token exchange request.
           type: string
         requested_token_type:
           $ref: '#/components/schemas/TokenType'
         subject_token:
-          description: Subject token for token exchange request.
+          description: The security token that represents the identity of the party on behalf of whom the request is being made.
           type: string
         subject_token_type:
           $ref: '#/components/schemas/TokenType'
         actor_token:
-          description: Actor token for token exchange request.
+          description: The security token that represents the identity of the acting party.
           type: string
         actor_token_type:
           $ref: '#/components/schemas/TokenType'
@@ -404,21 +445,21 @@ components:
         - token_type
       properties:
         access_token:
-          description: Access token for token exchange request.
+          description: The access token for the token exchange request.
           type: string
         issued_token_type:
           $ref: '#/components/schemas/TokenType'
         token_type:
           $ref: '#/components/schemas/AccessTokenType'
         expires_in:
-          description: Lifetime of the access token in seconds for client credentials or token exchange.
+          description: The lifetime of the access token in seconds for the token exchange.
           type: integer
           format: int64
         scope:
-          description: Authorization scope for client credentials or token exchange.
+          description: The authorization scope for the token exchange.
           type: string
         refresh_token:
-          description: Refresh token for client credentials or token exchange.
+          description: The refresh token for the token exchange.
           type: string
 
 info:
