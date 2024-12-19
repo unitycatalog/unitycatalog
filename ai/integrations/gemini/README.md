@@ -146,8 +146,7 @@ Now that we have the defined tools from Unity Catalog, we can directly pass this
 
 ### Use the tools within a request to Gemini models
 
-Gemini will generate a stopping condition of `"tool_use"` when a relevant tool definition is provided to a message creation call, responding with the
-function's name to call and the input arguments to provide to the tool.
+When you send a query to the Gemini model, it will automatically detect if it needs to call a tool (your UC function) to answer the question:
 
 ```python
 # Interface with Gemini via their SDK
@@ -167,11 +166,37 @@ print(response)
 ```
 
 ### Showing Details of the Tool Call
+You can review the conversation history and see how the LLM decided to call the function:
 
 ```python
 for content in chat.history:
     print(content.role, "->", [type(part).to_dict(part) for part in content.parts])
     print("-" * 80)
+```
+## Manually execute function calls
+if you prefer more control, you can manually detect and execute function calls:
+```python
+from google.generativeai.types import content_types
+from unitycatalog.ai.gemini.utils import get_function_calls,generate_tool_call_messages
+
+history = []
+question = "What's the weather in Nome, AK and in Death Valley, CA?"
+
+
+content = content_types.to_content(question)
+if not content.role:
+    content.role = "user"
+
+history.append(content)
+
+response = model.generate_content(
+   history)
+while function_calls := get_function_calls(response):
+    history , function_calls = generate_tool_call_messages(model=model ,response= response ,conversation_history = history )
+
+    response = model.generate_content(history)
+
+response
 ```
 
 ### Configurations for Databricks-only UC function execution
