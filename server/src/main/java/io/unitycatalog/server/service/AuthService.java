@@ -215,7 +215,8 @@ public class AuthService {
   // Moreover, directly accessing parameters from the body without a model causes issues with
   // Armeria, particularly when the `ext` query parameter is included.
   //
-  // To resolve this, instead of redefining a request model solely for Armeria's parameter injection,
+  // To resolve this, instead of redefining a request model solely for Armeria's parameter
+  // injection,
   // a `RequestConverterFunction` for `OAuthTokenExchangeRequest` is implemented here.
   // This approach ensures a single model is used across both the `controlApi` and `cli` projects,
   // preserving the principle of a single source of truth.
