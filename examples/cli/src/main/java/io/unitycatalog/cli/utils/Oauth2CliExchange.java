@@ -6,12 +6,16 @@ import static java.util.stream.Collectors.groupingBy;
 import static java.util.stream.Collectors.mapping;
 import static java.util.stream.Collectors.toList;
 
-import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpHandler;
 import com.sun.net.httpserver.HttpServer;
+import io.unitycatalog.control.model.AuthorizationGrantType;
+import io.unitycatalog.control.model.OAuthAccessTokenRequest;
+import io.unitycatalog.control.model.OAuthAuthorizationRequest;
+import io.unitycatalog.control.model.OAuthAuthorizationResponse;
+import io.unitycatalog.control.model.ResponseType;
 import java.io.BufferedOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
@@ -28,7 +32,6 @@ import java.nio.file.Paths;
 import java.security.SecureRandom;
 import java.util.Arrays;
 import java.util.Base64;
-import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Properties;
@@ -40,25 +43,6 @@ import org.apache.commons.codec.binary.Hex;
 
 /** Simple OAuth2 authentication flow for the CLI. */
 public class Oauth2CliExchange {
-
-  // TODO: need common module for these constants, they are reused in AuthService
-  public interface Fields {
-    String GRANT_TYPE = "grant_type";
-    String CLIENT_ID = "client_id";
-    String CLIENT_SECRET = "client_secret";
-    String REDIRECT_URL = "redirect_uri";
-    String CODE = "code";
-  }
-
-  public interface TokenTypes {
-    String ACCESS = "urn:ietf:params:oauth:token-type:access_token";
-    String ID = "urn:ietf:params:oauth:token-type:id_token";
-    String JWT = "urn:ietf:params:oauth:token-type:jwt";
-  }
-
-  public interface GrantTypes {
-    String TOKEN_EXCHANGE = "urn:ietf:params:oauth:grant-type:token-exchange";
-  }
 
   private static final ObjectMapper mapper = new ObjectMapper();
 
@@ -103,17 +87,17 @@ public class Oauth2CliExchange {
     byte[] stateBytes = new byte[16];
     new SecureRandom().nextBytes(stateBytes);
 
+    // NOTE: The value of `scope` is Google OAuth2 specific. We might need more versatile code here.
     String authUrl =
-        String.format(
-            "%s?%s=%s&%s=%s&response_type=%s&scope=%s&state=%s",
-            authorizationUrl,
-            Fields.CLIENT_ID,
-            URLEncoder.encode(clientId, StandardCharsets.UTF_8),
-            Fields.REDIRECT_URL,
-            URLEncoder.encode(redirectUrl, StandardCharsets.UTF_8),
-            Fields.CODE,
-            URLEncoder.encode("openid profile email", StandardCharsets.UTF_8),
-            Hex.encodeHexString(stateBytes));
+        authorizationUrl
+            + "?"
+            + URLEncodedForm.of(
+                new OAuthAuthorizationRequest()
+                    .responseType(ResponseType.CODE)
+                    .clientId(clientId)
+                    .redirectUri(redirectUrl)
+                    .scope("openid profile email")
+                    .state(Hex.encodeHexString(stateBytes)));
 
     System.out.println("Attempting to open the authorization page in your default browser.");
     System.out.println("If the browser does not open, you can manually open the following URL:");
@@ -150,15 +134,15 @@ public class Oauth2CliExchange {
 
     server.stop(0);
 
-    Map<String, String> tokenParams = new HashMap<>();
-    tokenParams.put(Fields.CODE, authCode);
-    tokenParams.put(Fields.CLIENT_ID, clientId);
-    tokenParams.put(Fields.CLIENT_SECRET, clientSecret);
-    tokenParams.put(Fields.GRANT_TYPE, "authorization_code");
-    tokenParams.put(Fields.REDIRECT_URL, redirectUrl);
+    String tokenBody =
+        URLEncodedForm.of(
+            new OAuthAccessTokenRequest()
+                .grantType(AuthorizationGrantType.AUTHORIZATION_CODE)
+                .code(authCode)
+                .redirectUri(redirectUrl));
 
-    String tokenBody = buildTokenBody(tokenParams);
-    String authorization = buildAuthorization(tokenParams);
+    String authorization =
+        "Basic " + Base64.getEncoder().encodeToString((clientId + ":" + clientSecret).getBytes());
 
     // TODO: Replace this with a more modern web-client
     HttpURLConnection urlConnection = (HttpURLConnection) new URL(tokenUrl).openConnection();
@@ -207,23 +191,21 @@ public class Oauth2CliExchange {
     }
   }
 
-  private String buildTokenBody(Map<String, String> tokenParams) throws JsonProcessingException {
-    return tokenParams.entrySet().stream()
-        .filter(
-            p -> !p.getKey().equals(Fields.CLIENT_ID) && !p.getKey().equals(Fields.CLIENT_SECRET))
-        .map(
-            p ->
-                URLEncoder.encode(p.getKey(), StandardCharsets.UTF_8)
-                    + "="
-                    + URLEncoder.encode(p.getValue(), StandardCharsets.UTF_8))
-        .reduce((p1, p2) -> p1 + "&" + p2)
-        .orElse("");
-  }
+  public static class URLEncodedForm {
+    public static String of(Object from) {
+      return fromMap(mapper.convertValue(from, new TypeReference<Map<String, String>>() {}));
+    }
 
-  private String buildAuthorization(Map<String, String> tokenParams) {
-    String authorizationValue =
-        tokenParams.get(Fields.CLIENT_ID) + ":" + tokenParams.get(Fields.CLIENT_SECRET);
-    return "Basic " + Base64.getEncoder().encodeToString(authorizationValue.getBytes());
+    private static String fromMap(Map<String, String> from) {
+      return from.entrySet().stream()
+          .filter(e -> e.getValue() != null)
+          .map(
+              e ->
+                  URLEncoder.encode(e.getKey(), StandardCharsets.UTF_8)
+                      + "="
+                      + URLEncoder.encode(e.getValue(), StandardCharsets.UTF_8))
+          .reduce("", (acc, cur) -> acc + "&" + cur);
+    }
   }
 
   static class AuthCallbackHandler implements HttpHandler {
@@ -244,7 +226,7 @@ public class Oauth2CliExchange {
                       mapping(s -> decode(s[1], StandardCharsets.UTF_8), toList())));
 
       // Get the authorization flow code
-      String value = parameters.get("code").get(0);
+      String value = parameters.get(OAuthAuthorizationResponse.JSON_PROPERTY_CODE).get(0);
 
       // Prepare response send to browser.
       String response = "User validated with identity provider.";
