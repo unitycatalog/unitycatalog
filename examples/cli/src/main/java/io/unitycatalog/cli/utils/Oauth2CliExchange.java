@@ -63,15 +63,6 @@ public class Oauth2CliExchange {
     String REDIRECT_URI = "redirect_uri";
   }
 
-  // TODO: We need common module for these constants, they are reused in AuthService.
-  // SEE: https://datatracker.ietf.org/doc/html/rfc6749#section-4.1.3
-  public static interface TokenExchangeRequestParams {
-    String GRANT_TYPE = "grant_type";
-    String REQUESTED_TOKEN_TYPE = "requested_token_type";
-    String SUBJECT_TOKEN_TYPE = "subject_token_type";
-    String SUBJECT_TOKEN = "subject_token";
-  }
-
   private static final ObjectMapper mapper = new ObjectMapper();
 
   Properties serverProperties = new Properties();
@@ -222,14 +213,19 @@ public class Oauth2CliExchange {
   }
 
   public static class URLEncodedForm {
-    public static String ofMap(Map<String, String> parameters) {
-      return parameters.entrySet().stream()
+    public static String of(Object from) {
+      return ofMap(mapper.convertValue(from, new TypeReference<Map<String, String>>() {}));
+    }
+
+    public static String ofMap(Map<String, String> from) {
+      return from.entrySet().stream()
+          .filter(e -> e.getValue() != null)
           .map(
-              p ->
-                  URLEncoder.encode(p.getKey(), StandardCharsets.UTF_8)
+              e ->
+                  URLEncoder.encode(e.getKey(), StandardCharsets.UTF_8)
                       + "="
-                      + URLEncoder.encode(p.getValue(), StandardCharsets.UTF_8))
-          .reduce("", (lhs, rhs) -> lhs + "&" + rhs);
+                      + URLEncoder.encode(e.getValue(), StandardCharsets.UTF_8))
+          .reduce("", (acc, cur) -> acc + "&" + cur);
     }
   }
 

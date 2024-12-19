@@ -3,6 +3,7 @@ package io.unitycatalog.server.service;
 import com.auth0.jwt.JWT;
 import com.auth0.jwt.JWTVerifier;
 import com.auth0.jwt.interfaces.DecodedJWT;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.linecorp.armeria.common.*;
 import com.linecorp.armeria.common.AggregatedHttpRequest;
 import com.linecorp.armeria.common.MediaType;
@@ -31,8 +32,9 @@ import io.unitycatalog.server.utils.ServerProperties;
 import java.lang.reflect.ParameterizedType;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
+import java.util.Map;
 import java.util.Optional;
-import java.util.function.Supplier;
+import java.util.stream.Collectors;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -225,9 +227,7 @@ public class AuthService {
   // - https://armeria.dev/docs/server-annotated-service/#getting-a-query-parameter
   // - https://armeria.dev/docs/server-annotated-service/#injecting-a-parameter-as-an-enum-type
   private static class ToOAuthTokenExchangeRequestConverter implements RequestConverterFunction {
-    private static <T> T IIFE(Supplier<? extends T> supplier) {
-      return supplier.get();
-    }
+    private static final ObjectMapper MAPPER = new ObjectMapper();
 
     @Override
     public Object convertRequest(
@@ -239,40 +239,12 @@ public class AuthService {
       if (expectedResultType == OAuthTokenExchangeRequest.class
           && contentType != null
           && contentType.belongsTo(MediaType.FORM_DATA)) {
-        QueryParams form =
+        Map<String, String> form =
             QueryParams.fromQueryString(
-                request.content(contentType.charset(StandardCharsets.UTF_8)));
-        return new OAuthTokenExchangeRequest()
-            .grantType(
-                IIFE(
-                    () -> {
-                      String value = form.get(OAuthTokenExchangeRequest.JSON_PROPERTY_GRANT_TYPE);
-                      return value != null ? GrantType.fromValue(value) : null;
-                    }))
-            .scope(form.get(OAuthTokenExchangeRequest.JSON_PROPERTY_SCOPE))
-            .requestedTokenType(
-                IIFE(
-                    () -> {
-                      String value =
-                          form.get(OAuthTokenExchangeRequest.JSON_PROPERTY_REQUESTED_TOKEN_TYPE);
-                      return value != null ? TokenType.fromValue(value) : null;
-                    }))
-            .subjectToken(form.get(OAuthTokenExchangeRequest.JSON_PROPERTY_SUBJECT_TOKEN))
-            .subjectTokenType(
-                IIFE(
-                    () -> {
-                      String value =
-                          form.get(OAuthTokenExchangeRequest.JSON_PROPERTY_SUBJECT_TOKEN_TYPE);
-                      return value != null ? TokenType.fromValue(value) : null;
-                    }))
-            .actorToken(form.get(OAuthTokenExchangeRequest.JSON_PROPERTY_ACTOR_TOKEN))
-            .actorTokenType(
-                IIFE(
-                    () -> {
-                      String value =
-                          form.get(OAuthTokenExchangeRequest.JSON_PROPERTY_ACTOR_TOKEN_TYPE);
-                      return value != null ? TokenType.fromValue(value) : null;
-                    }));
+                    request.content(contentType.charset(StandardCharsets.UTF_8)))
+                .stream()
+                .collect(Collectors.toMap(Map.Entry::getKey, Map.Entry::getValue));
+        return MAPPER.convertValue(form, OAuthTokenExchangeRequest.class);
       }
       return RequestConverterFunction.fallthrough();
     }

@@ -1,9 +1,7 @@
 package io.unitycatalog.cli;
 
 import static io.unitycatalog.cli.utils.CliUtils.postProcessAndPrintOutput;
-import static io.unitycatalog.cli.utils.Oauth2CliExchange.TokenExchangeRequestParams;
 import static java.net.HttpURLConnection.HTTP_OK;
-import static java.util.Map.entry;
 
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.fasterxml.jackson.core.JsonProcessingException;
@@ -16,6 +14,7 @@ import io.unitycatalog.cli.utils.Oauth2CliExchange;
 import io.unitycatalog.client.ApiClient;
 import io.unitycatalog.client.ApiException;
 import io.unitycatalog.control.model.GrantType;
+import io.unitycatalog.control.model.OAuthTokenExchangeRequest;
 import io.unitycatalog.control.model.TokenType;
 import java.io.IOException;
 import java.net.URI;
@@ -78,14 +77,12 @@ public class AuthCli {
     URI endpoint = URI.create(apiClient.getBaseUri() + "/auth/tokens");
 
     String body =
-        Oauth2CliExchange.URLEncodedForm.ofMap(
-            Map.ofEntries(
-                entry(TokenExchangeRequestParams.GRANT_TYPE, GrantType.TOKEN_EXCHANGE.getValue()),
-                entry(
-                    TokenExchangeRequestParams.REQUESTED_TOKEN_TYPE,
-                    TokenType.ACCESS_TOKEN.getValue()),
-                entry(TokenExchangeRequestParams.SUBJECT_TOKEN_TYPE, TokenType.ID_TOKEN.getValue()),
-                entry(TokenExchangeRequestParams.SUBJECT_TOKEN, login.get("identityToken"))));
+        Oauth2CliExchange.URLEncodedForm.of(
+            new OAuthTokenExchangeRequest()
+                .grantType(GrantType.TOKEN_EXCHANGE)
+                .requestedTokenType(TokenType.ACCESS_TOKEN)
+                .subjectTokenType(TokenType.ID_TOKEN)
+                .subjectToken(login.get("identityToken")));
 
     HttpRequest request =
         HttpRequest.newBuilder()
