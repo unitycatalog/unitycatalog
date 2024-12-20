@@ -87,9 +87,10 @@ public class AuthService {
    * @return The token exchange response
    */
   @Post("/tokens")
-  @RequestConverter(ToOAuthTokenExchangeRequestConverter.class)
   public HttpResponse grantToken(
-      @Param("ext") Optional<String> ext, OAuthTokenExchangeRequest request) {
+      @Param("ext") Optional<String> ext,
+      @RequestConverter(ToOAuthTokenExchangeRequestConverter.class)
+          OAuthTokenExchangeRequest request) {
     LOGGER.debug("Got token: {}", request);
 
     if (GrantType.TOKEN_EXCHANGE != request.getGrantType()) {

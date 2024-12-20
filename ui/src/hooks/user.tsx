@@ -34,16 +34,19 @@ interface LogoutResponse {
 export function useLoginWithToken() {
   return useMutation<LoginResponse, Error, string>({
     mutationFn: async (idToken) => {
-      const params = {
-        grantType: 'urn:ietf:params:oauth:grant-type:token-exchange',
-        requestedTokenType: 'urn:ietf:params:oauth:token-type:access_token',
-        subjectTokenType: 'urn:ietf:params:oauth:token-type:id_token',
-        subjectToken: idToken,
-      };
+      const params = new URLSearchParams({
+        grant_type: 'urn:ietf:params:oauth:grant-type:token-exchange',
+        requested_token_type: 'urn:ietf:params:oauth:token-type:access_token',
+        subject_token_type: 'urn:ietf:params:oauth:token-type:id_token',
+        subject_token: idToken,
+      });
 
       return apiClient
-        .post(`/auth/tokens?ext=cookie`, JSON.stringify(params), {
+        .post(`/auth/tokens?ext=cookie`, params.toString(), {
           baseURL: `${UC_AUTH_API_PREFIX}`,
+          headers: {
+            'Content-type': 'application/x-www-form-urlencoded',
+          },
         })
         .then((response) => response.data)
         .catch((e) => {
