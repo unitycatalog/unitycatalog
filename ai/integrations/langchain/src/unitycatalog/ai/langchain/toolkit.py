@@ -1,3 +1,4 @@
+import ast
 import json
 from typing import Any, Dict, List, Optional
 
@@ -11,6 +12,7 @@ from unitycatalog.ai.core.utils.function_processing_utils import (
     get_tool_name,
     process_function_names,
 )
+from unitycatalog.ai.core.utils.validation_utils import is_valid_retriever_output
 
 
 class UnityCatalogTool(StructuredTool):
@@ -47,6 +49,14 @@ class UCFunctionToolkit(BaseModel):
         values["client"] = client
 
         function_names = values["function_names"]
+        tools_dict = values.get("tools_dict", {})
+
+        values["tools_dict"] = process_function_names(
+            function_names=function_names,
+            tools_dict=tools_dict,
+            client=client,
+            uc_function_to_tool_func=cls.uc_function_to_langchain_tool,
+        )
         tools_dict = values.get("tools_dict", {})
 
         values["tools_dict"] = process_function_names(
@@ -92,6 +102,22 @@ class UCFunctionToolkit(BaseModel):
                 function_name=function_name,
                 parameters=args_json,
             )
+            
+            if result.value:
+                try:
+                    output = ast.literal_eval(result.value)
+                
+                    if is_valid_retriever_output(output):
+                        import mlflow
+                        from mlflow.entities import SpanType
+                        
+                        with mlflow.start_span(name="retriever", span_type=SpanType.RETRIEVER) as span:
+                            span.set_inputs(kwargs)
+                            span.set_outputs(output)
+                except Exception:
+                    # Ignoring exceptions because auto-tracing retriever is not essential
+                    pass
+            
             return result.to_json()
 
         return UnityCatalogTool(
