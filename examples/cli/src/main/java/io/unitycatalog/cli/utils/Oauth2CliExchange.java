@@ -192,12 +192,9 @@ public class Oauth2CliExchange {
   }
 
   public static class URLEncodedForm {
-    public static String of(Object from) {
-      return fromMap(mapper.convertValue(from, new TypeReference<Map<String, String>>() {}));
-    }
-
-    private static String fromMap(Map<String, String> from) {
-      return from.entrySet().stream()
+    public static String of(Object request) {
+      return mapper.convertValue(request, new TypeReference<Map<String, String>>() {}).entrySet()
+          .stream()
           .filter(e -> e.getValue() != null)
           .map(
               e ->
