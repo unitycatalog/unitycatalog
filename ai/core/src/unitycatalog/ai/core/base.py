@@ -26,9 +26,11 @@ class FunctionExecutionResult:
     value: Optional[str] = None
     truncated: Optional[bool] = None
 
+    def to_dict(self) -> dict:
+        return {k: v for (k, v) in self.__dict__.items() if v is not None}
+
     def to_json(self) -> str:
-        data = {k: v for (k, v) in self.__dict__.items() if v is not None}
-        return json.dumps(data)
+        return json.dumps(self.to_dict())
 
 
 class BaseFunctionClient(ABC):
@@ -77,7 +79,6 @@ class BaseFunctionClient(ABC):
         schema: str,
         max_results: Optional[int] = None,
         page_token: Optional[str] = None,
-        **kwargs,
     ) -> PagedList[Any]:
         """
         List functions in a catalog and schema.

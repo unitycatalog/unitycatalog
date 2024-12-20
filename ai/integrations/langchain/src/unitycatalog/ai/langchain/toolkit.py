@@ -11,6 +11,7 @@ from unitycatalog.ai.core.utils.function_processing_utils import (
     get_tool_name,
     process_function_names,
 )
+from unitycatalog.ai.core.utils.validation_utils import is_valid_retriever_output
 
 
 class UnityCatalogTool(StructuredTool):
@@ -47,6 +48,14 @@ class UCFunctionToolkit(BaseModel):
         values["client"] = client
 
         function_names = values["function_names"]
+        tools_dict = values.get("tools_dict", {})
+
+        values["tools_dict"] = process_function_names(
+            function_names=function_names,
+            tools_dict=tools_dict,
+            client=client,
+            uc_function_to_tool_func=cls.uc_function_to_langchain_tool,
+        )
         tools_dict = values.get("tools_dict", {})
 
         values["tools_dict"] = process_function_names(
@@ -92,6 +101,16 @@ class UCFunctionToolkit(BaseModel):
                 function_name=function_name,
                 parameters=args_json,
             )
+            if is_valid_retriever_output(result.to_dict()):
+                try:
+                    import mlflow
+                    from mlflow.tracing.constant import SpanAttributeKey
+                    from mlflow.entities import SpanType
+                    
+                    span = mlflow.get_current_active_span()
+                    span.set_attribute(SpanAttributeKey.SPAN_TYPE, SpanType.RETRIEVER)
+                except:
+                    pass
             return result.to_json()
 
         return UnityCatalogTool(

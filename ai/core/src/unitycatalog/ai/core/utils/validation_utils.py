@@ -140,3 +140,22 @@ def validate_function_name_length(function_name: str) -> None:
             f"The maximum length of a function name is {OSS_MAX_FUNCTION_NAME_LENGTH}. "
             f"The name supplied is {name_length} characters long."
         )
+
+def is_valid_retriever_output(outputs: Any) -> bool:
+    if not isinstance(outputs, list):
+        return False
+    
+    def is_valid_retriever_item(item: Any) -> bool:
+        if isinstance(item, mlflow.entities.Document):
+            return True
+        
+        if isinstance(item, dict):
+            allowed_keys = {"id", "page_content", "metadata"}
+            return (
+                set(item.keys()).issubset(allowed_keys) and
+                "page_content" in item and isinstance(item["page_content"], str) and
+                (item.get("id", None) is None or isinstance(item.get("id", None), str)) and
+                (item.get("metadata", None) is None or (isinstance(item.get("metadata", None), dict) and all(isinstance(key, str) for key in item.get("metadata").keys())))
+            )
+
+    return all(is_valid_retriever_item(item) for item in outputs)
