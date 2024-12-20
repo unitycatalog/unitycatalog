@@ -192,6 +192,9 @@ public class Oauth2CliExchange {
   }
 
   public static class URLEncodedForm {
+    // NOTE:
+    // This conversion works only for shallow objects. Nested objects should be handled recursively,
+    // but a versatile solution is unnecessary for our purpose here.
     public static String of(Object request) {
       return mapper.convertValue(request, new TypeReference<Map<String, String>>() {}).entrySet()
           .stream()
