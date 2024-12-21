@@ -64,7 +64,8 @@ def generate_tool_call_messages(
     function_response_parts: list[protos.Part] = []
     for fc in function_calls:
         fr = tools_lib(fc)
-        assert fr is not None, (
+        if fr is None:
+            raise ValueError(
             "Unexpected state: The function reference (fr) should never be None. It should only return None if the declaration "
             "is not callable, which is checked earlier in the code."
         )
