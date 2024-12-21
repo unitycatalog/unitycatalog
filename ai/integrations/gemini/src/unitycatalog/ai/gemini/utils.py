@@ -66,9 +66,9 @@ def generate_tool_call_messages(
         fr = tools_lib(fc)
         if fr is None:
             raise ValueError(
-            "Unexpected state: The function reference (fr) should never be None. It should only return None if the declaration "
-            "is not callable, which is checked earlier in the code."
-        )
+                "Unexpected state: The function reference (fr) should never be None. It should only return None if the declaration "
+                "is not callable, which is checked earlier in the code."
+            )
         function_response_parts.append(fr)
 
     send = protos.Content(role="user", parts=function_response_parts)
