@@ -22,20 +22,15 @@ export default function ModelVersionDetails() {
   if (!schema) throw new Error('Schema name is required');
   if (!model) throw new Error('Model name is required');
   if (!version) throw new Error('Version number is required');
-  const versionNumber = Number(version);
   const { data, refetch } = useGetModelVersion({
-    catalog,
-    schema,
-    model,
-    version,
+    full_name: [catalog, schema, model].join('.'),
+    version: Number(version),
   });
   const [open, setOpen] = useState<boolean>(false);
   const { setNotification } = useNotification();
   const mutation = useUpdateModelVersion({
-    catalog,
-    schema,
-    model,
-    version: versionNumber,
+    full_name: [catalog, schema, model].join('.'),
+    version: Number(version),
   });
 
   if (!data) return null;
@@ -53,27 +48,27 @@ export default function ModelVersionDetails() {
   const versionData: DataType[] = [
     {
       versionKey: 'Created at',
-      versionValue: formatTimestamp(data?.created_at),
+      versionValue: data.created_at ? formatTimestamp(data.created_at) : '',
     },
     {
       versionKey: 'Created by',
-      versionValue: data?.created_by,
+      versionValue: data.created_by ?? '',
     },
     {
       versionKey: 'Updated at',
-      versionValue: data?.updated_at ? formatTimestamp(data?.updated_at) : '',
+      versionValue: data.updated_at ? formatTimestamp(data.updated_at) : '',
     },
     {
       versionKey: 'Updated by',
-      versionValue: data?.updated_by ? data?.updated_by : '',
+      versionValue: data.updated_by ?? '',
     },
     {
       versionKey: 'Status',
-      versionValue: data?.status,
+      versionValue: data.status ?? '',
     },
     {
       versionKey: 'Training run',
-      versionValue: data?.run_id,
+      versionValue: data.run_id ?? '',
     },
   ];
 
@@ -116,7 +111,7 @@ export default function ModelVersionDetails() {
         <DetailsLayout.Content>
           <Flex vertical gap={60}>
             <DescriptionBox
-              comment={data.comment}
+              comment={data.comment ?? ''}
               onEdit={() => setOpen(true)}
             />
             <div>
