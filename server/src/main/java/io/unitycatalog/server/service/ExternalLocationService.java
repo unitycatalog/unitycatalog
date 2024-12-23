@@ -10,6 +10,7 @@ import io.unitycatalog.server.auth.decorator.UnityAccessEvaluator;
 import io.unitycatalog.server.exception.GlobalExceptionHandler;
 import io.unitycatalog.server.model.CreateExternalLocation;
 import io.unitycatalog.server.model.ExternalLocationInfo;
+import io.unitycatalog.server.model.ListExternalLocationsResponse;
 import io.unitycatalog.server.model.UpdateExternalLocation;
 import io.unitycatalog.server.persist.ExternalLocationRepository;
 import io.unitycatalog.server.persist.dao.ExternalLocationDAO;
@@ -51,7 +52,7 @@ public class ExternalLocationService {
     public HttpResponse listExternalLocations(
             @Param("max_results") Optional<Integer> maxResults,
             @Param("page_token") Optional<String> pageToken) {
-        List<ExternalLocationInfo> locations = REPOSITORY.listExternalLocations(maxResults, pageToken);
+        ListExternalLocationsResponse locations = REPOSITORY.listExternalLocations(maxResults, pageToken);
         return HttpResponse.ofJson(locations);
     }
 

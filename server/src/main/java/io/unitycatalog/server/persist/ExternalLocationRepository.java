@@ -4,6 +4,7 @@ import io.unitycatalog.server.exception.BaseException;
 import io.unitycatalog.server.exception.ErrorCode;
 import io.unitycatalog.server.model.CreateExternalLocation;
 import io.unitycatalog.server.model.ExternalLocationInfo;
+import io.unitycatalog.server.model.ListExternalLocationsResponse;
 import io.unitycatalog.server.model.UpdateExternalLocation;
 import io.unitycatalog.server.persist.dao.ExternalLocationDAO;
 import io.unitycatalog.server.persist.dao.StorageCredentialDAO;
@@ -97,7 +98,7 @@ public class ExternalLocationRepository {
     return query.uniqueResult();
   }
 
-  public List<ExternalLocationInfo> listExternalLocations(
+  public ListExternalLocationsResponse listExternalLocations(
       Optional<Integer> maxResults, Optional<String> pageToken) {
     try (Session session = SESSION_FACTORY.openSession()) {
       session.setDefaultReadOnly(true);
@@ -105,12 +106,15 @@ public class ExternalLocationRepository {
       try {
         List<ExternalLocationDAO> daoList =
             LISTING_HELPER.listEntity(session, maxResults, pageToken, null);
+        String nextPageToken = LISTING_HELPER.getNextPageToken(daoList, maxResults);
         List<ExternalLocationInfo> results = new ArrayList<>();
         for (ExternalLocationDAO dao : daoList) {
           results.add(dao.toExternalLocationInfo());
         }
         tx.commit();
-        return results;
+        return new ListExternalLocationsResponse()
+            .externalLocations(results)
+            .nextPageToken(nextPageToken);
       } catch (Exception e) {
         tx.rollback();
         throw e;

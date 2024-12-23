@@ -20,6 +20,7 @@ public abstract class BaseExternalLocationCRUDTest extends BaseCRUDTest {
   private static final String URL = "s3://unitycatalog-test";
   private static final String NEW_URL = "s3://unitycatalog-test-new";
   private static final String CREDENTIAL_NAME = "uc_testcredential";
+  private static final String DUMMY_ROLE_ARN = "arn:aws:iam::123456789012:role/role-name";
   protected ExternalLocationOperations externalLocationOperations;
 
   protected abstract ExternalLocationOperations createExternalLocationOperations(
@@ -35,6 +36,7 @@ public abstract class BaseExternalLocationCRUDTest extends BaseCRUDTest {
   public void setUp() {
     super.setUp();
     externalLocationOperations = createExternalLocationOperations(serverConfig);
+    storageCredentialOperations = createStorageCredentialOperations(serverConfig);
   }
 
   @Test
@@ -54,7 +56,10 @@ public abstract class BaseExternalLocationCRUDTest extends BaseCRUDTest {
         .isInstanceOf(ApiException.class);
 
     CreateStorageCredential createStorageCredential =
-        new CreateStorageCredential().name(CREDENTIAL_NAME).comment(COMMENT);
+        new CreateStorageCredential()
+            .name(CREDENTIAL_NAME)
+            .comment(COMMENT)
+            .awsIamRole(new AwsIamRoleRequest().roleArn(DUMMY_ROLE_ARN));
     StorageCredentialInfo storageCredentialInfo =
         storageCredentialOperations.createStorageCredential(createStorageCredential);
 
