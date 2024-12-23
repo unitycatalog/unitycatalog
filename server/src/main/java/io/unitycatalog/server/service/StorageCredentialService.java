@@ -9,6 +9,7 @@ import io.unitycatalog.server.auth.annotation.AuthorizeKey;
 import io.unitycatalog.server.auth.decorator.UnityAccessEvaluator;
 import io.unitycatalog.server.exception.GlobalExceptionHandler;
 import io.unitycatalog.server.model.CreateStorageCredential;
+import io.unitycatalog.server.model.ListStorageCredentialsResponse;
 import io.unitycatalog.server.model.StorageCredentialInfo;
 import io.unitycatalog.server.model.UpdateStorageCredential;
 import io.unitycatalog.server.persist.StorageCredentialRepository;
@@ -49,7 +50,7 @@ public class StorageCredentialService {
     public HttpResponse listStorageCredentials(
             @Param("max_results") Optional<Integer> maxResults,
             @Param("page_token") Optional<String> pageToken) {
-        List<StorageCredentialInfo> credentials = REPOSITORY.listStorageCredentials(maxResults, pageToken);
+        ListStorageCredentialsResponse credentials = REPOSITORY.listStorageCredentials(maxResults, pageToken);
         return HttpResponse.ofJson(credentials);
     }
 

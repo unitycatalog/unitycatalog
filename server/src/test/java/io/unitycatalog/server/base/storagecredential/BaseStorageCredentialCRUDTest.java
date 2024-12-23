@@ -16,6 +16,7 @@ import org.junit.jupiter.api.Test;
 public abstract class BaseStorageCredentialCRUDTest extends BaseCRUDTest {
   private static final String CREDENTIAL_NAME = "uc_testcredential";
   private static final String NEW_CREDENTIAL_NAME = CREDENTIAL_NAME + "_new";
+  private static final String DUMMY_ROLE_ARN = "arn:aws:iam::123456789012:role/role-name";
   protected StorageCredentialOperations storageCredentialOperations;
 
   protected abstract StorageCredentialOperations createStorageCredentialOperations(
@@ -32,7 +33,10 @@ public abstract class BaseStorageCredentialCRUDTest extends BaseCRUDTest {
   public void testStorageCredentialCRUD() throws ApiException {
     // Create a storage credential
     CreateStorageCredential createStorageCredential =
-        new CreateStorageCredential().name(CREDENTIAL_NAME).comment(COMMENT);
+        new CreateStorageCredential()
+            .name(CREDENTIAL_NAME)
+            .comment(COMMENT)
+            .awsIamRole(new AwsIamRoleRequest().roleArn(DUMMY_ROLE_ARN));
 
     StorageCredentialInfo storageCredentialInfo =
         storageCredentialOperations.createStorageCredential(createStorageCredential);
