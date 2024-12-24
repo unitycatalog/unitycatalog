@@ -21,6 +21,11 @@ If you are working with **Databricks Unity Catalog**, you can install the option
 pip install unitycatalog-autogen[databricks]
 ```
 
+> **Note**: The official Microsoft AutoGen package has been renamed from `pyautogen` to `autogen-agentchat`. 
+There are additional forked version of the AutoGen package that are not contributed by Microsoft and will not work with this integration. 
+For further information, please see the [official clarification statement](https://github.com/microsoft/autogen/discussions/4217). The officially
+maintained repository can be viewed [here](https://github.com/microsoft/autogen).
+
 ## Getting started
 
 ### Creating a Unity Catalog Client
