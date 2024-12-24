@@ -1,14 +1,12 @@
 import React from 'react';
 
-export function getChildOnDisplayName(
+export function getChildOnType(
   children: React.ReactNode[] | React.ReactNode,
-  displayName: string,
+  type: React.JSXElementConstructor<any>,
 ) {
   return React.Children.toArray(children).find((child) => {
     if (React.isValidElement(child)) {
-      return typeof child.type === 'function'
-        ? child.type.name === displayName
-        : false;
+      return child.type === type;
     }
     return false;
   });
