@@ -206,4 +206,8 @@ public class FileUtils {
       throw new BaseException(ErrorCode.INVALID_ARGUMENT, "Normalization failed: " + uri.getPath());
     }
   }
+
+  public static void assertValidLocation(String location) {
+    validateURI(URI.create(location));
+  }
 }
