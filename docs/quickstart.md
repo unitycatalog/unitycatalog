@@ -384,8 +384,7 @@ This code snippet will create a registered model `default.unity.iris` and log th
 then loads the model from the Unity Catalog server, and performs batch inference on the test set using the loaded model.
 
 The results can be seen in the Unity Catalog UI at [http://localhost:3000,](http://localhost:3000) per the instructions
-in the [Interact with the Unity Catalog tutorial](https://github.com/unitycatalog/unitycatalog?tab=readme-ov-file#interact-with-the-unity-catalog-ui).
-
+in the [Unity Catalog UI documentation](usage/ui.md).
 ![UC UI models](./assets/images/uc_ui_models.png)
 
 ## APIs and Compatibility
