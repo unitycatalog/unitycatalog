@@ -13,14 +13,13 @@ The following diagram shows an example of a Unity Catalog instance with two func
 
 ![UC Functions](../assets/images/uc_functions.png)
 
-Let's look at how this works.
+Let's look at how this works. We will use the Unity Catalog CLI for all the examples. You can also use the [Unity Catalog UI](ui.md).
 
 ## Set Up
 
 We'll use a local Unity Catalog server to get started. The default local UC server comes with some sample data.
 
-> If this is your first time spinning up a UC server, you might want to check out the [Quickstart](../quickstart.md)
-    first.
+> If this is your first time spinning up a UC server, you might want to check out the [Quickstart](../quickstart.md) first.
 
 Spin up a local UC server by running the following code in a terminal from the root directory of your local
 `unitycatalog` repository:
@@ -253,7 +252,7 @@ This will simulate rolling a single die with 6 sides.
 Required Parameters:
 
 - `--full_name`: The full name of the table. The full name is the concatenation of the catalog name, schema name, and
-    table/volume name separated by a dot. For example, catalog_name.schema_name.table_name.
+  table/volume name separated by a dot. For example, catalog_name.schema_name.table_name.
 - `--input_params`: The input parameters of the function,
 - `--data_type`: The data type of the function.
 
