@@ -14,11 +14,11 @@ Throughout the next set of examples, we are using an external identity provider 
 Unity Catalog database for authorization. The flow is as follows:
 
 1. The user account used will **authenticate** against an external authentication provider to confirm the user is who
-    they say they are (e.g., `bobbie@rocinante` is in fact Bobbie Draper on the Rocinante)
-2. The user account is either **authenticated** and a *user token is provided* or **not authenticated**.
+   they say they are (e.g., `bobbie@rocinante` is in fact Bobbie Draper on the Rocinante)
+2. The user account is either **authenticated** and a _user token is provided_ or **not authenticated**.
 3. With the token at hand, the user account also needs to request if they are **authorized** to perform the task
-    (e.g., the user can only read tables but not write any tables).  This authorization step is performed with the
-    Unity Catalog database.
+   (e.g., the user can only read tables but not write any tables). This authorization step is performed with the
+   Unity Catalog database.
 4. The user account is either **authorized** and they can perform the task or **not authorized**.
 
 ## Configure your External Identity Provider
@@ -26,11 +26,11 @@ Unity Catalog database for authorization. The flow is as follows:
 To try out authentication and authorization, first configure your preferred external identity provider following their
 instructions. Ultimately you will have configuration properties to configure:
 
-* `etc/conf/server.properties` to fill in the Identity Provider authorization parameters
-* [Optional] `ui/.env` so the Unity Catalog UI can also use the same `client_id`.  
+- `etc/conf/server.properties` to fill in the Identity Provider authorization parameters
+- [Optional] `ui/.env` so the Unity Catalog UI can also use the same `client_id`.
 
 !!! note "Unity Catalog UI supported Identity Authentication Providers"
-    Currently, the Unity Catalog User Interface supports Google Identity Provider.
+Currently, the Unity Catalog User Interface supports Google Identity Provider.
 
 You can follow [these instructions](./google-auth.md) if would like to use Google as your external identity provider.
 
@@ -59,10 +59,10 @@ bin/start-uc-server
 
 Behind the scenes, on startup, the UC server will configure itself with the following:
 
-* Creation of internal signing keys and authentication files in `etc/conf`
-* Creation of an admin access token in `etc/conf/token.txt`
-* Creation of an admin account in the user database
-* Granting the admin account as the metastore admin for the server
+- Creation of internal signing keys and authentication files in `etc/conf`
+- Creation of an admin access token in `etc/conf/token.txt`
+- Creation of an admin account in the user database
+- Granting the admin account as the metastore admin for the server
 
 ## Testing User and Admin Authentication
 
@@ -97,7 +97,7 @@ bin/uc auth login
 ```
 
 Your browser will open and you will authenticate with the specific Google identity (e.g., bobbie@rocinante). While
-authenticated, the user account has not been added to the local database.  Hence the command will fail with the output
+authenticated, the user account has not been added to the local database. Hence the command will fail with the output
 similar to the following:
 
 ```console
@@ -119,7 +119,7 @@ Caused by: io.unitycatalog.client.ApiException: Error authenticating - {"error_c
 ```
 
 !!! warning
-    Note, `bobbie@rocinante` is not a real Google Identity account, please replace this with your own.
+Note, `bobbie@rocinante` is not a real Google Identity account, please replace this with your own.
 
 ### Add user account to the local database
 
@@ -183,7 +183,7 @@ bin/uc --auth_token $(cat etc/conf/token.txt) catalog list
 But if you were to add `USE CATALOG` permission to your user account
 
 ```sh
-bin/uc --auth_token $(cat etc/conf/token.txt) permission create  --securable_type catalog --name unity --privilege 'USE CATALOG' --principal bobbie@rocinante 
+bin/uc --auth_token $(cat etc/conf/token.txt) permission create  --securable_type catalog --name unity --privilege 'USE CATALOG' --principal bobbie@rocinante
 ```
 
 then the following command would work.
@@ -213,11 +213,11 @@ permissions.
 ### Try to access your table using DuckDB
 
 First, let’s give our user account (`bobbie@rocinante`) `USE CATALOG`, `USE SCHEMA`, and `SELECT` permissions.
-Notice how we’re providing access using the three-part naming convention of *catalog, schema, and table*. As we provide
+Notice how we’re providing access using the three-part naming convention of _catalog, schema, and table_. As we provide
 each level of permissions, we progress down the three parts.
 
 ```sh
-bin/uc --auth_token $(cat etc/conf/token.txt ) permission create --securable_type catalog --name unity --privilege "USE CATALOG" --principal bobbie@rocinante 
+bin/uc --auth_token $(cat etc/conf/token.txt ) permission create --securable_type catalog --name unity --privilege "USE CATALOG" --principal bobbie@rocinante
 bin/uc --auth_token $(cat etc/conf/token.txt ) permission create --securable_type schema --name unity.default --privilege "USE SCHEMA" --principal bobbie@rocinante
 bin/uc --auth_token $(cat etc/conf/token.txt ) permission create --securable_type table --name unity.default.numbers --privilege "SELECT" --principal bobbie@rocinante
 ```
@@ -229,7 +229,7 @@ duckdb
 ```
 
 Within the `duckdb` session, let’s query the `unity.default.numbers` table. Note the `CREATE SECRET` statement uses
-the auth\_token (`$token`) thus please fill the `TOKEN` field in with your saved `$token` value.
+the auth_token (`$token`) thus please fill the `TOKEN` field in with your saved `$token` value.
 
 ```sql
 install uc_catalog from core_nightly;
@@ -253,7 +253,7 @@ SELECT * from unity.default.numbers;
 ## Using Spark with a User Token
 
 Now that you have enabled Google Authentication for your UC instance, any unauthenticated clients such as a spark-sql
-shell without using an identity token will fail.  For example, if you were to run the `SHOW SCHEMA` step in the
+shell without using an identity token will fail. For example, if you were to run the `SHOW SCHEMA` step in the
 [working with Unity Catalog Tables with Spark](../integrations/unity-catalog-spark.md) using the unauthenticated
 spark-sql command, you would get the following error.
 
@@ -265,7 +265,7 @@ io.unitycatalog.client.ApiException: listSchemas call failed with: 401 - {"error
     at io.unitycatalog.client.api.SchemasApi.listSchemasWithHttpInfo(SchemasApi.java:358)
 ```
 
-To solve this issue, ensure that the configuration spark.sql.catalog.unity.token is populated  such as using the
+To solve this issue, ensure that the configuration spark.sql.catalog.unity.token is populated such as using the
 `$token` environment variable that you had set in the [try to log in with your user account](#try-to-log-in-with-your-user-account)
 step.
 
@@ -288,7 +288,7 @@ steps with Spark as an authenticated client to UC.
 ## Using Google Identity with Unity Catalog UI
 
 We previously configured Google as the Identity Provider and configured UC Server settings for CLI access. However, we
-can also apply this authentication and authorization to the Unity Catalog UI.
+can also apply this authentication and authorization to the Unity Catalog UI. If you're new to the UI, you may want to check out the [UI docs](../usage/ui.md) for instructions on how to launch the UI.
 
 ### Configure and restart the Unity Catalog UI
 
@@ -314,7 +314,7 @@ This will open a new browser window with your identity provider login (e.g., Goo
 
 Upon authentication, you will be able to view your Unity Catalog data and AI assets including the catalog
 (`myfirstcatalog`) you recently created in the [try creating a catalog with your account](#try-creating-a-catalog-with-your-user-account)
-step.  
+step.
 
 ![UC Google Auth UI](../assets/images/uc_googleauth-ui.png)
 
@@ -352,7 +352,7 @@ REACT_APP_GOOGLE_AUTH_ENABLED=false
 REACT_APP_GOOGLE_CLIENT_ID=
 ```
 
-Restarting your UC server (i.e., `bin/start-uc-server`)  and UI (i.e., `yarn start`) will open a new browser window
+Restarting your UC server (i.e., `bin/start-uc-server`) and UI (i.e., `yarn start`) will open a new browser window
 with the Google Auth login. You will successfully log into the UI but fail to show any Unity Catalog assets as the UI
 is not authenticated to query those assets.
 
