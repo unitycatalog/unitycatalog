@@ -25,7 +25,7 @@ nav:
       - Configuration: server/configuration.md
       - Auth: server/auth.md
   - Integrations:
-      - integrations/index.md
+      - Overview: integrations/index.md
       - Apache Spark: integrations/unity-catalog-spark.md
       - CelerData: integrations/unity-catalog-celerdata.md
       - Daft: integrations/unity-catalog-daft.md
