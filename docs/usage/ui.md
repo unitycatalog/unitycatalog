@@ -6,14 +6,19 @@ The Unity Catalog UI allows you to interact with a Unity Catalog server to view 
 
 ![UC UI](../assets/images/ui/uc-ui-expanded.png)
 
+!!! tip "Use CLI"
+
+    You can also use the Unity Catalog CLI to interact with your catalogs. See the [CLI documentation](cli.md) to learn how.
+
 ## Start Unity Catalog UI locally
 
 To use the Unity Catalog UI, start a new terminal and ensure you have already started the UC server
 (e.g., `./bin/start-uc-server`)
 
 !!! warning "Prerequisites"
-The Unity Catalog UI requires both [Node](https://nodejs.org/en/download/package-manager) and
-[Yarn](https://classic.yarnpkg.com/lang/en/docs/install).
+
+    The Unity Catalog UI requires both [Node](https://nodejs.org/en/download/package-manager) and
+    [Yarn](https://classic.yarnpkg.com/lang/en/docs/install).
 
 To start the UI locally, run the following commands to start `yarn`
 
