@@ -1,5 +1,7 @@
 # Unity Catalog Volumes
 
+This page shows you how to work with Unity Catalog volumes.
+
 Unity Catalog volumes are good for registering datasets that are non-tabular or not supported as Unity Catalog tables.
 
 Unity Catalog volumes are a great option for JSON files, text files, or Lance datasets.
@@ -7,6 +9,8 @@ Unity Catalog volumes are a great option for JSON files, text files, or Lance da
 Here's an example of a schema that contains three volumes:
 
 ![UC Volume list](../assets/images/uc_volume_example.png)
+
+We will use the Unity Catalog CLI for all the examples. You can also use the [Unity Catalog UI](ui.md).
 
 ## Basic Unity Catalog volume operations
 
@@ -51,7 +55,7 @@ bin/uc volume read --full_name unity.default.json_files --path dir1
 
 Now let's try creating a new external volume. First physically create a directory with some files in it.
 
-For example, create a directory `/tmp/my_volume` and put some files in it.  Then create the volume in UC.
+For example, create a directory `/tmp/my_volume` and put some files in it. Then create the volume in UC.
 
 ```sh
 bin/uc volume create --full_name unity.default.my_volume \
