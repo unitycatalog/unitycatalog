@@ -24,6 +24,7 @@ nav:
   - Server:
       - Configuration: server/configuration.md
       - Auth: server/auth.md
+      - Roles and Privileges: server/roles-privileges.md
   - Integrations:
       - Apache Spark: integrations/unity-catalog-spark.md
       - CelerData: integrations/unity-catalog-celerdata.md
@@ -34,11 +35,11 @@ nav:
       - Trino: integrations/unity-catalog-trino.md
       - XTable: integrations/unity-catalog-xtable.md
   - Deployment: deployment.md
-  - AI: 
+  - AI:
       - Quickstart: ai/quickstart.md
       - Usage: ai/usage.md
       - AI Client: ai/client.md
-      - AI Integrations: 
+      - AI Integrations:
           - Integrations: ai/integrations/index.md
           - LangChain: ai/integrations/langchain.md
           - LlamaIndex: ai/integrations/llamaindex.md
