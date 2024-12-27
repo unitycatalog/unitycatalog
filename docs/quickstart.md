@@ -301,7 +301,7 @@ Unity Catalog integrates with external authentication providers (e.g. Google Aut
 
 Unity Catalog also provides an internal user database to restrict user access by defining roles and permissions. To configure your external authentication provider and set up the Unity Catalog server correctly, follow the instructions in the [Auth documentation](server/auth.md).
 
-![Unity Catalog Authentication and Authorization Simplified](../assets/images/uc-auth-diagram-simplified.png)
+![Unity Catalog Authentication and Authorization Simplified](assets/images/uc-auth-diagram-simplified.png)
 
 ## Manage models in Unity Catalog using MLflow
 

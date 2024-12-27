@@ -4,7 +4,7 @@ This page explains how you can work with Delta Lake tables in your Unity Catalog
 
 !!! tip "Use UI"
 
-    You can also use the Unity Catalog UI to interact with your Delta Lake tables. See the [UI documentation](ui.md) to learn how.
+    You can also use the Unity Catalog UI to interact with your Delta Lake tables. See the [UI documentation](../ui.md) to learn how.
 
 To follow along, make sure you have a local instance of Unity Catalog running by launching the following command from a terminal window:
 
