@@ -293,6 +293,14 @@ yarn start
 
 See the [UI documentation](usage/ui.md) for more information.
 
+## Define access permissions with Auth
+
+Unity Catalog integrates with external authentication providers (e.g. Google Auth, Okta, etc.) to enable authentication. You can use this feature to secure access to your data assets.
+
+Unity Catalog also provides an internal user database to restrict user access by defining roles and permissions. To configure your external authentication provider and set up the Unity Catalog server correctly, follow the instructions in the [Auth documentation](server/auth.md).
+
+![Unity Catalog Authentication and Authorization Simplified](../assets/images/uc-auth-diagram-simplified.png)
+
 ## Manage models in Unity Catalog using MLflow
 
 Unity Catalog supports the management and governance of ML models as securable assets. Starting with
