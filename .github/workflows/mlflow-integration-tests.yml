@@ -46,7 +46,6 @@ jobs:
           pip install mlflow
 
       - name: Start uc-oss server
-        working-directory: unitycatalog
         run: |
           pwd
           ls
