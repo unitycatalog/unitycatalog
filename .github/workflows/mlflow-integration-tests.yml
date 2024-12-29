@@ -48,6 +48,8 @@ jobs:
       - name: Start uc-oss server
         working-directory: unitycatalog
         run: |
+          pwd
+          ls
           build/sbt package
           nohup bin/start-uc-server > uc-server.log 2>&1 &
 
