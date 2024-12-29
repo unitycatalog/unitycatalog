@@ -39,8 +39,6 @@ jobs:
           python-version: '3.9'
       - name: Install dependencies
         run: |
-          python -m venv venv
-          source venv/bin/activate
           pip install mlflow
           pip install pytest
       - name: Start uc-oss server
