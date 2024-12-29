@@ -1,0 +1,50 @@
+name: MLflow-UC OSS Integration Test
+
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+
+permissions:
+  contents: read
+
+env:
+  MLFLOW_HOME: /home/runner/work/mlflow/mlflow
+  UC_OSS_INTEGRATION: true
+
+jobs:
+  uc-oss-integration-test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    permissions: {}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.8'
+
+      - name: Install dependencies
+        run: |
+          python -m venv venv
+          source venv/bin/activate
+          pip install mlflow
+
+      - name: Start uc-oss server
+        working-directory: unitycatalog
+        run: |
+          build/sbt package
+          nohup bin/start-uc-server > uc-server.log 2>&1 &
+
+      - name: Run tests for UnityCatalog
+        run: |
+          echo "Running tests for UnityCatalog..."
+          export PYTHONPATH=$MLFLOW_HOME:$PYTHONPATH
+          pytest tests/uc_oss/test_uc_oss_integration.py
