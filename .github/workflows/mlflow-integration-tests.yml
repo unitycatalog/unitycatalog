@@ -33,22 +33,17 @@ jobs:
         with:
           java-version: '17'
           distribution: 'temurin'
-
       - name: Set up Python
-        uses: actions/setup-python@v4
+        uses: actions/setup-python@v5
         with:
-          python-version: '3.8'
-
+          python-version: ${{ matrix.python-version }}
       - name: Install dependencies
         run: |
           python -m venv venv
           source venv/bin/activate
           pip install mlflow
-
       - name: Start uc-oss server
         run: |
-          pwd
-          ls
           build/sbt package
           nohup bin/start-uc-server > uc-server.log 2>&1 &
 
@@ -56,4 +51,4 @@ jobs:
         run: |
           echo "Running tests for UnityCatalog..."
           export PYTHONPATH=$MLFLOW_HOME:$PYTHONPATH
-          pytest tests/uc_oss/test_uc_oss_integration.py
+          pytest tests/test_mlflow_integration.py
