@@ -1,0 +1,97 @@
+name: unitycatalog-integration-tests
+
+services:
+  localstack:
+    image: localstack/localstack:latest
+    container_name: localstack
+    ports:
+      - "4566:4566"
+    environment:
+      - SERVICES=s3
+      - DEBUG=1
+      - AWS_DEFAULT_REGION=us-east-1
+      - AWS_ACCESS_KEY_ID=test
+      - AWS_SECRET_ACCESS_KEY=test
+    volumes:
+      - "./init-aws.sh:/etc/localstack/init/ready.d/init-aws.sh"
+      - "localstack-data:/var/lib/localstack"
+      - "/var/run/docker.sock:/var/run/docker.sock"
+    command: >
+      sh -c "
+        chmod +x /docker-entrypoint-initaws.d/init-s3.sh &&
+        docker-entrypoint.sh"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:4566/_localstack/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    networks:
+      - mock-cloud
+
+  # Azure Data Lake Storage Mock Service using Azurite
+  azurite:
+    image: mcr.microsoft.com/azure-storage/azurite
+    container_name: azurite
+    ports:
+      - "10000:10000"  # Blob service
+      - "10001:10001"  # Queue service (optional)
+    command: >
+      azurite
+        --blobHost 0.0.0.0 --blobPort 10000
+        --queueHost 0.0.0.0 --queuePort 10001
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:10000"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    networks:
+      - mock-cloud
+
+  blob_manager:
+    build: .
+    container_name: blob_manager
+    depends_on:
+      - azurite
+    environment:
+      # this is the default account name and account key (more info here https://learn.microsoft.com/en-us/azure/storage/common/storage-use-azurite?tabs=visual-studio%2Cblob-storage#well-known-storage-account-and-key)
+      - STORAGE_CONNECTION_STRING=DefaultEndpointsProtocol=http;AccountName=devstoreaccount1;AccountKey=Eby8vdM02xNOcqFlqUwJPLlmEtlCDXJ1OUzFT50uSRZ6IFsuFq2UVErCz4I6tq/K1SZFPTOtr/KBHBeksoGMGw==;BlobEndpoint=http://azurite:10000/devstoreaccount1;
+    networks:
+      - mock-cloud
+
+  # Google Cloud Storage Mock Service using Fake GCS Server
+  fake-gcs-server:
+    image: fsouza/fake-gcs-server:latest
+    container_name: fake-gcs-server
+    ports:
+      - "4443:4443"  # GCS API
+    environment:
+      - STORAGE_PATH=/data
+      - FAKE_GCS_PROJECT=my-test-project
+      - STORAGE_EMULATOR_HOST=http://fake-gcs-server:4443
+      - DISABLE_AUTH=true
+    volumes:
+      - "./gcs-data:/data"
+    entrypoint: ["/bin/fake-gcs-server"]
+    command: [
+      "-scheme", "http",
+      "-port", "4443",
+      "-host", "0.0.0.0",
+      "-public-host", "fake-gcs-server:4443",
+      "-backend", "memory",
+      "-data", "/data"
+    ]
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:4443/storage/v1/b"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    networks:
+      - mock-cloud
+
+networks:
+  mock-cloud:
+    driver: bridge
+
+volumes:
+  localstack-data:
+    driver: local
