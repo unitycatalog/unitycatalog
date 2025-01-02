@@ -146,9 +146,9 @@ paths:
       # Additionally, accessing parameters directly from the body without a model causes issues with
       # Armeria, particularly when the `ext` query parameter is present.
       #
-      # To address this, the same request model is defined here and in `components/schemas/OAuthTokenExchangeRequest`.
+      # To address this, the same request model is defined here and in `components/schemas/OAuthTokenExchangeForm`.
       # These two definitions MUST be identical.
-      # The generated model from `components/schemas/OAuthTokenExchangeRequest` will be used
+      # The generated model from `components/schemas/OAuthTokenExchangeForm` will be used
       # in both the `controlApi` and `cli` projects.
       #
       # SEE:
@@ -160,7 +160,7 @@ paths:
           application/x-www-form-urlencoded:
             schema:
               description: |
-                OAuth2 token exchange request.
+                OAuth2 token exchange request form.
                 See https://datatracker.ietf.org/doc/html/rfc8693
               type: object
               required:
@@ -191,7 +191,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/OAuthTokenExchangeResponse'
+                $ref: '#/components/schemas/OAuthTokenExchangeInfo'
   /auth/logout:
     post:
       tags:
@@ -407,9 +407,9 @@ components:
         - implicit
         - resource_owner_password_credentials
         - client_credentials
-    OAuthTokenExchangeRequest:
+    OAuthTokenExchangeForm:
       description: |
-        OAuth2 token exchange request.
+        OAuth2 token exchange request form.
         See https://datatracker.ietf.org/doc/html/rfc8693
       type: object
       required:
@@ -434,7 +434,7 @@ components:
           type: string
         actor_token_type:
           $ref: '#/components/schemas/TokenType'
-    OAuthTokenExchangeResponse:
+    OAuthTokenExchangeInfo:
       description: |
         OAuth2 token exchange response.
         See https://datatracker.ietf.org/doc/html/rfc8693
@@ -461,9 +461,9 @@ components:
         refresh_token:
           description: The refresh token for the token exchange.
           type: string
-    OAuthAuthorizationRequest:
+    OAuthAuthorizationForm:
       description: |
-        OAuth2 authorization request.
+        OAuth2 authorization request form.
         See https://datatracker.ietf.org/doc/html/rfc6749
       type: object
       required:
@@ -484,7 +484,7 @@ components:
         state:
           description: An opaque value used by the client to maintain state between the request and callback.
           type: string
-    OAuthAuthorizationResponse:
+    OAuthAuthorizationInfo:
       description: |
         OAuth2 authorization request.
         See https://datatracker.ietf.org/doc/html/rfc6749
@@ -498,7 +498,7 @@ components:
         state:
           description: An opaque value used by the client to maintain state between the request and callback.
           type: string
-    OAuthAccessTokenRequest:
+    OAuthAccessTokenForm:
       description: |
         OAuth2 access token request.
         See https://datatracker.ietf.org/doc/html/rfc6749

@@ -14,7 +14,7 @@ import io.unitycatalog.cli.utils.Oauth2CliExchange;
 import io.unitycatalog.client.ApiClient;
 import io.unitycatalog.client.ApiException;
 import io.unitycatalog.control.model.GrantType;
-import io.unitycatalog.control.model.OAuthTokenExchangeRequest;
+import io.unitycatalog.control.model.OAuthTokenExchangeForm;
 import io.unitycatalog.control.model.TokenType;
 import java.io.IOException;
 import java.net.URI;
@@ -78,7 +78,7 @@ public class AuthCli {
 
     String body =
         Oauth2CliExchange.URLEncodedForm.of(
-            new OAuthTokenExchangeRequest()
+            new OAuthTokenExchangeForm()
                 .grantType(GrantType.TOKEN_EXCHANGE)
                 .requestedTokenType(TokenType.ACCESS_TOKEN)
                 .subjectTokenType(TokenType.ID_TOKEN)

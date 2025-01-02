@@ -17,8 +17,8 @@ import com.linecorp.armeria.server.annotation.RequestConverter;
 import com.linecorp.armeria.server.annotation.RequestConverterFunction;
 import io.unitycatalog.control.model.AccessTokenType;
 import io.unitycatalog.control.model.GrantType;
-import io.unitycatalog.control.model.OAuthTokenExchangeRequest;
-import io.unitycatalog.control.model.OAuthTokenExchangeResponse;
+import io.unitycatalog.control.model.OAuthTokenExchangeForm;
+import io.unitycatalog.control.model.OAuthTokenExchangeInfo;
 import io.unitycatalog.control.model.TokenType;
 import io.unitycatalog.control.model.User;
 import io.unitycatalog.server.exception.ErrorCode;
@@ -89,27 +89,26 @@ public class AuthService {
   @Post("/tokens")
   public HttpResponse grantToken(
       @Param("ext") Optional<String> ext,
-      @RequestConverter(ToOAuthTokenExchangeRequestConverter.class)
-          OAuthTokenExchangeRequest request) {
-    LOGGER.debug("Got token: {}", request);
+      @RequestConverter(ToOAuthTokenExchangeFormConverter.class) OAuthTokenExchangeForm form) {
+    LOGGER.debug("Got token: {}", form);
 
-    if (GrantType.TOKEN_EXCHANGE != request.getGrantType()) {
+    if (GrantType.TOKEN_EXCHANGE != form.getGrantType()) {
       throw new OAuthInvalidRequestException(
-          ErrorCode.INVALID_ARGUMENT, "Unsupported grant type: " + request.getGrantType());
+          ErrorCode.INVALID_ARGUMENT, "Unsupported grant type: " + form.getGrantType());
     }
 
-    if (TokenType.ACCESS_TOKEN != request.getRequestedTokenType()) {
+    if (TokenType.ACCESS_TOKEN != form.getRequestedTokenType()) {
       throw new OAuthInvalidRequestException(
           ErrorCode.INVALID_ARGUMENT,
-          "Unsupported requested token type: " + request.getRequestedTokenType());
+          "Unsupported requested token type: " + form.getRequestedTokenType());
     }
 
-    if (request.getSubjectTokenType() == null) {
+    if (form.getSubjectTokenType() == null) {
       throw new OAuthInvalidRequestException(
           ErrorCode.INVALID_ARGUMENT, "Subject token type is required but was not specified");
     }
 
-    if (request.getActorTokenType() != null) {
+    if (form.getActorTokenType() != null) {
       throw new OAuthInvalidRequestException(
           ErrorCode.INVALID_ARGUMENT, "Actor tokens not currently supported");
     }
@@ -120,7 +119,7 @@ public class AuthService {
           ErrorCode.INVALID_ARGUMENT, "Authorization is disabled");
     }
 
-    DecodedJWT decodedJWT = JWT.decode(request.getSubjectToken());
+    DecodedJWT decodedJWT = JWT.decode(form.getSubjectToken());
     String issuer = decodedJWT.getIssuer();
     String keyId = decodedJWT.getKeyId();
 
@@ -134,8 +133,8 @@ public class AuthService {
 
     String accessToken = securityContext.createAccessToken(decodedJWT);
 
-    OAuthTokenExchangeResponse response =
-        new OAuthTokenExchangeResponse()
+    OAuthTokenExchangeInfo tokenExchangeInfo =
+        new OAuthTokenExchangeInfo()
             .accessToken(accessToken)
             .issuedTokenType(TokenType.ACCESS_TOKEN)
             .tokenType(AccessTokenType.BEARER);
@@ -154,7 +153,7 @@ public class AuthService {
           }
         });
 
-    return HttpResponse.ofJson(responseHeaders.build(), response);
+    return HttpResponse.ofJson(responseHeaders.build(), tokenExchangeInfo);
   }
 
   @Post("/logout")
@@ -227,7 +226,7 @@ public class AuthService {
   // SEE:
   // - https://armeria.dev/docs/server-annotated-service/#getting-a-query-parameter
   // - https://armeria.dev/docs/server-annotated-service/#injecting-a-parameter-as-an-enum-type
-  private static class ToOAuthTokenExchangeRequestConverter implements RequestConverterFunction {
+  private static class ToOAuthTokenExchangeFormConverter implements RequestConverterFunction {
     private static final ObjectMapper mapper = new ObjectMapper();
 
     @Override
@@ -237,7 +236,7 @@ public class AuthService {
         Class<?> expectedResultType,
         @Nullable ParameterizedType expectedParameterizedResultType) {
       MediaType contentType = request.contentType();
-      if (expectedResultType == OAuthTokenExchangeRequest.class
+      if (expectedResultType == OAuthTokenExchangeForm.class
           && contentType != null
           && contentType.belongsTo(MediaType.FORM_DATA)) {
         Map<String, String> form =
@@ -245,7 +244,7 @@ public class AuthService {
                     request.content(contentType.charset(StandardCharsets.UTF_8)))
                 .stream()
                 .collect(Collectors.toMap(Map.Entry::getKey, Map.Entry::getValue));
-        return mapper.convertValue(form, OAuthTokenExchangeRequest.class);
+        return mapper.convertValue(form, OAuthTokenExchangeForm.class);
       }
       return RequestConverterFunction.fallthrough();
     }

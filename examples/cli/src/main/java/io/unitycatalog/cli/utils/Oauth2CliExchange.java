@@ -12,9 +12,9 @@ import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpHandler;
 import com.sun.net.httpserver.HttpServer;
 import io.unitycatalog.control.model.AuthorizationGrantType;
-import io.unitycatalog.control.model.OAuthAccessTokenRequest;
-import io.unitycatalog.control.model.OAuthAuthorizationRequest;
-import io.unitycatalog.control.model.OAuthAuthorizationResponse;
+import io.unitycatalog.control.model.OAuthAccessTokenForm;
+import io.unitycatalog.control.model.OAuthAuthorizationForm;
+import io.unitycatalog.control.model.OAuthAuthorizationInfo;
 import io.unitycatalog.control.model.ResponseType;
 import java.io.BufferedOutputStream;
 import java.io.IOException;
@@ -92,7 +92,7 @@ public class Oauth2CliExchange {
         authorizationUrl
             + "?"
             + URLEncodedForm.of(
-                new OAuthAuthorizationRequest()
+                new OAuthAuthorizationForm()
                     .responseType(ResponseType.CODE)
                     .clientId(clientId)
                     .redirectUri(redirectUrl)
@@ -136,7 +136,7 @@ public class Oauth2CliExchange {
 
     String tokenBody =
         URLEncodedForm.of(
-            new OAuthAccessTokenRequest()
+            new OAuthAccessTokenForm()
                 .grantType(AuthorizationGrantType.AUTHORIZATION_CODE)
                 .code(authCode)
                 .redirectUri(redirectUrl));
@@ -226,7 +226,7 @@ public class Oauth2CliExchange {
                       mapping(s -> decode(s[1], StandardCharsets.UTF_8), toList())));
 
       // Get the authorization flow code
-      String value = parameters.get(OAuthAuthorizationResponse.JSON_PROPERTY_CODE).get(0);
+      String value = parameters.get(OAuthAuthorizationInfo.JSON_PROPERTY_CODE).get(0);
 
       // Prepare response send to browser.
       String response = "User validated with identity provider.";
