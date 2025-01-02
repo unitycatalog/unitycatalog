@@ -7,6 +7,7 @@ import static java.util.stream.Collectors.mapping;
 import static java.util.stream.Collectors.toList;
 
 import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpHandler;
@@ -30,10 +31,13 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Paths;
 import java.security.SecureRandom;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Base64;
+import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Properties;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
@@ -192,19 +196,41 @@ public class Oauth2CliExchange {
   }
 
   public static class URLEncodedForm {
-    // NOTE:
-    // This conversion works only for shallow objects. Nested objects should be handled recursively,
-    // but a versatile solution is unnecessary for our purpose here.
-    public static String of(Object request) {
-      return mapper.convertValue(request, new TypeReference<Map<String, String>>() {}).entrySet()
-          .stream()
-          .filter(e -> e.getValue() != null)
-          .map(
-              e ->
-                  URLEncoder.encode(e.getKey(), StandardCharsets.UTF_8)
-                      + "="
-                      + URLEncoder.encode(e.getValue(), StandardCharsets.UTF_8))
-          .reduce("", (acc, cur) -> acc + "&" + cur);
+    public static String of(Object form) {
+      return loop(Optional.empty(), mapper.valueToTree(form), new ArrayList<>());
+    }
+
+    private static String loop(Optional<String> key, JsonNode value, List<String> acc) {
+      switch (value.getNodeType()) {
+        case OBJECT:
+        case ARRAY:
+          for (Iterator<Map.Entry<String, JsonNode>> it = value.fields(); it.hasNext(); ) {
+            Map.Entry<String, JsonNode> field = it.next();
+            loop(
+                Optional.of(key.isPresent() ? key + "[" + field.getKey() + "]" : field.getKey()),
+                field.getValue(),
+                acc);
+          }
+          break;
+        case BOOLEAN:
+        case NUMBER:
+        case STRING:
+          if (!key.isPresent()) {
+            throw new IllegalArgumentException(
+                "Missing key found while encoding URL form: " + value.asText());
+          }
+          acc.add(
+              URLEncoder.encode(key.get(), StandardCharsets.UTF_8)
+                  + "="
+                  + URLEncoder.encode(value.asText(), StandardCharsets.UTF_8));
+          break;
+        case NULL:
+          break;
+        default:
+          throw new IllegalArgumentException(
+              "Invalid URL encoding form field: " + value.getNodeType());
+      }
+      return String.join("&", acc);
     }
   }
 
