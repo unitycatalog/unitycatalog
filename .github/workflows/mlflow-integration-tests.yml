@@ -24,6 +24,9 @@ env:
 jobs:
   uc-oss-integration-test:
     runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ['3.9', '3.10']
     timeout-minutes: 120
     permissions: {}
     steps:
@@ -36,18 +39,19 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
-          python-version: '3.9'
+          python-version: ${{ matrix.python-version }}
       - name: Install dependencies
         run: |
           pip install mlflow
           pip install pytest
-      - name: Start uc-oss server
+      - name: Start Unity Catalog Server
         run: |
-          build/sbt package
-          nohup bin/start-uc-server > uc-server.log 2>&1 &
-
+          ai/dev/start_unitycatalog.sh
       - name: Run tests for UnityCatalog
         run: |
           echo "Running tests for UnityCatalog..."
-          export PYTHONPATH=$MLFLOW_HOME:$PYTHONPATH
           pytest tests/test_mlflow_integration.py
+      - name: Stop Unity Catalog Server
+        if: always()
+        run: |
+          ai/dev/teardown_server.sh
