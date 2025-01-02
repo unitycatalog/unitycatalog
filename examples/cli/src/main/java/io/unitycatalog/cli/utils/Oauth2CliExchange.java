@@ -197,17 +197,20 @@ public class Oauth2CliExchange {
 
   public static class URLEncodedForm {
     public static String of(Object form) {
-      return loop(Optional.empty(), mapper.valueToTree(form), new ArrayList<>());
+      List<String> fields = new ArrayList<>();
+      loop(Optional.empty(), mapper.valueToTree(form), fields);
+      return String.join("&", fields);
     }
 
-    private static String loop(Optional<String> key, JsonNode value, List<String> acc) {
+    private static void loop(Optional<String> key, JsonNode value, List<String> acc) {
       switch (value.getNodeType()) {
         case OBJECT:
         case ARRAY:
           for (Iterator<Map.Entry<String, JsonNode>> it = value.fields(); it.hasNext(); ) {
             Map.Entry<String, JsonNode> field = it.next();
             loop(
-                Optional.of(key.isPresent() ? key + "[" + field.getKey() + "]" : field.getKey()),
+                Optional.of(
+                    key.isPresent() ? key.get() + "[" + field.getKey() + "]" : field.getKey()),
                 field.getValue(),
                 acc);
           }
@@ -230,7 +233,6 @@ public class Oauth2CliExchange {
           throw new IllegalArgumentException(
               "Invalid URL encoding form field: " + value.getNodeType());
       }
-      return String.join("&", acc);
     }
   }
 
