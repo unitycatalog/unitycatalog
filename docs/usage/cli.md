@@ -9,7 +9,7 @@ The CLI tool allows users to interact with a Unity Catalog server to create and 
     If you have set up authentication, you will need to provide an authentication token when executng all of the following commands on this page.
     For example, in the following section, to run the catalog list command, you would specify:
 
-    ```bash
+    ```sh
     bin/uc --auth_token $token catalog list
     ```
 

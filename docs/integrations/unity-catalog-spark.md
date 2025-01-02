@@ -2,16 +2,23 @@
 
 This page explains how to create Unity Catalog tables with Apache Spark™.
 
-[Apache Spark](http://spark.apache.org) is a multi-language engine for executing data engineering, data science, and machine learning on single-node machines or clusters.
+[Apache Spark](http://spark.apache.org) is a multi-language engine for executing data engineering, data science, and
+machine learning on single-node machines or clusters.
 
-Integrating Apache Spark with Unity Catalog offers significant advantages over traditional catalog solutions. Unity Catalog provides unified governance across both data and AI assets, fine-grained access control down to the column level, automated data lineage tracking, and seamless interoperability with various lakehouse formats and compute engines. It enables centralized metadata management, simplified data discovery, and enhanced security. The credential vending capability of Unity Catalog is particularly noteworthy as it allows Apache Spark to securely access data stored in Unity Catalog through a controlled mechanism.
+Integrating Apache Spark with Unity Catalog offers significant advantages over traditional catalog solutions.
+Unity Catalog provides unified governance across both data and AI assets, fine-grained access control down to the
+column level, automated data lineage tracking, and seamless interoperability with various lakehouse formats and
+compute engines. It enables centralized metadata management, simplified data discovery, and enhanced security. The
+credential vending capability of Unity Catalog is particularly noteworthy as it allows Apache Spark to securely access
+data stored in Unity Catalog through a controlled mechanism.
 
 - Neatly organizing data in tables and volumes in the Unity Catalog hierarchy makes it a lot easier to write Spark code.
 - Make it easier to decouple business logic from file paths.
 - Provides easy access to different file formats without end users needing to know how the data is stored.
 
 !!! warning "Prerequisites"
-For Apache Spark and Delta Lake to work together with Unity Catalog, you will need atleast Apache Spark 3.5.3 and Delta Lake 3.2.1.
+    For Apache Spark and Delta Lake to work together with Unity Catalog, you will need atleast Apache Spark 3.5.3 and
+    Delta Lake 3.2.1.
 
 ## Download and Configure Unity Catalog for Apache Spark
 
@@ -19,20 +26,22 @@ The following steps are required to download and configure Unity Catalog for Apa
 
 ### Download Apache Spark
 
-[Download](https://spark.apache.org/downloads.html) the latest version of Apache Spark >= 3.5.3 or using the following command.
+[Download](https://spark.apache.org/downloads.html) the latest version of Apache Spark >= 3.5.3 or using the following
+command.
 
-```bash title="Download Apache Spark 3.5.3 using curl"
+```sh title="Download Apache Spark 3.5.3 using curl"
 curl -O https://archive.apache.org/dist/spark/spark-3.5.3/spark-3.5.3-bin-hadoop3.tgz
 tar xzf spark-3.5.3-bin-hadoop3.tgz
 ```
 
 ### [Optional] Configure server properties for cloud storage
 
-To have Unity Catalog work with cloud object storage as the storage location for tables, configure the `etc/conf/server.properties` to add configuration:
+To have Unity Catalog work with cloud object storage as the storage location for tables, configure the
+`etc/conf/server.properties` to add configuration:
 
 === "AWS S3"
 
-    ```bash
+    ```sh
     ## S3 Storage Config (Multiple configs can be added by incrementing the index)
     s3.bucketPath.0=<S3_BUCKET>
     s3.region.0=<S3_REGION>
@@ -44,7 +53,7 @@ To have Unity Catalog work with cloud object storage as the storage location for
 
 === "Azure ADLSgen2"
 
-    ```bash
+    ```sh
     ## ADLS Storage Config (Multiple configs can be added by incrementing the index)
     adls.storageAccountName.0=<ADLS_STORAGEACCOUNTNAME>
     adls.tenantId.0=<ADLS_TENANTID>
@@ -54,7 +63,7 @@ To have Unity Catalog work with cloud object storage as the storage location for
 
 === "Google Cloud Storage"
 
-    ```bash
+    ```sh
     ## GCS Storage Config (Multiple configs can be added by incrementing the index)
     gcs.bucketPath.0=<GCS_BUCKET>
     # Optional (If blank, it will use Default Application chain to find credentials)
@@ -65,14 +74,15 @@ To have Unity Catalog work with cloud object storage as the storage location for
 
 If the UC Server is already started, please restart it to account for the cloud storage server properties.
 
-```bash
+```sh
 cd unitycatalog/
 bin/start-uc-server
 ```
 
 ## Working with Unity Catalog Tables with Apache Spark and Delta Lake Locally
 
-Let’s start running some Spark SQL queries in the Spark SQL shell (`bin/spark-sql`) or PySpark shell (`bin/pyspark`) within the terminal of your Apache Spark 3.5.3 folder against your local UC.
+Let’s start running some Spark SQL queries in the Spark SQL shell (`bin/spark-sql`) or PySpark shell (`bin/pyspark`)
+within the terminal of your Apache Spark 3.5.3 folder against your local UC.
 
 You can run the code below to work with data stored in the `unity` catalog that comes pre-loaded with the local Unity Catalog server.
 
@@ -82,85 +92,89 @@ You can run the code below to work with data stored in the `unity` catalog that 
 
 === "Spark SQL"
 
-    ```bash
+    ```sh
     bin/spark-sql --name "local-uc-test" \
         --master "local[*]" \
         --packages "io.delta:delta-spark_2.12:3.2.1,io.unitycatalog:unitycatalog-spark_2.12:0.2.0" \
         --conf "spark.sql.extensions=io.delta.sql.DeltaSparkSessionExtension" \
         --conf "spark.sql.catalog.spark_catalog=io.unitycatalog.spark.UCSingleCatalog" \
-        --conf "spark.sql.catalog.unity=io.unitycatalog.spark.UCSingleCatalog" \
-        --conf "spark.sql.catalog.unity.uri=http://localhost:8080" \
-        --conf "spark.sql.catalog.unity.token=" \
-        --conf "spark.sql.defaultCatalog=unity"
+        --conf "spark.sql.catalog.<catalog_name>=io.unitycatalog.spark.UCSingleCatalog" \
+        --conf "spark.sql.catalog.<catalog_name>.uri=http://localhost:8080" \
+        --conf "spark.sql.catalog.<catalog_name>.token=" \
+        --conf "spark.sql.defaultCatalog=<catalog_name>"
     ```
 
 === "PySpark"
 
-    ```bash
+    ```sh
     bin/pyspark --name "local-uc-test" \
         --master "local[*]" \
         --packages "io.delta:delta-spark_2.12:3.2.1,io.unitycatalog:unitycatalog-spark_2.12:0.2.0" \
         --conf "spark.sql.extensions=io.delta.sql.DeltaSparkSessionExtension" \
         --conf "spark.sql.catalog.spark_catalog=io.unitycatalog.spark.UCSingleCatalog" \
-        --conf "spark.sql.catalog.unity=io.unitycatalog.spark.UCSingleCatalog" \
-        --conf "spark.sql.catalog.unity.uri=http://localhost:8080" \
-        --conf "spark.sql.catalog.unity.token=" \
-        --conf "spark.sql.defaultCatalog=unity"
+        --conf "spark.sql.catalog.<catalog_name>=io.unitycatalog.spark.UCSingleCatalog" \
+        --conf "spark.sql.catalog.<catalog_name>.uri=http://localhost:8080" \
+        --conf "spark.sql.catalog.<catalog_name>.token=" \
+        --conf "spark.sql.defaultCatalog=<catalog_name>"
     ```
 
 !!! tip "Tip"
-
-    Initially, this may take a few minutes to run to download the necessary dependencies. Afterwards, you can run some quick commands to see your UC assets within Spark SQL shell.
+    Initially, this may take a few minutes to run to download the necessary dependencies. Afterwards, you can run some
+    quick commands to see your UC assets within Spark SQL shell.
 
 Notice the following packages (`--packages`) and configurations (`--conf`)
 
 - `--packages` points to the delta-spark and unitycatalog-spark packages; update the version numbers to your current versions.
-- `spark.sql.catalog.unity.uri` points to your local development UC instance
-- `spark.sql.catalog.unity.token` is empty indicating there is no authentication; refer to [auth](../server/auth.md) for more information.
-- `spark.sql.defaultCatalog=unity` must be filled out to indicate the default catalog.
+- `spark.sql.catalog.<catalog_name>.uri` points to your local development UC instance
+- `spark.sql.catalog.<catalog_name>.token` is empty indicating there is no authentication; refer to [auth](../server/auth.md) for more information.
+- `spark.sql.defaultCatalog=<catalog_name>` must be filled out to indicate the default catalog. The default name is `unity`.
 
 ??? note "Three-part and two-part naming conventions"
 
     ![](https://cdn.prod.website-files.com/66954b344e907bd91f1c8027/66e2bafe16edde34db6395f2_AD_4nXdgqGKSeR2abf7zutk0fiALAs6vejg6EgUDgD_Ud9Xjy7nNkapMePCNH0zJw9Wv0uh6LYn7vlGYrRn4H74G9d0CouV0PWKsUTGkjfBKM5y4Br64B2P5Eapv97bCw0swV4pddsemaWU2zyYYlkKT6Ymxu2YO.png)
 
-    As noted in [Unity Catalog 101](https://www.unitycatalog.io/blogs/unity-catalog-oss), UC has a three-part naming convention of [`catalog`].[`schema`].[`asset`].  In the following examples, you can use the three-part notation such as `SELECT * FROM unity.default.marksheet;` or the two-part notation `SELECT * FROM default.marksheet;` as the `defaultCatalog` is already configured.
+    As noted in [Unity Catalog 101](https://www.unitycatalog.io/blogs/unity-catalog-oss), UC has a three-part naming
+    convention of [`catalog`].[`schema`].[`asset`]. In the following examples, you can use the three-part notation such
+    as `SELECT * FROM unity.default.marksheet;` or the two-part notation `SELECT * FROM default.marksheet;` as the
+    `defaultCatalog` is already configured.
 
 ### [Optional] Running Spark SQL for Cloud Object Stores
 
-If you would like to run this against cloud object storage, the following versions of the `bin/spark-sql` shell command.
+If you would like to run this against cloud object storage, the following versions of the `bin/spark-sql` shell
+command.
 
 === "AWS S3"
 
-    ```bash
+    ```sh
     bin/spark-sql --name "s3-uc-test" \
         --master "local[*]" \
         --packages "org.apache.hadoop:hadoop-aws:3.3.4,io.delta:delta-spark_2.12:3.2.1,io.unitycatalog:unitycatalog-spark_2.12:0.2.0" \
         --conf "spark.sql.extensions=io.delta.sql.DeltaSparkSessionExtension" \
         --conf "spark.sql.catalog.spark_catalog=io.unitycatalog.spark.UCSingleCatalog" \
         --conf "spark.hadoop.fs.s3.impl=org.apache.hadoop.fs.s3a.S3AFileSystem" \
-        --conf "spark.sql.catalog.unity=io.unitycatalog.spark.UCSingleCatalog" \
-        --conf "spark.sql.catalog.unity.uri=http://localhost:8080" \
-        --conf "spark.sql.catalog.unity.token=" \
-        --conf "spark.sql.defaultCatalog=unity"
+        --conf "spark.sql.catalog.<catalog_name>=io.unitycatalog.spark.UCSingleCatalog" \
+        --conf "spark.sql.catalog.<catalog_name>.uri=http://localhost:8080" \
+        --conf "spark.sql.catalog.<catalog_name>.token=" \
+        --conf "spark.sql.defaultCatalog=<catalog_name>"
     ```
 
 === "Azure ADLSgen2"
 
-    ```bash
+    ```sh
     bin/spark-sql --name "azure-uc-test" \
         --master "local[*]" \
         --packages "org.apache.hadoop:hadoop-azure:3.3.6,io.delta:delta-spark_2.12:3.2.1,io.unitycatalog:unitycatalog-spark_2.12:0.2.0" \
         --conf "spark.sql.extensions=io.delta.sql.DeltaSparkSessionExtension" \
         --conf "spark.sql.catalog.spark_catalog=io.unitycatalog.spark.UCSingleCatalog" \
-        --conf "spark.sql.catalog.unity=io.unitycatalog.spark.UCSingleCatalog" \
-        --conf "spark.sql.catalog.unity.uri=http://localhost:8080" \
-        --conf "spark.sql.catalog.unity.token=" \
-        --conf "spark.sql.defaultCatalog=unity"
+        --conf "spark.sql.catalog.<catalog_name>=io.unitycatalog.spark.UCSingleCatalog" \
+        --conf "spark.sql.catalog.<catalog_name>.uri=http://localhost:8080" \
+        --conf "spark.sql.catalog.<catalog_name>.token=" \
+        --conf "spark.sql.defaultCatalog=<catalog_name>"
     ```
 
 === "Google Cloud Storage"
 
-    ```bash
+    ```sh
     bin/spark-sql --name "gcs-uc-test" \
         --master "local[*]" \
         --jars "https://repo1.maven.org/maven2/com/google/cloud/bigdataoss/gcs-connector/3.0.2/gcs-connector-3.0.2-shaded.jar" \
@@ -169,10 +183,10 @@ If you would like to run this against cloud object storage, the following versio
         --conf "spark.sql.catalog.spark_catalog=io.unitycatalog.spark.UCSingleCatalog" \
         --conf "spark.hadoop.fs.gs.impl=com.google.cloud.hadoop.fs.gcs.GoogleHadoopFileSystem" \
         --conf "spark.hadoop.fs.AbstractFileSystem.gs.impl=com.google.cloud.hadoop.fs.gcs.GoogleHadoopFS" \
-        --conf "spark.sql.catalog.unity=io.unitycatalog.spark.UCSingleCatalog" \
-        --conf "spark.sql.catalog.unity.uri=http://localhost:8080" \
-        --conf "spark.sql.catalog.unity.token=" \
-        --conf "spark.sql.defaultCatalog=unity"
+        --conf "spark.sql.catalog.<catalog_name>=io.unitycatalog.spark.UCSingleCatalog" \
+        --conf "spark.sql.catalog.<catalog_name>.uri=http://localhost:8080" \
+        --conf "spark.sql.catalog.<catalog_name>.token=" \
+        --conf "spark.sql.defaultCatalog=<catalog_name>"
     ```
 
 ## Using Spark SQL to query Unity Catalog schemas and tables
@@ -458,7 +472,7 @@ Drop Table
     ```
 
 !!! warning
-Note, this action will only drop the table from UC, it will not remove the data from the file system
+    Note, this action will only drop the table from UC, it will not remove the data from the file system
 
 <!--
 ## Benefits of using Unity Catalog for Spark
