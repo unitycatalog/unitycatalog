@@ -57,14 +57,6 @@ class UCFunctionToolkit(BaseModel):
             client=client,
             uc_function_to_tool_func=cls.uc_function_to_langchain_tool,
         )
-        tools_dict = values.get("tools_dict", {})
-
-        values["tools_dict"] = process_function_names(
-            function_names=function_names,
-            tools_dict=tools_dict,
-            client=client,
-            uc_function_to_tool_func=cls.uc_function_to_langchain_tool,
-        )
         return values
 
     @staticmethod
