@@ -94,22 +94,24 @@ class UCFunctionToolkit(BaseModel):
                 function_name=function_name,
                 parameters=args_json,
             )
-            
+
             if result.value:
                 try:
                     output = ast.literal_eval(result.value)
-                
+
                     if is_valid_retriever_output(output):
                         import mlflow
                         from mlflow.entities import SpanType
-                        
-                        with mlflow.start_span(name="retriever", span_type=SpanType.RETRIEVER) as span:
+
+                        with mlflow.start_span(
+                            name="retriever", span_type=SpanType.RETRIEVER
+                        ) as span:
                             span.set_inputs(kwargs)
                             span.set_outputs(output)
                 except Exception:
                     # Ignoring exceptions because auto-tracing retriever is not essential
                     pass
-            
+
             return result.to_json()
 
         return UnityCatalogTool(
