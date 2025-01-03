@@ -205,13 +205,25 @@ public class Oauth2CliExchange {
     private static void loop(Optional<String> key, JsonNode value, List<String> acc) {
       switch (value.getNodeType()) {
         case OBJECT:
-        case ARRAY:
-          for (Iterator<Map.Entry<String, JsonNode>> it = value.fields(); it.hasNext(); ) {
-            Map.Entry<String, JsonNode> field = it.next();
+          Iterator<Map.Entry<String, JsonNode>> fields = value.fields();
+          while (fields.hasNext()) {
+            Map.Entry<String, JsonNode> field = fields.next();
             loop(
                 Optional.of(
                     key.isPresent() ? key.get() + "[" + field.getKey() + "]" : field.getKey()),
                 field.getValue(),
+                acc);
+          }
+          break;
+        case ARRAY:
+          int index = 0;
+          Iterator<JsonNode> elements = value.elements();
+          while (elements.hasNext()) {
+            JsonNode element = elements.next();
+            loop(
+                Optional.of(
+                    key.isPresent() ? key.get() + "[" + index++ + "]" : String.valueOf(index++)),
+                element,
                 acc);
           }
           break;
