@@ -1,6 +1,7 @@
 # syntax=docker.io/docker/dockerfile:1.7-labs
 ARG HOME="/home/unitycatalog"
 ARG ALPINE_VERSION="3.20"
+ARG PYTHON_VERSION="3.11"
 
 # Build stage, using Amazon Corretto jdk 17 on alpine with arm64 support
 FROM amazoncorretto:17-alpine${ALPINE_VERSION}-jdk as base
@@ -15,8 +16,8 @@ COPY --parents build/ project/ examples/ server/ api/ clients/python/ version.sb
 
 RUN apk add --no-cache bash && ./build/sbt -info clean package
 
-# Small runtime image
-FROM alpine:${ALPINE_VERSION} as runtime
+# Small Python runtime image
+FROM python:${PYTHON_VERSION}-alpine${ALPINE_VERSION} as runtime
 
 # Specific JAVA_HOME from Amazon Corretto
 ARG JAVA_HOME="/usr/lib/jvm/default-jvm"
@@ -38,6 +39,8 @@ COPY --from=base --parents \
     $HOME/target/ \
     $HOME/.cache/ \
     /
+
+RUN apk add gcompat
 
 # Create a service user with read and execute permissions and write permissions of the ./etc directory
 RUN <<EOF
