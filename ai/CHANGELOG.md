@@ -1,6 +1,6 @@
 # Changelog for Unity Catalog AI releases
 
-## Unity Catalog AI 0.1.1
+## Unity Catalog AI 0.1.0
 
 We are excited to announce the initial release of Unity Catalog AI! This initial release covers the following features and packages.
 
