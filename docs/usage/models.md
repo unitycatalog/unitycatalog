@@ -41,14 +41,14 @@ bin/start-uc-server
 
 ### Install (or upgrade) MLflow
 
-```bash
+```sh
 pip install mlflow
 ```
 
 The installation of MLflow includes the MLflow CLI tool, so you can start a local MLflow server with UI by running the
 command below in your terminal:
 
-```bash
+```sh
 mlflow ui
 ```
 
@@ -113,7 +113,7 @@ with mlflow.start_run():
 
 Upon successful registration of the model, you should see the following output.
 
-```bash
+```sh
 Successfully registered model 'unity.default.iris'.
 2024/09/24 20:51:29 INFO mlflow.store.model_registry.abstract_store: Waiting up to 300 seconds for model version to finish creation. Model name: unity.default.iris, version 1
 Created version '1' of model 'unity.default.iris'.
@@ -184,7 +184,7 @@ result[:4]
 This code snippet uses the `unity.default.iris` model to predict the class (`predicted_class`) using the test dataset
 (`X_test`) and compares it to the actual class (`actual_class`) from the Iris dataset.
 
-```bash
+```sh
      sepal length (cm)  sepal width (cm)  petal length (cm)  petal width (cm)  actual_class  predicted_class
 73                 6.1               2.8                4.7               1.2             1                1
 18                 5.7               3.8                1.7               0.3             0                0
@@ -200,7 +200,7 @@ This code snippet uses the `unity.default.iris` model to predict the class (`pre
 
 You can list the registered models in your UC namespace using:
 
-```bash title="List registered models"
+```sh title="List registered models"
 bin/uc registered_model list --catalog unity --schema default
 ```
 
@@ -216,7 +216,7 @@ You should see something that looks like:
 
 Additionally, you can list the model versions under a registered model using:
 
-```bash title="List model versions"
+```sh title="List model versions"
 bin/uc model_version list --full_name unity.default.iris
 ```
 
@@ -233,7 +233,7 @@ You should see something that looks like this when listing model versions:
 
 You can get the metadata of registered models or model versions using
 
-```bash title="View registered model metadata"
+```sh title="View registered model metadata"
 bin/uc registered_model get --full_name unity.default.iris
 ```
 
@@ -269,7 +269,7 @@ which would return something similar to this:
 
 or
 
-```bash title="View model version metadata"
+```sh title="View model version metadata"
 bin/uc model_version get --full_name unity.default.iris --version 1
 ```
 
@@ -314,7 +314,7 @@ which would return something similar to:
 
 You can update the comment or name of a registered models using the Unity Catalog CLI.
 
-```bash title="Comment a registered model"
+```sh title="Comment a registered model"
 bin/uc registered_model update --full_name unity.default.iris --new_name iris2 --comment "new comment"
 ```
 
@@ -350,7 +350,7 @@ which will return the updated metadata of the registered model:
 
 Additionally, you can update the comment of a model version as well:
 
-```bash title="Comment a model version"
+```sh title="Comment a model version"
 bin/uc model_version --full_name unity.default.iris2 --version 1 --comment "New model version comment"
 ```
 
@@ -395,13 +395,13 @@ which will return the updated model version metadata:
 
 Using the Unity Catalog CLI you can also delete model versions and registered models.
 
-```bash title="Delete model version"
+```sh title="Delete model version"
 # Delete model version 
 bin/uc model_version delete --full_name unity.default.iris2 --version 1
 ```
 
 and
 
-```bash title="Delete registered model"
+```sh title="Delete registered model"
 bin/uc registered_model delete --full_name unity.default.iris2
 ```
