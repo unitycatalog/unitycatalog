@@ -127,12 +127,7 @@ object PythonClientPostBuild {
 
     if (Files.exists(targetDir)) {
       log.info(s"Target directory $targetDir already exists. Deleting it to overwrite.")
-      deleteRecursively(targetDir) match {
-        case Success(_) =>
-          log.info(s"Successfully deleted existing target directory at $targetDir")
-        case Failure(exception) =>
-          sys.error(s"Failed to delete existing target directory at $targetDir: ${exception.getMessage}")
-      }
+      deleteRecursively(targetDir, log)
     }
 
     val targetParentDir = targetDir.getParent
@@ -151,51 +146,42 @@ object PythonClientPostBuild {
     }
   }
 
-  def deleteRecursively(path: Path): Try[Unit] = {
-    Try {
-      if (Files.exists(path)) {
-        Files.walk(path)
-          .sorted(Comparator.reverseOrder())
-          .forEach { p =>
-            Try(Files.delete(p)) match {
-              case Success(_) => // Deleted successfully
-              case Failure(e) => sys.error(s"Failed to delete $p: ${e.getMessage}")
-            }
+  /**
+   * Performs a recursive deletion of files and directories at a provided path.
+   * 
+   * @param path A target path to delete files and directories from
+   * @param log  The logger to record processing information to
+   */
+  def deleteRecursively(path: Path, log: Logger): Unit = {
+    if (Files.exists(path)) {
+      Files.walk(path)
+        .sorted(Comparator.reverseOrder())
+        .forEach { p =>
+          try {
+            Files.delete(p)
+            log.info(s"Successfully deleted '${p.getFileName}' at '$p'")
+          } catch {
+            case e: Exception =>
+              log.error(s"Failed to delete '$p': ${e.getMessage}")
           }
-      }
+        }
     }
   }
 
   /**
-   * Deletes the 'streams' directory from the target folder.
+   * Deletes irrelevant files from the final generated Python target directory to ensure that these files are not
+   * published to PyPI as part of the deployed artifacts.
    *
-   * @param log            The logger to output informational messages.
-   * @param targetDir      The target directory where 'streams' is located.
+   * @param log The logger to record file deletion reports.
+   * @param targetDir The target directory of the generated Python API source code.
    */
   def deleteIrrelevantFiles(
       log: Logger,
       targetDir: String
   ): Unit = {
-    // Define a sequence of paths to delete
-    val pathsToDelete: Seq[Path] = Seq(
-      Paths.get(targetDir, "streams"),
-      Paths.get(targetDir, ".github"),
-      Paths.get(targetDir, ".openapi-generator"),
-      Paths.get(targetDir, ".openapi-generator-ignore")
-    )
-
-    pathsToDelete.foreach { path =>
-      if (Files.exists(path)) {
-        log.info(s"Deleting '${path.getFileName}' at $path")
-        deleteRecursively(path) match {
-          case Success(_) =>
-            log.info(s"Successfully deleted '${path.getFileName}' at $path")
-          case Failure(exception) =>
-            sys.error(s"Failed to delete '${path.getFileName}' at $path: ${exception.getMessage}")
-        }
-      } else {
-        log.info(s"No '${path.getFileName}' found at $path. Skipping deletion.")
-      }
-    }
+    Seq("streams", ".github", ".openapi-generator", ".openapi-generator-ignore")
+      .map(Paths.get(targetDir, _))
+      .foreach(p => deleteRecursively(p, log))
   }
+
 }
