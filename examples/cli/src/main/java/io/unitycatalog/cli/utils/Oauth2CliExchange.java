@@ -204,7 +204,7 @@ public class Oauth2CliExchange {
 
     private static void loop(Optional<String> key, JsonNode value, List<String> acc) {
       switch (value.getNodeType()) {
-        case OBJECT:
+        case OBJECT -> {
           Iterator<Map.Entry<String, JsonNode>> fields = value.fields();
           while (fields.hasNext()) {
             Map.Entry<String, JsonNode> field = fields.next();
@@ -214,36 +214,39 @@ public class Oauth2CliExchange {
                 field.getValue(),
                 acc);
           }
-          break;
-        case ARRAY:
+	}
+        case ARRAY -> {
+          if (!key.isPresent()) {
+            throw new IllegalArgumentException(
+                "Missing key detected while encoding URL form: " + value.asText());
+          }
           int index = 0;
           Iterator<JsonNode> elements = value.elements();
           while (elements.hasNext()) {
             JsonNode element = elements.next();
             loop(
-                Optional.of(
-                    key.isPresent() ? key.get() + "[" + index++ + "]" : String.valueOf(index++)),
+                Optional.of(key.get() + "[" + index++ + "]"),
                 element,
                 acc);
           }
-          break;
-        case BOOLEAN:
-        case NUMBER:
-        case STRING:
+	}
+        case BOOLEAN, NUMBER, STRING -> {
           if (!key.isPresent()) {
             throw new IllegalArgumentException(
-                "Missing key found while encoding URL form: " + value.asText());
+                "Missing key detected while encoding URL form: " + value.asText());
           }
           acc.add(
               URLEncoder.encode(key.get(), StandardCharsets.UTF_8)
                   + "="
                   + URLEncoder.encode(value.asText(), StandardCharsets.UTF_8));
-          break;
-        case NULL:
-          break;
-        default:
+	}
+        case NULL -> {
+	  // Do nothing. A null value in Java object is equivalent to an absent value in a URL-encoded form.
+	}
+        default -> {
           throw new IllegalArgumentException(
               "Invalid URL encoding form field: " + value.getNodeType());
+	}
       }
     }
   }
