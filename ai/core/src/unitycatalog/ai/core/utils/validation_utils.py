@@ -147,29 +147,18 @@ def is_valid_retriever_output(outputs: Any) -> bool:
         return False
 
     def is_valid_retriever_item(item: Any) -> bool:
-        try:
-            import mlflow
+        import mlflow
+        from mlflow.entities import Document
 
-            if isinstance(item, mlflow.entities.Document):
-                return True
-        except ImportError:
-            pass
+        if isinstance(item, Document):
+            return True
 
         if isinstance(item, dict):
-            allowed_keys = {"id", "page_content", "metadata"}
-            return (
-                set(item.keys()).issubset(allowed_keys)
-                and "page_content" in item
-                and isinstance(item["page_content"], str)
-                and (item.get("id", None) is None or isinstance(item.get("id", None), str))
-                and (
-                    item.get("metadata", None) is None
-                    or (
-                        isinstance(item.get("metadata", None), dict)
-                        and all(isinstance(key, str) for key in item.get("metadata").keys())
-                    )
-                )
-            )
+            try:
+                document = Document(**item)
+                return True
+            except TypeError:
+                return False
 
         return False
 

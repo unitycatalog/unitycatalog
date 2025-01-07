@@ -312,10 +312,10 @@ def supported_function_info_types():
 
 def auto_trace_retriever(parameters, result):
     try:
+        import mlflow
         output = ast.literal_eval(result)
 
         if is_valid_retriever_output(output):
-            import mlflow
             from mlflow.entities import SpanType
 
             with mlflow.start_span(
