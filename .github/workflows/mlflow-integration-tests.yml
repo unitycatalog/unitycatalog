@@ -27,7 +27,7 @@ jobs:
     strategy:
       matrix:
         python-version: ['3.9', '3.10']
-    timeout-minutes: 120
+    timeout-minutes: 30
     permissions: {}
     steps:
       - uses: actions/checkout@v4
@@ -49,9 +49,7 @@ jobs:
           ai/dev/start_unitycatalog.sh
       - name: Run tests for UnityCatalog
         run: |
-          echo "Running tests for UnityCatalog..."
           pytest tests/test_mlflow_integration.py
       - name: Stop Unity Catalog Server
-        if: always()
         run: |
           ai/dev/teardown_server.sh
