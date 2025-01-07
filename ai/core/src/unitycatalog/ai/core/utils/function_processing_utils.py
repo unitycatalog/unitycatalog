@@ -310,7 +310,7 @@ def supported_function_info_types():
     return types
 
 
-def auto_trace_retriever(parameters, result):
+def auto_trace_retriever(function_name, parameters, result):
     try:
         import mlflow
         output = ast.literal_eval(result)
@@ -319,7 +319,7 @@ def auto_trace_retriever(parameters, result):
             from mlflow.entities import SpanType
 
             with mlflow.start_span(
-                name="retriever", span_type=SpanType.RETRIEVER
+                name=function_name, span_type=SpanType.RETRIEVER
             ) as span:
                 span.set_inputs(parameters)
                 span.set_outputs(output)

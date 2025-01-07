@@ -715,7 +715,7 @@ class UnitycatalogFunctionClient(BaseFunctionClient):
         if function_info.name in self.func_cache:
             result = self.func_cache[function_info.name](**parameters)
             if kwargs.get("autologging_enabled", False):
-                auto_trace_retriever(parameters, result)
+                auto_trace_retriever(function_info.name, parameters, result)
             return FunctionExecutionResult(format="SCALAR", value=str(result))
         else:
             python_function = dynamically_construct_python_function(function_info)
@@ -728,7 +728,7 @@ class UnitycatalogFunctionClient(BaseFunctionClient):
                 self.func_cache[function_info.name] = lru_cache()(func)
 
                 if kwargs.get("autologging_enabled", False):
-                    auto_trace_retriever(parameters, result)
+                    auto_trace_retriever(function_info.name, parameters, result)
 
                 return FunctionExecutionResult(format="SCALAR", value=str(result))
             except Exception as e:
