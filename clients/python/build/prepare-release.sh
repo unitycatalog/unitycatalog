@@ -8,10 +8,10 @@
 set -e
 
 # Define color codes for output formatting.
-RED='\033[0;31m'    # Red color for errors
-GREEN='\033[0;32m'  # Green color for success messages
-BOLD='\033[1m'       # Bold text
-NC='\033[0m'         # No Color (reset)
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+BOLD='\033[1m'
+NC='\033[0m'
 
 # Function: usage
 # Description:
@@ -20,6 +20,12 @@ usage() {
   echo -e "${BOLD}Usage:${NC} $0 <release_version>"
   echo -e "${BOLD}Example:${NC} $0 1.2.3"
   exit 1
+}
+
+
+print_error() {
+  local msg="$1"
+  echo -e "${RED}${BOLD}Error:${NC} ${RED}$msg${NC}" >&2
 }
 
 # Function: update_version_in_file
@@ -48,7 +54,7 @@ update_version_in_file() {
     mv "$temp_file" "$file_path"
     echo "Updated version in $file_path"
   else
-    echo -e "${RED}${BOLD}Error:${NC} File not found: $file_path" >&2
+    print_error "File not found: $file_path"
     exit 1
   fi
 }
@@ -77,7 +83,7 @@ update_init_version() {
     mv "$temp_file" "$file_path"
     echo "Updated __version__ in $file_path"
   else
-    echo -e "${RED}${BOLD}Error:${NC} File not found: $file_path" >&2
+    print_error "File not found: $file_path"
     exit 1
   fi
 }
@@ -104,7 +110,7 @@ validate_version_in_file() {
       exit 1
     fi
   else
-    echo -e "${RED}${BOLD}Error:${NC} File not found during validation: $file_path" >&2
+    print_error "File not found: $file_path"
     exit 1
   fi
 }
@@ -113,7 +119,7 @@ validate_version_in_file() {
 
 # Check if exactly one argument (release version) is provided.
 if [[ $# -ne 1 ]]; then
-  echo -e "${RED}${BOLD}Error:${NC} Release version not provided."
+  print_error "Release version not provided."
   usage
 fi
 
@@ -123,7 +129,7 @@ RELEASE_VERSION="$1"
 # Version validation regex to accept formats like:
 # 1.2.3, 1.2.3-beta, 1.2.3beta, 1.2.3.beta, 1.2.3rc1, 1.2.3.dev0, etc.
 if [[ ! "$RELEASE_VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+([.-]?[A-Za-z0-9]+)?$ ]]; then
-  echo -e "${RED}${BOLD}Error:${NC} ${RED}Invalid release version format.${NC}"
+  print_error "Invalid release version format. Must be in the format X.Y.Z or X.Y.Z-qualifier."
   usage
 fi
 
