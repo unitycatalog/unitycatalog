@@ -13,6 +13,7 @@ from typing_extensions import override
 from unitycatalog.ai.core.base import BaseFunctionClient, FunctionExecutionResult
 from unitycatalog.ai.core.paged_list import PagedList
 from unitycatalog.ai.core.utils.callable_utils_oss import generate_function_info
+from unitycatalog.ai.core.utils.function_processing_utils import auto_trace_retriever
 from unitycatalog.ai.core.utils.type_utils import column_type_to_python_type
 from unitycatalog.ai.core.utils.validation_utils import (
     FullFunctionName,
@@ -713,6 +714,8 @@ class UnitycatalogFunctionClient(BaseFunctionClient):
     ) -> FunctionExecutionResult:
         if function_info.name in self.func_cache:
             result = self.func_cache[function_info.name](**parameters)
+            if kwargs.get("autologging_enabled", False):
+                auto_trace_retriever(parameters, result)
             return FunctionExecutionResult(format="SCALAR", value=str(result))
         else:
             python_function = dynamically_construct_python_function(function_info)
@@ -723,6 +726,9 @@ class UnitycatalogFunctionClient(BaseFunctionClient):
                 result = func(**parameters)
 
                 self.func_cache[function_info.name] = lru_cache()(func)
+
+                if kwargs.get("autologging_enabled", False):
+                    auto_trace_retriever(parameters, result)
 
                 return FunctionExecutionResult(format="SCALAR", value=str(result))
             except Exception as e:

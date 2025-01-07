@@ -12,7 +12,7 @@ from unitycatalog.ai.core.utils.function_processing_utils import (
     get_tool_name,
     process_function_names,
 )
-from unitycatalog.ai.core.utils.validation_utils import is_valid_retriever_output
+from unitycatalog.ai.core.utils.validation_utils import autologging_is_enabled
 
 
 class UnityCatalogTool(StructuredTool):
@@ -93,24 +93,8 @@ class UCFunctionToolkit(BaseModel):
             result = client.execute_function(
                 function_name=function_name,
                 parameters=args_json,
+                autologging_enabled=autologging_is_enabled("anthropic"),
             )
-
-            if result.value:
-                try:
-                    output = ast.literal_eval(result.value)
-
-                    if is_valid_retriever_output(output):
-                        import mlflow
-                        from mlflow.entities import SpanType
-
-                        with mlflow.start_span(
-                            name="retriever", span_type=SpanType.RETRIEVER
-                        ) as span:
-                            span.set_inputs(kwargs)
-                            span.set_outputs(output)
-                except Exception:
-                    # Ignoring exceptions because auto-tracing retriever is not essential
-                    pass
 
             return result.to_json()
 

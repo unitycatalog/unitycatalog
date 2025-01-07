@@ -1,3 +1,4 @@
+import ast
 import decimal
 import inspect
 import json
@@ -15,7 +16,10 @@ from unitycatalog.ai.core.utils.pydantic_utils import (
     PydanticType,
 )
 from unitycatalog.ai.core.utils.type_utils import UC_TYPE_JSON_MAPPING
-from unitycatalog.ai.core.utils.validation_utils import FullFunctionName
+from unitycatalog.ai.core.utils.validation_utils import (
+    FullFunctionName,
+    is_valid_retriever_output,
+)
 
 _logger = logging.getLogger(__name__)
 
@@ -304,3 +308,21 @@ def supported_function_info_types():
         pass
 
     return types
+
+
+def auto_trace_retriever(parameters, result):
+    try:
+        output = ast.literal_eval(result)
+
+        if is_valid_retriever_output(output):
+            import mlflow
+            from mlflow.entities import SpanType
+
+            with mlflow.start_span(
+                name="retriever", span_type=SpanType.RETRIEVER
+            ) as span:
+                span.set_inputs(parameters)
+                span.set_outputs(output)
+    except Exception:
+        # Ignoring exceptions because auto-tracing retriever is not essential
+        pass
