@@ -1,8 +1,8 @@
+import importlib
 import json
 import logging
 from typing import Any, Callable, Dict, List, Optional
 
-from crewai_tools import BaseTool as CrewAIBaseTool
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from unitycatalog.ai.core.base import BaseFunctionClient
@@ -13,6 +13,13 @@ from unitycatalog.ai.core.utils.function_processing_utils import (
     process_function_names,
 )
 from unitycatalog.ai.core.utils.validation_utils import autologging_is_enabled
+
+tools_version = importlib.metadata.version("crewai_tools")
+
+if tools_version >= "0.25.0":
+    CrewAIBaseTool = importlib.import_module("crewai.tools").BaseTool
+else:
+    CrewAIBaseTool = importlib.import_module("crewai_tools").BaseTool
 
 _logger = logging.getLogger(__name__)
 
