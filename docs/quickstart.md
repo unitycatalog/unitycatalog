@@ -6,7 +6,7 @@ This quickstart shows how to run Unity Catalog on localhost which is great for e
 
 Start by cloning the open source Unity Catalog GitHub repository:
 
-```bash
+```sh
 git clone git@github.com:unitycatalog/unitycatalog.git
 ```
 
@@ -17,7 +17,7 @@ To run Unity Catalog, you need **Java 17** installed on your machine.  You can
 always run the `java --version` command to verify that you have the right
 version of Java installed such as the following example output.
 
-```bash
+```sh
 % java --version
 openjdk 17.0.12 2024-07-16
 OpenJDK Runtime Environment Homebrew (build 17.0.12+0)
@@ -49,7 +49,7 @@ Let’s create a new Terminal window and verify that the Unity Catalog server is
 Unity Catalog has a few built-in tables that are great for quick experimentation. Let’s look at all the tables that
 have a catalog name of “unity” and a schema name of “default” with the Unity Catalog CLI.
 
-```bash
+```sh
 bin/uc table list --catalog unity --schema default
 ```
 
@@ -69,7 +69,7 @@ bin/uc table list --catalog unity --schema default
 
 Let’s read the content of the `unity.default.numbers` table with the Unity Catalog CLI.
 
-```bash
+```sh
 bin/uc table read --full_name unity.default.numbers
 ```
 
@@ -117,13 +117,13 @@ The UC server is pre-populated with a few sample catalogs, schemas, Delta tables
 
 Let's start by listing the catalogs using the CLI.
 
-```bash
+```sh
 bin/uc catalog list
 ```
 
 You should see a catalog named `unity`. Let's see what's in this `unity` catalog (pun intended).
 
-```bash
+```sh
 bin/uc schema list --catalog unity
 ```
 
@@ -142,7 +142,7 @@ you have to list different asset types separately. Let's start with tables.
 
 Let's list the tables.
 
-```bash
+```sh
 bin/uc table list --catalog unity --schema default
 ```
 
@@ -166,7 +166,7 @@ You should see a few tables. Some details are truncated because of the nested na
 
 Next, let's get the metadata of one those tables.
 
-```bash
+```sh
 bin/uc table get --full_name unity.default.numbers
 ```
 
@@ -202,7 +202,7 @@ Here's how to print a snippet of a Delta table (powered by the [Delta Kernel Jav
 
 Let's try creating a new table.
 
-```bash
+```sh
 bin/uc table create --full_name unity.default.mytable \
 --columns "col1 int, col2 double" --storage_location /tmp/uc/my_table
 ```
@@ -241,13 +241,13 @@ If you list the tables (e.g., `bin/uc table list --catalog unity --schema defaul
 
 Next, append some randomly generated data to the table using `write`.
 
-```bash
+```sh
 bin/uc table write --full_name unity.default.mytable
 ```
 
 Read the table to confirm the random data was appended:
 
-```bash
+```sh
 bin/uc table read --full_name unity.default.mytable
 ```
 
@@ -267,7 +267,7 @@ bin/uc table read --full_name unity.default.mytable
 
 Delete the table to clean up:
 
-```bash
+```sh
 bin/uc table delete --full_name unity.default.mytable
 ```
 
@@ -302,14 +302,14 @@ interact directly with your Unity Catalog service for the creation and access of
 
 In your desired development environment, install MLflow 2.16.1 or higher:
 
-```bash
+```sh
 pip install mlflow
 ```
 
 The installation of MLflow includes the MLflow CLI tool, so you can start a local MLflow server with UI by running the
 command below in your terminal:
 
-```bash
+```sh
 mlflow ui
 ```
 
