@@ -15,7 +15,7 @@ First, update integration test [server.properties](./etc/conf/server.properties)
   - For Azure: Set `adls.storageAccountName.0`, `adls.tenantId.0`, `adls.clientId.0`, and `adls.clientSecret.0`
 
 Next, run the UC server to test against:
-```shell
+```sh
 # run from the integration-tests dir to use the testing configurations
 cd integration-tests
 ../bin/start-uc-server
@@ -30,7 +30,7 @@ bin/uc catalog create --name unity
 
 This scenario assumes an existing unity catalog is already running externally.
 
-```shell
+```sh
 export CATALOG_URI=https://<my-uc-instance/
 export CATALOG_AUTH_TOKEN=<my-access-token>
 export CATALOG_NAME=<my-catalog-name>
@@ -39,14 +39,14 @@ export CATALOG_NAME=<my-catalog-name>
 ## Run the tests
 By default, tests will run against the local filesystem. To run against cloud storage, set the following *optional* environment variables:
 
-```shell
+```sh
 export S3_BASE_LOCATION=s3://<my-bucket>/<optional>/<path>/
 export GS_BASE_LOCATION=gs://<my-bucket>/<optional>/<path>/
 export ABFSS_BASE_LOCATION=abfss://<container>@<account_name>.dfs.core.windows.net/<optional>/<path>/
 ```
 
 Finally, run the tests:
-```shell
+```sh
 build/sbt integrationTests/test
 ```
  

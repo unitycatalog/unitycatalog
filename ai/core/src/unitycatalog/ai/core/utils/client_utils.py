@@ -1,6 +1,6 @@
 from typing import Optional
 
-from unitycatalog.ai.core.client import BaseFunctionClient, get_uc_function_client
+from unitycatalog.ai.core.base import BaseFunctionClient, get_uc_function_client
 
 
 def validate_or_set_default_client(client: Optional[BaseFunctionClient] = None):
