@@ -32,6 +32,7 @@ from unitycatalog.ai.core.utils.validation_utils import (
     check_function_info,
     validate_param,
 )
+from unitycatalog.ai.core.utils.function_processing_utils import auto_trace_retriever
 
 if TYPE_CHECKING:
     from databricks.sdk import WorkspaceClient
@@ -589,13 +590,13 @@ class DatabricksFunctionClient(BaseFunctionClient):
     ) -> Any:
         check_function_info(function_info)
         if self.warehouse_id:
-            return self._execute_uc_functions_with_warehouse(function_info, parameters)
+            return self._execute_uc_functions_with_warehouse(function_info, parameters, **kwargs)
         else:
-            return self._execute_uc_functions_with_serverless(function_info, parameters)
+            return self._execute_uc_functions_with_serverless(function_info, parameters, **kwargs)
 
     @retry_on_session_expiration
     def _execute_uc_functions_with_warehouse(
-        self, function_info: "FunctionInfo", parameters: Dict[str, Any]
+        self, function_info: "FunctionInfo", parameters: Dict[str, Any], **kwargs: Any
     ) -> FunctionExecutionResult:
         from databricks.sdk.service.sql import StatementState
 
@@ -662,6 +663,8 @@ class DatabricksFunctionClient(BaseFunctionClient):
             if data_array and len(data_array) > 0 and len(data_array[0]) > 0:
                 # value is always string type
                 value = data_array[0][0]
+            if kwargs.get("autologging_enabled", False):
+                auto_trace_retriever(function_info.name, parameters, value)
             return FunctionExecutionResult(format="SCALAR", value=value, truncated=truncated)
         else:
             try:
@@ -688,7 +691,7 @@ class DatabricksFunctionClient(BaseFunctionClient):
 
     @retry_on_session_expiration
     def _execute_uc_functions_with_serverless(
-        self, function_info: "FunctionInfo", parameters: Dict[str, Any]
+        self, function_info: "FunctionInfo", parameters: Dict[str, Any], **kwargs: Any
     ) -> FunctionExecutionResult:
         _logger.info("Using databricks connect to execute functions with serverless compute.")
         self.set_default_spark_session()
@@ -696,7 +699,10 @@ class DatabricksFunctionClient(BaseFunctionClient):
         try:
             result = self.spark.sql(sqlQuery=sql_command.sql_query, args=sql_command.args or None)
             if is_scalar(function_info):
-                return FunctionExecutionResult(format="SCALAR", value=str(result.collect()[0][0]))
+                value = str(result.collect()[0][0])
+                if kwargs.get("autologging_enabled", False):
+                    auto_trace_retriever(function_info.name, parameters, value)
+                return FunctionExecutionResult(format="SCALAR", value=value)
             else:
                 row_limit = int(UCAI_DATABRICKS_SERVERLESS_EXECUTION_RESULT_ROW_LIMIT.get())
                 truncated = result.count() > row_limit
