@@ -56,13 +56,14 @@ public class TestUtils {
     ApiClient apiClient = new ApiClient();
     URI uri = URI.create(serverConfig.getServerUrl());
     int port = uri.getPort();
-    apiClient.setHost(uri.getHost());
-    apiClient.setPort(port);
-    apiClient.setScheme(uri.getScheme());
-    if (serverConfig.getAuthToken() != null && !serverConfig.getAuthToken().isEmpty()) {
-      apiClient.setRequestInterceptor(
-          request -> request.header("Authorization", "Bearer " + serverConfig.getAuthToken()));
-    }
+    //    apiClient.setHost(uri.getHost());
+    //    apiClient.setPort(port);
+    //    apiClient.setScheme(uri.getScheme());
+    //    if (serverConfig.getAuthToken() != null && !serverConfig.getAuthToken().isEmpty()) {
+    //      apiClient.setRequestInterceptor(
+    //          request -> request.header("Authorization", "Bearer " +
+    // serverConfig.getAuthToken()));
+    //    }
     return apiClient;
   }
 }

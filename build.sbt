@@ -188,6 +188,19 @@ lazy val client = (project in file("target/clients/java"))
       "org.junit.jupiter" % "junit-jupiter" % "5.10.3" % Test,
       "net.aichler" % "jupiter-interface" % JupiterKeys.jupiterVersion.value % Test,
       "org.assertj" % "assertj-core" % "3.26.3" % Test,
+      "com.databricks" % "databricks-sdk-java" % "0.38.0",
+      // OkHttp for HTTP requests
+      "com.squareup.okhttp3" % "okhttp" % "4.12.0",
+      "com.squareup.okhttp3" % "logging-interceptor" % "4.12.0",
+      // Okio for efficient I/O operations
+      "com.squareup.okio" % "okio" % "3.9.0",
+      // Apache Oltu for OAuth client
+      "org.apache.oltu.oauth2" % "org.apache.oltu.oauth2.client" % "1.0.2",
+      "org.apache.oltu.oauth2" % "org.apache.oltu.oauth2.common" % "1.0.2",
+      // GsonFire for Gson extensions
+      "io.gsonfire" % "gson-fire" % "1.9.0",
+      // Gson for JSON parsing
+      "com.google.code.gson" % "gson" % "2.10.1"
     ),
     (Compile / compile) := ((Compile / compile) dependsOn generate).value,
 
@@ -198,7 +211,7 @@ lazy val client = (project in file("target/clients/java"))
     openApiApiPackage := s"$orgName.client.api",
     openApiModelPackage := s"$orgName.client.model",
     openApiAdditionalProperties := Map(
-      "library" -> "native",
+//      "library" -> "native",
       "useJakartaEe" -> "true",
       "hideGenerationTimestamp" -> "true",
       "openApiNullable" -> "false"),
@@ -504,6 +517,7 @@ lazy val cli = (project in file("examples") / "cli")
       "org.apache.hadoop" % "hadoop-aws" % "3.4.0",
       "org.apache.hadoop" % "hadoop-azure" % "3.4.0",
       "com.google.guava" % "guava" % "31.0.1-jre",
+      "com.databricks" % "databricks-sdk-java" % "0.38.0",
       // Test dependencies
       "org.junit.jupiter" % "junit-jupiter" % "5.10.3" % Test,
       "net.aichler" % "jupiter-interface" % JupiterKeys.jupiterVersion.value % Test,
