@@ -32,7 +32,7 @@ def test_integration(setup_servers):
     schema = "default"
     registered_model_name = "iris"
     model_name = f"{catalog}.{schema}.{registered_model_name}"
-    mlflow.set_experiment("iris-uc-oss")
+    mlflow.set_experiment("iris-uc")
     client = mlflow.MlflowClient()
     with pytest.raises(Exception, match="NOT_FOUND"):
         client.get_registered_model(model_name)
@@ -60,8 +60,8 @@ def test_integration(setup_servers):
     build_model()
     model_version = 1
     model_uri = f"models:/{model_name}/{model_version}"
-    rm_desc = "UC-OSS/MLflow Iris model"
-    mv_desc = "Version 1 of the UC-OSS/MLflow Iris model"
+    rm_desc = "UC/MLflow Iris model"
+    mv_desc = "Version 1 of the UC/MLflow Iris model"
 
     # Load the model and do some batch inference.
     # By specifying the UC OSS model uri, mlflow will make UC OSS
@@ -74,18 +74,18 @@ def test_integration(setup_servers):
     result["predicted_class"] = predictions
     assert result[:4] is not None
 
-    # list_artifacts will use the UC OSS model URI and make REST API calls to
-    # UC OSS to:
-    #   1) retrieve credentials (none for file based UC OSS)
-    #   2) use the storage location returned from UC OSS for the model version
+    # list_artifacts will use the UC model URI and make REST API calls to
+    # UC to:
+    #   1) retrieve credentials (none for file based UC)
+    #   2) use the storage location returned from UC for the model version
     #      list the artifacts stored in the location
     mlflow.artifacts.list_artifacts(model_uri)
 
     path = os.path.join("/tmp", "models", model_name, str(model_version))
 
-    # download_artifacts will use the UC OSS model URI and make REST API calls
-    # to UC OSS to:
-    #   1) retrieve credentials (none for file based UC OSS)
+    # download_artifacts will use the UC model URI and make REST API calls
+    # to UC to:
+    #   1) retrieve credentials (none for file based UC)
     #   2) copy the artifact files from the storage location to the
     #      destination path
     mlflow.artifacts.download_artifacts(
