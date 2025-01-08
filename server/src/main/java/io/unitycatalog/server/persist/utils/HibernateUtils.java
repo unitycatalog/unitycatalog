@@ -68,6 +68,7 @@ public class HibernateUtils {
       configuration.addAnnotatedClass(VolumeInfoDAO.class);
       configuration.addAnnotatedClass(UserDAO.class);
       configuration.addAnnotatedClass(MetastoreDAO.class);
+      configuration.addAnnotatedClass(CommitDAO.class);
 
       ServiceRegistry serviceRegistry =
           new StandardServiceRegistryBuilder().applySettings(configuration.getProperties()).build();
