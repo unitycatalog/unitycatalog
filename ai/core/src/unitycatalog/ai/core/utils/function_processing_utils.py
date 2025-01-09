@@ -330,7 +330,7 @@ def auto_trace_retriever(function_name: str, parameters: Dict[str, Any], result:
             if parent_span := mlflow.get_current_active_span():
                 span = client.start_span(
                     request_id=parent_span.request_id,
-                    parent_span_id=parent_span.span_id,
+                    parent_id=parent_span.span_id,
                     **common_params
                 )
                 client.end_span(
@@ -346,13 +346,6 @@ def auto_trace_retriever(function_name: str, parameters: Dict[str, Any], result:
                     outputs=output,
                     end_time_ns=end_time_ns
                 )
-            
-            _logger.info(str(span))
-            # with mlflow.start_span(
-            #     name=function_name, span_type=SpanType.RETRIEVER
-            # ) as span:
-            #     span.set_inputs(parameters)
-            #     span.set_outputs(output)
     except Exception as e:
         # Ignoring exceptions because auto-tracing retriever is not essential
         _logger.error(e)
