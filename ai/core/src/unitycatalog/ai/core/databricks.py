@@ -598,6 +598,8 @@ class DatabricksFunctionClient(BaseFunctionClient):
         if kwargs.get("autologging_enabled", False):
             auto_trace_retriever(function_info.name, parameters, result.value)
 
+        return result
+
     @retry_on_session_expiration
     def _execute_uc_functions_with_warehouse(
         self, function_info: "FunctionInfo", parameters: Dict[str, Any]
