@@ -64,6 +64,7 @@ public class AuthService {
 
   private final SecurityContext securityContext;
   private final JwksOperations jwksOperations;
+  private final String iDpIssuer;
 
   private static final String COOKIE = "cookie";
   private static final String EMPTY_RESPONSE = "{}";
@@ -71,6 +72,7 @@ public class AuthService {
   public AuthService(SecurityContext securityContext) {
     this.securityContext = securityContext;
     this.jwksOperations = new JwksOperations(securityContext);
+    this.iDpIssuer = ServerProperties.getInstance().getProperty("server.idp-issuer");
   }
 
   /**
@@ -145,6 +147,7 @@ public class AuthService {
 
     LOGGER.debug("Validating token for issuer: {} and keyId: {}", issuer, keyId);
 
+    validateIssuer(issuer);
     JWTVerifier jwtVerifier = jwksOperations.verifierForIssuerAndKey(issuer, keyId);
     decodedJWT = jwtVerifier.verify(decodedJWT);
     verifyPrincipal(decodedJWT);
@@ -195,6 +198,13 @@ public class AuthService {
               return HttpResponse.of(headers, HttpData.ofUtf8(EMPTY_RESPONSE));
             })
         .orElse(HttpResponse.of(HttpStatus.OK, MediaType.JSON, EMPTY_RESPONSE));
+  }
+
+  private void validateIssuer(String issuer) {
+    if (!issuer.equals(securityContext.getLocalIssuer()) && !issuer.equals(iDpIssuer)) {
+      throw new OAuthInvalidRequestException(
+          ErrorCode.INVALID_ARGUMENT, "Invalid issuer: " + issuer);
+    }
   }
 
   private static void verifyPrincipal(DecodedJWT decodedJWT) {
