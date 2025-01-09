@@ -22,6 +22,7 @@ from unitycatalog.ai.core.envs.databricks_env_vars import (
 )
 from unitycatalog.ai.core.paged_list import PagedList
 from unitycatalog.ai.core.utils.callable_utils import generate_sql_function_body
+from unitycatalog.ai.core.utils.function_processing_utils import auto_trace_retriever
 from unitycatalog.ai.core.utils.type_utils import (
     column_type_to_python_type,
     convert_timedelta_to_interval_str,
@@ -32,7 +33,6 @@ from unitycatalog.ai.core.utils.validation_utils import (
     check_function_info,
     validate_param,
 )
-from unitycatalog.ai.core.utils.function_processing_utils import auto_trace_retriever
 
 if TYPE_CHECKING:
     from databricks.sdk import WorkspaceClient
@@ -589,18 +589,20 @@ class DatabricksFunctionClient(BaseFunctionClient):
         self, function_info: "FunctionInfo", parameters: Dict[str, Any], **kwargs: Any
     ) -> Any:
         check_function_info(function_info)
-        
+
         start_time_ns = time.time_ns()
 
         if self.warehouse_id:
             result = self._execute_uc_functions_with_warehouse(function_info, parameters)
         else:
             result = self._execute_uc_functions_with_serverless(function_info, parameters)
-        
+
         end_time_ns = time.time_ns()
 
         if kwargs.get("autologging_enabled", False):
-            auto_trace_retriever(function_info.name, parameters, result.value, start_time_ns, end_time_ns)
+            auto_trace_retriever(
+                function_info.name, parameters, result.value, start_time_ns, end_time_ns
+            )
 
         return result
 

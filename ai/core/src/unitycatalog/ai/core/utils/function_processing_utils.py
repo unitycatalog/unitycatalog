@@ -310,9 +310,14 @@ def supported_function_info_types():
     return types
 
 
-def auto_trace_retriever(function_name: str, parameters: Dict[str, Any], result: str, start_time_ns: int, end_time_ns: int):
+def auto_trace_retriever(
+    function_name: str,
+    parameters: Dict[str, Any],
+    result: str,
+    start_time_ns: int,
+    end_time_ns: int,
+):
     try:
-        import mlflow
         output = ast.literal_eval(result)
 
         if is_valid_retriever_output(output):
@@ -321,30 +326,28 @@ def auto_trace_retriever(function_name: str, parameters: Dict[str, Any], result:
 
             client = MlflowClient()
             common_params = dict(
-                name=function_name, 
+                name=function_name,
                 span_type=SpanType.RETRIEVER,
                 inputs=parameters,
-                start_time_ns=start_time_ns
+                start_time_ns=start_time_ns,
             )
 
             if parent_span := mlflow.get_current_active_span():
                 span = client.start_span(
                     request_id=parent_span.request_id,
                     parent_id=parent_span.span_id,
-                    **common_params
+                    **common_params,
                 )
                 client.end_span(
                     request_id=span.request_id,
                     span_id=span.span_id,
                     outputs=output,
-                    end_time_ns=end_time_ns
+                    end_time_ns=end_time_ns,
                 )
             else:
                 span = client.start_trace(**common_params)
                 client.end_trace(
-                    request_id=span.request_id,
-                    outputs=output,
-                    end_time_ns=end_time_ns
+                    request_id=span.request_id, outputs=output, end_time_ns=end_time_ns
                 )
     except Exception as e:
         # Ignoring exceptions because auto-tracing retriever is not essential

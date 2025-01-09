@@ -147,7 +147,6 @@ def is_valid_retriever_output(outputs: Any) -> bool:
         return False
 
     def is_valid_retriever_item(item: Any) -> bool:
-        import mlflow
         from mlflow.entities import Document
 
         if isinstance(item, Document):
@@ -167,11 +166,9 @@ def is_valid_retriever_output(outputs: Any) -> bool:
 
 def autologging_is_enabled(integration_name):
     try:
-        import mlflow
         from mlflow.utils.autologging_utils import autologging_is_disabled
 
         return not autologging_is_disabled(integration_name)
     except Exception:
         # Default to autologging disabled
         return False
-

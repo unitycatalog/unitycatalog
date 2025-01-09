@@ -728,14 +728,18 @@ class UnitycatalogFunctionClient(BaseFunctionClient):
 
                 self.func_cache[function_info.name] = lru_cache()(func)
 
-                function_execution_result = FunctionExecutionResult(format="SCALAR", value=str(result))
+                function_execution_result = FunctionExecutionResult(
+                    format="SCALAR", value=str(result)
+                )
             except Exception as e:
                 return FunctionExecutionResult(error=str(e))
-        
+
         end_time_ns = time.time_ns()
 
         if kwargs.get("autologging_enabled", False):
-            auto_trace_retriever(function_info.name, parameters, str(result), start_time_ns, end_time_ns)
+            auto_trace_retriever(
+                function_info.name, parameters, str(result), start_time_ns, end_time_ns
+            )
 
         return function_execution_result
 

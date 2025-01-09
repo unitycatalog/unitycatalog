@@ -38,7 +38,9 @@ def generate_tool_call_messages(
         for tool_call in tool_calls:
             arguments = json.loads(tool_call.function.arguments)
             func_name = construct_original_function_name(tool_call.function.name)
-            result = client.execute_function(func_name, arguments, autologging_enabled=autologging_is_enabled("openai"))
+            result = client.execute_function(
+                func_name, arguments, autologging_enabled=autologging_is_enabled("openai")
+            )
             function_call_result_message = {
                 "role": "tool",
                 "content": json.dumps({"content": result.value}),

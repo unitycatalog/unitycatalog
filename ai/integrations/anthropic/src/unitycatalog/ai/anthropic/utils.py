@@ -52,7 +52,11 @@ class ToolCallData:
         Returns:
             str: The result of the function execution.
         """
-        result = client.execute_function(self.function_name, self.arguments, autologging_enabled=autologging_is_enabled("anthropic"))
+        result = client.execute_function(
+            self.function_name,
+            self.arguments,
+            autologging_enabled=autologging_is_enabled("anthropic"),
+        )
         return str(result.value)
 
     def to_tool_result_message(self, result: str) -> Dict[str, Any]:
