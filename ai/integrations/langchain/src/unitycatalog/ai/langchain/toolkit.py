@@ -93,7 +93,7 @@ class UCFunctionToolkit(BaseModel):
             result = client.execute_function(
                 function_name=function_name,
                 parameters=args_json,
-                autologging_enabled=autologging_is_enabled("anthropic"),
+                autologging_enabled=autologging_is_enabled("langchain"),
             )
 
             return result.to_json()
