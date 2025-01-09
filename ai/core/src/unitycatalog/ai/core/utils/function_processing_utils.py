@@ -346,12 +346,13 @@ def auto_trace_retriever(function_name: str, parameters: Dict[str, Any], result:
                     outputs=output,
                     end_time_ns=end_time_ns
                 )
-
-            with mlflow.start_span(
-                name=function_name, span_type=SpanType.RETRIEVER
-            ) as span:
-                span.set_inputs(parameters)
-                span.set_outputs(output)
+            
+            _logger.info(str(span))
+            # with mlflow.start_span(
+            #     name=function_name, span_type=SpanType.RETRIEVER
+            # ) as span:
+            #     span.set_inputs(parameters)
+            #     span.set_outputs(output)
     except Exception:
         # Ignoring exceptions because auto-tracing retriever is not essential
         pass
