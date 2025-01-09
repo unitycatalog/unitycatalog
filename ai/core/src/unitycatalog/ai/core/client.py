@@ -3,6 +3,7 @@ import atexit
 import datetime
 import decimal
 import logging
+import time
 from enum import Enum
 from functools import lru_cache, wraps
 from typing import Any, Callable, Dict, List, Optional, Union
@@ -712,6 +713,8 @@ class UnitycatalogFunctionClient(BaseFunctionClient):
     def _execute_uc_function(
         self, function_info: FunctionInfo, parameters: Dict[str, Any], **kwargs: Any
     ) -> FunctionExecutionResult:
+        start_time_ns = time.time_ns()
+
         if function_info.name in self.func_cache:
             result = self.func_cache[function_info.name](**parameters)
             function_execution_result = FunctionExecutionResult(format="SCALAR", value=str(result))
@@ -729,8 +732,10 @@ class UnitycatalogFunctionClient(BaseFunctionClient):
             except Exception as e:
                 return FunctionExecutionResult(error=str(e))
         
+        end_time_ns = time.time_ns()
+
         if kwargs.get("autologging_enabled", False):
-            auto_trace_retriever(function_info.name, parameters, result)
+            auto_trace_retriever(function_info.name, parameters, str(result), start_time_ns, end_time_ns)
 
         return function_execution_result
 

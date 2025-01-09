@@ -590,13 +590,17 @@ class DatabricksFunctionClient(BaseFunctionClient):
     ) -> Any:
         check_function_info(function_info)
         
+        start_time_ns = time.time_ns()
+
         if self.warehouse_id:
             result = self._execute_uc_functions_with_warehouse(function_info, parameters)
         else:
             result = self._execute_uc_functions_with_serverless(function_info, parameters)
         
+        end_time_ns = time.time_ns()
+
         if kwargs.get("autologging_enabled", False):
-            auto_trace_retriever(function_info.name, parameters, result.value)
+            auto_trace_retriever(function_info.name, parameters, result.value, start_time_ns, end_time_ns)
 
         return result
 

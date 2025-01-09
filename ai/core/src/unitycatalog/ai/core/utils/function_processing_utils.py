@@ -310,7 +310,7 @@ def supported_function_info_types():
     return types
 
 
-def auto_trace_retriever(function_name, parameters, result, start_time_ns, end_time_ns):
+def auto_trace_retriever(function_name: str, parameters: Dict[str, Any], result: str, start_time_ns: int, end_time_ns: int):
     try:
         import mlflow
         output = ast.literal_eval(result)
@@ -326,7 +326,7 @@ def auto_trace_retriever(function_name, parameters, result, start_time_ns, end_t
                 inputs=parameters,
                 start_time_ns=start_time_ns
             )
-            
+
             if parent_span := mlflow.get_current_active_span():
                 span = client.start_span(
                     request_id=parent_span.request_id,
