@@ -353,6 +353,7 @@ def auto_trace_retriever(function_name: str, parameters: Dict[str, Any], result:
             # ) as span:
             #     span.set_inputs(parameters)
             #     span.set_outputs(output)
-    except Exception:
+    except Exception as e:
         # Ignoring exceptions because auto-tracing retriever is not essential
+        _logger.error(e)
         pass
