@@ -310,13 +310,42 @@ def supported_function_info_types():
     return types
 
 
-def auto_trace_retriever(function_name, parameters, result):
+def auto_trace_retriever(function_name, parameters, result, start_time_ns, end_time_ns):
     try:
         import mlflow
         output = ast.literal_eval(result)
 
         if is_valid_retriever_output(output):
+            from mlflow import MlflowClient
             from mlflow.entities import SpanType
+
+            client = MlflowClient()
+            common_params = dict(
+                name=function_name, 
+                span_type=SpanType.RETRIEVER,
+                inputs=parameters,
+                start_time_ns=start_time_ns
+            )
+            
+            if parent_span := mlflow.get_current_active_span():
+                span = client.start_span(
+                    request_id=parent_span.request_id,
+                    parent_span_id=parent_span.span_id,
+                    **common_params
+                )
+                client.end_span(
+                    request_id=span.request_id,
+                    span_id=span.span_id,
+                    outputs=output,
+                    end_time_ns=end_time_ns
+                )
+            else:
+                span = client.start_trace(**common_params)
+                client.end_trace(
+                    request_id=span.request_id,
+                    outputs=output,
+                    end_time_ns=end_time_ns
+                )
 
             with mlflow.start_span(
                 name=function_name, span_type=SpanType.RETRIEVER
