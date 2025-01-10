@@ -321,6 +321,7 @@ def auto_trace_retriever(
         output = ast.literal_eval(result)
 
         if is_valid_retriever_output(output):
+            import mlflow
             from mlflow import MlflowClient
             from mlflow.entities import SpanType
 
