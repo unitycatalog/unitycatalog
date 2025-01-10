@@ -91,7 +91,6 @@ public class Oauth2CliExchange {
     byte[] stateBytes = new byte[16];
     new SecureRandom().nextBytes(stateBytes);
 
-    // NOTE: The value of `scope` is Google OAuth2 specific. We might need more versatile code here.
     String authUrl =
         authorizationUrl
             + "?"
