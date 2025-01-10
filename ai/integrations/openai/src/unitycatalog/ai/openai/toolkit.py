@@ -74,7 +74,7 @@ class UCFunctionToolkit(BaseModel):
             raise ValueError("Either function_name or function_info should be provided.")
 
         function_input_params_schema = generate_function_input_params_schema(
-            function_info, strict=True, autologging_enabled=autologging_is_enabled("openai")
+            function_info, strict=True
         )
         tool = pydantic_function_tool(
             function_input_params_schema.pydantic_model,

@@ -234,7 +234,7 @@ def param_info_to_pydantic_type(param_info: Any, strict: bool = False) -> Pydant
 
 
 def generate_function_input_params_schema(
-    function_info: Any, strict: bool = False, **kwargs
+    function_info: Any, strict: bool = False
 ) -> PydanticFunctionInputParams:
     """
     Generate a Pydantic model based on a Unity Catalog function information.
@@ -267,12 +267,6 @@ def generate_function_input_params_schema(
         fields[param_info.name] = (
             pydantic_field.pydantic_type,
             Field(default=pydantic_field.default, description=pydantic_field.description),
-        )
-    if kwargs.get("autologging_enabled"):
-        _logger.info("Enabling autologging for retriever.")
-        fields["autologging_enabled"] = (
-            bool,
-            Field(default=True, description="Flag to enable or disable autologging."),
         )
     model = create_model(params_name, **fields)
     return PydanticFunctionInputParams(pydantic_model=model, strict=pydantic_field.strict)
