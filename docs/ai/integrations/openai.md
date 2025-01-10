@@ -6,7 +6,7 @@ Integrate Unity Catalog AI with [OpenAI](https://platform.openai.com/docs/api-re
 
 ## Installation
 
-Install the Unity Catalog AI OpenAI integration from PyPI:
+To get started with the `unitycatalog-openai` integration, install the following packages from PyPI:
 
 ```sh
 pip install unitycatalog-openai
@@ -16,37 +16,27 @@ pip install unitycatalog-openai
 
 - **Python version**: Python 3.10 or higher is required.
 
-Install the OpenAI SDK if you don't already have it in your environment:
+### Unity Catalog Server
 
-```sh
-pip install openai
-```
-
-### Unity Catalog Open Source
-
-Ensure that you have a functional UC server set up and that you are able to access the catalog and schema where defined functions are stored and that you install the Unity Catalog Python SDK:
-
-```sh
-pip install unitycatalog-client
-```
+Ensure that you have a functional UC server set up and that you are able to access the catalog and schema where defined functions are stored.
 
 ### Databricks Unity Catalog
 
-To interact with Databricks Unity Catalog, ensure that you have both the `databricks-sdk` and the `databricks-connect` packages installed:
+To interact with Databricks Unity Catalog, install the optional package dependency when installing the integration package:
 
 ```sh
-pip install databricks-sdk "databricks-connect==15.1.0"
+pip install unitycatalog-openai[databricks]
 ```
 
 ## Tutorial
 
-### Client Setup - OSS Unity Catalog
+### Client Setup
 
 Create an instance of the Functions Client
 
 ```python
 from unitycatalog.client import ApiClient, Configuration
-from unitycatalog.ai.core.oss import UnitycatalogFunctionClient
+from unitycatalog.ai.core.client import UnitycatalogFunctionClient
 
 config = Configuration()
 # This is the default address when starting a UnityCatalog server locally. Update this to the uri
@@ -126,8 +116,7 @@ print(result)  # Outputs: 2
 
 ### Send a tool-enabled question to OpenAI
 
-With our interface to our UC function defined as a LlamaIndex tool collection, we can directly use it within a LlamaIndex agent application.
-Below, we are going to create a simple `ReActAgent` and verify that our agent properly calls our UC function.
+With the client defined, we can now submit the tools along with our request to our defined OpenAI model.
 
 ``` python
 import openai
