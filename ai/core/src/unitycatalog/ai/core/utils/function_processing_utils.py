@@ -250,7 +250,6 @@ def generate_function_input_params_schema(
             pydantic_model: The Pydantic model representing the function input parameters.
             strict: Whether the type strictly follows the JSON schema type. This is used for OpenAI only.
     """
-    _logger.info("Generating function input params schema.")
     if not isinstance(function_info, supported_function_info_types()):
         raise TypeError(f"Unsupported function info type: {type(function_info)}")
     params_name = (
