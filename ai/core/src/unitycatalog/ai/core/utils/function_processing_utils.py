@@ -352,5 +352,4 @@ def auto_trace_retriever(
                 )
     except Exception as e:
         # Ignoring exceptions because auto-tracing retriever is not essential
-        _logger.error(e)
         pass
