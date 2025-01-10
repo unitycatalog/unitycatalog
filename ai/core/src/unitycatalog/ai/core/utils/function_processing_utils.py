@@ -234,7 +234,7 @@ def param_info_to_pydantic_type(param_info: Any, strict: bool = False) -> Pydant
 
 
 def generate_function_input_params_schema(
-    function_info: Any, strict: bool = False
+    function_info: Any, strict: bool = False, **kwargs
 ) -> PydanticFunctionInputParams:
     """
     Generate a Pydantic model based on a Unity Catalog function information.
@@ -250,6 +250,7 @@ def generate_function_input_params_schema(
             pydantic_model: The Pydantic model representing the function input parameters.
             strict: Whether the type strictly follows the JSON schema type. This is used for OpenAI only.
     """
+    _logger.info("Generating function input params schema.")
     if not isinstance(function_info, supported_function_info_types()):
         raise TypeError(f"Unsupported function info type: {type(function_info)}")
     params_name = (
@@ -266,6 +267,12 @@ def generate_function_input_params_schema(
         fields[param_info.name] = (
             pydantic_field.pydantic_type,
             Field(default=pydantic_field.default, description=pydantic_field.description),
+        )
+    if kwargs.get("autologging_enabled"):
+        _logger.info("Enabling autologging for retriever.")
+        fields["autologging_enabled"] = (
+            bool,
+            Field(default=True, description="Flag to enable or disable autologging."),
         )
     model = create_model(params_name, **fields)
     return PydanticFunctionInputParams(pydantic_model=model, strict=pydantic_field.strict)

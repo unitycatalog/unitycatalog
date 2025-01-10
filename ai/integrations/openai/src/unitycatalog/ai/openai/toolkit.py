@@ -11,6 +11,7 @@ from unitycatalog.ai.core.utils.function_processing_utils import (
     get_tool_name,
     process_function_names,
 )
+from unitycatalog.ai.core.utils.validation_utils import autologging_is_enabled
 
 
 class UCFunctionToolkit(BaseModel):
@@ -73,7 +74,7 @@ class UCFunctionToolkit(BaseModel):
             raise ValueError("Either function_name or function_info should be provided.")
 
         function_input_params_schema = generate_function_input_params_schema(
-            function_info, strict=True
+            function_info, strict=True, autologging_enabled=autologging_is_enabled("openai")
         )
         tool = pydantic_function_tool(
             function_input_params_schema.pydantic_model,
