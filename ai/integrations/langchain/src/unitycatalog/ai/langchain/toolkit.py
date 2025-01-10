@@ -94,7 +94,6 @@ class UCFunctionToolkit(BaseModel):
                 parameters=args_json,
                 autologging_enabled=autologging_is_enabled("langchain"),
             )
-
             return result.to_json()
 
         return UnityCatalogTool(
