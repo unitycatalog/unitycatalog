@@ -84,8 +84,7 @@ public class FileIOFactory {
 
   protected S3FileIO getS3FileIO(URI tableLocationUri) {
     CredentialContext context = getCredentialContextFromTableLocation(tableLocationUri);
-    S3StorageConfig s3StorageConfig =
-      ServerProperties.getInstance().getS3Configurations().get(context.getStorageBase());
+    S3StorageConfig s3StorageConfig = s3Configurations.get(context.getStorageBase());
 
     S3FileIO s3FileIO =
         new S3FileIO(() -> getS3Client(getAwsCredentialsProvider(context), s3StorageConfig.getRegion()));
