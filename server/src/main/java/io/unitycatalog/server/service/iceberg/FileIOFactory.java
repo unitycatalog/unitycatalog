@@ -35,9 +35,11 @@ import static io.unitycatalog.server.utils.Constants.URI_SCHEME_S3;
 public class FileIOFactory {
 
   private final CredentialOperations credentialOps;
+  private final Map<String, S3StorageConfig> s3Configurations;
 
-  public FileIOFactory(CredentialOperations credentialOps) {
+  public FileIOFactory(CredentialOperations credentialOps, ServerProperties serverProperties) {
     this.credentialOps = credentialOps;
+    this.s3Configurations = serverProperties.getS3Configurations();
   }
 
   // TODO: Cache fileIOs

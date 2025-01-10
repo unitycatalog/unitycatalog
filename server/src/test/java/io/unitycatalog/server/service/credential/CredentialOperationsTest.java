@@ -8,8 +8,11 @@ import static org.mockito.Mockito.when;
 import io.unitycatalog.server.exception.BaseException;
 import io.unitycatalog.server.model.AwsCredentials;
 import io.unitycatalog.server.model.TemporaryCredentials;
+import io.unitycatalog.server.service.credential.aws.AwsCredentialVendor;
 import io.unitycatalog.server.service.credential.aws.S3StorageConfig;
 import io.unitycatalog.server.service.credential.azure.ADLSStorageConfig;
+import io.unitycatalog.server.service.credential.azure.AzureCredentialVendor;
+import io.unitycatalog.server.service.credential.gcp.GcpCredentialVendor;
 import io.unitycatalog.server.utils.ServerProperties;
 import java.util.Map;
 import java.util.Set;
@@ -45,7 +48,8 @@ public class CredentialOperationsTest {
                       .secretKey(SECRET_KEY)
                       .sessionToken(SESSION_TOKEN)
                       .build()));
-      credentialsOperations = new CredentialOperations();
+      AwsCredentialVendor awsCredentialVendor = new AwsCredentialVendor(serverProperties);
+      credentialsOperations = new CredentialOperations(awsCredentialVendor, null, null);
       TemporaryCredentials s3TemporaryCredentials =
           credentialsOperations.vendCredential(
               "s3://storageBase/abc", Set.of(CredentialContext.Privilege.SELECT));
@@ -67,7 +71,8 @@ public class CredentialOperationsTest {
                       .region(S3_REGION)
                       .awsRoleArn(ROLE_ARN)
                       .build()));
-      credentialsOperations = new CredentialOperations();
+      awsCredentialVendor = new AwsCredentialVendor(serverProperties);
+      credentialsOperations = new CredentialOperations(awsCredentialVendor, null, null);
       assertThatThrownBy(
               () ->
                   credentialsOperations.vendCredential(
@@ -86,7 +91,8 @@ public class CredentialOperationsTest {
       // Test mode used
       when(serverProperties.getAdlsConfigurations())
           .thenReturn(Map.of("uctest", ADLSStorageConfig.builder().testMode(true).build()));
-      credentialsOperations = new CredentialOperations();
+      AzureCredentialVendor azureCredentialVendor = new AzureCredentialVendor(serverProperties);
+      credentialsOperations = new CredentialOperations(null, azureCredentialVendor, null);
       TemporaryCredentials azureTemporaryCredentials =
           credentialsOperations.vendCredential(
               "abfss://test@uctest.dfs.core.windows.net",
@@ -104,7 +110,8 @@ public class CredentialOperationsTest {
                       .clientId(CLIENT_ID)
                       .clientSecret(CLIENT_SECRET)
                       .build()));
-      credentialsOperations = new CredentialOperations();
+      azureCredentialVendor = new AzureCredentialVendor(serverProperties);
+      credentialsOperations = new CredentialOperations(null, azureCredentialVendor, null);
       assertThatThrownBy(
               () ->
                   credentialsOperations.vendCredential(
@@ -120,7 +127,8 @@ public class CredentialOperationsTest {
       // Test mode used
       when(serverProperties.getGcsConfigurations())
           .thenReturn(Map.of("gs://uctest", "testing://test"));
-      credentialsOperations = new CredentialOperations();
+      GcpCredentialVendor gcpCredentialVendor = new GcpCredentialVendor(serverProperties);
+      credentialsOperations = new CredentialOperations(null, null, gcpCredentialVendor);
       TemporaryCredentials gcpTemporaryCredentials =
           credentialsOperations.vendCredential(
               "gs://uctest/abc/xyz", Set.of(CredentialContext.Privilege.UPDATE));
@@ -128,7 +136,8 @@ public class CredentialOperationsTest {
 
       // Use default creds
       when(serverProperties.getGcsConfigurations()).thenReturn(Map.of("gs://uctest", ""));
-      credentialsOperations = new CredentialOperations();
+      gcpCredentialVendor = new GcpCredentialVendor(serverProperties);
+      credentialsOperations = new CredentialOperations(null, null, gcpCredentialVendor);
       assertThatThrownBy(
               () ->
                   credentialsOperations.vendCredential(

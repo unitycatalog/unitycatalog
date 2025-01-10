@@ -147,7 +147,7 @@ public class ServerProperties {
   }
 
   public boolean isAuthorizationEnabled() {
-    String authorization = instance.getProperty("server.authorization", "disable");
+    String authorization = getInstance().getProperty("server.authorization", "disable");
     return authorization.equalsIgnoreCase("enable");
   }
 }

@@ -25,10 +25,10 @@ public class CredentialOperations {
   private final AzureCredentialVendor azureCredentialVendor;
   private final GcpCredentialVendor gcpCredentialVendor;
 
-  public CredentialOperations() {
-    this.awsCredentialVendor = new AwsCredentialVendor();
-    this.azureCredentialVendor = new AzureCredentialVendor();
-    this.gcpCredentialVendor = new GcpCredentialVendor();
+  public CredentialOperations(AwsCredentialVendor awsCredentialVendor, AzureCredentialVendor azureCredentialVendor, GcpCredentialVendor gcpCredentialVendor) {
+    this.awsCredentialVendor = awsCredentialVendor;
+    this.azureCredentialVendor = azureCredentialVendor;
+    this.gcpCredentialVendor = gcpCredentialVendor;
   }
 
   public TemporaryCredentials vendCredential(String path, Set<CredentialContext.Privilege> privileges) {
