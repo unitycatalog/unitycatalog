@@ -465,7 +465,9 @@ def test_uc_function_to_llama_tool_mocked():
         mock_client.get_function.assert_called_once_with("catalog.schema.test_function")
         mock_client.to_dict.assert_called_once()
         mock_client.execute_function.assert_called_once_with(
-            function_name="catalog.schema.test_function", parameters=input_args, autologging_enabled=False
+            function_name="catalog.schema.test_function",
+            parameters=input_args,
+            autologging_enabled=False,
         )
 
 
@@ -503,5 +505,7 @@ def test_toolkit_with_invalid_function_input_mocked():
         mock_client.get_function.assert_called_once_with("catalog.schema.test_function")
         mock_client.to_dict.assert_called_once()
         mock_client.execute_function.assert_called_once_with(
-            function_name="catalog.schema.test_function", parameters=invalid_inputs, autologging_enabled=False
+            function_name="catalog.schema.test_function",
+            parameters=invalid_inputs,
+            autologging_enabled=False,
         )
