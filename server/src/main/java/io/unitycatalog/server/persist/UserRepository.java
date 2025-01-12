@@ -6,8 +6,8 @@ import io.unitycatalog.server.exception.ErrorCode;
 import io.unitycatalog.server.persist.dao.UserDAO;
 import io.unitycatalog.server.persist.model.CreateUser;
 import io.unitycatalog.server.persist.model.UpdateUser;
-import io.unitycatalog.server.persist.utils.HibernateUtils;
 import io.unitycatalog.server.persist.utils.PagedListingHelper;
+import io.unitycatalog.server.utils.IdentityUtils;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
@@ -22,16 +22,13 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 public class UserRepository {
-  private static final UserRepository INSTANCE = new UserRepository();
   private static final Logger LOGGER = LoggerFactory.getLogger(UserRepository.class);
-  private static final SessionFactory SESSION_FACTORY = HibernateUtils.getSessionFactory();
+  private final SessionFactory sessionFactory;
   private static final PagedListingHelper<UserDAO> LISTING_HELPER =
       new PagedListingHelper<>(UserDAO.class);
 
-  private UserRepository() {}
-
-  public static UserRepository getInstance() {
-    return INSTANCE;
+  public UserRepository(RepositoryFactory repositoryFactory, SessionFactory sessionFactory) {
+    this.sessionFactory = sessionFactory;
   }
 
   public User createUser(CreateUser createUser) {
@@ -44,7 +41,7 @@ public class UserRepository {
             .state(User.StateEnum.ENABLED)
             .createdAt(System.currentTimeMillis());
 
-    try (Session session = SESSION_FACTORY.openSession()) {
+    try (Session session = sessionFactory.openSession()) {
       Transaction tx = session.beginTransaction();
       try {
         if (getUserByEmail(session, user.getEmail()) != null
@@ -64,7 +61,7 @@ public class UserRepository {
   }
 
   public List<User> listUsers(int startIndex, int maxUsers, Predicate<User> filter) {
-    try (Session session = SESSION_FACTORY.openSession()) {
+    try (Session session = sessionFactory.openSession()) {
       session.setDefaultReadOnly(true);
       Transaction tx = session.beginTransaction();
       int count = 0;
@@ -111,7 +108,7 @@ public class UserRepository {
   }
 
   public User getUser(String id) {
-    try (Session session = SESSION_FACTORY.openSession()) {
+    try (Session session = sessionFactory.openSession()) {
       session.setDefaultReadOnly(true);
       Transaction tx = session.beginTransaction();
       try {
@@ -136,7 +133,7 @@ public class UserRepository {
   }
 
   public User getUserByEmail(String email) {
-    try (Session session = SESSION_FACTORY.openSession()) {
+    try (Session session = sessionFactory.openSession()) {
       session.setDefaultReadOnly(true);
       Transaction tx = session.beginTransaction();
       try {
@@ -169,7 +166,7 @@ public class UserRepository {
   }
 
   public User updateUser(String id, UpdateUser updateUser) {
-    try (Session session = SESSION_FACTORY.openSession()) {
+    try (Session session = sessionFactory.openSession()) {
       Transaction tx = session.beginTransaction();
       try {
         UserDAO userDAO = getUserById(session, id);
@@ -199,7 +196,7 @@ public class UserRepository {
   }
 
   public void deleteUser(String id) {
-    try (Session session = SESSION_FACTORY.openSession()) {
+    try (Session session = sessionFactory.openSession()) {
       Transaction tx = session.beginTransaction();
       try {
         UserDAO userDAO = getUserById(session, id);
@@ -215,6 +212,15 @@ public class UserRepository {
         tx.rollback();
         throw e;
       }
+    }
+  }
+
+  public UUID findPrincipalId() {
+    String principalEmailAddress = IdentityUtils.findPrincipalEmailAddress();
+    if (principalEmailAddress != null) {
+      return UUID.fromString(getUserByEmail(principalEmailAddress).getId());
+    } else {
+      return null;
     }
   }
 }

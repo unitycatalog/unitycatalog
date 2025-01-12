@@ -18,10 +18,7 @@ import io.unitycatalog.server.model.CreateFunctionRequest;
 import io.unitycatalog.server.model.FunctionInfo;
 import io.unitycatalog.server.model.ListFunctionsResponse;
 import io.unitycatalog.server.model.SchemaInfo;
-import io.unitycatalog.server.persist.CatalogRepository;
-import io.unitycatalog.server.persist.FunctionRepository;
-import io.unitycatalog.server.persist.MetastoreRepository;
-import io.unitycatalog.server.persist.SchemaRepository;
+import io.unitycatalog.server.persist.*;
 import io.unitycatalog.server.persist.model.Privileges;
 import io.unitycatalog.server.utils.IdentityUtils;
 import lombok.SneakyThrows;
@@ -39,18 +36,24 @@ import static io.unitycatalog.server.model.SecurableType.SCHEMA;
 @ExceptionHandler(GlobalExceptionHandler.class)
 public class FunctionService {
 
-  private static final FunctionRepository FUNCTION_REPOSITORY = FunctionRepository.getInstance();
-
-  private static final SchemaRepository SCHEMA_REPOSITORY = SchemaRepository.getInstance();
-  private static final CatalogRepository CATALOG_REPOSITORY = CatalogRepository.getInstance();
+  private final FunctionRepository functionRepository;
+  private final SchemaRepository schemaRepository;
+  private final CatalogRepository catalogRepository;
+  private final MetastoreRepository metastoreRepository;
+  private final UserRepository userRepository;
 
   private final UnityCatalogAuthorizer authorizer;
   private final UnityAccessEvaluator evaluator;
 
   @SneakyThrows
-  public FunctionService(UnityCatalogAuthorizer authorizer) {
+  public FunctionService(UnityCatalogAuthorizer authorizer, RepositoryFactory repositoryFactory) {
     this.authorizer = authorizer;
-    evaluator = new UnityAccessEvaluator(authorizer);
+    this.evaluator = new UnityAccessEvaluator(authorizer);
+    this.catalogRepository = repositoryFactory.getRepository(CatalogRepository.class);
+    this.schemaRepository = repositoryFactory.getRepository(SchemaRepository.class);
+    this.functionRepository = repositoryFactory.getRepository(FunctionRepository.class);
+    this.metastoreRepository = repositoryFactory.getRepository(MetastoreRepository.class);
+    this.userRepository = repositoryFactory.getRepository(UserRepository.class);
   }
 
   @Post("")
@@ -64,7 +67,7 @@ public class FunctionService {
                                         @AuthorizeKey(value = SCHEMA, key = "function_info.schema_name")
                                       })
                                       CreateFunctionRequest createFunctionRequest) {
-    FunctionInfo functionInfo = FUNCTION_REPOSITORY.createFunction(createFunctionRequest);
+    FunctionInfo functionInfo = functionRepository.createFunction(createFunctionRequest);
     initializeAuthorizations(functionInfo);
     return HttpResponse.ofJson(functionInfo);
   }
@@ -77,7 +80,7 @@ public class FunctionService {
       @Param("max_results") Optional<Integer> maxResults,
       @Param("page_token") Optional<String> pageToken) {
 
-    ListFunctionsResponse listFunctionsResponse = FUNCTION_REPOSITORY.listFunctions(catalogName, schemaName, maxResults, pageToken);
+    ListFunctionsResponse listFunctionsResponse = functionRepository.listFunctions(catalogName, schemaName, maxResults, pageToken);
     filterFunctions("""
             #authorize(#principal, #metastore, OWNER) ||
             #authorize(#principal, #catalog, OWNER) ||
@@ -96,7 +99,7 @@ public class FunctionService {
           (#authorize(#principal, #catalog, USE_CATALOG) && #authorize(#principal, #schema, USE_SCHEMA) && #authorizeAny(#principal, #function, OWNER, EXECUTE))
           """)
   public HttpResponse getFunction(@Param("name") @AuthorizeKey(FUNCTION) String name) {
-    return HttpResponse.ofJson(FUNCTION_REPOSITORY.getFunction(name));
+    return HttpResponse.ofJson(functionRepository.getFunction(name));
   }
 
   @Delete("/{name}")
@@ -107,27 +110,27 @@ public class FunctionService {
           """)
   public HttpResponse deleteFunction(
       @Param("name") @AuthorizeKey(FUNCTION) String name, @Param("force") Optional<Boolean> force) {
-    FunctionInfo functionInfo = FUNCTION_REPOSITORY.getFunction(name);
-    FUNCTION_REPOSITORY.deleteFunction(name, force.orElse(false));
+    FunctionInfo functionInfo = functionRepository.getFunction(name);
+    functionRepository.deleteFunction(name, force.orElse(false));
     removeAuthorizations(functionInfo);
     return HttpResponse.of(HttpStatus.OK);
   }
 
   public void filterFunctions(String expression, List<FunctionInfo> entries) {
     // TODO: would be nice to move this to filtering in the Decorator response
-    UUID principalId = IdentityUtils.findPrincipalId();
+    UUID principalId = userRepository.findPrincipalId();
 
     evaluator.filter(
             principalId,
             expression,
             entries,
             fi -> {
-              CatalogInfo catalogInfo = CATALOG_REPOSITORY.getCatalog(fi.getCatalogName());
+              CatalogInfo catalogInfo = catalogRepository.getCatalog(fi.getCatalogName());
               SchemaInfo schemaInfo =
-                      SCHEMA_REPOSITORY.getSchema(fi.getCatalogName() + "." + fi.getSchemaName());
+                      schemaRepository.getSchema(fi.getCatalogName() + "." + fi.getSchemaName());
               return Map.of(
                       METASTORE,
-                      MetastoreRepository.getInstance().getMetastoreId(),
+                      metastoreRepository.getMetastoreId(),
                       CATALOG,
                       UUID.fromString(catalogInfo.getId()),
                       SCHEMA,
@@ -139,8 +142,8 @@ public class FunctionService {
 
   private void initializeAuthorizations(FunctionInfo functionInfo) {
     SchemaInfo schemaInfo =
-            SCHEMA_REPOSITORY.getSchema(functionInfo.getCatalogName() + "." + functionInfo.getSchemaName());
-    UUID principalId = IdentityUtils.findPrincipalId();
+            schemaRepository.getSchema(functionInfo.getCatalogName() + "." + functionInfo.getSchemaName());
+    UUID principalId = userRepository.findPrincipalId();
     // add owner privilege
     authorizer.grantAuthorization(
             principalId, UUID.fromString(functionInfo.getFunctionId()), Privileges.OWNER);
@@ -151,7 +154,7 @@ public class FunctionService {
 
   private void removeAuthorizations(FunctionInfo functionInfo) {
     SchemaInfo schemaInfo =
-            SCHEMA_REPOSITORY.getSchema(functionInfo.getCatalogName() + "." + functionInfo.getSchemaName());
+            schemaRepository.getSchema(functionInfo.getCatalogName() + "." + functionInfo.getSchemaName());
     // remove any direct authorizations on the table
     authorizer.clearAuthorizationsForResource(UUID.fromString(functionInfo.getFunctionId()));
     // remove link to the parent schema

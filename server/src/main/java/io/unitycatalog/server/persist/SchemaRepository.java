@@ -6,7 +6,6 @@ import io.unitycatalog.server.model.*;
 import io.unitycatalog.server.persist.dao.CatalogInfoDAO;
 import io.unitycatalog.server.persist.dao.PropertyDAO;
 import io.unitycatalog.server.persist.dao.SchemaInfoDAO;
-import io.unitycatalog.server.persist.utils.HibernateUtils;
 import io.unitycatalog.server.persist.utils.PagedListingHelper;
 import io.unitycatalog.server.persist.utils.RepositoryUtils;
 import io.unitycatalog.server.utils.Constants;
@@ -19,26 +18,20 @@ import org.hibernate.Transaction;
 import org.hibernate.query.Query;
 
 public class SchemaRepository {
-  public static final SchemaRepository INSTANCE = new SchemaRepository();
-  public static final CatalogRepository CATALOG_REPOSITORY = CatalogRepository.getInstance();
-  private static final TableRepository TABLE_REPOSITORY = TableRepository.getInstance();
-  private static final VolumeRepository VOLUME_REPOSITORY = VolumeRepository.getInstance();
-  private static final FunctionRepository FUNCTION_REPOSITORY = FunctionRepository.getInstance();
-  private static final ModelRepository MODEL_REPOSITORY = ModelRepository.getInstance();
-  private static final SessionFactory SESSION_FACTORY = HibernateUtils.getSessionFactory();
+  private final RepositoryFactory repositoryFactory;
+  private final SessionFactory sessionFactory;
   private static final PagedListingHelper<SchemaInfoDAO> LISTING_HELPER =
       new PagedListingHelper<>(SchemaInfoDAO.class);
 
-  private SchemaRepository() {}
-
-  public static SchemaRepository getInstance() {
-    return INSTANCE;
+  public SchemaRepository(RepositoryFactory repositoryFactory, SessionFactory sessionFactory) {
+    this.repositoryFactory = repositoryFactory;
+    this.sessionFactory = sessionFactory;
   }
 
   public SchemaInfo createSchema(CreateSchema createSchema) {
     ValidationUtils.validateSqlObjectName(createSchema.getName());
     String callerId = IdentityUtils.findPrincipalEmailAddress();
-    try (Session session = SESSION_FACTORY.openSession()) {
+    try (Session session = sessionFactory.openSession()) {
       Transaction tx = session.beginTransaction();
       try {
         if (getSchemaDAO(session, createSchema.getCatalogName(), createSchema.getName()) != null) {
@@ -46,7 +39,9 @@ public class SchemaRepository {
               ErrorCode.ALREADY_EXISTS, "Schema already exists: " + createSchema.getName());
         }
         CatalogInfoDAO catalogDAO =
-            CATALOG_REPOSITORY.getCatalogDAO(session, createSchema.getCatalogName());
+            repositoryFactory
+                .getRepository(CatalogRepository.class)
+                .getCatalogDAO(session, createSchema.getCatalogName());
         Long createTime = System.currentTimeMillis();
         SchemaInfo schemaInfo =
             new SchemaInfo()
@@ -100,7 +95,10 @@ public class SchemaRepository {
   }
 
   public SchemaInfoDAO getSchemaDAO(Session session, String catalogName, String schemaName) {
-    CatalogInfoDAO catalog = CATALOG_REPOSITORY.getCatalogDAO(session, catalogName);
+    CatalogInfoDAO catalog =
+        repositoryFactory
+            .getRepository(CatalogRepository.class)
+            .getCatalogDAO(session, catalogName);
     if (catalog == null) {
       throw new BaseException(ErrorCode.NOT_FOUND, "Catalog not found: " + catalogName);
     }
@@ -113,7 +111,10 @@ public class SchemaRepository {
   }
 
   public UUID getCatalogId(Session session, String catalogName) {
-    CatalogInfoDAO catalogInfo = CATALOG_REPOSITORY.getCatalogDAO(session, catalogName);
+    CatalogInfoDAO catalogInfo =
+        repositoryFactory
+            .getRepository(CatalogRepository.class)
+            .getCatalogDAO(session, catalogName);
     if (catalogInfo == null) {
       throw new BaseException(ErrorCode.NOT_FOUND, "Catalog not found: " + catalogName);
     }
@@ -130,7 +131,7 @@ public class SchemaRepository {
    */
   public ListSchemasResponse listSchemas(
       String catalogName, Optional<Integer> maxResults, Optional<String> pageToken) {
-    try (Session session = SESSION_FACTORY.openSession()) {
+    try (Session session = sessionFactory.openSession()) {
       session.setDefaultReadOnly(true);
       Transaction tx = session.beginTransaction();
       // TODO: Implement pagination and filtering if required
@@ -169,7 +170,7 @@ public class SchemaRepository {
   }
 
   public SchemaInfo getSchema(String fullName) {
-    try (Session session = SESSION_FACTORY.openSession()) {
+    try (Session session = sessionFactory.openSession()) {
       session.setDefaultReadOnly(true);
       Transaction tx = session.beginTransaction();
       SchemaInfoDAO schemaInfoDAO;
@@ -194,7 +195,7 @@ public class SchemaRepository {
       ValidationUtils.validateSqlObjectName(updateSchema.getNewName());
     }
     String callerId = IdentityUtils.findPrincipalEmailAddress();
-    try (Session session = SESSION_FACTORY.openSession()) {
+    try (Session session = sessionFactory.openSession()) {
       Transaction tx = session.beginTransaction();
       try {
         SchemaInfoDAO schemaInfoDAO = getSchemaDAO(session, fullName);
@@ -240,12 +241,15 @@ public class SchemaRepository {
   }
 
   public void deleteSchema(String fullName, boolean force) {
-    try (Session session = SESSION_FACTORY.openSession()) {
+    try (Session session = sessionFactory.openSession()) {
       String[] namespace = fullName.split("\\.");
       if (namespace.length != 2) {
         throw new BaseException(ErrorCode.INVALID_ARGUMENT, "Invalid schema name: " + fullName);
       }
-      CatalogInfoDAO catalog = CATALOG_REPOSITORY.getCatalogDAO(session, namespace[0]);
+      CatalogInfoDAO catalog =
+          repositoryFactory
+              .getRepository(CatalogRepository.class)
+              .getCatalogDAO(session, namespace[0]);
       if (catalog == null) {
         throw new BaseException(ErrorCode.NOT_FOUND, "Catalog not found: " + namespace[0]);
       }
@@ -264,7 +268,8 @@ public class SchemaRepository {
       Session session, UUID schemaId, String catalogName, String schemaName, boolean force) {
     // first check if there are any child tables
     List<TableInfo> tables =
-        TABLE_REPOSITORY
+        repositoryFactory
+            .getRepository(TableRepository.class)
             .listTables(
                 session,
                 schemaId,
@@ -282,17 +287,21 @@ public class SchemaRepository {
       String nextToken = null;
       do {
         ListTablesResponse listTablesResponse =
-            TABLE_REPOSITORY.listTables(
-                session,
-                schemaId,
-                catalogName,
-                schemaName,
-                Optional.empty(),
-                Optional.ofNullable(nextToken),
-                true,
-                true);
+            repositoryFactory
+                .getRepository(TableRepository.class)
+                .listTables(
+                    session,
+                    schemaId,
+                    catalogName,
+                    schemaName,
+                    Optional.empty(),
+                    Optional.ofNullable(nextToken),
+                    true,
+                    true);
         for (TableInfo tableInfo : listTablesResponse.getTables()) {
-          TABLE_REPOSITORY.deleteTable(session, schemaId, tableInfo.getName());
+          repositoryFactory
+              .getRepository(TableRepository.class)
+              .deleteTable(session, schemaId, tableInfo.getName());
         }
         nextToken = listTablesResponse.getNextPageToken();
       } while (nextToken != null);
@@ -303,7 +312,8 @@ public class SchemaRepository {
       Session session, UUID schemaId, String catalogName, String schemaName, boolean force) {
     // first check if there are any child volumes
     List<VolumeInfo> volumes =
-        VOLUME_REPOSITORY
+        repositoryFactory
+            .getRepository(VolumeRepository.class)
             .listVolumes(
                 session, schemaId, catalogName, schemaName, Optional.of(1), Optional.empty())
             .getVolumes();
@@ -314,15 +324,19 @@ public class SchemaRepository {
       String nextToken = null;
       do {
         ListVolumesResponseContent listVolumesResponse =
-            VOLUME_REPOSITORY.listVolumes(
-                session,
-                schemaId,
-                catalogName,
-                schemaName,
-                Optional.empty(),
-                Optional.ofNullable(nextToken));
+            repositoryFactory
+                .getRepository(VolumeRepository.class)
+                .listVolumes(
+                    session,
+                    schemaId,
+                    catalogName,
+                    schemaName,
+                    Optional.empty(),
+                    Optional.ofNullable(nextToken));
         for (VolumeInfo volumeInfo : listVolumesResponse.getVolumes()) {
-          VOLUME_REPOSITORY.deleteVolume(session, schemaId, volumeInfo.getName());
+          repositoryFactory
+              .getRepository(VolumeRepository.class)
+              .deleteVolume(session, schemaId, volumeInfo.getName());
         }
         nextToken = listVolumesResponse.getNextPageToken();
       } while (nextToken != null);
@@ -333,7 +347,8 @@ public class SchemaRepository {
       Session session, UUID schemaId, String catalogName, String schemaName, boolean force) {
     // first check if there are any child functions
     List<FunctionInfo> functions =
-        FUNCTION_REPOSITORY
+        repositoryFactory
+            .getRepository(FunctionRepository.class)
             .listFunctions(
                 session, schemaId, catalogName, schemaName, Optional.of(1), Optional.empty())
             .getFunctions();
@@ -345,15 +360,19 @@ public class SchemaRepository {
       String nextToken = null;
       do {
         ListFunctionsResponse listFunctionsResponse =
-            FUNCTION_REPOSITORY.listFunctions(
-                session,
-                schemaId,
-                catalogName,
-                schemaName,
-                Optional.empty(),
-                Optional.ofNullable(nextToken));
+            repositoryFactory
+                .getRepository(FunctionRepository.class)
+                .listFunctions(
+                    session,
+                    schemaId,
+                    catalogName,
+                    schemaName,
+                    Optional.empty(),
+                    Optional.ofNullable(nextToken));
         for (FunctionInfo functionInfo : listFunctionsResponse.getFunctions()) {
-          FUNCTION_REPOSITORY.deleteFunction(session, schemaId, functionInfo.getName());
+          repositoryFactory
+              .getRepository(FunctionRepository.class)
+              .deleteFunction(session, schemaId, functionInfo.getName());
         }
         nextToken = listFunctionsResponse.getNextPageToken();
       } while (nextToken != null);
@@ -364,7 +383,8 @@ public class SchemaRepository {
       Session session, UUID schemaId, String catalogName, String schemaName, boolean force) {
     // first check if there are any child Models
     List<RegisteredModelInfo> registeredModels =
-        MODEL_REPOSITORY
+        repositoryFactory
+            .getRepository(ModelRepository.class)
             .listRegisteredModels(
                 session, schemaId, catalogName, schemaName, Optional.of(1), Optional.empty())
             .getRegisteredModels();
@@ -375,17 +395,20 @@ public class SchemaRepository {
       String nextToken = null;
       do {
         ListRegisteredModelsResponse listRegisteredModelsResponse =
-            MODEL_REPOSITORY.listRegisteredModels(
-                session,
-                schemaId,
-                catalogName,
-                schemaName,
-                Optional.empty(),
-                Optional.ofNullable(nextToken));
+            repositoryFactory
+                .getRepository(ModelRepository.class)
+                .listRegisteredModels(
+                    session,
+                    schemaId,
+                    catalogName,
+                    schemaName,
+                    Optional.empty(),
+                    Optional.ofNullable(nextToken));
         for (RegisteredModelInfo registeredModelInfo :
             listRegisteredModelsResponse.getRegisteredModels()) {
-          MODEL_REPOSITORY.deleteRegisteredModel(
-              session, schemaId, registeredModelInfo.getName(), true);
+          repositoryFactory
+              .getRepository(ModelRepository.class)
+              .deleteRegisteredModel(session, schemaId, registeredModelInfo.getName(), true);
         }
         nextToken = listRegisteredModelsResponse.getNextPageToken();
       } while (nextToken != null);

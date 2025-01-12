@@ -18,9 +18,7 @@ import io.unitycatalog.server.model.CreateSchema;
 import io.unitycatalog.server.model.ListSchemasResponse;
 import io.unitycatalog.server.model.SchemaInfo;
 import io.unitycatalog.server.model.UpdateSchema;
-import io.unitycatalog.server.persist.CatalogRepository;
-import io.unitycatalog.server.persist.MetastoreRepository;
-import io.unitycatalog.server.persist.SchemaRepository;
+import io.unitycatalog.server.persist.*;
 import io.unitycatalog.server.persist.model.Privileges;
 import io.unitycatalog.server.utils.IdentityUtils;
 import lombok.SneakyThrows;
@@ -36,15 +34,21 @@ import static io.unitycatalog.server.model.SecurableType.SCHEMA;
 
 @ExceptionHandler(GlobalExceptionHandler.class)
 public class SchemaService {
-  private static final SchemaRepository SCHEMA_REPOSITORY = SchemaRepository.getInstance();
-  private static final CatalogRepository CATALOG_REPOSITORY = CatalogRepository.getInstance();
+  private final SchemaRepository schemaRepository;
+  private final CatalogRepository catalogRepository;
+  private final MetastoreRepository metastoreRepository;
+  private final UserRepository userRepository;
   private final UnityCatalogAuthorizer authorizer;
   private final UnityAccessEvaluator evaluator;
 
   @SneakyThrows
-  public SchemaService(UnityCatalogAuthorizer authorizer) {
+  public SchemaService(UnityCatalogAuthorizer authorizer, RepositoryFactory repositoryFactory) {
     this.authorizer = authorizer;
-    evaluator = new UnityAccessEvaluator(authorizer);
+    this.evaluator = new UnityAccessEvaluator(authorizer);
+    this.schemaRepository = repositoryFactory.getRepository(SchemaRepository.class);
+    this.catalogRepository = repositoryFactory.getRepository(CatalogRepository.class);
+    this.metastoreRepository = repositoryFactory.getRepository(MetastoreRepository.class);
+    this.userRepository = repositoryFactory.getRepository(UserRepository.class);
   }
 
   @Post("")
@@ -55,7 +59,7 @@ public class SchemaService {
   @AuthorizeKey(METASTORE)
   public HttpResponse createSchema(
       @AuthorizeKey(value = CATALOG, key = "catalog_name") CreateSchema createSchema) {
-    SchemaInfo schemaInfo = SCHEMA_REPOSITORY.createSchema(createSchema);
+    SchemaInfo schemaInfo = schemaRepository.createSchema(createSchema);
     createAuthorizations(schemaInfo);
     return HttpResponse.ofJson(schemaInfo);
   }
@@ -67,7 +71,7 @@ public class SchemaService {
       @Param("max_results") Optional<Integer> maxResults,
       @Param("page_token") Optional<String> pageToken) {
     ListSchemasResponse listSchemasResponse =
-        SCHEMA_REPOSITORY.listSchemas(catalogName, maxResults, pageToken);
+        schemaRepository.listSchemas(catalogName, maxResults, pageToken);
     filterSchemas("""
         #authorize(#principal, #metastore, OWNER) ||
         #authorize(#principal, #catalog, OWNER) ||
@@ -85,7 +89,7 @@ public class SchemaService {
       """)
   @AuthorizeKey(METASTORE)
   public HttpResponse getSchema(@Param("full_name") @AuthorizeKey(SCHEMA) String fullName) {
-    return HttpResponse.ofJson(SCHEMA_REPOSITORY.getSchema(fullName));
+    return HttpResponse.ofJson(schemaRepository.getSchema(fullName));
   }
 
   @Patch("/{full_name}")
@@ -100,7 +104,7 @@ public class SchemaService {
       @Param("full_name") @AuthorizeKey(SCHEMA) String fullName, UpdateSchema updateSchema) {
     // TODO: This method does not adhere to the complete access control rules of the Databricks
     // Unity Catalog
-    return HttpResponse.ofJson(SCHEMA_REPOSITORY.updateSchema(fullName, updateSchema));
+    return HttpResponse.ofJson(schemaRepository.updateSchema(fullName, updateSchema));
   }
 
   @Delete("/{full_name}")
@@ -113,25 +117,25 @@ public class SchemaService {
   public HttpResponse deleteSchema(
       @Param("full_name") @AuthorizeKey(SCHEMA) String fullName,
       @Param("force") Optional<Boolean> force) {
-    SchemaInfo schemaInfo = SCHEMA_REPOSITORY.getSchema(fullName);
-    SCHEMA_REPOSITORY.deleteSchema(fullName, force.orElse(false));
+    SchemaInfo schemaInfo = schemaRepository.getSchema(fullName);
+    schemaRepository.deleteSchema(fullName, force.orElse(false));
     removeAuthorizations(schemaInfo);
     return HttpResponse.of(HttpStatus.OK);
   }
 
   public void filterSchemas(String expression, List<SchemaInfo> entries) {
     // TODO: would be nice to move this to filtering in the Decorator response
-    UUID principalId = IdentityUtils.findPrincipalId();
+    UUID principalId = userRepository.findPrincipalId();
 
     evaluator.filter(
         principalId,
         expression,
         entries,
         si -> {
-          CatalogInfo catalogInfo = CATALOG_REPOSITORY.getCatalog(si.getCatalogName());
+          CatalogInfo catalogInfo = catalogRepository.getCatalog(si.getCatalogName());
           return Map.of(
               METASTORE,
-              MetastoreRepository.getInstance().getMetastoreId(),
+              metastoreRepository.getMetastoreId(),
               CATALOG,
               UUID.fromString(catalogInfo.getId()),
               SCHEMA,
@@ -140,8 +144,8 @@ public class SchemaService {
   }
 
   private void createAuthorizations(SchemaInfo schemaInfo) {
-    CatalogInfo catalogInfo = CATALOG_REPOSITORY.getCatalog(schemaInfo.getCatalogName());
-    UUID principalId = IdentityUtils.findPrincipalId();
+    CatalogInfo catalogInfo = catalogRepository.getCatalog(schemaInfo.getCatalogName());
+    UUID principalId = userRepository.findPrincipalId();
     // add owner privilege
     authorizer.grantAuthorization(
         principalId, UUID.fromString(schemaInfo.getSchemaId()), Privileges.OWNER);
@@ -151,7 +155,7 @@ public class SchemaService {
   }
 
   private void removeAuthorizations(SchemaInfo schemaInfo) {
-    CatalogInfo catalogInfo = CATALOG_REPOSITORY.getCatalog(schemaInfo.getCatalogName());
+    CatalogInfo catalogInfo = catalogRepository.getCatalog(schemaInfo.getCatalogName());
     // remove direct authorizations on the schema
     authorizer.clearAuthorizationsForResource(UUID.fromString(schemaInfo.getSchemaId()));
     // remove any child table links

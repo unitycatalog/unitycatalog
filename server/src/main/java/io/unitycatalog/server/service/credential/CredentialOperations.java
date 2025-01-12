@@ -4,7 +4,7 @@ import com.google.auth.oauth2.AccessToken;
 import io.unitycatalog.server.exception.BaseException;
 import io.unitycatalog.server.exception.ErrorCode;
 import io.unitycatalog.server.model.*;
-import io.unitycatalog.server.persist.utils.FileUtils;
+import io.unitycatalog.server.persist.utils.FileOperations;
 import io.unitycatalog.server.service.credential.aws.AwsCredentialVendor;
 import io.unitycatalog.server.service.credential.azure.AzureCredential;
 import io.unitycatalog.server.service.credential.azure.AzureCredentialVendor;
@@ -43,7 +43,7 @@ public class CredentialOperations {
 
   public TemporaryCredentials vendCredential(CredentialContext context) {
     String location = context.getLocations().get(0);
-    FileUtils.assertValidLocation(location);
+    FileOperations.assertValidLocation(location);
 
     String storageScheme = context.getStorageScheme();
     TemporaryCredentials temporaryCredentials = new TemporaryCredentials();

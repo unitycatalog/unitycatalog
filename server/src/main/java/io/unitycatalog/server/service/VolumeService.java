@@ -20,10 +20,7 @@ import io.unitycatalog.server.model.ListVolumesResponseContent;
 import io.unitycatalog.server.model.SchemaInfo;
 import io.unitycatalog.server.model.UpdateVolumeRequestContent;
 import io.unitycatalog.server.model.VolumeInfo;
-import io.unitycatalog.server.persist.CatalogRepository;
-import io.unitycatalog.server.persist.MetastoreRepository;
-import io.unitycatalog.server.persist.SchemaRepository;
-import io.unitycatalog.server.persist.VolumeRepository;
+import io.unitycatalog.server.persist.*;
 import io.unitycatalog.server.persist.model.Privileges;
 import io.unitycatalog.server.utils.IdentityUtils;
 import lombok.SneakyThrows;
@@ -40,17 +37,24 @@ import static io.unitycatalog.server.model.SecurableType.VOLUME;
 
 @ExceptionHandler(GlobalExceptionHandler.class)
 public class VolumeService {
-  private static final VolumeRepository VOLUME_REPOSITORY = VolumeRepository.getInstance();
-  private static final SchemaRepository SCHEMA_REPOSITORY = SchemaRepository.getInstance();
-  private static final CatalogRepository CATALOG_REPOSITORY = CatalogRepository.getInstance();
+  private final VolumeRepository volumeRepository;
+  private final SchemaRepository schemaRepository;
+  private final CatalogRepository catalogRepository;
+  private final MetastoreRepository metastoreRepository;
+  private final UserRepository userRepository;
 
   private final UnityCatalogAuthorizer authorizer;
   private final UnityAccessEvaluator evaluator;
 
   @SneakyThrows
-  public VolumeService(UnityCatalogAuthorizer authorizer) {
+  public VolumeService(UnityCatalogAuthorizer authorizer, RepositoryFactory repositoryFactory) {
     this.authorizer = authorizer;
-    evaluator = new UnityAccessEvaluator(authorizer);
+    this.evaluator = new UnityAccessEvaluator(authorizer);
+    this.volumeRepository = repositoryFactory.getRepository(VolumeRepository.class);
+    this.schemaRepository = repositoryFactory.getRepository(SchemaRepository.class);
+    this.catalogRepository = repositoryFactory.getRepository(CatalogRepository.class);
+    this.metastoreRepository = repositoryFactory.getRepository(MetastoreRepository.class);
+    this.userRepository = repositoryFactory.getRepository(UserRepository.class);
   }
 
   @Post("")
@@ -65,7 +69,7 @@ public class VolumeService {
                                     })
                                    CreateVolumeRequestContent createVolumeRequest) {
     // Throw error if catalog/schema does not exist
-    VolumeInfo volumeInfo = VOLUME_REPOSITORY.createVolume(createVolumeRequest);
+    VolumeInfo volumeInfo = volumeRepository.createVolume(createVolumeRequest);
     initializeAuthorizations(volumeInfo);
     return HttpResponse.ofJson(volumeInfo);
   }
@@ -78,7 +82,7 @@ public class VolumeService {
       @Param("max_results") Optional<Integer> maxResults,
       @Param("page_token") Optional<String> pageToken,
       @Param("include_browse") Optional<Boolean> includeBrowse) {
-    ListVolumesResponseContent listVolumesResponse = VOLUME_REPOSITORY.listVolumes(
+    ListVolumesResponseContent listVolumesResponse = volumeRepository.listVolumes(
             catalogName, schemaName, maxResults, pageToken, includeBrowse);
 
     filterVolumes("""
@@ -102,7 +106,7 @@ public class VolumeService {
   public HttpResponse getVolume(
       @Param("full_name") @AuthorizeKey(VOLUME) String fullName,
       @Param("include_browse") Optional<Boolean> includeBrowse) {
-    return HttpResponse.ofJson(VOLUME_REPOSITORY.getVolume(fullName));
+    return HttpResponse.ofJson(volumeRepository.getVolume(fullName));
   }
 
   @Patch("/{full_name}")
@@ -112,7 +116,7 @@ public class VolumeService {
   @AuthorizeKey(METASTORE)
   public HttpResponse updateVolume(
       @Param("full_name") @AuthorizeKey(VOLUME) String fullName, UpdateVolumeRequestContent updateVolumeRequest) {
-    return HttpResponse.ofJson(VOLUME_REPOSITORY.updateVolume(fullName, updateVolumeRequest));
+    return HttpResponse.ofJson(volumeRepository.updateVolume(fullName, updateVolumeRequest));
   }
 
   @Delete("/{full_name}")
@@ -123,27 +127,27 @@ public class VolumeService {
           """)
   @AuthorizeKey(METASTORE)
   public HttpResponse deleteVolume(@Param("full_name") @AuthorizeKey(VOLUME) String fullName) {
-    VolumeInfo volumeInfo = VOLUME_REPOSITORY.getVolume(fullName);
-    VOLUME_REPOSITORY.deleteVolume(fullName);
+    VolumeInfo volumeInfo = volumeRepository.getVolume(fullName);
+    volumeRepository.deleteVolume(fullName);
     removeAuthorizations(volumeInfo);
     return HttpResponse.of(HttpStatus.OK);
   }
 
   public void filterVolumes(String expression, List<VolumeInfo> entries) {
     // TODO: would be nice to move this to filtering in the Decorator response
-    UUID principalId = IdentityUtils.findPrincipalId();
+    UUID principalId = userRepository.findPrincipalId();
 
     evaluator.filter(
             principalId,
             expression,
             entries,
             vi -> {
-              CatalogInfo catalogInfo = CATALOG_REPOSITORY.getCatalog(vi.getCatalogName());
+              CatalogInfo catalogInfo = catalogRepository.getCatalog(vi.getCatalogName());
               SchemaInfo schemaInfo =
-                      SCHEMA_REPOSITORY.getSchema(vi.getCatalogName() + "." + vi.getSchemaName());
+                      schemaRepository.getSchema(vi.getCatalogName() + "." + vi.getSchemaName());
               return Map.of(
                       METASTORE,
-                      MetastoreRepository.getInstance().getMetastoreId(),
+                      metastoreRepository.getMetastoreId(),
                       CATALOG,
                       UUID.fromString(catalogInfo.getId()),
                       SCHEMA,
@@ -155,8 +159,8 @@ public class VolumeService {
 
   private void initializeAuthorizations(VolumeInfo volumeInfo) {
     SchemaInfo schemaInfo =
-            SCHEMA_REPOSITORY.getSchema(volumeInfo.getCatalogName() + "." + volumeInfo.getSchemaName());
-    UUID principalId = IdentityUtils.findPrincipalId();
+            schemaRepository.getSchema(volumeInfo.getCatalogName() + "." + volumeInfo.getSchemaName());
+    UUID principalId = userRepository.findPrincipalId();
     // add owner privilege
     authorizer.grantAuthorization(
             principalId, UUID.fromString(volumeInfo.getVolumeId()), Privileges.OWNER);
@@ -167,7 +171,7 @@ public class VolumeService {
 
   private void removeAuthorizations(VolumeInfo volumeInfo) {
     SchemaInfo schemaInfo =
-            SCHEMA_REPOSITORY.getSchema(volumeInfo.getCatalogName() + "." + volumeInfo.getSchemaName());
+            schemaRepository.getSchema(volumeInfo.getCatalogName() + "." + volumeInfo.getSchemaName());
     // remove any direct authorizations on the table
     authorizer.clearAuthorizationsForResource(UUID.fromString(volumeInfo.getVolumeId()));
     // remove link to the parent schema

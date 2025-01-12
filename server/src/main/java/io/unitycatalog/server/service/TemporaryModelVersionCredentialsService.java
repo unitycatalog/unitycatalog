@@ -4,13 +4,15 @@ import com.linecorp.armeria.common.HttpResponse;
 import com.linecorp.armeria.server.annotation.ExceptionHandler;
 import com.linecorp.armeria.server.annotation.Post;
 import io.unitycatalog.server.auth.UnityCatalogAuthorizer;
-import io.unitycatalog.server.auth.decorator.KeyMapperUtil;
+import io.unitycatalog.server.auth.decorator.KeyMapper;
 import io.unitycatalog.server.auth.decorator.UnityAccessEvaluator;
 import io.unitycatalog.server.exception.BaseException;
 import io.unitycatalog.server.exception.ErrorCode;
 import io.unitycatalog.server.exception.GlobalExceptionHandler;
 import io.unitycatalog.server.model.*;
 import io.unitycatalog.server.persist.ModelRepository;
+import io.unitycatalog.server.persist.RepositoryFactory;
+import io.unitycatalog.server.persist.UserRepository;
 import io.unitycatalog.server.persist.utils.RepositoryUtils;
 import io.unitycatalog.server.service.credential.CredentialOperations;
 import io.unitycatalog.server.service.credential.CredentialContext;
@@ -29,16 +31,20 @@ import static io.unitycatalog.server.service.credential.CredentialContext.Privil
 
 @ExceptionHandler(GlobalExceptionHandler.class)
 public class TemporaryModelVersionCredentialsService {
-
-    private static final ModelRepository MODEL_REPOSITORY = ModelRepository.getInstance();
+    private final ModelRepository modelRepository;
+    private final UserRepository userRepository;
 
     private final UnityAccessEvaluator evaluator;
     private final CredentialOperations credentialOps;
+    private final KeyMapper keyMapper;
 
     @SneakyThrows
-    public TemporaryModelVersionCredentialsService(UnityCatalogAuthorizer authorizer, CredentialOperations credentialOps) {
+    public TemporaryModelVersionCredentialsService(UnityCatalogAuthorizer authorizer, CredentialOperations credentialOps, RepositoryFactory repositoryFactory) {
         this.evaluator = new UnityAccessEvaluator(authorizer);
         this.credentialOps = credentialOps;
+        this.keyMapper = new KeyMapper(repositoryFactory);
+        this.modelRepository = repositoryFactory.getRepository(ModelRepository.class);
+        this.userRepository = repositoryFactory.getRepository(UserRepository.class);
     }
 
     @Post("")
@@ -52,7 +58,7 @@ public class TemporaryModelVersionCredentialsService {
         String modelName = generateTemporaryModelVersionCredentials.getModelName();
         String fullName = RepositoryUtils.getAssetFullName(catalogName, schemaName, modelName);
 
-        ModelVersionInfo modelVersionInfo = MODEL_REPOSITORY.getModelVersion(fullName, modelVersion);
+        ModelVersionInfo modelVersionInfo = modelRepository.getModelVersion(fullName, modelVersion);
         String storageLocation = modelVersionInfo.getStorageLocation();
         if (storageLocation.toLowerCase().startsWith("file")) {
             throw new BaseException(ErrorCode.INVALID_ARGUMENT, "Cannot request credentials on a model version with a file based storage location: " + fullName + "/" + modelVersion);
@@ -104,13 +110,13 @@ public class TemporaryModelVersionCredentialsService {
                 generateTemporaryModelVersionCredentials.getOperation() == ModelVersionOperation.READ_MODEL_VERSION ?
                         readExpression : writeExpression;
 
-        Map<SecurableType, Object> resourceKeys = KeyMapperUtil.mapResourceKeys(
+        Map<SecurableType, Object> resourceKeys = keyMapper.mapResourceKeys(
                 Map.of(METASTORE, "metastore",
                         CATALOG, generateTemporaryModelVersionCredentials.getCatalogName(),
                         SCHEMA, generateTemporaryModelVersionCredentials.getSchemaName(),
                         REGISTERED_MODEL, generateTemporaryModelVersionCredentials.getModelName()));
 
-        if (!evaluator.evaluate(IdentityUtils.findPrincipalId(), authorizeExpression, resourceKeys)) {
+        if (!evaluator.evaluate(userRepository.findPrincipalId(), authorizeExpression, resourceKeys)) {
             throw new BaseException(ErrorCode.PERMISSION_DENIED, "Access denied.");
         }
     }

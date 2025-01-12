@@ -16,6 +16,7 @@ import io.netty.util.AttributeKey;
 import io.unitycatalog.control.model.User;
 import io.unitycatalog.server.exception.AuthorizationException;
 import io.unitycatalog.server.exception.ErrorCode;
+import io.unitycatalog.server.persist.RepositoryFactory;
 import io.unitycatalog.server.persist.UserRepository;
 import io.unitycatalog.server.security.SecurityContext;
 import io.unitycatalog.server.utils.JwksOperations;
@@ -36,7 +37,7 @@ import org.slf4j.LoggerFactory;
 public class AuthDecorator implements DecoratingHttpServiceFunction {
 
   private static final Logger LOGGER = LoggerFactory.getLogger(AuthDecorator.class);
-  private static final UserRepository USER_REPOSITORY = UserRepository.getInstance();
+  private final UserRepository userRepository;
 
   public static final String UC_TOKEN_KEY = "UC_TOKEN";
 
@@ -47,8 +48,9 @@ public class AuthDecorator implements DecoratingHttpServiceFunction {
 
   private final JwksOperations jwksOperations;
 
-  public AuthDecorator(SecurityContext securityContext) {
+  public AuthDecorator(SecurityContext securityContext, RepositoryFactory repositoryFactory) {
     this.jwksOperations = new JwksOperations(securityContext);
+    this.userRepository = repositoryFactory.getRepository(UserRepository.class);
   }
 
   @Override
@@ -83,7 +85,7 @@ public class AuthDecorator implements DecoratingHttpServiceFunction {
 
     User user;
     try {
-      user = USER_REPOSITORY.getUserByEmail(subject);
+      user = userRepository.getUserByEmail(subject);
     } catch (Exception e) {
       LOGGER.debug("User not found: {}", subject);
       user = null;

@@ -5,7 +5,6 @@ import io.unitycatalog.server.exception.ErrorCode;
 import io.unitycatalog.server.model.*;
 import io.unitycatalog.server.persist.dao.FunctionInfoDAO;
 import io.unitycatalog.server.persist.dao.SchemaInfoDAO;
-import io.unitycatalog.server.persist.utils.HibernateUtils;
 import io.unitycatalog.server.persist.utils.PagedListingHelper;
 import io.unitycatalog.server.persist.utils.RepositoryUtils;
 import io.unitycatalog.server.utils.Constants;
@@ -23,17 +22,15 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 public class FunctionRepository {
-  private static final FunctionRepository INSTANCE = new FunctionRepository();
-  private static final SchemaRepository SCHEMA_REPOSITORY = SchemaRepository.getInstance();
   private static final Logger LOGGER = LoggerFactory.getLogger(FunctionRepository.class);
-  private static final SessionFactory SESSION_FACTORY = HibernateUtils.getSessionFactory();
+  private final RepositoryFactory repositoryFactory;
+  private final SessionFactory sessionFactory;
   private static final PagedListingHelper<FunctionInfoDAO> LISTING_HELPER =
       new PagedListingHelper<>(FunctionInfoDAO.class);
 
-  private FunctionRepository() {}
-
-  public static FunctionRepository getInstance() {
-    return INSTANCE;
+  public FunctionRepository(RepositoryFactory repositoryFactory, SessionFactory sessionFactory) {
+    this.repositoryFactory = repositoryFactory;
+    this.sessionFactory = sessionFactory;
   }
 
   public FunctionInfo createFunction(CreateFunctionRequest createFunctionRequest) {
@@ -79,12 +76,15 @@ public class FunctionRepository {
       functionInfo.setSqlDataAccess(
           FunctionInfo.SqlDataAccessEnum.valueOf(createFunction.getSqlDataAccess().toString()));
     }
-    try (Session session = SESSION_FACTORY.openSession()) {
+    try (Session session = sessionFactory.openSession()) {
       Transaction tx = session.beginTransaction();
       try {
         String catalogName = createFunction.getCatalogName();
         String schemaName = createFunction.getSchemaName();
-        SchemaInfoDAO schemaInfo = SCHEMA_REPOSITORY.getSchemaDAO(session, catalogName, schemaName);
+        SchemaInfoDAO schemaInfo =
+            repositoryFactory
+                .getRepository(SchemaRepository.class)
+                .getSchemaDAO(session, catalogName, schemaName);
         if (schemaInfo == null) {
           throw new BaseException(ErrorCode.NOT_FOUND, "Schema not found: " + schemaName);
         }
@@ -123,7 +123,10 @@ public class FunctionRepository {
   }
 
   public UUID getSchemaId(Session session, String catalogName, String schemaName) {
-    SchemaInfoDAO schemaInfo = SCHEMA_REPOSITORY.getSchemaDAO(session, catalogName, schemaName);
+    SchemaInfoDAO schemaInfo =
+        repositoryFactory
+            .getRepository(SchemaRepository.class)
+            .getSchemaDAO(session, catalogName, schemaName);
     if (schemaInfo == null) {
       throw new BaseException(ErrorCode.NOT_FOUND, "Schema not found: " + schemaName);
     }
@@ -144,7 +147,7 @@ public class FunctionRepository {
       String schemaName,
       Optional<Integer> maxResults,
       Optional<String> pageToken) {
-    try (Session session = SESSION_FACTORY.openSession()) {
+    try (Session session = sessionFactory.openSession()) {
       session.setDefaultReadOnly(true);
       Transaction tx = session.beginTransaction();
       try {
@@ -183,7 +186,7 @@ public class FunctionRepository {
 
   public FunctionInfo getFunction(String name) {
     FunctionInfo functionInfo = null;
-    try (Session session = SESSION_FACTORY.openSession()) {
+    try (Session session = sessionFactory.openSession()) {
       session.setDefaultReadOnly(true);
       Transaction tx = session.beginTransaction();
       try {
@@ -219,7 +222,10 @@ public class FunctionRepository {
 
   public FunctionInfoDAO getFunctionDAO(
       Session session, String catalogName, String schemaName, String functionName) {
-    SchemaInfoDAO schemaInfo = SCHEMA_REPOSITORY.getSchemaDAO(session, catalogName, schemaName);
+    SchemaInfoDAO schemaInfo =
+        repositoryFactory
+            .getRepository(SchemaRepository.class)
+            .getSchemaDAO(session, catalogName, schemaName);
     if (schemaInfo == null) {
       throw new BaseException(ErrorCode.NOT_FOUND, "Schema not found: " + schemaName);
     }
@@ -238,7 +244,7 @@ public class FunctionRepository {
   }
 
   public void deleteFunction(String name, Boolean force) {
-    try (Session session = SESSION_FACTORY.openSession()) {
+    try (Session session = sessionFactory.openSession()) {
       Transaction tx = session.beginTransaction();
       try {
         String[] parts = name.split("\\.");
@@ -246,7 +252,10 @@ public class FunctionRepository {
           throw new BaseException(ErrorCode.INVALID_ARGUMENT, "Invalid function name: " + name);
         }
         String catalogName = parts[0], schemaName = parts[1], functionName = parts[2];
-        SchemaInfoDAO schemaInfo = SCHEMA_REPOSITORY.getSchemaDAO(session, catalogName, schemaName);
+        SchemaInfoDAO schemaInfo =
+            repositoryFactory
+                .getRepository(SchemaRepository.class)
+                .getSchemaDAO(session, catalogName, schemaName);
         if (schemaInfo == null) {
           throw new BaseException(ErrorCode.NOT_FOUND, "Schema not found: " + schemaName);
         }

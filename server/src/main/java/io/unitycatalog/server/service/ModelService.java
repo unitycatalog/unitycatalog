@@ -10,10 +10,7 @@ import io.unitycatalog.server.auth.annotation.AuthorizeKeys;
 import io.unitycatalog.server.auth.decorator.UnityAccessEvaluator;
 import io.unitycatalog.server.exception.GlobalExceptionHandler;
 import io.unitycatalog.server.model.*;
-import io.unitycatalog.server.persist.CatalogRepository;
-import io.unitycatalog.server.persist.MetastoreRepository;
-import io.unitycatalog.server.persist.ModelRepository;
-import io.unitycatalog.server.persist.SchemaRepository;
+import io.unitycatalog.server.persist.*;
 import io.unitycatalog.server.persist.model.Privileges;
 
 import java.util.List;
@@ -32,18 +29,24 @@ import static io.unitycatalog.server.model.SecurableType.SCHEMA;
 @ExceptionHandler(GlobalExceptionHandler.class)
 public class ModelService {
 
-  private static final ModelRepository MODEL_REPOSITORY = ModelRepository.getInstance();
-
-  private static final SchemaRepository SCHEMA_REPOSITORY = SchemaRepository.getInstance();
-  private static final CatalogRepository CATALOG_REPOSITORY = CatalogRepository.getInstance();
+  private final ModelRepository modelRepository;
+  private final SchemaRepository schemaRepository;
+  private final CatalogRepository catalogRepository;
+  private final MetastoreRepository metastoreRepository;
+  private final UserRepository userRepository;
 
   private final UnityCatalogAuthorizer authorizer;
   private final UnityAccessEvaluator evaluator;
 
   @SneakyThrows
-  public ModelService(UnityCatalogAuthorizer authorizer) {
+  public ModelService(UnityCatalogAuthorizer authorizer, RepositoryFactory repositoryFactory) {
     this.authorizer = authorizer;
-    evaluator = new UnityAccessEvaluator(authorizer);
+    this.evaluator = new UnityAccessEvaluator(authorizer);
+    this.catalogRepository = repositoryFactory.getRepository(CatalogRepository.class);
+    this.schemaRepository = repositoryFactory.getRepository(SchemaRepository.class);
+    this.modelRepository = repositoryFactory.getRepository(ModelRepository.class);
+    this.metastoreRepository = repositoryFactory.getRepository(MetastoreRepository.class);
+    this.userRepository = repositoryFactory.getRepository(UserRepository.class);
   }
 
   @Post("")
@@ -60,7 +63,7 @@ public class ModelService {
           CreateRegisteredModel createRegisteredModel) {
     assert createRegisteredModel != null;
     RegisteredModelInfo createRegisteredModelResponse =
-        MODEL_REPOSITORY.createRegisteredModel(createRegisteredModel);
+        modelRepository.createRegisteredModel(createRegisteredModel);
     initializeAuthorizations(createRegisteredModelResponse);
     return HttpResponse.ofJson(createRegisteredModelResponse);
   }
@@ -74,7 +77,7 @@ public class ModelService {
       @Param("page_token") Optional<String> pageToken) {
 
     ListRegisteredModelsResponse listRegisteredModelsResponse =
-            MODEL_REPOSITORY.listRegisteredModels(catalogName, schemaName, maxResults, pageToken);
+            modelRepository.listRegisteredModels(catalogName, schemaName, maxResults, pageToken);
     filterModels("""
             #authorize(#principal, #metastore, OWNER) ||
             #authorize(#principal, #catalog, OWNER) ||
@@ -95,7 +98,7 @@ public class ModelService {
   @AuthorizeKey(METASTORE)
   public HttpResponse getRegisteredModel(@Param("full_name") @AuthorizeKey(REGISTERED_MODEL) String fullNameArg) {
     assert fullNameArg != null;
-    RegisteredModelInfo registeredModelInfo = MODEL_REPOSITORY.getRegisteredModel(fullNameArg);
+    RegisteredModelInfo registeredModelInfo = modelRepository.getRegisteredModel(fullNameArg);
     return HttpResponse.ofJson(registeredModelInfo);
   }
 
@@ -107,7 +110,7 @@ public class ModelService {
   public HttpResponse updateRegisteredModel(@Param("full_name") @AuthorizeKey(REGISTERED_MODEL) String fullName, UpdateRegisteredModel updateRegisteredModel) {
     assert updateRegisteredModel != null;
     RegisteredModelInfo updateRegisteredModelResponse =
-        MODEL_REPOSITORY.updateRegisteredModel(fullName, updateRegisteredModel);
+        modelRepository.updateRegisteredModel(fullName, updateRegisteredModel);
     return HttpResponse.ofJson(updateRegisteredModelResponse);
   }
 
@@ -121,8 +124,8 @@ public class ModelService {
   @AuthorizeKey(METASTORE)
   public HttpResponse deleteRegisteredModel(
       @Param("full_name") @AuthorizeKey(REGISTERED_MODEL) String fullName, @Param("force") Optional<Boolean> force) {
-    RegisteredModelInfo registeredModelInfo = MODEL_REPOSITORY.getRegisteredModel(fullName);
-    MODEL_REPOSITORY.deleteRegisteredModel(fullName, force.orElse(false));
+    RegisteredModelInfo registeredModelInfo = modelRepository.getRegisteredModel(fullName);
+    modelRepository.deleteRegisteredModel(fullName, force.orElse(false));
     removeAuthorizations(registeredModelInfo);
     return HttpResponse.of(HttpStatus.OK);
   }
@@ -142,7 +145,7 @@ public class ModelService {
     assert createModelVersion.getSchemaName() != null;
     assert createModelVersion.getSource() != null;
     ModelVersionInfo createModelVersionResponse =
-        MODEL_REPOSITORY.createModelVersion(createModelVersion);
+        modelRepository.createModelVersion(createModelVersion);
     return HttpResponse.ofJson(createModelVersionResponse);
   }
 
@@ -158,7 +161,7 @@ public class ModelService {
       @Param("full_name") @AuthorizeKey(REGISTERED_MODEL) String fullName,
       @Param("max_results") Optional<Integer> maxResults,
       @Param("page_token") Optional<String> pageToken) {
-    return HttpResponse.ofJson(MODEL_REPOSITORY.listModelVersions(fullName, maxResults, pageToken));
+    return HttpResponse.ofJson(modelRepository.listModelVersions(fullName, maxResults, pageToken));
   }
 
   @Get("/{full_name}/versions/{version}")
@@ -172,7 +175,7 @@ public class ModelService {
   public HttpResponse getModelVersion(
       @Param("full_name") @AuthorizeKey(REGISTERED_MODEL) String fullName, @Param("version") Long version) {
     assert fullName != null && version != null;
-    ModelVersionInfo modelVersionInfo = MODEL_REPOSITORY.getModelVersion(fullName, version);
+    ModelVersionInfo modelVersionInfo = modelRepository.getModelVersion(fullName, version);
     return HttpResponse.ofJson(modelVersionInfo);
   }
 
@@ -185,7 +188,7 @@ public class ModelService {
                                          UpdateModelVersion updateModelVersion) {
     assert updateModelVersion != null;
     ModelVersionInfo updateModelVersionResponse =
-        MODEL_REPOSITORY.updateModelVersion(fullName, version, updateModelVersion);
+        modelRepository.updateModelVersion(fullName, version, updateModelVersion);
     return HttpResponse.ofJson(updateModelVersionResponse);
   }
 
@@ -199,7 +202,7 @@ public class ModelService {
   @AuthorizeKey(METASTORE)
   public HttpResponse deleteModelVersion(
       @Param("full_name") @AuthorizeKey(REGISTERED_MODEL) String fullName, @Param("version") Long version) {
-    MODEL_REPOSITORY.deleteModelVersion(fullName, version);
+    modelRepository.deleteModelVersion(fullName, version);
     return HttpResponse.of(HttpStatus.OK);
   }
 
@@ -212,15 +215,15 @@ public class ModelService {
                                            FinalizeModelVersion finalizeModelVersion) {
     assert finalizeModelVersion != null;
     ModelVersionInfo finalizeModelVersionResponse =
-        MODEL_REPOSITORY.finalizeModelVersion(finalizeModelVersion);
+        modelRepository.finalizeModelVersion(finalizeModelVersion);
     return HttpResponse.ofJson(finalizeModelVersionResponse);
   }
 
   private void initializeAuthorizations(RegisteredModelInfo registeredModelInfo) {
     SchemaInfo schemaInfo =
-        SCHEMA_REPOSITORY.getSchema(
+        schemaRepository.getSchema(
             registeredModelInfo.getCatalogName() + "." + registeredModelInfo.getSchemaName());
-    UUID principalId = IdentityUtils.findPrincipalId();
+    UUID principalId = userRepository.findPrincipalId();
     // add owner privilege
     authorizer.grantAuthorization(
         principalId, UUID.fromString(registeredModelInfo.getId()), Privileges.OWNER);
@@ -231,19 +234,19 @@ public class ModelService {
 
   public void filterModels(String expression, List<RegisteredModelInfo> entries) {
     // TODO: would be nice to move this to filtering in the Decorator response
-    UUID principalId = IdentityUtils.findPrincipalId();
+    UUID principalId = userRepository.findPrincipalId();
 
     evaluator.filter(
             principalId,
             expression,
             entries,
             ti -> {
-              CatalogInfo catalogInfo = CATALOG_REPOSITORY.getCatalog(ti.getCatalogName());
+              CatalogInfo catalogInfo = catalogRepository.getCatalog(ti.getCatalogName());
               SchemaInfo schemaInfo =
-                      SCHEMA_REPOSITORY.getSchema(ti.getCatalogName() + "." + ti.getSchemaName());
+                      schemaRepository.getSchema(ti.getCatalogName() + "." + ti.getSchemaName());
               return Map.of(
                       METASTORE,
-                      MetastoreRepository.getInstance().getMetastoreId(),
+                      metastoreRepository.getMetastoreId(),
                       CATALOG,
                       UUID.fromString(catalogInfo.getId()),
                       SCHEMA,
@@ -255,7 +258,7 @@ public class ModelService {
 
   private void removeAuthorizations(RegisteredModelInfo registeredModelInfo) {
     SchemaInfo schemaInfo =
-        SCHEMA_REPOSITORY.getSchema(
+        schemaRepository.getSchema(
             registeredModelInfo.getCatalogName() + "." + registeredModelInfo.getSchemaName());
     // remove any direct authorizations on the table
     authorizer.clearAuthorizationsForResource(UUID.fromString(registeredModelInfo.getId()));

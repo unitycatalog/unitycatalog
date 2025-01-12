@@ -19,6 +19,8 @@ import io.unitycatalog.server.auth.annotation.AuthorizeKeys;
 import io.unitycatalog.server.exception.BaseException;
 import io.unitycatalog.server.exception.ErrorCode;
 import io.unitycatalog.server.model.SecurableType;
+import io.unitycatalog.server.persist.RepositoryFactory;
+import io.unitycatalog.server.persist.UserRepository;
 import io.unitycatalog.server.utils.IdentityUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -56,16 +58,20 @@ import static io.unitycatalog.server.auth.decorator.KeyLocator.Source.SYSTEM;
 public class UnityAccessDecorator implements DecoratingHttpServiceFunction {
 
   private static final Logger LOGGER = LoggerFactory.getLogger(UnityAccessDecorator.class);
-  public static final ObjectMapper MAPPER = new ObjectMapper();
+  private static final ObjectMapper MAPPER = new ObjectMapper();
+  private final KeyMapper keyMapper;
+  private final UserRepository userRepository;
 
   private final UnityAccessEvaluator evaluator;
 
-  public UnityAccessDecorator(UnityCatalogAuthorizer authorizer) throws BaseException {
+  public UnityAccessDecorator(UnityCatalogAuthorizer authorizer, RepositoryFactory repositoryFactory) throws BaseException {
     try {
       evaluator = new UnityAccessEvaluator(authorizer);
     } catch (NoSuchMethodException | IllegalAccessException e) {
       throw new BaseException(ErrorCode.INTERNAL, "Error initializing access evaluator.", e);
     }
+    keyMapper = new KeyMapper(repositoryFactory);
+    userRepository = repositoryFactory.getRepository(UserRepository.class);
   }
 
   @Override
@@ -83,7 +89,7 @@ public class UnityAccessDecorator implements DecoratingHttpServiceFunction {
 
       if (expression != null) {
         if (!locator.isEmpty()) {
-          UUID principal = IdentityUtils.findPrincipalId();
+          UUID principal = userRepository.findPrincipalId();
           return authorizeByRequest(delegate, ctx, req, principal, locator, expression);
         } else {
           LOGGER.warn("No authorization resource(s) found.");
@@ -172,7 +178,7 @@ public class UnityAccessDecorator implements DecoratingHttpServiceFunction {
   private void checkAuthorization(UUID principal, String expression, Map<SecurableType, Object> resourceKeys) {
     LOGGER.debug("resourceKeys = {}", resourceKeys);
 
-    Map<SecurableType, Object> resourceIds = KeyMapperUtil.mapResourceKeys(resourceKeys);
+    Map<SecurableType, Object> resourceIds = keyMapper.mapResourceKeys(resourceKeys);
 
     if (!resourceIds.keySet().containsAll(resourceKeys.keySet())) {
       LOGGER.warn("Some resource keys have unresolved ids.");

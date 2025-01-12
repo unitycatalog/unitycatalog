@@ -15,20 +15,31 @@ import io.unitycatalog.server.model.SchemaInfo;
 import io.unitycatalog.server.model.SecurableType;
 import io.unitycatalog.server.model.TableInfo;
 import io.unitycatalog.server.model.VolumeInfo;
-import io.unitycatalog.server.persist.CatalogRepository;
-import io.unitycatalog.server.persist.FunctionRepository;
-import io.unitycatalog.server.persist.MetastoreRepository;
-import io.unitycatalog.server.persist.ModelRepository;
-import io.unitycatalog.server.persist.SchemaRepository;
-import io.unitycatalog.server.persist.TableRepository;
-import io.unitycatalog.server.persist.VolumeRepository;
+import io.unitycatalog.server.persist.*;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.UUID;
 
-public class KeyMapperUtil {
-  public static Map<SecurableType, Object> mapResourceKeys(
-      Map<SecurableType, Object> resourceKeys) {
+public class KeyMapper {
+  private final CatalogRepository catalogRepository;
+  private final SchemaRepository schemaRepository;
+  private final TableRepository tableRepository;
+  private final VolumeRepository volumeRepository;
+  private final FunctionRepository functionRepository;
+  private final ModelRepository modelRepository;
+  private final MetastoreRepository metastoreRepository;
+
+  public KeyMapper(RepositoryFactory repositoryFactory) {
+    this.catalogRepository = repositoryFactory.getRepository(CatalogRepository.class);
+    this.schemaRepository = repositoryFactory.getRepository(SchemaRepository.class);
+    this.tableRepository = repositoryFactory.getRepository(TableRepository.class);
+    this.volumeRepository = repositoryFactory.getRepository(VolumeRepository.class);
+    this.functionRepository = repositoryFactory.getRepository(FunctionRepository.class);
+    this.modelRepository = repositoryFactory.getRepository(ModelRepository.class);
+    this.metastoreRepository = repositoryFactory.getRepository(MetastoreRepository.class);
+  }
+
+  public Map<SecurableType, Object> mapResourceKeys(Map<SecurableType, Object> resourceKeys) {
     Map<SecurableType, Object> resourceIds = new HashMap<>();
 
     if (resourceKeys.containsKey(CATALOG)
@@ -40,7 +51,7 @@ public class KeyMapperUtil {
               + resourceKeys.get(SCHEMA)
               + "."
               + resourceKeys.get(TABLE);
-      TableInfo table = TableRepository.getInstance().getTable(fullName);
+      TableInfo table = tableRepository.getTable(fullName);
       resourceIds.put(TABLE, UUID.fromString(table.getTableId()));
     }
 
@@ -53,11 +64,11 @@ public class KeyMapperUtil {
       // If the full name contains a dot, we assume it's a full name, otherwise we assume it's an id
       TableInfo table =
           fullName.contains(".")
-              ? TableRepository.getInstance().getTable(fullName)
-              : TableRepository.getInstance().getTableById(fullName);
+              ? tableRepository.getTable(fullName)
+              : tableRepository.getTableById(fullName);
       String fullSchemaName = table.getCatalogName() + "." + table.getSchemaName();
-      SchemaInfo schema = SchemaRepository.getInstance().getSchema(fullSchemaName);
-      CatalogInfo catalog = CatalogRepository.getInstance().getCatalog(table.getCatalogName());
+      SchemaInfo schema = schemaRepository.getSchema(fullSchemaName);
+      CatalogInfo catalog = catalogRepository.getCatalog(table.getCatalogName());
       resourceIds.put(TABLE, UUID.fromString(table.getTableId()));
       resourceIds.put(SCHEMA, UUID.fromString(schema.getSchemaId()));
       resourceIds.put(CATALOG, UUID.fromString(catalog.getId()));
@@ -72,7 +83,7 @@ public class KeyMapperUtil {
               + resourceKeys.get(SCHEMA)
               + "."
               + resourceKeys.get(VOLUME);
-      VolumeInfo volume = VolumeRepository.getInstance().getVolume(fullName);
+      VolumeInfo volume = volumeRepository.getVolume(fullName);
       resourceIds.put(VOLUME, UUID.fromString(volume.getVolumeId()));
     }
 
@@ -85,11 +96,11 @@ public class KeyMapperUtil {
       // If the full name contains a dot, we assume it's a full name, otherwise we assume it's an id
       VolumeInfo volume =
           (fullName.contains("."))
-              ? VolumeRepository.getInstance().getVolume(fullName)
-              : VolumeRepository.getInstance().getVolumeById(fullName);
+              ? volumeRepository.getVolume(fullName)
+              : volumeRepository.getVolumeById(fullName);
       String fullSchemaName = volume.getCatalogName() + "." + volume.getSchemaName();
-      SchemaInfo schema = SchemaRepository.getInstance().getSchema(fullSchemaName);
-      CatalogInfo catalog = CatalogRepository.getInstance().getCatalog(volume.getCatalogName());
+      SchemaInfo schema = schemaRepository.getSchema(fullSchemaName);
+      CatalogInfo catalog = catalogRepository.getCatalog(volume.getCatalogName());
       resourceIds.put(VOLUME, UUID.fromString(volume.getVolumeId()));
       resourceIds.put(SCHEMA, UUID.fromString(schema.getSchemaId()));
       resourceIds.put(CATALOG, UUID.fromString(catalog.getId()));
@@ -104,7 +115,7 @@ public class KeyMapperUtil {
               + resourceKeys.get(SCHEMA)
               + "."
               + resourceKeys.get(FUNCTION);
-      FunctionInfo function = FunctionRepository.getInstance().getFunction(fullName);
+      FunctionInfo function = functionRepository.getFunction(fullName);
       resourceIds.put(FUNCTION, UUID.fromString(function.getFunctionId()));
     }
 
@@ -114,10 +125,10 @@ public class KeyMapperUtil {
         && !resourceKeys.containsKey(SCHEMA)
         && resourceKeys.containsKey(FUNCTION)) {
       String fullName = (String) resourceKeys.get(FUNCTION);
-      FunctionInfo function = FunctionRepository.getInstance().getFunction(fullName);
+      FunctionInfo function = functionRepository.getFunction(fullName);
       String fullSchemaName = function.getCatalogName() + "." + function.getSchemaName();
-      SchemaInfo schema = SchemaRepository.getInstance().getSchema(fullSchemaName);
-      CatalogInfo catalog = CatalogRepository.getInstance().getCatalog(function.getCatalogName());
+      SchemaInfo schema = schemaRepository.getSchema(fullSchemaName);
+      CatalogInfo catalog = catalogRepository.getCatalog(function.getCatalogName());
       resourceIds.put(FUNCTION, UUID.fromString(function.getFunctionId()));
       resourceIds.put(SCHEMA, UUID.fromString(schema.getSchemaId()));
       resourceIds.put(CATALOG, UUID.fromString(catalog.getId()));
@@ -132,7 +143,7 @@ public class KeyMapperUtil {
               + resourceKeys.get(SCHEMA)
               + "."
               + resourceKeys.get(REGISTERED_MODEL);
-      RegisteredModelInfo model = ModelRepository.getInstance().getRegisteredModel(fullName);
+      RegisteredModelInfo model = modelRepository.getRegisteredModel(fullName);
       resourceIds.put(REGISTERED_MODEL, UUID.fromString(model.getId()));
     }
 
@@ -142,10 +153,10 @@ public class KeyMapperUtil {
         && !resourceKeys.containsKey(SCHEMA)
         && resourceKeys.containsKey(REGISTERED_MODEL)) {
       String fullName = (String) resourceKeys.get(REGISTERED_MODEL);
-      RegisteredModelInfo model = ModelRepository.getInstance().getRegisteredModel(fullName);
+      RegisteredModelInfo model = modelRepository.getRegisteredModel(fullName);
       String fullSchemaName = model.getCatalogName() + "." + model.getSchemaName();
-      SchemaInfo schema = SchemaRepository.getInstance().getSchema(fullSchemaName);
-      CatalogInfo catalog = CatalogRepository.getInstance().getCatalog(model.getCatalogName());
+      SchemaInfo schema = schemaRepository.getSchema(fullSchemaName);
+      CatalogInfo catalog = catalogRepository.getCatalog(model.getCatalogName());
       resourceIds.put(REGISTERED_MODEL, UUID.fromString(model.getId()));
       resourceIds.put(SCHEMA, UUID.fromString(schema.getSchemaId()));
       resourceIds.put(CATALOG, UUID.fromString(catalog.getId()));
@@ -153,27 +164,27 @@ public class KeyMapperUtil {
 
     if (resourceKeys.containsKey(CATALOG) && resourceKeys.containsKey(SCHEMA)) {
       String fullName = resourceKeys.get(CATALOG) + "." + resourceKeys.get(SCHEMA);
-      SchemaInfo schema = SchemaRepository.getInstance().getSchema(fullName);
+      SchemaInfo schema = schemaRepository.getSchema(fullName);
       resourceIds.put(SCHEMA, UUID.fromString(schema.getSchemaId()));
     }
 
     // if only SCHEMA is specified, assuming its value is a full schema name (including catalog)
     if (!resourceKeys.containsKey(CATALOG) && resourceKeys.containsKey(SCHEMA)) {
       String fullName = (String) resourceKeys.get(SCHEMA);
-      SchemaInfo schema = SchemaRepository.getInstance().getSchema(fullName);
-      CatalogInfo catalog = CatalogRepository.getInstance().getCatalog(schema.getCatalogName());
+      SchemaInfo schema = schemaRepository.getSchema(fullName);
+      CatalogInfo catalog = catalogRepository.getCatalog(schema.getCatalogName());
       resourceIds.put(SCHEMA, UUID.fromString(schema.getSchemaId()));
       resourceIds.put(CATALOG, UUID.fromString(catalog.getId()));
     }
 
     if (resourceKeys.containsKey(CATALOG)) {
       String fullName = (String) resourceKeys.get(CATALOG);
-      CatalogInfo catalog = CatalogRepository.getInstance().getCatalog(fullName);
+      CatalogInfo catalog = catalogRepository.getCatalog(fullName);
       resourceIds.put(CATALOG, UUID.fromString(catalog.getId()));
     }
 
     if (resourceKeys.containsKey(METASTORE)) {
-      resourceIds.put(METASTORE, MetastoreRepository.getInstance().getMetastoreId());
+      resourceIds.put(METASTORE, metastoreRepository.getMetastoreId());
     }
 
     return resourceIds;

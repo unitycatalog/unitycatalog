@@ -15,6 +15,7 @@ import io.unitycatalog.control.model.User;
 import io.unitycatalog.server.exception.ErrorCode;
 import io.unitycatalog.server.exception.GlobalExceptionHandler;
 import io.unitycatalog.server.exception.OAuthInvalidRequestException;
+import io.unitycatalog.server.persist.RepositoryFactory;
 import io.unitycatalog.server.persist.UserRepository;
 import io.unitycatalog.server.security.JwtClaim;
 import io.unitycatalog.server.security.SecurityContext;
@@ -60,17 +61,23 @@ public class AuthService {
   }
 
   private static final Logger LOGGER = LoggerFactory.getLogger(AuthService.class);
-  private static final UserRepository USER_REPOSITORY = UserRepository.getInstance();
+  private final UserRepository userRepository;
 
   private final SecurityContext securityContext;
   private final JwksOperations jwksOperations;
+  private final ServerProperties serverProperties;
 
   private static final String COOKIE = "cookie";
   private static final String EMPTY_RESPONSE = "{}";
 
-  public AuthService(SecurityContext securityContext) {
+  public AuthService(
+      SecurityContext securityContext,
+      ServerProperties serverProperties,
+      RepositoryFactory repositoryFactory) {
     this.securityContext = securityContext;
     this.jwksOperations = new JwksOperations(securityContext);
+    this.serverProperties = serverProperties;
+    this.userRepository = repositoryFactory.getRepository(UserRepository.class);
   }
 
   /**
@@ -133,7 +140,7 @@ public class AuthService {
           ErrorCode.INVALID_ARGUMENT, "Actor tokens not currently supported");
     }
 
-    boolean authorizationEnabled = ServerProperties.getInstance().isAuthorizationEnabled();
+    boolean authorizationEnabled = this.serverProperties.isAuthorizationEnabled();
     if (!authorizationEnabled) {
       throw new OAuthInvalidRequestException(
           ErrorCode.INVALID_ARGUMENT, "Authorization is disabled");
@@ -167,7 +174,7 @@ public class AuthService {
           if (e.equals(COOKIE)) {
             // Set cookie timeout to 5 days by default if not present in server.properties
             String cookieTimeout =
-                ServerProperties.getInstance().getProperty("server.cookie-timeout", "P5D");
+                this.serverProperties.getProperty("server.cookie-timeout", "P5D");
             Cookie cookie =
                 createCookie(AuthDecorator.UC_TOKEN_KEY, accessToken, "/", cookieTimeout);
             responseHeaders.add(HttpHeaderNames.SET_COOKIE, cookie.toSetCookieHeader());
@@ -197,7 +204,7 @@ public class AuthService {
         .orElse(HttpResponse.of(HttpStatus.OK, MediaType.JSON, EMPTY_RESPONSE));
   }
 
-  private static void verifyPrincipal(DecodedJWT decodedJWT) {
+  private void verifyPrincipal(DecodedJWT decodedJWT) {
     String subject =
         decodedJWT
             .getClaims()
@@ -212,7 +219,7 @@ public class AuthService {
     }
 
     try {
-      User user = USER_REPOSITORY.getUserByEmail(subject);
+      User user = userRepository.getUserByEmail(subject);
       if (user != null && user.getState() == User.StateEnum.ENABLED) {
         LOGGER.debug("Principal {} is enabled", subject);
         return;

@@ -30,20 +30,29 @@ public abstract class BaseModelCRUDTest extends BaseCRUDTest {
 
   String rootBase = "";
 
+  @Override
+  public void setUpProperties() {
+    super.setUpProperties();
+    serverProperties.setProperty("storage-root.models", rootBase);
+  }
+
   @BeforeEach
   @Override
   public void setUp() {
     super.setUp();
     schemaOperations = createSchemaOperations(serverConfig);
     modelOperations = createModelOperations(serverConfig);
-    rootBase = "/tmp/" + UUID.randomUUID().toString();
-    System.setProperty("storage-root.models", rootBase);
+    rootBase = "/tmp/" + UUID.randomUUID();
   }
 
   @AfterEach
   public void afterEachTest() {
-    // Clean up the newly created storage root
-    UriUtils.deleteStorageLocationPath("file:" + rootBase);
+    try {
+      // Clean up the newly created storage root
+      UriUtils.deleteStorageLocationPath("file:" + rootBase);
+    } catch (Exception e) {
+      // Ignore
+    }
   }
 
   protected void createCommonResources() throws ApiException {

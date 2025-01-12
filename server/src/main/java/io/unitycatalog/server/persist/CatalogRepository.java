@@ -5,7 +5,6 @@ import io.unitycatalog.server.exception.ErrorCode;
 import io.unitycatalog.server.model.*;
 import io.unitycatalog.server.persist.dao.CatalogInfoDAO;
 import io.unitycatalog.server.persist.dao.PropertyDAO;
-import io.unitycatalog.server.persist.utils.HibernateUtils;
 import io.unitycatalog.server.persist.utils.PagedListingHelper;
 import io.unitycatalog.server.persist.utils.RepositoryUtils;
 import io.unitycatalog.server.utils.Constants;
@@ -23,17 +22,15 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 public class CatalogRepository {
-  private static final CatalogRepository INSTANCE = new CatalogRepository();
-  private static final SchemaRepository SCHEMA_REPOSITORY = SchemaRepository.getInstance();
   private static final Logger LOGGER = LoggerFactory.getLogger(CatalogRepository.class);
-  private static final SessionFactory SESSION_FACTORY = HibernateUtils.getSessionFactory();
+  private final RepositoryFactory repositoryFactory;
+  private final SessionFactory sessionFactory;
   private static final PagedListingHelper<CatalogInfoDAO> LISTING_HELPER =
       new PagedListingHelper<>(CatalogInfoDAO.class);
 
-  private CatalogRepository() {}
-
-  public static CatalogRepository getInstance() {
-    return INSTANCE;
+  public CatalogRepository(RepositoryFactory repositoryFactory, SessionFactory sessionFactory) {
+    this.repositoryFactory = repositoryFactory;
+    this.sessionFactory = sessionFactory;
   }
 
   public CatalogInfo addCatalog(CreateCatalog createCatalog) {
@@ -52,7 +49,7 @@ public class CatalogRepository {
             .updatedBy(callerId)
             .properties(createCatalog.getProperties());
 
-    try (Session session = SESSION_FACTORY.openSession()) {
+    try (Session session = sessionFactory.openSession()) {
       Transaction tx = session.beginTransaction();
       try {
         if (getCatalogDAO(session, createCatalog.getName()) != null) {
@@ -82,7 +79,7 @@ public class CatalogRepository {
    */
   public ListCatalogsResponse listCatalogs(
       Optional<Integer> maxResults, Optional<String> pageToken) {
-    try (Session session = SESSION_FACTORY.openSession()) {
+    try (Session session = sessionFactory.openSession()) {
       session.setDefaultReadOnly(true);
       Transaction tx = session.beginTransaction();
       try {
@@ -112,7 +109,7 @@ public class CatalogRepository {
   }
 
   public CatalogInfo getCatalog(String name) {
-    try (Session session = SESSION_FACTORY.openSession()) {
+    try (Session session = sessionFactory.openSession()) {
       session.setDefaultReadOnly(true);
       Transaction tx = session.beginTransaction();
       try {
@@ -145,7 +142,7 @@ public class CatalogRepository {
     }
     String callerId = IdentityUtils.findPrincipalEmailAddress();
     // can make this just update once we have an identifier that is not the name
-    try (Session session = SESSION_FACTORY.openSession()) {
+    try (Session session = sessionFactory.openSession()) {
       Transaction tx = session.beginTransaction();
       try {
         CatalogInfoDAO catalogInfoDAO = getCatalogDAO(session, name);
@@ -193,14 +190,15 @@ public class CatalogRepository {
   }
 
   public void deleteCatalog(String name, boolean force) {
-    try (Session session = SESSION_FACTORY.openSession()) {
+    try (Session session = sessionFactory.openSession()) {
       Transaction tx = session.beginTransaction();
       try {
         CatalogInfoDAO catalogInfo = getCatalogDAO(session, name);
         if (catalogInfo != null) {
           // Check if there are any schemas in the catalog
           List<SchemaInfo> schemas =
-              SCHEMA_REPOSITORY
+              repositoryFactory
+                  .getRepository(SchemaRepository.class)
                   .listSchemas(
                       session,
                       catalogInfo.getId(),
@@ -216,19 +214,23 @@ public class CatalogRepository {
             String nextToken = null;
             do {
               ListSchemasResponse listSchemasResponse =
-                  SCHEMA_REPOSITORY.listSchemas(
-                      session,
-                      catalogInfo.getId(),
-                      catalogInfo.getName(),
-                      Optional.empty(),
-                      Optional.ofNullable(nextToken));
+                  repositoryFactory
+                      .getRepository(SchemaRepository.class)
+                      .listSchemas(
+                          session,
+                          catalogInfo.getId(),
+                          catalogInfo.getName(),
+                          Optional.empty(),
+                          Optional.ofNullable(nextToken));
               for (SchemaInfo schemaInfo : listSchemasResponse.getSchemas()) {
-                SCHEMA_REPOSITORY.deleteSchema(
-                    session,
-                    catalogInfo.getId(),
-                    catalogInfo.getName(),
-                    schemaInfo.getName(),
-                    true);
+                repositoryFactory
+                    .getRepository(SchemaRepository.class)
+                    .deleteSchema(
+                        session,
+                        catalogInfo.getId(),
+                        catalogInfo.getName(),
+                        schemaInfo.getName(),
+                        true);
               }
               nextToken = listSchemasResponse.getNextPageToken();
             } while (nextToken != null);
