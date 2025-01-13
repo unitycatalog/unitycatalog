@@ -28,11 +28,14 @@ public class AzureCredentialVendor {
     this.adlsConfigurations = serverProperties.getAdlsConfigurations();
   }
 
+  private ADLSStorageConfig getAdlsStorageConfig(String accountName) {
+    return adlsConfigurations.get(accountName);
+  }
+
   public AzureCredential vendAzureCredential(CredentialContext context) {
     ADLSLocationUtils.ADLSLocationParts locationParts =
         ADLSLocationUtils.parseLocation(context.getStorageBase());
-    ADLSStorageConfig config = adlsConfigurations.get(locationParts.accountName());
-
+    ADLSStorageConfig config = getAdlsStorageConfig(locationParts.accountName());
     TokenCredential tokenCredential;
     if (config == null) {
       // fallback to creating credential from environment variables (or somewhere on the default

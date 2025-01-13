@@ -1,7 +1,13 @@
 package io.unitycatalog.server.base;
 
+import static org.mockito.Mockito.mock;
+
 import io.unitycatalog.server.UnityCatalogServer;
 import io.unitycatalog.server.persist.utils.HibernateConfigurator;
+import io.unitycatalog.server.service.credential.CredentialOperations;
+import io.unitycatalog.server.service.credential.aws.AwsCredentialVendor;
+import io.unitycatalog.server.service.credential.azure.AzureCredentialVendor;
+import io.unitycatalog.server.service.credential.gcp.GcpCredentialVendor;
 import io.unitycatalog.server.utils.ServerProperties;
 import io.unitycatalog.server.utils.TestUtils;
 import java.util.Properties;
@@ -10,6 +16,7 @@ import org.hibernate.SessionFactory;
 import org.hibernate.Transaction;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
+import org.mockito.Mock;
 
 public abstract class BaseServerTest {
 
@@ -17,10 +24,21 @@ public abstract class BaseServerTest {
   protected static UnityCatalogServer unityCatalogServer;
   protected static Properties serverProperties;
   protected static HibernateConfigurator hibernateConfigurator;
+  protected static CredentialOperations credentialOperations;
+
+  @Mock AwsCredentialVendor awsCredentialVendor;
+  @Mock AzureCredentialVendor azureCredentialVendor;
+  @Mock GcpCredentialVendor gcpCredentialVendor;
 
   protected void setUpProperties() {
     serverProperties = new Properties();
     serverProperties.setProperty("server.env", "test");
+  }
+
+  protected void setUpCredentialOperations() {
+    awsCredentialVendor = mock(AwsCredentialVendor.class);
+    azureCredentialVendor = mock(AzureCredentialVendor.class);
+    gcpCredentialVendor = mock(GcpCredentialVendor.class);
   }
 
   @BeforeEach
@@ -40,11 +58,13 @@ public abstract class BaseServerTest {
       int port = TestUtils.getRandomPort();
       setUpProperties();
       ServerProperties initServerProperties = new ServerProperties(serverProperties);
+      setUpCredentialOperations();
       hibernateConfigurator = new HibernateConfigurator(initServerProperties);
       unityCatalogServer =
           new UnityCatalogServer.Builder()
               .port(port)
               .serverProperties(initServerProperties)
+              .credentialOperations(credentialOperations)
               .build();
       unityCatalogServer.start();
       serverConfig.setServerUrl("http://localhost:" + port);

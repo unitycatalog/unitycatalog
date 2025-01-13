@@ -23,12 +23,16 @@ public class AwsCredentialVendor {
     this.s3Configurations = serverProperties.getS3Configurations();
   }
 
-  public Credentials vendAwsCredentials(CredentialContext context) {
+  private S3StorageConfig getS3StorageConfig(CredentialContext context) {
     S3StorageConfig s3StorageConfig = s3Configurations.get(context.getStorageBase());
     if (s3StorageConfig == null) {
       throw new BaseException(ErrorCode.FAILED_PRECONDITION, "S3 bucket configuration not found.");
     }
+    return s3StorageConfig;
+  }
 
+  public Credentials vendAwsCredentials(CredentialContext context) {
+    S3StorageConfig s3StorageConfig = getS3StorageConfig(context);
     if (s3StorageConfig.getSessionToken() != null && !s3StorageConfig.getSessionToken().isEmpty()) {
       // if a session token was supplied, then we will just return static session credentials
       return Credentials.builder()

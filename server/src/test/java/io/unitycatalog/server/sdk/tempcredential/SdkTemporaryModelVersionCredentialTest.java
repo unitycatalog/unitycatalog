@@ -1,18 +1,18 @@
-package io.unitycatalog.server.sdk.credentials;
+package io.unitycatalog.server.sdk.tempcredential;
 
 import io.unitycatalog.server.base.ServerConfig;
 import io.unitycatalog.server.base.catalog.CatalogOperations;
-import io.unitycatalog.server.base.credentials.BaseTemporaryModelVersionCredentialsTest;
-import io.unitycatalog.server.base.credentials.TemporaryCredentialsOperations;
 import io.unitycatalog.server.base.model.ModelOperations;
 import io.unitycatalog.server.base.schema.SchemaOperations;
+import io.unitycatalog.server.base.tempcredential.BaseTemporaryModelVersionCredentialTest;
+import io.unitycatalog.server.base.tempcredential.TemporaryCredentialOperations;
 import io.unitycatalog.server.sdk.catalog.SdkCatalogOperations;
 import io.unitycatalog.server.sdk.models.SdkModelOperations;
 import io.unitycatalog.server.sdk.schema.SdkSchemaOperations;
 import io.unitycatalog.server.utils.TestUtils;
 
-public class SdkTemporaryModelVersionCredentialsTest
-    extends BaseTemporaryModelVersionCredentialsTest {
+public class SdkTemporaryModelVersionCredentialTest
+    extends BaseTemporaryModelVersionCredentialTest {
 
   @Override
   protected CatalogOperations createCatalogOperations(ServerConfig config) {
@@ -30,8 +30,8 @@ public class SdkTemporaryModelVersionCredentialsTest
   }
 
   @Override
-  protected TemporaryCredentialsOperations createTemporaryCredentialsOperations(
+  protected TemporaryCredentialOperations createTemporaryCredentialsOperations(
       ServerConfig config) {
-    return new SdkTemporaryCredentialsOperations(TestUtils.createApiClient(config));
+    return new SdkTemporaryCredentialOperations(TestUtils.createApiClient(config));
   }
 }
