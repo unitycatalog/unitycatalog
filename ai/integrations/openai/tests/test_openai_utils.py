@@ -44,24 +44,30 @@ def test_generate_tool_call_messages(client: DatabricksFunctionClient):
 def test_generate_tool_call_messages_with_tracing(client: DatabricksFunctionClient):
     function_name = "ml__test__test_func"
     function_arguments = '{"arg1": "value1"}'
-    result = "[{\"page_content\": \"This is the page content.\"}]"
+    result = '[{"page_content": "This is the page content."}]'
 
     response = mock_chat_completion_response(
         function=Function(name=function_name, arguments=function_arguments),
     )
-    
+
     function_mock = mock.MagicMock()
     function_mock.name = function_name
 
-    with mock.patch.object(client, "get_function", return_value=function_mock), \
-        mock.patch.object(client, "validate_input_params"), \
-        mock.patch.object(client, "_execute_uc_function", return_value=FunctionExecutionResult(format="SCALAR", value=result)):
-
+    with (
+        mock.patch.object(client, "get_function", return_value=function_mock),
+        mock.patch.object(client, "validate_input_params"),
+        mock.patch.object(
+            client,
+            "_execute_uc_function",
+            return_value=FunctionExecutionResult(format="SCALAR", value=result),
+        ),
+    ):
         import mlflow
+
         mlflow.openai.autolog()
-        
+
         generate_tool_call_messages(response=response, client=client)
-        
+
         trace = mlflow.get_last_active_trace()
         assert trace is not None
         assert trace.info.execution_time_ms is not None

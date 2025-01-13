@@ -724,9 +724,7 @@ class UnitycatalogFunctionClient(BaseFunctionClient):
 
                 self.func_cache[function_info.name] = lru_cache()(func)
 
-                return FunctionExecutionResult(
-                    format="SCALAR", value=str(result)
-                )
+                return FunctionExecutionResult(format="SCALAR", value=str(result))
             except Exception as e:
                 return FunctionExecutionResult(error=str(e))
 

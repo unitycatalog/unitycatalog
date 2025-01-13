@@ -156,7 +156,7 @@ class BaseFunctionClient(ABC):
             function_info = self.get_function(function_name, **kwargs)
             parameters = parameters or {}
             self.validate_input_params(function_info.input_params, parameters)
-            
+
             start_time_ns = time.time_ns()
             result = self._execute_uc_function(function_info, parameters, **kwargs)
             end_time_ns = time.time_ns()

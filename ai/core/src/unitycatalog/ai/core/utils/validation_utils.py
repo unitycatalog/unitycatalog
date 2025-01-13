@@ -179,7 +179,7 @@ def autologging_is_enabled(integration_name):
     Checks if autologging is enabled in MLflow for the provided integration name.
 
     Args:
-        integration_name: The integration for which to check if autologging is enabled, e.x. 
+        integration_name: The integration for which to check if autologging is enabled, e.x.
         langchain, openai, etc.
 
     Returns:
