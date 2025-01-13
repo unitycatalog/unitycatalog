@@ -195,7 +195,7 @@ AS $$
 """
     return FunctionInputOutput(
         sql_body=sql_body,
-        inputs=[{"query":"What is Databricks Partner Connect?"}],
+        inputs=[{"query": "What is Databricks Partner Connect?"}],
         output=retriever_output,
     )
 
