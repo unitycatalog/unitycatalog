@@ -1,12 +1,14 @@
 import json
 import logging
 import threading
+import time
 from abc import ABC, abstractmethod
 from copy import deepcopy
 from dataclasses import dataclass
 from typing import Any, Callable, Dict, Literal, Optional
 
 from unitycatalog.ai.core.paged_list import PagedList
+from unitycatalog.ai.core.utils.function_processing_utils import auto_trace_retriever
 
 _logger = logging.getLogger(__name__)
 
@@ -154,7 +156,16 @@ class BaseFunctionClient(ABC):
             function_info = self.get_function(function_name, **kwargs)
             parameters = parameters or {}
             self.validate_input_params(function_info.input_params, parameters)
-            return self._execute_uc_function(function_info, parameters, **kwargs)
+            
+            start_time_ns = time.time_ns()
+            result = self._execute_uc_function(function_info, parameters, **kwargs)
+            end_time_ns = time.time_ns()
+
+            if kwargs.get("autologging_enabled", False):
+                auto_trace_retriever(
+                    function_info.name, parameters, result.value, start_time_ns, end_time_ns
+                )
+            return result
 
     @abstractmethod
     def _execute_uc_function(

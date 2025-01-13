@@ -317,39 +317,38 @@ def auto_trace_retriever(
     start_time_ns: int,
     end_time_ns: int,
 ):
-    try:
-        output = ast.literal_eval(result)
+    output = ast.literal_eval(result)
 
-        if is_valid_retriever_output(output):
-            import mlflow
-            from mlflow import MlflowClient
-            from mlflow.entities import SpanType
+    if is_valid_retriever_output(output):
+        import mlflow
+        from mlflow import MlflowClient
+        from mlflow.entities import SpanType
 
-            client = MlflowClient()
-            common_params = dict(
-                name=function_name,
-                span_type=SpanType.RETRIEVER,
-                inputs=parameters,
-                start_time_ns=start_time_ns,
+        client = MlflowClient()
+        common_params = dict(
+            name=function_name,
+            span_type=SpanType.RETRIEVER,
+            inputs=parameters,
+            start_time_ns=start_time_ns,
+        )
+
+        if parent_span := mlflow.get_current_active_span():
+            span = client.start_span(
+                request_id=parent_span.request_id,
+                parent_id=parent_span.span_id,
+                **common_params,
             )
-
-            if parent_span := mlflow.get_current_active_span():
-                span = client.start_span(
-                    request_id=parent_span.request_id,
-                    parent_id=parent_span.span_id,
-                    **common_params,
-                )
-                client.end_span(
-                    request_id=span.request_id,
-                    span_id=span.span_id,
-                    outputs=output,
-                    end_time_ns=end_time_ns,
-                )
-            else:
-                span = client.start_trace(**common_params)
-                client.end_trace(
-                    request_id=span.request_id, outputs=output, end_time_ns=end_time_ns
-                )
-    except Exception as e:
+            client.end_span(
+                request_id=span.request_id,
+                span_id=span.span_id,
+                outputs=output,
+                end_time_ns=end_time_ns,
+            )
+        else:
+            span = client.start_trace(**common_params)
+            client.end_trace(
+                request_id=span.request_id, outputs=output, end_time_ns=end_time_ns
+            )
+    # except Exception as e:
         # Ignoring exceptions because auto-tracing retriever is not essential
-        pass
+    #     pass

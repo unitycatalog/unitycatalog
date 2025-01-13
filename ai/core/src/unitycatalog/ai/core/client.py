@@ -14,7 +14,6 @@ from typing_extensions import override
 from unitycatalog.ai.core.base import BaseFunctionClient, FunctionExecutionResult
 from unitycatalog.ai.core.paged_list import PagedList
 from unitycatalog.ai.core.utils.callable_utils_oss import generate_function_info
-from unitycatalog.ai.core.utils.function_processing_utils import auto_trace_retriever
 from unitycatalog.ai.core.utils.type_utils import column_type_to_python_type
 from unitycatalog.ai.core.utils.validation_utils import (
     FullFunctionName,
@@ -713,11 +712,9 @@ class UnitycatalogFunctionClient(BaseFunctionClient):
     def _execute_uc_function(
         self, function_info: FunctionInfo, parameters: Dict[str, Any], **kwargs: Any
     ) -> FunctionExecutionResult:
-        start_time_ns = time.time_ns()
-
         if function_info.name in self.func_cache:
             result = self.func_cache[function_info.name](**parameters)
-            function_execution_result = FunctionExecutionResult(format="SCALAR", value=str(result))
+            return FunctionExecutionResult(format="SCALAR", value=str(result))
         else:
             python_function = dynamically_construct_python_function(function_info)
             exec(python_function, self.func_cache)
@@ -728,20 +725,11 @@ class UnitycatalogFunctionClient(BaseFunctionClient):
 
                 self.func_cache[function_info.name] = lru_cache()(func)
 
-                function_execution_result = FunctionExecutionResult(
+                return FunctionExecutionResult(
                     format="SCALAR", value=str(result)
                 )
             except Exception as e:
                 return FunctionExecutionResult(error=str(e))
-
-        end_time_ns = time.time_ns()
-
-        if kwargs.get("autologging_enabled", False):
-            auto_trace_retriever(
-                function_info.name, parameters, str(result), start_time_ns, end_time_ns
-            )
-
-        return function_execution_result
 
     async def delete_function_async(
         self,
