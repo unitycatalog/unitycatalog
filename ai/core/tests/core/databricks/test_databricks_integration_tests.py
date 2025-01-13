@@ -19,6 +19,7 @@ from tests.core.databricks.function_definitions import (
     function_with_struct_input,
     function_with_table_output,
     function_with_timestamp_input,
+    function_with_retriever_output,
     python_function_with_array_input,
     python_function_with_binary_input,
     python_function_with_date_input,
@@ -83,6 +84,26 @@ def test_create_and_execute_function(
         for input_example in function_sample.inputs:
             result = client.execute_function(func_name, input_example)
             assert result.value == function_sample.output
+
+
+@retry_flaky_test()
+@requires_databricks
+def test_create_and_execute_retriever_function(client: DatabricksFunctionClient):
+    import mlflow
+
+    with generate_func_name_and_cleanup(client, schema=SCHEMA) as func_name:
+        function_sample = function_with_retriever_output(func_name)
+        client.create_function(sql_function_body=function_sample.sql_body)
+        for input_example in function_sample.inputs:
+            result = client.execute_function(func_name, input_example, autologging_enabled=True)
+            assert result.value == function_sample.output
+
+            trace = mlflow.get_last_active_trace()
+            assert trace is not None
+            assert trace.info.execution_time_ms is not None
+            assert trace.data.request == input_example
+            assert trace.data.response == function_sample.output
+            assert trace.data.spans[0].name == func_name
 
 
 @retry_flaky_test()

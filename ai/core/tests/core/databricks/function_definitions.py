@@ -184,6 +184,22 @@ RETURN SELECT extract(DAYOFWEEK_ISO FROM day), day
     )
 
 
+def function_with_retriever_output(func_name: str) -> FunctionInputOutput:
+    retriever_output = '[{"page_content": "# Technology partners\n## What is Databricks Partner Connect?\n", "metadata": {"similarity_score": 0.010178182, "chunk_id": "0217a07ba2fec61865ce408043acf1cf", "url": "https://docs.databricks.com/partner-connect/walkthrough-fivetran.html"}}]'
+    sql_body = f"""CREATE FUNCTION {func_name}(query STRING)
+RETURNS STRING
+LANGUAGE PYTHON
+AS $$
+    return {retriever_output}
+    $$
+"""
+    return FunctionInputOutput(
+        sql_body=sql_body,
+        inputs=[{"query":"What is Databricks Partner Connect?"}],
+        output=retriever_output,
+    )
+
+
 class PythonFunctionInputOutput(NamedTuple):
     func: Callable
     inputs: List[Dict[str, Any]]
