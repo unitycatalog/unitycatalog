@@ -142,8 +142,18 @@ def validate_function_name_length(function_name: str) -> None:
         )
 
 
-def is_valid_retriever_output(outputs: Any) -> bool:
-    if not isinstance(outputs, list):
+def is_valid_retriever_output(output: Any) -> bool:
+    """
+    Checks if the given output follows the retriever format for MLflow, which is a list of Documents
+    or dictionaries that follow the Document format.
+
+    Args:
+        output: The value to determine if it is a valid retriever output.
+
+    Returns:
+        bool: If the provided output is a valid retriever output.
+    """
+    if not isinstance(output, list):
         return False
 
     def is_valid_retriever_item(item: Any) -> bool:
@@ -154,17 +164,27 @@ def is_valid_retriever_output(outputs: Any) -> bool:
 
         if isinstance(item, dict):
             try:
-                document = Document(**item)
+                _ = Document(**item)
                 return True
             except TypeError:
                 return False
 
         return False
 
-    return all(is_valid_retriever_item(item) for item in outputs)
+    return all(is_valid_retriever_item(item) for item in output)
 
 
 def autologging_is_enabled(integration_name):
+    """
+    Checks if autologging is enabled in MLflow for the provided integration name.
+
+    Args:
+        integration_name: The integration for which to check if autologging is enabled, e.x. 
+        langchain, openai, etc.
+
+    Returns:
+        bool: If autologging is enabled for the provided integration.
+    """
     try:
         from mlflow.utils.autologging_utils import autologging_is_disabled
 

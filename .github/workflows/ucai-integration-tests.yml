@@ -137,6 +137,7 @@ jobs:
           pip install core/.
           echo "PYTHONPATH=$(pwd)/core/src:\$PYTHONPATH" >> $GITHUB_ENV
           pip install integrations/openai[dev]
+          pip install mlflow
       - name: Run OpenAI Tests
         run: |
           pytest integrations/openai/tests --ignore=integrations/openai/tests/test_openai_toolkit_oss.py

@@ -317,6 +317,17 @@ def auto_trace_retriever(
     start_time_ns: int,
     end_time_ns: int,
 ):
+    """
+    If the given function is a retriever, trace the function given the provided start and end time.
+    A function is considered a retriever if the result is of valid retriever output format.
+
+    Args:
+        function_name: The function name.
+        parameters: The input parameters to the function.
+        result: The output result of the function.
+        start_time_ns: The start time of the function in nanoseconds.
+        end_time_ns: The end time of the function in nanoseconds.
+    """
     try:
         output = ast.literal_eval(result)
 
@@ -351,5 +362,5 @@ def auto_trace_retriever(
                     request_id=span.request_id, outputs=output, end_time_ns=end_time_ns
                 )
     except Exception as e:
-        # Ignoring exceptions because auto-tracing retriever is not essential
+        # Ignoring exceptions because auto-tracing retriever is not essential functionality
         pass
