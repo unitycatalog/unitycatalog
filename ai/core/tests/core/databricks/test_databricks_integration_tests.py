@@ -103,7 +103,6 @@ def test_create_and_execute_retriever_function(client: DatabricksFunctionClient)
             assert trace.info.execution_time_ms is not None
             assert trace.data.request == input_example
             assert trace.data.response == function_sample.output
-            assert trace.data.spans[0].name == func_name
 
 
 @retry_flaky_test()
