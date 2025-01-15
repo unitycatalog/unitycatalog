@@ -42,7 +42,7 @@ public abstract class BaseServerTest {
       ServerProperties initServerProperties = new ServerProperties(serverProperties);
       hibernateConfigurator = new HibernateConfigurator(initServerProperties);
       unityCatalogServer =
-          new UnityCatalogServer.Builder()
+          UnityCatalogServer.builder()
               .port(port)
               .serverProperties(initServerProperties)
               .build();

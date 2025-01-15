@@ -25,7 +25,10 @@ public class CredentialOperations {
   private final AzureCredentialVendor azureCredentialVendor;
   private final GcpCredentialVendor gcpCredentialVendor;
 
-  public CredentialOperations(AwsCredentialVendor awsCredentialVendor, AzureCredentialVendor azureCredentialVendor, GcpCredentialVendor gcpCredentialVendor) {
+  public CredentialOperations(
+          AwsCredentialVendor awsCredentialVendor,
+          AzureCredentialVendor azureCredentialVendor,
+          GcpCredentialVendor gcpCredentialVendor) {
     this.awsCredentialVendor = awsCredentialVendor;
     this.azureCredentialVendor = azureCredentialVendor;
     this.gcpCredentialVendor = gcpCredentialVendor;
