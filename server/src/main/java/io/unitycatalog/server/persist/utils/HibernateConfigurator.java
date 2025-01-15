@@ -64,7 +64,6 @@ public class HibernateConfigurator {
   public static Properties setupHibernateProperties(ServerProperties serverProperties) {
     Path hibernatePropertiesPath = Paths.get("etc/conf/hibernate.properties");
     Properties hibernateProperties = new Properties();
-    hibernateProperties.setProperty("hibernate.show_sql", "true");
     if (!hibernatePropertiesPath.toFile().exists()) {
       LOGGER.warn("Hibernate properties file not found: {}", hibernatePropertiesPath);
       hibernateProperties.setProperty("hibernate.connection.driver_class", "org.h2.Driver");
