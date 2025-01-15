@@ -37,6 +37,7 @@ jobs:
           pip install core/.
           echo "PYTHONPATH=$(pwd)/core/src:\$PYTHONPATH" >> $GITHUB_ENV
           pip install integrations/crewai[dev]
+          pip install mlflow
       - name: Run tests
         run: |
           pytest integrations/crewai/tests --ignore=integrations/crewai/tests/test_crewai_toolkit_oss.py
@@ -62,6 +63,7 @@ jobs:
           pip install core/.
           echo "PYTHONPATH=$(pwd)/core/src:\$PYTHONPATH" >> $GITHUB_ENV
           pip install integrations/langchain[dev]
+          pip install mlflow
       - name: Run Langchain Tests
         run: |
           pytest integrations/langchain/tests --ignore=integrations/langchain/tests/test_langchain_toolkit_oss.py
@@ -87,6 +89,7 @@ jobs:
           pip install core/.
           echo "PYTHONPATH=$(pwd)/core/src:\$PYTHONPATH" >> $GITHUB_ENV
           pip install integrations/anthropic[dev]
+          pip install mlflow
       - name: Run Anthropic Tests
         run: |
           pytest integrations/anthropic/tests --ignore=integrations/anthropic/tests/test_anthropic_toolkit_oss.py
@@ -112,6 +115,7 @@ jobs:
           pip install core/.
           echo "PYTHONPATH=$(pwd)/core/src:\$PYTHONPATH" >> $GITHUB_ENV
           pip install integrations/llama_index[dev]
+          pip install mlflow
       - name: Run LlamaIndex Tests
         run: |
           pytest integrations/llama_index/tests --ignore=integrations/llama_index/tests/test_llama_index_toolkit_oss.py
@@ -163,6 +167,7 @@ jobs:
           pip install core/.
           echo "PYTHONPATH=$(pwd)/core/src:\$PYTHONPATH" >> $GITHUB_ENV
           pip install integrations/autogen[dev]
+          pip install mlflow
       - name: Run tests
         run: |
           pytest integrations/autogen/tests --ignore=integrations/autogen/tests/test_autogen_toolkit_oss.py

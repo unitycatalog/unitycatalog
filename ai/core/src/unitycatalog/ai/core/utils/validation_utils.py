@@ -174,21 +174,23 @@ def is_valid_retriever_output(output: Any) -> bool:
     return all(is_valid_retriever_item(item) for item in output)
 
 
-def autologging_is_enabled(integration_name):
+def mlflow_tracing_enabled(integration_name):
     """
-    Checks if autologging is enabled in MLflow for the provided integration name.
+    Checks if autologging tracing is enabled in MLflow for the provided integration name.
 
     Args:
-        integration_name: The integration for which to check if autologging is enabled, e.x.
+        integration_name: The integration for which to check if autologging tracing is enabled, e.x.
         langchain, openai, etc.
 
     Returns:
-        bool: If autologging is enabled for the provided integration.
+        bool: If autologging tracing is enabled for the provided integration.
     """
     try:
-        from mlflow.utils.autologging_utils import autologging_is_disabled
+        from mlflow.utils.autologging_utils import autologging_is_disabled, get_autologging_config
 
-        return not autologging_is_disabled(integration_name)
+        return not autologging_is_disabled(integration_name) and get_autologging_config(
+            integration_name, "log_traces"
+        )
     except Exception:
         # Default to autologging disabled
         return False

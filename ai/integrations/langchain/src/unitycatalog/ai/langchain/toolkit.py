@@ -11,7 +11,7 @@ from unitycatalog.ai.core.utils.function_processing_utils import (
     get_tool_name,
     process_function_names,
 )
-from unitycatalog.ai.core.utils.validation_utils import autologging_is_enabled
+from unitycatalog.ai.core.utils.validation_utils import mlflow_tracing_enabled
 
 
 class UnityCatalogTool(StructuredTool):
@@ -92,7 +92,7 @@ class UCFunctionToolkit(BaseModel):
             result = client.execute_function(
                 function_name=function_name,
                 parameters=args_json,
-                autologging_enabled=autologging_is_enabled("langchain"),
+                enable_trace_as_retriever=mlflow_tracing_enabled("langchain"),
             )
             return result.to_json()
 

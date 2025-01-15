@@ -106,7 +106,7 @@ def test_tool_call_data_execute(mock_client):
     mock_client.execute_function.assert_called_once_with(
         "catalog__schema__get_weather",
         {"location": "San Francisco, CA", "unit": "celsius"},
-        autologging_enabled=False,
+        enable_trace_as_retriever=False,
     )
     assert result == "65 degrees"
 

@@ -14,7 +14,7 @@ from unitycatalog.ai.core.utils.function_processing_utils import (
     get_tool_name,
     process_function_names,
 )
-from unitycatalog.ai.core.utils.validation_utils import autologging_is_enabled
+from unitycatalog.ai.core.utils.validation_utils import mlflow_tracing_enabled
 
 # Ensure the version of autogen is compatible
 if version.parse(autogen_version) >= version.parse("0.4.0"):
@@ -173,7 +173,7 @@ class UCFunctionToolkit(BaseModel):
             result = client.execute_function(
                 function_name=function_name,
                 parameters=args_json,
-                autologging_enabled=autologging_is_enabled("autogen"),
+                enable_trace_as_retriever=mlflow_tracing_enabled("autogen"),
             )
 
             return result.to_json()

@@ -94,7 +94,7 @@ def test_generate_tool_call_messages_multiple_choices(client: DatabricksFunction
         ]
     )
 
-    def mock_execute_function(func_name, arguments, autologging_enabled=False):
+    def mock_execute_function(func_name, arguments, enable_trace_as_retriever=False):
         return FunctionExecutionResult(format="SCALAR", value=arguments["arg1"])
 
     with mock.patch.object(client, "execute_function", side_effect=mock_execute_function):

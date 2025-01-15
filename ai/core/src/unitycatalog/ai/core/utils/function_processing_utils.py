@@ -1,10 +1,12 @@
 import ast
+import csv
 import decimal
 import inspect
 import json
 import logging
 import os
 from hashlib import md5
+from io import StringIO
 from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
 from pydantic import Field, create_model
@@ -313,7 +315,7 @@ def supported_function_info_types():
 def auto_trace_retriever(
     function_name: str,
     parameters: Dict[str, Any],
-    result: str,
+    result: "FunctionExecutionResult",
     start_time_ns: int,
     end_time_ns: int,
 ):
@@ -329,7 +331,16 @@ def auto_trace_retriever(
         end_time_ns: The end time of the function in nanoseconds.
     """
     try:
-        output = ast.literal_eval(result)
+        if result.format == "CSV":
+            cleaned_result = result.value.encode("utf-8").decode("unicode_escape")
+            csv_buffer = StringIO(cleaned_result)
+            reader = csv.DictReader(csv_buffer)
+            output = [
+                {**row, "metadata": ast.literal_eval(row["metadata"])} if "metadata" in row else row
+                for row in reader
+            ]
+        else:
+            output = ast.literal_eval(result) if isinstance(result, str) else result
 
         if is_valid_retriever_output(output):
             import mlflow
@@ -363,4 +374,7 @@ def auto_trace_retriever(
                 )
     except Exception as e:
         # Ignoring exceptions because auto-tracing retriever is not essential functionality
+        _logger.debug(
+            f"Skipping tracing {function_name} as a retriever because of the following error:\n {e}"
+        )
         pass

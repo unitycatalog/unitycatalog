@@ -185,6 +185,43 @@ def test_uc_function_to_langchain_tool():
         assert json.loads(tool.func(x="some_string"))["value"] == "some_string"
 
 
+def test_langchain_tool_trace_as_retriever():
+    client = get_client()
+    mock_function_info = generate_function_info()
+    result_value = '[{"page_content": "This is the page content."}]'
+
+    with (
+        mock.patch(
+            "unitycatalog.ai.core.databricks.DatabricksFunctionClient.get_function",
+            return_value=mock_function_info,
+        ),
+        mock.patch(
+            "unitycatalog.ai.core.databricks.DatabricksFunctionClient._execute_uc_function",
+            return_value=FunctionExecutionResult(format="SCALAR", value=result_value),
+        ),
+        mock.patch(
+            "unitycatalog.ai.core.databricks.DatabricksFunctionClient.validate_input_params"
+        ),
+    ):
+        import mlflow
+
+        mlflow.langchain.autolog()
+
+        tool = UCFunctionToolkit.uc_function_to_langchain_tool(
+            client=client, function_name=f"{CATALOG}.{SCHEMA}.test"
+        )
+
+        result = tool.func(x="some_string")
+        assert json.loads(result)["value"] == result_value
+
+        trace = mlflow.get_last_active_trace()
+        assert trace is not None
+        assert trace.info.execution_time_ms is not None
+        assert trace.data.request == '{"x": "some_string"}'
+        assert trace.data.response == result_value
+        assert trace.data.spans[0].name == f"{CATALOG}.{SCHEMA}.test"
+
+
 @requires_databricks
 @pytest.mark.parametrize("use_serverless", [True, False])
 def test_langgraph_agents(monkeypatch, use_serverless):

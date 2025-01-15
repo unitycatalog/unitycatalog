@@ -280,6 +280,43 @@ def test_toolkit_with_invalid_function_input(client):
             tool.fn(**invalid_inputs)
 
 
+def test_toolkit_with_tracing_as_retriever(client):
+    """Test toolkit with invalid input parameters for function conversion."""
+    mock_function_info = generate_function_info()
+
+    with (
+        mock.patch(
+            "unitycatalog.ai.core.utils.client_utils.validate_or_set_default_client",
+            return_value=client,
+        ),
+        mock.patch.object(client, "get_function", return_value=mock_function_info),
+        mock.patch.object(
+            client,
+            "_execute_uc_function",
+            return_value=generate_mock_execution_result(
+                "[{'page_content': 'This is the page content.'}]"
+            ),
+        ),
+    ):
+        import mlflow
+
+        mlflow.llama_index.autolog()
+
+        tool = UCFunctionToolkit.uc_function_to_llama_tool(
+            function_name="catalog.schema.test", client=client, return_direct=True
+        )
+        tool.fn({"query": "some input"})
+
+        import mlflow
+
+        trace = mlflow.get_last_active_trace()
+        assert trace is not None
+        assert trace.info.execution_time_ms is not None
+        assert trace.data.request == {"query": "some input"}
+        assert trace.data.response == "[{'page_content': 'This is the page content.'}]"
+        assert trace.data.spans[0].name == mock_function_info.full_function_name
+
+
 def test_extract_properties_success():
     data = {
         "properties": {"location": "abc", "temp": 1234},
@@ -467,7 +504,7 @@ def test_uc_function_to_llama_tool_mocked():
         mock_client.execute_function.assert_called_once_with(
             function_name="catalog.schema.test_function",
             parameters=input_args,
-            autologging_enabled=False,
+            enable_trace_as_retriever=False,
         )
 
 
@@ -507,5 +544,5 @@ def test_toolkit_with_invalid_function_input_mocked():
         mock_client.execute_function.assert_called_once_with(
             function_name="catalog.schema.test_function",
             parameters=invalid_inputs,
-            autologging_enabled=False,
+            enable_trace_as_retriever=False,
         )

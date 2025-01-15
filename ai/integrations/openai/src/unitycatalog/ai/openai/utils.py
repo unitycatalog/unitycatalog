@@ -5,7 +5,7 @@ from openai.types.chat.chat_completion import ChatCompletion
 from unitycatalog.ai.core.base import BaseFunctionClient
 from unitycatalog.ai.core.utils.client_utils import validate_or_set_default_client
 from unitycatalog.ai.core.utils.function_processing_utils import construct_original_function_name
-from unitycatalog.ai.core.utils.validation_utils import autologging_is_enabled
+from unitycatalog.ai.core.utils.validation_utils import mlflow_tracing_enabled
 
 
 # TODO: support async
@@ -39,7 +39,7 @@ def generate_tool_call_messages(
             arguments = json.loads(tool_call.function.arguments)
             func_name = construct_original_function_name(tool_call.function.name)
             result = client.execute_function(
-                func_name, arguments, autologging_enabled=autologging_is_enabled("openai")
+                func_name, arguments, enable_trace_as_retriever=mlflow_tracing_enabled("openai")
             )
             function_call_result_message = {
                 "role": "tool",

@@ -95,7 +95,9 @@ def test_create_and_execute_retriever_function(client: DatabricksFunctionClient)
         function_sample = function_with_retriever_output(func_name)
         client.create_function(sql_function_body=function_sample.sql_body)
         for input_example in function_sample.inputs:
-            result = client.execute_function(func_name, input_example, autologging_enabled=True)
+            result = client.execute_function(
+                func_name, input_example, enable_trace_as_retriever=True
+            )
             assert result.value == function_sample.output
 
             trace = mlflow.get_last_active_trace()
