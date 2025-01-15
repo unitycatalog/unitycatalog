@@ -41,8 +41,8 @@ public class PopulateTestDatabase {
     HibernateConfigurator hibernateConfigurator = new HibernateConfigurator(serverProperties);
     Repositories repositories =
         new Repositories(hibernateConfigurator.getSessionFactory(), serverProperties);
-    CatalogRepository catalogRepository = repositories.getRepository(CatalogRepository.class);
-    SchemaRepository schemaRepository = repositories.getRepository(SchemaRepository.class);
+    CatalogRepository catalogRepository = repositories.getCatalogRepository();
+    SchemaRepository schemaRepository = repositories.getSchemaRepository();
 
     String catalogName = "unity";
     String schemaName = "default";
@@ -465,8 +465,7 @@ public class PopulateTestDatabase {
     stringLowercaseFunctionParameterInfos.setParameters(List.of(lowercaseParam));
     stringLowercaseFunction.setInputParams(stringLowercaseFunctionParameterInfos);
 
-    FunctionRepository functionRepository =
-        repositories.getRepository(FunctionRepository.class);
+    FunctionRepository functionRepository = repositories.getFunctionRepository();
     functionRepository.createFunction(new CreateFunctionRequest().functionInfo(sumFunction));
 
     functionRepository.createFunction(

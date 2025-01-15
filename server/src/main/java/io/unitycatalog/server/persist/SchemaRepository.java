@@ -96,9 +96,7 @@ public class SchemaRepository {
 
   public SchemaInfoDAO getSchemaDAO(Session session, String catalogName, String schemaName) {
     CatalogInfoDAO catalog =
-        repositories
-            .getCatalogRepository()
-            .getCatalogDAO(session, catalogName);
+        repositories.getCatalogRepository().getCatalogDAO(session, catalogName);
     if (catalog == null) {
       throw new BaseException(ErrorCode.NOT_FOUND, "Catalog not found: " + catalogName);
     }
@@ -112,9 +110,7 @@ public class SchemaRepository {
 
   public UUID getCatalogId(Session session, String catalogName) {
     CatalogInfoDAO catalogInfo =
-        repositories
-            .getCatalogRepository()
-            .getCatalogDAO(session, catalogName);
+        repositories.getCatalogRepository().getCatalogDAO(session, catalogName);
     if (catalogInfo == null) {
       throw new BaseException(ErrorCode.NOT_FOUND, "Catalog not found: " + catalogName);
     }
@@ -247,9 +243,7 @@ public class SchemaRepository {
         throw new BaseException(ErrorCode.INVALID_ARGUMENT, "Invalid schema name: " + fullName);
       }
       CatalogInfoDAO catalog =
-          repositories
-              .getCatalogRepository()
-              .getCatalogDAO(session, namespace[0]);
+          repositories.getCatalogRepository().getCatalogDAO(session, namespace[0]);
       if (catalog == null) {
         throw new BaseException(ErrorCode.NOT_FOUND, "Catalog not found: " + namespace[0]);
       }
@@ -299,9 +293,7 @@ public class SchemaRepository {
                     true,
                     true);
         for (TableInfo tableInfo : listTablesResponse.getTables()) {
-          repositories
-              .getTableRepository()
-              .deleteTable(session, schemaId, tableInfo.getName());
+          repositories.getTableRepository().deleteTable(session, schemaId, tableInfo.getName());
         }
         nextToken = listTablesResponse.getNextPageToken();
       } while (nextToken != null);
@@ -334,9 +326,7 @@ public class SchemaRepository {
                     Optional.empty(),
                     Optional.ofNullable(nextToken));
         for (VolumeInfo volumeInfo : listVolumesResponse.getVolumes()) {
-          repositories
-              .getVolumeRepository()
-              .deleteVolume(session, schemaId, volumeInfo.getName());
+          repositories.getVolumeRepository().deleteVolume(session, schemaId, volumeInfo.getName());
         }
         nextToken = listVolumesResponse.getNextPageToken();
       } while (nextToken != null);

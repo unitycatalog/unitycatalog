@@ -42,10 +42,7 @@ public abstract class BaseServerTest {
       ServerProperties initServerProperties = new ServerProperties(serverProperties);
       hibernateConfigurator = new HibernateConfigurator(initServerProperties);
       unityCatalogServer =
-          UnityCatalogServer.builder()
-              .port(port)
-              .serverProperties(initServerProperties)
-              .build();
+          UnityCatalogServer.builder().port(port).serverProperties(initServerProperties).build();
       unityCatalogServer.start();
       serverConfig.setServerUrl("http://localhost:" + port);
     }

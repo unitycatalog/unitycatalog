@@ -2,14 +2,12 @@ package io.unitycatalog.server.persist;
 
 import io.unitycatalog.server.persist.utils.FileOperations;
 import io.unitycatalog.server.utils.ServerProperties;
-import java.util.HashMap;
-import java.util.Map;
 import lombok.Getter;
 import org.hibernate.SessionFactory;
 
 /**
- * Each server instance has a set of repositories that are used to interact with the database.
- * This class is used to create repositories once which are then shared across the server instance.
+ * Each server instance has a set of repositories that are used to interact with the database. This
+ * class is used to create repositories once which are then shared across the server instance.
  */
 @Getter
 public class Repositories {

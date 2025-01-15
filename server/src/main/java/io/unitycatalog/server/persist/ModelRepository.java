@@ -799,9 +799,7 @@ public class ModelRepository {
 
   public UUID getSchemaId(Session session, String catalogName, String schemaName) {
     SchemaInfoDAO schemaInfo =
-        repositories
-            .getSchemaRepository()
-            .getSchemaDAO(session, catalogName, schemaName);
+        repositories.getSchemaRepository().getSchemaDAO(session, catalogName, schemaName);
     if (schemaInfo == null) {
       throw new BaseException(ErrorCode.NOT_FOUND, "Schema not found: " + schemaName);
     }
@@ -810,9 +808,7 @@ public class ModelRepository {
 
   public UUID getCatalogId(Session session, String catalogName) {
     CatalogInfoDAO catalogInfo =
-        repositories
-            .getCatalogRepository()
-            .getCatalogDAO(session, catalogName);
+        repositories.getCatalogRepository().getCatalogDAO(session, catalogName);
     if (catalogInfo == null) {
       throw new BaseException(ErrorCode.NOT_FOUND, "Catalog not found: " + catalogName);
     }

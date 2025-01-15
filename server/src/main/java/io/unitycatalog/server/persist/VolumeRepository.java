@@ -127,9 +127,7 @@ public class VolumeRepository {
   public VolumeInfoDAO getVolumeDAO(
       Session session, String catalogName, String schemaName, String volumeName) {
     SchemaInfoDAO schemaInfo =
-        repositories
-            .getSchemaRepository()
-            .getSchemaDAO(session, catalogName, schemaName);
+        repositories.getSchemaRepository().getSchemaDAO(session, catalogName, schemaName);
     if (schemaInfo == null) {
       throw new BaseException(
           ErrorCode.NOT_FOUND, "Schema not found: " + catalogName + "." + schemaName);
@@ -187,9 +185,7 @@ public class VolumeRepository {
 
   public UUID getSchemaId(Session session, String catalogName, String schemaName) {
     SchemaInfoDAO schemaInfo =
-        repositories
-            .getSchemaRepository()
-            .getSchemaDAO(session, catalogName, schemaName);
+        repositories.getSchemaRepository().getSchemaDAO(session, catalogName, schemaName);
     if (schemaInfo == null) {
       throw new BaseException(ErrorCode.NOT_FOUND, "Schema not found: " + schemaName);
     }
@@ -312,9 +308,7 @@ public class VolumeRepository {
       Transaction tx = session.beginTransaction();
       try {
         SchemaInfoDAO schemaInfo =
-            repositories
-                .getSchemaRepository()
-                .getSchemaDAO(session, catalog, schema);
+            repositories.getSchemaRepository().getSchemaDAO(session, catalog, schema);
         if (schemaInfo == null) {
           throw new BaseException(
               ErrorCode.NOT_FOUND, "Schema not found: " + catalog + "." + schema);
