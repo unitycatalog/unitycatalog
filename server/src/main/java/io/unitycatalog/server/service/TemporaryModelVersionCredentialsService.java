@@ -11,12 +11,11 @@ import io.unitycatalog.server.exception.ErrorCode;
 import io.unitycatalog.server.exception.GlobalExceptionHandler;
 import io.unitycatalog.server.model.*;
 import io.unitycatalog.server.persist.ModelRepository;
-import io.unitycatalog.server.persist.RepositoryFactory;
+import io.unitycatalog.server.persist.Repositories;
 import io.unitycatalog.server.persist.UserRepository;
 import io.unitycatalog.server.persist.utils.RepositoryUtils;
 import io.unitycatalog.server.service.credential.CredentialOperations;
 import io.unitycatalog.server.service.credential.CredentialContext;
-import io.unitycatalog.server.utils.IdentityUtils;
 import lombok.SneakyThrows;
 
 import java.util.Map;
@@ -39,12 +38,12 @@ public class TemporaryModelVersionCredentialsService {
     private final KeyMapper keyMapper;
 
     @SneakyThrows
-    public TemporaryModelVersionCredentialsService(UnityCatalogAuthorizer authorizer, CredentialOperations credentialOps, RepositoryFactory repositoryFactory) {
+    public TemporaryModelVersionCredentialsService(UnityCatalogAuthorizer authorizer, CredentialOperations credentialOps, Repositories repositories) {
         this.evaluator = new UnityAccessEvaluator(authorizer);
         this.credentialOps = credentialOps;
-        this.keyMapper = new KeyMapper(repositoryFactory);
-        this.modelRepository = repositoryFactory.getRepository(ModelRepository.class);
-        this.userRepository = repositoryFactory.getRepository(UserRepository.class);
+        this.keyMapper = new KeyMapper(repositories);
+        this.modelRepository = repositories.getModelRepository();
+        this.userRepository = repositories.getUserRepository();
     }
 
     @Post("")

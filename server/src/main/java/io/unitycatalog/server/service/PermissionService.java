@@ -20,7 +20,6 @@ import io.unitycatalog.server.model.SecurableType;
 import io.unitycatalog.server.model.UpdatePermissions;
 import io.unitycatalog.server.persist.*;
 import io.unitycatalog.server.persist.model.Privileges;
-import io.unitycatalog.server.utils.IdentityUtils;
 
 import java.util.HashSet;
 import java.util.List;
@@ -52,16 +51,16 @@ public class PermissionService {
   private final VolumeRepository volumeRepository;
   private final ModelRepository modelRepository;
 
-  public PermissionService(UnityCatalogAuthorizer authorizer, RepositoryFactory repositoryFactory) {
+  public PermissionService(UnityCatalogAuthorizer authorizer, Repositories repositories) {
     this.authorizer = authorizer;
-    this.metastoreRepository = repositoryFactory.getRepository(MetastoreRepository.class);
-    this.userRepository = repositoryFactory.getRepository(UserRepository.class);
-    this.catalogRepository = repositoryFactory.getRepository(CatalogRepository.class);
-    this.schemaRepository = repositoryFactory.getRepository(SchemaRepository.class);
-    this.tableRepository = repositoryFactory.getRepository(TableRepository.class);
-    this.functionRepository = repositoryFactory.getRepository(FunctionRepository.class);
-    this.volumeRepository = repositoryFactory.getRepository(VolumeRepository.class);
-    this.modelRepository = repositoryFactory.getRepository(ModelRepository.class);
+    this.metastoreRepository = repositories.getMetastoreRepository();
+    this.userRepository = repositories.getUserRepository();
+    this.catalogRepository = repositories.getCatalogRepository();
+    this.schemaRepository = repositories.getSchemaRepository();
+    this.tableRepository = repositories.getTableRepository();
+    this.functionRepository = repositories.getFunctionRepository();
+    this.volumeRepository = repositories.getVolumeRepository();
+    this.modelRepository = repositories.getModelRepository();
   }
 
   // TODO: Refactor these endpoints to use a common method with dynamic resource id lookup

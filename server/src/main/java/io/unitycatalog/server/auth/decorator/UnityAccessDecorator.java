@@ -19,9 +19,8 @@ import io.unitycatalog.server.auth.annotation.AuthorizeKeys;
 import io.unitycatalog.server.exception.BaseException;
 import io.unitycatalog.server.exception.ErrorCode;
 import io.unitycatalog.server.model.SecurableType;
-import io.unitycatalog.server.persist.RepositoryFactory;
+import io.unitycatalog.server.persist.Repositories;
 import io.unitycatalog.server.persist.UserRepository;
-import io.unitycatalog.server.utils.IdentityUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -64,14 +63,14 @@ public class UnityAccessDecorator implements DecoratingHttpServiceFunction {
 
   private final UnityAccessEvaluator evaluator;
 
-  public UnityAccessDecorator(UnityCatalogAuthorizer authorizer, RepositoryFactory repositoryFactory) throws BaseException {
+  public UnityAccessDecorator(UnityCatalogAuthorizer authorizer, Repositories repositories) throws BaseException {
     try {
       evaluator = new UnityAccessEvaluator(authorizer);
     } catch (NoSuchMethodException | IllegalAccessException e) {
       throw new BaseException(ErrorCode.INTERNAL, "Error initializing access evaluator.", e);
     }
-    keyMapper = new KeyMapper(repositoryFactory);
-    userRepository = repositoryFactory.getRepository(UserRepository.class);
+    keyMapper = new KeyMapper(repositories);
+    userRepository = repositories.getUserRepository();
   }
 
   @Override

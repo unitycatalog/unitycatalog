@@ -23,7 +23,7 @@ import io.unitycatalog.server.exception.ErrorCode;
 import io.unitycatalog.server.exception.ExceptionHandlingDecorator;
 import io.unitycatalog.server.exception.GlobalExceptionHandler;
 import io.unitycatalog.server.persist.MetastoreRepository;
-import io.unitycatalog.server.persist.RepositoryFactory;
+import io.unitycatalog.server.persist.Repositories;
 import io.unitycatalog.server.persist.utils.HibernateConfigurator;
 import io.unitycatalog.server.security.SecurityConfiguration;
 import io.unitycatalog.server.security.SecurityContext;
@@ -106,22 +106,22 @@ public class UnityCatalogServer {
     HibernateConfigurator hibernateConfigurator =
         new HibernateConfigurator(unityCatalogServerBuilder.serverProperties);
     // Init all repositories
-    RepositoryFactory repositoryFactory =
-        new RepositoryFactory(hibernateConfigurator.getSessionFactory(), serverProperties);
+    Repositories repositories =
+        new Repositories(hibernateConfigurator.getSessionFactory(), serverProperties);
     // Init metastore
-    repositoryFactory.getRepository(MetastoreRepository.class).initMetastoreIfNeeded();
+    repositories.getRepository(MetastoreRepository.class).initMetastoreIfNeeded();
     // Init authorizer
     UnityCatalogAuthorizer authorizer =
         initializeAuthorizer(
-            unityCatalogServerBuilder.serverProperties, hibernateConfigurator, repositoryFactory);
+            unityCatalogServerBuilder.serverProperties, hibernateConfigurator, repositories);
     // Init services
-    addApiServices(armeriaServerBuilder, unityCatalogServerBuilder, authorizer, repositoryFactory);
+    addApiServices(armeriaServerBuilder, unityCatalogServerBuilder, authorizer, repositories);
     // Init security decorators
     addSecurityDecorators(
         armeriaServerBuilder,
         unityCatalogServerBuilder.serverProperties,
         authorizer,
-        repositoryFactory);
+            repositories);
 
     return armeriaServerBuilder.build();
   }
@@ -129,12 +129,12 @@ public class UnityCatalogServer {
   private UnityCatalogAuthorizer initializeAuthorizer(
       ServerProperties serverProperties,
       HibernateConfigurator hibernateConfigurator,
-      RepositoryFactory repositoryFactory) {
+      Repositories repositories) {
     if (serverProperties.isAuthorizationEnabled()) {
       try {
         LOGGER.info("Initializing JCasbinAuthorizer...");
         UnityCatalogAuthorizer authorizer = new JCasbinAuthorizer(hibernateConfigurator);
-        new UnityAccessUtil(repositoryFactory).initializeAdmin(authorizer);
+        new UnityAccessUtil(repositories).initializeAdmin(authorizer);
         return authorizer;
       } catch (Exception e) {
         throw new BaseException(ErrorCode.INTERNAL, "Problem initializing authorizer.");
@@ -149,32 +149,32 @@ public class UnityCatalogServer {
       ServerBuilder armeriaServerBuilder,
       UnityCatalogServer.Builder unityCatalogServerBuilder,
       UnityCatalogAuthorizer authorizer,
-      RepositoryFactory repositoryFactory) {
+      Repositories repositories) {
     LOGGER.info("Adding Unity Catalog API services...");
     CredentialOperations credentialOperations = unityCatalogServerBuilder.credentialOperations;
 
     // Add support for Unity Catalog APIs
     AuthService authService =
         new AuthService(
-            securityContext, unityCatalogServerBuilder.serverProperties, repositoryFactory);
-    PermissionService permissionService = new PermissionService(authorizer, repositoryFactory);
-    Scim2UserService scim2UserService = new Scim2UserService(authorizer, repositoryFactory);
-    Scim2SelfService scim2SelfService = new Scim2SelfService(authorizer, repositoryFactory);
-    CatalogService catalogService = new CatalogService(authorizer, repositoryFactory);
-    SchemaService schemaService = new SchemaService(authorizer, repositoryFactory);
-    VolumeService volumeService = new VolumeService(authorizer, repositoryFactory);
-    TableService tableService = new TableService(authorizer, repositoryFactory);
-    FunctionService functionService = new FunctionService(authorizer, repositoryFactory);
-    ModelService modelService = new ModelService(authorizer, repositoryFactory);
-    MetastoreService metastoreService = new MetastoreService(repositoryFactory);
+            securityContext, unityCatalogServerBuilder.serverProperties, repositories);
+    PermissionService permissionService = new PermissionService(authorizer, repositories);
+    Scim2UserService scim2UserService = new Scim2UserService(authorizer, repositories);
+    Scim2SelfService scim2SelfService = new Scim2SelfService(authorizer, repositories);
+    CatalogService catalogService = new CatalogService(authorizer, repositories);
+    SchemaService schemaService = new SchemaService(authorizer, repositories);
+    VolumeService volumeService = new VolumeService(authorizer, repositories);
+    TableService tableService = new TableService(authorizer, repositories);
+    FunctionService functionService = new FunctionService(authorizer, repositories);
+    ModelService modelService = new ModelService(authorizer, repositories);
+    MetastoreService metastoreService = new MetastoreService(repositories);
     // TODO: combine these into a single service in a follow-up PR
     TemporaryTableCredentialsService temporaryTableCredentialsService =
-        new TemporaryTableCredentialsService(authorizer, credentialOperations, repositoryFactory);
+        new TemporaryTableCredentialsService(authorizer, credentialOperations, repositories);
     TemporaryVolumeCredentialsService temporaryVolumeCredentialsService =
-        new TemporaryVolumeCredentialsService(authorizer, credentialOperations, repositoryFactory);
+        new TemporaryVolumeCredentialsService(authorizer, credentialOperations, repositories);
     TemporaryModelVersionCredentialsService temporaryModelVersionCredentialsService =
         new TemporaryModelVersionCredentialsService(
-            authorizer, credentialOperations, repositoryFactory);
+            authorizer, credentialOperations, repositories);
     TemporaryPathCredentialsService temporaryPathCredentialsService =
         new TemporaryPathCredentialsService(credentialOperations);
 
@@ -234,7 +234,7 @@ public class UnityCatalogServer {
         catalogService,
         schemaService,
         tableService,
-        repositoryFactory);
+            repositories);
   }
 
   private void addIcebergApiServices(
@@ -244,7 +244,7 @@ public class UnityCatalogServer {
       CatalogService catalogService,
       SchemaService schemaService,
       TableService tableService,
-      RepositoryFactory repositoryFactory) {
+      Repositories repositories) {
     LOGGER.info("Adding Iceberg services...");
 
     // Add support for Iceberg REST APIs
@@ -266,7 +266,7 @@ public class UnityCatalogServer {
             tableService,
             tableConfigService,
             metadataService,
-            repositoryFactory),
+                repositories),
         icebergRequestConverter,
         icebergResponseConverter);
   }
@@ -275,14 +275,14 @@ public class UnityCatalogServer {
       ServerBuilder armeriaServerBuilder,
       ServerProperties serverProperties,
       UnityCatalogAuthorizer authorizer,
-      RepositoryFactory repositoryFactory) {
+      Repositories repositories) {
     // TODO: eventually might want to make this secure-by-default.
     if (serverProperties.isAuthorizationEnabled()) {
       LOGGER.info("Enabling security decorators...");
 
       // Note: Decorators are applied in reverse order.
       UnityAccessDecorator accessDecorator =
-          new UnityAccessDecorator(authorizer, repositoryFactory);
+          new UnityAccessDecorator(authorizer, repositories);
       armeriaServerBuilder.routeDecorator().pathPrefix(BASE_PATH).build(accessDecorator);
       armeriaServerBuilder
           .routeDecorator()
@@ -290,7 +290,7 @@ public class UnityCatalogServer {
           .exclude(CONTROL_PATH + "auth/tokens")
           .build(accessDecorator);
 
-      AuthDecorator authDecorator = new AuthDecorator(securityContext, repositoryFactory);
+      AuthDecorator authDecorator = new AuthDecorator(securityContext, repositories);
       armeriaServerBuilder.routeDecorator().pathPrefix(BASE_PATH).build(authDecorator);
       armeriaServerBuilder
           .routeDecorator()

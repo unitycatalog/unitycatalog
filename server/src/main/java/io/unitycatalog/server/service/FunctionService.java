@@ -20,7 +20,6 @@ import io.unitycatalog.server.model.ListFunctionsResponse;
 import io.unitycatalog.server.model.SchemaInfo;
 import io.unitycatalog.server.persist.*;
 import io.unitycatalog.server.persist.model.Privileges;
-import io.unitycatalog.server.utils.IdentityUtils;
 import lombok.SneakyThrows;
 
 import java.util.List;
@@ -46,14 +45,14 @@ public class FunctionService {
   private final UnityAccessEvaluator evaluator;
 
   @SneakyThrows
-  public FunctionService(UnityCatalogAuthorizer authorizer, RepositoryFactory repositoryFactory) {
+  public FunctionService(UnityCatalogAuthorizer authorizer, Repositories repositories) {
     this.authorizer = authorizer;
     this.evaluator = new UnityAccessEvaluator(authorizer);
-    this.catalogRepository = repositoryFactory.getRepository(CatalogRepository.class);
-    this.schemaRepository = repositoryFactory.getRepository(SchemaRepository.class);
-    this.functionRepository = repositoryFactory.getRepository(FunctionRepository.class);
-    this.metastoreRepository = repositoryFactory.getRepository(MetastoreRepository.class);
-    this.userRepository = repositoryFactory.getRepository(UserRepository.class);
+    this.catalogRepository = repositories.getCatalogRepository();
+    this.schemaRepository = repositories.getSchemaRepository();
+    this.functionRepository = repositories.getFunctionRepository();
+    this.metastoreRepository = repositories.getMetastoreRepository();
+    this.userRepository = repositories.getUserRepository();
   }
 
   @Post("")

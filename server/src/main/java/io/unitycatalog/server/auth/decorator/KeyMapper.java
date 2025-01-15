@@ -29,14 +29,14 @@ public class KeyMapper {
   private final ModelRepository modelRepository;
   private final MetastoreRepository metastoreRepository;
 
-  public KeyMapper(RepositoryFactory repositoryFactory) {
-    this.catalogRepository = repositoryFactory.getRepository(CatalogRepository.class);
-    this.schemaRepository = repositoryFactory.getRepository(SchemaRepository.class);
-    this.tableRepository = repositoryFactory.getRepository(TableRepository.class);
-    this.volumeRepository = repositoryFactory.getRepository(VolumeRepository.class);
-    this.functionRepository = repositoryFactory.getRepository(FunctionRepository.class);
-    this.modelRepository = repositoryFactory.getRepository(ModelRepository.class);
-    this.metastoreRepository = repositoryFactory.getRepository(MetastoreRepository.class);
+  public KeyMapper(Repositories repositories) {
+    this.catalogRepository = repositories.getCatalogRepository();
+    this.schemaRepository = repositories.getSchemaRepository();
+    this.tableRepository = repositories.getTableRepository();
+    this.volumeRepository = repositories.getVolumeRepository();
+    this.functionRepository = repositories.getFunctionRepository();
+    this.modelRepository = repositories.getModelRepository();
+    this.metastoreRepository = repositories.getMetastoreRepository();
   }
 
   public Map<SecurableType, Object> mapResourceKeys(Map<SecurableType, Object> resourceKeys) {

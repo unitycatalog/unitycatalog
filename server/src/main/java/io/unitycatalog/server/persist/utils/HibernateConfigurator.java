@@ -16,6 +16,10 @@ import org.hibernate.service.ServiceRegistry;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+/**
+ * This class configures the hibernate properties and adds annotated classes to the session factory.
+ * This session factory is used to create sessions for database operations across the repository classes.
+ */
 @Getter
 public class HibernateConfigurator {
 

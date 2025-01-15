@@ -20,16 +20,16 @@ import org.slf4j.LoggerFactory;
 
 public class VolumeRepository {
   private static final Logger LOGGER = LoggerFactory.getLogger(VolumeRepository.class);
-  private final RepositoryFactory repositoryFactory;
+  private final Repositories repositories;
   private final SessionFactory sessionFactory;
   private final FileOperations fileOperations;
   private static final PagedListingHelper<VolumeInfoDAO> LISTING_HELPER =
       new PagedListingHelper<>(VolumeInfoDAO.class);
 
-  public VolumeRepository(RepositoryFactory repositoryFactory, SessionFactory sessionFactory) {
-    this.repositoryFactory = repositoryFactory;
+  public VolumeRepository(Repositories repositories, SessionFactory sessionFactory) {
+    this.repositories = repositories;
     this.sessionFactory = sessionFactory;
-    this.fileOperations = repositoryFactory.getFileOperations();
+    this.fileOperations = repositories.getFileOperations();
   }
 
   public VolumeInfo createVolume(CreateVolumeRequestContent createVolumeRequest) {
@@ -69,8 +69,8 @@ public class VolumeRepository {
       Transaction tx = session.beginTransaction();
       try {
         SchemaInfoDAO schemaInfoDAO =
-            repositoryFactory
-                .getRepository(SchemaRepository.class)
+            repositories
+                .getSchemaRepository()
                 .getSchemaDAO(
                     session,
                     createVolumeRequest.getCatalogName(),
@@ -127,8 +127,8 @@ public class VolumeRepository {
   public VolumeInfoDAO getVolumeDAO(
       Session session, String catalogName, String schemaName, String volumeName) {
     SchemaInfoDAO schemaInfo =
-        repositoryFactory
-            .getRepository(SchemaRepository.class)
+        repositories
+            .getSchemaRepository()
             .getSchemaDAO(session, catalogName, schemaName);
     if (schemaInfo == null) {
       throw new BaseException(
@@ -187,8 +187,8 @@ public class VolumeRepository {
 
   public UUID getSchemaId(Session session, String catalogName, String schemaName) {
     SchemaInfoDAO schemaInfo =
-        repositoryFactory
-            .getRepository(SchemaRepository.class)
+        repositories
+            .getSchemaRepository()
             .getSchemaDAO(session, catalogName, schemaName);
     if (schemaInfo == null) {
       throw new BaseException(ErrorCode.NOT_FOUND, "Schema not found: " + schemaName);
@@ -312,8 +312,8 @@ public class VolumeRepository {
       Transaction tx = session.beginTransaction();
       try {
         SchemaInfoDAO schemaInfo =
-            repositoryFactory
-                .getRepository(SchemaRepository.class)
+            repositories
+                .getSchemaRepository()
                 .getSchemaDAO(session, catalog, schema);
         if (schemaInfo == null) {
           throw new BaseException(

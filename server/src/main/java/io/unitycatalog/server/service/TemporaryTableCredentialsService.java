@@ -13,12 +13,11 @@ import io.unitycatalog.server.model.GenerateTemporaryTableCredential;
 import io.unitycatalog.server.model.SecurableType;
 import io.unitycatalog.server.model.TableInfo;
 import io.unitycatalog.server.model.TableOperation;
-import io.unitycatalog.server.persist.RepositoryFactory;
+import io.unitycatalog.server.persist.Repositories;
 import io.unitycatalog.server.persist.TableRepository;
 import io.unitycatalog.server.persist.UserRepository;
 import io.unitycatalog.server.service.credential.CredentialContext;
 import io.unitycatalog.server.service.credential.CredentialOperations;
-import io.unitycatalog.server.utils.IdentityUtils;
 import lombok.SneakyThrows;
 
 import java.util.Collections;
@@ -40,12 +39,12 @@ public class TemporaryTableCredentialsService {
   private final KeyMapper keyMapper;
 
   @SneakyThrows
-  public TemporaryTableCredentialsService(UnityCatalogAuthorizer authorizer, CredentialOperations credentialOps, RepositoryFactory repositoryFactory) {
+  public TemporaryTableCredentialsService(UnityCatalogAuthorizer authorizer, CredentialOperations credentialOps, Repositories repositories) {
     this.evaluator = new UnityAccessEvaluator(authorizer);
     this.credentialOps = credentialOps;
-    this.keyMapper = new KeyMapper(repositoryFactory);
-    this.tableRepository = repositoryFactory.getRepository(TableRepository.class);
-    this.userRepository = repositoryFactory.getRepository(UserRepository.class);
+    this.keyMapper = new KeyMapper(repositories);
+    this.tableRepository = repositories.getTableRepository();
+    this.userRepository = repositories.getUserRepository();
   }
 
   @Post("")

@@ -17,7 +17,7 @@ import io.unitycatalog.server.auth.annotation.AuthorizeExpression;
 import io.unitycatalog.server.auth.annotation.AuthorizeKey;
 import io.unitycatalog.server.exception.GlobalExceptionHandler;
 import io.unitycatalog.server.exception.Scim2RuntimeException;
-import io.unitycatalog.server.persist.RepositoryFactory;
+import io.unitycatalog.server.persist.Repositories;
 import io.unitycatalog.server.persist.UserRepository;
 import io.unitycatalog.server.security.JwtClaim;
 
@@ -26,9 +26,9 @@ public class Scim2SelfService {
   private final UserRepository userRepository;
   private final UnityCatalogAuthorizer authorizer;
 
-  public Scim2SelfService(UnityCatalogAuthorizer authorizer, RepositoryFactory repositoryFactory) {
+  public Scim2SelfService(UnityCatalogAuthorizer authorizer, Repositories repositories) {
     this.authorizer = authorizer;
-    this.userRepository = repositoryFactory.getRepository(UserRepository.class);
+    this.userRepository = repositories.getUserRepository();
   }
 
   @Get("")

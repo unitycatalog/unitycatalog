@@ -23,13 +23,13 @@ import org.slf4j.LoggerFactory;
 
 public class CatalogRepository {
   private static final Logger LOGGER = LoggerFactory.getLogger(CatalogRepository.class);
-  private final RepositoryFactory repositoryFactory;
+  private final Repositories repositories;
   private final SessionFactory sessionFactory;
   private static final PagedListingHelper<CatalogInfoDAO> LISTING_HELPER =
       new PagedListingHelper<>(CatalogInfoDAO.class);
 
-  public CatalogRepository(RepositoryFactory repositoryFactory, SessionFactory sessionFactory) {
-    this.repositoryFactory = repositoryFactory;
+  public CatalogRepository(Repositories repositories, SessionFactory sessionFactory) {
+    this.repositories = repositories;
     this.sessionFactory = sessionFactory;
   }
 
@@ -197,8 +197,8 @@ public class CatalogRepository {
         if (catalogInfo != null) {
           // Check if there are any schemas in the catalog
           List<SchemaInfo> schemas =
-              repositoryFactory
-                  .getRepository(SchemaRepository.class)
+              repositories
+                  .getSchemaRepository()
                   .listSchemas(
                       session,
                       catalogInfo.getId(),
@@ -214,8 +214,8 @@ public class CatalogRepository {
             String nextToken = null;
             do {
               ListSchemasResponse listSchemasResponse =
-                  repositoryFactory
-                      .getRepository(SchemaRepository.class)
+                  repositories
+                      .getSchemaRepository()
                       .listSchemas(
                           session,
                           catalogInfo.getId(),
@@ -223,8 +223,8 @@ public class CatalogRepository {
                           Optional.empty(),
                           Optional.ofNullable(nextToken));
               for (SchemaInfo schemaInfo : listSchemasResponse.getSchemas()) {
-                repositoryFactory
-                    .getRepository(SchemaRepository.class)
+                repositories
+                    .getSchemaRepository()
                     .deleteSchema(
                         session,
                         catalogInfo.getId(),

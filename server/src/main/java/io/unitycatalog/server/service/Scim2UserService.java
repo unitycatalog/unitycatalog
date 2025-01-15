@@ -30,7 +30,7 @@ import io.unitycatalog.server.exception.BaseException;
 import io.unitycatalog.server.exception.ErrorCode;
 import io.unitycatalog.server.exception.GlobalExceptionHandler;
 import io.unitycatalog.server.exception.Scim2RuntimeException;
-import io.unitycatalog.server.persist.RepositoryFactory;
+import io.unitycatalog.server.persist.Repositories;
 import io.unitycatalog.server.persist.UserRepository;
 import io.unitycatalog.server.persist.model.CreateUser;
 import io.unitycatalog.server.persist.model.UpdateUser;
@@ -60,9 +60,9 @@ public class Scim2UserService {
   private final UserRepository userRepository;
   private final UnityCatalogAuthorizer authorizer;
 
-  public Scim2UserService(UnityCatalogAuthorizer authorizer, RepositoryFactory repositoryFactory) {
+  public Scim2UserService(UnityCatalogAuthorizer authorizer, Repositories repositories) {
     this.authorizer = authorizer;
-    this.userRepository = repositoryFactory.getRepository(UserRepository.class);
+    this.userRepository = repositories.getUserRepository();
   }
 
   @Get("")
