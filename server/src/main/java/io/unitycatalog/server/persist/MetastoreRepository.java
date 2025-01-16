@@ -16,7 +16,7 @@ public class MetastoreRepository {
   private static final Logger LOGGER = LoggerFactory.getLogger(MetastoreRepository.class);
   private final SessionFactory sessionFactory;
 
-  public MetastoreRepository(RepositoryFactory repositoryFactory, SessionFactory sessionFactory) {
+  public MetastoreRepository(Repositories repositories, SessionFactory sessionFactory) {
     this.sessionFactory = sessionFactory;
   }
 

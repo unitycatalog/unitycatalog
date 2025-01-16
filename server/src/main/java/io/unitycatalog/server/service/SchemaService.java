@@ -20,7 +20,6 @@ import io.unitycatalog.server.model.SchemaInfo;
 import io.unitycatalog.server.model.UpdateSchema;
 import io.unitycatalog.server.persist.*;
 import io.unitycatalog.server.persist.model.Privileges;
-import io.unitycatalog.server.utils.IdentityUtils;
 import lombok.SneakyThrows;
 
 import java.util.List;
@@ -42,13 +41,13 @@ public class SchemaService {
   private final UnityAccessEvaluator evaluator;
 
   @SneakyThrows
-  public SchemaService(UnityCatalogAuthorizer authorizer, RepositoryFactory repositoryFactory) {
+  public SchemaService(UnityCatalogAuthorizer authorizer, Repositories repositories) {
     this.authorizer = authorizer;
     this.evaluator = new UnityAccessEvaluator(authorizer);
-    this.schemaRepository = repositoryFactory.getRepository(SchemaRepository.class);
-    this.catalogRepository = repositoryFactory.getRepository(CatalogRepository.class);
-    this.metastoreRepository = repositoryFactory.getRepository(MetastoreRepository.class);
-    this.userRepository = repositoryFactory.getRepository(UserRepository.class);
+    this.schemaRepository = repositories.getSchemaRepository();
+    this.catalogRepository = repositories.getCatalogRepository();
+    this.metastoreRepository = repositories.getMetastoreRepository();
+    this.userRepository = repositories.getUserRepository();
   }
 
   @Post("")

@@ -22,7 +22,6 @@ import io.unitycatalog.server.model.UpdateVolumeRequestContent;
 import io.unitycatalog.server.model.VolumeInfo;
 import io.unitycatalog.server.persist.*;
 import io.unitycatalog.server.persist.model.Privileges;
-import io.unitycatalog.server.utils.IdentityUtils;
 import lombok.SneakyThrows;
 
 import java.util.List;
@@ -47,14 +46,14 @@ public class VolumeService {
   private final UnityAccessEvaluator evaluator;
 
   @SneakyThrows
-  public VolumeService(UnityCatalogAuthorizer authorizer, RepositoryFactory repositoryFactory) {
+  public VolumeService(UnityCatalogAuthorizer authorizer, Repositories repositories) {
     this.authorizer = authorizer;
     this.evaluator = new UnityAccessEvaluator(authorizer);
-    this.volumeRepository = repositoryFactory.getRepository(VolumeRepository.class);
-    this.schemaRepository = repositoryFactory.getRepository(SchemaRepository.class);
-    this.catalogRepository = repositoryFactory.getRepository(CatalogRepository.class);
-    this.metastoreRepository = repositoryFactory.getRepository(MetastoreRepository.class);
-    this.userRepository = repositoryFactory.getRepository(UserRepository.class);
+    this.volumeRepository = repositories.getVolumeRepository();
+    this.schemaRepository = repositories.getSchemaRepository();
+    this.catalogRepository = repositories.getCatalogRepository();
+    this.metastoreRepository = repositories.getMetastoreRepository();
+    this.userRepository = repositories.getUserRepository();
   }
 
   @Post("")

@@ -20,7 +20,6 @@ import io.unitycatalog.server.model.SchemaInfo;
 import io.unitycatalog.server.model.TableInfo;
 import io.unitycatalog.server.persist.*;
 import io.unitycatalog.server.persist.model.Privileges;
-import io.unitycatalog.server.utils.IdentityUtils;
 import lombok.SneakyThrows;
 
 import java.util.List;
@@ -46,14 +45,14 @@ public class TableService {
   private final UnityAccessEvaluator evaluator;
 
   @SneakyThrows
-  public TableService(UnityCatalogAuthorizer authorizer, RepositoryFactory repositoryFactory) {
+  public TableService(UnityCatalogAuthorizer authorizer, Repositories repositories) {
     this.authorizer = authorizer;
     this.evaluator = new UnityAccessEvaluator(authorizer);
-    this.tableRepository = repositoryFactory.getRepository(TableRepository.class);
-    this.schemaRepository = repositoryFactory.getRepository(SchemaRepository.class);
-    this.catalogRepository = repositoryFactory.getRepository(CatalogRepository.class);
-    this.metastoreRepository = repositoryFactory.getRepository(MetastoreRepository.class);
-    this.userRepository = repositoryFactory.getRepository(UserRepository.class);
+    this.tableRepository = repositories.getTableRepository();
+    this.schemaRepository = repositories.getSchemaRepository();
+    this.catalogRepository = repositories.getCatalogRepository();
+    this.metastoreRepository = repositories.getMetastoreRepository();
+    this.userRepository = repositories.getUserRepository();
   }
 
   @Post("")

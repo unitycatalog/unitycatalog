@@ -16,6 +16,11 @@ import org.hibernate.service.ServiceRegistry;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+/**
+ * This class configures the hibernate properties and adds annotated classes to the session factory.
+ * This session factory is used to create sessions for database operations across the repository
+ * classes.
+ */
 @Getter
 public class HibernateConfigurator {
 
@@ -59,7 +64,6 @@ public class HibernateConfigurator {
   public static Properties setupHibernateProperties(ServerProperties serverProperties) {
     Path hibernatePropertiesPath = Paths.get("etc/conf/hibernate.properties");
     Properties hibernateProperties = new Properties();
-    hibernateProperties.setProperty("hibernate.show_sql", "true");
     if (!hibernatePropertiesPath.toFile().exists()) {
       LOGGER.warn("Hibernate properties file not found: {}", hibernatePropertiesPath);
       hibernateProperties.setProperty("hibernate.connection.driver_class", "org.h2.Driver");

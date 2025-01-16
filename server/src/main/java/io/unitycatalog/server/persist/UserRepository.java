@@ -27,7 +27,7 @@ public class UserRepository {
   private static final PagedListingHelper<UserDAO> LISTING_HELPER =
       new PagedListingHelper<>(UserDAO.class);
 
-  public UserRepository(RepositoryFactory repositoryFactory, SessionFactory sessionFactory) {
+  public UserRepository(Repositories repositories, SessionFactory sessionFactory) {
     this.sessionFactory = sessionFactory;
   }
 

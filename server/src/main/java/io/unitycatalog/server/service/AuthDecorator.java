@@ -16,7 +16,7 @@ import io.netty.util.AttributeKey;
 import io.unitycatalog.control.model.User;
 import io.unitycatalog.server.exception.AuthorizationException;
 import io.unitycatalog.server.exception.ErrorCode;
-import io.unitycatalog.server.persist.RepositoryFactory;
+import io.unitycatalog.server.persist.Repositories;
 import io.unitycatalog.server.persist.UserRepository;
 import io.unitycatalog.server.security.SecurityContext;
 import io.unitycatalog.server.utils.JwksOperations;
@@ -48,9 +48,9 @@ public class AuthDecorator implements DecoratingHttpServiceFunction {
 
   private final JwksOperations jwksOperations;
 
-  public AuthDecorator(SecurityContext securityContext, RepositoryFactory repositoryFactory) {
+  public AuthDecorator(SecurityContext securityContext, Repositories repositories) {
     this.jwksOperations = new JwksOperations(securityContext);
-    this.userRepository = repositoryFactory.getRepository(UserRepository.class);
+    this.userRepository = repositories.getUserRepository();
   }
 
   @Override

@@ -6,7 +6,7 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import io.unitycatalog.server.model.*;
 import io.unitycatalog.server.persist.CatalogRepository;
 import io.unitycatalog.server.persist.FunctionRepository;
-import io.unitycatalog.server.persist.RepositoryFactory;
+import io.unitycatalog.server.persist.Repositories;
 import io.unitycatalog.server.persist.SchemaRepository;
 import io.unitycatalog.server.persist.dao.ColumnInfoDAO;
 import io.unitycatalog.server.persist.dao.PropertyDAO;
@@ -39,10 +39,10 @@ public class PopulateTestDatabase {
     properties.setProperty("server.env", "dev");
     ServerProperties serverProperties = new ServerProperties(properties);
     HibernateConfigurator hibernateConfigurator = new HibernateConfigurator(serverProperties);
-    RepositoryFactory repositoryFactory =
-        new RepositoryFactory(hibernateConfigurator.getSessionFactory(), serverProperties);
-    CatalogRepository catalogRepository = repositoryFactory.getRepository(CatalogRepository.class);
-    SchemaRepository schemaRepository = repositoryFactory.getRepository(SchemaRepository.class);
+    Repositories repositories =
+        new Repositories(hibernateConfigurator.getSessionFactory(), serverProperties);
+    CatalogRepository catalogRepository = repositories.getCatalogRepository();
+    SchemaRepository schemaRepository = repositories.getSchemaRepository();
 
     String catalogName = "unity";
     String schemaName = "default";
@@ -377,11 +377,11 @@ public class PopulateTestDatabase {
       session.getTransaction().commit();
     }
 
-    insertFunctionSampleData(catalogName, schemaName, repositoryFactory);
+    insertFunctionSampleData(catalogName, schemaName, repositories);
   }
 
   public static void insertFunctionSampleData(
-      String catalog, String schema, RepositoryFactory repositoryFactory) {
+      String catalog, String schema, Repositories repositories) {
 
     // Create function objects
     CreateFunction sumFunction = new CreateFunction();
@@ -465,8 +465,7 @@ public class PopulateTestDatabase {
     stringLowercaseFunctionParameterInfos.setParameters(List.of(lowercaseParam));
     stringLowercaseFunction.setInputParams(stringLowercaseFunctionParameterInfos);
 
-    FunctionRepository functionRepository =
-        repositoryFactory.getRepository(FunctionRepository.class);
+    FunctionRepository functionRepository = repositories.getFunctionRepository();
     functionRepository.createFunction(new CreateFunctionRequest().functionInfo(sumFunction));
 
     functionRepository.createFunction(

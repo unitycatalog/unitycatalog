@@ -19,10 +19,9 @@ import io.unitycatalog.server.model.ListCatalogsResponse;
 import io.unitycatalog.server.model.UpdateCatalog;
 import io.unitycatalog.server.persist.CatalogRepository;
 import io.unitycatalog.server.persist.MetastoreRepository;
-import io.unitycatalog.server.persist.RepositoryFactory;
+import io.unitycatalog.server.persist.Repositories;
 import io.unitycatalog.server.persist.UserRepository;
 import io.unitycatalog.server.persist.model.Privileges;
-import io.unitycatalog.server.utils.IdentityUtils;
 import lombok.SneakyThrows;
 
 import java.util.List;
@@ -42,12 +41,12 @@ public class CatalogService {
   private final UnityAccessEvaluator evaluator;
 
   @SneakyThrows
-  public CatalogService(UnityCatalogAuthorizer authorizer, RepositoryFactory repositoryFactory) {
+  public CatalogService(UnityCatalogAuthorizer authorizer, Repositories repositories) {
     this.authorizer = authorizer;
     this.evaluator = new UnityAccessEvaluator(authorizer);
-    this.catalogRepository = repositoryFactory.getRepository(CatalogRepository.class);
-    this.metastoreRepository = repositoryFactory.getRepository(MetastoreRepository.class);
-    this.userRepository = repositoryFactory.getRepository(UserRepository.class);
+    this.catalogRepository = repositories.getCatalogRepository();
+    this.metastoreRepository = repositories.getMetastoreRepository();
+    this.userRepository = repositories.getUserRepository();
   }
 
   @Post("")

@@ -28,7 +28,7 @@ public abstract class BaseModelCRUDTest extends BaseCRUDTest {
 
   protected abstract ModelOperations createModelOperations(ServerConfig serverConfig);
 
-  String rootBase = "";
+  String rootBase = "/tmp/" + UUID.randomUUID();
 
   @Override
   public void setUpProperties() {
@@ -42,7 +42,6 @@ public abstract class BaseModelCRUDTest extends BaseCRUDTest {
     super.setUp();
     schemaOperations = createSchemaOperations(serverConfig);
     modelOperations = createModelOperations(serverConfig);
-    rootBase = "/tmp/" + UUID.randomUUID();
   }
 
   @AfterEach

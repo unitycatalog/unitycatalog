@@ -24,15 +24,15 @@ import org.slf4j.LoggerFactory;
 public class ModelRepository {
   private static final Logger LOGGER = LoggerFactory.getLogger(ModelRepository.class);
   private final SessionFactory sessionFactory;
-  private final RepositoryFactory repositoryFactory;
+  private final Repositories repositories;
   private final FileOperations fileOperations;
   private static final PagedListingHelper<RegisteredModelInfoDAO> REGISTERED_MODEL_LISTING_HELPER =
       new PagedListingHelper<>(RegisteredModelInfoDAO.class);
 
-  public ModelRepository(RepositoryFactory repositoryFactory, SessionFactory sessionFactory) {
-    this.repositoryFactory = repositoryFactory;
+  public ModelRepository(Repositories repositories, SessionFactory sessionFactory) {
+    this.repositories = repositories;
     this.sessionFactory = sessionFactory;
-    this.fileOperations = repositoryFactory.getFileOperations();
+    this.fileOperations = repositories.getFileOperations();
   }
 
   /** **************** DAO retrieval methods ***************** */
@@ -799,9 +799,7 @@ public class ModelRepository {
 
   public UUID getSchemaId(Session session, String catalogName, String schemaName) {
     SchemaInfoDAO schemaInfo =
-        repositoryFactory
-            .getRepository(SchemaRepository.class)
-            .getSchemaDAO(session, catalogName, schemaName);
+        repositories.getSchemaRepository().getSchemaDAO(session, catalogName, schemaName);
     if (schemaInfo == null) {
       throw new BaseException(ErrorCode.NOT_FOUND, "Schema not found: " + schemaName);
     }
@@ -810,9 +808,7 @@ public class ModelRepository {
 
   public UUID getCatalogId(Session session, String catalogName) {
     CatalogInfoDAO catalogInfo =
-        repositoryFactory
-            .getRepository(CatalogRepository.class)
-            .getCatalogDAO(session, catalogName);
+        repositories.getCatalogRepository().getCatalogDAO(session, catalogName);
     if (catalogInfo == null) {
       throw new BaseException(ErrorCode.NOT_FOUND, "Catalog not found: " + catalogName);
     }

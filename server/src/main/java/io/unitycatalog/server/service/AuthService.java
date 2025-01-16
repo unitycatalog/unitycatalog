@@ -15,7 +15,7 @@ import io.unitycatalog.control.model.User;
 import io.unitycatalog.server.exception.ErrorCode;
 import io.unitycatalog.server.exception.GlobalExceptionHandler;
 import io.unitycatalog.server.exception.OAuthInvalidRequestException;
-import io.unitycatalog.server.persist.RepositoryFactory;
+import io.unitycatalog.server.persist.Repositories;
 import io.unitycatalog.server.persist.UserRepository;
 import io.unitycatalog.server.security.JwtClaim;
 import io.unitycatalog.server.security.SecurityContext;
@@ -73,11 +73,11 @@ public class AuthService {
   public AuthService(
       SecurityContext securityContext,
       ServerProperties serverProperties,
-      RepositoryFactory repositoryFactory) {
+      Repositories repositories) {
     this.securityContext = securityContext;
     this.jwksOperations = new JwksOperations(securityContext);
     this.serverProperties = serverProperties;
-    this.userRepository = repositoryFactory.getRepository(UserRepository.class);
+    this.userRepository = repositories.getUserRepository();
   }
 
   /**

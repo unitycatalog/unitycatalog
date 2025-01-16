@@ -5,14 +5,14 @@ import com.linecorp.armeria.server.annotation.ExceptionHandler;
 import com.linecorp.armeria.server.annotation.Get;
 import io.unitycatalog.server.exception.GlobalExceptionHandler;
 import io.unitycatalog.server.persist.MetastoreRepository;
-import io.unitycatalog.server.persist.RepositoryFactory;
+import io.unitycatalog.server.persist.Repositories;
 
 @ExceptionHandler(GlobalExceptionHandler.class)
 public class MetastoreService {
   private final MetastoreRepository metastoreRepository;
 
-  public MetastoreService(RepositoryFactory repositoryFactory) {
-    this.metastoreRepository = repositoryFactory.getRepository(MetastoreRepository.class);
+  public MetastoreService(Repositories repositories) {
+    this.metastoreRepository = repositories.getMetastoreRepository();
   }
 
   @Get("/metastore_summary")

@@ -25,15 +25,15 @@ import org.slf4j.LoggerFactory;
 public class TableRepository {
   private static final Logger LOGGER = LoggerFactory.getLogger(TableRepository.class);
   private final SessionFactory sessionFactory;
-  private final RepositoryFactory repositoryFactory;
+  private final Repositories repositories;
   private final FileOperations fileOperations;
   private static final PagedListingHelper<TableInfoDAO> LISTING_HELPER =
       new PagedListingHelper<>(TableInfoDAO.class);
 
-  public TableRepository(RepositoryFactory repositoryFactory, SessionFactory sessionFactory) {
-    this.repositoryFactory = repositoryFactory;
+  public TableRepository(Repositories repositories, SessionFactory sessionFactory) {
+    this.repositories = repositories;
     this.sessionFactory = sessionFactory;
-    this.fileOperations = repositoryFactory.getFileOperations();
+    this.fileOperations = repositories.getFileOperations();
   }
 
   public TableInfo getTableById(String tableId) {
@@ -214,9 +214,7 @@ public class TableRepository {
 
   public UUID getSchemaId(Session session, String catalogName, String schemaName) {
     SchemaInfoDAO schemaInfo =
-        repositoryFactory
-            .getRepository(SchemaRepository.class)
-            .getSchemaDAO(session, catalogName, schemaName);
+        repositories.getSchemaRepository().getSchemaDAO(session, catalogName, schemaName);
     if (schemaInfo == null) {
       throw new BaseException(ErrorCode.NOT_FOUND, "Schema not found: " + schemaName);
     }

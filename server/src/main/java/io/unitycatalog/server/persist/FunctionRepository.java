@@ -23,13 +23,13 @@ import org.slf4j.LoggerFactory;
 
 public class FunctionRepository {
   private static final Logger LOGGER = LoggerFactory.getLogger(FunctionRepository.class);
-  private final RepositoryFactory repositoryFactory;
+  private final Repositories repositories;
   private final SessionFactory sessionFactory;
   private static final PagedListingHelper<FunctionInfoDAO> LISTING_HELPER =
       new PagedListingHelper<>(FunctionInfoDAO.class);
 
-  public FunctionRepository(RepositoryFactory repositoryFactory, SessionFactory sessionFactory) {
-    this.repositoryFactory = repositoryFactory;
+  public FunctionRepository(Repositories repositories, SessionFactory sessionFactory) {
+    this.repositories = repositories;
     this.sessionFactory = sessionFactory;
   }
 
@@ -82,9 +82,7 @@ public class FunctionRepository {
         String catalogName = createFunction.getCatalogName();
         String schemaName = createFunction.getSchemaName();
         SchemaInfoDAO schemaInfo =
-            repositoryFactory
-                .getRepository(SchemaRepository.class)
-                .getSchemaDAO(session, catalogName, schemaName);
+            repositories.getSchemaRepository().getSchemaDAO(session, catalogName, schemaName);
         if (schemaInfo == null) {
           throw new BaseException(ErrorCode.NOT_FOUND, "Schema not found: " + schemaName);
         }
@@ -124,9 +122,7 @@ public class FunctionRepository {
 
   public UUID getSchemaId(Session session, String catalogName, String schemaName) {
     SchemaInfoDAO schemaInfo =
-        repositoryFactory
-            .getRepository(SchemaRepository.class)
-            .getSchemaDAO(session, catalogName, schemaName);
+        repositories.getSchemaRepository().getSchemaDAO(session, catalogName, schemaName);
     if (schemaInfo == null) {
       throw new BaseException(ErrorCode.NOT_FOUND, "Schema not found: " + schemaName);
     }
@@ -223,9 +219,7 @@ public class FunctionRepository {
   public FunctionInfoDAO getFunctionDAO(
       Session session, String catalogName, String schemaName, String functionName) {
     SchemaInfoDAO schemaInfo =
-        repositoryFactory
-            .getRepository(SchemaRepository.class)
-            .getSchemaDAO(session, catalogName, schemaName);
+        repositories.getSchemaRepository().getSchemaDAO(session, catalogName, schemaName);
     if (schemaInfo == null) {
       throw new BaseException(ErrorCode.NOT_FOUND, "Schema not found: " + schemaName);
     }
@@ -253,9 +247,7 @@ public class FunctionRepository {
         }
         String catalogName = parts[0], schemaName = parts[1], functionName = parts[2];
         SchemaInfoDAO schemaInfo =
-            repositoryFactory
-                .getRepository(SchemaRepository.class)
-                .getSchemaDAO(session, catalogName, schemaName);
+            repositories.getSchemaRepository().getSchemaDAO(session, catalogName, schemaName);
         if (schemaInfo == null) {
           throw new BaseException(ErrorCode.NOT_FOUND, "Schema not found: " + schemaName);
         }

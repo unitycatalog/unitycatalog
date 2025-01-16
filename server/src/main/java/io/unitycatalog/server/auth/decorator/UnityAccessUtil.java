@@ -4,7 +4,7 @@ import io.unitycatalog.control.model.User;
 import io.unitycatalog.server.auth.UnityCatalogAuthorizer;
 import io.unitycatalog.server.exception.BaseException;
 import io.unitycatalog.server.persist.MetastoreRepository;
-import io.unitycatalog.server.persist.RepositoryFactory;
+import io.unitycatalog.server.persist.Repositories;
 import io.unitycatalog.server.persist.UserRepository;
 import io.unitycatalog.server.persist.model.CreateUser;
 import io.unitycatalog.server.persist.model.Privileges;
@@ -15,9 +15,9 @@ public class UnityAccessUtil {
   private final UserRepository userRepository;
   private final MetastoreRepository metastoreRepository;
 
-  public UnityAccessUtil(RepositoryFactory repositoryFactory) {
-    this.userRepository = repositoryFactory.getRepository(UserRepository.class);
-    this.metastoreRepository = repositoryFactory.getRepository(MetastoreRepository.class);
+  public UnityAccessUtil(Repositories repositories) {
+    this.userRepository = repositories.getUserRepository();
+    this.metastoreRepository = repositories.getMetastoreRepository();
   }
 
   public void initializeAdmin(UnityCatalogAuthorizer authorizer) {

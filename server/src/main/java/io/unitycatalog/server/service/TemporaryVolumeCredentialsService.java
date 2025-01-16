@@ -13,12 +13,11 @@ import io.unitycatalog.server.model.GenerateTemporaryVolumeCredential;
 import io.unitycatalog.server.model.SecurableType;
 import io.unitycatalog.server.model.VolumeInfo;
 import io.unitycatalog.server.model.VolumeOperation;
-import io.unitycatalog.server.persist.RepositoryFactory;
+import io.unitycatalog.server.persist.Repositories;
 import io.unitycatalog.server.persist.UserRepository;
 import io.unitycatalog.server.persist.VolumeRepository;
 import io.unitycatalog.server.service.credential.CredentialContext;
 import io.unitycatalog.server.service.credential.CredentialOperations;
-import io.unitycatalog.server.utils.IdentityUtils;
 import lombok.SneakyThrows;
 
 import java.util.Collections;
@@ -40,12 +39,12 @@ public class TemporaryVolumeCredentialsService {
   private final KeyMapper keyMapper;
 
   @SneakyThrows
-  public TemporaryVolumeCredentialsService(UnityCatalogAuthorizer authorizer, CredentialOperations credentialOps, RepositoryFactory repositoryFactory) {
+  public TemporaryVolumeCredentialsService(UnityCatalogAuthorizer authorizer, CredentialOperations credentialOps, Repositories repositories) {
     this.evaluator = new UnityAccessEvaluator(authorizer);
     this.credentialOps = credentialOps;
-    this.keyMapper = new KeyMapper(repositoryFactory);
-    this.volumeRepository = repositoryFactory.getRepository(VolumeRepository.class);
-    this.userRepository = repositoryFactory.getRepository(UserRepository.class);
+    this.keyMapper = new KeyMapper(repositories);
+    this.volumeRepository = repositories.getVolumeRepository();
+    this.userRepository = repositories.getUserRepository();
   }
 
   @Post("")

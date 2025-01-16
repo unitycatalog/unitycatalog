@@ -18,7 +18,6 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 
-import io.unitycatalog.server.utils.IdentityUtils;
 import lombok.SneakyThrows;
 
 import static io.unitycatalog.server.model.SecurableType.CATALOG;
@@ -39,14 +38,14 @@ public class ModelService {
   private final UnityAccessEvaluator evaluator;
 
   @SneakyThrows
-  public ModelService(UnityCatalogAuthorizer authorizer, RepositoryFactory repositoryFactory) {
+  public ModelService(UnityCatalogAuthorizer authorizer, Repositories repositories) {
     this.authorizer = authorizer;
     this.evaluator = new UnityAccessEvaluator(authorizer);
-    this.catalogRepository = repositoryFactory.getRepository(CatalogRepository.class);
-    this.schemaRepository = repositoryFactory.getRepository(SchemaRepository.class);
-    this.modelRepository = repositoryFactory.getRepository(ModelRepository.class);
-    this.metastoreRepository = repositoryFactory.getRepository(MetastoreRepository.class);
-    this.userRepository = repositoryFactory.getRepository(UserRepository.class);
+    this.catalogRepository = repositories.getCatalogRepository();
+    this.schemaRepository = repositories.getSchemaRepository();
+    this.modelRepository = repositories.getModelRepository();
+    this.metastoreRepository = repositories.getMetastoreRepository();
+    this.userRepository = repositories.getUserRepository();
   }
 
   @Post("")
