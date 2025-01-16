@@ -291,7 +291,6 @@ def test_toolkit_with_invalid_function_input(client):
 )
 def test_toolkit_with_tracing_as_retriever(client, format: str, function_output: str):
     mock_function_info = generate_function_info()
-    trace_response = '[{"page_content": "# Technology partners\\n## What is Databricks Partner Connect?\\n", "metadata": {"similarity_score": 0.010178182, "chunk_id": "0217a07ba2fec61865ce408043acf1cf"}}, {"page_content": "# Technology partners\\n## What is Databricks?\\n", "metadata": {"similarity_score": 0.010178183, "chunk_id": "0217a07ba2fec61865ce408043acf1cd"}}]'
 
     with (
         mock.patch(
@@ -322,7 +321,7 @@ def test_toolkit_with_tracing_as_retriever(client, format: str, function_output:
         assert trace is not None
         assert trace.info.execution_time_ms is not None
         assert trace.data.request == '{"x": "some input"}'
-        assert trace.data.response == trace_response
+        assert trace.data.response == RETRIEVER_OUTPUT_SCALAR
         assert trace.data.spans[0].name == f"catalog.schema.test_{format}"
 
         mlflow.llama_index.autolog(disable=True)

@@ -32,7 +32,6 @@ def test_generate_tool_call_messages_with_tracing(
 ):
     function_name = f"ml__test__test_func_{format}"
     function_input = '{"query": "What is Databricks Partner Connect?"}'
-    trace_response = '[{"page_content": "# Technology partners\\n## What is Databricks Partner Connect?\\n", "metadata": {"similarity_score": 0.010178182, "chunk_id": "0217a07ba2fec61865ce408043acf1cf"}}, {"page_content": "# Technology partners\\n## What is Databricks?\\n", "metadata": {"similarity_score": 0.010178183, "chunk_id": "0217a07ba2fec61865ce408043acf1cd"}}]'
 
     response = mock_chat_completion_response(
         function=Function(name=function_name, arguments=function_input),
@@ -60,7 +59,7 @@ def test_generate_tool_call_messages_with_tracing(
         assert trace is not None
         assert trace.info.execution_time_ms is not None
         assert trace.data.request == function_input
-        assert trace.data.response == trace_response
+        assert trace.data.response == RETRIEVER_OUTPUT_SCALAR
         assert trace.data.spans[0].name == f"ml.test.test_func_{format}"
 
         mlflow.openai.autolog(disable=True)

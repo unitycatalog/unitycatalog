@@ -276,8 +276,6 @@ def test_generate_tool_call_messages_with_tracing(dummy_history, format: str, fu
         )
         mock_client.validate_input_params = Mock()
 
-        trace_response = '[{"page_content": "# Technology partners\\n## What is Databricks Partner Connect?\\n", "metadata": {"similarity_score": 0.010178182, "chunk_id": "0217a07ba2fec61865ce408043acf1cf"}}, {"page_content": "# Technology partners\\n## What is Databricks?\\n", "metadata": {"similarity_score": 0.010178183, "chunk_id": "0217a07ba2fec61865ce408043acf1cd"}}]'
-
         text_block = TextBlock(text="Fetching documents...", type="text")
         tool_use_block = ToolUseBlock(
             id="toolu_01A09q90qw90lq917835lq9",
@@ -302,7 +300,7 @@ def test_generate_tool_call_messages_with_tracing(dummy_history, format: str, fu
         assert trace is not None
         assert trace.info.execution_time_ms is not None
         assert trace.data.request == '{"query": "What is Databricks Partner Connect?"}'
-        assert trace.data.response == trace_response
+        assert trace.data.response == RETRIEVER_OUTPUT_SCALAR
         assert trace.data.spans[0].name == f"catalog.schema.retriever_tool_{format}"
 
         mlflow.anthropic.autolog(disable=True)
