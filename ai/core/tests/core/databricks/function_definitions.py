@@ -201,7 +201,7 @@ AS $$
 
 
 def function_with_table_retriever_output(func_name: str) -> FunctionInputOutput:
-    retriever_output = "page_content,metadata\n\"# Technology partners\n## What is Databricks Partner Connect?\n\",{\"similarity_score\": 0.010178182, \"chunk_id\": \"0217a07ba2fec61865ce408043acf1cf\", \"url\": \"https://docs.databricks.com/partner-connect/walkthrough-fivetran.html\"}\n\"# Technology partners\n## What is Databricks Partner Connect?\n\",{\"similarity_score\": 0.010178182, \"chunk_id\": \"0217a07ba2fec61865ce408043acf1cf\", \"url\": \"https://docs.databricks.com/partner-connect/walkthrough-fivetran.html\"}\n"
+    retriever_output = 'page_content,metadata\n"# Technology partners\n## What is Databricks Partner Connect?\n",{"similarity_score": 0.010178182, "chunk_id": "0217a07ba2fec61865ce408043acf1cf", "url": "https://docs.databricks.com/partner-connect/walkthrough-fivetran.html"}\n"# Technology partners\n## What is Databricks Partner Connect?\n",{"similarity_score": 0.010178182, "chunk_id": "0217a07ba2fec61865ce408043acf1cf", "url": "https://docs.databricks.com/partner-connect/walkthrough-fivetran.html"}\n'
     sql_body = f"""CREATE FUNCTION {func_name}(query STRING)
 RETURNS TABLE
 SELECT

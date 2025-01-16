@@ -1,3 +1,4 @@
+import logging
 from typing import Any, Dict, List, Optional, Union
 
 from pydantic import BaseModel, Field, ValidationError
@@ -7,6 +8,8 @@ from unitycatalog.ai.core.base import BaseFunctionClient
 from unitycatalog.ai.core.utils.client_utils import validate_or_set_default_client
 from unitycatalog.ai.core.utils.function_processing_utils import construct_original_function_name
 from unitycatalog.ai.core.utils.validation_utils import mlflow_tracing_enabled
+
+_logger = logging.getLogger(__name__)
 
 
 class ConversationMessage(BaseModel):

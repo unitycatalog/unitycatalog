@@ -331,9 +331,7 @@ def auto_trace_retriever(
         end_time_ns: The end time of the function in nanoseconds.
     """
     try:
-        _logger.error(f"auto trace retriever with result {result}")
         if result.format == "CSV":
-            _logger.error(f"result format csv")
             cleaned_result = result.value.encode("utf-8").decode("unicode_escape")
             csv_buffer = StringIO(cleaned_result)
             reader = csv.DictReader(csv_buffer)
@@ -342,13 +340,10 @@ def auto_trace_retriever(
                 for row in reader
             ]
         else:
-            _logger.error(f"result format other")
             value = result.value
             output = ast.literal_eval(value) if isinstance(value, str) else value
 
-        _logger.error(f"output {output}")
         if is_valid_retriever_output(output):
-            _logger.error(f"valid retriever output")
             import mlflow
             from mlflow import MlflowClient
             from mlflow.entities import SpanType
@@ -378,8 +373,6 @@ def auto_trace_retriever(
                 client.end_trace(
                     request_id=span.request_id, outputs=output, end_time_ns=end_time_ns
                 )
-        else:
-            _logger.error(f"not valid retriever output")
     except Exception as e:
         # Ignoring exceptions because auto-tracing retriever is not essential functionality
         _logger.error(

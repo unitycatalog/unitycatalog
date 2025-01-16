@@ -156,6 +156,9 @@ def is_valid_retriever_output(output: Any) -> bool:
     if not isinstance(output, list):
         return False
 
+    if len(output) < 1:
+        return False
+
     def is_valid_retriever_item(item: Any) -> bool:
         from mlflow.entities import Document
 

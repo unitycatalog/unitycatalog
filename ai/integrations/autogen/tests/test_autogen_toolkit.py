@@ -210,6 +210,58 @@ def test_uc_function_to_autogen_tool(client):
         assert result == "some_string"
 
 
+@pytest.mark.parametrize(
+    "format,function_output",
+    [
+        (
+            "SCALAR",
+            '[{"page_content": "# Technology partners\\n## What is Databricks Partner Connect?\\n", "metadata": {"similarity_score": 0.010178182, "chunk_id": "0217a07ba2fec61865ce408043acf1cf"}}, {"page_content": "# Technology partners\\n## What is Databricks?\\n", "metadata": {"similarity_score": 0.010178183, "chunk_id": "0217a07ba2fec61865ce408043acf1cd"}}]',
+        ),
+        (
+            "CSV",
+            "page_content,metadata\n\"# Technology partners\n## What is Databricks Partner Connect?\n\",\"{'similarity_score': 0.010178182, 'chunk_id': '0217a07ba2fec61865ce408043acf1cf'}\"\n\"# Technology partners\n## What is Databricks?\n\",\"{'similarity_score': 0.010178183, 'chunk_id': '0217a07ba2fec61865ce408043acf1cd'}\n",
+        ),
+    ],
+)
+def test_autogen_tool_with_tracing_as_retriever(client, format: str, function_output: str):
+    mock_function_info = generate_function_info()
+    trace_response = '[{"page_content": "# Technology partners\\n## What is Databricks Partner Connect?\\n", "metadata": {"similarity_score": 0.010178182, "chunk_id": "0217a07ba2fec61865ce408043acf1cf"}}, {"page_content": "# Technology partners\\n## What is Databricks?\\n", "metadata": {"similarity_score": 0.010178183, "chunk_id": "0217a07ba2fec61865ce408043acf1cd"}}]'
+
+    with (
+        mock.patch(
+            "unitycatalog.ai.core.databricks.DatabricksFunctionClient.get_function",
+            return_value=mock_function_info,
+        ),
+        mock.patch(
+            "unitycatalog.ai.core.databricks.DatabricksFunctionClient._execute_uc_function",
+            return_value=FunctionExecutionResult(format=format, value=function_output),
+        ),
+        mock.patch(
+            "unitycatalog.ai.core.databricks.DatabricksFunctionClient.validate_input_params"
+        ),
+    ):
+        import mlflow
+
+        mlflow.autogen.autolog()
+
+        tool = UCFunctionToolkit.uc_function_to_autogen_tool(
+            function_name=f"catalog.schema.test_{format}", client=client
+        )
+        result = tool.fn(x="some input")
+        assert json.loads(result)["value"] == function_output
+
+        import mlflow
+
+        trace = mlflow.get_last_active_trace()
+        assert trace is not None
+        assert trace.info.execution_time_ms is not None
+        assert trace.data.request == '{"x": "some input"}'
+        assert trace.data.response == trace_response
+        assert trace.data.spans[0].name == f"catalog.schema.test_{format}"
+
+        mlflow.autogen.autolog(disable=True)
+
+
 def test_toolkit_with_invalid_function_input(client):
     """Test toolkit with invalid input parameters for function conversion."""
     mock_function_info = generate_function_info()

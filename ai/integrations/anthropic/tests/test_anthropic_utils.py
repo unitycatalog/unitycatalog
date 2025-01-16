@@ -1,3 +1,4 @@
+from unittest import mock
 from unittest.mock import Mock
 
 import pytest
@@ -10,6 +11,7 @@ from unitycatalog.ai.anthropic.utils import (
     generate_tool_call_messages,
 )
 from unitycatalog.ai.core.base import BaseFunctionClient
+from unitycatalog.ai.core.databricks import DatabricksFunctionClient
 
 
 @pytest.fixture
@@ -253,3 +255,59 @@ def test_generate_tool_call_messages_with_invalid_tool_use_block(mock_client, du
         generate_tool_call_messages(
             response=response, conversation_history=dummy_history, client=mock_client
         )
+
+
+@pytest.mark.parametrize(
+    "format,function_output",
+    [
+        (
+            "SCALAR",
+            '[{"page_content": "# Technology partners\\n## What is Databricks Partner Connect?\\n", "metadata": {"similarity_score": 0.010178182, "chunk_id": "0217a07ba2fec61865ce408043acf1cf"}}, {"page_content": "# Technology partners\\n## What is Databricks?\\n", "metadata": {"similarity_score": 0.010178183, "chunk_id": "0217a07ba2fec61865ce408043acf1cd"}}]',
+        ),
+        (
+            "CSV",
+            "page_content,metadata\n\"# Technology partners\n## What is Databricks Partner Connect?\n\",\"{'similarity_score': 0.010178182, 'chunk_id': '0217a07ba2fec61865ce408043acf1cf'}\"\n\"# Technology partners\n## What is Databricks?\n\",\"{'similarity_score': 0.010178183, 'chunk_id': '0217a07ba2fec61865ce408043acf1cd'}\n",
+        ),
+    ],
+)
+def test_generate_tool_call_messages_with_tracing(dummy_history, format: str, function_output: str):
+    with mock.patch(
+        "unitycatalog.ai.core.databricks.get_default_databricks_workspace_client",
+        return_value=mock.Mock(),
+    ):
+        mock_client = DatabricksFunctionClient()
+        mock_client._execute_uc_function = Mock(
+            return_value=Mock(format=format, value=function_output)
+        )
+        mock_client.validate_input_params = Mock()
+
+        trace_response = '[{"page_content": "# Technology partners\\n## What is Databricks Partner Connect?\\n", "metadata": {"similarity_score": 0.010178182, "chunk_id": "0217a07ba2fec61865ce408043acf1cf"}}, {"page_content": "# Technology partners\\n## What is Databricks?\\n", "metadata": {"similarity_score": 0.010178183, "chunk_id": "0217a07ba2fec61865ce408043acf1cd"}}]'
+
+        text_block = TextBlock(text="Fetching documents...", type="text")
+        tool_use_block = ToolUseBlock(
+            id="toolu_01A09q90qw90lq917835lq9",
+            name=f"catalog__schema__retriever_tool_{format}",
+            input={"query": "What is Databricks Partner Connect?"},
+            type="tool_use",
+        )
+        response = Mock(spec=Message)
+        response.stop_reason = "tool_use"
+        response.content = [text_block, tool_use_block]
+        response.role = "assistant"
+
+        import mlflow
+
+        mlflow.anthropic.autolog()
+
+        generate_tool_call_messages(
+            response=response, conversation_history=dummy_history, client=mock_client
+        )
+
+        trace = mlflow.get_last_active_trace()
+        assert trace is not None
+        assert trace.info.execution_time_ms is not None
+        assert trace.data.request == '{"query": "What is Databricks Partner Connect?"}'
+        assert trace.data.response == trace_response
+        assert trace.data.spans[0].name == f"catalog.schema.retriever_tool_{format}"
+
+        mlflow.anthropic.autolog(disable=True)
