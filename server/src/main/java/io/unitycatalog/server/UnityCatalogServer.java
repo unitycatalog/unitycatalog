@@ -27,6 +27,9 @@ import io.unitycatalog.server.security.SecurityConfiguration;
 import io.unitycatalog.server.security.SecurityContext;
 import io.unitycatalog.server.service.*;
 import io.unitycatalog.server.service.credential.CredentialOperations;
+import io.unitycatalog.server.service.credential.aws.AwsCredentialVendor;
+import io.unitycatalog.server.service.credential.azure.AzureCredentialVendor;
+import io.unitycatalog.server.service.credential.gcp.GcpCredentialVendor;
 import io.unitycatalog.server.service.iceberg.FileIOFactory;
 import io.unitycatalog.server.service.iceberg.MetadataService;
 import io.unitycatalog.server.service.iceberg.TableConfigService;
@@ -43,68 +46,91 @@ import org.slf4j.LoggerFactory;
 
 public class UnityCatalogServer {
   private static final Logger LOGGER = LoggerFactory.getLogger(UnityCatalogServer.class);
-
-  private SecurityConfiguration securityConfiguration;
-  private SecurityContext securityContext;
+  private static final String BASE_PATH = "/api/2.1/unity-catalog/";
+  private static final String CONTROL_PATH = "/api/1.0/unity-control/";
+  private static final int DEFAULT_PORT = 8080;
+  private final Server server;
+  private final ServerProperties serverProperties;
+  private final SecurityContext securityContext;
 
   static {
     System.setProperty("log4j.configurationFile", "etc/conf/server.log4j2.properties");
     Configurator.initialize(null, "etc/conf/server.log4j2.properties");
   }
 
-  Server server;
-  private static final String basePath = "/api/2.1/unity-catalog/";
-  private static final String controlPath = "/api/1.0/unity-control/";
-
   public UnityCatalogServer() {
-    this(8080);
+    this(UnityCatalogServer.builder());
   }
 
-  public UnityCatalogServer(int port) {
-
+  private UnityCatalogServer(UnityCatalogServer.Builder unityCatalogServerBuilder) {
+    setDefaults(unityCatalogServerBuilder);
     Path configurationFolder = Path.of("etc", "conf");
+    SecurityConfiguration securityConfiguration = new SecurityConfiguration(configurationFolder);
 
-    securityConfiguration = new SecurityConfiguration(configurationFolder);
-    securityContext =
+    this.securityContext =
         new SecurityContext(configurationFolder, securityConfiguration, "server", INTERNAL);
-
-    ServerBuilder sb = Server.builder().serviceUnder("/docs", new DocService()).http(port);
-    addServices(sb);
-
-    server = sb.build();
+    this.serverProperties = unityCatalogServerBuilder.serverProperties;
+    this.server = initializeServer(unityCatalogServerBuilder);
   }
 
-  private void addServices(ServerBuilder sb) {
-    ObjectMapper unityMapper =
-        JsonMapper.builder().disable(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES).build();
-    JacksonRequestConverterFunction unityConverterFunction =
-        new JacksonRequestConverterFunction(unityMapper);
-
-    ObjectMapper responseMapper =
-        JsonMapper.builder()
-            .disable(SerializationFeature.WRITE_DATES_AS_TIMESTAMPS)
-            .serializationInclusion(JsonInclude.Include.NON_NULL)
-            .build();
-    JacksonResponseConverterFunction scimResponseFunction =
-        new JacksonResponseConverterFunction(responseMapper);
-
-    // Credentials Service
-    CredentialOperations credentialOperations = new CredentialOperations();
-
-    ServerProperties serverProperties = ServerProperties.getInstance();
-    boolean authorizationEnabled = serverProperties.isAuthorizationEnabled();
-
-    UnityCatalogAuthorizer authorizer = null;
-    try {
-      if (authorizationEnabled) {
-        authorizer = new JCasbinAuthorizer();
-        UnityAccessUtil.initializeAdmin(authorizer);
-      } else {
-        authorizer = new AllowingAuthorizer();
-      }
-    } catch (Exception e) {
-      throw new BaseException(ErrorCode.INTERNAL, "Problem initializing authorizer.");
+  private void setDefaults(UnityCatalogServer.Builder unityCatalogServerBuilder) {
+    if (unityCatalogServerBuilder.port == 0) {
+      unityCatalogServerBuilder.port(DEFAULT_PORT);
     }
+    if (unityCatalogServerBuilder.serverProperties == null) {
+      unityCatalogServerBuilder.serverProperties(ServerProperties.getInstance());
+    }
+    if (unityCatalogServerBuilder.credentialOperations == null) {
+      AwsCredentialVendor awsCredentialVendor =
+          new AwsCredentialVendor(unityCatalogServerBuilder.serverProperties);
+      AzureCredentialVendor azureCredentialVendor =
+          new AzureCredentialVendor(unityCatalogServerBuilder.serverProperties);
+      GcpCredentialVendor gcpCredentialVendor =
+          new GcpCredentialVendor(unityCatalogServerBuilder.serverProperties);
+      CredentialOperations credentialOperations =
+          new CredentialOperations(awsCredentialVendor, azureCredentialVendor, gcpCredentialVendor);
+      unityCatalogServerBuilder.credentialOperations(credentialOperations);
+    }
+  }
+
+  private Server initializeServer(UnityCatalogServer.Builder unityCatalogServerBuilder) {
+    ServerBuilder armeriaServerBuilder =
+        Server.builder()
+            .http(unityCatalogServerBuilder.port)
+            .serviceUnder("/docs", new DocService());
+
+    MetastoreRepository.getInstance().initMetastoreIfNeeded();
+    UnityCatalogAuthorizer authorizer =
+        initializeAuthorizer(unityCatalogServerBuilder.serverProperties);
+    addApiServices(armeriaServerBuilder, unityCatalogServerBuilder, authorizer);
+    addSecurityDecorators(
+        armeriaServerBuilder, unityCatalogServerBuilder.serverProperties, authorizer);
+
+    return armeriaServerBuilder.build();
+  }
+
+  private UnityCatalogAuthorizer initializeAuthorizer(ServerProperties serverProperties) {
+    if (serverProperties.isAuthorizationEnabled()) {
+      try {
+        LOGGER.info("Initializing JCasbinAuthorizer...");
+        UnityCatalogAuthorizer authorizer = new JCasbinAuthorizer();
+        UnityAccessUtil.initializeAdmin(authorizer);
+        return authorizer;
+      } catch (Exception e) {
+        throw new BaseException(ErrorCode.INTERNAL, "Problem initializing authorizer.");
+      }
+    } else {
+      LOGGER.info("Authorization disabled. Using AllowingAuthorizer.");
+      return new AllowingAuthorizer();
+    }
+  }
+
+  private void addApiServices(
+      ServerBuilder armeriaServerBuilder,
+      UnityCatalogServer.Builder unityCatalogServerBuilder,
+      UnityCatalogAuthorizer authorizer) {
+    LOGGER.info("Adding Unity Catalog API services...");
+    CredentialOperations credentialOperations = unityCatalogServerBuilder.credentialOperations;
 
     // Add support for Unity Catalog APIs
     AuthService authService = new AuthService(securityContext);
@@ -127,34 +153,73 @@ public class UnityCatalogServer {
         new TemporaryModelVersionCredentialsService(authorizer, credentialOperations);
     TemporaryPathCredentialsService temporaryPathCredentialsService =
         new TemporaryPathCredentialsService(credentialOperations);
-    sb.service("/", (ctx, req) -> HttpResponse.of("Hello, Unity Catalog!"))
-        .annotatedService(controlPath + "auth", authService, unityConverterFunction)
+
+    JacksonRequestConverterFunction requestConverterFunction =
+        new JacksonRequestConverterFunction(
+            JsonMapper.builder()
+                .disable(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES)
+                .build());
+    JacksonResponseConverterFunction scimResponseConverterFunction =
+        new JacksonResponseConverterFunction(
+            JsonMapper.builder()
+                .disable(SerializationFeature.WRITE_DATES_AS_TIMESTAMPS)
+                .serializationInclusion(JsonInclude.Include.NON_NULL)
+                .build());
+    armeriaServerBuilder
+        .service("/", (ctx, req) -> HttpResponse.of("Hello, Unity Catalog!"))
+        .annotatedService(CONTROL_PATH + "auth", authService, requestConverterFunction)
         .annotatedService(
-            controlPath + "scim2/Users",
+            CONTROL_PATH + "scim2/Users",
             scim2UserService,
-            unityConverterFunction,
-            scimResponseFunction)
+            requestConverterFunction,
+            scimResponseConverterFunction)
         .annotatedService(
-            controlPath + "scim2/Me",
+            CONTROL_PATH + "scim2/Me",
             scim2SelfService,
-            unityConverterFunction,
-            scimResponseFunction)
-        .annotatedService(basePath + "permissions", permissionService)
-        .annotatedService(basePath + "catalogs", catalogService, unityConverterFunction)
-        .annotatedService(basePath + "schemas", schemaService, unityConverterFunction)
-        .annotatedService(basePath + "volumes", volumeService, unityConverterFunction)
-        .annotatedService(basePath + "tables", tableService, unityConverterFunction)
-        .annotatedService(basePath + "functions", functionService, unityConverterFunction)
-        .annotatedService(basePath + "models", modelService, unityConverterFunction)
-        .annotatedService(basePath, metastoreService, unityConverterFunction)
+            requestConverterFunction,
+            scimResponseConverterFunction)
+        .annotatedService(BASE_PATH + "permissions", permissionService)
+        .annotatedService(BASE_PATH + "catalogs", catalogService, requestConverterFunction)
+        .annotatedService(BASE_PATH + "schemas", schemaService, requestConverterFunction)
+        .annotatedService(BASE_PATH + "volumes", volumeService, requestConverterFunction)
+        .annotatedService(BASE_PATH + "tables", tableService, requestConverterFunction)
+        .annotatedService(BASE_PATH + "functions", functionService, requestConverterFunction)
+        .annotatedService(BASE_PATH + "models", modelService, requestConverterFunction)
+        .annotatedService(BASE_PATH, metastoreService, requestConverterFunction)
         .annotatedService(
-            basePath + "temporary-table-credentials", temporaryTableCredentialsService)
+            BASE_PATH + "temporary-table-credentials",
+            temporaryTableCredentialsService,
+            requestConverterFunction)
         .annotatedService(
-            basePath + "temporary-volume-credentials", temporaryVolumeCredentialsService)
+            BASE_PATH + "temporary-volume-credentials",
+            temporaryVolumeCredentialsService,
+            requestConverterFunction)
         .annotatedService(
-            basePath + "temporary-model-version-credentials",
-            temporaryModelVersionCredentialsService)
-        .annotatedService(basePath + "temporary-path-credentials", temporaryPathCredentialsService);
+            BASE_PATH + "temporary-model-version-credentials",
+            temporaryModelVersionCredentialsService,
+            requestConverterFunction)
+        .annotatedService(
+            BASE_PATH + "temporary-path-credentials",
+            temporaryPathCredentialsService,
+            requestConverterFunction);
+
+    addIcebergApiServices(
+        armeriaServerBuilder,
+        unityCatalogServerBuilder.serverProperties,
+        unityCatalogServerBuilder.credentialOperations,
+        catalogService,
+        schemaService,
+        tableService);
+  }
+
+  private void addIcebergApiServices(
+      ServerBuilder armeriaServerBuilder,
+      ServerProperties serverProperties,
+      CredentialOperations credentialOperations,
+      CatalogService catalogService,
+      SchemaService schemaService,
+      TableService tableService) {
+    LOGGER.info("Adding Iceberg services...");
 
     // Add support for Iceberg REST APIs
     ObjectMapper icebergMapper = RESTObjectMapper.mapper();
@@ -162,37 +227,47 @@ public class UnityCatalogServer {
         new JacksonRequestConverterFunction(icebergMapper);
     JacksonResponseConverterFunction icebergResponseConverter =
         new JacksonResponseConverterFunction(icebergMapper);
-    MetadataService metadataService = new MetadataService(new FileIOFactory(credentialOperations));
-    TableConfigService tableConfigService = new TableConfigService(credentialOperations);
-    sb.annotatedService(
-        basePath + "iceberg",
+    MetadataService metadataService =
+        new MetadataService(new FileIOFactory(credentialOperations, serverProperties));
+    TableConfigService tableConfigService =
+        new TableConfigService(credentialOperations, serverProperties);
+
+    armeriaServerBuilder.annotatedService(
+        BASE_PATH + "iceberg",
         new IcebergRestCatalogService(
             catalogService, schemaService, tableService, tableConfigService, metadataService),
         icebergRequestConverter,
         icebergResponseConverter);
+  }
 
+  private void addSecurityDecorators(
+      ServerBuilder armeriaServerBuilder,
+      ServerProperties serverProperties,
+      UnityCatalogAuthorizer authorizer) {
     // TODO: eventually might want to make this secure-by-default.
-    if (authorizationEnabled) {
-      LOGGER.info("Authorization enabled.");
+    if (serverProperties.isAuthorizationEnabled()) {
+      LOGGER.info("Enabling security decorators...");
 
       // Note: Decorators are applied in reverse order.
       UnityAccessDecorator accessDecorator = new UnityAccessDecorator(authorizer);
-      sb.routeDecorator().pathPrefix(basePath).build(accessDecorator);
-      sb.routeDecorator()
-          .pathPrefix(controlPath)
-          .exclude(controlPath + "auth/tokens")
+      armeriaServerBuilder.routeDecorator().pathPrefix(BASE_PATH).build(accessDecorator);
+      armeriaServerBuilder
+          .routeDecorator()
+          .pathPrefix(CONTROL_PATH)
+          .exclude(CONTROL_PATH + "auth/tokens")
           .build(accessDecorator);
 
       AuthDecorator authDecorator = new AuthDecorator(securityContext);
-      sb.routeDecorator().pathPrefix(basePath).build(authDecorator);
-      sb.routeDecorator()
-          .pathPrefix(controlPath)
-          .exclude(controlPath + "auth/tokens")
+      armeriaServerBuilder.routeDecorator().pathPrefix(BASE_PATH).build(authDecorator);
+      armeriaServerBuilder
+          .routeDecorator()
+          .pathPrefix(CONTROL_PATH)
+          .exclude(CONTROL_PATH + "auth/tokens")
           .build(authDecorator);
 
       ExceptionHandlingDecorator exceptionDecorator =
           new ExceptionHandlingDecorator(new GlobalExceptionHandler());
-      sb.decorator(exceptionDecorator);
+      armeriaServerBuilder.decorator(exceptionDecorator);
     }
   }
 
@@ -200,7 +275,8 @@ public class UnityCatalogServer {
     OptionParser options = new OptionParser();
     options.parse(args);
     // Start Unity Catalog server
-    UnityCatalogServer unityCatalogServer = new UnityCatalogServer(options.getPort() + 1);
+    UnityCatalogServer unityCatalogServer =
+        UnityCatalogServer.builder().port(options.getPort() + 1).build();
     unityCatalogServer.printArt();
     unityCatalogServer.start();
     // Start URL transcoder
@@ -211,14 +287,14 @@ public class UnityCatalogServer {
   }
 
   public void start() {
-    LOGGER.info("Starting server...");
-    MetastoreRepository.getInstance().initMetastoreIfNeeded();
+    LOGGER.info("Starting Unity Catalog server...");
     server.start().join();
+    LOGGER.info("Unity Catalog server started.");
   }
 
   public void stop() {
     server.stop().join();
-    LOGGER.info("Server stopped.");
+    LOGGER.info("Unity Catalog server stopped.");
   }
 
   private void printArt() {
@@ -236,5 +312,37 @@ public class UnityCatalogServer {
             + "  |___/  #\n"
             + "###################################################################\n";
     System.out.println(art);
+  }
+
+  public static UnityCatalogServer.Builder builder() {
+    return new UnityCatalogServer.Builder();
+  }
+
+  public static class Builder {
+    private int port;
+    private ServerProperties serverProperties;
+    private CredentialOperations credentialOperations;
+
+    private Builder() {}
+
+    public UnityCatalogServer.Builder port(int port) {
+      this.port = port;
+      return this;
+    }
+
+    public UnityCatalogServer.Builder serverProperties(ServerProperties serverProperties) {
+      this.serverProperties = serverProperties;
+      return this;
+    }
+
+    public UnityCatalogServer.Builder credentialOperations(
+        CredentialOperations credentialOperations) {
+      this.credentialOperations = credentialOperations;
+      return this;
+    }
+
+    public UnityCatalogServer build() {
+      return new UnityCatalogServer(this);
+    }
   }
 }

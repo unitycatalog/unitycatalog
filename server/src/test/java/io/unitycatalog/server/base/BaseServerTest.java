@@ -30,7 +30,7 @@ public abstract class BaseServerTest {
       // start the server on a random port
       int port = TestUtils.getRandomPort();
       System.setProperty("server.env", "test");
-      unityCatalogServer = new UnityCatalogServer(port);
+      unityCatalogServer = UnityCatalogServer.builder().port(port).build();
       unityCatalogServer.start();
       serverConfig.setServerUrl("http://localhost:" + port);
     }
