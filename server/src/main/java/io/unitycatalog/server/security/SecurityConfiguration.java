@@ -58,6 +58,11 @@ public class SecurityConfiguration {
       keyPairGenerator.initialize(2048);
       KeyPair keyPair = keyPairGenerator.generateKeyPair();
 
+      // Create parent directory first if it does not exist
+      Path parentDirectory = rsa512PublicKey.getParent();
+      if (parentDirectory != null && !Files.exists(parentDirectory)) {
+        Files.createDirectories(parentDirectory);
+      }
       Files.write(rsa512PublicKey, keyPair.getPublic().getEncoded(), StandardOpenOption.CREATE);
       Files.write(rsa512PrivateKey, keyPair.getPrivate().getEncoded(), StandardOpenOption.CREATE);
 
