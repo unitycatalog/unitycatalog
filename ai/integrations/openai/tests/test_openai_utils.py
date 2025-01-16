@@ -8,6 +8,7 @@ from tests.helper_functions import mock_chat_completion_response, mock_choice
 from unitycatalog.ai.core.base import FunctionExecutionResult
 from unitycatalog.ai.core.databricks import DatabricksFunctionClient
 from unitycatalog.ai.openai.utils import generate_tool_call_messages
+from unitycatalog.ai.test_utils.constants import RETRIEVER_OUTPUT_CSV, RETRIEVER_OUTPUT_SCALAR
 
 
 @pytest.fixture
@@ -22,14 +23,8 @@ def client() -> DatabricksFunctionClient:
 @pytest.mark.parametrize(
     "format, function_output",
     [
-        (
-            "SCALAR",
-            '[{"page_content": "# Technology partners\\n## What is Databricks Partner Connect?\\n", "metadata": {"similarity_score": 0.010178182, "chunk_id": "0217a07ba2fec61865ce408043acf1cf"}}, {"page_content": "# Technology partners\\n## What is Databricks?\\n", "metadata": {"similarity_score": 0.010178183, "chunk_id": "0217a07ba2fec61865ce408043acf1cd"}}]',
-        ),
-        (
-            "CSV",
-            "page_content,metadata\n\"# Technology partners\n## What is Databricks Partner Connect?\n\",\"{'similarity_score': 0.010178182, 'chunk_id': '0217a07ba2fec61865ce408043acf1cf'}\"\n\"# Technology partners\n## What is Databricks?\n\",\"{'similarity_score': 0.010178183, 'chunk_id': '0217a07ba2fec61865ce408043acf1cd'}\n",
-        ),
+        ("SCALAR", RETRIEVER_OUTPUT_SCALAR),
+        ("CSV", RETRIEVER_OUTPUT_CSV),
     ],
 )
 def test_generate_tool_call_messages_with_tracing(

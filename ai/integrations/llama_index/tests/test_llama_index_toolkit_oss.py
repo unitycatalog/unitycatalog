@@ -15,6 +15,7 @@ from unitycatalog.ai.core.client import (
     UnitycatalogFunctionClient,
 )
 from unitycatalog.ai.llama_index.toolkit import UCFunctionToolkit
+from unitycatalog.ai.test_utils.constants import RETRIEVER_OUTPUT_CSV, RETRIEVER_OUTPUT_SCALAR
 from unitycatalog.ai.test_utils.function_utils_oss import (
     CATALOG,
     create_function_and_cleanup_oss,
@@ -255,14 +256,8 @@ def test_uc_function_to_llama_tool(uc_client):
 @pytest.mark.parametrize(
     "format,function_output",
     [
-        (
-            "SCALAR",
-            '[{"page_content": "# Technology partners\\n## What is Databricks Partner Connect?\\n", "metadata": {"similarity_score": 0.010178182, "chunk_id": "0217a07ba2fec61865ce408043acf1cf"}}, {"page_content": "# Technology partners\\n## What is Databricks?\\n", "metadata": {"similarity_score": 0.010178183, "chunk_id": "0217a07ba2fec61865ce408043acf1cd"}}]',
-        ),
-        (
-            "CSV",
-            "page_content,metadata\n\"# Technology partners\n## What is Databricks Partner Connect?\n\",\"{'similarity_score': 0.010178182, 'chunk_id': '0217a07ba2fec61865ce408043acf1cf'}\"\n\"# Technology partners\n## What is Databricks?\n\",\"{'similarity_score': 0.010178183, 'chunk_id': '0217a07ba2fec61865ce408043acf1cd'}\n",
-        ),
+        ("SCALAR", RETRIEVER_OUTPUT_SCALAR),
+        ("CSV", RETRIEVER_OUTPUT_CSV),
     ],
 )
 def test_toolkit_with_tracing_as_retriever(uc_client, format: str, function_output: str):
