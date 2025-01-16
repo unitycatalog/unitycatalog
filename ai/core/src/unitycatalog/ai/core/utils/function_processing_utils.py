@@ -1,10 +1,10 @@
 import ast
-import csv
 import decimal
 import inspect
 import json
 import logging
 import os
+import pandas as pd
 from hashlib import md5
 from io import StringIO
 from typing import Any, Callable, Dict, List, Optional, Tuple, Union
@@ -332,13 +332,10 @@ def auto_trace_retriever(
     """
     try:
         if result.format == "CSV":
-            cleaned_result = result.value.encode("utf-8").decode("unicode_escape")
-            csv_buffer = StringIO(cleaned_result)
-            reader = csv.DictReader(csv_buffer)
-            output = [
-                {**row, "metadata": ast.literal_eval(row["metadata"])} if "metadata" in row else row
-                for row in reader
-            ]
+            df = pd.read_csv(StringIO(result.value))
+            if "metadata" in df.columns:
+                df["metadata"] = df["metadata"].apply(ast.literal_eval)
+            output = df.to_dict(orient="records")
         else:
             value = result.value
             output = ast.literal_eval(value) if isinstance(value, str) else value
@@ -375,7 +372,7 @@ def auto_trace_retriever(
                 )
     except Exception as e:
         # Ignoring exceptions because auto-tracing retriever is not essential functionality
-        _logger.error(
+        _logger.debug(
             f"Skipping tracing {function_name} as a retriever because of the following error:\n {e}"
         )
         pass

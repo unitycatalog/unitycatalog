@@ -514,7 +514,7 @@ def test_uc_function_to_llama_tool_mocked():
         mock_client.execute_function.assert_called_once_with(
             function_name="catalog.schema.test_function",
             parameters=input_args,
-            enable_trace_as_retriever=False,
+            enable_retriever_tracing=False,
         )
 
 
@@ -554,5 +554,5 @@ def test_toolkit_with_invalid_function_input_mocked():
         mock_client.execute_function.assert_called_once_with(
             function_name="catalog.schema.test_function",
             parameters=invalid_inputs,
-            enable_trace_as_retriever=False,
+            enable_retriever_tracing=False,
         )

@@ -39,7 +39,7 @@ def generate_tool_call_messages(
             arguments = json.loads(tool_call.function.arguments)
             func_name = construct_original_function_name(tool_call.function.name)
             result = client.execute_function(
-                func_name, arguments, enable_trace_as_retriever=mlflow_tracing_enabled("openai")
+                func_name, arguments, enable_retriever_tracing=mlflow_tracing_enabled("openai")
             )
             function_call_result_message = {
                 "role": "tool",

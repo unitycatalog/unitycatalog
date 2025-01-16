@@ -192,7 +192,7 @@ async def test_tool_calling_with_retriever_tracing_anthropic(uc_client):
 
             import mlflow
 
-            uc_client.execute_function(func_name, arguments, enable_trace_as_retriever=True)
+            uc_client.execute_function(func_name, arguments, enable_retriever_tracing=True)
 
             trace = mlflow.get_last_active_trace()
             assert trace is not None

@@ -58,7 +58,7 @@ class ToolCallData:
         result = client.execute_function(
             self.function_name,
             self.arguments,
-            enable_trace_as_retriever=mlflow_tracing_enabled("anthropic"),
+            enable_retriever_tracing=mlflow_tracing_enabled("anthropic"),
         )
         return str(result.value)
 

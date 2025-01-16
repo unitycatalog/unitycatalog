@@ -207,7 +207,7 @@ async def test_crewai_tool_with_tracing_as_retriever(uc_client, format: str, fun
 
     with (
         mock.patch(
-            "uunitycatalog.ai.core.client.UnitycatalogFunctionClient.get_function",
+            "unitycatalog.ai.core.client.UnitycatalogFunctionClient.get_function",
             return_value=mock_function_info,
         ),
         mock.patch(

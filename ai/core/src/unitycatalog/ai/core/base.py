@@ -161,7 +161,7 @@ class BaseFunctionClient(ABC):
             result = self._execute_uc_function(function_info, parameters, **kwargs)
             end_time_ns = time.time_ns()
 
-            if kwargs.get("enable_trace_as_retriever", False):
+            if kwargs.get("enable_retriever_tracing", False):
                 auto_trace_retriever(function_name, parameters, result, start_time_ns, end_time_ns)
             return result
 

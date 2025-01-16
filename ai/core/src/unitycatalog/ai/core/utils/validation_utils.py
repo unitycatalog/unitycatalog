@@ -167,7 +167,7 @@ def is_valid_retriever_output(output: Any) -> bool:
 
         if isinstance(item, dict):
             try:
-                _ = Document(**item)
+                Document(**item)
                 return True
             except TypeError:
                 return False
@@ -177,7 +177,7 @@ def is_valid_retriever_output(output: Any) -> bool:
     return all(is_valid_retriever_item(item) for item in output)
 
 
-def mlflow_tracing_enabled(integration_name):
+def mlflow_tracing_enabled(integration_name: str) -> bool:
     """
     Checks if autologging tracing is enabled in MLflow for the provided integration name.
 

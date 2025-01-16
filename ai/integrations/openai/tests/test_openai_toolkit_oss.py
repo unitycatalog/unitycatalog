@@ -148,7 +148,7 @@ async def test_tool_calling_with_trace_as_retriever(uc_client):
 
             # execute the function based on the arguments
             result = uc_client.execute_function(
-                func_name, arguments, enable_trace_as_retriever=True
+                func_name, arguments, enable_retriever_tracing=True
             )
             assert result.value == "[{'page_content': 'This is the page content.'}]"
 

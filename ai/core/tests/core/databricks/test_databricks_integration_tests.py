@@ -96,7 +96,7 @@ def test_create_and_execute_retriever_function(client: DatabricksFunctionClient)
         client.create_function(sql_function_body=function_sample.sql_body)
         for input_example in function_sample.inputs:
             result = client.execute_function(
-                func_name, input_example, enable_trace_as_retriever=True
+                func_name, input_example, enable_retriever_tracing=True
             )
             assert result.value == function_sample.output
 

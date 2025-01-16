@@ -163,7 +163,7 @@ class UCFunctionToolkit(BaseModel):
             result = client.execute_function(
                 function_name=function_name,
                 parameters=args_json,
-                enable_trace_as_retriever=mlflow_tracing_enabled("crewai"),
+                enable_retriever_tracing=mlflow_tracing_enabled("crewai"),
             )
 
             return result.to_json()

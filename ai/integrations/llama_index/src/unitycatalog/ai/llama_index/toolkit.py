@@ -178,7 +178,7 @@ class UCFunctionToolkit(BaseModel):
             result = client.execute_function(
                 function_name=function_name,
                 parameters=args_json,
-                enable_trace_as_retriever=mlflow_tracing_enabled("llama_index"),
+                enable_retriever_tracing=mlflow_tracing_enabled("llama_index"),
             )
             return result.to_json()
 
