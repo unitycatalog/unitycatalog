@@ -4,6 +4,7 @@ import io.unitycatalog.control.model.User;
 import io.unitycatalog.server.auth.UnityCatalogAuthorizer;
 import io.unitycatalog.server.exception.BaseException;
 import io.unitycatalog.server.persist.MetastoreRepository;
+import io.unitycatalog.server.persist.Repositories;
 import io.unitycatalog.server.persist.UserRepository;
 import io.unitycatalog.server.persist.model.CreateUser;
 import io.unitycatalog.server.persist.model.Privileges;
@@ -11,10 +12,15 @@ import java.util.UUID;
 
 public class UnityAccessUtil {
 
-  private static final UserRepository USER_REPOSITORY = UserRepository.getInstance();
-  private static final MetastoreRepository METASTORE_REPOSITORY = MetastoreRepository.getInstance();
+  private final UserRepository userRepository;
+  private final MetastoreRepository metastoreRepository;
 
-  public static void initializeAdmin(UnityCatalogAuthorizer authorizer) {
+  public UnityAccessUtil(Repositories repositories) {
+    this.userRepository = repositories.getUserRepository();
+    this.metastoreRepository = repositories.getMetastoreRepository();
+  }
+
+  public void initializeAdmin(UnityCatalogAuthorizer authorizer) {
 
     // If no admin user exists, lets create one and grant the admin as
     // the OWNER for this server. This is meant to allow a bootstrap
@@ -26,7 +32,7 @@ public class UnityAccessUtil {
     // the admin user has.
 
     try {
-      USER_REPOSITORY.getUserByEmail("admin");
+      userRepository.getUserByEmail("admin");
       return;
     } catch (BaseException e) {
       // IGNORE - this should be user not found exception.
@@ -34,11 +40,9 @@ public class UnityAccessUtil {
 
     CreateUser createUser = CreateUser.builder().email("admin").name("Admin").build();
 
-    User adminUser = USER_REPOSITORY.createUser(createUser);
+    User adminUser = userRepository.createUser(createUser);
 
     authorizer.grantAuthorization(
-        UUID.fromString(adminUser.getId()),
-        METASTORE_REPOSITORY.getMetastoreId(),
-        Privileges.OWNER);
+        UUID.fromString(adminUser.getId()), metastoreRepository.getMetastoreId(), Privileges.OWNER);
   }
 }
