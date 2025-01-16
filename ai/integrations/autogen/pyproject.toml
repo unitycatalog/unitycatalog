@@ -27,6 +27,7 @@ databricks-dev = [
 
 dev = [
   "unitycatalog-ai[dev]",
+  "autogen-ext>=0.4.0",
 ]
 
 [build-system]
