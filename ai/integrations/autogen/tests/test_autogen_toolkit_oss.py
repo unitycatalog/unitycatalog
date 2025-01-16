@@ -252,7 +252,7 @@ async def test_tool_in_assistant_agent(mock_create, uc_client):
             )
             my_tool = toolkit.tools[0]
 
-            model_client = OpenAIChatCompletionClient(model="gpt-4", temperature=0)
+            model_client = OpenAIChatCompletionClient(model="gpt-4", temperature=0, api_key="key")
             agent = AssistantAgent(
                 name="assistant",
                 system_message="You can call UC functions as needed.",
