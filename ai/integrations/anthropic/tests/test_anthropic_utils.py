@@ -12,7 +12,7 @@ from unitycatalog.ai.anthropic.utils import (
 )
 from unitycatalog.ai.core.base import BaseFunctionClient
 from unitycatalog.ai.core.databricks import DatabricksFunctionClient
-from unitycatalog.ai.test_utils.constants import RETRIEVER_OUTPUT_CSV, RETRIEVER_OUTPUT_SCALAR
+from unitycatalog.ai.test_utils.function_utils import RETRIEVER_OUTPUT_CSV, RETRIEVER_OUTPUT_SCALAR
 
 
 @pytest.fixture

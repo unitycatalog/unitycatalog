@@ -9,7 +9,7 @@ from autogen import ConversableAgent
 from unitycatalog.ai.autogen.toolkit import AutogenTool, UCFunctionToolkit
 from unitycatalog.ai.core.base import FunctionExecutionResult
 from unitycatalog.ai.core.client import UnitycatalogFunctionClient
-from unitycatalog.ai.test_utils.constants import RETRIEVER_OUTPUT_CSV, RETRIEVER_OUTPUT_SCALAR
+from unitycatalog.ai.test_utils.function_utils import RETRIEVER_OUTPUT_CSV, RETRIEVER_OUTPUT_SCALAR
 from unitycatalog.ai.test_utils.function_utils_oss import (
     CATALOG,
     create_function_and_cleanup_oss,

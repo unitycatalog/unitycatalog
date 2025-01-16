@@ -20,7 +20,7 @@ from unitycatalog.ai.core.client import (
 )
 from unitycatalog.ai.core.utils.function_processing_utils import get_tool_name
 from unitycatalog.ai.langchain.toolkit import UCFunctionToolkit
-from unitycatalog.ai.test_utils.constants import RETRIEVER_OUTPUT_CSV, RETRIEVER_OUTPUT_SCALAR
+from unitycatalog.ai.test_utils.function_utils import RETRIEVER_OUTPUT_CSV, RETRIEVER_OUTPUT_SCALAR
 from unitycatalog.ai.test_utils.function_utils_oss import (
     CATALOG,
     create_function_and_cleanup_oss,

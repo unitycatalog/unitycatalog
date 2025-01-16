@@ -21,9 +21,10 @@ from unitycatalog.ai.test_utils.client_utils import (
     requires_databricks,
     set_default_client,
 )
-from unitycatalog.ai.test_utils.constants import RETRIEVER_OUTPUT_CSV, RETRIEVER_OUTPUT_SCALAR
 from unitycatalog.ai.test_utils.function_utils import (
     CATALOG,
+    RETRIEVER_OUTPUT_CSV,
+    RETRIEVER_OUTPUT_SCALAR,
     create_function_and_cleanup,
 )
 
