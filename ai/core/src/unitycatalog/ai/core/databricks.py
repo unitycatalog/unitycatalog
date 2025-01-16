@@ -696,8 +696,7 @@ class DatabricksFunctionClient(BaseFunctionClient):
         try:
             result = self.spark.sql(sqlQuery=sql_command.sql_query, args=sql_command.args or None)
             if is_scalar(function_info):
-                value = str(result.collect()[0][0])
-                return FunctionExecutionResult(format="SCALAR", value=value)
+                return FunctionExecutionResult(format="SCALAR", value=str(result.collect()[0][0]))
             else:
                 row_limit = int(UCAI_DATABRICKS_SERVERLESS_EXECUTION_RESULT_ROW_LIMIT.get())
                 truncated = result.count() > row_limit

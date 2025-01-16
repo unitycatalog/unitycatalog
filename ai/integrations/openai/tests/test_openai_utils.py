@@ -9,7 +9,6 @@ from unitycatalog.ai.core.base import FunctionExecutionResult
 from unitycatalog.ai.core.databricks import DatabricksFunctionClient
 from unitycatalog.ai.openai.utils import generate_tool_call_messages
 
-
 @pytest.fixture
 def client() -> DatabricksFunctionClient:
     with mock.patch(
@@ -19,35 +18,17 @@ def client() -> DatabricksFunctionClient:
         return DatabricksFunctionClient()
 
 
-def test_generate_tool_call_messages(client: DatabricksFunctionClient):
-    response = mock_chat_completion_response(
-        function=Function(
-            name="ml__test__test_func",
-            arguments='{"arg1": "value1"}',
-        ),
-    )
-    with mock.patch.object(
-        client,
-        "execute_function",
-        return_value=FunctionExecutionResult(format="SCALAR", value="result"),
-    ):
-        messages = generate_tool_call_messages(response=response, client=client)
-        assert len(messages) == 2
-        assert messages[0]["role"] == "assistant"
-        assert messages[-1] == {
-            "role": "tool",
-            "content": json.dumps({"content": "result"}),
-            "tool_call_id": "call_mock",
-        }
-
-
-def test_generate_tool_call_messages_with_tracing(client: DatabricksFunctionClient):
+@pytest.mark.parametrize("function_output", [
+    "[{\"page_content\": \"# Technology partners\\n## What is Databricks Partner Connect?\\n\", \"metadata\": {\"similarity_score\": 0.010178182, \"chunk_id\": \"0217a07ba2fec61865ce408043acf1cf\"}}, {\"page_content\": \"# Technology partners\\n## What is Databricks?\\n\", \"metadata\": {\"similarity_score\": 0.010178183, \"chunk_id\": \"0217a07ba2fec61865ce408043acf1cd\"}}]", 
+    "page_content,metadata\\n\"# Technology partners\\n## What is Databricks Partner Connect?\\n\",{\"similarity_score\": 0.010178182, \"chunk_id\": \"0217a07ba2fec61865ce408043acf1cf\"}\\n\"# Technology partners\\n## What is Databricks?\\n\",{\"similarity_score\": 0.010178183, \"chunk_id\": \"0217a07ba2fec61865ce408043acf1cd\"}\\n"
+])
+def test_generate_tool_call_messages_with_tracing(client: DatabricksFunctionClient, function_output: str):
     function_name = "ml__test__test_func"
-    function_arguments = '{"arg1": "value1"}'
-    result = '[{"page_content": "This is the page content."}]'
+    function_input = "{\"query\": \"What is Databricks Partner Connect?\"}"
+    trace_response = "[{\"page_content\": \"# Technology partners\\n## What is Databricks Partner Connect?\\n\", \"metadata\": {\"similarity_score\": 0.010178182, \"chunk_id\": \"0217a07ba2fec61865ce408043acf1cf\"}}, {\"page_content\": \"# Technology partners\\n## What is Databricks?\\n\", \"metadata\": {\"similarity_score\": 0.010178183, \"chunk_id\": \"0217a07ba2fec61865ce408043acf1cd\"}}]"
 
     response = mock_chat_completion_response(
-        function=Function(name=function_name, arguments=function_arguments),
+        function=Function(name=function_name, arguments=function_input),
     )
 
     function_mock = mock.MagicMock()
@@ -59,7 +40,7 @@ def test_generate_tool_call_messages_with_tracing(client: DatabricksFunctionClie
         mock.patch.object(
             client,
             "_execute_uc_function",
-            return_value=FunctionExecutionResult(format="SCALAR", value=result),
+            return_value=FunctionExecutionResult(format="SCALAR", value=function_output),
         ),
     ):
         import mlflow
@@ -71,9 +52,11 @@ def test_generate_tool_call_messages_with_tracing(client: DatabricksFunctionClie
         trace = mlflow.get_last_active_trace()
         assert trace is not None
         assert trace.info.execution_time_ms is not None
-        assert trace.data.request == function_arguments
-        assert trace.data.response == result
-        assert trace.data.spans[0].name == function_name
+        assert trace.data.request == function_input
+        assert trace.data.response == trace_response
+        assert trace.data.spans[0].name == "ml.test.test_func"
+
+        mlflow.openai.autolog(disable=True)
 
 
 def test_generate_tool_call_messages_multiple_choices(client: DatabricksFunctionClient):

@@ -280,23 +280,30 @@ def test_toolkit_with_invalid_function_input(client):
             tool.fn(**invalid_inputs)
 
 
-def test_toolkit_with_tracing_as_retriever(client):
-    """Test toolkit with invalid input parameters for function conversion."""
+@pytest.mark.parametrize("format,function_output", [
+    (
+        "SCALAR",
+        "[{\"page_content\": \"# Technology partners\\n## What is Databricks Partner Connect?\\n\", \"metadata\": {\"similarity_score\": 0.010178182, \"chunk_id\": \"0217a07ba2fec61865ce408043acf1cf\"}}, {\"page_content\": \"# Technology partners\\n## What is Databricks?\\n\", \"metadata\": {\"similarity_score\": 0.010178183, \"chunk_id\": \"0217a07ba2fec61865ce408043acf1cd\"}}]"
+    ), 
+    (
+        "CSV",
+        "page_content,metadata\\n\"# Technology partners\\n## What is Databricks Partner Connect?\\n\",{\"similarity_score\": 0.010178182, \"chunk_id\": \"0217a07ba2fec61865ce408043acf1cf\"}\\n\"# Technology partners\\n## What is Databricks?\\n\",{\"similarity_score\": 0.010178183, \"chunk_id\": \"0217a07ba2fec61865ce408043acf1cd\"}\\n"
+    )
+])
+def test_toolkit_with_tracing_as_retriever(client, format: str, function_output: str):
     mock_function_info = generate_function_info()
+    trace_response = "[{\"page_content\": \"# Technology partners\\n## What is Databricks Partner Connect?\\n\", \"metadata\": {\"similarity_score\": 0.010178182, \"chunk_id\": \"0217a07ba2fec61865ce408043acf1cf\"}}, {\"page_content\": \"# Technology partners\\n## What is Databricks?\\n\", \"metadata\": {\"similarity_score\": 0.010178183, \"chunk_id\": \"0217a07ba2fec61865ce408043acf1cd\"}}]"
 
     with (
         mock.patch(
-            "unitycatalog.ai.core.utils.client_utils.validate_or_set_default_client",
-            return_value=client,
+            "unitycatalog.ai.core.databricks.DatabricksFunctionClient.get_function", 
+            return_value=mock_function_info
         ),
-        mock.patch.object(client, "get_function", return_value=mock_function_info),
-        mock.patch.object(
-            client,
-            "_execute_uc_function",
-            return_value=generate_mock_execution_result(
-                "[{'page_content': 'This is the page content.'}]"
-            ),
+        mock.patch(
+            "unitycatalog.ai.core.databricks.DatabricksFunctionClient._execute_uc_function",
+            return_value=FunctionExecutionResult(format=format, value=function_output),
         ),
+        mock.patch("unitycatalog.ai.core.databricks.DatabricksFunctionClient.validate_input_params"),
     ):
         import mlflow
 
@@ -305,16 +312,19 @@ def test_toolkit_with_tracing_as_retriever(client):
         tool = UCFunctionToolkit.uc_function_to_llama_tool(
             function_name="catalog.schema.test", client=client, return_direct=True
         )
-        tool.fn({"query": "some input"})
+        result = tool.fn(x="some input")
+        assert json.loads(result)["value"] == function_output
 
         import mlflow
 
         trace = mlflow.get_last_active_trace()
         assert trace is not None
         assert trace.info.execution_time_ms is not None
-        assert trace.data.request == {"query": "some input"}
-        assert trace.data.response == "[{'page_content': 'This is the page content.'}]"
-        assert trace.data.spans[0].name == mock_function_info.full_function_name
+        assert trace.data.request == "{\"x\": \"some input\"}"
+        assert trace.data.response == trace_response
+        assert trace.data.spans[0].name == "catalog.schema.test"
+
+        mlflow.llama_index.autolog(disable=True)
 
 
 def test_extract_properties_success():
