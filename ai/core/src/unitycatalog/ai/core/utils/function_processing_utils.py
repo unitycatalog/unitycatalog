@@ -4,11 +4,11 @@ import inspect
 import json
 import logging
 import os
-import pandas as pd
 from hashlib import md5
 from io import StringIO
 from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
+import pandas as pd
 from pydantic import Field, create_model
 
 from unitycatalog.ai.core.utils.config import JSON_SCHEMA_TYPE, UC_LIST_FUNCTIONS_MAX_RESULTS
