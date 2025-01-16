@@ -10,6 +10,7 @@ license = { text="Apache-2.0" }
 requires-python = ">=3.9"
 dependencies = [
     "autogen-agentchat>=0.4.0",
+    "autogen-core>=0.4.0",
     "openai>=1.46.1",
     "unitycatalog-ai",
     "pydantic<3,>=2",
