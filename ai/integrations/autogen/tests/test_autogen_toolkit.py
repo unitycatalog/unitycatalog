@@ -80,7 +80,7 @@ async def test_toolkit_e2e(use_serverless, monkeypatch, dbx_client):
         # 2) Provide some input arguments
         input_args = {"code": "print(1)"}
         # 3) Call the tool
-        result_str = await tool.run_json(input_args)  # pass a CancellationToken if needed
+        result_str = await tool.run_json(input_args, CancellationToken())
         result = json.loads(result_str)["value"]
         assert result == "1\n"
 
@@ -110,7 +110,7 @@ async def test_toolkit_e2e_manually_passing_client(use_serverless, monkeypatch, 
         assert func_obj.comment in tool.description
 
         input_args = {"code": "print(1)"}
-        result_str = await tool.run_json(input_args)
+        result_str = await tool.run_json(input_args, CancellationToken())
         result = json.loads(result_str)["value"]
         assert result == "1\n"
 
@@ -143,8 +143,8 @@ async def test_multiple_toolkits(use_serverless, monkeypatch, dbx_client):
         tool2 = [t for t in toolkit2.tools if t.name == func_obj.tool_name][0]
 
         input_args = {"code": "print(1)"}
-        result1_str = await tool1.run_json(input_args)
-        result2_str = await tool2.run_json(input_args)
+        result1_str = await tool1.run_json(input_args, CancellationToken())
+        result2_str = await tool2.run_json(input_args, CancellationToken())
         result1 = json.loads(result1_str)["value"]
         result2 = json.loads(result2_str)["value"]
         assert result1 == result2
