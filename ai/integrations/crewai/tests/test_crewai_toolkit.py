@@ -15,6 +15,7 @@ from unitycatalog.ai.core.base import (
     FunctionExecutionResult,
 )
 from unitycatalog.ai.test_utils.client_utils import (
+    TEST_IN_DATABRICKS,
     USE_SERVERLESS,
     client,  # noqa: F401
     get_client,
@@ -30,6 +31,12 @@ from unitycatalog.ai.test_utils.function_utils import (
 
 SCHEMA = os.environ.get("SCHEMA", "ucai_crewai_test")
 
+@pytest.fixture(autouse=True)
+def set_tracking_uri():
+    if TEST_IN_DATABRICKS:
+        import mlflow
+        
+        mlflow.set_tracking_uri("databricks-uc")
 
 @requires_databricks
 @pytest.mark.parametrize("use_serverless", [True, False])
