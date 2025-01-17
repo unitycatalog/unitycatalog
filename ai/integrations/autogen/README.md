@@ -3,7 +3,7 @@
 You can use the Unity Catalog AI package with the autogen SDK to utilize functions that are defined in Unity Catalog to be used as tools within autogen LLM calls.
 
 > [!NOTE]
-> Ensure that the base Autogen package is installed with version `autogen-agentchat~=0.2` or earlier, as there are significant changes in the API after this release.
+> Ensure that the base Autogen package is installed with version `autogen-agentchat~=0.2.0` or earlier, as there are significant changes in the API after this release.
 
 ## Installation
 
