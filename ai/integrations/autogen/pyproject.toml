@@ -1,6 +1,6 @@
 [project]
 name = "unitycatalog-autogen"
-version = "0.1.0"
+version = "0.1.1"
 description = "Support for Unity Catalog functions as autogen tools"
 authors = [
     { name="Puneet Jain", email="puneet.jain@databricks.com" }
@@ -9,7 +9,7 @@ readme = "README.md"
 license = { text="Apache-2.0" }
 requires-python = ">=3.9"
 dependencies = [
-    "autogen-agentchat~=0.2",
+    "autogen-agentchat~=0.2.0",
     "openai>=1.46.1",
     "unitycatalog-ai",
     "pydantic<3,>=2",
