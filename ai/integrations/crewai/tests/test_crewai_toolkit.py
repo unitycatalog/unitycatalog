@@ -15,11 +15,12 @@ from unitycatalog.ai.core.base import (
     FunctionExecutionResult,
 )
 from unitycatalog.ai.test_utils.client_utils import (
-    TEST_IN_DATABRICKS,
+    PROFILE,
     USE_SERVERLESS,
-    client,  # noqa: F401
+    client,
     get_client,
     requires_databricks,
+    serverless_client,  # noqa: F401
     set_default_client,
 )
 from unitycatalog.ai.test_utils.function_utils import (
@@ -30,13 +31,6 @@ from unitycatalog.ai.test_utils.function_utils import (
 )
 
 SCHEMA = os.environ.get("SCHEMA", "ucai_crewai_test")
-
-@pytest.fixture(autouse=True)
-def set_tracking_uri():
-    if TEST_IN_DATABRICKS:
-        import mlflow
-        
-        mlflow.set_tracking_uri("databricks-uc")
 
 @requires_databricks
 @pytest.mark.parametrize("use_serverless", [True, False])
@@ -176,7 +170,7 @@ def test_uc_function_to_crewai_tool(client):
         ("CSV", RETRIEVER_OUTPUT_CSV),
     ],
 )
-def test_crewai_tool_with_tracing_as_retriever(client, format: str, function_output: str):
+def test_crewai_tool_with_tracing_as_retriever(serverless_client, format: str, function_output: str):
     mock_function_info = generate_function_info()
 
     with (
@@ -194,10 +188,11 @@ def test_crewai_tool_with_tracing_as_retriever(client, format: str, function_out
     ):
         import mlflow
 
+        mlflow.set_tracking_uri(f"databricks://{PROFILE}")
         mlflow.crewai.autolog()
 
         tool = UCFunctionToolkit.uc_function_to_crewai_tool(
-            function_name=f"catalog.schema.test_{format}", client=client
+            function_name=f"catalog.schema.test_{format}", client=serverless_client
         )
         result = tool.fn(x="some input")
         assert json.loads(result)["value"] == function_output
