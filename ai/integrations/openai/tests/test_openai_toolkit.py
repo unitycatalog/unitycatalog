@@ -101,6 +101,59 @@ def test_tool_calling(use_serverless, monkeypatch):
 
 @requires_databricks
 @pytest.mark.parametrize("use_serverless", [True, False])
+def test_tool_calling_with_trace_as_retriever(use_serverless, monkeypatch):
+    monkeypatch.setenv(USE_SERVERLESS, str(use_serverless))
+    client = get_client()
+    with (
+        set_default_client(client),
+        create_function_and_cleanup(client, schema=SCHEMA) as func_obj,
+    ):
+        func_name = func_obj.full_function_name
+        toolkit = UCFunctionToolkit(function_names=[func_name])
+        tools = toolkit.tools
+
+        messages = [
+            {
+                "role": "system",
+                "content": "You are a helpful customer support assistant. Use the supplied tools to assist the user.",
+            },
+            {"role": "user", "content": "What is Databricks?"},
+        ]
+
+        with mock.patch(
+            "openai.chat.completions.create",
+            return_value=mock_chat_completion_response(
+                function=Function(
+                    arguments='{"code": "print([{"page_content": "This is the page content."}],end="")"}',
+                    name=func_obj.tool_name,
+                ),
+            ),
+        ):
+            response = openai.chat.completions.create(
+                model="gpt-4o-mini",
+                messages=messages,
+                tools=tools,
+            )
+            tool_calls = response.choices[0].message.tool_calls
+            tool_call = tool_calls[0]
+            arguments = json.loads(tool_call.function.arguments)
+
+            # execute the function based on the arguments
+            result = client.execute_function(func_name, arguments, enable_retriever_tracing=True)
+            assert result.value == '[{"page_content": "This is the page content."}]'
+
+            import mlflow
+
+            trace = mlflow.get_last_active_trace()
+            assert trace is not None
+            assert trace.info.execution_time_ms is not None
+            assert trace.data.request == tool_call.function.arguments
+            assert trace.data.response == result.value.replace("'", '"')
+            assert trace.data.spans[0].name == func_name
+
+
+@requires_databricks
+@pytest.mark.parametrize("use_serverless", [True, False])
 def test_tool_calling_with_multiple_choices(use_serverless, monkeypatch):
     monkeypatch.setenv(USE_SERVERLESS, str(use_serverless))
     client = get_client()
