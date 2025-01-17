@@ -294,6 +294,13 @@ async def test_create_function(uc_client):
     assert func_info.full_data_type == full_data_type
     assert func_info.routine_definition == routine_definition
     assert func_info.comment == comment
+    assert (
+        uc_client.execute_function(function_name=function_name, parameters={"x": "test"}).value
+        == "test"
+    )
+    assert uc_client.func_cache.get("test_function") is not None
+    uc_client.clear_function_cache()
+    assert uc_client.func_cache.get("test_function") is None
 
 
 @pytest.mark.asyncio

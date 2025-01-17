@@ -766,6 +766,10 @@ class UnitycatalogFunctionClient(BaseFunctionClient):
 
         pass
 
+    def clear_function_cache(self):
+        """Clear the function cache."""
+        self.func_cache.clear()
+
     @override
     def to_dict(self) -> Dict[str, Any]:
         elements = ["uc"]
