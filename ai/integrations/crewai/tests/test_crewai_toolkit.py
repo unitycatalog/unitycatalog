@@ -189,8 +189,7 @@ def test_crewai_tool_with_tracing_as_retriever(serverless_client, format: str, f
         import mlflow
         import mlflow.tracking._model_registry.utils
 
-        mlflow.set_tracking_uri(f"databricks://{PROFILE}")
-        mlflow.tracking._model_registry.utils._get_registry_uri_from_spark_session = lambda: f"databricks://{PROFILE}"
+        mlflow.tracking._model_registry.utils._get_registry_uri_from_spark_session = lambda: "databricks-uc"
 
         mlflow.crewai.autolog()
 
@@ -199,8 +198,6 @@ def test_crewai_tool_with_tracing_as_retriever(serverless_client, format: str, f
         )
         result = tool.fn(x="some input")
         assert json.loads(result)["value"] == function_output
-
-        import mlflow
 
         trace = mlflow.get_last_active_trace()
         assert trace is not None
