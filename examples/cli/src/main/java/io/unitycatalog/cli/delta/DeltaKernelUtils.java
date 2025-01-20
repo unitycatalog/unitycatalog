@@ -84,8 +84,7 @@ public class DeltaKernelUtils {
       // system scheme 's3' as an implementation of
       // org.apache.hadoop.fs.s3a.S3AFileSystem",
       // then we don't need this method
-      // substituteSchemeForS3 ... HOWEVER, because of a fair amount of hard-coding in Delta Lake
-      // then it seems like we need to send "s3a" as the path to the Engine anyway....
+      // substituteSchemeForS3 ... 
       conf.set("fs.s3a.access.key", valueOrEmpty(awsTempCredentials.getAccessKeyId()));
       conf.set("fs.s3a.secret.key", valueOrEmpty(awsTempCredentials.getSecretAccessKey()));
       conf.set("fs.s3a.session.token", valueOrEmpty(awsTempCredentials.getSessionToken()));
