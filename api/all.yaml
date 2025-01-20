@@ -2180,6 +2180,16 @@ components:
           description: The token that users must pass to AWS API to use the temporary
             credentials.
           type: string
+        region:
+          description: AWS Region of the data.
+          type: string
+        endpoint:
+          description: |
+            AWS S3 endpoint to connect to. An up-to-date list is
+            provided in the AWS Documentation: regions and endpoints. Without this
+            property, the endpoint/hostname of the S3 Store is inferred from
+            the value of region, fips and more.
+          type: string
       type: object
     AzureUserDelegationSAS:
       properties:

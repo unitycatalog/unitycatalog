@@ -6,12 +6,15 @@ import io.unitycatalog.server.exception.ErrorCode;
 import io.unitycatalog.server.model.*;
 import io.unitycatalog.server.persist.utils.FileOperations;
 import io.unitycatalog.server.service.credential.aws.AwsCredentialVendor;
+import io.unitycatalog.server.service.credential.aws.S3StorageConfig;
 import io.unitycatalog.server.service.credential.azure.AzureCredential;
 import io.unitycatalog.server.service.credential.azure.AzureCredentialVendor;
 import io.unitycatalog.server.service.credential.gcp.GcpCredentialVendor;
+import io.unitycatalog.server.utils.ServerProperties;
 import software.amazon.awssdk.services.sts.model.Credentials;
 
 import java.net.URI;
+import java.util.Map;
 import java.util.Set;
 
 import static io.unitycatalog.server.utils.Constants.URI_SCHEME_ABFS;
@@ -64,10 +67,13 @@ public class CloudCredentialVendor {
       }
       case URI_SCHEME_S3 -> {
         Credentials awsSessionCredentials = vendAwsCredential(context);
+        S3StorageConfig s3StorageConfig = awsCredentialVendor.getS3StorageConfig(context);
         temporaryCredentials.awsTempCredentials(new AwsCredentials()
           .accessKeyId(awsSessionCredentials.accessKeyId())
           .secretAccessKey(awsSessionCredentials.secretAccessKey())
-          .sessionToken(awsSessionCredentials.sessionToken()));
+          .sessionToken(awsSessionCredentials.sessionToken())
+          .endpoint(s3StorageConfig.getEndpoint())
+          .region(s3StorageConfig.getRegion()));
       }
     }
 

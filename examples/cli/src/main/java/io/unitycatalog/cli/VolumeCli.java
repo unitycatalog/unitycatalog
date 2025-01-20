@@ -112,12 +112,9 @@ public class VolumeCli {
                         .volumeId(volumeInfo.getVolumeId())
                         .operation(VolumeOperation.WRITE_VOLUME))
                 .getAwsTempCredentials());
-    FileSystem fs =
-        DeltaKernelUtils.getFileSystem(
-            URI.create(DeltaKernelUtils.substituteSchemeForS3(volumeLocation)), conf);
+    FileSystem fs = DeltaKernelUtils.getFileSystem(URI.create(volumeLocation), conf);
     try {
-      org.apache.hadoop.fs.Path path =
-          new org.apache.hadoop.fs.Path(DeltaKernelUtils.substituteSchemeForS3(baseURI.toString()));
+      org.apache.hadoop.fs.Path path = new org.apache.hadoop.fs.Path(baseURI.toString());
       // Generate a random file name
       String randomFileName = UUID.randomUUID() + ".txt";
 
@@ -127,8 +124,7 @@ public class VolumeCli {
 
       // Create a Path object using the S3 directory and the random file name
       org.apache.hadoop.fs.Path filePath =
-          new org.apache.hadoop.fs.Path(
-              DeltaKernelUtils.substituteSchemeForS3(volumeLocation), randomFileName);
+          new org.apache.hadoop.fs.Path(volumeLocation, randomFileName);
 
       // Write data to the file
       try (BufferedWriter writer =
@@ -173,11 +169,8 @@ public class VolumeCli {
                         .volumeId(volumeInfo.getVolumeId())
                         .operation(VolumeOperation.READ_VOLUME))
                 .getAwsTempCredentials());
-    URI relativeURIWithS3AScheme =
-        URI.create(DeltaKernelUtils.substituteSchemeForS3(relativeURI.toString()));
-    FileSystem fs =
-        DeltaKernelUtils.getFileSystem(
-            URI.create(DeltaKernelUtils.substituteSchemeForS3(volumeLocation)), conf);
+    URI relativeURIWithS3AScheme = URI.create(relativeURI.toString());
+    FileSystem fs = DeltaKernelUtils.getFileSystem(URI.create(volumeLocation), conf);
     org.apache.hadoop.fs.Path path = new org.apache.hadoop.fs.Path(relativeURIWithS3AScheme);
     try {
       if (!fs.exists(path)) {

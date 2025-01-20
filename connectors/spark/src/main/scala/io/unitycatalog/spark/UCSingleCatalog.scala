@@ -179,10 +179,12 @@ object UCSingleCatalog {
     if (scheme == "s3") {
       val awsCredentials = temporaryCredentials.getAwsTempCredentials
       Map(
-        // TODO: how to support s3:// properly?
+        "fs.s3.impl" -> "org.apache.hadoop.fs.s3a.S3AFileSystem", // <-- this is "how to support s3:// properly"
         "fs.s3a.access.key" -> awsCredentials.getAccessKeyId,
         "fs.s3a.secret.key" -> awsCredentials.getSecretAccessKey,
         "fs.s3a.session.token" -> awsCredentials.getSessionToken,
+        "fs.s3a.endpoint" -> awsCredentials.getEndpoint,
+        "fs.s3a.endpoint.region" -> awsCredentials.getRegion,
         "fs.s3a.path.style.access" -> "true",
         "fs.s3.impl.disable.cache" -> "true",
         "fs.s3a.impl.disable.cache" -> "true"

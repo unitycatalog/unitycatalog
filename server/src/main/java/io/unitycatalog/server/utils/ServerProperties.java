@@ -59,37 +59,55 @@ public class ServerProperties {
     return propertiesFromFile;
   }
 
+  private Map<String, S3StorageConfig> s3Configurations;
+
   public Map<String, S3StorageConfig> getS3Configurations() {
+    if (this.s3Configurations != null) return this.s3Configurations;
+
     Map<String, S3StorageConfig> s3BucketConfigMap = new HashMap<>();
     int i = 0;
     while (true) {
       String bucketPath = properties.getProperty("s3.bucketPath." + i);
       String region = properties.getProperty("s3.region." + i);
+      String endpoint = properties.getProperty("s3.endpoint." + i);
       String awsRoleArn = properties.getProperty("s3.awsRoleArn." + i);
       String accessKey = properties.getProperty("s3.accessKey." + i);
       String secretKey = properties.getProperty("s3.secretKey." + i);
       String sessionToken = properties.getProperty("s3.sessionToken." + i);
       if ((bucketPath == null || region == null || awsRoleArn == null)
-          && (accessKey == null || secretKey == null || sessionToken == null)) {
+          && (accessKey == null || secretKey == null || sessionToken == null)
+          && (accessKey == null || secretKey == null || endpoint == null)) {
         break;
       }
       S3StorageConfig s3StorageConfig =
           S3StorageConfig.builder()
               .bucketPath(bucketPath)
               .region(region)
+              .endpoint(endpoint)
               .awsRoleArn(awsRoleArn)
               .accessKey(accessKey)
               .secretKey(secretKey)
               .sessionToken(sessionToken)
               .build();
-      s3BucketConfigMap.put(bucketPath, s3StorageConfig);
       i++;
+      if (endpoint != null && s3StorageConfig.getEndpointURI() == null) {
+        LOGGER.warn(
+            "Failed to parse custom endpoint URI '{}'; this S3 bucket will be skipped.", endpoint);
+        continue;
+      }
+      s3BucketConfigMap.put(bucketPath, s3StorageConfig);
+      LOGGER.info("Added S3 Storage Configuration for {}", bucketPath);
     }
 
-    return s3BucketConfigMap;
+    this.s3Configurations = s3BucketConfigMap;
+    return this.s3Configurations;
   }
 
+  private Map<String, String> gcsConfigurations;
+
   public Map<String, String> getGcsConfigurations() {
+    if (this.gcsConfigurations != null) return this.gcsConfigurations;
+
     Map<String, String> gcsConfigMap = new HashMap<>();
     int i = 0;
     while (true) {
@@ -102,10 +120,15 @@ public class ServerProperties {
       i++;
     }
 
-    return gcsConfigMap;
+    this.gcsConfigurations = gcsConfigMap;
+    return this.gcsConfigurations;
   }
 
+  private Map<String, ADLSStorageConfig> adlsConfigurations;
+
   public Map<String, ADLSStorageConfig> getAdlsConfigurations() {
+    if (this.adlsConfigurations != null) return this.adlsConfigurations;
+
     Map<String, ADLSStorageConfig> adlsConfigMap = new HashMap<>();
 
     int i = 0;
@@ -133,7 +156,8 @@ public class ServerProperties {
       i++;
     }
 
-    return adlsConfigMap;
+    this.adlsConfigurations = adlsConfigMap;
+    return this.adlsConfigurations;
   }
 
   /**

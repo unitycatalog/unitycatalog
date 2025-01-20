@@ -30,9 +30,6 @@ import java.util.stream.Collectors;
  */
 public class DeltaKernelWriteUtils {
 
-  static String accessKey = "";
-  static String secretKey = "";
-  static String sessionToken = "";
   private static final Random random = new Random();
 
   public static String writeSampleDataToDeltaTable(
@@ -45,8 +42,7 @@ public class DeltaKernelWriteUtils {
       if (tablePathUri.getScheme().equals("file")) {
         createVsUpdate = !(new File(tablePathUri).isDirectory());
       }
-      writeSampleDataToExistingDeltaTable(
-          engine, DeltaKernelUtils.substituteSchemeForS3(tablePath), schema, createVsUpdate);
+      writeSampleDataToExistingDeltaTable(engine, tablePath, schema, createVsUpdate);
       return "Table written to successfully at: " + tablePath;
     } catch (Exception e) {
       throw new IllegalArgumentException("Failed to create delta table", e);

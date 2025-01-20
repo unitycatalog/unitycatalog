@@ -87,18 +87,19 @@ public class FileIOFactory {
     S3StorageConfig s3StorageConfig = s3Configurations.get(context.getStorageBase());
 
     S3FileIO s3FileIO =
-        new S3FileIO(() -> getS3Client(getAwsCredentialsProvider(context), s3StorageConfig.getRegion()));
+        new S3FileIO(() -> getS3Client(getAwsCredentialsProvider(context), s3StorageConfig));
 
     s3FileIO.initialize(Map.of());
 
     return s3FileIO;
   }
 
-  protected S3Client getS3Client(AwsCredentialsProvider awsCredentialsProvider, String region) {
+  protected S3Client getS3Client(AwsCredentialsProvider awsCredentialsProvider, S3StorageConfig s3StorageConfig) {
     return S3Client.builder()
-        .region(Region.of(region))
         .credentialsProvider(awsCredentialsProvider)
-        .forcePathStyle(false)
+        .region(Region.of(s3StorageConfig.getRegion()))
+        .endpointOverride(s3StorageConfig.getEndpointURI())
+        .forcePathStyle(true) // Forcing pathStyle=true here to match what is done in UCSingleCatalog; if this should be configurable then it needs to be added to config and used in all clients
         .build();
   }
 

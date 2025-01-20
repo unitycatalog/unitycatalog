@@ -32,7 +32,7 @@ public class DeltaKernelUtils {
     try {
       URI tablePathUri = URI.create(tablePath);
       Engine engine = getEngine(tablePathUri, awsTempCredentials);
-      Table table = Table.forPath(engine, substituteSchemeForS3(tablePath));
+      Table table = Table.forPath(engine, tablePath);
       // construct the schema
       StructType tableSchema = getSchema(columns);
       TransactionBuilder txnBuilder =
@@ -54,10 +54,6 @@ public class DeltaKernelUtils {
     return EMPTY;
   }
 
-  public static String substituteSchemeForS3(String tablePath) {
-    return tablePath.replace("s3://", "s3a://");
-  }
-
   public static Engine getEngine(URI tablePathUri, AwsCredentials awsTempCredentials) {
     return DefaultEngine.create(getHDFSConfiguration(tablePathUri, awsTempCredentials));
   }
@@ -70,6 +66,10 @@ public class DeltaKernelUtils {
     }
   }
 
+  private static String valueOrEmpty(String value) {
+    return (value != null) ? value : "";
+  }
+
   public static Configuration getHDFSConfiguration(
       URI tablePathUri, AwsCredentials awsTempCredentials) {
     Configuration conf = new Configuration();
@@ -79,10 +79,18 @@ public class DeltaKernelUtils {
       throw new IllegalArgumentException("AWS temporary credentials are missing");
     }
     if (tablePathUri.getScheme().equals("s3")) {
-      conf.set("fs.s3a.access.key", awsTempCredentials.getAccessKeyId());
-      conf.set("fs.s3a.secret.key", awsTempCredentials.getSecretAccessKey());
-      conf.set("fs.s3a.session.token", awsTempCredentials.getSessionToken());
-      conf.set("fs.s3a.impl", "org.apache.hadoop.fs.s3a.S3AFileSystem");
+      conf.set("fs.s3.impl", "org.apache.hadoop.fs.s3a.S3AFileSystem");
+      // Note: the above means "create an alias for a file
+      // system scheme 's3' as an implementation of
+      // org.apache.hadoop.fs.s3a.S3AFileSystem",
+      // then we don't need this method
+      // substituteSchemeForS3 ... HOWEVER, because of a fair amount of hard-coding in Delta Lake
+      // then it seems like we need to send "s3a" as the path to the Engine anyway....
+      conf.set("fs.s3a.access.key", valueOrEmpty(awsTempCredentials.getAccessKeyId()));
+      conf.set("fs.s3a.secret.key", valueOrEmpty(awsTempCredentials.getSecretAccessKey()));
+      conf.set("fs.s3a.session.token", valueOrEmpty(awsTempCredentials.getSessionToken()));
+      conf.set("fs.s3a.endpoint", valueOrEmpty(awsTempCredentials.getEndpoint()));
+      conf.set("fs.s3a.endpoint.region", valueOrEmpty(awsTempCredentials.getRegion()));
       conf.set("fs.s3a.path.style.access", "true");
     } else if (tablePathUri.getScheme().equals("file")) {
       conf.set("fs.file.impl", "org.apache.hadoop.fs.LocalFileSystem");
@@ -96,7 +104,7 @@ public class DeltaKernelUtils {
       String tablePath, AwsCredentials awsCredentials, int maxResults) {
     Engine engine = getEngine(URI.create(tablePath), awsCredentials);
     try {
-      Table table = Table.forPath(engine, substituteSchemeForS3(tablePath));
+      Table table = Table.forPath(engine, tablePath);
       Snapshot snapshot = table.getLatestSnapshot(engine);
       StructType readSchema = snapshot.getSchema();
       Object[] schema =
