@@ -7,8 +7,7 @@ import io.unitycatalog.server.persist.dao.CatalogInfoDAO;
 import io.unitycatalog.server.persist.dao.PropertyDAO;
 import io.unitycatalog.server.persist.dao.SchemaInfoDAO;
 import io.unitycatalog.server.persist.dao.TableInfoDAO;
-import io.unitycatalog.server.persist.utils.FileUtils;
-import io.unitycatalog.server.persist.utils.HibernateUtils;
+import io.unitycatalog.server.persist.utils.FileOperations;
 import io.unitycatalog.server.persist.utils.PagedListingHelper;
 import io.unitycatalog.server.persist.utils.RepositoryUtils;
 import io.unitycatalog.server.utils.Constants;
@@ -24,22 +23,22 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 public class TableRepository {
-  private static final TableRepository INSTANCE = new TableRepository();
   private static final Logger LOGGER = LoggerFactory.getLogger(TableRepository.class);
-  private static final SessionFactory SESSION_FACTORY = HibernateUtils.getSessionFactory();
-  private static final SchemaRepository SCHEMA_REPOSITORY = SchemaRepository.getInstance();
+  private final SessionFactory sessionFactory;
+  private final Repositories repositories;
+  private final FileOperations fileOperations;
   private static final PagedListingHelper<TableInfoDAO> LISTING_HELPER =
       new PagedListingHelper<>(TableInfoDAO.class);
 
-  private TableRepository() {}
-
-  public static TableRepository getInstance() {
-    return INSTANCE;
+  public TableRepository(Repositories repositories, SessionFactory sessionFactory) {
+    this.repositories = repositories;
+    this.sessionFactory = sessionFactory;
+    this.fileOperations = repositories.getFileOperations();
   }
 
   public TableInfo getTableById(String tableId) {
     LOGGER.debug("Getting table by id: {}", tableId);
-    try (Session session = SESSION_FACTORY.openSession()) {
+    try (Session session = sessionFactory.openSession()) {
       session.setDefaultReadOnly(true);
       Transaction tx = session.beginTransaction();
       try {
@@ -75,7 +74,7 @@ public class TableRepository {
   public TableInfo getTable(String fullName) {
     LOGGER.debug("Getting table: {}", fullName);
     TableInfo tableInfo = null;
-    try (Session session = SESSION_FACTORY.openSession()) {
+    try (Session session = sessionFactory.openSession()) {
       session.setDefaultReadOnly(true);
       Transaction tx = session.beginTransaction();
       try {
@@ -135,7 +134,8 @@ public class TableRepository {
             .tableType(createTable.getTableType())
             .dataSourceFormat(createTable.getDataSourceFormat())
             .columns(columnInfos)
-            .storageLocation(FileUtils.convertRelativePathToURI(createTable.getStorageLocation()))
+            .storageLocation(
+                FileOperations.convertRelativePathToURI(createTable.getStorageLocation()))
             .comment(createTable.getComment())
             .properties(createTable.getProperties())
             .owner(callerId)
@@ -147,7 +147,7 @@ public class TableRepository {
     LOGGER.debug("Creating table: {}", fullName);
 
     Transaction tx;
-    try (Session session = SESSION_FACTORY.openSession()) {
+    try (Session session = sessionFactory.openSession()) {
       String catalogName = tableInfo.getCatalogName();
       String schemaName = tableInfo.getSchemaName();
       UUID schemaId = getSchemaId(session, catalogName, schemaName);
@@ -213,7 +213,8 @@ public class TableRepository {
   }
 
   public UUID getSchemaId(Session session, String catalogName, String schemaName) {
-    SchemaInfoDAO schemaInfo = SCHEMA_REPOSITORY.getSchemaDAO(session, catalogName, schemaName);
+    SchemaInfoDAO schemaInfo =
+        repositories.getSchemaRepository().getSchemaDAO(session, catalogName, schemaName);
     if (schemaInfo == null) {
       throw new BaseException(ErrorCode.NOT_FOUND, "Schema not found: " + schemaName);
     }
@@ -238,7 +239,7 @@ public class TableRepository {
       Optional<String> pageToken,
       Boolean omitProperties,
       Boolean omitColumns) {
-    try (Session session = SESSION_FACTORY.openSession()) {
+    try (Session session = sessionFactory.openSession()) {
       session.setDefaultReadOnly(true);
       Transaction tx = session.beginTransaction();
       try {
@@ -291,7 +292,7 @@ public class TableRepository {
   }
 
   public void deleteTable(String fullName) {
-    try (Session session = SESSION_FACTORY.openSession()) {
+    try (Session session = sessionFactory.openSession()) {
       Transaction tx = session.beginTransaction();
       String[] parts = fullName.split("\\.");
       if (parts.length != 3) {
@@ -320,7 +321,7 @@ public class TableRepository {
     }
     if (TableType.MANAGED.getValue().equals(tableInfoDAO.getType())) {
       try {
-        FileUtils.deleteDirectory(tableInfoDAO.getUrl());
+        fileOperations.deleteDirectory(tableInfoDAO.getUrl());
       } catch (Throwable e) {
         LOGGER.error("Error deleting table directory: {}", tableInfoDAO.getUrl(), e);
       }

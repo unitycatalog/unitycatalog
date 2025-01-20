@@ -23,6 +23,8 @@ from unitycatalog.ai.test_utils.client_utils import (
 )
 from unitycatalog.ai.test_utils.function_utils import (
     CATALOG,
+    RETRIEVER_OUTPUT_CSV,
+    RETRIEVER_OUTPUT_SCALAR,
     create_function_and_cleanup,
 )
 
@@ -158,6 +160,51 @@ def test_uc_function_to_crewai_tool(client):
         assert tool.cache_function(1, {1: 1})
         assert not tool.result_as_answer
         assert not tool.description_updated
+
+
+@pytest.mark.parametrize(
+    "format,function_output",
+    [
+        ("SCALAR", RETRIEVER_OUTPUT_SCALAR),
+        ("CSV", RETRIEVER_OUTPUT_CSV),
+    ],
+)
+def test_crewai_tool_with_tracing_as_retriever(client, format: str, function_output: str):
+    mock_function_info = generate_function_info()
+
+    with (
+        mock.patch(
+            "unitycatalog.ai.core.databricks.DatabricksFunctionClient.get_function",
+            return_value=mock_function_info,
+        ),
+        mock.patch(
+            "unitycatalog.ai.core.databricks.DatabricksFunctionClient._execute_uc_function",
+            return_value=FunctionExecutionResult(format=format, value=function_output),
+        ),
+        mock.patch(
+            "unitycatalog.ai.core.databricks.DatabricksFunctionClient.validate_input_params"
+        ),
+    ):
+        import mlflow
+
+        mlflow.crewai.autolog()
+
+        tool = UCFunctionToolkit.uc_function_to_crewai_tool(
+            function_name=f"catalog.schema.test_{format}", client=client
+        )
+        result = tool.fn(x="some input")
+        assert json.loads(result)["value"] == function_output
+
+        import mlflow
+
+        trace = mlflow.get_last_active_trace()
+        assert trace is not None
+        assert trace.info.execution_time_ms is not None
+        assert trace.data.request == '{"x": "some input"}'
+        assert trace.data.response == RETRIEVER_OUTPUT_SCALAR
+        assert trace.data.spans[0].name == f"catalog.schema.test_{format}"
+
+        mlflow.crewai.autolog(disable=True)
 
 
 def test_toolkit_with_invalid_function_input(client):

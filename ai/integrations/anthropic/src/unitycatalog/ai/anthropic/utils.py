@@ -1,3 +1,4 @@
+import logging
 from typing import Any, Dict, List, Optional, Union
 
 from pydantic import BaseModel, Field, ValidationError
@@ -6,6 +7,9 @@ from anthropic.types import ContentBlock, Message, MessageParam, ToolUseBlock
 from unitycatalog.ai.core.base import BaseFunctionClient
 from unitycatalog.ai.core.utils.client_utils import validate_or_set_default_client
 from unitycatalog.ai.core.utils.function_processing_utils import construct_original_function_name
+from unitycatalog.ai.core.utils.validation_utils import mlflow_tracing_enabled
+
+_logger = logging.getLogger(__name__)
 
 
 class ConversationMessage(BaseModel):
@@ -51,7 +55,11 @@ class ToolCallData:
         Returns:
             str: The result of the function execution.
         """
-        result = client.execute_function(self.function_name, self.arguments)
+        result = client.execute_function(
+            self.function_name,
+            self.arguments,
+            enable_retriever_tracing=mlflow_tracing_enabled("anthropic"),
+        )
         return str(result.value)
 
     def to_tool_result_message(self, result: str) -> Dict[str, Any]:
