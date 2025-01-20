@@ -14,4 +14,6 @@ public class S3StorageConfig {
   private final String accessKey;
   private final String secretKey;
   private final String sessionToken;
+  private final String provider;
+  private final String endpoint;
 }

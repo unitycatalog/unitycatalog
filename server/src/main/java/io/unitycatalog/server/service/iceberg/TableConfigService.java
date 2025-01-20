@@ -1,6 +1,7 @@
 package io.unitycatalog.server.service.iceberg;
 
 import com.google.auth.oauth2.AccessToken;
+import io.unitycatalog.server.model.AwsCredentials;
 import io.unitycatalog.server.utils.ServerProperties;
 import io.unitycatalog.server.service.credential.CredentialContext;
 import io.unitycatalog.server.service.credential.CredentialOperations;
@@ -66,12 +67,14 @@ public class TableConfigService {
   }
 
   private Map<String, String> getS3Config(CredentialContext context) {
+    // TODO: refactor this to use AwsCredential instead
     S3StorageConfig s3StorageConfig = s3Configurations.get(context.getStorageBase());
-    Credentials awsCredential = credentialOperations.vendAwsCredential(context);
+    AwsCredentials awsCredential = credentialOperations.vendAwsCredential(context);
 
-    return Map.of(S3FileIOProperties.ACCESS_KEY_ID, awsCredential.accessKeyId(),
-      S3FileIOProperties.SECRET_ACCESS_KEY, awsCredential.secretAccessKey(),
-      S3FileIOProperties.SESSION_TOKEN, awsCredential.sessionToken(),
+    return Map.of(S3FileIOProperties.ACCESS_KEY_ID, awsCredential.getAccessKeyId(),
+      S3FileIOProperties.SECRET_ACCESS_KEY, awsCredential.getSecretAccessKey(),
+      S3FileIOProperties.SESSION_TOKEN, awsCredential.getSessionToken(),
+      S3FileIOProperties.ENDPOINT, awsCredential.getEndpoint(),
       AwsClientProperties.CLIENT_REGION, s3StorageConfig.getRegion());
   }
 }

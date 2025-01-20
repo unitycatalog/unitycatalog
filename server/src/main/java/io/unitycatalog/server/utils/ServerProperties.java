@@ -1,15 +1,14 @@
 package io.unitycatalog.server.utils;
 
 import io.unitycatalog.server.service.credential.aws.S3StorageConfig;
+import io.unitycatalog.server.service.credential.aws.provider.AwsCredentialsProviderConfig;
 import io.unitycatalog.server.service.credential.azure.ADLSStorageConfig;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
-import java.util.HashMap;
-import java.util.Map;
-import java.util.Properties;
+import java.util.*;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -55,8 +54,11 @@ public class ServerProperties {
       String accessKey = properties.getProperty("s3.accessKey." + i);
       String secretKey = properties.getProperty("s3.secretKey." + i);
       String sessionToken = properties.getProperty("s3.sessionToken." + i);
+      String endpoint = properties.getProperty("s3.endpoint." + i);
+      String provider = properties.getProperty("s3.provider." + i);
       if ((bucketPath == null || region == null || awsRoleArn == null)
-          && (accessKey == null || secretKey == null || sessionToken == null)) {
+          && (accessKey == null || secretKey == null || sessionToken == null)
+          && (endpoint == null || provider == null)) {
         break;
       }
       S3StorageConfig s3StorageConfig =
@@ -67,12 +69,51 @@ public class ServerProperties {
               .accessKey(accessKey)
               .secretKey(secretKey)
               .sessionToken(sessionToken)
+              .provider(provider)
+              .endpoint(endpoint)
               .build();
       s3BucketConfigMap.put(bucketPath, s3StorageConfig);
       i++;
     }
 
     return s3BucketConfigMap;
+  }
+
+  public Map<String, AwsCredentialsProviderConfig> getAwsCredentialProviderConfigurations() {
+    Map<String, AwsCredentialsProviderConfig> providersConfigMap = new HashMap<>();
+    Enumeration<?> propertyNamesEnumeration = properties.propertyNames();
+    while (propertyNamesEnumeration.hasMoreElements()) {
+      final String propertyName = (String) propertyNamesEnumeration.nextElement();
+
+      // skip property if it does not start with aws.credentials.provider
+      if (!propertyName.startsWith("aws.credentials.provider")) continue;
+
+      // remove 'aws.credentials.provider.' prefix and split by . to obtain config parameter name
+      final List<String> providerProperty = Arrays.asList(propertyName.substring(25).split("\\."));
+
+      final String name = providerProperty.get(0);
+      providerProperty.remove(0);
+
+      // Build property name
+      StringBuilder builder = new StringBuilder();
+
+      for (int i = 0; i < providerProperty.size(); ++i) {
+        builder.append(providerProperty.get(i));
+        if (i < providerProperty.size() - 1) {
+          builder.append(".");
+        }
+      }
+
+      final String providerPropertyName = builder.toString();
+
+      // Upsert config
+      AwsCredentialsProviderConfig config =
+          providersConfigMap.getOrDefault(name, new AwsCredentialsProviderConfig());
+      config.put(providerPropertyName, properties.getProperty(propertyName));
+      providersConfigMap.put(name, config);
+    }
+
+    return providersConfigMap;
   }
 
   public Map<String, String> getGcsConfigurations() {
