@@ -124,7 +124,9 @@ def test_tool_calling_with_trace_as_retriever(use_serverless, monkeypatch):
             "openai.chat.completions.create",
             return_value=mock_chat_completion_response(
                 function=Function(
-                    arguments='{"code": "print([{"page_content": "This is the page content."}],end="")"}',
+                    arguments=json.dumps(
+                        {"code": "print([{'page_content': 'This is the page content.'}], end='')"}
+                    ),
                     name=func_obj.tool_name,
                 ),
             ),

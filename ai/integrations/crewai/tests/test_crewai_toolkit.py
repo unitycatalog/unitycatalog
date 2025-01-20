@@ -31,6 +31,7 @@ from unitycatalog.ai.test_utils.function_utils import (
 
 SCHEMA = os.environ.get("SCHEMA", "ucai_crewai_test")
 
+
 @requires_databricks
 @pytest.mark.parametrize("use_serverless", [True, False])
 def test_toolkit_e2e(use_serverless, monkeypatch):
@@ -170,7 +171,9 @@ def test_uc_function_to_crewai_tool(client):
     ],
 )
 @pytest.mark.parametrize("use_serverless", [True, False])
-def test_crewai_tool_with_tracing_as_retriever(use_serverless, monkeypatch, format: str, function_output: str):
+def test_crewai_tool_with_tracing_as_retriever(
+    use_serverless, monkeypatch, format: str, function_output: str
+):
     monkeypatch.setenv(USE_SERVERLESS, str(use_serverless))
     client = get_client()
     mock_function_info = generate_function_info()
@@ -189,10 +192,13 @@ def test_crewai_tool_with_tracing_as_retriever(use_serverless, monkeypatch, form
         ),
     ):
         import mlflow
+
         if TEST_IN_DATABRICKS:
             import mlflow.tracking._model_registry.utils
 
-            mlflow.tracking._model_registry.utils._get_registry_uri_from_spark_session = lambda: "databricks-uc"
+            mlflow.tracking._model_registry.utils._get_registry_uri_from_spark_session = (
+                lambda: "databricks-uc"
+            )
 
         mlflow.crewai.autolog()
 

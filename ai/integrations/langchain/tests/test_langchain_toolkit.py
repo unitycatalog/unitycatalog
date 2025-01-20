@@ -196,7 +196,9 @@ def test_uc_function_to_langchain_tool():
     ],
 )
 @pytest.mark.parametrize("use_serverless", [True, False])
-def test_langchain_tool_trace_as_retriever(use_serverless, monkeypatch, format: str, function_output: str):
+def test_langchain_tool_trace_as_retriever(
+    use_serverless, monkeypatch, format: str, function_output: str
+):
     monkeypatch.setenv(USE_SERVERLESS, str(use_serverless))
     client = get_client()
     mock_function_info = generate_function_info()
@@ -219,7 +221,9 @@ def test_langchain_tool_trace_as_retriever(use_serverless, monkeypatch, format: 
         if TEST_IN_DATABRICKS:
             import mlflow.tracking._model_registry.utils
 
-            mlflow.tracking._model_registry.utils._get_registry_uri_from_spark_session = lambda: "databricks-uc"
+            mlflow.tracking._model_registry.utils._get_registry_uri_from_spark_session = (
+                lambda: "databricks-uc"
+            )
 
         mlflow.langchain.autolog()
 
