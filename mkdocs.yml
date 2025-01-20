@@ -24,7 +24,7 @@ nav:
   - Server:
       - Configuration: server/configuration.md
       - Auth: server/auth.md
-      - Roles and Privileges: server/roles-privileges.md
+      - Users and Privileges: server/users-privileges.md
   - Integrations:
       - Apache Spark: integrations/unity-catalog-spark.md
       - CelerData: integrations/unity-catalog-celerdata.md
