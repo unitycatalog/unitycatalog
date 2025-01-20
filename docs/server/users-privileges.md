@@ -1,13 +1,13 @@
-# User Roles and Privileges
+# Users and Privileges
 
-This page explains how Unity Catalog defines user roles and privileges.
+This page explains how Unity Catalog defines users and privileges.
 
 Here's a quick overview:
 
-- Unity Catalog stores information about users, roles and privileges in a local user database.
+- Unity Catalog stores information about users and privileges in a user database.
 - Users can authenticate using an external authentication provider (e.g. Google Auth, Okta, etc.)
 - After authentication, Unity Catalog will verify authorization to check whether a user has the required privileges to perform the requested action
-- Admins can define user roles and privileges
+- Admins can define users and privileges
 
 ## Enabling External Authentication
 
@@ -17,7 +17,7 @@ When you enable external authorization on a catalog, Unity Catalog automatically
 - creates an admin token
 - grants the admin account the metastore admin role for the server.
 
-Read the [Auth docs](#link) to learn how you can configure authentication and authorization.
+Read the [Auth docs](auth.md) to learn how you can configure authentication and authorization.
 
 ## Default User Roles and Privileges
 
