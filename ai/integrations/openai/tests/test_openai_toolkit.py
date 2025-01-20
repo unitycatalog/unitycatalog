@@ -17,6 +17,7 @@ from unitycatalog.ai.core.base import set_uc_function_client
 from unitycatalog.ai.core.utils.function_processing_utils import get_tool_name
 from unitycatalog.ai.openai.toolkit import UCFunctionToolkit
 from unitycatalog.ai.test_utils.client_utils import (
+    TEST_IN_DATABRICKS,
     USE_SERVERLESS,
     get_client,
     requires_databricks,
@@ -104,6 +105,14 @@ def test_tool_calling(use_serverless, monkeypatch):
 def test_tool_calling_with_trace_as_retriever(use_serverless, monkeypatch):
     monkeypatch.setenv(USE_SERVERLESS, str(use_serverless))
     client = get_client()
+    import mlflow
+
+    if TEST_IN_DATABRICKS:
+        import mlflow.tracking._model_registry.utils
+
+        mlflow.tracking._model_registry.utils._get_registry_uri_from_spark_session = (
+            lambda: "databricks-uc"
+        )
     with (
         set_default_client(client),
         create_function_and_cleanup(client, schema=SCHEMA) as func_obj,
@@ -142,9 +151,7 @@ def test_tool_calling_with_trace_as_retriever(use_serverless, monkeypatch):
 
             # execute the function based on the arguments
             result = client.execute_function(func_name, arguments, enable_retriever_tracing=True)
-            assert result.value == '[{"page_content": "This is the page content."}]'
-
-            import mlflow
+            assert result.value == "[{'page_content': 'This is the page content.'}]"
 
             trace = mlflow.get_last_active_trace()
             assert trace is not None

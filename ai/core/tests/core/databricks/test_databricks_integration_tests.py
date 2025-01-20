@@ -1,3 +1,4 @@
+import json
 import math
 import os
 import time
@@ -40,6 +41,7 @@ from unitycatalog.ai.core.envs.databricks_env_vars import (
     UCAI_DATABRICKS_WAREHOUSE_RETRY_TIMEOUT,
 )
 from unitycatalog.ai.test_utils.client_utils import (
+    TEST_IN_DATABRICKS,
     USE_SERVERLESS,
     client,  # noqa: F401
     get_client,
@@ -88,23 +90,30 @@ def test_create_and_execute_function(
 
 @retry_flaky_test()
 @requires_databricks
-def test_create_and_execute_retriever_function(client: DatabricksFunctionClient):
+def test_create_and_execute_retriever_function(serverless_client: DatabricksFunctionClient):
     import mlflow
 
-    with generate_func_name_and_cleanup(client, schema=SCHEMA) as func_name:
+    if TEST_IN_DATABRICKS:
+        import mlflow.tracking._model_registry.utils
+
+        mlflow.tracking._model_registry.utils._get_registry_uri_from_spark_session = (
+            lambda: "databricks-uc"
+        )
+
+    with generate_func_name_and_cleanup(serverless_client, schema=SCHEMA) as func_name:
         function_sample = function_with_scalar_retriever_output(func_name)
-        client.create_function(sql_function_body=function_sample.sql_body)
+        serverless_client.create_function(sql_function_body=function_sample.sql_body)
         for input_example in function_sample.inputs:
-            result = client.execute_function(
+            result = serverless_client.execute_function(
                 func_name, input_example, enable_retriever_tracing=True
             )
-            assert result.value == function_sample.output
+            assert result.value == function_sample.output, result.error
 
             trace = mlflow.get_last_active_trace()
             assert trace is not None
             assert trace.info.execution_time_ms is not None
-            assert trace.data.request == input_example
-            assert trace.data.response == function_sample.output
+            assert trace.data.request == json.dumps(input_example)
+            assert trace.data.response == function_sample.output.replace("'", '"')
 
 
 @retry_flaky_test()
