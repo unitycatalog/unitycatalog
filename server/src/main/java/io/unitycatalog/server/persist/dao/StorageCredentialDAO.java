@@ -1,5 +1,6 @@
 package io.unitycatalog.server.persist.dao;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.unitycatalog.server.model.AwsIamRoleResponse;
 import io.unitycatalog.server.model.AzureServicePrincipal;
@@ -40,7 +41,7 @@ public class StorageCredentialDAO extends IdentifiableDAO {
   @Column(name = "created_at", nullable = false)
   private Date createdAt;
 
-  @Column(name = "created_by", nullable = false)
+  @Column(name = "created_by")
   private String createdBy;
 
   @Column(name = "updated_at")
@@ -70,15 +71,20 @@ public class StorageCredentialDAO extends IdentifiableDAO {
                     : null)
             .updatedBy(storageCredentialInfo.getUpdatedBy());
     // TODO: encrypt the credential
-    if (storageCredentialInfo.getAwsIamRole() != null) {
-      storageCredentialDAOBuilder.credentialType(CredentialType.AWS_IAM_ROLE);
-      storageCredentialDAOBuilder.credential(storageCredentialInfo.getAwsIamRole().toString());
-    } else if (storageCredentialInfo.getAzureServicePrincipal() != null) {
-      storageCredentialDAOBuilder.credentialType(CredentialType.AZURE_SERVICE_PRINCIPAL);
-      storageCredentialDAOBuilder.credential(
-          storageCredentialInfo.getAzureServicePrincipal().toString());
-    } else {
-      throw new IllegalArgumentException("Unknown credential type");
+    try {
+      if (storageCredentialInfo.getAwsIamRole() != null) {
+        storageCredentialDAOBuilder.credentialType(CredentialType.AWS_IAM_ROLE);
+        storageCredentialDAOBuilder.credential(
+            objectMapper.writeValueAsString(storageCredentialInfo.getAwsIamRole()));
+      } else if (storageCredentialInfo.getAzureServicePrincipal() != null) {
+        storageCredentialDAOBuilder.credentialType(CredentialType.AZURE_SERVICE_PRINCIPAL);
+        storageCredentialDAOBuilder.credential(
+            objectMapper.writeValueAsString(storageCredentialInfo.getAzureServicePrincipal()));
+      } else {
+        throw new IllegalArgumentException("Unknown credential type");
+      }
+    } catch (JsonProcessingException e) {
+      throw new IllegalArgumentException("Failed to serialize credential", e);
     }
     return storageCredentialDAOBuilder.build();
   }
@@ -108,7 +114,7 @@ public class StorageCredentialDAO extends IdentifiableDAO {
         default:
           throw new IllegalArgumentException("Unknown credential type");
       }
-    } catch (Exception e) {
+    } catch (JsonProcessingException e) {
       throw new IllegalArgumentException("Failed to parse credential", e);
     }
     return storageCredentialInfo;
