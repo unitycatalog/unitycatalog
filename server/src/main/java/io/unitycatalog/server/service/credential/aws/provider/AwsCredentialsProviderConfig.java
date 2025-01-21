@@ -1,9 +1,8 @@
 package io.unitycatalog.server.service.credential.aws.provider;
 
-import lombok.ToString;
-
 import java.util.HashMap;
 import java.util.Map;
+import lombok.ToString;
 
 @ToString
 public class AwsCredentialsProviderConfig {

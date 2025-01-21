@@ -88,22 +88,16 @@ public class CredentialOperationsTest {
         .thenReturn(
             Map.of(
                 "s3://storageBase",
-                S3StorageConfig.builder()
-                    .provider(PROVIDER_NAME)
-                    .endpoint(ENDPOINT)
-                    .build()));
+                S3StorageConfig.builder().provider(PROVIDER_NAME).endpoint(ENDPOINT).build()));
     final AwsCredentialsProviderConfig providerConfig = new AwsCredentialsProviderConfig();
 
-    providerConfig.put(AwsCredentialsProviderConfig.PROVIDER_CLASS, "io.unitycatalog.server.service.credential.aws.provider.StaticCredentialsProvider");
+    providerConfig.put(
+        AwsCredentialsProviderConfig.PROVIDER_CLASS,
+        "io.unitycatalog.server.service.credential.aws.provider.StaticCredentialsProvider");
     providerConfig.put(AwsCredentialsProviderConfig.ACCESS_KEY_ID, ACCESS_KEY);
     providerConfig.put(AwsCredentialsProviderConfig.SECRET_ACCESS_KEY, SECRET_KEY);
     when(serverProperties.getAwsCredentialProviderConfigurations())
-        .thenReturn(
-          Map.of(
-            PROVIDER_NAME,
-            providerConfig
-          )
-        );
+        .thenReturn(Map.of(PROVIDER_NAME, providerConfig));
     AwsCredentialVendor awsCredentialVendor = new AwsCredentialVendor(serverProperties);
     credentialsOperations = new CredentialOperations(awsCredentialVendor, null, null);
     TemporaryCredentials s3TemporaryCredentials =

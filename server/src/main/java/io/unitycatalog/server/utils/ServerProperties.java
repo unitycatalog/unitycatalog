@@ -9,7 +9,6 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.*;
-
 import lombok.extern.slf4j.Slf4j;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -64,20 +63,24 @@ public class ServerProperties {
       String endpoint = properties.getProperty("s3.endpoint." + i);
       String provider = properties.getProperty("s3.provider." + i);
       // break loop if all fields are null
-      if (bucketPath == null && region == null && awsRoleArn == null
-          && accessKey == null && secretKey == null && sessionToken == null
-          && endpoint == null && provider == null) {
+      if (bucketPath == null
+          && region == null
+          && awsRoleArn == null
+          && accessKey == null
+          && secretKey == null
+          && sessionToken == null
+          && endpoint == null
+          && provider == null) {
         break;
       }
       if (isStringNullOrEmpty(bucketPath) // should always have bucketPath
-          || (isStringNullOrEmpty(provider) && // plus either provider reference
-              (isStringNullOrEmpty(accessKey) // or (access key, secret key (session token|(awsRoleArn, region)))
-              || isStringNullOrEmpty(secretKey)
-              || (isStringNullOrEmpty(sessionToken)
-                  && (isStringNullOrEmpty(awsRoleArn) || isStringNullOrEmpty(region))
-              )
-          ))
-      ){
+          || (isStringNullOrEmpty(provider)
+              && // plus either provider reference
+              (isStringNullOrEmpty(
+                      accessKey) // or (access key, secret key (session token|(awsRoleArn, region)))
+                  || isStringNullOrEmpty(secretKey)
+                  || (isStringNullOrEmpty(sessionToken)
+                      && (isStringNullOrEmpty(awsRoleArn) || isStringNullOrEmpty(region)))))) {
         log.warn("S3 configuration #{} has missing required fields, skipping", i);
         log.debug("bucketPath = {}", bucketPath);
         log.debug("region = {}", region);
