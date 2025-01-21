@@ -51,6 +51,9 @@ jobs:
         run: |
           pip install core/.
           echo "PYTHONPATH=$(pwd)/core/src:\$PYTHONPATH" >> $GITHUB_ENV
+      - name: Install dependencies
+        run: |
+          pip install mlflow
       - name: Start Unity Catalog Server
         run: |
           dev/start_unitycatalog.sh

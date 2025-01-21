@@ -24,18 +24,16 @@ export default function ModelDetails() {
   if (!model) throw new Error('Model name is required');
   const navigate = useNavigate();
 
-  const { data, refetch } = useGetModel({ catalog, schema, model });
+  const { data, refetch } = useGetModel({
+    full_name: [catalog, schema, model].join('.'),
+  });
   const { data: versionData, isLoading } = useListModelVersions({
-    catalog,
-    schema,
-    model,
+    full_name: [catalog, schema, model].join('.'),
   });
   const [open, setOpen] = useState<boolean>(false);
   const { setNotification } = useNotification();
   const mutation = useUpdateModel({
-    catalog,
-    schema,
-    model,
+    full_name: [catalog, schema, model].join('.'),
   });
   if (!data) return null;
 
@@ -71,7 +69,7 @@ export default function ModelDetails() {
         <DetailsLayout.Content>
           <Flex vertical gap={60}>
             <DescriptionBox
-              comment={data.comment}
+              comment={data.comment ?? ''}
               onEdit={() => setOpen(true)}
             />
             <ListLayout

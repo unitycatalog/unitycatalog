@@ -17,7 +17,10 @@ export default function VolumesList({
   schema,
   filters,
 }: VolumesListProps) {
-  const { data, isLoading } = useListVolumes({ catalog, schema });
+  const { data, isLoading } = useListVolumes({
+    catalog_name: catalog,
+    schema_name: schema,
+  });
   const navigate = useNavigate();
 
   return (

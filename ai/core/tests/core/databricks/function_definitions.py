@@ -184,6 +184,55 @@ RETURN SELECT extract(DAYOFWEEK_ISO FROM day), day
     )
 
 
+def function_with_scalar_retriever_output(func_name: str) -> FunctionInputOutput:
+    retriever_output = str(
+        [
+            {
+                "page_content": "# Technology partners\n## What is Databricks Partner Connect?\n",
+                "metadata": {
+                    "similarity_score": 0.010178182,
+                    "chunk_id": "0217a07ba2fec61865ce408043acf1cf",
+                    "url": "https://docs.databricks.com/partner-connect/walkthrough-fivetran.html",
+                },
+            }
+        ]
+    )
+    sql_body = f"""CREATE FUNCTION {func_name}(query STRING)
+RETURNS STRING
+LANGUAGE PYTHON
+AS $$
+    return {retriever_output}
+    $$
+"""
+    return FunctionInputOutput(
+        sql_body=sql_body,
+        inputs=[{"query": "What is Databricks Partner Connect?"}],
+        output=retriever_output,
+    )
+
+
+def function_with_table_retriever_output(func_name: str) -> FunctionInputOutput:
+    retriever_output = 'page_content,metadata\n"# Technology partners\n## What is Databricks Partner Connect?\n",{"similarity_score": 0.010178182, "chunk_id": "0217a07ba2fec61865ce408043acf1cf", "url": "https://docs.databricks.com/partner-connect/walkthrough-fivetran.html"}\n"# Technology partners\n## What is Databricks Partner Connect?\n",{"similarity_score": 0.010178182, "chunk_id": "0217a07ba2fec61865ce408043acf1cf", "url": "https://docs.databricks.com/partner-connect/walkthrough-fivetran.html"}\n'
+    sql_body = f"""CREATE FUNCTION {func_name}(query STRING)
+RETURNS TABLE
+SELECT
+  chunked_text as page_content,
+  map('doc_uri', url, 'chunk_id', chunk_id) as metadata
+FROM
+  vector_search(
+    -- Specify your Vector Search index name here
+    index => 'catalog.schema.databricks_docs_index',
+    query => query,
+    num_results => 5
+  )
+"""
+    return FunctionInputOutput(
+        sql_body=sql_body,
+        inputs=[{"query": "What is Databricks Partner Connect?"}],
+        output=retriever_output,
+    )
+
+
 class PythonFunctionInputOutput(NamedTuple):
     func: Callable
     inputs: List[Dict[str, Any]]

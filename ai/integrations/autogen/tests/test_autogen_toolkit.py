@@ -14,6 +14,7 @@ from pydantic import ValidationError
 from unitycatalog.ai.autogen.toolkit import UCFunctionToolkit
 from unitycatalog.ai.core.client import FunctionExecutionResult
 from unitycatalog.ai.test_utils.client_utils import (
+    TEST_IN_DATABRICKS,
     USE_SERVERLESS,
     get_client,
     requires_databricks,
@@ -21,6 +22,8 @@ from unitycatalog.ai.test_utils.client_utils import (
 )
 from unitycatalog.ai.test_utils.function_utils import (
     CATALOG,
+    RETRIEVER_OUTPUT_CSV,
+    RETRIEVER_OUTPUT_SCALAR,
     create_function_and_cleanup,
 )
 
@@ -211,12 +214,68 @@ async def test_uc_function_to_autogen_tool(dbx_client):
         assert result == "some_string"
 
 
+@pytest.mark.parametrize(
+    "format,function_output",
+    [
+        ("SCALAR", RETRIEVER_OUTPUT_SCALAR),
+        ("CSV", RETRIEVER_OUTPUT_CSV),
+    ],
+)
+@pytest.mark.parametrize("use_serverless", [True, False])
+def test_autogen_tool_with_tracing_as_retriever(
+    use_serverless, monkeypatch, format: str, function_output: str
+):
+    monkeypatch.setenv(USE_SERVERLESS, str(use_serverless))
+    client = get_client()
+    mock_function_info = generate_function_info()
+
+    with (
+        mock.patch(
+            "unitycatalog.ai.core.databricks.DatabricksFunctionClient.get_function",
+            return_value=mock_function_info,
+        ),
+        mock.patch(
+            "unitycatalog.ai.core.databricks.DatabricksFunctionClient._execute_uc_function",
+            return_value=FunctionExecutionResult(format=format, value=function_output),
+        ),
+        mock.patch(
+            "unitycatalog.ai.core.databricks.DatabricksFunctionClient.validate_input_params"
+        ),
+    ):
+        import mlflow
+
+        if TEST_IN_DATABRICKS:
+            import mlflow.tracking._model_registry.utils
+
+            mlflow.tracking._model_registry.utils._get_registry_uri_from_spark_session = (
+                lambda: "databricks-uc"
+            )
+
+        mlflow.autogen.autolog()
+
+        tool = UCFunctionToolkit.uc_function_to_autogen_tool(
+            function_name=f"catalog.schema.test_{format}", client=client
+        )
+        result = tool.fn(x="some input")
+        assert json.loads(result)["value"] == function_output
+
+        trace = mlflow.get_last_active_trace()
+        assert trace is not None
+        assert trace.info.execution_time_ms is not None
+        assert trace.data.request == '{"x": "some input"}'
+        assert trace.data.response == RETRIEVER_OUTPUT_SCALAR
+        assert trace.data.spans[0].name == f"catalog.schema.test_{format}"
+
+        mlflow.autogen.autolog(disable=True)
+
+
 @pytest.mark.asyncio
 async def test_toolkit_with_invalid_function_input(dbx_client):
     """
     Test toolkit with invalid input parameters for function conversion
     (e.g. 'unexpected_key'). Expects a validation error if `extra='forbid'`.
     """
+
     mock_function_info = generate_function_info()
     with (
         mock.patch(
