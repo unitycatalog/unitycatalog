@@ -4,13 +4,14 @@ from typing import Any, Dict, List, Optional
 from langchain_core.pydantic_v1 import BaseModel, Field, root_validator
 from langchain_core.tools import StructuredTool
 
-from unitycatalog.ai.core.client import BaseFunctionClient
+from unitycatalog.ai.core.base import BaseFunctionClient
 from unitycatalog.ai.core.utils.client_utils import validate_or_set_default_client
 from unitycatalog.ai.core.utils.function_processing_utils import (
     generate_function_input_params_schema,
     get_tool_name,
     process_function_names,
 )
+from unitycatalog.ai.core.utils.validation_utils import mlflow_tracing_enabled
 
 
 class UnityCatalogTool(StructuredTool):
@@ -55,14 +56,6 @@ class UCFunctionToolkit(BaseModel):
             client=client,
             uc_function_to_tool_func=cls.uc_function_to_langchain_tool,
         )
-        tools_dict = values.get("tools_dict", {})
-
-        values["tools_dict"] = process_function_names(
-            function_names=function_names,
-            tools_dict=tools_dict,
-            client=client,
-            uc_function_to_tool_func=cls.uc_function_to_langchain_tool,
-        )
         return values
 
     @staticmethod
@@ -99,6 +92,7 @@ class UCFunctionToolkit(BaseModel):
             result = client.execute_function(
                 function_name=function_name,
                 parameters=args_json,
+                enable_retriever_tracing=mlflow_tracing_enabled("langchain"),
             )
             return result.to_json()
 

@@ -3,7 +3,7 @@ package io.unitycatalog.server.persist.dao;
 import io.unitycatalog.server.model.DataSourceFormat;
 import io.unitycatalog.server.model.TableInfo;
 import io.unitycatalog.server.model.TableType;
-import io.unitycatalog.server.persist.utils.FileUtils;
+import io.unitycatalog.server.persist.utils.FileOperations;
 import jakarta.persistence.*;
 import java.util.Date;
 import java.util.List;
@@ -96,7 +96,7 @@ public class TableInfoDAO extends IdentifiableDAO {
             .name(getName())
             .tableType(TableType.valueOf(type))
             .dataSourceFormat(DataSourceFormat.valueOf(dataSourceFormat))
-            .storageLocation(FileUtils.convertRelativePathToURI(url))
+            .storageLocation(FileOperations.convertRelativePathToURI(url))
             .comment(comment)
             .owner(owner)
             .createdAt(createdAt != null ? createdAt.getTime() : null)

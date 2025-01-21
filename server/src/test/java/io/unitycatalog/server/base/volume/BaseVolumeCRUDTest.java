@@ -10,8 +10,7 @@ import io.unitycatalog.server.base.BaseCRUDTest;
 import io.unitycatalog.server.base.ServerConfig;
 import io.unitycatalog.server.base.schema.SchemaOperations;
 import io.unitycatalog.server.persist.dao.VolumeInfoDAO;
-import io.unitycatalog.server.persist.utils.FileUtils;
-import io.unitycatalog.server.persist.utils.HibernateUtils;
+import io.unitycatalog.server.persist.utils.FileOperations;
 import java.util.Date;
 import java.util.Optional;
 import java.util.UUID;
@@ -56,7 +55,8 @@ public abstract class BaseVolumeCRUDTest extends BaseCRUDTest {
     assertThat(volumeInfo.getSchemaName()).isEqualTo(createVolumeRequest.getSchemaName());
     assertThat(volumeInfo.getVolumeType()).isEqualTo(createVolumeRequest.getVolumeType());
     assertThat(volumeInfo.getStorageLocation())
-        .isEqualTo(FileUtils.convertRelativePathToURI(createVolumeRequest.getStorageLocation()));
+        .isEqualTo(
+            FileOperations.convertRelativePathToURI(createVolumeRequest.getStorageLocation()));
     assertThat(volumeInfo.getFullName()).isEqualTo(volumeFullName);
     assertThat(volumeInfo.getCreatedAt()).isNotNull();
   }
@@ -148,7 +148,7 @@ public abstract class BaseVolumeCRUDTest extends BaseCRUDTest {
     // Testing Managed Volume
     System.out.println("Creating managed volume..");
 
-    SessionFactory sessionFactory = HibernateUtils.getSessionFactory();
+    SessionFactory sessionFactory = hibernateConfigurator.getSessionFactory();
 
     try (Session session = sessionFactory.openSession()) {
       session.beginTransaction();
@@ -169,7 +169,7 @@ public abstract class BaseVolumeCRUDTest extends BaseCRUDTest {
     VolumeInfo managedVolumeInfo = volumeOperations.getVolume(VOLUME_FULL_NAME);
     assertThat(managedVolumeInfo.getVolumeType()).isEqualTo(VolumeType.MANAGED);
     assertThat(managedVolumeInfo.getStorageLocation())
-        .isEqualTo(FileUtils.convertRelativePathToURI("/tmp/managed_volume"));
+        .isEqualTo(FileOperations.convertRelativePathToURI("/tmp/managed_volume"));
     assertThat(managedVolumeInfo.getFullName()).isEqualTo(VOLUME_FULL_NAME);
     assertThat(managedVolumeInfo.getName()).isEqualTo(VOLUME_NAME);
     assertThat(managedVolumeInfo.getCatalogName()).isEqualTo(CATALOG_NAME);

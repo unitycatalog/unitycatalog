@@ -7,13 +7,14 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from autogen import ConversableAgent
 from autogen import __version__ as autogen_version
-from unitycatalog.ai.core.client import BaseFunctionClient
+from unitycatalog.ai.core.base import BaseFunctionClient
 from unitycatalog.ai.core.utils.client_utils import validate_or_set_default_client
 from unitycatalog.ai.core.utils.function_processing_utils import (
     generate_function_input_params_schema,
     get_tool_name,
     process_function_names,
 )
+from unitycatalog.ai.core.utils.validation_utils import mlflow_tracing_enabled
 
 # Ensure the version of autogen is compatible
 if version.parse(autogen_version) >= version.parse("0.4.0"):
@@ -172,6 +173,7 @@ class UCFunctionToolkit(BaseModel):
             result = client.execute_function(
                 function_name=function_name,
                 parameters=args_json,
+                enable_retriever_tracing=mlflow_tracing_enabled("autogen"),
             )
 
             return result.to_json()

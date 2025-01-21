@@ -5,7 +5,6 @@
 |------------ | ------------- | ------------- | -------------|
 | **name** | **String** | Name of the external location. | [optional] [default to null] |
 | **url** | **String** | Path URL of the external location. | [optional] [default to null] |
-| **read\_only** | **Boolean** | Indicates whether the external location is read-only. | [optional] [default to null] |
 | **comment** | **String** | User-provided free-form text description. | [optional] [default to null] |
 | **owner** | **String** | The owner of the external location. | [optional] [default to null] |
 | **access\_point** | **String** | The AWS access point to use when accessing s3 for this external location. | [optional] [default to null] |

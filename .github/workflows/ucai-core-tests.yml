@@ -42,25 +42,42 @@ jobs:
       matrix:
         python-version: ['3.9', '3.10']
         pydantic-version: [1, 2]
-    timeout-minutes: 20
+    timeout-minutes: 40
     defaults:
       run:
-        working-directory: ai/core
+        working-directory: ai
     steps:
-      - name: Checkout code
+      - name: Check out code
         uses: actions/checkout@v4
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'temurin'
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python-version }}
-      - name: Install dependencies
+      - name: Install Pydantic dependencies
         run: |
-          pip install .[dev]
           if [ ${{ matrix.pydantic-version }} == 1 ]; then
             pip install 'pydantic<2'
           else
             pip install 'pydantic<3,>=2'
           fi
-      - name: Run tests
+      - name: Install dependencies
         run: |
-          pytest tests/
+          pip install mlflow
+      - name: Install Unity Catalog Python Libraries
+        run: |
+          dev/install_client.sh
+      - name: Start Unity Catalog Server
+        run: |
+          dev/start_unitycatalog.sh
+      - name: Run Tests
+        run: |
+          pytest core/tests
+      - name: Stop Unity Catalog Server
+        if: always()
+        run: |
+          dev/teardown_server.sh
