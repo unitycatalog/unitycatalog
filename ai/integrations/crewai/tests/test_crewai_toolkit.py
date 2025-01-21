@@ -15,6 +15,7 @@ from unitycatalog.ai.core.base import (
     FunctionExecutionResult,
 )
 from unitycatalog.ai.test_utils.client_utils import (
+    TEST_IN_DATABRICKS,
     USE_SERVERLESS,
     client,  # noqa: F401
     get_client,
@@ -169,7 +170,12 @@ def test_uc_function_to_crewai_tool(client):
         ("CSV", RETRIEVER_OUTPUT_CSV),
     ],
 )
-def test_crewai_tool_with_tracing_as_retriever(client, format: str, function_output: str):
+@pytest.mark.parametrize("use_serverless", [True, False])
+def test_crewai_tool_with_tracing_as_retriever(
+    use_serverless, monkeypatch, format: str, function_output: str
+):
+    monkeypatch.setenv(USE_SERVERLESS, str(use_serverless))
+    client = get_client()
     mock_function_info = generate_function_info()
 
     with (
@@ -187,6 +193,13 @@ def test_crewai_tool_with_tracing_as_retriever(client, format: str, function_out
     ):
         import mlflow
 
+        if TEST_IN_DATABRICKS:
+            import mlflow.tracking._model_registry.utils
+
+            mlflow.tracking._model_registry.utils._get_registry_uri_from_spark_session = (
+                lambda: "databricks-uc"
+            )
+
         mlflow.crewai.autolog()
 
         tool = UCFunctionToolkit.uc_function_to_crewai_tool(
@@ -194,8 +207,6 @@ def test_crewai_tool_with_tracing_as_retriever(client, format: str, function_out
         )
         result = tool.fn(x="some input")
         assert json.loads(result)["value"] == function_output
-
-        import mlflow
 
         trace = mlflow.get_last_active_trace()
         assert trace is not None

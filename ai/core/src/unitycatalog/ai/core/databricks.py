@@ -89,9 +89,9 @@ def _try_get_spark_session_in_dbr() -> Any:
         from databricks.sdk.runtime import spark
         from pyspark.sql.connect.session import SparkSession
 
-        if not isinstance(spark, SparkSession):
+        if spark is not None and not isinstance(spark, SparkSession):
             _logger.warning(
-                "Current SparkSession in the active environment is not a "
+                f"Current SparkSession {spark} in the active environment is not a "
                 "pyspark.sql.connect.session.SparkSession instance. Classic runtime does not support "
                 "all functionalities of the unitycatalog-ai framework. To use the full "
                 "capabilities of unitycatalog-ai, execute your code using a client that is attached to "
