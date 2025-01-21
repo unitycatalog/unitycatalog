@@ -8,6 +8,7 @@ from tests.helper_functions import mock_chat_completion_response, mock_choice
 from unitycatalog.ai.core.base import FunctionExecutionResult
 from unitycatalog.ai.core.databricks import DatabricksFunctionClient
 from unitycatalog.ai.openai.utils import generate_tool_call_messages
+from unitycatalog.ai.test_utils.client_utils import TEST_IN_DATABRICKS
 from unitycatalog.ai.test_utils.function_utils import RETRIEVER_OUTPUT_CSV, RETRIEVER_OUTPUT_SCALAR
 
 
@@ -50,6 +51,13 @@ def test_generate_tool_call_messages_with_tracing(
         ),
     ):
         import mlflow
+
+        if TEST_IN_DATABRICKS:
+            import mlflow.tracking._model_registry.utils
+
+            mlflow.tracking._model_registry.utils._get_registry_uri_from_spark_session = (
+                lambda: "databricks-uc"
+            )
 
         mlflow.openai.autolog()
 
