@@ -1,12 +1,15 @@
 package io.unitycatalog.server.persist.dao;
 
-import jakarta.persistence.*;
+import io.unitycatalog.server.model.ExternalLocationInfo;
+import jakarta.persistence.Column;
+import jakarta.persistence.Entity;
+import jakarta.persistence.Table;
+import lombok.*;
+import lombok.experimental.SuperBuilder;
+
 import java.time.Instant;
 import java.util.Date;
 import java.util.UUID;
-import lombok.*;
-import lombok.experimental.SuperBuilder;
-import io.unitycatalog.server.model.ExternalLocationInfo;
 
 @Entity
 @Table(name = "uc_external_location")
@@ -21,9 +24,6 @@ public class ExternalLocationDAO extends IdentifiableDAO {
 
     @Column(name = "url", nullable = false)
     private String url;
-
-    @Column(name = "read_only", nullable = false)
-    private Boolean readOnly;
 
     @Column(name = "comment")
     private String comment;
@@ -53,7 +53,6 @@ public class ExternalLocationDAO extends IdentifiableDAO {
         return ExternalLocationDAO.builder()
                 .name(externalLocationInfo.getName())
                 .url(externalLocationInfo.getUrl())
-                .readOnly(externalLocationInfo.getReadOnly())
                 .comment(externalLocationInfo.getComment())
                 .owner(externalLocationInfo.getOwner())
                 .accessPoint(externalLocationInfo.getAccessPoint())
@@ -78,7 +77,6 @@ public class ExternalLocationDAO extends IdentifiableDAO {
         return new ExternalLocationInfo()
                 .name(getName())
                 .url(getUrl())
-                .readOnly(getReadOnly())
                 .comment(getComment())
                 .owner(getOwner())
                 .accessPoint(getAccessPoint())
