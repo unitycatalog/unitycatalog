@@ -8,7 +8,6 @@ import io.unitycatalog.server.model.ListExternalLocationsResponse;
 import io.unitycatalog.server.model.UpdateExternalLocation;
 import io.unitycatalog.server.persist.dao.ExternalLocationDAO;
 import io.unitycatalog.server.persist.dao.StorageCredentialDAO;
-import io.unitycatalog.server.persist.utils.HibernateUtils;
 import io.unitycatalog.server.persist.utils.PagedListingHelper;
 import io.unitycatalog.server.utils.IdentityUtils;
 import io.unitycatalog.server.utils.ValidationUtils;
@@ -19,34 +18,31 @@ import org.hibernate.Transaction;
 import org.hibernate.query.Query;
 
 public class ExternalLocationRepository {
-  private static final ExternalLocationRepository INSTANCE = new ExternalLocationRepository();
-  private static final StorageCredentialRepository STORAGE_CREDENTIAL_REPOSITORY =
-      StorageCredentialRepository.getInstance();
-  private static final SessionFactory SESSION_FACTORY = HibernateUtils.getSessionFactory();
+  private final Repositories repositories;
+  private final SessionFactory sessionFactory;
   private static final PagedListingHelper<ExternalLocationDAO> LISTING_HELPER =
       new PagedListingHelper<>(ExternalLocationDAO.class);
 
-  private ExternalLocationRepository() {}
-
-  public static ExternalLocationRepository getInstance() {
-    return INSTANCE;
+  public ExternalLocationRepository(Repositories repositories, SessionFactory sessionFactory) {
+    this.repositories = repositories;
+    this.sessionFactory = sessionFactory;
   }
 
   public ExternalLocationDAO addExternalLocation(CreateExternalLocation createExternalLocation) {
     ValidationUtils.validateSqlObjectName(createExternalLocation.getName());
     String callerId = IdentityUtils.findPrincipalEmailAddress();
 
-    try (Session session = SESSION_FACTORY.openSession()) {
+    try (Session session = sessionFactory.openSession()) {
       StorageCredentialDAO storageCredentialDAO =
-          STORAGE_CREDENTIAL_REPOSITORY.getStorageCredentialDAO(
-              session, createExternalLocation.getCredentialName());
+          repositories
+              .getStorageCredentialRepository()
+              .getStorageCredentialDAO(session, createExternalLocation.getCredentialName());
       UUID externalLocationId = UUID.randomUUID();
       ExternalLocationDAO externalLocationDAO =
           ExternalLocationDAO.builder()
               .id(externalLocationId)
               .name(createExternalLocation.getName())
               .url(createExternalLocation.getUrl())
-              .readOnly(createExternalLocation.getReadOnly())
               .comment(createExternalLocation.getComment())
               .owner(callerId)
               .accessPoint(createExternalLocation.getAccessPoint())
@@ -72,16 +68,16 @@ public class ExternalLocationRepository {
   }
 
   public ExternalLocationInfo getExternalLocation(String name) {
-    try (Session session = SESSION_FACTORY.openSession()) {
+    try (Session session = sessionFactory.openSession()) {
       session.setDefaultReadOnly(true);
       Transaction tx = session.beginTransaction();
       try {
-        ExternalLocationDAO dao = getExternalLocationDAO(session, name);
-        if (dao == null) {
+        ExternalLocationDAO externalLocationDAO = getExternalLocationDAO(session, name);
+        if (externalLocationDAO == null) {
           throw new BaseException(ErrorCode.NOT_FOUND, "External location not found: " + name);
         }
         tx.commit();
-        return dao.toExternalLocationInfo();
+        return externalLocationDAO.toExternalLocationInfo();
       } catch (Exception e) {
         tx.rollback();
         throw e;
@@ -100,7 +96,7 @@ public class ExternalLocationRepository {
 
   public ListExternalLocationsResponse listExternalLocations(
       Optional<Integer> maxResults, Optional<String> pageToken) {
-    try (Session session = SESSION_FACTORY.openSession()) {
+    try (Session session = sessionFactory.openSession()) {
       session.setDefaultReadOnly(true);
       Transaction tx = session.beginTransaction();
       try {
@@ -126,7 +122,7 @@ public class ExternalLocationRepository {
       String name, UpdateExternalLocation updateExternalLocation) {
     String callerId = IdentityUtils.findPrincipalEmailAddress();
 
-    try (Session session = SESSION_FACTORY.openSession()) {
+    try (Session session = sessionFactory.openSession()) {
       Transaction tx = session.beginTransaction();
       try {
         ExternalLocationDAO existingLocation = getExternalLocationDAO(session, name);
@@ -150,16 +146,14 @@ public class ExternalLocationRepository {
         if (updateExternalLocation.getComment() != null) {
           existingLocation.setComment(updateExternalLocation.getComment());
         }
-        if (updateExternalLocation.getReadOnly() != null) {
-          existingLocation.setReadOnly(updateExternalLocation.getReadOnly());
-        }
         if (updateExternalLocation.getAccessPoint() != null) {
           existingLocation.setAccessPoint(updateExternalLocation.getAccessPoint());
         }
         if (updateExternalLocation.getCredentialName() != null) {
           StorageCredentialDAO storageCredentialDAO =
-              STORAGE_CREDENTIAL_REPOSITORY.getStorageCredentialDAO(
-                  session, updateExternalLocation.getCredentialName());
+              repositories
+                  .getStorageCredentialRepository()
+                  .getStorageCredentialDAO(session, updateExternalLocation.getCredentialName());
           if (storageCredentialDAO == null) {
             throw new BaseException(
                 ErrorCode.NOT_FOUND,
@@ -182,7 +176,7 @@ public class ExternalLocationRepository {
   }
 
   public ExternalLocationDAO deleteExternalLocation(String name) {
-    try (Session session = SESSION_FACTORY.openSession()) {
+    try (Session session = sessionFactory.openSession()) {
       Transaction tx = session.beginTransaction();
       try {
         ExternalLocationDAO existingLocation = getExternalLocationDAO(session, name);

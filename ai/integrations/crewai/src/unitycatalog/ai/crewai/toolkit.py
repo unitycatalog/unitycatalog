@@ -1,17 +1,25 @@
+import importlib
 import json
 import logging
 from typing import Any, Callable, Dict, List, Optional
 
-from crewai_tools import BaseTool as CrewAIBaseTool
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-from unitycatalog.ai.core.client import BaseFunctionClient
+from unitycatalog.ai.core.base import BaseFunctionClient
 from unitycatalog.ai.core.utils.client_utils import validate_or_set_default_client
 from unitycatalog.ai.core.utils.function_processing_utils import (
     generate_function_input_params_schema,
     get_tool_name,
     process_function_names,
 )
+from unitycatalog.ai.core.utils.validation_utils import mlflow_tracing_enabled
+
+tools_version = importlib.metadata.version("crewai_tools")
+
+if tools_version >= "0.25.0":
+    CrewAIBaseTool = importlib.import_module("crewai.tools").BaseTool
+else:
+    CrewAIBaseTool = importlib.import_module("crewai_tools").BaseTool
 
 _logger = logging.getLogger(__name__)
 
@@ -155,6 +163,7 @@ class UCFunctionToolkit(BaseModel):
             result = client.execute_function(
                 function_name=function_name,
                 parameters=args_json,
+                enable_retriever_tracing=mlflow_tracing_enabled("crewai"),
             )
 
             return result.to_json()

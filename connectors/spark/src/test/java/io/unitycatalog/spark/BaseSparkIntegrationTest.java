@@ -68,6 +68,35 @@ public abstract class BaseSparkIntegrationTest extends BaseCRUDTest {
   }
 
   @Override
+  protected void setUpProperties() {
+    super.setUpProperties();
+    serverProperties.put("s3.bucketPath.0", "s3://test-bucket0");
+    serverProperties.put("s3.accessKey.0", "accessKey0");
+    serverProperties.put("s3.secretKey.0", "secretKey0");
+    serverProperties.put("s3.sessionToken.0", "sessionToken0");
+    serverProperties.put("s3.bucketPath.1", "s3://test-bucket1");
+    serverProperties.put("s3.accessKey.1", "accessKey1");
+    serverProperties.put("s3.secretKey.1", "secretKey1");
+    serverProperties.put("s3.sessionToken.1", "sessionToken1");
+
+    serverProperties.put("gcs.bucketPath.0", "gs://test-bucket0");
+    serverProperties.put("gcs.jsonKeyFilePath.0", "testing://0");
+    serverProperties.put("gcs.bucketPath.1", "gs://test-bucket1");
+    serverProperties.put("gcs.jsonKeyFilePath.1", "testing://1");
+
+    serverProperties.put("adls.storageAccountName.0", "test-bucket0");
+    serverProperties.put("adls.tenantId.0", "tenantId0");
+    serverProperties.put("adls.clientId.0", "clientId0");
+    serverProperties.put("adls.clientSecret.0", "clientSecret0");
+    serverProperties.put("adls.testMode.0", "true");
+    serverProperties.put("adls.storageAccountName.1", "test-bucket1");
+    serverProperties.put("adls.tenantId.1", "tenantId1");
+    serverProperties.put("adls.clientId.1", "clientId1");
+    serverProperties.put("adls.clientSecret.1", "clientSecret1");
+    serverProperties.put("adls.testMode.1", "true");
+  }
+
+  @Override
   protected CatalogOperations createCatalogOperations(ServerConfig serverConfig) {
     return new SdkCatalogOperations(createApiClient(serverConfig));
   }
