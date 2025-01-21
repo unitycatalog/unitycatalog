@@ -101,6 +101,7 @@ public abstract class BaseCRUDTestWithMockCredentials extends BaseCRUDTest {
   }
 
   protected String getTestCloudPath(String scheme, boolean isConfiguredPath) {
+    // test-bucket0 is configured in the properties
     String bucket = isConfiguredPath ? "test-bucket0" : "test-bucket1";
     return switch (scheme) {
         case "s3" -> "s3://" + bucket + "/test";
@@ -138,20 +139,9 @@ public abstract class BaseCRUDTestWithMockCredentials extends BaseCRUDTest {
     }
   }
 
-  protected void checkExceptionForScheme(Runnable functionCall, String scheme) {
-    if ("s3".equals(scheme)) {
-      assertThatThrownBy(functionCall::run, "Expected S3Exception for scheme: " + scheme)
-          .isInstanceOf(StsException.class);
-    } else if ("abfs".equals(scheme)) {
-      assertThatThrownBy(functionCall::run, "Expected AbfsException for scheme: " + scheme)
-          .isInstanceOf(CompletionException.class);
-    } else if ("gs".equals(scheme)) {
-      assertThatThrownBy(functionCall::run, "Expected GSException for scheme: " + scheme)
-          .isInstanceOf(BaseException.class);
-    } else {
-      throw new IllegalArgumentException("Unsupported scheme: " + scheme);
-    }
-  }
+  /**
+   * @return Stream of arguments (s3, abfs, gs) x isConfiguredPath (true, false) for testing
+   */
   protected static Stream<Arguments> provideTestArguments() {
     List<String> clouds = List.of("s3", "abfs", "gs");
     List<Boolean> isConfiguredPathFlags = List.of(true, false);
