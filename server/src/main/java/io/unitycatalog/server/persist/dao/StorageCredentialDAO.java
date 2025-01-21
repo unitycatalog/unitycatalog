@@ -35,7 +35,7 @@ public class StorageCredentialDAO extends IdentifiableDAO {
   @Column(name = "comment")
   private String comment;
 
-  @Column(name = "owner", nullable = false)
+  @Column(name = "owner")
   private String owner;
 
   @Column(name = "created_at", nullable = false)
