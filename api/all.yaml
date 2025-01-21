@@ -2545,16 +2545,9 @@ components:
           $ref: '#/components/schemas/AwsIamRoleResponse'
         azure_service_principal:
           $ref: '#/components/schemas/AzureServicePrincipal'
-        azure_managed_identity:
-          $ref: '#/components/schemas/AzureManagedIdentityResponse'
-        databricks_gcp_service_account:
-          $ref: '#/components/schemas/DatabricksGcpServiceAccountResponse'
         comment:
           description: Comment associated with the credential.
           type: string
-        read_only:
-          description: Whether the storage credential is only usable for read operations.
-          type: boolean
         owner:
           description: Username of current owner of credential.
           type: string
@@ -2578,9 +2571,6 @@ components:
         updated_by:
           description: Username of user who last modified the credential.
           type: string
-        used_for_managed_storage:
-          description: Whether this credential is the current metastore's root storage credential.
-          type: boolean
     CreateStorageCredential:
       type: object
       required:
@@ -2592,30 +2582,16 @@ components:
         comment:
           description: Comment associated with the credential.
           type: string
-        read_only:
-          description: Whether the storage credential is only usable for read operations.
-          type: boolean
         aws_iam_role:
           $ref: '#/components/schemas/AwsIamRoleRequest'
         azure_service_principal:
           $ref: '#/components/schemas/AzureServicePrincipal'
-        azure_managed_identity:
-          $ref: '#/components/schemas/AzureManagedIdentityRequest'
-        databricks_gcp_service_account:
-          $ref: '#/components/schemas/DatabricksGcpServiceAccountRequest'
-        skip_validation:
-          description: Supplying true to this argument skips validation of the created credential.
-          type: boolean
-          default: false
     UpdateStorageCredential:
       type: object
       properties:
         comment:
           description: Comment associated with the credential.
           type: string
-        read_only:
-          description: Whether the storage credential is only usable for read operations.
-          type: boolean
         owner:
           description: Username of current owner of credential.
           type: string
@@ -2623,20 +2599,9 @@ components:
           $ref: '#/components/schemas/AwsIamRoleRequest'
         azure_service_principal:
           $ref: '#/components/schemas/AzureServicePrincipal'
-        azure_managed_identity:
-          $ref: '#/components/schemas/AzureManagedIdentityRequest'
         new_name:
           description: New name for the storage credential.
           type: string
-        databricks_gcp_service_account:
-          $ref: '#/components/schemas/DatabricksGcpServiceAccountRequest'
-        skip_validation:
-          description: Supplying true to this argument skips validation of the updated credential.
-          type: boolean
-          default: false
-        force:
-          description: Force update even if there are dependent external locations or external tables.
-          type: boolean
     AwsIamRoleArn:
       description: The Amazon Resource Name (ARN) of the AWS IAM role for S3 data access.
       type: string
@@ -2676,49 +2641,6 @@ components:
         client_secret:
           description: The client secret generated for the above app ID in AAD.
           type: string
-    AzureManagedIdentityRequest:
-      type: object
-      required:
-        - access_connector_id
-      properties:
-        access_connector_id:
-          description: The Azure resource ID of the Azure Databricks Access Connector. Use the format /subscriptions/{guid}/resourceGroups/{rg-name}/providers/Microsoft.Databricks/accessConnectors/{connector-name}.
-          type: string
-        managed_identity_id:
-          description: |
-            The Azure resource ID of the managed identity. Use the format /subscriptions/{guid}/resourceGroups/{rg-name}/providers/Microsoft.ManagedIdentity/userAssignedIdentities/{identity-name}.
-            This is only available for user-assigned identities. For system-assigned identities, the access_connector_id is used to identify the identity.
-            If this field is not provided, then we assume the AzureManagedIdentity is for a system-assigned identity.
-          type: string
-    AzureManagedIdentityResponse:
-      type: object
-      required:
-        - access_connector_id
-      properties:
-        access_connector_id:
-          type: string
-          description: The Azure resource ID of the Azure Databricks Access Connector. Use the format /subscriptions/{guid}/resourceGroups/{rg-name}/providers/Microsoft.Databricks/accessConnectors/{connector-name}.
-        managed_identity_id:
-          type: string
-          description: |
-            The Azure resource ID of the managed identity. Use the format /subscriptions/{guid}/resourceGroups/{rg-name}/providers/Microsoft.ManagedIdentity/userAssignedIdentities/{identity-name}.
-            This is only available for user-assigned identities. For system-assigned identities, the access_connector_id is used to identify the identity.
-            If this field is not provided, then we assume the AzureManagedIdentity is for a system-assigned identity.
-        credential_id:
-          type: string
-          description: The Databricks internal ID that represents this managed identity.
-    DatabricksGcpServiceAccountRequest:
-      type: object
-      properties: { }
-    DatabricksGcpServiceAccountResponse:
-      type: object
-      properties:
-        email:
-          type: string
-          description: The email of the service account. This is an output-only field.
-        credential_id:
-          type: string
-          description: The Databricks internal ID representing the service account. This is an output-only field.
     ListStorageCredentialsResponse:
       type: object
       properties:
@@ -2741,9 +2663,6 @@ components:
         url:
           description: Path URL of the external location.
           type: string
-        read_only:
-          description: Indicates whether the external location is read-only.
-          type: boolean
         comment:
           description: User-provided free-form text description.
           type: string
@@ -2786,18 +2705,12 @@ components:
         credential_name:
           description: Name of the storage credential used with this location.
           type: string
-        read_only:
-          description: Indicates whether the external location is read-only.
-          type: boolean
         comment:
           description: User-provided free-form text description.
           type: string
         access_point:
           description: The AWS access point to use when accessing s3 for this external location.
           type: string
-        skip_validation:
-          description: Skips validation of the storage credential associated with the external location.
-          type: boolean
     UpdateExternalLocation:
       type: object
       properties:
@@ -2807,9 +2720,6 @@ components:
         credential_name:
           description: Name of the storage credential used with this location.
           type: string
-        read_only:
-          description: Indicates whether the external location is read-only.
-          type: boolean
         comment:
           description: User-provided free-form text description.
           type: string
@@ -2822,12 +2732,6 @@ components:
         new_name:
           description: New name for the external location.
           type: string
-        force:
-          description: Force update even if changing url invalidates dependent external tables or mounts.
-          type: boolean
-        skip_validation:
-          description: Skips validation of the storage credential associated with the external location.
-          type: boolean
     ListExternalLocationsResponse:
       type: object
       properties:
