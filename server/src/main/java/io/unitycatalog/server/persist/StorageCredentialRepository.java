@@ -4,13 +4,9 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.unitycatalog.server.exception.BaseException;
 import io.unitycatalog.server.exception.ErrorCode;
-import io.unitycatalog.server.model.CreateStorageCredential;
-import io.unitycatalog.server.model.ListStorageCredentialsResponse;
-import io.unitycatalog.server.model.StorageCredentialInfo;
-import io.unitycatalog.server.model.UpdateStorageCredential;
+import io.unitycatalog.server.model.*;
 import io.unitycatalog.server.persist.dao.StorageCredentialDAO;
 import io.unitycatalog.server.persist.utils.PagedListingHelper;
-import io.unitycatalog.server.persist.utils.StorageCredentialUtils;
 import io.unitycatalog.server.utils.IdentityUtils;
 import io.unitycatalog.server.utils.ValidationUtils;
 import java.time.Instant;
@@ -48,7 +44,7 @@ public class StorageCredentialRepository {
 
     if (createStorageCredential.getAwsIamRole() != null) {
       storageCredentialInfo.setAwsIamRole(
-          StorageCredentialUtils.fromAwsIamRoleRequest(createStorageCredential.getAwsIamRole()));
+          fromAwsIamRoleRequest(createStorageCredential.getAwsIamRole()));
     } else if (createStorageCredential.getAzureServicePrincipal() != null) {
       storageCredentialInfo.setAzureServicePrincipal(
           createStorageCredential.getAzureServicePrincipal());
@@ -173,8 +169,7 @@ public class StorageCredentialRepository {
         existingCredential.setCredentialType(StorageCredentialDAO.CredentialType.AWS_IAM_ROLE);
         existingCredential.setCredential(
             objectMapper.writeValueAsString(
-                StorageCredentialUtils.fromAwsIamRoleRequest(
-                    updateStorageCredential.getAwsIamRole())));
+                fromAwsIamRoleRequest(updateStorageCredential.getAwsIamRole())));
       } else if (updateStorageCredential.getAzureServicePrincipal() != null) {
         existingCredential.setCredentialType(
             StorageCredentialDAO.CredentialType.AZURE_SERVICE_PRINCIPAL);
@@ -203,5 +198,10 @@ public class StorageCredentialRepository {
         throw e;
       }
     }
+  }
+
+  public static AwsIamRoleResponse fromAwsIamRoleRequest(AwsIamRoleRequest awsIamRoleRequest) {
+    // TODO: add external id and unity catalog server iam role
+    return new AwsIamRoleResponse().roleArn(awsIamRoleRequest.getRoleArn());
   }
 }
