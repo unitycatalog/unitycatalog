@@ -12,12 +12,13 @@ import io.unitycatalog.server.model.CreateStorageCredential;
 import io.unitycatalog.server.model.ListStorageCredentialsResponse;
 import io.unitycatalog.server.model.StorageCredentialInfo;
 import io.unitycatalog.server.model.UpdateStorageCredential;
+import io.unitycatalog.server.persist.Repositories;
 import io.unitycatalog.server.persist.StorageCredentialRepository;
+import io.unitycatalog.server.persist.UserRepository;
 import io.unitycatalog.server.persist.model.Privileges;
 import io.unitycatalog.server.utils.IdentityUtils;
 import lombok.SneakyThrows;
 
-import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -25,14 +26,17 @@ import static io.unitycatalog.server.model.SecurableType.METASTORE;
 
 @ExceptionHandler(GlobalExceptionHandler.class)
 public class StorageCredentialService {
-    private static final StorageCredentialRepository REPOSITORY = StorageCredentialRepository.getInstance();
+    private final StorageCredentialRepository storageCredentialRepository;
+    private final UserRepository userRepository;
     private final UnityCatalogAuthorizer authorizer;
     private final UnityAccessEvaluator evaluator;
 
     @SneakyThrows
-    public StorageCredentialService(UnityCatalogAuthorizer authorizer) {
+    public StorageCredentialService(UnityCatalogAuthorizer authorizer, Repositories repositories) {
         this.authorizer = authorizer;
-        evaluator = new UnityAccessEvaluator(authorizer);
+        this.evaluator = new UnityAccessEvaluator(authorizer);
+        this.storageCredentialRepository = repositories.getStorageCredentialRepository();
+        this.userRepository = repositories.getUserRepository();
     }
 
     @Post("")
@@ -40,7 +44,7 @@ public class StorageCredentialService {
     @AuthorizeExpression("#authorize(#principal, #metastore, OWNER)")
     @AuthorizeKey(METASTORE)
     public HttpResponse createStorageCredential(CreateStorageCredential createStorageCredential) {
-        StorageCredentialInfo storageCredentialInfo = REPOSITORY.addStorageCredential(createStorageCredential);
+        StorageCredentialInfo storageCredentialInfo = storageCredentialRepository.addStorageCredential(createStorageCredential);
         initializeAuthorizations(storageCredentialInfo);
         return HttpResponse.ofJson(storageCredentialInfo);
     }
@@ -50,7 +54,7 @@ public class StorageCredentialService {
     public HttpResponse listStorageCredentials(
             @Param("max_results") Optional<Integer> maxResults,
             @Param("page_token") Optional<String> pageToken) {
-        ListStorageCredentialsResponse credentials = REPOSITORY.listStorageCredentials(maxResults, pageToken);
+        ListStorageCredentialsResponse credentials = storageCredentialRepository.listStorageCredentials(maxResults, pageToken);
         return HttpResponse.ofJson(credentials);
     }
 
@@ -60,7 +64,7 @@ public class StorageCredentialService {
             """)
     @AuthorizeKey(METASTORE)
     public HttpResponse getStorageCredential(@Param("name") String name) {
-        return HttpResponse.ofJson(REPOSITORY.getStorageCredential(name));
+        return HttpResponse.ofJson(storageCredentialRepository.getStorageCredential(name));
     }
 
     @Patch("/{name}")
@@ -70,7 +74,7 @@ public class StorageCredentialService {
     @AuthorizeKey(METASTORE)
     public HttpResponse updateStorageCredential(
             @Param("name") String name, UpdateStorageCredential updateRequest) {
-        return HttpResponse.ofJson(REPOSITORY.updateStorageCredential(name, updateRequest));
+        return HttpResponse.ofJson(storageCredentialRepository.updateStorageCredential(name, updateRequest));
     }
 
     @Delete("/{name}")
@@ -79,13 +83,13 @@ public class StorageCredentialService {
             """)
     @AuthorizeKey(METASTORE)
     public HttpResponse deleteStorageCredential(@Param("name") String name) {
-        StorageCredentialInfo storageCredentialInfo = REPOSITORY.deleteStorageCredential(name);
+        StorageCredentialInfo storageCredentialInfo = storageCredentialRepository.deleteStorageCredential(name);
         removeAuthorizations(storageCredentialInfo);
         return HttpResponse.of(HttpStatus.OK);
     }
 
     private void initializeAuthorizations(StorageCredentialInfo storageCredentialInfo) {
-        UUID principalId = IdentityUtils.findPrincipalId();
+        UUID principalId = userRepository.findPrincipalId();
         authorizer.grantAuthorization(
                 principalId, UUID.fromString(storageCredentialInfo.getId()), Privileges.OWNER);
     }

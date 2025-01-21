@@ -76,10 +76,6 @@ public class StorageCredentialDAO extends IdentifiableDAO {
         storageCredentialDAOBuilder.credentialType(CredentialType.AWS_IAM_ROLE);
         storageCredentialDAOBuilder.credential(
             objectMapper.writeValueAsString(storageCredentialInfo.getAwsIamRole()));
-      } else if (storageCredentialInfo.getAzureManagedIdentity() != null) {
-        storageCredentialDAOBuilder.credentialType(CredentialType.AZURE_MANAGED_IDENTITY);
-        storageCredentialDAOBuilder.credential(
-            objectMapper.writeValueAsString(storageCredentialInfo.getAzureManagedIdentity()));
       } else if (storageCredentialInfo.getAzureServicePrincipal() != null) {
         storageCredentialDAOBuilder.credentialType(CredentialType.AZURE_SERVICE_PRINCIPAL);
         storageCredentialDAOBuilder.credential(
