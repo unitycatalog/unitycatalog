@@ -27,7 +27,7 @@ public class ExternalLocationDAO extends IdentifiableDAO {
   @Column(name = "comment")
   private String comment;
 
-  @Column(name = "owner", nullable = false)
+  @Column(name = "owner")
   private String owner;
 
   @Column(name = "access_point")
@@ -36,10 +36,10 @@ public class ExternalLocationDAO extends IdentifiableDAO {
   @Column(name = "credential_id", nullable = false)
   private UUID credentialId;
 
-  @Column(name = "created_at", nullable = false)
+  @Column(name = "created_at")
   private Date createdAt;
 
-  @Column(name = "created_by", nullable = false)
+  @Column(name = "created_by")
   private String createdBy;
 
   @Column(name = "updated_at")
