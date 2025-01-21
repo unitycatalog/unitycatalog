@@ -1,5 +1,6 @@
 import json
 import os
+from importlib import metadata
 from unittest import mock
 
 import pytest
@@ -9,6 +10,7 @@ from autogen_agentchat.messages import TextMessage
 from autogen_core import CancellationToken
 from autogen_core.models import CreateResult, RequestUsage
 from autogen_ext.models.openai import OpenAIChatCompletionClient
+from packaging import version
 
 from unitycatalog.ai.autogen.toolkit import UCFunctionToolkit
 from unitycatalog.ai.core.base import FunctionExecutionResult
@@ -34,6 +36,9 @@ except ImportError:
     from pydantic.error_wrappers import ValidationError
 
 SCHEMA = os.environ.get("SCHEMA", "ucai_autogen_test")
+
+autogen_version = metadata.version("autogen_core")
+skip_mlflow_test = version.parse(autogen_version) >= version.parse("0.4.0")
 
 
 @pytest_asyncio.fixture
@@ -210,6 +215,9 @@ async def test_uc_function_to_autogen_tool(uc_client):
         assert result == "some_string"
 
 
+@pytest.mark.skipif(
+    skip_mlflow_test, reason="MLflow autologging is not supported for autogen_core 0.4.0 and above."
+)
 @pytest.mark.parametrize(
     "format,function_output",
     [

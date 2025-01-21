@@ -1,5 +1,6 @@
 import json
 import os
+from importlib import metadata
 from unittest import mock
 
 import pytest
@@ -9,6 +10,7 @@ from databricks.sdk.service.catalog import (
     FunctionParameterInfo,
     FunctionParameterInfos,
 )
+from packaging import version
 from pydantic import ValidationError
 
 from unitycatalog.ai.autogen.toolkit import UCFunctionToolkit
@@ -28,6 +30,9 @@ from unitycatalog.ai.test_utils.function_utils import (
 )
 
 SCHEMA = os.environ.get("SCHEMA", "ucai_autogen_test")
+
+autogen_version = metadata.version("autogen_core")
+skip_mlflow_test = version.parse(autogen_version) >= version.parse("0.4.0")
 
 
 @pytest.fixture
@@ -214,6 +219,9 @@ async def test_uc_function_to_autogen_tool(dbx_client):
         assert result == "some_string"
 
 
+@pytest.mark.skipif(
+    skip_mlflow_test, reason="MLflow autologging is not supported for autogen_core 0.4.0 and above."
+)
 @pytest.mark.parametrize(
     "format,function_output",
     [
