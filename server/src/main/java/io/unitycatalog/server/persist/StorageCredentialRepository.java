@@ -1,12 +1,14 @@
 package io.unitycatalog.server.persist;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import io.unitycatalog.server.exception.BaseException;
 import io.unitycatalog.server.exception.ErrorCode;
 import io.unitycatalog.server.model.CreateStorageCredential;
+import io.unitycatalog.server.model.ListStorageCredentialsResponse;
 import io.unitycatalog.server.model.StorageCredentialInfo;
 import io.unitycatalog.server.model.UpdateStorageCredential;
 import io.unitycatalog.server.persist.dao.StorageCredentialDAO;
-import io.unitycatalog.server.persist.utils.HibernateUtils;
 import io.unitycatalog.server.persist.utils.PagedListingHelper;
 import io.unitycatalog.server.persist.utils.StorageCredentialUtils;
 import io.unitycatalog.server.utils.IdentityUtils;
@@ -19,15 +21,15 @@ import org.hibernate.Transaction;
 import org.hibernate.query.Query;
 
 public class StorageCredentialRepository {
-  private static final StorageCredentialRepository INSTANCE = new StorageCredentialRepository();
-  private static final SessionFactory SESSION_FACTORY = HibernateUtils.getSessionFactory();
+  private final Repositories repositories;
+  private final SessionFactory sessionFactory;
   private static final PagedListingHelper<StorageCredentialDAO> LISTING_HELPER =
       new PagedListingHelper<>(StorageCredentialDAO.class);
+  public static ObjectMapper objectMapper = new ObjectMapper();
 
-  private StorageCredentialRepository() {}
-
-  public static StorageCredentialRepository getInstance() {
-    return INSTANCE;
+  public StorageCredentialRepository(Repositories repositories, SessionFactory sessionFactory) {
+    this.repositories = repositories;
+    this.sessionFactory = sessionFactory;
   }
 
   public StorageCredentialInfo addStorageCredential(
@@ -40,11 +42,9 @@ public class StorageCredentialRepository {
             .id(storageCredentialId.toString())
             .name(createStorageCredential.getName())
             .comment(createStorageCredential.getComment())
-            .readOnly(createStorageCredential.getReadOnly())
             .owner(callerId)
             .createdAt(Instant.now().toEpochMilli())
-            .createdBy(callerId)
-            .usedForManagedStorage(false);
+            .createdBy(callerId);
 
     if (createStorageCredential.getAwsIamRole() != null) {
       storageCredentialInfo.setAwsIamRole(
@@ -52,17 +52,13 @@ public class StorageCredentialRepository {
     } else if (createStorageCredential.getAzureServicePrincipal() != null) {
       storageCredentialInfo.setAzureServicePrincipal(
           createStorageCredential.getAzureServicePrincipal());
-    } else if (createStorageCredential.getAzureManagedIdentity() != null) {
-      storageCredentialInfo.setAzureManagedIdentity(
-          StorageCredentialUtils.fromAzureManagedIdentityRequest(
-              createStorageCredential.getAzureManagedIdentity(), storageCredentialId.toString()));
     } else {
       throw new BaseException(
           ErrorCode.INVALID_ARGUMENT,
           "Storage credential must have one of aws_iam_role, azure_service_principal, azure_managed_identity or gcp_service_account");
     }
 
-    try (Session session = SESSION_FACTORY.openSession()) {
+    try (Session session = sessionFactory.openSession()) {
       Transaction tx = session.beginTransaction();
       try {
         if (getStorageCredentialDAO(session, createStorageCredential.getName()) != null) {
@@ -81,7 +77,7 @@ public class StorageCredentialRepository {
   }
 
   public StorageCredentialInfo getStorageCredential(String name) {
-    try (Session session = SESSION_FACTORY.openSession()) {
+    try (Session session = sessionFactory.openSession()) {
       session.setDefaultReadOnly(true);
       Transaction tx = session.beginTransaction();
       try {
@@ -107,20 +103,23 @@ public class StorageCredentialRepository {
     return query.uniqueResult();
   }
 
-  public List<StorageCredentialInfo> listStorageCredentials(
+  public ListStorageCredentialsResponse listStorageCredentials(
       Optional<Integer> maxResults, Optional<String> pageToken) {
-    try (Session session = SESSION_FACTORY.openSession()) {
+    try (Session session = sessionFactory.openSession()) {
       session.setDefaultReadOnly(true);
       Transaction tx = session.beginTransaction();
       try {
         List<StorageCredentialDAO> daoList =
             LISTING_HELPER.listEntity(session, maxResults, pageToken, null);
+        String nextPageToken = LISTING_HELPER.getNextPageToken(daoList, maxResults);
         List<StorageCredentialInfo> results = new ArrayList<>();
         for (StorageCredentialDAO dao : daoList) {
           results.add(dao.toStorageCredentialInfo());
         }
         tx.commit();
-        return results;
+        return new ListStorageCredentialsResponse()
+            .storageCredentials(results)
+            .nextPageToken(nextPageToken);
       } catch (Exception e) {
         tx.rollback();
         throw e;
@@ -132,7 +131,7 @@ public class StorageCredentialRepository {
       String name, UpdateStorageCredential updateStorageCredential) {
     String callerId = IdentityUtils.findPrincipalEmailAddress();
 
-    try (Session session = SESSION_FACTORY.openSession()) {
+    try (Session session = sessionFactory.openSession()) {
       Transaction tx = session.beginTransaction();
       try {
         StorageCredentialDAO existingCredential = getStorageCredentialDAO(session, name);
@@ -154,9 +153,6 @@ public class StorageCredentialRepository {
         if (updateStorageCredential.getComment() != null) {
           existingCredential.setComment(updateStorageCredential.getComment());
         }
-        if (updateStorageCredential.getReadOnly() != null) {
-          existingCredential.setReadOnly(updateStorageCredential.getReadOnly());
-        }
         existingCredential.setUpdatedAt(new Date());
         existingCredential.setUpdatedBy(callerId);
 
@@ -172,33 +168,27 @@ public class StorageCredentialRepository {
 
   public static void updateCredentialFields(
       StorageCredentialDAO existingCredential, UpdateStorageCredential updateStorageCredential) {
-    if (updateStorageCredential.getAwsIamRole() != null) {
-      existingCredential.setCredentialType(StorageCredentialDAO.CredentialType.AWS_IAM_ROLE);
-      existingCredential.setCredential(
-          StorageCredentialUtils.fromAwsIamRoleRequest(updateStorageCredential.getAwsIamRole())
-              .toString());
-    } else if (updateStorageCredential.getAzureServicePrincipal() != null) {
-      existingCredential.setCredentialType(
-          StorageCredentialDAO.CredentialType.AZURE_SERVICE_PRINCIPAL);
-      existingCredential.setCredential(
-          updateStorageCredential.getAzureServicePrincipal().toString());
-    } else if (updateStorageCredential.getAzureManagedIdentity() != null) {
-      existingCredential.setCredentialType(
-          StorageCredentialDAO.CredentialType.AZURE_MANAGED_IDENTITY);
-      existingCredential.setCredential(
-          StorageCredentialUtils.fromAzureManagedIdentityRequest(
-                  updateStorageCredential.getAzureManagedIdentity(),
-                  existingCredential.getId().toString())
-              .toString());
-    } else {
+    try {
+      if (updateStorageCredential.getAwsIamRole() != null) {
+        existingCredential.setCredentialType(StorageCredentialDAO.CredentialType.AWS_IAM_ROLE);
+        existingCredential.setCredential(
+            objectMapper.writeValueAsString(
+                StorageCredentialUtils.fromAwsIamRoleRequest(
+                    updateStorageCredential.getAwsIamRole())));
+      } else if (updateStorageCredential.getAzureServicePrincipal() != null) {
+        existingCredential.setCredentialType(
+            StorageCredentialDAO.CredentialType.AZURE_SERVICE_PRINCIPAL);
+        existingCredential.setCredential(
+            objectMapper.writeValueAsString(updateStorageCredential.getAzureServicePrincipal()));
+      }
+    } catch (JsonProcessingException e) {
       throw new BaseException(
-          ErrorCode.INVALID_ARGUMENT,
-          "Storage credential must have one of aws_iam_role, azure_service_principal, azure_managed_identity or gcp_service_account");
+          ErrorCode.INVALID_ARGUMENT, "Failed to serialize credential: " + e.getMessage());
     }
   }
 
-  public void deleteStorageCredential(String name) {
-    try (Session session = SESSION_FACTORY.openSession()) {
+  public StorageCredentialInfo deleteStorageCredential(String name) {
+    try (Session session = sessionFactory.openSession()) {
       Transaction tx = session.beginTransaction();
       try {
         StorageCredentialDAO existingCredential = getStorageCredentialDAO(session, name);
@@ -207,6 +197,7 @@ public class StorageCredentialRepository {
         }
         session.remove(existingCredential);
         tx.commit();
+        return existingCredential.toStorageCredentialInfo();
       } catch (Exception e) {
         tx.rollback();
         throw e;
