@@ -1,8 +1,11 @@
 package io.unitycatalog.server.service.credential.aws.provider;
 
+import lombok.ToString;
+
 import java.util.HashMap;
 import java.util.Map;
 
+@ToString
 public class AwsCredentialsProviderConfig {
 
   public static final String PROVIDER_CLASS = "class";
@@ -13,7 +16,8 @@ public class AwsCredentialsProviderConfig {
   private final Map<String, String> properties;
 
   public AwsCredentialsProviderConfig() {
-    this.providerClass = "io.unitycatalog.server.service.credential.aws.provider.StsCredentialsProvider";
+    this.providerClass =
+        "io.unitycatalog.server.service.credential.aws.provider.StsCredentialsProvider";
     this.properties = new HashMap<>();
   }
 

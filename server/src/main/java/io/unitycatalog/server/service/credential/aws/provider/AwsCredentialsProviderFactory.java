@@ -4,11 +4,14 @@ import com.amazonaws.util.StringUtils;
 import io.unitycatalog.server.exception.BaseException;
 import io.unitycatalog.server.exception.ErrorCode;
 import io.unitycatalog.server.utils.ServerProperties;
+import lombok.extern.slf4j.Slf4j;
+
 import java.lang.reflect.InvocationTargetException;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.stream.Collectors;
 
+@Slf4j
 public class AwsCredentialsProviderFactory {
 
   public Map<String, AwsCredentialsProvider> loadProviders(ServerProperties serverProperties) {
@@ -20,6 +23,8 @@ public class AwsCredentialsProviderFactory {
         providerConfigurations.entrySet().stream()
             .collect(
                 Collectors.toMap(Map.Entry::getKey, entry -> createProvider(entry.getValue())));
+
+    log.info("Loaded providers {}", providersCache.keySet());
 
     final Map<String, AwsCredentialsProvider> providers = new HashMap<>();
 
@@ -36,6 +41,8 @@ public class AwsCredentialsProviderFactory {
               final String region = s3Configuration.getRegion();
               AwsCredentialsProvider provider;
 
+              log.info("Configuring {} with provider {}", bucket, providerName);
+
               // If no provider name given - fall back to provider configuration from s3
               // configuration
               if (providerName == null || providerName.isBlank()) {
@@ -45,27 +52,42 @@ public class AwsCredentialsProviderFactory {
                       "static-provider-" + StringUtils.fromInteger(sessionToken.hashCode());
                   provider = providersCache.get(staticProviderName);
                   if (provider == null) {
-                      final AwsCredentialsProviderConfig providerConfiguration = new AwsCredentialsProviderConfig();
-                      providerConfiguration.put(AwsCredentialsProviderConfig.PROVIDER_CLASS, StaticCredentialsProvider.class.getCanonicalName());
-                      providerConfiguration.put(AwsCredentialsProviderConfig.ACCESS_KEY_ID, accessKey);
-                      providerConfiguration.put(AwsCredentialsProviderConfig.SECRET_ACCESS_KEY, secretKey);
-                      providerConfiguration.put(StaticCredentialsProvider.SESSION_TOKEN, sessionToken);
-                      provider = createProvider(providerConfiguration);
-                      providersCache.put(staticProviderName, provider); // Is same session key will be found provider will be reused
+                    final AwsCredentialsProviderConfig providerConfiguration =
+                        new AwsCredentialsProviderConfig();
+                    providerConfiguration.put(
+                        AwsCredentialsProviderConfig.PROVIDER_CLASS,
+                        StaticCredentialsProvider.class.getCanonicalName());
+                    providerConfiguration.put(
+                        AwsCredentialsProviderConfig.ACCESS_KEY_ID, accessKey);
+                    providerConfiguration.put(
+                        AwsCredentialsProviderConfig.SECRET_ACCESS_KEY, secretKey);
+                    providerConfiguration.put(
+                        StaticCredentialsProvider.SESSION_TOKEN, sessionToken);
+                    provider = createProvider(providerConfiguration);
+                    providersCache.put(
+                        staticProviderName,
+                        provider); // Is same session key will be found provider will be reused
                   }
-                } else if (roleArn != null) {
+                } else if (roleArn != null && !roleArn.isBlank()) {
                   final String stsProviderName =
-                            "sts-provider-" + StringUtils.fromInteger(roleArn.hashCode());
+                      "sts-provider-" + StringUtils.fromInteger(roleArn.hashCode());
                   provider = providersCache.get(stsProviderName);
                   if (provider == null) {
-                      final AwsCredentialsProviderConfig providerConfiguration = new AwsCredentialsProviderConfig();
-                      providerConfiguration.put(AwsCredentialsProviderConfig.PROVIDER_CLASS, StsCredentialsProvider.class.getCanonicalName());
-                      providerConfiguration.put(AwsCredentialsProviderConfig.ACCESS_KEY_ID, accessKey);
-                      providerConfiguration.put(AwsCredentialsProviderConfig.SECRET_ACCESS_KEY, secretKey);
-                      providerConfiguration.put(StsCredentialsProvider.ROLE_ARN, roleArn);
-                      providerConfiguration.put(StsCredentialsProvider.REGION, region);
-                      provider = createProvider(providerConfiguration);
-                      providersCache.put(stsProviderName, provider); // Is same role arn will be found provider will be reused
+                    final AwsCredentialsProviderConfig providerConfiguration =
+                        new AwsCredentialsProviderConfig();
+                    providerConfiguration.put(
+                        AwsCredentialsProviderConfig.PROVIDER_CLASS,
+                        StsCredentialsProvider.class.getCanonicalName());
+                    providerConfiguration.put(
+                        AwsCredentialsProviderConfig.ACCESS_KEY_ID, accessKey);
+                    providerConfiguration.put(
+                        AwsCredentialsProviderConfig.SECRET_ACCESS_KEY, secretKey);
+                    providerConfiguration.put(StsCredentialsProvider.ROLE_ARN, roleArn);
+                    providerConfiguration.put(StsCredentialsProvider.REGION, region);
+                    provider = createProvider(providerConfiguration);
+                    providersCache.put(
+                        stsProviderName,
+                        provider); // Is same role arn will be found provider will be reused
                   }
                 } else {
                   throw new BaseException(
@@ -77,7 +99,9 @@ public class AwsCredentialsProviderFactory {
               } else {
                 provider = providersCache.get(providerName);
                 if (provider == null) {
-                  throw new BaseException(ErrorCode.FAILED_PRECONDITION, "Provider " + providerName + " is not defined");
+                  throw new BaseException(
+                      ErrorCode.FAILED_PRECONDITION,
+                      "Provider " + providerName + " is not defined");
                 }
               }
 
@@ -88,15 +112,19 @@ public class AwsCredentialsProviderFactory {
   }
 
   private AwsCredentialsProvider createProvider(AwsCredentialsProviderConfig configuration) {
-
     final String providerClass = configuration.getProviderClass();
     try {
       final Class<?> clz = this.getClass().getClassLoader().loadClass(providerClass);
       if (!AwsCredentialsProvider.class.isAssignableFrom(clz)) {
-        throw new BaseException(ErrorCode.FAILED_PRECONDITION, providerClass + " is not a subclass of " + AwsCredentialsProvider.class.getCanonicalName());
+        throw new BaseException(
+            ErrorCode.FAILED_PRECONDITION,
+            providerClass
+                + " is not a subclass of "
+                + AwsCredentialsProvider.class.getCanonicalName());
       }
       @SuppressWarnings("unchecked")
-      final Class<? extends AwsCredentialsProvider> providerClz = (Class<? extends AwsCredentialsProvider>) clz;
+      final Class<? extends AwsCredentialsProvider> providerClz =
+          (Class<? extends AwsCredentialsProvider>) clz;
       final AwsCredentialsProvider provider = providerClz.getDeclaredConstructor().newInstance();
       return provider.configure(configuration);
     } catch (ClassNotFoundException e) {
@@ -105,8 +133,7 @@ public class AwsCredentialsProviderFactory {
           "Aws credentials provider class " + providerClass + " is not found.");
     } catch (NoSuchMethodException e) {
       throw new BaseException(
-          ErrorCode.FAILED_PRECONDITION,
-          "No default constructor in class " + providerClass);
+          ErrorCode.FAILED_PRECONDITION, "No default constructor in class " + providerClass);
     } catch (InvocationTargetException | InstantiationException e) {
       throw new BaseException(
           ErrorCode.INTERNAL, "Class " + providerClass + " could not be instantiated.");
@@ -115,7 +142,5 @@ public class AwsCredentialsProviderFactory {
           ErrorCode.FAILED_PRECONDITION,
           "Default constructor of class " + providerClass + " is not accessible.");
     }
-
-
   }
 }

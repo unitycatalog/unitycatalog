@@ -9,7 +9,7 @@ public class StaticCredentialsProvider implements AwsCredentialsProvider {
   public static final String SESSION_TOKEN = "sessiontoken";
 
   private String accessKey;
-  private  String secretKey;
+  private String secretKey;
   private String sessionToken;
 
   @Override
@@ -24,9 +24,9 @@ public class StaticCredentialsProvider implements AwsCredentialsProvider {
   public AwsCredentials generateCredentials(
       CredentialContext context, S3StorageConfig s3StorageConfig) {
     return new AwsCredentials()
-            .accessKeyId(accessKey)
-            .secretAccessKey(secretKey)
-            .sessionToken(sessionToken)
-            .endpoint(s3StorageConfig.getEndpoint());
+        .accessKeyId(accessKey)
+        .secretAccessKey(secretKey)
+        .sessionToken(sessionToken)
+        .endpoint(s3StorageConfig.getEndpoint());
   }
 }

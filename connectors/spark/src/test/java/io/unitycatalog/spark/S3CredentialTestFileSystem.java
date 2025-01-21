@@ -12,13 +12,13 @@ public class S3CredentialTestFileSystem extends CredentialTestFileSystem {
     String host = f.toUri().getHost();
     if (credentialCheckEnabled) {
       if ("test-bucket0".equals(host)) {
-        assertThat(conf.get("fs.s3a.access.key")).isEqualTo("accessKey0");
-        assertThat(conf.get("fs.s3a.secret.key")).isEqualTo("secretKey0");
-        assertThat(conf.get("fs.s3a.session.token")).isEqualTo("sessionToken0");
+        assertThat(conf.get("fs.s3a.bucket.test-bucket0.access.key")).isEqualTo("accessKey0");
+        assertThat(conf.get("fs.s3a.bucket.test-bucket0.secret.key")).isEqualTo("secretKey0");
+        assertThat(conf.get("fs.s3a.bucket.test-bucket0.session.token")).isEqualTo("sessionToken0");
       } else if ("test-bucket1".equals(host)) {
-        assertThat(conf.get("fs.s3a.access.key")).isEqualTo("accessKey1");
-        assertThat(conf.get("fs.s3a.secret.key")).isEqualTo("secretKey1");
-        assertThat(conf.get("fs.s3a.session.token")).isEqualTo("sessionToken1");
+        assertThat(conf.get("fs.s3a.bucket.test-bucket1.access.key")).isEqualTo("accessKey1");
+        assertThat(conf.get("fs.s3a.bucket.test-bucket1.secret.key")).isEqualTo("secretKey1");
+        assertThat(conf.get("fs.s3a.bucket.test-bucket1.session.token")).isEqualTo("sessionToken1");
       } else {
         throw new RuntimeException("invalid path: " + f);
       }

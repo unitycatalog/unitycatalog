@@ -9,9 +9,12 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.*;
+
+import lombok.extern.slf4j.Slf4j;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+@Slf4j
 public class ServerProperties {
 
   private static final Logger LOGGER = LoggerFactory.getLogger(ServerProperties.class);
@@ -44,6 +47,10 @@ public class ServerProperties {
     return propertiesFromFile;
   }
 
+  private boolean isStringNullOrEmpty(String s) {
+    return s == null || s.isBlank();
+  }
+
   public Map<String, S3StorageConfig> getS3Configurations() {
     Map<String, S3StorageConfig> s3BucketConfigMap = new HashMap<>();
     int i = 0;
@@ -56,10 +63,32 @@ public class ServerProperties {
       String sessionToken = properties.getProperty("s3.sessionToken." + i);
       String endpoint = properties.getProperty("s3.endpoint." + i);
       String provider = properties.getProperty("s3.provider." + i);
-      if ((bucketPath == null || region == null || awsRoleArn == null)
-          && (accessKey == null || secretKey == null || sessionToken == null)
-          && (endpoint == null || provider == null)) {
+      // break loop if all fields are null
+      if (bucketPath == null && region == null && awsRoleArn == null
+          && accessKey == null && secretKey == null && sessionToken == null
+          && endpoint == null && provider == null) {
         break;
+      }
+      if (isStringNullOrEmpty(bucketPath) // should always have bucketPath
+          || (isStringNullOrEmpty(provider) && // plus either provider reference
+              (isStringNullOrEmpty(accessKey) // or (access key, secret key (session token|(awsRoleArn, region)))
+              || isStringNullOrEmpty(secretKey)
+              || (isStringNullOrEmpty(sessionToken)
+                  && (isStringNullOrEmpty(awsRoleArn) || isStringNullOrEmpty(region))
+              )
+          ))
+      ){
+        log.warn("S3 configuration #{} has missing required fields, skipping", i);
+        log.debug("bucketPath = {}", bucketPath);
+        log.debug("region = {}", region);
+        log.debug("awsRoleArn = {}", awsRoleArn);
+        log.debug("accessKey = {}", accessKey);
+        log.debug("secretKey = {}", secretKey);
+        log.debug("sessionToken = {}", sessionToken);
+        log.debug("endpoint = {}", endpoint);
+        log.debug("provider = {}", provider);
+        i++;
+        continue;
       }
       S3StorageConfig s3StorageConfig =
           S3StorageConfig.builder()
@@ -92,12 +121,11 @@ public class ServerProperties {
       final List<String> providerProperty = Arrays.asList(propertyName.substring(25).split("\\."));
 
       final String name = providerProperty.get(0);
-      providerProperty.remove(0);
 
       // Build property name
       StringBuilder builder = new StringBuilder();
 
-      for (int i = 0; i < providerProperty.size(); ++i) {
+      for (int i = 1; i < providerProperty.size(); ++i) {
         builder.append(providerProperty.get(i));
         if (i < providerProperty.size() - 1) {
           builder.append(".");

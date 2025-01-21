@@ -61,9 +61,7 @@ public class StsCredentialsProvider implements AwsCredentialsProvider {
     final String secretKey = config.get(AwsCredentialsProviderConfig.SECRET_ACCESS_KEY);
     if (secretKey != null && !accessKey.isEmpty()) {
       credentialsProvider =
-          StaticCredentialsProvider.create(
-              AwsBasicCredentials.create(
-                  accessKey, secretKey));
+          StaticCredentialsProvider.create(AwsBasicCredentials.create(accessKey, secretKey));
     } else {
       credentialsProvider = DefaultCredentialsProvider.create();
     }

@@ -26,8 +26,7 @@ public class AwsCredentialVendor {
       throw new BaseException(ErrorCode.FAILED_PRECONDITION, "S3 bucket configuration not found.");
     }
 
-    final AwsCredentialsProvider provider =
-        s3CredentialProviders.get(context.getStorageBase());
+    final AwsCredentialsProvider provider = s3CredentialProviders.get(context.getStorageBase());
     if (provider == null) {
       throw new BaseException(
           ErrorCode.FAILED_PRECONDITION,

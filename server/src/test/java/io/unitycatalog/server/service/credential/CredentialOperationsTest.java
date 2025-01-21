@@ -9,6 +9,7 @@ import io.unitycatalog.server.model.AwsCredentials;
 import io.unitycatalog.server.model.TemporaryCredentials;
 import io.unitycatalog.server.service.credential.aws.AwsCredentialVendor;
 import io.unitycatalog.server.service.credential.aws.S3StorageConfig;
+import io.unitycatalog.server.service.credential.aws.provider.AwsCredentialsProviderConfig;
 import io.unitycatalog.server.service.credential.azure.ADLSStorageConfig;
 import io.unitycatalog.server.service.credential.azure.AzureCredentialVendor;
 import io.unitycatalog.server.service.credential.gcp.GcpCredentialVendor;
@@ -74,6 +75,65 @@ public class CredentialOperationsTest {
                 credentialsOperations.vendCredential(
                     "s3://storageBase/abc", Set.of(CredentialContext.Privilege.SELECT)))
         .isInstanceOf(StsException.class);
+  }
+
+  @Test
+  public void testGenerateS3TemporaryCredentialsWithProvider() {
+    final String ACCESS_KEY = "accessKey";
+    final String SECRET_KEY = "secretKey";
+    final String ENDPOINT = "https://localhost";
+    final String PROVIDER_NAME = "static";
+    // Test session key is available
+    when(serverProperties.getS3Configurations())
+        .thenReturn(
+            Map.of(
+                "s3://storageBase",
+                S3StorageConfig.builder()
+                    .provider(PROVIDER_NAME)
+                    .endpoint(ENDPOINT)
+                    .build()));
+    final AwsCredentialsProviderConfig providerConfig = new AwsCredentialsProviderConfig();
+
+    providerConfig.put(AwsCredentialsProviderConfig.PROVIDER_CLASS, "io.unitycatalog.server.service.credential.aws.provider.StaticCredentialsProvider");
+    providerConfig.put(AwsCredentialsProviderConfig.ACCESS_KEY_ID, ACCESS_KEY);
+    providerConfig.put(AwsCredentialsProviderConfig.SECRET_ACCESS_KEY, SECRET_KEY);
+    when(serverProperties.getAwsCredentialProviderConfigurations())
+        .thenReturn(
+          Map.of(
+            PROVIDER_NAME,
+            providerConfig
+          )
+        );
+    AwsCredentialVendor awsCredentialVendor = new AwsCredentialVendor(serverProperties);
+    credentialsOperations = new CredentialOperations(awsCredentialVendor, null, null);
+    TemporaryCredentials s3TemporaryCredentials =
+        credentialsOperations.vendCredential(
+            "s3://storageBase/abc", Set.of(CredentialContext.Privilege.SELECT));
+    assertThat(s3TemporaryCredentials.getAwsTempCredentials())
+        .isEqualTo(
+            new AwsCredentials()
+                .accessKeyId(ACCESS_KEY)
+                .secretAccessKey(SECRET_KEY)
+                .endpoint(ENDPOINT));
+
+    // Test when sts client is called
+    /*when(serverProperties.getS3Configurations())
+        .thenReturn(
+            Map.of(
+                "s3://storageBase",
+                S3StorageConfig.builder()
+                    .accessKey(ACCESS_KEY)
+                    .secretKey(SECRET_KEY)
+                    .region(S3_REGION)
+                    .awsRoleArn(ROLE_ARN)
+                    .build()));
+    awsCredentialVendor = new AwsCredentialVendor(serverProperties);
+    credentialsOperations = new CredentialOperations(awsCredentialVendor, null, null);
+    assertThatThrownBy(
+        () ->
+            credentialsOperations.vendCredential(
+                "s3://storageBase/abc", Set.of(CredentialContext.Privilege.SELECT)))
+        .isInstanceOf(StsException.class);*/
   }
 
   @Test
