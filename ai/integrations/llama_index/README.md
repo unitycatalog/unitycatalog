@@ -4,23 +4,79 @@ You can use functions defined within Unity Catalog (UC) directly as tools within
 
 ## Installation
 
-### From PyPI
+### Client Library
+
+To install the Unity Catalog function client SDK and the `LlamaIndex` integration, simply install from PyPI:
 
 ```sh
 pip install unitycatalog-llamaindex
 ```
 
-### From source
-
-To get started with the latest version, you can directly install this package from source via:
+If you are working with **Databricks Unity Catalog**, you can install the optional package:
 
 ```sh
-pip install git+https://github.com/unitycatalog/unitycatalog.git#subdirectory=ai/integrations/llama_index
+pip install unitycatalog-llamaindex[databricks]
 ```
 
 ## Getting started
 
-### Databricks managed UC
+### Creating a Unity Catalog Client
+
+To interact with your Unity Catalog server, initialize the `UnitycatalogFunctionClient` as shown below:
+
+```python
+import asyncio
+from unitycatalog.ai.core.client import UnitycatalogFunctionClient
+from unitycatalog.client import ApiClient, Configuration
+
+# Configure the Unity Catalog API client
+config = Configuration(
+    host="http://localhost:8080/api/2.1/unity-catalog"  # Replace with your UC server URL
+)
+
+# Initialize the asynchronous ApiClient
+api_client = ApiClient(configuration=config)
+
+# Instantiate the UnitycatalogFunctionClient
+uc_client = UnitycatalogFunctionClient(api_client=api_client)
+
+# Example catalog and schema names
+CATALOG = "my_catalog"
+SCHEMA = "my_schema"
+```
+
+### Creating a Unity Catalog Function
+
+You can create a UC function either by providing a Python callable or by submitting a `FunctionInfo` object. Below is an example (recommended) of using the `create_python_function` API that accepts a Python callable (function) as input.
+
+To create a UC function from a Python function, define your function with appropriate type hints and a Google-style docstring:
+
+```python
+def add_numbers(a: float, b: float) -> float:
+    """
+    Adds two numbers and returns the result.
+
+    Args:
+        a (float): First number.
+        b (float): Second number.
+
+    Returns:
+        float: The sum of the two numbers.
+    """
+    return a + b
+
+# Create the function within the Unity Catalog catalog and schema specified
+function_info = uc_client.create_python_function(
+    func=add_numbers,
+    catalog=CATALOG,
+    schema=SCHEMA,
+    replace=False,  # Set to True to overwrite if the function already exists
+)
+
+print(function_info)
+```
+
+### Databricks-managed Unity Catalog
 
 To use Databricks-managed UC with this package, follow the [instructions here](https://docs.databricks.com/en/dev-tools/cli/authentication.html#authentication-for-the-databricks-cli) to authenticate to your workspace and ensure that your access token has workspace-level privilege for managing UC functions.
 
@@ -29,7 +85,7 @@ To use Databricks-managed UC with this package, follow the [instructions here](h
 Initialize a client for managing UC functions in a Databricks workspace, and set it as the global client.
 
 ```python
-from unitycatalog.ai.core.client import set_uc_function_client
+from unitycatalog.ai.core.base import set_uc_function_client
 from unitycatalog.ai.core.databricks import DatabricksFunctionClient
 
 client = DatabricksFunctionClient(
@@ -71,7 +127,9 @@ client.create_function(sql_function_body=sql_body)
 
 Now that the function exists within the Catalog and Schema that we defined, we can interface with it from llamaindex using the `unitycatalog.ai.llama_index` package.
 
-#### Create an instance of a LlamaIndex compatible tool
+## Using the Function as a GenAI Tool
+
+### Create a UCFunctionToolkit instance
 
 [LlamaIndex Tools](https://docs.llamaindex.ai/en/stable/module_guides/deploying/agents/tools/) are callable external functions that GenAI applications (called by
 an LLM), which are exposed with a UC interface through the use of the `unitycatalog.ai.llama_index` package via the `UCFunctionToolkit` API.
@@ -94,7 +152,7 @@ my_tool = tools[0]
 my_tool.fn(**{"code": "print(1)"})
 ```
 
-#### Utilize our function as a tool within a ReActAgent in LlamaIndex
+### Utilize our function as a tool within a ReActAgent in LlamaIndex
 
 With our interface to our UC function defined as a LlamaIndex tool collection, we can directly use it within a LlamaIndex agent application.
 Below, we are going to create a simple `ReActAgent` and verify that our agent properly calls our UC function.
@@ -109,3 +167,7 @@ agent = ReActAgent.from_tools(tools, llm=llm, verbose=True)
 
 agent.chat("Please call a python execution tool to evaluate the result of 42 + 97.")
 ```
+
+### Configurations for Databricks managed UC functions execution
+
+We provide configurations for databricks client to control the function execution behaviors, check [function execution arguments section](../../README.md#function-execution-arguments-configuration).

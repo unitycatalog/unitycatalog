@@ -16,29 +16,43 @@ pip install unitycatalog-llamaindex
 
 - **Python version**: Python 3.10 or higher is required.
 
-Install the LlamaIndex library if you don't already have it in your environment:
-
-```sh
-pip install llama-index
-```
-
 >Note: Depending on what you're doing with LlamaIndex, you may need to install additional packages from PyPI.
 
-### Unity Catalog Open Source
+### Unity Catalog
 
 Ensure that you have a functional UC server set up and that you are able to access the catalog and schema where defined functions are stored.
 
 ### Databricks Unity Catalog
 
-To interact with Databricks Unity Catalog, ensure that you have both the `databricks-sdk` and the `databricks-connect` packages installed:
+To interact with Databricks Unity Catalog, install the optional package dependency when installing the integration package:
 
 ```sh
-pip install databricks-sdk "databricks-connect==15.1.0"
+pip install unitycatalog-llamaindex[databricks]
 ```
 
 ## Tutorial
 
 ### Client Setup
+
+Create an instance of the Functions Client
+
+```python
+from unitycatalog.client import ApiClient, Configuration
+from unitycatalog.ai.core.client import UnitycatalogFunctionClient
+
+config = Configuration()
+# This is the default address when starting a UnityCatalog server locally. Update this to the uri
+# of your running UnityCatalog server.
+config.host = "http://localhost:8080/api/2.1/unity-catalog"
+
+# Create the UnityCatalog client
+api_client = ApiClient(configuration=config)
+
+# Use the UnityCatalog client to create an instance of the AI function client
+client = UnitycatalogFunctionClient(api_client=api_client)
+```
+
+### Client Setup - Databricks
 
 Create an instance of the Unity Catalog Functions client
 

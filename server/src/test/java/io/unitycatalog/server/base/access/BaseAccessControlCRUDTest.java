@@ -3,7 +3,6 @@ package io.unitycatalog.server.base.access;
 import static io.unitycatalog.server.security.SecurityContext.Issuers.INTERNAL;
 
 import io.unitycatalog.server.base.BaseCRUDTest;
-import io.unitycatalog.server.persist.utils.HibernateUtils;
 import io.unitycatalog.server.security.SecurityConfiguration;
 import io.unitycatalog.server.security.SecurityContext;
 import java.nio.file.Path;
@@ -18,9 +17,15 @@ public abstract class BaseAccessControlCRUDTest extends BaseCRUDTest {
   protected SecurityConfiguration securityConfiguration;
   protected SecurityContext securityContext;
 
+  @Override
+  protected void setUpProperties() {
+    super.setUpProperties();
+    serverProperties.setProperty("server.authorization", "enable");
+  }
+
   @BeforeEach
+  @Override
   public void setUp() {
-    System.setProperty("server.authorization", "enable");
     super.setUp();
 
     Path configurationFolder = Path.of("etc", "conf");
@@ -34,7 +39,7 @@ public abstract class BaseAccessControlCRUDTest extends BaseCRUDTest {
   public void cleanUp() {
     System.clearProperty("server.authorization");
 
-    SessionFactory sessionFactory = HibernateUtils.getSessionFactory();
+    SessionFactory sessionFactory = hibernateConfigurator.getSessionFactory();
     Session session = sessionFactory.openSession();
     Transaction tx = session.beginTransaction();
     session.createNativeMutationQuery("delete from casbin_rule").executeUpdate();

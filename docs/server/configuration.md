@@ -6,14 +6,14 @@ This is the  Unity Catalog server implementation that can be run in the cloud or
 
 To run against the latest main branch, start by cloning the open source Unity Catalog GitHub repository:
 
-```bash
+```sh
 git clone git@github.com:unitycatalog/unitycatalog.git
 ```
 
 To run Unity Catalog, you need **Java 17** installed on your machine. You can always run the `java --version` command
 to verify that you have the right version of Java installed such as the following example output.
 
-```bash
+```sh
 % java --version
 openjdk 17.0.12 2024-07-16
 OpenJDK Runtime Environment Homebrew (build 17.0.12+0)
@@ -45,7 +45,7 @@ bin/start-uc-server
 !!! note "Running Unity Catalog Server on a specific port"
     To run the server on a specific port, use the `-p` or `--port` option followed by the port number:
 
-    ```bash title="Use -p or --port to specify your port"
+    ```sh title="Use -p or --port to specify your port"
     bin/start-uc-server -p <port_number>
     bin/start-uc-server -port <port_number>
     ```

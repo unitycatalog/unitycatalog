@@ -117,7 +117,7 @@ paths:
           content:
             application/scim+json:
               schema: {}
-  /scim2/Users/self:
+  /scim2/Me:
     get:
       tags:
         - Users

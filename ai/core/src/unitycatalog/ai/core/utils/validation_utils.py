@@ -8,6 +8,8 @@ from unitycatalog.ai.core.utils.type_utils import is_time_type
 if TYPE_CHECKING:
     from databricks.sdk.service.catalog import FunctionInfo
 
+OSS_MAX_FUNCTION_NAME_LENGTH = 255
+
 
 class FullFunctionName(NamedTuple):
     catalog: str
@@ -122,3 +124,76 @@ def check_function_info(func_info: "FunctionInfo") -> None:
             UserWarning,
             stacklevel=2,
         )
+
+
+def validate_function_name_length(function_name: str) -> None:
+    """
+    Verifies that the name of the function does not exceed the maximum allowable storage field length in the
+    Database. This restriction only applies to OSS UnityCatalog.
+
+    Args:
+        function_name: The name of the function being created within Unity Catalog.
+    """
+    name_length = len(function_name)
+    if name_length > OSS_MAX_FUNCTION_NAME_LENGTH:
+        raise ValueError(
+            f"The maximum length of a function name is {OSS_MAX_FUNCTION_NAME_LENGTH}. "
+            f"The name supplied is {name_length} characters long."
+        )
+
+
+def is_valid_retriever_output(output: Any) -> bool:
+    """
+    Checks if the given output follows the retriever format for MLflow, which is a list of Documents
+    or dictionaries that follow the Document format.
+
+    Args:
+        output: The value to determine if it is a valid retriever output.
+
+    Returns:
+        bool: If the provided output is a valid retriever output.
+    """
+    if not isinstance(output, list):
+        return False
+
+    if len(output) < 1:
+        return False
+
+    def is_valid_retriever_item(item: Any) -> bool:
+        from mlflow.entities import Document
+
+        if isinstance(item, Document):
+            return True
+
+        if isinstance(item, dict):
+            try:
+                Document(**item)
+                return True
+            except TypeError:
+                return False
+
+        return False
+
+    return all(is_valid_retriever_item(item) for item in output)
+
+
+def mlflow_tracing_enabled(integration_name: str) -> bool:
+    """
+    Checks if autologging tracing is enabled in MLflow for the provided integration name.
+
+    Args:
+        integration_name: The integration for which to check if autologging tracing is enabled, e.x.
+        langchain, openai, etc.
+
+    Returns:
+        bool: If autologging tracing is enabled for the provided integration.
+    """
+    try:
+        from mlflow.utils.autologging_utils import autologging_is_disabled, get_autologging_config
+
+        return not autologging_is_disabled(integration_name) and get_autologging_config(
+            integration_name, "log_traces"
+        )
+    except Exception:
+        # Default to autologging disabled
+        return False
