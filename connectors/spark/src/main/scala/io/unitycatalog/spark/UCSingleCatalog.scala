@@ -317,7 +317,8 @@ private class UCProxy(
     createTable.setSchemaName(ident.namespace().head)
     createTable.setCatalogName(this.name)
 
-    val hasExternalClause = properties.containsKey(TableCatalog.PROP_EXTERNAL)    var storageLocation = properties.get(TableCatalog.PROP_LOCATION)
+    val hasExternalClause = properties.containsKey(TableCatalog.PROP_EXTERNAL)
+    var storageLocation = properties.get(TableCatalog.PROP_LOCATION)
     assert(storageLocation != null, "location should either be user specified or system generated.")
     val isManagedLocation = Option(properties.get(TableCatalog.PROP_IS_MANAGED_LOCATION))
       .exists(_.equalsIgnoreCase("true"))
