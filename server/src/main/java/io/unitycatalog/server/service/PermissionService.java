@@ -18,16 +18,8 @@ import io.unitycatalog.server.model.Privilege;
 import io.unitycatalog.server.model.PrivilegeAssignment;
 import io.unitycatalog.server.model.SecurableType;
 import io.unitycatalog.server.model.UpdatePermissions;
-import io.unitycatalog.server.persist.CatalogRepository;
-import io.unitycatalog.server.persist.FunctionRepository;
-import io.unitycatalog.server.persist.MetastoreRepository;
-import io.unitycatalog.server.persist.ModelRepository;
-import io.unitycatalog.server.persist.SchemaRepository;
-import io.unitycatalog.server.persist.TableRepository;
-import io.unitycatalog.server.persist.UserRepository;
-import io.unitycatalog.server.persist.VolumeRepository;
+import io.unitycatalog.server.persist.*;
 import io.unitycatalog.server.persist.model.Privileges;
-import io.unitycatalog.server.utils.IdentityUtils;
 
 import java.util.HashSet;
 import java.util.List;
@@ -50,17 +42,25 @@ import static io.unitycatalog.server.model.SecurableType.VOLUME;
 public class PermissionService {
 
   private final UnityCatalogAuthorizer authorizer;
-  private static final MetastoreRepository METASTORE_REPOSITORY = MetastoreRepository.getInstance();
-  private static final UserRepository USER_REPOSITORY = UserRepository.getInstance();
-  private static final CatalogRepository CATALOG_REPOSITORY = CatalogRepository.getInstance();
-  private static final SchemaRepository SCHEMA_REPOSITORY = SchemaRepository.getInstance();
-  private static final TableRepository TABLE_REPOSITORY = TableRepository.getInstance();
-  private static final FunctionRepository FUNCTION_REPOSITORY = FunctionRepository.getInstance();
-  private static final VolumeRepository VOLUME_REPOSITORY = VolumeRepository.getInstance();
-  private static final ModelRepository MODEL_REPOSITORY = ModelRepository.getInstance();
+  private final MetastoreRepository metastoreRepository;
+  private final UserRepository userRepository;
+  private final CatalogRepository catalogRepository;
+  private final SchemaRepository schemaRepository;
+  private final TableRepository tableRepository;
+  private final FunctionRepository functionRepository;
+  private final VolumeRepository volumeRepository;
+  private final ModelRepository modelRepository;
 
-  public PermissionService(UnityCatalogAuthorizer authorizer) {
+  public PermissionService(UnityCatalogAuthorizer authorizer, Repositories repositories) {
     this.authorizer = authorizer;
+    this.metastoreRepository = repositories.getMetastoreRepository();
+    this.userRepository = repositories.getUserRepository();
+    this.catalogRepository = repositories.getCatalogRepository();
+    this.schemaRepository = repositories.getSchemaRepository();
+    this.tableRepository = repositories.getTableRepository();
+    this.functionRepository = repositories.getFunctionRepository();
+    this.volumeRepository = repositories.getVolumeRepository();
+    this.modelRepository = repositories.getModelRepository();
   }
 
   // TODO: Refactor these endpoints to use a common method with dynamic resource id lookup
@@ -114,15 +114,15 @@ public class PermissionService {
     // of the resource or the metastore itself.
 
     UUID resourceId = getResourceId(securableType, name);
-    UUID principalId = IdentityUtils.findPrincipalId();
+    UUID principalId = userRepository.findPrincipalId();
 
     // TODO: could be more explicit about the hierarchy here.
     // For now this is sufficient in that it covers owner on resources parentage.
     UUID parentId = authorizer.getHierarchyParent(resourceId);
-    UUID grandparentId = (parentId != null) ? authorizer.getHierarchyParent(parentId):null;
+    UUID grandparentId = (parentId != null) ? authorizer.getHierarchyParent(parentId) : null;
 
     boolean isOwner =
-            authorizer.authorize(principalId, METASTORE_REPOSITORY.getMetastoreId(), Privileges.OWNER) ||
+            authorizer.authorize(principalId, metastoreRepository.getMetastoreId(), Privileges.OWNER) ||
             authorizer.authorize(principalId, resourceId, Privileges.OWNER) ||
             (parentId != null && authorizer.authorize(principalId, parentId, Privileges.OWNER)) ||
             (grandparentId != null && authorizer.authorize(principalId, grandparentId, Privileges.OWNER));
@@ -145,7 +145,7 @@ public class PermissionService {
                           .filter(Objects::nonNull)
                           .toList();
                   return new PrivilegeAssignment()
-                      .principal(USER_REPOSITORY.getUser(entry.getKey().toString()).getEmail())
+                      .principal(userRepository.getUser(entry.getKey().toString()).getEmail())
                       .privileges(privileges);
                 })
             .filter(assignment -> !assignment.getPrivileges().isEmpty())
@@ -240,7 +240,7 @@ public class PermissionService {
     changes.forEach(
         change -> {
           String principal = change.getPrincipal();
-          User user = USER_REPOSITORY.getUserByEmail(principal);
+          User user = userRepository.getUserByEmail(principal);
           UUID principalId = UUID.fromString(Objects.requireNonNull(user.getId()));
           principalIds.add(principalId);
           change
@@ -275,7 +275,7 @@ public class PermissionService {
                           .filter(Objects::nonNull)
                           .toList();
                   return new PrivilegeAssignment()
-                      .principal(USER_REPOSITORY.getUser(entry.getKey().toString()).getEmail())
+                      .principal(userRepository.getUser(entry.getKey().toString()).getEmail())
                       .privileges(privileges);
                 })
             .filter(assignment -> !assignment.getPrivileges().isEmpty())
@@ -287,13 +287,13 @@ public class PermissionService {
   private UUID getResourceId(SecurableType securableType, String name) {
 
     String resourceId = switch (securableType) {
-      case METASTORE -> METASTORE_REPOSITORY.getMetastoreId().toString();
-      case CATALOG -> CATALOG_REPOSITORY.getCatalog(name).getId();
-      case SCHEMA -> SCHEMA_REPOSITORY.getSchema(name).getSchemaId();
-      case TABLE -> TABLE_REPOSITORY.getTable(name).getTableId();
-      case FUNCTION -> FUNCTION_REPOSITORY.getFunction(name).getFunctionId();
-      case VOLUME -> VOLUME_REPOSITORY.getVolume(name).getVolumeId();
-      case REGISTERED_MODEL -> MODEL_REPOSITORY.getRegisteredModel(name).getId();
+      case METASTORE -> metastoreRepository.getMetastoreId().toString();
+      case CATALOG -> catalogRepository.getCatalog(name).getId();
+      case SCHEMA -> schemaRepository.getSchema(name).getSchemaId();
+      case TABLE -> tableRepository.getTable(name).getTableId();
+      case FUNCTION -> functionRepository.getFunction(name).getFunctionId();
+      case VOLUME -> volumeRepository.getVolume(name).getVolumeId();
+      case REGISTERED_MODEL -> modelRepository.getRegisteredModel(name).getId();
       default -> throw new BaseException(ErrorCode.FAILED_PRECONDITION, "Unknown resource type");
     };
 

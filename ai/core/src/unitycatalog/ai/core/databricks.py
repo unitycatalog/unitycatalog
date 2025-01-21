@@ -11,7 +11,7 @@ from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional
 
 from typing_extensions import override
 
-from unitycatalog.ai.core.client import BaseFunctionClient, FunctionExecutionResult
+from unitycatalog.ai.core.base import BaseFunctionClient, FunctionExecutionResult
 from unitycatalog.ai.core.envs.databricks_env_vars import (
     UCAI_DATABRICKS_SERVERLESS_EXECUTION_RESULT_ROW_LIMIT,
     UCAI_DATABRICKS_SESSION_RETRY_MAX_ATTEMPTS,
@@ -457,6 +457,10 @@ class DatabricksFunctionClient(BaseFunctionClient):
         Args:
             function_name: The name of the function to get.
             kwargs: additional key-value pairs to include when getting the function.
+            Allowed keys for retrieving functions are:
+            - include_browse: bool (default to None)
+                Whether to include functions in the response for which the principal can only
+                access selective metadata for.
 
         Note:
             The function name shouldn't be *, to get all functions in a catalog and schema,
@@ -480,6 +484,7 @@ class DatabricksFunctionClient(BaseFunctionClient):
         schema: str,
         max_results: Optional[int] = None,
         page_token: Optional[str] = None,
+        include_browse: Optional[bool] = None,
     ) -> PagedList["FunctionInfo"]:
         """
         List functions in a catalog and schema.
@@ -489,6 +494,8 @@ class DatabricksFunctionClient(BaseFunctionClient):
             schema: The schema name.
             max_results: The maximum number of functions to return. Defaults to None.
             page_token: The token for the next page. Defaults to None.
+            include_browse: Whether to include functions in the response for which the
+            principal can only access selective metadata for. Defaults to None.
 
         Returns:
             PageList[FunctionInfo]: The paginated list of function infos.
@@ -506,6 +513,8 @@ class DatabricksFunctionClient(BaseFunctionClient):
             query["page_token"] = page_token
         if schema is not None:
             query["schema_name"] = schema
+        if include_browse is not None:
+            query["include_browse"] = include_browse
         headers = {
             "Accept": "application/json",
         }
@@ -540,7 +549,7 @@ class DatabricksFunctionClient(BaseFunctionClient):
             function_name: The name of the function to execute.
             parameters: The parameters to pass to the function. Defaults to None.
             kwargs: additional key-value pairs to include when executing the function.
-                Allowed keys for retreiiving functions are:
+                Allowed keys for retrieving functions are:
                 - include_browse: bool (default to False)
                     Whether to include functions in the response for which the principal can only access selective
                     metadata for.
@@ -562,7 +571,7 @@ class DatabricksFunctionClient(BaseFunctionClient):
                     Applies the given row limit to the statement's result set, but unlike the `LIMIT` clause in SQL, it
                     also sets the `truncated` field in the response to indicate whether the result was trimmed due to
                     the limit or not.
-                - byte_limit: int (default to 4096)
+                - byte_limit: int (default to 1048576 = 1MB)
                     Applies the given byte limit to the statement's result size. Byte counts are based on internal data
                     representations and might not match the final size in the requested `format`. If the result was
                     truncated due to the byte limit, then `truncated` in the response is set to `true`. When using

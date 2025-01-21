@@ -19,8 +19,8 @@ public class AwsCredentialVendor {
 
   private final Map<String, S3StorageConfig> s3Configurations;
 
-  public AwsCredentialVendor() {
-    this.s3Configurations = ServerProperties.getInstance().getS3Configurations();
+  public AwsCredentialVendor(ServerProperties serverProperties) {
+    this.s3Configurations = serverProperties.getS3Configurations();
   }
 
   public Credentials vendAwsCredentials(CredentialContext context) {

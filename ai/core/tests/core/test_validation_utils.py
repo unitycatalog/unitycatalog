@@ -12,8 +12,12 @@ from databricks.sdk.service.catalog import (
     FunctionParameterInfo,
     FunctionParameterInfos,
 )
+from mlflow.entities import Document
 
-from unitycatalog.ai.core.utils.validation_utils import check_function_info
+from unitycatalog.ai.core.utils.validation_utils import (
+    check_function_info,
+    is_valid_retriever_output,
+)
 
 
 @pytest.fixture
@@ -114,3 +118,38 @@ def test_check_function_info(function_info, expected_warnings):
         assert len(emitted_warnings) == len(expected_warnings)
     else:
         assert len(emitted_warnings) == 0, f"Unexpected warnings emitted: {emitted_warnings}"
+
+
+@pytest.mark.parametrize(
+    "outputs, result",
+    [
+        ([Document(page_content="page_content")], True),
+        (
+            [
+                Document(
+                    page_content="page content", metadata={"similarity_score": 0.010178182}, id="id"
+                )
+            ],
+            True,
+        ),
+        (Document(page_content="page_content"), False),
+        ([{}], False),
+        (
+            [
+                {
+                    "page_content": "page content",
+                    "metadata": "{'similarity_score':0.010}",
+                    "id": "id",
+                }
+            ],
+            True,
+        ),
+        ([{"page_content": "page content"}], True),
+        ({"page_content": "page content"}, False),
+        ([{"page_content": "page content", "extra_key": "not a document"}], False),
+        (["just a string"], False),
+        ("a string", False),
+    ],
+)
+def test_is_valid_retriever_output(outputs, result):
+    assert is_valid_retriever_output(outputs) == result
