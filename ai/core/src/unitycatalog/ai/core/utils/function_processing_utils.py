@@ -269,7 +269,8 @@ def generate_function_input_params_schema(
             pydantic_field.pydantic_type,
             Field(default=pydantic_field.default, description=pydantic_field.description),
         )
-    model = create_model(params_name, **fields)
+    model = create_model(params_name, **fields, __config__={"extra": "forbid"})
+
     return PydanticFunctionInputParams(pydantic_model=model, strict=pydantic_field.strict)
 
 
