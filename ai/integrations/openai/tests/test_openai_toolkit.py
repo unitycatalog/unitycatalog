@@ -459,9 +459,13 @@ def test_function_definition_generation(use_serverless, monkeypatch):
             ]
         )
 
-        function_definition = UCFunctionToolkit.uc_function_to_openai_function_definition(
-            function_info=function_info
-        )
+        with mock.patch(
+            "unitycatalog.ai.core.databricks.DatabricksFunctionClient.get_function",
+            return_value=function_info,
+        ):
+            function_definition = UCFunctionToolkit.uc_function_to_openai_function_definition(
+                function_name=function_info.full_name
+            )
         assert function_definition == {
             "type": "function",
             "function": {

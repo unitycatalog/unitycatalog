@@ -122,9 +122,8 @@ class UCFunctionToolkit(BaseModel):
     @staticmethod
     def uc_function_to_crewai_tool(
         *,
+        function_name: str,
         client: Optional[BaseFunctionClient] = None,
-        function_name: Optional[str] = None,
-        function_info: Optional[Any] = None,
         description_updated: Optional[bool] = False,
         cache_function: Callable = lambda _args, _result: True,
         result_as_answer: bool = False,
@@ -134,9 +133,8 @@ class UCFunctionToolkit(BaseModel):
         Converts a Unity Catalog function into a CrewAI tool.
 
         Args:
+            function_name (str): Name of the function to convert.
             client (Optional[BaseFunctionClient]): Client for executing the function.
-            function_name (Optional[str]): Name of the function to convert.
-            function_info (Optional[Any]): Detailed information of the function.
             description_updated (Optional[Bool]): Flag to check if the description has been updated.
             cache_function (Optional[Callable]): Function that will be used to determine if the tool
                 should be cached, should return a boolean. If None, the tool will be cached.
@@ -146,17 +144,11 @@ class UCFunctionToolkit(BaseModel):
         Returns:
             CrewAIBaseTool: A tool representation of the Unity Catalog function.
         """
-
-        if function_name and function_info:
-            raise ValueError("Only one of function_name or function_info should be provided.")
         client = validate_or_set_default_client(client)
 
-        if function_name:
-            function_info = client.get_function(function_name)
-        elif function_info:
-            function_name = function_info.full_name
-        else:
-            raise ValueError("Either function_name or function_info should be provided.")
+        if function_name is None:
+            raise ValueError("function_name must be provided.")
+        function_info = client.get_function(function_name)
 
         def func(**kwargs: Any) -> str:
             args_json = json.loads(json.dumps(kwargs, default=str))
