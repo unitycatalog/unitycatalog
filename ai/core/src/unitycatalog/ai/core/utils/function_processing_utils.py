@@ -189,6 +189,7 @@ def process_function_names(
                         page_token=token,
                         **list_kwarg,
                     )
+                    # TODO: get functions in parallel
                     for f in functions:
                         if f.full_name not in tools_dict:
                             tools_dict[f.full_name] = uc_function_to_tool_func(
