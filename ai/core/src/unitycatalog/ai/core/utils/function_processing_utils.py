@@ -9,6 +9,8 @@ from io import StringIO
 from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
 import pandas as pd
+import pydantic
+from packaging.version import Version
 from pydantic import Field, create_model
 
 from unitycatalog.ai.core.utils.config import JSON_SCHEMA_TYPE, UC_LIST_FUNCTIONS_MAX_RESULTS
@@ -24,6 +26,8 @@ from unitycatalog.ai.core.utils.validation_utils import (
 )
 
 _logger = logging.getLogger(__name__)
+
+IS_PYDANTIC_V2_OR_NEWER = Version(pydantic.VERSION).major >= 2
 
 
 def uc_type_json_to_pydantic_type(
@@ -269,7 +273,10 @@ def generate_function_input_params_schema(
             pydantic_field.pydantic_type,
             Field(default=pydantic_field.default, description=pydantic_field.description),
         )
-    model = create_model(params_name, **fields, __config__={"extra": "forbid"})
+    if IS_PYDANTIC_V2_OR_NEWER:
+        model = create_model(params_name, **fields, __config__={"extra": "forbid"})
+    else:
+        model = create_model(params_name, **fields, config=pydantic.ConfigDict(extra="forbid"))
 
     return PydanticFunctionInputParams(pydantic_model=model, strict=pydantic_field.strict)
 
