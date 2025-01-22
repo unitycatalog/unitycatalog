@@ -1,4 +1,4 @@
-from typing import Any, Dict, List, Optional
+from typing import Dict, List, Optional
 
 from autogen_core import CancellationToken
 from autogen_core.tools import BaseTool
@@ -97,29 +97,22 @@ class UCFunctionToolkit(BaseModel):
     @staticmethod
     def uc_function_to_autogen_tool(
         *,
-        client: BaseFunctionClient,
-        function_name: Optional[str] = None,
-        function_info: Optional[Any] = None,
+        function_name: str,
+        client: Optional[BaseFunctionClient] = None,
     ) -> UCFunctionTool:
         """
         Converts a Unity Catalog function to a UCFunctionTool (Autogen v0.4+).
 
         Args:
-            client: The client for managing functions.
             function_name: e.g. "catalog.schema.function".
-            function_info: Optionally pass in an already-fetched function info.
+            client: The client for managing functions.
         """
-        if function_name and function_info:
-            raise ValueError("Only one of function_name or function_info should be provided.")
         client = validate_or_set_default_client(client)
 
         # Retrieve the FunctionInfo if only a name is provided
-        if function_name:
-            function_info = client.get_function(function_name)
-        elif function_info:
-            function_name = function_info.full_name
-        else:
-            raise ValueError("Either function_name or function_info should be provided.")
+        if function_name is None:
+            raise ValueError("function_name must be provided.")
+        function_info = client.get_function(function_name)
 
         # Use your existing logic to build a dynamic Pydantic model for input parameters
         function_input_params_schema = generate_function_input_params_schema(

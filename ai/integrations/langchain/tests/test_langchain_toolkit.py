@@ -246,11 +246,15 @@ def test_langchain_tool_trace_as_retriever(
 
 @requires_databricks
 @pytest.mark.parametrize("use_serverless", [True, False])
-def test_langgraph_agents(monkeypatch, use_serverless):
+@pytest.mark.parametrize("schema", [SCHEMA, "ucai_langchain_test_star"])
+def test_langgraph_agents(monkeypatch, use_serverless, schema):
     monkeypatch.setenv(USE_SERVERLESS, str(use_serverless))
     client = get_client()
-    with create_function_and_cleanup(client, schema=SCHEMA) as func_obj:
-        toolkit = UCFunctionToolkit(function_names=[func_obj.full_function_name], client=client)
+    with create_function_and_cleanup(client, schema=schema) as func_obj:
+        if schema == SCHEMA:
+            toolkit = UCFunctionToolkit(function_names=[func_obj.full_function_name], client=client)
+        else:
+            toolkit = UCFunctionToolkit(function_names=[f"{CATALOG}.{schema}.*"], client=client)
         system_message = "You are a helpful assistant. Make sure to use tool for information."
         llm = ChatDatabricks(endpoint="databricks-meta-llama-3-1-70b-instruct")
         agent = create_react_agent(llm, toolkit.tools, state_modifier=system_message)

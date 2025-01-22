@@ -188,7 +188,7 @@ def process_function_names(
                     for f in functions:
                         if f.full_name not in tools_dict:
                             tools_dict[f.full_name] = uc_function_to_tool_func(
-                                function_info=f, client=client, **kwargs
+                                function_name=f.full_name, client=client, **kwargs
                             )
                     token = functions.token
                     if token is None:
