@@ -9,7 +9,8 @@ import io.unitycatalog.server.service.credential.aws.S3StorageConfig;
  */
 public interface AwsCredentialsProvider {
   /**
-   * Configure the provider with the given configuration. Will receive key-value pairs from server.properties with stripped `aws.credentials.provider.<provider_name>` prefix.
+   * Configure the provider with the given configuration. Will receive key-value pairs from
+   * server.properties with stripped `aws.credentials.provider.<provider_name>` prefix.
    *
    * @param configuration the configuration
    * @return the provider

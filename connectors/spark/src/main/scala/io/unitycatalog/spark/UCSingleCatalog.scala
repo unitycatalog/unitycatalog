@@ -21,6 +21,7 @@ import javax.ws.rs.core.UriBuilder
 import scala.collection.convert.ImplicitConversions._
 import scala.collection.JavaConverters._
 import scala.language.existentials
+import org.apache.spark.sql.internal.SQLConf
 
 /**
  * A Spark catalog plugin to get/manage tables in Unity Catalog.
@@ -171,7 +172,7 @@ object UCSingleCatalog {
       uri: URI,
       temporaryCredentials: TemporaryCredentials): Map[String, String] = {
     val scheme = uri.getScheme
-    if (scheme == "s3") {
+    if (scheme == "s3a") {
       val bucket = uri.getHost
       val awsCredentials = temporaryCredentials.getAwsTempCredentials
       val endpoint = awsCredentials.getEndpoint

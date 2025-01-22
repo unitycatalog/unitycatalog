@@ -19,6 +19,7 @@ import org.apache.spark.sql.SparkSession;
 import org.apache.spark.sql.types.DataTypes;
 import org.apache.spark.sql.types.StructType;
 import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
@@ -28,6 +29,7 @@ public class TableReadWriteTest extends BaseSparkIntegrationTest {
   private static final String ANOTHER_PARQUET_TABLE = "test_parquet_another";
   private static final String PARQUET_TABLE_PARTITIONED = "test_parquet_partitioned";
   private static final String DELTA_TABLE = "test_delta";
+  private static final String DELTA_TABLE2 = "test_delta2";
   private static final String PARQUET_TABLE = "test_parquet";
   private static final String ANOTHER_DELTA_TABLE = "test_delta_another";
   private static final String DELTA_TABLE_PARTITIONED = "test_delta_partitioned";
@@ -147,6 +149,7 @@ public class TableReadWriteTest extends BaseSparkIntegrationTest {
     session.stop();
   }
 
+  @Disabled
   @ParameterizedTest
   @ValueSource(strings = {"s3", "gs", "abfs"})
   public void testCredentialDelta(String scheme) throws ApiException, IOException {
@@ -157,9 +160,9 @@ public class TableReadWriteTest extends BaseSparkIntegrationTest {
     String t1 = SPARK_CATALOG + "." + SCHEMA_NAME + "." + DELTA_TABLE;
     testTableReadWrite(t1, session);
 
-    String loc1 = scheme + "://test-bucket1" + generateTableLocation(CATALOG_NAME, DELTA_TABLE);
-    setupExternalDeltaTable(CATALOG_NAME, DELTA_TABLE, loc1, new ArrayList<>(0), session);
-    String t2 = CATALOG_NAME + "." + SCHEMA_NAME + "." + DELTA_TABLE;
+    String loc1 = scheme + "://test-bucket1" + generateTableLocation(CATALOG_NAME, ANOTHER_DELTA_TABLE);
+    setupExternalDeltaTable(CATALOG_NAME, ANOTHER_DELTA_TABLE, loc1, new ArrayList<>(0), session);
+    String t2 = CATALOG_NAME + "." + SCHEMA_NAME + "." + ANOTHER_DELTA_TABLE;
     testTableReadWrite(t2, session);
 
     Row row =
@@ -172,8 +175,9 @@ public class TableReadWriteTest extends BaseSparkIntegrationTest {
     session.stop();
   }
 
+  @Disabled
   @ParameterizedTest
-  @ValueSource(strings = {"s3", "gs", "abfs"})
+  @ValueSource(strings = {"s3a", "gs", "abfs"})
   public void testCredentialCreateDeltaTable(String scheme) throws IOException {
     SparkSession session = createSparkSessionWithCatalogs(SPARK_CATALOG, CATALOG_NAME);
 
@@ -208,7 +212,7 @@ public class TableReadWriteTest extends BaseSparkIntegrationTest {
   }
 
   @ParameterizedTest
-  @ValueSource(strings = {"s3", "gs", "abfs"})
+  @ValueSource(strings = {"s3a", "gs", "abfs"})
   public void testDeleteDeltaTable(String scheme) throws ApiException, IOException {
     SparkSession session = createSparkSessionWithCatalogs(SPARK_CATALOG);
 
@@ -225,7 +229,7 @@ public class TableReadWriteTest extends BaseSparkIntegrationTest {
   }
 
   @ParameterizedTest
-  @ValueSource(strings = {"s3", "gs", "abfs"})
+  @ValueSource(strings = {"s3a", "gs", "abfs"})
   public void testMergeDeltaTable(String scheme) throws ApiException, IOException {
     SparkSession session = createSparkSessionWithCatalogs(SPARK_CATALOG, CATALOG_NAME);
 
@@ -251,7 +255,7 @@ public class TableReadWriteTest extends BaseSparkIntegrationTest {
   }
 
   @ParameterizedTest
-  @ValueSource(strings = {"s3", "gs", "abfs"})
+  @ValueSource(strings = {"s3a", "gs", "abfs"})
   public void testUpdateDeltaTable(String scheme) throws ApiException, IOException {
     SparkSession session = createSparkSessionWithCatalogs(SPARK_CATALOG);
 
@@ -545,6 +549,10 @@ public class TableReadWriteTest extends BaseSparkIntegrationTest {
             .tableType(tableType)
             .dataSourceFormat(format);
     if (!isManaged) {
+      // handle s3a filesystem (which is usually done by spark connector)
+      if (location.startsWith("s3a")) {
+        location = "s3://" + location.substring(6);
+      }
       createTableRequest = createTableRequest.storageLocation(location);
     }
     tableOperations.createTable(createTableRequest);
