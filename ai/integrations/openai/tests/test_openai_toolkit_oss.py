@@ -112,6 +112,55 @@ async def test_tool_calling(uc_client):
 
 
 @pytest.mark.asyncio
+async def test_tool_calling_with_trace_as_retriever(uc_client):
+    with (
+        create_function_and_cleanup_oss(uc_client, schema=SCHEMA) as func_obj,
+    ):
+        func_name = func_obj.full_function_name
+        toolkit = UCFunctionToolkit(function_names=[func_name], client=uc_client)
+        tools = toolkit.tools
+
+        messages = [
+            {
+                "role": "system",
+                "content": "You are a helpful customer support assistant. Use the supplied tools to assist the user.",
+            },
+            {"role": "user", "content": "What is Databricks?"},
+        ]
+
+        with mock.patch(
+            "openai.chat.completions.create",
+            return_value=mock_chat_completion_response(
+                function=Function(
+                    arguments="{\"code\": \"print([{'page_content': 'This is the page content.'}],end='')\"}",
+                    name=func_obj.tool_name,
+                ),
+            ),
+        ):
+            response = openai.chat.completions.create(
+                model="gpt-4o-mini",
+                messages=messages,
+                tools=tools,
+            )
+            tool_calls = response.choices[0].message.tool_calls
+            tool_call = tool_calls[0]
+            arguments = json.loads(tool_call.function.arguments)
+
+            # execute the function based on the arguments
+            result = uc_client.execute_function(func_name, arguments, enable_retriever_tracing=True)
+            assert result.value == "[{'page_content': 'This is the page content.'}]"
+
+            import mlflow
+
+            trace = mlflow.get_last_active_trace()
+            assert trace is not None
+            assert trace.info.execution_time_ms is not None
+            assert trace.data.request == tool_call.function.arguments
+            assert trace.data.response == result.value.replace("'", '"')
+            assert trace.data.spans[0].name == func_name
+
+
+@pytest.mark.asyncio
 async def test_tool_calling_with_multiple_choices(uc_client):
     with (
         create_function_and_cleanup_oss(uc_client, schema=SCHEMA) as func_obj,

@@ -1,12 +1,9 @@
-import json
-from typing import Any, Callable, Dict, List, Optional, Union
+from typing import Any, Dict, List, Optional
 
-from openai import pydantic_function_tool
-from packaging import version
+from autogen_core import CancellationToken
+from autogen_core.tools import BaseTool
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-from autogen import ConversableAgent
-from autogen import __version__ as autogen_version
 from unitycatalog.ai.core.base import BaseFunctionClient
 from unitycatalog.ai.core.utils.client_utils import validate_or_set_default_client
 from unitycatalog.ai.core.utils.function_processing_utils import (
@@ -15,91 +12,64 @@ from unitycatalog.ai.core.utils.function_processing_utils import (
     process_function_names,
 )
 
-# Ensure the version of autogen is compatible
-if version.parse(autogen_version) >= version.parse("0.4.0"):
-    raise Exception(
-        "Autogen version should be less than 0.4.0 as the newer version has major API changes"
-    )
 
-
-class AutogenTool(BaseModel):
+class UCFunctionTool(BaseTool):
     """
-    Model representing an Autogen tool.
+    A custom tool for calling a Unity Catalog function via a UC client.
+    `args_type` is dynamically generated from the UC function schema,
+    and `return_type` can be str or a custom Pydantic model, if desired.
     """
 
-    fn: Callable = Field(
-        description="Callable that will be used to execute the UC Function, registered to the AutoGen Agent definition"
-    )
-
-    name: str = Field(
-        description="The name of the function.",
-    )
-    description: str = Field(
-        description="A brief description of the function's purpose.",
-    )
-    tool: Dict = Field(description="OpenAI compatible Tool Definition")
-
-    model_config = ConfigDict(arbitrary_types_allowed=True)
-
-    def to_dict(self) -> Dict[str, Any]:
-        """
-        Converts the Autogen Tool instance into a dictionary for the Autogen API.
-        """
-        return {"name": self.name, "description": self.description, "tool": self.tool}
-
-    def register_function(
+    def __init__(
         self,
-        *,
-        callers: Union[ConversableAgent, List[ConversableAgent]],
-        executors: Union[ConversableAgent, List[ConversableAgent]],
-    ) -> None:
+        name: str,
+        description: str,
+        function_full_name: str,
+        client: BaseFunctionClient,
+        args_type: BaseModel,
+    ):
         """
-        Registers the function associated with the Autogen tool for all combinations of callers and executors.
-
-        This method registers the callable function (`fn`) with each provided executor.
-        It also updates the tool signature with each caller to ensure that the function's definition
-        is correctly reflected in the overall toolset.
-
         Args:
-            callers (ConversableAgent or List[ConversableAgent]): The agent(s) that will call the tool.
-            executors (ConversableAgent or List[ConversableAgent]): The agent(s) that will execute the tool's function.
+            name: The short tool name (what the LLM sees for `function_call`).
+            description: A brief description.
+            function_full_name: e.g. "catalog.schema.function".
+            client: A Unity Catalog client with `.execute_function(...)`.
+            args_type: A Pydantic model class representing the function's input parameters.
         """
-        # Ensure callers is a list
-        if isinstance(callers, ConversableAgent):
-            callers = [callers]
-        elif not isinstance(callers, list):
-            raise TypeError(
-                "callers must be a ConversableAgent or a list of ConversableAgent instances."
-            )
+        super().__init__(
+            args_type=args_type,
+            return_type=str,
+            name=name,
+            description=description,
+        )
+        self._function_full_name = function_full_name
+        self._client = client
 
-        # Ensure executors is a list
-        if isinstance(executors, ConversableAgent):
-            executors = [executors]
-        elif not isinstance(executors, list):
-            raise TypeError(
-                "executors must be a ConversableAgent or a list of ConversableAgent instances."
-            )
+    async def run(self, args: BaseModel, cancellation_token: CancellationToken) -> str:
+        """
+        Actually call the UC function with the provided parameters.
+        """
+        param_dict = args.model_dump()
 
-        # Update tool signature for each caller
-        for caller in callers:
-            caller.update_tool_signature(self.tool, is_remove=False)
-
-        # Register function with each executor
-        for executor in executors:
-            executor.register_function({self.name: executor._wrap_function(self.fn)})
+        result = self._client.execute_function(
+            function_name=self._function_full_name,
+            parameters=param_dict,
+        )
+        return result.to_json()
 
 
 class UCFunctionToolkit(BaseModel):
     """
-    A toolkit for managing Unity Catalog functions and converting them into Autogen tools.
+    A toolkit for managing Unity Catalog functions and converting them into
+    Autogen (v0.4+) tools (UCFunctionTool).
     """
 
     function_names: List[str] = Field(
-        description="List of function names in 'catalog.schema.function' format.",
+        description="List of function names in 'catalog.schema.function' format."
     )
-    tools_dict: Dict[str, AutogenTool] = Field(
+    tools_dict: Dict[str, UCFunctionTool] = Field(
         default_factory=dict,
-        description="Dictionary mapping function names to their corresponding tools.",
+        description="Dictionary mapping function names to their corresponding UCFunctionTool.",
     )
     client: Optional[BaseFunctionClient] = Field(
         default=None, description="The client for managing functions."
@@ -113,7 +83,6 @@ class UCFunctionToolkit(BaseModel):
         Validates the toolkit, ensuring the client is properly set and function names are processed.
         """
         self.client = validate_or_set_default_client(self.client)
-
         if not self.function_names:
             raise ValueError("Cannot create tool instances without function_names being provided.")
 
@@ -128,25 +97,23 @@ class UCFunctionToolkit(BaseModel):
     @staticmethod
     def uc_function_to_autogen_tool(
         *,
-        client: Optional[BaseFunctionClient] = None,
+        client: BaseFunctionClient,
         function_name: Optional[str] = None,
         function_info: Optional[Any] = None,
-    ) -> AutogenTool:
+    ) -> UCFunctionTool:
         """
-        Converts a Unity Catalog function to an Autogen tool.
+        Converts a Unity Catalog function to a UCFunctionTool (Autogen v0.4+).
 
         Args:
-            client (Optional[BaseFunctionClient]): The client for managing functions.
-            function_name (Optional[str]): The full name of the function in 'catalog.schema.function' format.
-            function_info (Optional[Any]): The function info object returned by the client.
-
-        Returns:
-            AutogenTool: The corresponding Autogen tool.
+            client: The client for managing functions.
+            function_name: e.g. "catalog.schema.function".
+            function_info: Optionally pass in an already-fetched function info.
         """
         if function_name and function_info:
             raise ValueError("Only one of function_name or function_info should be provided.")
         client = validate_or_set_default_client(client)
 
+        # Retrieve the FunctionInfo if only a name is provided
         if function_name:
             function_info = client.get_function(function_name)
         elif function_info:
@@ -154,51 +121,28 @@ class UCFunctionToolkit(BaseModel):
         else:
             raise ValueError("Either function_name or function_info should be provided.")
 
+        # Use your existing logic to build a dynamic Pydantic model for input parameters
         function_input_params_schema = generate_function_input_params_schema(
             function_info, strict=True
         )
 
-        tool = pydantic_function_tool(
-            function_input_params_schema.pydantic_model,
-            name=get_tool_name(function_name),
-            description=function_info.comment or "",
-        )
+        args_model = function_input_params_schema.pydantic_model
 
-        # strict is set to true only if all params are supported JSON schema types
-        tool["function"]["strict"] = function_input_params_schema.strict
+        # Build the UCFunctionTool
+        tool_name = get_tool_name(function_name)  # short name for the LLM
+        description = function_info.comment or ""
 
-        def func(**kwargs: Any) -> str:
-            args_json = json.loads(json.dumps(kwargs, default=str))
-            result = client.execute_function(
-                function_name=function_name,
-                parameters=args_json,
-            )
-
-            return result.to_json()
-
-        return AutogenTool(
-            fn=func,
-            name=get_tool_name(function_name),
-            description=function_info.comment or "",
-            tool=tool,
+        return UCFunctionTool(
+            name=tool_name,
+            description=description,
+            function_full_name=function_name,
+            client=client,
+            args_type=args_model,
         )
 
     @property
-    def tools(self) -> List[AutogenTool]:
+    def tools(self) -> List[UCFunctionTool]:
         """
-        Retrieves the list of Autogen tools managed by the toolkit.
+        Retrieves the list of UCFunctionTool objects managed by this toolkit.
         """
         return list(self.tools_dict.values())
-
-    def register_with_agents(
-        self, *, callers: ConversableAgent, executors: ConversableAgent
-    ) -> None:
-        """
-        Registers all tools in the toolkit with the specified caller and executor agents.
-
-        Args:
-            caller (ConversableAgent): The agent that will call the tools.
-            executor (ConversableAgent): The agent that will execute the tools' functions.
-        """
-        for tool in self.tools:
-            tool.register_function(callers=callers, executors=executors)
