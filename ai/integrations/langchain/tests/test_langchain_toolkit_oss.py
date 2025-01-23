@@ -20,6 +20,7 @@ from unitycatalog.ai.core.client import (
 )
 from unitycatalog.ai.core.utils.function_processing_utils import get_tool_name
 from unitycatalog.ai.langchain.toolkit import UCFunctionToolkit
+from unitycatalog.ai.test_utils.function_utils import RETRIEVER_OUTPUT_CSV, RETRIEVER_OUTPUT_SCALAR
 from unitycatalog.ai.test_utils.function_utils_oss import (
     CATALOG,
     create_function_and_cleanup_oss,
@@ -192,6 +193,48 @@ def test_uc_function_to_langchain_tool(uc_client):
         )
         assert tool.name == get_tool_name(f"{CATALOG}.{SCHEMA}.test")
         assert json.loads(tool.func(x="some_string"))["value"] == "some_string"
+
+
+@pytest.mark.parametrize(
+    "format,function_output",
+    [
+        ("SCALAR", RETRIEVER_OUTPUT_SCALAR),
+        ("CSV", RETRIEVER_OUTPUT_CSV),
+    ],
+)
+def test_langchain_tool_trace_as_retriever(uc_client, format: str, function_output: str):
+    mock_function_info = generate_function_info()
+
+    with (
+        mock.patch(
+            "unitycatalog.ai.core.client.UnitycatalogFunctionClient.get_function",
+            return_value=mock_function_info,
+        ),
+        mock.patch(
+            "unitycatalog.ai.core.client.UnitycatalogFunctionClient._execute_uc_function",
+            return_value=FunctionExecutionResult(format=format, value=function_output),
+        ),
+        mock.patch("unitycatalog.ai.core.client.UnitycatalogFunctionClient.validate_input_params"),
+    ):
+        import mlflow
+
+        mlflow.langchain.autolog()
+
+        tool = UCFunctionToolkit.uc_function_to_langchain_tool(
+            client=uc_client, function_name=f"{CATALOG}.{SCHEMA}.test_{format}"
+        )
+
+        result = tool.func(x="some_string")
+        assert json.loads(result)["value"] == function_output
+
+        trace = mlflow.get_last_active_trace()
+        assert trace is not None
+        assert trace.info.execution_time_ms is not None
+        assert trace.data.request == '{"x": "some_string"}'
+        assert trace.data.response == RETRIEVER_OUTPUT_SCALAR
+        assert trace.data.spans[0].name == f"{CATALOG}.{SCHEMA}.test_{format}"
+
+        mlflow.langchain.autolog(disable=True)
 
 
 @pytest.mark.asyncio
