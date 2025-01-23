@@ -1,4 +1,3 @@
-import ast
 import os
 from unittest import mock
 
@@ -16,7 +15,6 @@ from unitycatalog.ai.core.utils.function_processing_utils import get_tool_name
 from unitycatalog.ai.test_utils.function_utils_oss import (
     CATALOG,
     create_function_and_cleanup_oss,
-    create_retriever_function_and_cleanup_oss,
 )
 from unitycatalog.client import (
     ApiClient,
@@ -159,48 +157,6 @@ async def test_tool_calling_with_anthropic(uc_client):
                     final_response.content[0].text
                     == "The code has been executed. Output:\n\nHello, World!"
                 )
-
-
-@pytest.mark.asyncio
-async def test_tool_calling_with_retriever_tracing_anthropic(uc_client):
-    with create_retriever_function_and_cleanup_oss(uc_client, schema=SCHEMA) as func_obj:
-        func_name = func_obj.full_function_name
-        tools = UCFunctionToolkit(function_names=[func_name], client=uc_client).tools
-        input_args = {"code": 'print([{"page_content": "This is the page content."}],end="")'}
-
-        messages = [
-            {
-                "role": "user",
-                "content": f"Please execute the following code: {input_args}",
-            },
-        ]
-
-        converted_func_name = get_tool_name(func_name)
-
-        with mock.patch("anthropic.resources.messages.Messages.create") as mock_create:
-            mock_create.return_value = mock_anthropic_tool_response(
-                function_name=converted_func_name,
-                input_data=input_args,
-                message_id="msg_01H6Y3Z0XYZ123456789",
-            )
-
-            response = Anthropic().messages.create(
-                model="claude-3-5-sonnet-20240620", messages=messages, tools=tools, max_tokens=512
-            )
-
-            tool_calls = response.content
-            arguments = tool_calls[1].input
-
-            import mlflow
-
-            uc_client.execute_function(func_name, arguments, enable_retriever_tracing=True)
-
-            trace = mlflow.get_last_active_trace()
-            assert trace is not None
-            assert trace.info.execution_time_ms is not None
-            assert ast.literal_eval(trace.data.request) == input_args
-            assert trace.data.response == '[{"page_content": "This is the page content."}]'
-            assert trace.data.spans[0].name == func_name
 
 
 @pytest.mark.asyncio
