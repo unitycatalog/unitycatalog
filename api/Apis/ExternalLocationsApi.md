@@ -44,7 +44,7 @@ No authorization required
 
 Delete an external location
 
-    Deletes the specified external location from the metastore. The caller must be the owner of the external location.
+    Deletes the specified external location from the metastore. The caller must be a metastore admin or the owner of the external location.
 
 ### Parameters
 
@@ -95,7 +95,7 @@ No authorization required
 
 <a name="listExternalLocations"></a>
 # **listExternalLocations**
-> ListExternalLocationsResponse listExternalLocations(max\_results, page\_token, include\_browse)
+> ListExternalLocationsResponse listExternalLocations(max\_results, page\_token)
 
 List external locations
 
@@ -107,7 +107,6 @@ List external locations
 |------------- | ------------- | ------------- | -------------|
 | **max\_results** | **Integer**| Maximum number of external locations to return. If not set, all external locations are returned.  | [optional] [default to null] |
 | **page\_token** | **String**| Opaque pagination token to go to the next page. | [optional] [default to null] |
-| **include\_browse** | **Boolean**| Whether to include external locations in the response for which the principal can only access selective metadata. | [optional] [default to null] |
 
 ### Return type
 

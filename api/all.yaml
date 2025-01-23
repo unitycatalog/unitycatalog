@@ -1216,7 +1216,7 @@ paths:
         - Storage Credentials
       operationId: updateStorageCredential
       summary: Update a credential
-      description: Updates a storage credential on the metastore.
+      description: Updates a storage credential.
       requestBody:
         content:
           application/json:
@@ -1234,11 +1234,11 @@ paths:
         - Storage Credentials
       operationId: deleteStorageCredential
       summary: Delete a credential
-      description: Deletes a storage credential from the metastore. The caller must be an owner of the storage credential.
+      description: Deletes a storage credential from the metastore. The caller must be a metastore admin or the owner of the storage credential.
       parameters:
         - name: force
           in: query
-          description: Force deletion even if there are dependent external locations or external tables.
+          description: Force deletion even if there are dependent external locations.
           required: false
           schema:
             type: boolean
@@ -1292,12 +1292,6 @@ paths:
           schema:
             type: string
           required: false
-        - name: include_browse
-          in: query
-          description: Whether to include external locations in the response for which the principal can only access selective metadata.
-          required: false
-          schema:
-            type: boolean
       responses:
         '200':
           description: The external location list was successfully retrieved.
@@ -1331,7 +1325,7 @@ paths:
       tags:
         - External Locations
       summary: Delete an external location
-      description: Deletes the specified external location from the metastore. The caller must be the owner of the external location.
+      description: Deletes the specified external location from the metastore. The caller must be a metastore admin or the owner of the external location.
       operationId: deleteExternalLocation
       parameters:
         - name: force
@@ -2663,14 +2657,14 @@ components:
         url:
           description: Path URL of the external location.
           type: string
+        credential_name:
+          description: Name of the storage credential used with this location.
+          type: string
         comment:
           description: User-provided free-form text description.
           type: string
         owner:
           description: The owner of the external location.
-          type: string
-        access_point:
-          description: The AWS access point to use when accessing s3 for this external location.
           type: string
         credential_id:
           description: Unique ID of the location's storage credential.
@@ -2708,9 +2702,6 @@ components:
         comment:
           description: User-provided free-form text description.
           type: string
-        access_point:
-          description: The AWS access point to use when accessing s3 for this external location.
-          type: string
     UpdateExternalLocation:
       type: object
       properties:
@@ -2725,9 +2716,6 @@ components:
           type: string
         owner:
           description: The owner of the external location.
-          type: string
-        access_point:
-          description: The AWS access point to use when accessing s3 for this external location.
           type: string
         new_name:
           description: New name for the external location.
