@@ -13,7 +13,7 @@ import lombok.*;
 import lombok.experimental.SuperBuilder;
 
 @Entity
-@Table(name = "uc_storage_credential")
+@Table(name = "uc_storage_credentials")
 // Lombok
 @Getter
 @Setter
@@ -23,6 +23,12 @@ import lombok.experimental.SuperBuilder;
 @EqualsAndHashCode(callSuper = true)
 public class StorageCredentialDAO extends IdentifiableDAO {
   public static ObjectMapper objectMapper = new ObjectMapper();
+
+  public enum CredentialType {
+    AWS_IAM_ROLE,
+    AZURE_SERVICE_PRINCIPAL,
+    // Add other types as necessary
+  }
 
   @Column(name = "credential_type", nullable = false)
   @Enumerated(EnumType.STRING)
@@ -118,11 +124,5 @@ public class StorageCredentialDAO extends IdentifiableDAO {
       throw new IllegalArgumentException("Failed to parse credential", e);
     }
     return storageCredentialInfo;
-  }
-
-  public enum CredentialType {
-    AWS_IAM_ROLE,
-    AZURE_SERVICE_PRINCIPAL,
-    // Add other types as necessary
   }
 }

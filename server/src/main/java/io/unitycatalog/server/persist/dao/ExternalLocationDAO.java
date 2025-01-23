@@ -11,7 +11,7 @@ import lombok.*;
 import lombok.experimental.SuperBuilder;
 
 @Entity
-@Table(name = "uc_external_location")
+@Table(name = "uc_external_locations")
 // Lombok
 @Getter
 @Setter
@@ -29,9 +29,6 @@ public class ExternalLocationDAO extends IdentifiableDAO {
 
   @Column(name = "owner")
   private String owner;
-
-  @Column(name = "access_point")
-  private String accessPoint;
 
   @Column(name = "credential_id", nullable = false)
   private UUID credentialId;
@@ -54,7 +51,6 @@ public class ExternalLocationDAO extends IdentifiableDAO {
         .url(externalLocationInfo.getUrl())
         .comment(externalLocationInfo.getComment())
         .owner(externalLocationInfo.getOwner())
-        .accessPoint(externalLocationInfo.getAccessPoint())
         .credentialId(
             externalLocationInfo.getCredentialId() != null
                 ? UUID.fromString(externalLocationInfo.getCredentialId())
@@ -78,7 +74,6 @@ public class ExternalLocationDAO extends IdentifiableDAO {
         .url(getUrl())
         .comment(getComment())
         .owner(getOwner())
-        .accessPoint(getAccessPoint())
         .credentialId(getCredentialId() != null ? getCredentialId().toString() : null)
         .createdAt(getCreatedAt().getTime())
         .createdBy(getCreatedBy())
