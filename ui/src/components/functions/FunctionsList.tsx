@@ -17,7 +17,10 @@ export default function FunctionsList({
   schema,
   filters,
 }: FunctionsListProps) {
-  const { data, isLoading } = useListFunctions({ catalog, schema });
+  const { data, isLoading } = useListFunctions({
+    catalog_name: catalog,
+    schema_name: schema,
+  });
   const navigate = useNavigate();
 
   return (
