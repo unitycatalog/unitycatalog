@@ -327,5 +327,5 @@ def process_retriever_output(result: "FunctionExecutionResult") -> str:
     else:
         value = result.value
         output = ast.literal_eval(value) if isinstance(value, str) else value
-    
+
     return output

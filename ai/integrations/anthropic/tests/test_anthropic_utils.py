@@ -4,6 +4,7 @@ from unittest.mock import Mock
 import pytest
 from anthropic.types import TextBlock, ToolUseBlock
 from anthropic.types.message import Message
+from databricks.sdk.service.catalog import ColumnTypeName
 
 from unitycatalog.ai.anthropic.utils import (
     ToolCallData,
@@ -14,7 +15,6 @@ from unitycatalog.ai.core.base import BaseFunctionClient
 from unitycatalog.ai.core.databricks import DatabricksFunctionClient
 from unitycatalog.ai.test_utils.client_utils import TEST_IN_DATABRICKS
 from unitycatalog.ai.test_utils.function_utils import RETRIEVER_OUTPUT_CSV, RETRIEVER_OUTPUT_SCALAR
-from databricks.sdk.service.catalog import ColumnTypeName
 
 
 @pytest.fixture

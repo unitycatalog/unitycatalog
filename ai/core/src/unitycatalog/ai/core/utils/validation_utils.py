@@ -12,7 +12,9 @@ if TYPE_CHECKING:
 OSS_MAX_FUNCTION_NAME_LENGTH = 255
 
 import logging
+
 _logger = logging.getLogger(__name__)
+
 
 class FullFunctionName(NamedTuple):
     catalog: str
@@ -147,7 +149,7 @@ def validate_function_name_length(function_name: str) -> None:
 
 def has_retriever_signature(function_info: "FunctionInfo") -> bool:
     """
-    Checks if the given function signature follows the retriever format for MLflow, which is a 
+    Checks if the given function signature follows the retriever format for MLflow, which is a
     list of Documents.
 
     Args:
@@ -158,17 +160,17 @@ def has_retriever_signature(function_info: "FunctionInfo") -> bool:
     """
     if "TABLE_TYPE" not in function_info.data_type:
         return False
-    
+
     full_data_type = function_info.full_data_type.strip()
     if full_data_type.startswith("(") and full_data_type.endswith(")"):
         full_data_type = full_data_type[1:-1]
-    
+
     # Split on commas but respect data types such as MAP<STRING, STRING>
-    columns = re.split(r',\s*(?![^<]*>)', full_data_type)
+    columns = re.split(r",\s*(?![^<]*>)", full_data_type)
     columns = [col.strip() for col in columns]
 
     valid_columns = {"page_content", "metadata", "id"}
-    
+
     has_page_content = False
 
     for column in columns:
@@ -179,7 +181,7 @@ def has_retriever_signature(function_info: "FunctionInfo") -> bool:
 
         if name not in valid_columns:
             return False
-        
+
         # Validate data type for the column
         if name == "metadata":
             if not col_type.startswith("MAP"):
@@ -187,10 +189,10 @@ def has_retriever_signature(function_info: "FunctionInfo") -> bool:
         else:
             if col_type != "STRING":
                 return False
-        
+
         if name == "page_content":
             has_page_content = True
-    
+
     return has_page_content
 
 

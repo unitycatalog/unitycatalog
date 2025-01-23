@@ -4,6 +4,7 @@ from unittest import mock
 
 import pytest
 from databricks.sdk.service.catalog import (
+    ColumnTypeName,
     FunctionInfo,
     FunctionParameterInfo,
     FunctionParameterInfos,
@@ -33,7 +34,6 @@ from unitycatalog.ai.test_utils.function_utils import (
     create_function_and_cleanup,
     create_python_function_and_cleanup,
 )
-from databricks.sdk.service.catalog import ColumnTypeName
 
 try:
     # v2

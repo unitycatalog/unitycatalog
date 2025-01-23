@@ -12,7 +12,6 @@ from databricks.sdk.service.catalog import (
     FunctionParameterInfo,
     FunctionParameterInfos,
 )
-from mlflow.entities import Document
 
 from unitycatalog.ai.core.utils.validation_utils import check_function_info, has_retriever_signature
 
@@ -121,12 +120,44 @@ def test_check_function_info(function_info, expected_warnings):
     "function_info, result",
     [
         (FunctionInfo(data_type=ColumnTypeName.STRING, full_data_type="STRING"), False),
-        (FunctionInfo(data_type=ColumnTypeName.STRING, full_data_type="(page_content STRING)"), False),
-        (FunctionInfo(data_type=ColumnTypeName.TABLE_TYPE, full_data_type="(page_content STRING)"), True),
-        (FunctionInfo(data_type=ColumnTypeName.TABLE_TYPE, full_data_type="(page_content STRING, metadata MAP<STRING, STRING>, id STRING)"), True),
-        (FunctionInfo(data_type=ColumnTypeName.TABLE_TYPE, full_data_type="(metadata MAP<STRING, STRING>, id STRING)"), False),
-        (FunctionInfo(data_type=ColumnTypeName.TABLE_TYPE, full_data_type="(metadata MAP<STRING, STRING>, id STRING, page_content STRING)"), True),
-        (FunctionInfo(data_type=ColumnTypeName.TABLE_TYPE, full_data_type="(page_content STRING, metadata MAP<STRING, STRING>, id STRING, extra_column STRING)"), False),
+        (
+            FunctionInfo(data_type=ColumnTypeName.STRING, full_data_type="(page_content STRING)"),
+            False,
+        ),
+        (
+            FunctionInfo(
+                data_type=ColumnTypeName.TABLE_TYPE, full_data_type="(page_content STRING)"
+            ),
+            True,
+        ),
+        (
+            FunctionInfo(
+                data_type=ColumnTypeName.TABLE_TYPE,
+                full_data_type="(page_content STRING, metadata MAP<STRING, STRING>, id STRING)",
+            ),
+            True,
+        ),
+        (
+            FunctionInfo(
+                data_type=ColumnTypeName.TABLE_TYPE,
+                full_data_type="(metadata MAP<STRING, STRING>, id STRING)",
+            ),
+            False,
+        ),
+        (
+            FunctionInfo(
+                data_type=ColumnTypeName.TABLE_TYPE,
+                full_data_type="(metadata MAP<STRING, STRING>, id STRING, page_content STRING)",
+            ),
+            True,
+        ),
+        (
+            FunctionInfo(
+                data_type=ColumnTypeName.TABLE_TYPE,
+                full_data_type="(page_content STRING, metadata MAP<STRING, STRING>, id STRING, extra_column STRING)",
+            ),
+            False,
+        ),
     ],
 )
 def test_has_retriever_signature(function_info, result):

@@ -6,6 +6,7 @@ from unittest import mock
 import pytest
 from autogen_core import CancellationToken
 from databricks.sdk.service.catalog import (
+    ColumnTypeName,
     FunctionInfo,
     FunctionParameterInfo,
     FunctionParameterInfos,
@@ -28,7 +29,6 @@ from unitycatalog.ai.test_utils.function_utils import (
     RETRIEVER_OUTPUT_SCALAR,
     create_function_and_cleanup,
 )
-from databricks.sdk.service.catalog import ColumnTypeName
 
 SCHEMA = os.environ.get("SCHEMA", "ucai_autogen_test")
 
