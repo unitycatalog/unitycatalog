@@ -232,7 +232,7 @@ def test_langchain_tool_trace_as_retriever(uc_client, format: str, function_outp
         assert trace.info.execution_time_ms is not None
         assert trace.data.request == '{"x": "some_string"}'
         assert trace.data.response == RETRIEVER_OUTPUT_SCALAR
-        assert trace.data.spans[0].name == f"{CATALOG}.{SCHEMA}.test_{format}"
+        assert trace.data.spans[0].name == f"{CATALOG}.{SCHEMA}.test"
 
         mlflow.langchain.autolog(disable=True)
 

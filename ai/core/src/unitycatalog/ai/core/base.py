@@ -8,7 +8,8 @@ from dataclasses import dataclass
 from typing import Any, Callable, Dict, Literal, Optional
 
 from unitycatalog.ai.core.paged_list import PagedList
-from unitycatalog.ai.core.utils.function_processing_utils import auto_trace_retriever
+from unitycatalog.ai.core.utils.validation_utils import has_retriever_signature
+from unitycatalog.ai.core.utils.function_processing_utils import process_retriever_output
 
 _logger = logging.getLogger(__name__)
 
@@ -157,13 +158,23 @@ class BaseFunctionClient(ABC):
             parameters = parameters or {}
             self.validate_input_params(function_info.input_params, parameters)
 
-            start_time_ns = time.time_ns()
-            result = self._execute_uc_function(function_info, parameters, **kwargs)
-            end_time_ns = time.time_ns()
+            if kwargs.get("enable_retriever_tracing", False) and has_retriever_signature(function_info):
+                try:
+                    import mlflow
+                    from mlflow.entities import SpanType
 
-            if kwargs.get("enable_retriever_tracing", False):
-                auto_trace_retriever(function_name, parameters, result, start_time_ns, end_time_ns)
-            return result
+                    with mlflow.start_span(name=function_name,span_type=SpanType.RETRIEVER) as span:
+                        span.set_inputs(parameters)
+                        result = self._execute_uc_function(function_info, parameters, **kwargs)
+                        span.set_outputs(process_retriever_output(result))
+                        
+                        return result
+                except ImportError as e:
+                    _logger.warn(
+                        f"Skipping tracing {function_name} as a retriever because of the following error:\n {e}"
+                    )
+            
+            return self._execute_uc_function(function_info, parameters, **kwargs)
 
     @abstractmethod
     def _execute_uc_function(

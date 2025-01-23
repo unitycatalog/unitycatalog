@@ -10,6 +10,7 @@ from unitycatalog.ai.core.databricks import DatabricksFunctionClient
 from unitycatalog.ai.openai.utils import generate_tool_call_messages
 from unitycatalog.ai.test_utils.client_utils import TEST_IN_DATABRICKS
 from unitycatalog.ai.test_utils.function_utils import RETRIEVER_OUTPUT_CSV, RETRIEVER_OUTPUT_SCALAR
+from databricks.sdk.service.catalog import ColumnTypeName
 
 
 @pytest.fixture
@@ -40,6 +41,8 @@ def test_generate_tool_call_messages_with_tracing(
 
     function_mock = mock.MagicMock()
     function_mock.name = function_name
+    function_mock.data_type = ColumnTypeName.TABLE_TYPE
+    function_mock.full_data_type = "(page_content STRING, metadata MAP<STRING, STRING>)"
 
     with (
         mock.patch.object(client, "get_function", return_value=function_mock),

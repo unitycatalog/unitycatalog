@@ -1,5 +1,6 @@
 import base64
 import datetime
+import re
 import warnings
 from typing import TYPE_CHECKING, Any, NamedTuple
 
@@ -10,6 +11,8 @@ if TYPE_CHECKING:
 
 OSS_MAX_FUNCTION_NAME_LENGTH = 255
 
+import logging
+_logger = logging.getLogger(__name__)
 
 class FullFunctionName(NamedTuple):
     catalog: str
@@ -142,39 +145,55 @@ def validate_function_name_length(function_name: str) -> None:
         )
 
 
-def is_valid_retriever_output(output: Any) -> bool:
+def has_retriever_signature(function_info: "FunctionInfo") -> bool:
     """
-    Checks if the given output follows the retriever format for MLflow, which is a list of Documents
-    or dictionaries that follow the Document format.
+    Checks if the given function signature follows the retriever format for MLflow, which is a 
+    list of Documents.
 
     Args:
-        output: The value to determine if it is a valid retriever output.
+        function_info: The function to determine if it has a valid retriever signature.
 
     Returns:
-        bool: If the provided output is a valid retriever output.
+        bool: If the provided function has a valid retriever signature.
     """
-    if not isinstance(output, list):
+    from databricks.sdk.service.catalog import ColumnTypeName
+
+    if function_info.data_type != ColumnTypeName.TABLE_TYPE:
         return False
+    
+    full_data_type = function_info.full_data_type.strip()
+    if full_data_type.startswith("(") and full_data_type.endswith(")"):
+        full_data_type = full_data_type[1:-1]
+    
+    # Split on commas but respect data types such as MAP<STRING, STRING>
+    columns = re.split(r',\s*(?![^<]*>)', full_data_type)
+    columns = [col.strip() for col in columns]
 
-    if len(output) < 1:
-        return False
+    valid_columns = {"page_content", "metadata", "id"}
+    
+    has_page_content = False
 
-    def is_valid_retriever_item(item: Any) -> bool:
-        from mlflow.entities import Document
+    for column in columns:
+        parts = column.split(None, 1)
+        if len(parts) != 2:
+            return False
+        name, col_type = parts
 
-        if isinstance(item, Document):
-            return True
-
-        if isinstance(item, dict):
-            try:
-                Document(**item)
-                return True
-            except TypeError:
+        if name not in valid_columns:
+            return False
+        
+        # Validate data type for the column
+        if name == "metadata":
+            if not col_type.startswith("MAP"):
                 return False
-
-        return False
-
-    return all(is_valid_retriever_item(item) for item in output)
+        else:
+            if col_type != "STRING":
+                return False
+        
+        if name == "page_content":
+            has_page_content = True
+    
+    return has_page_content
 
 
 def mlflow_tracing_enabled(integration_name: str) -> bool:
