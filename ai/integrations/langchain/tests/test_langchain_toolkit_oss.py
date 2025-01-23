@@ -4,6 +4,7 @@ from unittest import mock
 
 import pytest
 import pytest_asyncio
+from databricks.sdk.service.catalog import ColumnTypeName
 from langchain_core.messages import BaseMessage
 from langchain_core.outputs import ChatResult
 from langchain_core.runnables import RunnableGenerator
@@ -204,7 +205,7 @@ def test_uc_function_to_langchain_tool(uc_client):
 )
 def test_langchain_tool_trace_as_retriever(uc_client, format: str, function_output: str):
     mock_function_info = generate_function_info()
-    mock_function_info.data_type = "<ColumnTypeName.TABLE_TYPE: 'TABLE_TYPE'>"
+    mock_function_info.data_type = ColumnTypeName.TABLE_TYPE
     mock_function_info.full_data_type = "(page_content STRING, metadata MAP<STRING, STRING>)"
 
     with (
@@ -234,7 +235,7 @@ def test_langchain_tool_trace_as_retriever(uc_client, format: str, function_outp
         assert trace.info.execution_time_ms is not None
         assert trace.data.request == '{"x": "some_string"}'
         assert trace.data.response == RETRIEVER_OUTPUT_SCALAR
-        assert trace.data.spans[0].name == f"{CATALOG}.{SCHEMA}.test"
+        assert trace.data.spans[0].name == f"{CATALOG}.{SCHEMA}.test_{format}"
 
         mlflow.langchain.autolog(disable=True)
 

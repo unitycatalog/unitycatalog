@@ -158,7 +158,7 @@ def has_retriever_signature(function_info: "FunctionInfo") -> bool:
     Returns:
         bool: If the provided function has a valid retriever signature.
     """
-    if "TABLE_TYPE" not in function_info.data_type:
+    if "TABLE_TYPE" not in str(function_info.data_type):
         return False
 
     full_data_type = function_info.full_data_type.strip()
