@@ -16,6 +16,7 @@ from unitycatalog.ai.core.utils.function_processing_utils import get_tool_name
 from unitycatalog.ai.test_utils.function_utils_oss import (
     CATALOG,
     create_function_and_cleanup_oss,
+    create_retriever_function_and_cleanup_oss,
 )
 from unitycatalog.client import (
     ApiClient,
@@ -162,7 +163,7 @@ async def test_tool_calling_with_anthropic(uc_client):
 
 @pytest.mark.asyncio
 async def test_tool_calling_with_retriever_tracing_anthropic(uc_client):
-    with create_function_and_cleanup_oss(uc_client, schema=SCHEMA) as func_obj:
+    with create_retriever_function_and_cleanup_oss(uc_client, schema=SCHEMA) as func_obj:
         func_name = func_obj.full_function_name
         tools = UCFunctionToolkit(function_names=[func_name], client=uc_client).tools
         input_args = {"code": 'print([{"page_content": "This is the page content."}],end="")'}
