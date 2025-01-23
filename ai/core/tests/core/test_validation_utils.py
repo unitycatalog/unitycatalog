@@ -121,6 +121,7 @@ def test_check_function_info(function_info, expected_warnings):
     "function_info, result",
     [
         (FunctionInfo(data_type=ColumnTypeName.STRING, full_data_type="STRING"), False),
+        (FunctionInfo(data_type=ColumnTypeName.STRING, full_data_type="(page_content STRING)"), False),
         (FunctionInfo(data_type=ColumnTypeName.TABLE_TYPE, full_data_type="(page_content STRING)"), True),
         (FunctionInfo(data_type=ColumnTypeName.TABLE_TYPE, full_data_type="(page_content STRING, metadata MAP<STRING, STRING>, id STRING)"), True),
         (FunctionInfo(data_type=ColumnTypeName.TABLE_TYPE, full_data_type="(metadata MAP<STRING, STRING>, id STRING)"), False),

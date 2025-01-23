@@ -14,6 +14,7 @@ from unitycatalog.ai.core.base import BaseFunctionClient
 from unitycatalog.ai.core.databricks import DatabricksFunctionClient
 from unitycatalog.ai.test_utils.client_utils import TEST_IN_DATABRICKS
 from unitycatalog.ai.test_utils.function_utils import RETRIEVER_OUTPUT_CSV, RETRIEVER_OUTPUT_SCALAR
+from databricks.sdk.service.catalog import ColumnTypeName
 
 
 @pytest.fixture
@@ -271,11 +272,17 @@ def test_generate_tool_call_messages_with_tracing(dummy_history, format: str, fu
         "unitycatalog.ai.core.databricks.get_default_databricks_workspace_client",
         return_value=mock.Mock(),
     ):
+        function_mock = mock.MagicMock()
+        function_mock.name = f"catalog.schema.retriever_tool_{format}"
+        function_mock.data_type = ColumnTypeName.TABLE_TYPE
+        function_mock.full_data_type = "(page_content STRING, metadata MAP<STRING, STRING>)"
+
         mock_client = DatabricksFunctionClient()
         mock_client._execute_uc_function = Mock(
             return_value=Mock(format=format, value=function_output)
         )
         mock_client.validate_input_params = Mock()
+        mock_client.get_function = Mock(return_value=function_mock)
 
         text_block = TextBlock(text="Fetching documents...", type="text")
         tool_use_block = ToolUseBlock(

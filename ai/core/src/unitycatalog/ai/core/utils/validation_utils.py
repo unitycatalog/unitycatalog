@@ -156,9 +156,7 @@ def has_retriever_signature(function_info: "FunctionInfo") -> bool:
     Returns:
         bool: If the provided function has a valid retriever signature.
     """
-    from databricks.sdk.service.catalog import ColumnTypeName
-
-    if function_info.data_type != ColumnTypeName.TABLE_TYPE:
+    if "TABLE_TYPE" not in function_info.data_type:
         return False
     
     full_data_type = function_info.full_data_type.strip()

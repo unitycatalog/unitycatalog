@@ -204,6 +204,8 @@ async def test_uc_function_to_crewai_tool(uc_client):
 @pytest.mark.asyncio
 async def test_crewai_tool_with_tracing_as_retriever(uc_client, format: str, function_output: str):
     mock_function_info = generate_function_info()
+    mock_function_info.data_type = "<ColumnTypeName.TABLE_TYPE: 'TABLE_TYPE'>"
+    mock_function_info.full_data_type = "(page_content STRING, metadata MAP<STRING, STRING>)"
 
     with (
         mock.patch(
@@ -225,8 +227,6 @@ async def test_crewai_tool_with_tracing_as_retriever(uc_client, format: str, fun
         )
         result = tool.fn(x="some input")
         assert json.loads(result)["value"] == function_output
-
-        import mlflow
 
         trace = mlflow.get_last_active_trace()
         assert trace is not None

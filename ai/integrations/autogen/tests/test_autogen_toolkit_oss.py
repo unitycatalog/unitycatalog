@@ -228,6 +228,8 @@ async def test_uc_function_to_autogen_tool(uc_client):
 @pytest.mark.asyncio
 async def test_autogen_tool_with_tracing_as_retriever(uc_client, format: str, function_output: str):
     mock_function_info = generate_function_info()
+    mock_function_info.data_type = "<ColumnTypeName.TABLE_TYPE: 'TABLE_TYPE'>"
+    mock_function_info.full_data_type = "(page_content STRING, metadata MAP<STRING, STRING>)"
 
     with (
         mock.patch(
