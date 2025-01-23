@@ -44,14 +44,14 @@ No authorization required
 
 Delete a credential
 
-    Deletes a storage credential from the metastore. The caller must be an owner of the storage credential.
+    Deletes a storage credential from the metastore. The caller must be a metastore admin or the owner of the storage credential.
 
 ### Parameters
 
 |Name | Type | Description  | Notes |
 |------------- | ------------- | ------------- | -------------|
 | **name** | **String**| Name of the storage credential. | [default to null] |
-| **force** | **Boolean**| Force deletion even if there are dependent external locations or external tables. | [optional] [default to null] |
+| **force** | **Boolean**| Force deletion even if there are dependent external locations. | [optional] [default to null] |
 
 ### Return type
 
@@ -127,7 +127,7 @@ No authorization required
 
 Update a credential
 
-    Updates a storage credential on the metastore.
+    Updates a storage credential.
 
 ### Parameters
 
