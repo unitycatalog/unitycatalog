@@ -151,7 +151,7 @@ public class TableReadWriteTest extends BaseSparkIntegrationTest {
 
   @Disabled
   @ParameterizedTest
-  @ValueSource(strings = {"s3", "gs", "abfs"})
+  @ValueSource(strings = {"s3a", "gs", "abfs"})
   public void testCredentialDelta(String scheme) throws ApiException, IOException {
     SparkSession session = createSparkSessionWithCatalogs(SPARK_CATALOG, CATALOG_NAME);
 

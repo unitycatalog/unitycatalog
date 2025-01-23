@@ -83,6 +83,8 @@ public class CredentialOperationsTest {
     final String SECRET_KEY = "secretKey";
     final String ENDPOINT = "https://localhost";
     final String PROVIDER_NAME = "static";
+    final String S3_REGION = "us-west-2";
+    final String ROLE_ARN = "roleArn";
     // Test session key is available
     when(serverProperties.getS3Configurations())
         .thenReturn(
@@ -111,7 +113,7 @@ public class CredentialOperationsTest {
                 .endpoint(ENDPOINT));
 
     // Test when sts client is called
-    /*when(serverProperties.getS3Configurations())
+    when(serverProperties.getS3Configurations())
         .thenReturn(
             Map.of(
                 "s3://storageBase",
@@ -127,7 +129,7 @@ public class CredentialOperationsTest {
         () ->
             credentialsOperations.vendCredential(
                 "s3://storageBase/abc", Set.of(CredentialContext.Privilege.SELECT)))
-        .isInstanceOf(StsException.class);*/
+        .isInstanceOf(StsException.class);
   }
 
   @Test

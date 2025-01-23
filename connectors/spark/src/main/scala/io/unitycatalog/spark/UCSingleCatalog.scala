@@ -3,6 +3,7 @@ package io.unitycatalog.spark
 import io.unitycatalog.client.{ApiClient, ApiException}
 import io.unitycatalog.client.api.{SchemasApi, TablesApi, TemporaryCredentialsApi}
 import io.unitycatalog.client.model.{ColumnInfo, ColumnTypeName, CreateSchema, CreateTable, DataSourceFormat, GenerateTemporaryPathCredential, GenerateTemporaryTableCredential, ListTablesResponse, PathOperation, SchemaInfo, TableOperation, TableType, TemporaryCredentials}
+import org.apache.hadoop.conf.Configuration
 
 import java.net.URI
 import java.util
@@ -284,6 +285,11 @@ private class UCProxy(
     }
     val extraSerdeProps = UCSingleCatalog.generateCredentialProps(
       uri, temporaryCredentials)
+    val sqlConf = SQLConf.get
+    extraSerdeProps.foreach { prop =>
+      sqlConf.setConfString(prop._1, prop._2)
+    }
+    Configuration.reloadExistingConfigurations()
     val sparkTable = CatalogTable(
       identifier,
       tableType = if (t.getTableType == TableType.MANAGED) {
@@ -293,7 +299,7 @@ private class UCProxy(
       },
       storage = CatalogStorageFormat.empty.copy(
         locationUri = Some(uri),
-        properties = t.getProperties.asScala.toMap ++ extraSerdeProps
+        properties = t.getProperties.asScala.toMap
       ),
       schema = StructType(fields),
       provider = Some(t.getDataSourceFormat.getValue),
