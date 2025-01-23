@@ -4,9 +4,7 @@ import io.unitycatalog.server.model.AwsCredentials;
 import io.unitycatalog.server.service.credential.CredentialContext;
 import io.unitycatalog.server.service.credential.aws.S3StorageConfig;
 
-/**
- * Interface for AWS credentials provider.
- */
+/** Interface for AWS credentials provider. */
 public interface AwsCredentialsProvider {
   /**
    * Configure the provider with the given configuration. Will receive key-value pairs from
