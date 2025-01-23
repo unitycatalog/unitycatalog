@@ -10,6 +10,7 @@ import io.unitycatalog.client.model.*;
 import io.unitycatalog.server.base.BaseCRUDTest;
 import io.unitycatalog.server.base.ServerConfig;
 import io.unitycatalog.server.base.storagecredential.StorageCredentialOperations;
+import io.unitycatalog.server.exception.ErrorCode;
 import java.util.Optional;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -51,7 +52,13 @@ public abstract class BaseExternalLocationCRUDTest extends BaseCRUDTest {
     // Fails as the credential does not exist
     assertThatThrownBy(
             () -> externalLocationOperations.createExternalLocation(createExternalLocation))
-        .isInstanceOf(ApiException.class);
+        .isInstanceOf(ApiException.class)
+        .hasFieldOrPropertyWithValue("code", ErrorCode.NOT_FOUND.getHttpStatus().code())
+        .hasMessageContaining("Storage credential not found: " + CREDENTIAL_NAME);
+
+    assertThat(externalLocationOperations.listExternalLocations(Optional.empty()))
+        .noneMatch(
+            externalLocationInfo -> externalLocationInfo.getName().equals(EXTERNAL_LOCATION_NAME));
 
     CreateStorageCredential createStorageCredential =
         new CreateStorageCredential()

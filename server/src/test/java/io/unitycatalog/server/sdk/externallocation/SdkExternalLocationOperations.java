@@ -27,7 +27,7 @@ public class SdkExternalLocationOperations implements ExternalLocationOperations
   public List<ExternalLocationInfo> listExternalLocations(Optional<String> pageToken)
       throws ApiException {
     return externalLocationsApi
-        .listExternalLocations(100, pageToken.orElse(null), false)
+        .listExternalLocations(100, pageToken.orElse(null))
         .getExternalLocations();
   }
 

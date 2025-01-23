@@ -40,6 +40,11 @@ public class ExternalLocationRepository {
           repositories
               .getStorageCredentialRepository()
               .getStorageCredentialDAO(session, createExternalLocation.getCredentialName());
+      if (storageCredentialDAO == null) {
+        throw new BaseException(
+            ErrorCode.NOT_FOUND,
+            "Storage credential not found: " + createExternalLocation.getCredentialName());
+      }
       UUID externalLocationId = UUID.randomUUID();
       ExternalLocationDAO externalLocationDAO =
           ExternalLocationDAO.builder()
