@@ -7,8 +7,11 @@ import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.mock;
 
 import com.google.auth.oauth2.AccessToken;
+import io.unitycatalog.client.model.AwsCredentials;
+import io.unitycatalog.client.model.AzureUserDelegationSAS;
+import io.unitycatalog.client.model.GcpOauthToken;
 import io.unitycatalog.client.model.TemporaryCredentials;
-import io.unitycatalog.server.exception.BaseException;
+import io.unitycatalog.server.service.credential.CredentialContext;
 import io.unitycatalog.server.service.credential.CredentialOperations;
 import io.unitycatalog.server.service.credential.aws.AwsCredentialVendor;
 import io.unitycatalog.server.service.credential.azure.AzureCredential;
@@ -17,14 +20,20 @@ import io.unitycatalog.server.service.credential.gcp.GcpCredentialVendor;
 import java.time.Instant;
 import java.util.Date;
 import java.util.List;
-import java.util.concurrent.CompletionException;
+import java.util.Map;
+import java.util.function.Function;
 import java.util.stream.Stream;
 
 import org.junit.jupiter.params.provider.Arguments;
+import org.mockito.ArgumentMatcher;
+import org.mockito.Mock;
 import software.amazon.awssdk.services.sts.model.Credentials;
-import software.amazon.awssdk.services.sts.model.StsException;
 
 public abstract class BaseCRUDTestWithMockCredentials extends BaseCRUDTest {
+  @Mock AwsCredentialVendor awsCredentialVendor;
+  @Mock AzureCredentialVendor azureCredentialVendor;
+  @Mock GcpCredentialVendor gcpCredentialVendor;
+
   @Override
   protected void setUpProperties() {
     super.setUpProperties();
@@ -44,62 +53,72 @@ public abstract class BaseCRUDTestWithMockCredentials extends BaseCRUDTest {
 
   @Override
   protected void setUpCredentialOperations() {
+    setupAwsCredentials();
+    setupAzureCredentials();
+    setupGcpCredentials();
+
+    credentialOperations = new CredentialOperations(
+            awsCredentialVendor,
+            azureCredentialVendor,
+            gcpCredentialVendor
+    );
+  }
+
+  private void setupAwsCredentials() {
     awsCredentialVendor = mock(AwsCredentialVendor.class);
-    Credentials credentials =
-        Credentials.builder()
+    Credentials awsCredential = Credentials.builder()
             .accessKeyId("test-access-key-id")
             .secretAccessKey("test-secret-access-key")
             .sessionToken("test-session-token")
             .build();
     serverProperties.entrySet().stream()
-        .filter(e -> e.getKey().toString().contains("s3.bucketPath"))
-        .forEach(
-            e ->
-                doReturn(credentials)
+            .filter(e -> e.getKey().toString().startsWith("s3.bucketPath"))
+            .map(e -> e.getValue().toString())
+            .forEach(path -> doReturn(awsCredential)
                     .when(awsCredentialVendor)
                     .vendAwsCredentials(
-                        argThat(
-                            arg ->
-                                arg.getStorageScheme().equals("s3")
-                                    && arg.getStorageBase().contains(e.getValue().toString()))));
+                            argThat(isCredentialContextForCloudPath("s3", path))));
+  }
 
+  private void setupAzureCredentials() {
     azureCredentialVendor = mock(AzureCredentialVendor.class);
-    AzureCredential azureCredential =
-        AzureCredential.builder()
+    AzureCredential azureCredential = AzureCredential.builder()
             .sasToken("test-sas-token")
             .expirationTimeInEpochMillis(System.currentTimeMillis() + 6000)
             .build();
     serverProperties.entrySet().stream()
-        .filter(e -> e.getKey().toString().contains("adls.storageAccountName"))
-        .forEach(
-            e ->
-                doReturn(azureCredential)
+            .filter(e -> e.getKey().toString().startsWith("adls.storageAccountName"))
+            .map(e -> e.getValue().toString())
+            .forEach(path -> doReturn(azureCredential)
                     .when(azureCredentialVendor)
                     .vendAzureCredential(
-                        argThat(
-                            arg ->
-                                arg.getStorageScheme().equals("abfs")
-                                    && arg.getStorageBase().contains(e.getValue().toString()))));
-
-    gcpCredentialVendor = mock(GcpCredentialVendor.class);
-    AccessToken accessToken =
-        new AccessToken("test-token", Date.from(Instant.now().plusSeconds(10 * 60)));
-    serverProperties.entrySet().stream()
-        .filter(e -> e.getKey().toString().contains("gcs.bucketPath"))
-        .forEach(
-            e ->
-                doReturn(accessToken)
-                    .when(gcpCredentialVendor)
-                    .vendGcpToken(
-                        argThat(
-                            arg ->
-                                arg.getStorageScheme().equals("gs")
-                                    && arg.getStorageBase().contains(e.getValue().toString()))));
-
-    credentialOperations =
-        new CredentialOperations(awsCredentialVendor, azureCredentialVendor, gcpCredentialVendor);
+                            argThat(isCredentialContextForCloudPath("abfs", path))));
   }
 
+  private void setupGcpCredentials() {
+    gcpCredentialVendor = mock(GcpCredentialVendor.class);
+    AccessToken gcpCredential = new AccessToken(
+            "test-token",
+            Date.from(Instant.now().plusSeconds(10 * 60))
+    );
+    serverProperties.entrySet().stream()
+            .filter(e -> e.getKey().toString().startsWith("gcs.bucketPath"))
+            .map(e -> e.getValue().toString())
+            .forEach(path -> doReturn(gcpCredential)
+                    .when(gcpCredentialVendor)
+                    .vendGcpToken(
+                            argThat(isCredentialContextForCloudPath("gs", path))));
+  }
+
+  private ArgumentMatcher<CredentialContext> isCredentialContextForCloudPath(String scheme, String path) {
+    return arg -> arg.getStorageScheme().equals(scheme) && arg.getStorageBase().contains(path);
+  }
+
+  /**
+   * @param scheme s3, abfs, gs
+   * @param isConfiguredPath true if the path is configured in the server properties
+   * @return Cloud path for testing
+   */
   protected String getTestCloudPath(String scheme, boolean isConfiguredPath) {
     // test-bucket0 is configured in the properties
     String bucket = isConfiguredPath ? "test-bucket0" : "test-bucket1";
@@ -112,26 +131,25 @@ public abstract class BaseCRUDTestWithMockCredentials extends BaseCRUDTest {
   }
 
   protected void assertTemporaryCredentials(
-      TemporaryCredentials temporaryCredentials, String scheme) {
+      TemporaryCredentials tempCredentials, String scheme) {
     switch (scheme) {
       case "s3":
-        assertThat(temporaryCredentials.getAwsTempCredentials()).isNotNull();
-        assertThat(temporaryCredentials.getAwsTempCredentials().getSessionToken())
-            .isEqualTo("test-session-token");
-        assertThat(temporaryCredentials.getAwsTempCredentials().getAccessKeyId())
-            .isEqualTo("test-access-key-id");
-        assertThat(temporaryCredentials.getAwsTempCredentials().getSecretAccessKey())
-            .isEqualTo("test-secret-access-key");
+        AwsCredentials awsCredentials = tempCredentials.getAwsTempCredentials();
+        assertThat(awsCredentials).isNotNull();
+        assertThat(awsCredentials.getSessionToken()).isEqualTo("test-session-token");
+        assertThat(awsCredentials.getAccessKeyId()).isEqualTo("test-access-key-id");
+        assertThat(awsCredentials.getSecretAccessKey()).isEqualTo("test-secret-access-key");
         break;
       case "abfs":
       case "abfss":
-        assertThat(temporaryCredentials.getAzureUserDelegationSas()).isNotNull();
-        assertThat(temporaryCredentials.getAzureUserDelegationSas().getSasToken())
-            .isEqualTo("test-sas-token");
+        AzureUserDelegationSAS azureUserDelegationSAS = tempCredentials.getAzureUserDelegationSas();
+        assertThat(azureUserDelegationSAS).isNotNull();
+        assertThat(azureUserDelegationSAS.getSasToken()).isEqualTo("test-sas-token");
         break;
       case "gs":
-        assertThat(temporaryCredentials.getGcpOauthToken()).isNotNull();
-        assertThat(temporaryCredentials.getGcpOauthToken().getOauthToken()).isEqualTo("test-token");
+        GcpOauthToken gcpOauthToken = tempCredentials.getGcpOauthToken();
+        assertThat(gcpOauthToken).isNotNull();
+        assertThat(gcpOauthToken.getOauthToken()).isEqualTo("test-token");
         break;
       default:
         fail("Invalid scheme");
@@ -140,9 +158,11 @@ public abstract class BaseCRUDTestWithMockCredentials extends BaseCRUDTest {
   }
 
   /**
+   * isConfiguredPath is true if the path is configured in the server properties
+   *
    * @return Stream of arguments (s3, abfs, gs) x isConfiguredPath (true, false) for testing
    */
-  protected static Stream<Arguments> provideTestArguments() {
+  protected static Stream<Arguments> getArgumentsForParameterizedTests() {
     List<String> clouds = List.of("s3", "abfs", "gs");
     List<Boolean> isConfiguredPathFlags = List.of(true, false);
 

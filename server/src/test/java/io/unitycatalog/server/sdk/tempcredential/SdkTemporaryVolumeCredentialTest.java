@@ -5,6 +5,7 @@ import static io.unitycatalog.server.utils.TestUtils.SCHEMA_NAME;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import io.unitycatalog.client.ApiException;
+import io.unitycatalog.client.api.TemporaryCredentialsApi;
 import io.unitycatalog.client.model.*;
 import io.unitycatalog.server.base.BaseCRUDTestWithMockCredentials;
 import io.unitycatalog.server.base.ServerConfig;
@@ -21,18 +22,13 @@ import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.MethodSource;
 
 public class SdkTemporaryVolumeCredentialTest extends BaseCRUDTestWithMockCredentials {
-  protected SdkTemporaryCredentialOperations temporaryCredentialOperations;
-  protected VolumeOperations volumeOperations;
-  protected SchemaOperations schemaOperations;
+  private TemporaryCredentialsApi temporaryCredentialsApi;
+  private VolumeOperations volumeOperations;
+  private SchemaOperations schemaOperations;
 
   @Override
   protected CatalogOperations createCatalogOperations(ServerConfig serverConfig) {
     return new SdkCatalogOperations(TestUtils.createApiClient(serverConfig));
-  }
-
-  protected SdkTemporaryCredentialOperations createTemporaryCredentialsOperations(
-      ServerConfig serverConfig) {
-    return new SdkTemporaryCredentialOperations(TestUtils.createApiClient(serverConfig));
   }
 
   protected VolumeOperations createVolumeOperations(ServerConfig serverConfig) {
@@ -47,7 +43,7 @@ public class SdkTemporaryVolumeCredentialTest extends BaseCRUDTestWithMockCreden
   @Override
   public void setUp() {
     super.setUp();
-    temporaryCredentialOperations = createTemporaryCredentialsOperations(serverConfig);
+    temporaryCredentialsApi = new TemporaryCredentialsApi(TestUtils.createApiClient(serverConfig));
     volumeOperations = createVolumeOperations(serverConfig);
     schemaOperations = createSchemaOperations(serverConfig);
   }
@@ -62,7 +58,7 @@ public class SdkTemporaryVolumeCredentialTest extends BaseCRUDTestWithMockCreden
   }
 
   @ParameterizedTest
-  @MethodSource("provideTestArguments")
+  @MethodSource("getArgumentsForParameterizedTests")
   public void testGenerateTemporaryCredentialsWhereConfIsProvided(
       String scheme, boolean isConfiguredPath) throws ApiException {
     createCatalogAndSchema();
@@ -85,13 +81,13 @@ public class SdkTemporaryVolumeCredentialTest extends BaseCRUDTestWithMockCreden
             .operation(VolumeOperation.READ_VOLUME);
     if (isConfiguredPath) {
       TemporaryCredentials temporaryCredentials =
-          temporaryCredentialOperations.generateTemporaryVolumeCredentials(
+          temporaryCredentialsApi.generateTemporaryVolumeCredentials(
               generateTemporaryVolumeCredential);
       assertTemporaryCredentials(temporaryCredentials, scheme);
     } else {
       assertThatThrownBy(
               () ->
-                  temporaryCredentialOperations.generateTemporaryVolumeCredentials(
+                  temporaryCredentialsApi.generateTemporaryVolumeCredentials(
                       generateTemporaryVolumeCredential))
           .isInstanceOf(ApiException.class);
     }

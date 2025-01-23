@@ -3,6 +3,7 @@ package io.unitycatalog.server.sdk.tempcredential;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import io.unitycatalog.client.ApiException;
+import io.unitycatalog.client.api.TemporaryCredentialsApi;
 import io.unitycatalog.client.model.*;
 import io.unitycatalog.server.base.BaseCRUDTestWithMockCredentials;
 import io.unitycatalog.server.base.ServerConfig;
@@ -21,18 +22,13 @@ import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.MethodSource;
 
 public class SdkTemporaryTableCredentialTest extends BaseCRUDTestWithMockCredentials {
-  protected SdkTemporaryCredentialOperations temporaryCredentialOperations;
-  protected TableOperations tableOperations;
-  protected SchemaOperations schemaOperations;
+  private TemporaryCredentialsApi temporaryCredentialsApi;
+  private TableOperations tableOperations;
+  private SchemaOperations schemaOperations;
 
   @Override
   protected CatalogOperations createCatalogOperations(ServerConfig serverConfig) {
     return new SdkCatalogOperations(TestUtils.createApiClient(serverConfig));
-  }
-
-  protected SdkTemporaryCredentialOperations createTemporaryCredentialsOperations(
-      ServerConfig serverConfig) {
-    return new SdkTemporaryCredentialOperations(TestUtils.createApiClient(serverConfig));
   }
 
   protected TableOperations createTableOperations(ServerConfig serverConfig) {
@@ -47,7 +43,7 @@ public class SdkTemporaryTableCredentialTest extends BaseCRUDTestWithMockCredent
   @Override
   public void setUp() {
     super.setUp();
-    temporaryCredentialOperations = createTemporaryCredentialsOperations(serverConfig);
+    temporaryCredentialsApi = new TemporaryCredentialsApi(TestUtils.createApiClient(serverConfig));
     tableOperations = createTableOperations(serverConfig);
     schemaOperations = createSchemaOperations(serverConfig);
   }
@@ -62,7 +58,7 @@ public class SdkTemporaryTableCredentialTest extends BaseCRUDTestWithMockCredent
   }
 
   @ParameterizedTest
-  @MethodSource("provideTestArguments")
+  @MethodSource("getArgumentsForParameterizedTests")
   public void testGenerateTemporaryCredentialsWhereConfIsProvided(
       String scheme, boolean isConfiguredPath) throws ApiException, IOException {
     createCatalogAndSchema();
@@ -78,13 +74,13 @@ public class SdkTemporaryTableCredentialTest extends BaseCRUDTestWithMockCredent
             .operation(TableOperation.READ);
     if (isConfiguredPath) {
       TemporaryCredentials temporaryCredentials =
-          temporaryCredentialOperations.generateTemporaryTableCredentials(
+          temporaryCredentialsApi.generateTemporaryTableCredentials(
               generateTemporaryTableCredential);
       assertTemporaryCredentials(temporaryCredentials, scheme);
     } else {
       assertThatThrownBy(
               () ->
-                  temporaryCredentialOperations.generateTemporaryTableCredentials(
+                  temporaryCredentialsApi.generateTemporaryTableCredentials(
                       generateTemporaryTableCredential))
           .isInstanceOf(ApiException.class);
     }

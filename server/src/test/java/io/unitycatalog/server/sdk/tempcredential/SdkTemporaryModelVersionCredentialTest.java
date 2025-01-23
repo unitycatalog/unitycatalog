@@ -6,6 +6,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import io.unitycatalog.client.ApiException;
+import io.unitycatalog.client.api.TemporaryCredentialsApi;
 import io.unitycatalog.client.model.*;
 import io.unitycatalog.server.base.BaseCRUDTestWithMockCredentials;
 import io.unitycatalog.server.base.ServerConfig;
@@ -21,6 +22,7 @@ import io.unitycatalog.server.persist.utils.UriUtils;
 import io.unitycatalog.server.sdk.catalog.SdkCatalogOperations;
 import io.unitycatalog.server.sdk.models.SdkModelOperations;
 import io.unitycatalog.server.sdk.schema.SdkSchemaOperations;
+import io.unitycatalog.server.utils.ServerProperties.Property;
 import io.unitycatalog.server.utils.TestUtils;
 import java.util.UUID;
 import org.hibernate.Session;
@@ -32,9 +34,9 @@ import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.MethodSource;
 
 public class SdkTemporaryModelVersionCredentialTest extends BaseCRUDTestWithMockCredentials {
-  protected SchemaOperations schemaOperations;
-  protected ModelOperations modelOperations;
-  protected SdkTemporaryCredentialOperations temporaryCredentialOperations;
+  private SchemaOperations schemaOperations;
+  private ModelOperations modelOperations;
+  private TemporaryCredentialsApi temporaryCredentialsApi;
 
   @Override
   protected CatalogOperations createCatalogOperations(ServerConfig config) {
@@ -49,17 +51,12 @@ public class SdkTemporaryModelVersionCredentialTest extends BaseCRUDTestWithMock
     return new SdkModelOperations(TestUtils.createApiClient(config));
   }
 
-  protected SdkTemporaryCredentialOperations createTemporaryCredentialsOperations(
-      ServerConfig config) {
-    return new SdkTemporaryCredentialOperations(TestUtils.createApiClient(config));
-  }
-
   String rootBase = "/tmp/" + UUID.randomUUID();
 
   @Override
   public void setUpProperties() {
     super.setUpProperties();
-    serverProperties.setProperty("storage-root.models", rootBase);
+    serverProperties.setProperty(Property.MODEL_STORAGE_ROOT.getKey(), rootBase);
   }
 
   @BeforeEach
@@ -68,7 +65,7 @@ public class SdkTemporaryModelVersionCredentialTest extends BaseCRUDTestWithMock
     super.setUp();
     schemaOperations = createSchemaOperations(serverConfig);
     modelOperations = createModelOperations(serverConfig);
-    temporaryCredentialOperations = createTemporaryCredentialsOperations(serverConfig);
+    temporaryCredentialsApi = new TemporaryCredentialsApi(TestUtils.createApiClient(serverConfig));
   }
 
   @AfterEach
@@ -191,8 +188,7 @@ public class SdkTemporaryModelVersionCredentialTest extends BaseCRUDTestWithMock
 
     assertThatThrownBy(
             () ->
-                temporaryCredentialOperations.generateTemporaryModelVersionCredentials(
-                    generateFileCreds))
+                temporaryCredentialsApi.generateTemporaryModelVersionCredentials(generateFileCreds))
         .isInstanceOf(ApiException.class)
         .hasFieldOrPropertyWithValue("code", ErrorCode.INVALID_ARGUMENT.getHttpStatus().code());
 
@@ -207,7 +203,7 @@ public class SdkTemporaryModelVersionCredentialTest extends BaseCRUDTestWithMock
 
     assertThatThrownBy(
             () ->
-                temporaryCredentialOperations.generateTemporaryModelVersionCredentials(
+                temporaryCredentialsApi.generateTemporaryModelVersionCredentials(
                     generateCloudFailedCreds))
         .isInstanceOf(ApiException.class)
         .hasFieldOrPropertyWithValue("code", ErrorCode.INVALID_ARGUMENT.getHttpStatus().code());
@@ -223,7 +219,7 @@ public class SdkTemporaryModelVersionCredentialTest extends BaseCRUDTestWithMock
 
     assertThatThrownBy(
             () ->
-                temporaryCredentialOperations.generateTemporaryModelVersionCredentials(
+                temporaryCredentialsApi.generateTemporaryModelVersionCredentials(
                     generateCloudUnknownCreds))
         .isInstanceOf(ApiException.class)
         .hasFieldOrPropertyWithValue("code", ErrorCode.INVALID_ARGUMENT.getHttpStatus().code());
@@ -239,7 +235,7 @@ public class SdkTemporaryModelVersionCredentialTest extends BaseCRUDTestWithMock
 
     assertThatThrownBy(
             () ->
-                temporaryCredentialOperations.generateTemporaryModelVersionCredentials(
+                temporaryCredentialsApi.generateTemporaryModelVersionCredentials(
                     generateCloudReadyCreds))
         .isInstanceOf(ApiException.class)
         .hasFieldOrPropertyWithValue("code", ErrorCode.INVALID_ARGUMENT.getHttpStatus().code());
@@ -255,14 +251,14 @@ public class SdkTemporaryModelVersionCredentialTest extends BaseCRUDTestWithMock
 
     assertThatThrownBy(
             () ->
-                temporaryCredentialOperations.generateTemporaryModelVersionCredentials(
+                temporaryCredentialsApi.generateTemporaryModelVersionCredentials(
                     generateUnknownOperation))
         .isInstanceOf(ApiException.class)
         .hasFieldOrPropertyWithValue("code", ErrorCode.INVALID_ARGUMENT.getHttpStatus().code());
   }
 
   @ParameterizedTest
-  @MethodSource("provideTestArguments")
+  @MethodSource("getArgumentsForParameterizedTests")
   public void testGenerateTemporaryCredentialsWhereConfIsProvided(
       String scheme, boolean isConfiguredPath) throws ApiException {
     String url = getTestCloudPath(scheme, isConfiguredPath);
@@ -277,13 +273,12 @@ public class SdkTemporaryModelVersionCredentialTest extends BaseCRUDTestWithMock
             .operation(ModelVersionOperation.READ_MODEL_VERSION);
     if (isConfiguredPath) {
       TemporaryCredentials temporaryCredentials =
-          temporaryCredentialOperations.generateTemporaryModelVersionCredentials(
-              generateCloudReadyCreds);
+          temporaryCredentialsApi.generateTemporaryModelVersionCredentials(generateCloudReadyCreds);
       assertTemporaryCredentials(temporaryCredentials, scheme);
     } else {
       assertThatThrownBy(
               () ->
-                  temporaryCredentialOperations.generateTemporaryModelVersionCredentials(
+                  temporaryCredentialsApi.generateTemporaryModelVersionCredentials(
                       generateCloudReadyCreds))
           .isInstanceOf(ApiException.class);
     }
