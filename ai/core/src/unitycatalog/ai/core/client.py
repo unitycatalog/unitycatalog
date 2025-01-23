@@ -470,9 +470,15 @@ class UnitycatalogFunctionClient(BaseFunctionClient):
             comment=comment,
         )
         function_request = CreateFunctionRequest(function_info=function_info)
-        return await self.uc.functions_client.create_function(
+        function_metadata = await self.uc.functions_client.create_function(
             function_request, _request_timeout=timeout
         )
+        # NB: Clearing the function cache here only if the function creation is successful
+        # to ensure that the cache state is viable and any replacement operations, on next execution,
+        # refresh the cache with the new function definition
+        if replace:
+            self.clear_function_cache()
+        return function_metadata
 
     @override
     @syncify_method

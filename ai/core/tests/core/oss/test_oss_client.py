@@ -858,6 +858,54 @@ async def test_function_caching(uc_client):
 
 
 @pytest.mark.asyncio
+async def test_function_overwrite_cache_invalidate(uc_client):
+    function_name = f"{CATALOG}.{SCHEMA}.cached_function_check"
+    routine_definition = "return x * 2"
+    data_type = "INT"
+    parameters = [
+        FunctionParameterInfo(
+            name="x",
+            type_text="int",
+            type_json='{"name":"x","type":"int","nullable":false,"metadata":{}}',
+            type_name="INT",
+            position=0,
+        )
+    ]
+
+    uc_client.create_function(
+        function_name=function_name,
+        routine_definition=routine_definition,
+        data_type=data_type,
+        full_data_type=data_type,
+        parameters=parameters,
+        timeout=10,
+        replace=True,
+        comment="test",
+    )
+
+    # Execute the function to cache it
+    result1 = uc_client.execute_function(function_name=function_name, parameters={"x": 2})
+    assert result1.value == "4"
+
+    # Overwrite the function with a new definition
+    new_routine_definition = "return x * 3"
+    uc_client.create_function(
+        function_name=function_name,
+        routine_definition=new_routine_definition,
+        data_type=data_type,
+        full_data_type=data_type,
+        parameters=parameters,
+        timeout=10,
+        replace=True,
+        comment="test",
+    )
+
+    # Execute the function again to check if the cache is invalidated
+    result2 = uc_client.execute_function(function_name=function_name, parameters={"x": 2})
+    assert result2.value == "6"
+
+
+@pytest.mark.asyncio
 async def test_to_dict(uc_client):
     client_dict = uc_client.to_dict()
     assert isinstance(client_dict, dict)
