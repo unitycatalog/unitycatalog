@@ -16,8 +16,11 @@ import org.hibernate.Session;
 import org.hibernate.SessionFactory;
 import org.hibernate.Transaction;
 import org.hibernate.query.Query;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 public class ExternalLocationRepository {
+  private static final Logger LOGGER = LoggerFactory.getLogger(ExternalLocationRepository.class);
   private final Repositories repositories;
   private final SessionFactory sessionFactory;
   private static final PagedListingHelper<ExternalLocationDAO> LISTING_HELPER =
@@ -45,7 +48,6 @@ public class ExternalLocationRepository {
               .url(createExternalLocation.getUrl())
               .comment(createExternalLocation.getComment())
               .owner(callerId)
-              .accessPoint(createExternalLocation.getAccessPoint())
               .credentialId(storageCredentialDAO.getId())
               .createdAt(new Date())
               .createdBy(callerId)
@@ -58,10 +60,12 @@ public class ExternalLocationRepository {
               "External location already exists: " + createExternalLocation.getName());
         }
         session.persist(externalLocationDAO);
+        LOGGER.info("External location added: {}", externalLocationDAO.getName());
         tx.commit();
         return externalLocationDAO;
       } catch (Exception e) {
         tx.rollback();
+        LOGGER.error("Failed to add external location", e);
         throw e;
       }
     }
@@ -76,16 +80,18 @@ public class ExternalLocationRepository {
         if (externalLocationDAO == null) {
           throw new BaseException(ErrorCode.NOT_FOUND, "External location not found: " + name);
         }
+        LOGGER.info("External location retrieved: {}", externalLocationDAO.getName());
         tx.commit();
         return externalLocationDAO.toExternalLocationInfo();
       } catch (Exception e) {
         tx.rollback();
+        LOGGER.error("Failed to get external location", e);
         throw e;
       }
     }
   }
 
-  public ExternalLocationDAO getExternalLocationDAO(Session session, String name) {
+  private ExternalLocationDAO getExternalLocationDAO(Session session, String name) {
     Query<ExternalLocationDAO> query =
         session.createQuery(
             "FROM ExternalLocationDAO WHERE name = :value", ExternalLocationDAO.class);
@@ -101,7 +107,7 @@ public class ExternalLocationRepository {
       Transaction tx = session.beginTransaction();
       try {
         List<ExternalLocationDAO> daoList =
-            LISTING_HELPER.listEntity(session, maxResults, pageToken, null);
+            LISTING_HELPER.listEntity(session, maxResults, pageToken, /* parentEntityId = */ null);
         String nextPageToken = LISTING_HELPER.getNextPageToken(daoList, maxResults);
         List<ExternalLocationInfo> results = new ArrayList<>();
         for (ExternalLocationDAO dao : daoList) {
@@ -113,6 +119,7 @@ public class ExternalLocationRepository {
             .nextPageToken(nextPageToken);
       } catch (Exception e) {
         tx.rollback();
+        LOGGER.error("Failed to list external locations", e);
         throw e;
       }
     }
@@ -146,9 +153,6 @@ public class ExternalLocationRepository {
         if (updateExternalLocation.getComment() != null) {
           existingLocation.setComment(updateExternalLocation.getComment());
         }
-        if (updateExternalLocation.getAccessPoint() != null) {
-          existingLocation.setAccessPoint(updateExternalLocation.getAccessPoint());
-        }
         if (updateExternalLocation.getCredentialName() != null) {
           StorageCredentialDAO storageCredentialDAO =
               repositories
@@ -166,10 +170,12 @@ public class ExternalLocationRepository {
         existingLocation.setUpdatedBy(callerId);
 
         session.merge(existingLocation);
+        LOGGER.info("Updated external location: {}", name);
         tx.commit();
         return existingLocation.toExternalLocationInfo();
       } catch (Exception e) {
         tx.rollback();
+        LOGGER.error("Failed to update external location", e);
         throw e;
       }
     }
@@ -184,10 +190,12 @@ public class ExternalLocationRepository {
           throw new BaseException(ErrorCode.NOT_FOUND, "External location not found: " + name);
         }
         session.remove(existingLocation);
+        LOGGER.info("Deleted external location: {}", name);
         tx.commit();
         return existingLocation;
       } catch (Exception e) {
         tx.rollback();
+        LOGGER.error("Failed to delete external location", e);
         throw e;
       }
     }

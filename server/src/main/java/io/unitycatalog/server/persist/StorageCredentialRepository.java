@@ -15,8 +15,11 @@ import org.hibernate.Session;
 import org.hibernate.SessionFactory;
 import org.hibernate.Transaction;
 import org.hibernate.query.Query;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 public class StorageCredentialRepository {
+  private static final Logger LOGGER = LoggerFactory.getLogger(StorageCredentialRepository.class);
   private final Repositories repositories;
   private final SessionFactory sessionFactory;
   private static final PagedListingHelper<StorageCredentialDAO> LISTING_HELPER =
@@ -63,10 +66,12 @@ public class StorageCredentialRepository {
               "Storage credential already exists: " + createStorageCredential.getName());
         }
         session.persist(StorageCredentialDAO.from(storageCredentialInfo));
+        LOGGER.info("Added storage credential: {}", storageCredentialInfo.getName());
         tx.commit();
         return storageCredentialInfo;
       } catch (Exception e) {
         tx.rollback();
+        LOGGER.error("Failed to add storage credential", e);
         throw e;
       }
     }
@@ -81,10 +86,12 @@ public class StorageCredentialRepository {
         if (dao == null) {
           throw new BaseException(ErrorCode.NOT_FOUND, "Storage credential not found: " + name);
         }
+        LOGGER.info("Retrieved storage credential: {}", name);
         tx.commit();
         return dao.toStorageCredentialInfo();
       } catch (Exception e) {
         tx.rollback();
+        LOGGER.error("Failed to get storage credential", e);
         throw e;
       }
     }
@@ -106,7 +113,7 @@ public class StorageCredentialRepository {
       Transaction tx = session.beginTransaction();
       try {
         List<StorageCredentialDAO> daoList =
-            LISTING_HELPER.listEntity(session, maxResults, pageToken, null);
+            LISTING_HELPER.listEntity(session, maxResults, pageToken, /* parentEntityId = */ null);
         String nextPageToken = LISTING_HELPER.getNextPageToken(daoList, maxResults);
         List<StorageCredentialInfo> results = new ArrayList<>();
         for (StorageCredentialDAO dao : daoList) {
@@ -118,6 +125,7 @@ public class StorageCredentialRepository {
             .nextPageToken(nextPageToken);
       } catch (Exception e) {
         tx.rollback();
+        LOGGER.error("Failed to list storage credentials", e);
         throw e;
       }
     }
@@ -153,16 +161,18 @@ public class StorageCredentialRepository {
         existingCredential.setUpdatedBy(callerId);
 
         session.merge(existingCredential);
+        LOGGER.info("Updated storage credential: {}", name);
         tx.commit();
         return existingCredential.toStorageCredentialInfo();
       } catch (Exception e) {
         tx.rollback();
+        LOGGER.error("Failed to update storage credential", e);
         throw e;
       }
     }
   }
 
-  public static void updateCredentialFields(
+  private static void updateCredentialFields(
       StorageCredentialDAO existingCredential, UpdateStorageCredential updateStorageCredential) {
     try {
       if (updateStorageCredential.getAwsIamRole() != null) {
@@ -191,16 +201,18 @@ public class StorageCredentialRepository {
           throw new BaseException(ErrorCode.NOT_FOUND, "Storage credential not found: " + name);
         }
         session.remove(existingCredential);
+        LOGGER.info("Deleted storage credential: {}", name);
         tx.commit();
         return existingCredential.toStorageCredentialInfo();
       } catch (Exception e) {
         tx.rollback();
+        LOGGER.error("Failed to delete storage credential", e);
         throw e;
       }
     }
   }
 
-  public static AwsIamRoleResponse fromAwsIamRoleRequest(AwsIamRoleRequest awsIamRoleRequest) {
+  private static AwsIamRoleResponse fromAwsIamRoleRequest(AwsIamRoleRequest awsIamRoleRequest) {
     // TODO: add external id and unity catalog server iam role
     return new AwsIamRoleResponse().roleArn(awsIamRoleRequest.getRoleArn());
   }
