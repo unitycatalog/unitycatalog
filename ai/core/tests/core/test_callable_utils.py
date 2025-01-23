@@ -186,7 +186,6 @@ def test_function_with_extra_docstring_params_ignored():
             func_with_extra_param_in_docstring, "test_catalog", "test_schema"
         )
 
-    # Define the expected SQL, stripping leading/trailing whitespace for accurate comparison
     expected_sql = """
 CREATE FUNCTION `test_catalog`.`test_schema`.`func_with_extra_param_in_docstring`(a LONG COMMENT 'The first argument')
 RETURNS STRING
@@ -197,11 +196,107 @@ AS $$
 $$;
     """
 
-    assert (
-        sql_body.strip() == expected_sql.strip()
-    ), f"Generated SQL does not match expected SQL.\nGenerated SQL:\n{sql_body}\nExpected SQL:\n{expected_sql}"
+    assert sql_body.strip() == expected_sql.strip()
 
     assert len(record) == 1
+
+
+# ---------------------------
+# Tests for environment dependency specifications
+# ---------------------------
+
+
+def test_environment_dependencies_formatting():
+    def func_with_env_deps(a: int) -> str:
+        """
+        A function that requires specific environment dependencies.
+
+        Args:
+            a: An integer
+
+        Returns:
+            str: A string representation of the integer
+        """
+        return str(a)
+
+    sql_body = generate_sql_function_body(
+        func_with_env_deps, "test_catalog", "test_schema", True, ["numpy", "pandas"]
+    )
+
+    expected_sql = """
+CREATE OR REPLACE FUNCTION `test_catalog`.`test_schema`.`func_with_env_deps`(a LONG COMMENT 'An integer')
+RETURNS STRING
+LANGUAGE PYTHON
+ENVIRONMENT (dependencies = '["numpy", "pandas"]', environment_version = 'None')
+COMMENT 'A function that requires specific environment dependencies.'
+AS $$
+    return str(a)
+$$;
+    """
+
+    assert sql_body.strip() == expected_sql.strip()
+
+
+def test_environment_dependencies_formatting_env_specified():
+    def func_with_env_deps(a: int) -> str:
+        """
+        A function that requires specific environment dependencies.
+
+        Args:
+            a: An integer
+
+        Returns:
+            str: A string representation of the integer
+        """
+        return str(a)
+
+    sql_body = generate_sql_function_body(
+        func_with_env_deps, "test_catalog", "test_schema", True, ["numpy", "pandas"], "1"
+    )
+
+    expected_sql = """
+CREATE OR REPLACE FUNCTION `test_catalog`.`test_schema`.`func_with_env_deps`(a LONG COMMENT 'An integer')
+RETURNS STRING
+LANGUAGE PYTHON
+ENVIRONMENT (dependencies = '["numpy", "pandas"]', environment_version = '1')
+COMMENT 'A function that requires specific environment dependencies.'
+AS $$
+    return str(a)
+$$;
+    """
+
+    assert sql_body.strip() == expected_sql.strip()
+
+
+def test_environment_version_formatting_no_deps():
+    def func_with_env_deps(a: int) -> str:
+        """
+        A function that requires specific environment dependencies.
+
+        Args:
+            a: An integer
+
+        Returns:
+            str: A string representation of the integer
+        """
+        return str(a)
+
+    sql_body = generate_sql_function_body(
+        func_with_env_deps, "test_catalog", "test_schema", True, environment_version="1"
+    )
+
+    expected_sql = """
+CREATE OR REPLACE FUNCTION `test_catalog`.`test_schema`.`func_with_env_deps`(a LONG COMMENT 'An integer')
+RETURNS STRING
+LANGUAGE PYTHON
+ENVIRONMENT (environment_version = '1')
+COMMENT 'A function that requires specific environment dependencies.'
+AS $$
+    return str(a)
+$$;
+    """
+
+    assert sql_body.strip() == expected_sql.strip()
 
 
 # ---------------------------

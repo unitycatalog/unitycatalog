@@ -304,9 +304,15 @@ class DatabricksFunctionClient(BaseFunctionClient):
     @retry_on_session_expiration
     @override
     def create_python_function(
-        self, *, func: Callable[..., Any], catalog: str, schema: str, replace: bool = False
+        self,
+        *,
+        func: Callable[..., Any],
+        catalog: str,
+        schema: str,
+        replace: bool = False,
+        dependencies: Optional[list[str]] = None,
+        environment_version: str = "None",
     ) -> "FunctionInfo":
-        # TODO: migrate this guide to the documentation
         """
         Create a Unity Catalog (UC) function directly from a Python function.
 
@@ -437,6 +443,8 @@ class DatabricksFunctionClient(BaseFunctionClient):
             catalog (str): The catalog name in which to create the function.
             schema (str): The schema name in which to create the function.
             replace (bool): Whether to replace the function if it already exists. Defaults to False.
+            dependencies (list[str]): A list of external dependencies required by the function. Defaults to an empty list.
+            environment_version (str): The version of the environment in which the function will be executed. Defaults to 'None'.
 
         Returns:
             FunctionInfo: Metadata about the created function, including its name and signature.
@@ -445,7 +453,9 @@ class DatabricksFunctionClient(BaseFunctionClient):
         if not callable(func):
             raise ValueError("The provided function is not callable.")
 
-        sql_function_body = generate_sql_function_body(func, catalog, schema, replace)
+        sql_function_body = generate_sql_function_body(
+            func, catalog, schema, replace, dependencies, environment_version
+        )
 
         return self.create_function(sql_function_body=sql_function_body)
 

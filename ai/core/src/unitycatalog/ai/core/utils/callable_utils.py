@@ -1,5 +1,6 @@
 import ast
 import inspect
+import json
 import warnings
 from dataclasses import dataclass
 from textwrap import dedent, indent
@@ -345,6 +346,28 @@ def process_parameter(
         return f"{param_name} {sql_type} COMMENT '{param_comment}'"
 
 
+def construct_dependency_statement(
+    dependencies: Optional[list[str]] = None, environment_version: str = "None"
+) -> str:
+    """
+    Constructs the dependency statement for the SQL function.
+
+    Args:
+        dependencies: An optional list of PyPI dependencies for the function to utilize in the execution environment
+        environment_version: The version of the environment to use for the function. Defaults to "None".
+
+    Returns:
+        str: The constructed dependency statement.
+    """
+    if dependencies:
+        dependencies_json = json.dumps(dependencies)
+        return f"\nENVIRONMENT (dependencies = '{dependencies_json}', environment_version = '{environment_version}')"
+    elif environment_version != "None":
+        return f"\nENVIRONMENT (environment_version = '{environment_version}')"
+    else:
+        return ""
+
+
 def assemble_sql_body(
     catalog: str,
     schema: str,
@@ -354,6 +377,8 @@ def assemble_sql_body(
     func_comment: str,
     indented_body: str,
     replace: bool,
+    dependencies: Optional[list[str]] = None,
+    environment_version: str = "None",
 ) -> str:
     """
     Assembles the final SQL function body.
@@ -369,6 +394,8 @@ def assemble_sql_body(
         func_comment: Comment describing the function.
         indented_body: The indented body of the Python function.
         replace: Whether to include the 'OR REPLACE' clause.
+        dependencies: An optional list of PyPI dependencies for the function to utilize in the execution environment
+        environment_version: The version of the environment to use for the function. Defaults to "None".
 
     Returns:
         The assembled SQL function creation statement.
@@ -377,10 +404,11 @@ def assemble_sql_body(
     replace_command = "CREATE OR REPLACE" if replace else "CREATE"
     """Assembles the final SQL function body."""
     sql_params_str = ", ".join(sql_params)
+    environment_str = construct_dependency_statement(dependencies, environment_version)
     sql_body = f"""
 {replace_command} FUNCTION `{catalog}`.`{schema}`.`{func_name}`({sql_params_str})
 RETURNS {sql_return_type}
-LANGUAGE PYTHON
+LANGUAGE PYTHON{environment_str}
 COMMENT '{func_comment}'
 AS $$
 {indented_body}
@@ -493,7 +521,12 @@ def extract_function_metadata(func: Callable[..., Any]) -> FunctionMetadata:
 
 
 def generate_sql_function_body(
-    func: Callable[..., Any], catalog: str, schema: str, replace: bool = False
+    func: Callable[..., Any],
+    catalog: str,
+    schema: str,
+    replace: bool = False,
+    dependencies: Optional[list[str]] = None,
+    environment_version: str = "None",
 ) -> str:
     """
     Generate SQL body for creating the function in Unity Catalog.
@@ -502,6 +535,9 @@ def generate_sql_function_body(
         func: The Python callable function to convert into a UDF.
         catalog: The catalog name.
         schema: The schema name.
+        replace: Whether to replace the function if it already exists. Defaults to False.
+        dependencies: An optional list of PyPI dependencies for the function to utilize in the execution environment
+        environment_version: The version of the environment to use for the function. Defaults to "None".
 
     Returns:
         str: SQL statement for creating the UDF.
@@ -532,6 +568,8 @@ def generate_sql_function_body(
         func_comment,
         indented_body,
         replace,
+        dependencies,
+        environment_version,
     )
 
     return sql_body
