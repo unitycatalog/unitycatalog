@@ -14,7 +14,9 @@ export default function TableDetails() {
   if (!schema) throw new Error('Schema name is required');
   if (!table) throw new Error('Table name is required');
 
-  const { data } = useGetTable({ catalog, schema, table });
+  const { data } = useGetTable({
+    full_name: [catalog, schema, table].join('.'),
+  });
 
   if (!data) return null;
 
@@ -50,7 +52,9 @@ export default function TableDetails() {
         <Flex vertical gap="middle">
           <div>
             <Typography.Title level={5}>Description</Typography.Title>
-            <Typography.Text type="secondary">{data?.comment}</Typography.Text>
+            <Typography.Text type="secondary">
+              {data.comment ?? ''}
+            </Typography.Text>
           </div>
           <ColumnsList catalog={catalog} schema={schema} table={table} />
         </Flex>

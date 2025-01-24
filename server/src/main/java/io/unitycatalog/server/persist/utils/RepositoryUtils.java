@@ -19,8 +19,6 @@ import java.util.HashMap;
 import org.hibernate.Session;
 
 public class RepositoryUtils {
-  private static final SchemaRepository SCHEMA_REPOSITORY = SchemaRepository.getInstance();
-  private static final CatalogRepository CATALOG_REPOSITORY = CatalogRepository.getInstance();
 
   private static final Map<String, Class<?>> PROPERTY_TYPE_MAP = new HashMap<>();
   static {
@@ -59,22 +57,6 @@ public class RepositoryUtils {
   public static String getAssetFullName(
       String catalogName, String schemaName, String assetName) {
     return catalogName + "." + schemaName + "." + assetName;
-  }
-
-  public static UUID getSchemaId(Session session, String catalogName, String schemaName) {
-    SchemaInfoDAO schemaInfo = SCHEMA_REPOSITORY.getSchemaDAO(session, catalogName, schemaName);
-    if (schemaInfo == null) {
-      throw new BaseException(ErrorCode.NOT_FOUND, "Schema not found: " + schemaName);
-    }
-    return schemaInfo.getId();
-  }
-
-  public static UUID getCatalogId(Session session, String catalogName) {
-    CatalogInfoDAO catalogInfo = CATALOG_REPOSITORY.getCatalogDAO(session, catalogName);
-    if (catalogInfo == null) {
-      throw new BaseException(ErrorCode.NOT_FOUND, "Catalog not found: " + catalogName);
-    }
-    return catalogInfo.getId();
   }
 
   public static SchemaInfoDAO getSchemaByIdOrThrow(Session session, UUID schemaId) {

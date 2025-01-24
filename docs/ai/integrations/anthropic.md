@@ -16,39 +16,28 @@ pip install unitycatalog-anthropic
 ## Prerequisites
 
 - **Python version**: Python 3.10 or higher is required.
-- **Anthropic Access Token**: Ensure that you have an account and have generated your authentication token for access to Anthropic's services.
 
-Install the Anthropic SDK if you don't already have it in your environment:
+### Unity Catalog
 
-```sh
-pip install anthropic
-```
-
-### Unity Catalog Open Source
-
-Ensure that you have a functional UC server set up and that you are able to access the catalog and schema where defined functions are stored and that you install the Unity Catalog Python SDK:
-
-```sh
-pip install unitycatalog-client
-```
+Ensure that you have a functional UC server set up and that you are able to access the catalog and schema where defined functions are stored.
 
 ### Databricks Unity Catalog
 
-To interact with Databricks Unity Catalog, ensure that you have both the `databricks-sdk` and the `databricks-connect` packages installed:
+To interact with Databricks Unity Catalog, install the optional package dependency when installing the integration package:
 
 ```sh
-pip install databricks-sdk "databricks-connect>=15.1.0"
+pip install unitycatalog-anthropic[databricks]
 ```
 
 ## Tutorial
 
-### Client Setup - OSS Unity Catalog
+### Client Setup
 
 Create an instance of the Functions Client
 
 ```python
 from unitycatalog.client import ApiClient, Configuration
-from unitycatalog.ai.core.oss import UnitycatalogFunctionClient
+from unitycatalog.ai.core.client import UnitycatalogFunctionClient
 
 config = Configuration()
 # This is the default address when starting a UnityCatalog server locally. Update this to the uri

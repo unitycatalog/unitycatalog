@@ -9,6 +9,7 @@ from pydantic import ValidationError
 from unitycatalog.ai.core.base import FunctionExecutionResult
 from unitycatalog.ai.core.client import UnitycatalogFunctionClient
 from unitycatalog.ai.crewai.toolkit import UCFunctionToolkit
+from unitycatalog.ai.test_utils.function_utils import RETRIEVER_OUTPUT_CSV, RETRIEVER_OUTPUT_SCALAR
 from unitycatalog.ai.test_utils.function_utils_oss import (
     CATALOG,
     create_function_and_cleanup_oss,
@@ -191,6 +192,50 @@ async def test_uc_function_to_crewai_tool(uc_client):
         assert tool.cache_function(1, {1: 1})
         assert not tool.result_as_answer
         assert not tool.description_updated
+
+
+@pytest.mark.parametrize(
+    "format,function_output",
+    [
+        ("SCALAR", RETRIEVER_OUTPUT_SCALAR),
+        ("CSV", RETRIEVER_OUTPUT_CSV),
+    ],
+)
+@pytest.mark.asyncio
+async def test_crewai_tool_with_tracing_as_retriever(uc_client, format: str, function_output: str):
+    mock_function_info = generate_function_info()
+
+    with (
+        mock.patch(
+            "unitycatalog.ai.core.client.UnitycatalogFunctionClient.get_function",
+            return_value=mock_function_info,
+        ),
+        mock.patch(
+            "unitycatalog.ai.core.client.UnitycatalogFunctionClient._execute_uc_function",
+            return_value=FunctionExecutionResult(format=format, value=function_output),
+        ),
+        mock.patch("unitycatalog.ai.core.client.UnitycatalogFunctionClient.validate_input_params"),
+    ):
+        import mlflow
+
+        mlflow.crewai.autolog()
+
+        tool = UCFunctionToolkit.uc_function_to_crewai_tool(
+            function_name=f"catalog.schema.test_{format}", client=uc_client
+        )
+        result = tool.fn(x="some input")
+        assert json.loads(result)["value"] == function_output
+
+        import mlflow
+
+        trace = mlflow.get_last_active_trace()
+        assert trace is not None
+        assert trace.info.execution_time_ms is not None
+        assert trace.data.request == '{"x": "some input"}'
+        assert trace.data.response == RETRIEVER_OUTPUT_SCALAR
+        assert trace.data.spans[0].name == f"catalog.schema.test_{format}"
+
+        mlflow.crewai.autolog(disable=True)
 
 
 @pytest.mark.asyncio

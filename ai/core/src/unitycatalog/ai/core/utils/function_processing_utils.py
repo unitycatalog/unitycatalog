@@ -1,11 +1,16 @@
+import ast
 import decimal
 import inspect
 import json
 import logging
 import os
 from hashlib import md5
+from io import StringIO
 from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
+import pandas as pd
+import pydantic
+from packaging.version import Version
 from pydantic import Field, create_model
 
 from unitycatalog.ai.core.utils.config import JSON_SCHEMA_TYPE, UC_LIST_FUNCTIONS_MAX_RESULTS
@@ -15,9 +20,14 @@ from unitycatalog.ai.core.utils.pydantic_utils import (
     PydanticType,
 )
 from unitycatalog.ai.core.utils.type_utils import UC_TYPE_JSON_MAPPING
-from unitycatalog.ai.core.utils.validation_utils import FullFunctionName
+from unitycatalog.ai.core.utils.validation_utils import (
+    FullFunctionName,
+    is_valid_retriever_output,
+)
 
 _logger = logging.getLogger(__name__)
+
+IS_PYDANTIC_V2_OR_NEWER = Version(pydantic.VERSION).major >= 2
 
 
 def uc_type_json_to_pydantic_type(
@@ -179,10 +189,11 @@ def process_function_names(
                         page_token=token,
                         **list_kwarg,
                     )
+                    # TODO: get functions in parallel
                     for f in functions:
                         if f.full_name not in tools_dict:
                             tools_dict[f.full_name] = uc_function_to_tool_func(
-                                function_info=f, client=client, **kwargs
+                                function_name=f.full_name, client=client, **kwargs
                             )
                     token = functions.token
                     if token is None:
@@ -263,7 +274,11 @@ def generate_function_input_params_schema(
             pydantic_field.pydantic_type,
             Field(default=pydantic_field.default, description=pydantic_field.description),
         )
-    model = create_model(params_name, **fields)
+    if IS_PYDANTIC_V2_OR_NEWER:
+        model = create_model(params_name, **fields, __config__={"extra": "forbid"})
+    else:
+        model = create_model(params_name, **fields, config=pydantic.ConfigDict(extra="forbid"))
+
     return PydanticFunctionInputParams(pydantic_model=model, strict=pydantic_field.strict)
 
 
@@ -304,3 +319,69 @@ def supported_function_info_types():
         pass
 
     return types
+
+
+def auto_trace_retriever(
+    function_name: str,
+    parameters: Dict[str, Any],
+    result: "FunctionExecutionResult",
+    start_time_ns: int,
+    end_time_ns: int,
+):
+    """
+    If the given function is a retriever, trace the function given the provided start and end time.
+    A function is considered a retriever if the result is of valid retriever output format.
+
+    Args:
+        function_name: The function name.
+        parameters: The input parameters to the function.
+        result: The output result of the function.
+        start_time_ns: The start time of the function in nanoseconds.
+        end_time_ns: The end time of the function in nanoseconds.
+    """
+    try:
+        if result.format == "CSV":
+            df = pd.read_csv(StringIO(result.value))
+            if "metadata" in df.columns:
+                df["metadata"] = df["metadata"].apply(ast.literal_eval)
+            output = df.to_dict(orient="records")
+        else:
+            value = result.value
+            output = ast.literal_eval(value) if isinstance(value, str) else value
+
+        if is_valid_retriever_output(output):
+            import mlflow
+            from mlflow import MlflowClient
+            from mlflow.entities import SpanType
+
+            client = MlflowClient()
+            common_params = dict(
+                name=function_name,
+                span_type=SpanType.RETRIEVER,
+                inputs=parameters,
+                start_time_ns=start_time_ns,
+            )
+
+            if parent_span := mlflow.get_current_active_span():
+                span = client.start_span(
+                    request_id=parent_span.request_id,
+                    parent_id=parent_span.span_id,
+                    **common_params,
+                )
+                client.end_span(
+                    request_id=span.request_id,
+                    span_id=span.span_id,
+                    outputs=output,
+                    end_time_ns=end_time_ns,
+                )
+            else:
+                span = client.start_trace(**common_params)
+                client.end_trace(
+                    request_id=span.request_id, outputs=output, end_time_ns=end_time_ns
+                )
+    except Exception as e:
+        # Ignoring exceptions because auto-tracing retriever is not essential functionality
+        _logger.debug(
+            f"Skipping tracing {function_name} as a retriever because of the following error:\n {e}"
+        )
+        pass
