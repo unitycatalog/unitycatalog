@@ -15,6 +15,10 @@ The CLI tool allows users to interact with a Unity Catalog server to create and 
 
     where `$token` is the authentication token provided by an identity provider. For more information on how to support both authentication and authorization, please refer to the [auth](../server/auth.md) documentation.
 
+!!! tip "Use UI"
+
+    You can also use the Unity Catalog UI to interact with your catalogs. See the [UI documentation](ui.md) to learn how.
+
 ## Catalog Management CLI Usage
 
 You can use the Unity Catalog CLI to manage catalogs within your system. The `bin/uc` script supports various operations such as creating, retrieving, listing, updating and deleting catalogs. Let's take a look at each operation.

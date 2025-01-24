@@ -2,7 +2,7 @@
 
 This page shows you how to use Unity Catalog to store, access, and govern Registered Models and Model Versions.
 
-Registered Models are logical containers for ML models within Unity Catalog.  A registered model is comprised of any
+Registered Models are logical containers for ML models within Unity Catalog. A registered model is comprised of any
 number of Model Versions which represent different iterations of the model that you with to keep track of from within
 Unity Catalog.
 
@@ -15,13 +15,14 @@ The following diagram shows how Unity Catalog and MLflow work together from trac
 The MLflow client connects both MLflow and Unity Catalog services (via `port:5000` and `port:8080` respectively).
 
 1. When you are running your training runs with MLflow, the metrics generated in those training runs are stored within
-    MLflow.
+   MLflow.
 2. For those same training runs, models are often generated, and those models are also stored within MLflow.
 3. Once you have decided which model you want to register, you can register and store that model into Unity Catalog.
 
 ## Setting up MLflow and Unity Catalog
 
 !!! warning "Prerequisites"
+
     For Unity Catalog MLflow Integration, ensure you are using MLflow version >= 2.16.1 and Unity Catalog >= 0.2.
 
 ### Spin up Unity Catalog
@@ -29,7 +30,8 @@ The MLflow client connects both MLflow and Unity Catalog services (via `port:500
 We will use a local Unity Catalog server to get started.
 
 !!! question "First time working with Unity Catalog?"
-     If this is your first time spinning up a UC server, you might want to check out the
+
+    If this is your first time spinning up a UC server, you might want to check out the
     [Quickstart](../quickstart.md) first.
 
 Spin up a local UC server by running the following code in a terminal from the root directory of your local
@@ -86,7 +88,7 @@ X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_
 
 with mlflow.start_run():
     # Train a sklearn model on the iris dataset
-    clf = RandomForestClassifier(max_depth=7) 
+    clf = RandomForestClassifier(max_depth=7)
     clf.fit(X_train, y_train) # (1)
 
     # Take the first row of the training dataset as the model input example.
@@ -105,11 +107,11 @@ with mlflow.start_run():
 ```
 
 1. `clf` is a Random Forest Classifier and it is being trained from training data (`X_train`, `Y_train`) from the Iris
-    dataset.
+   dataset.
 2. The `artifact_path` contains the model we just trained and it is common to have multiple training runs with
-    multiple models generated and stored with MLflow.
+   multiple models generated and stored with MLflow.
 3. Because we had earlier specified `mlflow.set_registry_uri("uc:http://127.0.0.1:8080")`, the MLflow client will
-    register the model to Unity Catalog.
+   register the model to Unity Catalog.
 
 Upon successful registration of the model, you should see the following output.
 
@@ -123,7 +125,7 @@ Created version '1' of model 'unity.default.iris'.
 ```
 
 The results can be seen in the Unity Catalog UI at [http://localhost:3000](http://localhost:3000). For more
-information, dive deeper into the [Unity Catalog UI](./ui.md).  
+information, dive deeper into the [Unity Catalog UI](./ui.md).
 
 ![UC UI Models](../assets/images/uc_ui_models.png)
 
@@ -131,19 +133,20 @@ information, dive deeper into the [Unity Catalog UI](./ui.md).
 
 As you can see in the UI, there is an implied hierarchy of a three-part naming convention within Unity Catalog that is
 applicable to data and AI assets. The hierarchy of `catalog -> schema -> asset` plays out as the `unity` catalog,
-`default` schema, and `iris` asset (in this case ML model).  
+`default` schema, and `iris` asset (in this case ML model).
 
 ![Unity Catalog Model Hierarchy](../assets/images/unitycatalog-model-hierarchy.png)
 
 This convention allows us to apply governance to these assets (e.g., models, tables, volumes, and functions) in a
 similar fashion. You can also see the training run(s) and model(s) in the MLflow UI at
-[http://127.0.0.1:5000/](http://127.0.0.1:5000/).  
+[http://127.0.0.1:5000/](http://127.0.0.1:5000/).
 
 ![MLflow Unity Catalog Model View 2.0](../assets/images/mlflow-unitycatalog-model-view-2.0.gif)
 
 ---
 
 !!! note "MLflow Guides"
+
     Please see the [MLflow quickstart guides](https://mlflow.org/docs/latest/getting-started/index.html) and the
     [MLflow python API](https://mlflow.org/docs/latest/python_api/index.html) to learn how to use the MLflow client to
     train, register, and use models from with the Unity Catalog server.
@@ -193,7 +196,8 @@ This code snippet uses the `unity.default.iris` model to predict the class (`pre
 ```
 
 !!! tip
-    The UC CLI also has support for interacting with models in the Unity Catalog server. It is recommended that you
+
+    The Unity Catalog CLI also has support for interacting with models in the Unity Catalog server. It is recommended that you
     interact with models in Unity Catalog using the MLflow client.
 
 ## Inspecting Registered Models and Model Versions
@@ -396,7 +400,7 @@ which will return the updated model version metadata:
 Using the Unity Catalog CLI you can also delete model versions and registered models.
 
 ```sh title="Delete model version"
-# Delete model version 
+# Delete model version
 bin/uc model_version delete --full_name unity.default.iris2 --version 1
 ```
 

@@ -13,7 +13,7 @@ git clone git@github.com:unitycatalog/unitycatalog.git
 > To start Unity Catalog in Docker, refer to the [Docker
 > Compose docs](docker_compose.md).
 
-To run Unity Catalog, you need **Java 17** installed on your machine.  You can
+To run Unity Catalog, you need **Java 17** installed on your machine. You can
 always run the `java --version` command to verify that you have the right
 version of Java installed such as the following example output.
 
@@ -28,7 +28,7 @@ Change into the `unitycatalog` directory and run `bin/start-uc-server` to instan
 should see:
 
 ```console
-################################################################### 
+###################################################################
 #  _    _       _ _            _____      _        _              #
 # | |  | |     (_) |          / ____|    | |      | |             #
 # | |  | |_ __  _| |_ _   _  | |     __ _| |_ __ _| | ___   __ _  #
@@ -236,7 +236,8 @@ bin/uc table create --full_name unity.default.mytable \
 If you list the tables (e.g., `bin/uc table list --catalog unity --schema default`) again, you should see this new table.
 
 !!! note "mytable is an empty table"
-     Note, at this point, `unity.default.mytable` is an empty table; e.g. if you run
+
+    Note, at this point, `unity.default.mytable` is an empty table; e.g. if you run
     `bin/uc table read --full_name unity.default.mytable` there will be no rows.
 
 Next, append some randomly generated data to the table using `write`.
@@ -272,7 +273,7 @@ bin/uc table delete --full_name unity.default.mytable
 ```
 
 > Note, while you have deleted the table from Unity Catalog, the underlying file system may still have the files (i.e.,
-check the /tmp/uc/my_table/ folder).  
+> check the /tmp/uc/my_table/ folder).
 
 ## Interact with the Unity Catalog UI
 
@@ -281,21 +282,32 @@ check the /tmp/uc/my_table/ folder).
 To use the Unity Catalog UI, start a new terminal and ensure you have already started the UC server (e.g., `./bin/start-uc-server`)
 
 !!! warning "Prerequisites"
+
     The Unity Catalog UI requires both [Node](https://nodejs.org/en/download/package-manager) and [Yarn](https://classic.yarnpkg.com/lang/en/docs/install).
 
 To start the UI locally, run the following commands to start `yarn`
 
 ```console
-cd /ui
+cd ui/
 yarn install
 yarn start
 ```
+
+See the [UI documentation](usage/ui.md) for more information.
+
+## Define access permissions with Auth
+
+Unity Catalog integrates with external authentication providers (e.g. Google Auth, Okta, etc.) to enable authentication. You can use this feature to secure access to your data assets.
+
+Unity Catalog also provides an internal user database to restrict user access by defining roles and permissions. To configure your external authentication provider and set up the Unity Catalog server correctly, follow the instructions in the [Auth documentation](server/auth.md).
+
+![Unity Catalog Authentication and Authorization Simplified](assets/images/uc-auth-diagram-simplified.png)
 
 ## Manage models in Unity Catalog using MLflow
 
 Unity Catalog supports the management and governance of ML models as securable assets. Starting with
 [MLflow 2.16.1](https://mlflow.org/releases/2.16.1), MLflow offers integrated support for using Unity Catalog as the
-backing resource for the MLflow model registry.  What this means is that with the MLflow client, you will be able to
+backing resource for the MLflow model registry. What this means is that with the MLflow client, you will be able to
 interact directly with your Unity Catalog service for the creation and access of registered models.
 
 ### Setup MLflow for usage with Unity Catalog
@@ -374,7 +386,7 @@ This code snippet will create a registered model `default.unity.iris` and log th
 then loads the model from the Unity Catalog server, and performs batch inference on the test set using the loaded model.
 
 The results can be seen in the Unity Catalog UI at [http://localhost:3000,](http://localhost:3000) per the instructions
-in the [Interact with the Unity Catalog tutorial](https://github.com/unitycatalog/unitycatalog?tab=readme-ov-file#interact-with-the-unity-catalog-ui).
+in the [Unity Catalog UI documentation](usage/ui.md).
 
 ![UC UI models](./assets/images/uc_ui_models.png)
 

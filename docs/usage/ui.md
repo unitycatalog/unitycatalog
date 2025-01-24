@@ -1,8 +1,14 @@
 # Unity Catalog UI
 
+This page shows you how to use the Unity Catalog UI.
+
 The Unity Catalog UI allows you to interact with a Unity Catalog server to view or create data and AI assets.
 
 ![UC UI](../assets/images/ui/uc-ui-expanded.png)
+
+!!! tip "Use CLI"
+
+    You can also use the Unity Catalog CLI to interact with your catalogs. See the [CLI documentation](cli.md) to learn how.
 
 ## Start Unity Catalog UI locally
 
@@ -10,6 +16,7 @@ To use the Unity Catalog UI, start a new terminal and ensure you have already st
 (e.g., `./bin/start-uc-server`)
 
 !!! warning "Prerequisites"
+
     The Unity Catalog UI requires both [Node](https://nodejs.org/en/download/package-manager) and
     [Yarn](https://classic.yarnpkg.com/lang/en/docs/install).
 
@@ -33,7 +40,6 @@ The following steps show how you can create, describe, and delete UC catalogs.
     **Create Catalog** button to the right.
 
     ![](../assets/images/ui/uc-ui-catalog-create-1.png)
-    
 
 === "2. Create catalog dialog"
 
@@ -59,7 +65,6 @@ The following steps show how you can create, describe, and delete UC schemas.
     **Create Schemas** button to the right to create a new schema.
 
     ![](../assets/images/ui/uc-ui-schema-create-1.png)
-    
 
 === "2. Create schemas dialog"
 
@@ -84,7 +89,7 @@ The following steps show how you can view your UC table metadata and description
     Click on the schema (e.g., `unity.demo`) to view its tables.
 
     ![](../assets/images/ui/uc-ui-tables-1.png)
-    
+
 === "2. View tables in schema (2)"
 
     Click on the schema (e.g., `unity.default`) to view its tables.
@@ -109,7 +114,7 @@ The following steps show how you can view your UC volume metadata and descriptio
     Using the left-hand nav bar, click on *catalog > schema* (e.g., `unity` > `default`) to view the available volumes.
 
     ![](../assets/images/ui/uc-ui-volumes-1.png)
-    
+
 === "2. View volume metadata"
 
     Click on the volume (e.g., `unity.default.txt_files`) to view its metadata.  You have the option to delete it by
@@ -135,7 +140,7 @@ The following steps show how you can view your UC functions metadata and descrip
     functions.
 
     ![](../assets/images/ui/uc-ui-functions-1.png)
-    
+
 === "2. View functions metadata"
 
     Click on the volume (e.g., `unity.default.lowercase`) to view its metadata.  You have the option to delete it by
