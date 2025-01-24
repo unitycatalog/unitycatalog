@@ -113,7 +113,7 @@ Unity Catalog provides a nice organizational structure for various datasets.
 
 ## List the catalogs and schemas with the CLI
 
-The UC server is pre-populated with a few sample catalogs, schemas, Delta tables, etc.
+The Unity Catalog server is pre-populated with a few sample catalogs, schemas, Delta tables, etc.
 
 Let's start by listing the catalogs using the CLI.
 
@@ -278,7 +278,7 @@ check the /tmp/uc/my_table/ folder).
 
 ![UC UI](./assets/images/uc-ui.png)
 
-To use the Unity Catalog UI, start a new terminal and ensure you have already started the UC server (e.g., `./bin/start-uc-server`)
+To use the Unity Catalog UI, start a new terminal and ensure you have already started the Unity Catalog server (e.g., `./bin/start-uc-server`)
 
 !!! warning "Prerequisites"
     The Unity Catalog UI requires both [Node](https://nodejs.org/en/download/package-manager) and [Yarn](https://classic.yarnpkg.com/lang/en/docs/install).
@@ -352,7 +352,7 @@ with mlflow.start_run():
     clf.fit(X_train, y_train)
     # Take the first row of the training dataset as the model input example.
     input_example = X_train.iloc[[0]]
-    # Log the model and register it as a new version in UC.
+    # Log the model and register it as a new version in Unity Catalog.
     mlflow.sklearn.log_model(
         sk_model=clf,
         artifact_path="model",
