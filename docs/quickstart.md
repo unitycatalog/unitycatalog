@@ -272,7 +272,7 @@ bin/uc table delete --full_name unity.default.mytable
 ```
 
 > Note, while you have deleted the table from Unity Catalog, the underlying file system may still have the files (i.e.,
-check the /tmp/uc/my_table/ folder).  
+check the /tmp/uc/my_table/folder).  
 
 ## Interact with the Unity Catalog UI
 
