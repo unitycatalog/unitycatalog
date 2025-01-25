@@ -158,42 +158,45 @@ def has_retriever_signature(function_info: "FunctionInfo") -> bool:
     Returns:
         bool: If the provided function has a valid retriever signature.
     """
-    if "TABLE_TYPE" not in str(function_info.data_type):
-        return False
+    valid_columns_dict = {"page_content": "STRING", "id": "STRING", "metadata": "MAP"}
 
-    full_data_type = function_info.full_data_type.strip()
-    if full_data_type.startswith("(") and full_data_type.endswith(")"):
-        full_data_type = full_data_type[1:-1]
+    if "TABLE_TYPE" in str(function_info.data_type):
+        params = [param.as_dict() for param in function_info.return_params.parameters]
+        param_dict = {param["name"]: param["type_name"] for param in params}
+        return (param_dict.items() <= valid_columns_dict.items() and "page_content" in param_dict)
+    else:
+        # We want to match something like the following data type
+        # ARRAY<STRUCT<page_content: STRING, id: STRING, metadata: MAP<STRING, STRING>>>
 
-    # Split on commas but respect data types such as MAP<STRING, STRING>
-    columns = re.split(r",\s*(?![^<]*>)", full_data_type)
-    columns = [col.strip() for col in columns]
+        full_data_type = function_info.full_data_type.strip()
 
-    valid_columns = {"page_content", "metadata", "id"}
-
-    has_page_content = False
-
-    for column in columns:
-        parts = column.split(None, 1)
-        if len(parts) != 2:
-            return False
-        name, col_type = parts
-
-        if name not in valid_columns:
+        match = re.match(r"ARRAY<STRUCT<(.*)>>", full_data_type)
+        if not match:
             return False
 
-        # Validate data type for the column
-        if name == "metadata":
-            if not col_type.startswith("MAP"):
+        # Split on commas but respect data types such as MAP<STRING, STRING>
+        columns = re.split(r",\s*(?![^<]*>)", match.group(1))
+
+        has_page_content = False
+        for column in columns:
+            parts = column.strip().split(None, 1)
+            if len(parts) != 2:
                 return False
-        else:
-            if col_type != "STRING":
+            name, col_type = parts
+
+            if name not in valid_columns_dict.keys():
                 return False
 
-        if name == "page_content":
-            has_page_content = True
+            # Validate data type for the column
+            if name == "metadata" and not col_type.startswith("MAP"):
+                return False
+            if name != "metadata" and col_type != "STRING":
+                return False
 
-    return has_page_content
+            if name == "page_content":
+                has_page_content = True
+
+        return has_page_content
 
 
 def mlflow_tracing_enabled(integration_name: str) -> bool:
