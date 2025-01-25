@@ -11,10 +11,6 @@ if TYPE_CHECKING:
 
 OSS_MAX_FUNCTION_NAME_LENGTH = 255
 
-import logging
-
-_logger = logging.getLogger(__name__)
-
 
 class FullFunctionName(NamedTuple):
     catalog: str
@@ -161,9 +157,11 @@ def has_retriever_signature(function_info: "FunctionInfo") -> bool:
     valid_columns_dict = {"page_content": "STRING", "id": "STRING", "metadata": "MAP"}
 
     if "TABLE_TYPE" in str(function_info.data_type):
-        params = [param.as_dict() for param in function_info.return_params.parameters]
-        param_dict = {param["name"]: param["type_name"] for param in params}
-        return (param_dict.items() <= valid_columns_dict.items() and "page_content" in param_dict)
+        if function_info.return_params:
+            params = [param.as_dict() for param in function_info.return_params.parameters]
+            param_dict = {param["name"]: param["type_name"] for param in params}
+            return (param_dict.items() <= valid_columns_dict.items() and "page_content" in param_dict)
+        return False
     else:
         # We want to match something like the following data type
         # ARRAY<STRUCT<page_content: STRING, id: STRING, metadata: MAP<STRING, STRING>>>
@@ -178,8 +176,9 @@ def has_retriever_signature(function_info: "FunctionInfo") -> bool:
         columns = re.split(r",\s*(?![^<]*>)", match.group(1))
 
         has_page_content = False
+
         for column in columns:
-            parts = column.strip().split(None, 1)
+            parts = re.split(r"[:\s]+", column.strip(), maxsplit=1)
             if len(parts) != 2:
                 return False
             name, col_type = parts
