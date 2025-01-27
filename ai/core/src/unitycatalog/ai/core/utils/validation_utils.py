@@ -157,10 +157,10 @@ def has_retriever_signature(function_info: "FunctionInfo") -> bool:
     valid_columns_dict = {"page_content": "STRING", "id": "STRING", "metadata": "MAP"}
 
     if "TABLE_TYPE" in str(function_info.data_type):
-        if function_info.return_params:
+        if function_info.return_params and function_info.return_params.parameters:
             params = [param.as_dict() for param in function_info.return_params.parameters]
             param_dict = {param["name"]: param["type_name"] for param in params}
-            return (param_dict.items() <= valid_columns_dict.items() and "page_content" in param_dict)
+            return param_dict.items() <= valid_columns_dict.items() and "page_content" in param_dict
         return False
     else:
         # We want to match something like the following data type

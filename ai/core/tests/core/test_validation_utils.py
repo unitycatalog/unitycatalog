@@ -124,7 +124,7 @@ def test_check_function_info(function_info, expected_warnings):
             FunctionInfo(
                 data_type=ColumnTypeName.STRING,
                 full_data_type="(page_content STRING)",
-                return_params=None
+                return_params=None,
             ),
             False,
         ),
@@ -134,9 +134,14 @@ def test_check_function_info(function_info, expected_warnings):
                 full_data_type="(page_content STRING)",
                 return_params=FunctionParameterInfos(
                     parameters=[
-                        FunctionParameterInfo(name="page_content", type_text="string", type_name=ColumnTypeName.STRING, position=0)
+                        FunctionParameterInfo(
+                            name="page_content",
+                            type_text="string",
+                            type_name=ColumnTypeName.STRING,
+                            position=0,
+                        )
                     ]
-                )
+                ),
             ),
             True,
         ),
@@ -146,11 +151,26 @@ def test_check_function_info(function_info, expected_warnings):
                 full_data_type="(page_content STRING, metadata MAP<STRING, STRING>, id STRING)",
                 return_params=FunctionParameterInfos(
                     parameters=[
-                        FunctionParameterInfo(name="page_content", type_text="string", type_name=ColumnTypeName.STRING, position=0),
-                        FunctionParameterInfo(name="metadata", type_text="map<string,string>", type_name=ColumnTypeName.MAP, position=1),
-                        FunctionParameterInfo(name="id", type_text="string", type_name=ColumnTypeName.STRING, position=2),
+                        FunctionParameterInfo(
+                            name="page_content",
+                            type_text="string",
+                            type_name=ColumnTypeName.STRING,
+                            position=0,
+                        ),
+                        FunctionParameterInfo(
+                            name="metadata",
+                            type_text="map<string,string>",
+                            type_name=ColumnTypeName.MAP,
+                            position=1,
+                        ),
+                        FunctionParameterInfo(
+                            name="id",
+                            type_text="string",
+                            type_name=ColumnTypeName.STRING,
+                            position=2,
+                        ),
                     ]
-                )
+                ),
             ),
             True,
         ),
@@ -160,10 +180,20 @@ def test_check_function_info(function_info, expected_warnings):
                 full_data_type="(metadata MAP<STRING, STRING>, id STRING)",
                 return_params=FunctionParameterInfos(
                     parameters=[
-                        FunctionParameterInfo(name="metadata", type_text="map<string,string>", type_name=ColumnTypeName.MAP, position=0),
-                        FunctionParameterInfo(name="id", type_text="string", type_name=ColumnTypeName.STRING, position=1),
+                        FunctionParameterInfo(
+                            name="metadata",
+                            type_text="map<string,string>",
+                            type_name=ColumnTypeName.MAP,
+                            position=0,
+                        ),
+                        FunctionParameterInfo(
+                            name="id",
+                            type_text="string",
+                            type_name=ColumnTypeName.STRING,
+                            position=1,
+                        ),
                     ]
-                )
+                ),
             ),
             False,
         ),
@@ -173,11 +203,26 @@ def test_check_function_info(function_info, expected_warnings):
                 full_data_type="(page_content STRING, metadata MAP<STRING, STRING>, extra_column STRING)",
                 return_params=FunctionParameterInfos(
                     parameters=[
-                        FunctionParameterInfo(name="page_content", type_text="string", type_name=ColumnTypeName.STRING, position=0),
-                        FunctionParameterInfo(name="metadata", type_text="map<string,string>", type_name=ColumnTypeName.MAP, position=1),
-                        FunctionParameterInfo(name="extra_column", type_text="string", type_name=ColumnTypeName.STRING, position=2),
+                        FunctionParameterInfo(
+                            name="page_content",
+                            type_text="string",
+                            type_name=ColumnTypeName.STRING,
+                            position=0,
+                        ),
+                        FunctionParameterInfo(
+                            name="metadata",
+                            type_text="map<string,string>",
+                            type_name=ColumnTypeName.MAP,
+                            position=1,
+                        ),
+                        FunctionParameterInfo(
+                            name="extra_column",
+                            type_text="string",
+                            type_name=ColumnTypeName.STRING,
+                            position=2,
+                        ),
                     ]
-                )
+                ),
             ),
             False,
         ),
@@ -185,9 +230,25 @@ def test_check_function_info(function_info, expected_warnings):
             FunctionInfo(
                 data_type=ColumnTypeName.STRUCT,
                 full_data_type="ARRAY<STRUCT<page_content: STRING, id: STRING, metadata: MAP<STRING, STRING>>>",
-                return_params=None
+                return_params=None,
             ),
             True,
+        ),
+        (
+            FunctionInfo(
+                data_type=ColumnTypeName.STRUCT,
+                full_data_type="ARRAY<STRUCT<id: STRING, metadata: MAP<STRING, STRING>>>",
+                return_params=None,
+            ),
+            False,
+        ),
+        (
+            FunctionInfo(
+                data_type=ColumnTypeName.STRUCT,
+                full_data_type="ARRAY<STRUCT<page_content: STRING, id: STRING, extra_column: MAP<STRING, STRING>>>",
+                return_params=None,
+            ),
+            False,
         ),
     ],
 )

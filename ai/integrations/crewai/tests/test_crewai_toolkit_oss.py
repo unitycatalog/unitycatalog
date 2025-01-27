@@ -4,24 +4,28 @@ from unittest import mock
 
 import pytest
 import pytest_asyncio
-from databricks.sdk.service.catalog import ColumnTypeName
+from databricks.sdk.service.catalog import (
+    ColumnTypeName,
+    FunctionParameterInfo,
+    FunctionParameterInfos,
+)
 from pydantic import ValidationError
 
 from unitycatalog.ai.core.base import FunctionExecutionResult
 from unitycatalog.ai.core.client import UnitycatalogFunctionClient
 from unitycatalog.ai.crewai.toolkit import UCFunctionToolkit
-from unitycatalog.ai.test_utils.function_utils import RETRIEVER_OUTPUT_CSV, RETRIEVER_OUTPUT_SCALAR
+from unitycatalog.ai.test_utils.function_utils import (
+    RETRIEVER_OUTPUT_CSV,
+    RETRIEVER_OUTPUT_SCALAR,
+    RETRIEVER_STRUCT_FULL_DATA_TYPE,
+    RETRIEVER_TABLE_FULL_DATA_TYPE,
+    RETRIEVER_TABLE_RETURN_PARAMS,
+)
 from unitycatalog.ai.test_utils.function_utils_oss import (
     CATALOG,
     create_function_and_cleanup_oss,
 )
-from unitycatalog.client import (
-    ApiClient,
-    Configuration,
-    FunctionInfo,
-    FunctionParameterInfo,
-    FunctionParameterInfos,
-)
+from unitycatalog.client import ApiClient, Configuration, FunctionInfo
 
 SCHEMA = os.environ.get("SCHEMA", "ucai_crewai_test")
 
@@ -202,11 +206,21 @@ async def test_uc_function_to_crewai_tool(uc_client):
         ("CSV", RETRIEVER_OUTPUT_CSV),
     ],
 )
+@pytest.mark.parametrize(
+    "data_type,full_data_type,return_params",
+    [
+        (ColumnTypeName.TABLE_TYPE, RETRIEVER_TABLE_FULL_DATA_TYPE, RETRIEVER_TABLE_RETURN_PARAMS),
+        (ColumnTypeName.ARRAY, RETRIEVER_STRUCT_FULL_DATA_TYPE, None),
+    ],
+)
 @pytest.mark.asyncio
-async def test_crewai_tool_with_tracing_as_retriever(uc_client, format: str, function_output: str):
+async def test_crewai_tool_with_tracing_as_retriever(
+    uc_client, format, function_output, data_type, full_data_type, return_params
+):
     mock_function_info = generate_function_info()
-    mock_function_info.data_type = ColumnTypeName.TABLE_TYPE
-    mock_function_info.full_data_type = "(page_content STRING, metadata MAP<STRING, STRING>)"
+    mock_function_info.data_type = data_type
+    mock_function_info.full_data_type = full_data_type
+    mock_function_info.return_params = return_params
 
     with (
         mock.patch(

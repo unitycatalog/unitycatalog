@@ -14,7 +14,14 @@ from unitycatalog.ai.anthropic.utils import (
 from unitycatalog.ai.core.base import BaseFunctionClient
 from unitycatalog.ai.core.databricks import DatabricksFunctionClient
 from unitycatalog.ai.test_utils.client_utils import TEST_IN_DATABRICKS
-from unitycatalog.ai.test_utils.function_utils import RETRIEVER_OUTPUT_CSV, RETRIEVER_OUTPUT_SCALAR
+from unitycatalog.ai.test_utils.function_utils import (
+    RETRIEVER_OUTPUT_CSV,
+    RETRIEVER_OUTPUT_SCALAR,
+    RETRIEVER_STRUCT_FULL_DATA_TYPE,
+    RETRIEVER_STRUCT_RETURN_PARAMS,
+    RETRIEVER_TABLE_FULL_DATA_TYPE,
+    RETRIEVER_TABLE_RETURN_PARAMS,
+)
 
 
 @pytest.fixture
@@ -267,15 +274,25 @@ def test_generate_tool_call_messages_with_invalid_tool_use_block(mock_client, du
         ("CSV", RETRIEVER_OUTPUT_CSV),
     ],
 )
-def test_generate_tool_call_messages_with_tracing(dummy_history, format: str, function_output: str):
+@pytest.mark.parametrize(
+    "data_type,full_data_type,return_params",
+    [
+        (ColumnTypeName.TABLE_TYPE, RETRIEVER_TABLE_FULL_DATA_TYPE, RETRIEVER_TABLE_RETURN_PARAMS),
+        (ColumnTypeName.ARRAY, RETRIEVER_STRUCT_FULL_DATA_TYPE, RETRIEVER_STRUCT_RETURN_PARAMS),
+    ],
+)
+def test_generate_tool_call_messages_with_tracing(
+    dummy_history, format, function_output, data_type, full_data_type, return_params
+):
     with mock.patch(
         "unitycatalog.ai.core.databricks.get_default_databricks_workspace_client",
         return_value=mock.Mock(),
     ):
         function_mock = mock.MagicMock()
         function_mock.name = f"catalog.schema.retriever_tool_{format}"
-        function_mock.data_type = ColumnTypeName.TABLE_TYPE
-        function_mock.full_data_type = "(page_content STRING, metadata MAP<STRING, STRING>)"
+        function_mock.data_type = data_type
+        function_mock.full_data_type = full_data_type
+        function_mock.return_params = return_params
 
         mock_client = DatabricksFunctionClient()
         mock_client._execute_uc_function = Mock(

@@ -2,7 +2,9 @@ import json
 from unittest import mock
 
 import pytest
-from databricks.sdk.service.catalog import ColumnTypeName
+from databricks.sdk.service.catalog import (
+    ColumnTypeName,
+)
 from openai.types.chat.chat_completion_message_tool_call import Function
 
 from tests.helper_functions import mock_chat_completion_response, mock_choice
@@ -10,7 +12,13 @@ from unitycatalog.ai.core.base import FunctionExecutionResult
 from unitycatalog.ai.core.databricks import DatabricksFunctionClient
 from unitycatalog.ai.openai.utils import generate_tool_call_messages
 from unitycatalog.ai.test_utils.client_utils import TEST_IN_DATABRICKS
-from unitycatalog.ai.test_utils.function_utils import RETRIEVER_OUTPUT_CSV, RETRIEVER_OUTPUT_SCALAR
+from unitycatalog.ai.test_utils.function_utils import (
+    RETRIEVER_OUTPUT_CSV,
+    RETRIEVER_OUTPUT_SCALAR,
+    RETRIEVER_STRUCT_FULL_DATA_TYPE,
+    RETRIEVER_TABLE_FULL_DATA_TYPE,
+    RETRIEVER_TABLE_RETURN_PARAMS,
+)
 
 
 @pytest.fixture
@@ -29,8 +37,20 @@ def client() -> DatabricksFunctionClient:
         ("CSV", RETRIEVER_OUTPUT_CSV),
     ],
 )
+@pytest.mark.parametrize(
+    "data_type,full_data_type,return_params",
+    [
+        (ColumnTypeName.TABLE_TYPE, RETRIEVER_TABLE_FULL_DATA_TYPE, RETRIEVER_TABLE_RETURN_PARAMS),
+        (ColumnTypeName.ARRAY, RETRIEVER_STRUCT_FULL_DATA_TYPE, None),
+    ],
+)
 def test_generate_tool_call_messages_with_tracing(
-    client: DatabricksFunctionClient, format: str, function_output: str
+    client: DatabricksFunctionClient,
+    format,
+    function_output,
+    data_type,
+    full_data_type,
+    return_params,
 ):
     function_name = f"ml__test__test_func_{format}"
     function_input = '{"query": "What is Databricks Partner Connect?"}'
@@ -41,8 +61,9 @@ def test_generate_tool_call_messages_with_tracing(
 
     function_mock = mock.MagicMock()
     function_mock.name = function_name
-    function_mock.data_type = ColumnTypeName.TABLE_TYPE
-    function_mock.full_data_type = "(page_content STRING, metadata MAP<STRING, STRING>)"
+    function_mock.data_type = data_type
+    function_mock.full_data_type = full_data_type
+    function_mock.return_params = return_params
 
     with (
         mock.patch.object(client, "get_function", return_value=function_mock),
