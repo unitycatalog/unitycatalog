@@ -25,17 +25,13 @@ export function DeleteModelModal({
   const navigate = useNavigate();
   const { setNotification } = useNotification();
   const mutation = useDeleteModel({
-    catalog,
-    schema,
-    model,
+    full_name: [catalog, schema, model].join('.'),
   });
 
   const handleSubmit = useCallback(() => {
     mutation.mutate(
       {
-        catalog_name: catalog,
-        schema_name: schema,
-        name: model,
+        full_name: [catalog, schema, model].join('.'),
       },
       {
         onError: (error: Error) => {

@@ -19,6 +19,7 @@ from unitycatalog.ai.core.base import (
 )
 from unitycatalog.ai.core.utils.function_processing_utils import get_tool_name
 from unitycatalog.ai.test_utils.client_utils import (
+    TEST_IN_DATABRICKS,
     USE_SERVERLESS,
     client,  # noqa: F401
     get_client,
@@ -27,6 +28,8 @@ from unitycatalog.ai.test_utils.client_utils import (
 )
 from unitycatalog.ai.test_utils.function_utils import (
     CATALOG,
+    RETRIEVER_OUTPUT_CSV,
+    RETRIEVER_OUTPUT_SCALAR,
     create_function_and_cleanup,
     create_python_function_and_cleanup,
 )
@@ -185,13 +188,73 @@ def test_uc_function_to_langchain_tool():
         assert json.loads(tool.func(x="some_string"))["value"] == "some_string"
 
 
-@requires_databricks
+@pytest.mark.parametrize(
+    "format,function_output",
+    [
+        ("SCALAR", RETRIEVER_OUTPUT_SCALAR),
+        ("CSV", RETRIEVER_OUTPUT_CSV),
+    ],
+)
 @pytest.mark.parametrize("use_serverless", [True, False])
-def test_langgraph_agents(monkeypatch, use_serverless):
+def test_langchain_tool_trace_as_retriever(
+    use_serverless, monkeypatch, format: str, function_output: str
+):
     monkeypatch.setenv(USE_SERVERLESS, str(use_serverless))
     client = get_client()
-    with create_function_and_cleanup(client, schema=SCHEMA) as func_obj:
-        toolkit = UCFunctionToolkit(function_names=[func_obj.full_function_name], client=client)
+    mock_function_info = generate_function_info()
+
+    with (
+        mock.patch(
+            "unitycatalog.ai.core.databricks.DatabricksFunctionClient.get_function",
+            return_value=mock_function_info,
+        ),
+        mock.patch(
+            "unitycatalog.ai.core.databricks.DatabricksFunctionClient._execute_uc_function",
+            return_value=FunctionExecutionResult(format=format, value=function_output),
+        ),
+        mock.patch(
+            "unitycatalog.ai.core.databricks.DatabricksFunctionClient.validate_input_params"
+        ),
+    ):
+        import mlflow
+
+        if TEST_IN_DATABRICKS:
+            import mlflow.tracking._model_registry.utils
+
+            mlflow.tracking._model_registry.utils._get_registry_uri_from_spark_session = (
+                lambda: "databricks-uc"
+            )
+
+        mlflow.langchain.autolog()
+
+        tool = UCFunctionToolkit.uc_function_to_langchain_tool(
+            client=client, function_name=f"{CATALOG}.{SCHEMA}.test_{format}"
+        )
+
+        result = tool.func(x="some_string")
+        assert json.loads(result)["value"] == function_output
+
+        trace = mlflow.get_last_active_trace()
+        assert trace is not None
+        assert trace.info.execution_time_ms is not None
+        assert trace.data.request == '{"x": "some_string"}'
+        assert trace.data.response == RETRIEVER_OUTPUT_SCALAR
+        assert trace.data.spans[0].name == f"{CATALOG}.{SCHEMA}.test_{format}"
+
+        mlflow.langchain.autolog(disable=True)
+
+
+@requires_databricks
+@pytest.mark.parametrize("use_serverless", [True, False])
+@pytest.mark.parametrize("schema", [SCHEMA, "ucai_langchain_test_star"])
+def test_langgraph_agents(monkeypatch, use_serverless, schema):
+    monkeypatch.setenv(USE_SERVERLESS, str(use_serverless))
+    client = get_client()
+    with create_function_and_cleanup(client, schema=schema) as func_obj:
+        if schema == SCHEMA:
+            toolkit = UCFunctionToolkit(function_names=[func_obj.full_function_name], client=client)
+        else:
+            toolkit = UCFunctionToolkit(function_names=[f"{CATALOG}.{schema}.*"], client=client)
         system_message = "You are a helpful assistant. Make sure to use tool for information."
         llm = ChatDatabricks(endpoint="databricks-meta-llama-3-1-70b-instruct")
         agent = create_react_agent(llm, toolkit.tools, state_modifier=system_message)

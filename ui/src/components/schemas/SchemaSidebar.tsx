@@ -28,7 +28,7 @@ const SCHEMA_METADATA: MetadataListType<SchemaInterface> = [
 ];
 
 export default function SchemaSidebar({ catalog, schema }: SchemaSidebarProps) {
-  const { data } = useGetSchema({ catalog, schema });
+  const { data } = useGetSchema({ full_name: [catalog, schema].join('.') });
 
   if (!data) return null;
 
