@@ -290,6 +290,7 @@ def test_generate_tool_call_messages_with_tracing(
     ):
         function_mock = mock.MagicMock()
         function_mock.name = f"catalog.schema.retriever_tool_{format}"
+        function_mock.full_name = f"catalog.schema.retriever_tool_{format}"
         function_mock.data_type = data_type
         function_mock.full_data_type = full_data_type
         function_mock.return_params = return_params
@@ -330,7 +331,7 @@ def test_generate_tool_call_messages_with_tracing(
 
         trace = mlflow.get_last_active_trace()
         assert trace is not None
-        assert trace.data.spans[0].name == f"catalog.schema.retriever_tool_{format}"
+        assert trace.data.spans[0].name == function_mock.full_name
         assert trace.info.execution_time_ms is not None
         assert trace.data.request == '{"query": "What is Databricks Partner Connect?"}'
         assert trace.data.response == RETRIEVER_OUTPUT_SCALAR

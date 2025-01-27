@@ -223,9 +223,8 @@ def test_uc_function_to_langchain_tool(uc_client):
 def test_langchain_tool_trace_as_retriever(
     uc_client, format, function_output, data_type, full_data_type, return_params
 ):
-    function_name = f"{CATALOG}.{SCHEMA}.test_{format}"
     mock_function_info = generate_function_info()
-    mock_function_info.full_name = function_name
+    mock_function_info.full_name = f"{CATALOG}.{SCHEMA}.test_{format}"
     mock_function_info.data_type = data_type
     mock_function_info.full_data_type = full_data_type
     mock_function_info.return_params = return_params
@@ -246,7 +245,7 @@ def test_langchain_tool_trace_as_retriever(
         mlflow.langchain.autolog()
 
         tool = UCFunctionToolkit.uc_function_to_langchain_tool(
-            client=uc_client, function_name=function_name
+            client=uc_client, function_name=mock_function_info.full_name
         )
 
         result = tool.func(x="some_string")
@@ -254,7 +253,7 @@ def test_langchain_tool_trace_as_retriever(
 
         trace = mlflow.get_last_active_trace()
         assert trace is not None
-        assert trace.data.spans[0].name == function_name
+        assert trace.data.spans[0].name == mock_function_info.full_name
         assert trace.info.execution_time_ms is not None
         assert trace.data.request == '{"x": "some_string"}'
         assert trace.data.response == RETRIEVER_OUTPUT_SCALAR

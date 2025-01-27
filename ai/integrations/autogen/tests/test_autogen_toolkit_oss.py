@@ -21,7 +21,7 @@ from unitycatalog.ai.test_utils.function_utils import (
     RETRIEVER_OUTPUT_SCALAR,
     RETRIEVER_STRUCT_FULL_DATA_TYPE,
     RETRIEVER_TABLE_FULL_DATA_TYPE,
-    RETRIEVER_TABLE_RETURN_PARAMS,
+    RETRIEVER_TABLE_RETURN_PARAMS_OSS,
 )
 from unitycatalog.ai.test_utils.function_utils_oss import (
     CATALOG,
@@ -235,7 +235,11 @@ async def test_uc_function_to_autogen_tool(uc_client):
 @pytest.mark.parametrize(
     "data_type,full_data_type,return_params",
     [
-        (ColumnTypeName.TABLE_TYPE, RETRIEVER_TABLE_FULL_DATA_TYPE, RETRIEVER_TABLE_RETURN_PARAMS),
+        (
+            ColumnTypeName.TABLE_TYPE,
+            RETRIEVER_TABLE_FULL_DATA_TYPE,
+            RETRIEVER_TABLE_RETURN_PARAMS_OSS,
+        ),
         (ColumnTypeName.ARRAY, RETRIEVER_STRUCT_FULL_DATA_TYPE, None),
     ],
 )
@@ -247,6 +251,7 @@ async def test_autogen_tool_with_tracing_as_retriever(
     mock_function_info.data_type = data_type
     mock_function_info.full_data_type = full_data_type
     mock_function_info.return_params = return_params
+    mock_function_info.full_name = f"catalog.schema.test_{format}"
 
     with (
         mock.patch(
@@ -264,7 +269,7 @@ async def test_autogen_tool_with_tracing_as_retriever(
         mlflow.autogen.autolog()
 
         tool = UCFunctionToolkit.uc_function_to_autogen_tool(
-            function_name=f"catalog.schema.test_{format}", client=uc_client
+            function_name=mock_function_info.full_name, client=uc_client
         )
         result = tool.fn(x="some input")
         assert json.loads(result)["value"] == function_output
@@ -273,7 +278,7 @@ async def test_autogen_tool_with_tracing_as_retriever(
 
         trace = mlflow.get_last_active_trace()
         assert trace is not None
-        assert trace.data.spans[0].name == f"catalog.schema.test_{format}"
+        assert trace.data.spans[0].name == mock_function_info.full_name
         assert trace.info.execution_time_ms is not None
         assert trace.data.request == '{"x": "some input"}'
         assert trace.data.response == RETRIEVER_OUTPUT_SCALAR

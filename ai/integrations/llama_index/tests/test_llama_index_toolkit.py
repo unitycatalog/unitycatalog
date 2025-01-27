@@ -307,6 +307,7 @@ def test_toolkit_with_tracing_as_retriever(
     monkeypatch.setenv(USE_SERVERLESS, str(use_serverless))
     client = get_client()
     mock_function_info = generate_function_info()
+    mock_function_info.full_name = f"catalog.schema.test_{format}"
     mock_function_info.data_type = data_type
     mock_function_info.full_data_type = full_data_type
     mock_function_info.return_params = return_params
@@ -336,14 +337,14 @@ def test_toolkit_with_tracing_as_retriever(
         mlflow.llama_index.autolog()
 
         tool = UCFunctionToolkit.uc_function_to_llama_tool(
-            function_name=f"catalog.schema.test_{format}", client=client, return_direct=True
+            function_name=mock_function_info.full_name, client=client, return_direct=True
         )
         result = tool.fn(x="some input")
         assert json.loads(result)["value"] == function_output
 
         trace = mlflow.get_last_active_trace()
         assert trace is not None
-        assert trace.data.spans[0].name == f"catalog.schema.test_{format}"
+        assert trace.data.spans[0].name == mock_function_info.full_name
         assert trace.info.execution_time_ms is not None
         assert trace.data.request == '{"x": "some input"}'
         assert trace.data.response == RETRIEVER_OUTPUT_SCALAR
