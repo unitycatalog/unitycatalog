@@ -4,11 +4,6 @@ from unittest import mock
 
 import pytest
 import pytest_asyncio
-from databricks.sdk.service.catalog import (
-    ColumnTypeName,
-    FunctionParameterInfo,
-    FunctionParameterInfos,
-)
 from pydantic import ValidationError
 
 from unitycatalog.ai.core.base import FunctionExecutionResult
@@ -25,7 +20,14 @@ from unitycatalog.ai.test_utils.function_utils_oss import (
     CATALOG,
     create_function_and_cleanup_oss,
 )
-from unitycatalog.client import ApiClient, Configuration, FunctionInfo
+from unitycatalog.client import (
+    ApiClient,
+    ColumnTypeName,
+    Configuration,
+    FunctionInfo,
+    FunctionParameterInfo,
+    FunctionParameterInfos,
+)
 
 SCHEMA = os.environ.get("SCHEMA", "ucai_crewai_test")
 
@@ -245,10 +247,10 @@ async def test_crewai_tool_with_tracing_as_retriever(
 
         trace = mlflow.get_last_active_trace()
         assert trace is not None
+        assert trace.data.spans[0].name == f"catalog.schema.test_{format}"
         assert trace.info.execution_time_ms is not None
         assert trace.data.request == '{"x": "some input"}'
         assert trace.data.response == RETRIEVER_OUTPUT_SCALAR
-        assert trace.data.spans[0].name == f"catalog.schema.test_{format}"
 
         mlflow.crewai.autolog(disable=True)
 

@@ -330,9 +330,9 @@ def test_generate_tool_call_messages_with_tracing(
 
         trace = mlflow.get_last_active_trace()
         assert trace is not None
+        assert trace.data.spans[0].name == f"catalog.schema.retriever_tool_{format}"
         assert trace.info.execution_time_ms is not None
         assert trace.data.request == '{"query": "What is Databricks Partner Connect?"}'
         assert trace.data.response == RETRIEVER_OUTPUT_SCALAR
-        assert trace.data.spans[0].name == f"catalog.schema.retriever_tool_{format}"
 
         mlflow.anthropic.autolog(disable=True)

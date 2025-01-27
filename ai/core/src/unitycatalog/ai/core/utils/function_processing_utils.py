@@ -318,7 +318,16 @@ def supported_function_info_types():
     return types
 
 
-def process_retriever_output(result: "FunctionExecutionResult") -> str:
+def process_retriever_output(result: "FunctionExecutionResult") -> List[Dict[str, Any]]:
+    """
+    Process retriever output from result into mlflow.entities.Document format for tracing.
+
+    Args:
+        result: The result of the function execution to be processed.
+
+    Returns:
+        Retriever output formatted into a list of Documents.
+    """
     if result.format == "CSV":
         df = pd.read_csv(StringIO(result.value))
         if "metadata" in df.columns:
@@ -329,3 +338,47 @@ def process_retriever_output(result: "FunctionExecutionResult") -> str:
         output = ast.literal_eval(value) if isinstance(value, str) else value
 
     return output
+
+
+def _execute_uc_function_with_retriever_tracing(
+    _execute_uc_function: Callable,
+    function_info: "FunctionInfo",
+    parameters: Dict[str, Any],
+    **kwargs: Any,
+):
+    """
+    Executes a UC function with MLflow tracing with span type RETRIEVER enabled. If MLflow cannot
+    be imported, the function executes without tracing and logs a warning.
+
+    Args:
+        _execute_uc_function (Callable): A function that executes the given UC function.
+        function_info (FunctionInfo): Metadata about the UC function to be executed.
+        parameters (Dict[str, Any]): Parameters to be passed to the function during execution.
+        **kwargs (Any): Additional keyword arguments to be passed to the function.
+
+    Returns:
+        Any: The output of the function execution.
+    """
+    try:
+        import mlflow
+        from mlflow.entities import SpanType
+
+        result = None
+
+        @mlflow.trace(name=function_info.full_name, span_type=SpanType.RETRIEVER)
+        def execute_retriever(parameters):
+            # Set inputs manually so we log {"query": "..."} instead of {"parameters": {"query": "..."}}
+            if span := mlflow.get_current_active_span():
+                span.set_inputs(parameters)
+
+            nonlocal result
+            result = _execute_uc_function(function_info, parameters, **kwargs)
+            return process_retriever_output(result)
+
+        execute_retriever(parameters)
+        return result
+    except ImportError as e:
+        _logger.warn(
+            f"Skipping tracing {function_info.full_name} as a retriever because of the following error:\n {e}"
+        )
+        return _execute_uc_function

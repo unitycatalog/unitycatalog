@@ -250,10 +250,10 @@ def test_langchain_tool_trace_as_retriever(
 
         trace = mlflow.get_last_active_trace()
         assert trace is not None
+        assert trace.data.spans[0].name == f"{CATALOG}.{SCHEMA}.test_{format}"
         assert trace.info.execution_time_ms is not None
         assert trace.data.request == '{"x": "some_string"}'
         assert trace.data.response == RETRIEVER_OUTPUT_SCALAR
-        assert trace.data.spans[0].name == f"{CATALOG}.{SCHEMA}.test_{format}"
 
         mlflow.langchain.autolog(disable=True)
 
