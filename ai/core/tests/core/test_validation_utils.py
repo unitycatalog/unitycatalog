@@ -224,7 +224,7 @@ def test_check_function_info(function_info, expected_warnings):
                     ]
                 ),
             ),
-            False,
+            True,
         ),
     ],
 )

@@ -147,7 +147,14 @@ def test_toolkit_creation_errors():
         UCFunctionToolkit(function_names=[], client="client")
 
 
-def generate_function_info():
+def generate_function_info(
+    catalog="catalog",
+    schema="schema",
+    name="test",
+    data_type=None,
+    full_data_type=None,
+    return_params=None,
+):
     parameters = [
         {
             "name": "x",
@@ -162,12 +169,17 @@ def generate_function_info():
         }
     ]
     return FunctionInfo(
-        catalog_name="catalog",
-        schema_name="schema",
-        name="test",
+        catalog_name=catalog,
+        schema_name=schema,
+        name=name,
         input_params=FunctionParameterInfos(
             parameters=[FunctionParameterInfo(**param) for param in parameters]
         ),
+        full_name=f"{catalog}.{schema}.{name}",
+        comment="Executes Python code and returns its stdout.",
+        data_type=data_type,
+        full_data_type=full_data_type,
+        return_params=return_params,
     )
 
 
@@ -210,11 +222,12 @@ def test_langchain_tool_trace_as_retriever(
 ):
     monkeypatch.setenv(USE_SERVERLESS, str(use_serverless))
     client = get_client()
-    mock_function_info = generate_function_info()
-    mock_function_info.full_name = f"{CATALOG}.{SCHEMA}.test_{format}"
-    mock_function_info.data_type = data_type
-    mock_function_info.full_data_type = full_data_type
-    mock_function_info.return_params = return_params
+    mock_function_info = generate_function_info(
+        name=f"test_{format}",
+        data_type=data_type,
+        full_data_type=full_data_type,
+        return_params=return_params,
+    )
 
     with (
         mock.patch(

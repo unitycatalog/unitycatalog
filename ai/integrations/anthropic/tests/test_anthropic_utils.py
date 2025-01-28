@@ -4,7 +4,7 @@ from unittest.mock import Mock
 import pytest
 from anthropic.types import TextBlock, ToolUseBlock
 from anthropic.types.message import Message
-from databricks.sdk.service.catalog import ColumnTypeName
+from databricks.sdk.service.catalog import ColumnTypeName, FunctionInfo
 
 from unitycatalog.ai.anthropic.utils import (
     ToolCallData,
@@ -286,12 +286,15 @@ def test_generate_tool_call_messages_with_tracing(
         "unitycatalog.ai.core.databricks.get_default_databricks_workspace_client",
         return_value=mock.Mock(),
     ):
-        function_mock = mock.MagicMock()
-        function_mock.name = f"catalog.schema.retriever_tool_{format}"
-        function_mock.full_name = f"catalog.schema.retriever_tool_{format}"
-        function_mock.data_type = data_type
-        function_mock.full_data_type = full_data_type
-        function_mock.return_params = return_params
+        function_mock = Mock(
+            spec=FunctionInfo,
+            name=f"catalog.schema.retriever_tool_{format}",
+            full_name=f"catalog.schema.retriever_tool_{format}",
+            data_type=data_type,
+            full_data_type=full_data_type,
+            return_params=return_params,
+            autospec=True,
+        )
 
         mock_client = DatabricksFunctionClient()
         mock_client._execute_uc_function = Mock(

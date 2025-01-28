@@ -1,10 +1,9 @@
 import json
 from unittest import mock
+from unittest.mock import Mock
 
 import pytest
-from databricks.sdk.service.catalog import (
-    ColumnTypeName,
-)
+from databricks.sdk.service.catalog import ColumnTypeName, FunctionInfo
 from openai.types.chat.chat_completion_message_tool_call import Function
 
 from tests.helper_functions import mock_chat_completion_response, mock_choice
@@ -57,12 +56,15 @@ def test_generate_tool_call_messages_with_tracing(
         function=Function(name=function_name, arguments=function_input),
     )
 
-    function_mock = mock.MagicMock()
-    function_mock.name = function_name
-    function_mock.full_name = function_name
-    function_mock.data_type = data_type
-    function_mock.full_data_type = full_data_type
-    function_mock.return_params = return_params
+    function_mock = Mock(
+        spec=FunctionInfo,
+        name=f"test_func_{format}",
+        full_name=f"ml.test.test_func_{format}",
+        data_type=data_type,
+        full_data_type=full_data_type,
+        return_params=return_params,
+        autospec=True,
+    )
 
     with (
         mock.patch.object(client, "get_function", return_value=function_mock),
@@ -88,7 +90,7 @@ def test_generate_tool_call_messages_with_tracing(
 
         trace = mlflow.get_last_active_trace()
         assert trace is not None
-        assert trace.data.spans[0].name == function_name
+        assert trace.data.spans[0].name == function_mock.full_name
         assert trace.info.execution_time_ms is not None
         assert trace.data.request == function_input
         assert trace.data.response == RETRIEVER_OUTPUT_SCALAR

@@ -208,7 +208,14 @@ async def test_multiple_toolkits(uc_client):
         assert result1 == result2
 
 
-def generate_function_info():
+def generate_function_info(
+    catalog: str = "catalog",
+    schema: str = "schema",
+    name: str = "test_function",
+    data_type: ColumnTypeName = None,
+    full_data_type: str = None,
+    return_params: FunctionParameterInfos = None,
+):
     parameters = [
         {
             "name": "x",
@@ -223,9 +230,13 @@ def generate_function_info():
         }
     ]
     return FunctionInfo(
-        catalog_name="catalog",
-        schema_name="schema",
-        name="test",
+        catalog_name=catalog,
+        schema_name=schema,
+        name=name,
+        full_name=f"{catalog}.{schema}.{name}",
+        data_type=data_type,
+        full_data_type=full_data_type,
+        return_params=return_params,
         input_params=FunctionParameterInfos(
             parameters=[FunctionParameterInfo(**param) for param in parameters]
         ),
@@ -279,11 +290,12 @@ def test_uc_function_to_llama_tool(uc_client):
 def test_toolkit_with_tracing_as_retriever(
     uc_client, format, function_output, data_type, full_data_type, return_params
 ):
-    mock_function_info = generate_function_info()
-    mock_function_info.full_name = f"catalog.schema.test_{format}"
-    mock_function_info.data_type = data_type
-    mock_function_info.full_data_type = full_data_type
-    mock_function_info.return_params = return_params
+    mock_function_info = generate_function_info(
+        name=f"test_{format}",
+        data_type=data_type,
+        full_data_type=full_data_type,
+        return_params=return_params,
+    )
 
     with (
         mock.patch(

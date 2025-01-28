@@ -153,17 +153,19 @@ def has_retriever_signature(function_info: "FunctionInfo") -> bool:
     Returns:
         bool: If the provided function has a valid retriever signature.
     """
-    if "TABLE_TYPE" in str(function_info.data_type):
-        if function_info.return_params and function_info.return_params.parameters:
-            params = []
-            for param in function_info.return_params.parameters:
-                if hasattr(param, "as_dict"):
-                    params.append(param.as_dict())
-                else:
-                    params.append(dict(param))
+    if "TABLE_TYPE" not in str(function_info.data_type):
+        return False
 
-            param_dict = {param["name"]: param["type_name"] for param in params}
-            return "page_content" in param_dict and param_dict["page_content"] == "STRING"
+    return_params = function_info.return_params
+
+    if not (return_params and return_params.parameters):
+        return False
+
+    for param in return_params.parameters:
+        param_dict = param.as_dict() if hasattr(param, "as_dict") else dict(param)
+
+        if param_dict.get("name") == "page_content" and param_dict.get("type_name") == "STRING":
+            return True
 
     return False
 

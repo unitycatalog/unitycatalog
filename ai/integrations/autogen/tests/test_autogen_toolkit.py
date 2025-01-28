@@ -43,8 +43,14 @@ def dbx_client():
     return get_client()
 
 
-def generate_function_info():
-    """Mock function info with minimal parameters, sets routine_body='EXTERNAL' to avoid NotImplementedError."""
+def generate_function_info(
+    catalog="catalog",
+    schema="schema",
+    name="test",
+    data_type=None,
+    full_data_type=None,
+    return_params=None,
+):
     parameters = [
         {
             "name": "x",
@@ -59,15 +65,19 @@ def generate_function_info():
         }
     ]
     return FunctionInfo(
-        catalog_name="catalog",
-        schema_name="schema",
-        name="test",
+        catalog_name=catalog,
+        schema_name=schema,
+        name=name,
         input_params=FunctionParameterInfos(
             parameters=[FunctionParameterInfo(**param) for param in parameters]
         ),
-        # For Databricks function usage, set these so we don't raise NotImplementedError
+        full_name=f"{catalog}.{schema}.{name}",
+        comment="Executes Python code and returns its stdout.",
         routine_body="EXTERNAL",
         routine_definition="print('hello')",
+        data_type=data_type,
+        full_data_type=full_data_type,
+        return_params=return_params,
     )
 
 
@@ -244,11 +254,12 @@ def test_autogen_tool_with_tracing_as_retriever(
 ):
     monkeypatch.setenv(USE_SERVERLESS, str(use_serverless))
     client = get_client()
-    mock_function_info = generate_function_info()
-    mock_function_info.data_type = data_type
-    mock_function_info.full_data_type = full_data_type
-    mock_function_info.return_params = return_params
-    mock_function_info.full_name = f"catalog.schema.test_{format}"
+    mock_function_info = generate_function_info(
+        name=f"test_{format}",
+        data_type=data_type,
+        full_data_type=full_data_type,
+        return_params=return_params,
+    )
 
     with (
         mock.patch(
