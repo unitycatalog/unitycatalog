@@ -376,7 +376,7 @@ def _execute_uc_function_with_retriever_tracing(
 
             # Re-raise errors so they can get traced
             if result.error:
-                raise Exception(e)
+                raise Exception(result.error)
 
             return process_retriever_output(result)
 
