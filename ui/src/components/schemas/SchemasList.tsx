@@ -10,7 +10,7 @@ interface SchemasListProps {
 }
 
 export default function SchemasList({ catalog }: SchemasListProps) {
-  const { data, isLoading } = useListSchemas({ catalog });
+  const { data, isLoading } = useListSchemas({ catalog_name: catalog });
   const navigate = useNavigate();
 
   return (

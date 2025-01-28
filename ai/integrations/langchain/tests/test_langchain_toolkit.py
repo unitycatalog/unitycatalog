@@ -19,6 +19,7 @@ from unitycatalog.ai.core.base import (
 )
 from unitycatalog.ai.core.utils.function_processing_utils import get_tool_name
 from unitycatalog.ai.test_utils.client_utils import (
+    TEST_IN_DATABRICKS,
     USE_SERVERLESS,
     client,  # noqa: F401
     get_client,
@@ -194,7 +195,11 @@ def test_uc_function_to_langchain_tool():
         ("CSV", RETRIEVER_OUTPUT_CSV),
     ],
 )
-def test_langchain_tool_trace_as_retriever(format: str, function_output: str):
+@pytest.mark.parametrize("use_serverless", [True, False])
+def test_langchain_tool_trace_as_retriever(
+    use_serverless, monkeypatch, format: str, function_output: str
+):
+    monkeypatch.setenv(USE_SERVERLESS, str(use_serverless))
     client = get_client()
     mock_function_info = generate_function_info()
 
@@ -212,6 +217,13 @@ def test_langchain_tool_trace_as_retriever(format: str, function_output: str):
         ),
     ):
         import mlflow
+
+        if TEST_IN_DATABRICKS:
+            import mlflow.tracking._model_registry.utils
+
+            mlflow.tracking._model_registry.utils._get_registry_uri_from_spark_session = (
+                lambda: "databricks-uc"
+            )
 
         mlflow.langchain.autolog()
 
@@ -234,11 +246,15 @@ def test_langchain_tool_trace_as_retriever(format: str, function_output: str):
 
 @requires_databricks
 @pytest.mark.parametrize("use_serverless", [True, False])
-def test_langgraph_agents(monkeypatch, use_serverless):
+@pytest.mark.parametrize("schema", [SCHEMA, "ucai_langchain_test_star"])
+def test_langgraph_agents(monkeypatch, use_serverless, schema):
     monkeypatch.setenv(USE_SERVERLESS, str(use_serverless))
     client = get_client()
-    with create_function_and_cleanup(client, schema=SCHEMA) as func_obj:
-        toolkit = UCFunctionToolkit(function_names=[func_obj.full_function_name], client=client)
+    with create_function_and_cleanup(client, schema=schema) as func_obj:
+        if schema == SCHEMA:
+            toolkit = UCFunctionToolkit(function_names=[func_obj.full_function_name], client=client)
+        else:
+            toolkit = UCFunctionToolkit(function_names=[f"{CATALOG}.{schema}.*"], client=client)
         system_message = "You are a helpful assistant. Make sure to use tool for information."
         llm = ChatDatabricks(endpoint="databricks-meta-llama-3-1-70b-instruct")
         agent = create_react_agent(llm, toolkit.tools, state_modifier=system_message)
