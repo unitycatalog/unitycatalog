@@ -373,12 +373,19 @@ def _execute_uc_function_with_retriever_tracing(
 
             nonlocal result
             result = _execute_uc_function(function_info, parameters, **kwargs)
+            if result.error:
+                raise Exception(e)
             return process_retriever_output(result)
 
-        execute_retriever(parameters)
+        try:
+            execute_retriever(parameters)
+        except Exception:
+            pass
+        
         return result
     except ImportError as e:
         _logger.warn(
             f"Skipping tracing {function_info.full_name} as a retriever because of the following error:\n {e}"
         )
-        return _execute_uc_function
+        return _execute_uc_function(function_info, parameters, **kwargs)
+
