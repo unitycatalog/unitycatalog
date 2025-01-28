@@ -345,7 +345,7 @@ def _execute_uc_function_with_retriever_tracing(
     function_info: "FunctionInfo",
     parameters: Dict[str, Any],
     **kwargs: Any,
-):
+) -> "FunctionExecutionResult":
     """
     Executes a UC function with MLflow tracing with span type RETRIEVER enabled. If MLflow cannot
     be imported, the function executes without tracing and logs a warning.
