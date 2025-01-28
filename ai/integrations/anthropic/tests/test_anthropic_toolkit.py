@@ -330,9 +330,13 @@ def test_anthropic_tool_definition_generation(use_serverless, monkeypatch):
             ]
         )
 
-        function_definition = UCFunctionToolkit.uc_function_to_anthropic_tool(
-            function_info=function_info, client=client
-        )
+        with mock.patch(
+            "unitycatalog.ai.core.databricks.DatabricksFunctionClient.get_function",
+            return_value=function_info,
+        ):
+            function_definition = UCFunctionToolkit.uc_function_to_anthropic_tool(
+                function_name=function_info.full_name, client=client
+            )
 
         assert function_definition.to_dict() == {
             "name": get_tool_name(function_info.full_name),

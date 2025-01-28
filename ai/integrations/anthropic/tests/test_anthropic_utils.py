@@ -65,6 +65,7 @@ def dummy_history():
         "role": "user",
         "content": [
             {
+                "citations": None,
                 "type": "text",
                 "text": "What's the weather like in San Francisco?",
             }
