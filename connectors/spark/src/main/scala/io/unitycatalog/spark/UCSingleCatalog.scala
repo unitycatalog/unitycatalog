@@ -3,6 +3,7 @@ package io.unitycatalog.spark
 import io.unitycatalog.client.{ApiClient, ApiException}
 import io.unitycatalog.client.api.{SchemasApi, TablesApi, TemporaryCredentialsApi}
 import io.unitycatalog.client.model.{ColumnInfo, ColumnTypeName, CreateSchema, CreateTable, DataSourceFormat, GenerateTemporaryPathCredential, GenerateTemporaryTableCredential, ListTablesResponse, PathOperation, SchemaInfo, TableOperation, TableType, TemporaryCredentials}
+import org.apache.hadoop.conf.Configuration
 
 import java.net.URI
 import java.util
@@ -17,9 +18,11 @@ import org.apache.spark.sql.connector.expressions.Transform
 import org.apache.spark.sql.types.{BinaryType, BooleanType, ByteType, DataType, DoubleType, FloatType, IntegerType, LongType, ShortType, StringType, StructField, StructType, TimestampNTZType, TimestampType}
 import org.apache.spark.sql.util.CaseInsensitiveStringMap
 
+import javax.ws.rs.core.UriBuilder
 import scala.collection.convert.ImplicitConversions._
 import scala.collection.JavaConverters._
 import scala.language.existentials
+import org.apache.spark.sql.internal.SQLConf
 
 /**
  * A Spark catalog plugin to get/manage tables in Unity Catalog.
@@ -89,6 +92,7 @@ class UCSingleCatalog extends TableCatalog with SupportsNamespaces with Logging 
     def isPathTable = ident.namespace().length == 1 && new Path(ident.name()).isAbsolute
     // If both EXTERNAL and LOCATION are not specified in the CREATE TABLE command, and the table is
     // not a path table like parquet.`/file/path`, we generate the UC-managed table location here.
+    log.info(s"Creating table ${ident.namespace().mkString("", ".", "")}.${ident.name()} with properties ${properties}")
     if (!hasExternalClause && !hasLocationClause && !isPathTable) {
       val newProps = new util.HashMap[String, String]
       newProps.putAll(properties)
@@ -100,14 +104,18 @@ class UCSingleCatalog extends TableCatalog with SupportsNamespaces with Logging 
       newProps.put(TableCatalog.PROP_IS_MANAGED_LOCATION, "true")
       delegate.createTable(ident, columns, partitions, newProps)
     } else if (hasLocationClause) {
-      val location = properties.get(TableCatalog.PROP_LOCATION)
+      var location = properties.get(TableCatalog.PROP_LOCATION)
       assert(location != null)
+      // handle spark s3a filesystem
+      if (location.startsWith("s3a://")) {
+        location = "s3://" + location.substring(6)
+      }
       val cred = temporaryCredentialsApi.generateTemporaryPathCredentials(
         new GenerateTemporaryPathCredential().url(location).operation(PathOperation.PATH_CREATE_TABLE))
       val newProps = new util.HashMap[String, String]
       newProps.putAll(properties)
       val credentialProps = UCSingleCatalog.generateCredentialProps(
-        CatalogUtils.stringToURI(location).getScheme, cred)
+        CatalogUtils.stringToURI(location), cred)
       newProps.putAll(credentialProps.asJava)
       // TODO: Delta requires the options to be set twice in the properties, with and without the
       //       `option.` prefix. We should revisit this in Delta.
@@ -162,18 +170,22 @@ object UCSingleCatalog {
   val DELTA_CATALOG_LOADED = ThreadLocal.withInitial[Boolean](() => false)
 
   def generateCredentialProps(
-      scheme: String,
+      uri: URI,
       temporaryCredentials: TemporaryCredentials): Map[String, String] = {
-    if (scheme == "s3") {
+    val scheme = uri.getScheme
+    if (scheme == "s3a") {
+      val bucket = uri.getHost
       val awsCredentials = temporaryCredentials.getAwsTempCredentials
-      Map(
-        // TODO: how to support s3:// properly?
-        "fs.s3a.access.key" -> awsCredentials.getAccessKeyId,
-        "fs.s3a.secret.key" -> awsCredentials.getSecretAccessKey,
-        "fs.s3a.session.token" -> awsCredentials.getSessionToken,
-        "fs.s3a.path.style.access" -> "true",
-        "fs.s3.impl.disable.cache" -> "true",
-        "fs.s3a.impl.disable.cache" -> "true"
+      val endpoint = awsCredentials.getEndpoint
+      Map(Seq(
+          // TODO: how to support s3:// properly?
+          s"fs.s3a.bucket.${bucket}.access.key" -> awsCredentials.getAccessKeyId,
+          s"fs.s3a.bucket.${bucket}.secret.key" -> awsCredentials.getSecretAccessKey,
+          s"fs.s3a.bucket.${bucket}.session.token" -> awsCredentials.getSessionToken,
+          s"fs.s3a.bucket.${bucket}.path.style.access" -> "true",
+          "fs.s3.impl.disable.cache" -> "true",
+          s"fs.s3a.bucket.${bucket}.impl.disable.cache" -> "true"
+        ) ++ (if (endpoint != null && !endpoint.isBlank) Seq(s"fs.s3a.bucket.${bucket}.endpoint" -> endpoint) else Seq()): _*
       )
     } else if (scheme == "gs") {
       val gcsCredentials = temporaryCredentials.getGcpOauthToken
@@ -248,7 +260,11 @@ private class UCProxy(
       StructField(col.getName, DataType.fromDDL(col.getTypeText), col.getNullable)
         .withComment(col.getComment)
     }.toArray
-    val uri = CatalogUtils.stringToURI(t.getStorageLocation)
+    var uri = CatalogUtils.stringToURI(t.getStorageLocation)
+    // convert s3 scheme to hadoop s3a filesystem scheme
+    if (uri.getScheme == "s3") {
+      uri = UriBuilder.fromUri(uri).scheme("s3a").build()
+    }
     val tableId = t.getTableId
     val temporaryCredentials = {
       try {
@@ -268,7 +284,12 @@ private class UCProxy(
       }
     }
     val extraSerdeProps = UCSingleCatalog.generateCredentialProps(
-      uri.getScheme, temporaryCredentials)
+      uri, temporaryCredentials)
+    val sqlConf = SQLConf.get
+    extraSerdeProps.foreach { prop =>
+      sqlConf.setConfString(prop._1, prop._2)
+    }
+    Configuration.reloadExistingConfigurations()
     val sparkTable = CatalogTable(
       identifier,
       tableType = if (t.getTableType == TableType.MANAGED) {
@@ -278,7 +299,7 @@ private class UCProxy(
       },
       storage = CatalogStorageFormat.empty.copy(
         locationUri = Some(uri),
-        properties = t.getProperties.asScala.toMap ++ extraSerdeProps
+        properties = t.getProperties.asScala.toMap
       ),
       schema = StructType(fields),
       provider = Some(t.getDataSourceFormat.getValue),
@@ -304,7 +325,7 @@ private class UCProxy(
     createTable.setCatalogName(this.name)
 
     val hasExternalClause = properties.containsKey(TableCatalog.PROP_EXTERNAL)
-    val storageLocation = properties.get(TableCatalog.PROP_LOCATION)
+    var storageLocation = properties.get(TableCatalog.PROP_LOCATION)
     assert(storageLocation != null, "location should either be user specified or system generated.")
     val isManagedLocation = Option(properties.get(TableCatalog.PROP_IS_MANAGED_LOCATION))
       .exists(_.equalsIgnoreCase("true"))
@@ -312,6 +333,9 @@ private class UCProxy(
       assert(!hasExternalClause, "location is only generated for managed tables.")
       // TODO: Unity Catalog does not support managed tables now.
       throw new ApiException("Unity Catalog does not support managed table.")
+    }
+    if (storageLocation.startsWith("s3a://")) { // replace spark s3a:// with standard s3://
+      storageLocation = "s3://" + storageLocation.substring(6)
     }
     createTable.setTableType(TableType.EXTERNAL)
     createTable.setStorageLocation(storageLocation)

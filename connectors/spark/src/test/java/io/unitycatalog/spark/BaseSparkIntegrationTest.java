@@ -49,7 +49,7 @@ public abstract class BaseSparkIntegrationTest extends BaseCRUDTest {
               .config(catalogConf + ".warehouse", catalog);
     }
     // Use fake file system for cloud storage so that we can test credentials.
-    builder.config("fs.s3.impl", S3CredentialTestFileSystem.class.getName());
+    builder.config("fs.s3a.impl", S3CredentialTestFileSystem.class.getName());
     builder.config("fs.gs.impl", GCSCredentialTestFileSystem.class.getName());
     builder.config("fs.abfs.impl", AzureCredentialTestFileSystem.class.getName());
     return builder.getOrCreate();
@@ -76,9 +76,11 @@ public abstract class BaseSparkIntegrationTest extends BaseCRUDTest {
     serverProperties.put("s3.secretKey.0", "secretKey0");
     serverProperties.put("s3.sessionToken.0", "sessionToken0");
     serverProperties.put("s3.bucketPath.1", "s3://test-bucket1");
-    serverProperties.put("s3.accessKey.1", "accessKey1");
-    serverProperties.put("s3.secretKey.1", "secretKey1");
-    serverProperties.put("s3.sessionToken.1", "sessionToken1");
+    serverProperties.put("s3.endpoint.1", "https://minio:9000");
+    serverProperties.put("s3.provider.1", "static");
+    serverProperties.put("aws.credentials.provider.static.class", "io.unitycatalog.server.service.credential.aws.provider.StaticCredentialsProvider");
+    serverProperties.put("aws.credentials.provider.static.accessKey", "accessKey1");
+    serverProperties.put("aws.credentials.provider.static.secretKey", "secretKey1");
 
     serverProperties.put("gcs.bucketPath.0", "gs://test-bucket0");
     serverProperties.put("gcs.jsonKeyFilePath.0", "testing://0");

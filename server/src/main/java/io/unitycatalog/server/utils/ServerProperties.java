@@ -1,18 +1,19 @@
 package io.unitycatalog.server.utils;
 
 import io.unitycatalog.server.service.credential.aws.S3StorageConfig;
+import io.unitycatalog.server.service.credential.aws.provider.AwsCredentialsProviderConfig;
 import io.unitycatalog.server.service.credential.azure.ADLSStorageConfig;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
-import java.util.HashMap;
-import java.util.Map;
-import java.util.Properties;
+import java.util.*;
+import lombok.extern.slf4j.Slf4j;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+@Slf4j
 public class ServerProperties {
 
   private static final Logger LOGGER = LoggerFactory.getLogger(ServerProperties.class);
@@ -45,6 +46,10 @@ public class ServerProperties {
     return propertiesFromFile;
   }
 
+  private boolean isStringNullOrEmpty(String s) {
+    return s == null || s.isBlank();
+  }
+
   public Map<String, S3StorageConfig> getS3Configurations() {
     Map<String, S3StorageConfig> s3BucketConfigMap = new HashMap<>();
     int i = 0;
@@ -55,9 +60,38 @@ public class ServerProperties {
       String accessKey = properties.getProperty("s3.accessKey." + i);
       String secretKey = properties.getProperty("s3.secretKey." + i);
       String sessionToken = properties.getProperty("s3.sessionToken." + i);
-      if ((bucketPath == null || region == null || awsRoleArn == null)
-          && (accessKey == null || secretKey == null || sessionToken == null)) {
+      String endpoint = properties.getProperty("s3.endpoint." + i);
+      String provider = properties.getProperty("s3.provider." + i);
+      // break loop if all fields are null
+      if (bucketPath == null
+          && region == null
+          && awsRoleArn == null
+          && accessKey == null
+          && secretKey == null
+          && sessionToken == null
+          && endpoint == null
+          && provider == null) {
         break;
+      }
+      if (isStringNullOrEmpty(bucketPath) // should always have bucketPath
+          || (isStringNullOrEmpty(provider)
+              && // plus either provider reference
+              (isStringNullOrEmpty(
+                      accessKey) // or (access key, secret key (session token|(awsRoleArn, region)))
+                  || isStringNullOrEmpty(secretKey)
+                  || (isStringNullOrEmpty(sessionToken)
+                      && (isStringNullOrEmpty(awsRoleArn) || isStringNullOrEmpty(region)))))) {
+        log.warn("S3 configuration #{} has missing required fields, skipping", i);
+        log.debug("bucketPath = {}", bucketPath);
+        log.debug("region = {}", region);
+        log.debug("awsRoleArn = {}", awsRoleArn);
+        log.debug("accessKey = {}", accessKey);
+        log.debug("secretKey = {}", secretKey);
+        log.debug("sessionToken = {}", sessionToken);
+        log.debug("endpoint = {}", endpoint);
+        log.debug("provider = {}", provider);
+        i++;
+        continue;
       }
       S3StorageConfig s3StorageConfig =
           S3StorageConfig.builder()
@@ -67,12 +101,50 @@ public class ServerProperties {
               .accessKey(accessKey)
               .secretKey(secretKey)
               .sessionToken(sessionToken)
+              .provider(provider)
+              .endpoint(endpoint)
               .build();
       s3BucketConfigMap.put(bucketPath, s3StorageConfig);
       i++;
     }
 
     return s3BucketConfigMap;
+  }
+
+  public Map<String, AwsCredentialsProviderConfig> getAwsCredentialProviderConfigurations() {
+    Map<String, AwsCredentialsProviderConfig> providersConfigMap = new HashMap<>();
+    Enumeration<?> propertyNamesEnumeration = properties.propertyNames();
+    while (propertyNamesEnumeration.hasMoreElements()) {
+      final String propertyName = (String) propertyNamesEnumeration.nextElement();
+
+      // skip property if it does not start with aws.credentials.provider
+      if (!propertyName.startsWith("aws.credentials.provider")) continue;
+
+      // remove 'aws.credentials.provider.' prefix and split by . to obtain config parameter name
+      final List<String> providerProperty = Arrays.asList(propertyName.substring(25).split("\\."));
+
+      final String name = providerProperty.get(0);
+
+      // Build property name
+      StringBuilder builder = new StringBuilder();
+
+      for (int i = 1; i < providerProperty.size(); ++i) {
+        builder.append(providerProperty.get(i));
+        if (i < providerProperty.size() - 1) {
+          builder.append(".");
+        }
+      }
+
+      final String providerPropertyName = builder.toString();
+
+      // Upsert config
+      AwsCredentialsProviderConfig config =
+          providersConfigMap.getOrDefault(name, new AwsCredentialsProviderConfig());
+      config.put(providerPropertyName, properties.getProperty(propertyName));
+      providersConfigMap.put(name, config);
+    }
+
+    return providersConfigMap;
   }
 
   public Map<String, String> getGcsConfigurations() {
