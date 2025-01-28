@@ -31,7 +31,6 @@ from unitycatalog.ai.test_utils.function_utils import (
     CATALOG,
     RETRIEVER_OUTPUT_CSV,
     RETRIEVER_OUTPUT_SCALAR,
-    RETRIEVER_STRUCT_FULL_DATA_TYPE,
     RETRIEVER_TABLE_FULL_DATA_TYPE,
     RETRIEVER_TABLE_RETURN_PARAMS,
     create_function_and_cleanup,
@@ -203,7 +202,6 @@ def test_uc_function_to_langchain_tool():
     "data_type,full_data_type,return_params",
     [
         (ColumnTypeName.TABLE_TYPE, RETRIEVER_TABLE_FULL_DATA_TYPE, RETRIEVER_TABLE_RETURN_PARAMS),
-        (ColumnTypeName.ARRAY, RETRIEVER_STRUCT_FULL_DATA_TYPE, None),
     ],
 )
 @pytest.mark.parametrize("use_serverless", [True, False])

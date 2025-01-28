@@ -1,5 +1,6 @@
 import base64
 import datetime
+import re
 import warnings
 from typing import TYPE_CHECKING, Any, NamedTuple
 

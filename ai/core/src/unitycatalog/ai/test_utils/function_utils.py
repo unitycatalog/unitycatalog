@@ -64,9 +64,6 @@ RETRIEVER_TABLE_RETURN_PARAMS_OSS = OSSFunctionParameterInfos(
     ]
 )
 
-RETRIEVER_STRUCT_FULL_DATA_TYPE = (
-    "ARRAY<STRUCT<page_content: STRING, id: STRING, metadata: MAP<STRING, STRING>>>"
-)
 
 _logger = logging.getLogger(__name__)
 

@@ -226,30 +226,6 @@ def test_check_function_info(function_info, expected_warnings):
             ),
             False,
         ),
-        (
-            FunctionInfo(
-                data_type=ColumnTypeName.STRUCT,
-                full_data_type="ARRAY<STRUCT<page_content: STRING, id: STRING, metadata: MAP<STRING, STRING>>>",
-                return_params=None,
-            ),
-            True,
-        ),
-        (
-            FunctionInfo(
-                data_type=ColumnTypeName.STRUCT,
-                full_data_type="ARRAY<STRUCT<id: STRING, metadata: MAP<STRING, STRING>>>",
-                return_params=None,
-            ),
-            False,
-        ),
-        (
-            FunctionInfo(
-                data_type=ColumnTypeName.STRUCT,
-                full_data_type="ARRAY<STRUCT<page_content: STRING, id: STRING, extra_column: MAP<STRING, STRING>>>",
-                return_params=None,
-            ),
-            False,
-        ),
     ],
 )
 def test_has_retriever_signature(function_info, result):

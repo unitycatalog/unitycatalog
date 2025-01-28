@@ -12,7 +12,6 @@ from unitycatalog.ai.crewai.toolkit import UCFunctionToolkit
 from unitycatalog.ai.test_utils.function_utils import (
     RETRIEVER_OUTPUT_CSV,
     RETRIEVER_OUTPUT_SCALAR,
-    RETRIEVER_STRUCT_FULL_DATA_TYPE,
     RETRIEVER_TABLE_FULL_DATA_TYPE,
     RETRIEVER_TABLE_RETURN_PARAMS_OSS,
 )
@@ -216,7 +215,6 @@ async def test_uc_function_to_crewai_tool(uc_client):
             RETRIEVER_TABLE_FULL_DATA_TYPE,
             RETRIEVER_TABLE_RETURN_PARAMS_OSS,
         ),
-        (ColumnTypeName.ARRAY, RETRIEVER_STRUCT_FULL_DATA_TYPE, None),
     ],
 )
 @pytest.mark.asyncio
