@@ -136,6 +136,13 @@ paths:
     post:
       tags:
         - OAuth2
+      parameters:
+        - in: query
+          name: ext
+          description: Specifies whether the server will store a token in the user agent's cookie.
+          schema:
+            $ref: '#/components/schemas/TokenEndpointExtensionType'
+          required: false
       operationId: getToken
       summary: Get a token using an OAuth2 flow
       description: |
@@ -197,9 +204,9 @@ paths:
       tags:
         - OAuth2
       operationId: logout
-      summary: Expire the access token
+      summary: Revoke access token cookie
       description: |
-        Expires the authorixation cookie.
+        Revokes the access token cookie.
       # NOTE:
       # OAS 3.0 allows empty request bodies. In other words:
       #```
@@ -219,7 +226,7 @@ paths:
               nullable: true
       responses:
         '200':
-          description: The access token will be expired.
+          description: The access token will be revoked.
 
 components:
   schemas:
@@ -387,8 +394,6 @@ components:
       type: string
       enum:
         - Bearer
-        - MAC
-        - N_A
     ResponseType:
       description: |
         Authorization endpoint response type, from RFC 6749 Section 3.
@@ -404,9 +409,13 @@ components:
       type: string
       enum:
         - authorization_code
-        - implicit
-        - resource_owner_password_credentials
-        - client_credentials
+    TokenEndpointExtensionType:
+      description: |
+        The /auth/tokens endpoint supports an extension type.
+        If ext=cookie is specified in the request query, the server will store a token in the user agent's cookie.
+      type: string
+      enum:
+        - cookie
     OAuthTokenExchangeForm:
       description: |
         OAuth2 token exchange request form.
