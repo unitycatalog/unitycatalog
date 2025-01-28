@@ -15,10 +15,6 @@ from unitycatalog.ai.core.base import BaseFunctionClient, FunctionExecutionResul
 from unitycatalog.ai.core.envs.databricks_env_vars import (
     UCAI_DATABRICKS_SERVERLESS_EXECUTION_RESULT_ROW_LIMIT,
     UCAI_DATABRICKS_SESSION_RETRY_MAX_ATTEMPTS,
-    UCAI_DATABRICKS_WAREHOUSE_EXECUTE_FUNCTION_BYTE_LIMIT,
-    UCAI_DATABRICKS_WAREHOUSE_EXECUTE_FUNCTION_ROW_LIMIT,
-    UCAI_DATABRICKS_WAREHOUSE_EXECUTE_FUNCTION_WAIT_TIMEOUT,
-    UCAI_DATABRICKS_WAREHOUSE_RETRY_TIMEOUT,
 )
 from unitycatalog.ai.core.paged_list import PagedList
 from unitycatalog.ai.core.utils.callable_utils import generate_sql_function_body
@@ -200,7 +196,6 @@ class DatabricksFunctionClient(BaseFunctionClient):
         self,
         client: Optional["WorkspaceClient"] = None,
         *,
-        warehouse_id: Optional[str] = None,
         profile: Optional[str] = None,
         **kwargs: Any,
     ) -> None:
@@ -210,15 +205,10 @@ class DatabricksFunctionClient(BaseFunctionClient):
         Args:
             client: The databricks workspace client. If it's None, a default databricks workspace client
                 is generated based on the configuration. Defaults to None.
-            warehouse_id: The warehouse id to use for executing functions. This field is
-                not needed if serverless is enabled in the databricks workspace. Defaults to None.
             profile: The configuration profile to use for databricks connect. Defaults to None.
         """
         self.client = client or get_default_databricks_workspace_client(profile=profile)
-        self.warehouse_id = warehouse_id
-        self._validate_warehouse_type()
         self.profile = profile
-        # TODO: add CI to run this in Databricks notebook
         self.spark = _try_get_spark_session_in_dbr()
         self._is_default_client = client is None
         super().__init__()
@@ -244,17 +234,6 @@ class DatabricksFunctionClient(BaseFunctionClient):
     def stop_spark_session(self):
         if self._is_spark_session_active():
             self.spark.stop()
-
-    def _validate_warehouse_type(self):
-        if (
-            self.warehouse_id
-            and not self.client.warehouses.get(self.warehouse_id).enable_serverless_compute
-        ):
-            raise ValueError(
-                f"Warehouse {self.warehouse_id} does not support serverless compute. "
-                "Please use a serverless warehouse following the instructions here: "
-                "https://docs.databricks.com/en/admin/sql/serverless.html#enable-serverless-sql-warehouses."
-            )
 
     def refresh_client_and_session(self):
         """
@@ -588,103 +567,7 @@ class DatabricksFunctionClient(BaseFunctionClient):
         self, function_info: "FunctionInfo", parameters: Dict[str, Any], **kwargs: Any
     ) -> Any:
         check_function_info(function_info)
-        if self.warehouse_id:
-            return self._execute_uc_functions_with_warehouse(function_info, parameters)
-        else:
-            return self._execute_uc_functions_with_serverless(function_info, parameters)
-
-    @retry_on_session_expiration
-    def _execute_uc_functions_with_warehouse(
-        self, function_info: "FunctionInfo", parameters: Dict[str, Any]
-    ) -> FunctionExecutionResult:
-        from databricks.sdk.service.sql import StatementState
-
-        _logger.info("Executing function using client warehouse_id.")
-
-        parametrized_statement = get_execute_function_sql_stmt(function_info, parameters)
-        response = self.client.statement_execution.execute_statement(
-            statement=parametrized_statement.statement,
-            warehouse_id=self.warehouse_id,
-            parameters=parametrized_statement.parameters,
-            wait_timeout=UCAI_DATABRICKS_WAREHOUSE_EXECUTE_FUNCTION_WAIT_TIMEOUT.get(),
-            row_limit=int(UCAI_DATABRICKS_WAREHOUSE_EXECUTE_FUNCTION_ROW_LIMIT.get()),
-            byte_limit=int(UCAI_DATABRICKS_WAREHOUSE_EXECUTE_FUNCTION_BYTE_LIMIT.get()),
-        )
-        # TODO: the first time the warehouse is invoked, it might take longer than
-        # expected, so it's still pending even after 6 times of retry;
-        # we should see if we can check the warehouse status before invocation, and
-        # increase the wait time if needed
-        if response.status and job_pending(response.status.state) and response.statement_id:
-            statement_id = response.statement_id
-            _logger.info("Retrying to get statement execution status...")
-            wait_time = 0
-            retry_cnt = 0
-            client_execution_timeout = int(UCAI_DATABRICKS_WAREHOUSE_RETRY_TIMEOUT.get())
-            while wait_time < client_execution_timeout:
-                wait = min(2**retry_cnt, client_execution_timeout - wait_time)
-                time.sleep(wait)
-                _logger.info(f"Retry times: {retry_cnt}")
-                response = self.client.statement_execution.get_statement(statement_id)
-                if response.status is None or not job_pending(response.status.state):
-                    break
-                wait_time += wait
-                retry_cnt += 1
-            if response.status and job_pending(response.status.state):
-                return FunctionExecutionResult(
-                    error=f"Statement execution is still {response.status.state.value.lower()} after {wait_time} "
-                    "seconds. Please increase the wait_timeout argument for executing "
-                    f"the function or increase {UCAI_DATABRICKS_WAREHOUSE_RETRY_TIMEOUT.name} environment "
-                    f"variable for increasing retrying time, default value is {UCAI_DATABRICKS_WAREHOUSE_RETRY_TIMEOUT.default_value} seconds."
-                )
-        if response.status is None:
-            return FunctionExecutionResult(error=f"Statement execution failed: {response}")
-        if response.status.state != StatementState.SUCCEEDED:
-            error = response.status.error
-            if error is None:
-                return FunctionExecutionResult(
-                    error=f"Statement execution failed but no error message was provided: {response}"
-                )
-            return FunctionExecutionResult(error=f"{error.error_code}: {error.message}")
-
-        manifest = response.manifest
-        if manifest is None:
-            return FunctionExecutionResult(
-                error="Statement execution succeeded but no manifest was returned."
-            )
-        truncated = manifest.truncated
-        if response.result is None:
-            return FunctionExecutionResult(
-                error="Statement execution succeeded but no result was provided."
-            )
-        data_array = response.result.data_array
-        if is_scalar(function_info):
-            value = None
-            if data_array and len(data_array) > 0 and len(data_array[0]) > 0:
-                # value is always string type
-                value = data_array[0][0]
-            return FunctionExecutionResult(format="SCALAR", value=value, truncated=truncated)
-        else:
-            try:
-                import pandas as pd
-            except ImportError as e:
-                raise ImportError(
-                    "Could not import pandas python package. Please install it with `pip install pandas`."
-                ) from e
-
-            schema = manifest.schema
-            if schema is None or schema.columns is None:
-                return FunctionExecutionResult(
-                    error="Statement execution succeeded but no schema was provided for table function."
-                )
-            columns = [c.name for c in schema.columns]
-            if data_array is None:
-                data_array = []
-            pdf = pd.DataFrame(data_array, columns=columns)
-            csv_buffer = StringIO()
-            pdf.to_csv(csv_buffer, index=False)
-            return FunctionExecutionResult(
-                format="CSV", value=csv_buffer.getvalue(), truncated=truncated
-            )
+        return self._execute_uc_functions_with_serverless(function_info, parameters)
 
     @retry_on_session_expiration
     def _execute_uc_functions_with_serverless(
@@ -738,13 +621,12 @@ class DatabricksFunctionClient(BaseFunctionClient):
     def to_dict(self):
         return {
             # TODO: workspaceClient related config
-            "warehouse_id": self.warehouse_id,
             "profile": self.profile,
         }
 
     @classmethod
     def from_dict(cls, config: Dict[str, Any]):
-        accept_keys = ["warehouse_id", "profile"]
+        accept_keys = ["profile"]
         return cls(**{k: v for k, v in config.items() if k in accept_keys})
 
 

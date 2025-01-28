@@ -18,7 +18,6 @@ from unitycatalog.ai.core.utils.function_processing_utils import get_tool_name
 from unitycatalog.ai.openai.toolkit import UCFunctionToolkit
 from unitycatalog.ai.test_utils.client_utils import (
     TEST_IN_DATABRICKS,
-    USE_SERVERLESS,
     get_client,
     requires_databricks,
     set_default_client,
@@ -37,9 +36,7 @@ def env_setup(monkeypatch):
 
 
 @requires_databricks
-@pytest.mark.parametrize("use_serverless", [True, False])
-def test_tool_calling(use_serverless, monkeypatch):
-    monkeypatch.setenv(USE_SERVERLESS, str(use_serverless))
+def test_tool_calling():
     client = get_client()
     with (
         set_default_client(client),
@@ -101,9 +98,7 @@ def test_tool_calling(use_serverless, monkeypatch):
 
 
 @requires_databricks
-@pytest.mark.parametrize("use_serverless", [True, False])
-def test_tool_calling_with_trace_as_retriever(use_serverless, monkeypatch):
-    monkeypatch.setenv(USE_SERVERLESS, str(use_serverless))
+def test_tool_calling_with_trace_as_retriever():
     client = get_client()
     import mlflow
 
@@ -162,9 +157,7 @@ def test_tool_calling_with_trace_as_retriever(use_serverless, monkeypatch):
 
 
 @requires_databricks
-@pytest.mark.parametrize("use_serverless", [True, False])
-def test_tool_calling_with_multiple_choices(use_serverless, monkeypatch):
-    monkeypatch.setenv(USE_SERVERLESS, str(use_serverless))
+def test_tool_calling_with_multiple_choices():
     client = get_client()
     with (
         set_default_client(client),
@@ -232,9 +225,7 @@ def test_tool_calling_with_multiple_choices(use_serverless, monkeypatch):
 
 
 @requires_databricks
-@pytest.mark.parametrize("use_serverless", [True, False])
-def test_tool_calling_work_with_non_json_schema(use_serverless, monkeypatch):
-    monkeypatch.setenv(USE_SERVERLESS, str(use_serverless))
+def test_tool_calling_work_with_non_json_schema():
     func_name = random_func_name(schema=SCHEMA)
     function_name = func_name.split(".")[-1]
     sql_body = f"""CREATE FUNCTION {func_name}(start DATE, end DATE)
@@ -310,9 +301,7 @@ RETURN SELECT extract(DAYOFWEEK_ISO FROM day), day
 
 
 @requires_databricks
-@pytest.mark.parametrize("use_serverless", [True, False])
-def test_tool_choice_param(use_serverless, monkeypatch):
-    monkeypatch.setenv(USE_SERVERLESS, str(use_serverless))
+def test_tool_choice_param():
     cap_func = random_func_name(schema=SCHEMA)
     sql_body1 = f"""CREATE FUNCTION {cap_func}(s STRING)
 RETURNS STRING
@@ -406,9 +395,7 @@ $$
         assert result.value == "ABC"
 
 
-@pytest.mark.parametrize("use_serverless", [True, False])
-def test_openai_toolkit_initialization(use_serverless, monkeypatch):
-    monkeypatch.setenv(USE_SERVERLESS, str(use_serverless))
+def test_openai_toolkit_initialization():
     client = get_client()
     with pytest.raises(
         ValueError,
@@ -438,9 +425,7 @@ def generate_function_info(parameters: List[Dict], catalog="catalog", schema="sc
     )
 
 
-@pytest.mark.parametrize("use_serverless", [True, False])
-def test_function_definition_generation(use_serverless, monkeypatch):
-    monkeypatch.setenv(USE_SERVERLESS, str(use_serverless))
+def test_function_definition_generation():
     client = get_client()
     with set_default_client(client):
         function_info = generate_function_info(

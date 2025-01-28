@@ -20,7 +20,6 @@ from unitycatalog.ai.core.base import (
 from unitycatalog.ai.llama_index.toolkit import UCFunctionToolkit, extract_properties
 from unitycatalog.ai.test_utils.client_utils import (
     TEST_IN_DATABRICKS,
-    USE_SERVERLESS,
     client,  # noqa: F401
     get_client,
     requires_databricks,
@@ -127,9 +126,7 @@ def test_toolkit_creation_with_properties_argument_mocked():
 
 
 @requires_databricks
-@pytest.mark.parametrize("use_serverless", [True, False])
-def test_toolkit_e2e(use_serverless, monkeypatch):
-    monkeypatch.setenv(USE_SERVERLESS, str(use_serverless))
+def test_toolkit_e2e():
     client = get_client()
     with set_default_client(client), create_function_and_cleanup(client, schema=SCHEMA) as func_obj:
         toolkit = UCFunctionToolkit(
@@ -154,9 +151,7 @@ def test_toolkit_e2e(use_serverless, monkeypatch):
 
 
 @requires_databricks
-@pytest.mark.parametrize("use_serverless", [True, False])
-def test_toolkit_e2e_manually_passing_client(use_serverless, monkeypatch):
-    monkeypatch.setenv(USE_SERVERLESS, str(use_serverless))
+def test_toolkit_e2e_manually_passing_client():
     client = get_client()
     with set_default_client(client), create_function_and_cleanup(client, schema=SCHEMA) as func_obj:
         toolkit = UCFunctionToolkit(
@@ -180,9 +175,7 @@ def test_toolkit_e2e_manually_passing_client(use_serverless, monkeypatch):
 
 
 @requires_databricks
-@pytest.mark.parametrize("use_serverless", [True, False])
-def test_multiple_toolkits(use_serverless, monkeypatch):
-    monkeypatch.setenv(USE_SERVERLESS, str(use_serverless))
+def test_multiple_toolkits():
     client = get_client()
     with set_default_client(client), create_function_and_cleanup(client, schema=SCHEMA) as func_obj:
         toolkit1 = UCFunctionToolkit(function_names=[func_obj.full_function_name])
@@ -290,11 +283,7 @@ def test_toolkit_with_invalid_function_input(client):
         ("CSV", RETRIEVER_OUTPUT_CSV),
     ],
 )
-@pytest.mark.parametrize("use_serverless", [True, False])
-def test_toolkit_with_tracing_as_retriever(
-    use_serverless, monkeypatch, format: str, function_output: str
-):
-    monkeypatch.setenv(USE_SERVERLESS, str(use_serverless))
+def test_toolkit_with_tracing_as_retriever(format: str, function_output: str):
     client = get_client()
     mock_function_info = generate_function_info()
 

@@ -1,7 +1,6 @@
 import json
 import math
 import os
-import time
 from typing import Callable, Dict, List
 
 import pytest
@@ -37,12 +36,9 @@ from unitycatalog.ai.core.databricks import (
 )
 from unitycatalog.ai.core.envs.databricks_env_vars import (
     UCAI_DATABRICKS_SERVERLESS_EXECUTION_RESULT_ROW_LIMIT,
-    UCAI_DATABRICKS_WAREHOUSE_EXECUTE_FUNCTION_WAIT_TIMEOUT,
-    UCAI_DATABRICKS_WAREHOUSE_RETRY_TIMEOUT,
 )
 from unitycatalog.ai.test_utils.client_utils import (
     TEST_IN_DATABRICKS,
-    USE_SERVERLESS,
     client,  # noqa: F401
     get_client,
     requires_databricks,
@@ -190,30 +186,6 @@ def test_execute_function_using_serverless_row_limit(
 
 @retry_flaky_test()
 @requires_databricks
-def test_execute_function_with_timeout(client: DatabricksFunctionClient, monkeypatch):
-    monkeypatch.setenv(UCAI_DATABRICKS_WAREHOUSE_RETRY_TIMEOUT.name, "5")
-    with generate_func_name_and_cleanup(client, schema=SCHEMA) as func_name:
-        sql_body = f"""CREATE FUNCTION {func_name}()
-RETURNS STRING
-LANGUAGE PYTHON
-AS $$
-    import time
-
-    time.sleep(100)
-    return "10"
-$$
-"""
-        client.create_function(sql_function_body=sql_body)
-        result = client.execute_function(func_name)
-        assert result.error.startswith("Statement execution is still running after 5 seconds")
-
-        monkeypatch.setenv(UCAI_DATABRICKS_WAREHOUSE_RETRY_TIMEOUT.name, "100")
-        result = client.execute_function(func_name)
-        assert result.value == "10"
-
-
-@retry_flaky_test()
-@requires_databricks
 def test_get_function(client: DatabricksFunctionClient):
     with generate_func_name_and_cleanup(client, schema=SCHEMA) as func_name:
         sql_body = f"""CREATE FUNCTION {func_name}(s STRING)
@@ -267,35 +239,6 @@ def test_delete_function(serverless_client: DatabricksFunctionClient):
     serverless_client.delete_function(function_name)
     with pytest.raises(ResourceDoesNotExist, match=rf"'{function_name}' does not exist"):
         serverless_client.get_function(function_name)
-
-
-@retry_flaky_test()
-@requires_databricks
-def test_extra_params_when_executing_function_e2e(client: DatabricksFunctionClient, monkeypatch):
-    monkeypatch.setenv(UCAI_DATABRICKS_WAREHOUSE_RETRY_TIMEOUT.name, "5")
-    with generate_func_name_and_cleanup(client, schema=SCHEMA) as func_name:
-        sql_body = f"""CREATE FUNCTION {func_name}()
-RETURNS STRING
-LANGUAGE PYTHON
-AS $$
-    import time
-
-    time.sleep(100)
-    return "10"
-$$
-"""
-        client.create_function(sql_function_body=sql_body)
-        time1 = time.time()
-        # default wait_timeout is 30s
-        client.execute_function(func_name)
-        time_total1 = time.time() - time1
-
-        monkeypatch.setenv(UCAI_DATABRICKS_WAREHOUSE_EXECUTE_FUNCTION_WAIT_TIMEOUT.name, "10s")
-        time2 = time.time()
-        client.execute_function(func_name)
-        time_total2 = time.time() - time2
-        # 30s - 10s = 20s, the time difference should be around 20s
-        assert abs(abs(time_total2 - time_total1) - 20) < 5
 
 
 @retry_flaky_test()
@@ -500,11 +443,7 @@ print(calculate_sum([1, 2, 3, 4, 5]))""",
 
 @requires_databricks
 @pytest.mark.parametrize("code, expected_output", integration_test_cases)
-@pytest.mark.parametrize("use_serverless", [True, False])
-def test_execute_python_code_integration(
-    code: str, expected_output: str, use_serverless: bool, monkeypatch
-):
-    monkeypatch.setenv(USE_SERVERLESS, str(use_serverless))
+def test_execute_python_code_integration(code: str, expected_output: str):
     client = get_client()
 
     def python_exec(code: str) -> str:
@@ -535,7 +474,6 @@ def test_execute_python_code_integration(
 
 
 @requires_databricks
-@pytest.mark.parametrize("use_serverless", [True, False])
 @pytest.mark.parametrize(
     "text",
     [
@@ -544,8 +482,7 @@ def test_execute_python_code_integration(
         "'return '2' + \"" '3"' "' is a valid input to this function",
     ],
 )
-def test_string_param_passing_work(text: str, use_serverless: bool, monkeypatch):
-    monkeypatch.setenv(USE_SERVERLESS, str(use_serverless))
+def test_string_param_passing_work(text: str):
     client = get_client()
     function_name = random_func_name(schema=SCHEMA)
     summarize_in_20_words = f"""CREATE OR REPLACE FUNCTION {function_name}(text STRING)

@@ -17,7 +17,6 @@ from unitycatalog.ai.autogen.toolkit import UCFunctionToolkit
 from unitycatalog.ai.core.client import FunctionExecutionResult
 from unitycatalog.ai.test_utils.client_utils import (
     TEST_IN_DATABRICKS,
-    USE_SERVERLESS,
     get_client,
     requires_databricks,
     set_default_client,
@@ -69,10 +68,8 @@ def generate_function_info():
 
 
 @requires_databricks
-@pytest.mark.parametrize("use_serverless", [True, False])
 @pytest.mark.asyncio
-async def test_toolkit_e2e(use_serverless, monkeypatch, dbx_client):
-    monkeypatch.setenv(USE_SERVERLESS, str(use_serverless))
+async def test_toolkit_e2e(dbx_client):
     with (
         set_default_client(dbx_client),
         create_function_and_cleanup(dbx_client, schema=SCHEMA) as func_obj,
@@ -102,10 +99,8 @@ async def test_toolkit_e2e(use_serverless, monkeypatch, dbx_client):
 
 
 @requires_databricks
-@pytest.mark.parametrize("use_serverless", [True, False])
 @pytest.mark.asyncio
-async def test_toolkit_e2e_manually_passing_client(use_serverless, monkeypatch, dbx_client):
-    monkeypatch.setenv(USE_SERVERLESS, str(use_serverless))
+async def test_toolkit_e2e_manually_passing_client(dbx_client):
     with (
         set_default_client(dbx_client),
         create_function_and_cleanup(dbx_client, schema=SCHEMA) as func_obj,
@@ -132,10 +127,8 @@ async def test_toolkit_e2e_manually_passing_client(use_serverless, monkeypatch, 
 
 
 @requires_databricks
-@pytest.mark.parametrize("use_serverless", [True, False])
 @pytest.mark.asyncio
-async def test_multiple_toolkits(use_serverless, monkeypatch, dbx_client):
-    monkeypatch.setenv(USE_SERVERLESS, str(use_serverless))
+async def test_multiple_toolkits(dbx_client):
     with (
         set_default_client(dbx_client),
         create_function_and_cleanup(dbx_client, schema=SCHEMA) as func_obj,
@@ -229,11 +222,7 @@ async def test_uc_function_to_autogen_tool(dbx_client):
         ("CSV", RETRIEVER_OUTPUT_CSV),
     ],
 )
-@pytest.mark.parametrize("use_serverless", [True, False])
-def test_autogen_tool_with_tracing_as_retriever(
-    use_serverless, monkeypatch, format: str, function_output: str
-):
-    monkeypatch.setenv(USE_SERVERLESS, str(use_serverless))
+def test_autogen_tool_with_tracing_as_retriever(format: str, function_output: str):
     client = get_client()
     mock_function_info = generate_function_info()
 
