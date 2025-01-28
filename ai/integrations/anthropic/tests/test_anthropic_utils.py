@@ -297,7 +297,7 @@ def test_generate_tool_call_messages_with_tracing(
 
         mock_client = DatabricksFunctionClient()
         mock_client._execute_uc_function = Mock(
-            return_value=Mock(format=format, value=function_output)
+            return_value=Mock(format=format, value=function_output, error=None)
         )
         mock_client.validate_input_params = Mock()
         mock_client.get_function = Mock(return_value=function_mock)
