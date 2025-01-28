@@ -1,3 +1,4 @@
+import ast
 import os
 from unittest import mock
 
@@ -36,8 +37,6 @@ SCHEMA = os.environ.get("SCHEMA", "ucai_core_test")
 
 
 def mock_anthropic_tool_response(function_name, input_data, message_id):
-    input_data["code"] = 'print("Hello, World!")'
-
     return Message(
         id=message_id,
         type="message",
@@ -162,6 +161,48 @@ async def test_tool_calling_with_anthropic(uc_client):
 
 
 @pytest.mark.asyncio
+async def test_tool_calling_with_retriever_tracing_anthropic(uc_client):
+    with create_function_and_cleanup_oss(uc_client, schema=SCHEMA) as func_obj:
+        func_name = func_obj.full_function_name
+        tools = UCFunctionToolkit(function_names=[func_name], client=uc_client).tools
+        input_args = {"code": 'print([{"page_content": "This is the page content."}],end="")'}
+
+        messages = [
+            {
+                "role": "user",
+                "content": f"Please execute the following code: {input_args}",
+            },
+        ]
+
+        converted_func_name = get_tool_name(func_name)
+
+        with mock.patch("anthropic.resources.messages.Messages.create") as mock_create:
+            mock_create.return_value = mock_anthropic_tool_response(
+                function_name=converted_func_name,
+                input_data=input_args,
+                message_id="msg_01H6Y3Z0XYZ123456789",
+            )
+
+            response = Anthropic().messages.create(
+                model="claude-3-5-sonnet-20240620", messages=messages, tools=tools, max_tokens=512
+            )
+
+            tool_calls = response.content
+            arguments = tool_calls[1].input
+
+            import mlflow
+
+            uc_client.execute_function(func_name, arguments, enable_retriever_tracing=True)
+
+            trace = mlflow.get_last_active_trace()
+            assert trace is not None
+            assert trace.info.execution_time_ms is not None
+            assert ast.literal_eval(trace.data.request) == input_args
+            assert trace.data.response == '[{"page_content": "This is the page content."}]'
+            assert trace.data.spans[0].name == func_name
+
+
+@pytest.mark.asyncio
 async def test_tool_calling_with_multiple_tools_anthropic(uc_client):
     with create_function_and_cleanup_oss(uc_client, schema=SCHEMA) as func_obj:
         func_name = func_obj.full_function_name
@@ -197,7 +238,7 @@ async def test_tool_calling_with_multiple_tools_anthropic(uc_client):
             assert isinstance(arguments.get("code"), str)
 
             result = uc_client.execute_function(func_name, arguments)
-            assert result.value.strip() == "Hello, World!"
+            assert result.value.strip() == "Hello from Paris!"
 
             function_call_result_message = {
                 "role": "user",
@@ -239,7 +280,7 @@ async def test_tool_calling_with_multiple_tools_anthropic(uc_client):
 
                 result_second = uc_client.execute_function(func_name, arguments_second)
 
-                assert result_second.value.strip() == "Hello, World!"
+                assert result_second.value.strip() == "Hello from New York!"
 
                 function_call_result_message_second = {
                     "role": "user",

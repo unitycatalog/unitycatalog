@@ -65,6 +65,9 @@ jobs:
           else
             pip install 'pydantic<3,>=2'
           fi
+      - name: Install dependencies
+        run: |
+          pip install mlflow
       - name: Install Unity Catalog Python Libraries
         run: |
           dev/install_client.sh

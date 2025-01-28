@@ -594,7 +594,7 @@ class UnitycatalogFunctionClient(BaseFunctionClient):
         pass
 
     async def get_function_async(
-        self, function_name: str, timeout: Optional[float] = None
+        self, function_name: str, timeout: Optional[float] = None, **kwargs: Any
     ) -> FunctionInfo:
         """
         Retrieve a function by its full name asynchronously.
