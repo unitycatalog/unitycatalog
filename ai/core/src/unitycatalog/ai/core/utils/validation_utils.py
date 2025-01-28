@@ -1,6 +1,5 @@
 import base64
 import datetime
-import re
 import warnings
 from typing import TYPE_CHECKING, Any, NamedTuple
 
@@ -154,8 +153,6 @@ def has_retriever_signature(function_info: "FunctionInfo") -> bool:
     Returns:
         bool: If the provided function has a valid retriever signature.
     """
-    valid_columns_dict = {"page_content": "STRING", "id": "STRING", "metadata": "MAP"}
-
     if "TABLE_TYPE" in str(function_info.data_type):
         if function_info.return_params and function_info.return_params.parameters:
             params = []
@@ -166,42 +163,9 @@ def has_retriever_signature(function_info: "FunctionInfo") -> bool:
                     params.append(dict(param))
 
             param_dict = {param["name"]: param["type_name"] for param in params}
-            return param_dict.items() <= valid_columns_dict.items() and "page_content" in param_dict
-        return False
-    else:
-        # We want to match something like the following data type
-        # ARRAY<STRUCT<page_content: STRING, id: STRING, metadata: MAP<STRING, STRING>>>
+            return "page_content" in param_dict and param_dict["page_content"] == "STRING"
 
-        full_data_type = function_info.full_data_type.strip()
-
-        match = re.match(r"ARRAY<STRUCT<(.*)>>", full_data_type)
-        if not match:
-            return False
-
-        # Split on commas but respect data types such as MAP<STRING, STRING>
-        columns = re.split(r",\s*(?![^<]*>)", match.group(1))
-
-        has_page_content = False
-
-        for column in columns:
-            parts = re.split(r"[:\s]+", column.strip(), maxsplit=1)
-            if len(parts) != 2:
-                return False
-            name, col_type = parts
-
-            if name not in valid_columns_dict.keys():
-                return False
-
-            # Validate data type for the column
-            if name == "metadata" and not col_type.startswith("MAP"):
-                return False
-            if name != "metadata" and col_type != "STRING":
-                return False
-
-            if name == "page_content":
-                has_page_content = True
-
-        return has_page_content
+    return False
 
 
 def mlflow_tracing_enabled(integration_name: str) -> bool:
