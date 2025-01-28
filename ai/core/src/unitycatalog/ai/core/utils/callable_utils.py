@@ -104,6 +104,22 @@ class FunctionMetadata:
     indent_unit: int
 
 
+@dataclass
+class SQLMetadata:
+    """
+    Dataclass to store the sql body generation metadata.
+
+    Attributes:
+        sql_params: List of SQL parameter definitions.
+        func_comment: Comment describing the function.
+        indented_body: The indented body of the Python function.
+    """
+
+    sql_params: List[str]
+    func_comment: str
+    indented_body: str
+
+
 def extract_function_body(func: Callable[..., Any]) -> tuple[str, int]:
     """
     Extracts the body of a function as a string without the signature or docstring,
@@ -125,6 +141,29 @@ def extract_function_body(func: Callable[..., Any]) -> tuple[str, int]:
     extractor.visit(parsed_source)
 
     return extractor.function_body, extractor.indent_unit
+
+
+def extract_wrapped_functions(functions: list[Callable[..., Any]]) -> str:
+    """
+    Extracts the contents of callables that will be wrapped without modification or metadata extraction
+    for the purposes of in-lining their definitions into a wrapper function that will be registered to UC.
+
+    Args:
+        functions: List of callables to extract.
+    Returns:
+        The extracted code as a string, prepared for in-lining into the primary function's body.
+    """
+
+    if not all(callable(func) for func in functions):
+        raise ValueError(
+            "Unable to process functions. Ensure that all functions are valid callables."
+        )
+
+    sources = []
+    for func in functions:
+        src, _ = inspect.getsourcelines(func)
+        sources.append(dedent("".join(src)))
+    return "\n".join(sources)
 
 
 def validate_type_hint(hint: Any) -> str:
@@ -509,8 +548,79 @@ def generate_sql_function_body(
 
     metadata = extract_function_metadata(func)
 
+    sql_metadata = create_sql_metadata(metadata)
+
+    sql_body = assemble_sql_body(
+        catalog,
+        schema,
+        metadata.func_name,
+        sql_metadata.sql_params,
+        metadata.sql_return_type,
+        sql_metadata.func_comment,
+        sql_metadata.indented_body,
+        replace,
+    )
+
+    return sql_body
+
+
+def generate_wrapped_sql_function_body(
+    primary_func: Callable[..., Any],
+    functions: list[Callable[..., Any]],
+    catalog: str,
+    schema: str,
+    replace: bool = False,
+) -> str:
+    """
+    Generate SQL body for creating the function in Unity Catalog.
+
+    Args:
+        primary_func: The primary Python callable function to convert into a UDF.
+        functions: List of additional functions to be wrapped.
+        catalog: The catalog name.
+        schema: The schema name.
+
+    Returns:
+        str: SQL statement for creating the UDF.
+    """
+
+    wrapped_function_content = extract_wrapped_functions(functions)
+
+    primary_metadata = extract_function_metadata(primary_func)
+
+    # Update the primary function's body with the wrapped functions in-lined into the top of the body
+    primary_metadata.function_body = (
+        wrapped_function_content + "\n" + primary_metadata.function_body
+    )
+
+    sql_metadata = create_sql_metadata(primary_metadata)
+
+    sql_body = assemble_sql_body(
+        catalog,
+        schema,
+        primary_metadata.func_name,
+        sql_metadata.sql_params,
+        primary_metadata.sql_return_type,
+        sql_metadata.func_comment,
+        sql_metadata.indented_body,
+        replace,
+    )
+
+    return sql_body
+
+
+def create_sql_metadata(function_metadata: FunctionMetadata) -> SQLMetadata:
+    """
+    Create SQL body for creating the function in Unity Catalog.
+
+    Args:
+        function_metadata: The metadata of the function.
+
+    Returns:
+        SQLMetadata object containing the metadata for sql body creation.
+    """
     sql_params = []
-    for param_info in metadata.parameters:
+    for param_info in function_metadata.parameters:
         sql_param_parts = [param_info["name"], param_info["sql_type"]]
         if param_info["parameter_default"] is not None:
             sql_param_parts.append(f"DEFAULT {param_info['parameter_default']}")
@@ -519,22 +629,11 @@ def generate_sql_function_body(
         sql_param = " ".join(sql_param_parts)
         sql_params.append(sql_param)
 
-    indented_body = indent(metadata.function_body, " " * metadata.indent_unit)
+    indented_body = indent(function_metadata.function_body, " " * function_metadata.indent_unit)
 
-    func_comment = metadata.docstring_info.description.replace("'", '"')
+    func_comment = function_metadata.docstring_info.description.replace("'", '"')
 
-    sql_body = assemble_sql_body(
-        catalog,
-        schema,
-        metadata.func_name,
-        sql_params,
-        metadata.sql_return_type,
-        func_comment,
-        indented_body,
-        replace,
-    )
-
-    return sql_body
+    return SQLMetadata(sql_params, func_comment, indented_body)
 
 
 def validate_return_type(func_name: str, type_hints: dict[str, Any]) -> str:
