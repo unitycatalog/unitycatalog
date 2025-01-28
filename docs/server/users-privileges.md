@@ -15,11 +15,11 @@ When you enable external authorization on a catalog, Unity Catalog automatically
 
 - creates an admin account in the user database
 - creates an admin token
-- grants the admin account the metastore admin role for the server.
+- grants the admin account the metastore admin privileges for the server.
 
 Read the [Auth docs](auth.md) to learn how you can configure authentication and authorization.
 
-## Default User Roles and Privileges
+## Default User Privileges
 
 When you create a new catalog with external authentication enabled, Unity Catalog automatically creates an admin account. This admin account has full ownership over all catalogs, schemas and assets, as well as the metastore. They can use the admin token to create other users and give them privileges.
 
