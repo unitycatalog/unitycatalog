@@ -19,6 +19,7 @@ import io.unitycatalog.control.model.AccessTokenType;
 import io.unitycatalog.control.model.GrantType;
 import io.unitycatalog.control.model.OAuthTokenExchangeForm;
 import io.unitycatalog.control.model.OAuthTokenExchangeInfo;
+import io.unitycatalog.control.model.TokenEndpointExtensionType;
 import io.unitycatalog.control.model.TokenType;
 import io.unitycatalog.control.model.User;
 import io.unitycatalog.server.exception.ErrorCode;
@@ -49,7 +50,6 @@ public class AuthService {
   private final JwksOperations jwksOperations;
   private final ServerProperties serverProperties;
 
-  private static final String COOKIE = "cookie";
   private static final String EMPTY_RESPONSE = "{}";
 
   public AuthService(
@@ -95,7 +95,7 @@ public class AuthService {
    */
   @Post("/tokens")
   public HttpResponse grantToken(
-      @Param("ext") Optional<String> ext,
+      @Param("ext") Optional<TokenEndpointExtensionType> ext,
       @RequestConverter(ToOAuthTokenExchangeFormConverter.class) OAuthTokenExchangeForm form) {
     LOGGER.debug("Got token: {}", form);
 
@@ -150,7 +150,7 @@ public class AuthService {
     ResponseHeadersBuilder responseHeaders = ResponseHeaders.builder(HttpStatus.OK);
     ext.ifPresent(
         e -> {
-          if (e.equals(COOKIE)) {
+          if (e.equals(TokenEndpointExtensionType.COOKIE)) {
             // Set cookie timeout to 5 days by default if not present in server.properties
             String cookieTimeout =
                 this.serverProperties.getProperty("server.cookie-timeout", "P5D");

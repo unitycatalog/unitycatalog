@@ -49,7 +49,7 @@ export function useLoginWithToken() {
           baseURL: UC_AUTH_API_PREFIX,
           headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
         },
-        errorMessage: 'Failed to log in',
+        errorMessage: 'Failed to login',
       }).call();
       if (isError(response)) {
         // NOTE:
