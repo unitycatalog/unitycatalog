@@ -37,6 +37,7 @@ from unitycatalog.ai.core.databricks import (
 from unitycatalog.ai.core.envs.databricks_env_vars import (
     UCAI_DATABRICKS_SERVERLESS_EXECUTION_RESULT_ROW_LIMIT,
 )
+from unitycatalog.ai.core.utils.validation_utils import has_retriever_signature
 from unitycatalog.ai.test_utils.client_utils import (
     TEST_IN_DATABRICKS,
     client,  # noqa: F401
@@ -99,6 +100,8 @@ def test_create_and_execute_retriever_function(serverless_client: DatabricksFunc
     with generate_func_name_and_cleanup(serverless_client, schema=SCHEMA) as func_name:
         function_sample = function_with_scalar_retriever_output(func_name)
         serverless_client.create_function(sql_function_body=function_sample.sql_body)
+        function_info = serverless_client.get_function(func_name)
+        assert has_retriever_signature(function_info)
         for input_example in function_sample.inputs:
             result = serverless_client.execute_function(
                 func_name, input_example, enable_retriever_tracing=True
