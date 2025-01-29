@@ -120,17 +120,19 @@ def create_table_function_and_cleanup(
     sql_body = (
         sql_body
         or f"""CREATE FUNCTION {func_name}(query STRING)
-RETURNS TABLE
-SELECT
-  chunked_text as page_content,
-  map('doc_uri', url, 'chunk_id', chunk_id) as metadata
-FROM
-  vector_search(
-    -- Specify your Vector Search index name here
-    index => 'catalog.schema.databricks_docs_index',
-    query => query,
-    num_results => 5
-  )
+RETURNS TABLE (
+    page_content STRING, 
+    metadata MAP<STRING, STRING>
+)
+RETURN SELECT
+      chunked_text as page_content,
+      map('doc_uri', url, 'chunk_id', chunk_id) as metadata
+    FROM
+    vector_search(
+        index => 'catalog.schema.databricks_docs_index',
+        query => query,
+        num_results => 5
+    )
 """
     )
     try:
