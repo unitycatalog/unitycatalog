@@ -64,6 +64,10 @@ def test_get_function_errors(client: DatabricksFunctionClient):
             "CREATE FUNCTION `奇怪的catalog`.`some-schema`.test_function() RETURN 123",
             "奇怪的catalog.some-schema.test_function",
         ),
+        (
+            "CREATE OR REPLACE FUNCTION a.b.dep(s STRING) RETURNS STRING LANGUAGE PYTHON ENVIRONMENT (dependencies = ['some-dependency']) AS $$ return s $$",
+            "a.b.dep",
+        ),
     ],
 )
 def test_extract_function_name(sql_body, function_name):
@@ -851,3 +855,115 @@ def test_execute_function_warnings_missing_descriptions(mock_workspace_client, m
         assert any(
             "The function mock_function does not have a description." in msg for msg in messages
         ), "Warning about missing function description was not issued."
+
+
+def test_create_python_function_with_dependencies(client: DatabricksFunctionClient):
+    def sample_func(a: int, b: str) -> str:
+        """
+        Sample function that concatenates an integer and a string.
+
+        Args:
+            a (int): An integer value.
+            b (str): A string value.
+
+        Returns:
+            str: The concatenated result.
+        """
+        return f"{a}-{b}"
+
+    dependencies = ["numpy", "pandas"]
+
+    expected_sql_body = (
+        "CREATE OR REPLACE FUNCTION catalog.schema.sample_func(a INT, b STRING) "
+        "RETURNS STRING "
+        "LANGUAGE PYTHON "
+        "ENVIRONMENT (dependencies = ['numpy', 'pandas'], environment_version = 'None') "
+        "AS $$\n"
+        "import numpy\n"
+        "import pandas\n"
+        "def sample_func(a: int, b: str) -> str:\n"
+        '    return f"{a}-{b}"\n'
+        "$$;"
+    )
+
+    with patch(
+        "unitycatalog.ai.core.databricks.generate_sql_function_body",
+        return_value=expected_sql_body,
+    ) as mock_generate_sql:
+        mock_function_info = create_mock_function_info()
+        client.create_function = MagicMock(return_value=mock_function_info)
+
+        result = client.create_python_function(
+            func=sample_func,
+            catalog="catalog",
+            schema="schema",
+            dependencies=dependencies,
+        )
+
+        mock_generate_sql.assert_called_once_with(
+            sample_func,
+            "catalog",
+            "schema",
+            False,
+            dependencies,
+            "None",
+        )
+
+        client.create_function.assert_called_once_with(sql_function_body=expected_sql_body)
+
+        assert result == mock_function_info
+
+
+def test_create_python_function_with_environment_version(client: DatabricksFunctionClient):
+    def another_sample_func(x: float, y: float) -> float:
+        """
+        Function to add two floating-point numbers.
+
+        Args:
+            x (float): First number.
+            y (float): Second number.
+
+        Returns:
+            float: The sum of x and y.
+        """
+        return x + y
+
+    environment_version = "1"
+
+    expected_sql_body = (
+        "CREATE OR REPLACE FUNCTION catalog.schema.another_sample_func(x DOUBLE, y DOUBLE) "
+        "RETURNS DOUBLE "
+        "LANGUAGE PYTHON "
+        "ENVIRONMENT (environment_version = '1') "
+        "AS $$\n"
+        "def another_sample_func(x: float, y: float) -> float:\n"
+        "    return x + y\n"
+        "$$;"
+    )
+
+    with patch(
+        "unitycatalog.ai.core.databricks.generate_sql_function_body",
+        return_value=expected_sql_body,
+    ) as mock_generate_sql:
+        mock_function_info = create_mock_function_info()
+        client.create_function = MagicMock(return_value=mock_function_info)
+
+        result = client.create_python_function(
+            func=another_sample_func,
+            catalog="catalog",
+            schema="schema",
+            environment_version=environment_version,
+        )
+
+        mock_generate_sql.assert_called_once_with(
+            another_sample_func,
+            "catalog",
+            "schema",
+            False,
+            None,
+            environment_version,
+        )
+
+        client.create_function.assert_called_once_with(sql_function_body=expected_sql_body)
+
+        assert result == mock_function_info
