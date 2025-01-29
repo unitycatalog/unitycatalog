@@ -24,6 +24,7 @@ nav:
   - Server:
       - Configuration: server/configuration.md
       - Auth: server/auth.md
+      - Users and Privileges: server/users-privileges.md
   - Integrations:
       - Overview: integrations/index.md
       - Apache Spark: integrations/unity-catalog-spark.md
