@@ -5,6 +5,7 @@ from unittest import mock
 import pytest
 import pytest_asyncio
 from databricks.sdk.service.catalog import (
+    ColumnTypeName,
     FunctionInfo,
     FunctionParameterInfo,
     FunctionParameterInfos,
@@ -15,6 +16,12 @@ from pydantic import ValidationError
 from unitycatalog.ai.core.base import FunctionExecutionResult
 from unitycatalog.ai.core.client import FunctionExecutionResult, UnitycatalogFunctionClient
 from unitycatalog.ai.gemini.toolkit import GeminiTool, UCFunctionToolkit
+from unitycatalog.ai.test_utils.function_utils import (
+    RETRIEVER_OUTPUT_CSV,
+    RETRIEVER_OUTPUT_SCALAR,
+    RETRIEVER_TABLE_FULL_DATA_TYPE,
+    RETRIEVER_TABLE_RETURN_PARAMS_OSS,
+)
 from unitycatalog.ai.test_utils.function_utils_oss import (
     CATALOG,
     create_function_and_cleanup_oss,
@@ -188,7 +195,14 @@ def test_toolkit_function_argument_errors(uc_client):
         UCFunctionToolkit(client=uc_client)
 
 
-def generate_function_info():
+def generate_function_info(
+    catalog="catalog",
+    schema="schema",
+    name="test",
+    data_type=None,
+    full_data_type=None,
+    return_params=None,
+):
     parameters = [
         {
             "comment": "test comment",
@@ -203,14 +217,17 @@ def generate_function_info():
         }
     ]
     return FunctionInfo(
-        catalog_name="catalog",
-        schema_name="schema",
-        name="test",
+        catalog_name=catalog,
+        schema_name=schema,
+        name=name,
+        full_name=f"{catalog}.{schema}.{name}",
         input_params=FunctionParameterInfos(
             parameters=[FunctionParameterInfo(**param) for param in parameters]
         ),
-        full_name="catalog.schema.test",
         comment="Executes Python code and returns its stdout.",
+        data_type=data_type,
+        full_data_type=full_data_type,
+        return_params=return_params,
     )
 
 
@@ -262,6 +279,62 @@ async def test_uc_function_to_gemini_tool(uc_client):
         )
         result = json.loads(tool.fn(x="some_string"))["value"]
         assert result == "some_string"
+
+
+@pytest.mark.parametrize(
+    "format,function_output",
+    [
+        ("SCALAR", RETRIEVER_OUTPUT_SCALAR),
+        ("CSV", RETRIEVER_OUTPUT_CSV),
+    ],
+)
+@pytest.mark.parametrize(
+    "data_type,full_data_type,return_params",
+    [
+        (
+            ColumnTypeName.TABLE_TYPE,
+            RETRIEVER_TABLE_FULL_DATA_TYPE,
+            RETRIEVER_TABLE_RETURN_PARAMS_OSS,
+        ),
+    ],
+)
+@pytest.mark.asyncio
+async def test_crewai_tool_with_tracing_as_retriever(
+    uc_client, format, function_output, data_type, full_data_type, return_params
+):
+    mock_function_info = generate_function_info(
+        name=f"test_{format}",
+        data_type=data_type,
+        full_data_type=full_data_type,
+        return_params=return_params,
+    )
+
+    with (
+        mock.patch.object(uc_client, "get_function", return_value=mock_function_info),
+        mock.patch.object(
+            uc_client,
+            "_execute_uc_function",
+            return_value=FunctionExecutionResult(format=format, value=function_output),
+        ),
+        mock.patch.object(uc_client, "validate_input_params"),
+    ):
+        import mlflow
+
+        mlflow.gemini.autolog()
+
+        tool = UCFunctionToolkit.uc_function_to_gemini_tool(
+            function_name=mock_function_info.full_name, client=uc_client
+        )
+        tool.fn(x="some_string")
+
+        trace = mlflow.get_last_active_trace()
+        assert trace is not None
+        assert trace.data.spans[0].name == mock_function_info.full_name
+        assert trace.info.execution_time_ms is not None
+        assert trace.data.request == '{"x": "some_string"}'
+        assert trace.data.response == RETRIEVER_OUTPUT_SCALAR
+
+        mlflow.gemini.autolog(disable=True)
 
 
 @pytest.mark.asyncio
