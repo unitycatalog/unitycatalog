@@ -326,7 +326,7 @@ def test_gemini_tool_calling_with_trace_as_retriever():
         mock_content.role = "model"
         mock_candidate = mock.MagicMock()
         mock_candidate.content = mock_content
-        mock_candidate.finishReason = "STOP"
+        mock_candidate.finishReason = 1  # STOP
         mock_candidate.index = 0
         mock_candidate.safetyRatings = [
             {"category": "HARM_CATEGORY_SEXUALLY_EXPLICIT", "probability": "NEGLIGIBLE"},

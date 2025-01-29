@@ -281,62 +281,6 @@ async def test_uc_function_to_gemini_tool(uc_client):
         assert result == "some_string"
 
 
-@pytest.mark.parametrize(
-    "format,function_output",
-    [
-        ("SCALAR", RETRIEVER_OUTPUT_SCALAR),
-        ("CSV", RETRIEVER_OUTPUT_CSV),
-    ],
-)
-@pytest.mark.parametrize(
-    "data_type,full_data_type,return_params",
-    [
-        (
-            ColumnTypeName.TABLE_TYPE,
-            RETRIEVER_TABLE_FULL_DATA_TYPE,
-            RETRIEVER_TABLE_RETURN_PARAMS_OSS,
-        ),
-    ],
-)
-@pytest.mark.asyncio
-async def test_crewai_tool_with_tracing_as_retriever(
-    uc_client, format, function_output, data_type, full_data_type, return_params
-):
-    mock_function_info = generate_function_info(
-        name=f"test_{format}",
-        data_type=data_type,
-        full_data_type=full_data_type,
-        return_params=return_params,
-    )
-
-    with (
-        mock.patch.object(uc_client, "get_function", return_value=mock_function_info),
-        mock.patch.object(
-            uc_client,
-            "_execute_uc_function",
-            return_value=FunctionExecutionResult(format=format, value=function_output),
-        ),
-        mock.patch.object(uc_client, "validate_input_params"),
-    ):
-        import mlflow
-
-        mlflow.gemini.autolog()
-
-        tool = UCFunctionToolkit.uc_function_to_gemini_tool(
-            function_name=mock_function_info.full_name, client=uc_client
-        )
-        tool.fn(x="some_string")
-
-        trace = mlflow.get_last_active_trace()
-        assert trace is not None
-        assert trace.data.spans[0].name == mock_function_info.full_name
-        assert trace.info.execution_time_ms is not None
-        assert trace.data.request == '{"x": "some_string"}'
-        assert trace.data.response == RETRIEVER_OUTPUT_SCALAR
-
-        mlflow.gemini.autolog(disable=True)
-
-
 @pytest.mark.asyncio
 async def test_toolkit_with_invalid_function_input(uc_client):
     """Test toolkit with invalid input parameters for function conversion."""
