@@ -150,7 +150,7 @@ def test_tool_calling_with_trace_as_retriever():
 
             # execute the function based on the arguments
             result = client.execute_function(func_name, arguments, enable_retriever_tracing=True)
-            assert result.value == 'testing,"{\'doc_uri\': \'https://docs.databricks.com/\', \'chunk_id\': \'1\'}"\n'
+            assert result.value == 'page_content,metadata\ntesting,"{\'doc_uri\': \'https://docs.databricks.com/\', \'chunk_id\': \'1\'}"\n'
 
             trace = mlflow.get_last_active_trace()
             assert trace is not None
