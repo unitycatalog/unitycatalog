@@ -76,7 +76,7 @@ To learn more about this integration:
 
 ## AutoGen
 
-[AutoGen](https://microsoft.github.io/autogen/0.2/) is a framework designed to facilitate the creation of multi-agent workflows. The Unity Catalog AI integration with AutoGen allows for the direct application of UC functions to distinct agents within AutoGen applications or via universal application mapping, enhancing the capabilities of multi-turn agentic workflows.
+[AutoGen](https://microsoft.github.io/autogen/stable/) is a framework designed to facilitate the creation of agentic workflows. The Unity Catalog AI integration with AutoGen allows for the direct application of UC functions to distinct agents within AutoGen applications or via universal application mapping, enhancing the capabilities of multi-turn agentic workflows.
 
 Installation:
 
