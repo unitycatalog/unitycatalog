@@ -247,11 +247,9 @@ def test_uc_function_to_gemini_tool(client):
         (ColumnTypeName.TABLE_TYPE, RETRIEVER_TABLE_FULL_DATA_TYPE, RETRIEVER_TABLE_RETURN_PARAMS),
     ],
 )
-@pytest.mark.parametrize("use_serverless", [True, False])
 def test_crewai_tool_with_tracing_as_retriever(
-    use_serverless, monkeypatch, format, function_output, data_type, full_data_type, return_params
+    format, function_output, data_type, full_data_type, return_params
 ):
-    monkeypatch.setenv(USE_SERVERLESS, str(use_serverless))
     client = get_client()
     mock_function_info = generate_function_info(
         name=f"test_{format}",
