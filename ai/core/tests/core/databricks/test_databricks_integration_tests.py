@@ -334,7 +334,7 @@ def test_function_with_dict_of_string_to_int_return(client: DatabricksFunctionCl
     ) as func_obj:
         result = client.execute_function(func_obj.full_function_name, {"a": 3})
         # result wrapped as string is due to sql statement execution response parsing
-        assert result.value == "{'key_0': 0,'key_1': 1,'key_2': 2}"
+        assert result.value == "{'key_0': 0, 'key_1': 1, 'key_2': 2}"
 
 
 @retry_flaky_test()
