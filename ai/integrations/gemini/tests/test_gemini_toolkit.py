@@ -340,7 +340,7 @@ def test_gemini_tool_calling_with_trace_as_retriever():
         mock_response.prompt_feedback = mock_prompt_feedback
 
         with mock.patch(
-            "google.generativeai.generative_models.ChatSession.send_message", return_value=mock_response
+            "google.generativeai.ChatSession.send_message", return_value=mock_response
         ):
             mlflow.gemini.autolog()
 
