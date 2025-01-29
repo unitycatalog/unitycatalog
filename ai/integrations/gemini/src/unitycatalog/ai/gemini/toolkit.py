@@ -14,6 +14,7 @@ from unitycatalog.ai.core.utils.function_processing_utils import (
 from unitycatalog.ai.core.utils.pydantic_utils import (
     PydanticFunctionInputParams,
 )
+from unitycatalog.ai.core.utils.validation_utils import mlflow_tracing_enabled
 
 
 class GeminiTool(BaseModel):
@@ -158,6 +159,7 @@ class UCFunctionToolkit(BaseModel):
             result = client.execute_function(
                 function_name=function_name,
                 parameters=args_json,
+                enable_retriever_tracing=mlflow_tracing_enabled("gemini"),
             )
 
             return result.to_json()

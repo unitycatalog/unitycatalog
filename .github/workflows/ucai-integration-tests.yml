@@ -194,6 +194,7 @@ jobs:
           pip install core/.
           echo "PYTHONPATH=$(pwd)/core/src:\$PYTHONPATH" >> $GITHUB_ENV
           pip install integrations/gemini[dev]
+          pip install mlflow
       - name: Run tests
         run: |
           pytest integrations/gemini/tests --ignore=integrations/gemini/tests/test_gemini_toolkit_oss.py

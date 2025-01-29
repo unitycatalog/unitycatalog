@@ -4,6 +4,7 @@ from unittest.mock import Mock
 import pytest
 from anthropic.types import TextBlock, ToolUseBlock
 from anthropic.types.message import Message
+from databricks.sdk.service.catalog import ColumnTypeName, FunctionInfo
 
 from unitycatalog.ai.anthropic.utils import (
     ToolCallData,
@@ -13,7 +14,12 @@ from unitycatalog.ai.anthropic.utils import (
 from unitycatalog.ai.core.base import BaseFunctionClient
 from unitycatalog.ai.core.databricks import DatabricksFunctionClient
 from unitycatalog.ai.test_utils.client_utils import TEST_IN_DATABRICKS
-from unitycatalog.ai.test_utils.function_utils import RETRIEVER_OUTPUT_CSV, RETRIEVER_OUTPUT_SCALAR
+from unitycatalog.ai.test_utils.function_utils import (
+    RETRIEVER_OUTPUT_CSV,
+    RETRIEVER_OUTPUT_SCALAR,
+    RETRIEVER_TABLE_FULL_DATA_TYPE,
+    RETRIEVER_TABLE_RETURN_PARAMS,
+)
 
 
 @pytest.fixture
@@ -267,16 +273,35 @@ def test_generate_tool_call_messages_with_invalid_tool_use_block(mock_client, du
         ("CSV", RETRIEVER_OUTPUT_CSV),
     ],
 )
-def test_generate_tool_call_messages_with_tracing(dummy_history, format: str, function_output: str):
+@pytest.mark.parametrize(
+    "data_type,full_data_type,return_params",
+    [
+        (ColumnTypeName.TABLE_TYPE, RETRIEVER_TABLE_FULL_DATA_TYPE, RETRIEVER_TABLE_RETURN_PARAMS),
+    ],
+)
+def test_generate_tool_call_messages_with_tracing(
+    dummy_history, format, function_output, data_type, full_data_type, return_params
+):
     with mock.patch(
         "unitycatalog.ai.core.databricks.get_default_databricks_workspace_client",
         return_value=mock.Mock(),
     ):
+        function_mock = Mock(
+            spec=FunctionInfo,
+            name=f"catalog.schema.retriever_tool_{format}",
+            full_name=f"catalog.schema.retriever_tool_{format}",
+            data_type=data_type,
+            full_data_type=full_data_type,
+            return_params=return_params,
+            autospec=True,
+        )
+
         mock_client = DatabricksFunctionClient()
         mock_client._execute_uc_function = Mock(
-            return_value=Mock(format=format, value=function_output)
+            return_value=Mock(format=format, value=function_output, error=None)
         )
         mock_client.validate_input_params = Mock()
+        mock_client.get_function = Mock(return_value=function_mock)
 
         text_block = TextBlock(text="Fetching documents...", type="text")
         tool_use_block = ToolUseBlock(
@@ -307,9 +332,9 @@ def test_generate_tool_call_messages_with_tracing(dummy_history, format: str, fu
 
         trace = mlflow.get_last_active_trace()
         assert trace is not None
+        assert trace.data.spans[0].name == function_mock.full_name
         assert trace.info.execution_time_ms is not None
         assert trace.data.request == '{"query": "What is Databricks Partner Connect?"}'
         assert trace.data.response == RETRIEVER_OUTPUT_SCALAR
-        assert trace.data.spans[0].name == f"catalog.schema.retriever_tool_{format}"
 
         mlflow.anthropic.autolog(disable=True)
