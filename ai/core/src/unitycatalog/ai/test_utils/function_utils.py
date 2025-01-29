@@ -11,15 +11,6 @@ from databricks.sdk.service.catalog import (
 
 from unitycatalog.ai.core.databricks import DatabricksFunctionClient
 from unitycatalog.ai.core.utils.function_processing_utils import get_tool_name
-from unitycatalog.client import (
-    ColumnTypeName as OSSColumnTypeName,
-)
-from unitycatalog.client import (
-    FunctionParameterInfo as OSSFunctionParameterInfo,
-)
-from unitycatalog.client import (
-    FunctionParameterInfos as OSSFunctionParameterInfos,
-)
 
 CATALOG = "integration_testing"
 
@@ -40,24 +31,6 @@ RETRIEVER_TABLE_RETURN_PARAMS = FunctionParameterInfos(
             name="metadata",
             type_text="map<string,string>",
             type_name=ColumnTypeName.MAP,
-            type_json='{"name":"metadata","type":{"type":"map","keyType":"string","valueType":"string","valueContainsNull":true},"nullable":true,"metadata":{}}',
-            position=1,
-        ),
-    ]
-)
-RETRIEVER_TABLE_RETURN_PARAMS_OSS = OSSFunctionParameterInfos(
-    parameters=[
-        OSSFunctionParameterInfo(
-            name="page_content",
-            type_text="string",
-            type_name=OSSColumnTypeName.STRING,
-            type_json='{"name":"page_content","type":"string","nullable":true,"metadata":{}}',
-            position=0,
-        ),
-        OSSFunctionParameterInfo(
-            name="metadata",
-            type_text="map<string,string>",
-            type_name=OSSColumnTypeName.MAP,
             type_json='{"name":"metadata","type":{"type":"map","keyType":"string","valueType":"string","valueContainsNull":true},"nullable":true,"metadata":{}}',
             position=1,
         ),
@@ -120,6 +93,46 @@ AS $$
     exec(code)
     return stdout.getvalue()
 $$
+"""
+    )
+    try:
+        client.create_function(sql_function_body=sql_body)
+        yield FunctionObj(
+            full_function_name=func_name, comment=comment, tool_name=get_tool_name(func_name)
+        )
+    finally:
+        try:
+            client.delete_function(func_name)
+        except Exception as e:
+            _logger.warning(f"Failed to delete function: {e}")
+
+
+@contextmanager
+def create_table_function_and_cleanup(
+    client: DatabricksFunctionClient,
+    *,
+    schema: str,
+    func_name: Optional[str] = None,
+    sql_body: Optional[str] = None,
+) -> Generator[FunctionObj, None, None]:
+    func_name = func_name or random_func_name(schema=schema)
+    comment = "Executes Python code and returns its stdout."
+    sql_body = (
+        sql_body
+        or f"""CREATE FUNCTION {func_name}(query STRING)
+RETURNS TABLE (
+    page_content STRING, 
+    metadata MAP<STRING, STRING>
+)
+RETURN SELECT
+      chunked_text AS page_content,
+      map('doc_uri', url, 'chunk_id', chunk_id) AS metadata
+    FROM (
+        SELECT
+            'testing' AS chunked_text,
+            'https://docs.databricks.com/' AS url,
+            '1' AS chunk_id
+    ) AS subquery_alias;
 """
     )
     try:

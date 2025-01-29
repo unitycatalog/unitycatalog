@@ -4,8 +4,32 @@ from typing import Any, Callable, Generator, NamedTuple
 
 from unitycatalog.ai.core.client import UnitycatalogFunctionClient
 from unitycatalog.ai.core.utils.function_processing_utils import get_tool_name
+from unitycatalog.client import (
+    ColumnTypeName,
+    FunctionParameterInfo,
+    FunctionParameterInfos,
+)
 
 CATALOG = "integration_testing"
+
+RETRIEVER_TABLE_RETURN_PARAMS_OSS = FunctionParameterInfos(
+    parameters=[
+        FunctionParameterInfo(
+            name="page_content",
+            type_text="string",
+            type_name=ColumnTypeName.STRING,
+            type_json='{"name":"page_content","type":"string","nullable":true,"metadata":{}}',
+            position=0,
+        ),
+        FunctionParameterInfo(
+            name="metadata",
+            type_text="map<string,string>",
+            type_name=ColumnTypeName.MAP,
+            type_json='{"name":"metadata","type":{"type":"map","keyType":"string","valueType":"string","valueContainsNull":true},"nullable":true,"metadata":{}}',
+            position=1,
+        ),
+    ]
+)
 
 _logger = logging.getLogger(__name__)
 

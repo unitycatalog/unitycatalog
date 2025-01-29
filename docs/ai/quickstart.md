@@ -35,13 +35,7 @@ pip install unitycatalog-ai[databricks]
 
 >Note: Python 3.10 or higher is required to use `unitycatalog-ai` with Databricks serverless compute for function execution.
 
-- **Serverless Compute**: For creating UC functions directly with a SQL body definition, only serverless compute is supported. You cannot run the
-function creation APIs while attached to a classic SQL Warehouse.
-
-- **SQL Warehouse**: Needed for executing UC functions.
-
-Create a serverless SQL warehouse as per [this guide](https://docs.databricks.com/en/compute/sql-warehouse/create.html). After creating the warehouse,
-note down the `warehouse id` for use within the `DatabricksFunctionClient`.
+- **Serverless Compute**: Interfacing with the DatabricksFunctionClient requires the use of serverless on Databricks. Ensure that it is enabled.
 
 ## Using a function with LangChain
 
@@ -81,14 +75,13 @@ SCHEMA = "my_schema"
 ### Client Setup - Databricks
 
 In order to be able to both create and execute a function defined within UC as a tool in LangChain, we need to initialize the UC function client.
-In this example, we're connecting to Databricks UC and specifying a `warehouse_id` that will be used for executing the functions that are
-defined as tools. When accessing functions by name, we will need to specify which catalog and schema the function resides in, so we're defining constants
+ When accessing functions by name, we will need to specify which catalog and schema the function resides in, so we're defining constants
 to store those values.
 
 ``` python
 from unitycatalog.ai.core.databricks import DatabricksFunctionClient
 
-client = DatabricksFunctionClient(warehouse_id="YOUR_WAREHOUSE_ID")
+client = DatabricksFunctionClient()
 
 CATALOG = "my_catalog"
 SCHEMA = "my_schema"

@@ -88,9 +88,7 @@ Initialize a client for managing UC functions in a Databricks workspace, and set
 from unitycatalog.ai.core.client import set_uc_function_client
 from unitycatalog.ai.core.databricks import DatabricksFunctionClient
 
-client = DatabricksFunctionClient(
-    warehouse_id="..." # replace with the warehouse_id
-)
+client = DatabricksFunctionClient()
 
 # sets the default uc function client
 set_uc_function_client(client)

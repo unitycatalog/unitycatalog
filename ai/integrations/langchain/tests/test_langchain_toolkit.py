@@ -21,7 +21,6 @@ from unitycatalog.ai.core.base import (
 from unitycatalog.ai.core.utils.function_processing_utils import get_tool_name
 from unitycatalog.ai.test_utils.client_utils import (
     TEST_IN_DATABRICKS,
-    USE_SERVERLESS,
     client,  # noqa: F401
     get_client,
     requires_databricks,
@@ -51,9 +50,7 @@ SCHEMA = os.environ.get("SCHEMA", "ucai_langchain_test")
 
 
 @requires_databricks
-@pytest.mark.parametrize("use_serverless", [True, False])
-def test_toolkit_e2e(use_serverless, monkeypatch):
-    monkeypatch.setenv(USE_SERVERLESS, str(use_serverless))
+def test_toolkit_e2e():
     client = get_client()
     with set_default_client(client), create_function_and_cleanup(client, schema=SCHEMA) as func_obj:
         toolkit = UCFunctionToolkit(function_names=[func_obj.full_function_name])
@@ -73,9 +70,7 @@ def test_toolkit_e2e(use_serverless, monkeypatch):
 
 
 @requires_databricks
-@pytest.mark.parametrize("use_serverless", [True, False])
-def test_toolkit_e2e_manually_passing_client(use_serverless, monkeypatch):
-    monkeypatch.setenv(USE_SERVERLESS, str(use_serverless))
+def test_toolkit_e2e_manually_passing_client():
     client = get_client()
     with create_function_and_cleanup(client, schema=SCHEMA) as func_obj:
         toolkit = UCFunctionToolkit(function_names=[func_obj.full_function_name], client=client)
@@ -96,9 +91,7 @@ def test_toolkit_e2e_manually_passing_client(use_serverless, monkeypatch):
 
 
 @requires_databricks
-@pytest.mark.parametrize("use_serverless", [True, False])
-def test_toolkit_e2e_tools_with_no_params(use_serverless, monkeypatch):
-    monkeypatch.setenv(USE_SERVERLESS, str(use_serverless))
+def test_toolkit_e2e_tools_with_no_params():
     client = get_client()
 
     def get_weather() -> str:
@@ -126,9 +119,7 @@ def test_toolkit_e2e_tools_with_no_params(use_serverless, monkeypatch):
 
 
 @requires_databricks
-@pytest.mark.parametrize("use_serverless", [True, False])
-def test_multiple_toolkits(use_serverless, monkeypatch):
-    monkeypatch.setenv(USE_SERVERLESS, str(use_serverless))
+def test_multiple_toolkits():
     client = get_client()
     with set_default_client(client), create_function_and_cleanup(client, schema=SCHEMA) as func_obj:
         toolkit1 = UCFunctionToolkit(function_names=[func_obj.full_function_name])
@@ -216,11 +207,9 @@ def test_uc_function_to_langchain_tool():
         (ColumnTypeName.TABLE_TYPE, RETRIEVER_TABLE_FULL_DATA_TYPE, RETRIEVER_TABLE_RETURN_PARAMS),
     ],
 )
-@pytest.mark.parametrize("use_serverless", [True, False])
 def test_langchain_tool_trace_as_retriever(
-    use_serverless, monkeypatch, format, function_output, data_type, full_data_type, return_params
+    format, function_output, data_type, full_data_type, return_params
 ):
-    monkeypatch.setenv(USE_SERVERLESS, str(use_serverless))
     client = get_client()
     mock_function_info = generate_function_info(
         name=f"test_{format}",
@@ -271,10 +260,8 @@ def test_langchain_tool_trace_as_retriever(
 
 
 @requires_databricks
-@pytest.mark.parametrize("use_serverless", [True, False])
 @pytest.mark.parametrize("schema", [SCHEMA, "ucai_langchain_test_star"])
-def test_langgraph_agents(monkeypatch, use_serverless, schema):
-    monkeypatch.setenv(USE_SERVERLESS, str(use_serverless))
+def test_langgraph_agents(schema):
     client = get_client()
     with create_function_and_cleanup(client, schema=schema) as func_obj:
         if schema == SCHEMA:
