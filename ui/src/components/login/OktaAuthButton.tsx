@@ -1,5 +1,5 @@
 import { Avatar, Button, Modal } from 'antd';
-import { useEffect, useRef, useState } from 'react';
+import { useState } from 'react';
 import OktaSignIn from '@okta/okta-signin-widget';
 
 interface OktaAuthButtonProps {
@@ -11,31 +11,32 @@ export default function OktaAuthButton({
   onSuccess,
   onError,
 }: OktaAuthButtonProps) {
-  const widgetRef = useRef<HTMLDivElement | null>(null);
   const [widgetModalOpen, setWidgetModalOpen] = useState(false);
 
-  useEffect(() => {
-    if (!widgetModalOpen) return;
+  const handleOnClick = () => {
+    setWidgetModalOpen(true);
 
     const widget = new OktaSignIn({
-      baseUrl: process.env.REACT_APP_OKTA_DOMAIN,
       clientId: process.env.REACT_APP_OKTA_CLIENT_ID,
-      redirectUri: window.location.origin + '/login/callback',
-      authParams: {
-        issuer: process.env.REACT_APP_OKTA_DOMAIN + '/oauth2/default',
-        scopes: ['openid', 'profile', 'email'],
-      },
+      redirectUri: window.location.origin,
+      issuer:
+        'https://' + process.env.REACT_APP_OKTA_DOMAIN + '/oauth2/default',
+      logo: '/uc-logo.png',
     });
-
-    widget.renderEl(
-      //@ts-ignore
-      { el: widgetRef.current },
-      onSuccess,
-      onError,
-    );
-
-    return () => widget.remove();
-  }, [widgetModalOpen, onSuccess, onError]);
+    setTimeout(() => {
+      widget
+        .showSignInToGetTokens({
+          el: '#osw-container',
+        })
+        .then(function (res) {
+          onSuccess(res?.idToken?.idToken);
+          widget.remove();
+        })
+        .catch(function (error) {
+          onError(error);
+        });
+    }, 1000);
+  };
 
   return (
     <>
@@ -48,12 +49,18 @@ export default function OktaAuthButton({
         }
         iconPosition={'start'}
         style={{ width: 240, height: 40, justifyContent: 'flex-start' }}
-        onClick={() => setWidgetModalOpen(true)}
+        onClick={() => handleOnClick()}
       >
         Continue with Okta
       </Button>
-      <Modal open={widgetModalOpen}>
-        <div ref={widgetRef} />
+      <Modal
+        open={widgetModalOpen}
+        footer={null}
+        onCancel={() => {
+          setWidgetModalOpen(false);
+        }}
+      >
+        <div id={'osw-container'} />
       </Modal>
     </>
   );
