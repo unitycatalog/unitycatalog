@@ -5,7 +5,6 @@ from unittest import mock
 import pytest
 import pytest_asyncio
 from databricks.sdk.service.catalog import (
-    ColumnTypeName,
     FunctionInfo,
     FunctionParameterInfo,
     FunctionParameterInfos,
@@ -16,14 +15,8 @@ from pydantic import ValidationError
 from unitycatalog.ai.core.base import FunctionExecutionResult
 from unitycatalog.ai.core.client import FunctionExecutionResult, UnitycatalogFunctionClient
 from unitycatalog.ai.gemini.toolkit import GeminiTool, UCFunctionToolkit
-from unitycatalog.ai.test_utils.function_utils import (
-    RETRIEVER_OUTPUT_CSV,
-    RETRIEVER_OUTPUT_SCALAR,
-    RETRIEVER_TABLE_FULL_DATA_TYPE,
-)
 from unitycatalog.ai.test_utils.function_utils_oss import (
     CATALOG,
-    RETRIEVER_TABLE_RETURN_PARAMS_OSS,
     create_function_and_cleanup_oss,
 )
 from unitycatalog.client import (
