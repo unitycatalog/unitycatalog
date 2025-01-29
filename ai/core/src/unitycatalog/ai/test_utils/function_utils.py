@@ -128,11 +128,10 @@ RETURN SELECT
       chunked_text as page_content,
       map('doc_uri', url, 'chunk_id', chunk_id) as metadata
     FROM
-    vector_search(
-        index => 'catalog.schema.databricks_docs_index',
-        query => query,
-        num_results => 5
-    )
+    SELECT
+        'testing' as chunked_text,
+        'https://docs.databricks.com/' as url,
+        'chunk_id' as chunk_id
 """
     )
     try:
