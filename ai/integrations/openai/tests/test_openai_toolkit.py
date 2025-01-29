@@ -133,7 +133,7 @@ def test_tool_calling_with_trace_as_retriever():
             return_value=mock_chat_completion_response(
                 function=Function(
                     arguments=json.dumps(
-                        {"code": "print([{'page_content': 'This is the page content.'}], end='')"}
+                        {"query": "What are the page contents?"}
                     ),
                     name=func_obj.tool_name,
                 ),
@@ -150,7 +150,7 @@ def test_tool_calling_with_trace_as_retriever():
 
             # execute the function based on the arguments
             result = client.execute_function(func_name, arguments, enable_retriever_tracing=True)
-            assert result.value == "[{'page_content': 'This is the page content.'}]"
+            assert result.value == "[{'page_content': 'testing', 'metadata': {'doc_uri': 'https://docs.databricks.com/', 'chunk_id': '1'}}]"
 
             trace = mlflow.get_last_active_trace()
             assert trace is not None
