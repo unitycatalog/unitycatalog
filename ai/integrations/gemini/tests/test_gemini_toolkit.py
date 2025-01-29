@@ -310,7 +310,7 @@ def test_gemini_tool_calling_with_trace_as_retriever():
         func_info = client.get_function(func_name)
         assert has_retriever_signature(func_info)
         toolkit = UCFunctionToolkit(function_names=[func_name])
-        tools = toolkit.tools
+        tools = toolkit.generate_callable_tool_list()
 
         mock_response = mock.MagicMock()
 
