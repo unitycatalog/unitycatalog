@@ -15,6 +15,7 @@ from openai.types.chat.chat_completion_message_tool_call import Function
 from tests.helper_functions import mock_chat_completion_response, mock_choice
 from unitycatalog.ai.core.base import set_uc_function_client
 from unitycatalog.ai.core.utils.function_processing_utils import get_tool_name
+from unitycatalog.ai.core.utils.validation_utils import has_retriever_signature
 from unitycatalog.ai.openai.toolkit import UCFunctionToolkit
 from unitycatalog.ai.test_utils.client_utils import (
     TEST_IN_DATABRICKS,
@@ -24,6 +25,7 @@ from unitycatalog.ai.test_utils.client_utils import (
 )
 from unitycatalog.ai.test_utils.function_utils import (
     create_function_and_cleanup,
+    create_table_function_and_cleanup,
     random_func_name,
 )
 
@@ -110,9 +112,11 @@ def test_tool_calling_with_trace_as_retriever():
         )
     with (
         set_default_client(client),
-        create_function_and_cleanup(client, schema=SCHEMA) as func_obj,
+        create_table_function_and_cleanup(client, schema=SCHEMA) as func_obj,
     ):
         func_name = func_obj.full_function_name
+        func_info = client.get_function(func_name)
+        assert has_retriever_signature(func_info)
         toolkit = UCFunctionToolkit(function_names=[func_name])
         tools = toolkit.tools
 

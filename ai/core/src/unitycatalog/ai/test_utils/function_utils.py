@@ -108,6 +108,44 @@ $$
 
 
 @contextmanager
+def create_table_function_and_cleanup(
+    client: DatabricksFunctionClient,
+    *,
+    schema: str,
+    func_name: Optional[str] = None,
+    sql_body: Optional[str] = None,
+) -> Generator[FunctionObj, None, None]:
+    func_name = func_name or random_func_name(schema=schema)
+    comment = "Executes Python code and returns its stdout."
+    sql_body = (
+        sql_body
+        or f"""CREATE FUNCTION {func_name}(query STRING)
+RETURNS TABLE
+SELECT
+  chunked_text as page_content,
+  map('doc_uri', url, 'chunk_id', chunk_id) as metadata
+FROM
+  vector_search(
+    -- Specify your Vector Search index name here
+    index => 'catalog.schema.databricks_docs_index',
+    query => query,
+    num_results => 5
+  )
+"""
+    )
+    try:
+        client.create_function(sql_function_body=sql_body)
+        yield FunctionObj(
+            full_function_name=func_name, comment=comment, tool_name=get_tool_name(func_name)
+        )
+    finally:
+        try:
+            client.delete_function(func_name)
+        except Exception as e:
+            _logger.warning(f"Failed to delete function: {e}")
+
+
+@contextmanager
 def create_python_function_and_cleanup(
     client: DatabricksFunctionClient,
     *,

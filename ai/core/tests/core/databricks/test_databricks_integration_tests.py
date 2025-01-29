@@ -15,10 +15,10 @@ from tests.core.databricks.function_definitions import (
     function_with_decimal_input,
     function_with_interval_input,
     function_with_map_input,
-    function_with_scalar_retriever_output,
     function_with_string_input,
     function_with_struct_input,
     function_with_table_output,
+    function_with_table_retriever_output,
     function_with_timestamp_input,
     python_function_with_array_input,
     python_function_with_binary_input,
@@ -98,7 +98,7 @@ def test_create_and_execute_retriever_function(serverless_client: DatabricksFunc
         )
 
     with generate_func_name_and_cleanup(serverless_client, schema=SCHEMA) as func_name:
-        function_sample = function_with_scalar_retriever_output(func_name)
+        function_sample = function_with_table_retriever_output(func_name)
         serverless_client.create_function(sql_function_body=function_sample.sql_body)
         function_info = serverless_client.get_function(func_name)
         assert has_retriever_signature(function_info)
