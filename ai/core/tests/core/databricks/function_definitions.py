@@ -211,30 +211,6 @@ AS $$
     )
 
 
-def function_with_table_retriever_output(func_name: str) -> FunctionInputOutput:
-    retriever_output = 'page_content,metadata\n"# Technology partners\n## What is Databricks Partner Connect?\n",{"similarity_score": 0.010178182, "chunk_id": "0217a07ba2fec61865ce408043acf1cf", "url": "https://docs.databricks.com/partner-connect/walkthrough-fivetran.html"}\n"# Technology partners\n## What is Databricks Partner Connect?\n",{"similarity_score": 0.010178182, "chunk_id": "0217a07ba2fec61865ce408043acf1cf", "url": "https://docs.databricks.com/partner-connect/walkthrough-fivetran.html"}\n'
-    sql_body = f"""CREATE FUNCTION {func_name}(query STRING)
-RETURNS TABLE (
-    page_content STRING, 
-    metadata MAP<STRING, STRING>
-)
-RETURN SELECT
-      chunked_text AS page_content,
-      map('doc_uri', url, 'chunk_id', chunk_id) AS metadata
-    FROM (
-        SELECT
-            'testing' AS chunked_text,
-            'https://docs.databricks.com/' AS url,
-            '1' AS chunk_id
-    ) AS subquery_alias;
-"""
-    return FunctionInputOutput(
-        sql_body=sql_body,
-        inputs=[{"query": "What is Databricks Partner Connect?"}],
-        output=retriever_output,
-    )
-
-
 class PythonFunctionInputOutput(NamedTuple):
     func: Callable
     inputs: List[Dict[str, Any]]
