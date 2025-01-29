@@ -10,6 +10,7 @@ import io.unitycatalog.server.base.BaseCRUDTest;
 import io.unitycatalog.server.base.ServerConfig;
 import io.unitycatalog.server.base.schema.SchemaOperations;
 import io.unitycatalog.server.persist.utils.UriUtils;
+import io.unitycatalog.server.utils.ServerProperties.Property;
 import io.unitycatalog.server.utils.TestUtils;
 import java.util.List;
 import java.util.Optional;
@@ -33,7 +34,7 @@ public abstract class BaseModelCRUDTest extends BaseCRUDTest {
   @Override
   public void setUpProperties() {
     super.setUpProperties();
-    serverProperties.setProperty("storage-root.models", rootBase);
+    serverProperties.setProperty(Property.MODEL_STORAGE_ROOT.getKey(), rootBase);
   }
 
   @BeforeEach

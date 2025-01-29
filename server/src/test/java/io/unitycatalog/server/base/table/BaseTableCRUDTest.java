@@ -87,7 +87,8 @@ public abstract class BaseTableCRUDTest extends BaseCRUDTest {
   }
 
   private TableInfo createAndVerifyTable() throws IOException, ApiException {
-    TableInfo tableInfo = createTestingTable(TestUtils.TABLE_NAME, TestUtils.STORAGE_LOCATION);
+    TableInfo tableInfo =
+        createTestingTable(TestUtils.TABLE_NAME, TestUtils.STORAGE_LOCATION, tableOperations);
     assertThat(tableInfo.getName()).isEqualTo(TestUtils.TABLE_NAME);
     assertThat(tableInfo.getCatalogName()).isEqualTo(TestUtils.CATALOG_NAME);
     assertThat(tableInfo.getSchemaName()).isEqualTo(TestUtils.SCHEMA_NAME);
@@ -248,7 +249,8 @@ public abstract class BaseTableCRUDTest extends BaseCRUDTest {
         .isInstanceOf(Exception.class);
   }
 
-  protected TableInfo createTestingTable(String tableName, String storageLocation)
+  public static TableInfo createTestingTable(
+      String tableName, String storageLocation, TableOperations tableOperations)
       throws IOException, ApiException {
     ColumnInfo columnInfo1 =
         new ColumnInfo()
@@ -293,7 +295,7 @@ public abstract class BaseTableCRUDTest extends BaseCRUDTest {
     for (int i = numberOfTables; i > 0; i--) {
       String tableName = TestUtils.TABLE_NAME + "_" + i;
       String storageLocation = TestUtils.STORAGE_LOCATION + "/" + tableName;
-      createdTables.add(createTestingTable(tableName, storageLocation));
+      createdTables.add(createTestingTable(tableName, storageLocation, tableOperations));
     }
     return createdTables;
   }
