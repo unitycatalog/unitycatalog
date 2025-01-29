@@ -125,13 +125,14 @@ RETURNS TABLE (
     metadata MAP<STRING, STRING>
 )
 RETURN SELECT
-      chunked_text as page_content,
-      map('doc_uri', url, 'chunk_id', chunk_id) as metadata
-    FROM
-    SELECT
-        'testing' as chunked_text,
-        'https://docs.databricks.com/' as url,
-        'chunk_id' as chunk_id
+      chunked_text AS page_content,
+      map('doc_uri', url, 'chunk_id', chunk_id) AS metadata
+    FROM (
+        SELECT
+            'testing' AS chunked_text,
+            'https://docs.databricks.com/' AS url,
+            '1' AS chunk_id
+    ) AS subquery_alias;
 """
     )
     try:
