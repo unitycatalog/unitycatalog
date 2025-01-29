@@ -315,7 +315,7 @@ def test_gemini_tool_calling_with_trace_as_retriever():
         mock_response = mock.MagicMock()
 
         mock_function_call = mock.MagicMock()
-        mock_function_call.name = "find_theaters"
+        mock_function_call.name = func_obj.full_function_name
         mock_function_call.args = {
             "query": "What are the page contents?",
         }
@@ -335,14 +335,9 @@ def test_gemini_tool_calling_with_trace_as_retriever():
             {"category": "HARM_CATEGORY_DANGEROUS_CONTENT", "probability": "NEGLIGIBLE"},
         ]
         mock_response.candidates = [mock_candidate]
-        mock_response.promptFeedback = {
-            "safetyRatings": [
-                {"category": "HARM_CATEGORY_SEXUALLY_EXPLICIT", "probability": "NEGLIGIBLE"},
-                {"category": "HARM_CATEGORY_HATE_SPEECH", "probability": "NEGLIGIBLE"},
-                {"category": "HARM_CATEGORY_HARASSMENT", "probability": "NEGLIGIBLE"},
-                {"category": "HARM_CATEGORY_DANGEROUS_CONTENT", "probability": "NEGLIGIBLE"},
-            ]
-        }
+        mock_prompt_feedback = mock.MagicMock()
+        mock_prompt_feedback.block_reason = None
+        mock_response.prompt_feedback = mock_prompt_feedback
 
         with mock.patch(
             "google.generativeai.GenerativeModel.generate_content", return_value=mock_response
