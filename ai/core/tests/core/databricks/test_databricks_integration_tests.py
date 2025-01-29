@@ -311,7 +311,7 @@ def test_function_with_list_of_int_return(client: DatabricksFunctionClient):
     ) as func_obj:
         result = client.execute_function(func_obj.full_function_name, {"a": 3})
         # result wrapped as string is due to sql statement execution response parsing
-        assert result.value == '[0, 1, 2]'
+        assert result.value == "[0, 1, 2]"
 
 
 @retry_flaky_test()
