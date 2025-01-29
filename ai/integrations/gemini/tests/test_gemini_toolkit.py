@@ -4,17 +4,19 @@ from unittest import mock
 
 import pytest
 from databricks.sdk.service.catalog import (
-    ColumnTypeName,
     FunctionInfo,
     FunctionParameterInfo,
     FunctionParameterInfos,
 )
+from google.generativeai import GenerativeModel
 from google.generativeai.types import CallableFunctionDeclaration
 from pydantic import ValidationError
 
 from unitycatalog.ai.core.client import FunctionExecutionResult
+from unitycatalog.ai.core.utils.validation_utils import has_retriever_signature
 from unitycatalog.ai.gemini.toolkit import GeminiTool, UCFunctionToolkit
 from unitycatalog.ai.test_utils.client_utils import (
+    TEST_IN_DATABRICKS,
     client,  # noqa: F401
     get_client,
     requires_databricks,
@@ -22,11 +24,8 @@ from unitycatalog.ai.test_utils.client_utils import (
 )
 from unitycatalog.ai.test_utils.function_utils import (
     CATALOG,
-    RETRIEVER_OUTPUT_CSV,
-    RETRIEVER_OUTPUT_SCALAR,
-    RETRIEVER_TABLE_FULL_DATA_TYPE,
-    RETRIEVER_TABLE_RETURN_PARAMS,
     create_function_and_cleanup,
+    create_table_function_and_cleanup,
 )
 from unitycatalog.client.models.function_parameter_type import FunctionParameterType
 
@@ -234,60 +233,145 @@ def test_uc_function_to_gemini_tool(client):
         assert result == "some_string"
 
 
-@pytest.mark.parametrize(
-    "format,function_output",
-    [
-        ("SCALAR", RETRIEVER_OUTPUT_SCALAR),
-        ("CSV", RETRIEVER_OUTPUT_CSV),
-    ],
-)
-@pytest.mark.parametrize(
-    "data_type,full_data_type,return_params",
-    [
-        (ColumnTypeName.TABLE_TYPE, RETRIEVER_TABLE_FULL_DATA_TYPE, RETRIEVER_TABLE_RETURN_PARAMS),
-    ],
-)
-def test_crewai_tool_with_tracing_as_retriever(
-    format, function_output, data_type, full_data_type, return_params
-):
+# @pytest.mark.parametrize(
+#     "format,function_output",
+#     [
+#         ("SCALAR", RETRIEVER_OUTPUT_SCALAR),
+#         ("CSV", RETRIEVER_OUTPUT_CSV),
+#     ],
+# )
+# @pytest.mark.parametrize(
+#     "data_type,full_data_type,return_params",
+#     [
+#         (ColumnTypeName.TABLE_TYPE, RETRIEVER_TABLE_FULL_DATA_TYPE, RETRIEVER_TABLE_RETURN_PARAMS),
+#     ],
+# )
+# @requires_databricks
+# def test_gemini_tool_with_trace_as_retriever(
+#     format, function_output, data_type, full_data_type, return_params
+# ):
+#     client = get_client()
+#     mock_function_info = generate_function_info(
+#         name=f"test_{format}",
+#         data_type=data_type,
+#         full_data_type=full_data_type,
+#         return_params=return_params,
+#     )
+
+#     with (
+#         mock.patch(
+#             "unitycatalog.ai.core.databricks.DatabricksFunctionClient.get_function",
+#             return_value=mock_function_info,
+#         ),
+#         mock.patch(
+#             "unitycatalog.ai.core.databricks.DatabricksFunctionClient._execute_uc_function",
+#             return_value=FunctionExecutionResult(format=format, value=function_output),
+#         ),
+#         mock.patch(
+#             "unitycatalog.ai.core.databricks.DatabricksFunctionClient.validate_input_params"
+#         ),
+#     ):
+#         import mlflow
+
+#         mlflow.gemini.autolog()
+
+#         tool = UCFunctionToolkit.uc_function_to_gemini_tool(
+#             function_name=mock_function_info.full_name, client=client
+#         )
+#         tool.fn(x="some_string")
+
+#         trace = mlflow.get_last_active_trace()
+#         assert trace is not None
+#         assert trace.data.spans[0].name == mock_function_info.full_name
+#         assert trace.info.execution_time_ms is not None
+#         assert trace.data.request == '{"x": "some_string"}'
+#         assert trace.data.response == RETRIEVER_OUTPUT_SCALAR
+
+#         mlflow.gemini.autolog(disable=True)
+
+
+@requires_databricks
+def test_gemini_tool_calling_with_trace_as_retriever():
     client = get_client()
-    mock_function_info = generate_function_info(
-        name=f"test_{format}",
-        data_type=data_type,
-        full_data_type=full_data_type,
-        return_params=return_params,
-    )
+    import mlflow
+
+    if TEST_IN_DATABRICKS:
+        import mlflow.tracking._model_registry.utils
+
+        mlflow.tracking._model_registry.utils._get_registry_uri_from_spark_session = (
+            lambda: "databricks-uc"
+        )
 
     with (
-        mock.patch(
-            "unitycatalog.ai.core.databricks.DatabricksFunctionClient.get_function",
-            return_value=mock_function_info,
-        ),
-        mock.patch(
-            "unitycatalog.ai.core.databricks.DatabricksFunctionClient._execute_uc_function",
-            return_value=FunctionExecutionResult(format=format, value=function_output),
-        ),
-        mock.patch(
-            "unitycatalog.ai.core.databricks.DatabricksFunctionClient.validate_input_params"
-        ),
+        set_default_client(client),
+        create_table_function_and_cleanup(client, schema=SCHEMA) as func_obj,
     ):
-        import mlflow
+        func_name = func_obj.full_function_name
+        func_info = client.get_function(func_name)
+        assert has_retriever_signature(func_info)
+        toolkit = UCFunctionToolkit(function_names=[func_name])
+        tools = toolkit.tools
 
-        mlflow.gemini.autolog()
+        mock_response = mock.MagicMock()
 
-        tool = UCFunctionToolkit.uc_function_to_gemini_tool(
-            function_name=mock_function_info.full_name, client=client
-        )
-        tool.fn(x="some_string")
+        mock_function_call = mock.MagicMock()
+        mock_function_call.name = "find_theaters"
+        mock_function_call.args = {
+            "query": "What are the page contents?",
+        }
+        mock_part = mock.MagicMock()
+        mock_part.functionCall = mock_function_call
+        mock_content = mock.MagicMock()
+        mock_content.parts = [mock_part]
+        mock_content.role = "model"
+        mock_candidate = mock.MagicMock()
+        mock_candidate.content = mock_content
+        mock_candidate.finishReason = "STOP"
+        mock_candidate.index = 0
+        mock_candidate.safetyRatings = [
+            {"category": "HARM_CATEGORY_SEXUALLY_EXPLICIT", "probability": "NEGLIGIBLE"},
+            {"category": "HARM_CATEGORY_HARASSMENT", "probability": "NEGLIGIBLE"},
+            {"category": "HARM_CATEGORY_HATE_SPEECH", "probability": "NEGLIGIBLE"},
+            {"category": "HARM_CATEGORY_DANGEROUS_CONTENT", "probability": "NEGLIGIBLE"},
+        ]
+        mock_response.candidates = [mock_candidate]
+        mock_response.promptFeedback = {
+            "safetyRatings": [
+                {"category": "HARM_CATEGORY_SEXUALLY_EXPLICIT", "probability": "NEGLIGIBLE"},
+                {"category": "HARM_CATEGORY_HATE_SPEECH", "probability": "NEGLIGIBLE"},
+                {"category": "HARM_CATEGORY_HARASSMENT", "probability": "NEGLIGIBLE"},
+                {"category": "HARM_CATEGORY_DANGEROUS_CONTENT", "probability": "NEGLIGIBLE"},
+            ]
+        }
 
-        trace = mlflow.get_last_active_trace()
-        assert trace is not None
-        assert trace.data.spans[0].name == mock_function_info.full_name
-        assert trace.info.execution_time_ms is not None
-        assert trace.data.request == '{"x": "some_string"}'
-        assert trace.data.response == RETRIEVER_OUTPUT_SCALAR
+        with mock.patch(
+            "google.generativeai.GenerativeModel.generate_content", return_value=mock_response
+        ):
+            mlflow.gemini.autolog()
 
-        mlflow.gemini.autolog(disable=True)
+            model = GenerativeModel(model_name="gemini-2.0-flash-exp", tools=tools)
+            chat = model.start_chat(enable_automatic_function_calling=True)
+            response = chat.send_message("What does the table say?")
+
+            tool_call = response.candidates[0].content.parts[0].functionCall
+            tool_call_args = tool_call.args
+
+            result = client.execute_function(
+                func_name, tool_call_args, enable_retriever_tracing=True
+            )
+
+            expected_result = "page_content,metadata\ntesting,\"{'doc_uri': 'https://docs.databricks.com/', 'chunk_id': '1'}\"\n"
+            assert result.value == expected_result
+
+            trace = mlflow.get_last_active_trace()
+            assert trace is not None
+            assert trace.data.spans[0].name == func_name
+            assert trace.info.execution_time_ms is not None
+            assert trace.data.request == json.dumps(tool_call_args)
+            assert (
+                trace.data.response
+                == '[{"page_content": "testing", "metadata": {"doc_uri": "https://docs.databricks.com/", "chunk_id": "1"}}]'
+            )
 
 
 def test_toolkit_with_invalid_function_input(client):

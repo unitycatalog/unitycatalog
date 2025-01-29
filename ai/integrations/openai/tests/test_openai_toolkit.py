@@ -132,9 +132,7 @@ def test_tool_calling_with_trace_as_retriever():
             "openai.chat.completions.create",
             return_value=mock_chat_completion_response(
                 function=Function(
-                    arguments=json.dumps(
-                        {"query": "What are the page contents?"}
-                    ),
+                    arguments=json.dumps({"query": "What are the page contents?"}),
                     name=func_obj.tool_name,
                 ),
             ),
@@ -148,16 +146,21 @@ def test_tool_calling_with_trace_as_retriever():
             tool_call = tool_calls[0]
             arguments = json.loads(tool_call.function.arguments)
 
-            # execute the function based on the arguments
             result = client.execute_function(func_name, arguments, enable_retriever_tracing=True)
-            assert result.value == 'page_content,metadata\ntesting,"{\'doc_uri\': \'https://docs.databricks.com/\', \'chunk_id\': \'1\'}"\n'
+            assert (
+                result.value
+                == "page_content,metadata\ntesting,\"{'doc_uri': 'https://docs.databricks.com/', 'chunk_id': '1'}\"\n"
+            )
 
             trace = mlflow.get_last_active_trace()
             assert trace is not None
             assert trace.data.spans[0].name == func_name
             assert trace.info.execution_time_ms is not None
             assert trace.data.request == tool_call.function.arguments
-            assert trace.data.response == '[{"page_content": "testing", "metadata": {"doc_uri": "https://docs.databricks.com/", "chunk_id": "1"}}]'
+            assert (
+                trace.data.response
+                == '[{"page_content": "testing", "metadata": {"doc_uri": "https://docs.databricks.com/", "chunk_id": "1"}}]'
+            )
 
 
 @requires_databricks
