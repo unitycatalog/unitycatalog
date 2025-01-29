@@ -233,63 +233,6 @@ def test_uc_function_to_gemini_tool(client):
         assert result == "some_string"
 
 
-# @pytest.mark.parametrize(
-#     "format,function_output",
-#     [
-#         ("SCALAR", RETRIEVER_OUTPUT_SCALAR),
-#         ("CSV", RETRIEVER_OUTPUT_CSV),
-#     ],
-# )
-# @pytest.mark.parametrize(
-#     "data_type,full_data_type,return_params",
-#     [
-#         (ColumnTypeName.TABLE_TYPE, RETRIEVER_TABLE_FULL_DATA_TYPE, RETRIEVER_TABLE_RETURN_PARAMS),
-#     ],
-# )
-# @requires_databricks
-# def test_gemini_tool_with_trace_as_retriever(
-#     format, function_output, data_type, full_data_type, return_params
-# ):
-#     client = get_client()
-#     mock_function_info = generate_function_info(
-#         name=f"test_{format}",
-#         data_type=data_type,
-#         full_data_type=full_data_type,
-#         return_params=return_params,
-#     )
-
-#     with (
-#         mock.patch(
-#             "unitycatalog.ai.core.databricks.DatabricksFunctionClient.get_function",
-#             return_value=mock_function_info,
-#         ),
-#         mock.patch(
-#             "unitycatalog.ai.core.databricks.DatabricksFunctionClient._execute_uc_function",
-#             return_value=FunctionExecutionResult(format=format, value=function_output),
-#         ),
-#         mock.patch(
-#             "unitycatalog.ai.core.databricks.DatabricksFunctionClient.validate_input_params"
-#         ),
-#     ):
-#         import mlflow
-
-#         mlflow.gemini.autolog()
-
-#         tool = UCFunctionToolkit.uc_function_to_gemini_tool(
-#             function_name=mock_function_info.full_name, client=client
-#         )
-#         tool.fn(x="some_string")
-
-#         trace = mlflow.get_last_active_trace()
-#         assert trace is not None
-#         assert trace.data.spans[0].name == mock_function_info.full_name
-#         assert trace.info.execution_time_ms is not None
-#         assert trace.data.request == '{"x": "some_string"}'
-#         assert trace.data.response == RETRIEVER_OUTPUT_SCALAR
-
-#         mlflow.gemini.autolog(disable=True)
-
-
 @requires_databricks
 def test_gemini_tool_calling_with_trace_as_retriever():
     client = get_client()
