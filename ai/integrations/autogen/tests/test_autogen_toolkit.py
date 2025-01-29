@@ -6,6 +6,7 @@ from unittest import mock
 import pytest
 from autogen_core import CancellationToken
 from databricks.sdk.service.catalog import (
+    ColumnTypeName,
     FunctionInfo,
     FunctionParameterInfo,
     FunctionParameterInfos,
@@ -26,6 +27,8 @@ from unitycatalog.ai.test_utils.function_utils import (
     CATALOG,
     RETRIEVER_OUTPUT_CSV,
     RETRIEVER_OUTPUT_SCALAR,
+    RETRIEVER_TABLE_FULL_DATA_TYPE,
+    RETRIEVER_TABLE_RETURN_PARAMS,
     create_function_and_cleanup,
 )
 
@@ -40,8 +43,14 @@ def dbx_client():
     return get_client()
 
 
-def generate_function_info():
-    """Mock function info with minimal parameters, sets routine_body='EXTERNAL' to avoid NotImplementedError."""
+def generate_function_info(
+    catalog="catalog",
+    schema="schema",
+    name="test",
+    data_type=None,
+    full_data_type=None,
+    return_params=None,
+):
     parameters = [
         {
             "name": "x",
@@ -56,15 +65,19 @@ def generate_function_info():
         }
     ]
     return FunctionInfo(
-        catalog_name="catalog",
-        schema_name="schema",
-        name="test",
+        catalog_name=catalog,
+        schema_name=schema,
+        name=name,
         input_params=FunctionParameterInfos(
             parameters=[FunctionParameterInfo(**param) for param in parameters]
         ),
-        # For Databricks function usage, set these so we don't raise NotImplementedError
+        full_name=f"{catalog}.{schema}.{name}",
+        comment="Executes Python code and returns its stdout.",
         routine_body="EXTERNAL",
         routine_definition="print('hello')",
+        data_type=data_type,
+        full_data_type=full_data_type,
+        return_params=return_params,
     )
 
 
@@ -229,13 +242,24 @@ async def test_uc_function_to_autogen_tool(dbx_client):
         ("CSV", RETRIEVER_OUTPUT_CSV),
     ],
 )
+@pytest.mark.parametrize(
+    "data_type,full_data_type,return_params",
+    [
+        (ColumnTypeName.TABLE_TYPE, RETRIEVER_TABLE_FULL_DATA_TYPE, RETRIEVER_TABLE_RETURN_PARAMS),
+    ],
+)
 @pytest.mark.parametrize("use_serverless", [True, False])
 def test_autogen_tool_with_tracing_as_retriever(
-    use_serverless, monkeypatch, format: str, function_output: str
+    use_serverless, monkeypatch, format, function_output, data_type, full_data_type, return_params
 ):
     monkeypatch.setenv(USE_SERVERLESS, str(use_serverless))
     client = get_client()
-    mock_function_info = generate_function_info()
+    mock_function_info = generate_function_info(
+        name=f"test_{format}",
+        data_type=data_type,
+        full_data_type=full_data_type,
+        return_params=return_params,
+    )
 
     with (
         mock.patch(
@@ -262,17 +286,17 @@ def test_autogen_tool_with_tracing_as_retriever(
         mlflow.autogen.autolog()
 
         tool = UCFunctionToolkit.uc_function_to_autogen_tool(
-            function_name=f"catalog.schema.test_{format}", client=client
+            function_name=mock_function_info.full_name, client=client
         )
         result = tool.fn(x="some input")
         assert json.loads(result)["value"] == function_output
 
         trace = mlflow.get_last_active_trace()
         assert trace is not None
+        assert trace.data.spans[0].name == mock_function_info.full_name
         assert trace.info.execution_time_ms is not None
         assert trace.data.request == '{"x": "some input"}'
         assert trace.data.response == RETRIEVER_OUTPUT_SCALAR
-        assert trace.data.spans[0].name == f"catalog.schema.test_{format}"
 
         mlflow.autogen.autolog(disable=True)
 
