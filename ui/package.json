@@ -58,5 +58,9 @@
     "@types/react-dom": "^18.0.0",
     "npm-run-all": "^4.1.5",
     "prettier": "^3.3.3"
+  },
+  "resolutions": {
+    "react-scripts/resolve-url-loader/postcss": ">=8.4.31",
+    "react-scripts/@svgr/webpack/**/nth-check": ">=2.0.1"
   }
 }
