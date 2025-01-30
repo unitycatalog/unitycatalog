@@ -6,7 +6,7 @@ from unittest import mock
 
 import pytest
 
-from unitycatalog.ai.core.client import set_uc_function_client
+from unitycatalog.ai.core.base import set_uc_function_client
 from unitycatalog.ai.core.databricks import DatabricksFunctionClient
 
 USE_SERVERLESS = "USE_SERVERLESS"

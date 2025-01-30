@@ -2,7 +2,7 @@ package io.unitycatalog.server.persist.dao;
 
 import io.unitycatalog.server.model.VolumeInfo;
 import io.unitycatalog.server.model.VolumeType;
-import io.unitycatalog.server.persist.utils.FileUtils;
+import io.unitycatalog.server.persist.utils.FileOperations;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.Table;
@@ -53,7 +53,7 @@ public class VolumeInfoDAO extends IdentifiableDAO {
         .volumeId(getId().toString())
         .name(getName())
         .comment(comment)
-        .storageLocation(FileUtils.convertRelativePathToURI(storageLocation))
+        .storageLocation(FileOperations.convertRelativePathToURI(storageLocation))
         .owner(owner)
         .createdAt(createdAt.getTime())
         .createdBy(createdBy)

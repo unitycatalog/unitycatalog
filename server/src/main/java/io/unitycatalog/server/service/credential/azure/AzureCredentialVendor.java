@@ -24,8 +24,8 @@ public class AzureCredentialVendor {
 
   private final Map<String, ADLSStorageConfig> adlsConfigurations;
 
-  public AzureCredentialVendor() {
-    this.adlsConfigurations = ServerProperties.getInstance().getAdlsConfigurations();
+  public AzureCredentialVendor(ServerProperties serverProperties) {
+    this.adlsConfigurations = serverProperties.getAdlsConfigurations();
   }
 
   public AzureCredential vendAzureCredential(CredentialContext context) {

@@ -4,11 +4,11 @@ This guide provides detailed information about the Unity Catalog AI clients, inc
 
 ---
 
-## Open Source Function Client
+## Unity Catalog Function Client
 
-### UnityCatalog Client Overview
+### Client Overview
 
-The `UnitycatalogFunctionClient` is a specialized client within the Unity Catalog AI Core Library designed for managing and executing functions in the open-source version of Unity Catalog (UC). Built on top of the asynchronous `unitycatalog-client`, this client provides both asynchronous and synchronous interfaces to interact seamlessly with UC functions. It facilitates the creation, retrieval, listing, execution, and deletion of UC functions, enabling developers to integrate both CRUD and execution capabilities into GenAI authoring workflows easily.
+The `UnitycatalogFunctionClient` is a specialized client within the Unity Catalog AI Core Library designed for managing and executing functions within Unity Catalog (UC). Built on top of the asynchronous `unitycatalog-client`, this client provides both asynchronous and synchronous interfaces to interact seamlessly with UC functions. It facilitates the creation, retrieval, listing, execution, and deletion of UC functions, enabling developers to integrate both CRUD and execution capabilities into GenAI authoring workflows easily.
 
 #### Caveats
 
@@ -28,7 +28,7 @@ When using the `UnitycatalogFunctionClient` be aware of the following points:
 
 ### Using the UnityCatalog Functions Client
 
-**Warning**: Function execution for the OSS UnityCatalog APIs involves executing code locally from the point of invocation of
+**Warning**: Function execution for the UnityCatalog APIs involves executing code locally from the point of invocation of
 your GenAI application. For deterministic functions that you are authoring yourself, this does not pose a security concern.
 However, if you are writing an application that allows for code to be injected to the function from an LLM
 (a Python code execution function), there is a risk to the environment that you are running your agent from if the code being
@@ -42,10 +42,10 @@ associated with GenAI-generated Python code execution from within Unity Catalog 
 
 #### Installation
 
-- **Installation**: ensure that you have the following packages installed from PyPI:
+- **Installation**: ensure that you have the following package installed from PyPI:
 
 ```shell
-pip install unitycatalog-client unitycatalog-ai unitycatalog-openai
+pip install unitycatalog-openai
 ```
 
 #### Initialization
@@ -54,7 +54,7 @@ Configure and instantiate the Unity Catalog Python Client to connect to your run
 
 ```python
 import asyncio
-from unitycatalog.ai.core.oss import UnitycatalogFunctionClient
+from unitycatalog.ai.core.client import UnitycatalogFunctionClient
 from unitycatalog.client import ApiClient, Configuration
 
 config = Configuration()
@@ -74,7 +74,7 @@ SCHEMA = "my_schema"
 As a measure of convenience, a catalog and schema handler class is available. This can either be instantiated independently:
 
 ```python
-from unitycatalog.ai.core.oss import UnitycatalogClient
+from unitycatalog.ai.core.client import UnitycatalogClient
 from unitycatalog.client import ApiClient, Configuration
 
 config = Configuration(host="http://localhost:8080/api/2.1/unity-catalog")

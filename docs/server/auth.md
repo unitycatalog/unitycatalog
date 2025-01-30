@@ -41,7 +41,7 @@ Once you have configured your identity provider, the next step is to configure y
 Start by editing `etc/conf/server.properties` with the **Client ID** and **Client secret** provided to you by the
 Identity Provider.
 
-```bash
+```sh
 server.authorization=enable
 server.authorization-url=https://accounts.google.com/o/oauth2/auth
 server.token-url=https://oauth2.googleapis.com/token
@@ -53,7 +53,7 @@ server.client-secret=<Client secret provided earlier>
 
 Now that the Google Authentication is configured, restart the UC Server with the following command.
 
-```bash
+```sh
 bin/start-uc-server
 ```
 
@@ -73,7 +73,7 @@ The following steps allow you to test user and admin authentication to your loca
 As noted earlier, on startup the UC server configured itself and created the admin access token at
 `etc/conf/token.txt`. The following command uses the same admin authentication token to view the user list.
 
-```bash
+```sh
 bin/uc --auth_token $(cat etc/conf/token.txt) user list
 ```
 
@@ -92,7 +92,7 @@ The output should look something like this
 As noted earlier, Unity Catalog has a local database that contains the users allowed to access it. While an
 administrative account was created, no user account has been created yet. Thus, the following command **will fail**.
 
-```bash
+```sh
 bin/uc auth login
 ```
 
@@ -126,7 +126,7 @@ Caused by: io.unitycatalog.client.ApiException: Error authenticating - {"error_c
 To fix this error, let’s start by adding your user account to the UC local database. Use the CLI with the admin token
 to add your account to the local database.
 
-```bash
+```sh
 bin/uc --auth_token $(cat etc/conf/token.txt) user create --name "Bobbie Draper" --email bobbie@rocinante
 ```
 
@@ -134,7 +134,7 @@ bin/uc --auth_token $(cat etc/conf/token.txt) user create --name "Bobbie Draper"
 
 Now use the CLI to authenticate and gain an access token using the account that has been created.
 
-```bash
+```sh
 bin/uc auth login --output jsonPretty
 ```
 
@@ -158,7 +158,7 @@ Received token response.
 
 Save the returned token in an environment variable for later
 
-```bash
+```sh
 export token='exJ...N8zt$w'
 ```
 
@@ -169,7 +169,7 @@ database, that user does not yet have any permissions. Thus if one tries to list
 fail, your user account will return nothing (as it does not have permission to list), and the admin account will
 succeed.
 
-```bash
+```sh
 # Fails as the user is UNAUTHENTICATED
 bin/uc catalog list
 
@@ -182,13 +182,13 @@ bin/uc --auth_token $(cat etc/conf/token.txt) catalog list
 
 But if you were to add `USE CATALOG` permission to your user account
 
-```bash
+```sh
 bin/uc --auth_token $(cat etc/conf/token.txt) permission create  --securable_type catalog --name unity --privilege 'USE CATALOG' --principal bobbie@rocinante 
 ```
 
 then the following command would work.
 
-```bash
+```sh
 # Succeeds
 bin/uc --auth_token $token catalog list
 ```
@@ -197,13 +197,13 @@ bin/uc --auth_token $token catalog list
 
 The following command will initially **fail** as your user account does not have permissions to create a catalog.
 
-```bash
+```sh
 bin/uc --auth_token $token catalog create --name myfirstcatalog
 ```
 
 Thus, let’s provide your account with the necessary permissions.
 
-```bash
+```sh
 bin/uc --auth_token $(cat etc/conf/token.txt) permission create --securable_type metastore --name metastore --privilege "CREATE CATALOG" --principal bobbie@rocinante
 ```
 
@@ -216,7 +216,7 @@ First, let’s give our user account (`bobbie@rocinante`) `USE CATALOG`, `USE SC
 Notice how we’re providing access using the three-part naming convention of *catalog, schema, and table*. As we provide
 each level of permissions, we progress down the three parts.
 
-```bash
+```sh
 bin/uc --auth_token $(cat etc/conf/token.txt ) permission create --securable_type catalog --name unity --privilege "USE CATALOG" --principal bobbie@rocinante 
 bin/uc --auth_token $(cat etc/conf/token.txt ) permission create --securable_type schema --name unity.default --privilege "USE SCHEMA" --principal bobbie@rocinante
 bin/uc --auth_token $(cat etc/conf/token.txt ) permission create --securable_type table --name unity.default.numbers --privilege "SELECT" --principal bobbie@rocinante
@@ -224,7 +224,7 @@ bin/uc --auth_token $(cat etc/conf/token.txt ) permission create --securable_typ
 
 Then start a new DuckDB session.
 
-```bash
+```sh
 duckdb
 ```
 
@@ -269,7 +269,7 @@ To solve this issue, ensure that the configuration spark.sql.catalog.unity.token
 `$token` environment variable that you had set in the [try to log in with your user account](#try-to-log-in-with-your-user-account)
 step.
 
-```bash
+```sh
 bin/spark-sql --name "local-uc-test" \
     --master "local[*]" \
     --packages "io.delta:delta-spark_2.12:3.2.1,io.unitycatalog:unitycatalog-spark_2.12:0.2.0" \
@@ -295,14 +295,14 @@ can also apply this authentication and authorization to the Unity Catalog UI.
 First, you will need to edit the `ui/.env` file to enable Google Auth and add the Google Client ID that you created
 when you - in this example - previously [configured Google as the Identity Provider](./google-auth.md).
 
-```bash
+```sh
 REACT_APP_GOOGLE_AUTH_ENABLED=true
 REACT_APP_GOOGLE_CLIENT_ID=<Client ID provided earlier>
 ```
 
 If you have not already done so, restart the UI.
 
-```bash
+```sh
 cd ui
 yarn install
 yarn start
@@ -327,7 +327,7 @@ or both are disabled, it will result in the following expected errors.
 
 Modify the `server.properties` file to disable the server authentication by changing server.authorization to disabled.
 
-```bash
+```sh
 server.authorization=disable
 ```
 
@@ -341,13 +341,13 @@ with the Google Auth login but fail with the following login failed error.
 Let’s go the other way and enable server authentication and disable UI authentication. Modify `server.properties` so
 it is now enabled
 
-```bash
+```sh
 server.authorization=enable
 ```
 
 and edit `ui/.env` file so the UI authentication is disabled.
 
-```bash
+```sh
 REACT_APP_GOOGLE_AUTH_ENABLED=false
 REACT_APP_GOOGLE_CLIENT_ID=
 ```
@@ -362,13 +362,13 @@ is not authenticated to query those assets.
 
 Finally, let’s disable both server and UI authentication by modifying the `server.properties`
 
-```bash
+```sh
 server.authorization=disable
 ```
 
 and the `ui/.env` file so both are disabled.
 
-```bash
+```sh
 REACT_APP_GOOGLE_AUTH_ENABLED=false
 REACT_APP_GOOGLE_CLIENT_ID=
 ```

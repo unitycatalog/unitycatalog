@@ -8,7 +8,6 @@ import static io.unitycatalog.server.utils.Constants.URI_SCHEME_S3;
 import io.unitycatalog.server.exception.BaseException;
 import io.unitycatalog.server.exception.ErrorCode;
 import io.unitycatalog.server.model.TemporaryCredentials;
-import io.unitycatalog.server.utils.ServerProperties;
 import java.io.IOException;
 import java.net.URI;
 import java.net.URISyntaxException;
@@ -24,7 +23,6 @@ import org.slf4j.LoggerFactory;
 
 public class UriUtils {
   private static final Logger LOGGER = LoggerFactory.getLogger(UriUtils.class);
-  private static final ServerProperties properties = ServerProperties.getInstance();
 
   private enum Operation {
     CREATE,
@@ -32,63 +30,6 @@ public class UriUtils {
   }
 
   private UriUtils() {}
-
-  private static String modelStorageRootCached;
-  private static String modelStorageRootPropertyCached;
-
-  /**
-   * TODO: Deprecate this method once unit tests are self contained and this class gets
-   * re-instantiated with each test. Property updates shouldn't affect the instantiated class and we
-   * should require a server restart if the properties file is updated.
-   */
-  private static void reset() {
-    modelStorageRootPropertyCached = null;
-    modelStorageRootCached = null;
-  }
-
-  // Model specific storage root handlers and convenience methods
-  private static String getModelStorageRoot() {
-    String currentModelStorageRoot = properties.getProperty("storage-root.models");
-    if (modelStorageRootPropertyCached != currentModelStorageRoot) {
-      // This means the property has been updated from the previous read, or this is the first time
-      // reading it
-      reset();
-    }
-    if (modelStorageRootCached != null) {
-      return modelStorageRootCached;
-    }
-    String modelStorageRoot = currentModelStorageRoot;
-    if (modelStorageRoot == null) {
-      // If the model storage root is empty, use the CWD
-      modelStorageRoot = System.getProperty("user.dir");
-    }
-    // If the model storage root is not a valid URI, make it one
-    if (!isValidURI(modelStorageRoot)) {
-      // Convert to an absolute path
-      modelStorageRoot = Paths.get(modelStorageRoot).toUri().toString();
-    }
-    // Check if the modelStorageRoot ends with a slash and remove it if it does
-    while (modelStorageRoot.endsWith("/")) {
-      modelStorageRoot = modelStorageRoot.substring(0, modelStorageRoot.length() - 1);
-    }
-    modelStorageRootCached = modelStorageRoot;
-    modelStorageRootPropertyCached = currentModelStorageRoot;
-    return modelStorageRoot;
-  }
-
-  private static String getModelDirectoryURI(String entityFullName) {
-    return getModelStorageRoot() + "/" + entityFullName.replace(".", "/");
-  }
-
-  public static String getModelStorageLocation(String catalogId, String schemaId, String modelId) {
-    return getModelDirectoryURI(catalogId + "." + schemaId + ".models." + modelId);
-  }
-
-  public static String getModelVersionStorageLocation(
-      String catalogId, String schemaId, String modelId, String versionId) {
-    return getModelDirectoryURI(
-        catalogId + "." + schemaId + ".models." + modelId + ".versions." + versionId);
-  }
 
   public static String createStorageLocationPath(String uri) {
     return updateDirectoryFromUri(uri, Operation.CREATE, Optional.empty()).toString();
@@ -139,7 +80,7 @@ public class UriUtils {
         ErrorCode.INVALID_ARGUMENT, "Unknown scheme detected: " + parsedUri.getScheme());
   }
 
-  private static boolean isValidURI(String uri) {
+  public static boolean isValidURI(String uri) {
     try {
       URI testURI = new URI(uri);
       if (testURI.getScheme() != null && testURI.getPath() != null) {

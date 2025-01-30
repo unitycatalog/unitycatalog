@@ -16,7 +16,6 @@ import io.unitycatalog.server.exception.ErrorCode;
 import io.unitycatalog.server.model.ModelVersionInfo;
 import io.unitycatalog.server.model.ModelVersionStatus;
 import io.unitycatalog.server.persist.dao.ModelVersionInfoDAO;
-import io.unitycatalog.server.persist.utils.HibernateUtils;
 import java.util.UUID;
 import org.hibernate.Session;
 import org.hibernate.Transaction;
@@ -64,7 +63,7 @@ public abstract class BaseTemporaryModelVersionCredentialsTest extends BaseCRUDT
             .createdAt(createTime)
             .updatedAt(createTime);
     Transaction tx;
-    try (Session session = HibernateUtils.getSessionFactory().openSession()) {
+    try (Session session = hibernateConfigurator.getSessionFactory().openSession()) {
       tx = session.beginTransaction();
       try {
         ModelVersionInfoDAO modelVersionInfoDAO = ModelVersionInfoDAO.from(modelVersionInfo);

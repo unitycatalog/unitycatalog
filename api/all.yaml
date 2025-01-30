@@ -1692,7 +1692,6 @@ components:
         - is_null_call
         - security_type
         - specific_name
-        - properties
       properties:
         name:
           description: Name of function, relative to parent schema.

@@ -17,7 +17,10 @@ export default function ModelsList({
   schema,
   filters,
 }: ModelsListProps) {
-  const { data, isLoading } = useListModels({ catalog, schema });
+  const { data, isLoading } = useListModels({
+    catalog_name: catalog,
+    schema_name: schema,
+  });
   const navigate = useNavigate();
 
   return (

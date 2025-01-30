@@ -4,26 +4,88 @@ You can use the Unity Catalog AI package with the Anthropic SDK to utilize funct
 
 ## Installation
 
+### Client Library
+
+To use this package with **Unity Catalog**, you will need to install:
+
 ```sh
-# install from the source
-pip install git+https://github.com/unitycatalog/unitycatalog.git#subdirectory=ai/integrations/anthropic
+pip install unitycatalog-anthropic
 ```
 
-> [!NOTE]
-> Once this package is published to PyPI, users can install via `pip install unitycatalog-anthropic`
+To use this package with **Databricks Unity Catalog**, you will need to install:
 
-## Get started
+```sh
+pip install unitycatalog-anthropic[databricks]
+```
 
-### Databricks-managed UC
+## Getting started
+
+### Creating a Unity Catalog Client
+
+To interact with your Unity Catalog server, initialize the `UnitycatalogFunctionClient` as shown below:
+
+```python
+import asyncio
+from unitycatalog.ai.core.client import UnitycatalogFunctionClient
+from unitycatalog.client import ApiClient, Configuration
+
+# Configure the Unity Catalog API client
+config = Configuration(
+    host="http://localhost:8080/api/2.1/unity-catalog"  # Replace with your UC server URL
+)
+
+# Initialize the asynchronous ApiClient
+api_client = ApiClient(configuration=config)
+
+# Instantiate the UnitycatalogFunctionClient
+uc_client = UnitycatalogFunctionClient(api_client=api_client)
+
+# Example catalog and schema names
+CATALOG = "my_catalog"
+SCHEMA = "my_schema"
+```
+
+### Creating a Unity Catalog Function
+
+You can create a UC function either by providing a Python callable or by submitting a `FunctionInfo` object. Below is an example (recommended) of using the `create_python_function` API that accepts a Python callable (function) as input.
+
+To create a UC function from a Python function, define your function with appropriate type hints and a Google-style docstring:
+
+```python
+def add_numbers(a: float, b: float) -> float:
+    """
+    Adds two numbers and returns the result.
+
+    Args:
+        a (float): First number.
+        b (float): Second number.
+
+    Returns:
+        float: The sum of the two numbers.
+    """
+    return a + b
+
+# Create the function within the Unity Catalog catalog and schema specified
+function_info = uc_client.create_python_function(
+    func=add_numbers,
+    catalog=CATALOG,
+    schema=SCHEMA,
+    replace=False,  # Set to True to overwrite if the function already exists
+)
+
+print(function_info)
+```
+
+## Databricks-managed Unity Catalog
 
 To use Databricks-managed Unity Catalog with this package, follow the [instructions](https://docs.databricks.com/en/dev-tools/cli/authentication.html#authentication-for-the-databricks-cli) to authenticate to your workspace and ensure that your access token has workspace-level privilege for managing UC functions.
 
-#### Client setup
+### Client setup
 
 Initialize a client for managing UC functions in a Databricks workspace, and set it as the global client.
 
 ```python
-from unitycatalog.ai.core.client import set_uc_function_client
+from unitycatalog.ai.core.base import set_uc_function_client
 from unitycatalog.ai.core.databricks import DatabricksFunctionClient
 
 client = DatabricksFunctionClient(
@@ -35,7 +97,7 @@ client = DatabricksFunctionClient(
 set_uc_function_client(client)
 ```
 
-#### Create a function in UC
+### Create a Function in UC
 
 Create a python UDF in Unity Catalog with the client
 
@@ -60,7 +122,9 @@ client.create_function(sql_function_body=sql_body)
 
 Now that the function is created and stored in the corresponding catalog and schema, we can use it within Anthropic's SDK.
 
-#### Create a UCFunctionToolkit instance
+## Using the Function as a GenAI Tool
+
+### Create a UCFunctionToolkit instance
 
 Tool use through the [Anthropic SDK](https://docs.anthropic.com/en/docs/build-with-claude/tool-use) allows you to connect external client-side tools and
 functions to provide [Claude](https://docs.anthropic.com/en/docs/welcome) with a greater range of capabilities to augment its ability to respond to user messages.
@@ -80,7 +144,7 @@ tools = tookit.tools
 
 Now that we have the defined tools from Unity Catalog, we can directly pass this definition into a messages request.
 
-#### Use the tools within a request to Anthropic models
+### Use the tools within a request to Anthropic models
 
 Anthropic will generate a stopping condition of `"tool_use"` when a relevant tool definition is provided to a message creation call, responding with the
 function's name to call and the input arguments to provide to the tool.
@@ -108,7 +172,7 @@ print(response)
 Within the response, you will see instances of `ToolUseBlock` from Anthropic's SDK. These blocks, if present, indicate the name of the tool to use
 and the inputs to provide to the defined tool's function.
 
-#### Calling the function
+### Calling the function
 
 There are two ways of calling the function within UC:
 
@@ -180,3 +244,7 @@ for message in parsed_messages:
 
 print(results)
 ```
+
+### Configurations for Databricks-only UC function execution
+
+We provide configurations for the Databricks Client to control the function execution behaviors, check [function execution arguments section](../../README.md#function-execution-arguments-configuration).

@@ -16,29 +16,15 @@ dependencies = [
 
 [project.optional-dependencies]
 databricks = [
-  # temporarily needed until unitycatalog-ai[databricks] is released
-  "databricks-sdk>=0.32.0",
-  "databricks-connect==15.1.0",
-  #"unitycatalog-ai[databricks]"
+  "unitycatalog-ai[databricks]",
 ]
 
 databricks-dev = [
-  # temporarily needed until unitycatalog-ai[databricks] is released
-  "databricks-sdk>=0.32.0",
-  "databricks-connect==15.1.0",
-  "pytest",
-  "pandas",
-  "ruff==0.6.4",
-  #"unitycatalog-ai[databricks-dev]"
+  "unitycatalog-ai[databricks-dev]",
 ]
 
 dev = [
-  "pytest",
-  "typing_extensions",
-  # temp needed before unitycatalog-ai[databricks] is released
-  "databricks-sdk>=0.32.0",
-  "databricks-connect",
-  "ruff==0.6.4"
+  "unitycatalog-ai[dev]",
 ]
 
 [build-system]

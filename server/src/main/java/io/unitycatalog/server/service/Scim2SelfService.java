@@ -17,16 +17,18 @@ import io.unitycatalog.server.auth.annotation.AuthorizeExpression;
 import io.unitycatalog.server.auth.annotation.AuthorizeKey;
 import io.unitycatalog.server.exception.GlobalExceptionHandler;
 import io.unitycatalog.server.exception.Scim2RuntimeException;
+import io.unitycatalog.server.persist.Repositories;
 import io.unitycatalog.server.persist.UserRepository;
 import io.unitycatalog.server.security.JwtClaim;
 
 @ExceptionHandler(GlobalExceptionHandler.class)
 public class Scim2SelfService {
-  private static final UserRepository USER_REPOSITORY = UserRepository.getInstance();
+  private final UserRepository userRepository;
   private final UnityCatalogAuthorizer authorizer;
 
-  public Scim2SelfService(UnityCatalogAuthorizer authorizer) {
+  public Scim2SelfService(UnityCatalogAuthorizer authorizer, Repositories repositories) {
     this.authorizer = authorizer;
+    this.userRepository = repositories.getUserRepository();
   }
 
   @Get("")
@@ -40,7 +42,7 @@ public class Scim2SelfService {
     DecodedJWT decodedJWT = ctx.attr(AuthDecorator.DECODED_JWT_ATTR);
     if (decodedJWT != null) {
       Claim sub = decodedJWT.getClaim(JwtClaim.SUBJECT.key());
-      return asUserResource(USER_REPOSITORY.getUserByEmail(sub.asString()));
+      return asUserResource(userRepository.getUserByEmail(sub.asString()));
     } else {
       throw new Scim2RuntimeException(new BadRequestException("No user found."));
     }

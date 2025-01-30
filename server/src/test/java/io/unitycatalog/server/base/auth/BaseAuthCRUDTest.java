@@ -14,9 +14,15 @@ public abstract class BaseAuthCRUDTest extends BaseServerTest {
   protected SecurityConfiguration securityConfiguration;
   protected SecurityContext securityContext;
 
+  @Override
+  protected void setUpProperties() {
+    super.setUpProperties();
+    serverProperties.setProperty("server.authorization", "enable");
+  }
+
   @BeforeEach
+  @Override
   public void setUp() {
-    System.setProperty("server.authorization", "enable");
     super.setUp();
 
     Path configurationFolder = Path.of("etc", "conf");

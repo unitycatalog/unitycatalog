@@ -140,3 +140,53 @@ def validate_function_name_length(function_name: str) -> None:
             f"The maximum length of a function name is {OSS_MAX_FUNCTION_NAME_LENGTH}. "
             f"The name supplied is {name_length} characters long."
         )
+
+
+def has_retriever_signature(function_info: "FunctionInfo") -> bool:
+    """
+    Checks if the given function signature follows the retriever format for MLflow, which is a
+    list of Documents.
+
+    Args:
+        function_info: The function to determine if it has a valid retriever signature.
+
+    Returns:
+        bool: If the provided function has a valid retriever signature.
+    """
+    if "TABLE_TYPE" not in str(function_info.data_type):
+        return False
+
+    return_params = function_info.return_params
+
+    if not (return_params and return_params.parameters):
+        return False
+
+    for param in return_params.parameters:
+        param_dict = param.as_dict() if hasattr(param, "as_dict") else dict(param)
+
+        if param_dict.get("name") == "page_content" and param_dict.get("type_name") == "STRING":
+            return True
+
+    return False
+
+
+def mlflow_tracing_enabled(integration_name: str) -> bool:
+    """
+    Checks if autologging tracing is enabled in MLflow for the provided integration name.
+
+    Args:
+        integration_name: The integration for which to check if autologging tracing is enabled, e.x.
+        langchain, openai, etc.
+
+    Returns:
+        bool: If autologging tracing is enabled for the provided integration.
+    """
+    try:
+        from mlflow.utils.autologging_utils import autologging_is_disabled, get_autologging_config
+
+        return not autologging_is_disabled(integration_name) and get_autologging_config(
+            integration_name, "log_traces"
+        )
+    except Exception:
+        # Default to autologging disabled
+        return False

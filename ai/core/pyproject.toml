@@ -13,7 +13,8 @@ dependencies = [
   "typing_extensions",
   "pydantic",
   "asyncio",
-  "nest_asyncio"
+  "nest_asyncio",
+  "unitycatalog-client",
 ]
 keywords = ["unitycatalog", "ai", "databricks", "function", "tool", "genai"]
 classifiers = [
@@ -65,9 +66,7 @@ sources = ["src"]
 only-include = ["src/unitycatalog/ai/core"]
 
 [project.optional-dependencies]
-oss = [
-  "unitycatalog-client"
-]
+
 databricks = [
   "databricks-sdk>=0.32.0",
   "pandas",

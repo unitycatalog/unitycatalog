@@ -1,6 +1,6 @@
 [project]
 name = "unitycatalog-autogen"
-version = "0.1.0"
+version = "0.1.1"
 description = "Support for Unity Catalog functions as autogen tools"
 authors = [
     { name="Puneet Jain", email="puneet.jain@databricks.com" }
@@ -9,37 +9,26 @@ readme = "README.md"
 license = { text="Apache-2.0" }
 requires-python = ">=3.9"
 dependencies = [
-    "autogen-agentchat~=0.2",
+    "autogen-agentchat>=0.4.0",
+    "autogen-core>=0.4.0",
     "openai>=1.46.1",
     "unitycatalog-ai",
     "pydantic<3,>=2",
+    "pyautogen<0.4.0"
 ]
 
 [project.optional-dependencies]
 databricks = [
-  # temporarily needed until unitycatalog-ai[databricks] is released
-  "databricks-sdk>=0.32.0",
-  "databricks-connect==15.1.0",
-  #"unitycatalog-ai[databricks]"
+  "unitycatalog-ai[databricks]",
 ]
 
 databricks-dev = [
-  # temporarily needed until unitycatalog-ai[databricks] is released
-  "databricks-sdk>=0.32.0",
-  "databricks-connect==15.1.0",
-  "pytest",
-  "pandas",
-  "ruff==0.6.4",
-  #"unitycatalog-ai[databricks-dev]"
+  "unitycatalog-ai[databricks-dev]",
 ]
 
 dev = [
-  "pytest",
-  "typing_extensions",
-  # temp needed before unitycatalog-ai[databricks] is released
-  "databricks-sdk>=0.32.0",
-  "databricks-connect",
-  "ruff==0.6.4"
+  "unitycatalog-ai[dev]",
+  "autogen-ext>=0.4.0",
 ]
 
 [build-system]

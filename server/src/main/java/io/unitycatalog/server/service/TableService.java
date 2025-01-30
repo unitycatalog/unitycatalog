@@ -18,12 +18,8 @@ import io.unitycatalog.server.model.CreateTable;
 import io.unitycatalog.server.model.ListTablesResponse;
 import io.unitycatalog.server.model.SchemaInfo;
 import io.unitycatalog.server.model.TableInfo;
-import io.unitycatalog.server.persist.CatalogRepository;
-import io.unitycatalog.server.persist.MetastoreRepository;
-import io.unitycatalog.server.persist.SchemaRepository;
-import io.unitycatalog.server.persist.TableRepository;
+import io.unitycatalog.server.persist.*;
 import io.unitycatalog.server.persist.model.Privileges;
-import io.unitycatalog.server.utils.IdentityUtils;
 import lombok.SneakyThrows;
 
 import java.util.List;
@@ -39,17 +35,24 @@ import static io.unitycatalog.server.model.SecurableType.TABLE;
 @ExceptionHandler(GlobalExceptionHandler.class)
 public class TableService {
 
-  private static final TableRepository TABLE_REPOSITORY = TableRepository.getInstance();
-  private static final SchemaRepository SCHEMA_REPOSITORY = SchemaRepository.getInstance();
-  private static final CatalogRepository CATALOG_REPOSITORY = CatalogRepository.getInstance();
+  private final TableRepository tableRepository;
+  private final SchemaRepository schemaRepository;
+  private final CatalogRepository catalogRepository;
+  private final MetastoreRepository metastoreRepository;
+  private final UserRepository userRepository;
 
   private final UnityCatalogAuthorizer authorizer;
   private final UnityAccessEvaluator evaluator;
 
   @SneakyThrows
-  public TableService(UnityCatalogAuthorizer authorizer) {
+  public TableService(UnityCatalogAuthorizer authorizer, Repositories repositories) {
     this.authorizer = authorizer;
-    evaluator = new UnityAccessEvaluator(authorizer);
+    this.evaluator = new UnityAccessEvaluator(authorizer);
+    this.tableRepository = repositories.getTableRepository();
+    this.schemaRepository = repositories.getSchemaRepository();
+    this.catalogRepository = repositories.getCatalogRepository();
+    this.metastoreRepository = repositories.getMetastoreRepository();
+    this.userRepository = repositories.getUserRepository();
   }
 
   @Post("")
@@ -65,7 +68,7 @@ public class TableService {
           })
           CreateTable createTable) {
     assert createTable != null;
-    TableInfo tableInfo = TABLE_REPOSITORY.createTable(createTable);
+    TableInfo tableInfo = tableRepository.createTable(createTable);
     initializeAuthorizations(tableInfo);
     return HttpResponse.ofJson(tableInfo);
   }
@@ -80,7 +83,7 @@ public class TableService {
   @AuthorizeKey(METASTORE)
   public HttpResponse getTable(@Param("full_name") @AuthorizeKey(TABLE) String fullName) {
     assert fullName != null;
-    TableInfo tableInfo = TABLE_REPOSITORY.getTable(fullName);
+    TableInfo tableInfo = tableRepository.getTable(fullName);
     return HttpResponse.ofJson(tableInfo);
   }
 
@@ -94,7 +97,7 @@ public class TableService {
       @Param("omit_properties") Optional<Boolean> omitProperties,
       @Param("omit_columns") Optional<Boolean> omitColumns) {
 
-    ListTablesResponse listTablesResponse = TABLE_REPOSITORY.listTables(
+    ListTablesResponse listTablesResponse = tableRepository.listTables(
             catalogName,
             schemaName,
             maxResults,
@@ -119,27 +122,27 @@ public class TableService {
           (#authorize(#principal, #schema, USE_SCHEMA) && #authorize(#principal, #catalog, USE_CATALOG) && #authorize(#principal, #table, OWNER))
           """)
   public HttpResponse deleteTable(@Param("full_name") @AuthorizeKey(TABLE) String fullName) {
-    TableInfo tableInfo = TABLE_REPOSITORY.getTable(fullName);
-    TABLE_REPOSITORY.deleteTable(fullName);
+    TableInfo tableInfo = tableRepository.getTable(fullName);
+    tableRepository.deleteTable(fullName);
     removeAuthorizations(tableInfo);
     return HttpResponse.of(HttpStatus.OK);
   }
 
   public void filterTables(String expression, List<TableInfo> entries) {
     // TODO: would be nice to move this to filtering in the Decorator response
-    UUID principalId = IdentityUtils.findPrincipalId();
+    UUID principalId = userRepository.findPrincipalId();
 
     evaluator.filter(
             principalId,
             expression,
             entries,
             ti -> {
-              CatalogInfo catalogInfo = CATALOG_REPOSITORY.getCatalog(ti.getCatalogName());
+              CatalogInfo catalogInfo = catalogRepository.getCatalog(ti.getCatalogName());
               SchemaInfo schemaInfo =
-                      SCHEMA_REPOSITORY.getSchema(ti.getCatalogName() + "." + ti.getSchemaName());
+                      schemaRepository.getSchema(ti.getCatalogName() + "." + ti.getSchemaName());
               return Map.of(
                       METASTORE,
-                      MetastoreRepository.getInstance().getMetastoreId(),
+                      metastoreRepository.getMetastoreId(),
                       CATALOG,
                       UUID.fromString(catalogInfo.getId()),
                       SCHEMA,
@@ -151,8 +154,8 @@ public class TableService {
 
   private void initializeAuthorizations(TableInfo tableInfo) {
     SchemaInfo schemaInfo =
-        SCHEMA_REPOSITORY.getSchema(tableInfo.getCatalogName() + "." + tableInfo.getSchemaName());
-    UUID principalId = IdentityUtils.findPrincipalId();
+        schemaRepository.getSchema(tableInfo.getCatalogName() + "." + tableInfo.getSchemaName());
+    UUID principalId = userRepository.findPrincipalId();
     // add owner privilege
     authorizer.grantAuthorization(
         principalId, UUID.fromString(tableInfo.getTableId()), Privileges.OWNER);
@@ -163,7 +166,7 @@ public class TableService {
 
   private void removeAuthorizations(TableInfo tableInfo) {
     SchemaInfo schemaInfo =
-        SCHEMA_REPOSITORY.getSchema(tableInfo.getCatalogName() + "." + tableInfo.getSchemaName());
+        schemaRepository.getSchema(tableInfo.getCatalogName() + "." + tableInfo.getSchemaName());
     // remove any direct authorizations on the table
     authorizer.clearAuthorizationsForResource(UUID.fromString(tableInfo.getTableId()));
     // remove link to the parent schema

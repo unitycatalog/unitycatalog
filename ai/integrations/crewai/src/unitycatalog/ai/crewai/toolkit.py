@@ -1,17 +1,25 @@
+import importlib
 import json
 import logging
 from typing import Any, Callable, Dict, List, Optional
 
-from crewai_tools import BaseTool as CrewAIBaseTool
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-from unitycatalog.ai.core.client import BaseFunctionClient
+from unitycatalog.ai.core.base import BaseFunctionClient
 from unitycatalog.ai.core.utils.client_utils import validate_or_set_default_client
 from unitycatalog.ai.core.utils.function_processing_utils import (
     generate_function_input_params_schema,
     get_tool_name,
     process_function_names,
 )
+from unitycatalog.ai.core.utils.validation_utils import mlflow_tracing_enabled
+
+tools_version = importlib.metadata.version("crewai_tools")
+
+if tools_version >= "0.25.0":
+    CrewAIBaseTool = importlib.import_module("crewai.tools").BaseTool
+else:
+    CrewAIBaseTool = importlib.import_module("crewai_tools").BaseTool
 
 _logger = logging.getLogger(__name__)
 
@@ -114,9 +122,8 @@ class UCFunctionToolkit(BaseModel):
     @staticmethod
     def uc_function_to_crewai_tool(
         *,
+        function_name: str,
         client: Optional[BaseFunctionClient] = None,
-        function_name: Optional[str] = None,
-        function_info: Optional[Any] = None,
         description_updated: Optional[bool] = False,
         cache_function: Callable = lambda _args, _result: True,
         result_as_answer: bool = False,
@@ -126,9 +133,8 @@ class UCFunctionToolkit(BaseModel):
         Converts a Unity Catalog function into a CrewAI tool.
 
         Args:
+            function_name (str): Name of the function to convert.
             client (Optional[BaseFunctionClient]): Client for executing the function.
-            function_name (Optional[str]): Name of the function to convert.
-            function_info (Optional[Any]): Detailed information of the function.
             description_updated (Optional[Bool]): Flag to check if the description has been updated.
             cache_function (Optional[Callable]): Function that will be used to determine if the tool
                 should be cached, should return a boolean. If None, the tool will be cached.
@@ -138,23 +144,18 @@ class UCFunctionToolkit(BaseModel):
         Returns:
             CrewAIBaseTool: A tool representation of the Unity Catalog function.
         """
-
-        if function_name and function_info:
-            raise ValueError("Only one of function_name or function_info should be provided.")
         client = validate_or_set_default_client(client)
 
-        if function_name:
-            function_info = client.get_function(function_name)
-        elif function_info:
-            function_name = function_info.full_name
-        else:
-            raise ValueError("Either function_name or function_info should be provided.")
+        if function_name is None:
+            raise ValueError("function_name must be provided.")
+        function_info = client.get_function(function_name)
 
         def func(**kwargs: Any) -> str:
             args_json = json.loads(json.dumps(kwargs, default=str))
             result = client.execute_function(
                 function_name=function_name,
                 parameters=args_json,
+                enable_retriever_tracing=mlflow_tracing_enabled("crewai"),
             )
 
             return result.to_json()

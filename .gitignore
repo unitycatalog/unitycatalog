@@ -33,6 +33,7 @@ integration-tests/etc/conf/*.der
 
 # test
 .pytest_cache/
+mlruns/
 
 # Byte-compiled files
 __pycache__

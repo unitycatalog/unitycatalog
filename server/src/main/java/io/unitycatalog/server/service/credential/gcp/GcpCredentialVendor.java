@@ -30,8 +30,8 @@ public class GcpCredentialVendor {
 
   private final Map<String, String> gcsConfigurations;
 
-  public GcpCredentialVendor() {
-    this.gcsConfigurations = ServerProperties.getInstance().getGcsConfigurations();
+  public GcpCredentialVendor(ServerProperties serverProperties) {
+    this.gcsConfigurations = serverProperties.getGcsConfigurations();
   }
 
   @SneakyThrows
