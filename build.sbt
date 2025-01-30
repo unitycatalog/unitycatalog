@@ -44,8 +44,8 @@ lazy val commonSettings = Seq(
   libraryDependencies ++= Seq(
     "org.slf4j" % "slf4j-api" % "2.0.13",
     "org.slf4j" % "slf4j-log4j12" % "2.0.13" % Test,
-    "org.apache.logging.log4j" % "log4j-slf4j2-impl" % "2.23.1",
-    "org.apache.logging.log4j" % "log4j-api" % "2.23.1"
+    "org.apache.logging.log4j" % "log4j-slf4j2-impl" % "2.24.3",
+    "org.apache.logging.log4j" % "log4j-api" % "2.24.3"
   ),
   excludeDependencies ++= Seq(
     ExclusionRule("org.slf4j", "slf4j-reload4j")
@@ -664,4 +664,4 @@ val generate = taskKey[Unit]("generate code from APIs")
 // Library versions
 val jacksonVersion = "2.17.0"
 val openApiToolsJacksonBindNullableVersion = "0.2.6"
-val log4jVersion = "2.23.1"
+val log4jVersion = "2.24.3"
