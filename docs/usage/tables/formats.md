@@ -9,14 +9,14 @@ and TEXT.
 To follow along, make sure you have a local instance of Unity Catalog running by launching the following command from
 a terminal window:
 
-```bash
+```sh
 bin/start-uc-server
 ```
 
 This local UC server will come with some sample data pre-loaded. To list all of the tables in your local
 Unity Catalog, use:
 
-```bash
+```sh
 bin/uc table list --catalog unity --schema default
 ```
 
@@ -45,7 +45,7 @@ The following creates a new table in the `path/to/storage` LOCATION two colummns
 
 === "Parquet"
 
-    ```bash
+    ```sh
     bin/uc table create --full_name unity.default.test \
        --columns "some_numbers INT, some_letters STRING" \
        --storage_location /path/to/storage \
@@ -54,7 +54,7 @@ The following creates a new table in the `path/to/storage` LOCATION two colummns
 
 === "JSON"
 
-    ```bash
+    ```sh
     bin/uc table create --full_name unity.default.test \
        --columns "some_numbers INT, some_letters STRING" \
        --storage_location /path/to/storage \
@@ -63,7 +63,7 @@ The following creates a new table in the `path/to/storage` LOCATION two colummns
     
 === "CSV"
 
-    ```bash
+    ```sh
     bin/uc table create --full_name unity.default.test \
        --columns "some_numbers INT, some_letters STRING" \
        --storage_location /path/to/storage \
@@ -72,7 +72,7 @@ The following creates a new table in the `path/to/storage` LOCATION two colummns
 
 === "ORC"
 
-    ```bash
+    ```sh
     bin/uc table create --full_name unity.default.test \
        --columns "some_numbers INT, some_letters STRING" \
        --storage_location /path/to/storage \
@@ -81,7 +81,7 @@ The following creates a new table in the `path/to/storage` LOCATION two colummns
 
 === "Avro"
 
-    ```bash
+    ```sh
     bin/uc table create --full_name unity.default.test \
        --columns "some_numbers INT, some_letters STRING" \
        --storage_location /path/to/storage \
@@ -90,7 +90,7 @@ The following creates a new table in the `path/to/storage` LOCATION two colummns
       
 === "Text"
 
-    ```bash
+    ```sh
     bin/uc table create --full_name unity.default.test \
        --columns "some_numbers INT, some_letters STRING" \
        --storage_location /path/to/storage \

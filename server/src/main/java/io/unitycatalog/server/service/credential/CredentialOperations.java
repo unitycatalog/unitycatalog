@@ -4,6 +4,7 @@ import com.google.auth.oauth2.AccessToken;
 import io.unitycatalog.server.exception.BaseException;
 import io.unitycatalog.server.exception.ErrorCode;
 import io.unitycatalog.server.model.*;
+import io.unitycatalog.server.persist.utils.FileOperations;
 import io.unitycatalog.server.service.credential.aws.AwsCredentialVendor;
 import io.unitycatalog.server.service.credential.azure.AzureCredential;
 import io.unitycatalog.server.service.credential.azure.AzureCredentialVendor;
@@ -24,10 +25,13 @@ public class CredentialOperations {
   private final AzureCredentialVendor azureCredentialVendor;
   private final GcpCredentialVendor gcpCredentialVendor;
 
-  public CredentialOperations() {
-    this.awsCredentialVendor = new AwsCredentialVendor();
-    this.azureCredentialVendor = new AzureCredentialVendor();
-    this.gcpCredentialVendor = new GcpCredentialVendor();
+  public CredentialOperations(
+          AwsCredentialVendor awsCredentialVendor,
+          AzureCredentialVendor azureCredentialVendor,
+          GcpCredentialVendor gcpCredentialVendor) {
+    this.awsCredentialVendor = awsCredentialVendor;
+    this.azureCredentialVendor = azureCredentialVendor;
+    this.gcpCredentialVendor = gcpCredentialVendor;
   }
 
   public TemporaryCredentials vendCredential(String path, Set<CredentialContext.Privilege> privileges) {
@@ -41,9 +45,13 @@ public class CredentialOperations {
   }
 
   public TemporaryCredentials vendCredential(CredentialContext context) {
+    String location = context.getLocations().get(0);
+    FileOperations.assertValidLocation(location);
+
+    String storageScheme = context.getStorageScheme();
     TemporaryCredentials temporaryCredentials = new TemporaryCredentials();
 
-    switch (context.getStorageScheme()) {
+    switch (storageScheme) {
       case URI_SCHEME_ABFS, URI_SCHEME_ABFSS -> {
         AzureCredential azureCredential = vendAzureCredential(context);
         temporaryCredentials.azureUserDelegationSas(new AzureUserDelegationSAS().sasToken(azureCredential.getSasToken()))

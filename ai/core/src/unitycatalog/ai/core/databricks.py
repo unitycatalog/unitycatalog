@@ -11,7 +11,7 @@ from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional
 
 from typing_extensions import override
 
-from unitycatalog.ai.core.client import BaseFunctionClient, FunctionExecutionResult
+from unitycatalog.ai.core.base import BaseFunctionClient, FunctionExecutionResult
 from unitycatalog.ai.core.envs.databricks_env_vars import (
     UCAI_DATABRICKS_SERVERLESS_EXECUTION_RESULT_ROW_LIMIT,
     UCAI_DATABRICKS_SESSION_RETRY_MAX_ATTEMPTS,
@@ -89,9 +89,9 @@ def _try_get_spark_session_in_dbr() -> Any:
         from databricks.sdk.runtime import spark
         from pyspark.sql.connect.session import SparkSession
 
-        if not isinstance(spark, SparkSession):
+        if spark is not None and not isinstance(spark, SparkSession):
             _logger.warning(
-                "Current SparkSession in the active environment is not a "
+                f"Current SparkSession {spark} in the active environment is not a "
                 "pyspark.sql.connect.session.SparkSession instance. Classic runtime does not support "
                 "all functionalities of the unitycatalog-ai framework. To use the full "
                 "capabilities of unitycatalog-ai, execute your code using a client that is attached to "
@@ -457,6 +457,10 @@ class DatabricksFunctionClient(BaseFunctionClient):
         Args:
             function_name: The name of the function to get.
             kwargs: additional key-value pairs to include when getting the function.
+            Allowed keys for retrieving functions are:
+            - include_browse: bool (default to None)
+                Whether to include functions in the response for which the principal can only
+                access selective metadata for.
 
         Note:
             The function name shouldn't be *, to get all functions in a catalog and schema,
@@ -480,6 +484,7 @@ class DatabricksFunctionClient(BaseFunctionClient):
         schema: str,
         max_results: Optional[int] = None,
         page_token: Optional[str] = None,
+        include_browse: Optional[bool] = None,
     ) -> PagedList["FunctionInfo"]:
         """
         List functions in a catalog and schema.
@@ -489,6 +494,8 @@ class DatabricksFunctionClient(BaseFunctionClient):
             schema: The schema name.
             max_results: The maximum number of functions to return. Defaults to None.
             page_token: The token for the next page. Defaults to None.
+            include_browse: Whether to include functions in the response for which the
+            principal can only access selective metadata for. Defaults to None.
 
         Returns:
             PageList[FunctionInfo]: The paginated list of function infos.
@@ -506,6 +513,8 @@ class DatabricksFunctionClient(BaseFunctionClient):
             query["page_token"] = page_token
         if schema is not None:
             query["schema_name"] = schema
+        if include_browse is not None:
+            query["include_browse"] = include_browse
         headers = {
             "Accept": "application/json",
         }
@@ -540,7 +549,7 @@ class DatabricksFunctionClient(BaseFunctionClient):
             function_name: The name of the function to execute.
             parameters: The parameters to pass to the function. Defaults to None.
             kwargs: additional key-value pairs to include when executing the function.
-                Allowed keys for retreiiving functions are:
+                Allowed keys for retrieving functions are:
                 - include_browse: bool (default to False)
                     Whether to include functions in the response for which the principal can only access selective
                     metadata for.
