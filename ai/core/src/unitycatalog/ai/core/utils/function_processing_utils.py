@@ -20,10 +20,7 @@ from unitycatalog.ai.core.utils.pydantic_utils import (
     PydanticType,
 )
 from unitycatalog.ai.core.utils.type_utils import UC_TYPE_JSON_MAPPING
-from unitycatalog.ai.core.utils.validation_utils import (
-    FullFunctionName,
-    is_valid_retriever_output,
-)
+from unitycatalog.ai.core.utils.validation_utils import FullFunctionName
 
 _logger = logging.getLogger(__name__)
 
@@ -321,67 +318,76 @@ def supported_function_info_types():
     return types
 
 
-def auto_trace_retriever(
-    function_name: str,
-    parameters: Dict[str, Any],
-    result: "FunctionExecutionResult",
-    start_time_ns: int,
-    end_time_ns: int,
-):
+def process_retriever_output(result: "FunctionExecutionResult") -> List[Dict[str, Any]]:
     """
-    If the given function is a retriever, trace the function given the provided start and end time.
-    A function is considered a retriever if the result is of valid retriever output format.
+    Process retriever output from result into mlflow.entities.Document format for tracing.
 
     Args:
-        function_name: The function name.
-        parameters: The input parameters to the function.
-        result: The output result of the function.
-        start_time_ns: The start time of the function in nanoseconds.
-        end_time_ns: The end time of the function in nanoseconds.
+        result: The result of the function execution to be processed.
+
+    Returns:
+        Retriever output formatted into a list of Documents.
+    """
+    if result.format == "CSV":
+        df = pd.read_csv(StringIO(result.value))
+        if "metadata" in df.columns:
+            df["metadata"] = df["metadata"].apply(ast.literal_eval)
+        output = df.to_dict(orient="records")
+    else:
+        value = result.value
+        output = ast.literal_eval(value) if isinstance(value, str) else value
+
+    return output
+
+
+def _execute_uc_function_with_retriever_tracing(
+    _execute_uc_function: Callable,
+    function_info: "FunctionInfo",
+    parameters: Dict[str, Any],
+    **kwargs: Any,
+) -> "FunctionExecutionResult":
+    """
+    Executes a UC function with MLflow tracing with span type RETRIEVER enabled. If MLflow cannot
+    be imported, the function executes without tracing and logs a warning.
+
+    Args:
+        _execute_uc_function (Callable): A function that executes the given UC function.
+        function_info (FunctionInfo): Metadata about the UC function to be executed.
+        parameters (Dict[str, Any]): Parameters to be passed to the function during execution.
+        **kwargs (Any): Additional keyword arguments to be passed to the function.
+
+    Returns:
+        Any: The output of the function execution.
     """
     try:
-        if result.format == "CSV":
-            df = pd.read_csv(StringIO(result.value))
-            if "metadata" in df.columns:
-                df["metadata"] = df["metadata"].apply(ast.literal_eval)
-            output = df.to_dict(orient="records")
-        else:
-            value = result.value
-            output = ast.literal_eval(value) if isinstance(value, str) else value
+        import mlflow
+        from mlflow.entities import SpanType
 
-        if is_valid_retriever_output(output):
-            import mlflow
-            from mlflow import MlflowClient
-            from mlflow.entities import SpanType
+        result = None
 
-            client = MlflowClient()
-            common_params = dict(
-                name=function_name,
-                span_type=SpanType.RETRIEVER,
-                inputs=parameters,
-                start_time_ns=start_time_ns,
-            )
+        @mlflow.trace(name=function_info.full_name, span_type=SpanType.RETRIEVER)
+        def execute_retriever(parameters):
+            # Set inputs manually so we log {"query": "..."} instead of {"parameters": {"query": "..."}}
+            if span := mlflow.get_current_active_span():
+                span.set_inputs(parameters)
 
-            if parent_span := mlflow.get_current_active_span():
-                span = client.start_span(
-                    request_id=parent_span.request_id,
-                    parent_id=parent_span.span_id,
-                    **common_params,
-                )
-                client.end_span(
-                    request_id=span.request_id,
-                    span_id=span.span_id,
-                    outputs=output,
-                    end_time_ns=end_time_ns,
-                )
-            else:
-                span = client.start_trace(**common_params)
-                client.end_trace(
-                    request_id=span.request_id, outputs=output, end_time_ns=end_time_ns
-                )
-    except Exception as e:
-        # Ignoring exceptions because auto-tracing retriever is not essential functionality
-        _logger.debug(
-            f"Skipping tracing {function_name} as a retriever because of the following error:\n {e}"
+            nonlocal result
+            result = _execute_uc_function(function_info, parameters, **kwargs)
+
+            # Re-raise errors so they can get traced
+            if result.error:
+                raise Exception(result.error)
+
+            return process_retriever_output(result)
+
+        try:
+            execute_retriever(parameters)
+        except Exception:  # Catch all errors that are re-raised
+            pass
+
+        return result
+    except ImportError as e:
+        _logger.warn(
+            f"Skipping tracing {function_info.full_name} as a retriever because of the following error:\n {e}"
         )
-        pass
+        return _execute_uc_function(function_info, parameters, **kwargs)
