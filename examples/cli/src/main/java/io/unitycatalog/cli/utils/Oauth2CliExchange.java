@@ -7,7 +7,6 @@ import static java.util.stream.Collectors.mapping;
 import static java.util.stream.Collectors.toList;
 
 import com.fasterxml.jackson.core.type.TypeReference;
-import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpHandler;
@@ -26,18 +25,14 @@ import java.net.HttpURLConnection;
 import java.net.InetSocketAddress;
 import java.net.ServerSocket;
 import java.net.URL;
-import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Paths;
 import java.security.SecureRandom;
-import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Base64;
-import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
-import java.util.Optional;
 import java.util.Properties;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
@@ -94,13 +89,13 @@ public class Oauth2CliExchange {
     String authUrl =
         authorizationUrl
             + "?"
-            + URLEncodedForm.of(
-                new OAuthAuthorizationForm()
-                    .responseType(ResponseType.CODE)
-                    .clientId(clientId)
-                    .redirectUri(redirectUrl)
-                    .scope("openid profile email")
-                    .state(Hex.encodeHexString(stateBytes)));
+            + new OAuthAuthorizationForm()
+                .responseType(ResponseType.CODE)
+                .clientId(clientId)
+                .redirectUri(redirectUrl)
+                .scope("openid profile email")
+                .state(Hex.encodeHexString(stateBytes))
+                .toUrlQueryString();
 
     System.out.println("Attempting to open the authorization page in your default browser.");
     System.out.println("If the browser does not open, you can manually open the following URL:");
@@ -138,11 +133,11 @@ public class Oauth2CliExchange {
     server.stop(0);
 
     String tokenBody =
-        URLEncodedForm.of(
-            new OAuthAccessTokenForm()
-                .grantType(AuthorizationGrantType.AUTHORIZATION_CODE)
-                .code(authCode)
-                .redirectUri(redirectUrl));
+        new OAuthAccessTokenForm()
+            .grantType(AuthorizationGrantType.AUTHORIZATION_CODE)
+            .code(authCode)
+            .redirectUri(redirectUrl)
+            .toUrlQueryString();
 
     String authorization =
         "Basic " + Base64.getEncoder().encodeToString((clientId + ":" + clientSecret).getBytes());
@@ -190,62 +185,6 @@ public class Oauth2CliExchange {
     } else {
       try (ServerSocket serverSocket = new ServerSocket(0)) {
         return serverSocket.getLocalPort();
-      }
-    }
-  }
-
-  public static class URLEncodedForm {
-    public static String of(Object form) {
-      List<String> fields = new ArrayList<>();
-      loop(Optional.empty(), mapper.valueToTree(form), fields);
-      return String.join("&", fields);
-    }
-
-    private static void loop(Optional<String> key, JsonNode value, List<String> acc) {
-      switch (value.getNodeType()) {
-        case OBJECT -> {
-          Iterator<Map.Entry<String, JsonNode>> fields = value.fields();
-          while (fields.hasNext()) {
-            Map.Entry<String, JsonNode> field = fields.next();
-            loop(
-                Optional.of(
-                    key.isPresent() ? key.get() + "[" + field.getKey() + "]" : field.getKey()),
-                field.getValue(),
-                acc);
-          }
-	}
-        case ARRAY -> {
-          if (!key.isPresent()) {
-            throw new IllegalArgumentException(
-                "Missing key detected while encoding URL form: " + value.asText());
-          }
-          int index = 0;
-          Iterator<JsonNode> elements = value.elements();
-          while (elements.hasNext()) {
-            JsonNode element = elements.next();
-            loop(
-                Optional.of(key.get() + "[" + index++ + "]"),
-                element,
-                acc);
-          }
-	}
-        case BOOLEAN, NUMBER, STRING -> {
-          if (!key.isPresent()) {
-            throw new IllegalArgumentException(
-                "Missing key detected while encoding URL form: " + value.asText());
-          }
-          acc.add(
-              URLEncoder.encode(key.get(), StandardCharsets.UTF_8)
-                  + "="
-                  + URLEncoder.encode(value.asText(), StandardCharsets.UTF_8));
-	}
-        case NULL -> {
-	  // Do nothing. A null value in Java object is equivalent to an absent value in a URL-encoded form.
-	}
-        default -> {
-          throw new IllegalArgumentException(
-              "Invalid URL encoding form field: " + value.getNodeType());
-	}
       }
     }
   }

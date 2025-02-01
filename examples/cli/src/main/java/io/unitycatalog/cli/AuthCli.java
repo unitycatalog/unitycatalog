@@ -77,12 +77,12 @@ public class AuthCli {
     URI endpoint = URI.create(apiClient.getBaseUri() + "/auth/tokens");
 
     String body =
-        Oauth2CliExchange.URLEncodedForm.of(
-            new OAuthTokenExchangeForm()
-                .grantType(GrantType.TOKEN_EXCHANGE)
-                .requestedTokenType(TokenType.ACCESS_TOKEN)
-                .subjectTokenType(TokenType.ID_TOKEN)
-                .subjectToken(login.get("identityToken")));
+        new OAuthTokenExchangeForm()
+            .grantType(GrantType.TOKEN_EXCHANGE)
+            .requestedTokenType(TokenType.ACCESS_TOKEN)
+            .subjectTokenType(TokenType.ID_TOKEN)
+            .subjectToken(login.get("identityToken"))
+            .toUrlQueryString();
 
     HttpRequest request =
         HttpRequest.newBuilder()
