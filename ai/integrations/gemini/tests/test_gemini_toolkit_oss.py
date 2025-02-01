@@ -4,11 +4,18 @@ from unittest import mock
 
 import pytest
 import pytest_asyncio
+from databricks.sdk.service.catalog import (
+    ColumnTypeName,
+    FunctionInfo,
+    FunctionParameterInfo,
+    FunctionParameterInfos,
+)
+from google.generativeai.types import CallableFunctionDeclaration
 from pydantic import ValidationError
 
 from unitycatalog.ai.core.base import FunctionExecutionResult
-from unitycatalog.ai.core.client import UnitycatalogFunctionClient
-from unitycatalog.ai.crewai.toolkit import UCFunctionToolkit
+from unitycatalog.ai.core.client import FunctionExecutionResult, UnitycatalogFunctionClient
+from unitycatalog.ai.gemini.toolkit import GeminiTool, UCFunctionToolkit
 from unitycatalog.ai.test_utils.function_utils import (
     RETRIEVER_OUTPUT_CSV,
     RETRIEVER_OUTPUT_SCALAR,
@@ -21,19 +28,36 @@ from unitycatalog.ai.test_utils.function_utils_oss import (
 )
 from unitycatalog.client import (
     ApiClient,
-    ColumnTypeName,
     Configuration,
     FunctionInfo,
     FunctionParameterInfo,
     FunctionParameterInfos,
 )
+from unitycatalog.client.models.function_parameter_type import FunctionParameterType
 
-SCHEMA = os.environ.get("SCHEMA", "ucai_crewai_test")
+try:
+    # v2
+    from pydantic_core._pydantic_core import ValidationError
+except ImportError:
+    # v1
+    from pydantic.error_wrappers import ValidationError
+
+SCHEMA = os.environ.get("SCHEMA", "ucai_gemini_test")
+
+
+def mock_autogen_tool_response(function_name, input_data, message_id):
+    input_data["code"] = 'print("Hello, World!")'
+
+    return {
+        "id": message_id,
+        "type": "function_call",
+        "name": function_name,
+        "arguments": input_data,
+    }
 
 
 @pytest_asyncio.fixture
 async def uc_client():
-    """Fixture to create and yield an OSS Unity Catalog client."""
     config = Configuration()
     config.host = "http://localhost:8080/api/2.1/unity-catalog"
     uc_api_client = ApiClient(configuration=config)
@@ -48,6 +72,42 @@ async def uc_client():
     uc_api_client.close()
 
 
+@pytest.fixture
+def sample_gemini_tool():
+    def dummy_function(**kwargs):
+        return "dummy_result"
+
+    name = "sample_function"
+    description = "A sample function for testing."
+    schema = {
+        "name": name,
+        "description": description,
+        "parameters": {
+            "properties": {
+                "location": {
+                    "type": "number",
+                    "description": "Retrieves the current weather from a provided location.",
+                    "nullable": True,
+                }
+            }
+        },
+        "type": "object",
+        "required": ["location"],
+    }
+
+    return GeminiTool(fn=dummy_function, name=name, description=description, schema=schema)
+
+
+def test_gemini_tool_to_dict(sample_gemini_tool):
+    """Test the `to_dict` method of GeminiTool."""
+    expected_output = {
+        "name": sample_gemini_tool.name,
+        "description": sample_gemini_tool.description,
+        "schema": sample_gemini_tool.schema,
+    }
+    assert sample_gemini_tool.to_dict() == expected_output
+
+
 @pytest.mark.asyncio
 async def test_toolkit_e2e(uc_client):
     with create_function_and_cleanup_oss(uc_client, schema=SCHEMA) as func_obj:
@@ -55,9 +115,7 @@ async def test_toolkit_e2e(uc_client):
         tools = toolkit.tools
         assert len(tools) == 1
         tool = tools[0]
-        assert func_obj.full_function_name.replace(".", "__") in tool.description
         assert func_obj.comment in tool.description
-        assert tool.client_config == uc_client.to_dict()
 
         input_args = {"code": "print(1)"}
         result = json.loads(tool.fn(**input_args))["value"]
@@ -79,19 +137,13 @@ async def test_toolkit_e2e_manually_passing_client(uc_client):
         assert len(tools) == 1
         tool = tools[0]
         assert tool.name == func_obj.tool_name
-        assert func_obj.full_function_name.replace(".", "__") in tool.description
         assert func_obj.comment in tool.description
-        assert (
-            "{'code': {'description': 'Python code to execute. Remember to print the final result to stdout.'"
-            in tool.description
-        )
-        assert tool.client_config == uc_client.to_dict()
         input_args = {"code": "print(1)"}
         result = json.loads(tool.fn(**input_args))["value"]
         assert result == "1\n"
 
         toolkit = UCFunctionToolkit(
-            function_names=[f"{CATALOG}.{SCHEMA}.*"],
+            function_names=[f.full_name for f in uc_client.list_functions(CATALOG, SCHEMA)],
             client=uc_client,
         )
         assert len(toolkit.tools) >= 1
@@ -102,7 +154,10 @@ async def test_toolkit_e2e_manually_passing_client(uc_client):
 async def test_multiple_toolkits(uc_client):
     with create_function_and_cleanup_oss(uc_client, schema=SCHEMA) as func_obj:
         toolkit1 = UCFunctionToolkit(function_names=[func_obj.full_function_name], client=uc_client)
-        toolkit2 = UCFunctionToolkit(function_names=[f"{CATALOG}.{SCHEMA}.*"], client=uc_client)
+        toolkit2 = UCFunctionToolkit(
+            function_names=[f.full_name for f in uc_client.list_functions(CATALOG, SCHEMA)],
+            client=uc_client,
+        )
         tool1 = toolkit1.tools[0]
         tool2 = [t for t in toolkit2.tools if t.name == func_obj.tool_name][0]
         input_args = {"code": "print(1)"}
@@ -112,7 +167,6 @@ async def test_multiple_toolkits(uc_client):
 
 
 def test_toolkit_creation_errors_no_client():
-    """Test that UCFunctionToolkit raises ValidationError when no client is provided."""
     with pytest.raises(
         ValidationError,
         match=r"No client provided, either set the client when creating a toolkit or set the default client",
@@ -121,16 +175,11 @@ def test_toolkit_creation_errors_no_client():
 
 
 def test_toolkit_creation_errors_invalid_client(uc_client):
-    """Test that UCFunctionToolkit raises ValidationError when an invalid client is provided."""
-    with pytest.raises(
-        ValidationError,
-        match=r"Input should be an instance of BaseFunctionClient",
-    ):
+    with pytest.raises(ValidationError, match=r"Input should be an instance of BaseFunctionClient"):
         UCFunctionToolkit(function_names=[], client="client")
 
 
 def test_toolkit_creation_errors_missing_function_names(uc_client):
-    """Test that UCFunctionToolkit raises ValidationError when function_names are missing."""
     with pytest.raises(
         ValidationError,
         match=r"Cannot create tool instances without function_names being provided.",
@@ -139,10 +188,9 @@ def test_toolkit_creation_errors_missing_function_names(uc_client):
 
 
 def test_toolkit_function_argument_errors(uc_client):
-    """Test that UCFunctionToolkit raises ValidationError when function_names are not provided."""
     with pytest.raises(
         ValidationError,
-        match=r"Cannot create tool instances without function_names being provided.",
+        match=r"1 validation error for UCFunctionToolkit\nfunction_names\n  Field required",
     ):
         UCFunctionToolkit(client=uc_client)
 
@@ -155,9 +203,9 @@ def generate_function_info(
     full_data_type=None,
     return_params=None,
 ):
-    """Generate a mock FunctionInfo object for testing."""
     parameters = [
         {
+            "comment": "test comment",
             "name": "x",
             "type_text": "string",
             "type_json": '{"name":"x","type":"string","nullable":true,"metadata":{"EXISTS_DEFAULT":"\\"123\\"","default":"\\"123\\"","CURRENT_DEFAULT":"\\"123\\""}}',
@@ -165,18 +213,17 @@ def generate_function_info(
             "type_precision": 0,
             "type_scale": 0,
             "position": 17,
-            "parameter_type": "PARAM",
-            "parameter_default": '"123"',
+            "parameter_type": FunctionParameterType.PARAM,
         }
     ]
     return FunctionInfo(
         catalog_name=catalog,
         schema_name=schema,
         name=name,
+        full_name=f"{catalog}.{schema}.{name}",
         input_params=FunctionParameterInfos(
             parameters=[FunctionParameterInfo(**param) for param in parameters]
         ),
-        full_name=f"{catalog}.{schema}.{name}",
         comment="Executes Python code and returns its stdout.",
         data_type=data_type,
         full_data_type=full_data_type,
@@ -184,30 +231,54 @@ def generate_function_info(
     )
 
 
+def test_convert_to_gemini_schema_with_valid_function_info():
+    """
+    Test convert_to_gemini_schema with valid FunctionInfo input.
+    """
+    # Generate mock FunctionInfo using the provided generate_function_info
+    function_info = generate_function_info()
+
+    # Convert the FunctionInfo into Gemini-compatible schema
+    result_schema = UCFunctionToolkit.convert_to_gemini_schema(function_info)
+
+    # Expected output
+    expected_schema = {
+        "name": "test",
+        "description": "Executes Python code and returns its stdout.",
+        "parameters": {
+            "properties": {
+                "x": {"type": "string", "description": "test comment", "nullable": True},
+            },
+            "type": "object",
+            "required": ["x"],
+        },
+    }
+
+    assert (
+        result_schema == expected_schema
+    ), "The generated schema does not match the expected output."
+
+
 @pytest.mark.asyncio
-async def test_uc_function_to_crewai_tool(uc_client):
-    """Test conversion of a UC function to a CrewaAI tool."""
+async def test_uc_function_to_gemini_tool(uc_client):
     mock_function_info = generate_function_info()
     with (
         mock.patch(
-            "unitycatalog.ai.core.client.UnitycatalogFunctionClient.get_function",
-            return_value=mock_function_info,
+            "unitycatalog.ai.core.utils.client_utils.validate_or_set_default_client",
+            return_value=uc_client,
         ),
-        mock.patch(
-            "unitycatalog.ai.core.client.UnitycatalogFunctionClient.execute_function",
+        mock.patch.object(uc_client, "get_function", return_value=mock_function_info),
+        mock.patch.object(
+            uc_client,
+            "execute_function",
             return_value=FunctionExecutionResult(format="SCALAR", value="some_string"),
         ),
     ):
-        tool = UCFunctionToolkit.uc_function_to_crewai_tool(
+        tool = UCFunctionToolkit.uc_function_to_gemini_tool(
             function_name="catalog.schema.test", client=uc_client
         )
         result = json.loads(tool.fn(x="some_string"))["value"]
         assert result == "some_string"
-
-        # Check defaults for parameters not defined by UC
-        assert tool.cache_function(1, {1: 1})
-        assert not tool.result_as_answer
-        assert not tool.description_updated
 
 
 @pytest.mark.parametrize(
@@ -239,34 +310,31 @@ async def test_crewai_tool_with_tracing_as_retriever(
     )
 
     with (
-        mock.patch(
-            "unitycatalog.ai.core.client.UnitycatalogFunctionClient.get_function",
-            return_value=mock_function_info,
-        ),
-        mock.patch(
-            "unitycatalog.ai.core.client.UnitycatalogFunctionClient._execute_uc_function",
+        mock.patch.object(uc_client, "get_function", return_value=mock_function_info),
+        mock.patch.object(
+            uc_client,
+            "_execute_uc_function",
             return_value=FunctionExecutionResult(format=format, value=function_output),
         ),
-        mock.patch("unitycatalog.ai.core.client.UnitycatalogFunctionClient.validate_input_params"),
+        mock.patch.object(uc_client, "validate_input_params"),
     ):
         import mlflow
 
-        mlflow.crewai.autolog()
+        mlflow.gemini.autolog()
 
-        tool = UCFunctionToolkit.uc_function_to_crewai_tool(
+        tool = UCFunctionToolkit.uc_function_to_gemini_tool(
             function_name=mock_function_info.full_name, client=uc_client
         )
-        result = tool.fn(x="some input")
-        assert json.loads(result)["value"] == function_output
+        tool.fn(x="some_string")
 
         trace = mlflow.get_last_active_trace()
         assert trace is not None
         assert trace.data.spans[0].name == mock_function_info.full_name
         assert trace.info.execution_time_ms is not None
-        assert trace.data.request == '{"x": "some input"}'
+        assert trace.data.request == '{"x": "some_string"}'
         assert trace.data.response == RETRIEVER_OUTPUT_SCALAR
 
-        mlflow.crewai.autolog(disable=True)
+        mlflow.gemini.autolog(disable=True)
 
 
 @pytest.mark.asyncio
@@ -281,36 +349,54 @@ async def test_toolkit_with_invalid_function_input(uc_client):
         ),
         mock.patch.object(uc_client, "get_function", return_value=mock_function_info),
     ):
-        # Test with invalid input params that are not matching expected schema
         invalid_inputs = {"unexpected_key": "value"}
-        tool = UCFunctionToolkit.uc_function_to_crewai_tool(
+        tool = UCFunctionToolkit.uc_function_to_gemini_tool(
             function_name="catalog.schema.test", client=uc_client
         )
 
-        with pytest.raises(ValueError, match="Extra parameters provided that are not defined"):
+        with pytest.raises(ValueError, match="Parameter x is required but not provided."):
             tool.fn(**invalid_inputs)
 
 
-@pytest.mark.asyncio
-async def test_toolkit_crewai_kwarg_passthrough(uc_client):
-    """Test toolkit with keyword arguments for CrewaAI tool conversion."""
+def test_generate_callable_tool_list(uc_client):
+    """
+    Test the generate_callable_tool_list method of UCFunctionToolkit.
+    """
+    # Mock UCFunctionToolkit instance with a GeminiTool
     mock_function_info = generate_function_info()
-
     with (
         mock.patch(
             "unitycatalog.ai.core.utils.client_utils.validate_or_set_default_client",
             return_value=uc_client,
         ),
         mock.patch.object(uc_client, "get_function", return_value=mock_function_info),
+        mock.patch.object(
+            uc_client,
+            "execute_function",
+            return_value=FunctionExecutionResult(format="SCALAR", value="some_string"),
+        ),
     ):
-        tool = UCFunctionToolkit.uc_function_to_crewai_tool(
-            function_name="catalog.schema.test",
-            client=uc_client,
-            cache_function=lambda: True,
-            result_as_answer=True,
-            description_updated=True,
+        toolkit = UCFunctionToolkit(
+            function_names=["catalog.schema.test_function"], client=uc_client
         )
 
-        assert tool.cache_function()
-        assert tool.result_as_answer
-        assert tool.description_updated
+    # Generate callable tool list
+    callable_tools = toolkit.generate_callable_tool_list()
+    tools = toolkit.tools
+
+    # Verify the output
+    assert len(callable_tools) == 1, "The callable tool list should contain exactly one tool."
+
+    gemini_tool = callable_tools[0]
+    tool = tools[0]
+    assert isinstance(
+        gemini_tool, CallableFunctionDeclaration
+    ), "The tool should be a CallableFunctionDeclaration."
+    assert (
+        tool.name == "catalog__schema__test_function"
+    ), "The tool's name does not match the expected name."
+    assert (
+        tool.description == "Executes Python code and returns its stdout."
+    ), "The tool's description does not match the expected description."
+    assert "parameters" in tool.schema, "The tool's schema should include parameters."
+    assert tool.schema["parameters"]["required"] == ["x"], "The required parameters do not match."
