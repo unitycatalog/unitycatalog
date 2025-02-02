@@ -4,19 +4,22 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import io.unitycatalog.server.exception.BaseException;
+import io.unitycatalog.server.persist.utils.FileOperations;
 import io.unitycatalog.server.persist.utils.UriUtils;
+import java.util.Properties;
 import org.junit.jupiter.api.Test;
 
-public class UriUtilsTest {
-
+public class FileOperationsTest {
   @Test
   public void testUriUtils() {
+    Properties properties = new Properties();
+    properties.setProperty("storage-root.models", "/tmp");
+    ServerProperties serverProperties = new ServerProperties(properties);
+    FileOperations fileOperations = new FileOperations(serverProperties);
 
-    System.setProperty("storage-root.models", "/tmp");
-
-    String modelPathUri = UriUtils.getModelStorageLocation("catalog", "schema", "my-model");
+    String modelPathUri = fileOperations.getModelStorageLocation("catalog", "schema", "my-model");
     String modelVersionPathUri =
-        UriUtils.getModelVersionStorageLocation("catalog", "schema", "my-model", "1");
+        fileOperations.getModelVersionStorageLocation("catalog", "schema", "my-model", "1");
     String modelPath = UriUtils.createStorageLocationPath(modelPathUri);
     String modelVersionPath = UriUtils.createStorageLocationPath(modelVersionPathUri);
 
@@ -29,11 +32,13 @@ public class UriUtilsTest {
     // cleanup the created catalog
     UriUtils.deleteStorageLocationPath("file:/tmp/catalog");
 
-    System.setProperty("storage-root.models", "file:///tmp/random");
+    properties.setProperty("storage-root.models", "file:///tmp/random");
+    serverProperties = new ServerProperties(properties);
+    fileOperations = new FileOperations(serverProperties);
 
-    modelPathUri = UriUtils.getModelStorageLocation("catalog", "schema", "my-model");
+    modelPathUri = fileOperations.getModelStorageLocation("catalog", "schema", "my-model");
     modelVersionPathUri =
-        UriUtils.getModelVersionStorageLocation("catalog", "schema", "my-model", "1");
+        fileOperations.getModelVersionStorageLocation("catalog", "schema", "my-model", "1");
     modelPath = UriUtils.createStorageLocationPath(modelPathUri);
     modelVersionPath = UriUtils.createStorageLocationPath(modelVersionPathUri);
 

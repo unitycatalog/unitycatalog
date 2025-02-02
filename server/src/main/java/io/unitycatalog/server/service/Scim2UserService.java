@@ -30,6 +30,7 @@ import io.unitycatalog.server.exception.BaseException;
 import io.unitycatalog.server.exception.ErrorCode;
 import io.unitycatalog.server.exception.GlobalExceptionHandler;
 import io.unitycatalog.server.exception.Scim2RuntimeException;
+import io.unitycatalog.server.persist.Repositories;
 import io.unitycatalog.server.persist.UserRepository;
 import io.unitycatalog.server.persist.model.CreateUser;
 import io.unitycatalog.server.persist.model.UpdateUser;
@@ -56,11 +57,12 @@ import java.util.UUID;
  */
 @ExceptionHandler(GlobalExceptionHandler.class)
 public class Scim2UserService {
-  private static final UserRepository USER_REPOSITORY = UserRepository.getInstance();
+  private final UserRepository userRepository;
   private final UnityCatalogAuthorizer authorizer;
 
-  public Scim2UserService(UnityCatalogAuthorizer authorizer) {
+  public Scim2UserService(UnityCatalogAuthorizer authorizer, Repositories repositories) {
     this.authorizer = authorizer;
+    this.userRepository = repositories.getUserRepository();
   }
 
   @Get("")
@@ -76,7 +78,7 @@ public class Scim2UserService {
     FilterEvaluator filterEvaluator = new FilterEvaluator();
 
     List<UserResource> userResourcesList =
-        USER_REPOSITORY
+        userRepository
             .listUsers(
                 startIndex.orElse(1) - 1,
                 count.orElse(50),
@@ -123,7 +125,7 @@ public class Scim2UserService {
     }
     try {
       User user =
-          USER_REPOSITORY.createUser(
+          userRepository.createUser(
               CreateUser.builder()
                   .name(userResource.getDisplayName())
                   .email(primaryEmail.getValue())
@@ -147,7 +149,7 @@ public class Scim2UserService {
   @AuthorizeExpression("#principal != null")
   @AuthorizeKey(METASTORE)
   public UserResource getUser(@Param("id") String id) {
-    return asUserResource(USER_REPOSITORY.getUser(id));
+    return asUserResource(userRepository.getUser(id));
   }
 
   @Put("/{id}")
@@ -156,7 +158,7 @@ public class Scim2UserService {
   @AuthorizeExpression("#authorize(#principal, #metastore, OWNER)")
   @AuthorizeKey(METASTORE)
   public UserResource updateUser(@Param("id") String id, UserResource userResource) {
-    UserResource user = asUserResource(USER_REPOSITORY.getUser(id));
+    UserResource user = asUserResource(userRepository.getUser(id));
     if (!id.equals(userResource.getId())) {
       throw new Scim2RuntimeException(new ResourceConflictException("User id mismatch."));
     }
@@ -168,17 +170,17 @@ public class Scim2UserService {
             .externalId(userResource.getExternalId())
             .build();
 
-    return asUserResource(USER_REPOSITORY.updateUser(id, updateUser));
+    return asUserResource(userRepository.updateUser(id, updateUser));
   }
 
   @Delete("/{id}")
   @AuthorizeExpression("#authorizeAny(#principal, #metastore, OWNER)")
   @AuthorizeKey(METASTORE)
   public HttpResponse deleteUser(@Param("id") String id) {
-    User user = USER_REPOSITORY.getUser(id);
+    User user = userRepository.getUser(id);
     authorizer.clearAuthorizationsForPrincipal(
         UUID.fromString(Objects.requireNonNull(user.getId())));
-    USER_REPOSITORY.deleteUser(user.getId());
+    userRepository.deleteUser(user.getId());
     return HttpResponse.of(HttpStatus.OK);
   }
 
@@ -199,7 +201,7 @@ public class Scim2UserService {
     try {
       Boolean value = operation.getValues(Boolean.class).get(0);
       UpdateUser updateUser = UpdateUser.builder().active(value).build();
-      USER_REPOSITORY.updateUser(id, updateUser);
+      userRepository.updateUser(id, updateUser);
       return HttpResponse.of(HttpStatus.OK);
     } catch (ScimException | JsonProcessingException e) {
       return handleExceptionDuringPatch(e);

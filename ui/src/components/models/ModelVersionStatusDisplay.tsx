@@ -10,7 +10,7 @@ import React from 'react';
 export default function ModelVersionStatusDisplay({
   status,
 }: {
-  status: string;
+  status: ModelVersionStatus;
 }) {
   switch (status) {
     case ModelVersionStatus.READY:
@@ -31,6 +31,9 @@ export default function ModelVersionStatusDisplay({
           <CloseCircleOutlined style={{ fontSize: '18px', color: 'red' }} />
         </Tooltip>
       );
+    // NOTE:
+    // As of [25/11/2024], `MODEL_VERSION_STATUS_UNKNOWN` is not handled here.
+    // If exhaustive handling of the status is required, add `assertNever(status)` here.
     default:
       return <Typography.Text type="secondary">UNKNOWN</Typography.Text>;
   }

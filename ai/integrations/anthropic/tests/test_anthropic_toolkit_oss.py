@@ -36,8 +36,6 @@ SCHEMA = os.environ.get("SCHEMA", "ucai_core_test")
 
 
 def mock_anthropic_tool_response(function_name, input_data, message_id):
-    input_data["code"] = 'print("Hello, World!")'
-
     return Message(
         id=message_id,
         type="message",
@@ -197,7 +195,7 @@ async def test_tool_calling_with_multiple_tools_anthropic(uc_client):
             assert isinstance(arguments.get("code"), str)
 
             result = uc_client.execute_function(func_name, arguments)
-            assert result.value.strip() == "Hello, World!"
+            assert result.value.strip() == "Hello from Paris!"
 
             function_call_result_message = {
                 "role": "user",
@@ -239,7 +237,7 @@ async def test_tool_calling_with_multiple_tools_anthropic(uc_client):
 
                 result_second = uc_client.execute_function(func_name, arguments_second)
 
-                assert result_second.value.strip() == "Hello, World!"
+                assert result_second.value.strip() == "Hello from New York!"
 
                 function_call_result_message_second = {
                     "role": "user",
@@ -340,9 +338,13 @@ async def test_anthropic_tool_definition_generation(uc_client):
         ]
     )
 
-    function_definition = UCFunctionToolkit(client=uc_client).uc_function_to_anthropic_tool(
-        function_info=function_info, client=uc_client
-    )
+    with mock.patch(
+        "unitycatalog.ai.core.client.UnitycatalogFunctionClient.get_function",
+        return_value=function_info,
+    ):
+        function_definition = UCFunctionToolkit(client=uc_client).uc_function_to_anthropic_tool(
+            function_name=function_info.full_name, client=uc_client
+        )
 
     assert function_definition.to_dict() == {
         "name": get_tool_name(function_info.full_name),
