@@ -20,7 +20,7 @@
 | **security\_type** | **String** | Function security type. | [default to null] |
 | **specific\_name** | **String** | Specific name of the function; Reserved for future use. | [default to null] |
 | **comment** | **String** | User-provided free-form text description. | [optional] [default to null] |
-| **properties** | **String** | JSON-serialized key-value pair map, encoded (escaped) as a string. | [default to null] |
+| **properties** | **String** | JSON-serialized key-value pair map, encoded (escaped) as a string. | [optional] [default to null] |
 | **external\_language** | **String** | External language of the function. | [optional] [default to null] |
 
 [[Back to Model list]](../README.md#documentation-for-models) [[Back to API list]](../README.md#documentation-for-api-endpoints) [[Back to README]](../README.md)

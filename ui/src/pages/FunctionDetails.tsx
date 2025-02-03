@@ -14,7 +14,9 @@ export default function FunctionDetails() {
   if (!schema) throw new Error('Schema name is required');
   if (!ucFunction) throw new Error('Function name is required');
 
-  const { data } = useGetFunction({ catalog, schema, ucFunction });
+  const { data } = useGetFunction({
+    name: [catalog, schema, ucFunction].join('.'),
+  });
 
   if (!data) return null;
 
@@ -49,9 +51,11 @@ export default function FunctionDetails() {
         <Flex vertical gap="middle">
           <div>
             <Typography.Title level={5}>Description</Typography.Title>
-            <Typography.Text type="secondary">{data?.comment}</Typography.Text>
+            <Typography.Text type="secondary">
+              {data.comment ?? ''}
+            </Typography.Text>
           </div>
-          <CodeBox definition={data.routine_definition} />
+          <CodeBox definition={data.routine_definition ?? ''} />
         </Flex>
       </DetailsLayout.Content>
       <DetailsLayout.Aside>

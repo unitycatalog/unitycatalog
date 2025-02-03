@@ -7,6 +7,10 @@ from dataclasses import dataclass
 from typing import Any, Callable, Dict, Literal, Optional
 
 from unitycatalog.ai.core.paged_list import PagedList
+from unitycatalog.ai.core.utils.function_processing_utils import (
+    _execute_uc_function_with_retriever_tracing,
+)
+from unitycatalog.ai.core.utils.validation_utils import has_retriever_signature
 
 _logger = logging.getLogger(__name__)
 
@@ -154,6 +158,14 @@ class BaseFunctionClient(ABC):
             function_info = self.get_function(function_name, **kwargs)
             parameters = parameters or {}
             self.validate_input_params(function_info.input_params, parameters)
+
+            if kwargs.get("enable_retriever_tracing", False) and has_retriever_signature(
+                function_info
+            ):
+                return _execute_uc_function_with_retriever_tracing(
+                    self._execute_uc_function, function_info, parameters, **kwargs
+                )
+
             return self._execute_uc_function(function_info, parameters, **kwargs)
 
     @abstractmethod

@@ -17,6 +17,7 @@ from unitycatalog.ai.core.base import set_uc_function_client
 from unitycatalog.ai.core.utils.function_processing_utils import get_tool_name
 from unitycatalog.ai.openai.toolkit import UCFunctionToolkit
 from unitycatalog.ai.test_utils.client_utils import (
+    TEST_IN_DATABRICKS,
     USE_SERVERLESS,
     get_client,
     requires_databricks,
@@ -97,6 +98,67 @@ def test_tool_calling(use_serverless, monkeypatch):
             openai.chat.completions.create(
                 model=completion_payload["model"], messages=completion_payload["messages"]
             )
+
+
+@requires_databricks
+@pytest.mark.parametrize("use_serverless", [True, False])
+def test_tool_calling_with_trace_as_retriever(use_serverless, monkeypatch):
+    monkeypatch.setenv(USE_SERVERLESS, str(use_serverless))
+    client = get_client()
+    import mlflow
+
+    if TEST_IN_DATABRICKS:
+        import mlflow.tracking._model_registry.utils
+
+        mlflow.tracking._model_registry.utils._get_registry_uri_from_spark_session = (
+            lambda: "databricks-uc"
+        )
+    with (
+        set_default_client(client),
+        create_function_and_cleanup(client, schema=SCHEMA) as func_obj,
+    ):
+        func_name = func_obj.full_function_name
+        toolkit = UCFunctionToolkit(function_names=[func_name])
+        tools = toolkit.tools
+
+        messages = [
+            {
+                "role": "system",
+                "content": "You are a helpful customer support assistant. Use the supplied tools to assist the user.",
+            },
+            {"role": "user", "content": "What is Databricks?"},
+        ]
+
+        with mock.patch(
+            "openai.chat.completions.create",
+            return_value=mock_chat_completion_response(
+                function=Function(
+                    arguments=json.dumps(
+                        {"code": "print([{'page_content': 'This is the page content.'}], end='')"}
+                    ),
+                    name=func_obj.tool_name,
+                ),
+            ),
+        ):
+            response = openai.chat.completions.create(
+                model="gpt-4o-mini",
+                messages=messages,
+                tools=tools,
+            )
+            tool_calls = response.choices[0].message.tool_calls
+            tool_call = tool_calls[0]
+            arguments = json.loads(tool_call.function.arguments)
+
+            # execute the function based on the arguments
+            result = client.execute_function(func_name, arguments, enable_retriever_tracing=True)
+            assert result.value == "[{'page_content': 'This is the page content.'}]"
+
+            trace = mlflow.get_last_active_trace()
+            assert trace is not None
+            assert trace.data.spans[0].name == func_name
+            assert trace.info.execution_time_ms is not None
+            assert trace.data.request == tool_call.function.arguments
+            assert trace.data.response == result.value.replace("'", '"')
 
 
 @requires_databricks
@@ -397,9 +459,13 @@ def test_function_definition_generation(use_serverless, monkeypatch):
             ]
         )
 
-        function_definition = UCFunctionToolkit.uc_function_to_openai_function_definition(
-            function_info=function_info
-        )
+        with mock.patch(
+            "unitycatalog.ai.core.databricks.DatabricksFunctionClient.get_function",
+            return_value=function_info,
+        ):
+            function_definition = UCFunctionToolkit.uc_function_to_openai_function_definition(
+                function_name=function_info.full_name
+            )
         assert function_definition == {
             "type": "function",
             "function": {

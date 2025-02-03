@@ -12,6 +12,8 @@ Install the Unity Catalog AI Core library directly from PyPI:
 pip install unitycatalog-ai
 ```
 
+> Note: If you install any of the integration packages directly, the AI core client library `unitycatalog-ai` will be included as a dependency.
+
 ## Prerequisites
 
 Before you begin, ensure you have the following:
@@ -20,14 +22,8 @@ Before you begin, ensure you have the following:
 
 ### Unity Catalog Open Source
 
-If you're looking to use an Open Source Unity Catalog service, ensure that you have met all of the prerequisites and have followed the
+Ensure that you have met all of the prerequisites and have followed the
 [Unity Catalog Quickstart Guide](../quickstart.md). Once your server is up and running and you are able to create a catalog, schemas, and functions, you're all set to continue with this guide.
-
-To interface with the Python APIs, you will need to install the UnityCatalog Python Client SDK:
-
-```sh
-pip install unitycatalog-client
-```
 
 ### Databricks Unity Catalog
 
@@ -59,13 +55,13 @@ seamlessly define a native LangChain tool that can interface with functions stor
 pip install unitycatalog-langchain
 ```
 
-### Client Setup - OSS Unity Catalog
+### Client Setup
 
 Create an instance of the Functions Client
 
 ```python
 from unitycatalog.client import ApiClient, Configuration
-from unitycatalog.ai.core.oss import UnitycatalogFunctionClient
+from unitycatalog.ai.core.client import UnitycatalogFunctionClient
 
 config = Configuration()
 # This is the default address when starting a UnityCatalog server locally. Update this to the uri
@@ -84,7 +80,7 @@ SCHEMA = "my_schema"
 
 ### Client Setup - Databricks
 
-For us to be able to both create and execute a function defined within UC as a tool in LangChain, we need to initialize the UC function client.
+In order to be able to both create and execute a function defined within UC as a tool in LangChain, we need to initialize the UC function client.
 In this example, we're connecting to Databricks UC and specifying a `warehouse_id` that will be used for executing the functions that are
 defined as tools. When accessing functions by name, we will need to specify which catalog and schema the function resides in, so we're defining constants
 to store those values.

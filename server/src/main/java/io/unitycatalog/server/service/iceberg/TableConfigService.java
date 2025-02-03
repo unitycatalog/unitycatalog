@@ -29,8 +29,8 @@ public class TableConfigService {
   private final CredentialOperations credentialOperations;
   private final Map<String, S3StorageConfig> s3Configurations;
 
-  public TableConfigService(CredentialOperations credentialOperations) {
-    this.s3Configurations = ServerProperties.getInstance().getS3Configurations();
+  public TableConfigService(CredentialOperations credentialOperations, ServerProperties serverProperties) {
+    this.s3Configurations = serverProperties.getS3Configurations();
     this.credentialOperations = credentialOperations;
   }
 
