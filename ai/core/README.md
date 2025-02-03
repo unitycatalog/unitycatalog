@@ -25,6 +25,7 @@ The Unity Catalog (UC) function client is a core component of the Unity Catalog 
 
 - **Asynchronous and Synchronous Operations**: Flexibly choose between async and sync methods based on your application's concurrency requirements.
 - **Comprehensive Function Management**: Easily create, retrieve, list, execute, and delete UC functions.
+- **Wrapped Function Support**: In addition to standard single-function creation, you can create *wrapped functions* that in-line additional helper functions within a function's definition to simplify code reuse and modularity.
 - **Integration with GenAI**: Seamlessly integrate UC functions as tools within Generative AI agents, enhancing intelligent automation workflows.
 - **Type Safety and Caching**: Enforce strict type validation and utilize caching mechanisms to optimize performance and reduce redundant executions.
 
@@ -44,7 +45,7 @@ When using the `UnitycatalogFunctionClient` for UC, be mindful of the following 
     - Ensure that any external libraries required by your UC functions are pre-installed in the execution environment.
     - Best Practice: Import external dependencies within the function body to guarantee their availability during execution.
 - **Function Overwriting**:
-    - The `create_function` and `create_function_async` methods allow overwriting existing functions by setting the replace parameter to True.
+    - The `create_function`, `create_function_async`, `create_wrapped_function` and `create_wrapped_function_async` methods allow overwriting existing functions by setting the replace parameter to True.
     - **Warning**: Overwriting functions can disrupt workflows that depend on existing function definitions. Use this feature judiciously and ensure that overwriting is intentional.
 - **Type Validation and Compatibility**:
     - The client performs strict type validation based on the defined schemas. Ensure that your function parameters and return types adhere to the expected types to prevent execution errors.
@@ -117,6 +118,45 @@ function_info = uc_client.create_python_function(
 )
 
 print(function_info)
+```
+
+#### Creating a Wrapped UC Function
+
+In addition to standard function creation, you can create *wrapped functions*. A wrapped function uses a primary function as the interface while in-lining additional helper functions (wrapped functions) into the primary function’s definition. This feature is useful when you want to keep helper logic bundled together with the main function without needing to replicate existing common utilities within your function definitions.
+
+For example, consider the following helper functions and the primary wrapper function that has direct dependencies on the helper functions:
+
+```python
+def a(x: int) -> int:
+    return x + 1
+
+def b(y: int) -> int:
+    return y + 2
+
+def wrapper(x: int, y: int) -> int:
+    """
+    Wrapper function that in-lines helper functions a and b.
+
+    Args:
+        x (int): The first argument.
+        y (int): The second argument.
+
+    Returns:
+        int: The combined result of a(x) and b(y).
+    """
+    return a(x) + b(y)
+```
+
+To register this wrapped function as a single UC function, you can call the `create_wrapped_function` API:
+
+```python
+function_info = uc_client.create_wrapped_function(
+    primary_func=wrapper,
+    functions=[a, b],
+    catalog=CATALOG,
+    schema=SCHEMA,
+    replace=False,  # Set to True to overwrite if the function already exists
+)
 ```
 
 #### Retrieving a UC Function

@@ -25,6 +25,7 @@ When using the `UnitycatalogFunctionClient` be aware of the following points:
 - **Function Management**: Simplifies the process of creating, retrieving, listing, executing, and deleting UC functions.
 - **Integration with GenAI**: Supports the registration of UC functions as tools for Generative AI agents, enabling intelligent tool calling within AI-driven workflows.
 - **Type Validation and Caching**: Ensures that function parameters and return types adhere to defined schemas and caches function executions for optimized performance.
+- **Wrapped Function Creation**: Registers wrapped functions by in-lining helper functions into a primary function’s definition. The primary function serves as the interface for function execution while helper functions are bundled into the definition, promoting modular design and ease of deployment.
 
 ### Using the UnityCatalog Functions Client
 
@@ -172,6 +173,46 @@ my_function = uc_client.create_python_function(
     schema=SCHEMA,
 )
 ```
+
+#### Creating Wrapped Functions
+
+Wrapped functions are created using the `create_wrapped_function` and `create_wrapped_function_async` APIs. In a wrapped function, the primary function serves as the interface for callers, and additional helper functions are in-lined into the primary function’s definition. This bundles related functionality together and simplifies the registration process.
+
+For example, consider the following definitions:
+
+```python
+def a(x: int) -> int:
+    return x + 1
+
+def b(y: int) -> int:
+    return y + 2
+
+def wrapper(x: int, y: int) -> int:
+    """
+    Calls the helper functions `a` and `b` and returns their combined result.
+
+    Args:
+        x (int): The first number.
+        y (int): The second number.
+
+    Returns:
+        int: The sum of a(x) and b(y).
+    """
+    return a(x) + b(y)
+```
+
+The wrapped function is registered as follows:
+
+```python
+wrapped_function = uc_client.create_wrapped_function(
+    primary_func=wrapper,
+    functions=[a, b],
+    catalog=CATALOG,
+    schema=SCHEMA,
+)
+```
+
+This API in-lines the helper functions (`a` and `b`) into the primary function (`wrapper`) so that they are part of the same function definition stored in Unity Catalog.
 
 #### Testing a function
 
