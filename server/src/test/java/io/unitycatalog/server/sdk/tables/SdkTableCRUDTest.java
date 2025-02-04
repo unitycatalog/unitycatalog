@@ -45,7 +45,8 @@ public class SdkTableCRUDTest extends BaseTableCRUDTest {
   @Test
   public void testListTablesWithNoNextPageTokenShouldReturnNull() throws Exception {
     createCommonResources();
-    TableInfo testingTable = createTestingTable(TestUtils.TABLE_NAME, TestUtils.STORAGE_LOCATION);
+    TableInfo testingTable =
+        createTestingTable(TestUtils.TABLE_NAME, TestUtils.STORAGE_LOCATION, tableOperations);
     ListTablesResponse resp =
         localTablesApi.listTables(
             testingTable.getCatalogName(), testingTable.getSchemaName(), 100, null);

@@ -18,6 +18,20 @@ public class ServerProperties {
   private static final Logger LOGGER = LoggerFactory.getLogger(ServerProperties.class);
   private final Properties properties;
 
+  public enum Property {
+    MODEL_STORAGE_ROOT("storage-root.models");
+
+    private final String key;
+
+    Property(String key) {
+      this.key = key;
+    }
+
+    public String getKey() {
+      return key;
+    }
+  }
+
   public ServerProperties() {
     this(new Properties());
   }
@@ -137,6 +151,14 @@ public class ServerProperties {
     if (System.getProperty(key) != null) return System.getProperty(key);
     if (System.getenv().containsKey(key)) return System.getenv(key);
     return properties.getProperty(key);
+  }
+
+  public String get(Property property) {
+    return getProperty(property.getKey());
+  }
+
+  public void set(Property property, String value) {
+    properties.setProperty(property.getKey(), value);
   }
 
   /**
