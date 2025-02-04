@@ -11,30 +11,6 @@ from unitycatalog.ai.core.utils.function_processing_utils import (
     process_function_names,
 )
 
-
-class LiteLLMTool(BaseModel):
-    name: str = Field(
-        description="The name of the function.",
-    )
-    description: str = Field(
-        description="A brief description of the function's purpose.",
-    )
-    tool: dict = Field(description="OpenAI-compatible Tool Definition")
-
-    model_config = ConfigDict(arbitrary_types_allowed=True)
-
-    def to_dict(self) -> dict[str, Any]:
-        """
-        Converts the LiteLLM instance into a dictionary for the LiteLLM API.
-        Note: the LiteLLM API supports arbitrary JSON for tool definitions, but this interface
-        adheres to the OpenAI tool spec.
-
-        Returns:
-            The tool definition as a Dict
-        """
-        return self.tool
-
-
 class UCFunctionToolkit(BaseModel):
     """
     A toolkit for managing Unity Catalog functions and converting them into LiteLLM tools.
@@ -44,7 +20,7 @@ class UCFunctionToolkit(BaseModel):
         default_factory=list,
         description="List of function names in 'catalog.schema.function' format.",
     )
-    tools_dict: dict[str, LiteLLMTool] = Field(
+    tools_dict: dict[str, dict] = Field(
         default_factory=dict,
         description="Dictionary mapping function names to their corresponding LiteLLM tools.",
     )
@@ -77,9 +53,9 @@ class UCFunctionToolkit(BaseModel):
         client: Optional[BaseFunctionClient] = None,
         function_name: Optional[str] = None,
         function_info: Optional[Any] = None,
-    ) -> LiteLLMTool:
+    ) -> dict:
         """
-        Converts a Unity Catalog function to an Lite LLM tool.
+        Converts a Unity Catalog function to an Lite LLM tool definition.
 
         Args:
             client (Optional[BaseFunctionClient]): The client for managing functions.
@@ -87,7 +63,7 @@ class UCFunctionToolkit(BaseModel):
             function_info (Optional[Any]): The function info object returned by the client.
 
         Returns:
-            LiteLLMTool: The corresponding Lite LLM tool.
+            Dict: The corresponding Lite LLM tool definition.
         """
         if function_name and function_info:
             raise ValueError("Only one of function_name or function_info should be provided.")
@@ -116,14 +92,14 @@ class UCFunctionToolkit(BaseModel):
             description=function_info.comment or "",
         )
 
-        return LiteLLMTool(
+        return dict(
             name=get_tool_name(function_name),
             description=function_info.comment or "",
             tool=tool,
         )
 
     @property
-    def tools(self) -> list[LiteLLMTool]:
+    def tools(self) -> list[dict]:
         """
         Retrieves the list of Lite LLM tools managed by the toolkit.
         """

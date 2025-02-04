@@ -11,7 +11,7 @@ from databricks.sdk.service.catalog import (
 from pydantic import ValidationError
 
 from unitycatalog.ai.core.base import FunctionExecutionResult
-from unitycatalog.ai.litellm.toolkit import LiteLLMTool, UCFunctionToolkit
+from unitycatalog.ai.litellm.toolkit import UCFunctionToolkit
 from unitycatalog.ai.test_utils.client_utils import (
     USE_SERVERLESS,
     client,  # noqa: F401
@@ -97,7 +97,7 @@ def test_uc_function_to_litellm_tool(function_info, client):
         tool = UCFunctionToolkit.uc_function_to_litellm_tool(
             function_name=function_name, client=client
         )
-        assert tool.name == function_name.replace(".", "__")
+        assert tool["name"] == function_name.replace(".", "__")
 
 
 @requires_databricks
@@ -110,11 +110,11 @@ def test_toolkit_e2e(use_serverless, monkeypatch):
             function_names=[func_obj.full_function_name], return_direct=True
         )
         tool = toolkit.tools[0]
-        assert tool.name == func_obj.tool_name
-        assert tool.description == func_obj.comment
+        assert tool["name"] == func_obj.tool_name
+        assert tool["description"] == func_obj.comment
 
         toolkit = UCFunctionToolkit(function_names=[f"{CATALOG}.{SCHEMA}.*"])
-        assert func_obj.tool_name in [t.name for t in toolkit.tools]
+        assert func_obj.tool_name in [t["name"] for t in toolkit.tools]
 
 
 @requires_databricks
@@ -129,11 +129,11 @@ def test_toolkit_e2e_with_client(use_serverless, monkeypatch):
             client=client,
         )
         tool = toolkit.tools[0]
-        assert tool.name == func_obj.tool_name
-        assert tool.description == func_obj.comment
+        assert tool["name"] == func_obj.tool_name
+        assert tool["description"] == func_obj.comment
 
         toolkit = UCFunctionToolkit(function_names=[f"{CATALOG}.{SCHEMA}.*"])
-        assert func_obj.tool_name in [t.name for t in toolkit.tools]
+        assert func_obj.tool_name in [t["name"] for t in toolkit.tools]
 
 
 @requires_databricks
@@ -146,7 +146,7 @@ def test_multiple_toolkits(use_serverless, monkeypatch):
         toolkit2 = UCFunctionToolkit(function_names=[f"{CATALOG}.{SCHEMA}.*"])
         toolkits = [toolkit1, toolkit2]
 
-        assert all(isinstance(toolkit.tools[0], LiteLLMTool) for toolkit in toolkits)
+        assert all(isinstance(toolkit.tools[0], dict) for toolkit in toolkits)
 
 
 def test_toolkit_creation_errors():

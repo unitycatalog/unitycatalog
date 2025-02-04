@@ -42,6 +42,7 @@ from unitycatalog.ai.core.databricks import DatabricksFunctionClient
 
 client = DatabricksFunctionClient(
     warehouse_id="..." # replace with the warehouse_id
+)
 
 To use Databricks-managed Unity Catalog with this package, follow the [instructions](https://docs.databricks.com/en/dev-tools/cli/authentication.html#authentication-for-the-databricks-cli) to authenticate to your workspace and ensure that your access token has workspace-level privilege for managing UC functions.
 
@@ -54,7 +55,6 @@ from ucai.core.databricks import DatabricksFunctionClient
 client = DatabricksFunctionClient(
     warehouse_id="..." # replace with the warehouse_id
     cluster_id="..." # optional, only pass when you want to use cluster for function creation
->>>>>>> 2d3d334 (Initial functionality)
 )
 
 # sets the default uc function client
@@ -123,7 +123,7 @@ With our interface to our UC function defined as a JSON tool collection, we can 
 > [!NOTE]
 > LiteLLM doesn't have tool objects and instead looks to leverage a standard JSON format; these are passed directly to 
 > supported LLMs. This integration standardizes on the OpenAI tool format, which is supported by most LiteLLM models.
-> For more, please visit the [LiteLLM](https://docs.litellm.ai/docs/completion/function_call) docs on which models support tool calling
+> For more, please visit the [LiteLLM](https://docs.litellm.ai/docs/completion/function_call) docs on which models support tool calling.
 
 ```python
 import litellm 
@@ -137,14 +137,11 @@ os.environ["OPENAI_API_KEY"] = "your key"
 question = "What's the weather like in San Francisco?" 
 messages = [{"role": "user", "content": question}]
 
-# Define tool payload
-tools_litellm_format = [tool.to_dict() for tool in tools]
-
 # Show the response
 response = litellm.completion(
     model="gpt-4o-mini",
     messages=messages,
-    tools=tools_litellm_format,
+    tools=tools,
     tool_choice="auto",  # auto is default, but we'll be explicit
 )
 print("\nFirst LLM Response:\n", response)

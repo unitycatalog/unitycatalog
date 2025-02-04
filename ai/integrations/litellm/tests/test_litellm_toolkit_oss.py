@@ -1,7 +1,3 @@
-<<<<<<< HEAD
-=======
-import json
->>>>>>> 44175c2 (OSS integration test)
 import os
 from unittest import mock
 
@@ -11,11 +7,7 @@ from pydantic import ValidationError
 
 from unitycatalog.ai.core.base import FunctionExecutionResult
 from unitycatalog.ai.core.client import UnitycatalogFunctionClient
-<<<<<<< HEAD
-from unitycatalog.ai.litellm.toolkit import LiteLLMTool, UCFunctionToolkit
-=======
 from unitycatalog.ai.litellm.toolkit import UCFunctionToolkit
->>>>>>> 44175c2 (OSS integration test)
 from unitycatalog.ai.test_utils.function_utils_oss import (
     CATALOG,
     create_function_and_cleanup_oss,
@@ -55,24 +47,14 @@ async def test_toolkit_e2e(uc_client):
         tools = toolkit.tools
         assert len(tools) == 1
         tool = tools[0]
-<<<<<<< HEAD
-        assert func_obj.comment in tool.description
-=======
-        assert func_obj.full_function_name.replace(".", "__") in tool.description
-        assert func_obj.comment in tool.description
-        assert tool.client_config == uc_client.to_dict()
-
-        input_args = {"code": "print(1)"}
-        result = json.loads(tool.fn(**input_args))["value"]
-        assert result == "1\n"
->>>>>>> 44175c2 (OSS integration test)
+        assert func_obj["comment"] in tool["description"]
 
         toolkit = UCFunctionToolkit(
             function_names=[f.full_name for f in uc_client.list_functions(CATALOG, SCHEMA)],
             client=uc_client,
         )
         assert len(toolkit.tools) >= 1
-        assert func_obj.tool_name in [t.name for t in toolkit.tools]
+        assert func_obj.tool_name in [t["name"] for t in toolkit.tools]
 
 
 @pytest.mark.asyncio
@@ -82,28 +64,15 @@ async def test_toolkit_e2e_manually_passing_client(uc_client):
         tools = toolkit.tools
         assert len(tools) == 1
         tool = tools[0]
-        assert tool.name == func_obj.tool_name
-<<<<<<< HEAD
-        assert func_obj.comment in tool.description
-=======
-        assert func_obj.full_function_name.replace(".", "__") in tool.description
-        assert func_obj.comment in tool.description
-        assert (
-            "{'code': {'description': 'Python code to execute. Remember to print the final result to stdout.'"
-            in tool.description
-        )
-        assert tool.client_config == uc_client.to_dict()
-        input_args = {"code": "print(1)"}
-        result = json.loads(tool.fn(**input_args))["value"]
-        assert result == "1\n"
->>>>>>> 44175c2 (OSS integration test)
+        assert tool["name"] == func_obj.tool_name
+        assert func_obj.comment in tool["description"]
 
         toolkit = UCFunctionToolkit(
             function_names=[f"{CATALOG}.{SCHEMA}.*"],
             client=uc_client,
         )
         assert len(toolkit.tools) >= 1
-        assert func_obj.tool_name in [t.name for t in toolkit.tools]
+        assert func_obj.tool_name in [t["name"] for t in toolkit.tools]
 
 
 @pytest.mark.asyncio
@@ -111,18 +80,9 @@ async def test_multiple_toolkits(uc_client):
     with create_function_and_cleanup_oss(uc_client, schema=SCHEMA) as func_obj:
         toolkit1 = UCFunctionToolkit(function_names=[func_obj.full_function_name], client=uc_client)
         toolkit2 = UCFunctionToolkit(function_names=[f"{CATALOG}.{SCHEMA}.*"], client=uc_client)
-<<<<<<< HEAD
         toolkits = [toolkit1, toolkit2]
 
-        assert all(isinstance(toolkit.tools[0], LiteLLMTool) for toolkit in toolkits)
-=======
-        tool1 = toolkit1.tools[0]
-        tool2 = [t for t in toolkit2.tools if t.name == func_obj.tool_name][0]
-        input_args = {"code": "print(1)"}
-        result1 = json.loads(tool1.fn(**input_args))["value"]
-        result2 = json.loads(tool2.fn(**input_args))["value"]
-        assert result1 == result2
->>>>>>> 44175c2 (OSS integration test)
+        assert all(isinstance(toolkit.tools[0], dict) for toolkit in toolkits)
 
 
 def test_toolkit_creation_errors_no_client():
@@ -205,40 +165,7 @@ async def test_uc_function_to_litellm_tool(uc_client):
         tool = UCFunctionToolkit.uc_function_to_litellm_tool(
             function_name="catalog.schema.test", client=uc_client
         )
-<<<<<<< HEAD
-        assert tool.name == "catalog__schema__test"
-=======
-        result = json.loads(tool.fn(x="some_string"))["value"]
-        assert result == "some_string"
-
-        # Check defaults for parameters not defined by UC
-        assert tool.cache_function(1, {1: 1})
-        assert not tool.result_as_answer
-        assert not tool.description_updated
-
-
-@pytest.mark.asyncio
-async def test_toolkit_with_invalid_function_input(uc_client):
-    """Test toolkit with invalid input parameters for function conversion."""
-    mock_function_info = generate_function_info()
-
-    with (
-        mock.patch(
-            "unitycatalog.ai.core.utils.client_utils.validate_or_set_default_client",
-            return_value=uc_client,
-        ),
-        mock.patch.object(uc_client, "get_function", return_value=mock_function_info),
-    ):
-        # Test with invalid input params that are not matching expected schema
-        invalid_inputs = {"unexpected_key": "value"}
-        tool = UCFunctionToolkit.uc_function_to_litellm_tool(
-            function_name="catalog.schema.test", client=uc_client
-        )
-
-        with pytest.raises(ValueError, match="Extra parameters provided that are not defined"):
-            tool.fn(**invalid_inputs)
->>>>>>> 44175c2 (OSS integration test)
-
+        assert tool["name"] == "catalog__schema__test"
 
 @pytest.mark.asyncio
 async def test_toolkit_litellm_kwarg_passthrough(uc_client):
@@ -255,17 +182,6 @@ async def test_toolkit_litellm_kwarg_passthrough(uc_client):
         tool = UCFunctionToolkit.uc_function_to_litellm_tool(
             function_name="catalog.schema.test",
             client=uc_client,
-<<<<<<< HEAD
         )
 
         assert tool is not None
-=======
-            cache_function=lambda: True,
-            result_as_answer=True,
-            description_updated=True,
-        )
-
-        assert tool.cache_function()
-        assert tool.result_as_answer
-        assert tool.description_updated
->>>>>>> 44175c2 (OSS integration test)
