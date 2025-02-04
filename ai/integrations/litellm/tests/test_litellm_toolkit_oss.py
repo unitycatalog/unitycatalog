@@ -47,7 +47,7 @@ async def test_toolkit_e2e(uc_client):
         tools = toolkit.tools
         assert len(tools) == 1
         tool = tools[0]
-        assert func_obj["comment"] in tool["description"]
+        assert func_obj.comment in tool["description"]
 
         toolkit = UCFunctionToolkit(
             function_names=[f.full_name for f in uc_client.list_functions(CATALOG, SCHEMA)],
