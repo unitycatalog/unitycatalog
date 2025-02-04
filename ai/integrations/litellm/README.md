@@ -76,7 +76,7 @@ def sf_weather_lookup_litellm(city_name: str) -> str:
     Get the weather in san fransisco.
 
     Args:
-        city_name (str): The name of the city in San Fransico
+        city_name (str): The name of the city 
 
     Returns:
         A string of the temperature.
