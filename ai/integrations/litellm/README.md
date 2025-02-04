@@ -273,7 +273,7 @@ ModelResponse(
 and the construction of a subsequent call to LiteLLM.
 
 This API is useful if you need to perform validation prior to calling a function or if you prefer to handle the direct return of the Unity Catalog
-function call yourself. This lower-level approach and will require a more complex integration with the LiteLLM.
+function call yourself. This lower-level approach will require a more complex integration with LiteLLM.
 
 ```python
 from unitycatalog.ai.litellm.utils import extract_tool_call_data
