@@ -11,8 +11,7 @@ import io.unitycatalog.server.base.ServerConfig;
 import io.unitycatalog.server.base.schema.SchemaOperations;
 import io.unitycatalog.server.persist.dao.ColumnInfoDAO;
 import io.unitycatalog.server.persist.dao.TableInfoDAO;
-import io.unitycatalog.server.persist.utils.FileUtils;
-import io.unitycatalog.server.persist.utils.HibernateUtils;
+import io.unitycatalog.server.persist.utils.FileOperations;
 import io.unitycatalog.server.utils.TestUtils;
 import java.io.IOException;
 import java.util.ArrayList;
@@ -88,7 +87,8 @@ public abstract class BaseTableCRUDTest extends BaseCRUDTest {
   }
 
   private TableInfo createAndVerifyTable() throws IOException, ApiException {
-    TableInfo tableInfo = createTestingTable(TestUtils.TABLE_NAME, TestUtils.STORAGE_LOCATION);
+    TableInfo tableInfo =
+        createTestingTable(TestUtils.TABLE_NAME, TestUtils.STORAGE_LOCATION, tableOperations);
     assertThat(tableInfo.getName()).isEqualTo(TestUtils.TABLE_NAME);
     assertThat(tableInfo.getCatalogName()).isEqualTo(TestUtils.CATALOG_NAME);
     assertThat(tableInfo.getSchemaName()).isEqualTo(TestUtils.SCHEMA_NAME);
@@ -147,7 +147,7 @@ public abstract class BaseTableCRUDTest extends BaseCRUDTest {
   }
 
   private void testManagedTableRetrieval() throws ApiException {
-    try (Session session = HibernateUtils.getSessionFactory().openSession()) {
+    try (Session session = hibernateConfigurator.getSessionFactory().openSession()) {
       Transaction tx = session.beginTransaction();
       UUID tableId = UUID.randomUUID();
 
@@ -164,7 +164,7 @@ public abstract class BaseTableCRUDTest extends BaseCRUDTest {
     assertThat(managedTable.getCatalogName()).isEqualTo(TestUtils.CATALOG_NAME);
     assertThat(managedTable.getSchemaName()).isEqualTo(TestUtils.SCHEMA_NAME);
     assertThat(managedTable.getStorageLocation())
-        .isEqualTo(FileUtils.convertRelativePathToURI("/tmp/managedStagingLocation"));
+        .isEqualTo(FileOperations.convertRelativePathToURI("/tmp/managedStagingLocation"));
     assertThat(managedTable.getTableType()).isEqualTo(TableType.MANAGED);
     assertThat(managedTable.getDataSourceFormat()).isEqualTo(DataSourceFormat.DELTA);
     assertThat(managedTable.getCreatedAt()).isNotNull();
@@ -249,7 +249,8 @@ public abstract class BaseTableCRUDTest extends BaseCRUDTest {
         .isInstanceOf(Exception.class);
   }
 
-  protected TableInfo createTestingTable(String tableName, String storageLocation)
+  public static TableInfo createTestingTable(
+      String tableName, String storageLocation, TableOperations tableOperations)
       throws IOException, ApiException {
     ColumnInfo columnInfo1 =
         new ColumnInfo()
@@ -294,7 +295,7 @@ public abstract class BaseTableCRUDTest extends BaseCRUDTest {
     for (int i = numberOfTables; i > 0; i--) {
       String tableName = TestUtils.TABLE_NAME + "_" + i;
       String storageLocation = TestUtils.STORAGE_LOCATION + "/" + tableName;
-      createdTables.add(createTestingTable(tableName, storageLocation));
+      createdTables.add(createTestingTable(tableName, storageLocation, tableOperations));
     }
     return createdTables;
   }

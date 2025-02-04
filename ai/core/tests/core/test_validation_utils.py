@@ -13,7 +13,7 @@ from databricks.sdk.service.catalog import (
     FunctionParameterInfos,
 )
 
-from unitycatalog.ai.core.utils.validation_utils import check_function_info
+from unitycatalog.ai.core.utils.validation_utils import check_function_info, has_retriever_signature
 
 
 @pytest.fixture
@@ -114,3 +114,119 @@ def test_check_function_info(function_info, expected_warnings):
         assert len(emitted_warnings) == len(expected_warnings)
     else:
         assert len(emitted_warnings) == 0, f"Unexpected warnings emitted: {emitted_warnings}"
+
+
+@pytest.mark.parametrize(
+    "function_info, result",
+    [
+        (FunctionInfo(data_type=ColumnTypeName.STRING, full_data_type="STRING"), False),
+        (
+            FunctionInfo(
+                data_type=ColumnTypeName.STRING,
+                full_data_type="(page_content STRING)",
+                return_params=None,
+            ),
+            False,
+        ),
+        (
+            FunctionInfo(
+                data_type=ColumnTypeName.TABLE_TYPE,
+                full_data_type="(page_content STRING)",
+                return_params=FunctionParameterInfos(
+                    parameters=[
+                        FunctionParameterInfo(
+                            name="page_content",
+                            type_text="string",
+                            type_name=ColumnTypeName.STRING,
+                            position=0,
+                        )
+                    ]
+                ),
+            ),
+            True,
+        ),
+        (
+            FunctionInfo(
+                data_type=ColumnTypeName.TABLE_TYPE,
+                full_data_type="(page_content STRING, metadata MAP<STRING, STRING>, id STRING)",
+                return_params=FunctionParameterInfos(
+                    parameters=[
+                        FunctionParameterInfo(
+                            name="page_content",
+                            type_text="string",
+                            type_name=ColumnTypeName.STRING,
+                            position=0,
+                        ),
+                        FunctionParameterInfo(
+                            name="metadata",
+                            type_text="map<string,string>",
+                            type_name=ColumnTypeName.MAP,
+                            position=1,
+                        ),
+                        FunctionParameterInfo(
+                            name="id",
+                            type_text="string",
+                            type_name=ColumnTypeName.STRING,
+                            position=2,
+                        ),
+                    ]
+                ),
+            ),
+            True,
+        ),
+        (
+            FunctionInfo(
+                data_type=ColumnTypeName.TABLE_TYPE,
+                full_data_type="(metadata MAP<STRING, STRING>, id STRING)",
+                return_params=FunctionParameterInfos(
+                    parameters=[
+                        FunctionParameterInfo(
+                            name="metadata",
+                            type_text="map<string,string>",
+                            type_name=ColumnTypeName.MAP,
+                            position=0,
+                        ),
+                        FunctionParameterInfo(
+                            name="id",
+                            type_text="string",
+                            type_name=ColumnTypeName.STRING,
+                            position=1,
+                        ),
+                    ]
+                ),
+            ),
+            False,
+        ),
+        (
+            FunctionInfo(
+                data_type=ColumnTypeName.TABLE_TYPE,
+                full_data_type="(page_content STRING, metadata MAP<STRING, STRING>, extra_column STRING)",
+                return_params=FunctionParameterInfos(
+                    parameters=[
+                        FunctionParameterInfo(
+                            name="page_content",
+                            type_text="string",
+                            type_name=ColumnTypeName.STRING,
+                            position=0,
+                        ),
+                        FunctionParameterInfo(
+                            name="metadata",
+                            type_text="map<string,string>",
+                            type_name=ColumnTypeName.MAP,
+                            position=1,
+                        ),
+                        FunctionParameterInfo(
+                            name="extra_column",
+                            type_text="string",
+                            type_name=ColumnTypeName.STRING,
+                            position=2,
+                        ),
+                    ]
+                ),
+            ),
+            True,
+        ),
+    ],
+)
+def test_has_retriever_signature(function_info, result):
+    assert has_retriever_signature(function_info) == result

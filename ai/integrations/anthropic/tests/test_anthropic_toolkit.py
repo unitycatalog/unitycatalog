@@ -11,7 +11,7 @@ from databricks.sdk.service.catalog import (
 )
 
 from unitycatalog.ai.anthropic.toolkit import UCFunctionToolkit
-from unitycatalog.ai.core.client import set_uc_function_client
+from unitycatalog.ai.core.base import set_uc_function_client
 from unitycatalog.ai.core.utils.function_processing_utils import get_tool_name
 from unitycatalog.ai.test_utils.client_utils import (
     get_client,
@@ -330,9 +330,13 @@ def test_anthropic_tool_definition_generation(use_serverless, monkeypatch):
             ]
         )
 
-        function_definition = UCFunctionToolkit.uc_function_to_anthropic_tool(
-            function_info=function_info, client=client
-        )
+        with mock.patch(
+            "unitycatalog.ai.core.databricks.DatabricksFunctionClient.get_function",
+            return_value=function_info,
+        ):
+            function_definition = UCFunctionToolkit.uc_function_to_anthropic_tool(
+                function_name=function_info.full_name, client=client
+            )
 
         assert function_definition.to_dict() == {
             "name": get_tool_name(function_info.full_name),

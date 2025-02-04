@@ -1,4 +1,4 @@
-name: UnityCatalog AI Integration Tests
+name: Unity Catalog AI Databricks Integration Tests
 
 on:
   push:
@@ -37,9 +37,10 @@ jobs:
           pip install core/.
           echo "PYTHONPATH=$(pwd)/core/src:\$PYTHONPATH" >> $GITHUB_ENV
           pip install integrations/crewai[dev]
+          pip install mlflow
       - name: Run tests
         run: |
-          pytest integrations/crewai/tests
+          pytest integrations/crewai/tests --ignore=integrations/crewai/tests/test_crewai_toolkit_oss.py
 
   langchain_test:
     runs-on: ubuntu-latest
@@ -62,9 +63,10 @@ jobs:
           pip install core/.
           echo "PYTHONPATH=$(pwd)/core/src:\$PYTHONPATH" >> $GITHUB_ENV
           pip install integrations/langchain[dev]
+          pip install mlflow
       - name: Run Langchain Tests
         run: |
-          pytest integrations/langchain/tests
+          pytest integrations/langchain/tests --ignore=integrations/langchain/tests/test_langchain_toolkit_oss.py
 
   anthropic_test:
     runs-on: ubuntu-latest
@@ -87,9 +89,10 @@ jobs:
           pip install core/.
           echo "PYTHONPATH=$(pwd)/core/src:\$PYTHONPATH" >> $GITHUB_ENV
           pip install integrations/anthropic[dev]
+          pip install mlflow
       - name: Run Anthropic Tests
         run: |
-          pytest integrations/anthropic/tests
+          pytest integrations/anthropic/tests --ignore=integrations/anthropic/tests/test_anthropic_toolkit_oss.py
 
   llamaindex_test:
     runs-on: ubuntu-latest
@@ -112,9 +115,10 @@ jobs:
           pip install core/.
           echo "PYTHONPATH=$(pwd)/core/src:\$PYTHONPATH" >> $GITHUB_ENV
           pip install integrations/llama_index[dev]
+          pip install mlflow
       - name: Run LlamaIndex Tests
         run: |
-          pytest integrations/llama_index/tests
+          pytest integrations/llama_index/tests --ignore=integrations/llama_index/tests/test_llama_index_toolkit_oss.py
 
   openai_test:
     runs-on: ubuntu-latest
@@ -137,11 +141,39 @@ jobs:
           pip install core/.
           echo "PYTHONPATH=$(pwd)/core/src:\$PYTHONPATH" >> $GITHUB_ENV
           pip install integrations/openai[dev]
+          pip install mlflow
       - name: Run OpenAI Tests
         run: |
-          pytest integrations/openai/tests
+          pytest integrations/openai/tests --ignore=integrations/openai/tests/test_openai_toolkit_oss.py
 
   autogen_test:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ['3.10']
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: ai
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+      - name: Install dependencies
+        run: |
+          pip install core/.
+          echo "PYTHONPATH=$(pwd)/core/src:\$PYTHONPATH" >> $GITHUB_ENV
+          pip install integrations/autogen[dev]
+          pip install mlflow
+      - name: Run tests
+        run: |
+          pytest integrations/autogen/tests --ignore=integrations/autogen/tests/test_autogen_toolkit_oss.py
+  
+
+  gemini_test:
     runs-on: ubuntu-latest
     strategy:
       matrix:
@@ -161,7 +193,8 @@ jobs:
         run: |
           pip install core/.
           echo "PYTHONPATH=$(pwd)/core/src:\$PYTHONPATH" >> $GITHUB_ENV
-          pip install integrations/autogen[dev]
+          pip install integrations/gemini[dev]
+          pip install mlflow
       - name: Run tests
         run: |
-          pytest integrations/autogen/tests
+          pytest integrations/gemini/tests --ignore=integrations/gemini/tests/test_gemini_toolkit_oss.py

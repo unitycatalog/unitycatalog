@@ -10,6 +10,7 @@ import io.unitycatalog.server.base.BaseCRUDTest;
 import io.unitycatalog.server.base.ServerConfig;
 import io.unitycatalog.server.base.schema.SchemaOperations;
 import io.unitycatalog.server.persist.utils.UriUtils;
+import io.unitycatalog.server.utils.ServerProperties.Property;
 import io.unitycatalog.server.utils.TestUtils;
 import java.util.List;
 import java.util.Optional;
@@ -28,7 +29,13 @@ public abstract class BaseModelCRUDTest extends BaseCRUDTest {
 
   protected abstract ModelOperations createModelOperations(ServerConfig serverConfig);
 
-  String rootBase = "";
+  String rootBase = "/tmp/" + UUID.randomUUID();
+
+  @Override
+  public void setUpProperties() {
+    super.setUpProperties();
+    serverProperties.setProperty(Property.MODEL_STORAGE_ROOT.getKey(), rootBase);
+  }
 
   @BeforeEach
   @Override
@@ -36,14 +43,16 @@ public abstract class BaseModelCRUDTest extends BaseCRUDTest {
     super.setUp();
     schemaOperations = createSchemaOperations(serverConfig);
     modelOperations = createModelOperations(serverConfig);
-    rootBase = "/tmp/" + UUID.randomUUID().toString();
-    System.setProperty("storage-root.models", rootBase);
   }
 
   @AfterEach
   public void afterEachTest() {
-    // Clean up the newly created storage root
-    UriUtils.deleteStorageLocationPath("file:" + rootBase);
+    try {
+      // Clean up the newly created storage root
+      UriUtils.deleteStorageLocationPath("file:" + rootBase);
+    } catch (Exception e) {
+      // Ignore
+    }
   }
 
   protected void createCommonResources() throws ApiException {

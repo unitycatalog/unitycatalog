@@ -11,7 +11,7 @@ import pytest
 import pytest_asyncio
 from pydantic import ValidationError
 
-from unitycatalog.ai.core.oss import (
+from unitycatalog.ai.core.client import (
     UnitycatalogClient,
     UnitycatalogFunctionClient,
     validate_input_parameter,
@@ -294,6 +294,13 @@ async def test_create_function(uc_client):
     assert func_info.full_data_type == full_data_type
     assert func_info.routine_definition == routine_definition
     assert func_info.comment == comment
+    assert (
+        uc_client.execute_function(function_name=function_name, parameters={"x": "test"}).value
+        == "test"
+    )
+    assert uc_client.func_cache.get("test_function") is not None
+    uc_client.clear_function_cache()
+    assert uc_client.func_cache.get("test_function") is None
 
 
 @pytest.mark.asyncio
@@ -848,6 +855,54 @@ async def test_function_caching(uc_client):
     assert result2.value == "6"
 
     assert function_name.split(".")[-1] in uc_client.func_cache
+
+
+@pytest.mark.asyncio
+async def test_function_overwrite_cache_invalidate(uc_client):
+    function_name = f"{CATALOG}.{SCHEMA}.cached_function_check"
+    routine_definition = "return x * 2"
+    data_type = "INT"
+    parameters = [
+        FunctionParameterInfo(
+            name="x",
+            type_text="int",
+            type_json='{"name":"x","type":"int","nullable":false,"metadata":{}}',
+            type_name="INT",
+            position=0,
+        )
+    ]
+
+    uc_client.create_function(
+        function_name=function_name,
+        routine_definition=routine_definition,
+        data_type=data_type,
+        full_data_type=data_type,
+        parameters=parameters,
+        timeout=10,
+        replace=True,
+        comment="test",
+    )
+
+    # Execute the function to cache it
+    result1 = uc_client.execute_function(function_name=function_name, parameters={"x": 2})
+    assert result1.value == "4"
+
+    # Overwrite the function with a new definition
+    new_routine_definition = "return x * 3"
+    uc_client.create_function(
+        function_name=function_name,
+        routine_definition=new_routine_definition,
+        data_type=data_type,
+        full_data_type=data_type,
+        parameters=parameters,
+        timeout=10,
+        replace=True,
+        comment="test",
+    )
+
+    # Execute the function again to check if the cache is invalidated
+    result2 = uc_client.execute_function(function_name=function_name, parameters={"x": 2})
+    assert result2.value == "6"
 
 
 @pytest.mark.asyncio

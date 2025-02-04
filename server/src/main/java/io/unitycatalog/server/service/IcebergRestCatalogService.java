@@ -14,8 +14,8 @@ import io.unitycatalog.server.exception.IcebergRestExceptionHandler;
 import io.unitycatalog.server.model.ListSchemasResponse;
 import io.unitycatalog.server.model.ListTablesResponse;
 import io.unitycatalog.server.model.SchemaInfo;
+import io.unitycatalog.server.persist.Repositories;
 import io.unitycatalog.server.persist.TableRepository;
-import io.unitycatalog.server.persist.utils.HibernateUtils;
 import io.unitycatalog.server.service.iceberg.MetadataService;
 import io.unitycatalog.server.service.iceberg.TableConfigService;
 import io.unitycatalog.server.utils.JsonUtils;
@@ -49,20 +49,23 @@ public class IcebergRestCatalogService {
   private final TableService tableService;
   private final TableConfigService tableConfigService;
   private final MetadataService metadataService;
-  private final TableRepository tableRepository = TableRepository.getInstance();
-  private static final SessionFactory sessionFactory = HibernateUtils.getSessionFactory();
+  private final TableRepository tableRepository;
+  private final SessionFactory sessionFactory;
 
   public IcebergRestCatalogService(
       CatalogService catalogService,
       SchemaService schemaService,
       TableService tableService,
       TableConfigService tableConfigService,
-      MetadataService metadataService) {
+      MetadataService metadataService,
+      Repositories repositories) {
     this.catalogService = catalogService;
     this.schemaService = schemaService;
     this.tableService = tableService;
     this.tableConfigService = tableConfigService;
     this.metadataService = metadataService;
+    this.tableRepository = repositories.getTableRepository();
+    this.sessionFactory = repositories.getSessionFactory();
   }
 
   // Config APIs

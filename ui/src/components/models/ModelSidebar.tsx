@@ -44,7 +44,9 @@ export default function ModelSidebar({
   schema,
   model,
 }: ModelSidebarProps) {
-  const { data } = useGetModel({ catalog, schema, model });
+  const { data } = useGetModel({
+    full_name: [catalog, schema, model].join('.'),
+  });
 
   if (!data) return null;
 

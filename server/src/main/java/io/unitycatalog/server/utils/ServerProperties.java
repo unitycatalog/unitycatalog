@@ -10,36 +10,53 @@ import java.nio.file.Paths;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Properties;
-import lombok.Getter;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 public class ServerProperties {
 
   private static final Logger LOGGER = LoggerFactory.getLogger(ServerProperties.class);
-  @Getter private static final ServerProperties instance = new ServerProperties();
   private final Properties properties;
 
-  public static final String SERVER_PROPERTIES_FILE = "etc/conf/server.properties";
+  public enum Property {
+    MODEL_STORAGE_ROOT("storage-root.models");
 
-  private ServerProperties() {
-    properties = new Properties();
-    loadProperties();
+    private final String key;
+
+    Property(String key) {
+      this.key = key;
+    }
+
+    public String getKey() {
+      return key;
+    }
+  }
+
+  public ServerProperties() {
+    this(new Properties());
+  }
+
+  public ServerProperties(String propertiesFile) {
+    this(readPropertiesFromFile(propertiesFile));
+  }
+
+  public ServerProperties(Properties properties) {
+    this.properties = properties;
   }
 
   // Load properties from a configuration file
-  private void loadProperties() {
-    Path path = Paths.get(SERVER_PROPERTIES_FILE);
-    if (!path.toFile().exists()) {
-      LOGGER.error("Server properties file not found: {}", path);
-      return;
+  private static Properties readPropertiesFromFile(String propertiesFile) {
+    Path path = Paths.get(propertiesFile);
+    Properties propertiesFromFile = new Properties();
+    if (path.toFile().exists()) {
+      try (InputStream input = Files.newInputStream(path)) {
+        propertiesFromFile.load(input);
+        LOGGER.debug("Server properties loaded successfully: {}", path);
+      } catch (IOException ex) {
+        LOGGER.error("Exception during loading properties", ex);
+      }
     }
-    try (InputStream input = Files.newInputStream(path)) {
-      properties.load(input);
-      LOGGER.debug("Server properties loaded successfully: {}", path);
-    } catch (IOException ex) {
-      LOGGER.error("Exception during loading properties", ex);
-    }
+    return propertiesFromFile;
   }
 
   public Map<String, S3StorageConfig> getS3Configurations() {
@@ -136,6 +153,14 @@ public class ServerProperties {
     return properties.getProperty(key);
   }
 
+  public String get(Property property) {
+    return getProperty(property.getKey());
+  }
+
+  public void set(Property property, String value) {
+    properties.setProperty(property.getKey(), value);
+  }
+
   /**
    * Get a property value by key with a default value
    *
@@ -147,7 +172,7 @@ public class ServerProperties {
   }
 
   public boolean isAuthorizationEnabled() {
-    String authorization = instance.getProperty("server.authorization", "disable");
+    String authorization = getProperty("server.authorization", "disable");
     return authorization.equalsIgnoreCase("enable");
   }
 }
