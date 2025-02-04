@@ -167,6 +167,7 @@ async def test_uc_function_to_litellm_tool(uc_client):
         )
         assert tool["name"] == "catalog__schema__test"
 
+
 @pytest.mark.asyncio
 async def test_toolkit_litellm_kwarg_passthrough(uc_client):
     """Test toolkit with keyword arguments for LitelLLM tool conversion."""

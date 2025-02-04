@@ -23,6 +23,7 @@ from unitycatalog.ai.test_utils.function_utils import CATALOG, create_function_a
 
 SCHEMA = os.environ.get("SCHEMA", "ucai_litellm_test")
 
+
 @pytest.fixture
 def tools_mock():
     """Fixture that returns a mock list of tool call responses."""

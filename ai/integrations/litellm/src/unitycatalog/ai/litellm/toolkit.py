@@ -11,6 +11,7 @@ from unitycatalog.ai.core.utils.function_processing_utils import (
     process_function_names,
 )
 
+
 class UCFunctionToolkit(BaseModel):
     """
     A toolkit for managing Unity Catalog functions and converting them into LiteLLM tools.
