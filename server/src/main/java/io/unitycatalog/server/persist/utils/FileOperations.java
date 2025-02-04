@@ -12,6 +12,7 @@ import io.unitycatalog.server.exception.BaseException;
 import io.unitycatalog.server.exception.ErrorCode;
 import io.unitycatalog.server.utils.Constants;
 import io.unitycatalog.server.utils.ServerProperties;
+import io.unitycatalog.server.utils.ServerProperties.Property;
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.net.URI;
@@ -46,7 +47,7 @@ public class FileOperations {
 
   // Model specific storage root handlers and convenience methods
   private String getModelStorageRoot() {
-    String currentModelStorageRoot = serverProperties.getProperty("storage-root.models");
+    String currentModelStorageRoot = serverProperties.get(Property.MODEL_STORAGE_ROOT);
     if (modelStorageRootPropertyCached != currentModelStorageRoot) {
       // This means the property has been updated from the previous read, or this is the first time
       // reading it
