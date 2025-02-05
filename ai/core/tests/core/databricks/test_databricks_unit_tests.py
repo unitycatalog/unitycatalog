@@ -854,8 +854,8 @@ def test_execute_function_warnings_missing_descriptions(mock_workspace_client, m
         ), "Warning about missing function description was not issued."
 
 
-def test_workspace_provided_issues_warning(caplog):
+def test_workspace_provided_issues_warning(mock_workspace_client, caplog):
     with caplog.at_level(logging.WARNING):
-        DatabricksFunctionClient(warehouse_id="id")
+        DatabricksFunctionClient(client=mock_workspace_client, warehouse_id="id")
 
     assert "The argument `warehouse_id` was specified" in caplog.text
