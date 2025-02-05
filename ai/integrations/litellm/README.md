@@ -40,22 +40,7 @@ First, initialize a client for managing UC functions in a Databricks workspace, 
 from unitycatalog.ai.core.client import set_uc_function_client
 from unitycatalog.ai.core.databricks import DatabricksFunctionClient
 
-client = DatabricksFunctionClient(
-    warehouse_id="..." # replace with the warehouse_id
-)
-
-To use Databricks-managed Unity Catalog with this package, follow the [instructions](https://docs.databricks.com/en/dev-tools/cli/authentication.html#authentication-for-the-databricks-cli) to authenticate to your workspace and ensure that your access token has workspace-level privilege for managing UC functions.
-
-First, initialize a client for managing UC functions in a Databricks workspace, and set it as the global client.
-
-```python
-from ucai.core.client import set_uc_function_client
-from ucai.core.databricks import DatabricksFunctionClient
-
-client = DatabricksFunctionClient(
-    warehouse_id="..." # replace with the warehouse_id
-    cluster_id="..." # optional, only pass when you want to use cluster for function creation
-)
+client = DatabricksFunctionClient()
 
 # sets the default uc function client
 set_uc_function_client(client)

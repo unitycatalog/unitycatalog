@@ -13,7 +13,6 @@ from pydantic import ValidationError
 from unitycatalog.ai.core.base import FunctionExecutionResult
 from unitycatalog.ai.litellm.toolkit import UCFunctionToolkit
 from unitycatalog.ai.test_utils.client_utils import (
-    USE_SERVERLESS,
     client,  # noqa: F401
     get_client,
     requires_databricks,
@@ -102,9 +101,7 @@ def test_uc_function_to_litellm_tool(function_info, client):
 
 
 @requires_databricks
-@pytest.mark.parametrize("use_serverless", [True, False])
-def test_toolkit_e2e(use_serverless, monkeypatch):
-    monkeypatch.setenv(USE_SERVERLESS, str(use_serverless))
+def test_toolkit_e2e():
     client = get_client()
     with set_default_client(client), create_function_and_cleanup(client, schema=SCHEMA) as func_obj:
         toolkit = UCFunctionToolkit(
@@ -119,9 +116,7 @@ def test_toolkit_e2e(use_serverless, monkeypatch):
 
 
 @requires_databricks
-@pytest.mark.parametrize("use_serverless", [True, False])
-def test_toolkit_e2e_with_client(use_serverless, monkeypatch):
-    monkeypatch.setenv(USE_SERVERLESS, str(use_serverless))
+def test_toolkit_e2e_with_client():
     client = get_client()
     with set_default_client(client), create_function_and_cleanup(client, schema=SCHEMA) as func_obj:
         toolkit = UCFunctionToolkit(
@@ -138,9 +133,7 @@ def test_toolkit_e2e_with_client(use_serverless, monkeypatch):
 
 
 @requires_databricks
-@pytest.mark.parametrize("use_serverless", [True, False])
-def test_multiple_toolkits(use_serverless, monkeypatch):
-    monkeypatch.setenv(USE_SERVERLESS, str(use_serverless))
+def test_multiple_toolkits():
     client = get_client()
     with set_default_client(client), create_function_and_cleanup(client, schema=SCHEMA) as func_obj:
         toolkit1 = UCFunctionToolkit(function_names=[func_obj.full_function_name])
