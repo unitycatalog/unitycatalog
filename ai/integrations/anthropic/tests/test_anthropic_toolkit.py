@@ -50,9 +50,7 @@ def mock_anthropic_tool_response(function_name, input_data, message_id):
 
 
 @requires_databricks
-@pytest.mark.parametrize("use_serverless", [True, False])
-def test_tool_calling_with_anthropic(use_serverless, monkeypatch):
-    monkeypatch.setenv("USE_SERVERLESS", str(use_serverless))
+def test_tool_calling_with_anthropic():
     client = get_client()
     with (
         set_default_client(client),
@@ -140,9 +138,7 @@ def test_tool_calling_with_anthropic(use_serverless, monkeypatch):
 
 
 @requires_databricks
-@pytest.mark.parametrize("use_serverless", [True, False])
-def test_tool_calling_with_multiple_tools_anthropic(use_serverless, monkeypatch):
-    monkeypatch.setenv("USE_SERVERLESS", str(use_serverless))
+def test_tool_calling_with_multiple_tools_anthropic():
     client = get_client()
     with (
         set_default_client(client),
@@ -276,9 +272,7 @@ def test_tool_calling_with_multiple_tools_anthropic(use_serverless, monkeypatch)
                     )
 
 
-@pytest.mark.parametrize("use_serverless", [True, False])
-def test_anthropic_toolkit_initialization(use_serverless, monkeypatch):
-    monkeypatch.setenv("USE_SERVERLESS", str(use_serverless))
+def test_anthropic_toolkit_initialization():
     client = get_client()
 
     with pytest.raises(
@@ -309,9 +303,7 @@ def generate_function_info(parameters, catalog="catalog", schema="schema"):
     )
 
 
-@pytest.mark.parametrize("use_serverless", [True, False])
-def test_anthropic_tool_definition_generation(use_serverless, monkeypatch):
-    monkeypatch.setenv("USE_SERVERLESS", str(use_serverless))
+def test_anthropic_tool_definition_generation():
     client = get_client()
     with set_default_client(client):
         function_info = generate_function_info(
