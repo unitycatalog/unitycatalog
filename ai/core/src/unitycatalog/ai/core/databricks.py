@@ -468,7 +468,11 @@ class DatabricksFunctionClient(BaseFunctionClient):
             raise ValueError("The provided primary function is not callable.")
 
         sql_function_body = generate_wrapped_sql_function_body(
-            primary_func, catalog, schema, replace, functions
+            primary_func=primary_func,
+            functions=functions,
+            catalog=catalog,
+            schema=schema,
+            replace=replace,
         )
 
         return self.create_function(sql_function_body=sql_function_body)

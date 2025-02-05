@@ -337,7 +337,6 @@ def test_replace_existing_function(client: DatabricksFunctionClient):
 @retry_flaky_test()
 @requires_databricks
 def test_replace_existing_wrapped_function(client: DatabricksFunctionClient):
-    # Define the initial wrapped functions.
     def int_func(a: int) -> int:
         """A function that adds 10 to a."""
         return a + 10
@@ -359,7 +358,6 @@ def test_replace_existing_wrapped_function(client: DatabricksFunctionClient):
         """
         return f"{int_func(a)} {str_func(b)}"
 
-    # Create the wrapped function for the first time.
     with create_wrapped_function_and_cleanup(
         client, primary_func=wrapper_func, functions=[int_func, str_func], schema=SCHEMA
     ) as func_obj:

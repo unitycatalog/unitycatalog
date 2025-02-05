@@ -579,6 +579,7 @@ def generate_wrapped_sql_function_body(
         functions: List of additional functions to be wrapped.
         catalog: The catalog name.
         schema: The schema name.
+        replace: Whether to include the 'OR REPLACE' clause.
 
     Returns:
         str: SQL statement for creating the UDF.

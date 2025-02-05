@@ -910,7 +910,11 @@ def test_create_wrapped_function_databricks(mock_workspace_client, mock_spark_se
             )
 
             mock_gen_sql.assert_called_once_with(
-                dummy_primary, "cat", "sch", True, [dummy_func1, dummy_func2]
+                primary_func=dummy_primary,
+                functions=[dummy_func1, dummy_func2],
+                catalog="cat",
+                schema="sch",
+                replace=True,
             )
             mock_create_func.assert_called_once_with(sql_function_body=dummy_sql_body)
             assert result == "dummy_func_info"
