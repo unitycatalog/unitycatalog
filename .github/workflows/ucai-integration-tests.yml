@@ -219,6 +219,7 @@ jobs:
           pip install core/.
           echo "PYTHONPATH=$(pwd)/core/src:\$PYTHONPATH" >> $GITHUB_ENV
           pip install integrations/litellm[dev]
+          pip install mlflow
       - name: Run tests
         run: |
           pytest integrations/litellm/tests --ignore=integrations/litellm/tests/test_litellm_toolkit_oss.py
