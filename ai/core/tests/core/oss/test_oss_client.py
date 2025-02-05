@@ -540,7 +540,7 @@ async def test_list_functions(uc_client: UnitycatalogFunctionClient):
             full_data_type="LONG",
             routine_definition="return x",
             input_data={"x": 2**63 - 1},
-            expected_result=f"{2**63-1}",
+            expected_result=f"{2**63 - 1}",
             comment="test",
         ),
         FunctionObj(

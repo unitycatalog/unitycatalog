@@ -444,8 +444,7 @@ class UnitycatalogFunctionClient(BaseFunctionClient):
                 await self.delete_function_async(str(function_name), timeout=timeout)
             else:
                 raise ValueError(
-                    f"Function {function_name} already exists. "
-                    f"Set replace=True to overwrite it."
+                    f"Function {function_name} already exists. Set replace=True to overwrite it."
                 )
         except ServiceException:
             pass
