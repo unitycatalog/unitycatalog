@@ -926,3 +926,10 @@ def test_create_wrapped_function_invalid_primary_databricks(mock_workspace_clien
             schema="sch",
             replace=False,
         )
+
+
+def test_workspace_provided_issues_warning(mock_workspace_client, caplog):
+    with caplog.at_level(logging.WARNING):
+        DatabricksFunctionClient(client=mock_workspace_client, warehouse_id="id")
+
+    assert "The argument `warehouse_id` was specified" in caplog.text
