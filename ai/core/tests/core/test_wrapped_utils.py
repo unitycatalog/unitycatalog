@@ -1,5 +1,9 @@
 import textwrap
 
+import pydantic
+import pytest
+from packaging.version import parse
+
 from unitycatalog.ai.core.utils.callable_utils import (
     extract_wrapped_functions,
     generate_wrapped_sql_function_body,
@@ -12,6 +16,10 @@ from unitycatalog.ai.test_utils.function_utils import (
     str_func_with_doc,
     wrap_func_no_doc,
     wrap_func_with_doc,
+)
+
+skip_pydantic_v1 = pytest.mark.skipif(
+    parse(pydantic.VERSION) < parse("2.0"), reason="Test requires Pydantic 2.x"
 )
 
 # ---------------------------
@@ -39,6 +47,7 @@ def test_extract_wrapped_functions():
 # --------------------------
 
 
+@skip_pydantic_v1
 def test_generated_wrapped_function_info_no_doc():
     func_info = generate_wrapped_function_info(
         wrap_func_no_doc,
@@ -74,6 +83,7 @@ return f"{func1} {func2}"
     assert func_info.comment == "A function that takes two arguments and returns a string."
 
 
+@skip_pydantic_v1
 def test_generated_wrapped_function_info_with_doc():
     func_info = generate_wrapped_function_info(
         wrap_func_with_doc,
