@@ -35,7 +35,7 @@ if TYPE_CHECKING:
         FunctionInfo,
         FunctionParameterInfo,
     )
-    from databricks.sdk.service.sql import StatementParameterListItem, StatementState
+    from databricks.sdk.service.sql import StatementState
 
 DATABRICKS_CONNECT_SUPPORTED_VERSION = "15.1.0"
 DATABRICKS_CONNECT_IMPORT_ERROR_MESSAGE = (
@@ -53,6 +53,14 @@ DATABRICKS_CONNECT_VERSION_NOT_SUPPORTED_ERROR_MESSAGE = (
 SESSION_RETRY_BASE_DELAY = 1
 SESSION_RETRY_MAX_DELAY = 32
 SESSION_EXCEPTION_MESSAGE = "session_id is no longer usable"
+WAREHOUSE_DEFINED_NOT_SUPPORTED_MESSAGE = (
+    "The argument `warehouse_id` was specified, which is no longer supported with "
+    "the `DatabricksFunctionClient`. Please omit this argument as it is no longer used. "
+    "This API only functions with a serverless compute resource."
+    "serverless compute resource for interfacing with Unity Catalog."
+    "Visit https://docs.unitycatalog.io/ai/client/#databricks-function-client for more details."
+)
+
 
 _logger = logging.getLogger(__name__)
 
@@ -107,6 +115,11 @@ def _is_in_databricks_notebook_environment() -> bool:
         return get_context().isInNotebook
     except Exception:
         return False
+
+
+def _warn_if_workspace_provided(**kwargs):
+    if "warehouse_id" in kwargs:
+        _logger.warning(WAREHOUSE_DEFINED_NOT_SUPPORTED_MESSAGE)
 
 
 def extract_function_name(sql_body: str) -> str:
@@ -207,6 +220,7 @@ class DatabricksFunctionClient(BaseFunctionClient):
                 is generated based on the configuration. Defaults to None.
             profile: The configuration profile to use for databricks connect. Defaults to None.
         """
+        _warn_if_workspace_provided(**kwargs)
         self.client = client or get_default_databricks_workspace_client(profile=profile)
         self.profile = profile
         self.spark = _try_get_spark_session_in_dbr()
@@ -640,104 +654,6 @@ def job_pending(state: "StatementState") -> bool:
     from databricks.sdk.service.sql import StatementState
 
     return state in (StatementState.PENDING, StatementState.RUNNING)
-
-
-@dataclass
-class ParameterizedStatement:
-    statement: str
-    parameters: List["StatementParameterListItem"]
-
-
-def get_execute_function_sql_stmt(
-    function: "FunctionInfo", parameters: Dict[str, Any]
-) -> ParameterizedStatement:
-    from databricks.sdk.service.catalog import ColumnTypeName
-    from databricks.sdk.service.sql import StatementParameterListItem
-
-    parts: List[str] = []
-    output_params: List[StatementParameterListItem] = []
-    if is_scalar(function):
-        parts.append("SELECT IDENTIFIER(:function_name)(")
-        output_params.append(
-            StatementParameterListItem(name="function_name", value=function.full_name)
-        )
-    else:
-        # TODO: IDENTIFIER doesn't work
-        parts.append(f"SELECT * FROM {function.full_name}(")
-
-    if parameters and function.input_params and function.input_params.parameters:
-        args: List[str] = []
-        use_named_args = False
-        for param_info in function.input_params.parameters:
-            if param_info.name not in parameters:
-                # validate_input_params has validated param_info.parameter_default exists
-                use_named_args = True
-            else:
-                arg_clause = ""
-                if use_named_args:
-                    arg_clause += f"{param_info.name} => "
-                param_value = parameters[param_info.name]
-                if param_info.type_name in (
-                    ColumnTypeName.ARRAY,
-                    ColumnTypeName.MAP,
-                    ColumnTypeName.STRUCT,
-                ):
-                    # Use from_json to restore values of complex types.
-                    json_value_str = json.dumps(param_value)
-                    arg_clause += f"from_json(:{param_info.name}, :{param_info.name}_type)"
-                    output_params.append(
-                        StatementParameterListItem(name=param_info.name, value=json_value_str)
-                    )
-                    output_params.append(
-                        StatementParameterListItem(
-                            name=f"{param_info.name}_type", value=param_info.type_text
-                        )
-                    )
-                elif param_info.type_name == ColumnTypeName.BINARY:
-                    if isinstance(param_value, bytes):
-                        param_value = base64.b64encode(param_value).decode("utf-8")
-                    # Use ubbase64 to restore binary values.
-                    arg_clause += f"unbase64(:{param_info.name})"
-                    output_params.append(
-                        StatementParameterListItem(name=param_info.name, value=param_value)
-                    )
-                elif is_time_type(param_info.type_name.value):
-                    date_str = (
-                        param_value if isinstance(param_value, str) else param_value.isoformat()
-                    )
-                    arg_clause += f":{param_info.name}"
-                    output_params.append(
-                        StatementParameterListItem(
-                            name=param_info.name, value=date_str, type=param_info.type_text
-                        )
-                    )
-                elif param_info.type_name == ColumnTypeName.INTERVAL:
-                    arg_clause += f":{param_info.name}"
-                    output_params.append(
-                        StatementParameterListItem(
-                            name=param_info.name,
-                            value=convert_timedelta_to_interval_str(param_value)
-                            if not isinstance(param_value, str)
-                            else param_value,
-                            type=param_info.type_text,
-                        )
-                    )
-                else:
-                    if param_info.type_name == ColumnTypeName.DECIMAL and isinstance(
-                        param_value, Decimal
-                    ):
-                        param_value = float(param_value)
-                    arg_clause += f":{param_info.name}"
-                    output_params.append(
-                        StatementParameterListItem(
-                            name=param_info.name, value=param_value, type=param_info.type_text
-                        )
-                    )
-                args.append(arg_clause)
-        parts.append(",".join(args))
-    parts.append(")")
-    statement = "".join(parts)
-    return ParameterizedStatement(statement=statement, parameters=output_params)
 
 
 @dataclass

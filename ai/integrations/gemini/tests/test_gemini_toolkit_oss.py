@@ -247,9 +247,9 @@ def test_convert_to_gemini_schema_with_valid_function_info():
         },
     }
 
-    assert (
-        result_schema == expected_schema
-    ), "The generated schema does not match the expected output."
+    assert result_schema == expected_schema, (
+        "The generated schema does not match the expected output."
+    )
 
 
 @pytest.mark.asyncio
@@ -326,14 +326,14 @@ def test_generate_callable_tool_list(uc_client):
 
     gemini_tool = callable_tools[0]
     tool = tools[0]
-    assert isinstance(
-        gemini_tool, CallableFunctionDeclaration
-    ), "The tool should be a CallableFunctionDeclaration."
-    assert (
-        tool.name == "catalog__schema__test_function"
-    ), "The tool's name does not match the expected name."
-    assert (
-        tool.description == "Executes Python code and returns its stdout."
-    ), "The tool's description does not match the expected description."
+    assert isinstance(gemini_tool, CallableFunctionDeclaration), (
+        "The tool should be a CallableFunctionDeclaration."
+    )
+    assert tool.name == "catalog__schema__test_function", (
+        "The tool's name does not match the expected name."
+    )
+    assert tool.description == "Executes Python code and returns its stdout.", (
+        "The tool's description does not match the expected description."
+    )
     assert "parameters" in tool.schema, "The tool's schema should include parameters."
     assert tool.schema["parameters"]["required"] == ["x"], "The required parameters do not match."

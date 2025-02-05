@@ -448,7 +448,7 @@ def test_execute_python_code_integration(code: str, expected_output: str):
     [
         "MLflow is an open-source platform for managing the end-to-end machine learning lifecycle. It was developed by Databricks and is now a part of the Linux Foundation's AI Foundation.",
         "print('Hello, \"world!\"')",
-        "'return '2' + \"" '3"' "' is a valid input to this function",
+        "'return '2' + \"3\"' is a valid input to this function",
     ],
 )
 def test_string_param_passing_work(text: str):

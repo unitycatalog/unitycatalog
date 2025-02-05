@@ -1,4 +1,5 @@
 import datetime
+import logging
 import os
 import re
 from decimal import Decimal
@@ -851,3 +852,10 @@ def test_execute_function_warnings_missing_descriptions(mock_workspace_client, m
         assert any(
             "The function mock_function does not have a description." in msg for msg in messages
         ), "Warning about missing function description was not issued."
+
+
+def test_workspace_provided_issues_warning(caplog):
+    with caplog.at_level(logging.WARNING):
+        DatabricksFunctionClient(warehouse_id="id")
+
+    assert "The argument `warehouse_id` was specified" in caplog.text
