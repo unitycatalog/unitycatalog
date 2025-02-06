@@ -25,10 +25,10 @@ from unitycatalog.ai.test_utils.function_utils import (
     RETRIEVER_OUTPUT_CSV,
     RETRIEVER_OUTPUT_SCALAR,
     RETRIEVER_TABLE_FULL_DATA_TYPE,
-    RETRIEVER_TABLE_RETURN_PARAMS_OSS,
 )
 from unitycatalog.ai.test_utils.function_utils_oss import (
     CATALOG,
+    RETRIEVER_TABLE_RETURN_PARAMS_OSS,
     create_function_and_cleanup_oss,
 )
 from unitycatalog.client import (

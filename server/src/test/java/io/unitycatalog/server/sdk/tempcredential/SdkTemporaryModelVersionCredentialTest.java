@@ -1,14 +1,16 @@
-package io.unitycatalog.server.base.credentials;
+package io.unitycatalog.server.sdk.tempcredential;
 
 import static io.unitycatalog.server.utils.TestUtils.*;
-import static io.unitycatalog.server.utils.TestUtils.CATALOG_NAME;
+import static io.unitycatalog.server.utils.TestUtils.MODEL_NAME;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import io.unitycatalog.client.ApiException;
+import io.unitycatalog.client.api.TemporaryCredentialsApi;
 import io.unitycatalog.client.model.*;
-import io.unitycatalog.server.base.BaseCRUDTest;
+import io.unitycatalog.server.base.BaseCRUDTestWithMockCredentials;
 import io.unitycatalog.server.base.ServerConfig;
+import io.unitycatalog.server.base.catalog.CatalogOperations;
 import io.unitycatalog.server.base.model.ModelOperations;
 import io.unitycatalog.server.base.schema.SchemaOperations;
 import io.unitycatalog.server.exception.BaseException;
@@ -16,24 +18,46 @@ import io.unitycatalog.server.exception.ErrorCode;
 import io.unitycatalog.server.model.ModelVersionInfo;
 import io.unitycatalog.server.model.ModelVersionStatus;
 import io.unitycatalog.server.persist.dao.ModelVersionInfoDAO;
+import io.unitycatalog.server.persist.utils.UriUtils;
+import io.unitycatalog.server.sdk.catalog.SdkCatalogOperations;
+import io.unitycatalog.server.sdk.models.SdkModelOperations;
+import io.unitycatalog.server.sdk.schema.SdkSchemaOperations;
+import io.unitycatalog.server.utils.ServerProperties.Property;
+import io.unitycatalog.server.utils.TestUtils;
 import java.util.UUID;
 import org.hibernate.Session;
 import org.hibernate.Transaction;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.MethodSource;
 
-public abstract class BaseTemporaryModelVersionCredentialsTest extends BaseCRUDTest {
+public class SdkTemporaryModelVersionCredentialTest extends BaseCRUDTestWithMockCredentials {
+  private SchemaOperations schemaOperations;
+  private ModelOperations modelOperations;
+  private TemporaryCredentialsApi temporaryCredentialsApi;
 
-  protected SchemaOperations schemaOperations;
-  protected ModelOperations modelOperations;
-  protected TemporaryCredentialsOperations credentialsOperations;
+  @Override
+  protected CatalogOperations createCatalogOperations(ServerConfig config) {
+    return new SdkCatalogOperations(TestUtils.createApiClient(config));
+  }
 
-  protected abstract SchemaOperations createSchemaOperations(ServerConfig serverConfig);
+  protected SchemaOperations createSchemaOperations(ServerConfig config) {
+    return new SdkSchemaOperations(TestUtils.createApiClient(config));
+  }
 
-  protected abstract ModelOperations createModelOperations(ServerConfig serverConfig);
+  protected ModelOperations createModelOperations(ServerConfig config) {
+    return new SdkModelOperations(TestUtils.createApiClient(config));
+  }
 
-  protected abstract TemporaryCredentialsOperations createTemporaryCredentialsOperations(
-      ServerConfig serverConfig);
+  String rootBase = "/tmp/" + UUID.randomUUID();
+
+  @Override
+  public void setUpProperties() {
+    super.setUpProperties();
+    serverProperties.setProperty(Property.MODEL_STORAGE_ROOT.getKey(), rootBase);
+  }
 
   @BeforeEach
   @Override
@@ -41,11 +65,21 @@ public abstract class BaseTemporaryModelVersionCredentialsTest extends BaseCRUDT
     super.setUp();
     schemaOperations = createSchemaOperations(serverConfig);
     modelOperations = createModelOperations(serverConfig);
-    credentialsOperations = createTemporaryCredentialsOperations(serverConfig);
+    temporaryCredentialsApi = new TemporaryCredentialsApi(TestUtils.createApiClient(serverConfig));
+  }
+
+  @AfterEach
+  public void afterEachTest() {
+    try {
+      // Clean up the newly created storage root
+      UriUtils.deleteStorageLocationPath("file:" + rootBase);
+    } catch (Exception e) {
+      // Ignore
+    }
   }
 
   protected void createNonFileModelVersion(
-      String modelId, long version, ModelVersionStatus status) {
+      String modelId, long version, ModelVersionStatus status, String storageLocation) {
     long createTime = 1L;
     String modelVersionId = UUID.randomUUID().toString();
     ModelVersionInfo modelVersionInfo =
@@ -58,7 +92,7 @@ public abstract class BaseTemporaryModelVersionCredentialsTest extends BaseCRUDT
             .source(MV_SOURCE2)
             .status(status)
             .version(version)
-            .storageLocation("s3://mybucket")
+            .storageLocation(storageLocation)
             .comment(COMMENT)
             .createdAt(createTime)
             .updatedAt(createTime);
@@ -85,7 +119,7 @@ public abstract class BaseTemporaryModelVersionCredentialsTest extends BaseCRUDT
     }
   }
 
-  protected void createCommonResources() throws ApiException {
+  protected void createCommonResources(String storageLocation) throws ApiException {
     CreateCatalog createCatalog = new CreateCatalog().name(CATALOG_NAME).comment(COMMENT);
     catalogOperations.createCatalog(createCatalog);
     schemaOperations.createSchema(new CreateSchema().name(SCHEMA_NAME).catalogName(CATALOG_NAME));
@@ -105,16 +139,19 @@ public abstract class BaseTemporaryModelVersionCredentialsTest extends BaseCRUDT
             .source(MV_SOURCE)
             .runId(MV_RUNID);
     modelOperations.createModelVersion(createMv);
-    createNonFileModelVersion(rmInfo.getId(), 2L, ModelVersionStatus.PENDING_REGISTRATION);
-    createNonFileModelVersion(rmInfo.getId(), 3L, ModelVersionStatus.FAILED_REGISTRATION);
-    createNonFileModelVersion(rmInfo.getId(), 4L, ModelVersionStatus.MODEL_VERSION_STATUS_UNKNOWN);
-    createNonFileModelVersion(rmInfo.getId(), 5L, ModelVersionStatus.READY);
+    createNonFileModelVersion(
+        rmInfo.getId(), 2L, ModelVersionStatus.PENDING_REGISTRATION, storageLocation);
+    createNonFileModelVersion(
+        rmInfo.getId(), 3L, ModelVersionStatus.FAILED_REGISTRATION, storageLocation);
+    createNonFileModelVersion(
+        rmInfo.getId(), 4L, ModelVersionStatus.MODEL_VERSION_STATUS_UNKNOWN, storageLocation);
+    createNonFileModelVersion(rmInfo.getId(), 5L, ModelVersionStatus.READY, storageLocation);
   }
 
   @Test
   public void testModelCRUD() throws ApiException {
     // Setup common resources
-    createCommonResources();
+    createCommonResources("s3://mybucket");
     io.unitycatalog.client.model.ModelVersionInfo fileMv =
         modelOperations.getModelVersion(MODEL_FULL_NAME, 1L);
     io.unitycatalog.client.model.ModelVersionInfo pendingCloudMv =
@@ -150,7 +187,8 @@ public abstract class BaseTemporaryModelVersionCredentialsTest extends BaseCRUDT
             .operation(ModelVersionOperation.READ_WRITE_MODEL_VERSION);
 
     assertThatThrownBy(
-            () -> credentialsOperations.generateTemporaryModelVersionCredentials(generateFileCreds))
+            () ->
+                temporaryCredentialsApi.generateTemporaryModelVersionCredentials(generateFileCreds))
         .isInstanceOf(ApiException.class)
         .hasFieldOrPropertyWithValue("code", ErrorCode.INVALID_ARGUMENT.getHttpStatus().code());
 
@@ -165,7 +203,7 @@ public abstract class BaseTemporaryModelVersionCredentialsTest extends BaseCRUDT
 
     assertThatThrownBy(
             () ->
-                credentialsOperations.generateTemporaryModelVersionCredentials(
+                temporaryCredentialsApi.generateTemporaryModelVersionCredentials(
                     generateCloudFailedCreds))
         .isInstanceOf(ApiException.class)
         .hasFieldOrPropertyWithValue("code", ErrorCode.INVALID_ARGUMENT.getHttpStatus().code());
@@ -181,7 +219,7 @@ public abstract class BaseTemporaryModelVersionCredentialsTest extends BaseCRUDT
 
     assertThatThrownBy(
             () ->
-                credentialsOperations.generateTemporaryModelVersionCredentials(
+                temporaryCredentialsApi.generateTemporaryModelVersionCredentials(
                     generateCloudUnknownCreds))
         .isInstanceOf(ApiException.class)
         .hasFieldOrPropertyWithValue("code", ErrorCode.INVALID_ARGUMENT.getHttpStatus().code());
@@ -197,7 +235,7 @@ public abstract class BaseTemporaryModelVersionCredentialsTest extends BaseCRUDT
 
     assertThatThrownBy(
             () ->
-                credentialsOperations.generateTemporaryModelVersionCredentials(
+                temporaryCredentialsApi.generateTemporaryModelVersionCredentials(
                     generateCloudReadyCreds))
         .isInstanceOf(ApiException.class)
         .hasFieldOrPropertyWithValue("code", ErrorCode.INVALID_ARGUMENT.getHttpStatus().code());
@@ -213,9 +251,36 @@ public abstract class BaseTemporaryModelVersionCredentialsTest extends BaseCRUDT
 
     assertThatThrownBy(
             () ->
-                credentialsOperations.generateTemporaryModelVersionCredentials(
+                temporaryCredentialsApi.generateTemporaryModelVersionCredentials(
                     generateUnknownOperation))
         .isInstanceOf(ApiException.class)
         .hasFieldOrPropertyWithValue("code", ErrorCode.INVALID_ARGUMENT.getHttpStatus().code());
+  }
+
+  @ParameterizedTest
+  @MethodSource("getArgumentsForParameterizedTests")
+  public void testGenerateTemporaryCredentialsWhereConfIsProvided(
+      String scheme, boolean isConfiguredPath) throws ApiException {
+    String url = getTestCloudPath(scheme, isConfiguredPath);
+    // Setup common resources
+    createCommonResources(url);
+    GenerateTemporaryModelVersionCredential generateCloudReadyCreds =
+        new GenerateTemporaryModelVersionCredential()
+            .catalogName(CATALOG_NAME)
+            .schemaName(SCHEMA_NAME)
+            .modelName(MODEL_NAME)
+            .version(5L)
+            .operation(ModelVersionOperation.READ_MODEL_VERSION);
+    if (isConfiguredPath) {
+      TemporaryCredentials temporaryCredentials =
+          temporaryCredentialsApi.generateTemporaryModelVersionCredentials(generateCloudReadyCreds);
+      assertTemporaryCredentials(temporaryCredentials, scheme);
+    } else {
+      assertThatThrownBy(
+              () ->
+                  temporaryCredentialsApi.generateTemporaryModelVersionCredentials(
+                      generateCloudReadyCreds))
+          .isInstanceOf(ApiException.class);
+    }
   }
 }
