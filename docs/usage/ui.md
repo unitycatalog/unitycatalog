@@ -32,20 +32,20 @@ The following steps show how you can create, describe, and delete UC catalogs.
     After clicking the top **Catalog** button, you will see your list of catalogs.  To create a catalog, click the
     **Create Catalog** button to the right.
 
-![uc-ui-catalog-create-1](../assets/images/ui/uc-ui-catalog-create-1.png)
+![Unity Catalog Creation](../assets/images/ui/uc-ui-catalog-create-1.png)
     
 
 === "2. Create catalog dialog"
 
     Specify the name and include any comments when creating your catalog.
 
-![uc-ui-catalog-create-2](../assets/images/ui/uc-ui-catalog-create-2.png)
+![Unity Catalog Catalog Name Writing](../assets/images/ui/uc-ui-catalog-create-2.png)
 
 === "3. Delete a catalog"
 
     Click the *horizontal three dots* next to **Create Schema** button to delete your catalog.
 
-![uc-ui-catalog-delete](../assets/images/ui/uc-ui-catalog-delete.png)
+![Deleting the Catalog](../assets/images/ui/uc-ui-catalog-delete.png)
 
 ---
 
@@ -58,20 +58,20 @@ The following steps show how you can create, describe, and delete UC schemas.
     After clicking on any catalog, the main dialog contains the list of available schemas.  Click the
     **Create Schemas** button to the right to create a new schema.
 
-![uc-ui-schema-create-1](../assets/images/ui/uc-ui-schema-create-1.png)
+![Unity catalog Schema Creation](../assets/images/ui/uc-ui-schema-create-1.png)
     
 
 === "2. Create schemas dialog"
 
     Specify the name and include any comments when creating your schema.
 
-![uc-ui-schema-create-2](../assets/images/ui/uc-ui-schema-create-2.png)
+![Naming the Schema](../assets/images/ui/uc-ui-schema-create-2.png)
 
 === "3. Delete a schema"
 
     Click the *horizontal three dots* to the right to delete your schema.
 
-![uc-ui-schema-delete](../assets/images/ui/uc-ui-schema-delete.png)
+![Deleting the Schema](../assets/images/ui/uc-ui-schema-delete.png)
 
 ---
 
@@ -83,20 +83,20 @@ The following steps show how you can view your UC table metadata and description
 
     Click on the schema (e.g., `unity.demo`) to view its tables.
 
-![uc-ui-tables-1](../assets/images/ui/uc-ui-tables-1.png)
+![Showing Tables in Schema](../assets/images/ui/uc-ui-tables-1.png)
     
 === "2. View tables in schema (2)"
 
     Click on the schema (e.g., `unity.default`) to view its tables.
 
-![uc-ui-tables-2](../assets/images/ui/uc-ui-tables-2.png)
+![Showing Tables](../assets/images/ui/uc-ui-tables-2.png)
 
 === "3. View table metadata"
 
     Click on any table (e.g., `unity.default.marksheet`) to view its metadata.  You also have the option to delete the
     table via the *three horizontal dots* on the right.
 
-![uc-ui-tables-3](../assets/images/ui/uc-ui-tables-3.png)
+![Showing Tables dataTypes](../assets/images/ui/uc-ui-tables-3.png)
 
 ---
 
@@ -108,20 +108,20 @@ The following steps show how you can view your UC volume metadata and descriptio
 
     Using the left-hand nav bar, click on *catalog > schema* (e.g., `unity` > `default`) to view the available volumes.
 
-![uc-ui-volumes-1](../assets/images/ui/uc-ui-volumes-1.png)
+![Checking Volume](../assets/images/ui/uc-ui-volumes-1.png)
     
 === "2. View volume metadata"
 
     Click on the volume (e.g., `unity.default.txt_files`) to view its metadata.  You have the option to delete it by
     click on the *three horizontal dots* to the right.
 
-![uc-ui-volumes-2](../assets/images/ui/uc-ui-volumes-2.png)
+![View Volume Metadata](../assets/images/ui/uc-ui-volumes-2.png)
 
 === "3. Edit volume description"
 
     Click the edit button to change its descripton.
 
-![uc-ui-volumes-3](../assets/images/ui/uc-ui-volumes-3.png)
+![Editing the Volume Description](../assets/images/ui/uc-ui-volumes-3.png)
 
 ---
 
@@ -134,14 +134,14 @@ The following steps show how you can view your UC functions metadata and descrip
     Using the left-hand nav bar, click on *catalog > schema* (e.g., `unity` > `default`) to view the available
     functions.
 
-![uc-ui-functions-1](../assets/images/ui/uc-ui-functions-1.png)
+![Showing Functions in Unity Catalog](../assets/images/ui/uc-ui-functions-1.png)
     
 === "2. View functions metadata"
 
     Click on the volume (e.g., `unity.default.lowercase`) to view its metadata.  You have the option to delete it by
     click on the *three horizontal dots* to the right.
 
-![uc-ui-functions-2](../assets/images/ui/uc-ui-functions-2.png)
+![View Functions Metadata](../assets/images/ui/uc-ui-functions-2.png)
 
 ---
 
@@ -154,31 +154,31 @@ The following steps show how you can list, describe and delete your UC models.
     After clicking on any *schema > models*, the main dialog contains the list of available models.  Click the
     **horizontal three dots** button to the right to create a new model.
 
-![uc-ui-models-1](../assets/images/ui/uc-ui-models-1.png)
+![Listing Models](../assets/images/ui/uc-ui-models-1.png)
 
 === "2. Create model"
 
     Click the edit button to change its descripton.
 
-![uc-ui-model-create-1](../assets/images/ui/uc-ui-model-create-1.png)
+![Creation of Model](../assets/images/ui/uc-ui-model-create-1.png)
 
 === "3. Create model dialog"
 
     Specify the name and include any comments when creating your model.
 
-![uc-ui-model-create-2](../assets/images/ui/uc-ui-model-create-2.png)
+![Naming the Model and Its Comments](../assets/images/ui/uc-ui-model-create-2.png)
 
 === "4. Edit model description"
 
     Click the edit button to change its descripton.
 
-![uc-ui-model-edit](../assets/images/ui/uc-ui-model-edit.png)
+![Editing the Model Description](../assets/images/ui/uc-ui-model-edit.png)
 
 === "5. Delete a model"
 
     Click the *horizontal three dots* to the right to delete your model.
 
-![uc-ui-model-delete](../assets/images/ui/uc-ui-model-delete.png)
+![Deleting the Unity Catalog Model](../assets/images/ui/uc-ui-model-delete.png)
 
 ---
 
@@ -190,30 +190,33 @@ The following steps show how you can view your UC model versions and their metad
 
     Using the left-hand nav bar, click on *catalog > schema* (e.g., `unity` > `default`) to view the available models.
 
-![uc-ui-models-1](../assets/images/ui/uc-ui-models-1.png)
+![Showing Models and Its creations Date](../assets/images/ui/uc-ui-models-1.png)
 
 === "2. View model versions"
 
     Click on the model (e.g., `unity.default.iris`) to view its version(s).
 
-![uc-ui-models-2](../assets/images/ui/uc-ui-models-2.png)
+![Showing Model Version](../assets/images/ui/uc-ui-models-2.png)
 
 === "3. View model version metadata"
 
     Click on the model version to view its details.
 
-![uc-ui-models-3](../assets/images/ui/uc-ui-models-3.png)
+![Show model Version Metadata](../assets/images/ui/uc-ui-models-3.png)
 
 === "4. Edit model version description"
 
     Click the edit button to change its descripton.
 
-![uc-ui-model-version-edit](../assets/images/ui/uc-ui-model-version-edit.png)
+![Editing Version Description](../assets/images/ui/uc-ui-model-version-edit.png)
 
 === "5. Delete a model version"
 
     Click the *horizontal three dots* to the right to delete your model version.
 
-![uc-ui-model-version-delete](../assets/images/ui/uc-ui-model-version-delete.png)
+![Deleting the Model Version](../assets/images/ui/uc-ui-model-version-delete.png)
 
 ---
+## Conclusion
+
+The Unity Catalog UI provides a comprehensive interface for managing data and AI assets. By following the steps outlined in this guide, you can effectively create, describe, and delete catalogs, schemas, tables, volumes, functions, models, and model versions. Ensure that you have the necessary prerequisites installed and follow the provided commands to start the UI locally. This documentation aims to help you navigate and utilize the Unity Catalog UI efficiently.
