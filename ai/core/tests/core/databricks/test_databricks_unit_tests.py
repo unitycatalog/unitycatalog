@@ -969,7 +969,7 @@ def test_create_python_function_with_environment_version(client: DatabricksFunct
 
         assert result == mock_function_info
 
-        
+
 def test_workspace_provided_issues_warning(mock_workspace_client, caplog):
     with caplog.at_level(logging.WARNING):
         DatabricksFunctionClient(client=mock_workspace_client, warehouse_id="id")
