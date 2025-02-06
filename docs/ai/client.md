@@ -257,12 +257,7 @@ The `DatabricksFunctionClient` is a core component of the Unity Catalog AI Core 
 
 - **Python Version**: Python 3.10 or higher is **required** when using `databricks-connect` for serverless compute.
 - **Databricks Connect**: To create UC functions using SQL body definitions or to execute functions using serverless compute, `databricks-connect` version `15.1.0` is required. This is the only supported version that is compatible.
-- **Serverless Compute**: Function creation and execution using `databricks-connect` require serverless compute.
-- **Warehouse**: If the `warehouse_id` is not provided during client initialization, `databricks-connect` with serverless compute will be used.
-    - Classic SQL Warehouses are not supported for function execution due to excessive latency, long startup times, and noticeable overhead with executing functions.
-    Function creation can run on any Warehouse type.
-    - The SQL Warehouse must be of a serverless type for function execution. To learn more about the different warehouse types, see [the docs](https://docs.databricks.com/en/admin/sql/warehouse-types.html).
-- **Dependencies and Environment Support**: A Databricks runtime that supports the `ENVIRONMENT` UDF parameter is required in order to specify additional external PyPI dependencies for function execution. Currently, only DBR version 17 and higher support this feature. If you specify the arguments `dependencies` or `environment_version` in the `create_python_function` API, you will receive an error from Unity Catalog if you are on a runtime lower than 17.
+- **Serverless Compute**: In order to create and execute functions, a serverless compute connection **is required**.
 
 ### Environment Variables for Databricks
 
@@ -270,10 +265,7 @@ You can configure the behavior of function execution using the following environ
 
 | Environment Variable                                                | Description                                                                                                                                                                     | Default Value |
 |---------------------------------------------------------------------|---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|---------------|
-| `UCAI_DATABRICKS_WAREHOUSE_EXECUTE_FUNCTION_WAIT_TIMEOUT`           | Time in seconds to wait for function execution. Format: `Ns` where `N` is between 0 and 50. Setting to `0s` executes asynchronously.                                            | `30s`         |
-| `UCAI_DATABRICKS_WAREHOUSE_EXECUTE_FUNCTION_ROW_LIMIT`              | Maximum number of rows in the function execution result.                                                                                                                        | `100`         |
-| `UCAI_DATABRICKS_WAREHOUSE_EXECUTE_FUNCTION_BYTE_LIMIT`             | Maximum byte size of the function execution result. If exceeded, the `truncated` field in the response is set to `true`.                                                        | `1048576`     |
-| `UCAI_DATABRICKS_WAREHOUSE_RETRY_TIMEOUT`                           | Client-side retry timeout in seconds for function execution. If execution doesn't complete within `wait_timeout`, the client retries until this timeout is reached.             | `120`         |
+| `UCAI_DATABRICKS_SESSION_RETRY_MAX_ATTEMPTS`                        | Maximum number of attempts to retry refreshing the session client in case of token expiry.                                                               | `5`         |
 | `UCAI_DATABRICKS_SERVERLESS_EXECUTION_RESULT_ROW_LIMIT`             | Maximum number of rows when executing functions using serverless compute with `databricks-connect`.                                                                              | `100`         |
 
 ### Initialization
@@ -284,11 +276,9 @@ is used not only for direct interface with functions, but also is the mechanism 
 ``` python
 from ucai.core.databricks import DatabricksFunctionClient
 
-# Initialize with a warehouse ID (for executing functions using a SQL Warehouse)
-client = DatabricksFunctionClient(warehouse_id="YOUR_WAREHOUSE_ID")
-
-# Or initialize without a warehouse ID to use serverless compute with databricks-connect
+# Initialize without a warehouse ID to use serverless compute for creating, listing, deleting, retrieving, and executing functions
 client = DatabricksFunctionClient()
+
 ```
 
 ---
@@ -457,8 +447,8 @@ print(result.value)  # Outputs: HELLO WORLD
 ``` python
 from ucai.core.databricks import DatabricksFunctionClient
 
-# Initialize the client
-client = DatabricksFunctionClient(warehouse_id="YOUR_WAREHOUSE_ID")
+# Initialize the client, connecting to serverless
+client = DatabricksFunctionClient()
 
 # Define the function
 def add_numbers(a: float, b: float) -> float:
@@ -491,27 +481,6 @@ print(result.value)  # Outputs: 16.0
 
 ```
 
-### Using Environment Variables
-
-Adjust the function execution timeout value by overriding the default via the environment variable.
-
-``` python
-import os
-from ucai.core.databricks import DatabricksFunctionClient
-
-# Set the wait timeout to 50 seconds
-os.environ["UCAI_DATABRICKS_WAREHOUSE_EXECUTE_FUNCTION_WAIT_TIMEOUT"] = "50s"
-
-client = DatabricksFunctionClient(warehouse_id="YOUR_WAREHOUSE_ID")
-
-# Execute your function as before
-result = client.execute_function(
-    "your_catalog.your_schema.your_function_name",
-    parameters={"param": "test"}
-)
-```
-
 ### Additional Notes
 
 - **Error Handling**: If a function execution fails, `FunctionExecutionResult` will contain an `error` attribute with details on the failure.
-- **Asynchronous Execution**: Setting UCAI_DATABRICKS_WAREHOUSE_EXECUTE_FUNCTION_WAIT_TIMEOUT to 0s will execute the function asynchronously. The call will immediately return in async mode and the result will need to be polled and fetched for its completed state when executing in async mode.

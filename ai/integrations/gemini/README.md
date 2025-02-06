@@ -88,10 +88,7 @@ Initialize a client for managing UC functions in a Databricks workspace, and set
 from unitycatalog.ai.core.base import set_uc_function_client
 from unitycatalog.ai.core.databricks import DatabricksFunctionClient
 
-client = DatabricksFunctionClient(
-    warehouse_id="..." # replace with the warehouse_id
-    cluster_id="..." # optional, only pass when you want to use cluster for function creation
-)
+client = DatabricksFunctionClient()
 
 # sets the default uc function client
 set_uc_function_client(client)
@@ -166,6 +163,7 @@ print(response)
 ```
 
 ### Showing Details of the Tool Call
+
 You can review the conversation history and see how the LLM decided to call the function:
 
 ```python
@@ -173,8 +171,11 @@ for content in chat.history:
     print(content.role, "->", [type(part).to_dict(part) for part in content.parts])
     print("-" * 80)
 ```
+
 ## Manually execute function calls
+
 if you prefer more control, you can manually detect and execute function calls:
+
 ```python
 from google.generativeai.types import content_types
 from unitycatalog.ai.gemini.utils import get_function_calls,generate_tool_call_messages

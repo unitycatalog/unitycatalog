@@ -1,4 +1,5 @@
 import datetime
+import logging
 import os
 import re
 from decimal import Decimal
@@ -967,3 +968,10 @@ def test_create_python_function_with_environment_version(client: DatabricksFunct
         client.create_function.assert_called_once_with(sql_function_body=expected_sql_body)
 
         assert result == mock_function_info
+
+        
+def test_workspace_provided_issues_warning(mock_workspace_client, caplog):
+    with caplog.at_level(logging.WARNING):
+        DatabricksFunctionClient(client=mock_workspace_client, warehouse_id="id")
+
+    assert "The argument `warehouse_id` was specified" in caplog.text
