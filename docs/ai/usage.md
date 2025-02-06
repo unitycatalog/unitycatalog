@@ -50,6 +50,7 @@ Unity Catalog AI offers native integrations with a variety of popular GenAI fram
 - [Anthropic](./integrations/anthropic.md)
 - [CrewAI](./integrations/crewai.md)
 - [AutoGen](./integrations/autogen.md)
+- [LiteLLM](./integrations/litellm.md)
 
 Each integration is designed to provide a smooth and intuitive experience, allowing you to focus on building intelligent applications without worrying about the underlying infrastructure.
 
