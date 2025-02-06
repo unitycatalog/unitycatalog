@@ -274,9 +274,8 @@ In order to perform CRUD operations and to execute UC functions, you will need t
 is used not only for direct interface with functions, but also is the mechanism by which a function will be called as a tool by a GenAI application.
 
 ``` python
-from ucai.core.databricks import DatabricksFunctionClient
+from unitycatalog.ai.core.databricks import DatabricksFunctionClient
 
-# Initialize without a warehouse ID to use serverless compute for creating, listing, deleting, retrieving, and executing functions
 client = DatabricksFunctionClient()
 
 ```
@@ -424,7 +423,7 @@ print(result.value)  # Outputs: HELLO WORLD
 ### Create and Execute a Function
 
 ``` python
-from ucai.core.databricks import DatabricksFunctionClient
+from unitycatalog.ai.core.databricks import DatabricksFunctionClient
 
 # Initialize the client, connecting to serverless
 client = DatabricksFunctionClient()
