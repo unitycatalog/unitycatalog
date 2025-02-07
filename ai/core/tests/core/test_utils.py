@@ -10,7 +10,6 @@ from databricks.sdk.service.catalog import (
 )
 from pydantic import BaseModel
 
-from unitycatalog.ai.core.types import Variant
 from unitycatalog.ai.core.utils.function_processing_utils import (
     FullFunctionName,
     generate_function_input_params_schema,

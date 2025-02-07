@@ -1,6 +1,7 @@
 import datetime
 import decimal
 from typing import Any, Dict, get_args, get_origin
+
 from unitycatalog.ai.core.types import Variant
 
 PYTHON_TO_SQL_TYPE_MAPPING = {

@@ -1,5 +1,6 @@
 from typing import Any
 
+
 class Variant:
     """
     A class to represent a variant type in Unity Catalog.
@@ -8,7 +9,8 @@ class Variant:
     @classmethod
     def validate(cls, value: Any) -> None:
         """
-        Validate the value against the variant type.
+        Validate the value against the variant type. This class method is a helper method
+        to validate input data that you intend to pass as a VARIANT type in Unity Catalog.
         """
         if isinstance(value, (int, float, str, bool, type(None))):
             return
