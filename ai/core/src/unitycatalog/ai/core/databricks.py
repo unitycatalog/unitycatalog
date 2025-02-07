@@ -699,6 +699,9 @@ def get_execute_function_sql_command(
                 ):
                     json_value_str = json.dumps(param_value)
                     arg_clause += f"from_json('{json_value_str}', '{param_info.type_text}')"
+                elif param_info.type_name == ColumnTypeName.VARIANT:
+                    json_value_str = json.dumps(param_value)
+                    arg_clause += f"parse_json('{json_value_str}')"
                 elif param_info.type_name == ColumnTypeName.BINARY:
                     if isinstance(param_value, bytes):
                         param_value = base64.b64encode(param_value).decode("utf-8")
