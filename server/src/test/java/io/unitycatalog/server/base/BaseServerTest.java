@@ -2,6 +2,7 @@ package io.unitycatalog.server.base;
 
 import io.unitycatalog.server.UnityCatalogServer;
 import io.unitycatalog.server.persist.utils.HibernateConfigurator;
+import io.unitycatalog.server.service.credential.CredentialOperations;
 import io.unitycatalog.server.utils.ServerProperties;
 import io.unitycatalog.server.utils.TestUtils;
 import java.util.Properties;
@@ -17,11 +18,14 @@ public abstract class BaseServerTest {
   protected static UnityCatalogServer unityCatalogServer;
   protected static Properties serverProperties;
   protected static HibernateConfigurator hibernateConfigurator;
+  protected static CredentialOperations credentialOperations;
 
   protected void setUpProperties() {
     serverProperties = new Properties();
     serverProperties.setProperty("server.env", "test");
   }
+
+  protected void setUpCredentialOperations() {}
 
   @BeforeEach
   public void setUp() {
@@ -40,9 +44,14 @@ public abstract class BaseServerTest {
       int port = TestUtils.getRandomPort();
       setUpProperties();
       ServerProperties initServerProperties = new ServerProperties(serverProperties);
+      setUpCredentialOperations();
       hibernateConfigurator = new HibernateConfigurator(initServerProperties);
       unityCatalogServer =
-          UnityCatalogServer.builder().port(port).serverProperties(initServerProperties).build();
+          UnityCatalogServer.builder()
+              .port(port)
+              .serverProperties(initServerProperties)
+              .credentialOperations(credentialOperations)
+              .build();
       unityCatalogServer.start();
       serverConfig.setServerUrl("http://localhost:" + port);
     }

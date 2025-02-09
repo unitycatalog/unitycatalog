@@ -9,13 +9,19 @@ from pydantic import ValidationError
 from unitycatalog.ai.core.base import FunctionExecutionResult
 from unitycatalog.ai.core.client import UnitycatalogFunctionClient
 from unitycatalog.ai.crewai.toolkit import UCFunctionToolkit
-from unitycatalog.ai.test_utils.function_utils import RETRIEVER_OUTPUT_CSV, RETRIEVER_OUTPUT_SCALAR
+from unitycatalog.ai.test_utils.function_utils import (
+    RETRIEVER_OUTPUT_CSV,
+    RETRIEVER_OUTPUT_SCALAR,
+    RETRIEVER_TABLE_FULL_DATA_TYPE,
+)
 from unitycatalog.ai.test_utils.function_utils_oss import (
     CATALOG,
+    RETRIEVER_TABLE_RETURN_PARAMS_OSS,
     create_function_and_cleanup_oss,
 )
 from unitycatalog.client import (
     ApiClient,
+    ColumnTypeName,
     Configuration,
     FunctionInfo,
     FunctionParameterInfo,
@@ -141,7 +147,14 @@ def test_toolkit_function_argument_errors(uc_client):
         UCFunctionToolkit(client=uc_client)
 
 
-def generate_function_info():
+def generate_function_info(
+    catalog="catalog",
+    schema="schema",
+    name="test",
+    data_type=None,
+    full_data_type=None,
+    return_params=None,
+):
     """Generate a mock FunctionInfo object for testing."""
     parameters = [
         {
@@ -157,14 +170,17 @@ def generate_function_info():
         }
     ]
     return FunctionInfo(
-        catalog_name="catalog",
-        schema_name="schema",
-        name="test",
+        catalog_name=catalog,
+        schema_name=schema,
+        name=name,
         input_params=FunctionParameterInfos(
             parameters=[FunctionParameterInfo(**param) for param in parameters]
         ),
-        full_name="catalog.schema.test",
+        full_name=f"{catalog}.{schema}.{name}",
         comment="Executes Python code and returns its stdout.",
+        data_type=data_type,
+        full_data_type=full_data_type,
+        return_params=return_params,
     )
 
 
@@ -201,9 +217,26 @@ async def test_uc_function_to_crewai_tool(uc_client):
         ("CSV", RETRIEVER_OUTPUT_CSV),
     ],
 )
+@pytest.mark.parametrize(
+    "data_type,full_data_type,return_params",
+    [
+        (
+            ColumnTypeName.TABLE_TYPE,
+            RETRIEVER_TABLE_FULL_DATA_TYPE,
+            RETRIEVER_TABLE_RETURN_PARAMS_OSS,
+        ),
+    ],
+)
 @pytest.mark.asyncio
-async def test_crewai_tool_with_tracing_as_retriever(uc_client, format: str, function_output: str):
-    mock_function_info = generate_function_info()
+async def test_crewai_tool_with_tracing_as_retriever(
+    uc_client, format, function_output, data_type, full_data_type, return_params
+):
+    mock_function_info = generate_function_info(
+        name=f"test_{format}",
+        data_type=data_type,
+        full_data_type=full_data_type,
+        return_params=return_params,
+    )
 
     with (
         mock.patch(
@@ -221,19 +254,17 @@ async def test_crewai_tool_with_tracing_as_retriever(uc_client, format: str, fun
         mlflow.crewai.autolog()
 
         tool = UCFunctionToolkit.uc_function_to_crewai_tool(
-            function_name=f"catalog.schema.test_{format}", client=uc_client
+            function_name=mock_function_info.full_name, client=uc_client
         )
         result = tool.fn(x="some input")
         assert json.loads(result)["value"] == function_output
 
-        import mlflow
-
         trace = mlflow.get_last_active_trace()
         assert trace is not None
+        assert trace.data.spans[0].name == mock_function_info.full_name
         assert trace.info.execution_time_ms is not None
         assert trace.data.request == '{"x": "some input"}'
         assert trace.data.response == RETRIEVER_OUTPUT_SCALAR
-        assert trace.data.spans[0].name == f"catalog.schema.test_{format}"
 
         mlflow.crewai.autolog(disable=True)
 

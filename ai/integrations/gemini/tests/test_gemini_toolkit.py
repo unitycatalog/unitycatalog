@@ -8,19 +8,25 @@ from databricks.sdk.service.catalog import (
     FunctionParameterInfo,
     FunctionParameterInfos,
 )
+from google.generativeai import GenerativeModel
 from google.generativeai.types import CallableFunctionDeclaration
 from pydantic import ValidationError
 
 from unitycatalog.ai.core.client import FunctionExecutionResult
+from unitycatalog.ai.core.utils.validation_utils import has_retriever_signature
 from unitycatalog.ai.gemini.toolkit import GeminiTool, UCFunctionToolkit
 from unitycatalog.ai.test_utils.client_utils import (
-    USE_SERVERLESS,
+    TEST_IN_DATABRICKS,
     client,  # noqa: F401
     get_client,
     requires_databricks,
     set_default_client,
 )
-from unitycatalog.ai.test_utils.function_utils import CATALOG, create_function_and_cleanup
+from unitycatalog.ai.test_utils.function_utils import (
+    CATALOG,
+    create_function_and_cleanup,
+    create_table_function_and_cleanup,
+)
 from unitycatalog.client.models.function_parameter_type import FunctionParameterType
 
 SCHEMA = os.environ.get("SCHEMA", "ucai_gemini_test")
@@ -63,9 +69,7 @@ def test_gemini_tool_to_dict(sample_gemini_tool):
 
 
 @requires_databricks
-@pytest.mark.parametrize("use_serverless", [True, False])
-def test_toolkit_e2e(use_serverless, monkeypatch):
-    monkeypatch.setenv(USE_SERVERLESS, str(use_serverless))
+def test_toolkit_e2e():
     client = get_client()
     with set_default_client(client), create_function_and_cleanup(client, schema=SCHEMA) as func_obj:
         toolkit = UCFunctionToolkit(function_names=[func_obj.full_function_name])
@@ -86,9 +90,7 @@ def test_toolkit_e2e(use_serverless, monkeypatch):
 
 
 @requires_databricks
-@pytest.mark.parametrize("use_serverless", [True, False])
-def test_toolkit_e2e_manually_passing_client(use_serverless, monkeypatch):
-    monkeypatch.setenv(USE_SERVERLESS, str(use_serverless))
+def test_toolkit_e2e_manually_passing_client():
     client = get_client()
     with set_default_client(client), create_function_and_cleanup(client, schema=SCHEMA) as func_obj:
         toolkit = UCFunctionToolkit(function_names=[func_obj.full_function_name], client=client)
@@ -110,9 +112,7 @@ def test_toolkit_e2e_manually_passing_client(use_serverless, monkeypatch):
 
 
 @requires_databricks
-@pytest.mark.parametrize("use_serverless", [True, False])
-def test_multiple_toolkits(use_serverless, monkeypatch):
-    monkeypatch.setenv(USE_SERVERLESS, str(use_serverless))
+def test_multiple_toolkits():
     client = get_client()
     with set_default_client(client), create_function_and_cleanup(client, schema=SCHEMA) as func_obj:
         toolkit1 = UCFunctionToolkit(function_names=[func_obj.full_function_name])
@@ -150,7 +150,14 @@ def test_toolkit_function_argument_errors(client):
         UCFunctionToolkit(client=client)
 
 
-def generate_function_info():
+def generate_function_info(
+    catalog="catalog",
+    schema="schema",
+    name="test",
+    data_type=None,
+    full_data_type=None,
+    return_params=None,
+):
     parameters = [
         {
             "comment": "test comment",
@@ -165,14 +172,17 @@ def generate_function_info():
         }
     ]
     return FunctionInfo(
-        catalog_name="catalog",
-        schema_name="schema",
-        name="test",
+        catalog_name=catalog,
+        schema_name=schema,
+        name=name,
+        full_name=f"{catalog}.{schema}.{name}",
         input_params=FunctionParameterInfos(
             parameters=[FunctionParameterInfo(**param) for param in parameters]
         ),
-        full_name="catalog.schema.test",
         comment="Executes Python code and returns its stdout.",
+        data_type=data_type,
+        full_data_type=full_data_type,
+        return_params=return_params,
     )
 
 
@@ -199,9 +209,9 @@ def test_convert_to_gemini_schema_with_valid_function_info():
         },
     }
 
-    assert (
-        result_schema == expected_schema
-    ), "The generated schema does not match the expected output."
+    assert result_schema == expected_schema, (
+        "The generated schema does not match the expected output."
+    )
 
 
 def test_uc_function_to_gemini_tool(client):
@@ -221,6 +231,83 @@ def test_uc_function_to_gemini_tool(client):
         )
         result = json.loads(tool.fn(x="some_string"))["value"]
         assert result == "some_string"
+
+
+@requires_databricks
+def test_gemini_tool_calling_with_trace_as_retriever():
+    client = get_client()
+    import mlflow
+
+    if TEST_IN_DATABRICKS:
+        import mlflow.tracking._model_registry.utils
+
+        mlflow.tracking._model_registry.utils._get_registry_uri_from_spark_session = (
+            lambda: "databricks-uc"
+        )
+
+    with (
+        set_default_client(client),
+        create_table_function_and_cleanup(client, schema=SCHEMA) as func_obj,
+    ):
+        func_name = func_obj.full_function_name
+        func_info = client.get_function(func_name)
+        assert has_retriever_signature(func_info)
+        toolkit = UCFunctionToolkit(function_names=[func_name])
+        tools = toolkit.generate_callable_tool_list()
+
+        mock_response = mock.MagicMock()
+
+        mock_function_call = mock.MagicMock()
+        mock_function_call.name = func_obj.full_function_name
+        mock_function_call.args = {
+            "query": "What are the page contents?",
+        }
+        mock_part = mock.MagicMock()
+        mock_part.functionCall = mock_function_call
+        mock_content = mock.MagicMock()
+        mock_content.parts = [mock_part]
+        mock_content.role = "model"
+        mock_candidate = mock.MagicMock()
+        mock_candidate.content = mock_content
+        mock_candidate.finishReason = 1  # STOP
+        mock_candidate.index = 0
+        mock_candidate.safetyRatings = [
+            {"category": "HARM_CATEGORY_SEXUALLY_EXPLICIT", "probability": "NEGLIGIBLE"},
+            {"category": "HARM_CATEGORY_HARASSMENT", "probability": "NEGLIGIBLE"},
+            {"category": "HARM_CATEGORY_HATE_SPEECH", "probability": "NEGLIGIBLE"},
+            {"category": "HARM_CATEGORY_DANGEROUS_CONTENT", "probability": "NEGLIGIBLE"},
+        ]
+        mock_response.candidates = [mock_candidate]
+        mock_prompt_feedback = mock.MagicMock()
+        mock_prompt_feedback.block_reason = None
+        mock_response.prompt_feedback = mock_prompt_feedback
+
+        with mock.patch("google.generativeai.ChatSession.send_message", return_value=mock_response):
+            mlflow.gemini.autolog()
+
+            model = GenerativeModel(model_name="gemini-2.0-flash-exp", tools=tools)
+            chat = model.start_chat(enable_automatic_function_calling=True)
+            response = chat.send_message("What does the table say?")
+
+            tool_call = response.candidates[0].content.parts[0].functionCall
+            tool_call_args = tool_call.args
+
+            result = client.execute_function(
+                func_name, tool_call_args, enable_retriever_tracing=True
+            )
+
+            expected_result = "page_content,metadata\ntesting,\"{'doc_uri': 'https://docs.databricks.com/', 'chunk_id': '1'}\"\n"
+            assert result.value == expected_result
+
+            trace = mlflow.get_last_active_trace()
+            assert trace is not None
+            assert trace.data.spans[0].name == func_name
+            assert trace.info.execution_time_ms is not None
+            assert trace.data.request == json.dumps(tool_call_args)
+            assert (
+                trace.data.response
+                == '[{"page_content": "testing", "metadata": {"doc_uri": "https://docs.databricks.com/", "chunk_id": "1"}}]'
+            )
 
 
 def test_toolkit_with_invalid_function_input(client):
@@ -270,14 +357,14 @@ def test_generate_callable_tool_list(client):
 
     gemini_tool = callable_tools[0]
     tool = tools[0]
-    assert isinstance(
-        gemini_tool, CallableFunctionDeclaration
-    ), "The tool should be a CallableFunctionDeclaration."
-    assert (
-        tool.name == "catalog__schema__test_function"
-    ), "The tool's name does not match the expected name."
-    assert (
-        tool.description == "Executes Python code and returns its stdout."
-    ), "The tool's description does not match the expected description."
+    assert isinstance(gemini_tool, CallableFunctionDeclaration), (
+        "The tool should be a CallableFunctionDeclaration."
+    )
+    assert tool.name == "catalog__schema__test_function", (
+        "The tool's name does not match the expected name."
+    )
+    assert tool.description == "Executes Python code and returns its stdout.", (
+        "The tool's description does not match the expected description."
+    )
     assert "parameters" in tool.schema, "The tool's schema should include parameters."
     assert tool.schema["parameters"]["required"] == ["x"], "The required parameters do not match."
