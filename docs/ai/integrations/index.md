@@ -13,7 +13,7 @@ pip install unitycatalog-langchain
 To learn more about this integration:
 
 [Guide](langchain.md): Step-by-step instructions to integrate Unity Catalog AI with LangChain.
-[Example Notebook](https://github.com/unitycatalog/unitycatalog/blob/main/ai/integrations/langchain/ucai-langchain_sample.ipynb): A Jupyter notebook demonstrating practical usage of the integration.
+[Example Notebook](https://github.com/unitycatalog/unitycatalog/blob/main/ai/integrations/langchain/langchain_oss_example.ipynb): A Jupyter notebook demonstrating practical usage of the integration.
 
 ## LlamaIndex
 
