@@ -1,3 +1,4 @@
+import json
 from typing import Any
 
 
@@ -22,5 +23,22 @@ class Variant:
                 if not isinstance(key, str):
                     raise ValueError("VARIANT dictionary keys must be strings.")
                 cls.validate(item)
+        elif hasattr(value, "__dict__"):
+            return
         else:
             raise ValueError(f"Unsupported type for VARIANT: {type(value)}")
+
+    @classmethod
+    def to_serializable(cls, value: Any) -> Any:
+        """
+        Convert the provided value to a JSON-serializable form.
+        If the value is already serializable, return it directly.
+        Otherwise, try to use its __dict__ or fall back to its string representation.
+        """
+        try:
+            json.dumps(value)
+            return value
+        except TypeError:
+            if hasattr(value, "__dict__"):
+                return value.__dict__
+            return str(value)
