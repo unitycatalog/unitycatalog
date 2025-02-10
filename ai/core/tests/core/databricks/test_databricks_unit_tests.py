@@ -938,3 +938,81 @@ def test_workspace_provided_issues_warning(mock_workspace_client, caplog):
         DatabricksFunctionClient(client=mock_workspace_client, warehouse_id="id")
 
     assert "The argument `warehouse_id` was specified" in caplog.text
+
+
+def dummy_primary(a: int, b: str) -> str:
+    """
+    Dummy primary function.
+
+    Args:
+        a: int
+        b: str
+
+    Returns:
+        A string.
+    """
+    return a + b
+
+
+def dummy_func1(a):
+    """Dummy wrapped function 1."""
+    return a + 10
+
+
+def dummy_func2(b):
+    """Dummy wrapped function 2."""
+    return f"{b}!"
+
+
+def test_create_wrapped_function_databricks(mock_workspace_client, mock_spark_session):
+    dummy_sql_body = (
+        "CREATE FUNCTION cat.sch.dummy_primary() RETURNS STRING LANGUAGE PYTHON AS $$ dummy SQL $$;"
+    )
+
+    with patch(
+        "unitycatalog.ai.core.databricks.generate_wrapped_sql_function_body",
+        return_value=dummy_sql_body,
+    ) as mock_gen_sql:
+        with patch.object(
+            DatabricksFunctionClient, "create_function", return_value="dummy_func_info"
+        ) as mock_create_func:
+            client = DatabricksFunctionClient(client=mock_workspace_client)
+            client.set_default_spark_session = MagicMock()
+            client.spark = mock_spark_session
+
+            result = client.create_wrapped_function(
+                primary_func=dummy_primary,
+                functions=[dummy_func1, dummy_func2],
+                catalog="cat",
+                schema="sch",
+                replace=True,
+            )
+
+            mock_gen_sql.assert_called_once_with(
+                primary_func=dummy_primary,
+                functions=[dummy_func1, dummy_func2],
+                catalog="cat",
+                schema="sch",
+                replace=True,
+            )
+            mock_create_func.assert_called_once_with(sql_function_body=dummy_sql_body)
+            assert result == "dummy_func_info"
+
+
+def test_create_wrapped_function_invalid_primary_databricks(mock_workspace_client):
+    client = DatabricksFunctionClient(client=mock_workspace_client)
+    with pytest.raises(ValueError, match="The provided primary function is not callable."):
+        client.create_wrapped_function(
+            primary_func="not_callable",
+            functions=[dummy_func1, dummy_func2],
+            catalog="cat",
+            schema="sch",
+            replace=False,
+        )
+
+
+def test_workspace_provided_issues_warning(mock_workspace_client, caplog):
+    with caplog.at_level(logging.WARNING):
+        DatabricksFunctionClient(client=mock_workspace_client, warehouse_id="id")
+
+    assert "The argument `warehouse_id` was specified" in caplog.text

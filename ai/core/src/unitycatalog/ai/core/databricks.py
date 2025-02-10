@@ -19,7 +19,10 @@ from unitycatalog.ai.core.envs.databricks_env_vars import (
 )
 from unitycatalog.ai.core.paged_list import PagedList
 from unitycatalog.ai.core.types import Variant
-from unitycatalog.ai.core.utils.callable_utils import generate_sql_function_body
+from unitycatalog.ai.core.utils.callable_utils import (
+    generate_sql_function_body,
+    generate_wrapped_sql_function_body,
+)
 from unitycatalog.ai.core.utils.type_utils import (
     column_type_to_python_type,
     convert_timedelta_to_interval_str,
@@ -451,6 +454,38 @@ class DatabricksFunctionClient(BaseFunctionClient):
             raise ValueError("The provided function is not callable.")
 
         sql_function_body = generate_sql_function_body(func, catalog, schema, replace)
+
+        return self.create_function(sql_function_body=sql_function_body)
+
+    @retry_on_session_expiration
+    @override
+    def create_wrapped_function(self, *, primary_func, functions, catalog, schema, replace=False):
+        """
+        Create a wrapped function comprised of a `primary_func` function and in-lined wrapped `functions` within the `primary_func` body.
+
+        Note: `databricks-connect` is required to use this function, make sure its version is 15.1.0 or above to use
+            serverless compute.
+
+        Args:
+            primary_func: The primary function to be wrapped.
+            functions: A list of functions to be wrapped inline within the body of `primary_func`.
+            catalog: The catalog name.
+            schema: The schema name.
+            replace: Whether to replace the function if it already exists. Defaults to False.
+
+        Returns:
+            FunctionInfo: Metadata about the created function, including its name and signature.
+        """
+        if not callable(primary_func):
+            raise ValueError("The provided primary function is not callable.")
+
+        sql_function_body = generate_wrapped_sql_function_body(
+            primary_func=primary_func,
+            functions=functions,
+            catalog=catalog,
+            schema=schema,
+            replace=replace,
+        )
 
         return self.create_function(sql_function_body=sql_function_body)
 

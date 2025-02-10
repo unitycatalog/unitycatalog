@@ -47,6 +47,7 @@ from unitycatalog.ai.test_utils.function_utils import (
     CATALOG,
     create_function_and_cleanup,
     create_python_function_and_cleanup,
+    create_wrapped_function_and_cleanup,
     generate_func_name_and_cleanup,
     random_func_name,
 )
@@ -332,6 +333,64 @@ def test_replace_existing_function(client: DatabricksFunctionClient):
         # Execute the function again to verify it has been replaced
         result = client.execute_function(func_obj.full_function_name, {"x": 42})
         assert result.value == "Modified: 42"
+
+
+@retry_flaky_test()
+@requires_databricks
+def test_replace_existing_wrapped_function(client: DatabricksFunctionClient):
+    def int_func(a: int) -> int:
+        """A function that adds 10 to a."""
+        return a + 10
+
+    def str_func(b: str) -> str:
+        """A function that returns the string value of b with a prefix."""
+        return f"str: {b}"
+
+    def wrapper_func(a: int, b: str) -> str:
+        """
+        Wrapper function that in-lines int_func and str_func.
+
+        Args:
+            a: An integer.
+            b: A string.
+
+        Returns:
+            A concatenation of int_func(a) and str_func(b).
+        """
+        return f"{int_func(a)} {str_func(b)}"
+
+    with create_wrapped_function_and_cleanup(
+        client, primary_func=wrapper_func, functions=[int_func, str_func], schema=SCHEMA
+    ) as func_obj:
+        # Execute the function and verify the result.
+        result = client.execute_function(func_obj.full_function_name, {"a": 5, "b": "test"})
+        # Expect 5 + 10 = 15 for int_func and "str: test" for str_func.
+        assert result.value == "15 str: test"
+
+        # Now, modify the definition of the wrapped functions.
+        def int_func(a: int) -> int:
+            """Modified: now adds 20 instead of 10."""
+            return a + 20
+
+        def wrapper_func(a: int, b: str) -> str:
+            """
+            Modified wrapper function using the updated int_func.
+            """
+            return f"{int_func(a)} {str_func(b)}"
+
+        # Replace the existing wrapped function.
+        client.create_wrapped_function(
+            primary_func=wrapper_func,
+            functions=[int_func, str_func],
+            catalog=CATALOG,
+            schema=SCHEMA,
+            replace=True,
+        )
+
+        # Execute the function again to verify that the updated definition is in effect.
+        result = client.execute_function(func_obj.full_function_name, {"a": 5, "b": "test"})
+        # Now, 5 + 20 = 25 for int_func; the str_func remains unchanged.
+        assert result.value == "25 str: test"
 
 
 @retry_flaky_test()

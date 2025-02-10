@@ -44,6 +44,12 @@ class MockClient(BaseFunctionClient):
         return {}
 
     @override
+    def create_wrapped_function(
+        self, primary_func: Callable, functions: List[Callable], **kwargs: Any
+    ) -> Any:
+        return ""
+
+    @override
     def list_functions(self, catalog: str, schema: str) -> Any:
         """List functions in a catalog and schema"""
         return [{}]
