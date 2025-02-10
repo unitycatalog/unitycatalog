@@ -1,4 +1,3 @@
-import json
 import math
 import os
 from typing import Callable, Dict, List
@@ -480,44 +479,31 @@ def test_create_and_execute_python_function_with_variant(client: DatabricksFunct
         Returns:
             str: JSON string of the input.
         """
-        return json.dumps(a)
 
-    with create_python_function_and_cleanup(client, func=func_variant, schema=SCHEMA) as func_obj:
-        function_full_name = f"{CATALOG}.{SCHEMA}.func_variant"
+        return str(a)
+
+    with create_python_function_and_cleanup(client, func=func_variant, schema=SCHEMA):
+        func_name = f"{CATALOG}.{SCHEMA}.func_variant"
         input_value = {"key": "value", "list": [1, 2, 3]}
-        result = client.execute_function(function_full_name, {"a": input_value})
-        try:
-            result_data = json.loads(result.value)
-        except Exception as e:
-            raise AssertionError(f"Failed to parse result.value as JSON: {result.value}") from e
-        assert result.error is None, f"Function execution failed with error: {result.error}"
-        assert result_data == input_value, f"Expected {input_value}, got {result_data}"
+        result = client.execute_function(func_name, {"a": input_value})
+        assert result.error is None
+        assert result.value == '{"key":"value","list":[1,2,3]}'
 
 
 @retry_flaky_test()
 @requires_databricks
 def test_create_and_execute_function_with_variant_integration(client: DatabricksFunctionClient):
-    import json
-
-    # Define a SQL function that accepts a VARIANT parameter and returns its JSON string.
     sql_function_body = f"""CREATE OR REPLACE FUNCTION {CATALOG}.{SCHEMA}.func_variant_body(sql_variant VARIANT)
 RETURNS STRING
 LANGUAGE PYTHON
 COMMENT 'Function that returns JSON string of the VARIANT input.'
 AS $$
-    import json
-    return json.dumps(sql_variant)
+    return str(sql_variant)
 $$
 """
-    with create_function_and_cleanup(
-        client=client, schema=SCHEMA, sql_body=sql_function_body
-    ) as func_name:
-        function_full_name = f"{CATALOG}.{SCHEMA}.func_variant_body"
+    with create_function_and_cleanup(client=client, schema=SCHEMA, sql_body=sql_function_body):
+        func_name = f"{CATALOG}.{SCHEMA}.func_variant_body"
         input_value = {"key": "value", "list": [1, 2, 3]}
-        result = client.execute_function(function_full_name, {"sql_variant": input_value})
-        try:
-            result_data = json.loads(result.value)
-        except Exception as e:
-            raise AssertionError(f"Failed to parse result.value as JSON: {result.value}") from e
-        assert result.error is None, f"Function execution failed with error: {result.error}"
-        assert result_data == input_value, f"Expected {input_value}, got {result_data}"
+        result = client.execute_function(func_name, {"sql_variant": input_value})
+        assert result.error is None
+        assert result.value == '{"key":"value","list":[1,2,3]}'
