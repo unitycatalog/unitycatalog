@@ -1,33 +1,25 @@
 [project]
-name = "unitycatalog-autogen"
-version = "0.1.1"
-description = "Support for Unity Catalog functions as autogen tools"
+name = "unitycatalog-litellm"
+version = "0.1.0"
+description = "Support for Unity Catalog functions as LiteLLM tools"
 authors = [
-    { name="Puneet Jain", email="puneet.jain@databricks.com" }
+    { name="Michael Berk", email="michael.berk@databricks.com" }
 ]
 readme = "README.md"
 license = { text="Apache-2.0" }
 requires-python = ">=3.9"
 dependencies = [
-    "autogen-agentchat>=0.4.0",
-    "autogen-core>=0.4.0",
-    "openai>=1.46.1",
+    "litellm>=1.50.1",
     "unitycatalog-ai",
-    "pydantic<3,>=2",
 ]
 
 [project.optional-dependencies]
-databricks = [
-  "unitycatalog-ai[databricks]",
-]
-
 databricks-dev = [
   "unitycatalog-ai[databricks-dev]",
 ]
 
 dev = [
   "unitycatalog-ai[dev]",
-  "autogen-ext>=0.4.0",
 ]
 
 [build-system]
@@ -36,12 +28,12 @@ build-backend = "hatchling.build"
 
 [tool.hatch.build]
 include = [
-  "src/unitycatalog/ai/autogen/*"
+  "src/unitycatalog/ai/litellm/*"
 ]
 
 [tool.hatch.build.targets.wheel]
 sources = ["src"]
-only-include = ["src/unitycatalog/ai/autogen"]
+only-include = ["src/unitycatalog/ai/litellm"]
 
 [tool.ruff]
 line-length = 100
