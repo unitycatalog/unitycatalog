@@ -88,3 +88,4 @@ pip install unitycatalog-autogen
 To learn more about using UC functions as tools within AutoGen's framework:
 
 [Guide](autogen.md): Detailed guide on integrating Unity Catalog AI with AutoGen's multi-agent framework.
+[Example Notebook](https://github.com/unitycatalog/unitycatalog/blob/main/ai/integrations/autogen/autogen_example.ipynb)
