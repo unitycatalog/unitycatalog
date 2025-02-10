@@ -444,8 +444,7 @@ class UnitycatalogFunctionClient(BaseFunctionClient):
                 await self.delete_function_async(str(function_name), timeout=timeout)
             else:
                 raise ValueError(
-                    f"Function {function_name} already exists. "
-                    f"Set replace=True to overwrite it."
+                    f"Function {function_name} already exists. Set replace=True to overwrite it."
                 )
         except ServiceException:
             pass
@@ -470,9 +469,15 @@ class UnitycatalogFunctionClient(BaseFunctionClient):
             comment=comment,
         )
         function_request = CreateFunctionRequest(function_info=function_info)
-        return await self.uc.functions_client.create_function(
+        function_metadata = await self.uc.functions_client.create_function(
             function_request, _request_timeout=timeout
         )
+        # NB: Clearing the function cache here only if the function creation is successful
+        # to ensure that the cache state is viable and any replacement operations, on next execution,
+        # refresh the cache with the new function definition
+        if replace:
+            self.clear_function_cache()
+        return function_metadata
 
     @override
     @syncify_method
@@ -594,7 +599,7 @@ class UnitycatalogFunctionClient(BaseFunctionClient):
         pass
 
     async def get_function_async(
-        self, function_name: str, timeout: Optional[float] = None
+        self, function_name: str, timeout: Optional[float] = None, **kwargs: Any
     ) -> FunctionInfo:
         """
         Retrieve a function by its full name asynchronously.
@@ -765,6 +770,10 @@ class UnitycatalogFunctionClient(BaseFunctionClient):
         """
 
         pass
+
+    def clear_function_cache(self):
+        """Clear the function cache."""
+        self.func_cache.clear()
 
     @override
     def to_dict(self) -> Dict[str, Any]:

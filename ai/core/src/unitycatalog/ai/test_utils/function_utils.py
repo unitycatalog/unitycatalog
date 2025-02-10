@@ -3,10 +3,40 @@ import uuid
 from contextlib import contextmanager
 from typing import Any, Callable, Generator, NamedTuple, Optional
 
+from databricks.sdk.service.catalog import (
+    ColumnTypeName,
+    FunctionParameterInfo,
+    FunctionParameterInfos,
+)
+
 from unitycatalog.ai.core.databricks import DatabricksFunctionClient
 from unitycatalog.ai.core.utils.function_processing_utils import get_tool_name
 
 CATALOG = "integration_testing"
+
+RETRIEVER_OUTPUT_SCALAR = '[{"page_content": "# Technology partners\\n## What is Databricks Partner Connect?\\n", "metadata": {"similarity_score": 0.010178182, "chunk_id": "0217a07ba2fec61865ce408043acf1cf"}}, {"page_content": "# Technology partners\\n## What is Databricks?\\n", "metadata": {"similarity_score": 0.010178183, "chunk_id": "0217a07ba2fec61865ce408043acf1cd"}}]'
+RETRIEVER_OUTPUT_CSV = "page_content,metadata\n\"# Technology partners\n## What is Databricks Partner Connect?\n\",\"{'similarity_score': 0.010178182, 'chunk_id': '0217a07ba2fec61865ce408043acf1cf'}\"\n\"# Technology partners\n## What is Databricks?\n\",\"{'similarity_score': 0.010178183, 'chunk_id': '0217a07ba2fec61865ce408043acf1cd'}\"\n"
+
+RETRIEVER_TABLE_FULL_DATA_TYPE = "(page_content STRING, metadata MAP<STRING, STRING>)"
+RETRIEVER_TABLE_RETURN_PARAMS = FunctionParameterInfos(
+    parameters=[
+        FunctionParameterInfo(
+            name="page_content",
+            type_text="string",
+            type_name=ColumnTypeName.STRING,
+            type_json='{"name":"page_content","type":"string","nullable":true,"metadata":{}}',
+            position=0,
+        ),
+        FunctionParameterInfo(
+            name="metadata",
+            type_text="map<string,string>",
+            type_name=ColumnTypeName.MAP,
+            type_json='{"name":"metadata","type":{"type":"map","keyType":"string","valueType":"string","valueContainsNull":true},"nullable":true,"metadata":{}}',
+            position=1,
+        ),
+    ]
+)
+
 
 _logger = logging.getLogger(__name__)
 
@@ -63,6 +93,46 @@ AS $$
     exec(code)
     return stdout.getvalue()
 $$
+"""
+    )
+    try:
+        client.create_function(sql_function_body=sql_body)
+        yield FunctionObj(
+            full_function_name=func_name, comment=comment, tool_name=get_tool_name(func_name)
+        )
+    finally:
+        try:
+            client.delete_function(func_name)
+        except Exception as e:
+            _logger.warning(f"Failed to delete function: {e}")
+
+
+@contextmanager
+def create_table_function_and_cleanup(
+    client: DatabricksFunctionClient,
+    *,
+    schema: str,
+    func_name: Optional[str] = None,
+    sql_body: Optional[str] = None,
+) -> Generator[FunctionObj, None, None]:
+    func_name = func_name or random_func_name(schema=schema)
+    comment = "Executes Python code and returns its stdout."
+    sql_body = (
+        sql_body
+        or f"""CREATE FUNCTION {func_name}(query STRING)
+RETURNS TABLE (
+    page_content STRING, 
+    metadata MAP<STRING, STRING>
+)
+RETURN SELECT
+      chunked_text AS page_content,
+      map('doc_uri', url, 'chunk_id', chunk_id) AS metadata
+    FROM (
+        SELECT
+            'testing' AS chunked_text,
+            'https://docs.databricks.com/' AS url,
+            '1' AS chunk_id
+    ) AS subquery_alias;
 """
     )
     try:

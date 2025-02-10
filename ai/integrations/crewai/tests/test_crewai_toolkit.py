@@ -4,6 +4,7 @@ from unittest import mock
 
 import pytest
 from databricks.sdk.service.catalog import (
+    ColumnTypeName,
     FunctionInfo,
     FunctionParameterInfo,
     FunctionParameterInfos,
@@ -15,7 +16,7 @@ from unitycatalog.ai.core.base import (
     FunctionExecutionResult,
 )
 from unitycatalog.ai.test_utils.client_utils import (
-    USE_SERVERLESS,
+    TEST_IN_DATABRICKS,
     client,  # noqa: F401
     get_client,
     requires_databricks,
@@ -23,6 +24,10 @@ from unitycatalog.ai.test_utils.client_utils import (
 )
 from unitycatalog.ai.test_utils.function_utils import (
     CATALOG,
+    RETRIEVER_OUTPUT_CSV,
+    RETRIEVER_OUTPUT_SCALAR,
+    RETRIEVER_TABLE_FULL_DATA_TYPE,
+    RETRIEVER_TABLE_RETURN_PARAMS,
     create_function_and_cleanup,
 )
 
@@ -30,9 +35,7 @@ SCHEMA = os.environ.get("SCHEMA", "ucai_crewai_test")
 
 
 @requires_databricks
-@pytest.mark.parametrize("use_serverless", [True, False])
-def test_toolkit_e2e(use_serverless, monkeypatch):
-    monkeypatch.setenv(USE_SERVERLESS, str(use_serverless))
+def test_toolkit_e2e():
     client = get_client()
     with set_default_client(client), create_function_and_cleanup(client, schema=SCHEMA) as func_obj:
         toolkit = UCFunctionToolkit(function_names=[func_obj.full_function_name])
@@ -53,9 +56,7 @@ def test_toolkit_e2e(use_serverless, monkeypatch):
 
 
 @requires_databricks
-@pytest.mark.parametrize("use_serverless", [True, False])
-def test_toolkit_e2e_manually_passing_client(use_serverless, monkeypatch):
-    monkeypatch.setenv(USE_SERVERLESS, str(use_serverless))
+def test_toolkit_e2e_manually_passing_client():
     client = get_client()
     with set_default_client(client), create_function_and_cleanup(client, schema=SCHEMA) as func_obj:
         toolkit = UCFunctionToolkit(function_names=[func_obj.full_function_name], client=client)
@@ -81,9 +82,7 @@ def test_toolkit_e2e_manually_passing_client(use_serverless, monkeypatch):
 
 
 @requires_databricks
-@pytest.mark.parametrize("use_serverless", [True, False])
-def test_multiple_toolkits(use_serverless, monkeypatch):
-    monkeypatch.setenv(USE_SERVERLESS, str(use_serverless))
+def test_multiple_toolkits():
     client = get_client()
     with set_default_client(client), create_function_and_cleanup(client, schema=SCHEMA) as func_obj:
         toolkit1 = UCFunctionToolkit(function_names=[func_obj.full_function_name])
@@ -112,7 +111,14 @@ def test_toolkit_function_argument_errors(client):
         UCFunctionToolkit(client=client)
 
 
-def generate_function_info():
+def generate_function_info(
+    catalog="catalog",
+    schema="schema",
+    name="test",
+    data_type=None,
+    full_data_type=None,
+    return_params=None,
+):
     parameters = [
         {
             "name": "x",
@@ -127,12 +133,17 @@ def generate_function_info():
         }
     ]
     return FunctionInfo(
-        catalog_name="catalog",
-        schema_name="schema",
-        name="test",
+        catalog_name=catalog,
+        schema_name=schema,
+        name=name,
         input_params=FunctionParameterInfos(
             parameters=[FunctionParameterInfo(**param) for param in parameters]
         ),
+        full_name=f"{catalog}.{schema}.{name}",
+        comment="Executes Python code and returns its stdout.",
+        data_type=data_type,
+        full_data_type=full_data_type,
+        return_params=return_params,
     )
 
 
@@ -158,6 +169,70 @@ def test_uc_function_to_crewai_tool(client):
         assert tool.cache_function(1, {1: 1})
         assert not tool.result_as_answer
         assert not tool.description_updated
+
+
+@pytest.mark.parametrize(
+    "format,function_output",
+    [
+        ("SCALAR", RETRIEVER_OUTPUT_SCALAR),
+        ("CSV", RETRIEVER_OUTPUT_CSV),
+    ],
+)
+@pytest.mark.parametrize(
+    "data_type,full_data_type,return_params",
+    [
+        (ColumnTypeName.TABLE_TYPE, RETRIEVER_TABLE_FULL_DATA_TYPE, RETRIEVER_TABLE_RETURN_PARAMS),
+    ],
+)
+def test_crewai_tool_with_tracing_as_retriever(
+    format, function_output, data_type, full_data_type, return_params
+):
+    client = get_client()
+    mock_function_info = generate_function_info(
+        name=f"test_{format}",
+        data_type=data_type,
+        full_data_type=full_data_type,
+        return_params=return_params,
+    )
+
+    with (
+        mock.patch(
+            "unitycatalog.ai.core.databricks.DatabricksFunctionClient.get_function",
+            return_value=mock_function_info,
+        ),
+        mock.patch(
+            "unitycatalog.ai.core.databricks.DatabricksFunctionClient._execute_uc_function",
+            return_value=FunctionExecutionResult(format=format, value=function_output),
+        ),
+        mock.patch(
+            "unitycatalog.ai.core.databricks.DatabricksFunctionClient.validate_input_params"
+        ),
+    ):
+        import mlflow
+
+        if TEST_IN_DATABRICKS:
+            import mlflow.tracking._model_registry.utils
+
+            mlflow.tracking._model_registry.utils._get_registry_uri_from_spark_session = (
+                lambda: "databricks-uc"
+            )
+
+        mlflow.crewai.autolog()
+
+        tool = UCFunctionToolkit.uc_function_to_crewai_tool(
+            function_name=mock_function_info.full_name, client=client
+        )
+        result = tool.fn(x="some input")
+        assert json.loads(result)["value"] == function_output
+
+        trace = mlflow.get_last_active_trace()
+        assert trace is not None
+        assert trace.data.spans[0].name == mock_function_info.full_name
+        assert trace.info.execution_time_ms is not None
+        assert trace.data.request == '{"x": "some input"}'
+        assert trace.data.response == RETRIEVER_OUTPUT_SCALAR
+
+        mlflow.crewai.autolog(disable=True)
 
 
 def test_toolkit_with_invalid_function_input(client):

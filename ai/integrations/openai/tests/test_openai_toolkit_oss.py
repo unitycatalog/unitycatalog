@@ -324,9 +324,16 @@ async def test_function_definition_generation(uc_client):
         ]
     )
 
-    function_definition = UCFunctionToolkit(
-        client=uc_client
-    ).uc_function_to_openai_function_definition(function_info=function_info, client=uc_client)
+    with mock.patch(
+        "unitycatalog.ai.core.client.UnitycatalogFunctionClient.get_function",
+        return_value=function_info,
+    ):
+        function_definition = UCFunctionToolkit(
+            client=uc_client
+        ).uc_function_to_openai_function_definition(
+            function_name=function_info.full_name, client=uc_client
+        )
+
     assert function_definition == {
         "type": "function",
         "function": {

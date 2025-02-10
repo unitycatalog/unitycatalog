@@ -197,9 +197,9 @@ AS $$
 $$;
     """
 
-    assert (
-        sql_body.strip() == expected_sql.strip()
-    ), f"Generated SQL does not match expected SQL.\nGenerated SQL:\n{sql_body}\nExpected SQL:\n{expected_sql}"
+    assert sql_body.strip() == expected_sql.strip(), (
+        f"Generated SQL does not match expected SQL.\nGenerated SQL:\n{sql_body}\nExpected SQL:\n{expected_sql}"
+    )
 
     assert len(record) == 1
 
