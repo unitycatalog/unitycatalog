@@ -482,13 +482,16 @@ def test_create_and_execute_python_function_with_variant(client: DatabricksFunct
         """
         return json.dumps(a)
 
-    with create_python_function_and_cleanup(client, func=func_variant, schema=SCHEMA):
+    with create_python_function_and_cleanup(client, func=func_variant, schema=SCHEMA) as func_obj:
         function_full_name = f"{CATALOG}.{SCHEMA}.func_variant"
         input_value = {"key": "value", "list": [1, 2, 3]}
-        expected_output = json.dumps(input_value)
         result = client.execute_function(function_full_name, {"a": input_value})
-
-        assert result.value == expected_output
+        try:
+            result_data = json.loads(result.value)
+        except Exception as e:
+            raise AssertionError(f"Failed to parse result.value as JSON: {result.value}") from e
+        assert result.error is None, f"Function execution failed with error: {result.error}"
+        assert result_data == input_value, f"Expected {input_value}, got {result_data}"
 
 
 @retry_flaky_test()
@@ -506,9 +509,15 @@ AS $$
     return json.dumps(sql_variant)
 $$
 """
-    with create_function_and_cleanup(client=client, schema=SCHEMA, sql_body=sql_function_body):
+    with create_function_and_cleanup(
+        client=client, schema=SCHEMA, sql_body=sql_function_body
+    ) as func_name:
         function_full_name = f"{CATALOG}.{SCHEMA}.func_variant_body"
         input_value = {"key": "value", "list": [1, 2, 3]}
         result = client.execute_function(function_full_name, {"sql_variant": input_value})
-        expected = json.dumps(input_value)
-        assert result.value == expected
+        try:
+            result_data = json.loads(result.value)
+        except Exception as e:
+            raise AssertionError(f"Failed to parse result.value as JSON: {result.value}") from e
+        assert result.error is None, f"Function execution failed with error: {result.error}"
+        assert result_data == input_value, f"Expected {input_value}, got {result_data}"
