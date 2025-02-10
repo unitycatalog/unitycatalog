@@ -482,10 +482,11 @@ def test_create_and_execute_python_function_with_variant(client: DatabricksFunct
         """
         return json.dumps(a)
 
-    with create_python_function_and_cleanup(client, func=func_variant, schema=SCHEMA) as func_obj:
+    with create_python_function_and_cleanup(client, func=func_variant, schema=SCHEMA):
+        function_full_name = f"{CATALOG}.{SCHEMA}.func_variant"
         input_value = {"key": "value", "list": [1, 2, 3]}
         expected_output = json.dumps(input_value)
-        result = client.execute_function(func_obj.full_function_name, {"a": input_value})
+        result = client.execute_function(function_full_name, {"a": input_value})
 
         assert result.value == expected_output
 
@@ -496,7 +497,7 @@ def test_create_and_execute_function_with_variant_integration(client: Databricks
     import json
 
     # Define a SQL function that accepts a VARIANT parameter and returns its JSON string.
-    sql_function_body = f"""CREATE OR REPLACE FUNCTION {CATALOG}.{SCHEMA}.func_variant(sql_variant VARIANT)
+    sql_function_body = f"""CREATE OR REPLACE FUNCTION {CATALOG}.{SCHEMA}.func_variant_body(sql_variant VARIANT)
 RETURNS STRING
 LANGUAGE PYTHON
 COMMENT 'Function that returns JSON string of the VARIANT input.'
@@ -505,10 +506,9 @@ AS $$
     return json.dumps(sql_variant)
 $$
 """
-    with create_function_and_cleanup(
-        client=client, schema=SCHEMA, sql_body=sql_function_body
-    ) as func_name:
+    with create_function_and_cleanup(client=client, schema=SCHEMA, sql_body=sql_function_body):
+        function_full_name = f"{CATALOG}.{SCHEMA}.func_variant_body"
         input_value = {"key": "value", "list": [1, 2, 3]}
-        result = client.execute_function(func_name, {"sql_variant": input_value})
+        result = client.execute_function(function_full_name, {"sql_variant": input_value})
         expected = json.dumps(input_value)
         assert result.value == expected

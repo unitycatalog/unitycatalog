@@ -857,7 +857,8 @@ def test_execute_function_with_variant_input(
         "a": 10,
         "b": variant_value,
     }
-    expected_sql = "SELECT `catalog`.`schema`.`mock_function`(:a,:b)"
+    expected_sql = 'SELECT `catalog`.`schema`.`mock_function`(:a,parse_json(\'{"key": "value", "list": [1, 2, 3]}\'))'
+    expected_args = {"a": 10}
 
     client = DatabricksFunctionClient(client=mock_workspace_client)
     client.set_default_spark_session = MagicMock()
@@ -871,7 +872,7 @@ def test_execute_function_with_variant_input(
 
     result = client.execute_function("catalog.schema.mock_function", parameters=parameters)
 
-    mock_spark_session.sql.assert_called_once_with(sqlQuery=expected_sql, args=parameters)
+    mock_spark_session.sql.assert_called_once_with(sqlQuery=expected_sql, args=expected_args)
     assert result.value == result_str
 
 
