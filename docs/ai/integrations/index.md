@@ -58,7 +58,7 @@ pip install unitycatalog-anthropic
 To learn more about this integration:
 
 [Anthropic Guide](anthropic.md): Detailed guide on integrating Unity Catalog AI with Anthropic's powerful Claude LLMs.
-[Example Notebook](https://github.com/unitycatalog/unitycatalog/blob/main/ai/integrations/anthropic/anthropic_sample.ipynb)
+[Example Notebook](https://github.com/unitycatalog/unitycatalog/blob/main/ai/integrations/anthropic/anthropic_example.ipynb)
 
 ## CrewAI
 
