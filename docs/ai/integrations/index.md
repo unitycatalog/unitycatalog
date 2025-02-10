@@ -73,6 +73,7 @@ pip install unitycatalog-crewai
 To learn more about this integration:
 
 [Guide](crewai.md): Detailed guide on integrating Unity Catalog AI with CrewAI Agents.
+[Example Notebook](https://github.com/unitycatalog/unitycatalog/blob/main/ai/integrations/crewai/crewai_oss_example.ipynb)
 
 ## AutoGen
 
