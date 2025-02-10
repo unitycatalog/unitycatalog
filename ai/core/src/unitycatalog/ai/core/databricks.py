@@ -17,6 +17,7 @@ from unitycatalog.ai.core.envs.databricks_env_vars import (
     UCAI_DATABRICKS_SESSION_RETRY_MAX_ATTEMPTS,
 )
 from unitycatalog.ai.core.paged_list import PagedList
+from unitycatalog.ai.core.types import Variant
 from unitycatalog.ai.core.utils.callable_utils import (
     generate_sql_function_body,
     generate_wrapped_sql_function_body,
@@ -559,6 +560,9 @@ class DatabricksFunctionClient(BaseFunctionClient):
     @override
     def _validate_param_type(self, value: Any, param_info: "FunctionParameterInfo") -> None:
         value_python_type = column_type_to_python_type(param_info.type_name.value)
+        if value_python_type is Variant:
+            Variant.validate(value)
+            return
         if not isinstance(value, value_python_type):
             raise ValueError(
                 f"Parameter {param_info.name} should be of type {param_info.type_name.value} "
@@ -730,6 +734,9 @@ def get_execute_function_sql_command(
                 ):
                     json_value_str = json.dumps(param_value)
                     arg_clause += f"from_json('{json_value_str}', '{param_info.type_text}')"
+                elif param_info.type_name == ColumnTypeName.VARIANT:
+                    json_value_str = json.dumps(param_value)
+                    arg_clause += f"parse_json('{json_value_str}')"
                 elif param_info.type_name == ColumnTypeName.BINARY:
                     if isinstance(param_value, bytes):
                         param_value = base64.b64encode(param_value).decode("utf-8")

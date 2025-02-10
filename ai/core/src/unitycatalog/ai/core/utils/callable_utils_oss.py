@@ -114,6 +114,13 @@ def create_parameter_info(metadata: FunctionMetadata) -> list["FunctionParameter
 
     parameters = []
     for param_info in metadata.parameters:
+        # Remove when Unity Catalog OSS supports VARIANT TYPE
+        if param_info["sql_type"] == "VARIANT":
+            raise ValueError(
+                "Variant type is not supported for function parameters. "
+                "Please use a concrete type instead in your function signature. "
+                f"Argument {param_info['name']} uses an unsupported type."
+            )
         type_json_dict = {
             "name": param_info["name"],
             "type": param_info["base_type_name"].lower(),

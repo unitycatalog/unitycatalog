@@ -35,6 +35,7 @@ from unitycatalog.ai.core.databricks import (
 from unitycatalog.ai.core.envs.databricks_env_vars import (
     UCAI_DATABRICKS_SERVERLESS_EXECUTION_RESULT_ROW_LIMIT,
 )
+from unitycatalog.ai.core.types import Variant
 from unitycatalog.ai.test_utils.client_utils import (
     client,  # noqa: F401
     get_client,
@@ -522,3 +523,46 @@ RETURN SELECT ai_summarize(text, 20)
         assert result.error is None, f"Function execution failed with error: {result.error}"
         # number of words should be no more than 20
         assert len(result.value.split(" ")) <= 20
+
+
+@retry_flaky_test()
+@requires_databricks
+def test_create_and_execute_python_function_with_variant(client: DatabricksFunctionClient):
+    def func_variant(a: Variant) -> str:
+        """
+        Returns the JSON representation of the VARIANT input.
+
+        Args:
+            a (Variant): A variant parameter (a dict representing semi-structured data).
+
+        Returns:
+            str: JSON string of the input.
+        """
+
+        return str(a)
+
+    with create_python_function_and_cleanup(client, func=func_variant, schema=SCHEMA):
+        func_name = f"{CATALOG}.{SCHEMA}.func_variant"
+        input_value = {"key": "value", "list": [1, 2, 3]}
+        result = client.execute_function(func_name, {"a": input_value})
+        assert result.error is None
+        assert result.value == '{"key":"value","list":[1,2,3]}'
+
+
+@retry_flaky_test()
+@requires_databricks
+def test_create_and_execute_function_with_variant_integration(client: DatabricksFunctionClient):
+    sql_function_body = f"""CREATE OR REPLACE FUNCTION {CATALOG}.{SCHEMA}.func_variant_body(sql_variant VARIANT)
+RETURNS STRING
+LANGUAGE PYTHON
+COMMENT 'Function that returns JSON string of the VARIANT input.'
+AS $$
+    return str(sql_variant)
+$$
+"""
+    with create_function_and_cleanup(client=client, schema=SCHEMA, sql_body=sql_function_body):
+        func_name = f"{CATALOG}.{SCHEMA}.func_variant_body"
+        input_value = {"key": "value", "list": [1, 2, 3]}
+        result = client.execute_function(func_name, {"sql_variant": input_value})
+        assert result.error is None
+        assert result.value == '{"key":"value","list":[1,2,3]}'
