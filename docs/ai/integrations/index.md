@@ -43,7 +43,7 @@ pip install unitycatalog-openai
 To learn more about this integration:
 
 [Guide](openai.md): Detailed guide on integrating Unity Catalog AI with OpenAI's sophisticated GPT-based systems.
-[Example Notebook](https://github.com/unitycatalog/unitycatalog/blob/main/ai/integrations/openai/ucai-openai_sample.ipynb)
+[Example Notebook](https://github.com/unitycatalog/unitycatalog/blob/main/ai/integrations/openai/openai_example.ipynb)
 
 ## Anthropic
 
