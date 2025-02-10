@@ -28,7 +28,7 @@ pip install unitycatalog-llamaindex
 To learn more about this integration:
 
 [Guide](llamaindex.md): Detailed guide on integrating Unity Catalog AI with the LlamaIndex framework.
-[Example Notebook](https://github.com/unitycatalog/unitycatalog/blob/main/ai/integrations/llama_index/llama_index_sample.ipynb)
+[Example Notebook](https://github.com/unitycatalog/unitycatalog/blob/main/ai/integrations/llama_index/llama_index_databricks_example.ipynb)
 
 ## OpenAI
 
