@@ -99,7 +99,7 @@ def _try_get_spark_session_in_dbr() -> Any:
         from pyspark.sql.connect.session import SparkSession
 
         with _classic_workspace_thread_lock:
-            if spark is not None and not isinstance(spark, SparkSession):
+            if spark is not None and not isinstance(spark, SparkSession) and not _classic_workspace_warning_emitted:
                 _logger.warning(
                     f"Current SparkSession {spark} in the active environment is not a "
                     "pyspark.sql.connect.session.SparkSession instance. Classic runtime does not support "
