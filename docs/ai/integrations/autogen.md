@@ -2,7 +2,12 @@
 
 Integrate Unity Catalog AI with the [AutoGen SDK](https://github.com/microsoft/autogen) to utilize functions defined in Unity Catalog as tools in AutoGen Agent Application calls. This guide covers the installation, setup, caveats, environment variables, public APIs, and examples to help you get started.
 
-> **NOTE:** Ensure that the base AutoGen package is installed with version `autogen-agentchat~=0.2` or earlier, as there are significant changes in the API after this release.
+> **NOTE:** Ensure that the base Autogen package is installed with version `autogen-agentchat>=0.4.0`, as there has been a signficant series of API improvements made to autogen that are not backward compatible. This integration does not support the legacy APIs.
+>
+> **NOTE**: The official Microsoft AutoGen package has been renamed from `pyautogen` to `autogen-agentchat`.
+There are additional forked version of the AutoGen package that are not contributed by Microsoft and will not work with this integration.
+For further information, please see the [official clarification statement](https://github.com/microsoft/autogen/discussions/4217). The officially
+maintained repository can be viewed [here](https://github.com/microsoft/autogen).
 
 ---
 
@@ -135,159 +140,47 @@ Set up agents and register the tools to enable conversations that utilize the UC
 
 ```python
 import os
-from autogen import ConversableAgent, GroupChat, GroupChatManager
 
-# Set up API keys
+from autogen_agentchat.agents import AssistantAgent
+from autogen_agentchat.messages import TextMessage
+from autogen_core import CancellationToken
+from autogen_ext.models.openai import OpenAIChatCompletionClient
+
 OPENAI_API_KEY = os.environ["OPENAI_API_KEY"]
 
-# Define the assistant agent that suggests tool calls
-assistant = ConversableAgent(
-    name="Assistant",
-    system_message="""You are a helpful AI assistant.
-You can tell the temperature of a location using function calling.
-Return 'TERMINATE' when the task is done and the final answer is returned.""",
-    llm_config={"config_list": [{"model": "gpt-4", "api_key": OPENAI_API_KEY}]},
+model_client = OpenAIChatCompletionClient(
+    model="gpt-4o",
+    api_key=OPENAI_API_KEY,
+    seed=222,
+    temperature=0,
 )
 
-# The user proxy agent is used for interacting with the assistant agent
-# and executes tool calls
-user_proxy = ConversableAgent(
-    name="User",
-    llm_config=False,
-    is_termination_msg=lambda msg: msg.get("content") is not None and "TERMINATE" in msg["content"],
-    human_input_mode="NEVER",
-)
-
-# Define another agent for additional tool execution if needed
-converter = ConversableAgent(
-    name="Fahrenheit_converter",
-    system_message="You are a helpful AI assistant.",
-    llm_config={"config_list": [{"model": "gpt-4", "api_key": OPENAI_API_KEY}]},
-)
-```
-
-#### Registering the tools with the defined Agents
-
-There are two ways to register your UC functions as tools from the toolkit instance:
-
-**Option 1**: Register each tool with the appropriate agents to enable function calling within conversations.
-
-```python
-# Define agent pairs for each tool
-agent_pairs_get_temp = {"callers": assistant, "executors": user_proxy}
-agent_pairs_temp_c_to_f = {"callers": converter, "executors": user_proxy}
-
-# Register the 'get_temperature' tool with its agent pair
-tool_get_temp = next(tool for tool in tools if 'get_temperature' in tool.name)
-tool_get_temp.register_function(
-    callers=agent_pairs_get_temp['callers'],
-    executors=agent_pairs_get_temp['executors']
-)
-
-# Register the 'temp_c_to_f' tool with its agent pair
-tool_temp_c_to_f = next(tool for tool in tools if 'temp_c_to_f' in tool.name)
-tool_temp_c_to_f.register_function(
-    callers=agent_pairs_temp_c_to_f['callers'],
-    executors=agent_pairs_temp_c_to_f['executors']
-)
-```
-
-**Option 2**: Alternatively, register all tools at once using the `register_with_agents` method from the `UCFunctionToolkit` object:
-
-```python
-toolkit.register_with_agents(
-    callers=[assistant, converter],
-    executors=[user_proxy]
-)
+weather_agent = AssistantAgent(
+    name="assistant",
+    system_message="You are a helpful AI assistant that specializes in answering questions about weather phenomena. "
+    "If there are tools available to perform these calculations, please use them and ensure that you are operating "
+    "with validated data calculations.",
+    model_client=model_client,
+    tools=tools,
+    reflect_on_tool_use=False,
 ```
 
 ### Initialize a Conversation with your Agents
 
-Create a group chat and initiate a conversation that utilizes the registered tools.
+You can directly interact with the `AssistantAgent` by sending input queries as follows:
 
 ```python
-groupchat = GroupChat(
-    agents=[user_proxy, assistant, converter],
-    messages=[],
-    max_round=10
-)
-manager = GroupChatManager(
-    groupchat=groupchat,
-    llm_config={"config_list": [{"model": "gpt-4", "api_key": OPENAI_API_KEY}]}
+user_input = "I need some help converting 973.2F to Celsius."
+
+response = await weather_agent.on_messages(
+    [TextMessage(content=user_input, source="User")], CancellationToken()
 )
 
-user_proxy.initiate_chat(
-    manager, message="What is the temperature in SF in Fahrenheit?"
-)
+response.chat_message
 ```
 
 An example output of this chat interaction is:
 
 ```text
-What is the temperature in SF in Fahrenheit?
-
---------------------------------------------------------------------------------
-Next speaker: Assistant
->>>>>>>>>> USING AUTO REPLY...
-Assistant (to chat_manager):
-
-***** Suggested tool call: get_temperature *****
-Arguments: 
-{
-  "location": "SF"
-}
-***********************************************
-
---------------------------------------------------------------------------------
-Next speaker: User
->>>>>>>>>> EXECUTING FUNCTION get_temperature...
-User (to chat_manager):
-
-***** Response from calling tool *****
-{"format": "SCALAR", "value": "31.9 C", "truncated": false}
-***********************************************
-
---------------------------------------------------------------------------------
-Next speaker: Fahrenheit_converter
->>>>>>>>>> USING AUTO REPLY...
-Fahrenheit_converter (to chat_manager):
-
-***** Suggested tool call: temp_c_to_f *****
-Arguments: 
-{
-  "celsius": "31.9"
-}
-***********************************************
-
---------------------------------------------------------------------------------
-Next speaker: User
->>>>>>>>>> EXECUTING FUNCTION temp_c_to_f...
-User (to chat_manager):
-
-***** Response from calling tool *****
-{"format": "SCALAR", "value": "89.42", "truncated": false}
-***********************************************
-
---------------------------------------------------------------------------------
-Next speaker: Assistant
->>>>>>>>>> USING AUTO REPLY...
-Assistant (to chat_manager):
-
-The temperature in SF is 89.42°F.
-
---------------------------------------------------------------------------------
-Next speaker: User
-User (to chat_manager):
-
---------------------------------------------------------------------------------
-Next speaker: User
-User (to chat_manager):
-
---------------------------------------------------------------------------------
-Next speaker: Assistant
->>>>>>>>>> USING AUTO REPLY...
-Assistant (to chat_manager):
-
-TERMINATE
---------------------------------------------------------------------------------
+TextMessage(source='assistant', models_usage=RequestUsage(prompt_tokens=286, completion_tokens=14), content='973.2°F is approximately 522.89°C.', type='TextMessage')
 ```

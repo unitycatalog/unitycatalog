@@ -1,4 +1,5 @@
 import datetime
+import json
 import logging
 import os
 import re
@@ -266,6 +267,15 @@ def test_extract_function_name_error(sql_body):
                 position=24,
             ),
         ),
+        (
+            {"key": "value", "list": [1, 2, 3]},
+            FunctionParameterInfo(
+                "param",
+                type_name=ColumnTypeName.VARIANT,
+                type_text="variant",
+                position=25,
+            ),
+        ),
     ],
 )
 def test_validate_param_type(client: DatabricksFunctionClient, param_value, param_info):
@@ -322,6 +332,28 @@ def test_validate_param_type_errors(client: DatabricksFunctionClient):
                 "param",
                 type_name=ColumnTypeName.BINARY,
                 type_text="binary",
+                position=0,
+            ),
+        )
+
+    with pytest.raises(ValueError, match=r"VARIANT dictionary keys must be strings"):
+        client._validate_param_type(
+            {1: "a", 2: "b"},
+            FunctionParameterInfo(
+                "param",
+                type_name=ColumnTypeName.VARIANT,
+                type_text="variant",
+                position=0,
+            ),
+        )
+
+    with pytest.raises(ValueError, match=r"Unsupported type for VARIANT"):
+        client._validate_param_type(
+            tuple([1, 2, 3]),
+            FunctionParameterInfo(
+                "param",
+                type_name=ColumnTypeName.VARIANT,
+                type_text="variant",
                 position=0,
             ),
         )
@@ -795,6 +827,53 @@ greet("World")"""
     mock_spark_session.sql.assert_called_once_with(sqlQuery=expected_sql, args=parameters)
 
     assert result.value == f"1-{genai_code}"
+
+
+def test_execute_function_with_variant_input(
+    mock_workspace_client, mock_spark_session, mock_function_info
+):
+    mock_function_info.input_params = FunctionParameterInfos(
+        parameters=[
+            FunctionParameterInfo(
+                name="a",
+                type_name=ColumnTypeName.INT,
+                type_text="int",
+                position=0,
+            ),
+            FunctionParameterInfo(
+                name="b",
+                type_name=ColumnTypeName.VARIANT,
+                type_text="variant",
+                position=1,
+            ),
+        ]
+    )
+    mock_function_info.catalog_name = "catalog"
+    mock_function_info.schema_name = "schema"
+    mock_function_info.name = "mock_function"
+
+    variant_value = {"key": "value", "list": [1, 2, 3]}
+    parameters = {
+        "a": 10,
+        "b": variant_value,
+    }
+    expected_sql = 'SELECT `catalog`.`schema`.`mock_function`(:a,parse_json(\'{"key": "value", "list": [1, 2, 3]}\'))'
+    expected_args = {"a": 10}
+
+    client = DatabricksFunctionClient(client=mock_workspace_client)
+    client.set_default_spark_session = MagicMock()
+    client.spark = mock_spark_session
+    client.get_function = MagicMock(return_value=mock_function_info)
+
+    result_str = f"10-{json.dumps(variant_value)}"
+    mock_result = MagicMock()
+    mock_result.collect.return_value = [[result_str]]
+    mock_spark_session.sql.return_value = mock_result
+
+    result = client.execute_function("catalog.schema.mock_function", parameters=parameters)
+
+    mock_spark_session.sql.assert_called_once_with(sqlQuery=expected_sql, args=expected_args)
+    assert result.value == result_str
 
 
 def test_execute_function_warnings_missing_descriptions(mock_workspace_client, mock_spark_session):

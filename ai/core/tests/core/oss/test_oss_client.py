@@ -17,6 +17,7 @@ from unitycatalog.ai.core.client import (
     validate_input_parameter,
     validate_param,
 )
+from unitycatalog.ai.core.types import Variant
 from unitycatalog.ai.test_utils.function_utils import CATALOG, random_func_name
 from unitycatalog.client import (
     ApiClient,
@@ -1062,4 +1063,26 @@ async def test_function_with_union_return_type(uc_client):
     ):
         uc_client.create_python_function(
             func=func_with_union_return, catalog=CATALOG, schema=SCHEMA
+        )
+
+
+@pytest.mark.asyncio
+async def test_function_with_variant_param_raises_in_oss(uc_client):
+    def func_variant_param(a: Variant) -> str:
+        """
+        A function that accepts a VARIANT parameter.
+
+        Args:
+            a (Variant): A variant parameter.
+
+        Returns:
+            str: The JSON string representation of the variant.
+        """
+        import json
+
+        return json.dumps(a)
+
+    with pytest.raises(ValueError, match="Variant type is not supported for function parameters"):
+        uc_client.create_python_function(
+            func=func_variant_param, catalog=CATALOG, schema=SCHEMA, replace=True
         )
