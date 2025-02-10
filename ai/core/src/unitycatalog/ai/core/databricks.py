@@ -447,12 +447,17 @@ class DatabricksFunctionClient(BaseFunctionClient):
         created by default. To overwrite the existing function, set the `replace` parameter to `True`.
 
         Args:
-            func (Callable): The Python function to convert into a UDF.
-            catalog (str): The catalog name in which to create the function.
-            schema (str): The schema name in which to create the function.
-            replace (bool): Whether to replace the function if it already exists. Defaults to False.
-            dependencies (list[str]): A list of external dependencies required by the function. Defaults to an empty list.
-            environment_version (str): The version of the environment in which the function will be executed. Defaults to 'None'.
+            func: The Python function to convert into a UDF.
+            catalog: The catalog name in which to create the function.
+            schema: The schema name in which to create the function.
+            replace: Whether to replace the function if it already exists. Defaults to False.
+            dependencies: A list of external dependencies required by the function. Defaults to an empty list. Note that the
+                `dependencies` parameter is not supported in all runtimes. Ensure that you are using a runtime that supports environment
+                and dependency declaration prior to creating a function that defines dependencies.
+                Standard PyPI package declarations are supported (i.e., `requests>=2.25.1`).
+            environment_version: The version of the environment in which the function will be executed. Defaults to 'None'. Note
+                that the `environment_version` parameter is not supported in all runtimes. Ensure that you are using a runtime that
+                supports environment and dependency declaration prior to creating a function that declares an environment verison.
 
         Returns:
             FunctionInfo: Metadata about the created function, including its name and signature.
@@ -469,7 +474,17 @@ class DatabricksFunctionClient(BaseFunctionClient):
 
     @retry_on_session_expiration
     @override
-    def create_wrapped_function(self, *, primary_func, functions, catalog, schema, replace=False):
+    def create_wrapped_function(
+        self,
+        *,
+        primary_func: Callable[..., Any],
+        functions: list[Callable[..., Any]],
+        catalog: str,
+        schema: str,
+        replace=False,
+        dependencies: Optional[list[str]] = None,
+        environment_version: str = "None",
+    ) -> "FunctionInfo":
         """
         Create a wrapped function comprised of a `primary_func` function and in-lined wrapped `functions` within the `primary_func` body.
 
@@ -482,6 +497,13 @@ class DatabricksFunctionClient(BaseFunctionClient):
             catalog: The catalog name.
             schema: The schema name.
             replace: Whether to replace the function if it already exists. Defaults to False.
+            dependencies: A list of external dependencies required by the function. Defaults to an empty list. Note that the
+                `dependencies` parameter is not supported in all runtimes. Ensure that you are using a runtime that supports environment
+                and dependency declaration prior to creating a function that defines dependencies.
+                Standard PyPI package declarations are supported (i.e., `requests>=2.25.1`).
+            environment_version: The version of the environment in which the function will be executed. Defaults to 'None'. Note
+                that the `environment_version` parameter is not supported in all runtimes. Ensure that you are using a runtime that
+                supports environment and dependency declaration prior to creating a function that declares an environment verison.
 
         Returns:
             FunctionInfo: Metadata about the created function, including its name and signature.
@@ -495,6 +517,8 @@ class DatabricksFunctionClient(BaseFunctionClient):
             catalog=catalog,
             schema=schema,
             replace=replace,
+            dependencies=dependencies,
+            environment_version=environment_version,
         )
 
         return self.create_function(sql_function_body=sql_function_body)

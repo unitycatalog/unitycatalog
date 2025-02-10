@@ -579,7 +579,7 @@ def generate_sql_function_body(
         environment_version: The version of the environment to use for the function. Defaults to "None".
 
     Returns:
-        str: SQL statement for creating the UDF.
+        SQL statement for creating the UDF.
     """
 
     metadata = extract_function_metadata(func)
@@ -608,6 +608,8 @@ def generate_wrapped_sql_function_body(
     catalog: str,
     schema: str,
     replace: bool = False,
+    dependencies: Optional[list[str]] = None,
+    environment_version: str = "None",
 ) -> str:
     """
     Generate SQL body for creating the function in Unity Catalog.
@@ -618,9 +620,11 @@ def generate_wrapped_sql_function_body(
         catalog: The catalog name.
         schema: The schema name.
         replace: Whether to include the 'OR REPLACE' clause.
+        dependencies: An optional list of PyPI dependencies for the function to utilize in the execution environment
+        environment_version: The version of the environment to use for the function. Defaults to "None".
 
     Returns:
-        str: SQL statement for creating the UDF.
+        SQL statement for creating the UDF.
     """
 
     wrapped_function_content = extract_wrapped_functions(functions)
@@ -643,6 +647,8 @@ def generate_wrapped_sql_function_body(
         sql_metadata.func_comment,
         sql_metadata.indented_body,
         replace,
+        dependencies,
+        environment_version,
     )
 
     return sql_body

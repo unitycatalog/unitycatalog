@@ -300,6 +300,35 @@ The `DatabricksFunctionClient` is a core component of the Unity Catalog AI Core 
 - **Databricks Connect**: To create UC functions using SQL body definitions or to execute functions using serverless compute, `databricks-connect` version `15.1.0` is required. This is the only supported version that is compatible.
 - **Serverless Compute**: In order to create and execute functions, a serverless compute connection **is required**.
 
+### Dependencies and Environments
+
+In Databricks runtime version 17 and higher, the ability to specify dependencies within a function execution environment is supported. Earlier runtime
+versions do not support this feature and will error if the arguments `dependencies` or `environment` are submitted with a `create_python_function` or `create_wrapped_python_function` call.
+
+To specify PyPI dependencies to include in your execution environment, you can see the minimum example below:
+
+```python
+# Define a function that requires an external PyPI dependency
+
+def dep_check(x: str) -> str:
+    """
+    A function to test the dependency support for UC
+
+    Args:
+        x: An input string
+    
+    Returns:
+        A string that reports the dependency support for UC
+    """
+
+    import scrapy  # NOTE that you must still import the library to use within the function.
+
+    return scrapy.__version__
+
+# Create the function and supply the dependency in standard PyPI format
+client.create_python_function(func=dep_check, catalog=CATALOG, schema=SCHEMA, replace=True, dependencies=["scrapy==2.10.1"])
+```
+
 ### Environment Variables for Databricks
 
 You can configure the behavior of function execution using the following environment variables:
