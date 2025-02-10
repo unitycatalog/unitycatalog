@@ -1296,8 +1296,9 @@ async def test_create_wrapped_function_invalid_catalog_or_schema(
             functions=wrapped_functions,
             catalog=CATALOG,
             schema=invalid_schema,
+        )
 
-          
+
 @pytest.mark.asyncio
 async def test_function_with_variant_param_raises_in_oss(uc_client):
     def func_variant_param(a: Variant) -> str:
