@@ -6,6 +6,8 @@ import static java.util.stream.Collectors.groupingBy;
 import static java.util.stream.Collectors.mapping;
 import static java.util.stream.Collectors.toList;
 
+import com.auth0.jwt.JWT;
+import com.auth0.jwt.interfaces.DecodedJWT;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -102,10 +104,15 @@ public class Oauth2CliExchange {
 
     byte[] stateBytes = new byte[16];
     new SecureRandom().nextBytes(stateBytes);
+    String state = Hex.encodeHexString(stateBytes);
+
+    byte[] nonceBytes = new byte[16];
+    new SecureRandom().nextBytes(nonceBytes);
+    String nonce = Hex.encodeHexString(nonceBytes);
 
     String authUrl =
         String.format(
-            "%s?%s=%s&%s=%s&response_type=%s&scope=%s&state=%s",
+            "%s?%s=%s&%s=%s&response_type=%s&scope=%s&state=%s&nonce=%s",
             authorizationUrl,
             Fields.CLIENT_ID,
             URLEncoder.encode(clientId, StandardCharsets.UTF_8),
@@ -113,7 +120,8 @@ public class Oauth2CliExchange {
             URLEncoder.encode(redirectUrl, StandardCharsets.UTF_8),
             Fields.CODE,
             URLEncoder.encode("openid profile email", StandardCharsets.UTF_8),
-            Hex.encodeHexString(stateBytes));
+            state,
+            nonce);
 
     System.out.println("Attempting to open the authorization page in your default browser.");
     System.out.println("If the browser does not open, you can manually open the following URL:");
@@ -184,7 +192,18 @@ public class Oauth2CliExchange {
       Map<String, String> tokenResponseParams =
           mapper.readValue(tokenResponse, new TypeReference<>() {});
       urlConnection.disconnect();
-      return tokenResponseParams.get("id_token");
+
+      String idToken = tokenResponseParams.get("id_token");
+      if (idToken == null) {
+        throw new IOException("No id_token in response.");
+      }
+
+      DecodedJWT decodedJWT = JWT.decode(idToken);
+      if (!nonce.equals(decodedJWT.getClaim("nonce").asString())) {
+        throw new IOException("Nonce does not match.");
+      }
+
+      return idToken;
     } else {
       String errorResponse;
       try (InputStream inputStream = urlConnection.getErrorStream()) {

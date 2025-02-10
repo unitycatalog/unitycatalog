@@ -189,6 +189,8 @@ lazy val client = (project in file("target/clients/java"))
       "com.google.code.findbugs" % "jsr305" % "3.0.2",
       "jakarta.annotation" % "jakarta.annotation-api" % "3.0.0" % Provided,
 
+      "com.auth0" % "java-jwt" % "4.4.0",
+
       // Test dependencies
       "org.junit.jupiter" % "junit-jupiter" % "5.10.3" % Test,
       "net.aichler" % "jupiter-interface" % JupiterKeys.jupiterVersion.value % Test,
