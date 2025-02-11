@@ -38,8 +38,8 @@ class OptionParserTest {
   @Test
   void testParseCLIOptions() {
     OptionParser optionParser = new OptionParser();
-    optionParser.parse(new String[] {"-p", "8081"});
-    assertThat(optionParser.getPort()).isEqualTo(8081);
+    optionParser.parse(new String[] {"-p", "8080"});
+    assertThat(optionParser.getPort()).isEqualTo(8080);
   }
 
   @Test
