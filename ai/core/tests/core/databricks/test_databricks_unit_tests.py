@@ -1110,6 +1110,45 @@ def test_create_wrapped_function_databricks(mock_workspace_client, mock_spark_se
                 catalog="cat",
                 schema="sch",
                 replace=True,
+                dependencies=None,
+                environment_version="None",
+            )
+            mock_create_func.assert_called_once_with(sql_function_body=dummy_sql_body)
+            assert result == "dummy_func_info"
+
+
+def test_create_wrapped_function_with_dependencies(mock_workspace_client, mock_spark_session):
+    dummy_sql_body = "CREATE FUNCTION cat.sch.dummy_primary() RETURNS STRING LANGUAGE PYTHON ENVIRONMENT (dependencies = '[\"scipy==1.15.0\"]', environment_version = '1')AS $$ dummy SQL $$;"
+
+    with patch(
+        "unitycatalog.ai.core.databricks.generate_wrapped_sql_function_body",
+        return_value=dummy_sql_body,
+    ) as mock_gen_sql:
+        with patch.object(
+            DatabricksFunctionClient, "create_function", return_value="dummy_func_info"
+        ) as mock_create_func:
+            client = DatabricksFunctionClient(client=mock_workspace_client)
+            client.set_default_spark_session = MagicMock()
+            client.spark = mock_spark_session
+
+            result = client.create_wrapped_function(
+                primary_func=dummy_primary,
+                functions=[dummy_func1, dummy_func2],
+                catalog="cat",
+                schema="sch",
+                replace=True,
+                dependencies=["scipy==1.15.0"],
+                environment_version="1",
+            )
+
+            mock_gen_sql.assert_called_once_with(
+                primary_func=dummy_primary,
+                functions=[dummy_func1, dummy_func2],
+                catalog="cat",
+                schema="sch",
+                replace=True,
+                dependencies=["scipy==1.15.0"],
+                environment_version="1",
             )
             mock_create_func.assert_called_once_with(sql_function_body=dummy_sql_body)
             assert result == "dummy_func_info"
