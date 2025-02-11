@@ -3,6 +3,7 @@ import functools
 import json
 import logging
 import re
+import threading
 import time
 from dataclasses import dataclass
 from decimal import Decimal
@@ -17,7 +18,11 @@ from unitycatalog.ai.core.envs.databricks_env_vars import (
     UCAI_DATABRICKS_SESSION_RETRY_MAX_ATTEMPTS,
 )
 from unitycatalog.ai.core.paged_list import PagedList
-from unitycatalog.ai.core.utils.callable_utils import generate_sql_function_body
+from unitycatalog.ai.core.types import Variant
+from unitycatalog.ai.core.utils.callable_utils import (
+    generate_sql_function_body,
+    generate_wrapped_sql_function_body,
+)
 from unitycatalog.ai.core.utils.type_utils import (
     column_type_to_python_type,
     convert_timedelta_to_interval_str,
@@ -64,6 +69,9 @@ WAREHOUSE_DEFINED_NOT_SUPPORTED_MESSAGE = (
 
 _logger = logging.getLogger(__name__)
 
+_classic_workspace_warning_emitted = False
+_classic_workspace_thread_lock = threading.Lock()
+
 
 def get_default_databricks_workspace_client(profile=None) -> "WorkspaceClient":
     try:
@@ -88,21 +96,28 @@ def _validate_databricks_connect_available() -> bool:
 
 
 def _try_get_spark_session_in_dbr() -> Any:
+    global _classic_workspace_warning_emitted
     try:
         # if in Databricks, fetch the current active session
         from databricks.sdk.runtime import spark
         from pyspark.sql.connect.session import SparkSession
 
-        if spark is not None and not isinstance(spark, SparkSession):
-            _logger.warning(
-                f"Current SparkSession {spark} in the active environment is not a "
-                "pyspark.sql.connect.session.SparkSession instance. Classic runtime does not support "
-                "all functionalities of the unitycatalog-ai framework. To use the full "
-                "capabilities of unitycatalog-ai, execute your code using a client that is attached to "
-                "a Serverless runtime cluster. To learn more about serverless, see the guide at: "
-                "https://docs.databricks.com/en/compute/serverless/index.html#connect-to-serverless-compute "
-                "for more details."
-            )
+        with _classic_workspace_thread_lock:
+            if (
+                spark is not None
+                and not isinstance(spark, SparkSession)
+                and not _classic_workspace_warning_emitted
+            ):
+                _logger.warning(
+                    f"Current SparkSession {spark} in the active environment is not a "
+                    "pyspark.sql.connect.session.SparkSession instance. Classic runtime does not support "
+                    "all functionalities of the unitycatalog-ai framework. To use the full "
+                    "capabilities of unitycatalog-ai, execute your code using a client that is attached to "
+                    "a Serverless runtime cluster. To learn more about serverless, see the guide at: "
+                    "https://docs.databricks.com/en/compute/serverless/index.html#connect-to-serverless-compute "
+                    "for more details."
+                )
+                _classic_workspace_warning_emitted = True
         return spark
     except Exception:
         return
@@ -442,6 +457,38 @@ class DatabricksFunctionClient(BaseFunctionClient):
 
         return self.create_function(sql_function_body=sql_function_body)
 
+    @retry_on_session_expiration
+    @override
+    def create_wrapped_function(self, *, primary_func, functions, catalog, schema, replace=False):
+        """
+        Create a wrapped function comprised of a `primary_func` function and in-lined wrapped `functions` within the `primary_func` body.
+
+        Note: `databricks-connect` is required to use this function, make sure its version is 15.1.0 or above to use
+            serverless compute.
+
+        Args:
+            primary_func: The primary function to be wrapped.
+            functions: A list of functions to be wrapped inline within the body of `primary_func`.
+            catalog: The catalog name.
+            schema: The schema name.
+            replace: Whether to replace the function if it already exists. Defaults to False.
+
+        Returns:
+            FunctionInfo: Metadata about the created function, including its name and signature.
+        """
+        if not callable(primary_func):
+            raise ValueError("The provided primary function is not callable.")
+
+        sql_function_body = generate_wrapped_sql_function_body(
+            primary_func=primary_func,
+            functions=functions,
+            catalog=catalog,
+            schema=schema,
+            replace=replace,
+        )
+
+        return self.create_function(sql_function_body=sql_function_body)
+
     @override
     def get_function(self, function_name: str, **kwargs: Any) -> "FunctionInfo":
         """
@@ -524,6 +571,9 @@ class DatabricksFunctionClient(BaseFunctionClient):
     @override
     def _validate_param_type(self, value: Any, param_info: "FunctionParameterInfo") -> None:
         value_python_type = column_type_to_python_type(param_info.type_name.value)
+        if value_python_type is Variant:
+            Variant.validate(value)
+            return
         if not isinstance(value, value_python_type):
             raise ValueError(
                 f"Parameter {param_info.name} should be of type {param_info.type_name.value} "
@@ -695,6 +745,9 @@ def get_execute_function_sql_command(
                 ):
                     json_value_str = json.dumps(param_value)
                     arg_clause += f"from_json('{json_value_str}', '{param_info.type_text}')"
+                elif param_info.type_name == ColumnTypeName.VARIANT:
+                    json_value_str = json.dumps(param_value)
+                    arg_clause += f"parse_json('{json_value_str}')"
                 elif param_info.type_name == ColumnTypeName.BINARY:
                     if isinstance(param_value, bytes):
                         param_value = base64.b64encode(param_value).decode("utf-8")

@@ -35,6 +35,7 @@ from unitycatalog.ai.core.databricks import (
 from unitycatalog.ai.core.envs.databricks_env_vars import (
     UCAI_DATABRICKS_SERVERLESS_EXECUTION_RESULT_ROW_LIMIT,
 )
+from unitycatalog.ai.core.types import Variant
 from unitycatalog.ai.test_utils.client_utils import (
     client,  # noqa: F401
     get_client,
@@ -46,6 +47,7 @@ from unitycatalog.ai.test_utils.function_utils import (
     CATALOG,
     create_function_and_cleanup,
     create_python_function_and_cleanup,
+    create_wrapped_function_and_cleanup,
     generate_func_name_and_cleanup,
     random_func_name,
 )
@@ -335,6 +337,64 @@ def test_replace_existing_function(client: DatabricksFunctionClient):
 
 @retry_flaky_test()
 @requires_databricks
+def test_replace_existing_wrapped_function(client: DatabricksFunctionClient):
+    def int_func(a: int) -> int:
+        """A function that adds 10 to a."""
+        return a + 10
+
+    def str_func(b: str) -> str:
+        """A function that returns the string value of b with a prefix."""
+        return f"str: {b}"
+
+    def wrapper_func(a: int, b: str) -> str:
+        """
+        Wrapper function that in-lines int_func and str_func.
+
+        Args:
+            a: An integer.
+            b: A string.
+
+        Returns:
+            A concatenation of int_func(a) and str_func(b).
+        """
+        return f"{int_func(a)} {str_func(b)}"
+
+    with create_wrapped_function_and_cleanup(
+        client, primary_func=wrapper_func, functions=[int_func, str_func], schema=SCHEMA
+    ) as func_obj:
+        # Execute the function and verify the result.
+        result = client.execute_function(func_obj.full_function_name, {"a": 5, "b": "test"})
+        # Expect 5 + 10 = 15 for int_func and "str: test" for str_func.
+        assert result.value == "15 str: test"
+
+        # Now, modify the definition of the wrapped functions.
+        def int_func(a: int) -> int:
+            """Modified: now adds 20 instead of 10."""
+            return a + 20
+
+        def wrapper_func(a: int, b: str) -> str:
+            """
+            Modified wrapper function using the updated int_func.
+            """
+            return f"{int_func(a)} {str_func(b)}"
+
+        # Replace the existing wrapped function.
+        client.create_wrapped_function(
+            primary_func=wrapper_func,
+            functions=[int_func, str_func],
+            catalog=CATALOG,
+            schema=SCHEMA,
+            replace=True,
+        )
+
+        # Execute the function again to verify that the updated definition is in effect.
+        result = client.execute_function(func_obj.full_function_name, {"a": 5, "b": "test"})
+        # Now, 5 + 20 = 25 for int_func; the str_func remains unchanged.
+        assert result.value == "25 str: test"
+
+
+@retry_flaky_test()
+@requires_databricks
 def test_create_function_without_replace(client: DatabricksFunctionClient):
     def simple_func(x: int) -> str:
         """Test function that returns the string version of x."""
@@ -463,3 +523,46 @@ RETURN SELECT ai_summarize(text, 20)
         assert result.error is None, f"Function execution failed with error: {result.error}"
         # number of words should be no more than 20
         assert len(result.value.split(" ")) <= 20
+
+
+@retry_flaky_test()
+@requires_databricks
+def test_create_and_execute_python_function_with_variant(client: DatabricksFunctionClient):
+    def func_variant(a: Variant) -> str:
+        """
+        Returns the JSON representation of the VARIANT input.
+
+        Args:
+            a (Variant): A variant parameter (a dict representing semi-structured data).
+
+        Returns:
+            str: JSON string of the input.
+        """
+
+        return str(a)
+
+    with create_python_function_and_cleanup(client, func=func_variant, schema=SCHEMA):
+        func_name = f"{CATALOG}.{SCHEMA}.func_variant"
+        input_value = {"key": "value", "list": [1, 2, 3]}
+        result = client.execute_function(func_name, {"a": input_value})
+        assert result.error is None
+        assert result.value == '{"key":"value","list":[1,2,3]}'
+
+
+@retry_flaky_test()
+@requires_databricks
+def test_create_and_execute_function_with_variant_integration(client: DatabricksFunctionClient):
+    sql_function_body = f"""CREATE OR REPLACE FUNCTION {CATALOG}.{SCHEMA}.func_variant_body(sql_variant VARIANT)
+RETURNS STRING
+LANGUAGE PYTHON
+COMMENT 'Function that returns JSON string of the VARIANT input.'
+AS $$
+    return str(sql_variant)
+$$
+"""
+    with create_function_and_cleanup(client=client, schema=SCHEMA, sql_body=sql_function_body):
+        func_name = f"{CATALOG}.{SCHEMA}.func_variant_body"
+        input_value = {"key": "value", "list": [1, 2, 3]}
+        result = client.execute_function(func_name, {"sql_variant": input_value})
+        assert result.error is None
+        assert result.value == '{"key":"value","list":[1,2,3]}'
