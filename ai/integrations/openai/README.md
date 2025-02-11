@@ -4,21 +4,79 @@ Integrate Unity Catalog AI package with OpenAI to allow seamless usage of UC fun
 
 ## Installation
 
+### Client Library
+
+To install the Unity Catalog function client SDK and the `OpenAI` integration, simply install from PyPI:
+
 ```sh
-# install from the source
-pip install git+https://github.com/unitycatalog/unitycatalog.git#subdirectory=ai/integrations/openai
+pip install unitycatalog-openai
 ```
 
-> [!NOTE]
-> Once this package is published to PyPI, users can install via `pip install unitycatalog-openai`
+If you are working with **Databricks Unity Catalog**, you can install the optional package:
 
-## Get started
+```sh
+pip install unitycatalog-openai[databricks]
+```
 
-### OSS UC
+## Getting started
 
-TODO: fill this section once UC OSS client is supported
+### Creating a Unity Catalog Client
 
-### Databricks-managed UC
+To interact with your Unity Catalog server, initialize the `UnitycatalogFunctionClient` as shown below:
+
+```python
+import asyncio
+from unitycatalog.ai.core.client import UnitycatalogFunctionClient
+from unitycatalog.client import ApiClient, Configuration
+
+# Configure the Unity Catalog API client
+config = Configuration(
+    host="http://localhost:8080/api/2.1/unity-catalog"  # Replace with your UC server URL
+)
+
+# Initialize the asynchronous ApiClient
+api_client = ApiClient(configuration=config)
+
+# Instantiate the UnitycatalogFunctionClient
+uc_client = UnitycatalogFunctionClient(api_client=api_client)
+
+# Example catalog and schema names
+CATALOG = "my_catalog"
+SCHEMA = "my_schema"
+```
+
+### Creating a Unity Catalog Function
+
+You can create a UC function either by providing a Python callable or by submitting a `FunctionInfo` object. Below is an example (recommended) of using the `create_python_function` API that accepts a Python callable (function) as input.
+
+To create a UC function from a Python function, define your function with appropriate type hints and a Google-style docstring:
+
+```python
+def add_numbers(a: float, b: float) -> float:
+    """
+    Adds two numbers and returns the result.
+
+    Args:
+        a (float): First number.
+        b (float): Second number.
+
+    Returns:
+        float: The sum of the two numbers.
+    """
+    return a + b
+
+# Create the function within the Unity Catalog catalog and schema specified
+function_info = uc_client.create_python_function(
+    func=add_numbers,
+    catalog=CATALOG,
+    schema=SCHEMA,
+    replace=False,  # Set to True to overwrite if the function already exists
+)
+
+print(function_info)
+```
+
+### Databricks-managed Unity Catalog
 
 To use Databricks-managed Unity Catalog with this package, follow the [instructions](https://docs.databricks.com/en/dev-tools/cli/authentication.html#authentication-for-the-databricks-cli) to authenticate to your workspace and ensure that your access token has workspace-level privilege for managing UC functions.
 
@@ -30,15 +88,13 @@ Initialize a client for managing UC functions in a Databricks workspace, and set
 from unitycatalog.ai.core.client import set_uc_function_client
 from unitycatalog.ai.core.databricks import DatabricksFunctionClient
 
-client = DatabricksFunctionClient(
-    warehouse_id="..." # replace with the warehouse_id
-)
+client = DatabricksFunctionClient()
 
 # sets the default uc function client
 set_uc_function_client(client)
 ```
 
-#### Create a function in UC
+#### Create a Function in UC
 
 Create a python UDF in Unity Catalog with the client
 
@@ -68,7 +124,9 @@ client.create_function(sql_function_body=sql_body)
 
 Now the function is created and stored in the corresponding catalog and schema.
 
-#### Create a UCFunctionToolkit instance
+## Using the Function as a GenAI Tool
+
+### Create a UCFunctionToolkit instance
 
 [OpenAI function calling](https://platform.openai.com/docs/guides/function-calling) allows you to connect models like `gpt-4o-mini` to external tools and systems, and UCFunctionToolkit provides the ability to use UC functions as tools in OpenAI calls.
 
@@ -85,7 +143,7 @@ tools = toolkit.tools
 python_exec_tool = tools[0]
 ```
 
-#### Use the tools in OpenAI models
+### Use the tools in OpenAI models
 
 Now we use the tools when calling OpenAI Chat Completion API.
 
@@ -144,9 +202,9 @@ openai.chat.completions.create(
 )
 ```
 
-#### FAQ
+### FAQ
 
-#### What if I want to use different client for different toolkits?
+#### What if I want to use a different client for different toolkits?
 
 To use different clients during toolkit creation stage, you could pass the client directly to UCFunctionToolkit:
 
@@ -160,7 +218,7 @@ Please note that this client is only used for retrieving UC functions so we can 
 
 #### How should I handle the tool call response?
 
-We provide a helper function for converting OpenAI ChatCompletion response to messages that can be send over for response creation.
+We provide a helper function for converting OpenAI ChatCompletion response to messages that can be sent over for response creation.
 
 ```python
 from unitycatalog.ai.openai.utils import generate_tool_call_messages
@@ -169,8 +227,8 @@ messages = generate_tool_call_messages(response=response, client=client)
 print(messages)
 ```
 
-If the response contains multiple choices, you could pass `choice_index` (starting from 0) to `generate_tool_call_messages` to choose one choice. Multiple choices are not supported yet.
+If the response contains multiple choices, you could pass `choice_index` (starting from 0) to `generate_tool_call_messages` to choose a single choice. Multiple choices are not supported yet.
 
-#### Configurations for UC functions execution
+#### Configurations for UC functions execution within Databricks
 
 We provide configurations for databricks client to control the function execution behaviors, check [function execution arguments section](../../README.md#function-execution-arguments-configuration).

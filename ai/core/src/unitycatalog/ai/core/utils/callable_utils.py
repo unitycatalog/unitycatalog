@@ -1,8 +1,20 @@
 import ast
 import inspect
 import warnings
+from dataclasses import dataclass
 from textwrap import dedent, indent
-from typing import Any, Callable, Optional, Set, Union, get_args, get_origin, get_type_hints
+from typing import (
+    Any,
+    Callable,
+    Dict,
+    List,
+    Optional,
+    Set,
+    Union,
+    get_args,
+    get_origin,
+    get_type_hints,
+)
 
 from unitycatalog.ai.core.utils.docstring_utils import DocstringInfo, parse_docstring
 from unitycatalog.ai.core.utils.type_utils import python_type_to_sql_type
@@ -13,6 +25,16 @@ FORBIDDEN_PARAMS = ["self", "cls"]
 class FunctionBodyExtractor(ast.NodeVisitor):
     """
     AST NodeVisitor class to extract the body of a function.
+
+    This class traverses the abstract syntax tree (AST) of a Python function
+    to extract its body as a dedented string and determine the indentation unit used.
+
+    Attributes:
+        func_name (str): The name of the function to extract.
+        source_code (str): The source code of the function.
+        function_body (str): The extracted function body.
+        indent_unit (int): The number of spaces used for indentation.
+        found (bool): Flag indicating whether the function has been found.
     """
 
     def __init__(self, func_name: str, source_code: str):
@@ -54,10 +76,61 @@ class FunctionBodyExtractor(ast.NodeVisitor):
             self.indent_unit = min(indents)
 
 
+@dataclass
+class FunctionMetadata:
+    """
+    Dataclass to store metadata of a Python function.
+
+    Attributes:
+        func_name: The name of the function.
+        signature: The signature of the function.
+        type_hints: Type hints of the function parameters and return type.
+        sql_return_type: The SQL return type corresponding to the function's return type.
+        base_return_type_name: The base name of the SQL return type.
+        docstring_info: Parsed information from the function's docstring.
+        parameters: List of parameter information dictionaries containing name, type, and nullable metadata.
+        function_body: The extracted body of the function.
+        indent_unit: The number of spaces used for indentation in the function body.
+    """
+
+    func_name: str
+    signature: inspect.Signature
+    type_hints: Dict[str, Any]
+    sql_return_type: str
+    base_return_type_name: str
+    docstring_info: DocstringInfo
+    parameters: List[Dict[str, Any]]
+    function_body: str
+    indent_unit: int
+
+
+@dataclass
+class SQLMetadata:
+    """
+    Dataclass to store the sql body generation metadata.
+
+    Attributes:
+        sql_params: List of SQL parameter definitions.
+        func_comment: Comment describing the function.
+        indented_body: The indented body of the Python function.
+    """
+
+    sql_params: List[str]
+    func_comment: str
+    indented_body: str
+
+
 def extract_function_body(func: Callable[..., Any]) -> tuple[str, int]:
     """
     Extracts the body of a function as a string without the signature or docstring,
-    dedents the code, and returns the indentation unit used in the function (e.g., 2 or 4 spaces).
+    dedents the code, and returns the indentation unit used in the function.
+
+    Args:
+        func: The function from which to extract the body.
+
+    Returns:
+        A tuple containing the dedented function body and the indentation unit.
+
     """
     source_lines, _ = inspect.getsourcelines(func)
     dedented_source = dedent("".join(source_lines))
@@ -70,9 +143,43 @@ def extract_function_body(func: Callable[..., Any]) -> tuple[str, int]:
     return extractor.function_body, extractor.indent_unit
 
 
+def extract_wrapped_functions(functions: list[Callable[..., Any]]) -> str:
+    """
+    Extracts the contents of callables that will be wrapped without modification or metadata extraction
+    for the purposes of in-lining their definitions into a wrapper function that will be registered to UC.
+
+    Args:
+        functions: List of callables to extract.
+    Returns:
+        The extracted code as a string, prepared for in-lining into the primary function's body.
+    """
+
+    if not all(callable(func) for func in functions):
+        raise ValueError(
+            "Unable to process functions. Ensure that all functions are valid callables."
+        )
+
+    sources = []
+    for func in functions:
+        src, _ = inspect.getsourcelines(func)
+        sources.append(dedent("".join(src)))
+    return "\n".join(sources)
+
+
 def validate_type_hint(hint: Any) -> str:
-    """Validates and returns the SQL type for a given type hint."""
-    # Handle typing.Optional, which is Union[type, None]
+    """
+    Validates and returns the SQL type for a given type hint.
+
+    Handles `typing.Optional` by extracting the underlying type and ensures that
+    `typing.Any` is not used.
+
+    Args:
+        hint: The type hint to validate.
+
+    Returns:
+        The corresponding SQL type.
+    """
+
     if hasattr(hint, "__origin__") and hint.__origin__ is Union:
         non_none_types = [t for t in hint.__args__ if t is not type(None)]
         if len(non_none_types) == 1:
@@ -89,13 +196,16 @@ def validate_type_hint(hint: Any) -> str:
 def generate_type_hint_error_message(param_name: str, param_hint: Any, exception: Exception) -> str:
     """
     Generate an informative error message for unsupported parameter types, especially for Lists, Tuples, and Dicts.
+
     Args:
         param_name: The name of the parameter with the type hint issue.
         param_hint: The unsupported type hint.
         exception: The original exception raised.
+
     Returns:
         str: A detailed error message guiding the user on how to resolve the issue.
     """
+
     if hasattr(param_hint, "__origin__"):
         origin = param_hint.__origin__
         if origin == list:
@@ -120,7 +230,24 @@ def generate_type_hint_error_message(param_name: str, param_hint: Any, exception
 
 
 def format_default_value(default: Any) -> str:
-    """Formats the default value for SQL."""
+    """
+    Formats the default value for SQL.
+
+    Args:
+        default (Any): The default value to format.
+
+    Returns:
+        str: The formatted default value suitable for SQL.
+
+    Examples:
+        >>> format_default_value(None)
+        'NULL'
+        >>> format_default_value("default")
+        "'default'"
+        >>> format_default_value(42)
+        '42'
+    """
+
     if default is None:
         return "NULL"
     elif isinstance(default, str):
@@ -130,7 +257,16 @@ def format_default_value(default: Any) -> str:
 
 
 def is_collection_type(type_hint: Any) -> bool:
-    """Checks if the type hint represents a collection type (list, tuple, dict)."""
+    """
+    Checks if the type hint represents a collection type (list, tuple, dict).
+
+    Args:
+        type_hint: The type hint to check.
+
+    Returns:
+        True if the type hint is a collection type, False otherwise.
+    """
+
     origin = get_origin(type_hint)
     return origin in (list, tuple, dict) or type_hint in (list, tuple, dict)
 
@@ -145,13 +281,23 @@ def unwrap_function(func: Callable[..., Any]) -> Callable[..., Any]:
 def is_valid_default_value(default: Any, type_hint: Any) -> bool:
     """
     Checks if the default value matches the type hint for scalar types.
+
     Handles Optional types by checking against each type in the Union.
 
-    Note: this function is required for compatibility with Python 3.9 and lower
-    due to the inability to use isinstance with subscripted generic types.
-    This function can be removed and the type hint check can be done directly
-    with isinstance(default, type_hint) when the minimum supported version of Python is 3.10+.
+    Note:
+        This function is required for compatibility with Python 3.9 and lower
+        due to the inability to use isinstance with subscripted generic types.
+        It can be removed and type hint checks can be done directly with
+        isinstance(default, type_hint) when the minimum supported Python version is 3.10+.
+
+    Args:
+        default (Any): The default value to validate.
+        type_hint (Any): The type hint to validate against.
+
+    Returns:
+        bool: True if the default value is valid, False otherwise.
     """
+
     origin = get_origin(type_hint)
     args = get_args(type_hint)
 
@@ -179,7 +325,22 @@ def process_parameter(
     type_hints: dict[str, Any],
     docstring_info: DocstringInfo,
 ) -> str:
-    """Processes a single parameter and returns its SQL definition."""
+    """
+    Processes a single parameter and returns its SQL definition.
+
+    This function validates the parameter's type hint, handles default values,
+    and formats the SQL parameter string accordingly.
+
+    Args:
+        param_name: The name of the parameter.
+        param: The parameter object.
+        type_hints: The type hints dictionary for the function.
+        docstring_info: Parsed docstring information.
+
+    Returns:
+        The SQL definition string for the parameter.
+    """
+
     if param_name in FORBIDDEN_PARAMS:
         raise ValueError(f"Parameter '{param_name}' is not allowed in the function signature.")
 
@@ -233,6 +394,25 @@ def assemble_sql_body(
     indented_body: str,
     replace: bool,
 ) -> str:
+    """
+    Assembles the final SQL function body.
+
+    Constructs the SQL statement for creating or replacing a function in Unity Catalog.
+
+    Args:
+        catalog: The catalog name.
+        schema: The schema name.
+        func_name: The name of the function.
+        sql_params: List of SQL parameter definitions.
+        sql_return_type: The SQL return type of the function.
+        func_comment: Comment describing the function.
+        indented_body: The indented body of the Python function.
+        replace: Whether to include the 'OR REPLACE' clause.
+
+    Returns:
+        The assembled SQL function creation statement.
+    """
+
     replace_command = "CREATE OR REPLACE" if replace else "CREATE"
     """Assembles the final SQL function body."""
     sql_params_str = ", ".join(sql_params)
@@ -246,6 +426,109 @@ AS $$
 $$;
     """
     return sql_body
+
+
+def extract_function_metadata(func: Callable[..., Any]) -> FunctionMetadata:
+    """
+    Extracts metadata from a Python function necessary for SQL function generation.
+
+    This includes the function's signature, type hints, docstring information,
+    parameters, and the function body.
+
+    Args:
+        func: The Python function to extract metadata from.
+
+    Returns:
+        FunctionMetadata: An object containing all extracted metadata.
+    """
+
+    func = unwrap_function(func)
+    func_name = func.__name__
+    signature = inspect.signature(func)
+    type_hints = get_type_hints(func)
+
+    sql_return_type = validate_return_type(func_name, type_hints)
+
+    base_return_type_name = sql_return_type.split("<", 1)[0]
+
+    docstring = inspect.getdoc(func)
+    if not docstring:
+        raise ValueError(f"Function '{func_name}' must have a docstring with a description.")
+    docstring_info = parse_docstring(docstring)
+
+    params_in_signature = set(signature.parameters.keys()) - set(FORBIDDEN_PARAMS)
+    check_docstring_signature_consistency(docstring_info.params, params_in_signature, func_name)
+
+    parameters = []
+    position = 0
+    for param_name, param in signature.parameters.items():
+        if param_name in FORBIDDEN_PARAMS:
+            raise ValueError(f"Parameter '{param_name}' is not allowed in the function signature.")
+
+        if param.kind in (inspect.Parameter.VAR_POSITIONAL, inspect.Parameter.VAR_KEYWORD):
+            kind = (
+                "var-positional (*args)"
+                if param.kind == inspect.Parameter.VAR_POSITIONAL
+                else "var-keyword (**kwargs)"
+            )
+            raise ValueError(
+                f"Parameter '{param_name}' is a {kind} parameter, which is not supported in SQL functions."
+            )
+
+        if param_name not in type_hints:
+            raise ValueError(f"Missing type hint for parameter: {param_name}.")
+
+        param_hint = type_hints[param_name]
+
+        try:
+            sql_type = validate_type_hint(param_hint)
+        except ValueError as e:
+            error_message = generate_type_hint_error_message(param_name, param_hint, e)
+            raise ValueError(error_message) from e
+
+        base_type_name = sql_type.split("<", 1)[0]
+
+        param_comment = docstring_info.params.get(param_name)
+        if param_comment:
+            param_comment = param_comment.replace("'", '"')
+
+        parameter_default = None
+        if param.default is not inspect.Parameter.empty:
+            if is_collection_type(param_hint):
+                raise ValueError(
+                    f"Parameter '{param_name}' of type '{param_hint}' cannot have a default value."
+                )
+            if not is_valid_default_value(param.default, param_hint):
+                raise ValueError(
+                    f"Default value for parameter '{param_name}' does not match the type hint '{param_hint}'."
+                )
+            parameter_default = format_default_value(param.default)
+
+        param_info = {
+            "name": param_name,
+            "sql_type": sql_type,
+            "base_type_name": base_type_name,
+            "comment": param_comment,
+            "parameter_default": parameter_default,
+            "param": param,  # Original inspect.Parameter object
+            "position": position,
+        }
+        parameters.append(param_info)
+        position += 1
+
+    function_body, indent_unit = extract_function_body(func)
+
+    return FunctionMetadata(
+        func_name=func_name,
+        signature=signature,
+        type_hints=type_hints,
+        sql_return_type=sql_return_type,
+        base_return_type_name=base_return_type_name,
+        docstring_info=docstring_info,
+        parameters=parameters,
+        function_body=function_body,
+        indent_unit=indent_unit,
+    )
 
 
 def generate_sql_function_body(
@@ -262,47 +545,112 @@ def generate_sql_function_body(
     Returns:
         str: SQL statement for creating the UDF.
     """
-    func = unwrap_function(func)
-    func_name = func.__name__
-    signature = inspect.signature(func)
-    type_hints = get_type_hints(func)
 
-    sql_return_type = validate_return_type(func_name, type_hints)
+    metadata = extract_function_metadata(func)
 
-    docstring = inspect.getdoc(func)
-    if not docstring:
-        raise ValueError(f"Function '{func_name}' must have a docstring with a description.")
-    docstring_info = parse_docstring(docstring)
-
-    params_in_signature = set(signature.parameters.keys()) - set(FORBIDDEN_PARAMS)
-    check_docstring_signature_consistency(docstring_info.params, params_in_signature, func_name)
-
-    sql_params = []
-    for param_name, param in signature.parameters.items():
-        sql_param = process_parameter(param_name, param, type_hints, docstring_info)
-        sql_params.append(sql_param)
-
-    function_body, indent_unit = extract_function_body(func)
-    indented_body = indent(function_body, " " * indent_unit)
-
-    func_comment = docstring_info.description.replace("'", '"')
+    sql_metadata = create_sql_metadata(metadata)
 
     sql_body = assemble_sql_body(
         catalog,
         schema,
-        func_name,
-        sql_params,
-        sql_return_type,
-        func_comment,
-        indented_body,
+        metadata.func_name,
+        sql_metadata.sql_params,
+        metadata.sql_return_type,
+        sql_metadata.func_comment,
+        sql_metadata.indented_body,
         replace,
     )
 
     return sql_body
 
 
+def generate_wrapped_sql_function_body(
+    primary_func: Callable[..., Any],
+    functions: list[Callable[..., Any]],
+    catalog: str,
+    schema: str,
+    replace: bool = False,
+) -> str:
+    """
+    Generate SQL body for creating the function in Unity Catalog.
+
+    Args:
+        primary_func: The primary Python callable function to convert into a UDF.
+        functions: List of additional functions to be wrapped.
+        catalog: The catalog name.
+        schema: The schema name.
+        replace: Whether to include the 'OR REPLACE' clause.
+
+    Returns:
+        str: SQL statement for creating the UDF.
+    """
+
+    wrapped_function_content = extract_wrapped_functions(functions)
+
+    primary_metadata = extract_function_metadata(primary_func)
+
+    # Update the primary function's body with the wrapped functions in-lined into the top of the body
+    primary_metadata.function_body = (
+        wrapped_function_content + "\n" + primary_metadata.function_body
+    )
+
+    sql_metadata = create_sql_metadata(primary_metadata)
+
+    sql_body = assemble_sql_body(
+        catalog,
+        schema,
+        primary_metadata.func_name,
+        sql_metadata.sql_params,
+        primary_metadata.sql_return_type,
+        sql_metadata.func_comment,
+        sql_metadata.indented_body,
+        replace,
+    )
+
+    return sql_body
+
+
+def create_sql_metadata(function_metadata: FunctionMetadata) -> SQLMetadata:
+    """
+    Create SQL body for creating the function in Unity Catalog.
+
+    Args:
+        function_metadata: The metadata of the function.
+
+    Returns:
+        SQLMetadata object containing the metadata for sql body creation.
+    """
+    sql_params = []
+    for param_info in function_metadata.parameters:
+        sql_param_parts = [param_info["name"], param_info["sql_type"]]
+        if param_info["parameter_default"] is not None:
+            sql_param_parts.append(f"DEFAULT {param_info['parameter_default']}")
+        if param_info["comment"]:
+            sql_param_parts.append(f"COMMENT '{param_info['comment']}'")
+        sql_param = " ".join(sql_param_parts)
+        sql_params.append(sql_param)
+
+    indented_body = indent(function_metadata.function_body, " " * function_metadata.indent_unit)
+
+    func_comment = function_metadata.docstring_info.description.replace("'", '"')
+
+    return SQLMetadata(sql_params, func_comment, indented_body)
+
+
 def validate_return_type(func_name: str, type_hints: dict[str, Any]) -> str:
-    """Validates and returns the SQL return type for the function."""
+    """
+    Validates and returns the SQL return type for the function.
+
+    Ensures that the return type is properly specified and supported for SQL conversion.
+
+    Args:
+        func_name: The name of the function.
+        type_hints: The type hints of the function.
+
+    Returns:
+        The corresponding SQL return type.
+    """
+
     if "return" not in type_hints:
         raise ValueError(
             f"Return type for function '{func_name}' is not defined. Please provide a return type."

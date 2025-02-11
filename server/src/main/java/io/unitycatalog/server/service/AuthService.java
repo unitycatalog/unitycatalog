@@ -15,6 +15,7 @@ import io.unitycatalog.control.model.User;
 import io.unitycatalog.server.exception.ErrorCode;
 import io.unitycatalog.server.exception.GlobalExceptionHandler;
 import io.unitycatalog.server.exception.OAuthInvalidRequestException;
+import io.unitycatalog.server.persist.Repositories;
 import io.unitycatalog.server.persist.UserRepository;
 import io.unitycatalog.server.security.JwtClaim;
 import io.unitycatalog.server.security.SecurityContext;
@@ -60,16 +61,23 @@ public class AuthService {
   }
 
   private static final Logger LOGGER = LoggerFactory.getLogger(AuthService.class);
-  private static final UserRepository USER_REPOSITORY = UserRepository.getInstance();
+  private final UserRepository userRepository;
 
   private final SecurityContext securityContext;
   private final JwksOperations jwksOperations;
+  private final ServerProperties serverProperties;
 
   private static final String COOKIE = "cookie";
+  private static final String EMPTY_RESPONSE = "{}";
 
-  public AuthService(SecurityContext securityContext) {
+  public AuthService(
+      SecurityContext securityContext,
+      ServerProperties serverProperties,
+      Repositories repositories) {
     this.securityContext = securityContext;
     this.jwksOperations = new JwksOperations(securityContext);
+    this.serverProperties = serverProperties;
+    this.userRepository = repositories.getUserRepository();
   }
 
   /**
@@ -132,16 +140,17 @@ public class AuthService {
           ErrorCode.INVALID_ARGUMENT, "Actor tokens not currently supported");
     }
 
-    boolean authorizationEnabled = ServerProperties.getInstance().isAuthorizationEnabled();
+    boolean authorizationEnabled = this.serverProperties.isAuthorizationEnabled();
     if (!authorizationEnabled) {
       throw new OAuthInvalidRequestException(
           ErrorCode.INVALID_ARGUMENT, "Authorization is disabled");
     }
 
     DecodedJWT decodedJWT = JWT.decode(request.getSubjectToken());
-    String issuer = decodedJWT.getClaim("iss").asString();
-    String keyId = decodedJWT.getHeaderClaim("kid").asString();
-    LOGGER.debug("Validating token for issuer: {}", issuer);
+    String issuer = decodedJWT.getIssuer();
+    String keyId = decodedJWT.getKeyId();
+
+    LOGGER.debug("Validating token for issuer: {} and keyId: {}", issuer, keyId);
 
     JWTVerifier jwtVerifier = jwksOperations.verifierForIssuerAndKey(issuer, keyId);
     decodedJWT = jwtVerifier.verify(decodedJWT);
@@ -165,12 +174,9 @@ public class AuthService {
           if (e.equals(COOKIE)) {
             // Set cookie timeout to 5 days by default if not present in server.properties
             String cookieTimeout =
-                ServerProperties.getInstance().getProperty("server.cookie-timeout", "P5D");
+                this.serverProperties.getProperty("server.cookie-timeout", "P5D");
             Cookie cookie =
-                Cookie.secureBuilder(AuthDecorator.UC_TOKEN_KEY, accessToken)
-                    .path("/")
-                    .maxAge(Duration.parse(cookieTimeout).getSeconds())
-                    .build();
+                createCookie(AuthDecorator.UC_TOKEN_KEY, accessToken, "/", cookieTimeout);
             responseHeaders.add(HttpHeaderNames.SET_COOKIE, cookie.toSetCookieHeader());
           }
         });
@@ -178,19 +184,44 @@ public class AuthService {
     return HttpResponse.ofJson(responseHeaders.build(), response);
   }
 
-  private static void verifyPrincipal(DecodedJWT decodedJWT) {
+  @Post("/logout")
+  public HttpResponse logout(HttpRequest request) {
+    return request.headers().cookies().stream()
+        .filter(c -> c.name().equals(AuthDecorator.UC_TOKEN_KEY))
+        .findFirst()
+        .map(
+            authorizationCookie -> {
+              Cookie expiredCookie = createCookie(AuthDecorator.UC_TOKEN_KEY, "", "/", "PT0S");
+              ResponseHeaders headers =
+                  ResponseHeaders.builder()
+                      .status(HttpStatus.OK)
+                      .add(HttpHeaderNames.SET_COOKIE, expiredCookie.toSetCookieHeader())
+                      .contentType(MediaType.JSON)
+                      .build();
+              // Armeria requires a non-empty response payload, so an empty JSON is sent
+              return HttpResponse.of(headers, HttpData.ofUtf8(EMPTY_RESPONSE));
+            })
+        .orElse(HttpResponse.of(HttpStatus.OK, MediaType.JSON, EMPTY_RESPONSE));
+  }
+
+  private void verifyPrincipal(DecodedJWT decodedJWT) {
     String subject =
-        decodedJWT.getClaim(JwtClaim.EMAIL.key()).isMissing()
-            ? decodedJWT.getClaim(JwtClaim.SUBJECT.key()).asString()
-            : decodedJWT.getClaim(JwtClaim.EMAIL.key()).asString();
+        decodedJWT
+            .getClaims()
+            .getOrDefault(JwtClaim.EMAIL.key(), decodedJWT.getClaim(JwtClaim.SUBJECT.key()))
+            .asString();
+
+    LOGGER.debug("Validating principal: {}", subject);
 
     if (subject.equals("admin")) {
+      LOGGER.debug("admin always allowed");
       return;
     }
 
     try {
-      User user = USER_REPOSITORY.getUserByEmail(subject);
+      User user = userRepository.getUserByEmail(subject);
       if (user != null && user.getState() == User.StateEnum.ENABLED) {
+        LOGGER.debug("Principal {} is enabled", subject);
         return;
       }
     } catch (Exception e) {
@@ -199,6 +230,13 @@ public class AuthService {
 
     throw new OAuthInvalidRequestException(
         ErrorCode.INVALID_ARGUMENT, "User not allowed: " + subject);
+  }
+
+  private Cookie createCookie(String key, String value, String path, String maxAge) {
+    return Cookie.secureBuilder(key, value)
+        .path(path)
+        .maxAge(Duration.parse(maxAge).getSeconds())
+        .build();
   }
 
   // TODO: This should be probably integrated into the OpenAPI spec.

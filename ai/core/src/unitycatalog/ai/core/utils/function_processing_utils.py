@@ -1,10 +1,16 @@
+import ast
 import decimal
+import inspect
 import json
 import logging
 import os
 from hashlib import md5
+from io import StringIO
 from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
+import pandas as pd
+import pydantic
+from packaging.version import Version
 from pydantic import Field, create_model
 
 from unitycatalog.ai.core.utils.config import JSON_SCHEMA_TYPE, UC_LIST_FUNCTIONS_MAX_RESULTS
@@ -17,6 +23,8 @@ from unitycatalog.ai.core.utils.type_utils import UC_TYPE_JSON_MAPPING
 from unitycatalog.ai.core.utils.validation_utils import FullFunctionName
 
 _logger = logging.getLogger(__name__)
+
+IS_PYDANTIC_V2_OR_NEWER = Version(pydantic.VERSION).major >= 2
 
 
 def uc_type_json_to_pydantic_type(
@@ -163,17 +171,26 @@ def process_function_names(
             full_func_name = FullFunctionName.validate_full_function_name(name)
             if full_func_name.function == "*":
                 token = None
+                # functions with BROWSE permission should not be included since this
+                # function should include only the functions that can be executed
+                list_kwarg = (
+                    {"include_browse": False}
+                    if "include_browse" in inspect.signature(client.list_functions).parameters
+                    else {}
+                )
                 while True:
                     functions = client.list_functions(
                         catalog=full_func_name.catalog,
                         schema=full_func_name.schema,
                         max_results=max_results,
                         page_token=token,
+                        **list_kwarg,
                     )
+                    # TODO: get functions in parallel
                     for f in functions:
                         if f.full_name not in tools_dict:
                             tools_dict[f.full_name] = uc_function_to_tool_func(
-                                function_info=f, client=client, **kwargs
+                                function_name=f.full_name, client=client, **kwargs
                             )
                     token = functions.token
                     if token is None:
@@ -254,7 +271,11 @@ def generate_function_input_params_schema(
             pydantic_field.pydantic_type,
             Field(default=pydantic_field.default, description=pydantic_field.description),
         )
-    model = create_model(params_name, **fields)
+    if IS_PYDANTIC_V2_OR_NEWER:
+        model = create_model(params_name, **fields, __config__={"extra": "forbid"})
+    else:
+        model = create_model(params_name, **fields, config=pydantic.ConfigDict(extra="forbid"))
+
     return PydanticFunctionInputParams(pydantic_model=model, strict=pydantic_field.strict)
 
 
@@ -265,6 +286,13 @@ def supported_param_info_types():
         from databricks.sdk.service.catalog import FunctionParameterInfo
 
         types += (FunctionParameterInfo,)
+    except ImportError:
+        pass
+
+    try:
+        from unitycatalog.client.models import FunctionParameterInfo as UCFunctionParameterInfo
+
+        types += (UCFunctionParameterInfo,)
     except ImportError:
         pass
 
@@ -280,5 +308,86 @@ def supported_function_info_types():
         types += (FunctionInfo,)
     except ImportError:
         pass
+    try:
+        from unitycatalog.client.models import FunctionInfo as UCFunctionInfo
+
+        types += (UCFunctionInfo,)
+    except ImportError:
+        pass
 
     return types
+
+
+def process_retriever_output(result: "FunctionExecutionResult") -> List[Dict[str, Any]]:
+    """
+    Process retriever output from result into mlflow.entities.Document format for tracing.
+
+    Args:
+        result: The result of the function execution to be processed.
+
+    Returns:
+        Retriever output formatted into a list of Documents.
+    """
+    if result.format == "CSV":
+        df = pd.read_csv(StringIO(result.value))
+        if "metadata" in df.columns:
+            df["metadata"] = df["metadata"].apply(ast.literal_eval)
+        output = df.to_dict(orient="records")
+    else:
+        value = result.value
+        output = ast.literal_eval(value) if isinstance(value, str) else value
+
+    return output
+
+
+def _execute_uc_function_with_retriever_tracing(
+    _execute_uc_function: Callable,
+    function_info: "FunctionInfo",
+    parameters: Dict[str, Any],
+    **kwargs: Any,
+) -> "FunctionExecutionResult":
+    """
+    Executes a UC function with MLflow tracing with span type RETRIEVER enabled. If MLflow cannot
+    be imported, the function executes without tracing and logs a warning.
+
+    Args:
+        _execute_uc_function (Callable): A function that executes the given UC function.
+        function_info (FunctionInfo): Metadata about the UC function to be executed.
+        parameters (Dict[str, Any]): Parameters to be passed to the function during execution.
+        **kwargs (Any): Additional keyword arguments to be passed to the function.
+
+    Returns:
+        Any: The output of the function execution.
+    """
+    try:
+        import mlflow
+        from mlflow.entities import SpanType
+
+        result = None
+
+        @mlflow.trace(name=function_info.full_name, span_type=SpanType.RETRIEVER)
+        def execute_retriever(parameters):
+            # Set inputs manually so we log {"query": "..."} instead of {"parameters": {"query": "..."}}
+            if span := mlflow.get_current_active_span():
+                span.set_inputs(parameters)
+
+            nonlocal result
+            result = _execute_uc_function(function_info, parameters, **kwargs)
+
+            # Re-raise errors so they can get traced
+            if result.error:
+                raise Exception(result.error)
+
+            return process_retriever_output(result)
+
+        try:
+            execute_retriever(parameters)
+        except Exception:  # Catch all errors that are re-raised
+            pass
+
+        return result
+    except ImportError as e:
+        _logger.warn(
+            f"Skipping tracing {function_info.full_name} as a retriever because of the following error:\n {e}"
+        )
+        return _execute_uc_function(function_info, parameters, **kwargs)

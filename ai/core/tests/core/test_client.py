@@ -5,7 +5,7 @@ from typing import Any, Callable, Dict, List, Optional
 import pytest
 from typing_extensions import override
 
-from unitycatalog.ai.core.client import (
+from unitycatalog.ai.core.base import (
     BaseFunctionClient,
     get_uc_function_client,
     set_uc_function_client,
@@ -42,6 +42,12 @@ class MockClient(BaseFunctionClient):
     @override
     def get_function(self, function_name: str, **kwargs: Any) -> Any:
         return {}
+
+    @override
+    def create_wrapped_function(
+        self, primary_func: Callable, functions: List[Callable], **kwargs: Any
+    ) -> Any:
+        return ""
 
     @override
     def list_functions(self, catalog: str, schema: str) -> Any:

@@ -1,5 +1,5 @@
 # syntax=docker.io/docker/dockerfile:1.7-labs
-ARG HOME="/opt/unitycatalog"
+ARG HOME="/home/unitycatalog"
 ARG ALPINE_VERSION="3.20"
 
 # Build stage, using Amazon Corretto jdk 17 on alpine with arm64 support
@@ -11,7 +11,7 @@ ENV HOME=$HOME
 
 WORKDIR $HOME
 
-COPY --parents build/ project/ examples/ server/ api/ version.sbt build.sbt ./
+COPY --parents build/ project/ examples/ server/ api/ clients/python/ version.sbt build.sbt ./
 
 RUN apk add --no-cache bash && ./build/sbt -info clean package
 

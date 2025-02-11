@@ -1,0 +1,97 @@
+name: Unity Catalog AI Integration Tests
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - ai/**
+      - .github/workflows/ucai-*.yml
+      - clients/python/**
+  pull_request:
+    paths:
+      - ai/**
+      - .github/workflows/ucai-*.yml
+      - clients/python/**
+
+jobs:
+  integration_tests:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ['3.9', '3.10']
+        pydantic-version: [1, 2]
+    timeout-minutes: 40
+    defaults:
+      run:
+        working-directory: ai
+    steps:
+      - name: Check out code
+        uses: actions/checkout@v4
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+      - name: Install Pydantic dependencies
+        run: |
+          if [ ${{ matrix.pydantic-version }} == 1 ]; then
+              pip install 'pydantic<2'
+          else
+              pip install 'pydantic<3,>=2'
+          fi
+      - name: Install Unity Catalog Python Libraries
+        run: |
+          dev/install_client.sh
+      - name: Install Unity Catalog AI Core Library
+        run: |
+          pip install core/.
+          echo "PYTHONPATH=$(pwd)/core/src:\$PYTHONPATH" >> $GITHUB_ENV
+      - name: Install dependencies
+        run: |
+          pip install mlflow
+      - name: Start Unity Catalog Server
+        run: |
+          dev/start_unitycatalog.sh
+      - name: Run OpenAI OSS Integration Tests
+        run: |
+          pip install integrations/openai[dev]
+          pytest integrations/openai/tests/test_openai_toolkit_oss.py
+      - name: Run LangChain OSS Integration Tests
+        run: |
+          pip install integrations/langchain[dev]
+          pytest integrations/langchain/tests/test_langchain_toolkit_oss.py
+      - name: Run LlamaIndex OSS Integration Tests
+        run: |
+          pip install integrations/llama_index[dev]
+          pytest integrations/llama_index/tests/test_llama_index_toolkit_oss.py
+      - name: Run Anthropic OSS Integration Tests
+        run: |
+          pip install integrations/anthropic[dev]
+          pytest integrations/anthropic/tests/test_anthropic_toolkit_oss.py
+      - name: Run AutoGen OSS Integration Tests
+        if: matrix.python-version == '3.10'
+        run: |
+          pip install integrations/autogen[dev]
+          pytest integrations/autogen/tests/test_autogen_toolkit_oss.py
+      - name: Run CrewAI OSS Integration Tests
+        if: matrix.python-version == '3.10'
+        run: |
+          pip install integrations/crewai[dev]
+          pytest integrations/crewai/tests/test_crewai_toolkit_oss.py
+      - name: Run Gemini OSS Integration Tests
+        run: |
+          pip install integrations/gemini[dev]
+          pytest integrations/gemini/tests/test_gemini_toolkit_oss.py
+      - name: Run LiteLLM OSS Integration Tests
+        if: matrix.python-version == '3.10'
+        run: |
+          pip install integrations/litellm[dev]
+          pytest integrations/litellm/tests/test_litellm_toolkit_oss.py
+      - name: Stop Unity Catalog Server
+        run: |
+          dev/teardown_server.sh

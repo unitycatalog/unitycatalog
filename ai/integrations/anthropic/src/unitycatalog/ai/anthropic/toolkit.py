@@ -2,7 +2,7 @@ from typing import Any, Dict, List, Optional
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-from unitycatalog.ai.core.client import BaseFunctionClient
+from unitycatalog.ai.core.base import BaseFunctionClient
 from unitycatalog.ai.core.utils.client_utils import validate_or_set_default_client
 from unitycatalog.ai.core.utils.function_processing_utils import (
     generate_function_input_params_schema,
@@ -76,31 +76,24 @@ class UCFunctionToolkit(BaseModel):
     @staticmethod
     def uc_function_to_anthropic_tool(
         *,
+        function_name: str,
         client: Optional[BaseFunctionClient] = None,
-        function_name: Optional[str] = None,
-        function_info: Optional[Any] = None,
     ) -> AnthropicTool:
         """
         Converts a Unity Catalog function to an Anthropic tool.
 
         Args:
+            function_name (str): The full name of the function in 'catalog.schema.function' format.
             client (Optional[BaseFunctionClient]): The client for managing functions.
-            function_name (Optional[str]): The full name of the function in 'catalog.schema.function' format.
-            function_info (Optional[Any]): The function info object returned by the client.
 
         Returns:
             AnthropicTool: The corresponding Anthropic tool.
         """
-        if function_name and function_info:
-            raise ValueError("Only one of function_name or function_info should be provided.")
         client = validate_or_set_default_client(client)
 
-        if function_name:
-            function_info = client.get_function(function_name)
-        elif function_info:
-            function_name = function_info.full_name
-        else:
-            raise ValueError("Either function_name or function_info should be provided.")
+        if function_name is None:
+            raise ValueError("function_name must be provided.")
+        function_info = client.get_function(function_name)
 
         fn_schema = generate_function_input_params_schema(function_info)
 

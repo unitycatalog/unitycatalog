@@ -1,7 +1,7 @@
 import { Breadcrumb, Col, Flex, Grid, Row } from 'antd';
 import { BreadcrumbItemType } from 'antd/es/breadcrumb/Breadcrumb';
 import React, { ReactNode } from 'react';
-import { getChildOnDisplayName } from '../../utils/getChildOnDisplayName';
+import { getChildOnType } from '../../utils/getChildOnType';
 
 interface DetailsLayoutProps {
   title: ReactNode;
@@ -14,8 +14,8 @@ const { useBreakpoint } = Grid;
 function DetailsLayout({ title, breadcrumbs, children }: DetailsLayoutProps) {
   const screens = useBreakpoint();
 
-  const contentChild = getChildOnDisplayName(children, 'Content');
-  const asideChild = getChildOnDisplayName(children, 'Aside');
+  const contentChild = getChildOnType(children, Content);
+  const asideChild = getChildOnType(children, Aside);
 
   return (
     <Flex vertical gap="middle" style={{ flexGrow: 1 }}>

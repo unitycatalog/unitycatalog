@@ -1,7 +1,7 @@
 package io.unitycatalog.server.auth;
 
 import io.unitycatalog.server.persist.model.Privileges;
-import io.unitycatalog.server.persist.utils.HibernateUtils;
+import io.unitycatalog.server.persist.utils.HibernateConfigurator;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 import java.util.Arrays;
@@ -34,8 +34,8 @@ public class JCasbinAuthorizer implements UnityCatalogAuthorizer {
   private static final int HIERARCHY_PARENT_INDEX = 0;
   private static final int HIERARCHY_CHILD_INDEX = 1;
 
-  public JCasbinAuthorizer() throws Exception {
-    Properties properties = HibernateUtils.getHibernateProperties();
+  public JCasbinAuthorizer(HibernateConfigurator hibernateConfigurator) throws Exception {
+    Properties properties = hibernateConfigurator.getHibernateProperties();
     String driver = properties.getProperty("hibernate.connection.driver_class");
     String url = properties.getProperty("hibernate.connection.url");
     String user = properties.getProperty("hibernate.connection.user");

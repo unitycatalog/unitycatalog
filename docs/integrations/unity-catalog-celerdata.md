@@ -17,7 +17,7 @@ same path.
 
 SSH into each FE and BE/CN node, install JDK 17, and under the same path, Clone, build, start Unity Catalog:
 
-```bash
+```sh
 sudo apt install openjdk-17-jdk
 
 git clone https://github.com/unitycatalog/unitycatalog.git

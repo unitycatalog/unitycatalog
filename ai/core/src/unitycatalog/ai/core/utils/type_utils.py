@@ -1,6 +1,8 @@
 import datetime
 import decimal
-from typing import Any, get_args, get_origin
+from typing import Any, Dict, get_args, get_origin
+
+from unitycatalog.ai.core.types import Variant
 
 PYTHON_TO_SQL_TYPE_MAPPING = {
     int: "LONG",
@@ -10,12 +12,13 @@ PYTHON_TO_SQL_TYPE_MAPPING = {
     datetime.date: "DATE",
     datetime.datetime: "TIMESTAMP",
     datetime.timedelta: "INTERVAL DAY TO SECOND",
-    decimal.Decimal: "DECIMAL(38, 18)",  # default precision and scale
+    decimal.Decimal: "DECIMAL(38, 18)",  # default to maximum precision to prevent truncation
     list: "ARRAY",
     tuple: "ARRAY",
     dict: "MAP",
     bytes: "BINARY",
     None: "NULL",
+    Variant: "VARIANT",
 }
 
 SQL_TYPE_TO_PYTHON_TYPE_MAPPING = {
@@ -48,6 +51,7 @@ SQL_TYPE_TO_PYTHON_TYPE_MAPPING = {
     # it's a type that can be defined in scala, python shouldn't force check the type here
     # ref: https://www.waitingforcode.com/apache-spark-sql/used-defined-type/read
     "USER_DEFINED_TYPE": object,
+    "VARIANT": Variant,
 }
 
 UC_TYPE_JSON_MAPPING = {
@@ -59,7 +63,9 @@ UC_TYPE_JSON_MAPPING = {
 }
 
 
-def column_type_to_python_type(column_type: str) -> Any:
+def column_type_to_python_type(
+    column_type: str, mapping: Dict[str, Any] = SQL_TYPE_TO_PYTHON_TYPE_MAPPING
+) -> Any:
     """
     Convert a SQL column type to the corresponding Python type.
     Looks up the provided SQL column type in a mapping dictionary and returns
@@ -72,9 +78,11 @@ def column_type_to_python_type(column_type: str) -> Any:
     Raises:
         ValueError: If the column type is unsupported.
     """
-    if t := SQL_TYPE_TO_PYTHON_TYPE_MAPPING.get(column_type):
+    if t := mapping.get(column_type):
         return t
-    raise ValueError(f"Unsupported column type: {column_type}")
+    raise ValueError(
+        f"Unsupported column type: {column_type}; supported types are: {list(mapping.keys())}"
+    )
 
 
 def is_time_type(column_type: str) -> bool:

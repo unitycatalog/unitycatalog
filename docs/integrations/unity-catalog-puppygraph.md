@@ -13,7 +13,7 @@ This document walks through how to use [PuppyGraph](https://www.puppygraph.com) 
 
 Run the command From the cloned repository root directory
 
-```shell
+```sh
 build/sbt clean package publishLocal spark/publishLocal
 ```
 
@@ -21,7 +21,7 @@ build/sbt clean package publishLocal spark/publishLocal
 
 Run the command to start a Unity Server.
 
-```shell
+```sh
 ./bin/start-uc-server
 ```
 
@@ -31,7 +31,7 @@ For the remaining steps, continue in a different terminal.
 
 Create a catalog `puppygraph` and several Delta tables under the schema `modern` in that catalog.
 
-```shell
+```sh
 ./bin/uc catalog create --name puppygraph
 ./bin/uc schema create --name modern --catalog puppygraph
 ./bin/uc table create --full_name puppygraph.modern.person --columns "id STRING, name STRING, age INT" --storage_location /tmp/puppygraph/person/ --format DELTA
@@ -44,7 +44,7 @@ Create a catalog `puppygraph` and several Delta tables under the schema `modern`
 
 Run the command from the Spark folder to start a Spark SQL shell .
 
-```shell
+```sh
 ./bin/spark-sql \
   --packages \
     io.delta:delta-spark_2.12:3.2.0,io.unitycatalog:unitycatalog-spark:0.2.0-SNAPSHOT \
@@ -81,7 +81,7 @@ Exit the Spark SQL shell after data insertion is done.
 
 Start PuppyGraph using Docker. Here we map the PuppyGraph port `8081` to `9081` on the host.
 
-```shell
+```sh
 docker run -p 9081:8081 -p 8182:8182 -p 7687:7687 \
 -v /tmp/puppygraph:/tmp/puppygraph \
 --name puppy --rm -itd puppygraph/puppygraph:stable
@@ -162,13 +162,13 @@ Create the schema.json and replace `<host-name>` with your host ip address.
 
 Upload the schema to PuppyGraph. Note here port is 9081 as 8081 is used by Unity Catalog.
 
-```shell
+```sh
 curl -XPOST -H "content-type: application/json" --data-binary @./schema.json --user "puppygraph:puppygraph123" localhost:9081/schema
 ```
 
 Start a PuppyGraph Gremlin Console to query the graph.
 
-```shell
+```sh
 docker exec -it puppygraph ./bin/console
 ```
 

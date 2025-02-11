@@ -10,6 +10,7 @@ import io.unitycatalog.server.base.catalog.CatalogOperations;
 import io.unitycatalog.server.base.schema.SchemaOperations;
 import io.unitycatalog.server.sdk.catalog.SdkCatalogOperations;
 import io.unitycatalog.server.sdk.schema.SdkSchemaOperations;
+import io.unitycatalog.server.utils.ServerProperties;
 import io.unitycatalog.server.utils.TestUtils;
 import java.util.*;
 import org.apache.spark.sql.SparkSession;
@@ -44,7 +45,8 @@ public abstract class BaseSparkIntegrationTest extends BaseCRUDTest {
           builder
               .config(catalogConf, UCSingleCatalog.class.getName())
               .config(catalogConf + ".uri", serverConfig.getServerUrl())
-              .config(catalogConf + ".token", serverConfig.getAuthToken());
+              .config(catalogConf + ".token", serverConfig.getAuthToken())
+              .config(catalogConf + ".warehouse", catalog);
     }
     // Use fake file system for cloud storage so that we can test credentials.
     builder.config("fs.s3.impl", S3CredentialTestFileSystem.class.getName());
@@ -64,6 +66,35 @@ public abstract class BaseSparkIntegrationTest extends BaseCRUDTest {
     } catch (ApiException e) {
       throw new RuntimeException(e);
     }
+  }
+
+  @Override
+  protected void setUpProperties() {
+    super.setUpProperties();
+    serverProperties.put("s3.bucketPath.0", "s3://test-bucket0");
+    serverProperties.put("s3.accessKey.0", "accessKey0");
+    serverProperties.put("s3.secretKey.0", "secretKey0");
+    serverProperties.put("s3.sessionToken.0", "sessionToken0");
+    serverProperties.put("s3.bucketPath.1", "s3://test-bucket1");
+    serverProperties.put("s3.accessKey.1", "accessKey1");
+    serverProperties.put("s3.secretKey.1", "secretKey1");
+    serverProperties.put("s3.sessionToken.1", "sessionToken1");
+
+    serverProperties.put("gcs.bucketPath.0", "gs://test-bucket0");
+    serverProperties.put("gcs.jsonKeyFilePath.0", "testing://0");
+    serverProperties.put("gcs.bucketPath.1", "gs://test-bucket1");
+    serverProperties.put("gcs.jsonKeyFilePath.1", "testing://1");
+
+    serverProperties.put("adls.storageAccountName.0", "test-bucket0");
+    serverProperties.put("adls.tenantId.0", "tenantId0");
+    serverProperties.put("adls.clientId.0", "clientId0");
+    serverProperties.put("adls.clientSecret.0", "clientSecret0");
+    serverProperties.put("adls.testMode.0", "true");
+    serverProperties.put("adls.storageAccountName.1", "test-bucket1");
+    serverProperties.put("adls.tenantId.1", "tenantId1");
+    serverProperties.put("adls.clientId.1", "clientId1");
+    serverProperties.put("adls.clientSecret.1", "clientSecret1");
+    serverProperties.put("adls.testMode.1", "true");
   }
 
   @Override
