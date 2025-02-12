@@ -19,7 +19,10 @@ from unitycatalog.ai.core.utils.pydantic_utils import (
     PydanticFunctionInputParams,
     PydanticType,
 )
-from unitycatalog.ai.core.utils.type_utils import UC_TYPE_JSON_MAPPING
+from unitycatalog.ai.core.utils.type_utils import (
+    UC_DEFAULT_VALUE_TO_PYTHON_EQUIVALENT_MAPPING,
+    UC_TYPE_JSON_MAPPING,
+)
 from unitycatalog.ai.core.utils.validation_utils import FullFunctionName
 
 _logger = logging.getLogger(__name__)
@@ -411,12 +414,9 @@ def process_function_parameter_defaults(
         for param in function_info.input_params.parameters:
             if param.parameter_default is not None:
                 default_str = param.parameter_default.strip()
-                if default_str.upper() == "NULL":
-                    defaults[param.name] = None
-                elif default_str.upper() == "TRUE":
-                    defaults[param.name] = True
-                elif default_str.upper() == "FALSE":
-                    defaults[param.name] = False
+                upper_str = default_str.upper()
+                if upper_str in UC_DEFAULT_VALUE_TO_PYTHON_EQUIVALENT_MAPPING:
+                    defaults[param.name] = UC_DEFAULT_VALUE_TO_PYTHON_EQUIVALENT_MAPPING[upper_str]
                 else:
                     try:
                         defaults[param.name] = ast.literal_eval(default_str)

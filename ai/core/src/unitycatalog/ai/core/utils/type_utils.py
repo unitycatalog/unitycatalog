@@ -62,6 +62,12 @@ UC_TYPE_JSON_MAPPING = {
     "INTERVAL DAY TO SECOND": (datetime.timedelta, str),
 }
 
+UC_DEFAULT_VALUE_TO_PYTHON_EQUIVALENT_MAPPING = {
+    "NULL": None,
+    "TRUE": True,
+    "FALSE": False,
+}
+
 
 def column_type_to_python_type(
     column_type: str, mapping: Dict[str, Any] = SQL_TYPE_TO_PYTHON_TYPE_MAPPING
