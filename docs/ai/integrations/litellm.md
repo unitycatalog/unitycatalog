@@ -22,7 +22,7 @@ If you are using an open source Unity Catalog deployment, create an instance of 
 
 ```python
 from unitycatalog.client import ApiClient, Configuration
-from unitycatalog.ai.core.oss import UnitycatalogFunctionClient
+from unitycatalog.ai.core.client import UnitycatalogFunctionClient
 
 config = Configuration()
 # This is the default address when starting a UnityCatalog server locally.
@@ -43,7 +43,7 @@ To use Databricks-managed Unity Catalog with this package, follow the [instructi
 First, initialize a client for managing UC functions in a Databricks workspace, and set it as the global client.
 
 ```python
-from unitycatalog.ai.core.client import set_uc_function_client
+from unitycatalog.ai.core.base import set_uc_function_client
 from unitycatalog.ai.core.databricks import DatabricksFunctionClient
 
 client = DatabricksFunctionClient()

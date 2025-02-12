@@ -16,7 +16,7 @@ To use open source Unity Catalog with this package, create an instance of the Fu
 
 ```python
 from unitycatalog.client import ApiClient, Configuration
-from unitycatalog.ai.core.oss import UnitycatalogFunctionClient
+from unitycatalog.ai.core.client import UnitycatalogFunctionClient
 
 config = Configuration()
 # This is the default address when starting a UnityCatalog server locally. Update this to the uri
@@ -37,7 +37,7 @@ To use Databricks-managed Unity Catalog with this package, follow the [instructi
 First, initialize a client for managing UC functions in a Databricks workspace, and set it as the global client.
 
 ```python
-from unitycatalog.ai.core.client import set_uc_function_client
+from unitycatalog.ai.core.base import set_uc_function_client
 from unitycatalog.ai.core.databricks import DatabricksFunctionClient
 
 client = DatabricksFunctionClient()
