@@ -2,7 +2,11 @@ import json
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, Callable, List
 
-from unitycatalog.ai.core.utils.callable_utils import extract_function_metadata
+from unitycatalog.ai.core.utils.callable_utils import (
+    FunctionMetadata,
+    extract_function_metadata,
+    extract_wrapped_functions,
+)
 
 if TYPE_CHECKING:
     from unitycatalog.client.models import FunctionParameterInfo
@@ -45,9 +49,68 @@ def generate_function_info(func: Callable[..., Any]) -> FunctionInfoDefinition:
         An object containing detailed information about the function.
     """
 
-    from unitycatalog.client.models import FunctionParameterInfo
-
     metadata = extract_function_metadata(func)
+
+    parameters = create_parameter_info(metadata)
+
+    return FunctionInfoDefinition(
+        callable_name=metadata.func_name,
+        routine_definition=metadata.function_body,
+        data_type=metadata.base_return_type_name,
+        full_data_type=metadata.sql_return_type,
+        parameters=parameters,
+        comment=metadata.docstring_info.description,
+    )
+
+
+def generate_wrapped_function_info(
+    primary_func: Callable[..., Any], functions: list[Callable[..., Any]]
+) -> FunctionInfoDefinition:
+    """
+    Generates a FunctionInfoDefinition object for a primary function and its wrapped functions.
+
+    This object encapsulates all necessary information about the primary function and in-lines the wrapped functions into the primary function's definition.
+
+    Args:
+        primary_func: The primary Python function to generate information for.
+        functions: List of wrapped functions to be in-lined into the primary function.
+
+    Returns:
+        An object containing detailed information about the primary function and its wrapped functions.
+    """
+
+    wrapped_function_content = extract_wrapped_functions(functions)
+
+    primary_metadata = extract_function_metadata(primary_func)
+
+    primary_metadata.function_body = (
+        wrapped_function_content + "\n" + primary_metadata.function_body
+    )
+
+    parameters = create_parameter_info(primary_metadata)
+
+    return FunctionInfoDefinition(
+        callable_name=primary_metadata.func_name,
+        routine_definition=primary_metadata.function_body,
+        data_type=primary_metadata.base_return_type_name,
+        full_data_type=primary_metadata.sql_return_type,
+        parameters=parameters,
+        comment=primary_metadata.docstring_info.description,
+    )
+
+
+def create_parameter_info(metadata: FunctionMetadata) -> list["FunctionParameterInfo"]:
+    """
+    Creates a list of FunctionParameterInfo objects from the metadata.
+
+    Args:
+        metadata: The metadata object containing parameter information.
+
+    Returns:
+        A list of FunctionParameterInfo objects.
+    """
+
+    from unitycatalog.client.models import FunctionParameterInfo
 
     parameters = []
     for param_info in metadata.parameters:
@@ -76,12 +139,4 @@ def generate_function_info(func: Callable[..., Any]) -> FunctionInfoDefinition:
             comment=param_info["comment"],
         )
         parameters.append(function_param_info)
-
-    return FunctionInfoDefinition(
-        callable_name=metadata.func_name,
-        routine_definition=metadata.function_body,
-        data_type=metadata.base_return_type_name,
-        full_data_type=metadata.sql_return_type,
-        parameters=parameters,
-        comment=metadata.docstring_info.description,
-    )
+    return parameters

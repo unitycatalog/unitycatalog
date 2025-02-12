@@ -65,6 +65,30 @@ class BaseFunctionClient(ABC):
         """
 
     @abstractmethod
+    def create_wrapped_function(
+        self,
+        *,
+        primary_func: Callable[..., Any],
+        functions: list[Callable[..., Any]],
+        catalog: str,
+        schema: str,
+        replace: bool = False,
+    ) -> Any:
+        """
+        Create a wrapped function comprised of a `primary_func` function and in-lined wrapped `functions` within the `primary_func` body.
+
+        Args:
+            primary_func: The primary function to be wrapped.
+            functions: A list of functions to be wrapped inline within the body of `primary_func`.
+            catalog: The catalog name.
+            schema: The schema name.
+            replace: Whether to replace the function if it already exists. Defaults to False.
+
+        Returns:
+            The UC function information metadata for the configured UC implementation.
+        """
+
+    @abstractmethod
     def get_function(self, function_name: str, **kwargs: Any) -> Any:
         """
         Get a function by its name.

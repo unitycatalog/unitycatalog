@@ -25,6 +25,7 @@ When using the `UnitycatalogFunctionClient` be aware of the following points:
 - **Function Management**: Simplifies the process of creating, retrieving, listing, executing, and deleting UC functions.
 - **Integration with GenAI**: Supports the registration of UC functions as tools for Generative AI agents, enabling intelligent tool calling within AI-driven workflows.
 - **Type Validation and Caching**: Ensures that function parameters and return types adhere to defined schemas and caches function executions for optimized performance.
+- **Wrapped Function Creation**: Registers wrapped functions by in-lining helper functions into a primary function’s definition. The primary function serves as the interface for function execution while helper functions are bundled into the definition, promoting modular design and ease of deployment.
 
 ### Using the UnityCatalog Functions Client
 
@@ -173,6 +174,46 @@ my_function = uc_client.create_python_function(
 )
 ```
 
+#### Creating Wrapped Functions
+
+Wrapped functions are created using the `create_wrapped_function` and `create_wrapped_function_async` APIs. In a wrapped function, the primary function serves as the interface for callers, and additional helper functions are in-lined into the primary function’s definition. This bundles related functionality together and simplifies the registration process.
+
+For example, consider the following definitions:
+
+```python
+def a(x: int) -> int:
+    return x + 1
+
+def b(y: int) -> int:
+    return y + 2
+
+def wrapper(x: int, y: int) -> int:
+    """
+    Calls the helper functions `a` and `b` and returns their combined result.
+
+    Args:
+        x (int): The first number.
+        y (int): The second number.
+
+    Returns:
+        int: The sum of a(x) and b(y).
+    """
+    return a(x) + b(y)
+```
+
+The wrapped function is registered as follows:
+
+```python
+wrapped_function = uc_client.create_wrapped_function(
+    primary_func=wrapper,
+    functions=[a, b],
+    catalog=CATALOG,
+    schema=SCHEMA,
+)
+```
+
+This API in-lines the helper functions (`a` and `b`) into the primary function (`wrapper`) so that they are part of the same function definition stored in Unity Catalog.
+
 #### Testing a function
 
 Before attempting to use the function within an Agent integration, you can validate that the function is behaving as
@@ -259,6 +300,35 @@ The `DatabricksFunctionClient` is a core component of the Unity Catalog AI Core 
 - **Databricks Connect**: To create UC functions using SQL body definitions or to execute functions using serverless compute, `databricks-connect` version `15.1.0` is required. This is the only supported version that is compatible.
 - **Serverless Compute**: In order to create and execute functions, a serverless compute connection **is required**.
 
+### Dependencies and Environments
+
+In Databricks runtime version 17 and higher, the ability to specify dependencies within a function execution environment is supported. Earlier runtime
+versions do not support this feature and will error if the arguments `dependencies` or `environment` are submitted with a `create_python_function` or `create_wrapped_python_function` call.
+
+To specify PyPI dependencies to include in your execution environment, you can see the minimum example below:
+
+```python
+# Define a function that requires an external PyPI dependency
+
+def dep_check(x: str) -> str:
+    """
+    A function to test the dependency support for UC
+
+    Args:
+        x: An input string
+    
+    Returns:
+        A string that reports the dependency support for UC
+    """
+
+    import scrapy  # NOTE that you must still import the library to use within the function.
+
+    return scrapy.__version__
+
+# Create the function and supply the dependency in standard PyPI format
+client.create_python_function(func=dep_check, catalog=CATALOG, schema=SCHEMA, replace=True, dependencies=["scrapy==2.10.1"])
+```
+
 ### Environment Variables for Databricks
 
 You can configure the behavior of function execution using the following environment variables:
@@ -274,9 +344,8 @@ In order to perform CRUD operations and to execute UC functions, you will need t
 is used not only for direct interface with functions, but also is the mechanism by which a function will be called as a tool by a GenAI application.
 
 ``` python
-from ucai.core.databricks import DatabricksFunctionClient
+from unitycatalog.ai.core.databricks import DatabricksFunctionClient
 
-# Initialize without a warehouse ID to use serverless compute for creating, listing, deleting, retrieving, and executing functions
 client = DatabricksFunctionClient()
 
 ```
@@ -329,8 +398,9 @@ client.create_python_function(
     catalog="your_catalog",
     schema="your_schema"
 )
-
 ```
+
+> Note: the parameters `dependencies` and `environment_version` for the `create_python_function` API are only compatible with Databricks runtime versions that support these SQL parameters for function creation. Currently, this is Databricks runtime versions **17 and higher**.
 
 #### Example of an Invalid Function
 
@@ -380,6 +450,26 @@ a warning will be issued upon creation. It is **highly advised** to correct your
 Most LLM's will not be able to effectively use your defined function as a tool if the description is a placeholder or is lacking appropriate information
 that describes the purpose of and how to use your defined function as a tool.
 
+> Note: Specifying environment and dependency configurations on version of Databricks runtime prior to verison 17 will generate exceptions if the SQL body contains these statements.
+
+#### Specifying Custom Package Dependencies
+
+If you are on Databricks Runtime **17 or above**, you can specify external package dependencies when writing your SQL body, as follows:
+
+``` python
+sql_body = """
+CREATE FUNCTION my_catalog.my_schema.my_func()
+RETURNS STRING
+LANGUAGE PYTHON
+ENVIRONMENT (dependencies='["pandas", "fastapi", "httpx"]', environment_version='1')
+COMMENT 'A function that uses external additional libraries.'
+AS $$
+    import fastapi
+    return fastapi.__version__
+$$
+"""
+```
+
 ## Retrieving Functions
 
 You can retrieve the function definition from UC by using the `get_function` client API:
@@ -424,7 +514,7 @@ print(result.value)  # Outputs: HELLO WORLD
 ### Create and Execute a Function
 
 ``` python
-from ucai.core.databricks import DatabricksFunctionClient
+from unitycatalog.ai.core.databricks import DatabricksFunctionClient
 
 # Initialize the client, connecting to serverless
 client = DatabricksFunctionClient()

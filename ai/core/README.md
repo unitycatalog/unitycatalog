@@ -25,6 +25,7 @@ The Unity Catalog (UC) function client is a core component of the Unity Catalog 
 
 - **Asynchronous and Synchronous Operations**: Flexibly choose between async and sync methods based on your application's concurrency requirements.
 - **Comprehensive Function Management**: Easily create, retrieve, list, execute, and delete UC functions.
+- **Wrapped Function Support**: In addition to standard single-function creation, you can create *wrapped functions* that in-line additional helper functions within a function's definition to simplify code reuse and modularity.
 - **Integration with GenAI**: Seamlessly integrate UC functions as tools within Generative AI agents, enhancing intelligent automation workflows.
 - **Type Safety and Caching**: Enforce strict type validation and utilize caching mechanisms to optimize performance and reduce redundant executions.
 
@@ -44,7 +45,7 @@ When using the `UnitycatalogFunctionClient` for UC, be mindful of the following 
     - Ensure that any external libraries required by your UC functions are pre-installed in the execution environment.
     - Best Practice: Import external dependencies within the function body to guarantee their availability during execution.
 - **Function Overwriting**:
-    - The `create_function` and `create_function_async` methods allow overwriting existing functions by setting the replace parameter to True.
+    - The `create_function`, `create_function_async`, `create_wrapped_function` and `create_wrapped_function_async` methods allow overwriting existing functions by setting the replace parameter to True.
     - **Warning**: Overwriting functions can disrupt workflows that depend on existing function definitions. Use this feature judiciously and ensure that overwriting is intentional.
 - **Type Validation and Compatibility**:
     - The client performs strict type validation based on the defined schemas. Ensure that your function parameters and return types adhere to the expected types to prevent execution errors.
@@ -117,6 +118,45 @@ function_info = uc_client.create_python_function(
 )
 
 print(function_info)
+```
+
+#### Creating a Wrapped UC Function
+
+In addition to standard function creation, you can create *wrapped functions*. A wrapped function uses a primary function as the interface while in-lining additional helper functions (wrapped functions) into the primary function’s definition. This feature is useful when you want to keep helper logic bundled together with the main function without needing to replicate existing common utilities within your function definitions.
+
+For example, consider the following helper functions and the primary wrapper function that has direct dependencies on the helper functions:
+
+```python
+def a(x: int) -> int:
+    return x + 1
+
+def b(y: int) -> int:
+    return y + 2
+
+def wrapper(x: int, y: int) -> int:
+    """
+    Wrapper function that in-lines helper functions a and b.
+
+    Args:
+        x (int): The first argument.
+        y (int): The second argument.
+
+    Returns:
+        int: The combined result of a(x) and b(y).
+    """
+    return a(x) + b(y)
+```
+
+To register this wrapped function as a single UC function, you can call the `create_wrapped_function` API:
+
+```python
+function_info = uc_client.create_wrapped_function(
+    primary_func=wrapper,
+    functions=[a, b],
+    catalog=CATALOG,
+    schema=SCHEMA,
+    replace=False,  # Set to True to overwrite if the function already exists
+)
 ```
 
 #### Retrieving a UC Function
@@ -214,6 +254,35 @@ $$
 function_info = client.create_function(sql_function_body=sql_body)
 ```
 
+#### Dependencies and Environments
+
+In Databricks runtime version 17 and higher, the ability to specify dependencies within a function execution environment is supported. Earlier runtime
+versions do not support this feature and will error if the arguments `dependencies` or `environment` are submitted with a `create_python_function` or `create_wrapped_python_function` call.
+
+To specify PyPI dependencies to include in your execution environment, you can see the minimum example below:
+
+```python
+# Define a function that requires an external PyPI dependency
+
+def dep_check(x: str) -> str:
+    """
+    A function to test the dependency support for UC
+
+    Args:
+        x: An input string
+    
+    Returns:
+        A string that reports the dependency support for UC
+    """
+
+    import scrapy  # NOTE that you must still import the library to use within the function.
+
+    return scrapy.__version__
+
+# Create the function and supply the dependency in standard PyPI format
+client.create_python_function(func=dep_check, catalog=CATALOG, schema=SCHEMA, replace=True, dependencies=["scrapy==2.10.1"])
+```
+
 #### Retrieve a UC function
 
 The client also provides API to get the UC function information details. Note that the function name passed in must be the full name in the format of `<catalog>.<schema>.<function_name>`.
@@ -244,13 +313,11 @@ assert result.value == "some_string"
 
 To manage the function execution behavior using Databricks client under different configurations, we offer the following environment variables:
 
-| Configuration Type                                | Environment Variable                                                | Description                                                                                                                                                                                                                                               | Default Value |
-|---------------------------------------------------|---------------------------------------------------------------------|-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|---------------|
-| **Warehouse Execution**                           | `UCAI_DATABRICKS_WAREHOUSE_EXECUTE_FUNCTION_WAIT_TIMEOUT`            | Time in seconds the call will wait for the function to execute. Set as `Ns` where `N` can be 0 or between 5 and 50.                                                                                                                                         | `30s`         |
-|                                                   | `UCAI_DATABRICKS_WAREHOUSE_EXECUTE_FUNCTION_ROW_LIMIT`               | Maximum number of rows in the function execution result. Also sets the `truncated` field in the response to indicate if the result was trimmed due to the limit.                                                                                            | 100           |
-|                                                   | `UCAI_DATABRICKS_WAREHOUSE_EXECUTE_FUNCTION_BYTE_LIMIT`              | Maximum byte size of the function execution result. If truncated due to this limit, the `truncated` field in the response is set to `true`.                                                                                                                | 1048576       |
-|                                                   | `UCAI_DATABRICKS_WAREHOUSE_RETRY_TIMEOUT`                            | Client-side retry timeout for function execution. If execution doesn't complete within `UCAI_DATABRICKS_WAREHOUSE_EXECUTE_FUNCTION_WAIT_TIMEOUT`, client retries with exponential wait times until this timeout is reached.                                  | 120           |
-| **Serverless Compute Execution**                  | `UCAI_DATABRICKS_SERVERLESS_EXECUTION_RESULT_ROW_LIMIT`              | Maximum number of rows in the function execution result.                                                                                                                                                                                                  | 100           |
+| Environment Variable                                                | Description                                                                                                                                                                     | Default Value |
+|---------------------------------------------------------------------|---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|---------------|
+| `UCAI_DATABRICKS_SESSION_RETRY_MAX_ATTEMPTS`                        | Maximum number of attempts to retry refreshing the session client in case of token expiry.                                                               | `5`         |
+| `UCAI_DATABRICKS_SERVERLESS_EXECUTION_RESULT_ROW_LIMIT`             | Maximum number of rows when executing functions using serverless compute with `databricks-connect`.                                                                              | `100`         |
+                         | 100           |
 
 #### Reminders
 
