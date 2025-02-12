@@ -6,7 +6,7 @@ import re
 import textwrap
 from contextlib import contextmanager
 from dataclasses import dataclass
-from typing import Any, Dict, List, Union
+from typing import Any, Dict, List, Optional, Union
 
 import pytest
 import pytest_asyncio
@@ -1413,3 +1413,22 @@ def test_create_function_no_params(uc_client: UnitycatalogFunctionClient):
 
     with pytest.raises(ValueError, match="Function does not have input parameters, but parameters"):
         uc_client.execute_function(function_name=full_name, parameters={"unexpected": "value"})
+
+
+def test_create_function_with_none_param_default(uc_client: UnitycatalogFunctionClient):
+    def null_func(a: Optional[str] = None) -> str:
+        """
+        A function that returns the string representation of its input.
+
+        Args:
+            a (Optional[str], optional): An optional string. Defaults to None.
+
+        Returns:
+            str: The string representation of the input.
+        """
+        return str(a)
+
+    full_name = f"{CATALOG}.{SCHEMA}.null_func"
+    uc_client.create_python_function(func=null_func, catalog=CATALOG, schema=SCHEMA, replace=True)
+    result = uc_client.execute_function(function_name=full_name, parameters={})
+    assert result.value == "None"

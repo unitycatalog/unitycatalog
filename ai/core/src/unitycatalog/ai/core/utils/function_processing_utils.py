@@ -410,7 +410,10 @@ def process_function_parameter_defaults(
     if function_info.input_params and function_info.input_params.parameters:
         for param in function_info.input_params.parameters:
             if param.parameter_default is not None:
-                defaults[param.name] = ast.literal_eval(param.parameter_default)
+                if param.parameter_default.strip().upper() == "NULL":
+                    defaults[param.name] = None
+                else:
+                    defaults[param.name] = ast.literal_eval(param.parameter_default)
     if parameters is None:
         parameters = {}
     return defaults | parameters

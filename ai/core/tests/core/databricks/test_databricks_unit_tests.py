@@ -1187,3 +1187,49 @@ def test_execute_function_no_params_databricks(mock_workspace_client, mock_spark
         client.execute_function(
             f"{CATALOG}.{SCHEMA}.func_no_params", parameters={"unexpected": "value"}
         )
+
+
+def test_execute_function_with_none_default_databricks(mock_workspace_client, mock_spark_session):
+    dummy_func_info = FunctionInfo(
+        catalog_name=CATALOG,
+        schema_name=SCHEMA,
+        name="null_func",
+        data_type=ColumnTypeName.STRING,
+        input_params=FunctionParameterInfos(
+            parameters=[
+                FunctionParameterInfo(
+                    name="a",
+                    type_name=ColumnTypeName.STRING,
+                    type_text="string",
+                    position=0,
+                    parameter_default="NULL",
+                )
+            ]
+        ),
+        external_language="PYTHON",
+        comment="Test function with None default",
+        routine_body=CreateFunctionRoutineBody.EXTERNAL,
+        routine_definition="return str(a)",
+        full_data_type="STRING",
+        return_params=FunctionParameterInfos(parameters=[]),
+        routine_dependencies=DependencyList(),
+        parameter_style=CreateFunctionParameterStyle.S,
+        is_deterministic=True,
+        sql_data_access=CreateFunctionSqlDataAccess.NO_SQL,
+        is_null_call=False,
+        security_type=CreateFunctionSecurityType.DEFINER,
+        specific_name="null_func",
+    )
+
+    client = DatabricksFunctionClient(client=mock_workspace_client)
+    client.set_default_spark_session = MagicMock()
+    client.spark = mock_spark_session
+    client.get_function = MagicMock(return_value=dummy_func_info)
+
+    mock_result = MagicMock()
+    mock_result.collect.return_value = [["None"]]
+    mock_spark_session.sql.return_value = mock_result
+
+    result = client.execute_function(f"{CATALOG}.{SCHEMA}.null_func", parameters={})
+    assert result.error is None, f"Execution error: {result.error}"
+    assert result.value == "None"
