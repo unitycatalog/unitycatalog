@@ -1,26 +1,32 @@
-# Using Unity Catalog AI with the LiteLLM SDK
+# 🚅 LiteLLM: Using Unity Catalog AI with the LiteLLM SDK
 
-You can use the Unity Catalog AI package with the LiteLLM integration to utilize functions that are defined in Unity Catalog to be used as tools within [LiteLLM](https://docs.litellm.ai/) LLM calls.
+Integrate Unity Catalog AI with [LiteLLM](https://docs.litellm.ai/) to seamlessly use functions defined in Unity Catalog as tools in your LiteLLM LLM calls. This guide covers installation, client setup for interfacing with Unity Catalog, and examples for using your UC functions as callable tools within LiteLLM.
+
+---
 
 ## Installation
+
+Install the Unity Catalog AI LiteLLM integration from PyPI:
 
 ```sh
 pip install unitycatalog-litellm
 ```
 
-## Get started
+---
+
+## Get Started
 
 ### Client Setup
 
-To use open source Unity Catalog with this package, create an instance of the Functions Client that is in accordance with your deployment, as shown below.
+If you are using an open source Unity Catalog deployment, create an instance of the Functions Client that corresponds to your deployment:
 
 ```python
 from unitycatalog.client import ApiClient, Configuration
 from unitycatalog.ai.core.client import UnitycatalogFunctionClient
 
 config = Configuration()
-# This is the default address when starting a UnityCatalog server locally. Update this to the uri
-# of your running UnityCatalog server.
+# This is the default address when starting a UnityCatalog server locally.
+# Update this to the URI of your running UnityCatalog server.
 config.host = "http://localhost:8080/api/2.1/unity-catalog"
 
 # Create the UnityCatalog client
@@ -46,94 +52,100 @@ client = DatabricksFunctionClient()
 set_uc_function_client(client)
 ```
 
-#### Create a UC function
+---
 
-To provide an executable function for your tool to use, you need to define and create the function within UC. To do this,
-create a Python function that is wrapped within the SQL body format for UC and then utilize the `DatabricksFunctionClient` to store this in UC:
+## Tutorial
+
+### Creating a UC function
+
+To provide an executable function for your tool, first create a Python function wrapped within the SQL body format for UC. Then, use the appropriate client to store this function in Unity Catalog. For example:
 
 ```python
 # Replace with your own catalog and schema for where your function will be stored
-CATALOG="main"
+CATALOG = "main"
 SCHEMA = "default"
 
 def sf_weather_lookup_litellm(city_name: str) -> str:
     """
-    Get the weather in san fransisco.
+    Get the weather in San Francisco.
 
     Args:
-        city_name (str): The name of the city 
+        city_name (str): The name of the city.
 
     Returns:
-        A string of the temperature.
+        str: A string representing the weather condition.
     """
     return "cloudy and boring"
 
-response = client.create_python_function(func=sf_weather_lookup_litellm, catalog=CATALOG, schema=SCHEMA)
+response = client.create_python_function(
+    func=sf_weather_lookup_litellm,
+    catalog=CATALOG,
+    schema=SCHEMA
+)
 ```
 
-Now that the function exists within the Catalog and Schema that we defined, we can interface with it from LiteLLM using the `unitycatalog-litellm` package.
+Once the function is stored within the designated Catalog and Schema, you can interface with it from LiteLLM.
 
-#### Create an instance of a LiteLLM compatible tool
+### Creating a LiteLLM-Compatible Toolkit Instance
 
-[LiteLLM Tools](https://docs.litellm.ai/docs/providers/ollama#example-usage---tool-calling) are callable external functions that GenAI applications can use (called by
-their many [supported LLMs](https://docs.litellm.ai/docs/providers)), which are exposed with a UC interface through the use of the `unitycatalog-litellm` package via the `UCFunctionToolkit` API.
+LiteLLM Tools are callable external functions that are used by supported LLMs. The `unitycatalog-litellm` package exposes these as a JSON tool collection using the `UCFunctionToolkit` API.
 
 ```python
 from unitycatalog.ai.litellm.toolkit import UCFunctionToolkit
 
-# Pass the UC function name that we created to the constructor
+# Pass the UC function name to the toolkit constructor.
 toolkit = UCFunctionToolkit(function_names=[f"{CATALOG}.{SCHEMA}.sf_weather_lookup_litellm"])
 
-# Get the LiteLLM-compatible tools definitions
+# Get the LiteLLM-compatible tool definitions
 tools = toolkit.tools
 ```
 
-If you would like to validate that your tool is functional prior to integrating it with LiteLLM, you can call the tool directly:
+To verify that your tool is functional, you can invoke it directly:
 
 ```python
+# Execute the tool directly by calling its function with required parameters.
 my_tool = tools[0]
-
-my_tool.fn(**{"city_name": "Dogpatch"})
+result = my_tool.fn(**{"city_name": "Dogpatch"})
+print(result)
 ```
 
-Output
+**Expected Output**:
 
 ```text
 '{"format": "SCALAR", "value": "cloudy and boring", "truncated": false}'
 ```
 
-#### Utilize our function as a tool within a LiteLLM Completion Call
+### Using the Function as a Tool within a LiteLLM Completion Call
 
-With our interface to our UC function defined as a JSON tool collection, we can directly use it within a LiteLLM Completion call.
+With your UC function defined as a JSON tool collection, you can directly use it within a LiteLLM Completion call. Note that LiteLLM leverages a standardized JSON tool format (compatible with OpenAI’s tool format) across supported LLMs.
 
-> [!NOTE]
-> LiteLLM doesn't have tool objects and instead looks to leverage a standard JSON format; these are passed directly to 
-> supported LLMs. This integration standardizes on the OpenAI tool format, which is supported by most LiteLLM models.
-> For more, please visit the [LiteLLM](https://docs.litellm.ai/docs/completion/function_call) docs on which models support tool calling.
+> [!NOTE] LiteLLM does not use tool objects internally. Instead, it leverages a JSON format that is passed directly to supported LLMs. For more details on supported
+> models and the function calling format, please visit the [LiteLLM documentation](https://docs.litellm.ai/).
+
+Below is an example of setting up a LiteLLM completion call that includes your defined UC tools:
 
 ```python
-import litellm 
-
-# Set up API keys
+import litellm
 import os
+
+# Set up your API key for the LLM
 os.environ["OPENAI_API_KEY"] = "your key"
 
-
-# Define your request 
-question = "What's the weather like in San Francisco?" 
+# Define your request message
+question = "What's the weather like in San Francisco?"
 messages = [{"role": "user", "content": question}]
 
-# Show the response
+# Call LiteLLM's completion endpoint, passing in the tools
 response = litellm.completion(
     model="gpt-4o-mini",
     messages=messages,
     tools=tools,
-    tool_choice="auto",  # auto is default, but we'll be explicit
+    tool_choice="auto",  # default
 )
 print("\nFirst LLM Response:\n", response)
 ```
 
-Output
+**Sample Output**:
 
 ```text
 ModelResponse(
@@ -182,28 +194,22 @@ ModelResponse(
 )
 ```
 
-#### Calling the function
+### Calling the Function
 
-There are two ways of calling the function within UC: using the `generate_tool_call_messages` function on the response and manually, via the returned values of `extract_tool_call_data`.
+There are two methods available to call your Unity Catalog function via LiteLLM:
 
-##### Use the `generate_tool_call_messages` function on the response
+#### Using the `generate_tool_call_messages` Utility (**Recommended**)
 
-**This is the recommended API to use to simplify your workstream**. This option will extract the tool calling instructions, execute the appropriate
-functions in Unity Catalog, and return the payload needed to call the `litellm.create` API directly. If there are no tool
-calls to be made, this function will return the state of the conversation history up to this point.
-
-Note that the conversation history up until this point (which must start with the initial user input message) is required for this API to function
-correctly. LiteLLM requires the full scope of the history, including both the tool use request and the tool response messages in order to continue
-providing an answer. In the example below, the only history that we have is the original initial user question.
+This API simplifies the workflow by extracting tool calling instructions from the LiteLLM response, executing the UC function, and returning the payload needed for the subsequent LiteLLM call. To ensure contextual references for subsequent LLM calls, ensure that your conversation history includes the initial user input.
 
 ```python
 from unitycatalog.ai.litellm.utils import generate_tool_call_messages
 
-# Call the Unity Catalog function and construct the required formatted response history for a subsequent call to LiteLLM 
+# Extract tool calling instructions, execute the UC function,
+# and construct the updated conversation history.
 tool_messages = generate_tool_call_messages(response=response, client=client, conversation_history=messages)
 
-# Call the LiteLLM client with the parsed tool response from executing the Unity Catalog function
-# Show the response
+# Make the subsequent LiteLLM call with the updated history
 response_2 = litellm.completion(
     model="gpt-4o-mini",
     messages=tool_messages,
@@ -211,7 +217,7 @@ response_2 = litellm.completion(
 print("\nSecond LLM Response:\n", response_2)
 ```
 
-Output
+**Expected Output**:
 
 ```text
 ModelResponse(
@@ -251,30 +257,21 @@ ModelResponse(
 )
 ```
 
-##### Use the returned values of `extract_tool_call_data`
+#### Using the `extract_tool_call_data` Utility (**Advanced Use**)
 
-**Note** this is a lower-level API and is intended for advanced use cases where logic needs to exist between the tool call request, its response,
-and the construction of a subsequent call to LiteLLM.
-
-This API is useful if you need to perform validation prior to calling a function or if you prefer to handle the direct return of the Unity Catalog
-function call yourself. This lower-level approach will require a more complex integration with LiteLLM.
+This lower-level API allows you to extract tool call data for more advanced use cases where you might want to intervene between the tool call request and its execution.
 
 ```python
 from unitycatalog.ai.litellm.utils import extract_tool_call_data
 
+# Extract a list of tool call data objects from the LiteLLM response.
+parsed_messages = extract_tool_call_data(response)[0]  # Extract the first choice
 
-# This returns a List[ToolCallData] for LiteLLM
-parsed_messages = extract_tool_call_data(response)[0] # Extract the first choice
-
-# # To see the parsed data that will be submitted for function calling in Unity Catalog:
+# To inspect the parsed tool call data:
 parsed = [message.to_dict() for message in parsed_messages]
-
 print(parsed)
 
-
-# To call each tool and provide the formatted response objects:
-# Note that you will need to construct the full conversation history to submit to LiteLLM if you use this API
-# as the return of `to_tool_result_message` contains only the formatted response from a tool call.
+# Execute each tool call and obtain the formatted response for LiteLLM:
 results = []
 for message in parsed_messages:
     result = message.execute(client)
@@ -283,9 +280,13 @@ for message in parsed_messages:
 print(results)
 ```
 
-Output
+**Expected Output**:
 
 ```text
 [{'function_name': 'main.default.sf_weather_lookup_litellm', 'arguments': {'city_name': 'San Francisco'}, 'tool_use_id': 'call_QUj1gKkfY8i1sVc4Tlfr3hrM'}]
 [{'role': 'tool', 'tool_call_id': 'call_QUj1gKkfY8i1sVc4Tlfr3hrM', 'name': 'main.default.sf_weather_lookup_litellm', 'content': 'cloudy and boring'}]
 ```
+
+---
+
+By following this guide, you can integrate Unity Catalog AI with LiteLLM to deploy and execute UC functions as tools in your LLM applications. Enjoy building with Unity Catalog AI and LiteLLM!
