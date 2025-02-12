@@ -456,7 +456,17 @@ class DatabricksFunctionClient(BaseFunctionClient):
 
         sql_function_body = generate_sql_function_body(func, catalog, schema, replace)
 
-        return self.create_function(sql_function_body=sql_function_body)
+        try:
+            return self.create_function(sql_function_body=sql_function_body)
+        except Exception as e:
+            if "Parameter default value is not supported" in str(e):
+                # this is a known issue with external python functions in Unity Catalog. Defining a SQL body statement
+                # can be used as a workaround for this issue.
+                raise ValueError(
+                    "Default parameters are not permitted with the create_python_function API. "
+                    "Specify a SQL body statement for defaults and use the create_function API "
+                    "to define functions with default values."
+                ) from e
 
     @retry_on_session_expiration
     @override
