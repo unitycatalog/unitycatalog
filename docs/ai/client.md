@@ -300,6 +300,35 @@ The `DatabricksFunctionClient` is a core component of the Unity Catalog AI Core 
 - **Databricks Connect**: To create UC functions using SQL body definitions or to execute functions using serverless compute, `databricks-connect` version `15.1.0` is required. This is the only supported version that is compatible.
 - **Serverless Compute**: In order to create and execute functions, a serverless compute connection **is required**.
 
+### Dependencies and Environments
+
+In Databricks runtime version 17 and higher, the ability to specify dependencies within a function execution environment is supported. Earlier runtime
+versions do not support this feature and will error if the arguments `dependencies` or `environment` are submitted with a `create_python_function` or `create_wrapped_python_function` call.
+
+To specify PyPI dependencies to include in your execution environment, you can see the minimum example below:
+
+```python
+# Define a function that requires an external PyPI dependency
+
+def dep_check(x: str) -> str:
+    """
+    A function to test the dependency support for UC
+
+    Args:
+        x: An input string
+    
+    Returns:
+        A string that reports the dependency support for UC
+    """
+
+    import scrapy  # NOTE that you must still import the library to use within the function.
+
+    return scrapy.__version__
+
+# Create the function and supply the dependency in standard PyPI format
+client.create_python_function(func=dep_check, catalog=CATALOG, schema=SCHEMA, replace=True, dependencies=["scrapy==2.10.1"])
+```
+
 ### Environment Variables for Databricks
 
 You can configure the behavior of function execution using the following environment variables:
@@ -369,8 +398,9 @@ client.create_python_function(
     catalog="your_catalog",
     schema="your_schema"
 )
-
 ```
+
+> Note: the parameters `dependencies` and `environment_version` for the `create_python_function` API are only compatible with Databricks runtime versions that support these SQL parameters for function creation. Currently, this is Databricks runtime versions **17 and higher**.
 
 #### Example of an Invalid Function
 
@@ -419,6 +449,26 @@ If you create a function without both a `COMMENT` block (the function descriptio
 a warning will be issued upon creation. It is **highly advised** to correct your function definition and overwrite your function when you see this warning.
 Most LLM's will not be able to effectively use your defined function as a tool if the description is a placeholder or is lacking appropriate information
 that describes the purpose of and how to use your defined function as a tool.
+
+> Note: Specifying environment and dependency configurations on version of Databricks runtime prior to verison 17 will generate exceptions if the SQL body contains these statements.
+
+#### Specifying Custom Package Dependencies
+
+If you are on Databricks Runtime **17 or above**, you can specify external package dependencies when writing your SQL body, as follows:
+
+``` python
+sql_body = """
+CREATE FUNCTION my_catalog.my_schema.my_func()
+RETURNS STRING
+LANGUAGE PYTHON
+ENVIRONMENT (dependencies='["pandas", "fastapi", "httpx"]', environment_version='1')
+COMMENT 'A function that uses external additional libraries.'
+AS $$
+    import fastapi
+    return fastapi.__version__
+$$
+"""
+```
 
 ## Retrieving Functions
 
