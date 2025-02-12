@@ -23,6 +23,7 @@ from unitycatalog.ai.core.utils.callable_utils import (
     generate_sql_function_body,
     generate_wrapped_sql_function_body,
 )
+from unitycatalog.ai.core.utils.function_processing_utils import process_function_parameter_defaults
 from unitycatalog.ai.core.utils.type_utils import (
     column_type_to_python_type,
     convert_timedelta_to_interval_str,
@@ -639,6 +640,9 @@ class DatabricksFunctionClient(BaseFunctionClient):
     ) -> FunctionExecutionResult:
         _logger.info("Using databricks connect to execute functions with serverless compute.")
         self.set_default_spark_session()
+
+        parameters = process_function_parameter_defaults(function_info, parameters)
+
         sql_command = get_execute_function_sql_command(function_info, parameters)
         try:
             result = self.spark.sql(sqlQuery=sql_command.sql_query, args=sql_command.args or None)

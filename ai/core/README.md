@@ -200,6 +200,12 @@ result = uc_client.execute_function(full_func_name, parameters)
 print(result.value)  # Outputs: 16.0
 ```
 
+#### Function Parameter Defaults
+
+Defining and executing functions with parameter defaults behave similarly to standard Python function argument defaults. If a parameter is not provided that is marked as having a default value when called via the `execute_function` API, the existing default parameter value will be mapped to the function invocation call.
+
+If using defaults in your function signatures, ensure that the descriptions are accurate and declare what the default value is to ensure that Agentic use of your function is accurate.
+
 #### Deleting a Function
 
 To delete a function that you have write authority to, you can use the following API:

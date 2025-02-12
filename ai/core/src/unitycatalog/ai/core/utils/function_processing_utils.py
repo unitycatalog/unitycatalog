@@ -391,3 +391,26 @@ def _execute_uc_function_with_retriever_tracing(
             f"Skipping tracing {function_info.full_name} as a retriever because of the following error:\n {e}"
         )
         return _execute_uc_function(function_info, parameters, **kwargs)
+
+
+def process_function_parameter_defaults(
+    function_info: "FunctionInfo", parameters: Optional[dict[str, Any]] = None
+) -> dict[str, Any]:
+    """
+    Handle default values for input parameters.
+
+    Args:
+        function_info: The FunctionInfo object containing the function metadata.
+        parameters: The parameters to handle.
+
+    Returns:
+        The updated parameters with default values filled in.
+    """
+    defaults = {}
+    if function_info.input_params and function_info.input_params.parameters:
+        for param in function_info.input_params.parameters:
+            if param.parameter_default is not None:
+                defaults[param.name] = ast.literal_eval(param.parameter_default)
+    if parameters is None:
+        parameters = {}
+    return defaults | parameters

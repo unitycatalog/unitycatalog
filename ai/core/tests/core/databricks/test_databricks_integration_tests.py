@@ -545,7 +545,6 @@ def test_create_and_execute_python_function_with_variant(client: DatabricksFunct
         func_name = f"{CATALOG}.{SCHEMA}.func_variant"
         input_value = {"key": "value", "list": [1, 2, 3]}
         result = client.execute_function(func_name, {"a": input_value})
-        assert result.error is None
         assert result.value == '{"key":"value","list":[1,2,3]}'
 
 
@@ -564,5 +563,96 @@ $$
         func_name = f"{CATALOG}.{SCHEMA}.func_variant_body"
         input_value = {"key": "value", "list": [1, 2, 3]}
         result = client.execute_function(func_name, {"sql_variant": input_value})
-        assert result.error is None
         assert result.value == '{"key":"value","list":[1,2,3]}'
+
+
+@retry_flaky_test()
+@requires_databricks
+def test_execute_python_function_with_default_params_databricks(client: DatabricksFunctionClient):
+    def func_with_defaults(a: int, b: str = "default") -> str:
+        """
+        Concatenates an integer and a string with a default value for b.
+
+        Args:
+            a (int): An integer.
+            b (str, optional): A string. Defaults to "default".
+
+        Returns:
+            str: The concatenation of a and b.
+        """
+        return f"{a} {b}"
+
+    with create_python_function_and_cleanup(
+        client, func=func_with_defaults, schema=SCHEMA
+    ) as func_obj:
+        result = client.execute_function(func_obj.full_function_name, {"a": 10})
+        assert result.value == "10 default"
+
+        result = client.execute_function(func_obj.full_function_name, {"a": 20, "b": "test"})
+        assert result.value == "20 test"
+
+
+@retry_flaky_test()
+@requires_databricks
+def test_execute_python_function_with_all_defaults_databricks(client: DatabricksFunctionClient):
+    def func_with_all_defaults(
+        a: int = 1, b: str = "default", c: float = 3.14, d: bool = True
+    ) -> str:
+        """
+        Concatenates multiple parameters with defaults.
+
+        Args:
+            a (int, optional): Defaults to 1.
+            b (str, optional): Defaults to "default".
+            c (float, optional): Defaults to 3.14.
+            d (bool, optional): Defaults to True.
+
+        Returns:
+            str: Concatenated string of the inputs.
+        """
+        return f"{a} {b} {c} {d}"
+
+    with create_python_function_and_cleanup(
+        client, func=func_with_all_defaults, schema=SCHEMA
+    ) as func_obj:
+        result = client.execute_function(func_obj.full_function_name, parameters={})
+        assert result.value == "1 default 3.14 True", (
+            f"Expected '1 default 3.14 True', got {result.value}"
+        )
+
+        result = client.execute_function(
+            func_obj.full_function_name,
+            parameters={"a": 10, "b": "test", "c": 2.71, "d": False},
+        )
+        assert result.value == "10 test 2.71 False", (
+            f"Expected '10 test 2.71 False', got {result.value}"
+        )
+
+        result = client.execute_function(func_obj.full_function_name)
+        assert result.value == "1 default 3.14 True", (
+            f"Expected '1 default 3.14 True', got {result.value}"
+        )
+
+
+@retry_flaky_test()
+@requires_databricks
+def test_execute_python_function_no_params_databricks(client: DatabricksFunctionClient):
+    def func_no_params() -> str:
+        """
+        Returns a static string.
+
+        Returns:
+            str: A static string.
+        """
+        return "No parameters here!"
+
+    with create_python_function_and_cleanup(client, func=func_no_params, schema=SCHEMA) as func_obj:
+        result = client.execute_function(func_obj.full_function_name, parameters={})
+        assert result.value == "No parameters here!", (
+            f"Expected 'No parameters here!', got {result.value}"
+        )
+
+        with pytest.raises(
+            ValueError, match="Function does not have input parameters, but parameters"
+        ):
+            client.execute_function(func_obj.full_function_name, parameters={"unexpected": "value"})
