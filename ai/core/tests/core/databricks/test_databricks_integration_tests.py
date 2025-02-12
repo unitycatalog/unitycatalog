@@ -579,7 +579,8 @@ CONTAINS SQL
 COMMENT 'Concatenates integer and string with defaults'
 RETURN CONCAT(CAST(a AS STRING), ' ', b);
 """
-    with create_function_and_cleanup(client=client, schema=SCHEMA, sql_body=sql_body) as func_name:
+    with create_function_and_cleanup(client=client, schema=SCHEMA, sql_body=sql_body):
+        func_name = f"{CATALOG}.{SCHEMA}.concat_func"
         result = client.execute_function(func_name, parameters={})
         assert result.value == "10 default"
 
@@ -602,7 +603,8 @@ CONTAINS SQL
 COMMENT 'Concatenates all default parameters'
 RETURN CONCAT(CAST(a AS STRING), ' ', b, ' ', CAST(c AS STRING), ' ', CAST(d AS STRING));
 """
-    with create_function_and_cleanup(client=client, schema=SCHEMA, sql_body=sql_body) as func_name:
+    with create_function_and_cleanup(client=client, schema=SCHEMA, sql_body=sql_body):
+        func_name = f"{CATALOG}.{SCHEMA}.all_defaults"
         result = client.execute_function(func_name, parameters={})
         assert result.value.lower() == "1 default 3.14 true"
 

@@ -467,6 +467,7 @@ class DatabricksFunctionClient(BaseFunctionClient):
                     "Specify a SQL body statement for defaults and use the create_function API "
                     "to define functions with default values."
                 ) from e
+            raise e
 
     @retry_on_session_expiration
     @override
