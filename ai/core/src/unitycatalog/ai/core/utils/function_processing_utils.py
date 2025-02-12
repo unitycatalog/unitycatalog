@@ -19,7 +19,10 @@ from unitycatalog.ai.core.utils.pydantic_utils import (
     PydanticFunctionInputParams,
     PydanticType,
 )
-from unitycatalog.ai.core.utils.type_utils import UC_TYPE_JSON_MAPPING
+from unitycatalog.ai.core.utils.type_utils import (
+    UC_DEFAULT_VALUE_TO_PYTHON_EQUIVALENT_MAPPING,
+    UC_TYPE_JSON_MAPPING,
+)
 from unitycatalog.ai.core.utils.validation_utils import FullFunctionName
 
 _logger = logging.getLogger(__name__)
@@ -391,3 +394,34 @@ def _execute_uc_function_with_retriever_tracing(
             f"Skipping tracing {function_info.full_name} as a retriever because of the following error:\n {e}"
         )
         return _execute_uc_function(function_info, parameters, **kwargs)
+
+
+def process_function_parameter_defaults(
+    function_info: "FunctionInfo", parameters: Optional[dict[str, Any]] = None
+) -> dict[str, Any]:
+    """
+    Handle default values for input parameters.
+
+    Args:
+        function_info: The FunctionInfo object containing the function metadata.
+        parameters: The parameters to handle.
+
+    Returns:
+        The updated parameters with default values filled in.
+    """
+    defaults = {}
+    if function_info.input_params and function_info.input_params.parameters:
+        for param in function_info.input_params.parameters:
+            if param.parameter_default is not None:
+                default_str = param.parameter_default.strip()
+                upper_str = default_str.upper()
+                if upper_str in UC_DEFAULT_VALUE_TO_PYTHON_EQUIVALENT_MAPPING:
+                    defaults[param.name] = UC_DEFAULT_VALUE_TO_PYTHON_EQUIVALENT_MAPPING[upper_str]
+                else:
+                    try:
+                        defaults[param.name] = ast.literal_eval(default_str)
+                    except ValueError:
+                        defaults[param.name] = default_str
+    if parameters is None:
+        parameters = {}
+    return defaults | parameters

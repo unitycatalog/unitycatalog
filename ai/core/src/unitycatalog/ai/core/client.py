@@ -16,6 +16,7 @@ from unitycatalog.ai.core.utils.callable_utils_oss import (
     generate_function_info,
     generate_wrapped_function_info,
 )
+from unitycatalog.ai.core.utils.function_processing_utils import process_function_parameter_defaults
 from unitycatalog.ai.core.utils.type_utils import column_type_to_python_type
 from unitycatalog.ai.core.utils.validation_utils import (
     FullFunctionName,
@@ -830,16 +831,26 @@ class UnitycatalogFunctionClient(BaseFunctionClient):
 
     @override
     def _execute_uc_function(
-        self, function_info: FunctionInfo, parameters: Dict[str, Any], **kwargs: Any
+        self,
+        function_info: FunctionInfo,
+        parameters: Optional[dict[str, Any]] = None,
+        **kwargs: Any,
     ) -> FunctionExecutionResult:
         if function_info.name in self.func_cache:
+            parameters = process_function_parameter_defaults(function_info, parameters)
+
             result = self.func_cache[function_info.name](**parameters)
-            return FunctionExecutionResult(format="SCALAR", value=str(result))
+            try:
+                return FunctionExecutionResult(format="SCALAR", value=str(result))
+            except Exception as e:
+                return FunctionExecutionResult(error=str(e))
         else:
             python_function = dynamically_construct_python_function(function_info)
             exec(python_function, self.func_cache)
             try:
                 func = self.func_cache[function_info.name]
+
+                parameters = process_function_parameter_defaults(function_info, parameters)
 
                 result = func(**parameters)
 

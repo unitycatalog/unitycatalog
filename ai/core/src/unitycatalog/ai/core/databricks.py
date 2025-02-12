@@ -23,6 +23,7 @@ from unitycatalog.ai.core.utils.callable_utils import (
     generate_sql_function_body,
     generate_wrapped_sql_function_body,
 )
+from unitycatalog.ai.core.utils.function_processing_utils import process_function_parameter_defaults
 from unitycatalog.ai.core.utils.type_utils import (
     column_type_to_python_type,
     convert_timedelta_to_interval_str,
@@ -470,7 +471,18 @@ class DatabricksFunctionClient(BaseFunctionClient):
             func, catalog, schema, replace, dependencies, environment_version
         )
 
-        return self.create_function(sql_function_body=sql_function_body)
+        try:
+            return self.create_function(sql_function_body=sql_function_body)
+        except Exception as e:
+            if "Parameter default value is not supported" in str(e):
+                # this is a known issue with external python functions in Unity Catalog. Defining a SQL body statement
+                # can be used as a workaround for this issue.
+                raise ValueError(
+                    "Default parameters are not permitted with the create_python_function API. "
+                    "Specify a SQL body statement for defaults and use the create_function API "
+                    "to define functions with default values."
+                ) from e
+            raise e
 
     @retry_on_session_expiration
     @override
@@ -673,6 +685,9 @@ class DatabricksFunctionClient(BaseFunctionClient):
     ) -> FunctionExecutionResult:
         _logger.info("Using databricks connect to execute functions with serverless compute.")
         self.set_default_spark_session()
+
+        parameters = process_function_parameter_defaults(function_info, parameters)
+
         sql_command = get_execute_function_sql_command(function_info, parameters)
         try:
             result = self.spark.sql(sqlQuery=sql_command.sql_query, args=sql_command.args or None)
