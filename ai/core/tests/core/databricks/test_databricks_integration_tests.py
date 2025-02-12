@@ -568,70 +568,51 @@ $$
 
 @retry_flaky_test()
 @requires_databricks
-def test_execute_python_function_with_default_params_databricks(client: DatabricksFunctionClient):
-    def func_with_defaults(a: int, b: str = "default") -> str:
-        """
-        Concatenates an integer and a string with a default value for b.
-
-        Args:
-            a (int): An integer.
-            b (str, optional): A string. Defaults to "default".
-
-        Returns:
-            str: The concatenation of a and b.
-        """
-        return f"{a} {b}"
-
-    with create_python_function_and_cleanup(
-        client, func=func_with_defaults, schema=SCHEMA
-    ) as func_obj:
-        result = client.execute_function(func_obj.full_function_name, {"a": 10})
+def test_sql_function_with_default_params_databricks(client: DatabricksFunctionClient):
+    sql_body = f"""
+CREATE OR REPLACE FUNCTION {CATALOG}.{SCHEMA}.concat_func(
+    a INT DEFAULT 10 COMMENT 'int default 10',
+    b STRING DEFAULT 'default' COMMENT 'string default'
+)
+RETURNS STRING
+CONTAINS SQL
+COMMENT 'Concatenates integer and string with defaults'
+RETURN CONCAT(CAST(a AS STRING), ' ', b);
+"""
+    with create_function_and_cleanup(client=client, schema=SCHEMA, sql_body=sql_body) as func_name:
+        result = client.execute_function(func_name, parameters={})
         assert result.value == "10 default"
 
-        result = client.execute_function(func_obj.full_function_name, {"a": 20, "b": "test"})
+        result = client.execute_function(func_name, parameters={"a": 20, "b": "test"})
         assert result.value == "20 test"
 
 
 @retry_flaky_test()
 @requires_databricks
-def test_execute_python_function_with_all_defaults_databricks(client: DatabricksFunctionClient):
-    def func_with_all_defaults(
-        a: int = 1, b: str = "default", c: float = 3.14, d: bool = True
-    ) -> str:
-        """
-        Concatenates multiple parameters with defaults.
-
-        Args:
-            a (int, optional): Defaults to 1.
-            b (str, optional): Defaults to "default".
-            c (float, optional): Defaults to 3.14.
-            d (bool, optional): Defaults to True.
-
-        Returns:
-            str: Concatenated string of the inputs.
-        """
-        return f"{a} {b} {c} {d}"
-
-    with create_python_function_and_cleanup(
-        client, func=func_with_all_defaults, schema=SCHEMA
-    ) as func_obj:
-        result = client.execute_function(func_obj.full_function_name, parameters={})
-        assert result.value == "1 default 3.14 True", (
-            f"Expected '1 default 3.14 True', got {result.value}"
-        )
+def test_sql_function_with_all_defaults_databricks(client: DatabricksFunctionClient):
+    sql_body = f"""
+CREATE OR REPLACE FUNCTION {CATALOG}.{SCHEMA}.all_defaults(
+    a INT DEFAULT 1 COMMENT 'int default 1',
+    b STRING DEFAULT 'default' COMMENT 'string default',
+    c DOUBLE DEFAULT 3.14 COMMENT 'double default 3.14',
+    d BOOLEAN DEFAULT TRUE COMMENT 'boolean default'
+)
+RETURNS STRING
+CONTAINS SQL
+COMMENT 'Concatenates all default parameters'
+RETURN CONCAT(CAST(a AS STRING), ' ', b, ' ', CAST(c AS STRING), ' ', CAST(d AS STRING));
+"""
+    with create_function_and_cleanup(client=client, schema=SCHEMA, sql_body=sql_body) as func_name:
+        result = client.execute_function(func_name, parameters={})
+        assert result.value.lower() == "1 default 3.14 true"
 
         result = client.execute_function(
-            func_obj.full_function_name,
-            parameters={"a": 10, "b": "test", "c": 2.71, "d": False},
+            func_name, parameters={"a": 10, "b": "test", "c": 2.71, "d": False}
         )
-        assert result.value == "10 test 2.71 False", (
-            f"Expected '10 test 2.71 False', got {result.value}"
-        )
+        assert result.value.lower() == "10 test 2.71 false"
 
-        result = client.execute_function(func_obj.full_function_name)
-        assert result.value == "1 default 3.14 True", (
-            f"Expected '1 default 3.14 True', got {result.value}"
-        )
+        result = client.execute_function(func_name)
+        assert result.value.lower() == "1 default 3.14 true"
 
 
 @retry_flaky_test()

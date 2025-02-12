@@ -413,7 +413,13 @@ def process_function_parameter_defaults(
                 if param.parameter_default.strip().upper() == "NULL":
                     defaults[param.name] = None
                 else:
-                    defaults[param.name] = ast.literal_eval(param.parameter_default)
+                    # NB: ast.literal_eval cannot handle all SQL types and will error
+                    # with a malformed node on certain data types, e.g. DECIMAL(38, 18) or
+                    # for SQL Bool or NULL types.
+                    try:
+                        defaults[param.name] = ast.literal_eval(param.parameter_default)
+                    except ValueError:
+                        defaults[param.name] = param.parameter_default
     if parameters is None:
         parameters = {}
     return defaults | parameters
