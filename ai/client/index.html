@@ -1,0 +1,2869 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="Open, Multi-modal Catalog for Data & AI">
+      
+      
+        <meta name="author" content="unitycatalog">
+      
+      
+        <link rel="canonical" href="https://docs.unitycatalog.io/ai/client/">
+      
+      
+        <link rel="prev" href="../usage/">
+      
+      
+        <link rel="next" href="../integrations/">
+      
+      
+      <link rel="icon" href="../../assets/images/unitycatalog_256x256.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.5.43">
+    
+    
+      
+        <title>AI Client - Unity Catalog</title>
+      
+    
+    
+      <link rel="stylesheet" href="../../assets/stylesheets/main.0253249f.min.css">
+      
+        
+        <link rel="stylesheet" href="../../assets/stylesheets/palette.06af60db.min.css">
+      
+      
+
+  
+  
+  
+  
+  <style>:root{--md-annotation-icon:url('data:image/svg+xml;charset=utf-8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M22 12a10 10 0 0 1-10 10A10 10 0 0 1 2 12 10 10 0 0 1 12 2a10 10 0 0 1 10 10M6 13h8l-3.5 3.5 1.42 1.42L17.84 12l-5.92-5.92L10.5 7.5 14 11H6z"/></svg>');}</style>
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Plus+Jakarta+Sans:300,300i,400,400i,700,700i%7CConsolas:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Plus Jakarta Sans";--md-code-font:"Consolas"}</style>
+      
+    
+    
+      <link rel="stylesheet" href="../../assets/stylesheets/extra.css">
+    
+    <script>__md_scope=new URL("../..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+  
+
+
+  <script
+  defer
+  data-domain="unitycatalog.io"
+  src="https://plausible.io/js/plausible.js"
+></script>
+
+<script>
+  window.plausible = window.plausible || function () { (window.plausible.q = window.plausible.q || []).push(arguments) };
+
+  /* Register event handlers after documented loaded */
+  document.addEventListener("DOMContentLoaded", function () {
+    /* Set up search tracking */
+    if (document.forms.search) {
+      var query = document.forms.search.query;
+      query.addEventListener("blur", function() {
+        if (this.value) plausible("Search", { props: { search_term: this.value } });
+      })
+    }
+
+    /* Set up feedback, i.e. "Was this page helpful?" */
+    document$.subscribe(function () {
+      var feedback = document.forms.feedback;
+      if (typeof feedback === "undefined") return;
+
+      /* Send feedback to Plausible */
+      for (var button of feedback.querySelectorAll("[type=submit]")) {
+        button.addEventListener("click", function (ev) {
+          ev.preventDefault();
+
+          var page = document.location.pathname;
+          var value = this.getAttribute("data-md-value");
+          console.log("[feedback] User clicked", { value });
+          plausible(`Feedback: ${value}`);
+
+          /* Disable form and show note, if given */
+          feedback.firstElementChild.disabled = true;
+          var note = feedback.querySelector(".md-feedback__note [data-md-value='" + value + "']");
+          if (note) note.hidden = false;
+        })
+
+        /* Show feedback */
+        feedback.hidden = false;
+      }
+    });
+  });
+</script>
+  
+    <script>"undefined"!=typeof __md_analytics&&__md_analytics()</script>
+  
+
+    
+    
+    
+  </head>
+  
+  
+    
+    
+      
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="amber">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#client-guide" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+  
+
+<header class="md-header md-header--shadow" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href="https://unitycatalog.io" title="Unity Catalog" class="md-header__button md-logo" aria-label="Unity Catalog" data-md-component="logo">
+      
+  <img src="../../assets/images/uc-logo-mark-reverse.png" alt="logo">
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            Unity Catalog
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              AI Client
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+        <form class="md-header__option" data-md-component="palette">
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: light)" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="amber"  aria-label="Switch to dark mode"  type="radio" name="__palette" id="__palette_0">
+    
+      <label class="md-header__button md-icon" title="Switch to dark mode" for="__palette_1" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a4 4 0 0 0-4 4 4 4 0 0 0 4 4 4 4 0 0 0 4-4 4 4 0 0 0-4-4m0 10a6 6 0 0 1-6-6 6 6 0 0 1 6-6 6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: dark)" data-md-color-scheme="slate" data-md-color-primary="indigo" data-md-color-accent="amber"  aria-label="Switch to light mode"  type="radio" name="__palette" id="__palette_1">
+    
+      <label class="md-header__button md-icon" title="Switch to light mode" for="__palette_0" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 18c-.89 0-1.74-.2-2.5-.55C11.56 16.5 13 14.42 13 12s-1.44-4.5-3.5-5.45C10.26 6.2 11.11 6 12 6a6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+</form>
+      
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      <label class="md-header__button md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+      </label>
+      <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/unitycatalog/unitycatalog" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 496 512"><!--! Font Awesome Free 6.6.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2024 Fonticons, Inc.--><path d="M165.9 397.4c0 2-2.3 3.6-5.2 3.6-3.3.3-5.6-1.3-5.6-3.6 0-2 2.3-3.6 5.2-3.6 3-.3 5.6 1.3 5.6 3.6m-31.1-4.5c-.7 2 1.3 4.3 4.3 4.9 2.6 1 5.6 0 6.2-2s-1.3-4.3-4.3-5.2c-2.6-.7-5.5.3-6.2 2.3m44.2-1.7c-2.9.7-4.9 2.6-4.6 4.9.3 2 2.9 3.3 5.9 2.6 2.9-.7 4.9-2.6 4.6-4.6-.3-1.9-3-3.2-5.9-2.9M244.8 8C106.1 8 0 113.3 0 252c0 110.9 69.8 205.8 169.5 239.2 12.8 2.3 17.3-5.6 17.3-12.1 0-6.2-.3-40.4-.3-61.4 0 0-70 15-84.7-29.8 0 0-11.4-29.1-27.8-36.6 0 0-22.9-15.7 1.6-15.4 0 0 24.9 2 38.6 25.8 21.9 38.6 58.6 27.5 72.9 20.9 2.3-16 8.8-27.1 16-33.7-55.9-6.2-112.3-14.3-112.3-110.5 0-27.5 7.6-41.3 23.6-58.9-2.6-6.5-11.1-33.3 2.6-67.9 20.9-6.5 69 27 69 27 20-5.6 41.5-8.5 62.8-8.5s42.8 2.9 62.8 8.5c0 0 48.1-33.6 69-27 13.7 34.7 5.2 61.4 2.6 67.9 16 17.7 25.8 31.5 25.8 58.9 0 96.5-58.9 104.2-114.8 110.5 9.2 7.9 17 22.9 17 46.4 0 33.7-.3 75.4-.3 83.6 0 6.5 4.6 14.4 17.3 12.1C428.2 457.8 496 362.9 496 252 496 113.3 383.5 8 244.8 8M97.2 352.9c-1.3 1-1 3.3.7 5.2 1.6 1.6 3.9 2.3 5.2 1 1.3-1 1-3.3-.7-5.2-1.6-1.6-3.9-2.3-5.2-1m-10.8-8.1c-.7 1.3.3 2.9 2.3 3.9 1.6 1 3.6.7 4.3-.7.7-1.3-.3-2.9-2.3-3.9-2-.6-3.6-.3-4.3.7m32.4 35.6c-1.6 1.3-1 4.3 1.3 6.2 2.3 2.3 5.2 2.6 6.5 1 1.3-1.3.7-4.3-1.3-6.2-2.2-2.3-5.2-2.6-6.5-1m-11.4-14.7c-1.6 1-1.6 3.6 0 5.9s4.3 3.3 5.6 2.3c1.6-1.3 1.6-3.9 0-6.2-1.4-2.3-4-3.3-5.6-2"/></svg>
+  </div>
+  <div class="md-source__repository">
+    unitycatalog/unitycatalog
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+
+<nav class="md-nav md-nav--primary" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href="https://unitycatalog.io" title="Unity Catalog" class="md-nav__button md-logo" aria-label="Unity Catalog" data-md-component="logo">
+      
+  <img src="../../assets/images/uc-logo-mark-reverse.png" alt="logo">
+
+    </a>
+    Unity Catalog
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/unitycatalog/unitycatalog" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 496 512"><!--! Font Awesome Free 6.6.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2024 Fonticons, Inc.--><path d="M165.9 397.4c0 2-2.3 3.6-5.2 3.6-3.3.3-5.6-1.3-5.6-3.6 0-2 2.3-3.6 5.2-3.6 3-.3 5.6 1.3 5.6 3.6m-31.1-4.5c-.7 2 1.3 4.3 4.3 4.9 2.6 1 5.6 0 6.2-2s-1.3-4.3-4.3-5.2c-2.6-.7-5.5.3-6.2 2.3m44.2-1.7c-2.9.7-4.9 2.6-4.6 4.9.3 2 2.9 3.3 5.9 2.6 2.9-.7 4.9-2.6 4.6-4.6-.3-1.9-3-3.2-5.9-2.9M244.8 8C106.1 8 0 113.3 0 252c0 110.9 69.8 205.8 169.5 239.2 12.8 2.3 17.3-5.6 17.3-12.1 0-6.2-.3-40.4-.3-61.4 0 0-70 15-84.7-29.8 0 0-11.4-29.1-27.8-36.6 0 0-22.9-15.7 1.6-15.4 0 0 24.9 2 38.6 25.8 21.9 38.6 58.6 27.5 72.9 20.9 2.3-16 8.8-27.1 16-33.7-55.9-6.2-112.3-14.3-112.3-110.5 0-27.5 7.6-41.3 23.6-58.9-2.6-6.5-11.1-33.3 2.6-67.9 20.9-6.5 69 27 69 27 20-5.6 41.5-8.5 62.8-8.5s42.8 2.9 62.8 8.5c0 0 48.1-33.6 69-27 13.7 34.7 5.2 61.4 2.6 67.9 16 17.7 25.8 31.5 25.8 58.9 0 96.5-58.9 104.2-114.8 110.5 9.2 7.9 17 22.9 17 46.4 0 33.7-.3 75.4-.3 83.6 0 6.5 4.6 14.4 17.3 12.1C428.2 457.8 496 362.9 496 252 496 113.3 383.5 8 244.8 8M97.2 352.9c-1.3 1-1 3.3.7 5.2 1.6 1.6 3.9 2.3 5.2 1 1.3-1 1-3.3-.7-5.2-1.6-1.6-3.9-2.3-5.2-1m-10.8-8.1c-.7 1.3.3 2.9 2.3 3.9 1.6 1 3.6.7 4.3-.7.7-1.3-.3-2.9-2.3-3.9-2-.6-3.6-.3-4.3.7m32.4 35.6c-1.6 1.3-1 4.3 1.3 6.2 2.3 2.3 5.2 2.6 6.5 1 1.3-1.3.7-4.3-1.3-6.2-2.2-2.3-5.2-2.6-6.5-1m-11.4-14.7c-1.6 1-1.6 3.6 0 5.9s4.3 3.3 5.6 2.3c1.6-1.3 1.6-3.9 0-6.2-1.4-2.3-4-3.3-5.6-2"/></svg>
+  </div>
+  <div class="md-source__repository">
+    unitycatalog/unitycatalog
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../.." class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Home
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+      
+        
+      
+    
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_2" >
+        
+          
+          <label class="md-nav__link" for="__nav_2" id="__nav_2_label" tabindex="0">
+            
+  
+  <span class="md-ellipsis">
+    Getting Started
+  </span>
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_2_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_2">
+            <span class="md-nav__icon md-icon"></span>
+            Getting Started
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../quickstart/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Quickstart
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../docker_compose/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Docker Compose
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_3" >
+        
+          
+          <label class="md-nav__link" for="__nav_3" id="__nav_3_label" tabindex="0">
+            
+  
+  <span class="md-ellipsis">
+    Usage
+  </span>
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3">
+            <span class="md-nav__icon md-icon"></span>
+            Usage
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../usage/cli/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    CLI
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../usage/ui/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    UI
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_3_3" >
+        
+          
+          <label class="md-nav__link" for="__nav_3_3" id="__nav_3_3_label" tabindex="0">
+            
+  
+  <span class="md-ellipsis">
+    Tables
+  </span>
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_3_3_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3_3">
+            <span class="md-nav__icon md-icon"></span>
+            Tables
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../usage/tables/deltalake/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Delta Lake
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../usage/tables/formats/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Formats
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../usage/tables/uniform/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    UniForm
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../usage/volumes/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Volumes
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../usage/functions/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Functions
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../usage/models/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Models
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_4" >
+        
+          
+          <label class="md-nav__link" for="__nav_4" id="__nav_4_label" tabindex="0">
+            
+  
+  <span class="md-ellipsis">
+    Server
+  </span>
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_4_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_4">
+            <span class="md-nav__icon md-icon"></span>
+            Server
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../server/configuration/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Configuration
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../server/auth/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Auth
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../server/users-privileges/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Users and Privileges
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+          
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_5" >
+        
+          
+          
+          <div class="md-nav__link md-nav__container">
+            <a href="../../integrations/" class="md-nav__link ">
+              
+  
+  <span class="md-ellipsis">
+    Integrations
+  </span>
+  
+
+            </a>
+            
+              
+              <label class="md-nav__link " for="__nav_5" id="__nav_5_label" tabindex="0">
+                <span class="md-nav__icon md-icon"></span>
+              </label>
+            
+          </div>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_5_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_5">
+            <span class="md-nav__icon md-icon"></span>
+            Integrations
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../integrations/unity-catalog-spark/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Apache Spark
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../integrations/unity-catalog-celerdata/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    CelerData
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../integrations/unity-catalog-daft/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Daft
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../integrations/unity-catalog-duckdb/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    DuckDB
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../integrations/unity-catalog-puppygraph/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    PuppyGraph
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../integrations/unity-catalog-spiceai/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    SpiceAI
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../integrations/unity-catalog-trino/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Trino
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../integrations/unity-catalog-xtable/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    XTable
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../deployment/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Deployment
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+    
+  
+  
+  
+    
+    
+      
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+    <li class="md-nav__item md-nav__item--active md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_7" checked>
+        
+          
+          <label class="md-nav__link" for="__nav_7" id="__nav_7_label" tabindex="0">
+            
+  
+  <span class="md-ellipsis">
+    AI
+  </span>
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_7_label" aria-expanded="true">
+          <label class="md-nav__title" for="__nav_7">
+            <span class="md-nav__icon md-icon"></span>
+            AI
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../quickstart/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Quickstart
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../usage/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Usage
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+    
+  
+  
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  <span class="md-ellipsis">
+    AI Client
+  </span>
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
+        
+  
+  <span class="md-ellipsis">
+    AI Client
+  </span>
+  
+
+      </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#unity-catalog-function-client" class="md-nav__link">
+    <span class="md-ellipsis">
+      Unity Catalog Function Client
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Unity Catalog Function Client">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#client-overview" class="md-nav__link">
+    <span class="md-ellipsis">
+      Client Overview
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Client Overview">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#caveats" class="md-nav__link">
+    <span class="md-ellipsis">
+      Caveats
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#key-features" class="md-nav__link">
+    <span class="md-ellipsis">
+      Key Features
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#using-the-unitycatalog-functions-client" class="md-nav__link">
+    <span class="md-ellipsis">
+      Using the UnityCatalog Functions Client
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#using-the-client-for-agent-tool-calling" class="md-nav__link">
+    <span class="md-ellipsis">
+      Using the Client for Agent tool calling
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Using the Client for Agent tool calling">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#installation" class="md-nav__link">
+    <span class="md-ellipsis">
+      Installation
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#initialization" class="md-nav__link">
+    <span class="md-ellipsis">
+      Initialization
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Initialization">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#catalog-and-schema-handlers" class="md-nav__link">
+    <span class="md-ellipsis">
+      Catalog and Schema Handlers
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#creating-functions-for-tool-use" class="md-nav__link">
+    <span class="md-ellipsis">
+      Creating Functions for tool use
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#creating-wrapped-functions" class="md-nav__link">
+    <span class="md-ellipsis">
+      Creating Wrapped Functions
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#testing-a-function" class="md-nav__link">
+    <span class="md-ellipsis">
+      Testing a function
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#building-and-using-a-toolkit-instance-with-an-openai-agent" class="md-nav__link">
+    <span class="md-ellipsis">
+      Building and using a toolkit instance with an OpenAI Agent
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#databricks-function-client" class="md-nav__link">
+    <span class="md-ellipsis">
+      Databricks Function Client
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Databricks Function Client">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#caveats-for-databricks" class="md-nav__link">
+    <span class="md-ellipsis">
+      Caveats for Databricks
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#dependencies-and-environments" class="md-nav__link">
+    <span class="md-ellipsis">
+      Dependencies and Environments
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#environment-variables-for-databricks" class="md-nav__link">
+    <span class="md-ellipsis">
+      Environment Variables for Databricks
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#initialization_1" class="md-nav__link">
+    <span class="md-ellipsis">
+      Initialization
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#caveats_1" class="md-nav__link">
+    <span class="md-ellipsis">
+      Caveats
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#client-public-apis" class="md-nav__link">
+    <span class="md-ellipsis">
+      Client Public APIs
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Client Public APIs">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#creating-functions-from-a-python-callable" class="md-nav__link">
+    <span class="md-ellipsis">
+      Creating functions from a Python Callable
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Creating functions from a Python Callable">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#caveats-of-python-callable-function-creation" class="md-nav__link">
+    <span class="md-ellipsis">
+      Caveats of Python Callable function creation
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#example-of-a-valid-function" class="md-nav__link">
+    <span class="md-ellipsis">
+      Example of a Valid Function
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#example-of-an-invalid-function" class="md-nav__link">
+    <span class="md-ellipsis">
+      Example of an Invalid Function
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#creating-functions-from-a-sql-body-statement" class="md-nav__link">
+    <span class="md-ellipsis">
+      Creating functions from a SQL Body statement
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Creating functions from a SQL Body statement">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#specifying-custom-package-dependencies" class="md-nav__link">
+    <span class="md-ellipsis">
+      Specifying Custom Package Dependencies
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#retrieving-functions" class="md-nav__link">
+    <span class="md-ellipsis">
+      Retrieving Functions
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#listing-functions" class="md-nav__link">
+    <span class="md-ellipsis">
+      Listing Functions
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#deleting-functions" class="md-nav__link">
+    <span class="md-ellipsis">
+      Deleting Functions
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#executing-functions" class="md-nav__link">
+    <span class="md-ellipsis">
+      Executing Functions
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#function-parameter-defaults" class="md-nav__link">
+    <span class="md-ellipsis">
+      Function Parameter Defaults
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#examples" class="md-nav__link">
+    <span class="md-ellipsis">
+      Examples
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Examples">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#create-and-execute-a-function" class="md-nav__link">
+    <span class="md-ellipsis">
+      Create and Execute a Function
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#additional-notes" class="md-nav__link">
+    <span class="md-ellipsis">
+      Additional Notes
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+      
+        
+          
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_7_4" >
+        
+          
+          
+          <div class="md-nav__link md-nav__container">
+            <a href="../integrations/" class="md-nav__link ">
+              
+  
+  <span class="md-ellipsis">
+    AI Integrations
+  </span>
+  
+
+            </a>
+            
+              
+              <label class="md-nav__link " for="__nav_7_4" id="__nav_7_4_label" tabindex="0">
+                <span class="md-nav__icon md-icon"></span>
+              </label>
+            
+          </div>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_7_4_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_7_4">
+            <span class="md-nav__icon md-icon"></span>
+            AI Integrations
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../integrations/langchain/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    LangChain
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../integrations/llamaindex/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    LlamaIndex
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../integrations/openai/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    OpenAI
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../integrations/anthropic/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Anthropic
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../integrations/crewai/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    CrewAI
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../integrations/autogen/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    AutoGen
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../integrations/litellm/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    LiteLLM
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../integrations/gemini/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Gemini
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#unity-catalog-function-client" class="md-nav__link">
+    <span class="md-ellipsis">
+      Unity Catalog Function Client
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Unity Catalog Function Client">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#client-overview" class="md-nav__link">
+    <span class="md-ellipsis">
+      Client Overview
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Client Overview">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#caveats" class="md-nav__link">
+    <span class="md-ellipsis">
+      Caveats
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#key-features" class="md-nav__link">
+    <span class="md-ellipsis">
+      Key Features
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#using-the-unitycatalog-functions-client" class="md-nav__link">
+    <span class="md-ellipsis">
+      Using the UnityCatalog Functions Client
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#using-the-client-for-agent-tool-calling" class="md-nav__link">
+    <span class="md-ellipsis">
+      Using the Client for Agent tool calling
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Using the Client for Agent tool calling">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#installation" class="md-nav__link">
+    <span class="md-ellipsis">
+      Installation
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#initialization" class="md-nav__link">
+    <span class="md-ellipsis">
+      Initialization
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Initialization">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#catalog-and-schema-handlers" class="md-nav__link">
+    <span class="md-ellipsis">
+      Catalog and Schema Handlers
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#creating-functions-for-tool-use" class="md-nav__link">
+    <span class="md-ellipsis">
+      Creating Functions for tool use
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#creating-wrapped-functions" class="md-nav__link">
+    <span class="md-ellipsis">
+      Creating Wrapped Functions
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#testing-a-function" class="md-nav__link">
+    <span class="md-ellipsis">
+      Testing a function
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#building-and-using-a-toolkit-instance-with-an-openai-agent" class="md-nav__link">
+    <span class="md-ellipsis">
+      Building and using a toolkit instance with an OpenAI Agent
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#databricks-function-client" class="md-nav__link">
+    <span class="md-ellipsis">
+      Databricks Function Client
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Databricks Function Client">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#caveats-for-databricks" class="md-nav__link">
+    <span class="md-ellipsis">
+      Caveats for Databricks
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#dependencies-and-environments" class="md-nav__link">
+    <span class="md-ellipsis">
+      Dependencies and Environments
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#environment-variables-for-databricks" class="md-nav__link">
+    <span class="md-ellipsis">
+      Environment Variables for Databricks
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#initialization_1" class="md-nav__link">
+    <span class="md-ellipsis">
+      Initialization
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#caveats_1" class="md-nav__link">
+    <span class="md-ellipsis">
+      Caveats
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#client-public-apis" class="md-nav__link">
+    <span class="md-ellipsis">
+      Client Public APIs
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Client Public APIs">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#creating-functions-from-a-python-callable" class="md-nav__link">
+    <span class="md-ellipsis">
+      Creating functions from a Python Callable
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Creating functions from a Python Callable">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#caveats-of-python-callable-function-creation" class="md-nav__link">
+    <span class="md-ellipsis">
+      Caveats of Python Callable function creation
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#example-of-a-valid-function" class="md-nav__link">
+    <span class="md-ellipsis">
+      Example of a Valid Function
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#example-of-an-invalid-function" class="md-nav__link">
+    <span class="md-ellipsis">
+      Example of an Invalid Function
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#creating-functions-from-a-sql-body-statement" class="md-nav__link">
+    <span class="md-ellipsis">
+      Creating functions from a SQL Body statement
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Creating functions from a SQL Body statement">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#specifying-custom-package-dependencies" class="md-nav__link">
+    <span class="md-ellipsis">
+      Specifying Custom Package Dependencies
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#retrieving-functions" class="md-nav__link">
+    <span class="md-ellipsis">
+      Retrieving Functions
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#listing-functions" class="md-nav__link">
+    <span class="md-ellipsis">
+      Listing Functions
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#deleting-functions" class="md-nav__link">
+    <span class="md-ellipsis">
+      Deleting Functions
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#executing-functions" class="md-nav__link">
+    <span class="md-ellipsis">
+      Executing Functions
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#function-parameter-defaults" class="md-nav__link">
+    <span class="md-ellipsis">
+      Function Parameter Defaults
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#examples" class="md-nav__link">
+    <span class="md-ellipsis">
+      Examples
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Examples">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#create-and-execute-a-function" class="md-nav__link">
+    <span class="md-ellipsis">
+      Create and Execute a Function
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#additional-notes" class="md-nav__link">
+    <span class="md-ellipsis">
+      Additional Notes
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+  
+    <a href="https://github.com/unitycatalog/unitycatalog/edit/main/docs/ai/client.md" title="Edit this page" class="md-content__button md-icon">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M10 20H6V4h7v5h5v3.1l2-2V8l-6-6H6c-1.1 0-2 .9-2 2v16c0 1.1.9 2 2 2h4zm10.2-7c.1 0 .3.1.4.2l1.3 1.3c.2.2.2.6 0 .8l-1 1-2.1-2.1 1-1c.1-.1.2-.2.4-.2m0 3.9L14.1 23H12v-2.1l6.1-6.1z"/></svg>
+    </a>
+  
+  
+
+
+<h1 id="client-guide">Client Guide<a class="headerlink" href="#client-guide" title="Permanent link">&para;</a></h1>
+<p>This guide provides detailed information about the Unity Catalog AI clients, including caveats, environment variables, public APIs, and examples to help you effectively utilize the Unity Catalog AI Core Library.</p>
+<hr />
+<h2 id="unity-catalog-function-client">Unity Catalog Function Client<a class="headerlink" href="#unity-catalog-function-client" title="Permanent link">&para;</a></h2>
+<h3 id="client-overview">Client Overview<a class="headerlink" href="#client-overview" title="Permanent link">&para;</a></h3>
+<p>The <code>UnitycatalogFunctionClient</code> is a specialized client within the Unity Catalog AI Core Library designed for managing and executing functions within Unity Catalog (UC). Built on top of the asynchronous <code>unitycatalog-client</code>, this client provides both asynchronous and synchronous interfaces to interact seamlessly with UC functions. It facilitates the creation, retrieval, listing, execution, and deletion of UC functions, enabling developers to integrate both CRUD and execution capabilities into GenAI authoring workflows easily.</p>
+<h4 id="caveats">Caveats<a class="headerlink" href="#caveats" title="Permanent link">&para;</a></h4>
+<p>When using the <code>UnitycatalogFunctionClient</code> be aware of the following points:</p>
+<ol>
+<li><strong>Asynchronous API usage</strong>: The <code>unitycatalog-client</code> SDK is based on aiohttp, making it an async client. The <code>UnitycatalogFuncitonClient</code> exposes async methods for nearly all of its interfaces (except for <code>execute_function</code>) to provide seamless experience for asynchronous calls to a Unity Catalog server. If you are using asynchronous methods within an environment that has a running event loop (such as a Jupyter Notebook), ensure that you are not attempting to create additional event loops for async method calls. Additionally, all methods within <code>unitycatalog-ai</code> offer <strong>synchronous</strong> versions, in case you prefer a simpler interface.</li>
+<li><strong>Security Considerations</strong>: Function execution occurs within the environment where a Unity Catalog function is called for execution. Be aware of the contents of any function prior to execution by checking the <code>routine_definition</code> entry by calling the <code>get_function</code> API if you did not author the function. Additionally, be aware that GenAI-generated Python code (for the use case of building a Unity Catalog function whose sole purpose is to execute arbitrary code) execution is <strong>inherently unsafe and should be performed in an isolated VM</strong> that is not connected to user data or is in an environment that is not ephemeral (a VM is ideal for this use case).</li>
+<li><strong>External Dependencies</strong>: The environment that is executing the function that you're calling needs to have the appropriate packages pre-installed in order for functions that use external non-core-Python import statements. Ensure that dependent libraries are installed via <code>pip</code>. Additionally, import statements should be contained within the function body (using local imports) to ensure that the dependency is available for use by your function's internal logic.</li>
+<li><strong>Function overwriting</strong>: The <code>create_function</code> and <code>create_function_async</code> APIs expose the ability to overwrite a function definition for convenience. Ensure that you are fully aware of the implications of replacing a function as this operation is permanent and could be disruptive to other Agent workflows that are dependent on existing functionality.</li>
+</ol>
+<h4 id="key-features">Key Features<a class="headerlink" href="#key-features" title="Permanent link">&para;</a></h4>
+<ul>
+<li><strong>Asynchronous and Synchronous Operations</strong>: Offers both async and sync methods, allowing flexibility based on the application's concurrency requirements.</li>
+<li><strong>Function Management</strong>: Simplifies the process of creating, retrieving, listing, executing, and deleting UC functions.</li>
+<li><strong>Integration with GenAI</strong>: Supports the registration of UC functions as tools for Generative AI agents, enabling intelligent tool calling within AI-driven workflows.</li>
+<li><strong>Type Validation and Caching</strong>: Ensures that function parameters and return types adhere to defined schemas and caches function executions for optimized performance.</li>
+<li><strong>Wrapped Function Creation</strong>: Registers wrapped functions by in-lining helper functions into a primary function’s definition. The primary function serves as the interface for function execution while helper functions are bundled into the definition, promoting modular design and ease of deployment.</li>
+</ul>
+<h3 id="using-the-unitycatalog-functions-client">Using the UnityCatalog Functions Client<a class="headerlink" href="#using-the-unitycatalog-functions-client" title="Permanent link">&para;</a></h3>
+<p><strong>Warning</strong>: Function execution for the UnityCatalog APIs involves executing code locally from the point of invocation of
+your GenAI application. For deterministic functions that you are authoring yourself, this does not pose a security concern.
+However, if you are writing an application that allows for code to be injected to the function from an LLM
+(a Python code execution function), there is a risk to the environment that you are running your agent from if the code being
+executed is unsafe (involving file system operations or accessing networks). If your use case involves such a function declaration that permits execution of arbitrary Python code, it is <strong>highly advised</strong> to run your Agent from an isolated environment
+with restricted permissions.</p>
+<p><strong>Note</strong>: Future development efforts may involve the creation of a secure function execution environment to eliminate the risks
+associated with GenAI-generated Python code execution from within Unity Catalog functions.</p>
+<h3 id="using-the-client-for-agent-tool-calling">Using the Client for Agent tool calling<a class="headerlink" href="#using-the-client-for-agent-tool-calling" title="Permanent link">&para;</a></h3>
+<h4 id="installation">Installation<a class="headerlink" href="#installation" title="Permanent link">&para;</a></h4>
+<ul>
+<li><strong>Installation</strong>: ensure that you have the following package installed from PyPI:</li>
+</ul>
+<div class="highlight"><pre><span></span><code>pip<span class="w"> </span>install<span class="w"> </span>unitycatalog-openai
+</code></pre></div>
+<h4 id="initialization">Initialization<a class="headerlink" href="#initialization" title="Permanent link">&para;</a></h4>
+<p>Configure and instantiate the Unity Catalog Python Client to connect to your running Unity Catalog server:</p>
+<div class="highlight"><pre><span></span><code><span class="kn">import</span> <span class="nn">asyncio</span>
+<span class="kn">from</span> <span class="nn">unitycatalog.ai.core.client</span> <span class="kn">import</span> <span class="n">UnitycatalogFunctionClient</span>
+<span class="kn">from</span> <span class="nn">unitycatalog.client</span> <span class="kn">import</span> <span class="n">ApiClient</span><span class="p">,</span> <span class="n">Configuration</span>
+
+<span class="n">config</span> <span class="o">=</span> <span class="n">Configuration</span><span class="p">()</span>
+<span class="n">config</span><span class="o">.</span><span class="n">host</span> <span class="o">=</span> <span class="s2">&quot;http://localhost:8080/api/2.1/unity-catalog&quot;</span>
+
+<span class="c1"># The base ApiClient is async</span>
+<span class="n">api_client</span> <span class="o">=</span> <span class="n">ApiClient</span><span class="p">(</span><span class="n">configuration</span><span class="o">=</span><span class="n">config</span><span class="p">)</span>
+
+<span class="n">uc_client</span> <span class="o">=</span> <span class="n">UnitycatalogFunctionClient</span><span class="p">(</span><span class="n">api_client</span><span class="o">=</span><span class="n">api_client</span><span class="p">)</span>
+
+<span class="n">CATALOG</span> <span class="o">=</span> <span class="s2">&quot;my_catalog&quot;</span>
+<span class="n">SCHEMA</span> <span class="o">=</span> <span class="s2">&quot;my_schema&quot;</span>
+</code></pre></div>
+<h5 id="catalog-and-schema-handlers">Catalog and Schema Handlers<a class="headerlink" href="#catalog-and-schema-handlers" title="Permanent link">&para;</a></h5>
+<p>As a measure of convenience, a catalog and schema handler class is available. This can either be instantiated independently:</p>
+<div class="highlight"><pre><span></span><code><span class="kn">from</span> <span class="nn">unitycatalog.ai.core.client</span> <span class="kn">import</span> <span class="n">UnitycatalogClient</span>
+<span class="kn">from</span> <span class="nn">unitycatalog.client</span> <span class="kn">import</span> <span class="n">ApiClient</span><span class="p">,</span> <span class="n">Configuration</span>
+
+<span class="n">config</span> <span class="o">=</span> <span class="n">Configuration</span><span class="p">(</span><span class="n">host</span><span class="o">=</span><span class="s2">&quot;http://localhost:8080/api/2.1/unity-catalog&quot;</span><span class="p">)</span>
+<span class="n">api_client</span> <span class="o">=</span> <span class="n">ApiClient</span><span class="p">(</span><span class="n">configuration</span><span class="o">=</span><span class="n">config</span><span class="p">)</span>
+
+<span class="c1"># Instantiate the catalog and schema handler directly to create catalogs and schemas as needed</span>
+<span class="n">core_client</span> <span class="o">=</span> <span class="n">UnitycatalogClient</span><span class="p">(</span><span class="n">api_client</span><span class="o">=</span><span class="n">api_client</span><span class="p">)</span>
+
+<span class="n">catalog_info</span> <span class="o">=</span> <span class="n">core_client</span><span class="o">.</span><span class="n">create_catalog</span><span class="p">(</span>
+    <span class="n">name</span><span class="o">=</span><span class="s2">&quot;MyTestCatalog&quot;</span><span class="p">,</span>
+    <span class="n">comment</span><span class="o">=</span><span class="s2">&quot;A catalog used for testing purposes&quot;</span><span class="p">,</span>
+    <span class="n">properties</span><span class="o">=</span><span class="p">{</span><span class="s2">&quot;key&quot;</span><span class="p">:</span> <span class="s2">&quot;value&quot;</span><span class="p">},</span>
+<span class="p">)</span>
+<span class="n">schema_info</span> <span class="o">=</span> <span class="n">core_client</span><span class="o">.</span><span class="n">create_schema</span><span class="p">(</span>
+    <span class="n">name</span><span class="o">=</span><span class="s2">&quot;MyTestSchema&quot;</span><span class="p">,</span>
+    <span class="n">catalog_name</span><span class="o">=</span><span class="s2">&quot;MyTestCatalog&quot;</span><span class="p">,</span>
+    <span class="n">comment</span><span class="o">=</span><span class="s2">&quot;A schema for testing&quot;</span><span class="p">,</span>
+    <span class="n">properties</span><span class="o">=</span><span class="p">{</span><span class="s2">&quot;key&quot;</span><span class="p">:</span> <span class="s2">&quot;value&quot;</span><span class="p">},</span>
+<span class="p">)</span>
+</code></pre></div>
+<p>Alternatively, these same APIs are available by accessing the <code>uc</code> property on the instance of <code>UnitycatalogFunctionClient</code>, as shown below.</p>
+<blockquote>
+<p>Tip: Ensure that you have created a catalog and a schema before attempting to create functions.</p>
+</blockquote>
+<p>The <code>UnitycatalogFunctionClient</code> provides helper methods for creating both Catalogs and Schemas in Unity Catalog. For full
+API-based CRUD operations, you will need to use the <code>unitycatalog-client</code> package.</p>
+<p>To create a Catalog, you can call the <code>create_catalog</code> method:</p>
+<div class="highlight"><pre><span></span><code><span class="n">uc_client</span><span class="o">.</span><span class="n">uc</span><span class="o">.</span><span class="n">create_catalog</span><span class="p">(</span>
+    <span class="n">name</span><span class="o">=</span><span class="n">CATALOG</span><span class="p">,</span>
+    <span class="n">comment</span><span class="o">=</span><span class="s2">&quot;A catalog for demonstrating the use of Unity Catalog function usage in GenAI applications&quot;</span><span class="p">,</span>
+<span class="p">)</span>
+</code></pre></div>
+<blockquote>
+<p>NOTE: If the Catalog already exists, you will receive a warning and the existing <code>CatalogInfo</code> metadata will be returned.</p>
+</blockquote>
+<p>To create a Schema, you can call the <code>create_schema</code> method:</p>
+<div class="highlight"><pre><span></span><code><span class="n">uc_client</span><span class="o">.</span><span class="n">uc</span><span class="o">.</span><span class="n">create_schema</span><span class="p">(</span>
+    <span class="n">name</span><span class="o">=</span><span class="n">SCHEMA</span><span class="p">,</span>
+    <span class="n">catalog_name</span><span class="o">=</span><span class="n">CATALOG</span><span class="p">,</span>
+    <span class="n">comment</span><span class="o">=</span><span class="s2">&quot;A schema for holding UC functions for GenAI use cases&quot;</span><span class="p">,</span>
+<span class="p">)</span>
+</code></pre></div>
+<blockquote>
+<p>NOTE: Similar to the <code>create_catalog</code> API, if a schema exists with the name that you specify, you will receive a warning
+and the existing schema's metadata will be returned.</p>
+</blockquote>
+<h4 id="creating-functions-for-tool-use">Creating Functions for tool use<a class="headerlink" href="#creating-functions-for-tool-use" title="Permanent link">&para;</a></h4>
+<p>In order to make a Python callable recognizable to the Unity Catalog functions data model, there are a few requirements that need to be met in the authoring of your functions:</p>
+<ol>
+<li>The function must use type hints in both the signature and the return of the function.</li>
+<li>A Google-style docstring must be used. A description of the function is required and descriptions of the parameters are strongly recommended for proper use by GenAI agents.</li>
+<li>Dependent libraries must be imported within the body of the function. Imports outside of the function will not be resolvable when executing otherwise.</li>
+</ol>
+<p>Below, we show a proper function definition (with type hints and docstring) that is then used to register the function to Unity Catalog using the async API for creating functions.</p>
+<div class="highlight"><pre><span></span><code><span class="k">def</span> <span class="nf">my_test_func</span><span class="p">(</span><span class="n">a</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="n">b</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Returns an upper case concatenation of two strings separated by a space.</span>
+
+<span class="sd">    Args:</span>
+<span class="sd">        a: the first string</span>
+<span class="sd">        b: the second string</span>
+
+<span class="sd">    Returns:</span>
+<span class="sd">        Uppercased concatenation of the two strings.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">concatenated</span> <span class="o">=</span> <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">a</span><span class="si">}</span><span class="s2"> </span><span class="si">{</span><span class="n">b</span><span class="si">}</span><span class="s2">&quot;</span>
+    <span class="k">return</span> <span class="n">concatenated</span><span class="o">.</span><span class="n">upper</span><span class="p">()</span>
+
+<span class="c1"># Asynchronously create the function within a Jupyter notebook</span>
+<span class="n">my_function</span> <span class="o">=</span> <span class="k">await</span> <span class="n">uc_client</span><span class="o">.</span><span class="n">create_python_function_async</span><span class="p">(</span>
+    <span class="n">func</span><span class="o">=</span><span class="n">my_test_func</span><span class="p">,</span>
+    <span class="n">catalog</span><span class="o">=</span><span class="n">CATALOG</span><span class="p">,</span>
+    <span class="n">schema</span><span class="o">=</span><span class="n">SCHEMA</span><span class="p">,</span>
+<span class="p">)</span>
+</code></pre></div>
+<blockquote>
+<p>Note: within a Python script, you will need to directly call <code>asyncio.run()</code> on your async API call
+in order to create an event loop. In a Jupyter Notebook environment, an event loop is provided for you.</p>
+</blockquote>
+<p>Alternatively, you can use the synchronous API:</p>
+<div class="highlight"><pre><span></span><code><span class="n">my_function</span> <span class="o">=</span> <span class="n">uc_client</span><span class="o">.</span><span class="n">create_python_function</span><span class="p">(</span>
+    <span class="n">func</span><span class="o">=</span><span class="n">my_test_func</span><span class="p">,</span>
+    <span class="n">catalog</span><span class="o">=</span><span class="n">CATALOG</span><span class="p">,</span>
+    <span class="n">schema</span><span class="o">=</span><span class="n">SCHEMA</span><span class="p">,</span>
+<span class="p">)</span>
+</code></pre></div>
+<h4 id="creating-wrapped-functions">Creating Wrapped Functions<a class="headerlink" href="#creating-wrapped-functions" title="Permanent link">&para;</a></h4>
+<p>Wrapped functions are created using the <code>create_wrapped_function</code> and <code>create_wrapped_function_async</code> APIs. In a wrapped function, the primary function serves as the interface for callers, and additional helper functions are in-lined into the primary function’s definition. This bundles related functionality together and simplifies the registration process.</p>
+<p>For example, consider the following definitions:</p>
+<div class="highlight"><pre><span></span><code><span class="k">def</span> <span class="nf">a</span><span class="p">(</span><span class="n">x</span><span class="p">:</span> <span class="nb">int</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">int</span><span class="p">:</span>
+    <span class="k">return</span> <span class="n">x</span> <span class="o">+</span> <span class="mi">1</span>
+
+<span class="k">def</span> <span class="nf">b</span><span class="p">(</span><span class="n">y</span><span class="p">:</span> <span class="nb">int</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">int</span><span class="p">:</span>
+    <span class="k">return</span> <span class="n">y</span> <span class="o">+</span> <span class="mi">2</span>
+
+<span class="k">def</span> <span class="nf">wrapper</span><span class="p">(</span><span class="n">x</span><span class="p">:</span> <span class="nb">int</span><span class="p">,</span> <span class="n">y</span><span class="p">:</span> <span class="nb">int</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">int</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Calls the helper functions `a` and `b` and returns their combined result.</span>
+
+<span class="sd">    Args:</span>
+<span class="sd">        x (int): The first number.</span>
+<span class="sd">        y (int): The second number.</span>
+
+<span class="sd">    Returns:</span>
+<span class="sd">        int: The sum of a(x) and b(y).</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">return</span> <span class="n">a</span><span class="p">(</span><span class="n">x</span><span class="p">)</span> <span class="o">+</span> <span class="n">b</span><span class="p">(</span><span class="n">y</span><span class="p">)</span>
+</code></pre></div>
+<p>The wrapped function is registered as follows:</p>
+<div class="highlight"><pre><span></span><code><span class="n">wrapped_function</span> <span class="o">=</span> <span class="n">uc_client</span><span class="o">.</span><span class="n">create_wrapped_function</span><span class="p">(</span>
+    <span class="n">primary_func</span><span class="o">=</span><span class="n">wrapper</span><span class="p">,</span>
+    <span class="n">functions</span><span class="o">=</span><span class="p">[</span><span class="n">a</span><span class="p">,</span> <span class="n">b</span><span class="p">],</span>
+    <span class="n">catalog</span><span class="o">=</span><span class="n">CATALOG</span><span class="p">,</span>
+    <span class="n">schema</span><span class="o">=</span><span class="n">SCHEMA</span><span class="p">,</span>
+<span class="p">)</span>
+</code></pre></div>
+<p>This API in-lines the helper functions (<code>a</code> and <code>b</code>) into the primary function (<code>wrapper</code>) so that they are part of the same function definition stored in Unity Catalog.</p>
+<h4 id="testing-a-function">Testing a function<a class="headerlink" href="#testing-a-function" title="Permanent link">&para;</a></h4>
+<p>Before attempting to use the function within an Agent integration, you can validate that the function is behaving as
+intended by using the <code>execute_function</code> API. Unlike with the variants of the <code>create_python_function</code> API, there is <strong>not</strong> an async version of this API.</p>
+<p>Testing with the synchronous API:</p>
+<div class="highlight"><pre><span></span><code><span class="n">result</span> <span class="o">=</span> <span class="n">uc_client</span><span class="o">.</span><span class="n">execute_function</span><span class="p">(</span>
+    <span class="n">function_name</span><span class="o">=</span><span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">CATALOG</span><span class="si">}</span><span class="s2">.</span><span class="si">{</span><span class="n">SCHEMA</span><span class="si">}</span><span class="s2">.my_test_func&quot;</span><span class="p">,</span>
+    <span class="n">parameters</span><span class="o">=</span><span class="p">{</span><span class="s2">&quot;a&quot;</span><span class="p">:</span> <span class="s2">&quot;hello&quot;</span><span class="p">,</span> <span class="s2">&quot;b&quot;</span><span class="p">:</span> <span class="s2">&quot;world&quot;</span><span class="p">}</span>
+<span class="p">)</span>
+
+<span class="n">result</span><span class="o">.</span><span class="n">value</span>  <span class="c1"># Outputs: HELLO WORLD</span>
+</code></pre></div>
+<h4 id="building-and-using-a-toolkit-instance-with-an-openai-agent">Building and using a toolkit instance with an OpenAI Agent<a class="headerlink" href="#building-and-using-a-toolkit-instance-with-an-openai-agent" title="Permanent link">&para;</a></h4>
+<p>In order for a supported GenAI library to use our function, we need to wrap it in a <code>UCFunctionToolkit</code> instance. These abstractions exist for all supported integrations within the <code>unitycatalog-ai</code> ecosystem and permit their respective integration package to directly interact with the functions that you define within Unity Catalog.</p>
+<p>For example, creating a <code>UCFunctionToolkit</code> instance for integrating with OpenAI is done as follows:</p>
+<div class="highlight"><pre><span></span><code><span class="kn">import</span> <span class="nn">openai</span>
+<span class="kn">from</span> <span class="nn">unitycatalog.ai.openai.toolkit</span> <span class="kn">import</span> <span class="n">UCFunctionToolkit</span>
+
+<span class="c1"># Assume we have two functions for our agent:</span>
+<span class="n">function_1</span> <span class="o">=</span> <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">CATALOG</span><span class="si">}</span><span class="s2">.</span><span class="si">{</span><span class="n">SCHEMA</span><span class="si">}</span><span class="s2">.calculate_dew_point&quot;</span>
+<span class="n">function_2</span> <span class="o">=</span> <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">CATALOG</span><span class="si">}</span><span class="s2">.</span><span class="si">{</span><span class="n">SCHEMA</span><span class="si">}</span><span class="s2">.calculate_vapor_pressure_deficit&quot;</span>
+
+<span class="n">toolkit</span> <span class="o">=</span> <span class="n">UCFunctionToolkit</span><span class="p">(</span>
+    <span class="n">client</span><span class="o">=</span><span class="n">uc_client</span><span class="p">,</span>
+    <span class="n">function_names</span><span class="o">=</span><span class="p">[</span><span class="n">function1</span><span class="p">,</span> <span class="n">function2</span><span class="p">]</span>
+<span class="p">)</span>
+
+<span class="n">agent_tools</span> <span class="o">=</span> <span class="n">toolkit</span><span class="o">.</span><span class="n">tools</span>
+
+<span class="n">message</span> <span class="o">=</span> <span class="p">[</span>
+    <span class="p">{</span>
+        <span class="s2">&quot;role&quot;</span><span class="p">:</span> <span class="s2">&quot;system&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;content&quot;</span><span class="p">:</span> <span class="s2">&quot;You are an assistant that provides accurate assessments of atmospheric conditions based on questions asked.&quot;</span>
+    <span class="p">},</span>
+    <span class="p">{</span>
+        <span class="s2">&quot;role&quot;</span><span class="p">:</span> <span class="s2">&quot;user&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;content&quot;</span><span class="p">:</span> <span class="s2">&quot;It&#39;s 98.9F today with 60 percent humidity. After it rains this afternoon, how long will it be before the haze lifts?&quot;</span>
+    <span class="p">}</span>
+<span class="p">]</span>
+
+<span class="n">tool_call_response</span> <span class="o">=</span> <span class="n">openai</span><span class="o">.</span><span class="n">chat</span><span class="o">.</span><span class="n">completions</span><span class="o">.</span><span class="n">create</span><span class="p">(</span>
+    <span class="n">model</span><span class="o">=</span><span class="s2">&quot;gpt-4o-mini&quot;</span><span class="p">,</span>
+    <span class="n">messages</span><span class="o">=</span><span class="n">message</span><span class="p">,</span>
+    <span class="n">tools</span><span class="o">=</span><span class="n">agent_tools</span><span class="p">,</span>
+<span class="p">)</span>
+</code></pre></div>
+<p>The response from calling <code>gpt-4o-mini</code> will show a request for the execution of the functions that we provided in order to answer the original question.</p>
+<p>We can use the <code>generate_tool_call_messages</code> utility API within <code>unitycatalog-openai</code> to process this request, execute the functions, and generate the appropriate interface structure for send back to the LLM for the final processing.</p>
+<div class="highlight"><pre><span></span><code><span class="kn">from</span> <span class="nn">unitycatalog.ai.openai.utils</span> <span class="kn">import</span> <span class="n">generate_tool_call_messages</span>
+
+<span class="n">response_message</span> <span class="o">=</span> <span class="n">generate_tool_call_messages</span><span class="p">(</span><span class="n">response</span><span class="o">=</span><span class="n">tool_call_response</span><span class="p">,</span> <span class="n">client</span><span class="o">=</span><span class="n">uc_client</span><span class="p">)</span>
+
+<span class="c1"># merge the conversation history for context</span>
+<span class="n">final_message</span> <span class="o">=</span> <span class="n">message</span> <span class="o">+</span> <span class="n">response_message</span>
+
+<span class="n">answer</span> <span class="o">=</span> <span class="n">openai</span><span class="o">.</span><span class="n">chat</span><span class="o">.</span><span class="n">completions</span><span class="o">.</span><span class="n">create</span><span class="p">(</span>
+    <span class="n">model</span><span class="o">=</span><span class="s2">&quot;gpt-4o-mini&quot;</span><span class="p">,</span>
+    <span class="n">messages</span><span class="o">=</span><span class="n">final_message</span><span class="p">,</span>
+    <span class="n">tools</span><span class="o">=</span><span class="n">agent_tools</span><span class="p">,</span>
+<span class="p">)</span>
+</code></pre></div>
+<hr />
+<h2 id="databricks-function-client">Databricks Function Client<a class="headerlink" href="#databricks-function-client" title="Permanent link">&para;</a></h2>
+<p>The <code>DatabricksFunctionClient</code> is a core component of the Unity Catalog AI Core Library that allows you to interact with Unity Catalog (UC) functions on Databricks. It provides APIs for creating, retrieving, listing, executing, and deleting UC functions.</p>
+<h3 id="caveats-for-databricks">Caveats for Databricks<a class="headerlink" href="#caveats-for-databricks" title="Permanent link">&para;</a></h3>
+<ul>
+<li><strong>Python Version</strong>: Python 3.10 or higher is <strong>required</strong> when using <code>databricks-connect</code> for serverless compute.</li>
+<li><strong>Databricks Connect</strong>: To create UC functions using SQL body definitions or to execute functions using serverless compute, <code>databricks-connect</code> version <code>15.1.0</code> is required. This is the only supported version that is compatible.</li>
+<li><strong>Serverless Compute</strong>: In order to create and execute functions, a serverless compute connection <strong>is required</strong>.</li>
+</ul>
+<h3 id="dependencies-and-environments">Dependencies and Environments<a class="headerlink" href="#dependencies-and-environments" title="Permanent link">&para;</a></h3>
+<p>In Databricks runtime version 17 and higher, the ability to specify dependencies within a function execution environment is supported. Earlier runtime
+versions do not support this feature and will error if the arguments <code>dependencies</code> or <code>environment</code> are submitted with a <code>create_python_function</code> or <code>create_wrapped_python_function</code> call.</p>
+<p>To specify PyPI dependencies to include in your execution environment, you can see the minimum example below:</p>
+<div class="highlight"><pre><span></span><code><span class="c1"># Define a function that requires an external PyPI dependency</span>
+
+<span class="k">def</span> <span class="nf">dep_check</span><span class="p">(</span><span class="n">x</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    A function to test the dependency support for UC</span>
+
+<span class="sd">    Args:</span>
+<span class="sd">        x: An input string</span>
+
+<span class="sd">    Returns:</span>
+<span class="sd">        A string that reports the dependency support for UC</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+
+    <span class="kn">import</span> <span class="nn">scrapy</span>  <span class="c1"># NOTE that you must still import the library to use within the function.</span>
+
+    <span class="k">return</span> <span class="n">scrapy</span><span class="o">.</span><span class="n">__version__</span>
+
+<span class="c1"># Create the function and supply the dependency in standard PyPI format</span>
+<span class="n">client</span><span class="o">.</span><span class="n">create_python_function</span><span class="p">(</span><span class="n">func</span><span class="o">=</span><span class="n">dep_check</span><span class="p">,</span> <span class="n">catalog</span><span class="o">=</span><span class="n">CATALOG</span><span class="p">,</span> <span class="n">schema</span><span class="o">=</span><span class="n">SCHEMA</span><span class="p">,</span> <span class="n">replace</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">dependencies</span><span class="o">=</span><span class="p">[</span><span class="s2">&quot;scrapy==2.10.1&quot;</span><span class="p">])</span>
+</code></pre></div>
+<h3 id="environment-variables-for-databricks">Environment Variables for Databricks<a class="headerlink" href="#environment-variables-for-databricks" title="Permanent link">&para;</a></h3>
+<p>You can configure the behavior of function execution using the following environment variables:</p>
+<table>
+<thead>
+<tr>
+<th>Environment Variable</th>
+<th>Description</th>
+<th>Default Value</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>UCAI_DATABRICKS_SESSION_RETRY_MAX_ATTEMPTS</code></td>
+<td>Maximum number of attempts to retry refreshing the session client in case of token expiry.</td>
+<td><code>5</code></td>
+</tr>
+<tr>
+<td><code>UCAI_DATABRICKS_SERVERLESS_EXECUTION_RESULT_ROW_LIMIT</code></td>
+<td>Maximum number of rows when executing functions using serverless compute with <code>databricks-connect</code>.</td>
+<td><code>100</code></td>
+</tr>
+</tbody>
+</table>
+<h3 id="initialization_1">Initialization<a class="headerlink" href="#initialization_1" title="Permanent link">&para;</a></h3>
+<p>In order to perform CRUD operations and to execute UC functions, you will need to instantiate an instance of the UC functions Client. This client interface
+is used not only for direct interface with functions, but also is the mechanism by which a function will be called as a tool by a GenAI application.</p>
+<div class="highlight"><pre><span></span><code><span class="kn">from</span> <span class="nn">unitycatalog.ai.core.databricks</span> <span class="kn">import</span> <span class="n">DatabricksFunctionClient</span>
+
+<span class="n">client</span> <span class="o">=</span> <span class="n">DatabricksFunctionClient</span><span class="p">()</span>
+</code></pre></div>
+<hr />
+<h2 id="caveats_1">Caveats<a class="headerlink" href="#caveats_1" title="Permanent link">&para;</a></h2>
+<ul>
+<li><strong>Type Annotations</strong>: When creating functions from Python code, all parameters and return types must have type annotations.</li>
+<li><strong>Supported Types</strong>: Not all Python types are supported in SQL. Refer to the <a href="../usage/#python-to-sql-compatibility-matrix">Python to SQL Compatibility Matrix</a> for supported types.</li>
+<li><strong>Docstrings</strong>: Use Google-style docstrings to provide metadata for functions. This enhances function discoverability and usability in GenAI applications.</li>
+</ul>
+<hr />
+<h2 id="client-public-apis">Client Public APIs<a class="headerlink" href="#client-public-apis" title="Permanent link">&para;</a></h2>
+<h3 id="creating-functions-from-a-python-callable">Creating functions from a Python Callable<a class="headerlink" href="#creating-functions-from-a-python-callable" title="Permanent link">&para;</a></h3>
+<p>The UC Functions Client's <code>create_python_function</code> API provides a high-level Python-native approach to creating a UC function.
+This API automates the conversion process between a Python function's definition and the required syntax of a SQL Body statement by
+parsing the contents of your function definition and extracting the relevant information.</p>
+<h4 id="caveats-of-python-callable-function-creation">Caveats of Python Callable function creation<a class="headerlink" href="#caveats-of-python-callable-function-creation" title="Permanent link">&para;</a></h4>
+<ul>
+<li><strong>type hints</strong>: All declared arguments and the return of the function must use valid type hints. Failing to define these hints will raise an Exception.</li>
+<li><strong>type hints in collections</strong>: If you are using a collection (<code>tuple</code>, <code>list</code>, or <code>dict</code>), all internal types <strong>must be defined</strong>. Generic collections are not permitted.</li>
+<li><strong>generics</strong>: the <code>Any</code> type is not supported. All types must be concrete.</li>
+<li><strong>defaults</strong>: Default values that are defined in your function signature will be extracted as UC function <code>DEFAULT</code> entries in your function. Ensure that the default values are valid for your function and that your type hints are correct (using <code>Optional[&lt;type&gt;]</code>).</li>
+<li><strong>docstring formatting</strong>: In order for relevant information to be extracted from the docstring, the syntax of your docstring must match the <a href="https://sphinxcontrib-napoleon.readthedocs.io/en/latest/example_google.html">Google Docstring</a> conventions. <code>reST</code>, <code>Epytext</code> and <code>Numpydoc</code> style docstrings are <strong>not supported</strong>.</li>
+<li><strong>external dependencies</strong>: There is limited library support within the function execution environment. The list of supported available libraries <a href="https://docs.databricks.com/en/sql/language-manual/sql-ref-syntax-ddl-create-sql-function.html#supported-libraries-in-python-udfs">can be seen here</a> and is subject to change over time.</li>
+<li><strong>overwriting functions</strong>: To replace an existing function, specify the argument <code>replace=True</code> when calling <code>create_python_function</code>.</li>
+</ul>
+<h4 id="example-of-a-valid-function">Example of a Valid Function<a class="headerlink" href="#example-of-a-valid-function" title="Permanent link">&para;</a></h4>
+<div class="highlight"><pre><span></span><code><span class="k">def</span> <span class="nf">your_function_name</span><span class="p">(</span><span class="n">param</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Converts the input string to uppercase.</span>
+
+<span class="sd">    Args:</span>
+<span class="sd">        param (str): The input string.</span>
+
+<span class="sd">    Returns:</span>
+<span class="sd">        str: The uppercase string.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">return</span> <span class="n">param</span><span class="o">.</span><span class="n">upper</span><span class="p">()</span>
+
+<span class="n">client</span><span class="o">.</span><span class="n">create_python_function</span><span class="p">(</span>
+    <span class="n">func</span><span class="o">=</span><span class="n">your_function_name</span><span class="p">,</span>
+    <span class="n">catalog</span><span class="o">=</span><span class="s2">&quot;your_catalog&quot;</span><span class="p">,</span>
+    <span class="n">schema</span><span class="o">=</span><span class="s2">&quot;your_schema&quot;</span>
+<span class="p">)</span>
+</code></pre></div>
+<blockquote>
+<p>Note: the parameters <code>dependencies</code> and <code>environment_version</code> for the <code>create_python_function</code> API are only compatible with Databricks runtime versions that support these SQL parameters for function creation. Currently, this is Databricks runtime versions <strong>17 and higher</strong>.</p>
+</blockquote>
+<h4 id="example-of-an-invalid-function">Example of an Invalid Function<a class="headerlink" href="#example-of-an-invalid-function" title="Permanent link">&para;</a></h4>
+<p>The following function definition will not successfully be created as a UC function due to several reasons:</p>
+<ul>
+<li>Missing type annotations for arguments and for the return value.</li>
+<li>Missing docstring.</li>
+</ul>
+<div class="highlight"><pre><span></span><code><span class="k">def</span> <span class="nf">invalid_func</span><span class="p">(</span><span class="n">a</span><span class="p">,</span> <span class="n">b</span><span class="p">):</span>
+    <span class="k">return</span> <span class="n">a</span> <span class="o">+</span> <span class="n">b</span>
+
+<span class="c1"># This will raise a ValueError</span>
+<span class="n">client</span><span class="o">.</span><span class="n">create_python_function</span><span class="p">(</span>
+    <span class="n">func</span><span class="o">=</span><span class="n">invalid_func</span><span class="p">,</span>
+    <span class="n">catalog</span><span class="o">=</span><span class="s2">&quot;your_catalog&quot;</span><span class="p">,</span>
+    <span class="n">schema</span><span class="o">=</span><span class="s2">&quot;your_schema&quot;</span>
+<span class="p">)</span>
+</code></pre></div>
+<h3 id="creating-functions-from-a-sql-body-statement">Creating functions from a SQL Body statement<a class="headerlink" href="#creating-functions-from-a-sql-body-statement" title="Permanent link">&para;</a></h3>
+<p>If you prefer to have full control over your function definition, the <code>create_function</code> API in the client allows you to submit your function definition as a <a href="https://docs.databricks.com/en/sql/language-manual/sql-ref-syntax-ddl-create-sql-function.html#syntax">SQL Body statement</a>.</p>
+<div class="highlight"><pre><span></span><code><span class="n">sql_body</span> <span class="o">=</span> <span class="s2">&quot;&quot;&quot;</span>
+<span class="s2">CREATE FUNCTION your_catalog.your_schema.your_function_name(param STRING COMMENT &#39;A string to convert to uppercase.&#39;)</span>
+<span class="s2">RETURNS STRING</span>
+<span class="s2">LANGUAGE PYTHON</span>
+<span class="s2">COMMENT &#39;Converts an input string to uppercase.&#39;</span>
+<span class="s2">AS $$</span>
+<span class="s2">    return param.upper()</span>
+<span class="s2">$$</span>
+<span class="s2">&quot;&quot;&quot;</span>
+
+<span class="n">client</span><span class="o">.</span><span class="n">create_function</span><span class="p">(</span><span class="n">sql_function_body</span><span class="o">=</span><span class="n">sql_body</span><span class="p">)</span>
+</code></pre></div>
+<p>The general guidelines for function creation within UC apply to the SQL Body statement. There are no additional restrictions applied to this API.</p>
+<blockquote>
+<p>Note: It is highly recommended to provide verbose and accurate <code>COMMENT</code> blocks to both the function and the parameters configured. This information is
+provided to LLMs that will be deciding on whether it is appropriate to call the defined tool. Detailed descriptions can reduce the chances of a tool call
+failing due to ambiguous references on how to use the tool.</p>
+</blockquote>
+<p>If you create a function without both a <code>COMMENT</code> block (the function description) and <code>COMMENT</code> entries for each parameter defined for your function,
+a warning will be issued upon creation. It is <strong>highly advised</strong> to correct your function definition and overwrite your function when you see this warning.
+Most LLM's will not be able to effectively use your defined function as a tool if the description is a placeholder or is lacking appropriate information
+that describes the purpose of and how to use your defined function as a tool.</p>
+<blockquote>
+<p>Note: Specifying environment and dependency configurations on version of Databricks runtime prior to verison 17 will generate exceptions if the SQL body contains these statements.</p>
+</blockquote>
+<h4 id="specifying-custom-package-dependencies">Specifying Custom Package Dependencies<a class="headerlink" href="#specifying-custom-package-dependencies" title="Permanent link">&para;</a></h4>
+<p>If you are on Databricks Runtime <strong>17 or above</strong>, you can specify external package dependencies when writing your SQL body, as follows:</p>
+<div class="highlight"><pre><span></span><code><span class="n">sql_body</span> <span class="o">=</span> <span class="s2">&quot;&quot;&quot;</span>
+<span class="s2">CREATE FUNCTION my_catalog.my_schema.my_func()</span>
+<span class="s2">RETURNS STRING</span>
+<span class="s2">LANGUAGE PYTHON</span>
+<span class="s2">ENVIRONMENT (dependencies=&#39;[&quot;pandas&quot;, &quot;fastapi&quot;, &quot;httpx&quot;]&#39;, environment_version=&#39;1&#39;)</span>
+<span class="s2">COMMENT &#39;A function that uses external additional libraries.&#39;</span>
+<span class="s2">AS $$</span>
+<span class="s2">    import fastapi</span>
+<span class="s2">    return fastapi.__version__</span>
+<span class="s2">$$</span>
+<span class="s2">&quot;&quot;&quot;</span>
+</code></pre></div>
+<h2 id="retrieving-functions">Retrieving Functions<a class="headerlink" href="#retrieving-functions" title="Permanent link">&para;</a></h2>
+<p>You can retrieve the function definition from UC by using the <code>get_function</code> client API:</p>
+<div class="highlight"><pre><span></span><code><span class="n">function_info</span> <span class="o">=</span> <span class="n">client</span><span class="o">.</span><span class="n">get_function</span><span class="p">(</span><span class="s2">&quot;your_catalog.your_schema.your_function_name&quot;</span><span class="p">)</span>
+</code></pre></div>
+<h2 id="listing-functions">Listing Functions<a class="headerlink" href="#listing-functions" title="Permanent link">&para;</a></h2>
+<p>You can list all functions that are defined within a given catalog and schema by using the <code>list_functions</code> client API:</p>
+<div class="highlight"><pre><span></span><code><span class="n">functions</span> <span class="o">=</span> <span class="n">client</span><span class="o">.</span><span class="n">list_functions</span><span class="p">(</span><span class="n">catalog</span><span class="o">=</span><span class="s2">&quot;your_catalog&quot;</span><span class="p">,</span> <span class="n">schema</span><span class="o">=</span><span class="s2">&quot;your_schema&quot;</span><span class="p">,</span> <span class="n">max_results</span><span class="o">=</span><span class="mi">10</span><span class="p">)</span>
+</code></pre></div>
+<h2 id="deleting-functions">Deleting Functions<a class="headerlink" href="#deleting-functions" title="Permanent link">&para;</a></h2>
+<p>A function can be deleted through the use of the <code>delete_function</code> client API:</p>
+<div class="highlight"><pre><span></span><code><span class="n">client</span><span class="o">.</span><span class="n">delete_function</span><span class="p">(</span><span class="s2">&quot;your_catalog.your_schema.your_function_name&quot;</span><span class="p">)</span>
+</code></pre></div>
+<h2 id="executing-functions">Executing Functions<a class="headerlink" href="#executing-functions" title="Permanent link">&para;</a></h2>
+<p>Executing a function directly using the client is done through the <code>execute_function</code> API:</p>
+<div class="highlight"><pre><span></span><code><span class="n">result</span> <span class="o">=</span> <span class="n">client</span><span class="o">.</span><span class="n">execute_function</span><span class="p">(</span>
+    <span class="s2">&quot;your_catalog.your_schema.uppercase_function&quot;</span><span class="p">,</span>
+    <span class="n">parameters</span><span class="o">=</span><span class="p">{</span><span class="s2">&quot;param&quot;</span><span class="p">:</span> <span class="s2">&quot;hello world&quot;</span><span class="p">}</span>
+<span class="p">)</span>
+
+<span class="nb">print</span><span class="p">(</span><span class="n">result</span><span class="o">.</span><span class="n">value</span><span class="p">)</span>  <span class="c1"># Outputs: HELLO WORLD</span>
+</code></pre></div>
+<h2 id="function-parameter-defaults">Function Parameter Defaults<a class="headerlink" href="#function-parameter-defaults" title="Permanent link">&para;</a></h2>
+<p>Defining and executing functions with parameter defaults behave similarly to standard Python function argument defaults. If a parameter is not provided that is marked as having a default value when called via the <code>execute_function</code> API, the existing default parameter value will be mapped to the function invocation call.</p>
+<p>If using defaults in your function signatures, ensure that the descriptions are accurate and declare what the default value is to ensure that Agentic use of your function is accurate.</p>
+<hr />
+<h2 id="examples">Examples<a class="headerlink" href="#examples" title="Permanent link">&para;</a></h2>
+<h3 id="create-and-execute-a-function">Create and Execute a Function<a class="headerlink" href="#create-and-execute-a-function" title="Permanent link">&para;</a></h3>
+<div class="highlight"><pre><span></span><code><span class="kn">from</span> <span class="nn">unitycatalog.ai.core.databricks</span> <span class="kn">import</span> <span class="n">DatabricksFunctionClient</span>
+
+<span class="c1"># Initialize the client, connecting to serverless</span>
+<span class="n">client</span> <span class="o">=</span> <span class="n">DatabricksFunctionClient</span><span class="p">()</span>
+
+<span class="c1"># Define the function</span>
+<span class="k">def</span> <span class="nf">add_numbers</span><span class="p">(</span><span class="n">a</span><span class="p">:</span> <span class="nb">float</span><span class="p">,</span> <span class="n">b</span><span class="p">:</span> <span class="nb">float</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">float</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Adds two numbers and returns the result.</span>
+
+<span class="sd">    Args:</span>
+<span class="sd">        a (float): First number.</span>
+<span class="sd">        b (float): Second number.</span>
+
+<span class="sd">    Returns:</span>
+<span class="sd">        float: The sum of the two numbers.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">return</span> <span class="n">a</span> <span class="o">+</span> <span class="n">b</span>
+
+<span class="c1"># Create the function in UC</span>
+<span class="n">client</span><span class="o">.</span><span class="n">create_python_function</span><span class="p">(</span>
+    <span class="n">func</span><span class="o">=</span><span class="n">add_numbers</span><span class="p">,</span>
+    <span class="n">catalog</span><span class="o">=</span><span class="s2">&quot;your_catalog&quot;</span><span class="p">,</span>
+    <span class="n">schema</span><span class="o">=</span><span class="s2">&quot;your_schema&quot;</span>
+<span class="p">)</span>
+
+<span class="c1"># Execute the function</span>
+<span class="n">result</span> <span class="o">=</span> <span class="n">client</span><span class="o">.</span><span class="n">execute_function</span><span class="p">(</span>
+    <span class="s2">&quot;your_catalog.your_schema.add_numbers&quot;</span><span class="p">,</span>
+    <span class="n">parameters</span><span class="o">=</span><span class="p">{</span><span class="s2">&quot;a&quot;</span><span class="p">:</span> <span class="mf">10.5</span><span class="p">,</span> <span class="s2">&quot;b&quot;</span><span class="p">:</span> <span class="mf">5.5</span><span class="p">}</span>
+<span class="p">)</span>
+
+<span class="nb">print</span><span class="p">(</span><span class="n">result</span><span class="o">.</span><span class="n">value</span><span class="p">)</span>  <span class="c1"># Outputs: 16.0</span>
+</code></pre></div>
+<h3 id="additional-notes">Additional Notes<a class="headerlink" href="#additional-notes" title="Permanent link">&para;</a></h3>
+<ul>
+<li><strong>Error Handling</strong>: If a function execution fails, <code>FunctionExecutionResult</code> will contain an <code>error</code> attribute with details on the failure.</li>
+</ul>
+
+
+
+
+
+
+
+
+
+  
+
+
+
+  <form class="md-feedback" name="feedback" hidden>
+    <fieldset>
+      <legend class="md-feedback__title">
+        Was this page helpful?
+      </legend>
+      <div class="md-feedback__inner">
+        <div class="md-feedback__list">
+          
+            <button class="md-feedback__icon md-icon" type="submit" title="This page was helpful" data-md-value="good">
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 12a8 8 0 0 0-8-8 8 8 0 0 0-8 8 8 8 0 0 0 8 8 8 8 0 0 0 8-8m2 0a10 10 0 0 1-10 10A10 10 0 0 1 2 12 10 10 0 0 1 12 2a10 10 0 0 1 10 10M10 9.5c0 .8-.7 1.5-1.5 1.5S7 10.3 7 9.5 7.7 8 8.5 8s1.5.7 1.5 1.5m7 0c0 .8-.7 1.5-1.5 1.5S14 10.3 14 9.5 14.7 8 15.5 8s1.5.7 1.5 1.5m-5 7.73c-1.75 0-3.29-.73-4.19-1.81L9.23 14c.45.72 1.52 1.23 2.77 1.23s2.32-.51 2.77-1.23l1.42 1.42c-.9 1.08-2.44 1.81-4.19 1.81"/></svg>
+            </button>
+          
+            <button class="md-feedback__icon md-icon" type="submit" title="This page could be improved" data-md-value="bad">
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 12a8 8 0 0 0-8-8 8 8 0 0 0-8 8 8 8 0 0 0 8 8 8 8 0 0 0 8-8m2 0a10 10 0 0 1-10 10A10 10 0 0 1 2 12 10 10 0 0 1 12 2a10 10 0 0 1 10 10m-6.5-4c.8 0 1.5.7 1.5 1.5s-.7 1.5-1.5 1.5-1.5-.7-1.5-1.5.7-1.5 1.5-1.5M10 9.5c0 .8-.7 1.5-1.5 1.5S7 10.3 7 9.5 7.7 8 8.5 8s1.5.7 1.5 1.5m2 4.5c1.75 0 3.29.72 4.19 1.81l-1.42 1.42C14.32 16.5 13.25 16 12 16s-2.32.5-2.77 1.23l-1.42-1.42C8.71 14.72 10.25 14 12 14"/></svg>
+            </button>
+          
+        </div>
+        <div class="md-feedback__note">
+          
+            <div data-md-value="good" hidden>
+              
+              
+                
+              
+              Thanks for your feedback!
+            </div>
+          
+            <div data-md-value="bad" hidden>
+              
+              
+                
+              
+              Thanks for your feedback!
+            </div>
+          
+        </div>
+      </div>
+    </fieldset>
+  </form>
+
+
+                
+              </article>
+            </div>
+          
+          
+  <script>var tabs=__md_get("__tabs");if(Array.isArray(tabs))e:for(var set of document.querySelectorAll(".tabbed-set")){var labels=set.querySelector(".tabbed-labels");for(var tab of tabs)for(var label of labels.getElementsByTagName("label"))if(label.innerText.trim()===tab){var input=document.getElementById(label.htmlFor);input.checked=!0;continue e}}</script>
+
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+    
+      
+      <nav class="md-footer__inner md-grid" aria-label="Footer" >
+        
+          
+          <a href="../usage/" class="md-footer__link md-footer__link--prev" aria-label="Previous: Usage">
+            <div class="md-footer__button md-icon">
+              
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+            </div>
+            <div class="md-footer__title">
+              <span class="md-footer__direction">
+                Previous
+              </span>
+              <div class="md-ellipsis">
+                Usage
+              </div>
+            </div>
+          </a>
+        
+        
+          
+          <a href="../integrations/" class="md-footer__link md-footer__link--next" aria-label="Next: Integrations">
+            <div class="md-footer__title">
+              <span class="md-footer__direction">
+                Next
+              </span>
+              <div class="md-ellipsis">
+                Integrations
+              </div>
+            </div>
+            <div class="md-footer__button md-icon">
+              
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M4 11v2h12l-5.5 5.5 1.42 1.42L19.84 12l-7.92-7.92L10.5 5.5 16 11z"/></svg>
+            </div>
+          </a>
+        
+      </nav>
+    
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+        <div class="md-social">
+  
+    
+    
+    
+    
+      
+      
+    
+    <a href="https://github.com/unitycatalog/unitycatalog" target="_blank" rel="noopener" title="github.com" class="md-social__link">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 496 512"><!--! Font Awesome Free 6.6.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2024 Fonticons, Inc.--><path d="M165.9 397.4c0 2-2.3 3.6-5.2 3.6-3.3.3-5.6-1.3-5.6-3.6 0-2 2.3-3.6 5.2-3.6 3-.3 5.6 1.3 5.6 3.6m-31.1-4.5c-.7 2 1.3 4.3 4.3 4.9 2.6 1 5.6 0 6.2-2s-1.3-4.3-4.3-5.2c-2.6-.7-5.5.3-6.2 2.3m44.2-1.7c-2.9.7-4.9 2.6-4.6 4.9.3 2 2.9 3.3 5.9 2.6 2.9-.7 4.9-2.6 4.6-4.6-.3-1.9-3-3.2-5.9-2.9M244.8 8C106.1 8 0 113.3 0 252c0 110.9 69.8 205.8 169.5 239.2 12.8 2.3 17.3-5.6 17.3-12.1 0-6.2-.3-40.4-.3-61.4 0 0-70 15-84.7-29.8 0 0-11.4-29.1-27.8-36.6 0 0-22.9-15.7 1.6-15.4 0 0 24.9 2 38.6 25.8 21.9 38.6 58.6 27.5 72.9 20.9 2.3-16 8.8-27.1 16-33.7-55.9-6.2-112.3-14.3-112.3-110.5 0-27.5 7.6-41.3 23.6-58.9-2.6-6.5-11.1-33.3 2.6-67.9 20.9-6.5 69 27 69 27 20-5.6 41.5-8.5 62.8-8.5s42.8 2.9 62.8 8.5c0 0 48.1-33.6 69-27 13.7 34.7 5.2 61.4 2.6 67.9 16 17.7 25.8 31.5 25.8 58.9 0 96.5-58.9 104.2-114.8 110.5 9.2 7.9 17 22.9 17 46.4 0 33.7-.3 75.4-.3 83.6 0 6.5 4.6 14.4 17.3 12.1C428.2 457.8 496 362.9 496 252 496 113.3 383.5 8 244.8 8M97.2 352.9c-1.3 1-1 3.3.7 5.2 1.6 1.6 3.9 2.3 5.2 1 1.3-1 1-3.3-.7-5.2-1.6-1.6-3.9-2.3-5.2-1m-10.8-8.1c-.7 1.3.3 2.9 2.3 3.9 1.6 1 3.6.7 4.3-.7.7-1.3-.3-2.9-2.3-3.9-2-.6-3.6-.3-4.3.7m32.4 35.6c-1.6 1.3-1 4.3 1.3 6.2 2.3 2.3 5.2 2.6 6.5 1 1.3-1.3.7-4.3-1.3-6.2-2.2-2.3-5.2-2.6-6.5-1m-11.4-14.7c-1.6 1-1.6 3.6 0 5.9s4.3 3.3 5.6 2.3c1.6-1.3 1.6-3.9 0-6.2-1.4-2.3-4-3.3-5.6-2"/></svg>
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    <script id="__config" type="application/json">{"base": "../..", "features": ["content.action.edit", "content.code.copy", "content.tabs.link", "navigation.footer", "navigation.expand", "navigation.indexes", "content.code.annotate"], "search": "../../assets/javascripts/workers/search.6ce7567c.min.js", "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}}</script>
+    
+    
+      <script src="../../assets/javascripts/bundle.83f73b43.min.js"></script>
+      
+    
+  </body>
+</html>
