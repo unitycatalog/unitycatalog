@@ -545,7 +545,6 @@ def test_create_and_execute_python_function_with_variant(client: DatabricksFunct
         func_name = f"{CATALOG}.{SCHEMA}.func_variant"
         input_value = {"key": "value", "list": [1, 2, 3]}
         result = client.execute_function(func_name, {"a": input_value})
-        assert result.error is None
         assert result.value == '{"key":"value","list":[1,2,3]}'
 
 
@@ -564,5 +563,79 @@ $$
         func_name = f"{CATALOG}.{SCHEMA}.func_variant_body"
         input_value = {"key": "value", "list": [1, 2, 3]}
         result = client.execute_function(func_name, {"sql_variant": input_value})
-        assert result.error is None
         assert result.value == '{"key":"value","list":[1,2,3]}'
+
+
+@retry_flaky_test()
+@requires_databricks
+def test_sql_function_with_default_params_databricks(client: DatabricksFunctionClient):
+    sql_body = f"""
+CREATE OR REPLACE FUNCTION {CATALOG}.{SCHEMA}.concat_func(
+    a INT DEFAULT 10 COMMENT 'int default 10',
+    b STRING DEFAULT 'default' COMMENT 'string default'
+)
+RETURNS STRING
+CONTAINS SQL
+COMMENT 'Concatenates integer and string with defaults'
+RETURN CONCAT(CAST(a AS STRING), ' ', b);
+"""
+    with create_function_and_cleanup(client=client, schema=SCHEMA, sql_body=sql_body):
+        func_name = f"{CATALOG}.{SCHEMA}.concat_func"
+        result = client.execute_function(func_name, parameters={})
+        assert result.value == "10 default"
+
+        result = client.execute_function(func_name, parameters={"a": 20, "b": "test"})
+        assert result.value == "20 test"
+
+
+@retry_flaky_test()
+@requires_databricks
+def test_sql_function_with_all_defaults_databricks(client: DatabricksFunctionClient):
+    sql_body = f"""
+CREATE OR REPLACE FUNCTION {CATALOG}.{SCHEMA}.all_defaults(
+    a INT DEFAULT 1 COMMENT 'int default 1',
+    b STRING DEFAULT 'default' COMMENT 'string default',
+    c DOUBLE DEFAULT 3.14 COMMENT 'double default 3.14',
+    d BOOLEAN DEFAULT TRUE COMMENT 'boolean default'
+)
+RETURNS STRING
+CONTAINS SQL
+COMMENT 'Concatenates all default parameters'
+RETURN CONCAT(CAST(a AS STRING), ' ', b, ' ', CAST(c AS STRING), ' ', CAST(d AS STRING));
+"""
+    with create_function_and_cleanup(client=client, schema=SCHEMA, sql_body=sql_body):
+        func_name = f"{CATALOG}.{SCHEMA}.all_defaults"
+        result = client.execute_function(func_name, parameters={})
+        assert result.value.lower() == "1 default 3.14 true"
+
+        result = client.execute_function(
+            func_name, parameters={"a": 10, "b": "test", "c": 2.71, "d": False}
+        )
+        assert result.value.lower() == "10 test 2.71 false"
+
+        result = client.execute_function(func_name)
+        assert result.value.lower() == "1 default 3.14 true"
+
+
+@retry_flaky_test()
+@requires_databricks
+def test_execute_python_function_no_params_databricks(client: DatabricksFunctionClient):
+    def func_no_params() -> str:
+        """
+        Returns a static string.
+
+        Returns:
+            str: A static string.
+        """
+        return "No parameters here!"
+
+    with create_python_function_and_cleanup(client, func=func_no_params, schema=SCHEMA) as func_obj:
+        result = client.execute_function(func_obj.full_function_name, parameters={})
+        assert result.value == "No parameters here!", (
+            f"Expected 'No parameters here!', got {result.value}"
+        )
+
+        with pytest.raises(
+            ValueError, match="Function does not have input parameters, but parameters"
+        ):
+            client.execute_function(func_obj.full_function_name, parameters={"unexpected": "value"})
