@@ -12,6 +12,14 @@ Install the Unity Catalog AI LiteLLM integration from PyPI:
 pip install unitycatalog-litellm
 ```
 
+### Databricks Unity Catalog
+
+To interact with Databricks Unity Catalog, install the optional package dependency when installing the integration package:
+
+```sh
+pip install unitycatalog-litellm[databricks]
+```
+
 ---
 
 ## Get Started
@@ -37,8 +45,6 @@ client = UnitycatalogFunctionClient(api_client=api_client)
 ```
 
 ### Client Setup - Databricks
-
-To use Databricks-managed Unity Catalog with this package, follow the [instructions](https://docs.databricks.com/en/dev-tools/cli/authentication.html#authentication-for-the-databricks-cli) to authenticate to your workspace and ensure that your access token has workspace-level privilege for managing UC functions.
 
 First, initialize a client for managing UC functions in a Databricks workspace, and set it as the global client.
 

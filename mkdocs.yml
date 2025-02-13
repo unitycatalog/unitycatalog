@@ -48,6 +48,8 @@ nav:
           - Anthropic: ai/integrations/anthropic.md
           - CrewAI: ai/integrations/crewai.md
           - AutoGen: ai/integrations/autogen.md
+          - LiteLLM: ai/integrations/litellm.md
+          - Gemini: ai/integrations/gemini.md
 
 exclude_docs: |
   README.md

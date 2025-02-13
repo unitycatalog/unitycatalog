@@ -23,7 +23,7 @@ Ensure that you have a functional UC server set up and that you are able to acce
 To interact with Databricks Unity Catalog, install the optional package dependency when installing the integration package:
 
 ```sh
-pip install unitycatalog-anthropic[databricks]
+pip install unitycatalog-gemini[databricks]
 ```
 
 ## Tutorial
