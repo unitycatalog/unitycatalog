@@ -1,6 +1,6 @@
 [project]
 name = "unitycatalog-ai"
-version = "0.1.0"
+version = "0.2.0"
 description = "Official Python library for Unity Catalog AI support"
 authors = [
     { name="Serena Ruan", email="serena.ruan@databricks.com" },
