@@ -5,6 +5,7 @@ import {
   useLogoutCurrentUser,
   UserInterface,
 } from '../hooks/user';
+import { GrantType, TokenType } from '../types/api/control.gen';
 import { useNotification } from '../utils/NotificationContext';
 
 interface AuthContextProps {
@@ -30,17 +31,25 @@ function AuthProvider(props: any) {
 
   const loginWithToken = useCallback(
     async (idToken: string) => {
-      return loginWithTokenMutation.mutate(idToken, {
-        onSuccess: () => {
-          refetch();
+      return loginWithTokenMutation.mutate(
+        {
+          grant_type: GrantType.TOKEN_EXCHANGE,
+          requested_token_type: TokenType.ACCESS_TOKEN,
+          subject_token_type: TokenType.ID_TOKEN,
+          subject_token: idToken,
         },
-        onError: () => {
-          setNotification(
-            'Login failed. Please contact your system administrator.',
-            'error',
-          );
+        {
+          onSuccess: () => {
+            refetch();
+          },
+          onError: () => {
+            setNotification(
+              'Login failed. Please contact your system administrator.',
+              'error',
+            );
+          },
         },
-      });
+      );
     },
     [loginWithTokenMutation, setNotification, refetch],
   );
