@@ -6,7 +6,7 @@ import re
 import textwrap
 from contextlib import contextmanager
 from dataclasses import dataclass
-from typing import Any, Dict, List, Union
+from typing import Any, Dict, List, Optional, Union
 
 import pytest
 import pytest_asyncio
@@ -1319,3 +1319,116 @@ async def test_function_with_variant_param_raises_in_oss(uc_client):
         uc_client.create_python_function(
             func=func_variant_param, catalog=CATALOG, schema=SCHEMA, replace=True
         )
+
+
+# --------------------------
+# Test default parameter handling
+# --------------------------
+
+
+def test_create_function_with_default_params(uc_client: UnitycatalogFunctionClient):
+    def func_with_defaults(a: int, b: str = "default") -> str:
+        """
+        A function that concatenates an integer and a string with a default string value.
+
+        Args:
+            a (int): An integer.
+            b (str, optional): A string. Defaults to "default".
+
+        Returns:
+            str: The concatenated string.
+        """
+        return f"{a} {b}"
+
+    full_name = f"{CATALOG}.{SCHEMA}.func_with_defaults"
+
+    uc_client.create_python_function(
+        func=func_with_defaults, catalog=CATALOG, schema=SCHEMA, replace=True
+    )
+
+    result = uc_client.execute_function(function_name=full_name, parameters={"a": 10})
+    assert result.value == "10 default"
+
+    result = uc_client.execute_function(function_name=full_name, parameters={"a": 20, "b": "test"})
+    assert result.value == "20 test"
+
+
+def test_create_function_with_all_defaults(uc_client: UnitycatalogFunctionClient):
+    def func_with_all_defaults(
+        a: int = 1, b: str = "default", c: float = 3.14, d: bool = True
+    ) -> str:
+        """
+        A function that concatenates various types with default values.
+
+        Args:
+            a (int, optional): An integer. Defaults to 1.
+            b (str, optional): A string. Defaults to "default".
+            c (float, optional): A float. Defaults to 3.14.
+            d (bool, optional): A boolean. Defaults to True.
+
+        Returns:
+            str: The concatenated string.
+        """
+        return f"{a} {b} {c} {d}"
+
+    full_name = f"{CATALOG}.{SCHEMA}.func_with_all_defaults"
+
+    uc_client.create_python_function(
+        func=func_with_all_defaults, catalog=CATALOG, schema=SCHEMA, replace=True
+    )
+
+    result = uc_client.execute_function(function_name=full_name, parameters={})
+    assert result.value == "1 default 3.14 True"
+
+    result = uc_client.execute_function(
+        function_name=full_name,
+        parameters={"a": 10, "b": "test", "c": 2.71, "d": False},
+    )
+    assert result.value == "10 test 2.71 False"
+
+    result = uc_client.execute_function(
+        function_name=full_name,
+    )
+    assert result.value == "1 default 3.14 True"
+
+
+def test_create_function_no_params(uc_client: UnitycatalogFunctionClient):
+    def func_no_params() -> str:
+        """
+        A function that returns a static string.
+
+        Returns:
+            str: A static string.
+        """
+        return "No parameters here!"
+
+    full_name = f"{CATALOG}.{SCHEMA}.func_no_params"
+
+    uc_client.create_python_function(
+        func=func_no_params, catalog=CATALOG, schema=SCHEMA, replace=True
+    )
+
+    result = uc_client.execute_function(function_name=full_name, parameters={})
+    assert result.value == "No parameters here!"
+
+    with pytest.raises(ValueError, match="Function does not have input parameters, but parameters"):
+        uc_client.execute_function(function_name=full_name, parameters={"unexpected": "value"})
+
+
+def test_create_function_with_none_param_default(uc_client: UnitycatalogFunctionClient):
+    def null_func(a: Optional[str] = None) -> str:
+        """
+        A function that returns the string representation of its input.
+
+        Args:
+            a (Optional[str], optional): An optional string. Defaults to None.
+
+        Returns:
+            str: The string representation of the input.
+        """
+        return str(a)
+
+    full_name = f"{CATALOG}.{SCHEMA}.null_func"
+    uc_client.create_python_function(func=null_func, catalog=CATALOG, schema=SCHEMA, replace=True)
+    result = uc_client.execute_function(function_name=full_name, parameters={})
+    assert result.value == "None"
