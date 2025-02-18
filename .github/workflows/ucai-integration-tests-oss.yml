@@ -74,6 +74,7 @@ jobs:
           pip install integrations/anthropic[dev]
           pytest integrations/anthropic/tests/test_anthropic_toolkit_oss.py
       - name: Run AutoGen OSS Integration Tests
+        if: matrix.python-version == '3.10'
         run: |
           pip install integrations/autogen[dev]
           pytest integrations/autogen/tests/test_autogen_toolkit_oss.py
@@ -82,6 +83,15 @@ jobs:
         run: |
           pip install integrations/crewai[dev]
           pytest integrations/crewai/tests/test_crewai_toolkit_oss.py
+      - name: Run Gemini OSS Integration Tests
+        run: |
+          pip install integrations/gemini[dev]
+          pytest integrations/gemini/tests/test_gemini_toolkit_oss.py
+      - name: Run LiteLLM OSS Integration Tests
+        if: matrix.python-version == '3.10'
+        run: |
+          pip install integrations/litellm[dev]
+          pytest integrations/litellm/tests/test_litellm_toolkit_oss.py
       - name: Stop Unity Catalog Server
         run: |
           dev/teardown_server.sh

@@ -17,7 +17,10 @@ export default function TablesList({
   schema,
   filters,
 }: TablesListProps) {
-  const { data, isLoading } = useListTables({ catalog, schema });
+  const { data, isLoading } = useListTables({
+    catalog_name: catalog,
+    schema_name: schema,
+  });
   const navigate = useNavigate();
 
   return (
