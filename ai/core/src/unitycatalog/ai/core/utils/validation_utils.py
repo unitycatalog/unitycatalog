@@ -142,39 +142,32 @@ def validate_function_name_length(function_name: str) -> None:
         )
 
 
-def is_valid_retriever_output(output: Any) -> bool:
+def has_retriever_signature(function_info: "FunctionInfo") -> bool:
     """
-    Checks if the given output follows the retriever format for MLflow, which is a list of Documents
-    or dictionaries that follow the Document format.
+    Checks if the given function signature follows the retriever format for MLflow, which is a
+    list of Documents.
 
     Args:
-        output: The value to determine if it is a valid retriever output.
+        function_info: The function to determine if it has a valid retriever signature.
 
     Returns:
-        bool: If the provided output is a valid retriever output.
+        bool: If the provided function has a valid retriever signature.
     """
-    if not isinstance(output, list):
+    if "TABLE_TYPE" not in str(function_info.data_type):
         return False
 
-    if len(output) < 1:
+    return_params = function_info.return_params
+
+    if not (return_params and return_params.parameters):
         return False
 
-    def is_valid_retriever_item(item: Any) -> bool:
-        from mlflow.entities import Document
+    for param in return_params.parameters:
+        param_dict = param.as_dict() if hasattr(param, "as_dict") else dict(param)
 
-        if isinstance(item, Document):
+        if param_dict.get("name") == "page_content" and param_dict.get("type_name") == "STRING":
             return True
 
-        if isinstance(item, dict):
-            try:
-                Document(**item)
-                return True
-            except TypeError:
-                return False
-
-        return False
-
-    return all(is_valid_retriever_item(item) for item in output)
+    return False
 
 
 def mlflow_tracing_enabled(integration_name: str) -> bool:

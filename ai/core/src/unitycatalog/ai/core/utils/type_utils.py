@@ -2,6 +2,8 @@ import datetime
 import decimal
 from typing import Any, Dict, get_args, get_origin
 
+from unitycatalog.ai.core.types import Variant
+
 PYTHON_TO_SQL_TYPE_MAPPING = {
     int: "LONG",
     float: "DOUBLE",
@@ -16,6 +18,7 @@ PYTHON_TO_SQL_TYPE_MAPPING = {
     dict: "MAP",
     bytes: "BINARY",
     None: "NULL",
+    Variant: "VARIANT",
 }
 
 SQL_TYPE_TO_PYTHON_TYPE_MAPPING = {
@@ -48,6 +51,7 @@ SQL_TYPE_TO_PYTHON_TYPE_MAPPING = {
     # it's a type that can be defined in scala, python shouldn't force check the type here
     # ref: https://www.waitingforcode.com/apache-spark-sql/used-defined-type/read
     "USER_DEFINED_TYPE": object,
+    "VARIANT": Variant,
 }
 
 UC_TYPE_JSON_MAPPING = {
@@ -56,6 +60,12 @@ UC_TYPE_JSON_MAPPING = {
     # The binary field should be a string expression in base64 format
     "BINARY": bytes,
     "INTERVAL DAY TO SECOND": (datetime.timedelta, str),
+}
+
+UC_DEFAULT_VALUE_TO_PYTHON_EQUIVALENT_MAPPING = {
+    "NULL": None,
+    "TRUE": True,
+    "FALSE": False,
 }
 
 

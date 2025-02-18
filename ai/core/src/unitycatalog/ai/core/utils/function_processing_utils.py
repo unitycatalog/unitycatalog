@@ -9,6 +9,8 @@ from io import StringIO
 from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
 import pandas as pd
+import pydantic
+from packaging.version import Version
 from pydantic import Field, create_model
 
 from unitycatalog.ai.core.utils.config import JSON_SCHEMA_TYPE, UC_LIST_FUNCTIONS_MAX_RESULTS
@@ -17,13 +19,15 @@ from unitycatalog.ai.core.utils.pydantic_utils import (
     PydanticFunctionInputParams,
     PydanticType,
 )
-from unitycatalog.ai.core.utils.type_utils import UC_TYPE_JSON_MAPPING
-from unitycatalog.ai.core.utils.validation_utils import (
-    FullFunctionName,
-    is_valid_retriever_output,
+from unitycatalog.ai.core.utils.type_utils import (
+    UC_DEFAULT_VALUE_TO_PYTHON_EQUIVALENT_MAPPING,
+    UC_TYPE_JSON_MAPPING,
 )
+from unitycatalog.ai.core.utils.validation_utils import FullFunctionName
 
 _logger = logging.getLogger(__name__)
+
+IS_PYDANTIC_V2_OR_NEWER = Version(pydantic.VERSION).major >= 2
 
 
 def uc_type_json_to_pydantic_type(
@@ -185,10 +189,11 @@ def process_function_names(
                         page_token=token,
                         **list_kwarg,
                     )
+                    # TODO: get functions in parallel
                     for f in functions:
                         if f.full_name not in tools_dict:
                             tools_dict[f.full_name] = uc_function_to_tool_func(
-                                function_info=f, client=client, **kwargs
+                                function_name=f.full_name, client=client, **kwargs
                             )
                     token = functions.token
                     if token is None:
@@ -269,7 +274,11 @@ def generate_function_input_params_schema(
             pydantic_field.pydantic_type,
             Field(default=pydantic_field.default, description=pydantic_field.description),
         )
-    model = create_model(params_name, **fields)
+    if IS_PYDANTIC_V2_OR_NEWER:
+        model = create_model(params_name, **fields, __config__={"extra": "forbid"})
+    else:
+        model = create_model(params_name, **fields, config=pydantic.ConfigDict(extra="forbid"))
+
     return PydanticFunctionInputParams(pydantic_model=model, strict=pydantic_field.strict)
 
 
@@ -312,67 +321,107 @@ def supported_function_info_types():
     return types
 
 
-def auto_trace_retriever(
-    function_name: str,
-    parameters: Dict[str, Any],
-    result: "FunctionExecutionResult",
-    start_time_ns: int,
-    end_time_ns: int,
-):
+def process_retriever_output(result: "FunctionExecutionResult") -> List[Dict[str, Any]]:
     """
-    If the given function is a retriever, trace the function given the provided start and end time.
-    A function is considered a retriever if the result is of valid retriever output format.
+    Process retriever output from result into mlflow.entities.Document format for tracing.
 
     Args:
-        function_name: The function name.
-        parameters: The input parameters to the function.
-        result: The output result of the function.
-        start_time_ns: The start time of the function in nanoseconds.
-        end_time_ns: The end time of the function in nanoseconds.
+        result: The result of the function execution to be processed.
+
+    Returns:
+        Retriever output formatted into a list of Documents.
+    """
+    if result.format == "CSV":
+        df = pd.read_csv(StringIO(result.value))
+        if "metadata" in df.columns:
+            df["metadata"] = df["metadata"].apply(ast.literal_eval)
+        output = df.to_dict(orient="records")
+    else:
+        value = result.value
+        output = ast.literal_eval(value) if isinstance(value, str) else value
+
+    return output
+
+
+def _execute_uc_function_with_retriever_tracing(
+    _execute_uc_function: Callable,
+    function_info: "FunctionInfo",
+    parameters: Dict[str, Any],
+    **kwargs: Any,
+) -> "FunctionExecutionResult":
+    """
+    Executes a UC function with MLflow tracing with span type RETRIEVER enabled. If MLflow cannot
+    be imported, the function executes without tracing and logs a warning.
+
+    Args:
+        _execute_uc_function (Callable): A function that executes the given UC function.
+        function_info (FunctionInfo): Metadata about the UC function to be executed.
+        parameters (Dict[str, Any]): Parameters to be passed to the function during execution.
+        **kwargs (Any): Additional keyword arguments to be passed to the function.
+
+    Returns:
+        Any: The output of the function execution.
     """
     try:
-        if result.format == "CSV":
-            df = pd.read_csv(StringIO(result.value))
-            if "metadata" in df.columns:
-                df["metadata"] = df["metadata"].apply(ast.literal_eval)
-            output = df.to_dict(orient="records")
-        else:
-            value = result.value
-            output = ast.literal_eval(value) if isinstance(value, str) else value
+        import mlflow
+        from mlflow.entities import SpanType
 
-        if is_valid_retriever_output(output):
-            import mlflow
-            from mlflow import MlflowClient
-            from mlflow.entities import SpanType
+        result = None
 
-            client = MlflowClient()
-            common_params = dict(
-                name=function_name,
-                span_type=SpanType.RETRIEVER,
-                inputs=parameters,
-                start_time_ns=start_time_ns,
-            )
+        @mlflow.trace(name=function_info.full_name, span_type=SpanType.RETRIEVER)
+        def execute_retriever(parameters):
+            # Set inputs manually so we log {"query": "..."} instead of {"parameters": {"query": "..."}}
+            if span := mlflow.get_current_active_span():
+                span.set_inputs(parameters)
 
-            if parent_span := mlflow.get_current_active_span():
-                span = client.start_span(
-                    request_id=parent_span.request_id,
-                    parent_id=parent_span.span_id,
-                    **common_params,
-                )
-                client.end_span(
-                    request_id=span.request_id,
-                    span_id=span.span_id,
-                    outputs=output,
-                    end_time_ns=end_time_ns,
-                )
-            else:
-                span = client.start_trace(**common_params)
-                client.end_trace(
-                    request_id=span.request_id, outputs=output, end_time_ns=end_time_ns
-                )
-    except Exception as e:
-        # Ignoring exceptions because auto-tracing retriever is not essential functionality
-        _logger.debug(
-            f"Skipping tracing {function_name} as a retriever because of the following error:\n {e}"
+            nonlocal result
+            result = _execute_uc_function(function_info, parameters, **kwargs)
+
+            # Re-raise errors so they can get traced
+            if result.error:
+                raise Exception(result.error)
+
+            return process_retriever_output(result)
+
+        try:
+            execute_retriever(parameters)
+        except Exception:  # Catch all errors that are re-raised
+            pass
+
+        return result
+    except ImportError as e:
+        _logger.warn(
+            f"Skipping tracing {function_info.full_name} as a retriever because of the following error:\n {e}"
         )
-        pass
+        return _execute_uc_function(function_info, parameters, **kwargs)
+
+
+def process_function_parameter_defaults(
+    function_info: "FunctionInfo", parameters: Optional[dict[str, Any]] = None
+) -> dict[str, Any]:
+    """
+    Handle default values for input parameters.
+
+    Args:
+        function_info: The FunctionInfo object containing the function metadata.
+        parameters: The parameters to handle.
+
+    Returns:
+        The updated parameters with default values filled in.
+    """
+    defaults = {}
+    if function_info.input_params and function_info.input_params.parameters:
+        for param in function_info.input_params.parameters:
+            if param.parameter_default is not None:
+                default_str = param.parameter_default.strip()
+                upper_str = default_str.upper()
+                if upper_str in UC_DEFAULT_VALUE_TO_PYTHON_EQUIVALENT_MAPPING:
+                    defaults[param.name] = UC_DEFAULT_VALUE_TO_PYTHON_EQUIVALENT_MAPPING[upper_str]
+                else:
+                    try:
+                        defaults[param.name] = ast.literal_eval(default_str)
+                    except ValueError:
+                        defaults[param.name] = default_str
+    if parameters is None:
+        parameters = {}
+    return defaults | parameters
