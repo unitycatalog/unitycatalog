@@ -1,14 +1,16 @@
 import json
 import logging
 import threading
-import time
 from abc import ABC, abstractmethod
 from copy import deepcopy
 from dataclasses import dataclass
 from typing import Any, Callable, Dict, Literal, Optional
 
 from unitycatalog.ai.core.paged_list import PagedList
-from unitycatalog.ai.core.utils.function_processing_utils import auto_trace_retriever
+from unitycatalog.ai.core.utils.function_processing_utils import (
+    _execute_uc_function_with_retriever_tracing,
+)
+from unitycatalog.ai.core.utils.validation_utils import has_retriever_signature
 
 _logger = logging.getLogger(__name__)
 
@@ -54,6 +56,30 @@ class BaseFunctionClient(ABC):
 
         Args:
             func: A Python Callable object to be converted into a UC function.
+            catalog: The catalog name.
+            schema: The schema name.
+            replace: Whether to replace the function if it already exists. Defaults to False.
+
+        Returns:
+            The UC function information metadata for the configured UC implementation.
+        """
+
+    @abstractmethod
+    def create_wrapped_function(
+        self,
+        *,
+        primary_func: Callable[..., Any],
+        functions: list[Callable[..., Any]],
+        catalog: str,
+        schema: str,
+        replace: bool = False,
+    ) -> Any:
+        """
+        Create a wrapped function comprised of a `primary_func` function and in-lined wrapped `functions` within the `primary_func` body.
+
+        Args:
+            primary_func: The primary function to be wrapped.
+            functions: A list of functions to be wrapped inline within the body of `primary_func`.
             catalog: The catalog name.
             schema: The schema name.
             replace: Whether to replace the function if it already exists. Defaults to False.
@@ -157,13 +183,14 @@ class BaseFunctionClient(ABC):
             parameters = parameters or {}
             self.validate_input_params(function_info.input_params, parameters)
 
-            start_time_ns = time.time_ns()
-            result = self._execute_uc_function(function_info, parameters, **kwargs)
-            end_time_ns = time.time_ns()
+            if kwargs.get("enable_retriever_tracing", False) and has_retriever_signature(
+                function_info
+            ):
+                return _execute_uc_function_with_retriever_tracing(
+                    self._execute_uc_function, function_info, parameters, **kwargs
+                )
 
-            if kwargs.get("enable_retriever_tracing", False):
-                auto_trace_retriever(function_name, parameters, result, start_time_ns, end_time_ns)
-            return result
+            return self._execute_uc_function(function_info, parameters, **kwargs)
 
     @abstractmethod
     def _execute_uc_function(

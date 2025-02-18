@@ -76,7 +76,7 @@ To learn more about this integration:
 
 ## AutoGen
 
-[AutoGen](https://microsoft.github.io/autogen/0.2/) is a framework designed to facilitate the creation of multi-agent workflows. The Unity Catalog AI integration with AutoGen allows for the direct application of UC functions to distinct agents within AutoGen applications or via universal application mapping, enhancing the capabilities of multi-turn agentic workflows.
+[AutoGen](https://microsoft.github.io/autogen/stable/) is a framework designed to facilitate the creation of agentic workflows. The Unity Catalog AI integration with AutoGen allows for the direct application of UC functions to distinct agents within AutoGen applications or via universal application mapping, enhancing the capabilities of multi-turn agentic workflows.
 
 Installation:
 
@@ -87,3 +87,17 @@ pip install unitycatalog-autogen
 To learn more about using UC functions as tools within AutoGen's framework:
 
 [Guide](autogen.md): Detailed guide on integrating Unity Catalog AI with AutoGen's multi-agent framework.
+
+## Gemini
+
+[Gemini](https://ai.google.dev/gemini-api/docs/quickstart?lang=python)'s `generative-ai-python` package is an SDK interface to Google's [Gemini API](https://ai.google.dev/api?lang=python) specifically for building GenAI applications, providing a unified access to multi-modal models, agentic workflow orchestration, and hosted LLMs on the Google Gemini platform. The Unity Catalog AI integration enables you to utilize UC functions as tools that Gemini models can call, enhancing the functionality of your agent workflows.
+
+Installation:
+
+```sh
+pip install unitycatalog-gemini
+```
+
+To learn more about using UC functions with Gemini as tools:
+
+[Guide](gemini.md): Detailed guide on integrating Unity Catalog AI with Gemini for tool calling functionality.

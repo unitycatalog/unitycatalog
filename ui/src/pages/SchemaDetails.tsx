@@ -45,10 +45,10 @@ export default function SchemaDetails() {
   if (!catalog) throw new Error('Catalog name is required');
   if (!schema) throw new Error('Schema name is required');
 
-  const { data } = useGetSchema({ catalog, schema });
+  const { data } = useGetSchema({ full_name: [catalog, schema].join('.') });
   const [open, setOpen] = useState<boolean>(false);
   const { setNotification } = useNotification();
-  const mutation = useUpdateSchema({ catalog, schema });
+  const mutation = useUpdateSchema({ full_name: [catalog, schema].join('.') });
 
   if (!data) return null;
 
@@ -80,7 +80,7 @@ export default function SchemaDetails() {
         <DetailsLayout.Content>
           <Flex vertical gap="middle">
             <DescriptionBox
-              comment={data.comment}
+              comment={data.comment ?? ''}
               onEdit={() => setOpen(true)}
             />
             <SchemaDetailsTabs

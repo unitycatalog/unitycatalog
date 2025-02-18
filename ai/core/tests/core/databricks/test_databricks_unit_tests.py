@@ -1,4 +1,6 @@
 import datetime
+import json
+import logging
 import os
 import re
 from decimal import Decimal
@@ -63,6 +65,10 @@ def test_get_function_errors(client: DatabricksFunctionClient):
         (
             "CREATE FUNCTION `奇怪的catalog`.`some-schema`.test_function() RETURN 123",
             "奇怪的catalog.some-schema.test_function",
+        ),
+        (
+            "CREATE OR REPLACE FUNCTION a.b.dep(s STRING) RETURNS STRING LANGUAGE PYTHON ENVIRONMENT (dependencies = ['some-dependency']) AS $$ return s $$",
+            "a.b.dep",
         ),
     ],
 )
@@ -265,6 +271,15 @@ def test_extract_function_name_error(sql_body):
                 position=24,
             ),
         ),
+        (
+            {"key": "value", "list": [1, 2, 3]},
+            FunctionParameterInfo(
+                "param",
+                type_name=ColumnTypeName.VARIANT,
+                type_text="variant",
+                position=25,
+            ),
+        ),
     ],
 )
 def test_validate_param_type(client: DatabricksFunctionClient, param_value, param_info):
@@ -321,6 +336,28 @@ def test_validate_param_type_errors(client: DatabricksFunctionClient):
                 "param",
                 type_name=ColumnTypeName.BINARY,
                 type_text="binary",
+                position=0,
+            ),
+        )
+
+    with pytest.raises(ValueError, match=r"VARIANT dictionary keys must be strings"):
+        client._validate_param_type(
+            {1: "a", 2: "b"},
+            FunctionParameterInfo(
+                "param",
+                type_name=ColumnTypeName.VARIANT,
+                type_text="variant",
+                position=0,
+            ),
+        )
+
+    with pytest.raises(ValueError, match=r"Unsupported type for VARIANT"):
+        client._validate_param_type(
+            tuple([1, 2, 3]),
+            FunctionParameterInfo(
+                "param",
+                type_name=ColumnTypeName.VARIANT,
+                type_text="variant",
                 position=0,
             ),
         )
@@ -796,6 +833,53 @@ greet("World")"""
     assert result.value == f"1-{genai_code}"
 
 
+def test_execute_function_with_variant_input(
+    mock_workspace_client, mock_spark_session, mock_function_info
+):
+    mock_function_info.input_params = FunctionParameterInfos(
+        parameters=[
+            FunctionParameterInfo(
+                name="a",
+                type_name=ColumnTypeName.INT,
+                type_text="int",
+                position=0,
+            ),
+            FunctionParameterInfo(
+                name="b",
+                type_name=ColumnTypeName.VARIANT,
+                type_text="variant",
+                position=1,
+            ),
+        ]
+    )
+    mock_function_info.catalog_name = "catalog"
+    mock_function_info.schema_name = "schema"
+    mock_function_info.name = "mock_function"
+
+    variant_value = {"key": "value", "list": [1, 2, 3]}
+    parameters = {
+        "a": 10,
+        "b": variant_value,
+    }
+    expected_sql = 'SELECT `catalog`.`schema`.`mock_function`(:a,parse_json(\'{"key": "value", "list": [1, 2, 3]}\'))'
+    expected_args = {"a": 10}
+
+    client = DatabricksFunctionClient(client=mock_workspace_client)
+    client.set_default_spark_session = MagicMock()
+    client.spark = mock_spark_session
+    client.get_function = MagicMock(return_value=mock_function_info)
+
+    result_str = f"10-{json.dumps(variant_value)}"
+    mock_result = MagicMock()
+    mock_result.collect.return_value = [[result_str]]
+    mock_spark_session.sql.return_value = mock_result
+
+    result = client.execute_function("catalog.schema.mock_function", parameters=parameters)
+
+    mock_spark_session.sql.assert_called_once_with(sqlQuery=expected_sql, args=expected_args)
+    assert result.value == result_str
+
+
 def test_execute_function_warnings_missing_descriptions(mock_workspace_client, mock_spark_session):
     import warnings
 
@@ -851,3 +935,456 @@ def test_execute_function_warnings_missing_descriptions(mock_workspace_client, m
         assert any(
             "The function mock_function does not have a description." in msg for msg in messages
         ), "Warning about missing function description was not issued."
+
+
+def test_create_python_function_with_dependencies(client: DatabricksFunctionClient):
+    def sample_func(a: int, b: str) -> str:
+        """
+        Sample function that concatenates an integer and a string.
+
+        Args:
+            a (int): An integer value.
+            b (str): A string value.
+
+        Returns:
+            str: The concatenated result.
+        """
+        return f"{a}-{b}"
+
+    dependencies = ["numpy", "pandas"]
+
+    expected_sql_body = (
+        "CREATE OR REPLACE FUNCTION catalog.schema.sample_func(a INT, b STRING) "
+        "RETURNS STRING "
+        "LANGUAGE PYTHON "
+        "ENVIRONMENT (dependencies = ['numpy', 'pandas'], environment_version = 'None') "
+        "AS $$\n"
+        "import numpy\n"
+        "import pandas\n"
+        "def sample_func(a: int, b: str) -> str:\n"
+        '    return f"{a}-{b}"\n'
+        "$$;"
+    )
+
+    with patch(
+        "unitycatalog.ai.core.databricks.generate_sql_function_body",
+        return_value=expected_sql_body,
+    ) as mock_generate_sql:
+        mock_function_info = create_mock_function_info()
+        client.create_function = MagicMock(return_value=mock_function_info)
+
+        result = client.create_python_function(
+            func=sample_func,
+            catalog="catalog",
+            schema="schema",
+            dependencies=dependencies,
+        )
+
+        mock_generate_sql.assert_called_once_with(
+            sample_func,
+            "catalog",
+            "schema",
+            False,
+            dependencies,
+            "None",
+        )
+
+        client.create_function.assert_called_once_with(sql_function_body=expected_sql_body)
+
+        assert result == mock_function_info
+
+
+def test_create_python_function_with_environment_version(client: DatabricksFunctionClient):
+    def another_sample_func(x: float, y: float) -> float:
+        """
+        Function to add two floating-point numbers.
+
+        Args:
+            x (float): First number.
+            y (float): Second number.
+
+        Returns:
+            float: The sum of x and y.
+        """
+        return x + y
+
+    environment_version = "1"
+
+    expected_sql_body = (
+        "CREATE OR REPLACE FUNCTION catalog.schema.another_sample_func(x DOUBLE, y DOUBLE) "
+        "RETURNS DOUBLE "
+        "LANGUAGE PYTHON "
+        "ENVIRONMENT (environment_version = '1') "
+        "AS $$\n"
+        "def another_sample_func(x: float, y: float) -> float:\n"
+        "    return x + y\n"
+        "$$;"
+    )
+
+    with patch(
+        "unitycatalog.ai.core.databricks.generate_sql_function_body",
+        return_value=expected_sql_body,
+    ) as mock_generate_sql:
+        mock_function_info = create_mock_function_info()
+        client.create_function = MagicMock(return_value=mock_function_info)
+
+        result = client.create_python_function(
+            func=another_sample_func,
+            catalog="catalog",
+            schema="schema",
+            environment_version=environment_version,
+        )
+
+        mock_generate_sql.assert_called_once_with(
+            another_sample_func,
+            "catalog",
+            "schema",
+            False,
+            None,
+            environment_version,
+        )
+
+        client.create_function.assert_called_once_with(sql_function_body=expected_sql_body)
+
+        assert result == mock_function_info
+
+
+def test_workspace_provided_issues_warning(mock_workspace_client, caplog):
+    with caplog.at_level(logging.WARNING):
+        DatabricksFunctionClient(client=mock_workspace_client, warehouse_id="id")
+
+    assert "The argument `warehouse_id` was specified" in caplog.text
+
+
+def dummy_primary(a: int, b: str) -> str:
+    """
+    Dummy primary function.
+
+    Args:
+        a: int
+        b: str
+
+    Returns:
+        A string.
+    """
+    return a + b
+
+
+def dummy_func1(a):
+    """Dummy wrapped function 1."""
+    return a + 10
+
+
+def dummy_func2(b):
+    """Dummy wrapped function 2."""
+    return f"{b}!"
+
+
+def test_create_wrapped_function_databricks(mock_workspace_client, mock_spark_session):
+    dummy_sql_body = (
+        "CREATE FUNCTION cat.sch.dummy_primary() RETURNS STRING LANGUAGE PYTHON AS $$ dummy SQL $$;"
+    )
+
+    with patch(
+        "unitycatalog.ai.core.databricks.generate_wrapped_sql_function_body",
+        return_value=dummy_sql_body,
+    ) as mock_gen_sql:
+        with patch.object(
+            DatabricksFunctionClient, "create_function", return_value="dummy_func_info"
+        ) as mock_create_func:
+            client = DatabricksFunctionClient(client=mock_workspace_client)
+            client.set_default_spark_session = MagicMock()
+            client.spark = mock_spark_session
+
+            result = client.create_wrapped_function(
+                primary_func=dummy_primary,
+                functions=[dummy_func1, dummy_func2],
+                catalog="cat",
+                schema="sch",
+                replace=True,
+            )
+
+            mock_gen_sql.assert_called_once_with(
+                primary_func=dummy_primary,
+                functions=[dummy_func1, dummy_func2],
+                catalog="cat",
+                schema="sch",
+                replace=True,
+                dependencies=None,
+                environment_version="None",
+            )
+            mock_create_func.assert_called_once_with(sql_function_body=dummy_sql_body)
+            assert result == "dummy_func_info"
+
+
+def test_create_wrapped_function_with_dependencies(mock_workspace_client, mock_spark_session):
+    dummy_sql_body = "CREATE FUNCTION cat.sch.dummy_primary() RETURNS STRING LANGUAGE PYTHON ENVIRONMENT (dependencies = '[\"scipy==1.15.0\"]', environment_version = '1')AS $$ dummy SQL $$;"
+
+    with patch(
+        "unitycatalog.ai.core.databricks.generate_wrapped_sql_function_body",
+        return_value=dummy_sql_body,
+    ) as mock_gen_sql:
+        with patch.object(
+            DatabricksFunctionClient, "create_function", return_value="dummy_func_info"
+        ) as mock_create_func:
+            client = DatabricksFunctionClient(client=mock_workspace_client)
+            client.set_default_spark_session = MagicMock()
+            client.spark = mock_spark_session
+
+            result = client.create_wrapped_function(
+                primary_func=dummy_primary,
+                functions=[dummy_func1, dummy_func2],
+                catalog="cat",
+                schema="sch",
+                replace=True,
+                dependencies=["scipy==1.15.0"],
+                environment_version="1",
+            )
+
+            mock_gen_sql.assert_called_once_with(
+                primary_func=dummy_primary,
+                functions=[dummy_func1, dummy_func2],
+                catalog="cat",
+                schema="sch",
+                replace=True,
+                dependencies=["scipy==1.15.0"],
+                environment_version="1",
+            )
+            mock_create_func.assert_called_once_with(sql_function_body=dummy_sql_body)
+            assert result == "dummy_func_info"
+
+
+def test_create_wrapped_function_invalid_primary_databricks(mock_workspace_client):
+    client = DatabricksFunctionClient(client=mock_workspace_client)
+    with pytest.raises(ValueError, match="The provided primary function is not callable."):
+        client.create_wrapped_function(
+            primary_func="not_callable",
+            functions=[dummy_func1, dummy_func2],
+            catalog="cat",
+            schema="sch",
+            replace=False,
+        )
+
+
+def test_workspace_provided_issues_warning(mock_workspace_client, caplog):
+    with caplog.at_level(logging.WARNING):
+        DatabricksFunctionClient(client=mock_workspace_client, warehouse_id="id")
+
+    assert "The argument `warehouse_id` was specified" in caplog.text
+
+
+def test_execute_function_with_default_params_databricks(mock_workspace_client, mock_spark_session):
+    dummy_func_info = FunctionInfo(
+        catalog_name=CATALOG,
+        schema_name=SCHEMA,
+        name="func_with_defaults",
+        data_type=ColumnTypeName.STRING,
+        input_params=FunctionParameterInfos(
+            parameters=[
+                FunctionParameterInfo(
+                    name="a",
+                    type_name=ColumnTypeName.INT,
+                    type_text="int",
+                    position=0,
+                    parameter_default=None,
+                ),
+                FunctionParameterInfo(
+                    name="b",
+                    type_name=ColumnTypeName.STRING,
+                    type_text="string",
+                    position=1,
+                    parameter_default="'default'",
+                ),
+            ]
+        ),
+        external_language="PYTHON",
+        comment="Test function with defaults",
+        routine_body=CreateFunctionRoutineBody.EXTERNAL,
+        routine_definition="return str(a) + ' ' + b",
+        full_data_type="STRING",
+        return_params=FunctionParameterInfos(parameters=[]),
+        routine_dependencies=DependencyList(),
+        parameter_style=CreateFunctionParameterStyle.S,
+        is_deterministic=True,
+        sql_data_access=CreateFunctionSqlDataAccess.NO_SQL,
+        is_null_call=False,
+        security_type=CreateFunctionSecurityType.DEFINER,
+        specific_name="func_with_defaults",
+    )
+
+    client = DatabricksFunctionClient(client=mock_workspace_client)
+    client.set_default_spark_session = MagicMock()
+    client.spark = mock_spark_session
+    client.get_function = MagicMock(return_value=dummy_func_info)
+
+    mock_result = MagicMock()
+    mock_result.collect.return_value = [["10 default"]]
+    mock_spark_session.sql.return_value = mock_result
+
+    result = client.execute_function(f"{CATALOG}.{SCHEMA}.func_with_defaults", parameters={"a": 10})
+    assert result.value == "10 default"
+
+    mock_result.collect.return_value = [["20 test"]]
+    result = client.execute_function(
+        f"{CATALOG}.{SCHEMA}.func_with_defaults", parameters={"a": 20, "b": "test"}
+    )
+    assert result.value == "20 test"
+
+
+def test_execute_function_with_all_defaults_databricks(mock_workspace_client, mock_spark_session):
+    dummy_func_info = FunctionInfo(
+        catalog_name=CATALOG,
+        schema_name=SCHEMA,
+        name="func_with_all_defaults",
+        data_type=ColumnTypeName.STRING,
+        input_params=FunctionParameterInfos(
+            parameters=[
+                FunctionParameterInfo(
+                    name="a",
+                    type_name=ColumnTypeName.INT,
+                    type_text="int",
+                    position=0,
+                    parameter_default="1",
+                ),
+                FunctionParameterInfo(
+                    name="b",
+                    type_name=ColumnTypeName.STRING,
+                    type_text="string",
+                    position=1,
+                    parameter_default="'default'",
+                ),
+                FunctionParameterInfo(
+                    name="c",
+                    type_name=ColumnTypeName.DOUBLE,
+                    type_text="double",
+                    position=2,
+                    parameter_default="3.14",
+                ),
+                FunctionParameterInfo(
+                    name="d",
+                    type_name=ColumnTypeName.BOOLEAN,
+                    type_text="boolean",
+                    position=3,
+                    parameter_default="True",
+                ),
+            ]
+        ),
+        external_language="PYTHON",
+        comment="Test function with all defaults",
+        routine_body=CreateFunctionRoutineBody.EXTERNAL,
+        routine_definition="return str(a) + ' ' + b + ' ' + str(c) + ' ' + str(d)",
+        full_data_type="STRING",
+        return_params=FunctionParameterInfos(parameters=[]),
+        routine_dependencies=DependencyList(),
+        parameter_style=CreateFunctionParameterStyle.S,
+        is_deterministic=True,
+        sql_data_access=CreateFunctionSqlDataAccess.NO_SQL,
+        is_null_call=False,
+        security_type=CreateFunctionSecurityType.DEFINER,
+        specific_name="func_with_all_defaults",
+    )
+
+    client = DatabricksFunctionClient(client=mock_workspace_client)
+    client.set_default_spark_session = MagicMock()
+    client.spark = mock_spark_session
+    client.get_function = MagicMock(return_value=dummy_func_info)
+
+    mock_result = MagicMock()
+    mock_result.collect.return_value = [["1 default 3.14 True"]]
+    mock_spark_session.sql.return_value = mock_result
+
+    result = client.execute_function(f"{CATALOG}.{SCHEMA}.func_with_all_defaults", parameters={})
+    assert result.value == "1 default 3.14 True"
+
+    mock_result.collect.return_value = [["10 test 2.71 False"]]
+    result = client.execute_function(
+        f"{CATALOG}.{SCHEMA}.func_with_all_defaults",
+        parameters={"a": 10, "b": "test", "c": 2.71, "d": False},
+    )
+    assert result.value == "10 test 2.71 False"
+
+
+def test_execute_function_no_params_databricks(mock_workspace_client, mock_spark_session):
+    dummy_func_info = FunctionInfo(
+        catalog_name=CATALOG,
+        schema_name=SCHEMA,
+        name="func_no_params",
+        data_type=ColumnTypeName.STRING,
+        input_params=FunctionParameterInfos(parameters=[]),
+        external_language="PYTHON",
+        comment="Test function with no parameters",
+        routine_body=CreateFunctionRoutineBody.EXTERNAL,
+        routine_definition="return 'No parameters here!'",
+        full_data_type="STRING",
+        return_params=FunctionParameterInfos(parameters=[]),
+        routine_dependencies=DependencyList(),
+        parameter_style=CreateFunctionParameterStyle.S,
+        is_deterministic=True,
+        sql_data_access=CreateFunctionSqlDataAccess.NO_SQL,
+        is_null_call=False,
+        security_type=CreateFunctionSecurityType.DEFINER,
+        specific_name="func_no_params",
+    )
+
+    client = DatabricksFunctionClient(client=mock_workspace_client)
+    client.set_default_spark_session = MagicMock()
+    client.spark = mock_spark_session
+    client.get_function = MagicMock(return_value=dummy_func_info)
+
+    mock_result = MagicMock()
+    mock_result.collect.return_value = [["No parameters here!"]]
+    mock_spark_session.sql.return_value = mock_result
+
+    result = client.execute_function(f"{CATALOG}.{SCHEMA}.func_no_params", parameters={})
+    assert result.value == "No parameters here!"
+
+    with pytest.raises(ValueError, match="Function does not have input parameters, but parameters"):
+        client.execute_function(
+            f"{CATALOG}.{SCHEMA}.func_no_params", parameters={"unexpected": "value"}
+        )
+
+
+def test_execute_function_with_none_default_databricks(mock_workspace_client, mock_spark_session):
+    dummy_func_info = FunctionInfo(
+        catalog_name=CATALOG,
+        schema_name=SCHEMA,
+        name="null_func",
+        data_type=ColumnTypeName.STRING,
+        input_params=FunctionParameterInfos(
+            parameters=[
+                FunctionParameterInfo(
+                    name="a",
+                    type_name=ColumnTypeName.STRING,
+                    type_text="string",
+                    position=0,
+                    parameter_default="NULL",
+                )
+            ]
+        ),
+        external_language="PYTHON",
+        comment="Test function with None default",
+        routine_body=CreateFunctionRoutineBody.EXTERNAL,
+        routine_definition="return str(a)",
+        full_data_type="STRING",
+        return_params=FunctionParameterInfos(parameters=[]),
+        routine_dependencies=DependencyList(),
+        parameter_style=CreateFunctionParameterStyle.S,
+        is_deterministic=True,
+        sql_data_access=CreateFunctionSqlDataAccess.NO_SQL,
+        is_null_call=False,
+        security_type=CreateFunctionSecurityType.DEFINER,
+        specific_name="null_func",
+    )
+
+    client = DatabricksFunctionClient(client=mock_workspace_client)
+    client.set_default_spark_session = MagicMock()
+    client.spark = mock_spark_session
+    client.get_function = MagicMock(return_value=dummy_func_info)
+
+    mock_result = MagicMock()
+    mock_result.collect.return_value = [["None"]]
+    mock_spark_session.sql.return_value = mock_result
+
+    result = client.execute_function(f"{CATALOG}.{SCHEMA}.null_func", parameters={})
+    assert result.error is None, f"Execution error: {result.error}"
+    assert result.value == "None"
