@@ -4,6 +4,7 @@ from unittest import mock
 
 import pytest
 import pytest_asyncio
+from databricks.sdk.service.catalog import ColumnTypeName
 from langchain_core.messages import BaseMessage
 from langchain_core.outputs import ChatResult
 from langchain_core.runnables import RunnableGenerator
@@ -20,9 +21,14 @@ from unitycatalog.ai.core.client import (
 )
 from unitycatalog.ai.core.utils.function_processing_utils import get_tool_name
 from unitycatalog.ai.langchain.toolkit import UCFunctionToolkit
-from unitycatalog.ai.test_utils.function_utils import RETRIEVER_OUTPUT_CSV, RETRIEVER_OUTPUT_SCALAR
+from unitycatalog.ai.test_utils.function_utils import (
+    RETRIEVER_OUTPUT_CSV,
+    RETRIEVER_OUTPUT_SCALAR,
+    RETRIEVER_TABLE_FULL_DATA_TYPE,
+)
 from unitycatalog.ai.test_utils.function_utils_oss import (
     CATALOG,
+    RETRIEVER_TABLE_RETURN_PARAMS_OSS,
     create_function_and_cleanup_oss,
 )
 from unitycatalog.client import (
@@ -152,7 +158,14 @@ def test_toolkit_creation_errors(uc_client):
         UCFunctionToolkit(function_names=[], client="client")
 
 
-def generate_function_info():
+def generate_function_info(
+    catalog="catalog",
+    schema="schema",
+    name="test",
+    data_type=None,
+    full_data_type=None,
+    return_params=None,
+):
     parameters = [
         {
             "name": "x",
@@ -167,12 +180,17 @@ def generate_function_info():
         }
     ]
     return OSSFunctionInfo(
-        catalog_name="catalog",
-        schema_name="schema",
-        name="test",
+        catalog_name=catalog,
+        schema_name=schema,
+        name=name,
         input_params=OSSFunctionParameterInfos(
             parameters=[OSSFunctionParameterInfo(**param) for param in parameters]
         ),
+        full_name=f"{catalog}.{schema}.{name}",
+        comment="Executes Python code and returns its stdout.",
+        data_type=data_type,
+        full_data_type=full_data_type,
+        return_params=return_params,
     )
 
 
@@ -202,8 +220,25 @@ def test_uc_function_to_langchain_tool(uc_client):
         ("CSV", RETRIEVER_OUTPUT_CSV),
     ],
 )
-def test_langchain_tool_trace_as_retriever(uc_client, format: str, function_output: str):
-    mock_function_info = generate_function_info()
+@pytest.mark.parametrize(
+    "data_type,full_data_type,return_params",
+    [
+        (
+            ColumnTypeName.TABLE_TYPE,
+            RETRIEVER_TABLE_FULL_DATA_TYPE,
+            RETRIEVER_TABLE_RETURN_PARAMS_OSS,
+        ),
+    ],
+)
+def test_langchain_tool_trace_as_retriever(
+    uc_client, format, function_output, data_type, full_data_type, return_params
+):
+    mock_function_info = generate_function_info(
+        name=f"test_{format}",
+        data_type=data_type,
+        full_data_type=full_data_type,
+        return_params=return_params,
+    )
 
     with (
         mock.patch(
@@ -221,7 +256,7 @@ def test_langchain_tool_trace_as_retriever(uc_client, format: str, function_outp
         mlflow.langchain.autolog()
 
         tool = UCFunctionToolkit.uc_function_to_langchain_tool(
-            client=uc_client, function_name=f"{CATALOG}.{SCHEMA}.test_{format}"
+            client=uc_client, function_name=mock_function_info.full_name
         )
 
         result = tool.func(x="some_string")
@@ -229,10 +264,10 @@ def test_langchain_tool_trace_as_retriever(uc_client, format: str, function_outp
 
         trace = mlflow.get_last_active_trace()
         assert trace is not None
+        assert trace.data.spans[0].name == mock_function_info.full_name
         assert trace.info.execution_time_ms is not None
         assert trace.data.request == '{"x": "some_string"}'
         assert trace.data.response == RETRIEVER_OUTPUT_SCALAR
-        assert trace.data.spans[0].name == f"{CATALOG}.{SCHEMA}.test_{format}"
 
         mlflow.langchain.autolog(disable=True)
 

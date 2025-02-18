@@ -4,6 +4,7 @@ from typing import Any, Dict, List, Optional, Tuple, Union
 
 import pytest
 
+from unitycatalog.ai.core.types import Variant
 from unitycatalog.ai.core.utils.callable_utils import (
     generate_sql_function_body,
 )
@@ -186,7 +187,6 @@ def test_function_with_extra_docstring_params_ignored():
             func_with_extra_param_in_docstring, "test_catalog", "test_schema"
         )
 
-    # Define the expected SQL, stripping leading/trailing whitespace for accurate comparison
     expected_sql = """
 CREATE FUNCTION `test_catalog`.`test_schema`.`func_with_extra_param_in_docstring`(a LONG COMMENT 'The first argument')
 RETURNS STRING
@@ -197,11 +197,107 @@ AS $$
 $$;
     """
 
-    assert (
-        sql_body.strip() == expected_sql.strip()
-    ), f"Generated SQL does not match expected SQL.\nGenerated SQL:\n{sql_body}\nExpected SQL:\n{expected_sql}"
+    assert sql_body.strip() == expected_sql.strip()
 
     assert len(record) == 1
+
+
+# ---------------------------
+# Tests for environment dependency specifications
+# ---------------------------
+
+
+def test_environment_dependencies_formatting():
+    def func_with_env_deps(a: int) -> str:
+        """
+        A function that requires specific environment dependencies.
+
+        Args:
+            a: An integer
+
+        Returns:
+            str: A string representation of the integer
+        """
+        return str(a)
+
+    sql_body = generate_sql_function_body(
+        func_with_env_deps, "test_catalog", "test_schema", True, ["numpy", "pandas"]
+    )
+
+    expected_sql = """
+CREATE OR REPLACE FUNCTION `test_catalog`.`test_schema`.`func_with_env_deps`(a LONG COMMENT 'An integer')
+RETURNS STRING
+LANGUAGE PYTHON
+ENVIRONMENT (dependencies = '["numpy", "pandas"]', environment_version = 'None')
+COMMENT 'A function that requires specific environment dependencies.'
+AS $$
+    return str(a)
+$$;
+    """
+
+    assert sql_body.strip() == expected_sql.strip()
+
+
+def test_environment_dependencies_formatting_env_specified():
+    def func_with_env_deps(a: int) -> str:
+        """
+        A function that requires specific environment dependencies.
+
+        Args:
+            a: An integer
+
+        Returns:
+            str: A string representation of the integer
+        """
+        return str(a)
+
+    sql_body = generate_sql_function_body(
+        func_with_env_deps, "test_catalog", "test_schema", True, ["numpy", "pandas"], "1"
+    )
+
+    expected_sql = """
+CREATE OR REPLACE FUNCTION `test_catalog`.`test_schema`.`func_with_env_deps`(a LONG COMMENT 'An integer')
+RETURNS STRING
+LANGUAGE PYTHON
+ENVIRONMENT (dependencies = '["numpy", "pandas"]', environment_version = '1')
+COMMENT 'A function that requires specific environment dependencies.'
+AS $$
+    return str(a)
+$$;
+    """
+
+    assert sql_body.strip() == expected_sql.strip()
+
+
+def test_environment_version_formatting_no_deps():
+    def func_with_env_deps(a: int) -> str:
+        """
+        A function that requires specific environment dependencies.
+
+        Args:
+            a: An integer
+
+        Returns:
+            str: A string representation of the integer
+        """
+        return str(a)
+
+    sql_body = generate_sql_function_body(
+        func_with_env_deps, "test_catalog", "test_schema", True, environment_version="1"
+    )
+
+    expected_sql = """
+CREATE OR REPLACE FUNCTION `test_catalog`.`test_schema`.`func_with_env_deps`(a LONG COMMENT 'An integer')
+RETURNS STRING
+LANGUAGE PYTHON
+ENVIRONMENT (environment_version = '1')
+COMMENT 'A function that requires specific environment dependencies.'
+AS $$
+    return str(a)
+$$;
+    """
+
+    assert sql_body.strip() == expected_sql.strip()
 
 
 # ---------------------------
@@ -619,6 +715,88 @@ $$;
     assert sql_body.strip() == expected_sql.strip()
 
 
+def test_function_with_variant_param():
+    def func_with_variant(a: Variant) -> str:
+        """
+        A function that accepts a VARIANT parameter.
+
+        Args:
+            a: A variant parameter.
+
+        Returns:
+            str: The string representation of the variant.
+        """
+        return str(a)
+
+    sql_body = generate_sql_function_body(func_with_variant, "test_catalog", "test_schema", True)
+    expected_sql = """
+CREATE OR REPLACE FUNCTION `test_catalog`.`test_schema`.`func_with_variant`(a VARIANT COMMENT 'A variant parameter.')
+RETURNS STRING
+LANGUAGE PYTHON
+COMMENT 'A function that accepts a VARIANT parameter.'
+AS $$
+    return str(a)
+$$;
+    """
+    assert sql_body.strip() == expected_sql.strip()
+
+
+def test_function_with_list_of_variant():
+    from typing import List
+
+    def func_list_of_variant(a: List[Variant]) -> str:
+        """
+        A function that accepts a list of VARIANTs.
+
+        Args:
+            a: A list of variant values.
+
+        Returns:
+            str: The string representation of the list.
+        """
+        return str(a)
+
+    sql_body = generate_sql_function_body(func_list_of_variant, "test_catalog", "test_schema", True)
+    expected_sql = """
+CREATE OR REPLACE FUNCTION `test_catalog`.`test_schema`.`func_list_of_variant`(a ARRAY<VARIANT> COMMENT 'A list of variant values.')
+RETURNS STRING
+LANGUAGE PYTHON
+COMMENT 'A function that accepts a list of VARIANTs.'
+AS $$
+    return str(a)
+$$;
+    """
+    assert sql_body.strip() == expected_sql.strip()
+
+
+def test_function_with_dict_of_variant():
+    from typing import Dict
+
+    def func_dict_of_variant(a: Dict[str, Variant]) -> str:
+        """
+        A function that accepts a dictionary with string keys and VARIANT values.
+
+        Args:
+            a: A dictionary of variant values.
+
+        Returns:
+            str: The string representation of the dictionary.
+        """
+        return str(a)
+
+    sql_body = generate_sql_function_body(func_dict_of_variant, "test_catalog", "test_schema", True)
+    expected_sql = """
+CREATE OR REPLACE FUNCTION `test_catalog`.`test_schema`.`func_dict_of_variant`(a MAP<STRING, VARIANT> COMMENT 'A dictionary of variant values.')
+RETURNS STRING
+LANGUAGE PYTHON
+COMMENT 'A function that accepts a dictionary with string keys and VARIANT values.'
+AS $$
+    return str(a)
+$$;
+    """
+    assert sql_body.strip() == expected_sql.strip()
+
+
 # ---------------------------
 # Tests for Return Types
 # ---------------------------
@@ -693,6 +871,29 @@ LANGUAGE PYTHON
 COMMENT 'A function with a complex return type.'
 AS $$
     return {"numbers": [1, 2, 3]}
+$$;
+    """
+    assert sql_body.strip() == expected_sql.strip()
+
+
+def test_function_with_variant_return():
+    def func_variant_return() -> Variant:
+        """
+        A function that returns a VARIANT.
+
+        Returns:
+            Variant: A variant value.
+        """
+        return {"key": 123}
+
+    sql_body = generate_sql_function_body(func_variant_return, "test_catalog", "test_schema", True)
+    expected_sql = """
+CREATE OR REPLACE FUNCTION `test_catalog`.`test_schema`.`func_variant_return`()
+RETURNS VARIANT
+LANGUAGE PYTHON
+COMMENT 'A function that returns a VARIANT.'
+AS $$
+    return {"key": 123}
 $$;
     """
     assert sql_body.strip() == expected_sql.strip()

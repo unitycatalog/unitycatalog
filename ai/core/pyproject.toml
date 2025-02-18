@@ -78,7 +78,7 @@ databricks-dev = [
   "databricks-sdk>=0.32.0",
   "databricks-connect==15.1.0",
   "pandas",
-  "ruff==0.6.4",
+  "ruff==0.9.3",
 ]
 dev = [
   "hatch",
@@ -89,7 +89,7 @@ dev = [
   # databricks-connect>=14.0.0 requires python>=3.10
   "databricks-connect",
   "pandas",
-  "ruff==0.6.4",
+  "ruff==0.9.3",
 ]
 
 [tool.ruff]
@@ -110,7 +110,7 @@ select = [
   "T201",
   "T203",
   # misuse of typing.TYPE_CHECKING
-  "TCH004",
+  "TC004",
   # import rules
   "TID251",
   # undefined-local-with-import-star

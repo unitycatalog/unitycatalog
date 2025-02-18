@@ -61,31 +61,21 @@ class UCFunctionToolkit(BaseModel):
     @staticmethod
     def uc_function_to_langchain_tool(
         *,
+        function_name: str,
         client: Optional[BaseFunctionClient] = None,
-        function_name: Optional[str] = None,
-        function_info: Optional[Any] = None,
     ) -> UnityCatalogTool:
         """
         Convert a UC function to Langchain StructuredTool
 
         Args:
-            client: The client for managing functions, must be an instance of BaseFunctionClient
             function_name: The full name of the function in the form of 'catalog.schema.function'
-            function_info: The function info object returned by the client.get_function() method
-
-            .. note::
-                Only one of function_name or function_info should be provided.
+            client: The client for managing functions, must be an instance of BaseFunctionClient
         """
-        if function_name and function_info:
-            raise ValueError("Only one of function_name or function_info should be provided.")
         client = validate_or_set_default_client(client)
 
-        if function_name:
-            function_info = client.get_function(function_name)
-        elif function_info:
-            function_name = function_info.full_name
-        else:
-            raise ValueError("Either function_name or function_info should be provided.")
+        if function_name is None:
+            raise ValueError("function_name must be provided.")
+        function_info = client.get_function(function_name)
 
         def func(*args: Any, **kwargs: Any) -> str:
             args_json = json.loads(json.dumps(kwargs, default=str))
