@@ -44,7 +44,7 @@ The configuration will create a bind mount to the local files in `./etc/conf`.
 The UC server can be configured by editing the configuration files on the host,
 and the mount will reflect the changes in the container.
 
-The congfiguration will also create a persistent, named volume to store the
+The configuration will also create a persistent, named volume to store the
 server's data. This will persist between restarts of the container. See the
 [deployment](./deployment.md) page for more details on how to configure other
 databases like Postgres.
