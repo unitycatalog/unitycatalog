@@ -684,7 +684,7 @@ def test_get_python_callable_integration_complex(client: DatabricksFunctionClien
 
         expected_header = (
             "def complex_python_func(a: int, b: float, c: str, d: bool, e: list[str], "
-            "f: dict[str, int], g: variant, h: dict[str, list[int]], i: dict[str, list[dict[str, list[int]]]]) -> dict[str, list[str]]:"
+            "f: dict[str, int], g: Variant, h: dict[str, list[int]], i: dict[str, list[dict[str, list[int]]]]) -> dict[str, list[str]]:"
         )
 
         assert expected_header in callable_def
