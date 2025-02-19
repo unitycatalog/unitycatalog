@@ -1,6 +1,6 @@
 import { Avatar, Button, Modal } from 'antd';
 import { useState } from 'react';
-import OktaSignIn from '@okta/okta-signin-widget';
+import OktaSignInWidget from './OktaSignInWidget';
 
 interface OktaAuthButtonProps {
   onSuccess: (tokens: any) => void;
@@ -15,27 +15,6 @@ export default function OktaAuthButton({
 
   const handleOnClick = () => {
     setWidgetModalOpen(true);
-
-    const widget = new OktaSignIn({
-      clientId: process.env.REACT_APP_OKTA_CLIENT_ID,
-      redirectUri: window.location.origin,
-      issuer:
-        'https://' + process.env.REACT_APP_OKTA_DOMAIN + '/oauth2/default',
-      logo: '/uc-logo.png',
-    });
-    setTimeout(() => {
-      widget
-        .showSignInToGetTokens({
-          el: '#osw-container',
-        })
-        .then(function (res) {
-          onSuccess(res?.idToken?.idToken);
-          widget.remove();
-        })
-        .catch(function (error) {
-          onError(error);
-        });
-    }, 1000);
   };
 
   return (
@@ -56,11 +35,12 @@ export default function OktaAuthButton({
       <Modal
         open={widgetModalOpen}
         footer={null}
+        destroyOnClose={true}
         onCancel={() => {
           setWidgetModalOpen(false);
         }}
       >
-        <div id={'osw-container'} />
+        <OktaSignInWidget onSuccess={onSuccess} onError={onError} />
       </Modal>
     </>
   );
