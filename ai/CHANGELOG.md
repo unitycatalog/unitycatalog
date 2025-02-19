@@ -1,5 +1,39 @@
 # Changelog for Unity Catalog AI releases
 
+## Unity Catalog AI 0.2.0
+
+The 0.2.0 release of Unity Catalog AI brings some exciting new functionality for using Unity Catalog for GenAI function execution.
+
+### Major Changes
+
+- [unitycatalog-autogen](https://pypi.org/project/unitycatalog-autogen) has been overhauled to support the new `0.4.x` overhaul of [AutoGen](https://www.microsoft.com/en-us/research/project/autogen/). Support for earlier versions of the `autogen` or `pyautogen` packages has been dropped. To read more about what this reimagining of the library is all about and to learn how to migrate to the new APIs, see [this post](https://www.microsoft.com/en-us/research/blog/autogen-v0-4-reimagining-the-foundation-of-agentic-ai-for-scale-extensibility-and-robustness/).
+- [unitycatalog-gemini](https://pypi.org/project/unitycatalog-gemini) has been released. You can now use Unity Catalog functions as tools when interfacing with Gemini models that support tool calling.
+- [unitycatalog-litellm](https://pypi.org/project/unitycatalog-litellm) has been released. You can now interface with the universal common interface of LiteLLM to pass tool usage definitions to integrated providers in LiteLLM that support tool calling.
+- New APIs have been added for function wrapping. This change eliminates the need for making multiple copies of utility functions that need to be embedded in your Unity Catalog functions, greatly simplifying the devloop for authoring. See the documentation for examples on how to use these new APIs!
+- The Databricks Unity Catalog Client now only supports serverless endpoints using dbconnect for all CRUD and execution APIs. This change aims to simpilfy the usage of the client APIs and to reduce latency in cold start scenarios.
+- Support for `requirements`, `environment_version` and `Variant` type have been added to the Databricks client. Ensure that the runtime that you are using supports these features to leverage the power of dependency management and JSON-like inputs and outputs to your functions.
+
+### Change log
+
+- Fix an issue with default parameter value handling during function execution and permit handling of default `NULL` and boolean SQL values by @BenWilson2 in #896
+- Add documentation for `unitycatalog-gemini` and `unitycatalog-litellm` by @BenWilson2 in #881 and #888
+- Add support for declaring both `dependencies` and `environment_version` when creating functions in Databricks, allowing for additional PyPI packages to be included when executing your functions by @BenWilson2 in #862
+- Add support for function wrapping in new client APIs by @BenWilson2 in #885
+- Adjust the frequency of warnings associated with endpoint execution of functions by @BenWilson2 in #880
+- Documentation cleanup by @BenWilson2 in #886
+- Add support for `Variant` types in Databricks Unity Catalog Client by @BenWilson2 in #889
+- Introduce the `unitycatalog-litellm` integration that permits tool usage with supported LLMs when using the LiteLLM package by @micheal-berk in #699
+- Remove support for non-serverless workspace endpoints within the Databricks Client to simplify API usage by @BenWilson2 in #873
+- Add support for retriever-based functions having a native integration with MLflow tracing by @annzhang-db in #861
+- Correct issues with the `anthropic` test suites to ensure that API signatures with citation references are covered by the integration by @BenWilson2 in #865
+- Introduce the `unitycatalog-gemini` integration that permits tool usage with Google Gemini endpoints by @puneet-jain159 in #808
+- Add a cache invalidator to the function cache in the Unity Catalog Client to support a more seamless devloop by @BenWilson2 in #853
+- Refactor the `AutoGen` integration in `unitycatalog-autogen` to work with versions 0.4.0 and later by @BenWilson2 in #852 and #875
+- Fix integration tests for retriever tracing integration by @serena-ruan in #854 and #860
+- Update `AutoGen` documentation and build files to target the official Microsoft Research supported package by @BenWilson2 in #813 and #843
+- Update the `CrewAI` integration to support new API arguments for tool calling by @BenWilson2 in #825
+- Fix an issue with the `list_functions` API to allow returning function metadata for users that do not have access to the underlying function definition by @serena-ruan in #804
+
 ## Unity Catalog AI 0.1.0
 
 We are excited to announce the initial release of Unity Catalog AI! This initial release covers the following features and packages.
