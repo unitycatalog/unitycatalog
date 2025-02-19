@@ -31,6 +31,12 @@ import { AuthProvider, useAuth } from './context/auth-context';
 import { UserOutlined } from '@ant-design/icons';
 import ModelVersionDetails from './pages/ModelVersionDetails';
 
+// TODO:
+// As of [19/02/2025], this implementation should be updated once the following PR are merged.
+// SEE:
+// https://github.com/unitycatalog/unitycatalog/pull/809
+const authEnabled = process.env.REACT_APP_GOOGLE_AUTH_ENABLED === 'true';
+
 const router = createBrowserRouter([
   {
     element: <AppProvider />,
@@ -74,7 +80,6 @@ const router = createBrowserRouter([
 function AppProvider() {
   const { logout, currentUser } = useAuth();
   const navigate = useNavigate();
-  const authEnabled = process.env.REACT_APP_GOOGLE_AUTH_ENABLED === 'true';
 
   const profileMenuItems = useMemo(
     (): MenuProps['items'] => [
@@ -213,12 +218,18 @@ function App() {
     defaultOptions: { queries: { staleTime: QUERY_STALE_TIME } },
   });
 
-  return (
+  return authEnabled ? (
     <NotificationProvider>
       <QueryClientProvider client={queryClient}>
         <AuthProvider>
           <RouterProvider router={router} fallbackElement={<p>Loading...</p>} />
         </AuthProvider>
+      </QueryClientProvider>
+    </NotificationProvider>
+  ) : (
+    <NotificationProvider>
+      <QueryClientProvider client={queryClient}>
+        <RouterProvider router={router} fallbackElement={<p>Loading...</p>} />
       </QueryClientProvider>
     </NotificationProvider>
   );
