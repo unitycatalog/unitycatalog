@@ -1,5 +1,5 @@
 @import '~antd/dist/reset.css';
-@import '@okta/okta-signin-widget/dist/css/okta-sign-in.min.css';
+@import '@okta/okta-signin-widget/css/okta-sign-in.min.css';
 
 /* override strange spacing in okta widget */
 #osw-container #okta-sign-in {
