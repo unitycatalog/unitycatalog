@@ -148,6 +148,9 @@ If you would like to validate that your tool is functional prior to proceeding t
 my_tool = tools[0]
 
 my_tool.fn(**{"code": "print(1)"})
+
+# or use the `call` API
+my_tool.call(code="print(1)")
 ```
 
 ### Utilize our function as a tool within a ReActAgent in LlamaIndex
