@@ -2,8 +2,6 @@ name: Build and Push Docker Images
 
 on:
   push:
-    branches:
-      - main
     tags:
       - 'v*'
   pull_request:
@@ -11,45 +9,48 @@ on:
       - main
 
 env:
-  IMAGE: ${{ github.repository }} # eg. unitycatalog/unitycatalog
+  IMAGE: ${{ github.repository }} # unitycatalog/unitycatalog
 
 jobs:
   build-and-push:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout repository
+      - name: Checkout Repository
         uses: actions/checkout@v4
 
+        # Required for multi-arch builds
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v3
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
-      - name: Apply metadata and tags
+      - name: Generate Metadata and Tags
         id: meta
         uses: docker/metadata-action@v5
         with:
           images: ${{ env.IMAGE }}
 
-      # TODO: Agree on a strategy for publishing to DockerHub
-      # - name: Login to Docker Hub
-      #   uses: docker/login-action@v3
-      #   with:
-      #     username: ${{ vars.DOCKERHUB_USERNAME }}
-      #     password: ${{ secrets.DOCKERHUB_TOKEN }}
+      - name: Login to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
 
-      - name: Build and push Docker image
+      - name: Build and Push Docker Image
         uses: docker/build-push-action@v6
         with:
           context: .
-          push: false # TODO: When we are ready to publish, change this to: ${{ github.event_name != 'pull_request' }}
+          # Push only tagged releases to registry. Eg. the git ref
+          # "refs/tags/v0.2.0" would result the tagged image
+          # "unitycatalog/unitycatalog:v0.2.0".
+          # See here for more info: https://tinyurl.com/yh8252m2
+          push: ${{ github.event_name == 'push' && contains(github.ref, 'refs/tags/') }}
           platforms: linux/amd64,linux/arm64
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
 
-          # TODO: Agree on a caching strategy
-          # NOTE: See here for an explanation of registry caching: https://tinyurl.com/4b8mfexr
-          # cache-from: type=registry,ref=${{ env.IMAGE }}:buildcache
-          # cache-to: type=registry,ref=${{ env.IMAGE }}:buildcache,mode=max
+          # Use registry caching: https://tinyurl.com/4b8mfexr
+          cache-from: type=registry,ref=${{ env.IMAGE }}:buildcache
+          cache-to: type=registry,ref=${{ env.IMAGE }}:buildcache,mode=max
