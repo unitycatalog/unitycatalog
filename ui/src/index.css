@@ -1,1 +1,7 @@
 @import '~antd/dist/reset.css';
+@import '@okta/okta-signin-widget/css/okta-sign-in.min.css';
+
+/* override strange spacing in okta widget */
+#osw-container #okta-sign-in {
+    margin: 30px auto 8px;
+}
