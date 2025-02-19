@@ -1,5 +1,13 @@
 import { SearchOutlined } from '@ant-design/icons';
-import { Col, Flex, Input, Row, Table, TableColumnsType } from 'antd';
+import {
+  Col,
+  Flex,
+  Input,
+  Row,
+  Table,
+  TableProps,
+  TableColumnsType,
+} from 'antd';
 import { AnyObject } from 'antd/es/_util/type';
 import { ReactNode, useMemo, useState } from 'react';
 import styles from './ListLayout.module.css';
@@ -8,6 +16,7 @@ interface ListLayoutProps<T> {
   data: T[] | undefined;
   columns: TableColumnsType<T>;
   title: ReactNode;
+  rowKey: TableProps['rowKey'];
   onRowClick?: (record: T) => void;
   loading?: boolean;
   filters?: ReactNode;
@@ -18,6 +27,7 @@ export default function ListLayout<T extends AnyObject = AnyObject>({
   data,
   columns,
   title,
+  rowKey,
   onRowClick,
   loading,
   filters,
@@ -60,6 +70,7 @@ export default function ListLayout<T extends AnyObject = AnyObject>({
         </Row>
       )}
       <Table
+        rowKey={rowKey}
         loading={loading}
         className={onRowClick ? styles.clickableListLayout : undefined}
         dataSource={filteredData}
