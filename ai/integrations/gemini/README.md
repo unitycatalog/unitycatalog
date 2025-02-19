@@ -182,4 +182,4 @@ response
 
 ### Configurations for Databricks-only UC function execution
 
-We provide configurations for the Databricks Client to control the function execution behaviors, check [function execution arguments section](../../README.md#function-execution-arguments-configuration).
+We provide configurations for the Databricks Client to control the function execution behaviors, check [function execution arguments section](../../core/README.md#function-execution-arguments-configuration).
