@@ -298,6 +298,62 @@ full_func_name = f"{CATALOG}.{SCHEMA}.{func_name}"
 client.get_function(full_func_name)
 ```
 
+#### Retrieving a UC function callable
+
+The Databricks client has a separate API that can be used for retrieving the base callable definition (as a string) of a registered Unity Catalog Python function.
+In order to use this API, the function that you are fetching **must be** and `EXTERNAL` (python function) type function. When called, the function's metadata will
+be retrieved and the structure of the original callable will be rebuilt and returned as a string.
+
+For example:
+
+```python
+# Define a python callable
+
+def sample_python_func(a: int, b: int) -> int:
+    """
+    Returns the sum of a and b.
+
+    Args:
+        a: an int
+        b: another int
+
+    Returns:
+        The sum of a and b
+    """
+    return a + b
+
+# Create the function within Unity Catalog
+client.create_python_function(catalog=CATALOG, schema=SCHEMA, func=sample_python_func, replace=True)
+
+# Fetch the callable definition
+my_func_def = client.get_python_callable(function_name=f"{CATALOG}.{SCHEMA}.sample_python_function")
+```
+
+The returned value from the `get_python_callable` API will be the same as the original input with a few caveats:
+
+- `tuple` types will be cast to `list` due to the inability to express a Python `tuple` within Unity Catalog
+- The docstring of the original function will be stripped out. Unity Catalog persists the docstring information in the logged function and it is available in the return of the `get_function` API call if needed.
+
+The result of calling the `get_python_callable` API on the `sample_python_func` registered function will be (when printed):
+
+```text
+def sample_python_func(a: int, b: int) -> bigint:
+
+    return a + b
+```
+
+Note: If you want to convert the extracted string back into an actual Python callable, you will need to use the `exec` function. A simple example:
+
+```python
+# Caution - evaluate the contents of any function definition before executing in this manner! 
+local_namespace = {}
+exec(my_func_def, globals(), local_namespace)
+callable_fn = local_namespace["sample_ppython_func"]  # You must refer to the original name of the function
+callable_fn(a=1, b=3)  # returns `4`
+```
+
+This API is useful for extracting already-registered functions that will be used as additional in-line calls within another function through the use of the `create_wrapped_python_function` API, saving the effort required to either hand-craft a function definition or having to track down where the original implementation of a logged function was defined.
+
 #### List UC functions
 
 To get a list of functions stored in a catalog and schema, you can use list API with wildcards to do so.

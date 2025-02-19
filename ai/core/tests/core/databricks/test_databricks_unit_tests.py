@@ -22,6 +22,7 @@ from databricks.sdk.service.catalog import (
 
 from unitycatalog.ai.core.databricks import (
     DatabricksFunctionClient,
+    dynamically_construct_python_function,
     extract_function_name,
     retry_on_session_expiration,
 )
@@ -1388,3 +1389,214 @@ def test_execute_function_with_none_default_databricks(mock_workspace_client, mo
     result = client.execute_function(f"{CATALOG}.{SCHEMA}.null_func", parameters={})
     assert result.error is None, f"Execution error: {result.error}"
     assert result.value == "None"
+
+
+class FakeParameter:
+    def __init__(self, name: str, type_json: str, type_text: str = None):
+        self.name = name
+        self.type_json = type_json
+        self.type_text = type_text or ""
+
+
+class DummyInputParams:
+    def __init__(self, parameters):
+        self.parameters = parameters
+
+
+class DummyType:
+    def __init__(self, value: str, name: str):
+        self.value = value
+        self.__name__ = name
+
+
+class DummyFunctionInfo:
+    pass
+
+
+def test_get_python_callable_valid(mock_workspace_client):
+    fake_function_info = MagicMock()
+    fake_function_info.name = "my_func"
+    fake_function_info.routine_body = DummyType("EXTERNAL", "EXTERNAL")
+    fake_function_info.routine_definition = "return x * 2"
+
+    fake_param = MagicMock()
+    fake_param.name = "x"
+    fake_param.type_text = "int"
+    fake_param.type_json = (
+        '{"name": "x", "type": "int", "nullable": true, "metadata": {"comment": "an int"}}'
+    )
+    fake_function_info.input_params = DummyInputParams([fake_param])
+    fake_function_info.full_data_type = "STRING"
+
+    client = DatabricksFunctionClient(client=mock_workspace_client)
+    client.get_function = MagicMock(return_value=fake_function_info)
+
+    result = client.get_python_callable("my_func")
+    expected_def = "def my_func(x: int) -> str:\nreturn x * 2\n"
+    assert result.strip() == expected_def.strip()
+
+
+def test_get_python_callable_non_external(mock_workspace_client):
+    """
+    Test that get_python_callable raises an error when the routine_body is not 'EXTERNAL'.
+    """
+    client = DatabricksFunctionClient(client=mock_workspace_client)
+
+    fake_function_info = MagicMock()
+    fake_function_info.name = "non_external_func"
+    fake_function_info.routine_body = MagicMock(value="SQL")
+    fake_function_info.routine_definition = "SELECT 1"
+    fake_function_info.input_params = MagicMock(parameters=[])
+    fake_function_info.data_type = MagicMock(value="STRING")
+
+    client.get_function = MagicMock(return_value=fake_function_info)
+
+    with pytest.raises(ValueError, match="is not an EXTERNAL Python function"):
+        client.get_python_callable("non_external_func")
+
+
+def test_get_python_callable_multiline(mock_workspace_client):
+    client = DatabricksFunctionClient(client=mock_workspace_client)
+
+    fake_function_info = MagicMock()
+    fake_function_info.name = "multi_line_func"
+    fake_function_info.routine_body = DummyType("EXTERNAL", "EXTERNAL")
+    fake_function_info.routine_definition = "line1\nline2\nline3"
+    fake_function_info.input_params = DummyInputParams([])
+    fake_function_info.full_data_type = "STRING"
+
+    client.get_function = MagicMock(return_value=fake_function_info)
+
+    result = client.get_python_callable("multi_line_func")
+    expected_def = "def multi_line_func() -> str:\nline1\nline2\nline3\n"
+    assert result.strip() == expected_def.strip()
+
+
+@pytest.fixture
+def complex_function_info():
+    a_param = FakeParameter(
+        "a", '{"name": "a", "type": "int", "nullable": true, "metadata": {"comment": "an int"}}'
+    )
+    b_param = FakeParameter(
+        "b", '{"name": "b", "type": "double", "nullable": true, "metadata": {"comment": "a float"}}'
+    )
+    c_param = FakeParameter(
+        "c",
+        '{"name": "c", "type": "string", "nullable": true, "metadata": {"comment": "a string"}}',
+    )
+    d_param = FakeParameter(
+        "d",
+        '{"name": "d", "type": "boolean", "nullable": true, "metadata": {"comment": "some bool"}}',
+    )
+    e_param = FakeParameter(
+        "e",
+        json.dumps(
+            {
+                "name": "e",
+                "type": {"type": "array", "elementType": "string", "containsNull": True},
+                "nullable": True,
+                "metadata": {"comment": "a list of str"},
+            }
+        ),
+        "array<string>",
+    )
+    f_param = FakeParameter(
+        "f",
+        json.dumps(
+            {
+                "name": "f",
+                "type": {
+                    "type": "map",
+                    "keyType": "string",
+                    "valueType": "long",
+                    "valueContainsNull": True,
+                },
+                "nullable": True,
+                "metadata": {"comment": "a dict of str to int"},
+            }
+        ),
+        "map<string,long>",
+    )
+    g_param = FakeParameter(
+        "g",
+        '{"name": "g", "type": "variant", "nullable": true, "metadata": {"comment": "a variant"}}',
+        "variant",
+    )
+    h_param = FakeParameter(
+        "h",
+        json.dumps(
+            {
+                "name": "h",
+                "type": {
+                    "type": "map",
+                    "keyType": "string",
+                    "valueType": {"type": "array", "elementType": "long", "containsNull": True},
+                    "valueContainsNull": True,
+                },
+                "nullable": True,
+                "metadata": {"comment": "a complex type"},
+            }
+        ),
+        "map<string,array<long>>",
+    )
+    i_param = FakeParameter(
+        "i",
+        json.dumps(
+            {
+                "name": "i",
+                "type": {
+                    "type": "map",
+                    "keyType": "string",
+                    "valueType": {
+                        "type": "array",
+                        "elementType": {
+                            "type": "map",
+                            "keyType": "string",
+                            "valueType": {
+                                "type": "array",
+                                "elementType": "long",
+                                "containsNull": True,
+                            },
+                            "valueContainsNull": True,
+                        },
+                        "containsNull": True,
+                    },
+                    "valueContainsNull": True,
+                },
+                "nullable": True,
+                "metadata": {},
+            }
+        ),
+        "map<string,array<map<string,array<long>>>>",
+    )
+
+    dummy_input_params = DummyInputParams(
+        [a_param, b_param, c_param, d_param, e_param, f_param, g_param, h_param, i_param]
+    )
+
+    dummy_func_info = DummyFunctionInfo()
+    dummy_func_info.name = "test_func"
+    dummy_func_info.input_params = dummy_input_params
+    dummy_func_info.routine_body = DummyType("EXTERNAL", "EXTERNAL")
+    dummy_func_info.routine_definition = (
+        "    def _internal(g: float) -> int:\n"
+        "        return g + c\n\n"
+        "    return str(a+b+_internal(4.5)) + c + str(d) + str(e) + str(f) + str(g)"
+    )
+    dummy_func_info.full_data_type = "MAP<STRING, ARRAY<STRING>>"
+    return dummy_func_info
+
+
+def test_reconstruct_callable_complex_function(complex_function_info):
+    reconstructed = dynamically_construct_python_function(complex_function_info)
+    expected_header = (
+        "test_func(a: int, b: float, c: str, d: bool, e: list[str], f: dict[str, int], "
+        "g: Variant, h: dict[str, list[int]], i: dict[str, list[dict[str, list[int]]]]) -> dict[str, list[str]]"
+    )
+    expected_definition = (
+        f"def {expected_header}:\n"
+        "    def _internal(g: float) -> int:\n"
+        "        return g + c\n\n"
+        "    return str(a+b+_internal(4.5)) + c + str(d) + str(e) + str(f) + str(g)\n"
+    )
+    assert reconstructed.strip() == expected_definition.strip()

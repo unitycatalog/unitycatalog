@@ -18,7 +18,10 @@ from typing import (
 )
 
 from unitycatalog.ai.core.utils.docstring_utils import DocstringInfo, parse_docstring
-from unitycatalog.ai.core.utils.type_utils import python_type_to_sql_type
+from unitycatalog.ai.core.utils.type_utils import (
+    SQL_TYPE_TO_PYTHON_TYPE_MAPPING,
+    python_type_to_sql_type,
+)
 
 FORBIDDEN_PARAMS = ["self", "cls"]
 
@@ -769,3 +772,114 @@ def check_docstring_signature_consistency(
             UserWarning,
             stacklevel=2,
         )
+
+
+def _recursively_parse_type(type_info: Any) -> str:
+    """
+    Recursively parse a SQL type definition (provided either as a dict or a string)
+    into a Python type annotation string.
+
+    Args:
+        type_info: A dict containing the type information, or a simple string.
+
+    Returns:
+        A string representing the Python type.
+    """
+    if not isinstance(type_info, dict):
+        mapped = SQL_TYPE_TO_PYTHON_TYPE_MAPPING.get(str(type_info).upper(), None)
+        return mapped.__name__ if mapped else "Any"
+
+    t = type_info.get("type")
+    if not t:
+        return "Any"
+    t_lower = str(t).lower()
+
+    if t_lower == "array":
+        element = type_info.get("elementType")
+        return f"list[{get_mapped_value(element)}]"
+    elif t_lower == "map":
+        key = type_info.get("keyType")
+        value = type_info.get("valueType")
+        return f"dict[{get_mapped_value(key)}, {get_mapped_value(value)}]"
+    elif t_lower == "struct":
+        return "dict"
+    else:
+        mapped = SQL_TYPE_TO_PYTHON_TYPE_MAPPING.get(str(t).upper(), None)
+        return mapped.__name__ if mapped else "Any"
+
+
+def get_mapped_value(x: Any) -> str:
+    """
+    Helper function to get the Python type as a string for a given SQL type.
+    If x is a dict, it recursively parses it; otherwise, it maps the type via SQL_TYPE_TO_PYTHON_TYPE_MAPPING.
+    """
+    if isinstance(x, dict):
+        return _recursively_parse_type(x)
+    else:
+        mapped = SQL_TYPE_TO_PYTHON_TYPE_MAPPING.get(str(x).upper(), None)
+        return mapped.__name__ if mapped else "Any"
+
+
+def extract_collection_types(param_info: "FunctionParameterInfo") -> str:
+    """
+    Given a FunctionParameterInfo, extract its type annotation as a string,
+    recursively handling collection types.
+    """
+    type_dict = json.loads(param_info.type_json)
+    parsed_type = _recursively_parse_type(type_dict["type"])
+    return f"{param_info.name}: {parsed_type}"
+
+
+def _split_generic_types(s: str) -> list[str]:
+    """
+    Split a generic type string into its components, ignoring commas inside nested generics.
+    For example, "STRING, ARRAY<STRING>, MAP<STRING, INT>" becomes
+    ["STRING", "ARRAY<STRING>", "MAP<STRING, INT>"].
+    """
+    parts = []
+    current_chars = []
+    depth = 0
+    for ch in s:
+        if ch == "<":
+            depth += 1
+        elif ch == ">":
+            depth -= 1
+
+        if ch == "," and depth == 0:
+            parts.append("".join(current_chars).strip())
+            current_chars = []
+        else:
+            current_chars.append(ch)
+    if current_chars:
+        parts.append("".join(current_chars).strip())
+    return parts
+
+
+def parse_full_sql_data_type_for_return_type(type_str: str) -> str:
+    """
+    Convert a full SQL type string (e.g. "MAP<STRING, ARRAY<STRING>>")
+    into a Python type annotation string (e.g. "dict[str, list[str]]").
+    """
+    type_str = type_str.strip()
+
+    if "<" not in type_str:
+        mapped = SQL_TYPE_TO_PYTHON_TYPE_MAPPING.get(type_str.upper())
+        return mapped.__name__ if mapped else type_str.lower()
+
+    outer, inner = type_str.split("<", 1)
+    outer = outer.strip().upper()
+    inner = inner.rsplit(">", 1)[0].strip()
+
+    parts = _split_generic_types(inner)
+
+    # recurse
+    parsed_parts = [parse_full_sql_data_type_for_return_type(part) for part in parts]
+
+    if outer == "ARRAY":
+        return f"list[{parsed_parts[0]}]"
+    elif outer == "MAP":
+        return f"dict[{parsed_parts[0]}, {parsed_parts[1]}]"
+    elif outer == "STRUCT":
+        return "dict"
+    else:
+        return f"{outer.lower()}[{', '.join(parsed_parts)}]"
