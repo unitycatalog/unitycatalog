@@ -1,7 +1,5 @@
 # Unity Catalog Kùzu Integration
 
-## Scan from delta lake tables managed by Unity Catalog
-
 [Kùzu](https://kuzudb.com/) is an embedded graph database built for query speed and scalability. You can download and install the precompiled binary [there](https://docs.kuzudb.com/installation/).
 The `unity_catalog` extension in Kùzu allows users to attach to a unity catalog and perform scan/copy operations on delta lake tables.
 
