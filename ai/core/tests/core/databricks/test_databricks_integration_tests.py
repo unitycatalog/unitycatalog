@@ -690,3 +690,5 @@ def test_get_python_callable_integration_complex(client: DatabricksFunctionClien
         assert expected_header in callable_def
         assert "def _helper(x: float) -> int:" in callable_def
         assert "return {" in callable_def and '"result": [' in callable_def
+        assert "Args:" in callable_def
+        assert "Returns:" in callable_def

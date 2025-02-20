@@ -1391,11 +1391,11 @@ def test_execute_function_with_none_default_databricks(mock_workspace_client, mo
     assert result.value == "None"
 
 
-class FakeParameter:
-    def __init__(self, name: str, type_json: str, type_text: str = None):
+class DummyParameter:
+    def __init__(self, name, type_json, comment):
         self.name = name
         self.type_json = type_json
-        self.type_text = type_text or ""
+        self.comment = comment
 
 
 class DummyInputParams:
@@ -1418,6 +1418,7 @@ def test_get_python_callable_valid(mock_workspace_client):
     fake_function_info.name = "my_func"
     fake_function_info.routine_body = DummyType("EXTERNAL", "EXTERNAL")
     fake_function_info.routine_definition = "return x * 2"
+    fake_function_info.comment = "A function that doubles the input"
 
     fake_param = MagicMock()
     fake_param.name = "x"
@@ -1425,6 +1426,7 @@ def test_get_python_callable_valid(mock_workspace_client):
     fake_param.type_json = (
         '{"name": "x", "type": "int", "nullable": true, "metadata": {"comment": "an int"}}'
     )
+    fake_param.comment = "an int"
     fake_function_info.input_params = DummyInputParams([fake_param])
     fake_function_info.full_data_type = "STRING"
 
@@ -1432,8 +1434,12 @@ def test_get_python_callable_valid(mock_workspace_client):
     client.get_function = MagicMock(return_value=fake_function_info)
 
     result = client.get_python_callable("my_func")
-    expected_def = "def my_func(x: int) -> str:\nreturn x * 2\n"
-    assert result.strip() == expected_def.strip()
+    assert "def my_func(x: int) -> str:" in result
+    assert '"""' in result
+    assert "A function that doubles the input" in result
+    assert "Args:" in result
+    assert "x: an int" in result
+    assert "return x * 2" in result
 
 
 def test_get_python_callable_non_external(mock_workspace_client):
@@ -1462,33 +1468,43 @@ def test_get_python_callable_multiline(mock_workspace_client):
     fake_function_info.name = "multi_line_func"
     fake_function_info.routine_body = DummyType("EXTERNAL", "EXTERNAL")
     fake_function_info.routine_definition = "line1\nline2\nline3"
-    fake_function_info.input_params = DummyInputParams([])
+    fake_function_info.input_params = DummyInputParams([])  # No parameters.
     fake_function_info.full_data_type = "STRING"
+    fake_function_info.comment = ""
 
     client.get_function = MagicMock(return_value=fake_function_info)
 
     result = client.get_python_callable("multi_line_func")
-    expected_def = "def multi_line_func() -> str:\nline1\nline2\nline3\n"
-    assert result.strip() == expected_def.strip()
+    assert "def multi_line_func() -> str:" in result
+    assert "line1" in result
+    assert "line2" in result
+    assert "line3" in result
 
 
 @pytest.fixture
 def complex_function_info():
-    a_param = FakeParameter(
-        "a", '{"name": "a", "type": "int", "nullable": true, "metadata": {"comment": "an int"}}'
+    # Build parameters for a complex function.
+    a = DummyParameter(
+        "a",
+        '{"name": "a", "type": "long", "nullable": true, "metadata": {"comment": "an int"}}',
+        "an int",
     )
-    b_param = FakeParameter(
-        "b", '{"name": "b", "type": "double", "nullable": true, "metadata": {"comment": "a float"}}'
+    b = DummyParameter(
+        "b",
+        '{"name": "b", "type": "double", "nullable": true, "metadata": {"comment": "a float"}}',
+        "a float",
     )
-    c_param = FakeParameter(
+    c = DummyParameter(
         "c",
         '{"name": "c", "type": "string", "nullable": true, "metadata": {"comment": "a string"}}',
+        "a string",
     )
-    d_param = FakeParameter(
+    d = DummyParameter(
         "d",
         '{"name": "d", "type": "boolean", "nullable": true, "metadata": {"comment": "some bool"}}',
+        "some bool",
     )
-    e_param = FakeParameter(
+    e = DummyParameter(
         "e",
         json.dumps(
             {
@@ -1498,9 +1514,9 @@ def complex_function_info():
                 "metadata": {"comment": "a list of str"},
             }
         ),
-        "array<string>",
+        "a list of str",
     )
-    f_param = FakeParameter(
+    f = DummyParameter(
         "f",
         json.dumps(
             {
@@ -1515,14 +1531,14 @@ def complex_function_info():
                 "metadata": {"comment": "a dict of str to int"},
             }
         ),
-        "map<string,long>",
+        "a dict of str to int",
     )
-    g_param = FakeParameter(
+    g = DummyParameter(
         "g",
         '{"name": "g", "type": "variant", "nullable": true, "metadata": {"comment": "a variant"}}',
-        "variant",
+        "a variant",
     )
-    h_param = FakeParameter(
+    h = DummyParameter(
         "h",
         json.dumps(
             {
@@ -1537,9 +1553,9 @@ def complex_function_info():
                 "metadata": {"comment": "a complex type"},
             }
         ),
-        "map<string,array<long>>",
+        "a complex type",
     )
-    i_param = FakeParameter(
+    i = DummyParameter(
         "i",
         json.dumps(
             {
@@ -1567,36 +1583,44 @@ def complex_function_info():
                 "metadata": {},
             }
         ),
-        "map<string,array<map<string,array<long>>>>",
+        "",
     )
 
-    dummy_input_params = DummyInputParams(
-        [a_param, b_param, c_param, d_param, e_param, f_param, g_param, h_param, i_param]
-    )
+    dummy_params = DummyInputParams([a, b, c, d, e, f, g, h, i])
 
-    dummy_func_info = DummyFunctionInfo()
-    dummy_func_info.name = "test_func"
-    dummy_func_info.input_params = dummy_input_params
-    dummy_func_info.routine_body = DummyType("EXTERNAL", "EXTERNAL")
-    dummy_func_info.routine_definition = (
+    func_info = DummyFunctionInfo()
+    func_info.name = "test_func"
+    func_info.input_params = dummy_params
+    func_info.routine_body = DummyType("EXTERNAL", "EXTERNAL")
+    func_info.routine_definition = (
         "    def _internal(g: float) -> int:\n"
         "        return g + c\n\n"
         "    return str(a+b+_internal(4.5)) + c + str(d) + str(e) + str(f) + str(g)"
     )
-    dummy_func_info.full_data_type = "MAP<STRING, ARRAY<STRING>>"
-    return dummy_func_info
+    func_info.full_data_type = "MAP<STRING, ARRAY<STRING>>"
+    func_info.comment = "Just doing some testing here"
+    return func_info
 
 
 def test_reconstruct_callable_complex_function(complex_function_info):
     reconstructed = dynamically_construct_python_function(complex_function_info)
+
     expected_header = (
         "test_func(a: int, b: float, c: str, d: bool, e: list[str], f: dict[str, int], "
         "g: Variant, h: dict[str, list[int]], i: dict[str, list[dict[str, list[int]]]]) -> dict[str, list[str]]"
     )
-    expected_definition = (
-        f"def {expected_header}:\n"
-        "    def _internal(g: float) -> int:\n"
-        "        return g + c\n\n"
-        "    return str(a+b+_internal(4.5)) + c + str(d) + str(e) + str(f) + str(g)\n"
-    )
-    assert reconstructed.strip() == expected_definition.strip()
+    assert expected_header in reconstructed
+
+    assert "Just doing some testing here" in reconstructed
+    assert "a: an int" in reconstructed
+    assert "b: a float" in reconstructed
+    assert "c: a string" in reconstructed
+    assert "d: some bool" in reconstructed
+    assert "e: a list of str" in reconstructed
+    assert "f: a dict of str to int" in reconstructed
+    assert "g: a variant" in reconstructed
+    assert "h: a complex type" in reconstructed
+    assert "i:" in reconstructed
+
+    assert "def _internal(g: float) -> int:" in reconstructed
+    assert "return str(a+b+_internal(4.5))" in reconstructed

@@ -24,6 +24,7 @@ from unitycatalog.ai.core.utils.callable_utils import (
     generate_sql_function_body,
     generate_wrapped_sql_function_body,
     parse_full_sql_data_type_for_return_type,
+    reconstruct_docstring,
 )
 from unitycatalog.ai.core.utils.function_processing_utils import process_function_parameter_defaults
 from unitycatalog.ai.core.utils.type_utils import (
@@ -868,6 +869,10 @@ def dynamically_construct_python_function(function_info: "FunctionInfo") -> str:
     return_type = parse_full_sql_data_type_for_return_type(function_info.full_data_type)
     function_head = f"{function_info.name}({', '.join(param_names)}) -> {return_type}"
     func_def = f"def {function_head}:\n"
+
+    docstring = reconstruct_docstring(function_info)
+    if docstring:
+        func_def += docstring
 
     if function_info.routine_body.value == "EXTERNAL":
         for line in function_info.routine_definition.split("\n"):

@@ -3,7 +3,7 @@ import inspect
 import json
 import warnings
 from dataclasses import dataclass
-from textwrap import dedent, indent
+from textwrap import dedent, fill, indent
 from typing import (
     Any,
     Callable,
@@ -883,3 +883,56 @@ def parse_full_sql_data_type_for_return_type(type_str: str) -> str:
         return "dict"
     else:
         return f"{outer.lower()}[{', '.join(parsed_parts)}]"
+
+
+def reconstruct_docstring(function_info: "FunctionInfo", max_width: int = 100) -> str:
+    """
+    Reconstruct a Google-style docstring from a FunctionInfo object.
+
+    This function rebuilds:
+      - The function description from function_info.comment.
+      - An "Args:" section from each parameter's comment.
+      - A "Returns:" section using the return type (from full_data_type).
+
+    Each section is word-wrapped to a maximum width of `max_width` characters,
+    wrapping only at full words.
+
+    Returns:
+        A string representing the reconstructed docstring (with triple quotes and proper indentation).
+    """
+    doc_lines = []
+
+    # Overall function description.
+    if hasattr(function_info, "comment") and function_info.comment:
+        description = function_info.comment.strip()
+        wrapped_description = fill(description, width=max_width)
+        doc_lines.append(wrapped_description)
+
+    # Build the Args: section.
+    if function_info.input_params and function_info.input_params.parameters:
+        doc_lines.append("")  # Blank line.
+        doc_lines.append("Args:")
+        for param in function_info.input_params.parameters:
+            param_comment = (
+                param.comment.strip() if hasattr(param, "comment") and param.comment else ""
+            )
+            arg_line = f"{param.name}: {param_comment}"
+            wrapped_arg = fill(
+                arg_line, width=max_width, initial_indent="    ", subsequent_indent="    "
+            )
+            doc_lines.append(wrapped_arg)
+
+    # Build the Returns: section.
+    return_type_str = parse_full_sql_data_type_for_return_type(function_info.full_data_type)
+    doc_lines.append("")
+    doc_lines.append("Returns:")
+    wrapped_return = fill(
+        return_type_str, width=max_width, initial_indent="    ", subsequent_indent="    "
+    )
+    doc_lines.append(wrapped_return)
+
+    if not doc_lines:
+        return ""
+
+    indented_doc = "\n".join("    " + line for line in doc_lines)
+    return f'    """\n{indented_doc}\n    """\n'
