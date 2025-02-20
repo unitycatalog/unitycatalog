@@ -62,18 +62,6 @@ public class UnityCatalogCli {
       // Parse the command line arguments
       CommandLine cmd = parser.parse(options, args);
 
-      // Check if help option is provided
-      if (cmd.hasOption("h")) {
-        if (cmd.getArgs().length > 1) {
-          CliUtils.printSubCommandHelp(cmd.getArgs()[0], cmd.getArgs()[1]);
-        } else if (cmd.getArgs().length > 0) {
-          CliUtils.printEntityHelp(cmd.getArgs()[0]);
-        } else {
-          CliUtils.printHelp();
-        }
-        return;
-      }
-
       if (cmd.hasOption("v")) {
         CliUtils.printVersion();
         return;
@@ -175,7 +163,9 @@ public class UnityCatalogCli {
   private static boolean validateCommand(CommandLine cmd) {
     String[] subArgs = cmd.getArgs();
     if (subArgs.length < 1) {
-      System.out.println("Please provide a entity.");
+      if (!cmd.hasOption("h")) {
+        System.out.println("Please provide an entity.");
+      }
       CliUtils.printHelp();
       return false;
     } else {
@@ -186,7 +176,9 @@ public class UnityCatalogCli {
         return false;
       }
       if (subArgs.length < 2) {
-        System.out.println("Please provide an operation.");
+        if (!cmd.hasOption("h")) {
+          System.out.println("Please provide an operation.");
+        }
         CliUtils.printEntityHelp(subArgs[0]);
         return false;
       }
@@ -196,31 +188,36 @@ public class UnityCatalogCli {
         CliUtils.printEntityHelp(entity);
         return false;
       }
-      CliUtils.CliOptions allowedOptions =
-          CliUtils.cliOptions.get(entity.toLowerCase()).get(operation.toLowerCase());
-      List<CliParams> requiredParams = allowedOptions.getNecessaryParams();
-      List<CliParams> optionalParams = allowedOptions.getOptionalParams();
-      List<CliParams> specifiedParams = new ArrayList<>();
-      for (Option option : cmd.getOptions()) {
-        String val = option.getValue();
-        if (val == null) {
-          System.out.println("Please provide a value for " + option.getLongOpt());
+      if (!cmd.hasOption("h")) {
+        CliUtils.CliOptions allowedOptions =
+            CliUtils.cliOptions.get(entity.toLowerCase()).get(operation.toLowerCase());
+        List<CliParams> requiredParams = allowedOptions.getNecessaryParams();
+        List<CliParams> optionalParams = allowedOptions.getOptionalParams();
+        List<CliParams> specifiedParams = new ArrayList<>();
+        for (Option option : cmd.getOptions()) {
+          String val = option.getValue();
+          if (val == null) {
+            System.out.println("Please provide a value for " + option.getLongOpt());
+            CliUtils.printSubCommandHelp(entity, operation);
+            return false;
+          }
+          specifiedParams.add(CliParams.fromString(option.getLongOpt()));
+        }
+        if (!specifiedParams.containsAll(requiredParams)) {
+          System.out.println("All required parameters are not provided.");
           CliUtils.printSubCommandHelp(entity, operation);
           return false;
         }
-        specifiedParams.add(CliParams.fromString(option.getLongOpt()));
-      }
-      if (!specifiedParams.containsAll(requiredParams)) {
-        System.out.println("All required parameters are not provided.");
-        CliUtils.printSubCommandHelp(entity, operation);
-        return false;
-      }
-      specifiedParams.removeAll(requiredParams);
-      specifiedParams.removeAll(optionalParams);
-      specifiedParams.removeAll(commonOptions);
-      if (!specifiedParams.isEmpty()) {
-        System.out.println("Some of the provided parameters are not valid.");
-        CliUtils.printSubCommandHelp(entity, operation);
+        specifiedParams.removeAll(requiredParams);
+        specifiedParams.removeAll(optionalParams);
+        specifiedParams.removeAll(commonOptions);
+        if (!specifiedParams.isEmpty()) {
+          System.out.println("Some of the provided parameters are not valid.");
+          CliUtils.printSubCommandHelp(entity, operation);
+          return false;
+        }
+      } else {
+        CliUtils.printSubCommandHelp(cmd.getArgs()[0], cmd.getArgs()[1]);
         return false;
       }
     }
