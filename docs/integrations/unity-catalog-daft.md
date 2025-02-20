@@ -124,5 +124,5 @@ as_int   as_double
 ```
 
 Daft support for Unity Catalog is under rapid development. Refer to the
-[Daft documentation](https://www.getdaft.io/projects/docs/en/latest/user_guide/integrations/unity-catalog.html) for
+[Daft documentation](https://www.getdaft.io/projects/docs/en/stable/integrations/unity_catalog/) for
 more information.
