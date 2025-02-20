@@ -2,6 +2,11 @@ openapi: 3.0.0
 servers:
   - url: http://localhost:8080/api/2.1/unity-catalog
     description: Localhost reference server
+security:
+  - BearerAuth: []
+  - OAuth2:
+    - read
+    - write
 tags:
   - name: Catalogs
     description: |
@@ -1133,6 +1138,19 @@ paths:
               schema:
                 $ref: '#/components/schemas/GetMetastoreSummaryResponse'
 components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+    OAuth2:
+      type: oauth2
+      flows:
+        authorizationCode:
+          authorizationUrl: https://example.com/oauth/authorize
+          tokenUrl: https://example.com/oauth/token
+          scopes:
+            read: read access
+            write: write access
   schemas:
     SecurablePropertiesMap:
       description: A map of key-value properties attached to the securable.
