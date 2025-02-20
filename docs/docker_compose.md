@@ -33,7 +33,7 @@ run the following from the host machine:
 docker compose down --volumes --remove-orphans
 ```
 
-Refer the the main [Quickstart](quickstart.md) for more examples of how to
+Refer to the main [Quickstart](quickstart.md) for more examples of how to
 interact with the catalog.
 
 ## Configurations
