@@ -3,9 +3,10 @@ import decimal
 import json
 import logging
 import re
+import textwrap
 from contextlib import contextmanager
 from dataclasses import dataclass
-from typing import Any, Dict, List, Union
+from typing import Any, Dict, List, Optional, Union
 
 import pytest
 import pytest_asyncio
@@ -17,7 +18,17 @@ from unitycatalog.ai.core.client import (
     validate_input_parameter,
     validate_param,
 )
-from unitycatalog.ai.test_utils.function_utils import CATALOG, random_func_name
+from unitycatalog.ai.core.types import Variant
+from unitycatalog.ai.test_utils.function_utils import (
+    CATALOG,
+    int_func_no_doc,
+    int_func_with_doc,
+    random_func_name,
+    str_func_no_doc,
+    str_func_with_doc,
+    wrap_func_no_doc,
+    wrap_func_with_doc,
+)
 from unitycatalog.client import (
     ApiClient,
     CatalogsApi,
@@ -540,7 +551,7 @@ async def test_list_functions(uc_client: UnitycatalogFunctionClient):
             full_data_type="LONG",
             routine_definition="return x",
             input_data={"x": 2**63 - 1},
-            expected_result=f"{2**63-1}",
+            expected_result=f"{2**63 - 1}",
             comment="test",
         ),
         FunctionObj(
@@ -1063,3 +1074,361 @@ async def test_function_with_union_return_type(uc_client):
         uc_client.create_python_function(
             func=func_with_union_return, catalog=CATALOG, schema=SCHEMA
         )
+
+
+# --------------------------
+# Validation Tests for Wrapped Function APIs
+# --------------------------
+
+
+@pytest.mark.asyncio
+async def test_create_wrapped_function_async_no_doc(uc_client: UnitycatalogFunctionClient):
+    primary_func = wrap_func_no_doc
+    wrapped_functions = [int_func_no_doc, str_func_no_doc]
+    catalog = CATALOG
+    schema = SCHEMA
+
+    func_info = await uc_client.create_wrapped_function_async(
+        primary_func=primary_func,
+        functions=wrapped_functions,
+        catalog=catalog,
+        schema=schema,
+        replace=True,
+    )
+
+    full_name = f"{catalog}.{schema}.wrap_func_no_doc"
+
+    assert func_info.name == "wrap_func_no_doc"
+    assert func_info.full_name == full_name
+    assert func_info.data_type == "STRING"
+    assert func_info.full_data_type == "STRING"
+    assert func_info.comment == "A function that takes two arguments and returns a string."
+
+    expected_definition = (
+        "def int_func_no_doc(a):\n"
+        "    return a + 10\n\n"
+        "def str_func_no_doc(b):\n"
+        '    return f"str value: {b}"\n\n'
+        "func1 = int_func_no_doc(a)\n"
+        "func2 = str_func_no_doc(b)\n\n"
+        'return f"{func1} {func2}"'
+    )
+    assert func_info.routine_definition == expected_definition
+
+    result = uc_client.execute_function(function_name=full_name, parameters={"a": 5, "b": "test"})
+    assert result.value == "15 str value: test"
+    assert result.error is None
+
+
+@pytest.mark.asyncio
+async def test_create_wrapped_function_async_with_doc(uc_client: UnitycatalogFunctionClient):
+    primary_func = wrap_func_with_doc
+    wrapped_functions = [int_func_with_doc, str_func_with_doc]
+    catalog = CATALOG
+    schema = SCHEMA
+
+    func_info = await uc_client.create_wrapped_function_async(
+        primary_func=primary_func,
+        functions=wrapped_functions,
+        catalog=catalog,
+        schema=schema,
+        replace=True,
+    )
+
+    full_name = f"{catalog}.{schema}.wrap_func_with_doc"
+
+    assert func_info.name == "wrap_func_with_doc"
+    assert func_info.full_name == full_name
+    assert func_info.data_type == "STRING"
+    assert func_info.full_data_type == "STRING"
+    assert func_info.comment == "A function that takes two arguments and returns a string."
+
+    expected_definition = textwrap.dedent("""\
+        def int_func_with_doc(a: int) -> int:
+            \"\"\"
+            A function that takes an integer and returns an integer.
+
+            Args:
+                a: An integer.
+
+            Returns:
+                An integer.
+            \"\"\"
+            return a + 10
+
+        def str_func_with_doc(b: str) -> str:
+            \"\"\"
+            A function that takes a string and returns a string.
+
+            Args:
+                b: A string.
+
+            Returns:
+                A string.
+            \"\"\"
+            return f"str value: {b}"
+
+        func1 = int_func_with_doc(a)
+        func2 = str_func_with_doc(b)
+
+        return f"{func1} {func2}"
+    """).strip()
+    assert func_info.routine_definition == expected_definition
+
+    result = uc_client.execute_function(function_name=full_name, parameters={"a": 52, "b": "docs"})
+    assert result.value == "62 str value: docs"
+    assert result.error is None
+
+
+def test_create_wrapped_function_sync_no_doc(uc_client: UnitycatalogFunctionClient):
+    primary_func = wrap_func_no_doc
+    wrapped_functions = [int_func_no_doc, str_func_no_doc]
+    catalog = CATALOG
+    schema = SCHEMA
+    full_name = f"{catalog}.{schema}.wrap_func_no_doc"
+
+    func_info = uc_client.create_wrapped_function(
+        primary_func=primary_func,
+        functions=wrapped_functions,
+        catalog=catalog,
+        schema=schema,
+        replace=True,
+    )
+
+    assert func_info.name == "wrap_func_no_doc"
+    assert func_info.full_name == full_name
+    assert func_info.data_type == "STRING"
+    assert func_info.full_data_type == "STRING"
+    assert func_info.comment == "A function that takes two arguments and returns a string."
+
+    result = uc_client.execute_function(function_name=full_name, parameters={"a": 5, "b": "test"})
+    assert result.value == "15 str value: test"
+    assert result.error is None
+
+
+def test_create_wrapped_function_sync_with_doc(uc_client: UnitycatalogFunctionClient):
+    primary_func = wrap_func_with_doc
+    wrapped_functions = [int_func_with_doc, str_func_with_doc]
+    catalog = CATALOG
+    schema = SCHEMA
+    full_name = f"{catalog}.{schema}.wrap_func_with_doc"
+
+    func_info = uc_client.create_wrapped_function(
+        primary_func=primary_func,
+        functions=wrapped_functions,
+        catalog=catalog,
+        schema=schema,
+        replace=True,
+    )
+
+    assert func_info.name == "wrap_func_with_doc"
+    assert func_info.full_name == full_name
+    assert func_info.data_type == "STRING"
+    assert func_info.full_data_type == "STRING"
+    assert func_info.comment == "A function that takes two arguments and returns a string."
+
+    result = uc_client.execute_function(function_name=full_name, parameters={"a": 15, "b": "test"})
+    assert result.value == "25 str value: test"
+    assert result.error is None
+
+
+@pytest.mark.asyncio
+async def test_create_wrapped_function_non_callable_primary(uc_client: UnitycatalogFunctionClient):
+    primary_func = "not_a_function"
+    wrapped_functions = [int_func_no_doc, str_func_no_doc]
+    catalog = CATALOG
+    schema = SCHEMA
+
+    with pytest.raises(ValueError, match="The provided primary function is not callable."):
+        await uc_client.create_wrapped_function_async(
+            primary_func=primary_func,
+            functions=wrapped_functions,
+            catalog=catalog,
+            schema=schema,
+        )
+
+
+@pytest.mark.asyncio
+async def test_create_wrapped_function_long_name(uc_client: UnitycatalogFunctionClient):
+    primary_func = wrap_func_no_doc
+    wrapped_functions = [int_func_no_doc, str_func_no_doc]
+    catalog = CATALOG
+    schema = SCHEMA
+    long_callable_name = "a" * 256
+
+    def long_named_func(a, b):
+        return a + b
+
+    primary_func.__name__ = long_callable_name
+    try:
+        with pytest.raises(ValueError, match="The maximum length of a function name"):
+            await uc_client.create_wrapped_function_async(
+                primary_func=primary_func,
+                functions=wrapped_functions,
+                catalog=catalog,
+                schema=schema,
+            )
+    finally:
+        primary_func.__name__ = "wrap_func_no_doc"
+
+
+@pytest.mark.asyncio
+async def test_create_wrapped_function_invalid_catalog_or_schema(
+    uc_client: UnitycatalogFunctionClient,
+):
+    primary_func = wrap_func_no_doc
+    wrapped_functions = [int_func_no_doc, str_func_no_doc]
+    invalid_catalog = "NonExistentCatalog"
+    invalid_schema = "NonExistentSchema"
+
+    with pytest.raises(NotFoundException, match="Catalog not found"):
+        await uc_client.create_wrapped_function_async(
+            primary_func=primary_func,
+            functions=wrapped_functions,
+            catalog=invalid_catalog,
+            schema=SCHEMA,
+            replace=True,
+        )
+
+    with pytest.raises(NotFoundException, match="Schema not found"):
+        await uc_client.create_wrapped_function_async(
+            primary_func=primary_func,
+            functions=wrapped_functions,
+            catalog=CATALOG,
+            schema=invalid_schema,
+        )
+
+
+@pytest.mark.asyncio
+async def test_function_with_variant_param_raises_in_oss(uc_client):
+    def func_variant_param(a: Variant) -> str:
+        """
+        A function that accepts a VARIANT parameter.
+
+        Args:
+            a (Variant): A variant parameter.
+
+        Returns:
+            str: The JSON string representation of the variant.
+        """
+        import json
+
+        return json.dumps(a)
+
+    with pytest.raises(ValueError, match="Variant type is not supported for function parameters"):
+        uc_client.create_python_function(
+            func=func_variant_param, catalog=CATALOG, schema=SCHEMA, replace=True
+        )
+
+
+# --------------------------
+# Test default parameter handling
+# --------------------------
+
+
+def test_create_function_with_default_params(uc_client: UnitycatalogFunctionClient):
+    def func_with_defaults(a: int, b: str = "default") -> str:
+        """
+        A function that concatenates an integer and a string with a default string value.
+
+        Args:
+            a (int): An integer.
+            b (str, optional): A string. Defaults to "default".
+
+        Returns:
+            str: The concatenated string.
+        """
+        return f"{a} {b}"
+
+    full_name = f"{CATALOG}.{SCHEMA}.func_with_defaults"
+
+    uc_client.create_python_function(
+        func=func_with_defaults, catalog=CATALOG, schema=SCHEMA, replace=True
+    )
+
+    result = uc_client.execute_function(function_name=full_name, parameters={"a": 10})
+    assert result.value == "10 default"
+
+    result = uc_client.execute_function(function_name=full_name, parameters={"a": 20, "b": "test"})
+    assert result.value == "20 test"
+
+
+def test_create_function_with_all_defaults(uc_client: UnitycatalogFunctionClient):
+    def func_with_all_defaults(
+        a: int = 1, b: str = "default", c: float = 3.14, d: bool = True
+    ) -> str:
+        """
+        A function that concatenates various types with default values.
+
+        Args:
+            a (int, optional): An integer. Defaults to 1.
+            b (str, optional): A string. Defaults to "default".
+            c (float, optional): A float. Defaults to 3.14.
+            d (bool, optional): A boolean. Defaults to True.
+
+        Returns:
+            str: The concatenated string.
+        """
+        return f"{a} {b} {c} {d}"
+
+    full_name = f"{CATALOG}.{SCHEMA}.func_with_all_defaults"
+
+    uc_client.create_python_function(
+        func=func_with_all_defaults, catalog=CATALOG, schema=SCHEMA, replace=True
+    )
+
+    result = uc_client.execute_function(function_name=full_name, parameters={})
+    assert result.value == "1 default 3.14 True"
+
+    result = uc_client.execute_function(
+        function_name=full_name,
+        parameters={"a": 10, "b": "test", "c": 2.71, "d": False},
+    )
+    assert result.value == "10 test 2.71 False"
+
+    result = uc_client.execute_function(
+        function_name=full_name,
+    )
+    assert result.value == "1 default 3.14 True"
+
+
+def test_create_function_no_params(uc_client: UnitycatalogFunctionClient):
+    def func_no_params() -> str:
+        """
+        A function that returns a static string.
+
+        Returns:
+            str: A static string.
+        """
+        return "No parameters here!"
+
+    full_name = f"{CATALOG}.{SCHEMA}.func_no_params"
+
+    uc_client.create_python_function(
+        func=func_no_params, catalog=CATALOG, schema=SCHEMA, replace=True
+    )
+
+    result = uc_client.execute_function(function_name=full_name, parameters={})
+    assert result.value == "No parameters here!"
+
+    with pytest.raises(ValueError, match="Function does not have input parameters, but parameters"):
+        uc_client.execute_function(function_name=full_name, parameters={"unexpected": "value"})
+
+
+def test_create_function_with_none_param_default(uc_client: UnitycatalogFunctionClient):
+    def null_func(a: Optional[str] = None) -> str:
+        """
+        A function that returns the string representation of its input.
+
+        Args:
+            a (Optional[str], optional): An optional string. Defaults to None.
+
+        Returns:
+            str: The string representation of the input.
+        """
+        return str(a)
+
+    full_name = f"{CATALOG}.{SCHEMA}.null_func"
+    uc_client.create_python_function(func=null_func, catalog=CATALOG, schema=SCHEMA, replace=True)
+    result = uc_client.execute_function(function_name=full_name, parameters={})
+    assert result.value == "None"

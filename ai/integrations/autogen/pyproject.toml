@@ -1,6 +1,6 @@
 [project]
 name = "unitycatalog-autogen"
-version = "0.1.1"
+version = "0.2.0"
 description = "Support for Unity Catalog functions as autogen tools"
 authors = [
     { name="Puneet Jain", email="puneet.jain@databricks.com" }
@@ -14,7 +14,6 @@ dependencies = [
     "openai>=1.46.1",
     "unitycatalog-ai",
     "pydantic<3,>=2",
-    "pyautogen<0.4.0"
 ]
 
 [project.optional-dependencies]
@@ -62,7 +61,7 @@ select = [
   "T201",
   "T203",
   # misuse of typing.TYPE_CHECKING
-  "TCH004",
+  "TC004",
   # import rules
   "TID251",
   # undefined-local-with-import-star
