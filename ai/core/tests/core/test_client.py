@@ -75,6 +75,10 @@ class MockClient(BaseFunctionClient):
     def to_dict(self):
         return {}
 
+    @override
+    def get_python_callable(self):
+        return ""
+
 
 @pytest.fixture
 def client():

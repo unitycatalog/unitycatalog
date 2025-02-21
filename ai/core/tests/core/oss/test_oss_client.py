@@ -1432,3 +1432,57 @@ def test_create_function_with_none_param_default(uc_client: UnitycatalogFunction
     uc_client.create_python_function(func=null_func, catalog=CATALOG, schema=SCHEMA, replace=True)
     result = uc_client.execute_function(function_name=full_name, parameters={})
     assert result.value == "None"
+
+
+def test_get_python_callable_integration_complex(uc_client: UnitycatalogFunctionClient):
+    def complex_python_func(
+        a: int,
+        b: float,
+        c: str,
+        d: bool,
+        e: list[str],
+        f: dict[str, int],
+        h: dict[str, list[int]],
+        i: dict[str, list[dict[str, list[int]]]],
+    ) -> dict[str, list[str]]:
+        """
+        A complex function that processes various types.
+
+        Args:
+            a: an int
+            b: a float
+            c: a string
+            d: a bool
+            e: a list of strings
+            f: a dict mapping strings to ints
+            h: a dict mapping strings to lists of ints
+            i: a dict mapping strings to lists of dicts mapping strings to lists of ints
+
+        Returns:
+            dict[str, list[str]]: A dictionary with a single key "result" and a list of string representations.
+        """
+
+        def _helper(x: float) -> int:
+            return int(x) + a
+
+        return {"result": [str(a), str(b), c, str(d), ",".join(e), str(f), str(h), str(i)]}
+
+    function_name = f"{CATALOG}.{SCHEMA}.complex_python_func"
+    uc_client.create_python_function(
+        func=complex_python_func, catalog=CATALOG, schema=SCHEMA, replace=True
+    )
+    callable_def = uc_client.get_python_callable(function_name)
+
+    # NB: OSS Unity Catalog does not support collection inner type definitions, so the outer container type
+    # is the only type indicator we can extract. (Compare to the Databricks integration test of the same name)
+    # for context on what is available in the Databricks Unity Catalog FunctionInfo object.
+    expected_header = (
+        "def complex_python_func(a: int, b: float, c: str, d: bool, e: list, "
+        "f: dict, h: dict, i: dict) -> dict[str, list[str]]:"
+    )
+
+    assert expected_header in callable_def
+    assert "def _helper(x: float) -> int:" in callable_def
+    assert "return {" in callable_def and '"result": [' in callable_def
+    assert "Args:" in callable_def
+    assert "Returns:" in callable_def

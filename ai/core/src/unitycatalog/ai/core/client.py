@@ -12,6 +12,9 @@ from typing_extensions import override
 
 from unitycatalog.ai.core.base import BaseFunctionClient, FunctionExecutionResult
 from unitycatalog.ai.core.paged_list import PagedList
+from unitycatalog.ai.core.utils.callable_utils import (
+    dynamically_construct_python_function,
+)
 from unitycatalog.ai.core.utils.callable_utils_oss import (
     generate_function_info,
     generate_wrapped_function_info,
@@ -845,7 +848,7 @@ class UnitycatalogFunctionClient(BaseFunctionClient):
             except Exception as e:
                 return FunctionExecutionResult(error=str(e))
         else:
-            python_function = dynamically_construct_python_function(function_info)
+            python_function = _get_callable_definition(function_info)
             exec(python_function, self.func_cache)
             try:
                 func = self.func_cache[function_info.name]
@@ -907,30 +910,32 @@ class UnitycatalogFunctionClient(BaseFunctionClient):
         elements = ["uc"]
         return {k: getattr(self, k) for k in elements if getattr(self, k) is not None}
 
+    @override
+    def get_python_callable(self, function_name: str, base_indent_level: int = 4) -> str:
+        """
+        Returns the Python callable definition as a string for an EXTERNAL Python function that
+        is stored within Unity Catalog. This function can only parse and extract the full callable
+        definition for Python functions and cannot be used on SQL or TABLE functions.
 
-def dynamically_construct_python_function(function_info: FunctionInfo) -> str:
-    """
-    Construct a Python function from the given FunctionInfo.
+        NOTE: If the returned string representation of the function is not indented correctly,
+        override the `base_indent_level` parameter to adjust the indentation level of the function.
+        The default is `4` spaces, but Python allows for `2` spaces as a standard indentation as well.
 
-    Args:
-        function_info: The FunctionInfo object containing the function metadata.
+        Args:
+            function_name: The name of the function to retrieve the Python callable definition for.
+            base_indent_level: The base indentation level for the function definition. Defaults to 4.
 
-    Returns:
-        The re-constructed function definition.
-    """
-
-    param_names = []
-    if function_info.input_params and function_info.input_params.parameters:
-        param_names = [param.name for param in function_info.input_params.parameters]
-    function_head = f"{function_info.name}({', '.join(param_names)})"
-    func_def = f"def {function_head}:\n"
-    if function_info.routine_body == "EXTERNAL":
-        for line in function_info.routine_definition.split("\n"):
-            func_def += f"    {line}\n"
-    else:
-        raise NotImplementedError(f"routine_body {function_info.routine_body} not supported")
-
-    return func_def
+        Returns:
+            str: The Python callable definition as a string.
+        """
+        function_info = self.get_function(function_name)
+        if function_info.routine_body != "EXTERNAL":
+            raise ValueError(
+                f"Function {function_name} is not an EXTERNAL Python function and cannot be retrieved."
+            )
+        return dynamically_construct_python_function(
+            function_info=function_info, base_indent_level=base_indent_level
+        )
 
 
 def validate_input_parameter(
@@ -1002,3 +1007,31 @@ def validate_param(param: Any, column_type: str, param_type_text: str) -> None:
             f"Invalid interval type text: {param_type_text}, expecting 'interval day to second', "
             "python timedelta can only be used for day-time interval."
         )
+
+
+def _get_callable_definition(function_info: FunctionInfo) -> str:
+    """
+    Construct a Python function from the given FunctionInfo without docstring, comments, or types.
+    This funciton is purely used for local function execution encapsulated within a call to
+    `execute_function` and is not intended to be used for retrieving a callable definition.
+    Use `get_python_callable` instead.
+
+    Args:
+        function_info: The FunctionInfo object containing the function metadata.
+
+    Returns:
+        The minimal re-constructed function definition.
+    """
+
+    param_names = []
+    if function_info.input_params and function_info.input_params.parameters:
+        param_names = [param.name for param in function_info.input_params.parameters]
+    function_head = f"{function_info.name}({', '.join(param_names)})"
+    func_def = f"def {function_head}:\n"
+    if function_info.routine_body == "EXTERNAL":
+        for line in function_info.routine_definition.split("\n"):
+            func_def += f"    {line}\n"
+    else:
+        raise NotImplementedError(f"routine_body {function_info.routine_body} not supported")
+
+    return func_def

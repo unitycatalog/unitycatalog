@@ -787,6 +787,11 @@ def _recursively_parse_type(type_info: Any) -> str:
     """
     if not isinstance(type_info, dict):
         mapped = SQL_TYPE_TO_PYTHON_TYPE_MAPPING.get(str(type_info).upper(), None)
+        # NB: OSS Unity Catalog doesn't retain the inner subtypes for collections
+        # so the logic below for handling arrays and maps is unnecessary.
+        # We can only retrieve the outer type and will short circuit early here.
+        if isinstance(mapped, tuple):
+            mapped = mapped[0]
         return mapped.__name__ if mapped else "Any"
 
     t = type_info.get("type")
@@ -936,3 +941,47 @@ def reconstruct_docstring(function_info: "FunctionInfo", max_width: int = 100) -
 
     indented_doc = "\n".join("    " + line for line in doc_lines)
     return f'    """\n{indented_doc}\n    """\n'
+
+
+def dynamically_construct_python_function(
+    function_info: "FunctionInfo", base_indent_level: int = 0
+) -> str:
+    """
+    Construct a Python function from the given FunctionInfo object.
+
+    Note: This function will not recreate the original docstring of the function.
+
+    Args:
+        function_info: The FunctionInfo object containing the function metadata.
+
+    Returns:
+        The re-constructed function definition as a string.
+    """
+    param_names = []
+    if function_info.input_params and function_info.input_params.parameters:
+        for param in function_info.input_params.parameters:
+            param_names.append(extract_collection_types(param))
+    return_type = parse_full_sql_data_type_for_return_type(function_info.full_data_type)
+    function_head = f"{function_info.name}({', '.join(param_names)}) -> {return_type}"
+    func_def = f"def {function_head}:\n"
+
+    docstring = reconstruct_docstring(function_info)
+    if docstring:
+        func_def += docstring
+
+    if isinstance(function_info.routine_body, str):
+        function_type = function_info.routine_body
+    else:
+        function_type = function_info.routine_body.value
+
+    indent = " " * base_indent_level
+
+    if function_type == "EXTERNAL":
+        for line in function_info.routine_definition.split("\n"):
+            func_def += f"{indent}{line}\n"
+    else:
+        raise NotImplementedError(
+            f"routine_body {function_info.routine_body} is not supported. Only 'EXTERNAL' Python body extraction is supported."
+        )
+
+    return func_def
