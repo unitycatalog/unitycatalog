@@ -24,6 +24,7 @@ PYTHON_TO_SQL_TYPE_MAPPING = {
 SQL_TYPE_TO_PYTHON_TYPE_MAPPING = {
     # numpy array is not accepted, it's not json serializable
     "ARRAY": (list, tuple),
+    "BIGINT": int,
     "BINARY": (bytes, str),
     "BOOLEAN": bool,
     # tinyint type

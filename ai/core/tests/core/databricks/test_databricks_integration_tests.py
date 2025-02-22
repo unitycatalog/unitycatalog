@@ -639,3 +639,56 @@ def test_execute_python_function_no_params_databricks(client: DatabricksFunction
             ValueError, match="Function does not have input parameters, but parameters"
         ):
             client.execute_function(func_obj.full_function_name, parameters={"unexpected": "value"})
+
+
+@retry_flaky_test()
+@requires_databricks
+def test_get_python_callable_integration_complex(client: DatabricksFunctionClient):
+    def complex_python_func(
+        a: int,
+        b: float,
+        c: str,
+        d: bool,
+        e: list[str],
+        f: dict[str, int],
+        g: Variant,
+        h: dict[str, list[int]],
+        i: dict[str, list[dict[str, list[int]]]],
+    ) -> dict[str, list[str]]:
+        """
+        A complex function that processes various types.
+
+        Args:
+            a: an int
+            b: a float
+            c: a string
+            d: a bool
+            e: a list of strings
+            f: a dict mapping strings to ints
+            g: a variant value
+            h: a dict mapping strings to lists of ints
+            i: a dict mapping strings to lists of dicts mapping strings to lists of ints
+
+        Returns:
+            dict[str, list[str]]: A dictionary with a single key "result" and a list of string representations.
+        """
+
+        def _helper(x: float) -> int:
+            return int(x) + a
+
+        return {"result": [str(a), str(b), c, str(d), ",".join(e), str(f), str(g), str(h), str(i)]}
+
+    with create_python_function_and_cleanup(client, func=complex_python_func, schema=SCHEMA):
+        function_name = f"{CATALOG}.{SCHEMA}.complex_python_func"
+        callable_def = client.get_function_source(function_name)
+
+        expected_header = (
+            "def complex_python_func(a: int, b: float, c: str, d: bool, e: list[str], "
+            "f: dict[str, int], g: Variant, h: dict[str, list[int]], i: dict[str, list[dict[str, list[int]]]]) -> dict[str, list[str]]:"
+        )
+
+        assert expected_header in callable_def
+        assert "def _helper(x: float) -> int:" in callable_def
+        assert "return {" in callable_def and '"result": [' in callable_def
+        assert "Args:" in callable_def
+        assert "Returns:" in callable_def

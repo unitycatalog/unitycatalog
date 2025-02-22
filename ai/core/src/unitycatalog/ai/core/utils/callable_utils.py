@@ -3,7 +3,7 @@ import inspect
 import json
 import warnings
 from dataclasses import dataclass
-from textwrap import dedent, indent
+from textwrap import dedent, fill, indent
 from typing import (
     Any,
     Callable,
@@ -18,7 +18,10 @@ from typing import (
 )
 
 from unitycatalog.ai.core.utils.docstring_utils import DocstringInfo, parse_docstring
-from unitycatalog.ai.core.utils.type_utils import python_type_to_sql_type
+from unitycatalog.ai.core.utils.type_utils import (
+    SQL_TYPE_TO_PYTHON_TYPE_MAPPING,
+    python_type_to_sql_type,
+)
 
 FORBIDDEN_PARAMS = ["self", "cls"]
 
@@ -769,3 +772,266 @@ def check_docstring_signature_consistency(
             UserWarning,
             stacklevel=2,
         )
+
+
+def _recursively_parse_type(type_info: Any) -> str:
+    """
+    Recursively parse a SQL type definition (provided either as a dict or a string)
+    into a Python type annotation string.
+
+    Args:
+        type_info: A dict containing the type information, or a simple string.
+
+    Returns:
+        A string representing the Python type.
+    """
+    if not isinstance(type_info, dict):
+        mapped = SQL_TYPE_TO_PYTHON_TYPE_MAPPING.get(str(type_info).upper(), None)
+        # NB: OSS Unity Catalog doesn't retain the inner subtypes for collections
+        # so the logic below for handling arrays and maps is unnecessary.
+        # We can only retrieve the outer type and will short circuit early here.
+        if isinstance(mapped, tuple):
+            mapped = mapped[0]
+        return mapped.__name__ if mapped else "Any"
+
+    t = type_info.get("type")
+    if not t:
+        return "Any"
+    t_lower = str(t).lower()
+
+    if t_lower == "array":
+        element = type_info.get("elementType")
+        return f"list[{_get_mapped_value(element)}]"
+    elif t_lower == "map":
+        key = type_info.get("keyType")
+        value = type_info.get("valueType")
+        return f"dict[{_get_mapped_value(key)}, {_get_mapped_value(value)}]"
+    elif t_lower == "struct":
+        return "dict"
+    else:
+        mapped = SQL_TYPE_TO_PYTHON_TYPE_MAPPING.get(str(t).upper(), None)
+        return mapped.__name__ if mapped else "Any"
+
+
+def _get_mapped_value(x: Any) -> str:
+    """
+    Helper function to get the Python type as a string for a given SQL type.
+    If x is a dict, it recursively parses it; otherwise, it maps the type via SQL_TYPE_TO_PYTHON_TYPE_MAPPING.
+    """
+    if isinstance(x, dict):
+        return _recursively_parse_type(x)
+    else:
+        mapped = SQL_TYPE_TO_PYTHON_TYPE_MAPPING.get(str(x).upper(), None)
+        return mapped.__name__ if mapped else "Any"
+
+
+def _extract_collection_types(param_info: "FunctionParameterInfo") -> str:
+    """
+    Given a FunctionParameterInfo, extract its type annotation as a string,
+    recursively handling collection types.
+    """
+    type_dict = json.loads(param_info.type_json)
+    parsed_type = _recursively_parse_type(type_dict["type"])
+    return f"{param_info.name}: {parsed_type}"
+
+
+def _split_generic_types(s: str) -> list[str]:
+    """
+    Split a generic type string into its components, ignoring commas inside nested generics.
+    For example, "STRING, ARRAY<STRING>, MAP<STRING, INT>" becomes
+    ["STRING", "ARRAY<STRING>", "MAP<STRING, INT>"].
+    """
+    parts = []
+    current_chars = []
+    depth = 0
+    for ch in s:
+        if ch == "<":
+            depth += 1
+        elif ch == ">":
+            depth -= 1
+
+        if ch == "," and depth == 0:
+            parts.append("".join(current_chars).strip())
+            current_chars = []
+        else:
+            current_chars.append(ch)
+    if current_chars:
+        parts.append("".join(current_chars).strip())
+    return parts
+
+
+def _parse_full_sql_data_type_for_return_type(type_str: str) -> str:
+    """
+    Convert a full SQL type string (e.g. "MAP<STRING, ARRAY<STRING>>")
+    into a Python type annotation string (e.g. "dict[str, list[str]]").
+    """
+    type_str = type_str.strip()
+
+    if "<" not in type_str:
+        mapped = SQL_TYPE_TO_PYTHON_TYPE_MAPPING.get(type_str.upper())
+        return mapped.__name__ if mapped else type_str.lower()
+
+    outer, inner = type_str.split("<", 1)
+    outer = outer.strip().upper()
+    inner = inner.rsplit(">", 1)[0].strip()
+
+    parts = _split_generic_types(inner)
+
+    # recurse
+    parsed_parts = [_parse_full_sql_data_type_for_return_type(part) for part in parts]
+
+    if outer == "ARRAY":
+        return f"list[{parsed_parts[0]}]"
+    elif outer == "MAP":
+        return f"dict[{parsed_parts[0]}, {parsed_parts[1]}]"
+    elif outer == "STRUCT":
+        return "dict"
+    else:
+        return f"{outer.lower()}[{', '.join(parsed_parts)}]"
+
+
+def _reconstruct_docstring(function_info: "FunctionInfo", max_width: int = 100) -> str:
+    """
+    Reconstruct a Google-style docstring from a FunctionInfo object.
+
+    This function rebuilds:
+      - The function description from function_info.comment.
+      - An "Args:" section from each parameter's comment.
+      - A "Returns:" section using the return type (from full_data_type).
+
+    Each section is word-wrapped to a maximum width of `max_width` characters,
+    wrapping only at full words.
+
+    Returns:
+        A string representing the reconstructed docstring (with triple quotes and proper indentation).
+    """
+    doc_lines = []
+
+    # Overall function description.
+    if hasattr(function_info, "comment") and function_info.comment:
+        description = function_info.comment.strip()
+        wrapped_description = fill(description, width=max_width)
+        doc_lines.append(wrapped_description)
+
+    # Build the Args: section.
+    if function_info.input_params and function_info.input_params.parameters:
+        doc_lines.append("")  # Blank line.
+        doc_lines.append("Args:")
+        for param in function_info.input_params.parameters:
+            param_comment = (
+                param.comment.strip() if hasattr(param, "comment") and param.comment else ""
+            )
+            arg_line = f"{param.name}: {param_comment}"
+            wrapped_arg = fill(
+                arg_line, width=max_width, initial_indent="    ", subsequent_indent="    "
+            )
+            doc_lines.append(wrapped_arg)
+
+    # Build the Returns: section.
+    return_type_str = _parse_full_sql_data_type_for_return_type(function_info.full_data_type)
+    doc_lines.append("")
+    doc_lines.append("Returns:")
+    wrapped_return = fill(
+        return_type_str, width=max_width, initial_indent="    ", subsequent_indent="    "
+    )
+    doc_lines.append(wrapped_return)
+
+    if not doc_lines:
+        return ""
+
+    indented_doc = "\n".join("    " + line for line in doc_lines)
+    return f'    """\n{indented_doc}\n    """\n'
+
+
+def _parse_routine_definition(routine_definition: str) -> str:
+    """
+    Normalize the indentation of a function body to a standard 4-space indent.
+
+    This function processes a raw routine definition string by:
+      1. Dedenting the entire block (using textwrap.dedent) to remove any common
+         leading whitespace.
+      2. Splitting the dedented text into lines.
+      3. Determining the "standard" indent (i.e. the minimum nonzero indent among lines).
+      4. Calculating an indent factor as int(4 / indent_standard) to scale the original
+         indentation to a 4-space baseline.
+      5. For each nonempty line, computing the new indent level as:
+             new_indent = (original indent) * indent_factor
+         and reformatting the line with that indent (using line.strip() to remove trailing
+         whitespace).
+      6. Finally, reindenting the entire block by an additional 4 spaces (for overall nesting).
+
+    NB:
+      - The methodology assumes that the smallest nonzero indent found in the block
+        represents the "unit" of indentation in the original text.
+      - If such an indent is found, the indent_factor scales all indentations so that the
+        unit becomes 4 spaces. For example, if the original unit is 2 spaces, the factor will
+        be 2 (i.e. 4 / 2), converting a 2-space indent to 4 spaces and a 6-space indent to 12 spaces.
+      - If no nonzero indent is found (i.e. baseline is 0), the indent_factor defaults to 1,
+        and every nonempty line is given a fixed indent of 4 spaces.
+      - This approach preserves the relative indentation of nested blocks while standardizing
+        the overall appearance of the function body.
+
+    Args:
+        routine_definition (str): The raw routine definition string with its original indentation.
+
+    Returns:
+        str: The normalized function body, where each nonempty line is reindented based on a 4-space standard.
+    """
+    dedented = dedent(routine_definition).rstrip()
+    lines = dedented.splitlines()
+
+    indent_standard = min(
+        [len(line) - len(line.lstrip()) for line in lines if len(line.lstrip()) < len(line)],
+        default=0,
+    )
+    indent_factor = int(4 / indent_standard) if indent_standard > 0 else 1
+    normalized_lines = []
+    for line in lines:
+        if line.strip():
+            indent_level = (len(line) - len(line.lstrip())) * indent_factor
+            normalized_lines.append(" " * indent_level + line.strip())
+        else:
+            normalized_lines.append("")
+    return indent("\n".join(normalized_lines), " " * 4)
+
+
+def dynamically_construct_python_function(
+    function_info: "FunctionInfo",
+) -> str:
+    """
+    Construct a Python function from the given FunctionInfo object.
+
+    Note: This function will not recreate the original docstring of the function.
+
+    Args:
+        function_info: The FunctionInfo object containing the function metadata.
+
+    Returns:
+        The re-constructed function definition as a string.
+    """
+    if isinstance(function_info.routine_body, str):
+        function_type = function_info.routine_body
+    else:
+        function_type = function_info.routine_body.value
+
+    if function_type != "EXTERNAL":
+        raise NotImplementedError(
+            f"routine_body {function_type} is not supported. Only 'EXTERNAL' Python body extraction is supported."
+        )
+
+    param_names = []
+    if function_info.input_params and function_info.input_params.parameters:
+        for param in function_info.input_params.parameters:
+            param_names.append(_extract_collection_types(param))
+    return_type = _parse_full_sql_data_type_for_return_type(function_info.full_data_type)
+    function_head = f"{function_info.name}({', '.join(param_names)}) -> {return_type}"
+    func_def = f"def {function_head}:\n"
+
+    docstring = _reconstruct_docstring(function_info)
+    if docstring:
+        func_def += docstring
+
+    adjusted_body = _parse_routine_definition(function_info.routine_definition)
+    func_def += adjusted_body + "\n"
+
+    return func_def
