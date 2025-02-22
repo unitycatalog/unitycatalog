@@ -911,19 +911,17 @@ class UnitycatalogFunctionClient(BaseFunctionClient):
         return {k: getattr(self, k) for k in elements if getattr(self, k) is not None}
 
     @override
-    def get_python_callable(self, function_name: str, base_indent_level: int = 4) -> str:
+    def get_function_source(self, function_name: str) -> str:
         """
         Returns the Python callable definition as a string for an EXTERNAL Python function that
         is stored within Unity Catalog. This function can only parse and extract the full callable
         definition for Python functions and cannot be used on SQL or TABLE functions.
 
-        NOTE: If the returned string representation of the function is not indented correctly,
-        override the `base_indent_level` parameter to adjust the indentation level of the function.
-        The default is `4` spaces, but Python allows for `2` spaces as a standard indentation as well.
+        NOTE: To unify the behavior of creating a valid Python callable, existing indentation in the
+        stored function body will be unified to a consistent indentation level of `4` spaces.
 
         Args:
             function_name: The name of the function to retrieve the Python callable definition for.
-            base_indent_level: The base indentation level for the function definition. Defaults to 4.
 
         Returns:
             str: The Python callable definition as a string.
@@ -933,9 +931,7 @@ class UnitycatalogFunctionClient(BaseFunctionClient):
             raise ValueError(
                 f"Function {function_name} is not an EXTERNAL Python function and cannot be retrieved."
             )
-        return dynamically_construct_python_function(
-            function_info=function_info, base_indent_level=base_indent_level
-        )
+        return dynamically_construct_python_function(function_info=function_info)
 
 
 def validate_input_parameter(

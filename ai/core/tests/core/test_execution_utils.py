@@ -10,7 +10,7 @@ def add_numbers(a: int, b: int) -> int:
     return a + b
 """
     test_namespace = {}
-    func = load_function_from_string(func_str, register_global=True, namespace=test_namespace)
+    func = load_function_from_string(func_str, register_function=True, namespace=test_namespace)
     assert callable(func)
     assert func.__name__ == "add_numbers"
     assert "add_numbers" in test_namespace
@@ -26,7 +26,7 @@ def multiply_numbers(a: int, b: int) -> int:
 """
     globals().pop("multiply_numbers", None)
 
-    func = load_function_from_string(func_str, register_global=False)
+    func = load_function_from_string(func_str, register_function=False)
     assert callable(func)
     assert func.__name__ == "multiply_numbers"
     assert globals().get("multiply_numbers") is None
@@ -46,7 +46,7 @@ def greet(name: str) -> str:
     return f"Hello, {name}!"
 """
     globals().pop("greet", None)
-    func = load_function_from_string(func_str, register_global=False)
+    func = load_function_from_string(func_str, register_function=False)
     assert func.__name__ == "greet"
     assert func("Alice") == "Hello, Alice!"
     assert globals().get("greet") is None

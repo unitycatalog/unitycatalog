@@ -680,7 +680,7 @@ def test_get_python_callable_integration_complex(client: DatabricksFunctionClien
 
     with create_python_function_and_cleanup(client, func=complex_python_func, schema=SCHEMA):
         function_name = f"{CATALOG}.{SCHEMA}.complex_python_func"
-        callable_def = client.get_python_callable(function_name)
+        callable_def = client.get_function_source(function_name)
 
         expected_header = (
             "def complex_python_func(a: int, b: float, c: str, d: bool, e: list[str], "

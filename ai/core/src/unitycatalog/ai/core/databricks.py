@@ -744,7 +744,7 @@ class DatabricksFunctionClient(BaseFunctionClient):
         return cls(**{k: v for k, v in config.items() if k in accept_keys})
 
     @override
-    def get_python_callable(self, function_name: str) -> str:
+    def get_function_source(self, function_name: str) -> str:
         """
         Returns the Python callable definition as a string for an EXTERNAL Python function that
         is stored within Unity Catalog. This function can only parse and extract the full callable

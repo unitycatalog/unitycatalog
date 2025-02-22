@@ -1433,7 +1433,7 @@ def test_get_python_callable_valid(mock_workspace_client):
     client = DatabricksFunctionClient(client=mock_workspace_client)
     client.get_function = MagicMock(return_value=fake_function_info)
 
-    result = client.get_python_callable("my_func")
+    result = client.get_function_source("my_func")
     assert "def my_func(x: int) -> str:" in result
     assert '"""' in result
     assert "A function that doubles the input" in result
@@ -1458,7 +1458,7 @@ def test_get_python_callable_non_external(mock_workspace_client):
     client.get_function = MagicMock(return_value=fake_function_info)
 
     with pytest.raises(ValueError, match="is not an EXTERNAL Python function"):
-        client.get_python_callable("non_external_func")
+        client.get_function_source("non_external_func")
 
 
 def test_get_python_callable_multiline(mock_workspace_client):
@@ -1474,7 +1474,7 @@ def test_get_python_callable_multiline(mock_workspace_client):
 
     client.get_function = MagicMock(return_value=fake_function_info)
 
-    result = client.get_python_callable("multi_line_func")
+    result = client.get_function_source("multi_line_func")
     assert "def multi_line_func() -> str:" in result
     assert "line1" in result
     assert "line2" in result

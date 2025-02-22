@@ -76,7 +76,7 @@ class MockClient(BaseFunctionClient):
         return {}
 
     @override
-    def get_python_callable(self):
+    def get_function_source(self):
         return ""
 
 

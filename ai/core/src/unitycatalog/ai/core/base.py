@@ -223,7 +223,7 @@ class BaseFunctionClient(ABC):
         """
 
     @abstractmethod
-    def get_python_callable(self, function_name: str) -> str:
+    def get_function_source(self, function_name: str) -> str:
         """
         Get the Python callable definition reconstructed from Unity Catalog
           for a function by its name. The return of this method is a string

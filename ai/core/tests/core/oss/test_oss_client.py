@@ -1471,7 +1471,7 @@ def test_get_python_callable_integration_complex(uc_client: UnitycatalogFunction
     uc_client.create_python_function(
         func=complex_python_func, catalog=CATALOG, schema=SCHEMA, replace=True
     )
-    callable_def = uc_client.get_python_callable(function_name)
+    callable_def = uc_client.get_function_source(function_name)
 
     # NB: OSS Unity Catalog does not support collection inner type definitions, so the outer container type
     # is the only type indicator we can extract. (Compare to the Databricks integration test of the same name)
@@ -1486,3 +1486,106 @@ def test_get_python_callable_integration_complex(uc_client: UnitycatalogFunction
     assert "return {" in callable_def and '"result": [' in callable_def
     assert "Args:" in callable_def
     assert "Returns:" in callable_def
+
+
+def test_get_python_callable_integration_standard_indent(uc_client: UnitycatalogFunctionClient):
+    def simple_func(a: int, b: int) -> int:
+        """
+        A simple test function.
+
+        Args:
+          a: an int
+          b: an int
+
+        Returns:
+          int: The sum of a and b.
+        """
+
+        def _internal(x: int) -> int:
+            return x + a
+
+        return _internal(b)
+
+    function_name = f"{CATALOG}.{SCHEMA}.simple_func"
+
+    uc_client.create_python_function(func=simple_func, catalog=CATALOG, schema=SCHEMA, replace=True)
+
+    callable_def = uc_client.get_function_source(function_name)
+
+    expected_def = (
+        "def simple_func(a: int, b: int) -> int:\n"
+        '    """\n'
+        "    A simple test function.\n"
+        "    \n"
+        "    Args:\n"
+        "        a: an int\n"
+        "        b: an int\n"
+        "    \n"
+        "    Returns:\n"
+        "        int\n"
+        '    """\n'
+        "    def _internal(x: int) -> int:\n"
+        "        return x + a\n\n"
+        "    return _internal(b)\n"
+    )
+
+    # Assert exact match.
+    assert callable_def == expected_def, f"Expected:\n{expected_def}\nGot:\n{callable_def}"
+
+
+def test_get_python_callable_integration_complex(uc_client: UnitycatalogFunctionClient):
+    def complex_func(a: int, b: int) -> float:
+        """
+        A complex test function.
+
+        Args:
+          a: an int
+          b: an int
+
+        Returns:
+          int: The product of a and b plus 10.
+        """
+        import math
+
+        def _inner(x: int) -> int:
+            return x + 5
+
+        def _helper(y: int) -> int:
+            def _nested(z: int) -> int:
+                return z * 2
+
+            return _nested(y) + _inner(y)
+
+        return _helper(a) + math.sqrt(b)
+
+    function_name = f"{CATALOG}.{SCHEMA}.complex_func"
+
+    uc_client.create_python_function(
+        func=complex_func, catalog=CATALOG, schema=SCHEMA, replace=True
+    )
+
+    callable_def = uc_client.get_function_source(function_name)
+
+    expected_def = (
+        "def complex_func(a: int, b: int) -> float:\n"
+        '    """\n'
+        "    A complex test function.\n"
+        "    \n"
+        "    Args:\n"
+        "        a: an int\n"
+        "        b: an int\n"
+        "    \n"
+        "    Returns:\n"
+        "        float\n"
+        '    """\n'
+        "    import math\n\n"
+        "    def _inner(x: int) -> int:\n"
+        "        return x + 5\n\n"
+        "    def _helper(y: int) -> int:\n"
+        "        def _nested(z: int) -> int:\n"
+        "            return z * 2\n\n"
+        "        return _nested(y) + _inner(y)\n\n"
+        "    return _helper(a) + math.sqrt(b)\n"
+    )
+
+    assert callable_def == expected_def, f"Expected:\n{expected_def}\nGot:\n{callable_def}"
