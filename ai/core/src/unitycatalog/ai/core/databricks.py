@@ -208,7 +208,7 @@ def retry_on_session_expiration(func):
                         time.sleep(delay)
                         continue
                     else:
-                        refresh_failure_message = f"Failed to execute {func.__name__} after {max_attempts} attempts due to session expiration."
+                        refresh_failure_message = f"Failed to execute {func.__name__} after {max_attempts} attempts due to session expiration. Generate a new session_id by detaching and reattaching your compute."
                         raise RuntimeError(refresh_failure_message) from e
                 else:
                     raise
@@ -275,7 +275,7 @@ class DatabricksFunctionClient(BaseFunctionClient):
         self.client = get_default_databricks_workspace_client(profile=self.profile)
         if not _is_in_databricks_notebook_environment:
             self.stop_spark_session()
-            self.set_default_spark_session()
+        self.set_default_spark_session()
         self.spark = _try_get_spark_session_in_dbr()
 
     @retry_on_session_expiration
