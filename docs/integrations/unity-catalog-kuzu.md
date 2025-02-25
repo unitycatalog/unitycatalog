@@ -1,12 +1,39 @@
 # Unity Catalog Kuzu Integration
 
-[Kuzu](https://kuzudb.com/) is an embedded graph database built for query speed and scalability, and it supports the property graph data model and the Cypher query language.
+[Kuzu](https://kuzudb.com/) is an embedded graph database built for query speed and scalability. It supports the property graph data model and the Cypher query language.
 
 Download and install the precompiled binary
 for your OS as per the instructions shown [here](https://docs.kuzudb.com/installation/).
 The `unity_catalog` functionality in Kuzu is made available via an extension that allows you to attach to a Unity Catalog and perform scan/copy operations on Delta Lake tables.
 
-## Usage
+## Prerequisites
+
+To run the examples shown below, you need the following:
+
+- A running Unity Catalog server
+- Kuzu's [CLI](https://docs.kuzudb.com/installation/#command-line-shell) installed
+
+Follow the steps in the Unity Catalog [quickstart](https://docs.unitycatalog.io/quickstart/) docs to create a Unity Catalog server.
+
+```bash
+# Clone the repo
+> git clone git@github.com:unitycatalog/unitycatalog.git
+
+# Ensure you have Java 18+ installed
+> java -version
+openjdk version "23.0.2" 2025-01-21
+OpenJDK Runtime Environment Homebrew (build 23.0.2)
+OpenJDK 64-Bit Server VM Homebrew (build 23.0.2, mixed mode, sharing)
+
+# Run the Unity Catalog server
+> cd unitycatalog
+> bin/start-uc-server
+```
+
+Once the Unity Catalog server is running, you can proceed with the rest of this tutorial by leveraging
+the `unity` numbers table that is pre-defined in the Unity Catalog.
+
+## Using the Unity Catalog extension in Kuzu
 
 Kuzu's Unity Catalog extension can be installed and loaded by running the following commands using the Kuzu CLI
 or your preferred language client API:
@@ -17,7 +44,8 @@ LOAD EXTENSION unity_catalog;
 ```
 
 In the following example, we will attach to the `default` schema under the `unity` catalog and scan the `numbers` delta table.
-The table, schema and catalog are pre-defined in the Unity Catalog, so you don't have to create them.
+Note that the table, schema and catalog are pre-defined in the running Unity Catalog server, so you don't have to create them yourself.
+
 #### 1. Attach to Unity Catalog
 
 ```sql
@@ -27,6 +55,12 @@ ATTACH [CATALOG_NAME] AS [alias] (dbtype UC_CATALOG)
 - `CATALOG_NAME`: The catalog name to attach to in the Unity Catalog
 - `alias`: Database alias to use in Kuzu - If not provided, the catalog name will be used.
   When attaching multiple databases, it's recommended to use aliasing.
+
+For the example shown below, we will use the following command:
+
+```sql
+ATTACH 'unity' AS unity (dbtype UC_CATALOG);
+```
 
 **Note:** Kuzu attaches to the `default` schema under the given catalog name. Specifying a custom schema to attach to is not currently supported.
 
@@ -175,6 +209,8 @@ DETACH unity
 
 ## Contact
 
-Kuzu's Unity Catalog extension is in its early stages and may have unresolved issues from upstream
-as the Unity Catalog project itself matures. To address your specific issues or to discuss your use case further, please reach out to the Kuzu team on [Discord](https://kuzudb.com/chat). Alternatively,
-you can open an issue or discussion in the [GitHub](https://github.com/kuzudb/kuzu) repo.
+If you face any issues while using Kuzu's Unity Catalog extension, some of them might be from upstream
+and could be addressed by the Unity Catalog team as the project itself matures. To discuss your
+specific issues and your use cases related to graphs and Kuzu, please reach out to the Kuzu team
+on [Discord](https://kuzudb.com/chat). Alternatively,
+you can open an issue or discussion in our [GitHub](https://github.com/kuzudb/kuzu) repo.
