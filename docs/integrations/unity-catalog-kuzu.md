@@ -1,8 +1,9 @@
 # Unity Catalog Kuzu Integration
 
-[Kuzu](https://kuzudb.com/) is an embedded graph database built for query speed and scalability. It supports the property graph data model and the Cypher query language.
+[Kuzu](https://kuzudb.com/) is an embedded graph database built for query speed and scalability. It
+supports the property graph data model and the Cypher query language.
 
-Download and install the precompiled binary
+Download and install the precompiled binary of Kuzu
 for your OS as per the instructions shown [here](https://docs.kuzudb.com/installation/).
 The `unity_catalog` functionality in Kuzu is made available via an extension that allows you to attach to a Unity Catalog and perform scan/copy operations on Delta Lake tables.
 
@@ -25,7 +26,7 @@ openjdk version "23.0.2" 2025-01-21
 OpenJDK Runtime Environment Homebrew (build 23.0.2)
 OpenJDK 64-Bit Server VM Homebrew (build 23.0.2, mixed mode, sharing)
 
-# Run the Unity Catalog server
+# Run a local Unity Catalog server
 > cd unitycatalog
 > bin/start-uc-server
 ```
@@ -56,7 +57,7 @@ ATTACH [CATALOG_NAME] AS [alias] (dbtype UC_CATALOG)
 - `alias`: Database alias to use in Kuzu - If not provided, the catalog name will be used.
   When attaching multiple databases, it's recommended to use aliasing.
 
-For the example shown below, we will use the following command:
+For the example shown below, we will use the following command that attaches to the `default` schema under the `unity` catalog:
 
 ```sql
 ATTACH 'unity' AS unity (dbtype UC_CATALOG);
