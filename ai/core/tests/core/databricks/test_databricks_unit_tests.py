@@ -1392,9 +1392,9 @@ def test_execute_function_with_none_default_databricks(mock_workspace_client, mo
 
 
 class DummyParameter:
-    def __init__(self, name, type_json, comment):
+    def __init__(self, name: str, type_text: str, comment: str):
         self.name = name
-        self.type_json = type_json
+        self.type_text = type_text
         self.comment = comment
 
 
@@ -1486,104 +1486,48 @@ def complex_function_info():
     # Build parameters for a complex function.
     a = DummyParameter(
         "a",
-        '{"name": "a", "type": "long", "nullable": true, "metadata": {"comment": "an int"}}',
+        "LONG",
         "an int",
     )
     b = DummyParameter(
         "b",
-        '{"name": "b", "type": "double", "nullable": true, "metadata": {"comment": "a float"}}',
+        "DOUBLE",
         "a float",
     )
     c = DummyParameter(
         "c",
-        '{"name": "c", "type": "string", "nullable": true, "metadata": {"comment": "a string"}}',
+        "STRING",
         "a string",
     )
     d = DummyParameter(
         "d",
-        '{"name": "d", "type": "boolean", "nullable": true, "metadata": {"comment": "some bool"}}',
+        "BOOLEAN",
         "some bool",
     )
     e = DummyParameter(
         "e",
-        json.dumps(
-            {
-                "name": "e",
-                "type": {"type": "array", "elementType": "string", "containsNull": True},
-                "nullable": True,
-                "metadata": {"comment": "a list of str"},
-            }
-        ),
+        "ARRAY<STRING>",
         "a list of str",
     )
     f = DummyParameter(
         "f",
-        json.dumps(
-            {
-                "name": "f",
-                "type": {
-                    "type": "map",
-                    "keyType": "string",
-                    "valueType": "long",
-                    "valueContainsNull": True,
-                },
-                "nullable": True,
-                "metadata": {"comment": "a dict of str to int"},
-            }
-        ),
+        "MAP<STRING, LONG>",
         "a dict of str to int",
     )
     g = DummyParameter(
         "g",
-        '{"name": "g", "type": "variant", "nullable": true, "metadata": {"comment": "a variant"}}',
+        "VARIANT",
         "a variant",
     )
     h = DummyParameter(
         "h",
-        json.dumps(
-            {
-                "name": "h",
-                "type": {
-                    "type": "map",
-                    "keyType": "string",
-                    "valueType": {"type": "array", "elementType": "long", "containsNull": True},
-                    "valueContainsNull": True,
-                },
-                "nullable": True,
-                "metadata": {"comment": "a complex type"},
-            }
-        ),
+        "MAP<STRING, ARRAY<LONG>>",
         "a complex type",
     )
     i = DummyParameter(
         "i",
-        json.dumps(
-            {
-                "name": "i",
-                "type": {
-                    "type": "map",
-                    "keyType": "string",
-                    "valueType": {
-                        "type": "array",
-                        "elementType": {
-                            "type": "map",
-                            "keyType": "string",
-                            "valueType": {
-                                "type": "array",
-                                "elementType": "long",
-                                "containsNull": True,
-                            },
-                            "valueContainsNull": True,
-                        },
-                        "containsNull": True,
-                    },
-                    "valueContainsNull": True,
-                },
-                "nullable": True,
-                "metadata": {},
-            }
-        ),
-        "",
+        "MAP<STRING, ARRAY<MAP<STRING, ARRAY<LONG>>>>",
+        "a very complex type",
     )
 
     dummy_params = DummyInputParams([a, b, c, d, e, f, g, h, i])
@@ -1620,7 +1564,7 @@ def test_reconstruct_callable_complex_function(complex_function_info):
     assert "f: a dict of str to int" in reconstructed
     assert "g: a variant" in reconstructed
     assert "h: a complex type" in reconstructed
-    assert "i:" in reconstructed
+    assert "i: a very complex type" in reconstructed
 
     assert "def _internal(g: float) -> int:" in reconstructed
     assert "return str(a+b+_internal(4.5))" in reconstructed

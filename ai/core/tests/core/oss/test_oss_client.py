@@ -1473,17 +1473,40 @@ def test_get_python_callable_integration_complex(uc_client: UnitycatalogFunction
     )
     callable_def = uc_client.get_function_source(function_name)
 
-    # NB: OSS Unity Catalog does not support collection inner type definitions, so the outer container type
-    # is the only type indicator we can extract. (Compare to the Databricks integration test of the same name)
-    # for context on what is available in the Databricks Unity Catalog FunctionInfo object.
     expected_header = (
-        "def complex_python_func(a: int, b: float, c: str, d: bool, e: list, "
-        "f: dict, h: dict, i: dict) -> dict[str, list[str]]:"
+        "def complex_python_func(a: int, b: float, c: str, d: bool, e: list[str], "
+        "f: dict[str, int], h: dict[str, list[int]], i: dict[str, list[dict[str, "
+        "list[int]]]]) -> dict[str, list[str]]:"
     )
 
     assert expected_header in callable_def
     assert "def _helper(x: float) -> int:" in callable_def
     assert "return {" in callable_def and '"result": [' in callable_def
+    assert "Args:" in callable_def
+    assert "Returns:" in callable_def
+
+
+def test_tuple_handling(uc_client: UnitycatalogFunctionClient):
+    def tuple_func(a: tuple[int], b: tuple[str], c: list[tuple[str]]) -> tuple[str]:
+        """
+        A function that processes tuples.
+
+        Args:
+            a: a tuple of integers
+            b: a tuple of strings
+            c: a list of tuples of strings
+
+        Returns:
+            tuple[str]: A tuple with the first string and the sum of integers.
+        """
+        return b[0], str(sum(a))
+
+    function_name = f"{CATALOG}.{SCHEMA}.tuple_func"
+    uc_client.create_python_function(func=tuple_func, catalog=CATALOG, schema=SCHEMA, replace=True)
+    callable_def = uc_client.get_function_source(function_name)
+    expected_header = "def tuple_func(a: list[int], b: list[str], c: list[list[str]]) -> list[str]:"
+    assert expected_header in callable_def
+    assert "return b" in callable_def
     assert "Args:" in callable_def
     assert "Returns:" in callable_def
 
@@ -1589,3 +1612,37 @@ def test_get_python_callable_integration_complex(uc_client: UnitycatalogFunction
     )
 
     assert callable_def == expected_def, f"Expected:\n{expected_def}\nGot:\n{callable_def}"
+
+
+def test_long_argument_comment(uc_client: UnitycatalogFunctionClient):
+    def long_comment_func(a: int) -> int:
+        """
+        A function with a long argument comment.
+
+        Args:
+            a: An integer that represents the first number. Like some integers, this one is also an integer.
+            This comment is intentionally long.
+
+        Returns:
+            The integer value.
+        """
+        return a
+
+    function_name = f"{CATALOG}.{SCHEMA}.long_comment_func"
+    uc_client.create_python_function(
+        func=long_comment_func, catalog=CATALOG, schema=SCHEMA, replace=True
+    )
+    callable_def = uc_client.get_function_source(function_name)
+    expected_header = (
+        "def long_comment_func(a: int) -> int:\n"
+        '    """\n'
+        "    A function with a long argument comment.\n"
+        "    \n"
+        "    Args:\n"
+        "        a: An integer that represents the first number. Like some integers, this one is also an integer.\n"
+        "          This comment is intentionally long.\n"
+        "    \n"
+        "    Returns:\n"
+        "        int\n"
+        '    """\n'
+    )

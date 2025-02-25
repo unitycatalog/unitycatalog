@@ -1,4 +1,3 @@
-import json
 import re
 import textwrap
 import warnings
@@ -8,9 +7,8 @@ import pytest
 
 from unitycatalog.ai.core.types import Variant
 from unitycatalog.ai.core.utils.callable_utils import (
-    _extract_collection_types,
-    _parse_full_sql_data_type_for_return_type,
     _parse_routine_definition,
+    _parse_sql_data_type,
     dynamically_construct_python_function,
     generate_sql_function_body,
 )
@@ -1749,9 +1747,9 @@ def test_no_warnings_when_consistent():
 
 
 class FakeParam:
-    def __init__(self, name: str, type_json: str):
+    def __init__(self, name: str, type_text: str):
         self.name = name
-        self.type_json = type_json
+        self.type_text = type_text
 
 
 # ---------------------------
@@ -1770,7 +1768,7 @@ class FakeParam:
     ],
 )
 def test_parse_full_sql_data_type_for_return_types(input_type: str, expected: str):
-    result = _parse_full_sql_data_type_for_return_type(input_type)
+    result = _parse_sql_data_type(input_type)
     assert result == expected
 
 
@@ -1780,89 +1778,33 @@ def test_parse_full_sql_data_type_for_return_types(input_type: str, expected: st
 
 
 @pytest.mark.parametrize(
-    "param_name, type_json, expected",
+    "param_name, type_text, expected",
     [
         (
             "e",
-            json.dumps(
-                {
-                    "name": "e",
-                    "type": {"type": "array", "elementType": "string", "containsNull": True},
-                    "nullable": True,
-                    "metadata": {"comment": "a list of str"},
-                }
-            ),
+            "ARRAY<STRING>",
             "e: list[str]",
         ),
         (
             "f",
-            json.dumps(
-                {
-                    "name": "f",
-                    "type": {
-                        "type": "map",
-                        "keyType": "string",
-                        "valueType": "long",
-                        "valueContainsNull": True,
-                    },
-                    "nullable": True,
-                    "metadata": {"comment": "a dict of str to int"},
-                }
-            ),
+            "MAP<STRING, LONG>",
             "f: dict[str, int]",
         ),
         (
             "h",
-            json.dumps(
-                {
-                    "name": "h",
-                    "type": {
-                        "type": "map",
-                        "keyType": "string",
-                        "valueType": {"type": "array", "elementType": "long", "containsNull": True},
-                        "valueContainsNull": True,
-                    },
-                    "nullable": True,
-                    "metadata": {"comment": "a complex type"},
-                }
-            ),
+            "MAP<STRING, ARRAY<LONG>>",
             "h: dict[str, list[int]]",
         ),
         (
             "i",
-            json.dumps(
-                {
-                    "name": "i",
-                    "type": {
-                        "type": "map",
-                        "keyType": "string",
-                        "valueType": {
-                            "type": "array",
-                            "elementType": {
-                                "type": "map",
-                                "keyType": "string",
-                                "valueType": {
-                                    "type": "array",
-                                    "elementType": "long",
-                                    "containsNull": True,
-                                },
-                                "valueContainsNull": True,
-                            },
-                            "containsNull": True,
-                        },
-                        "valueContainsNull": True,
-                    },
-                    "nullable": True,
-                    "metadata": {},
-                }
-            ),
+            "MAP<STRING, ARRAY<MAP<STRING, ARRAY<LONG>>>>",
             "i: dict[str, list[dict[str, list[int]]]]",
         ),
     ],
 )
-def test_extract_collection_types(param_name: str, type_json: str, expected: str):
-    fake_param = FakeParam(param_name, type_json)
-    result = _extract_collection_types(fake_param)
+def test_extract_collection_types(param_name: str, type_text: str, expected: str):
+    fake_param = FakeParam(param_name, type_text)
+    result = f"{fake_param.name}: {_parse_sql_data_type(fake_param.type_text)}"
     assert result == expected
 
 

@@ -774,67 +774,6 @@ def check_docstring_signature_consistency(
         )
 
 
-def _recursively_parse_type(type_info: Any) -> str:
-    """
-    Recursively parse a SQL type definition (provided either as a dict or a string)
-    into a Python type annotation string.
-
-    Args:
-        type_info: A dict containing the type information, or a simple string.
-
-    Returns:
-        A string representing the Python type.
-    """
-    if not isinstance(type_info, dict):
-        mapped = SQL_TYPE_TO_PYTHON_TYPE_MAPPING.get(str(type_info).upper(), None)
-        # NB: OSS Unity Catalog doesn't retain the inner subtypes for collections
-        # so the logic below for handling arrays and maps is unnecessary.
-        # We can only retrieve the outer type and will short circuit early here.
-        if isinstance(mapped, tuple):
-            mapped = mapped[0]
-        return mapped.__name__ if mapped else "Any"
-
-    t = type_info.get("type")
-    if not t:
-        return "Any"
-    t_lower = str(t).lower()
-
-    if t_lower == "array":
-        element = type_info.get("elementType")
-        return f"list[{_get_mapped_value(element)}]"
-    elif t_lower == "map":
-        key = type_info.get("keyType")
-        value = type_info.get("valueType")
-        return f"dict[{_get_mapped_value(key)}, {_get_mapped_value(value)}]"
-    elif t_lower == "struct":
-        return "dict"
-    else:
-        mapped = SQL_TYPE_TO_PYTHON_TYPE_MAPPING.get(str(t).upper(), None)
-        return mapped.__name__ if mapped else "Any"
-
-
-def _get_mapped_value(x: Any) -> str:
-    """
-    Helper function to get the Python type as a string for a given SQL type.
-    If x is a dict, it recursively parses it; otherwise, it maps the type via SQL_TYPE_TO_PYTHON_TYPE_MAPPING.
-    """
-    if isinstance(x, dict):
-        return _recursively_parse_type(x)
-    else:
-        mapped = SQL_TYPE_TO_PYTHON_TYPE_MAPPING.get(str(x).upper(), None)
-        return mapped.__name__ if mapped else "Any"
-
-
-def _extract_collection_types(param_info: "FunctionParameterInfo") -> str:
-    """
-    Given a FunctionParameterInfo, extract its type annotation as a string,
-    recursively handling collection types.
-    """
-    type_dict = json.loads(param_info.type_json)
-    parsed_type = _recursively_parse_type(type_dict["type"])
-    return f"{param_info.name}: {parsed_type}"
-
-
 def _split_generic_types(s: str) -> list[str]:
     """
     Split a generic type string into its components, ignoring commas inside nested generics.
@@ -860,7 +799,7 @@ def _split_generic_types(s: str) -> list[str]:
     return parts
 
 
-def _parse_full_sql_data_type_for_return_type(type_str: str) -> str:
+def _parse_sql_data_type(type_str: str) -> str:
     """
     Convert a full SQL type string (e.g. "MAP<STRING, ARRAY<STRING>>")
     into a Python type annotation string (e.g. "dict[str, list[str]]").
@@ -878,8 +817,12 @@ def _parse_full_sql_data_type_for_return_type(type_str: str) -> str:
     parts = _split_generic_types(inner)
 
     # recurse
-    parsed_parts = [_parse_full_sql_data_type_for_return_type(part) for part in parts]
+    parsed_parts = [_parse_sql_data_type(part) for part in parts]
 
+    # NB: For Python tuples, we map both tuple and list to the SQL ARRAY type.
+    # Since we can't disambiguate between them in the SQL type string, we assume that
+    # the collection container type is list for simplicity's sake, which is the first
+    # mapping entry in SQL_TYPE_TO_PYTHON_TYPE_MAPPING for ARRAY types.
     if outer == "ARRAY":
         return f"list[{parsed_parts[0]}]"
     elif outer == "MAP":
@@ -918,17 +861,16 @@ def _reconstruct_docstring(function_info: "FunctionInfo", max_width: int = 100) 
         doc_lines.append("")  # Blank line.
         doc_lines.append("Args:")
         for param in function_info.input_params.parameters:
-            param_comment = (
-                param.comment.strip() if hasattr(param, "comment") and param.comment else ""
-            )
-            arg_line = f"{param.name}: {param_comment}"
+            param_comment = (getattr(param, "comment", None) or "").strip()
+            arg_comment = f": {param_comment}" if param_comment else ""
+            arg_line = param.name + arg_comment
             wrapped_arg = fill(
-                arg_line, width=max_width, initial_indent="    ", subsequent_indent="    "
+                arg_line, width=max_width, initial_indent=" " * 4, subsequent_indent=" " * 6
             )
             doc_lines.append(wrapped_arg)
 
     # Build the Returns: section.
-    return_type_str = _parse_full_sql_data_type_for_return_type(function_info.full_data_type)
+    return_type_str = _parse_sql_data_type(function_info.full_data_type)
     doc_lines.append("")
     doc_lines.append("Returns:")
     wrapped_return = fill(
@@ -984,7 +926,7 @@ def _parse_routine_definition(routine_definition: str) -> str:
         [len(line) - len(line.lstrip()) for line in lines if len(line.lstrip()) < len(line)],
         default=0,
     )
-    indent_factor = int(4 / indent_standard) if indent_standard > 0 else 1
+    indent_factor = 4 // indent_standard if indent_standard > 0 else 1
     normalized_lines = []
     for line in lines:
         if line.strip():
@@ -1022,8 +964,9 @@ def dynamically_construct_python_function(
     param_names = []
     if function_info.input_params and function_info.input_params.parameters:
         for param in function_info.input_params.parameters:
-            param_names.append(_extract_collection_types(param))
-    return_type = _parse_full_sql_data_type_for_return_type(function_info.full_data_type)
+            param_type = _parse_sql_data_type(param.type_text)
+            param_names.append(f"{param.name}: {param_type}")
+    return_type = _parse_sql_data_type(function_info.full_data_type)
     function_head = f"{function_info.name}({', '.join(param_names)}) -> {return_type}"
     func_def = f"def {function_head}:\n"
 
