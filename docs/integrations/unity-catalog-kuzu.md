@@ -1,12 +1,14 @@
 # Unity Catalog Kuzu Integration
 
-[Kuzu](https://kuzudb.com/) is an embedded graph database built for query speed and scalability. You can download and install the precompiled binary
+[Kuzu](https://kuzudb.com/) is an embedded graph database built for query speed and scalability, and it supports the property graph data model and the Cypher query language.
+
+Download and install the precompiled binary
 for your OS as per the instructions shown [here](https://docs.kuzudb.com/installation/).
-The `unity_catalog` extension in Kuzu allows users to attach to a Unity Catalog and perform scan/copy operations on Delta Lake tables.
+The `unity_catalog` functionality in Kuzu is made available via an extension that allows you to attach to a Unity Catalog and perform scan/copy operations on Delta Lake tables.
 
 ## Usage
 
-The Unity Catalog extension can be installed and loaded by running the following commands using the Kuzu CLI
+Kuzu's Unity Catalog extension can be installed and loaded by running the following commands using the Kuzu CLI
 or your preferred language client API:
 
 ```sql
@@ -26,9 +28,8 @@ ATTACH [CATALOG_NAME] AS [alias] (dbtype UC_CATALOG)
 - `alias`: Database alias to use in Kuzu - If not provided, the catalog name will be used.
   When attaching multiple databases, it's recommended to use aliasing.
 
-:::note[Note]
-Kuzu attaches to the `default` schema under the given catalog name. Specifying the schema to attach is not supported right now.
-:::
+**Note:** Kuzu attaches to the `default` schema under the given catalog name. Specifying a custom schema to attach to is not currently supported.
+
 
 #### 2. Data type mapping from Unity Catalog to Kuzu
 
@@ -85,9 +86,8 @@ Result:
 └────────┴────────────┘
 ```
 
-:::caution[Note]
 Currently, Kuzu only supports scanning from Delta Lake tables registered in the Unity Catalog.
-:::
+
 
 #### 4. `USE` statement
 
@@ -112,20 +112,20 @@ RETURN *
 
 #### 5. Copy data from table
 
-One important use case of the Unity Catalog extension is to facilitate seamless data transfer from tables in Unity Catalog to Kuzu.
+The main purpose of the Unity Catalog extension is to facilitate seamless data transfer from tables in Unity Catalog to Kuzu.
 In this example, we continue using the `unity` database, but this time,
-we copy the data and persist it to Kuzu. This is done with the `COPY FROM` statement. Here is an example:
+we copy the data and persist it to Kuzu database. This is done with the `COPY FROM` statement. Here is an example:
 
 We first create a `numbers` table in Kuzu. In this example we will make `numbers` have the same schema as the one defined in the Unity Catalog.
 
-```cypher
+```sql
 CREATE NODE TABLE numbers (id INT32, score DOUBLE , PRIMARY KEY(id));
 ```
 
 When the schemas are the same, we can copy the data from the external Unity Catalog table to the Kuzu table simply as follows.
 
 ```sql
- copy numbers from unity.numbers;
+COPY numbers FROM unity.numbers;
 ```
 If the schemas are not the same, e.g., `numbers` contains only `score` property while the external `unity.numbers` contains
 `id` and `score`, we can still use `COPY FROM` but with a subquery as follows:
@@ -173,7 +173,8 @@ To detach a Unity Catalog, use `DETACH [ALIAS]` as follows:
 DETACH unity
 ```
 
-:::note[Note]
-Kuzu's unity catalog extension is a starting point towards a larger integration with the lakehouse ecosystem. It may have unresolved issues from upstream. To address these
-issues or to discuss your use case further, please reach out to us on [Discord](https://kuzudb.com/chat).
-:::
+## Contact
+
+Kuzu's Unity Catalog extension is in its early stages and may have unresolved issues from upstream
+as the Unity Catalog project itself matures. To address your specific issues or to discuss your use case further, please reach out to the Kuzu team on [Discord](https://kuzudb.com/chat). Alternatively,
+you can open an issue or discussion in the [GitHub](https://github.com/kuzudb/kuzu) repo.
