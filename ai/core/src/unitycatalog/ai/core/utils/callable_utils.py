@@ -24,6 +24,8 @@ from unitycatalog.ai.core.utils.type_utils import (
 )
 
 FORBIDDEN_PARAMS = ["self", "cls"]
+PRIMARY_INDENT = " " * 4
+WRAPPED_INDENT = " " * 6
 
 
 class FunctionBodyExtractor(ast.NodeVisitor):
@@ -865,7 +867,10 @@ def _reconstruct_docstring(function_info: "FunctionInfo", max_width: int = 100) 
             arg_comment = f": {param_comment}" if param_comment else ""
             arg_line = param.name + arg_comment
             wrapped_arg = fill(
-                arg_line, width=max_width, initial_indent=" " * 4, subsequent_indent=" " * 6
+                arg_line,
+                width=max_width,
+                initial_indent=PRIMARY_INDENT,
+                subsequent_indent=WRAPPED_INDENT,
             )
             doc_lines.append(wrapped_arg)
 
@@ -934,7 +939,7 @@ def _parse_routine_definition(routine_definition: str) -> str:
             normalized_lines.append(" " * indent_level + line.strip())
         else:
             normalized_lines.append("")
-    return indent("\n".join(normalized_lines), " " * 4)
+    return indent("\n".join(normalized_lines), PRIMARY_INDENT)
 
 
 def dynamically_construct_python_function(
