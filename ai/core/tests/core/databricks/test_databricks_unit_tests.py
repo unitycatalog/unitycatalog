@@ -1050,7 +1050,21 @@ def test_create_python_function_with_environment_version(client: DatabricksFunct
 
 
 def test_workspace_provided_issues_warning(mock_workspace_client, caplog):
-    with caplog.at_level(logging.WARNING):
+    with (
+        caplog.at_level(logging.WARNING),
+        patch(
+            "unitycatalog.ai.core.databricks.get_default_databricks_workspace_client",
+            return_value=MagicMock(),
+        ),
+        patch(
+            "unitycatalog.ai.core.databricks._validate_databricks_connect_available",
+            lambda: True,
+        ),
+        patch(
+            "unitycatalog.ai.core.databricks.DatabricksFunctionClient.set_spark_session",
+            lambda self: None,
+        ),
+    ):
         DatabricksFunctionClient(client=mock_workspace_client, warehouse_id="id")
 
     assert "The argument `warehouse_id` was specified" in caplog.text
@@ -1154,8 +1168,7 @@ def test_create_wrapped_function_with_dependencies(mock_workspace_client, mock_s
             assert result == "dummy_func_info"
 
 
-def test_create_wrapped_function_invalid_primary_databricks(mock_workspace_client):
-    client = DatabricksFunctionClient(client=mock_workspace_client)
+def test_create_wrapped_function_invalid_primary_databricks(client: DatabricksFunctionClient):
     with pytest.raises(ValueError, match="The provided primary function is not callable."):
         client.create_wrapped_function(
             primary_func="not_callable",
@@ -1164,13 +1177,6 @@ def test_create_wrapped_function_invalid_primary_databricks(mock_workspace_clien
             schema="sch",
             replace=False,
         )
-
-
-def test_workspace_provided_issues_warning(mock_workspace_client, caplog):
-    with caplog.at_level(logging.WARNING):
-        DatabricksFunctionClient(client=mock_workspace_client, warehouse_id="id")
-
-    assert "The argument `warehouse_id` was specified" in caplog.text
 
 
 def test_execute_function_with_default_params_databricks(mock_workspace_client, mock_spark_session):
