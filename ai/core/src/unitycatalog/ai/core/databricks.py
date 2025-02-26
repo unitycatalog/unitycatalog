@@ -3,7 +3,6 @@ import functools
 import json
 import logging
 import re
-import threading
 import time
 from dataclasses import dataclass
 from decimal import Decimal
@@ -57,8 +56,9 @@ DATABRICKS_CONNECT_VERSION_NOT_SUPPORTED_ERROR_MESSAGE = (
     "to use serverless compute in Databricks. Please note this requires python>=3.10."
 )
 SESSION_RETRY_BASE_DELAY = 1
-SESSION_RETRY_MAX_DELAY = 32
-SESSION_EXCEPTION_MESSAGE = "session_id is no longer usable"
+SESSION_RETRY_MAX_DELAY = 4
+SESSION_EXPIRED_MESSAGE = "session_id is no longer usable"
+SESSION_CHANGED_MESSAGE = "The existing Spark server driver has restarted."
 WAREHOUSE_DEFINED_NOT_SUPPORTED_MESSAGE = (
     "The argument `warehouse_id` was specified, which is no longer supported with "
     "the `DatabricksFunctionClient`. Please omit this argument as it is no longer used. "
@@ -69,9 +69,6 @@ WAREHOUSE_DEFINED_NOT_SUPPORTED_MESSAGE = (
 
 
 _logger = logging.getLogger(__name__)
-
-_classic_workspace_warning_emitted = False
-_classic_workspace_thread_lock = threading.Lock()
 
 
 def get_default_databricks_workspace_client(profile=None) -> "WorkspaceClient":
@@ -94,34 +91,6 @@ def _validate_databricks_connect_available() -> bool:
             raise Exception(DATABRICKS_CONNECT_VERSION_NOT_SUPPORTED_ERROR_MESSAGE)
     except ImportError as e:
         raise Exception(DATABRICKS_CONNECT_IMPORT_ERROR_MESSAGE) from e
-
-
-def _try_get_spark_session_in_dbr() -> Any:
-    global _classic_workspace_warning_emitted
-    try:
-        # if in Databricks, fetch the current active session
-        from databricks.sdk.runtime import spark
-        from pyspark.sql.connect.session import SparkSession
-
-        with _classic_workspace_thread_lock:
-            if (
-                spark is not None
-                and not isinstance(spark, SparkSession)
-                and not _classic_workspace_warning_emitted
-            ):
-                _logger.warning(
-                    f"Current SparkSession {spark} in the active environment is not a "
-                    "pyspark.sql.connect.session.SparkSession instance. Classic runtime does not support "
-                    "all functionalities of the unitycatalog-ai framework. To use the full "
-                    "capabilities of unitycatalog-ai, execute your code using a client that is attached to "
-                    "a Serverless runtime cluster. To learn more about serverless, see the guide at: "
-                    "https://docs.databricks.com/en/compute/serverless/index.html#connect-to-serverless-compute "
-                    "for more details."
-                )
-                _classic_workspace_warning_emitted = True
-        return spark
-    except Exception:
-        return
 
 
 def _is_in_databricks_notebook_environment() -> bool:
@@ -181,34 +150,45 @@ def retry_on_session_expiration(func):
         for attempt in range(1, max_attempts + 1):
             try:
                 result = func(self, *args, **kwargs)
-                # for non-session related error in the result, we should directly return the result
-                if (
-                    isinstance(result, FunctionExecutionResult)
-                    and result.error
-                    and SESSION_EXCEPTION_MESSAGE in result.error
-                ):
-                    raise Exception(result.error)
+                if isinstance(result, FunctionExecutionResult) and result.error:
+                    if any(
+                        msg in result.error
+                        for msg in (SESSION_EXPIRED_MESSAGE, SESSION_CHANGED_MESSAGE)
+                    ):
+                        raise Exception(result.error)
+                    return result
                 return result
             except Exception as e:
                 error_message = str(e)
-                if SESSION_EXCEPTION_MESSAGE in error_message:
+                if any(
+                    msg in error_message
+                    for msg in (SESSION_EXPIRED_MESSAGE, SESSION_CHANGED_MESSAGE)
+                ):
                     if not self._is_default_client:
-                        refresh_message = f"Failed to execute {func.__name__} due to session expiration. Unable to automatically refresh session when using a custom client."
+                        refresh_message = (
+                            f"Failed to execute {func.__name__} due to session expiration. "
+                            "Unable to automatically refresh session when using a custom client."
+                            "Recreate the DatabricksFunctionClient with a new client to recreate "
+                            "the custom client session."
+                        )
                         raise RuntimeError(refresh_message) from e
 
                     if attempt < max_attempts:
                         delay = min(
-                            SESSION_RETRY_BASE_DELAY * (2 ** (attempt - 1)),
-                            SESSION_RETRY_MAX_DELAY,
+                            SESSION_RETRY_BASE_DELAY * (2 ** (attempt - 1)), SESSION_RETRY_MAX_DELAY
                         )
                         _logger.warning(
-                            f"Session expired. Attempt {attempt} of {max_attempts}. Refreshing session and retrying after {delay} seconds..."
+                            f"Session expired. Retrying with attempt {attempt} of {max_attempts}. "
+                            f"Refreshing session and retrying after {delay} seconds..."
                         )
                         self.refresh_client_and_session()
                         time.sleep(delay)
                         continue
                     else:
-                        refresh_failure_message = f"Failed to execute {func.__name__} after {max_attempts} attempts due to session expiration. Generate a new session_id by detaching and reattaching your compute."
+                        refresh_failure_message = (
+                            f"Failed to execute {func.__name__} after {max_attempts} attempts due to session expiration. "
+                            "Generate a new session_id by detaching and reattaching your compute."
+                        )
                         raise RuntimeError(refresh_failure_message) from e
                 else:
                     raise
@@ -239,7 +219,8 @@ class DatabricksFunctionClient(BaseFunctionClient):
         _warn_if_workspace_provided(**kwargs)
         self.client = client or get_default_databricks_workspace_client(profile=profile)
         self.profile = profile
-        self.spark = _try_get_spark_session_in_dbr()
+        self.spark = None
+        self.set_spark_session()
         self._is_default_client = client is None
         super().__init__()
 
@@ -250,16 +231,15 @@ class DatabricksFunctionClient(BaseFunctionClient):
             return not self.spark.is_stopped
         return self.spark.getActiveSession() is not None
 
-    def set_default_spark_session(self):
-        if not self._is_spark_session_active():
-            _validate_databricks_connect_available()
-            from databricks.connect.session import DatabricksSession as SparkSession
+    def set_spark_session(self):
+        _validate_databricks_connect_available()
+        from databricks.connect.session import DatabricksSession as SparkSession
 
-            if self.profile:
-                builder = SparkSession.builder.profile(self.profile)
-            else:
-                builder = SparkSession.builder
-            self.spark = builder.serverless(True).getOrCreate()
+        if self.profile:
+            builder = SparkSession.builder.profile(self.profile)
+        else:
+            builder = SparkSession.builder
+        self.spark = builder.serverless(True).getOrCreate()
 
     def stop_spark_session(self):
         if self._is_spark_session_active():
@@ -273,10 +253,9 @@ class DatabricksFunctionClient(BaseFunctionClient):
 
         _logger.info("Refreshing Databricks client and Spark session due to session expiration.")
         self.client = get_default_databricks_workspace_client(profile=self.profile)
-        if not _is_in_databricks_notebook_environment:
+        if not _is_in_databricks_notebook_environment():
             self.stop_spark_session()
-        self.set_default_spark_session()
-        self.spark = _try_get_spark_session_in_dbr()
+        self.set_spark_session()
 
     @retry_on_session_expiration
     @override
@@ -300,7 +279,7 @@ class DatabricksFunctionClient(BaseFunctionClient):
             FunctionInfo: The created function info.
         """
         if sql_function_body:
-            self.set_default_spark_session()
+            self.set_spark_session()
             # TODO: add timeout
             self.spark.sql(sql_function_body)
             created_function_info = self.get_function(extract_function_name(sql_function_body))
@@ -684,7 +663,7 @@ class DatabricksFunctionClient(BaseFunctionClient):
         self, function_info: "FunctionInfo", parameters: Dict[str, Any]
     ) -> FunctionExecutionResult:
         _logger.info("Using databricks connect to execute functions with serverless compute.")
-        self.set_default_spark_session()
+        self.set_spark_session()
 
         parameters = process_function_parameter_defaults(function_info, parameters)
 

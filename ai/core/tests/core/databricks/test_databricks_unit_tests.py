@@ -572,7 +572,7 @@ def test_execute_function_success(mock_workspace_client, mock_spark_session, moc
 
     client = DatabricksFunctionClient(client=mock_workspace_client)
 
-    client.set_default_spark_session = MagicMock()
+    client.set_spark_session = MagicMock()
     client.spark = mock_spark_session
 
     client.get_function = MagicMock(return_value=mock_function_info)
@@ -606,7 +606,7 @@ def test_execute_function_with_retry(mock_workspace_client, mock_spark_session, 
         mock_spark_session.sql.side_effect = side_effect
 
         client = DatabricksFunctionClient(client=mock_workspace_client)
-        client.set_default_spark_session = MagicMock()
+        client.set_spark_session = MagicMock()
         client.spark = mock_spark_session
         client._is_default_client = True
 
@@ -640,7 +640,7 @@ $$
 
         client = DatabricksFunctionClient(client=mock_workspace_client)
         client._is_default_client = True
-        client.set_default_spark_session = MagicMock()
+        client.set_spark_session = MagicMock()
         client.spark = mock_spark_session
 
         mock_function_info = MagicMock()
@@ -672,7 +672,7 @@ AS $$ return 1 $$"""
 
         client = DatabricksFunctionClient(client=mock_workspace_client)
         client._is_default_client = True
-        client.set_default_spark_session = MagicMock()
+        client.set_spark_session = MagicMock()
         client.spark = mock_spark_session
         client.refresh_client_and_session = MagicMock()
 
@@ -689,7 +689,7 @@ def test_no_retry_with_custom_client(mock_workspace_client, mock_spark_session, 
     mock_spark_session.sql.side_effect = Exception("session_id is no longer usable")
 
     client = DatabricksFunctionClient(client=mock_workspace_client)
-    client.set_default_spark_session = MagicMock()
+    client.set_spark_session = MagicMock()
     client.spark = mock_spark_session
     client._is_default_client = False
 
@@ -765,7 +765,7 @@ def test_execute_function_with_mock_string_input(
 
     client = DatabricksFunctionClient(client=mock_workspace_client)
 
-    client.set_default_spark_session = MagicMock()
+    client.set_spark_session = MagicMock()
     client.spark = mock_spark_session
     client.get_function = MagicMock(return_value=mock_function_info)
 
@@ -817,7 +817,7 @@ greet("World")"""
 
     client = DatabricksFunctionClient(client=mock_workspace_client)
 
-    client.set_default_spark_session = MagicMock()
+    client.set_spark_session = MagicMock()
     client.spark = mock_spark_session
 
     client.get_function = MagicMock(return_value=mock_function_info)
@@ -865,7 +865,7 @@ def test_execute_function_with_variant_input(
     expected_args = {"a": 10}
 
     client = DatabricksFunctionClient(client=mock_workspace_client)
-    client.set_default_spark_session = MagicMock()
+    client.set_spark_session = MagicMock()
     client.spark = mock_spark_session
     client.get_function = MagicMock(return_value=mock_function_info)
 
@@ -911,7 +911,7 @@ def test_execute_function_warnings_missing_descriptions(mock_workspace_client, m
     )
 
     client = DatabricksFunctionClient(client=mock_workspace_client)
-    client.set_default_spark_session = MagicMock()
+    client.set_spark_session = MagicMock()
     client.spark = mock_spark_session
     client.get_function = MagicMock(return_value=func_info)
 
@@ -1093,7 +1093,7 @@ def test_create_wrapped_function_databricks(mock_workspace_client, mock_spark_se
             DatabricksFunctionClient, "create_function", return_value="dummy_func_info"
         ) as mock_create_func:
             client = DatabricksFunctionClient(client=mock_workspace_client)
-            client.set_default_spark_session = MagicMock()
+            client.set_spark_session = MagicMock()
             client.spark = mock_spark_session
 
             result = client.create_wrapped_function(
@@ -1128,7 +1128,7 @@ def test_create_wrapped_function_with_dependencies(mock_workspace_client, mock_s
             DatabricksFunctionClient, "create_function", return_value="dummy_func_info"
         ) as mock_create_func:
             client = DatabricksFunctionClient(client=mock_workspace_client)
-            client.set_default_spark_session = MagicMock()
+            client.set_spark_session = MagicMock()
             client.spark = mock_spark_session
 
             result = client.create_wrapped_function(
@@ -1213,7 +1213,7 @@ def test_execute_function_with_default_params_databricks(mock_workspace_client, 
     )
 
     client = DatabricksFunctionClient(client=mock_workspace_client)
-    client.set_default_spark_session = MagicMock()
+    client.set_spark_session = MagicMock()
     client.spark = mock_spark_session
     client.get_function = MagicMock(return_value=dummy_func_info)
 
@@ -1285,7 +1285,7 @@ def test_execute_function_with_all_defaults_databricks(mock_workspace_client, mo
     )
 
     client = DatabricksFunctionClient(client=mock_workspace_client)
-    client.set_default_spark_session = MagicMock()
+    client.set_spark_session = MagicMock()
     client.spark = mock_spark_session
     client.get_function = MagicMock(return_value=dummy_func_info)
 
@@ -1327,7 +1327,7 @@ def test_execute_function_no_params_databricks(mock_workspace_client, mock_spark
     )
 
     client = DatabricksFunctionClient(client=mock_workspace_client)
-    client.set_default_spark_session = MagicMock()
+    client.set_spark_session = MagicMock()
     client.spark = mock_spark_session
     client.get_function = MagicMock(return_value=dummy_func_info)
 
@@ -1377,7 +1377,7 @@ def test_execute_function_with_none_default_databricks(mock_workspace_client, mo
     )
 
     client = DatabricksFunctionClient(client=mock_workspace_client)
-    client.set_default_spark_session = MagicMock()
+    client.set_spark_session = MagicMock()
     client.spark = mock_spark_session
     client.get_function = MagicMock(return_value=dummy_func_info)
 
