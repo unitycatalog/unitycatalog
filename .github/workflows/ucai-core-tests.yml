@@ -67,7 +67,7 @@ jobs:
           fi
       - name: Install dependencies
         run: |
-          pip install mlflow
+          pip install mlflow databricks-connect==15.1.0
       - name: Install Unity Catalog Python Libraries
         run: |
           dev/install_client.sh
