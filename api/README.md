@@ -12,6 +12,11 @@ All URIs are relative to *http://localhost:8080/api/2.1/unity-catalog*
 *CatalogsApi* | [**getCatalog**](Apis/CatalogsApi.md#getcatalog) | **GET** /catalogs/{name} | Get a catalog |
 *CatalogsApi* | [**listCatalogs**](Apis/CatalogsApi.md#listcatalogs) | **GET** /catalogs | List catalogs |
 *CatalogsApi* | [**updateCatalog**](Apis/CatalogsApi.md#updatecatalog) | **PATCH** /catalogs/{name} | Update a catalog |
+| *CredentialsApi* | [**createCredential**](Apis/CredentialsApi.md#createcredential) | **POST** /credentials | Create a credential |
+*CredentialsApi* | [**deleteCredential**](Apis/CredentialsApi.md#deletecredential) | **DELETE** /credentials/{name} | Delete a credential |
+*CredentialsApi* | [**getCredential**](Apis/CredentialsApi.md#getcredential) | **GET** /credentials/{name} | Get a credential |
+*CredentialsApi* | [**listCredentials**](Apis/CredentialsApi.md#listcredentials) | **GET** /credentials | List credentials |
+*CredentialsApi* | [**updateCredential**](Apis/CredentialsApi.md#updatecredential) | **PATCH** /credentials/{name} | Update a credential |
 | *ExternalLocationsApi* | [**createExternalLocation**](Apis/ExternalLocationsApi.md#createexternallocation) | **POST** /external-locations | Create an external location |
 *ExternalLocationsApi* | [**deleteExternalLocation**](Apis/ExternalLocationsApi.md#deleteexternallocation) | **DELETE** /external-locations/{name} | Delete an external location |
 *ExternalLocationsApi* | [**getExternalLocation**](Apis/ExternalLocationsApi.md#getexternallocation) | **GET** /external-locations/{name} | Get an external location |
@@ -40,11 +45,6 @@ All URIs are relative to *http://localhost:8080/api/2.1/unity-catalog*
 *SchemasApi* | [**getSchema**](Apis/SchemasApi.md#getschema) | **GET** /schemas/{full_name} | Get a schema |
 *SchemasApi* | [**listSchemas**](Apis/SchemasApi.md#listschemas) | **GET** /schemas | List schemas |
 *SchemasApi* | [**updateSchema**](Apis/SchemasApi.md#updateschema) | **PATCH** /schemas/{full_name} | Update a schema |
-| *StorageCredentialsApi* | [**createStorageCredential**](Apis/StorageCredentialsApi.md#createstoragecredential) | **POST** /storage-credentials | Create a storage credential |
-*StorageCredentialsApi* | [**deleteStorageCredential**](Apis/StorageCredentialsApi.md#deletestoragecredential) | **DELETE** /storage-credentials/{name} | Delete a credential |
-*StorageCredentialsApi* | [**getStorageCredential**](Apis/StorageCredentialsApi.md#getstoragecredential) | **GET** /storage-credentials/{name} | Get a credential |
-*StorageCredentialsApi* | [**listStorageCredentials**](Apis/StorageCredentialsApi.md#liststoragecredentials) | **GET** /storage-credentials | List credentials |
-*StorageCredentialsApi* | [**updateStorageCredential**](Apis/StorageCredentialsApi.md#updatestoragecredential) | **PATCH** /storage-credentials/{name} | Update a credential |
 | *TablesApi* | [**createTable**](Apis/TablesApi.md#createtable) | **POST** /tables | Create a table. Only external table creation is supported. WARNING: This API is experimental and will change in future versions.  |
 *TablesApi* | [**deleteTable**](Apis/TablesApi.md#deletetable) | **DELETE** /tables/{full_name} | Delete a table |
 *TablesApi* | [**getTable**](Apis/TablesApi.md#gettable) | **GET** /tables/{full_name} | Get a table |
@@ -66,21 +66,22 @@ All URIs are relative to *http://localhost:8080/api/2.1/unity-catalog*
  - [AwsCredentials](./Models/AwsCredentials.md)
  - [AwsIamRoleRequest](./Models/AwsIamRoleRequest.md)
  - [AwsIamRoleResponse](./Models/AwsIamRoleResponse.md)
- - [AzureServicePrincipal](./Models/AzureServicePrincipal.md)
  - [AzureUserDelegationSAS](./Models/AzureUserDelegationSAS.md)
  - [CatalogInfo](./Models/CatalogInfo.md)
  - [ColumnInfo](./Models/ColumnInfo.md)
  - [ColumnTypeName](./Models/ColumnTypeName.md)
  - [CreateCatalog](./Models/CreateCatalog.md)
+ - [CreateCredentialRequest](./Models/CreateCredentialRequest.md)
  - [CreateExternalLocation](./Models/CreateExternalLocation.md)
  - [CreateFunction](./Models/CreateFunction.md)
  - [CreateFunctionRequest](./Models/CreateFunctionRequest.md)
  - [CreateModelVersion](./Models/CreateModelVersion.md)
  - [CreateRegisteredModel](./Models/CreateRegisteredModel.md)
  - [CreateSchema](./Models/CreateSchema.md)
- - [CreateStorageCredential](./Models/CreateStorageCredential.md)
  - [CreateTable](./Models/CreateTable.md)
  - [CreateVolumeRequestContent](./Models/CreateVolumeRequestContent.md)
+ - [CredentialInfo](./Models/CredentialInfo.md)
+ - [CredentialPurpose](./Models/CredentialPurpose.md)
  - [DataSourceFormat](./Models/DataSourceFormat.md)
  - [Dependency](./Models/Dependency.md)
  - [DependencyList](./Models/DependencyList.md)
@@ -99,12 +100,12 @@ All URIs are relative to *http://localhost:8080/api/2.1/unity-catalog*
  - [GenerateTemporaryVolumeCredential](./Models/GenerateTemporaryVolumeCredential.md)
  - [GetMetastoreSummaryResponse](./Models/GetMetastoreSummaryResponse.md)
  - [ListCatalogsResponse](./Models/ListCatalogsResponse.md)
+ - [ListCredentialsResponse](./Models/ListCredentialsResponse.md)
  - [ListExternalLocationsResponse](./Models/ListExternalLocationsResponse.md)
  - [ListFunctionsResponse](./Models/ListFunctionsResponse.md)
  - [ListModelVersionsResponse](./Models/ListModelVersionsResponse.md)
  - [ListRegisteredModelsResponse](./Models/ListRegisteredModelsResponse.md)
  - [ListSchemasResponse](./Models/ListSchemasResponse.md)
- - [ListStorageCredentialsResponse](./Models/ListStorageCredentialsResponse.md)
  - [ListTablesResponse](./Models/ListTablesResponse.md)
  - [ListVolumesResponseContent](./Models/ListVolumesResponseContent.md)
  - [ModelVersionInfo](./Models/ModelVersionInfo.md)
@@ -119,19 +120,18 @@ All URIs are relative to *http://localhost:8080/api/2.1/unity-catalog*
  - [RegisteredModelInfo](./Models/RegisteredModelInfo.md)
  - [SchemaInfo](./Models/SchemaInfo.md)
  - [SecurableType](./Models/SecurableType.md)
- - [StorageCredentialInfo](./Models/StorageCredentialInfo.md)
  - [TableDependency](./Models/TableDependency.md)
  - [TableInfo](./Models/TableInfo.md)
  - [TableOperation](./Models/TableOperation.md)
  - [TableType](./Models/TableType.md)
  - [TemporaryCredentials](./Models/TemporaryCredentials.md)
  - [UpdateCatalog](./Models/UpdateCatalog.md)
+ - [UpdateCredentialRequest](./Models/UpdateCredentialRequest.md)
  - [UpdateExternalLocation](./Models/UpdateExternalLocation.md)
  - [UpdateModelVersion](./Models/UpdateModelVersion.md)
  - [UpdatePermissions](./Models/UpdatePermissions.md)
  - [UpdateRegisteredModel](./Models/UpdateRegisteredModel.md)
  - [UpdateSchema](./Models/UpdateSchema.md)
- - [UpdateStorageCredential](./Models/UpdateStorageCredential.md)
  - [UpdateVolumeRequestContent](./Models/UpdateVolumeRequestContent.md)
  - [VolumeInfo](./Models/VolumeInfo.md)
  - [VolumeOperation](./Models/VolumeOperation.md)
