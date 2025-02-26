@@ -20,7 +20,6 @@ from databricks.sdk.service.catalog import (
     FunctionParameterInfos,
 )
 
-import unitycatalog.ai.core.databricks as dbr
 from unitycatalog.ai.core.databricks import (
     DatabricksFunctionClient,
     extract_function_name,
@@ -34,15 +33,6 @@ from unitycatalog.ai.test_utils.function_utils import (
 )
 
 SCHEMA = os.environ.get("SCHEMA", "ucai_core_test")
-
-
-@pytest.fixture(autouse=True)
-def bypass_sdk_auth_and_spark(monkeypatch):
-    monkeypatch.setattr(
-        dbr,
-        "get_default_databricks_workspace_client",
-        lambda profile=None: MagicMock(name="DummyWorkspaceClient"),
-    )
 
 
 def test_get_function_errors(client: DatabricksFunctionClient):
