@@ -20,6 +20,7 @@ from unitycatalog.ai.core.envs.databricks_env_vars import (
 from unitycatalog.ai.core.paged_list import PagedList
 from unitycatalog.ai.core.types import Variant
 from unitycatalog.ai.core.utils.callable_utils import (
+    dynamically_construct_python_function,
     generate_sql_function_body,
     generate_wrapped_sql_function_body,
 )
@@ -741,6 +742,27 @@ class DatabricksFunctionClient(BaseFunctionClient):
     def from_dict(cls, config: Dict[str, Any]):
         accept_keys = ["profile"]
         return cls(**{k: v for k, v in config.items() if k in accept_keys})
+
+    @override
+    def get_function_source(self, function_name: str) -> str:
+        """
+        Returns the Python callable definition as a string for an EXTERNAL Python function that
+        is stored within Unity Catalog. This function can only parse and extract the full callable
+        definition for Python functions and cannot be used on SQL or TABLE functions.
+
+        Args:
+            function_name: The name of the function to retrieve the Python callable definition for.
+
+        Returns:
+            str: The Python callable definition as a string.
+        """
+
+        function_info = self.get_function(function_name)
+        if function_info.routine_body.value != "EXTERNAL":
+            raise ValueError(
+                f"Function {function_name} is not an EXTERNAL Python function and cannot be retrieved."
+            )
+        return dynamically_construct_python_function(function_info)
 
 
 def is_scalar(function: "FunctionInfo") -> bool:
