@@ -72,6 +72,12 @@ WAREHOUSE_DEFINED_NOT_SUPPORTED_MESSAGE = (
 _logger = logging.getLogger(__name__)
 
 
+class SessionExpirationException(Exception):
+    """Exception raised when a session expiration error is detected."""
+
+    pass
+
+
 def get_default_databricks_workspace_client(profile=None) -> "WorkspaceClient":
     try:
         from databricks.sdk import WorkspaceClient
@@ -156,43 +162,36 @@ def retry_on_session_expiration(func):
                         msg in result.error
                         for msg in (SESSION_EXPIRED_MESSAGE, SESSION_CHANGED_MESSAGE)
                     ):
-                        raise Exception(result.error)
+                        raise SessionExpirationException(result.error)
                     return result
                 return result
-            except Exception as e:
-                error_message = str(e)
-                if any(
-                    msg in error_message
-                    for msg in (SESSION_EXPIRED_MESSAGE, SESSION_CHANGED_MESSAGE)
-                ):
-                    if not self._is_default_client:
-                        refresh_message = (
-                            f"Failed to execute {func.__name__} due to session expiration. "
-                            "Unable to automatically refresh session when using a custom client."
-                            "Recreate the DatabricksFunctionClient with a new client to recreate "
-                            "the custom client session."
-                        )
-                        raise RuntimeError(refresh_message) from e
+            except SessionExpirationException as e:
+                if not self._is_default_client:
+                    refresh_message = (
+                        f"Failed to execute {func.__name__} due to session expiration. "
+                        "Unable to automatically refresh session when using a custom client. "
+                        "Recreate the DatabricksFunctionClient with a new client to recreate "
+                        "the custom client session."
+                    )
+                    raise RuntimeError(refresh_message) from e
 
-                    if attempt < max_attempts:
-                        delay = min(
-                            SESSION_RETRY_BASE_DELAY * (2 ** (attempt - 1)), SESSION_RETRY_MAX_DELAY
-                        )
-                        _logger.warning(
-                            f"Session expired. Retrying with attempt {attempt} of {max_attempts}. "
-                            f"Refreshing session and retrying after {delay} seconds..."
-                        )
-                        self.refresh_client_and_session()
-                        time.sleep(delay)
-                        continue
-                    else:
-                        refresh_failure_message = (
-                            f"Failed to execute {func.__name__} after {max_attempts} attempts due to session expiration. "
-                            "Generate a new session_id by detaching and reattaching your compute."
-                        )
-                        raise RuntimeError(refresh_failure_message) from e
+                if attempt < max_attempts:
+                    delay = min(
+                        SESSION_RETRY_BASE_DELAY * (2 ** (attempt - 1)), SESSION_RETRY_MAX_DELAY
+                    )
+                    _logger.warning(
+                        f"Session expired. Retrying attempt {attempt} of {max_attempts}. "
+                        f"Refreshing session and retrying after {delay} seconds..."
+                    )
+                    self.refresh_client_and_session()
+                    time.sleep(delay)
+                    continue
                 else:
-                    raise
+                    refresh_failure_message = (
+                        f"Failed to execute {func.__name__} after {max_attempts} attempts due to session expiration. "
+                        "Generate a new session_id by detaching and reattaching your compute."
+                    )
+                    raise RuntimeError(refresh_failure_message) from e
 
     return wrapper
 
@@ -233,7 +232,23 @@ class DatabricksFunctionClient(BaseFunctionClient):
         return self.spark.getActiveSession() is not None
 
     def set_spark_session(self):
+        """
+        Initialize the spark session with serverless compute if not already active.
+        """
+        if not self._is_spark_session_active():
+            self.initialize_spark_session()
+
+    def stop_spark_session(self):
+        if self._is_spark_session_active():
+            self.spark.stop()
+
+    def initialize_spark_session(self):
+        """
+        Initialize the spark session with serverless compute.
+        This method is called when the spark session is not active.
+        """
         _validate_databricks_connect_available()
+
         from databricks.connect.session import DatabricksSession as SparkSession
 
         if self.profile:
@@ -241,10 +256,6 @@ class DatabricksFunctionClient(BaseFunctionClient):
         else:
             builder = SparkSession.builder
         self.spark = builder.serverless(True).getOrCreate()
-
-    def stop_spark_session(self):
-        if self._is_spark_session_active():
-            self.spark.stop()
 
     def refresh_client_and_session(self):
         """
@@ -256,7 +267,7 @@ class DatabricksFunctionClient(BaseFunctionClient):
         self.client = get_default_databricks_workspace_client(profile=self.profile)
         if not _is_in_databricks_notebook_environment():
             self.stop_spark_session()
-        self.set_spark_session()
+        self.initialize_spark_session()
 
     @retry_on_session_expiration
     @override

@@ -31,10 +31,6 @@ def client() -> DatabricksFunctionClient:
                 return_value=mock.Mock(),
             ),
             mock.patch(
-                "unitycatalog.ai.core.databricks._validate_databricks_connect_available",
-                lambda: True,
-            ),
-            mock.patch(
                 "unitycatalog.ai.core.databricks.DatabricksFunctionClient.set_spark_session",
                 lambda self: None,
             ),
@@ -55,10 +51,6 @@ def get_client() -> DatabricksFunctionClient:
             mock.patch(
                 "unitycatalog.ai.core.databricks.get_default_databricks_workspace_client",
                 return_value=mock.Mock(),
-            ),
-            mock.patch(
-                "unitycatalog.ai.core.databricks._validate_databricks_connect_available",
-                lambda: True,
             ),
             mock.patch(
                 "unitycatalog.ai.core.databricks.DatabricksFunctionClient.set_spark_session",
