@@ -175,7 +175,7 @@ def retry_on_session_expiration(func):
     """
     Decorator to retry a method upon session expiration errors with exponential backoff.
     """
-    max_attempts = int(UCAI_DATABRICKS_SESSION_RETRY_MAX_ATTEMPTS.get())
+    max_attempts = UCAI_DATABRICKS_SESSION_RETRY_MAX_ATTEMPTS.get()
 
     @functools.wraps(func)
     def wrapper(self, *args, **kwargs):
@@ -695,7 +695,7 @@ class DatabricksFunctionClient(BaseFunctionClient):
             if is_scalar(function_info):
                 return FunctionExecutionResult(format="SCALAR", value=str(result.collect()[0][0]))
             else:
-                row_limit = int(UCAI_DATABRICKS_SERVERLESS_EXECUTION_RESULT_ROW_LIMIT.get())
+                row_limit = UCAI_DATABRICKS_SERVERLESS_EXECUTION_RESULT_ROW_LIMIT.get()
                 truncated = result.count() > row_limit
                 pdf = result.limit(row_limit).toPandas()
                 csv_buffer = StringIO()
