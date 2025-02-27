@@ -22,6 +22,7 @@ from databricks.sdk.service.catalog import (
 
 from unitycatalog.ai.core.databricks import (
     DatabricksFunctionClient,
+    dynamically_construct_python_function,
     extract_function_name,
     retry_on_session_expiration,
 )
@@ -1394,3 +1395,182 @@ def test_execute_function_with_none_default_databricks(mock_workspace_client, mo
     result = client.execute_function(f"{CATALOG}.{SCHEMA}.null_func", parameters={})
     assert result.error is None, f"Execution error: {result.error}"
     assert result.value == "None"
+
+
+class DummyParameter:
+    def __init__(self, name: str, type_text: str, comment: str):
+        self.name = name
+        self.type_text = type_text
+        self.comment = comment
+
+
+class DummyInputParams:
+    def __init__(self, parameters):
+        self.parameters = parameters
+
+
+class DummyType:
+    def __init__(self, value: str, name: str):
+        self.value = value
+        self.__name__ = name
+
+
+class DummyFunctionInfo:
+    pass
+
+
+def test_get_python_callable_valid(mock_workspace_client):
+    fake_function_info = MagicMock()
+    fake_function_info.name = "my_func"
+    fake_function_info.routine_body = DummyType("EXTERNAL", "EXTERNAL")
+    fake_function_info.routine_definition = "return x * 2"
+    fake_function_info.comment = "A function that doubles the input"
+
+    fake_param = MagicMock()
+    fake_param.name = "x"
+    fake_param.type_text = "int"
+    fake_param.type_json = (
+        '{"name": "x", "type": "int", "nullable": true, "metadata": {"comment": "an int"}}'
+    )
+    fake_param.comment = "an int"
+    fake_function_info.input_params = DummyInputParams([fake_param])
+    fake_function_info.full_data_type = "STRING"
+
+    client = DatabricksFunctionClient(client=mock_workspace_client)
+    client.get_function = MagicMock(return_value=fake_function_info)
+
+    result = client.get_function_source("my_func")
+    assert "def my_func(x: int) -> str:" in result
+    assert '"""' in result
+    assert "A function that doubles the input" in result
+    assert "Args:" in result
+    assert "x: an int" in result
+    assert "return x * 2" in result
+
+
+def test_get_python_callable_non_external(mock_workspace_client):
+    """
+    Test that get_python_callable raises an error when the routine_body is not 'EXTERNAL'.
+    """
+    client = DatabricksFunctionClient(client=mock_workspace_client)
+
+    fake_function_info = MagicMock()
+    fake_function_info.name = "non_external_func"
+    fake_function_info.routine_body = MagicMock(value="SQL")
+    fake_function_info.routine_definition = "SELECT 1"
+    fake_function_info.input_params = MagicMock(parameters=[])
+    fake_function_info.data_type = MagicMock(value="STRING")
+
+    client.get_function = MagicMock(return_value=fake_function_info)
+
+    with pytest.raises(ValueError, match="is not an EXTERNAL Python function"):
+        client.get_function_source("non_external_func")
+
+
+def test_get_python_callable_multiline(mock_workspace_client):
+    client = DatabricksFunctionClient(client=mock_workspace_client)
+
+    fake_function_info = MagicMock()
+    fake_function_info.name = "multi_line_func"
+    fake_function_info.routine_body = DummyType("EXTERNAL", "EXTERNAL")
+    fake_function_info.routine_definition = "line1\nline2\nline3"
+    fake_function_info.input_params = DummyInputParams([])  # No parameters.
+    fake_function_info.full_data_type = "STRING"
+    fake_function_info.comment = ""
+
+    client.get_function = MagicMock(return_value=fake_function_info)
+
+    result = client.get_function_source("multi_line_func")
+    assert "def multi_line_func() -> str:" in result
+    assert "line1" in result
+    assert "line2" in result
+    assert "line3" in result
+
+
+@pytest.fixture
+def complex_function_info():
+    # Build parameters for a complex function.
+    a = DummyParameter(
+        "a",
+        "LONG",
+        "an int",
+    )
+    b = DummyParameter(
+        "b",
+        "DOUBLE",
+        "a float",
+    )
+    c = DummyParameter(
+        "c",
+        "STRING",
+        "a string",
+    )
+    d = DummyParameter(
+        "d",
+        "BOOLEAN",
+        "some bool",
+    )
+    e = DummyParameter(
+        "e",
+        "ARRAY<STRING>",
+        "a list of str",
+    )
+    f = DummyParameter(
+        "f",
+        "MAP<STRING, LONG>",
+        "a dict of str to int",
+    )
+    g = DummyParameter(
+        "g",
+        "VARIANT",
+        "a variant",
+    )
+    h = DummyParameter(
+        "h",
+        "MAP<STRING, ARRAY<LONG>>",
+        "a complex type",
+    )
+    i = DummyParameter(
+        "i",
+        "MAP<STRING, ARRAY<MAP<STRING, ARRAY<LONG>>>>",
+        "a very complex type",
+    )
+
+    dummy_params = DummyInputParams([a, b, c, d, e, f, g, h, i])
+
+    func_info = DummyFunctionInfo()
+    func_info.name = "test_func"
+    func_info.input_params = dummy_params
+    func_info.routine_body = DummyType("EXTERNAL", "EXTERNAL")
+    func_info.routine_definition = (
+        "    def _internal(g: float) -> int:\n"
+        "        return g + c\n\n"
+        "    return str(a+b+_internal(4.5)) + c + str(d) + str(e) + str(f) + str(g)"
+    )
+    func_info.full_data_type = "MAP<STRING, ARRAY<STRING>>"
+    func_info.comment = "Just doing some testing here"
+    return func_info
+
+
+def test_reconstruct_callable_complex_function(complex_function_info):
+    reconstructed = dynamically_construct_python_function(complex_function_info)
+
+    expected_header = (
+        "test_func(a: int, b: float, c: str, d: bool, e: list[str], f: dict[str, int], "
+        "g: Variant, h: dict[str, list[int]], i: dict[str, list[dict[str, list[int]]]]) -> dict[str, list[str]]"
+    )
+    assert expected_header in reconstructed
+
+    assert "Just doing some testing here" in reconstructed
+    assert "a: an int" in reconstructed
+    assert "b: a float" in reconstructed
+    assert "c: a string" in reconstructed
+    assert "d: some bool" in reconstructed
+    assert "e: a list of str" in reconstructed
+    assert "f: a dict of str to int" in reconstructed
+    assert "g: a variant" in reconstructed
+    assert "h: a complex type" in reconstructed
+    assert "i: a very complex type" in reconstructed
+
+    assert "def _internal(g: float) -> int:" in reconstructed
+    assert "return str(a+b+_internal(4.5))" in reconstructed
