@@ -879,14 +879,17 @@ def _reconstruct_docstring(function_info: "FunctionInfo", max_width: int = 100) 
     doc_lines.append("")
     doc_lines.append("Returns:")
     wrapped_return = fill(
-        return_type_str, width=max_width, initial_indent="    ", subsequent_indent="    "
+        return_type_str,
+        width=max_width,
+        initial_indent=PRIMARY_INDENT,
+        subsequent_indent=WRAPPED_INDENT,
     )
     doc_lines.append(wrapped_return)
 
     if not doc_lines:
         return ""
 
-    indented_doc = "\n".join("    " + line for line in doc_lines)
+    indented_doc = "\n".join(PRIMARY_INDENT + line for line in doc_lines)
     return f'    """\n{indented_doc}\n    """\n'
 
 

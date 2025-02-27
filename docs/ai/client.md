@@ -519,8 +519,17 @@ within the `FunctionInfo` object. In Databricks, full typing is supported for co
 The result of calling the `get_function_source` API on the `sample_python_func` registered function will be (when printed):
 
 ```text
-def sample_python_func(a: int, b: int) -> bigint:
+def sample_python_func(a: int, b: int) -> int:
+    """
+    Returns the sum of a and b.
 
+    Args:
+        a: an int
+        b: another int
+
+    Returns:
+        int
+    """
     return a + b
 ```
 
@@ -568,7 +577,16 @@ from unitycatalog.ai.core.utils.execution_utils import load_function_from_string
 
 func_str = """
 def multiply_numbers(a: int, b: int) -> int:
-    \"\"\"Multiplies two numbers.\"\"\"
+    \"\"\"
+    Multiplies two numbers.
+
+    Args:
+        a: first number.
+        b: second number.
+
+    Returns:
+        int
+    \"\"\"
     return a * b
 """
 
@@ -595,9 +613,13 @@ func_str2 = """
 def multiply_numbers_with_constant(a: int, b: int) -> int:
     \"\"\"
     Multiplies two numbers with a constant.
-        Args:
-            a (int): first number.
-            b (int): second number.
+
+    Args:
+        a: first number.
+        b: second number.
+        
+    Returns:
+        int
     \"\"\"
     return a * b * c
 """
