@@ -811,7 +811,13 @@ def _parse_sql_data_type(type_str: str) -> str:
 
     if "<" not in type_str:
         mapped = SQL_TYPE_TO_PYTHON_TYPE_MAPPING.get(type_str.upper())
-        return mapped.__name__ if mapped else type_str.lower()
+        if mapped:
+            if isinstance(mapped, tuple):
+                return mapped[0].__name__
+            else:
+                return mapped.__name__
+        else:
+            return type_str.lower()
 
     outer, inner = type_str.split("<", 1)
     outer = outer.strip().upper()
@@ -985,5 +991,39 @@ def dynamically_construct_python_function(
 
     adjusted_body = _parse_routine_definition(function_info.routine_definition)
     func_def += adjusted_body + "\n"
+
+    return func_def
+
+
+def get_callable_definition(function_info: "FunctionInfo") -> str:
+    """
+    Construct a Python function from the given FunctionInfo without docstring, comments, or types.
+    This funciton is purely used for local or sandboxed function execution encapsulated within a call to
+    `execute_function` and is not intended to be used for retrieving a callable definition.
+    Use `get_python_callable` instead if you want the original callable definition.
+
+    Args:
+        function_info: The FunctionInfo object containing the function metadata.
+
+    Returns:
+        The minimal re-constructed function definition.
+    """
+
+    if isinstance(function_info.routine_body, str):
+        function_type = function_info.routine_body
+    else:
+        function_type = function_info.routine_body.value
+
+    if function_type != "EXTERNAL":
+        raise NotImplementedError(
+            f"routine_body {function_type} is not supported. Only 'EXTERNAL' Python body extraction is supported."
+        )
+    param_names = []
+    if function_info.input_params and function_info.input_params.parameters:
+        param_names = [param.name for param in function_info.input_params.parameters]
+    function_head = f"{function_info.name}({', '.join(param_names)})"
+    func_def = f"def {function_head}:\n"
+    for line in function_info.routine_definition.split("\n"):
+        func_def += f"    {line}\n"
 
     return func_def

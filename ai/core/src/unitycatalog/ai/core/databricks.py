@@ -17,13 +17,16 @@ from unitycatalog.ai.core.envs.databricks_env_vars import (
     UCAI_DATABRICKS_SERVERLESS_EXECUTION_RESULT_ROW_LIMIT,
     UCAI_DATABRICKS_SESSION_RETRY_MAX_ATTEMPTS,
 )
+from unitycatalog.ai.core.executor.local import run_in_sandbox
 from unitycatalog.ai.core.paged_list import PagedList
 from unitycatalog.ai.core.types import Variant
 from unitycatalog.ai.core.utils.callable_utils import (
     dynamically_construct_python_function,
     generate_sql_function_body,
     generate_wrapped_sql_function_body,
+    get_callable_definition,
 )
+from unitycatalog.ai.core.utils.execution_utils import load_function_from_string
 from unitycatalog.ai.core.utils.function_processing_utils import process_function_parameter_defaults
 from unitycatalog.ai.core.utils.type_utils import (
     column_type_to_python_type,
@@ -227,6 +230,7 @@ class DatabricksFunctionClient(BaseFunctionClient):
         client: Optional["WorkspaceClient"] = None,
         *,
         profile: Optional[str] = None,
+        execution_mode: str = "serverless",
         **kwargs: Any,
     ) -> None:
         """
@@ -236,13 +240,30 @@ class DatabricksFunctionClient(BaseFunctionClient):
             client: The databricks workspace client. If it's None, a default databricks workspace client
                 is generated based on the configuration. Defaults to None.
             profile: The configuration profile to use for databricks connect. Defaults to None.
+            execution_mode: The execution mode of the client. Defaults to "serverless".
         """
         _warn_if_workspace_provided(**kwargs)
         self.client = client or get_default_databricks_workspace_client(profile=profile)
         self.profile = profile
+        self.execution_mode = self._validate_execution_mode(execution_mode)
         self.spark = _try_get_spark_session_in_dbr()
         self._is_default_client = client is None
         super().__init__()
+
+    @classmethod
+    def _validate_execution_mode(cls, execution_mode: str) -> None:
+        if execution_mode not in ["serverless", "local"]:
+            raise ValueError(
+                f"Execution mode {execution_mode} is not supported. "
+                "DatabricksFunctionClient only supports 'serverless' and 'local' sandbox execution modes."
+            )
+        if execution_mode == "local":
+            _logger.warning(
+                "You have configured the DatabricksFunctionClient to run in local sandbox mode."
+                "This mode is indended for local testing and development only. Production use cases"
+                "should use the 'serverless' execution mode."
+            )
+        return execution_mode
 
     def _is_spark_session_active(self):
         if self.spark is None:
@@ -678,7 +699,14 @@ class DatabricksFunctionClient(BaseFunctionClient):
         self, function_info: "FunctionInfo", parameters: Dict[str, Any], **kwargs: Any
     ) -> Any:
         check_function_info(function_info)
-        return self._execute_uc_functions_with_serverless(function_info, parameters)
+        if self.execution_mode == "serverless":
+            return self._execute_uc_functions_with_serverless(function_info, parameters)
+        elif self.execution_mode == "local":
+            return self._execute_uc_functions_with_local(function_info, parameters)
+        else:
+            raise ValueError(
+                f"Execution mode {self.execution_mode} is not supported. Must be either 'serverless' or 'local'."
+            )
 
     @retry_on_session_expiration
     def _execute_uc_functions_with_serverless(
@@ -711,6 +739,30 @@ class DatabricksFunctionClient(BaseFunctionClient):
             )
             error = f"Failed to execute function with command `{sql_command_msg}`\nError: {e}"
             return FunctionExecutionResult(error=error)
+
+    @retry_on_session_expiration
+    def _execute_uc_functions_with_local(
+        self, function_info: "FunctionInfo", parameters: Dict[str, Any]
+    ) -> FunctionExecutionResult:
+        if not is_scalar(function_info):
+            raise ValueError(
+                "Local sandbox execution is only supported for scalar Python functions."
+                "Use 'serverless' execution mode for table functions."
+            )
+        _logger.info("Using local sandbox to execute functions.")
+
+        parameters = process_function_parameter_defaults(function_info, parameters)
+        python_def = get_callable_definition(function_info)
+        python_function = load_function_from_string(python_def)
+        try:
+            succeeded, result = run_in_sandbox(python_function, parameters)
+            if not succeeded:
+                raise Exception(
+                    f"Failed to execute function {function_info.name} with error: {result}"
+                )
+            return FunctionExecutionResult(format="SCALAR", value=result)
+        except Exception as e:
+            return FunctionExecutionResult(error=str(e))
 
     @override
     def delete_function(

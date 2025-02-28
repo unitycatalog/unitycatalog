@@ -1568,3 +1568,44 @@ def test_reconstruct_callable_complex_function(complex_function_info):
 
     assert "def _internal(g: float) -> int:" in reconstructed
     assert "return str(a+b+_internal(4.5))" in reconstructed
+
+
+def create_dummy_function_info() -> FunctionInfo:
+    """
+    Build a dummy FunctionInfo for an EXTERNAL Python function.
+    The routine_definition is built from the source of `add`.
+    """
+    return FunctionInfo(
+        catalog_name="local_catalog",
+        schema_name="local_schema",
+        name="add",
+        data_type=ColumnTypeName.INT,
+        input_params=FunctionParameterInfos(
+            parameters=[
+                FunctionParameterInfo(
+                    name="a", type_name=ColumnTypeName.INT, type_text="int", position=0
+                ),
+                FunctionParameterInfo(
+                    name="b", type_name=ColumnTypeName.INT, type_text="int", position=1
+                ),
+            ]
+        ),
+        routine_body="EXTERNAL",
+        routine_definition="return a + b",
+        full_data_type="INT",
+        return_params=FunctionParameterInfos(parameters=[]),
+    )
+
+
+def test_local_sandbox_execution_databricks(client: DatabricksFunctionClient):
+    client.execution_mode = "local"
+    dummy_info = create_dummy_function_info()
+
+    client.get_function = lambda fn, **kwargs: dummy_info
+
+    result = client.execute_function(
+        "local_catalog.local_schema.add", parameters={"a": 10, "b": 20}
+    )
+
+    assert result.value == 30, f"Got result: {result}"
+    assert result.format == "SCALAR"
