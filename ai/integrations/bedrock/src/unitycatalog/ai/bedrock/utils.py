@@ -12,7 +12,6 @@ def extract_response_details(response: Dict[str, Any]) -> Dict[str, Any]:
 
     for event in response.get('completion', []):
         try:
-            # TODO: Revist to process the event stream 
             if 'chunk' in event:
                 chunk = event['chunk'].get('bytes', b'').decode('utf-8')
                 if chunk:

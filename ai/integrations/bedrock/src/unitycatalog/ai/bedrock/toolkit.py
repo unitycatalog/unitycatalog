@@ -93,10 +93,9 @@ class BedrockSession:
         logger.info(
             f"Initialized BedrockSession with agent_id: {self.agent_id}, "
             f"agent_alias_id: {self.agent_alias_id}, "
-            f"catalog_name: {self.catalog_name}",
-            f"schema_name: {self.schema_name}, "
-            #f"function_name: {self.function_name}"
-        )  # Debugging
+            f"catalog_name: {self.catalog_name}, "
+            f"schema_name: {self.schema_name}"
+        ) # Debugging
     
     def invoke_agent(
             self,
@@ -124,13 +123,9 @@ class BedrockSession:
             params['streamingConfigurations'] = streaming_configurations
 
          # Invoke the agent
-        logger.info("****************************")
-        logger.info("Invoking the agent with params:")
-        logger.info(f"Timestamp: {time.strftime('%Y-%m-%d %H:%M:%S', time.gmtime())}")
-        logger.info(params)  # Debugging  
-        logger.info("****************************")
+        logger.debug(f"Invoking the agent with params:{params}") #Debugging
         response = self.client.invoke_agent(**params)
-        logger.info(f"Response from invoke agent: {response}") #Debugging
+        logger.debug(f"Response from invoke agent: {response}") #Debugging
 
         extracted_details = extract_response_details(response)
 
@@ -142,49 +137,41 @@ class BedrockSession:
         elif 'tool_calls' in extracted_details and extracted_details['tool_calls']:
             tool_calls = extracted_details['tool_calls']
 
-            #tool_calls = extract_tool_calls(response)
-            logger.info(f"Tool Call Results: {tool_calls}") #Debugging
+            logger.debug(f"Tool Call Results: {tool_calls}") #Debugging
             if tool_calls and uc_client:
                 # There is a response with UC functions to call.
-                logger.info("****************************")
-                logger.info(f"Tool Calls: {tool_calls[0]['function_name']}") #Debugging
+                logger.debug(f"Tool Calls: {tool_calls[0]['function_name']}") #Debugging
                 
                 function_name_to_execute = (tool_calls[0]['function_name']).split('__')[1]
-                
-                #logger.info(f"Parameter: {self.function_name}") #Debugging
-                logger.info("****************************")
                 
                 # Executing the UC functions in the current python environment
                 tool_results = execute_tool_calls(tool_calls, uc_client,
                                                 catalog_name=self.catalog_name,
                                                 schema_name=self.schema_name,
                                                 function_name=function_name_to_execute)
-                logger.info(f"ToolResults: {tool_results}") #Debugging
+                logger.debug(f"ToolResults: {tool_results}") #Debugging
                 
                 if tool_results:
-                    # Generate the session state for the next invocation with results.
+                    # Generate the agent session state for the next invocation with results.
                     session_state = generate_tool_call_session_state(
                         tool_results[0], tool_calls[0])
-                    logger.info(f"SessionState from tool_results: {session_state}") #Debugging
+                    logger.debug(f"SessionState from tool_results: {session_state}") #Debugging
                     
-                    logger.info("Sleeping for 65 seconds before invoking the agent again...")
-                    # Calling the agent with session state
+                    logger.info("Sleeping for 65 seconds before invoking the agent again.")
                     time.sleep(65) #TODO: Remove this sleep and make this exponential
 
-                    # TODO: Handle below when we are invoking the final response.
-                    #  {
-                    #                        'applyGuardrailInterval': 123, # TODO: Test variations
-                    #                        'streamFinalResponse': True
-                    #                    }
-                logger.info(f"SessionState before invoking agent again: {session_state}")  # Debugging
+                    
+                logger.debug(f"SessionState before invoking agent again: {session_state}")  # Debugging
+                agent_stream_config = {
+                                           # Bedrock will apply safety checks every second while generating and streaming the output
+                                           'applyGuardrailInterval': 1000, 
+                                           'streamFinalResponse': True
+                                       }
                 return self.invoke_agent(input_text="",
                                         session_id=session_id,
                                         enable_trace=enable_trace,
                                         session_state=session_state,
-                                        streaming_configurations={
-                                            'applyGuardrailInterval': 123,
-                                            'streamFinalResponse': True
-                                        },
+                                        streaming_configurations=agent_stream_config,
                                         uc_client=uc_client)
         
         return BedrockToolResponse(raw_response=response, tool_calls=tool_calls, response_body=final_response_body)
