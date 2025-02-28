@@ -11,6 +11,7 @@ import nest_asyncio
 from typing_extensions import override
 
 from unitycatalog.ai.core.base import BaseFunctionClient, FunctionExecutionResult
+from unitycatalog.ai.core.executor.local import run_in_sandbox, run_in_sandbox_async
 from unitycatalog.ai.core.paged_list import PagedList
 from unitycatalog.ai.core.utils.callable_utils import (
     dynamically_construct_python_function,
@@ -343,12 +344,23 @@ class UnitycatalogFunctionClient(BaseFunctionClient):
     Unity Catalog function client for managing and executing functions in Unity Catalog OSS.
     """
 
-    def __init__(self, api_client: ApiClient, **kwargs: Any) -> None:
+    def __init__(
+        self, api_client: ApiClient, execution_mode: str = "sandbox", **kwargs: Any
+    ) -> None:
         """
         Initialize the UnitycatalogFunctionClient.
 
         Args:
             api_client: An instance of unitycatalog.client.ApiClient that has been constructed with the desired Configuration.
+            execution_mode: Set the function execution mode of the client. Options are:
+                - "local": Execute functions directly in the local Python main process. This mode is not recommended for
+                    production use as it may lead to unwanted side effects, potential security issues,
+                    and has no protection against excessive resource usage.
+                - "sandbox": (Default) Execute functions in a sandboxed subprocess using multiprocessing. This mode is preferred
+                    for production use as it provides a controlled environment for function execution. Note that there
+                    are restrictions on core library use in Python as well as a block on interfacing with the local filesystem
+                    via standard Python APIs. If your functions require access to the local filesystem, consider using the
+                    "local" execution mode.
             **kwargs: Additional keyword arguments.
         """
 
@@ -358,6 +370,7 @@ class UnitycatalogFunctionClient(BaseFunctionClient):
             )
 
         self.uc = UnitycatalogClient(api_client)
+        self.execution_mode = self._validate_execution_mode(execution_mode)
         self.func_cache = {}
         super().__init__()
 
@@ -365,6 +378,24 @@ class UnitycatalogFunctionClient(BaseFunctionClient):
         # and preventing Python's GC operation as well as to ensure that multiple instances of
         # this client are not present within a thread (eliminate a potential memory leak).
         atexit.register(self.close)
+
+    @classmethod
+    def _validate_execution_mode(cls, execution_mode: str) -> str:
+        """
+        Validate the execution mode.
+
+        Args:
+            execution_mode: The execution mode to validate.
+
+        Returns:
+            The validated execution mode.
+
+        Raises:
+            ValueError: If the execution mode is invalid.
+        """
+        if execution_mode not in ["local", "sandbox"]:
+            raise ValueError("Invalid execution mode. Allowed values are 'local' or 'sandbox'.")
+        return execution_mode
 
     async def close_async(self):
         """Asynchronously close the underlying ApiClient."""
@@ -832,6 +863,23 @@ class UnitycatalogFunctionClient(BaseFunctionClient):
             )
         validate_param(value, param_info.type_name, param_info.type_text)
 
+    def _prepare_function_and_params(
+        self, function_info: FunctionInfo, parameters: Optional[dict[str, Any]] = None
+    ) -> tuple[Callable[..., Any], dict[str, Any]]:
+        """
+        Extracts or dynamically constructs the function from the FunctionInfo,
+        applies parameter defaults, and caches the function for future calls.
+        """
+        parameters = process_function_parameter_defaults(function_info, parameters)
+        if function_info.name in self.func_cache:
+            func = self.func_cache[function_info.name]
+        else:
+            python_function = _get_callable_definition(function_info)
+            exec(python_function, self.func_cache)
+            func = self.func_cache[function_info.name]
+            self.func_cache[function_info.name] = lru_cache()(func)
+        return func, parameters
+
     @override
     def _execute_uc_function(
         self,
@@ -839,29 +887,51 @@ class UnitycatalogFunctionClient(BaseFunctionClient):
         parameters: Optional[dict[str, Any]] = None,
         **kwargs: Any,
     ) -> FunctionExecutionResult:
-        if function_info.name in self.func_cache:
-            parameters = process_function_parameter_defaults(function_info, parameters)
-
-            result = self.func_cache[function_info.name](**parameters)
-            try:
-                return FunctionExecutionResult(format="SCALAR", value=str(result))
-            except Exception as e:
-                return FunctionExecutionResult(error=str(e))
-        else:
-            python_function = _get_callable_definition(function_info)
-            exec(python_function, self.func_cache)
-            try:
-                func = self.func_cache[function_info.name]
-
-                parameters = process_function_parameter_defaults(function_info, parameters)
-
+        try:
+            func, parameters = self._prepare_function_and_params(function_info, parameters)
+            if self.execution_mode == "local":
                 result = func(**parameters)
+            elif self.execution_mode == "sandbox":
+                succeeded, result = run_in_sandbox(func, parameters)
+                if not succeeded:
+                    raise Exception(result)
+            else:
+                raise RuntimeError(f"Unknown execution_mode: {self.execution_mode}")
+            return FunctionExecutionResult(format="SCALAR", value=str(result))
+        except Exception as e:
+            return FunctionExecutionResult(error=str(e))
 
-                self.func_cache[function_info.name] = lru_cache()(func)
+    async def execute_function_async(
+        self,
+        function_info: FunctionInfo,
+        parameters: Optional[dict[str, Any]] = None,
+        **kwargs: Any,
+    ) -> FunctionExecutionResult:
+        """
+        Execute a function in Unity Catalog asynchronously.
 
-                return FunctionExecutionResult(format="SCALAR", value=str(result))
-            except Exception as e:
-                return FunctionExecutionResult(error=str(e))
+        Args:
+            function_info: The FunctionInfo object representing the function to execute.
+            parameters: Optional dictionary of parameters to pass to the function.
+            **kwargs: Additional keyword arguments.
+        """
+        try:
+            func, parameters = self._prepare_function_and_params(function_info, parameters)
+            if self.execution_mode == "local":
+                if asyncio.iscoroutinefunction(func):
+                    result = await func(**parameters)
+                else:
+                    loop = asyncio.get_running_loop()
+                    result = await loop.run_in_executor(None, func, **parameters)
+            elif self.execution_mode == "sandbox":
+                succeeded, result = await run_in_sandbox_async(func, parameters)
+                if not succeeded:
+                    raise Exception(result)
+            else:
+                raise RuntimeError(f"Unknown execution_mode: {self.execution_mode}")
+            return FunctionExecutionResult(format="SCALAR", value=str(result))
+        except Exception as e:
+            return FunctionExecutionResult(error=str(e))
 
     async def delete_function_async(
         self,

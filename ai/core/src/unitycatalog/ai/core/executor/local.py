@@ -29,7 +29,7 @@ TIMEOUT_ERROR_MESSAGE = (
     "The function execution has timed out and has been canceled due to excessive resource consumption.\n"
     "There are two timeout conditions to consider:\n"
     "\t1. You can increase the CPU execution timeout by setting "
-    "the environment variable EXECUTOR_MAX_CPU_TIME_LIMIT. The default value is 10 seconds."
+    "the environment variable EXECUTOR_MAX_CPU_TIME_LIMIT. The default value is 10 seconds.\n"
     "\t2. You can increase the wall-clock time limit by setting the environment variable "
     "EXECUTOR_TIMEOUT. The default value is 20 seconds.\n"
 )
@@ -40,6 +40,12 @@ NO_OUTPUT_MESSAGE = (
     "without being captured.\nCheck the function implementation and ensure it returns a value "
     "by locally executing the function returned from calling the `get_function_source` method on the function "
     "client object and converting your function to a callable using `unitycatalog.ai.core.utils.execution_utils.load_function_from_string`."
+)
+
+OPEN_DISALLOWED_MESSAGE = (
+    "The use of the 'open' function is restricted within the local sandbox executor for safety reasons. "
+    "This is to prevent the execution of potentially dangerous code or access to sensitive system resources.\n"
+    "If you need to read or write files within your function, utilize a different execution mode in your function client."
 )
 
 _logger = logging.getLogger(__name__)
@@ -127,16 +133,13 @@ def _disable_unwanted_imports():
 
     def restricted_import(name, globals=None, locals=None, fromlist=(), level=0):
         if name in DISALLOWED_MODULES:
-            raise ImportError(
-                f"Import of module '{name}' is restricted within the local sandbox "
-                "executor. Set a different execution environment to execute this function."
-            )
+            raise ImportError(generate_import_disallowed_message(name))
         return original_import(name, globals, locals, fromlist, level)
 
     builtins.__import__ = restricted_import
 
     def disabled_open(*args, **kwargs):
-        raise ImportError("The open function is disabled in this sandbox")
+        raise ImportError(OPEN_DISALLOWED_MESSAGE)
 
     builtins.open = disabled_open
 
@@ -149,19 +152,23 @@ def _sandboxed_wrapper(
 
     Applies resource limits and restricts dangerous module imports.
     The function `func` is called with keyword arguments from `params`.
+    If the function returns a coroutine, it is executed via asyncio.run().
     The result or any exception's full stack trace is placed on a queue.
     """
     try:
         _limit_resources(cpu_time_limit, memory_limit)
         _disable_unwanted_imports()
         result = func(**params)
-        q.put((True, result))
+        if asyncio.iscoroutine(result):
+            result = asyncio.run(result)
+        parsed_result = result if result is not None else NO_OUTPUT_MESSAGE
+        q.put((True, parsed_result))
     except Exception:
         tb = traceback.format_exc()
         q.put((False, tb))
 
 
-async def async_run_in_sandbox(
+async def run_in_sandbox_async(
     func: Callable[..., Any], params: dict[str, Any]
 ) -> tuple[bool, Any]:
     """
@@ -203,3 +210,30 @@ async def async_run_in_sandbox(
             signal_num = -exitcode
             return False, generate_terminated_message(signal_num)
         return False, NO_OUTPUT_MESSAGE
+
+
+def run_in_sandbox(func: Callable[..., Any], params: dict[str, Any]) -> tuple[bool, Any]:
+    """
+    Synchronous version of run_in_sandbox_async to support non-async APIs.
+    Executes the given function in a sandboxed subprocess using multiprocessing
+    with resource limits and a restricted import mechanism.
+
+    This function first checks if an event loop is already running. If one is found
+    (e.g. in a Jupyter environment), it uses that loop's run_until_complete method;
+    otherwise, it creates a new event loop with asyncio.run().
+
+    Parameters:
+        func: The callable to execute.
+        params: A dictionary of keyword arguments to pass to the function.
+
+    Returns:
+        A tuple (success, result) as returned by run_in_sandbox_async.
+    """
+    if not callable(func):
+        raise TypeError("The provided function is not callable.")
+    try:
+        loop = asyncio.get_running_loop()
+    except RuntimeError:
+        return asyncio.run(run_in_sandbox_async(func, params))
+    else:
+        return loop.run_until_complete(run_in_sandbox_async(func, params))

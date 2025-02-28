@@ -760,6 +760,7 @@ async def test_delete_nonexistent_function(uc_client):
 
 @pytest.mark.asyncio
 async def test_execute_function_with_error(uc_client):
+    uc_client.execution_mode = "local"
     function_name = f"{CATALOG}.{SCHEMA}.error_function"
     routine_definition = "raise ValueError('Intentional Error')"
     data_type = "STRING"
