@@ -24,8 +24,8 @@ OpenJDK Runtime Environment Homebrew (build 17.0.12+0)
 OpenJDK 64-Bit Server VM Homebrew (build 17.0.12+0, mixed mode, sharing)
 ```
 
-Change into the `unitycatalog` directory and run `bin/start-uc-server` to instantiate the server. Here is what you
-should see:
+Change into the `unitycatalog` directory, build the package `build/sbt package` (if not already built), and then run `bin/start-uc-server` 
+to instantiate the server. Here is what you should see:
 
 ```console
 ################################################################### 
