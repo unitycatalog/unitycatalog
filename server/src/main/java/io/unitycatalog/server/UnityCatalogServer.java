@@ -303,11 +303,6 @@ public class UnityCatalogServer {
         UnityCatalogServer.builder().port(options.getPort()).build();
     unityCatalogServer.printArt();
     unityCatalogServer.start();
-    // Start URL transcoder
-    Vertx vertx = Vertx.vertx();
-    Verticle transcodeVerticle =
-        new URLTranscoderVerticle(options.getPort(), options.getPort() + 1);
-    vertx.deployVerticle(transcodeVerticle);
   }
 
   public void start() {
