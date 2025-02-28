@@ -18,7 +18,9 @@ from unitycatalog.ai.core.client import (
     validate_input_parameter,
     validate_param,
 )
+from unitycatalog.ai.core.executor.local import run_in_sandbox, run_in_sandbox_async
 from unitycatalog.ai.core.types import Variant
+from unitycatalog.ai.core.utils.execution_utils import load_function_from_string
 from unitycatalog.ai.test_utils.function_utils import (
     CATALOG,
     int_func_no_doc,
@@ -88,6 +90,20 @@ def simple_function_obj():
         expected_result="test",
         comment="test",
     )
+
+
+def simple_func(a: int, b: int) -> int:
+    """
+    A simple local function.
+
+    Args:
+        a: an int
+        b: an int
+
+    Returns:
+        int: The sum of a and b.
+    """
+    return a + b
 
 
 @pytest_asyncio.fixture
@@ -1647,3 +1663,150 @@ def test_long_argument_comment(uc_client: UnitycatalogFunctionClient):
         "        int\n"
         '    """\n'
     )
+    assert callable_def.startswith(expected_header), (
+        f"Expected:\n{expected_header}\nGot:\n{callable_def}"
+    )
+
+
+def test_local_function_execution_sync(uc_client: UnitycatalogFunctionClient):
+    uc_client.execution_mode = "local"
+    function_name = f"{CATALOG}.{SCHEMA}.simple_func"
+    uc_client.create_python_function(func=simple_func, catalog=CATALOG, schema=SCHEMA, replace=True)
+
+    result = uc_client.execute_function(function_name=function_name, parameters={"a": 5, "b": 10})
+    assert result.value == "15"
+    assert result.format == "SCALAR"
+
+
+@pytest.mark.asyncio
+async def test_local_function_execution_async(uc_client: UnitycatalogFunctionClient):
+    uc_client.execution_mode = "local"
+    function_name = f"{CATALOG}.{SCHEMA}.simple_func"
+    uc_client.create_python_function(func=simple_func, catalog=CATALOG, schema=SCHEMA, replace=True)
+
+    result = await uc_client.execute_function_async(
+        function_name=function_name, parameters={"a": 5, "b": 10}
+    )
+    assert result.value == "15"
+    assert result.format == "SCALAR"
+
+
+def test_manual_function_sandbox_execution_sync(uc_client: UnitycatalogFunctionClient):
+    uc_client.execution_mode = "sandbox"
+    function_name = f"{CATALOG}.{SCHEMA}.simple_func"
+    uc_client.create_python_function(func=simple_func, catalog=CATALOG, schema=SCHEMA, replace=True)
+
+    retrieved = uc_client.get_function_source(function_name)
+    converted = load_function_from_string(retrieved)
+    success, result = run_in_sandbox(converted, {"a": 5, "b": 10})
+    assert success
+    assert result == 15
+
+
+@pytest.mark.asyncio
+async def test_manual_function_sandbox_execution_async(uc_client: UnitycatalogFunctionClient):
+    uc_client.execution_mode = "sandbox"
+    function_name = f"{CATALOG}.{SCHEMA}.simple_func"
+    uc_client.create_python_function(func=simple_func, catalog=CATALOG, schema=SCHEMA, replace=True)
+
+    retrieved = uc_client.get_function_source(function_name)
+    converted = load_function_from_string(retrieved)
+    success, result = await run_in_sandbox_async(converted, {"a": 5, "b": 10})
+    assert success
+    assert result == 15
+
+
+def test_function_exception_local(uc_client):
+    uc_client.execution_mode = "local"
+
+    def raise_error(a: int, b: int) -> None:
+        """
+        Raises an exception for testing purposes.
+        Args:
+            a: an integer
+            b: another integer
+        Raises:
+            ValueError: Intentional error for testing
+        Returns:
+            Nothing
+        """
+        raise ValueError("Intentional error for testing")
+
+    function_name = f"{CATALOG}.{SCHEMA}.raise_error"
+    uc_client.create_python_function(func=raise_error, catalog=CATALOG, schema=SCHEMA, replace=True)
+    result = uc_client.execute_function(function_name=function_name, parameters={"a": 1, "b": 2})
+    assert result.error is not None
+    assert "Intentional error for testing" in result.error
+
+
+@pytest.mark.asyncio
+async def test_function_exception_sandbox_async(uc_client):
+    uc_client.execution_mode = "sandbox"
+
+    def raise_error_async(a: int, b: int) -> None:
+        """
+        Raises an exception for testing purposes.
+        Args:
+            a: an integer
+            b: another integer
+        Raises:
+            ValueError: Intentional error for testing
+        Returns:
+            Nothing
+        """
+        raise ValueError("Async intentional error")
+
+    function_name = f"{CATALOG}.{SCHEMA}.raise_error_async"
+    uc_client.create_python_function(
+        func=raise_error_async, catalog=CATALOG, schema=SCHEMA, replace=True
+    )
+    result = await uc_client.execute_function_async(
+        function_name=function_name, parameters={"a": 1, "b": 2}
+    )
+    assert result.error is not None
+    assert "Async intentional error" in result.error
+
+
+def test_no_output_function_local(uc_client):
+    uc_client.execution_mode = "local"
+
+    def no_output(a: int, b: int) -> None:
+        """
+        A function that does not return anything.
+        Args:
+            a: an integer
+            b: another integer
+        Returns:
+            None
+        """
+        a + b
+        return None
+
+    function_name = f"{CATALOG}.{SCHEMA}.no_output"
+    uc_client.create_python_function(func=no_output, catalog=CATALOG, schema=SCHEMA, replace=True)
+    result = uc_client.execute_function(function_name=function_name, parameters={"a": 5, "b": 10})
+    assert "The function execution has completed, but no output was produced." in result.value
+
+
+@pytest.mark.asyncio
+async def test_no_output_function_sandbox(uc_client):
+    uc_client.execution_mode = "sandbox"
+
+    def no_output(a: int, b: int) -> None:
+        """
+        A function that does not return anything.
+        Args:
+            a: an integer
+            b: another integer
+        Returns:
+            None
+        """
+        a + b
+        return None
+
+    function_name = f"{CATALOG}.{SCHEMA}.no_output"
+    uc_client.create_python_function(func=no_output, catalog=CATALOG, schema=SCHEMA, replace=True)
+    result = await uc_client.execute_function_async(
+        function_name=function_name, parameters={"a": 5, "b": 10}
+    )
+    assert "The function execution has completed, but no output was produced." in result.value

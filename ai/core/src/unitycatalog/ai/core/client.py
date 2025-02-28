@@ -4,14 +4,18 @@ import datetime
 import decimal
 import logging
 from enum import Enum
-from functools import lru_cache, wraps
+from functools import lru_cache, partial, wraps
 from typing import Any, Callable, Dict, List, Optional, Union
 
 import nest_asyncio
 from typing_extensions import override
 
 from unitycatalog.ai.core.base import BaseFunctionClient, FunctionExecutionResult
-from unitycatalog.ai.core.executor.local import run_in_sandbox, run_in_sandbox_async
+from unitycatalog.ai.core.executor.local import (
+    NO_OUTPUT_MESSAGE,
+    run_in_sandbox,
+    run_in_sandbox_async,
+)
 from unitycatalog.ai.core.paged_list import PagedList
 from unitycatalog.ai.core.utils.callable_utils import (
     dynamically_construct_python_function,
@@ -64,8 +68,8 @@ ALLOWED_DATA_TYPES = {
     "STRUCT",
     "MAP",
     "CHAR",
+    "NULL",
     # below types are not supported in python execution so we excluded them
-    # "NULL",
     # "USER_DEFINED_TYPE",
     # "TABLE_TYPE",
 }
@@ -897,13 +901,15 @@ class UnitycatalogFunctionClient(BaseFunctionClient):
                     raise Exception(result)
             else:
                 raise RuntimeError(f"Unknown execution_mode: {self.execution_mode}")
+            if not result:
+                result = NO_OUTPUT_MESSAGE
             return FunctionExecutionResult(format="SCALAR", value=str(result))
         except Exception as e:
             return FunctionExecutionResult(error=str(e))
 
     async def execute_function_async(
         self,
-        function_info: FunctionInfo,
+        function_name: str,
         parameters: Optional[dict[str, Any]] = None,
         **kwargs: Any,
     ) -> FunctionExecutionResult:
@@ -911,10 +917,15 @@ class UnitycatalogFunctionClient(BaseFunctionClient):
         Execute a function in Unity Catalog asynchronously.
 
         Args:
-            function_info: The FunctionInfo object representing the function to execute.
+            function_name: The name of the function to execute in the form of `<catalog>.<schema>.<function name>`.
             parameters: Optional dictionary of parameters to pass to the function.
             **kwargs: Additional keyword arguments.
         """
+        with self._lock:
+            function_info = self.get_function(function_name, **kwargs)
+            parameters = parameters or {}
+            self.validate_input_params(function_info.input_params, parameters)
+
         try:
             func, parameters = self._prepare_function_and_params(function_info, parameters)
             if self.execution_mode == "local":
@@ -922,13 +933,15 @@ class UnitycatalogFunctionClient(BaseFunctionClient):
                     result = await func(**parameters)
                 else:
                     loop = asyncio.get_running_loop()
-                    result = await loop.run_in_executor(None, func, **parameters)
+                    result = await loop.run_in_executor(None, partial(func, **parameters))
             elif self.execution_mode == "sandbox":
                 succeeded, result = await run_in_sandbox_async(func, parameters)
                 if not succeeded:
                     raise Exception(result)
             else:
                 raise RuntimeError(f"Unknown execution_mode: {self.execution_mode}")
+            if not result:
+                result = NO_OUTPUT_MESSAGE
             return FunctionExecutionResult(format="SCALAR", value=str(result))
         except Exception as e:
             return FunctionExecutionResult(error=str(e))

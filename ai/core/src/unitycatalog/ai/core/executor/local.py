@@ -234,6 +234,13 @@ def run_in_sandbox(func: Callable[..., Any], params: dict[str, Any]) -> tuple[bo
     try:
         loop = asyncio.get_running_loop()
     except RuntimeError:
-        return asyncio.run(run_in_sandbox_async(func, params))
+        # No running loop: create one and schedule the coroutine as a task.
+        loop = asyncio.new_event_loop()
+        try:
+            task = loop.create_task(run_in_sandbox_async(func, params))
+            result = loop.run_until_complete(task)
+        finally:
+            loop.close()
+        return result
     else:
         return loop.run_until_complete(run_in_sandbox_async(func, params))

@@ -185,7 +185,6 @@ def validate_type_hint(hint: Any) -> str:
     Returns:
         The corresponding SQL type.
     """
-
     if hasattr(hint, "__origin__") and hint.__origin__ is Union:
         non_none_types = [t for t in hint.__args__ if t is not type(None)]
         if len(non_none_types) == 1:
@@ -706,6 +705,8 @@ def validate_return_type(func_name: str, type_hints: dict[str, Any]) -> str:
         )
 
     return_type_hint = type_hints["return"]
+    if return_type_hint is None or return_type_hint is type(None):
+        return "NULL"
     try:
         sql_return_type = validate_type_hint(return_type_hint)
     except ValueError as e:
@@ -870,7 +871,7 @@ def _reconstruct_docstring(function_info: "FunctionInfo", max_width: int = 100) 
                 arg_line,
                 width=max_width,
                 initial_indent=PRIMARY_INDENT,
-                subsequent_indent=WRAPPED_INDENT,
+                subsequent_indent=WRAPPED_INDENT + PRIMARY_INDENT,
             )
             doc_lines.append(wrapped_arg)
 
@@ -882,7 +883,7 @@ def _reconstruct_docstring(function_info: "FunctionInfo", max_width: int = 100) 
         return_type_str,
         width=max_width,
         initial_indent=PRIMARY_INDENT,
-        subsequent_indent=WRAPPED_INDENT,
+        subsequent_indent=WRAPPED_INDENT + PRIMARY_INDENT,
     )
     doc_lines.append(wrapped_return)
 
