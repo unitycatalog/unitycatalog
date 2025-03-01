@@ -478,6 +478,65 @@ You can retrieve the function definition from UC by using the `get_function` cli
 function_info = client.get_function("your_catalog.your_schema.your_function_name")
 ```
 
+## Retrieving a UC function callable
+
+The `get_function_source` API is used to retrieve a recreated python callable definition (as a string) from a registered Unity Catalog Python function.
+In order to use this API, the function that you are fetching **must be** an `EXTERNAL` (python function) type function. When called, the function's metadata will
+be retrieved and the structure of the original callable will be rebuilt and returned as a string.
+
+For example:
+
+```python
+# Define a python callable
+
+def sample_python_func(a: int, b: int) -> int:
+    """
+    Returns the sum of a and b.
+
+    Args:
+        a: an int
+        b: another int
+
+    Returns:
+        The sum of a and b
+    """
+    return a + b
+
+# Create the function within Unity Catalog
+client.create_python_function(catalog=CATALOG, schema=SCHEMA, func=sample_python_func, replace=True)
+
+# Fetch the callable definition
+my_func_def = client.get_function_source(function_name=f"{CATALOG}.{SCHEMA}.sample_python_function")
+```
+
+The returned value from the `get_function_source` API will be the same as the original input with a few caveats:
+
+- `tuple` types will be cast to `list` due to the inability to express a Python `tuple` within Unity Catalog
+- The docstring of the original function will be stripped out. Unity Catalog persists the docstring information in the logged function and it is available in the return of the `get_function` API call if needed.
+- Collection types for open source Unity Catalog will only capture the outer type (i.e., `list` or `dict`) as inner collection type metadata is not preserved
+within the `FunctionInfo` object. In Databricks, full typing is supported for collecitons.
+
+The result of calling the `get_function_source` API on the `sample_python_func` registered function will be (when printed):
+
+```text
+def sample_python_func(a: int, b: int) -> int:
+    """
+    Returns the sum of a and b.
+
+    Args:
+        a: an int
+        b: another int
+
+    Returns:
+        int
+    """
+    return a + b
+```
+
+Note: If you want to convert the extracted string back into an actual Python callable, you can use the utility `load_function_from_string` in the module `unitycatalog.ai.core.utils.execution_utils`. See below for further details on this API.
+
+This API is useful for extracting already-registered functions that will be used as additional in-line calls within another function through the use of the `create_wrapped_python_function` API, saving the effort required to either hand-craft a function definition or having to track down where the original implementation of a logged function was defined.
+
 ## Listing Functions
 
 You can list all functions that are defined within a given catalog and schema by using the `list_functions` client API:
@@ -505,6 +564,79 @@ result = client.execute_function(
 )
 
 print(result.value)  # Outputs: HELLO WORLD
+```
+
+## Execute a UC Python function locally
+
+A utility `load_function_from_string` is available in `unitycatalog.ai.core.utils.execution_utils.py`. This utility allows you to couple the functionality
+in the `get_function_source` API to create a locally-available python callable that can be direclty accessed, precisely as if it were originally defined
+within your current REPL.
+
+```python
+from unitycatalog.ai.core.utils.execution_utils import load_function_from_string
+
+func_str = """
+def multiply_numbers(a: int, b: int) -> int:
+    \"\"\"
+    Multiplies two numbers.
+
+    Args:
+        a: first number.
+        b: second number.
+
+    Returns:
+        int
+    \"\"\"
+    return a * b
+"""
+
+# If specifying `register_global=False`, the original function name cannot be called and must be used
+# with the returned callable reference.
+my_new_multiplier = load_function_from_string(func_str, register_global=False)
+my_new_multiplier(a=1, b=2)  # returns `2`
+
+# Alternatively, if allowing for global reference `register_global=True` (default)
+# The original callable name can be used. This will not work in interactive environments like Jupyter.
+load_function_from_string(func_str)
+multiply_numbers(a=2, b=2)  # returns `4`
+
+# For interactive environments, setting the return object directly within globals() is required in order
+# to utilize the original function name
+alias = load_function_from_string(func_str)
+globals()["multiply_numbers"] = alias
+multiply_numbers(a=3, b=3)  # returns `9`
+
+# Additionally, a scoped namespace can be provided to restrict scope and access to scoped arguments
+from types import SimpleNamespace
+
+func_str2 = """
+def multiply_numbers_with_constant(a: int, b: int) -> int:
+    \"\"\"
+    Multiplies two numbers with a constant.
+
+    Args:
+        a: first number.
+        b: second number.
+        
+    Returns:
+        int
+    \"\"\"
+    return a * b * c
+"""
+
+c = 100  # Not part of the scoped namespace; local constant
+
+scoped_namespace = {
+    "__builtins__": __builtins__,
+    "c": 42,
+}
+    
+load_function_from_string(func_str, register_function=True, namespace=scoped_namespace)
+
+scoped_ns = SimpleNamespace(**scoped_namespace)
+
+scoped_ns.multiply_numbers_with_constant(a=2, b=3)  # returns 252, utilizing the `c` constant of the namespace
+
 ```
 
 ## Function Parameter Defaults
