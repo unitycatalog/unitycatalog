@@ -82,6 +82,7 @@ export default function ModelDetails() {
                   `/models/${record.catalog_name}/${record.schema_name}/${record.model_name}/versions/${record.version}`,
                 )
               }
+              rowKey={(record) => `model-version-${record.id}`}
               columns={[
                 {
                   title: 'Status',
