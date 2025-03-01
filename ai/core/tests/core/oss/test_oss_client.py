@@ -1432,3 +1432,217 @@ def test_create_function_with_none_param_default(uc_client: UnitycatalogFunction
     uc_client.create_python_function(func=null_func, catalog=CATALOG, schema=SCHEMA, replace=True)
     result = uc_client.execute_function(function_name=full_name, parameters={})
     assert result.value == "None"
+
+
+def test_get_python_callable_integration_complex(uc_client: UnitycatalogFunctionClient):
+    def complex_python_func(
+        a: int,
+        b: float,
+        c: str,
+        d: bool,
+        e: list[str],
+        f: dict[str, int],
+        h: dict[str, list[int]],
+        i: dict[str, list[dict[str, list[int]]]],
+    ) -> dict[str, list[str]]:
+        """
+        A complex function that processes various types.
+
+        Args:
+            a: an int
+            b: a float
+            c: a string
+            d: a bool
+            e: a list of strings
+            f: a dict mapping strings to ints
+            h: a dict mapping strings to lists of ints
+            i: a dict mapping strings to lists of dicts mapping strings to lists of ints
+
+        Returns:
+            dict[str, list[str]]: A dictionary with a single key "result" and a list of string representations.
+        """
+
+        def _helper(x: float) -> int:
+            return int(x) + a
+
+        return {"result": [str(a), str(b), c, str(d), ",".join(e), str(f), str(h), str(i)]}
+
+    function_name = f"{CATALOG}.{SCHEMA}.complex_python_func"
+    uc_client.create_python_function(
+        func=complex_python_func, catalog=CATALOG, schema=SCHEMA, replace=True
+    )
+    callable_def = uc_client.get_function_source(function_name)
+
+    expected_header = (
+        "def complex_python_func(a: int, b: float, c: str, d: bool, e: list[str], "
+        "f: dict[str, int], h: dict[str, list[int]], i: dict[str, list[dict[str, "
+        "list[int]]]]) -> dict[str, list[str]]:"
+    )
+
+    assert expected_header in callable_def
+    assert "def _helper(x: float) -> int:" in callable_def
+    assert "return {" in callable_def and '"result": [' in callable_def
+    assert "Args:" in callable_def
+    assert "Returns:" in callable_def
+
+
+def test_tuple_handling(uc_client: UnitycatalogFunctionClient):
+    def tuple_func(a: tuple[int], b: tuple[str], c: list[tuple[str]]) -> tuple[str]:
+        """
+        A function that processes tuples.
+
+        Args:
+            a: a tuple of integers
+            b: a tuple of strings
+            c: a list of tuples of strings
+
+        Returns:
+            tuple[str]: A tuple with the first string and the sum of integers.
+        """
+        return b[0], str(sum(a))
+
+    function_name = f"{CATALOG}.{SCHEMA}.tuple_func"
+    uc_client.create_python_function(func=tuple_func, catalog=CATALOG, schema=SCHEMA, replace=True)
+    callable_def = uc_client.get_function_source(function_name)
+    expected_header = "def tuple_func(a: list[int], b: list[str], c: list[list[str]]) -> list[str]:"
+    assert expected_header in callable_def
+    assert "return b" in callable_def
+    assert "Args:" in callable_def
+    assert "Returns:" in callable_def
+
+
+def test_get_python_callable_integration_standard_indent(uc_client: UnitycatalogFunctionClient):
+    def simple_func(a: int, b: int) -> int:
+        """
+        A simple test function.
+
+        Args:
+          a: an int
+          b: an int
+
+        Returns:
+          int: The sum of a and b.
+        """
+
+        def _internal(x: int) -> int:
+            return x + a
+
+        return _internal(b)
+
+    function_name = f"{CATALOG}.{SCHEMA}.simple_func"
+
+    uc_client.create_python_function(func=simple_func, catalog=CATALOG, schema=SCHEMA, replace=True)
+
+    callable_def = uc_client.get_function_source(function_name)
+
+    expected_def = (
+        "def simple_func(a: int, b: int) -> int:\n"
+        '    """\n'
+        "    A simple test function.\n"
+        "    \n"
+        "    Args:\n"
+        "        a: an int\n"
+        "        b: an int\n"
+        "    \n"
+        "    Returns:\n"
+        "        int\n"
+        '    """\n'
+        "    def _internal(x: int) -> int:\n"
+        "        return x + a\n\n"
+        "    return _internal(b)\n"
+    )
+
+    # Assert exact match.
+    assert callable_def == expected_def, f"Expected:\n{expected_def}\nGot:\n{callable_def}"
+
+
+def test_get_python_callable_integration_complex(uc_client: UnitycatalogFunctionClient):
+    def complex_func(a: int, b: int) -> float:
+        """
+        A complex test function.
+
+        Args:
+          a: an int
+          b: an int
+
+        Returns:
+          int: The product of a and b plus 10.
+        """
+        import math
+
+        def _inner(x: int) -> int:
+            return x + 5
+
+        def _helper(y: int) -> int:
+            def _nested(z: int) -> int:
+                return z * 2
+
+            return _nested(y) + _inner(y)
+
+        return _helper(a) + math.sqrt(b)
+
+    function_name = f"{CATALOG}.{SCHEMA}.complex_func"
+
+    uc_client.create_python_function(
+        func=complex_func, catalog=CATALOG, schema=SCHEMA, replace=True
+    )
+
+    callable_def = uc_client.get_function_source(function_name)
+
+    expected_def = (
+        "def complex_func(a: int, b: int) -> float:\n"
+        '    """\n'
+        "    A complex test function.\n"
+        "    \n"
+        "    Args:\n"
+        "        a: an int\n"
+        "        b: an int\n"
+        "    \n"
+        "    Returns:\n"
+        "        float\n"
+        '    """\n'
+        "    import math\n\n"
+        "    def _inner(x: int) -> int:\n"
+        "        return x + 5\n\n"
+        "    def _helper(y: int) -> int:\n"
+        "        def _nested(z: int) -> int:\n"
+        "            return z * 2\n\n"
+        "        return _nested(y) + _inner(y)\n\n"
+        "    return _helper(a) + math.sqrt(b)\n"
+    )
+
+    assert callable_def == expected_def, f"Expected:\n{expected_def}\nGot:\n{callable_def}"
+
+
+def test_long_argument_comment(uc_client: UnitycatalogFunctionClient):
+    def long_comment_func(a: int) -> int:
+        """
+        A function with a long argument comment.
+
+        Args:
+            a: An integer that represents the first number. Like some integers, this one is also an integer.
+            This comment is intentionally long.
+
+        Returns:
+            The integer value.
+        """
+        return a
+
+    function_name = f"{CATALOG}.{SCHEMA}.long_comment_func"
+    uc_client.create_python_function(
+        func=long_comment_func, catalog=CATALOG, schema=SCHEMA, replace=True
+    )
+    callable_def = uc_client.get_function_source(function_name)
+    expected_header = (
+        "def long_comment_func(a: int) -> int:\n"
+        '    """\n'
+        "    A function with a long argument comment.\n"
+        "    \n"
+        "    Args:\n"
+        "        a: An integer that represents the first number. Like some integers, this one is also an integer.\n"
+        "          This comment is intentionally long.\n"
+        "    \n"
+        "    Returns:\n"
+        "        int\n"
+        '    """\n'
+    )
