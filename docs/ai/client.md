@@ -566,6 +566,170 @@ result = client.execute_function(
 print(result.value)  # Outputs: HELLO WORLD
 ```
 
+### Client Execution Modes
+
+Functions are executed by specifying a fully qualified function name to the `execute_function` or `execute_function_async` APIs. Integration packages
+(Toolkit instances) will call this client API when a GenAI service indicates that a tool call is needed to fulfill a request.
+
+The manual mode of executing a function via the client API is:
+
+```python
+full_func_name = f"{CATALOG}.{SCHEMA}.add_numbers"
+parameters = {"a": 10.5, "b": 5.5}
+
+# Async access
+result = await uc_client.execute_function_async(full_func_name, parameters)
+
+# Sync access
+result = uc_client.execute_function(full_func_name, parameters)
+
+print(result.value)  # Outputs: 16.0
+```
+
+There are two options for executing functions with the `UnitycatalogFunctionClient`:
+
+#### Sandbox Mode
+
+The `"sandbox"` option for callable execution allows for several enhanced security measures and system stability features that are not available
+in the within-main-process execution mode of `"local"`. It is the default configuration for instances of `UnitycatalogFunctionClient`.
+
+The sandbox mode offers:
+
+- Isolated process execution
+- Restrictions on total CPU runtime of the callable execution (to protect against computationally excessive functions)
+- Restrictions on virtual memory allocated to the process running the callable (only available on Linux)
+- Total wall-clock based timeout protection
+
+These configurations can be controlled by setting the following environment variables (listed with their defaults):
+
+| Environment Variable          | Default Value | Description                                             |
+|-------------------------------|---------------|---------------------------------------------------------|
+| `EXECUTOR_MAX_CPU_TIME_LIMIT` | 10 (seconds)  | Maximum allowable CPU execution time                    |
+| `EXECUTOR_MAX_MEMORY_LIMIT`   | 100 (MB)      | Maximum allowable Virtual Memory allocation for process |
+| `EXECUTOR_TIMEOUT`            | 20 (seconds)  | Maximum Total wall clock time                           |
+
+Note that the maximum CPU time limit is not based on wall clock time; rather, it is the time that the CPU has spent at 100% allocation working on executing
+the callable. Based on system scheduling and concurrent process activity, this is almost never equal to wall clock time and is in reality longer in duration
+than the wall clock execution time.
+
+There are restrictions in which packages can be imported for use within a sandbox environment.
+
+The following imports are not permitted:
+
+- `sys`
+- `subprocess`
+- `ctypes`
+- `socket`
+- `importlib`
+- `pickle`
+- `marshall`
+- `shutil`
+- `pathlib`
+
+In addition, callables executed within the sandbox environment do not have access to the built-in file `open` command.
+
+If your function requires access to these modules or needs to have access to the local operating system's file store, use the `"local"` mode of
+execution instead.
+
+#### Local Mode
+
+When creating an instance of a `UnitycatalogFunctionClient` you can specify the `execution_mode` as `"local"` to run your function in the main
+process in which you are calling the `execute_function` API.
+
+Local execution mode has no restrictions regarding allowable imports or the ability to access local file system directories and files, unlike the
+`"sandbox"` option. However, the sandbox mode is recommended in order to gain the stability benefits of isolated process execution, CPU and memory
+limits for callable execution, and the inability to use potentially dangerous libraries within function calls (i.e., `sys`, `shutil`, `marshall`, `subprocess`)
+
+Read the notes above about security considerations for unknown code execution before calling this API.
+
+To configure the client to use `"local"` mode, you can instantiate your client as follows:
+
+```python
+import asyncio
+from unitycatalog.ai.core.client import UnitycatalogFunctionClient
+from unitycatalog.client import ApiClient, Configuration
+
+# Configure the Unity Catalog API client
+config = Configuration(
+    host="http://localhost:8080/api/2.1/unity-catalog"  # Replace with your UC server URL
+)
+
+# Initialize the asynchronous ApiClient
+api_client = ApiClient(configuration=config)
+
+# Instantiate the UnitycatalogFunctionClient
+uc_client = UnitycatalogFunctionClient(api_client=api_client, execution_mode="local")
+```
+
+### Databricks Function Client Execution Modes
+
+Functions are executed by specifying a fully qualified function name to the `execute_function` API. Integration packages
+(Toolkit instances) will call this client API when a GenAI service indicates that a tool call is needed to fulfill a request.
+
+There are two options for executing functions with the `DatabricksFunctionClient`:
+
+#### Serverless Mode
+
+```python
+client = DatabricksFunctionClient(execution_mode="serverless")
+```
+
+The `"serverless"` option for callable execution allows for enhanced remote callable execution via a SQL Serverless endpoint, keeping your
+agent's process free from the burden or security risks associated with arbitrary code execution locally. This is the default configuration
+of the `DatabricksFunctionClient` and is highly recommended for production use cases.
+
+When your agent requests a tool to be executed, a request will be made with the appropriate function name and the parameters to pass in order
+to successfully execute the function. This remote code execution helps to ensure that callables with excessive computational complexity will not
+impact the functionality of your agent or impact the VM that it is running within.
+
+#### Local Mode
+
+```python
+client = DatabricksFunctionClient(execution_mode="local")
+```
+
+To help simplify development, the `"local"` execution mode is available. This mode of operation allows the `DatabricksFunctionClient` to utilize
+a local isolated process to execute your tool call without having to make a request to a SQL serverless endpoint. It can be benficial when debugging
+agents and their tool calls to have a local stack trace for debugging. However, there are some restrictions on the content of callables within this mode.
+
+The `"local"` mode offers:
+
+- Isolated process execution
+- Restrictions on total CPU runtime of the callable execution (to protect against computationally excessive functions)
+- Restrictions on virtual memory allocated to the process running the callable (only available on Linux)
+- Total wall-clock based timeout protection
+
+These configurations can be controlled by setting the following environment variables (listed with their defaults):
+
+| Environment Variable          | Default Value | Description                                             |
+|-------------------------------|---------------|---------------------------------------------------------|
+| `EXECUTOR_MAX_CPU_TIME_LIMIT` | 10 (seconds)  | Maximum allowable CPU execution time                    |
+| `EXECUTOR_MAX_MEMORY_LIMIT`   | 100 (MB)      | Maximum allowable Virtual Memory allocation for process |
+| `EXECUTOR_TIMEOUT`            | 20 (seconds)  | Maximum Total wall clock time                           |
+
+Note that the maximum CPU time limit is not based on wall clock time; rather, it is the time that the CPU has spent at 100% allocation working on executing
+the callable. Based on system scheduling and concurrent process activity, this is almost never equal to wall clock time and is in reality longer in duration
+than the wall clock execution time.
+
+There are restrictions in which packages can be imported for use within a sandbox environment.
+
+The following imports are not permitted:
+
+- `sys`
+- `subprocess`
+- `ctypes`
+- `socket`
+- `importlib`
+- `pickle`
+- `marshall`
+- `shutil`
+- `pathlib`
+
+In addition, callables executed within the sandbox environment do not have access to the built-in file `open` command.
+
+If your function requires access to these modules or needs to have access to the local operating system's file store, use the `"serverless"` mode of
+execution instead (although remote code execution using these modules would not have much of a benefit).
+
 ## Execute a UC Python function locally
 
 A utility `load_function_from_string` is available in `unitycatalog.ai.core.utils.execution_utils.py`. This utility allows you to couple the functionality
