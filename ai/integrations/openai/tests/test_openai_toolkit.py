@@ -37,9 +37,11 @@ def env_setup(monkeypatch):
     monkeypatch.setenv("OPENAI_API_KEY", "fake-key")
 
 
+@pytest.mark.parametrize("execution_mode", ["serverless", "local"])
 @requires_databricks
-def test_tool_calling():
+def test_tool_calling(execution_mode):
     client = get_client()
+    client.execution_mode = execution_mode
     with (
         set_default_client(client),
         create_function_and_cleanup(client, schema=SCHEMA) as func_obj,
@@ -54,14 +56,14 @@ def test_tool_calling():
                 "role": "system",
                 "content": "You are a helpful customer support assistant. Use the supplied tools to assist the user.",
             },
-            {"role": "user", "content": "What is the result of 2**10?"},
+            {"role": "user", "content": "What is 2 + 10?"},
         ]
 
         with mock.patch(
             "openai.chat.completions.create",
             return_value=mock_chat_completion_response(
                 function=Function(
-                    arguments='{"code":"result = 2**10\\nprint(result)"}',
+                    arguments='{"number": 2}',
                     name=func_obj.tool_name,
                 ),
             ),
@@ -76,13 +78,11 @@ def test_tool_calling():
             tool_call = tool_calls[0]
             assert tool_call.function.name == func_obj.tool_name
             arguments = json.loads(tool_call.function.arguments)
-            assert isinstance(arguments.get("code"), str)
+            assert isinstance(arguments.get("number"), int)
 
-            # execute the function based on the arguments
             result = client.execute_function(func_name, arguments)
-            assert result.value == "1024\n"
+            assert result.value == "12"
 
-            # Create a message containing the result of the function call
             function_call_result_message = {
                 "role": "tool",
                 "content": json.dumps({"content": result.value}),
@@ -93,7 +93,6 @@ def test_tool_calling():
                 "model": "gpt-4o-mini",
                 "messages": [*messages, assistant_message, function_call_result_message],
             }
-            # Generate final response
             openai.chat.completions.create(
                 model=completion_payload["model"], messages=completion_payload["messages"]
             )
@@ -163,9 +162,11 @@ def test_tool_calling_with_trace_as_retriever():
             )
 
 
+@pytest.mark.parametrize("execution_mode", ["serverless", "local"])
 @requires_databricks
-def test_tool_calling_with_multiple_choices():
+def test_tool_calling_with_multiple_choices(execution_mode):
     client = get_client()
+    client.execution_mode = execution_mode
     with (
         set_default_client(client),
         create_function_and_cleanup(client, schema=SCHEMA) as func_obj,
@@ -180,11 +181,11 @@ def test_tool_calling_with_multiple_choices():
                 "role": "system",
                 "content": "You are a helpful customer support assistant. Use the supplied tools to assist the user.",
             },
-            {"role": "user", "content": "What is the result of 2**10?"},
+            {"role": "user", "content": "What is the result of 4 + 10?"},
         ]
 
         function = Function(
-            arguments='{"code":"result = 2**10\\nprint(result)"}',
+            arguments='{"number": 4}',
             name=func_obj.tool_name,
         )
         with mock.patch(
@@ -208,11 +209,11 @@ def test_tool_calling_with_multiple_choices():
             tool_call = tool_calls[0]
             assert tool_call.function.name == func_obj.tool_name
             arguments = json.loads(tool_call.function.arguments)
-            assert isinstance(arguments.get("code"), str)
+            assert isinstance(arguments.get("number"), int)
 
             # execute the function based on the arguments
             result = client.execute_function(func_name, arguments)
-            assert result.value == "1024\n"
+            assert result.value == "14"
 
             # Create a message containing the result of the function call
             function_call_result_message = {

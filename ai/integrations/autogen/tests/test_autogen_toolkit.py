@@ -80,9 +80,11 @@ def generate_function_info(
     )
 
 
+@pytest.mark.parametrize("execution_mode", ["serverless", "local"])
 @requires_databricks
 @pytest.mark.asyncio
-async def test_toolkit_e2e(dbx_client):
+async def test_toolkit_e2e(dbx_client, execution_mode):
+    dbx_client.execution_mode = execution_mode
     with (
         set_default_client(dbx_client),
         create_function_and_cleanup(dbx_client, schema=SCHEMA) as func_obj,
@@ -95,14 +97,11 @@ async def test_toolkit_e2e(dbx_client):
 
         assert func_obj.comment in tool.description
 
-        # 2) Provide some input arguments
-        input_args = {"code": "print(1)"}
-        # 3) Call the tool
+        input_args = {"number": 5}
         result_str = await tool.run_json(input_args, CancellationToken())
         result = json.loads(result_str)["value"]
-        assert result == "1\n"
+        assert result == "15"
 
-        # Re-check multiple functions
         toolkit2 = UCFunctionToolkit(
             function_names=[f.full_name for f in dbx_client.list_functions(CATALOG, SCHEMA)],
             client=dbx_client,
@@ -111,9 +110,11 @@ async def test_toolkit_e2e(dbx_client):
         assert func_obj.tool_name in [t.name for t in toolkit2.tools]
 
 
+@pytest.mark.parametrize("execution_mode", ["serverless", "local"])
 @requires_databricks
 @pytest.mark.asyncio
-async def test_toolkit_e2e_manually_passing_client(dbx_client):
+async def test_toolkit_e2e_manually_passing_client(dbx_client, execution_mode):
+    dbx_client.execution_mode = execution_mode
     with (
         set_default_client(dbx_client),
         create_function_and_cleanup(dbx_client, schema=SCHEMA) as func_obj,
@@ -125,12 +126,11 @@ async def test_toolkit_e2e_manually_passing_client(dbx_client):
         assert tool.name == func_obj.tool_name
         assert func_obj.comment in tool.description
 
-        input_args = {"code": "print(1)"}
+        input_args = {"number": 2}
         result_str = await tool.run_json(input_args, CancellationToken())
         result = json.loads(result_str)["value"]
-        assert result == "1\n"
+        assert result == "12"
 
-        # Re-check multiple
         toolkit2 = UCFunctionToolkit(
             function_names=[f.full_name for f in dbx_client.list_functions(CATALOG, SCHEMA)],
             client=dbx_client,
@@ -139,9 +139,11 @@ async def test_toolkit_e2e_manually_passing_client(dbx_client):
         assert func_obj.tool_name in [t.name for t in toolkit2.tools]
 
 
+@pytest.mark.parametrize("execution_mode", ["serverless", "local"])
 @requires_databricks
 @pytest.mark.asyncio
-async def test_multiple_toolkits(dbx_client):
+async def test_multiple_toolkits(dbx_client, execution_mode):
+    dbx_client.execution_mode = execution_mode
     with (
         set_default_client(dbx_client),
         create_function_and_cleanup(dbx_client, schema=SCHEMA) as func_obj,
@@ -156,7 +158,7 @@ async def test_multiple_toolkits(dbx_client):
         tool1 = toolkit1.tools[0]
         tool2 = [t for t in toolkit2.tools if t.name == func_obj.tool_name][0]
 
-        input_args = {"code": "print(1)"}
+        input_args = {"number": 1}
         result1_str = await tool1.run_json(input_args, CancellationToken())
         result2_str = await tool2.run_json(input_args, CancellationToken())
         result1 = json.loads(result1_str)["value"]

@@ -49,9 +49,11 @@ from unitycatalog.ai.langchain.toolkit import UCFunctionToolkit
 SCHEMA = os.environ.get("SCHEMA", "ucai_langchain_test")
 
 
+@pytest.mark.parametrize("execution_mode", ["serverless", "local"])
 @requires_databricks
-def test_toolkit_e2e():
+def test_toolkit_e2e(execution_mode):
     client = get_client()
+    client.execution_mode = execution_mode
     with set_default_client(client), create_function_and_cleanup(client, schema=SCHEMA) as func_obj:
         toolkit = UCFunctionToolkit(function_names=[func_obj.full_function_name])
         tools = toolkit.tools
@@ -60,18 +62,20 @@ def test_toolkit_e2e():
         assert tool.name == func_obj.tool_name
         assert tool.description == func_obj.comment
         assert tool.client_config == client.to_dict()
-        tool.args_schema(**{"code": "print(1)"})
-        result = json.loads(tool.func(code="print(1)"))["value"]
-        assert result == "1\n"
+        tool.args_schema(**{"number": 1})
+        result = json.loads(tool.func(number=1))["value"]
+        assert result == "11"
 
         toolkit = UCFunctionToolkit(function_names=[f"{CATALOG}.{SCHEMA}.*"])
         assert len(toolkit.tools) >= 1
         assert func_obj.tool_name in [t.name for t in toolkit.tools]
 
 
+@pytest.mark.parametrize("execution_mode", ["serverless", "local"])
 @requires_databricks
-def test_toolkit_e2e_manually_passing_client():
+def test_toolkit_e2e_manually_passing_client(execution_mode):
     client = get_client()
+    client.execution_mode = execution_mode
     with create_function_and_cleanup(client, schema=SCHEMA) as func_obj:
         toolkit = UCFunctionToolkit(function_names=[func_obj.full_function_name], client=client)
         tools = toolkit.tools
@@ -81,18 +85,20 @@ def test_toolkit_e2e_manually_passing_client():
         assert tool.description == func_obj.comment
         assert tool.uc_function_name == func_obj.full_function_name
         assert tool.client_config == client.to_dict()
-        tool.args_schema(**{"code": "print(1)"})
-        result = json.loads(tool.func(code="print(1)"))["value"]
-        assert result == "1\n"
+        tool.args_schema(**{"number": 2})
+        result = json.loads(tool.func(number=2))["value"]
+        assert result == "12"
 
         toolkit = UCFunctionToolkit(function_names=[f"{CATALOG}.{SCHEMA}.*"], client=client)
         assert len(toolkit.tools) >= 1
         assert func_obj.tool_name in [t.name for t in toolkit.tools]
 
 
+@pytest.mark.parametrize("execution_mode", ["serverless", "local"])
 @requires_databricks
-def test_toolkit_e2e_tools_with_no_params():
+def test_toolkit_e2e_tools_with_no_params(execution_mode):
     client = get_client()
+    client.execution_mode = execution_mode
 
     def get_weather() -> str:
         """
@@ -118,15 +124,17 @@ def test_toolkit_e2e_tools_with_no_params():
         assert func_obj.tool_name in [t.name for t in toolkit.tools]
 
 
+@pytest.mark.parametrize("execution_mode", ["serverless", "local"])
 @requires_databricks
-def test_multiple_toolkits():
+def test_multiple_toolkits(execution_mode):
     client = get_client()
+    client.execution_mode = execution_mode
     with set_default_client(client), create_function_and_cleanup(client, schema=SCHEMA) as func_obj:
         toolkit1 = UCFunctionToolkit(function_names=[func_obj.full_function_name])
         toolkit2 = UCFunctionToolkit(function_names=[f"{CATALOG}.{SCHEMA}.*"])
         tool1 = toolkit1.tools[0]
         tool2 = [t for t in toolkit2.tools if t.name == func_obj.tool_name][0]
-        input_args = {"code": "print(1)"}
+        input_args = {"number": 8}
         assert tool1.func(**input_args) == tool2.func(**input_args)
 
 

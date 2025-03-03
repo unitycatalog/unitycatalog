@@ -68,9 +68,11 @@ def test_gemini_tool_to_dict(sample_gemini_tool):
     assert sample_gemini_tool.to_dict() == expected_output
 
 
+@pytest.mark.parametrize("execution_mode", ["serverless", "local"])
 @requires_databricks
-def test_toolkit_e2e():
+def test_toolkit_e2e(execution_mode):
     client = get_client()
+    client.execution_mode = execution_mode
     with set_default_client(client), create_function_and_cleanup(client, schema=SCHEMA) as func_obj:
         toolkit = UCFunctionToolkit(function_names=[func_obj.full_function_name])
         tools = toolkit.tools
@@ -78,9 +80,9 @@ def test_toolkit_e2e():
         tool = tools[0]
         assert func_obj.comment in tool.description
 
-        input_args = {"code": "print(1)"}
+        input_args = {"number": 4}
         result = json.loads(tool.fn(**input_args))["value"]
-        assert result == "1\n"
+        assert result == "14"
 
         toolkit = UCFunctionToolkit(
             function_names=[f.full_name for f in client.list_functions(CATALOG, SCHEMA)]
@@ -89,9 +91,11 @@ def test_toolkit_e2e():
         assert func_obj.tool_name in [t.name for t in toolkit.tools]
 
 
+@pytest.mark.parametrize("execution_mode", ["serverless", "local"])
 @requires_databricks
-def test_toolkit_e2e_manually_passing_client():
+def test_toolkit_e2e_manually_passing_client(execution_mode):
     client = get_client()
+    client.execution_mode = execution_mode
     with set_default_client(client), create_function_and_cleanup(client, schema=SCHEMA) as func_obj:
         toolkit = UCFunctionToolkit(function_names=[func_obj.full_function_name], client=client)
         tools = toolkit.tools
@@ -99,9 +103,9 @@ def test_toolkit_e2e_manually_passing_client():
         tool = tools[0]
         assert tool.name == func_obj.tool_name
         assert func_obj.comment in tool.description
-        input_args = {"code": "print(1)"}
+        input_args = {"number": 5}
         result = json.loads(tool.fn(**input_args))["value"]
-        assert result == "1\n"
+        assert result == "15"
 
         toolkit = UCFunctionToolkit(
             function_names=[f.full_name for f in client.list_functions(CATALOG, SCHEMA)],
@@ -111,9 +115,11 @@ def test_toolkit_e2e_manually_passing_client():
         assert func_obj.tool_name in [t.name for t in toolkit.tools]
 
 
+@pytest.mark.parametrize("execution_mode", ["serverless", "local"])
 @requires_databricks
-def test_multiple_toolkits():
+def test_multiple_toolkits(execution_mode):
     client = get_client()
+    client.execution_mode = execution_mode
     with set_default_client(client), create_function_and_cleanup(client, schema=SCHEMA) as func_obj:
         toolkit1 = UCFunctionToolkit(function_names=[func_obj.full_function_name])
         toolkit2 = UCFunctionToolkit(
@@ -121,7 +127,7 @@ def test_multiple_toolkits():
         )
         tool1 = toolkit1.tools[0]
         tool2 = [t for t in toolkit2.tools if t.name == func_obj.tool_name][0]
-        input_args = {"code": "print(1)"}
+        input_args = {"number": 6}
         result1 = json.loads(tool1.fn(**input_args))["value"]
         result2 = json.loads(tool2.fn(**input_args))["value"]
         assert result1 == result2
