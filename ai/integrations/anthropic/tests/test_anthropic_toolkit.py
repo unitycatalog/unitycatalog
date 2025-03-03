@@ -24,8 +24,6 @@ SCHEMA = os.environ.get("SCHEMA", "ucai_core_test")
 
 
 def mock_anthropic_tool_response(function_name, input_data, message_id):
-    input_data["code"] = 'print("Hello, World!")'
-
     return Message(
         id=message_id,
         type="message",
@@ -34,7 +32,7 @@ def mock_anthropic_tool_response(function_name, input_data, message_id):
             ToolUseBlock(
                 id="toolu_01A09q90qw90lq917835lq9",
                 name=function_name,
-                input=input_data,  # Now contains escaped code
+                input=input_data,
                 type="tool_use",
             ),
         ],
@@ -66,7 +64,7 @@ def test_tool_calling_with_anthropic(execution_mode):
         messages = [
             {
                 "role": "user",
-                "content": "Please execute the following code: print('Hello, World!')",
+                "content": "What is the sum of 2 and 10?",
             },
         ]
 

@@ -99,7 +99,7 @@ async def test_toolkit_e2e(dbx_client, execution_mode):
 
         input_args = {"number": 5}
         result_str = await tool.run_json(input_args, CancellationToken())
-        result = json.loads(result_str)["value"]
+        result = json.loads(result_str)["value"] if execution_mode == "serverless" else result_str
         assert result == "15"
 
         toolkit2 = UCFunctionToolkit(
@@ -128,7 +128,7 @@ async def test_toolkit_e2e_manually_passing_client(dbx_client, execution_mode):
 
         input_args = {"number": 2}
         result_str = await tool.run_json(input_args, CancellationToken())
-        result = json.loads(result_str)["value"]
+        result = json.loads(result_str)["value"] if execution_mode == "serverless" else result_str
         assert result == "12"
 
         toolkit2 = UCFunctionToolkit(
@@ -161,8 +161,12 @@ async def test_multiple_toolkits(dbx_client, execution_mode):
         input_args = {"number": 1}
         result1_str = await tool1.run_json(input_args, CancellationToken())
         result2_str = await tool2.run_json(input_args, CancellationToken())
-        result1 = json.loads(result1_str)["value"]
-        result2 = json.loads(result2_str)["value"]
+        result1 = (
+            json.loads(result1_str)["value"] if execution_mode == "serverless" else result1_str
+        )
+        result2 = (
+            json.loads(result2_str)["value"] if execution_mode == "serverless" else result2_str
+        )
         assert result1 == result2
 
 

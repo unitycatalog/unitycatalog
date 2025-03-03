@@ -63,7 +63,8 @@ def test_toolkit_e2e(execution_mode):
         assert tool.description == func_obj.comment
         assert tool.client_config == client.to_dict()
         tool.args_schema(**{"number": 1})
-        result = json.loads(tool.func(number=1))["value"]
+        raw_result = tool.func(number=1)
+        result = json.loads(raw_result)["value"] if execution_mode == "serverless" else raw_result
         assert result == "11"
 
         toolkit = UCFunctionToolkit(function_names=[f"{CATALOG}.{SCHEMA}.*"])
@@ -86,7 +87,8 @@ def test_toolkit_e2e_manually_passing_client(execution_mode):
         assert tool.uc_function_name == func_obj.full_function_name
         assert tool.client_config == client.to_dict()
         tool.args_schema(**{"number": 2})
-        result = json.loads(tool.func(number=2))["value"]
+        raw_result = tool.func(number=2)
+        result = json.loads(raw_result)["value"] if execution_mode == "serverless" else raw_result
         assert result == "12"
 
         toolkit = UCFunctionToolkit(function_names=[f"{CATALOG}.{SCHEMA}.*"], client=client)
@@ -116,7 +118,8 @@ def test_toolkit_e2e_tools_with_no_params(execution_mode):
         assert tool.uc_function_name == func_obj.full_function_name
         assert tool.client_config == client.to_dict()
         tool.args_schema()
-        result = json.loads(tool.func())["value"]
+        raw_result = tool.func()
+        result = json.loads(raw_result)["value"] if execution_mode == "serverless" else raw_result
         assert result == "sunny"
 
         toolkit = UCFunctionToolkit(function_names=[f"{CATALOG}.{SCHEMA}.*"], client=client)
