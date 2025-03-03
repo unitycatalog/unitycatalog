@@ -51,8 +51,9 @@ def mock_anthropic_tool_response(function_name, input_data, message_id):
 
 @pytest.mark.parametrize("execution_mode", ["serverless", "local"])
 @requires_databricks
-def test_tool_calling_with_anthropic():
+def test_tool_calling_with_anthropic(execution_mode):
     client = get_client()
+    client.execution_mode = execution_mode
     with (
         set_default_client(client),
         create_function_and_cleanup(client, schema=SCHEMA) as func_obj,
