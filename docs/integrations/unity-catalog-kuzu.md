@@ -127,7 +127,7 @@ Currently, Kuzu only supports scanning from Delta Lake tables registered in the 
 
 #### 4. `USE` statement
 
-If you want to refer to Delta tables without aliasing, e.g., referring to unity.numbers simply as numbers, you can also use the `USE` command to set a default namespace.
+If you want to refer to Delta tables without aliasing, e.g., referring to `unity.numbers` simply as `numbers`, you can also use the `USE` command to set a default namespace.
 
 Consider the same attached Unity Catalog as above:
 
