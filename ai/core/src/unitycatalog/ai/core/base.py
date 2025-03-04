@@ -222,6 +222,20 @@ class BaseFunctionClient(ABC):
         Sensitive information should be excluded.
         """
 
+    @abstractmethod
+    def get_function_source(self, function_name: str) -> str:
+        """
+        Get the Python callable definition reconstructed from Unity Catalog
+          for a function by its name. The return of this method is a string
+          that contains the callable's definition.
+
+        Args:
+            function_name: The name of the function to retrieve from Unity Catalog.
+
+        Returns:
+            str: The Python callable definition as a string.
+        """
+
 
 # TODO: update BaseFunctionClient to Union[BaseFunctionClient, AsyncBaseFunctionClient] after async client is supported
 def get_uc_function_client() -> Optional[BaseFunctionClient]:
