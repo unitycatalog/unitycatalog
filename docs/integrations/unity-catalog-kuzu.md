@@ -5,7 +5,7 @@ supports the property graph data model and the Cypher query language.
 
 Download and install the precompiled binary of Kuzu
 for your OS as per the instructions shown [here](https://docs.kuzudb.com/installation/).
-The `unity_catalog` functionality in Kuzu is made available via an extension that allows you to attach to a Unity Catalog and perform scan/copy operations on Delta Lake tables.
+The `unity_catalog` functionality in Kuzu is made available via an extension that allows you to attach to a Unity Catalog and perform scan/copy operations on Delta tables.
 
 ## Prerequisites
 
@@ -44,7 +44,7 @@ INSTALL unity_catalog;
 LOAD EXTENSION unity_catalog;
 ```
 
-In the following example, we will attach to the `default` schema under the `unity` catalog and scan the `numbers` delta table.
+In the following example, we will attach to the `default` schema under the `unity` catalog and scan the `numbers` Delta table.
 Note that the table, schema and catalog are pre-defined in the running Unity Catalog server, so you don't have to create them yourself.
 
 #### 1. Attach to Unity Catalog
@@ -55,7 +55,7 @@ ATTACH [CATALOG_NAME] AS [alias] (dbtype UC_CATALOG)
 
 - `CATALOG_NAME`: The catalog name to attach to in the Unity Catalog
 - `alias`: Database alias to use in Kuzu - If not provided, the catalog name will be used.
-  When attaching multiple databases, it's recommended to use aliasing.
+  When attaching to multiple databases, it's recommended to use aliasing.
 
 For the example shown below, we will use the following command that attaches to the `default` schema under the `unity` catalog:
 
@@ -85,6 +85,7 @@ The table below shows the mapping from Unity Catalog's type to Kuzu's type:
 | BINARY                       | UNSUPPORTED                      |
 | DECIMAL   | DECIMAL                                 |
 
+If the type is marked as "unsupported", we do not support scanning it in Kuzu.
 #### 3. Scan data from table
 
 Finally, we can utilize the `LOAD FROM` statement to scan the `numbers` table. Note that you need to prefix the 
@@ -126,10 +127,7 @@ Currently, Kuzu only supports scanning from Delta Lake tables registered in the 
 
 #### 4. `USE` statement
 
-You can use the `USE` statement for attached Unity Catalog to use a default Unity Catalog name (without an alias)
-for future operations.
-This can be used when reading from an attached Unity Catalog to avoid specifying the full catalog name
-as a prefix to the table name.
+If you want to refer to Delta tables without aliasing, e.g., referring to unity.numbers simply as numbers, you can also use the `USE` command to set a default namespace.
 
 Consider the same attached Unity Catalog as above:
 
@@ -145,7 +143,7 @@ LOAD FROM numbers
 RETURN *
 ```
 
-#### 5. Copy data from table
+#### 5. Copy data from a Delta table
 
 The main purpose of the Unity Catalog extension is to facilitate seamless data transfer from tables in Unity Catalog to Kuzu.
 In this example, we continue using the `unity` database, but this time,
@@ -162,8 +160,8 @@ When the schemas are the same, we can copy the data from the external Unity Cata
 ```sql
 COPY numbers FROM unity.numbers;
 ```
-If the schemas are not the same, e.g., `numbers` contains only `score` property while the external `unity.numbers` contains
-`id` and `score`, we can still use `COPY FROM` but with a subquery as follows:
+If the schemas are not the same, e.g., `numbers` contains only `score` property while the Unity Catalog table `unity.numbers` contains
+`id` and `score`, we can still use `COPY FROM` but with a subquery that transforms the scanned tuples from `unity.numbers` into the schema of Kuzu table.
 ```sql
 COPY numbers FROM (LOAD FROM unity.numbers RETURN score);
 ```
