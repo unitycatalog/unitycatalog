@@ -1,4 +1,7 @@
 import ast
+import sys
+import types
+import uuid
 
 
 def load_function_from_string(
@@ -127,11 +130,19 @@ def load_function_from_string(
 
     func_name = func_def_node.name
     code_obj = compile(module_ast, filename="<ast>", mode="exec")
-    temp_namespace = {}
-    exec(code_obj, namespace, temp_namespace)
-    func_obj = temp_namespace[func_name]
-    func_obj.__module__ = "__main__"
+
+    # Create a temporary module
+    mod_name = f"sandbox_module_{uuid.uuid4().hex}"
+    module = types.ModuleType(mod_name)
+    module.__dict__.update(namespace)
+    sys.modules[mod_name] = module
+
+    exec(code_obj, module.__dict__)
+    func_obj = module.__dict__[func_name]
+
+    func_obj.__module__ = mod_name
 
     if register_function:
         namespace[func_name] = func_obj
+
     return func_obj
