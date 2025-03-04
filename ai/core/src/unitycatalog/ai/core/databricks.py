@@ -17,7 +17,7 @@ from unitycatalog.ai.core.envs.databricks_env_vars import (
     UCAI_DATABRICKS_SERVERLESS_EXECUTION_RESULT_ROW_LIMIT,
     UCAI_DATABRICKS_SESSION_RETRY_MAX_ATTEMPTS,
 )
-from unitycatalog.ai.core.executor.local import run_in_sandbox
+from unitycatalog.ai.core.executor.local_subprocess import run_in_sandbox_subprocess
 from unitycatalog.ai.core.paged_list import PagedList
 from unitycatalog.ai.core.types import Variant
 from unitycatalog.ai.core.utils.callable_utils import (
@@ -259,8 +259,8 @@ class DatabricksFunctionClient(BaseFunctionClient):
             )
         if execution_mode == "local":
             _logger.warning(
-                "You have configured the DatabricksFunctionClient to run in local sandbox mode."
-                "This mode is indended for local testing and development only. Production use cases"
+                "You have configured the DatabricksFunctionClient to run in local sandbox mode. "
+                "This mode is indended for local testing and development only. Production use cases "
                 "should use the 'serverless' execution mode."
             )
         return execution_mode
@@ -746,7 +746,7 @@ class DatabricksFunctionClient(BaseFunctionClient):
     ) -> FunctionExecutionResult:
         if not is_scalar(function_info):
             raise ValueError(
-                "Local sandbox execution is only supported for scalar Python functions."
+                "Local sandbox execution is only supported for scalar Python functions. "
                 "Use 'serverless' execution mode for table functions."
             )
         _logger.info("Using local sandbox to execute functions.")
@@ -755,7 +755,7 @@ class DatabricksFunctionClient(BaseFunctionClient):
         python_def = get_callable_definition(function_info)
         python_function = load_function_from_string(python_def)
         try:
-            succeeded, result = run_in_sandbox(python_function, parameters)
+            succeeded, result = run_in_sandbox_subprocess(python_function, parameters)
             if not succeeded:
                 raise Exception(
                     f"Failed to execute function {function_info.name} with error: {result}"

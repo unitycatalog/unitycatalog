@@ -37,6 +37,7 @@ def env_setup(monkeypatch):
     monkeypatch.setenv("OPENAI_API_KEY", "fake-key")
 
 
+@pytest.mark.parametrize("execution_mode", ["serverless", "local"])
 @requires_databricks
 def test_tool_calling(execution_mode):
     client = get_client()

@@ -1,4 +1,5 @@
 from unitycatalog.ai.core.envs.base import _EnvironmentVariable
+from unitycatalog.ai.core.executor.common import DISALLOWED_MODULES
 
 EXECUTOR_MAX_CPU_TIME_LIMIT = _EnvironmentVariable(
     "EXECUTOR_MAX_CPU_TIME_LIMIT",
@@ -19,4 +20,11 @@ EXECUTOR_TIMEOUT = _EnvironmentVariable(
     int,
     20,
     "Maximum timeout for the executor measured in seconds (wall clock time).",
+)
+
+EXECUTOR_DISALLOWED_MODULES = _EnvironmentVariable(
+    "EXECUTOR_DISALLOWED_MODULES",
+    list[str],
+    DISALLOWED_MODULES,
+    "List of disallowed modules for the executor sandbox execution mode.",
 )
