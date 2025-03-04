@@ -13,7 +13,7 @@ pip install unitycatalog-langchain
 To learn more about this integration:
 
 [Guide](langchain.md): Step-by-step instructions to integrate Unity Catalog AI with LangChain.
-[Example Notebook](https://github.com/unitycatalog/unitycatalog/blob/main/ai/integrations/langchain/ucai-langchain_sample.ipynb): A Jupyter notebook demonstrating practical usage of the integration.
+[Example Notebook](https://github.com/unitycatalog/unitycatalog/blob/main/ai/integrations/langchain/langchain_oss_example.ipynb): A Jupyter notebook demonstrating practical usage of the integration.
 
 ## LlamaIndex
 
@@ -28,7 +28,7 @@ pip install unitycatalog-llamaindex
 To learn more about this integration:
 
 [Guide](llamaindex.md): Detailed guide on integrating Unity Catalog AI with the LlamaIndex framework.
-[Example Notebook](https://github.com/unitycatalog/unitycatalog/blob/main/ai/integrations/llama_index/llama_index_sample.ipynb)
+[Example Notebook](https://github.com/unitycatalog/unitycatalog/blob/main/ai/integrations/llama_index/llama_index_databricks_example.ipynb)
 
 ## OpenAI
 
@@ -43,7 +43,7 @@ pip install unitycatalog-openai
 To learn more about this integration:
 
 [Guide](openai.md): Detailed guide on integrating Unity Catalog AI with OpenAI's sophisticated GPT-based systems.
-[Example Notebook](https://github.com/unitycatalog/unitycatalog/blob/main/ai/integrations/openai/ucai-openai_sample.ipynb)
+[Example Notebook](https://github.com/unitycatalog/unitycatalog/blob/main/ai/integrations/openai/openai_example.ipynb)
 
 ## Anthropic
 
@@ -58,7 +58,7 @@ pip install unitycatalog-anthropic
 To learn more about this integration:
 
 [Anthropic Guide](anthropic.md): Detailed guide on integrating Unity Catalog AI with Anthropic's powerful Claude LLMs.
-[Example Notebook](https://github.com/unitycatalog/unitycatalog/blob/main/ai/integrations/anthropic/anthropic_sample.ipynb)
+[Example Notebook](https://github.com/unitycatalog/unitycatalog/blob/main/ai/integrations/anthropic/anthropic_example.ipynb)
 
 ## CrewAI
 
@@ -73,6 +73,7 @@ pip install unitycatalog-crewai
 To learn more about this integration:
 
 [Guide](crewai.md): Detailed guide on integrating Unity Catalog AI with CrewAI Agents.
+[Example Notebook](https://github.com/unitycatalog/unitycatalog/blob/main/ai/integrations/crewai/crewai_oss_example.ipynb)
 
 ## AutoGen
 
@@ -87,6 +88,7 @@ pip install unitycatalog-autogen
 To learn more about using UC functions as tools within AutoGen's framework:
 
 [Guide](autogen.md): Detailed guide on integrating Unity Catalog AI with AutoGen's multi-agent framework.
+[Example Notebook](https://github.com/unitycatalog/unitycatalog/blob/main/ai/integrations/autogen/autogen_example.ipynb)
 
 ## Gemini
 
