@@ -208,8 +208,7 @@ DETACH unity
 
 ## Contact
 
-If you face any issues while using Kuzu's Unity Catalog extension, some of them might be from upstream
-and could be addressed by the Unity Catalog team as the project itself matures. To discuss your
-specific issues and your use cases related to graphs and Kuzu, please reach out to the Kuzu team
+If you face any issues while using Kuzu's Unity Catalog extension,
+please reach out to the Kuzu team
 on [Discord](https://kuzudb.com/chat). Alternatively,
 you can open an issue or discussion in our [GitHub](https://github.com/kuzudb/kuzu) repo.
