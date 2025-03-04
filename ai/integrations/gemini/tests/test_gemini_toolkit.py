@@ -82,7 +82,7 @@ def test_toolkit_e2e(execution_mode):
 
         input_args = {"number": 4}
         raw_result = tool.fn(**input_args)
-        result = json.loads(raw_result)["value"] if execution_mode == "serverless" else raw_result
+        result = json.loads(raw_result)["value"]
         assert result == "14"
 
         toolkit = UCFunctionToolkit(
@@ -106,7 +106,7 @@ def test_toolkit_e2e_manually_passing_client(execution_mode):
         assert func_obj.comment in tool.description
         input_args = {"number": 5}
         raw_result = tool.fn(**input_args)
-        result = json.loads(raw_result)["value"] if execution_mode == "serverless" else raw_result
+        result = json.loads(raw_result)["value"]
         assert result == "15"
 
         toolkit = UCFunctionToolkit(
@@ -132,12 +132,8 @@ def test_multiple_toolkits(execution_mode):
         input_args = {"number": 6}
         raw_result1 = tool1.fn(**input_args)
         raw_result2 = tool2.fn(**input_args)
-        result1 = (
-            json.loads(raw_result1)["value"] if execution_mode == "serverless" else raw_result1
-        )
-        result2 = (
-            json.loads(raw_result2)["value"] if execution_mode == "serverless" else raw_result2
-        )
+        result1 = json.loads(raw_result1)["value"]
+        result2 = json.loads(raw_result2)["value"]
         assert result1 == result2
 
 

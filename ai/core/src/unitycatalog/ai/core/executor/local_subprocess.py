@@ -139,6 +139,10 @@ def run_in_sandbox_subprocess(function_source: str, params: dict[str, Any]) -> t
     if proc.returncode < 0 or not proc.stdout.strip():
         return False, "The function execution has been terminated with a signal"
 
+    # NB: This is helpful for debugging
+    if proc.stderr:
+        _logger.error("Subprocess stderr: %s", proc.stderr)
+
     try:
         output = proc.stdout.strip()
         result_data = json.loads(output)
