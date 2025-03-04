@@ -607,6 +607,7 @@ These configurations can be controlled by setting the following environment vari
 | `EXECUTOR_MAX_CPU_TIME_LIMIT` | 10 (seconds)  | Maximum allowable CPU execution time                    |
 | `EXECUTOR_MAX_MEMORY_LIMIT`   | 100 (MB)      | Maximum allowable Virtual Memory allocation for process |
 | `EXECUTOR_TIMEOUT`            | 20 (seconds)  | Maximum Total wall clock time                           |
+| `EXECUTOR_DISALLOWED_MODULES` | (see below)   | A list of blocked library imports                       |
 
 Note that the maximum CPU time limit is not based on wall clock time; rather, it is the time that the CPU has spent at 100% allocation working on executing
 the callable. Based on system scheduling and concurrent process activity, this is almost never equal to wall clock time and is in reality longer in duration
@@ -624,7 +625,9 @@ The following imports are not permitted:
 - `pickle`
 - `marshall`
 - `shutil`
-- `pathlib`
+
+If you want to customize the allowed package imports, you can override the entire list by submitting a list of standard package names to the
+environment variable `EXECUTOR_DISALLOWED_MODULES` (must be a list[str]).
 
 In addition, callables executed within the sandbox environment do not have access to the built-in file `open` command.
 
@@ -689,12 +692,11 @@ client = DatabricksFunctionClient(execution_mode="local")
 ```
 
 To help simplify development, the `"local"` execution mode is available. This mode of operation allows the `DatabricksFunctionClient` to utilize
-a local isolated process to execute your tool call without having to make a request to a SQL serverless endpoint. It can be benficial when debugging
+a local subprocess to execute your tool calls without having to make a request to a SQL serverless endpoint. It can be benficial when debugging
 agents and their tool calls to have a local stack trace for debugging. However, there are some restrictions on the content of callables within this mode.
 
 The `"local"` mode offers:
 
-- Isolated process execution
 - Restrictions on total CPU runtime of the callable execution (to protect against computationally excessive functions)
 - Restrictions on virtual memory allocated to the process running the callable (only available on Linux)
 - Total wall-clock based timeout protection
@@ -710,25 +712,6 @@ These configurations can be controlled by setting the following environment vari
 Note that the maximum CPU time limit is not based on wall clock time; rather, it is the time that the CPU has spent at 100% allocation working on executing
 the callable. Based on system scheduling and concurrent process activity, this is almost never equal to wall clock time and is in reality longer in duration
 than the wall clock execution time.
-
-There are restrictions in which packages can be imported for use within a sandbox environment.
-
-The following imports are not permitted:
-
-- `sys`
-- `subprocess`
-- `ctypes`
-- `socket`
-- `importlib`
-- `pickle`
-- `marshall`
-- `shutil`
-- `pathlib`
-
-In addition, callables executed within the sandbox environment do not have access to the built-in file `open` command.
-
-If your function requires access to these modules or needs to have access to the local operating system's file store, use the `"serverless"` mode of
-execution instead (although remote code execution using these modules would not have much of a benefit).
 
 ## Execute a UC Python function locally
 
