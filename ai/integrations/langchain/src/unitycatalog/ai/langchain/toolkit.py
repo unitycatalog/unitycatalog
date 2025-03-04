@@ -1,5 +1,10 @@
 import json
+import warnings
 from typing import Any, Dict, List, Optional
+
+from langchain_core._api.deprecation import LangChainDeprecationWarning
+
+warnings.filterwarnings("ignore", category=LangChainDeprecationWarning)
 
 from langchain_core.pydantic_v1 import BaseModel, Field, root_validator
 from langchain_core.tools import StructuredTool
