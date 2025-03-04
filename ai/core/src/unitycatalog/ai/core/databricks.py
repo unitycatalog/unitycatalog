@@ -26,7 +26,6 @@ from unitycatalog.ai.core.utils.callable_utils import (
     generate_wrapped_sql_function_body,
     get_callable_definition,
 )
-from unitycatalog.ai.core.utils.execution_utils import load_function_from_string
 from unitycatalog.ai.core.utils.function_processing_utils import process_function_parameter_defaults
 from unitycatalog.ai.core.utils.type_utils import (
     column_type_to_python_type,
@@ -753,9 +752,8 @@ class DatabricksFunctionClient(BaseFunctionClient):
 
         parameters = process_function_parameter_defaults(function_info, parameters)
         python_def = get_callable_definition(function_info)
-        python_function = load_function_from_string(python_def)
         try:
-            succeeded, result = run_in_sandbox_subprocess(python_function, parameters)
+            succeeded, result = run_in_sandbox_subprocess(python_def, parameters)
             if not succeeded:
                 raise Exception(
                     f"Failed to execute function {function_info.name} with error: {result}"

@@ -1,4 +1,4 @@
-import time
+import inspect
 
 import pytest
 
@@ -23,6 +23,8 @@ def sleep_function(seconds: int):
     """
     A function that sleeps for a specified number of seconds.
     """
+    import time
+
     time.sleep(seconds)
     return "Slept for {} seconds".format(seconds)
 
@@ -31,7 +33,7 @@ def allowed_import_function():
     """
     A function that uses an allowed module.
     """
-    import math  # math is allowed
+    import math
 
     return math.sqrt(16)
 
@@ -43,33 +45,36 @@ def none_returning_function():
     return None
 
 
+def no_op():
+    pass
+
+
 def test_computational_complex_function():
-    succeeded, result = run_in_sandbox_subprocess(computational_complex_function, {"x": 2, "y": 6})
+    src = inspect.getsource(computational_complex_function)
+    succeeded, result = run_in_sandbox_subprocess(src, {"x": 2, "y": 6})
     assert succeeded
     assert result == 2016
 
 
 def test_guard_against_high_cpu_usage(monkeypatch):
     monkeypatch.setenv("EXECUTOR_MAX_CPU_TIME_LIMIT", "1")
-    succeeded, result = run_in_sandbox_subprocess(
-        computational_complex_function, {"x": 2, "y": 100}
-    )
+    src = inspect.getsource(computational_complex_function)
+    succeeded, result = run_in_sandbox_subprocess(src, {"x": 2, "y": 100})
     assert not succeeded
     assert "The function execution has been terminated with a signal" in result
 
 
 def test_function_execution_timeout(monkeypatch):
     monkeypatch.setenv("EXECUTOR_TIMEOUT", "1")
-    succeeded, result = run_in_sandbox_subprocess(sleep_function, {"seconds": 2})
+    src = inspect.getsource(sleep_function)
+    succeeded, result = run_in_sandbox_subprocess(src, {"seconds": 2})
     assert not succeeded
     assert "The function execution has timed out and has been canceled" in result
 
 
 def test_no_op_function():
-    def no_op():
-        pass
-
-    succeeded, result = run_in_sandbox_subprocess(no_op, {})
+    src = inspect.getsource(no_op)
+    succeeded, result = run_in_sandbox_subprocess(src, {})
     assert succeeded
     assert "The function execution has completed, but no output was produced" in result
 
@@ -78,23 +83,27 @@ def test_exception_in_function():
     def raise_exception():
         raise ValueError("This is a test exception")
 
-    succeeded, result = run_in_sandbox_subprocess(raise_exception, {})
+    src = inspect.getsource(raise_exception)
+    succeeded, result = run_in_sandbox_subprocess(src, {})
     assert not succeeded
     assert "ValueError: This is a test exception" in result
 
 
 def test_allowed_import_function():
-    succeeded, result = run_in_sandbox_subprocess(allowed_import_function, {})
+    src = inspect.getsource(allowed_import_function)
+    succeeded, result = run_in_sandbox_subprocess(src, {})
     assert succeeded
     assert result == 4.0
 
 
 def test_none_returning_function():
-    succeeded, result = run_in_sandbox_subprocess(none_returning_function, {})
+    src = inspect.getsource(none_returning_function)
+    succeeded, result = run_in_sandbox_subprocess(src, {})
     assert succeeded
     assert "The function execution has completed, but no output was produced" in result
 
 
 def test_non_callable_function():
+    # run_in_sandbox_subprocess now expects a string containing function source.
     with pytest.raises(TypeError):
-        run_in_sandbox_subprocess("not a function", {})
+        run_in_sandbox_subprocess(12345, {})
