@@ -159,7 +159,10 @@ When the schemas are the same, we can copy the data from the external Unity Cata
 
 ```sql
 COPY numbers FROM unity.numbers;
-```
+
+In some cases, you may only want to fill the `score` column of the numbers table from the `as_double` colum of unity.number. The following example shows how to copy a subset of columns of a table from a subquery.
+```sql
+COPY numbers(score) FROM (LOAD FROM unity.score RETURN as_double);
 If the schemas are not the same, e.g., `numbers` contains only `score` property while the Unity Catalog table `unity.numbers` contains
 `id` and `score`, we can still use `COPY FROM` but with a subquery that transforms the scanned tuples from `unity.numbers` into the schema of Kuzu table.
 ```sql
