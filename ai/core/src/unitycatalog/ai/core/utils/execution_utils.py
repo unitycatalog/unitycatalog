@@ -130,6 +130,7 @@ def load_function_from_string(
     temp_namespace = {}
     exec(code_obj, namespace, temp_namespace)
     func_obj = temp_namespace[func_name]
+    func_obj.__module__ = "__main__"
 
     if register_function:
         namespace[func_name] = func_obj
