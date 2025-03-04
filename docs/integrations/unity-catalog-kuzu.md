@@ -160,7 +160,7 @@ When the schemas are the same, we can copy the data from the external Unity Cata
 ```sql
 COPY numbers FROM unity.numbers;
 ```
-In some cases, you may only want to fill the `score` column of the numbers table from the `as_double` colum of unity.number. The following example shows how to copy a subset of columns of a table from a subquery.
+In some cases, you may want to copy data into a subset of the properties in the Kuzu table. The following example shows how to copy a `unity.score` Delta table into the `score` property of the `numbers(id, score)` node table in Kuzu (setting the IDs values to their default null).
 ```sql
 COPY numbers(score) FROM (LOAD FROM unity.score RETURN as_double);
 `id` and `score`, we can still use `COPY FROM` but with a subquery that transforms the scanned tuples from `unity.numbers` into the schema of Kuzu table.
