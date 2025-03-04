@@ -65,6 +65,30 @@ class BaseFunctionClient(ABC):
         """
 
     @abstractmethod
+    def create_wrapped_function(
+        self,
+        *,
+        primary_func: Callable[..., Any],
+        functions: list[Callable[..., Any]],
+        catalog: str,
+        schema: str,
+        replace: bool = False,
+    ) -> Any:
+        """
+        Create a wrapped function comprised of a `primary_func` function and in-lined wrapped `functions` within the `primary_func` body.
+
+        Args:
+            primary_func: The primary function to be wrapped.
+            functions: A list of functions to be wrapped inline within the body of `primary_func`.
+            catalog: The catalog name.
+            schema: The schema name.
+            replace: Whether to replace the function if it already exists. Defaults to False.
+
+        Returns:
+            The UC function information metadata for the configured UC implementation.
+        """
+
+    @abstractmethod
     def get_function(self, function_name: str, **kwargs: Any) -> Any:
         """
         Get a function by its name.
@@ -196,6 +220,20 @@ class BaseFunctionClient(ABC):
         """
         Store the client configuration in a dictionary.
         Sensitive information should be excluded.
+        """
+
+    @abstractmethod
+    def get_function_source(self, function_name: str) -> str:
+        """
+        Get the Python callable definition reconstructed from Unity Catalog
+          for a function by its name. The return of this method is a string
+          that contains the callable's definition.
+
+        Args:
+            function_name: The name of the function to retrieve from Unity Catalog.
+
+        Returns:
+            str: The Python callable definition as a string.
         """
 
 

@@ -25,6 +25,7 @@ The Unity Catalog (UC) function client is a core component of the Unity Catalog 
 
 - **Asynchronous and Synchronous Operations**: Flexibly choose between async and sync methods based on your application's concurrency requirements.
 - **Comprehensive Function Management**: Easily create, retrieve, list, execute, and delete UC functions.
+- **Wrapped Function Support**: In addition to standard single-function creation, you can create *wrapped functions* that in-line additional helper functions within a function's definition to simplify code reuse and modularity.
 - **Integration with GenAI**: Seamlessly integrate UC functions as tools within Generative AI agents, enhancing intelligent automation workflows.
 - **Type Safety and Caching**: Enforce strict type validation and utilize caching mechanisms to optimize performance and reduce redundant executions.
 
@@ -44,7 +45,7 @@ When using the `UnitycatalogFunctionClient` for UC, be mindful of the following 
     - Ensure that any external libraries required by your UC functions are pre-installed in the execution environment.
     - Best Practice: Import external dependencies within the function body to guarantee their availability during execution.
 - **Function Overwriting**:
-    - The `create_function` and `create_function_async` methods allow overwriting existing functions by setting the replace parameter to True.
+    - The `create_function`, `create_function_async`, `create_wrapped_function` and `create_wrapped_function_async` methods allow overwriting existing functions by setting the replace parameter to True.
     - **Warning**: Overwriting functions can disrupt workflows that depend on existing function definitions. Use this feature judiciously and ensure that overwriting is intentional.
 - **Type Validation and Compatibility**:
     - The client performs strict type validation based on the defined schemas. Ensure that your function parameters and return types adhere to the expected types to prevent execution errors.
@@ -119,6 +120,45 @@ function_info = uc_client.create_python_function(
 print(function_info)
 ```
 
+#### Creating a Wrapped UC Function
+
+In addition to standard function creation, you can create *wrapped functions*. A wrapped function uses a primary function as the interface while in-lining additional helper functions (wrapped functions) into the primary function’s definition. This feature is useful when you want to keep helper logic bundled together with the main function without needing to replicate existing common utilities within your function definitions.
+
+For example, consider the following helper functions and the primary wrapper function that has direct dependencies on the helper functions:
+
+```python
+def a(x: int) -> int:
+    return x + 1
+
+def b(y: int) -> int:
+    return y + 2
+
+def wrapper(x: int, y: int) -> int:
+    """
+    Wrapper function that in-lines helper functions a and b.
+
+    Args:
+        x (int): The first argument.
+        y (int): The second argument.
+
+    Returns:
+        int: The combined result of a(x) and b(y).
+    """
+    return a(x) + b(y)
+```
+
+To register this wrapped function as a single UC function, you can call the `create_wrapped_function` API:
+
+```python
+function_info = uc_client.create_wrapped_function(
+    primary_func=wrapper,
+    functions=[a, b],
+    catalog=CATALOG,
+    schema=SCHEMA,
+    replace=False,  # Set to True to overwrite if the function already exists
+)
+```
+
 #### Retrieving a UC Function
 
 To retrieve details of a specific UC function, use the get_function method with the full function name in the format `<catalog>.<schema>.<function_name>`:
@@ -159,6 +199,12 @@ result = uc_client.execute_function(full_func_name, parameters)
 
 print(result.value)  # Outputs: 16.0
 ```
+
+#### Function Parameter Defaults
+
+Defining and executing functions with parameter defaults behave similarly to standard Python function argument defaults. If a parameter is not provided that is marked as having a default value when called via the `execute_function` API, the existing default parameter value will be mapped to the function invocation call.
+
+If using defaults in your function signatures, ensure that the descriptions are accurate and declare what the default value is to ensure that Agentic use of your function is accurate.
 
 #### Deleting a Function
 
@@ -214,6 +260,35 @@ $$
 function_info = client.create_function(sql_function_body=sql_body)
 ```
 
+#### Dependencies and Environments
+
+In Databricks runtime version 17 and higher, the ability to specify dependencies within a function execution environment is supported. Earlier runtime
+versions do not support this feature and will error if the arguments `dependencies` or `environment` are submitted with a `create_python_function` or `create_wrapped_python_function` call.
+
+To specify PyPI dependencies to include in your execution environment, you can see the minimum example below:
+
+```python
+# Define a function that requires an external PyPI dependency
+
+def dep_check(x: str) -> str:
+    """
+    A function to test the dependency support for UC
+
+    Args:
+        x: An input string
+    
+    Returns:
+        A string that reports the dependency support for UC
+    """
+
+    import scrapy  # NOTE that you must still import the library to use within the function.
+
+    return scrapy.__version__
+
+# Create the function and supply the dependency in standard PyPI format
+client.create_python_function(func=dep_check, catalog=CATALOG, schema=SCHEMA, replace=True, dependencies=["scrapy==2.10.1"])
+```
+
 #### Retrieve a UC function
 
 The client also provides API to get the UC function information details. Note that the function name passed in must be the full name in the format of `<catalog>.<schema>.<function_name>`.
@@ -222,6 +297,65 @@ The client also provides API to get the UC function information details. Note th
 full_func_name = f"{CATALOG}.{SCHEMA}.{func_name}"
 client.get_function(full_func_name)
 ```
+
+#### Retrieving a UC function callable
+
+The `get_function_source` API is used to retrieve a recreated python callable definition (as a string) from a registered Unity Catalog Python function.
+In order to use this API, the function that you are fetching **must be** an `EXTERNAL` (python function) type function. When called, the function's metadata will
+be retrieved and the structure of the original callable will be rebuilt and returned as a string.
+
+For example:
+
+```python
+# Define a python callable
+
+def sample_python_func(a: int, b: int) -> int:
+    """
+    Returns the sum of a and b.
+
+    Args:
+        a: an int
+        b: another int
+
+    Returns:
+        The sum of a and b
+    """
+    return a + b
+
+# Create the function within Unity Catalog
+client.create_python_function(catalog=CATALOG, schema=SCHEMA, func=sample_python_func, replace=True)
+
+# Fetch the callable definition
+my_func_def = client.get_function_source(function_name=f"{CATALOG}.{SCHEMA}.sample_python_function")
+```
+
+The returned value from the `get_function_source` API will be the same as the original input with a few caveats:
+
+- `tuple` types will be cast to `list` due to the inability to express a Python `tuple` within Unity Catalog
+- The docstring of the original function will be stripped out. Unity Catalog persists the docstring information in the logged function and it is available in the return of the `get_function` API call if needed.
+- Collection types for open source Unity Catalog will only capture the outer type (i.e., `list` or `dict`) as inner collection type metadata is not preserved
+within the `FunctionInfo` object. In Databricks, full typing is supported for collecitons.
+
+The result of calling the `get_function_source` API on the `sample_python_func` registered function will be (when printed):
+
+```text
+def sample_python_func(a: int, b: int) -> int:
+    """
+    Returns the sum of a and b.
+
+    Args:
+        a: an int
+        b: another int
+
+    Returns:
+        int
+    """
+    return a + b
+```
+
+Note: If you want to convert the extracted string back into an actual Python callable, you can use the utility `load_function_from_string` in the module `unitycatalog.ai.core.utils.execution_utils`. See below for further details on this API.
+
+This API is useful for extracting already-registered functions that will be used as additional in-line calls within another function through the use of the `create_wrapped_python_function` API, saving the effort required to either hand-craft a function definition or having to track down where the original implementation of a logged function was defined.
 
 #### List UC functions
 
@@ -240,17 +374,88 @@ result = client.execute_function(full_func_name, {"s": "some_string"})
 assert result.value == "some_string"
 ```
 
+#### Execute a UC Python function locally
+
+A utility `load_function_from_string` is available in `unitycatalog.ai.core.utils.execution_utils.py`. This utility allows you to couple the functionality
+in the `get_function_source` API to create a locally-available python callable that can be direclty accessed, precisely as if it were originally defined
+within your current REPL.
+
+```python
+from unitycatalog.ai.core.utils.execution_utils import load_function_from_string
+
+func_str = """
+def multiply_numbers(a: int, b: int) -> int:
+    \"\"\"
+    Multiplies two numbers.
+
+    Args:
+        a: first number.
+        b: second number.
+
+    Returns:
+        int
+    \"\"\"
+    return a * b
+"""
+
+# If specifying `register_global=False`, the original function name cannot be called and must be used
+# with the returned callable reference.
+my_new_multiplier = load_function_from_string(func_str, register_global=False)
+my_new_multiplier(a=1, b=2)  # returns `2`
+
+# Alternatively, if allowing for global reference `register_global=True` (default)
+# The original callable name can be used. This will not work in interactive environments like Jupyter.
+load_function_from_string(func_str)
+multiply_numbers(a=2, b=2)  # returns `4`
+
+# For interactive environments, setting the return object directly within globals() is required in order
+# to utilize the original function name
+alias = load_function_from_string(func_str)
+globals()["multiply_numbers"] = alias
+multiply_numbers(a=3, b=3)  # returns `9`
+
+# Additionally, a scoped namespace can be provided to restrict scope and access to scoped arguments
+from types import SimpleNamespace
+
+func_str2 = """
+def multiply_numbers_with_constant(a: int, b: int) -> int:
+    \"\"\"
+    Multiplies two numbers with a constant.
+
+    Args:
+        a: first number.
+        b: second number.
+    
+    Returns:
+        int
+    \"\"\"
+    return a * b * c
+"""
+
+c = 100  # Not part of the scoped namespace; local constant
+
+scoped_namespace = {
+    "__builtins__": __builtins__,
+    "c": 42,
+}
+    
+load_function_from_string(func_str, register_function=True, namespace=scoped_namespace)
+
+scoped_ns = SimpleNamespace(**scoped_namespace)
+
+scoped_ns.multiply_numbers_with_constant(a=2, b=3)  # returns 252, utilizing the `c` constant of the namespace
+
+```
+
 ##### Function execution arguments configuration
 
 To manage the function execution behavior using Databricks client under different configurations, we offer the following environment variables:
 
-| Configuration Type                                | Environment Variable                                                | Description                                                                                                                                                                                                                                               | Default Value |
-|---------------------------------------------------|---------------------------------------------------------------------|-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|---------------|
-| **Warehouse Execution**                           | `UCAI_DATABRICKS_WAREHOUSE_EXECUTE_FUNCTION_WAIT_TIMEOUT`            | Time in seconds the call will wait for the function to execute. Set as `Ns` where `N` can be 0 or between 5 and 50.                                                                                                                                         | `30s`         |
-|                                                   | `UCAI_DATABRICKS_WAREHOUSE_EXECUTE_FUNCTION_ROW_LIMIT`               | Maximum number of rows in the function execution result. Also sets the `truncated` field in the response to indicate if the result was trimmed due to the limit.                                                                                            | 100           |
-|                                                   | `UCAI_DATABRICKS_WAREHOUSE_EXECUTE_FUNCTION_BYTE_LIMIT`              | Maximum byte size of the function execution result. If truncated due to this limit, the `truncated` field in the response is set to `true`.                                                                                                                | 1048576       |
-|                                                   | `UCAI_DATABRICKS_WAREHOUSE_RETRY_TIMEOUT`                            | Client-side retry timeout for function execution. If execution doesn't complete within `UCAI_DATABRICKS_WAREHOUSE_EXECUTE_FUNCTION_WAIT_TIMEOUT`, client retries with exponential wait times until this timeout is reached.                                  | 120           |
-| **Serverless Compute Execution**                  | `UCAI_DATABRICKS_SERVERLESS_EXECUTION_RESULT_ROW_LIMIT`              | Maximum number of rows in the function execution result.                                                                                                                                                                                                  | 100           |
+| Environment Variable                                                | Description                                                                                                                                                                     | Default Value |
+|---------------------------------------------------------------------|---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|---------------|
+| `UCAI_DATABRICKS_SESSION_RETRY_MAX_ATTEMPTS`                        | Maximum number of attempts to retry refreshing the session client in case of token expiry.                                                               | `5`         |
+| `UCAI_DATABRICKS_SERVERLESS_EXECUTION_RESULT_ROW_LIMIT`             | Maximum number of rows when executing functions using serverless compute with `databricks-connect`.                                                                              | `100`         |
+                         | 100           |
 
 #### Reminders
 

@@ -12,7 +12,14 @@ from typing_extensions import override
 
 from unitycatalog.ai.core.base import BaseFunctionClient, FunctionExecutionResult
 from unitycatalog.ai.core.paged_list import PagedList
-from unitycatalog.ai.core.utils.callable_utils_oss import generate_function_info
+from unitycatalog.ai.core.utils.callable_utils import (
+    dynamically_construct_python_function,
+)
+from unitycatalog.ai.core.utils.callable_utils_oss import (
+    generate_function_info,
+    generate_wrapped_function_info,
+)
+from unitycatalog.ai.core.utils.function_processing_utils import process_function_parameter_defaults
 from unitycatalog.ai.core.utils.type_utils import column_type_to_python_type
 from unitycatalog.ai.core.utils.validation_utils import (
     FullFunctionName,
@@ -598,6 +605,119 @@ class UnitycatalogFunctionClient(BaseFunctionClient):
 
         pass
 
+    async def create_wrapped_function_async(
+        self,
+        *,
+        primary_func: Callable[..., Any],
+        functions: list[Callable[..., Any]],
+        catalog: str,
+        schema: str,
+        replace: bool = False,
+        properties: Optional[str] = "null",
+        timeout: Optional[float] = None,
+    ) -> FunctionInfo:
+        """
+        Create a wrapped function in Unity Catalog asynchronously. The primary
+        function is the interface function that will be called by the user. The wrapped
+        function that are supplied via the functions argument will be in-lined into the
+        primary function's definition, above its body contents.
+
+        Args:
+            primary_func: The primary function to create in Unity Catalog.
+            functions: List of wrapped functions to be in-lined into the primary function.
+            catalog: The catalog name.
+            schema: The schema name.
+            replace: Whether to replace the function if it already exists. Defaults to False.
+            properties: JSON-serialized key-value pair map encoded as a string. Currently serves
+                as a reserved field for future functionality. Required in the client API, but defaulted
+                to "null" in this API.
+            timeout: The timeout in seconds.
+
+        Returns:
+            The created FunctionInfo object.
+        """
+
+        if not callable(primary_func):
+            raise ValueError("The provided primary function is not callable.")
+
+        callable_info = generate_wrapped_function_info(
+            primary_func=primary_func, functions=functions
+        )
+
+        function_name = f"{catalog}.{schema}.{callable_info.callable_name}"
+
+        return await self.create_function_async(
+            function_name=function_name,
+            routine_definition=callable_info.routine_definition,
+            data_type=callable_info.data_type,
+            full_data_type=callable_info.full_data_type,
+            comment=callable_info.comment,
+            parameters=callable_info.parameters,
+            properties=properties,
+            timeout=timeout,
+            replace=replace,
+        )
+
+    @override
+    @syncify_method
+    def create_wrapped_function(
+        self,
+        *,
+        primary_func: Callable[..., Any],
+        functions: list[Callable[..., Any]],
+        catalog: str,
+        schema: str,
+        replace: bool = False,
+        properties: Optional[str] = "null",
+        timeout: Optional[float] = None,
+    ) -> FunctionInfo:
+        """
+        Create a wrapped function in Unity Catalog. The primary
+        function is the interface function that will be called by the user. The wrapped
+        functions that are supplied via the `functions` argument will be in-lined into the
+        primary function's definition, above its body contents.
+
+        For example:
+
+        def a(x: int) -> int:
+            return x + 1
+
+        def b(y: int) -> int:
+            return y + 2
+
+        def wrapper(x: int, y:int) -> int:
+            '''
+            This is a wrapper function that calls the wrapped functions a and b.
+            Args:
+                x: The first argument.
+                y: The second argument.
+            Returns:
+                The result of the wrapped functions.
+            '''
+            return a(x) + b(y)
+
+        client.create_wrapped_function(
+            primary_func=wrapper,
+            functions=[a, b],
+            catalog="my_catalog",
+            schema="my_schema"
+        )
+
+        Args:
+            primary_func: The primary function to create in Unity Catalog.
+            functions: List of wrapped functions to be in-lined into the primary function.
+            catalog: The catalog name.
+            schema: The schema name.
+            replace: Whether to replace the function if it already exists. Defaults to False.
+            properties: JSON-serialized key-value pair map encoded as a string.
+            timeout: The timeout in seconds.
+
+        Returns:
+            The created FunctionInfo object.
+        """
+
+        pass
+
     async def get_function_async(
         self, function_name: str, timeout: Optional[float] = None, **kwargs: Any
     ) -> FunctionInfo:
@@ -714,16 +834,26 @@ class UnitycatalogFunctionClient(BaseFunctionClient):
 
     @override
     def _execute_uc_function(
-        self, function_info: FunctionInfo, parameters: Dict[str, Any], **kwargs: Any
+        self,
+        function_info: FunctionInfo,
+        parameters: Optional[dict[str, Any]] = None,
+        **kwargs: Any,
     ) -> FunctionExecutionResult:
         if function_info.name in self.func_cache:
+            parameters = process_function_parameter_defaults(function_info, parameters)
+
             result = self.func_cache[function_info.name](**parameters)
-            return FunctionExecutionResult(format="SCALAR", value=str(result))
+            try:
+                return FunctionExecutionResult(format="SCALAR", value=str(result))
+            except Exception as e:
+                return FunctionExecutionResult(error=str(e))
         else:
-            python_function = dynamically_construct_python_function(function_info)
+            python_function = _get_callable_definition(function_info)
             exec(python_function, self.func_cache)
             try:
                 func = self.func_cache[function_info.name]
+
+                parameters = process_function_parameter_defaults(function_info, parameters)
 
                 result = func(**parameters)
 
@@ -780,30 +910,28 @@ class UnitycatalogFunctionClient(BaseFunctionClient):
         elements = ["uc"]
         return {k: getattr(self, k) for k in elements if getattr(self, k) is not None}
 
+    @override
+    def get_function_source(self, function_name: str) -> str:
+        """
+        Returns the Python callable definition as a string for an EXTERNAL Python function that
+        is stored within Unity Catalog. This function can only parse and extract the full callable
+        definition for Python functions and cannot be used on SQL or TABLE functions.
 
-def dynamically_construct_python_function(function_info: FunctionInfo) -> str:
-    """
-    Construct a Python function from the given FunctionInfo.
+        NOTE: To unify the behavior of creating a valid Python callable, existing indentation in the
+        stored function body will be unified to a consistent indentation level of `4` spaces.
 
-    Args:
-        function_info: The FunctionInfo object containing the function metadata.
+        Args:
+            function_name: The name of the function to retrieve the Python callable definition for.
 
-    Returns:
-        The re-constructed function definition.
-    """
-
-    param_names = []
-    if function_info.input_params and function_info.input_params.parameters:
-        param_names = [param.name for param in function_info.input_params.parameters]
-    function_head = f"{function_info.name}({', '.join(param_names)})"
-    func_def = f"def {function_head}:\n"
-    if function_info.routine_body == "EXTERNAL":
-        for line in function_info.routine_definition.split("\n"):
-            func_def += f"    {line}\n"
-    else:
-        raise NotImplementedError(f"routine_body {function_info.routine_body} not supported")
-
-    return func_def
+        Returns:
+            str: The Python callable definition as a string.
+        """
+        function_info = self.get_function(function_name)
+        if function_info.routine_body != "EXTERNAL":
+            raise ValueError(
+                f"Function {function_name} is not an EXTERNAL Python function and cannot be retrieved."
+            )
+        return dynamically_construct_python_function(function_info=function_info)
 
 
 def validate_input_parameter(
@@ -875,3 +1003,31 @@ def validate_param(param: Any, column_type: str, param_type_text: str) -> None:
             f"Invalid interval type text: {param_type_text}, expecting 'interval day to second', "
             "python timedelta can only be used for day-time interval."
         )
+
+
+def _get_callable_definition(function_info: FunctionInfo) -> str:
+    """
+    Construct a Python function from the given FunctionInfo without docstring, comments, or types.
+    This funciton is purely used for local function execution encapsulated within a call to
+    `execute_function` and is not intended to be used for retrieving a callable definition.
+    Use `get_python_callable` instead.
+
+    Args:
+        function_info: The FunctionInfo object containing the function metadata.
+
+    Returns:
+        The minimal re-constructed function definition.
+    """
+
+    param_names = []
+    if function_info.input_params and function_info.input_params.parameters:
+        param_names = [param.name for param in function_info.input_params.parameters]
+    function_head = f"{function_info.name}({', '.join(param_names)})"
+    func_def = f"def {function_head}:\n"
+    if function_info.routine_body == "EXTERNAL":
+        for line in function_info.routine_definition.split("\n"):
+            func_def += f"    {line}\n"
+    else:
+        raise NotImplementedError(f"routine_body {function_info.routine_body} not supported")
+
+    return func_def

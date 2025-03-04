@@ -44,6 +44,12 @@ class MockClient(BaseFunctionClient):
         return {}
 
     @override
+    def create_wrapped_function(
+        self, primary_func: Callable, functions: List[Callable], **kwargs: Any
+    ) -> Any:
+        return ""
+
+    @override
     def list_functions(self, catalog: str, schema: str) -> Any:
         """List functions in a catalog and schema"""
         return [{}]
@@ -68,6 +74,10 @@ class MockClient(BaseFunctionClient):
     @override
     def to_dict(self):
         return {}
+
+    @override
+    def get_function_source(self):
+        return ""
 
 
 @pytest.fixture

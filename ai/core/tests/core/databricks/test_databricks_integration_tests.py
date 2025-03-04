@@ -35,6 +35,7 @@ from unitycatalog.ai.core.databricks import (
 from unitycatalog.ai.core.envs.databricks_env_vars import (
     UCAI_DATABRICKS_SERVERLESS_EXECUTION_RESULT_ROW_LIMIT,
 )
+from unitycatalog.ai.core.types import Variant
 from unitycatalog.ai.test_utils.client_utils import (
     client,  # noqa: F401
     get_client,
@@ -46,6 +47,7 @@ from unitycatalog.ai.test_utils.function_utils import (
     CATALOG,
     create_function_and_cleanup,
     create_python_function_and_cleanup,
+    create_wrapped_function_and_cleanup,
     generate_func_name_and_cleanup,
     random_func_name,
 )
@@ -335,6 +337,64 @@ def test_replace_existing_function(client: DatabricksFunctionClient):
 
 @retry_flaky_test()
 @requires_databricks
+def test_replace_existing_wrapped_function(client: DatabricksFunctionClient):
+    def int_func(a: int) -> int:
+        """A function that adds 10 to a."""
+        return a + 10
+
+    def str_func(b: str) -> str:
+        """A function that returns the string value of b with a prefix."""
+        return f"str: {b}"
+
+    def wrapper_func(a: int, b: str) -> str:
+        """
+        Wrapper function that in-lines int_func and str_func.
+
+        Args:
+            a: An integer.
+            b: A string.
+
+        Returns:
+            A concatenation of int_func(a) and str_func(b).
+        """
+        return f"{int_func(a)} {str_func(b)}"
+
+    with create_wrapped_function_and_cleanup(
+        client, primary_func=wrapper_func, functions=[int_func, str_func], schema=SCHEMA
+    ) as func_obj:
+        # Execute the function and verify the result.
+        result = client.execute_function(func_obj.full_function_name, {"a": 5, "b": "test"})
+        # Expect 5 + 10 = 15 for int_func and "str: test" for str_func.
+        assert result.value == "15 str: test"
+
+        # Now, modify the definition of the wrapped functions.
+        def int_func(a: int) -> int:
+            """Modified: now adds 20 instead of 10."""
+            return a + 20
+
+        def wrapper_func(a: int, b: str) -> str:
+            """
+            Modified wrapper function using the updated int_func.
+            """
+            return f"{int_func(a)} {str_func(b)}"
+
+        # Replace the existing wrapped function.
+        client.create_wrapped_function(
+            primary_func=wrapper_func,
+            functions=[int_func, str_func],
+            catalog=CATALOG,
+            schema=SCHEMA,
+            replace=True,
+        )
+
+        # Execute the function again to verify that the updated definition is in effect.
+        result = client.execute_function(func_obj.full_function_name, {"a": 5, "b": "test"})
+        # Now, 5 + 20 = 25 for int_func; the str_func remains unchanged.
+        assert result.value == "25 str: test"
+
+
+@retry_flaky_test()
+@requires_databricks
 def test_create_function_without_replace(client: DatabricksFunctionClient):
     def simple_func(x: int) -> str:
         """Test function that returns the string version of x."""
@@ -463,3 +523,172 @@ RETURN SELECT ai_summarize(text, 20)
         assert result.error is None, f"Function execution failed with error: {result.error}"
         # number of words should be no more than 20
         assert len(result.value.split(" ")) <= 20
+
+
+@retry_flaky_test()
+@requires_databricks
+def test_create_and_execute_python_function_with_variant(client: DatabricksFunctionClient):
+    def func_variant(a: Variant) -> str:
+        """
+        Returns the JSON representation of the VARIANT input.
+
+        Args:
+            a (Variant): A variant parameter (a dict representing semi-structured data).
+
+        Returns:
+            str: JSON string of the input.
+        """
+
+        return str(a)
+
+    with create_python_function_and_cleanup(client, func=func_variant, schema=SCHEMA):
+        func_name = f"{CATALOG}.{SCHEMA}.func_variant"
+        input_value = {"key": "value", "list": [1, 2, 3]}
+        result = client.execute_function(func_name, {"a": input_value})
+        assert result.value == '{"key":"value","list":[1,2,3]}'
+
+
+@retry_flaky_test()
+@requires_databricks
+def test_create_and_execute_function_with_variant_integration(client: DatabricksFunctionClient):
+    sql_function_body = f"""CREATE OR REPLACE FUNCTION {CATALOG}.{SCHEMA}.func_variant_body(sql_variant VARIANT)
+RETURNS STRING
+LANGUAGE PYTHON
+COMMENT 'Function that returns JSON string of the VARIANT input.'
+AS $$
+    return str(sql_variant)
+$$
+"""
+    with create_function_and_cleanup(client=client, schema=SCHEMA, sql_body=sql_function_body):
+        func_name = f"{CATALOG}.{SCHEMA}.func_variant_body"
+        input_value = {"key": "value", "list": [1, 2, 3]}
+        result = client.execute_function(func_name, {"sql_variant": input_value})
+        assert result.value == '{"key":"value","list":[1,2,3]}'
+
+
+@retry_flaky_test()
+@requires_databricks
+def test_sql_function_with_default_params_databricks(client: DatabricksFunctionClient):
+    sql_body = f"""
+CREATE OR REPLACE FUNCTION {CATALOG}.{SCHEMA}.concat_func(
+    a INT DEFAULT 10 COMMENT 'int default 10',
+    b STRING DEFAULT 'default' COMMENT 'string default'
+)
+RETURNS STRING
+CONTAINS SQL
+COMMENT 'Concatenates integer and string with defaults'
+RETURN CONCAT(CAST(a AS STRING), ' ', b);
+"""
+    with create_function_and_cleanup(client=client, schema=SCHEMA, sql_body=sql_body):
+        func_name = f"{CATALOG}.{SCHEMA}.concat_func"
+        result = client.execute_function(func_name, parameters={})
+        assert result.value == "10 default"
+
+        result = client.execute_function(func_name, parameters={"a": 20, "b": "test"})
+        assert result.value == "20 test"
+
+
+@retry_flaky_test()
+@requires_databricks
+def test_sql_function_with_all_defaults_databricks(client: DatabricksFunctionClient):
+    sql_body = f"""
+CREATE OR REPLACE FUNCTION {CATALOG}.{SCHEMA}.all_defaults(
+    a INT DEFAULT 1 COMMENT 'int default 1',
+    b STRING DEFAULT 'default' COMMENT 'string default',
+    c DOUBLE DEFAULT 3.14 COMMENT 'double default 3.14',
+    d BOOLEAN DEFAULT TRUE COMMENT 'boolean default'
+)
+RETURNS STRING
+CONTAINS SQL
+COMMENT 'Concatenates all default parameters'
+RETURN CONCAT(CAST(a AS STRING), ' ', b, ' ', CAST(c AS STRING), ' ', CAST(d AS STRING));
+"""
+    with create_function_and_cleanup(client=client, schema=SCHEMA, sql_body=sql_body):
+        func_name = f"{CATALOG}.{SCHEMA}.all_defaults"
+        result = client.execute_function(func_name, parameters={})
+        assert result.value.lower() == "1 default 3.14 true"
+
+        result = client.execute_function(
+            func_name, parameters={"a": 10, "b": "test", "c": 2.71, "d": False}
+        )
+        assert result.value.lower() == "10 test 2.71 false"
+
+        result = client.execute_function(func_name)
+        assert result.value.lower() == "1 default 3.14 true"
+
+
+@retry_flaky_test()
+@requires_databricks
+def test_execute_python_function_no_params_databricks(client: DatabricksFunctionClient):
+    def func_no_params() -> str:
+        """
+        Returns a static string.
+
+        Returns:
+            str: A static string.
+        """
+        return "No parameters here!"
+
+    with create_python_function_and_cleanup(client, func=func_no_params, schema=SCHEMA) as func_obj:
+        result = client.execute_function(func_obj.full_function_name, parameters={})
+        assert result.value == "No parameters here!", (
+            f"Expected 'No parameters here!', got {result.value}"
+        )
+
+        with pytest.raises(
+            ValueError, match="Function does not have input parameters, but parameters"
+        ):
+            client.execute_function(func_obj.full_function_name, parameters={"unexpected": "value"})
+
+
+@retry_flaky_test()
+@requires_databricks
+def test_get_python_callable_integration_complex(client: DatabricksFunctionClient):
+    def complex_python_func(
+        a: int,
+        b: float,
+        c: str,
+        d: bool,
+        e: list[str],
+        f: dict[str, int],
+        g: Variant,
+        h: dict[str, list[int]],
+        i: dict[str, list[dict[str, list[int]]]],
+    ) -> dict[str, list[str]]:
+        """
+        A complex function that processes various types.
+
+        Args:
+            a: an int
+            b: a float
+            c: a string
+            d: a bool
+            e: a list of strings
+            f: a dict mapping strings to ints
+            g: a variant value
+            h: a dict mapping strings to lists of ints
+            i: a dict mapping strings to lists of dicts mapping strings to lists of ints
+
+        Returns:
+            dict[str, list[str]]: A dictionary with a single key "result" and a list of string representations.
+        """
+
+        def _helper(x: float) -> int:
+            return int(x) + a
+
+        return {"result": [str(a), str(b), c, str(d), ",".join(e), str(f), str(g), str(h), str(i)]}
+
+    with create_python_function_and_cleanup(client, func=complex_python_func, schema=SCHEMA):
+        function_name = f"{CATALOG}.{SCHEMA}.complex_python_func"
+        callable_def = client.get_function_source(function_name)
+
+        expected_header = (
+            "def complex_python_func(a: int, b: float, c: str, d: bool, e: list[str], "
+            "f: dict[str, int], g: Variant, h: dict[str, list[int]], i: dict[str, list[dict[str, list[int]]]]) -> dict[str, list[str]]:"
+        )
+
+        assert expected_header in callable_def
+        assert "def _helper(x: float) -> int:" in callable_def
+        assert "return {" in callable_def and '"result": [' in callable_def
+        assert "Args:" in callable_def
+        assert "Returns:" in callable_def

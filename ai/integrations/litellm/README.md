@@ -1,6 +1,6 @@
 # Using Unity Catalog AI with the LiteLLM SDK
 
-You can use the Unity Catalog AI package with the LiteLLM integration to utilize functions that are defined in Unity Catalog to be used as tools within [LiteLLM](https://github.com/shubhamagarwal92/LitLLM) LLM calls.
+You can use the Unity Catalog AI package with the LiteLLM integration to utilize functions that are defined in Unity Catalog to be used as tools within [LiteLLM](https://docs.litellm.ai/) LLM calls.
 
 ## Installation
 
@@ -8,15 +8,15 @@ You can use the Unity Catalog AI package with the LiteLLM integration to utilize
 pip install unitycatalog-litellm
 ```
 
-
 ## Get started
 
-### Client Setup - OSS Unity Catalog
+### Client Setup
+
 To use open source Unity Catalog with this package, create an instance of the Functions Client that is in accordance with your deployment, as shown below.
 
 ```python
 from unitycatalog.client import ApiClient, Configuration
-from unitycatalog.ai.core.oss import UnitycatalogFunctionClient
+from unitycatalog.ai.core.client import UnitycatalogFunctionClient
 
 config = Configuration()
 # This is the default address when starting a UnityCatalog server locally. Update this to the uri
@@ -30,14 +30,14 @@ api_client = ApiClient(configuration=config)
 client = UnitycatalogFunctionClient(api_client=api_client)
 ```
 
-### Client Setup - Databricks-managed UC
+### Client Setup - Databricks
 
 To use Databricks-managed Unity Catalog with this package, follow the [instructions](https://docs.databricks.com/en/dev-tools/cli/authentication.html#authentication-for-the-databricks-cli) to authenticate to your workspace and ensure that your access token has workspace-level privilege for managing UC functions.
 
 First, initialize a client for managing UC functions in a Databricks workspace, and set it as the global client.
 
 ```python
-from unitycatalog.ai.core.client import set_uc_function_client
+from unitycatalog.ai.core.base import set_uc_function_client
 from unitycatalog.ai.core.databricks import DatabricksFunctionClient
 
 client = DatabricksFunctionClient()
@@ -97,6 +97,7 @@ my_tool.fn(**{"city_name": "Dogpatch"})
 ```
 
 Output
+
 ```text
 '{"format": "SCALAR", "value": "cloudy and boring", "truncated": false}'
 ```
@@ -133,6 +134,7 @@ print("\nFirst LLM Response:\n", response)
 ```
 
 Output
+
 ```text
 ModelResponse(
     id="chatcmpl-AR5vLwQm66qMQKelVIfiaa1izMSIF",
@@ -180,7 +182,6 @@ ModelResponse(
 )
 ```
 
-
 #### Calling the function
 
 There are two ways of calling the function within UC: using the `generate_tool_call_messages` function on the response and manually, via the returned values of `extract_tool_call_data`.
@@ -211,6 +212,7 @@ print("\nSecond LLM Response:\n", response_2)
 ```
 
 Output
+
 ```text
 ModelResponse(
     id="chatcmpl-AR5w1gfmKNXxQy97dAbia9ye1zBPi",
@@ -282,6 +284,7 @@ print(results)
 ```
 
 Output
+
 ```text
 [{'function_name': 'main.default.sf_weather_lookup_litellm', 'arguments': {'city_name': 'San Francisco'}, 'tool_use_id': 'call_QUj1gKkfY8i1sVc4Tlfr3hrM'}]
 [{'role': 'tool', 'tool_call_id': 'call_QUj1gKkfY8i1sVc4Tlfr3hrM', 'name': 'main.default.sf_weather_lookup_litellm', 'content': 'cloudy and boring'}]

@@ -3,6 +3,7 @@ import functools
 import json
 import logging
 import re
+import threading
 import time
 from dataclasses import dataclass
 from decimal import Decimal
@@ -17,7 +18,13 @@ from unitycatalog.ai.core.envs.databricks_env_vars import (
     UCAI_DATABRICKS_SESSION_RETRY_MAX_ATTEMPTS,
 )
 from unitycatalog.ai.core.paged_list import PagedList
-from unitycatalog.ai.core.utils.callable_utils import generate_sql_function_body
+from unitycatalog.ai.core.types import Variant
+from unitycatalog.ai.core.utils.callable_utils import (
+    dynamically_construct_python_function,
+    generate_sql_function_body,
+    generate_wrapped_sql_function_body,
+)
+from unitycatalog.ai.core.utils.function_processing_utils import process_function_parameter_defaults
 from unitycatalog.ai.core.utils.type_utils import (
     column_type_to_python_type,
     convert_timedelta_to_interval_str,
@@ -64,6 +71,9 @@ WAREHOUSE_DEFINED_NOT_SUPPORTED_MESSAGE = (
 
 _logger = logging.getLogger(__name__)
 
+_classic_workspace_warning_emitted = False
+_classic_workspace_thread_lock = threading.Lock()
+
 
 def get_default_databricks_workspace_client(profile=None) -> "WorkspaceClient":
     try:
@@ -88,21 +98,28 @@ def _validate_databricks_connect_available() -> bool:
 
 
 def _try_get_spark_session_in_dbr() -> Any:
+    global _classic_workspace_warning_emitted
     try:
         # if in Databricks, fetch the current active session
         from databricks.sdk.runtime import spark
         from pyspark.sql.connect.session import SparkSession
 
-        if spark is not None and not isinstance(spark, SparkSession):
-            _logger.warning(
-                f"Current SparkSession {spark} in the active environment is not a "
-                "pyspark.sql.connect.session.SparkSession instance. Classic runtime does not support "
-                "all functionalities of the unitycatalog-ai framework. To use the full "
-                "capabilities of unitycatalog-ai, execute your code using a client that is attached to "
-                "a Serverless runtime cluster. To learn more about serverless, see the guide at: "
-                "https://docs.databricks.com/en/compute/serverless/index.html#connect-to-serverless-compute "
-                "for more details."
-            )
+        with _classic_workspace_thread_lock:
+            if (
+                spark is not None
+                and not isinstance(spark, SparkSession)
+                and not _classic_workspace_warning_emitted
+            ):
+                _logger.warning(
+                    f"Current SparkSession {spark} in the active environment is not a "
+                    "pyspark.sql.connect.session.SparkSession instance. Classic runtime does not support "
+                    "all functionalities of the unitycatalog-ai framework. To use the full "
+                    "capabilities of unitycatalog-ai, execute your code using a client that is attached to "
+                    "a Serverless runtime cluster. To learn more about serverless, see the guide at: "
+                    "https://docs.databricks.com/en/compute/serverless/index.html#connect-to-serverless-compute "
+                    "for more details."
+                )
+                _classic_workspace_warning_emitted = True
         return spark
     except Exception:
         return
@@ -297,9 +314,15 @@ class DatabricksFunctionClient(BaseFunctionClient):
     @retry_on_session_expiration
     @override
     def create_python_function(
-        self, *, func: Callable[..., Any], catalog: str, schema: str, replace: bool = False
+        self,
+        *,
+        func: Callable[..., Any],
+        catalog: str,
+        schema: str,
+        replace: bool = False,
+        dependencies: Optional[list[str]] = None,
+        environment_version: str = "None",
     ) -> "FunctionInfo":
-        # TODO: migrate this guide to the documentation
         """
         Create a Unity Catalog (UC) function directly from a Python function.
 
@@ -426,10 +449,17 @@ class DatabricksFunctionClient(BaseFunctionClient):
         created by default. To overwrite the existing function, set the `replace` parameter to `True`.
 
         Args:
-            func (Callable): The Python function to convert into a UDF.
-            catalog (str): The catalog name in which to create the function.
-            schema (str): The schema name in which to create the function.
-            replace (bool): Whether to replace the function if it already exists. Defaults to False.
+            func: The Python function to convert into a UDF.
+            catalog: The catalog name in which to create the function.
+            schema: The schema name in which to create the function.
+            replace: Whether to replace the function if it already exists. Defaults to False.
+            dependencies: A list of external dependencies required by the function. Defaults to an empty list. Note that the
+                `dependencies` parameter is not supported in all runtimes. Ensure that you are using a runtime that supports environment
+                and dependency declaration prior to creating a function that defines dependencies.
+                Standard PyPI package declarations are supported (i.e., `requests>=2.25.1`).
+            environment_version: The version of the environment in which the function will be executed. Defaults to 'None'. Note
+                that the `environment_version` parameter is not supported in all runtimes. Ensure that you are using a runtime that
+                supports environment and dependency declaration prior to creating a function that declares an environment verison.
 
         Returns:
             FunctionInfo: Metadata about the created function, including its name and signature.
@@ -438,7 +468,71 @@ class DatabricksFunctionClient(BaseFunctionClient):
         if not callable(func):
             raise ValueError("The provided function is not callable.")
 
-        sql_function_body = generate_sql_function_body(func, catalog, schema, replace)
+        sql_function_body = generate_sql_function_body(
+            func, catalog, schema, replace, dependencies, environment_version
+        )
+
+        try:
+            return self.create_function(sql_function_body=sql_function_body)
+        except Exception as e:
+            if "Parameter default value is not supported" in str(e):
+                # this is a known issue with external python functions in Unity Catalog. Defining a SQL body statement
+                # can be used as a workaround for this issue.
+                raise ValueError(
+                    "Default parameters are not permitted with the create_python_function API. "
+                    "Specify a SQL body statement for defaults and use the create_function API "
+                    "to define functions with default values."
+                ) from e
+            raise e
+
+    @retry_on_session_expiration
+    @override
+    def create_wrapped_function(
+        self,
+        *,
+        primary_func: Callable[..., Any],
+        functions: list[Callable[..., Any]],
+        catalog: str,
+        schema: str,
+        replace=False,
+        dependencies: Optional[list[str]] = None,
+        environment_version: str = "None",
+    ) -> "FunctionInfo":
+        """
+        Create a wrapped function comprised of a `primary_func` function and in-lined wrapped `functions` within the `primary_func` body.
+
+        Note: `databricks-connect` is required to use this function, make sure its version is 15.1.0 or above to use
+            serverless compute.
+
+        Args:
+            primary_func: The primary function to be wrapped.
+            functions: A list of functions to be wrapped inline within the body of `primary_func`.
+            catalog: The catalog name.
+            schema: The schema name.
+            replace: Whether to replace the function if it already exists. Defaults to False.
+            dependencies: A list of external dependencies required by the function. Defaults to an empty list. Note that the
+                `dependencies` parameter is not supported in all runtimes. Ensure that you are using a runtime that supports environment
+                and dependency declaration prior to creating a function that defines dependencies.
+                Standard PyPI package declarations are supported (i.e., `requests>=2.25.1`).
+            environment_version: The version of the environment in which the function will be executed. Defaults to 'None'. Note
+                that the `environment_version` parameter is not supported in all runtimes. Ensure that you are using a runtime that
+                supports environment and dependency declaration prior to creating a function that declares an environment verison.
+
+        Returns:
+            FunctionInfo: Metadata about the created function, including its name and signature.
+        """
+        if not callable(primary_func):
+            raise ValueError("The provided primary function is not callable.")
+
+        sql_function_body = generate_wrapped_sql_function_body(
+            primary_func=primary_func,
+            functions=functions,
+            catalog=catalog,
+            schema=schema,
+            replace=replace,
+            dependencies=dependencies,
+            environment_version=environment_version,
+        )
 
         return self.create_function(sql_function_body=sql_function_body)
 
@@ -524,6 +618,9 @@ class DatabricksFunctionClient(BaseFunctionClient):
     @override
     def _validate_param_type(self, value: Any, param_info: "FunctionParameterInfo") -> None:
         value_python_type = column_type_to_python_type(param_info.type_name.value)
+        if value_python_type is Variant:
+            Variant.validate(value)
+            return
         if not isinstance(value, value_python_type):
             raise ValueError(
                 f"Parameter {param_info.name} should be of type {param_info.type_name.value} "
@@ -589,6 +686,9 @@ class DatabricksFunctionClient(BaseFunctionClient):
     ) -> FunctionExecutionResult:
         _logger.info("Using databricks connect to execute functions with serverless compute.")
         self.set_default_spark_session()
+
+        parameters = process_function_parameter_defaults(function_info, parameters)
+
         sql_command = get_execute_function_sql_command(function_info, parameters)
         try:
             result = self.spark.sql(sqlQuery=sql_command.sql_query, args=sql_command.args or None)
@@ -643,6 +743,27 @@ class DatabricksFunctionClient(BaseFunctionClient):
         accept_keys = ["profile"]
         return cls(**{k: v for k, v in config.items() if k in accept_keys})
 
+    @override
+    def get_function_source(self, function_name: str) -> str:
+        """
+        Returns the Python callable definition as a string for an EXTERNAL Python function that
+        is stored within Unity Catalog. This function can only parse and extract the full callable
+        definition for Python functions and cannot be used on SQL or TABLE functions.
+
+        Args:
+            function_name: The name of the function to retrieve the Python callable definition for.
+
+        Returns:
+            str: The Python callable definition as a string.
+        """
+
+        function_info = self.get_function(function_name)
+        if function_info.routine_body.value != "EXTERNAL":
+            raise ValueError(
+                f"Function {function_name} is not an EXTERNAL Python function and cannot be retrieved."
+            )
+        return dynamically_construct_python_function(function_info)
+
 
 def is_scalar(function: "FunctionInfo") -> bool:
     from databricks.sdk.service.catalog import ColumnTypeName
@@ -695,6 +816,9 @@ def get_execute_function_sql_command(
                 ):
                     json_value_str = json.dumps(param_value)
                     arg_clause += f"from_json('{json_value_str}', '{param_info.type_text}')"
+                elif param_info.type_name == ColumnTypeName.VARIANT:
+                    json_value_str = json.dumps(param_value)
+                    arg_clause += f"parse_json('{json_value_str}')"
                 elif param_info.type_name == ColumnTypeName.BINARY:
                     if isinstance(param_value, bytes):
                         param_value = base64.b64encode(param_value).decode("utf-8")

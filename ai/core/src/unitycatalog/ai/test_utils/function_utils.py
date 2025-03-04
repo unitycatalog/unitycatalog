@@ -169,3 +169,100 @@ def create_python_function_and_cleanup(
             client.delete_function(func_name)
         except Exception as e:
             _logger.warning(f"Failed to delete function: {e}")
+
+
+@contextmanager
+def create_wrapped_function_and_cleanup(
+    client: DatabricksFunctionClient,
+    *,
+    schema: str,
+    primary_func: Callable[..., Any],
+    functions: list[Callable[..., Any]],
+) -> Generator[FunctionObj, None, None]:
+    func_name = f"{CATALOG}.{schema}.{primary_func.__name__}"
+    try:
+        func_info = client.create_wrapped_function(
+            primary_func=primary_func,
+            functions=functions,
+            catalog=CATALOG,
+            schema=schema,
+            replace=True,
+        )
+        yield FunctionObj(
+            full_function_name=func_name,
+            comment=func_info.comment,
+            tool_name=get_tool_name(func_name),
+        )
+    finally:
+        try:
+            client.delete_function(func_name)
+        except Exception as e:
+            _logger.warning(f"Failed to delete function {func_name}: {e}")
+
+
+def int_func_no_doc(a):
+    return a + 10
+
+
+def int_func_with_doc(a: int) -> int:
+    """
+    A function that takes an integer and returns an integer.
+
+    Args:
+        a: An integer.
+
+    Returns:
+        An integer.
+    """
+    return a + 10
+
+
+def str_func_no_doc(b):
+    return f"str value: {b}"
+
+
+def str_func_with_doc(b: str) -> str:
+    """
+    A function that takes a string and returns a string.
+
+    Args:
+        b: A string.
+
+    Returns:
+        A string.
+    """
+    return f"str value: {b}"
+
+
+def wrap_func_no_doc(a: int, b: str) -> str:
+    """
+    A function that takes two arguments and returns a string.
+
+    Args:
+        a: An integer.
+        b: A string.
+
+    Returns:
+        A string.
+    """
+    func1 = int_func_no_doc(a)
+    func2 = str_func_no_doc(b)
+
+    return f"{func1} {func2}"
+
+
+def wrap_func_with_doc(a: int, b: str) -> str:
+    """
+    A function that takes two arguments and returns a string.
+
+    Args:
+        a: An integer.
+        b: A string.
+
+    Returns:
+        A string.
+    """
+    func1 = int_func_with_doc(a)
+    func2 = str_func_with_doc(b)
+
+    return f"{func1} {func2}"

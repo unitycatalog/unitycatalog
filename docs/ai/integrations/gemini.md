@@ -4,45 +4,58 @@ You can use the Unity Catalog AI package with the Gemini SDK to utilize function
 
 ## Installation
 
-### Client Library
-
 To use this package with **Unity Catalog**, you will need to install:
 
 ```sh
 pip install unitycatalog-gemini
 ```
 
-To use this package with **Databricks Unity Catalog**, you will need to install:
+## Prerequisites
+
+- **Python version**: Python 3.10 or higher is required.
+
+### Unity Catalog
+
+Ensure that you have a functional UC server set up and that you are able to access the catalog and schema where defined functions are stored.
+
+### Databricks Unity Catalog
+
+To interact with Databricks Unity Catalog, install the optional package dependency when installing the integration package:
 
 ```sh
 pip install unitycatalog-gemini[databricks]
 ```
 
-## Getting started
+## Tutorial
 
-### Creating a Unity Catalog Client
+### Client Setup
 
-To interact with your Unity Catalog server, initialize the `UnitycatalogFunctionClient` as shown below:
+Create an instance of the Functions Client
 
 ```python
-import asyncio
-from unitycatalog.ai.core.client import UnitycatalogFunctionClient
 from unitycatalog.client import ApiClient, Configuration
+from unitycatalog.ai.core.client import UnitycatalogFunctionClient
 
-# Configure the Unity Catalog API client
-config = Configuration(
-    host="http://localhost:8080/api/2.1/unity-catalog"  # Replace with your UC server URL
-)
+config = Configuration()
+# This is the default address when starting a UnityCatalog server locally. Update this to the uri
+# of your running UnityCatalog server.
+config.host = "http://localhost:8080/api/2.1/unity-catalog"
 
-# Initialize the asynchronous ApiClient
+# Create the UnityCatalog client
 api_client = ApiClient(configuration=config)
 
-# Instantiate the UnitycatalogFunctionClient
-uc_client = UnitycatalogFunctionClient(api_client=api_client)
+# Use the UnityCatalog client to create an instance of the AI function client
+client = UnitycatalogFunctionClient(api_client=api_client)
+```
 
-# Example catalog and schema names
-CATALOG = "my_catalog"
-SCHEMA = "my_schema"
+### Client Setup - Databricks
+
+Create an instance of the Unity Catalog Functions client
+
+``` python
+from unitycatalog.ai.core.databricks import DatabricksFunctionClient
+
+client = DatabricksFunctionClient()
 ```
 
 ### Creating a Unity Catalog Function
@@ -52,9 +65,8 @@ You can create a UC function either by providing a Python callable or by submitt
 To create a UC function from a Python function, define your function with appropriate type hints and a Google-style docstring:
 
 ```python
-# replace with your own catalog and schema
-CATALOG = "catalog"
-SCHEMA = "schema"
+CATALOG = "your_catalog"
+SCHEMA = "your_schema"
 
 func_name = f"{CATALOG}.{SCHEMA}.add_numbers"
 
@@ -82,26 +94,6 @@ function_info = uc_client.create_python_function(
 print(function_info)
 ```
 
-## Databricks-managed Unity Catalog
-
-To use Databricks-managed Unity Catalog with this package, follow the [instructions](https://docs.databricks.com/en/dev-tools/cli/authentication.html#authentication-for-the-databricks-cli) to authenticate to your workspace and ensure that your access token has workspace-level privilege for managing UC functions.
-
-### Client setup
-
-Initialize a client for managing UC functions in a Databricks workspace, and set it as the global client.
-
-```python
-from unitycatalog.ai.core.base import set_uc_function_client
-from unitycatalog.ai.core.databricks import DatabricksFunctionClient
-
-client = DatabricksFunctionClient()
-
-# sets the default uc function client
-set_uc_function_client(client)
-```
-
-## Using the Function as a GenAI Tool
-
 ### Create a UCFunctionToolkit instance
 
 Tool use through the [Google GenAI SDK](https://ai.google.dev/gemini-api/docs) allows you to connect external client-side tools and
@@ -117,7 +109,6 @@ toolkit = UCFunctionToolkit(function_names=[func_name], client=client)
 
 # Access the tool definitions that are in the interface that Gemini's SDK expects
 tools = toolkit.generate_callable_tool_list()
-
 ```
 
 Now that we have the defined tools from Unity Catalog, we can directly pass this definition into a messages request.
@@ -179,7 +170,3 @@ while function_calls := get_function_calls(response):
 
 response
 ```
-
-### Configurations for Databricks-only UC function execution
-
-We provide configurations for the Databricks Client to control the function execution behaviors, check [function execution arguments section](../../core/README.md#function-execution-arguments-configuration).
