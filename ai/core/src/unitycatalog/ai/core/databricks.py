@@ -717,7 +717,6 @@ class DatabricksFunctionClient(BaseFunctionClient):
             error = f"Failed to execute function with command `{sql_command_msg}`\nError: {e}"
             return FunctionExecutionResult(error=error)
 
-    @retry_on_session_expiration
     def _execute_uc_functions_with_local(
         self, function_info: "FunctionInfo", parameters: Dict[str, Any]
     ) -> FunctionExecutionResult:
@@ -730,15 +729,10 @@ class DatabricksFunctionClient(BaseFunctionClient):
 
         parameters = process_function_parameter_defaults(function_info, parameters)
         python_def = get_callable_definition(function_info)
-        try:
-            succeeded, result = run_in_sandbox_subprocess(python_def, parameters)
-            if not succeeded:
-                raise Exception(
-                    f"Failed to execute function {function_info.name} with error: {result}"
-                )
-            return FunctionExecutionResult(format="SCALAR", value=result)
-        except Exception as e:
-            return FunctionExecutionResult(error=str(e))
+        succeeded, result = run_in_sandbox_subprocess(python_def, parameters)
+        if not succeeded:
+            return FunctionExecutionResult(error=result)
+        return FunctionExecutionResult(format="SCALAR", value=result)
 
     @override
     def delete_function(

@@ -39,38 +39,19 @@ IMPORT_DISALLOWED_MESSAGE = (
 )
 
 
-def generate_terminated_message(signal_num: int) -> str:
-    """
-    Generate a message indicating that the process was terminated by a signal.
+TERMINATED_MESSAGE_TEMPLATE = (
+    "The function execution has been terminated with a signal {signal_num}. "
+    "This likely indicates that the function exceeded its resource limits "
+    "(CPU execution time or exceeded its virtual memory cgroup allocation). "
+    "You can adjust the following environment variables to increase the limits if "
+    "you are certain that your function is behaving as expected:\n"
+    "\t1. EXECUTOR_MAX_CPU_TIME_LIMIT: Maximum CPU execution time limit for the executor "
+    "measured in CPU seconds (total CPU execution time, not wall-clock time).\n"
+    "\t2. EXECUTOR_MAX_MEMORY_LIMIT: Maximum memory limit for the executor measured in MB. "
+    "The default value is 100 MB. Note that this restriction is only applicable to Linux environments "
+    "and has no functional use in Mac OSX or Windows.\n"
+)
 
-    Parameters:
-        signal_num: The signal number that caused the termination.
-
-    Returns:
-        A string message indicating the termination reason.
-    """
-    return (
-        f"The function execution has been terminated with a signal {signal_num}. "
-        "This likely indicates that the function exceeded its resource limits "
-        "(CPU execution time or exceeded its virtual memory cgroup allocation). "
-        "You can adjust the following environment variables to increase the limits if "
-        "you are certain that your function is behaving as expected:\n"
-        "\t1. EXECUTOR_MAX_CPU_TIME_LIMIT: Maximum CPU execution time limit for the executor "
-        "measured in CPU seconds (total CPU execution time, not wall-clock time).\n"
-        "\t2. EXECUTOR_MAX_MEMORY_LIMIT: Maximum memory limit for the executor measured in MB. "
-        "The default value is 100 MB. Note that this restriction is only applicable to Linux environments "
-        "and has no functional use in Mac OSX or Windows.\n"
-    )
-
-
-def generate_import_disallowed_message(module_name: str) -> str:
-    """
-    Generate a message indicating that the import of a module is disallowed.
-
-    Parameters:
-        module_name: The name of the disallowed module.
-
-    Returns:
-        A string message indicating the disallowed import.
-    """
-    return f"The import of module '{module_name}' is restricted. {IMPORT_DISALLOWED_MESSAGE}"
+IMPORT_DISALLOWED_MESSAGE_TEMPLATE = (
+    "The import of module '{module_name}' is restricted. {import_disallowed_message}"
+)

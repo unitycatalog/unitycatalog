@@ -810,12 +810,8 @@ def _parse_sql_data_type(type_str: str) -> str:
     type_str = type_str.strip()
 
     if "<" not in type_str:
-        mapped = SQL_TYPE_TO_PYTHON_TYPE_MAPPING.get(type_str.upper())
-        if mapped:
-            if isinstance(mapped, tuple):
-                return mapped[0].__name__
-            else:
-                return mapped.__name__
+        if mapped := SQL_TYPE_TO_PYTHON_TYPE_MAPPING.get(type_str.upper()):
+            return mapped[0].__name__ if isinstance(mapped, tuple) else mapped.__name__
         else:
             return type_str.lower()
 

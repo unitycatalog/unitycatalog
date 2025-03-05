@@ -907,28 +907,25 @@ class UnitycatalogFunctionClient(BaseFunctionClient):
         """
         with self._lock:
             function_info = self.get_function(function_name, **kwargs)
-            parameters = parameters or {}
-            self.validate_input_params(function_info.input_params, parameters)
+        parameters = parameters or {}
+        self.validate_input_params(function_info.input_params, parameters)
 
-        try:
-            func, parameters = self._prepare_function_and_params(function_info, parameters)
-            if self.execution_mode.mode == "local":
-                if asyncio.iscoroutinefunction(func):
-                    result = await func(**parameters)
-                else:
-                    loop = asyncio.get_running_loop()
-                    result = await loop.run_in_executor(None, partial(func, **parameters))
-            elif self.execution_mode.mode == "sandbox":
-                succeeded, result = await run_in_sandbox_async(func, parameters)
-                if not succeeded:
-                    raise Exception(result)
+        func, parameters = self._prepare_function_and_params(function_info, parameters)
+        if self.execution_mode.mode == "local":
+            if asyncio.iscoroutinefunction(func):
+                result = await func(**parameters)
             else:
-                raise RuntimeError(f"Unknown execution_mode: {self.execution_mode}")
-            if not result:
-                result = NO_OUTPUT_MESSAGE
-            return FunctionExecutionResult(format="SCALAR", value=str(result))
-        except Exception as e:
-            return FunctionExecutionResult(error=str(e))
+                loop = asyncio.get_running_loop()
+                result = await loop.run_in_executor(None, partial(func, **parameters))
+        elif self.execution_mode.mode == "sandbox":
+            succeeded, result = await run_in_sandbox_async(func, parameters)
+            if not succeeded:
+                return FunctionExecutionResult(error=result)
+        else:
+            raise RuntimeError(f"Unknown execution_mode: {self.execution_mode}")
+        if not result:
+            result = NO_OUTPUT_MESSAGE
+        return FunctionExecutionResult(format="SCALAR", value=str(result))
 
     async def delete_function_async(
         self,

@@ -7,18 +7,19 @@ from multiprocessing import get_context
 from typing import Any, Callable
 
 from unitycatalog.ai.core.envs.executor_env_vars import (
+    EXECUTOR_DISALLOWED_MODULES,
     EXECUTOR_MAX_CPU_TIME_LIMIT,
     EXECUTOR_MAX_MEMORY_LIMIT,
     EXECUTOR_TIMEOUT,
 )
 from unitycatalog.ai.core.executor.common import (
-    DISALLOWED_MODULES,
+    IMPORT_DISALLOWED_MESSAGE,
+    IMPORT_DISALLOWED_MESSAGE_TEMPLATE,
     MB_CONVERSION,
     NO_OUTPUT_MESSAGE,
     OPEN_DISALLOWED_MESSAGE,
+    TERMINATED_MESSAGE_TEMPLATE,
     TIMEOUT_ERROR_MESSAGE,
-    generate_import_disallowed_message,
-    generate_terminated_message,
 )
 
 _logger = logging.getLogger(__name__)
@@ -63,8 +64,11 @@ def _disable_unwanted_imports():
     original_import = builtins.__import__
 
     def restricted_import(name, globals=None, locals=None, fromlist=(), level=0):
-        if name in DISALLOWED_MODULES:
-            raise ImportError(generate_import_disallowed_message(name))
+        if name in EXECUTOR_DISALLOWED_MODULES.get():
+            error_msg = IMPORT_DISALLOWED_MESSAGE_TEMPLATE.format(
+                module_name=name, import_disallowed_message=IMPORT_DISALLOWED_MESSAGE
+            )
+            raise ImportError(error_msg)
         return original_import(name, globals, locals, fromlist, level)
 
     builtins.__import__ = restricted_import
@@ -139,7 +143,7 @@ async def run_in_sandbox_async(
         exitcode = p.exitcode
         if exitcode is not None and exitcode < 0:
             signal_num = -exitcode
-            return False, generate_terminated_message(signal_num)
+            return False, TERMINATED_MESSAGE_TEMPLATE.format(signal_num=signal_num)
         return False, NO_OUTPUT_MESSAGE
 
 
@@ -169,9 +173,8 @@ def run_in_sandbox(func: Callable[..., Any], params: dict[str, Any]) -> tuple[bo
         loop = asyncio.new_event_loop()
         try:
             task = loop.create_task(run_in_sandbox_async(func, params))
-            result = loop.run_until_complete(task)
+            return loop.run_until_complete(task)
         finally:
             loop.close()
-        return result
     else:
         return loop.run_until_complete(run_in_sandbox_async(func, params))
