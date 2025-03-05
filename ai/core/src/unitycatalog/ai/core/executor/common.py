@@ -22,9 +22,8 @@ TIMEOUT_ERROR_MESSAGE = (
 NO_OUTPUT_MESSAGE = (
     "The function execution has completed, but no output was produced. "
     "This may indicate that the function did not return a value or that an error occurred "
-    "without being captured. Check the function implementation and ensure it returns a value "
-    "by locally executing the function returned from calling the `get_function_source` method on the function "
-    "client object and converting your function to a callable using `unitycatalog.ai.core.utils.execution_utils.load_function_from_string`."
+    "without being captured. Check the function implementation by calling the `get_function_source` client API. "
+    "Alternatively, to directly fetch a usable callable for direct local execution, utilize the `get_function_as_callable` client API."
 )
 
 OPEN_DISALLOWED_MESSAGE = (
