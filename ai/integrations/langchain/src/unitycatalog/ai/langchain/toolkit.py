@@ -4,8 +4,11 @@ from typing import Any, Dict, List, Optional
 
 from langchain_core._api.deprecation import LangChainDeprecationWarning
 
-warnings.filterwarnings("ignore", category=LangChainDeprecationWarning)
-
+warnings.filterwarnings(
+    "ignore",
+    message=r".*As of langchain-core 0\.3\.0, LangChain uses pydantic v2 internally.*",
+    category=LangChainDeprecationWarning,
+)
 from langchain_core.pydantic_v1 import BaseModel, Field, root_validator
 from langchain_core.tools import StructuredTool
 
