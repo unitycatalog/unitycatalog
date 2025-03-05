@@ -1,8 +1,68 @@
 # Unity Catalog Python Client SDK
 
-The Python SDK for Unity Catalog that is published to https://pypi.org/project/unitycatalog-client/.
+The Python SDK for Unity Catalog that is published to [PyPI](https://pypi.org/project/unitycatalog-client/).
 
-## Generate Client Library
+## How to Release the Unity Catalog Python Client SDK
+
+### Generate Client Library
+
+```sh
+build/sbt pythonClient/generate
+```
+
+### Prepare Release Version
+
+```sh
+clients/python/build/prepare-release.sh <release version>
+```
+
+Example: releasing a release candidate version for Unity Catalog version 1.2.3 would use `1.2.3rc0`
+
+### Build Package for Distribution
+
+```sh
+clients/python/build/build-python-package.sh
+```
+
+### Validate Package Contents
+
+```sh
+clients/python/build/validate-python-build.sh
+```
+
+### Run Tests
+
+```sh
+./run-tests.sh
+```
+
+### Publish to Test PyPI (optional)
+
+```sh
+twine upload --repository-url https://test.pypi.org/legacy/  clients/python/target/dist/*
+```
+
+> Note: A maintainer token for Test PyPI is required to upload to this repository.
+
+### Publish to PyPI
+
+```sh
+twine upload clients/python/target/dist/*
+```
+
+> Note: A maintainer token for PyPI is required to upload to this repository.
+
+### Build Documentation Locally
+
+```sh
+clients/python/build/build-docs.sh
+```
+
+The docs will be generated at `clients/python/target/docs/`.
+
+-----------
+
+## Detailed Instructions and Guidance for Maintainers
 
 To generate the client library code from the API specification in `api/all.yaml`, run:
 
@@ -31,40 +91,44 @@ The sbt generation process for this SDK will:
 5. Copy over the release versions of `pyproject.toml`, `setup.py`, and the release package `README.md` file to the correct locations within
 the generated code directories.
 6. Place the generated source code into a hatch-compatible `src` directory for packaging of a shared namespace package.
+7. Remove irrelevant files that are artifacts of the generated code process. These files would otherwise be included in the archives within PyPI and serve no purpose.
 
 For details on what operations are performed in the build process, see the [processing script](../../project/PythonPostBuild.scala) to learn more.
 
-### Packaging the Client SDK into distribution formats
+### Updating Release Version
 
-If you would like to generate the distributable artifacts (required for deploying `unitycatalog-client` to PyPI), simply execute the
-packaging script, located [here](./build/build-python-package.sh). This will create both a `.whl` artifact and a `bdist` archive for deploying
-to PyPI.
+If you are preparing for a release to either [Test PyPI](https://test.pypi.org/project/unitycatalog-client/) or [Main PyPI](https://pypi.org/project/unitycatalog-client/) you will need to run the version update script prior to building the distribution artifacts.
 
-If modifying the `pyproject.toml` file, please verify that the generated `.whl` file contains all required modules by running (from repo root):
+Version conventions are as follows:
+
+**Development Build**: `<major>.<minor>.<micro>.dev0` (this should not be pushed to PyPI!)
+
+**Release Candidate**: `<major>.<minor>.<micro>rc<n>` (increment `n` but always start with `0`. RC builds should be pushed to both TestPyPI and Main PyPI to ensure adequate e2e testing prior to releasing a final version.). **Note** that an `rc` build does not have a period (`.`) between the `<micro>` version and the `rc<n>` definition!
+
+**Full Release**: `<major>.<minor>.<micro>`
+
+> Note: To update for a release, prior to running the packaging script (shown in the next section), simply run from the repo root (as an example, this is preparing the 0.3.1 first release candidate build):
 
 ```sh
-unzip -l clients/python/target/dist/unitycatalog_client-0.3.0.dev0-py3-none-any.whl
+clients/python/build/prepare-release.sh 0.3.1rc0
 ```
 
-The above example is for development version 0.3.0.dev0. Update accordingly with the version that you are generating. The output of this command
-should provide a full listing of the namespace directories:
+### Packaging Client SDK
+
+If you would like to generate the distributable artifacts (required for deploying `unitycatalog-client` to PyPI), simply execute the
+packaging script, located [here](./build/build-python-package.sh).
 
 ```sh
-➜ unzip -l clients/python/target/dist/unitycatalog_client-0.3.0.dev0-py3-none-any.whl
-Archive:  clients/python/target/dist/unitycatalog_client-0.3.0.dev0-py3-none-any.whl
-  Length      Date    Time    Name
----------  ---------- -----   ----
-     6485  02-02-2020 00:00   unitycatalog/client/__init__.py
-    26492  02-02-2020 00:00   unitycatalog/client/api_client.py
-      652  02-02-2020 00:00   unitycatalog/client/api_response.py
-...
-      846  02-02-2020 00:00   unitycatalog/client/models/volume_operation.py
-      769  02-02-2020 00:00   unitycatalog/client/models/volume_type.py
-     7823  02-02-2020 00:00   unitycatalog_client-0.3.0.dev0.dist-info/METADATA
-       87  02-02-2020 00:00   unitycatalog_client-0.3.0.dev0.dist-info/WHEEL
-     8651  02-02-2020 00:00   unitycatalog_client-0.3.0.dev0.dist-info/RECORD
----------                     -------
-   752681                     84 files
+clients/python/build/build-python-package.sh
+```
+
+This will create both a `.whl` artifact and a `bdist` archive for deploying
+to PyPI.
+
+If modifying the `pyproject.toml` file, please verify that the generated `.whl` file and the archived source are not empty:
+
+```sh
+clients/python/build/validate-python-build.sh
 ```
 
 **Important: Ensure that there is no `__init__.py` residing in `unitycatalog/` root directory**. This will break the shared namespace behavior
@@ -73,16 +137,16 @@ with other `unitycatalog-x` packages on PyPI, rendering the usage of all install
 If there is an issue with the build pathing resolution, this archive will only contain the `METADATA`, `WHEEL`, and `RECORD` files, making
 the library unusable.
 
-## Updating deployment build files
+## Updating Deployment Build Files
 
 If you are updating requirements, modifying the release version, or are providing additional guidance within the distributed package's PyPI
 README.md, ensure that you make updates to:
 
-1. The [pyproject.toml](build/pyproject.toml) file. If you are releasing a new version of the SDK, the `version` field is updated properly to the appropriate version of Unity Catalog's release when generating the distributable package code (it will match the release version specified within the [version.sbt](../../version.sbt) file). This does not need to be manually updated.
-2. The `setup.py` file. This file's version is updated automatically during the build process with the version specified in the [version.sbt](../../version.sbt).
+1. The [pyproject.toml](build/pyproject.toml) file. If you are releasing a new version of the SDK, the `version` field is updated properly to the appropriate version of Unity Catalog's release when generating the distributable package code (it will match the release version specified within the [version.sbt](../../version.sbt) file). This will only work for development builds. See the section above (`Updating the final release version`) for guidance on release version updates.
+2. The `setup.py` file. This file's version is updated automatically during the build process with the version specified in the [version.sbt](../../version.sbt). See the section above (`Updating the final release version`) for guidance on release version updates.
 3. The [README.md](build/README.md) file. This file is not updated with releases, but is the source of the landing page at [PyPI](https://pypi.org/project/unitycatalog-client/).
 
-### Build definition updates
+### Build Definition Updates
 
 To modify the packaging definition, ensure that changes are made to [the pyproject file](build/pyproject.toml) and [the setup.py file](build/setup.py). If making changes to this file other than simple version updates, ensure that the namespace package behavior still functions by installing `unitycatalog-ai` in the same python environment and that the results of running the following code shows **both** the `unitycatalog-client` **and** the `unitycatalog-ai` namespaces listed in the result.
 
@@ -113,7 +177,7 @@ Client tests use the `pytest` library. To run them:
     ./run-tests.sh
     ```
 
-## Building docs for release
+## Building Docs
 
 To generate the API documentation for the Unity Catalog Client SDK, simply execute from repository root:
 
@@ -123,4 +187,4 @@ To generate the API documentation for the Unity Catalog Client SDK, simply execu
 clients/python/build/build-docs.sh
 ```
 
-The generated documentation will be in the `target` directory.
+The generated documentation will be in the `target` directory under `docs`.
