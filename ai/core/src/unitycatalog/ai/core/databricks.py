@@ -286,7 +286,7 @@ class DatabricksFunctionClient(BaseFunctionClient):
         from databricks.connect.session import DatabricksSession as SparkSession
         print(self.client)
         if self.profile:
-            builder = SparkSession.builder.profile(self.profile)
+            builder = SparkSession.builder.profile(self.profile).serverless(True)
         elif self.client is not None:
             print("SETTING CLIENT")
             config = self.client.config
@@ -294,8 +294,8 @@ class DatabricksFunctionClient(BaseFunctionClient):
             config.serverless_compute_id = "auto" # Setting Serverless to true by adding "auto"
             builder = SparkSession.builder.sdkConfig(config)
         else:
-            builder = SparkSession.builder
-        self.spark = builder.serverless(True).getOrCreate()
+            builder = SparkSession.builder.serverless(True)
+        self.spark = builder.getOrCreate()
 
     def refresh_client_and_session(self):
         """
