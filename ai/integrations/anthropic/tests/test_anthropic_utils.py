@@ -266,6 +266,7 @@ def test_generate_tool_call_messages_with_invalid_tool_use_block(mock_client, du
         )
 
 
+@pytest.mark.skipif(not TEST_IN_DATABRICKS, reason="Not running in Databricks environment")
 @pytest.mark.parametrize(
     "format,function_output",
     [
@@ -282,9 +283,15 @@ def test_generate_tool_call_messages_with_invalid_tool_use_block(mock_client, du
 def test_generate_tool_call_messages_with_tracing(
     dummy_history, format, function_output, data_type, full_data_type, return_params
 ):
-    with mock.patch(
-        "unitycatalog.ai.core.databricks.get_default_databricks_workspace_client",
-        return_value=mock.Mock(),
+    with (
+        mock.patch(
+            "unitycatalog.ai.core.databricks.get_default_databricks_workspace_client",
+            return_value=mock.Mock(),
+        ),
+        mock.patch(
+            "unitycatalog.ai.core.databricks._validate_databricks_connect_available",
+            return_value=True,
+        ),
     ):
         function_mock = Mock(
             spec=FunctionInfo,
