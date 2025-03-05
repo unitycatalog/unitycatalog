@@ -48,13 +48,13 @@ DATABRICKS_CONNECT_SUPPORTED_VERSION = "15.1.0"
 DATABRICKS_CONNECT_IMPORT_ERROR_MESSAGE = (
     "Could not import databricks-connect python package. "
     "To interact with UC functions using serverless compute, install the package with "
-    f"`pip install databricks-connect=={DATABRICKS_CONNECT_SUPPORTED_VERSION}`. "
+    f"`pip install databricks-connect>={DATABRICKS_CONNECT_SUPPORTED_VERSION}`. "
     "Please note this requires python>=3.10."
 )
 DATABRICKS_CONNECT_VERSION_NOT_SUPPORTED_ERROR_MESSAGE = (
     "Serverless is not supported by the "
     "current databricks-connect version, install with "
-    f"`pip install databricks-connect=={DATABRICKS_CONNECT_SUPPORTED_VERSION}` "
+    f"`pip install databricks-connect>={DATABRICKS_CONNECT_SUPPORTED_VERSION}` "
     "to use serverless compute in Databricks. Please note this requires python>=3.10."
 )
 SESSION_RETRY_BASE_DELAY = 1
