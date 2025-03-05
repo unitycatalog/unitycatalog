@@ -28,13 +28,16 @@ def client() -> DatabricksFunctionClient:
         ),
         mock.patch(
             "unitycatalog.ai.core.databricks._validate_databricks_connect_available",
-            return_value=True,  # or simply a lambda that does nothing
+            return_value=True,
+        ),
+        mock.patch(
+            "unitycatalog.ai.core.databricks.DatabricksFunctionClient.initialize_spark_session",
+            return_value=None,
         ),
     ):
         return DatabricksFunctionClient()
 
 
-@pytest.mark.skipif(not TEST_IN_DATABRICKS, reason="Not running in Databricks environment")
 @pytest.mark.parametrize(
     "format, function_output",
     [
