@@ -157,13 +157,15 @@ def retry_on_session_expiration(func):
         for attempt in range(1, max_attempts + 1):
             try:
                 result = func(self, *args, **kwargs)
-                if isinstance(result, FunctionExecutionResult) and result.error:
-                    if any(
+                if (
+                    isinstance(result, FunctionExecutionResult)
+                    and result.error
+                    and any(
                         msg in result.error
                         for msg in (SESSION_EXPIRED_MESSAGE, SESSION_CHANGED_MESSAGE)
-                    ):
-                        raise SessionExpirationException(result.error)
-                    return result
+                    )
+                ):
+                    raise SessionExpirationException(result.error)
                 return result
             except SessionExpirationException as e:
                 if not self._is_default_client:
