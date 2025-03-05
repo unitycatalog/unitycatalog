@@ -744,12 +744,12 @@ def test_execute_function_in_local_sandbox(client: DatabricksFunctionClient):
 @requires_databricks
 def test_execute_function_with_custom_client(
     serverless_client: DatabricksFunctionClient,
-    serverless_client_with_config: DatabricksFunctionClient
+    serverless_client_with_config: DatabricksFunctionClient,
 ):
     with generate_func_name_and_cleanup(serverless_client, schema=SCHEMA) as func_name:
         function_sample = function_with_string_input(func_name)
         serverless_client.create_function(sql_function_body=function_sample.sql_body)
-        
+
         # Client which created the function should execute successfully
         for input_example in function_sample.inputs:
             result = serverless_client.execute_function(func_name, input_example)
@@ -763,11 +763,13 @@ def test_execute_function_with_custom_client(
         # Client with fake config should fail as expected
         function_info = serverless_client.get_function()
         from databricks.sdk import WorkspaceClient
-    
-        w = WorkspaceClient(host = os.environ.get("DATABRICKS_HOST"), client_id ="fake_id", client_secret = "fake_secret")
-        unauthorized_client =  DatabricksFunctionClient(client=w)
+
+        w = WorkspaceClient(
+            host=os.environ.get("DATABRICKS_HOST"), client_id="fake_id", client_secret="fake_secret"
+        )
+        unauthorized_client = DatabricksFunctionClient(client=w)
 
         for input_example in function_sample.inputs:
             # Calling `execute_uc_function` call directly to skip the get_function call and check if config is passed into DB Connect correctly
             result = unauthorized_client._execute_uc_function(function_info, input_example)
-            assert result.value == function_sample.output
+            assert result.error is not None  # Should error out
