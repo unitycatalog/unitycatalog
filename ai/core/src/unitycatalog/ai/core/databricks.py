@@ -276,6 +276,7 @@ class DatabricksFunctionClient(BaseFunctionClient):
             self.spark.stop()
 
     def initialize_spark_session(self):
+        print("INITIALIZING SPARK SESSION")
         """
         Initialize the spark session with serverless compute.
         This method is called when the spark session is not active.
@@ -283,10 +284,11 @@ class DatabricksFunctionClient(BaseFunctionClient):
         _validate_databricks_connect_available()
 
         from databricks.connect.session import DatabricksSession as SparkSession
-
+        print(self.client)
         if self.profile:
             builder = SparkSession.builder.profile(self.profile)
         elif self.client is not None:
+            print("SETTING CLIENT")
             config = self.client.config
             config.as_dict().pop("cluster_id", None)
             config.serverless_compute_id = "auto" # Setting Serverless to true by adding "auto"
