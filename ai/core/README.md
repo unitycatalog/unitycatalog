@@ -308,11 +308,10 @@ To use Databricks-managed Unity Catalog with this package, follow the [instructi
 
 - **[Highly recommended]** Use python>=3.10 for accessing all functionalities including function creation and function execution.
 - For creating UC functions with a SQL body definition, **only [serverless compute](https://docs.databricks.com/en/compute/use-compute.html#use-serverless-compute) is supported**.
-  Install databricks-connect package with `pip install databricks-connect==15.1.0` to access serverless compute. **python>=3.10** is a requirement to install this version of the package.
-- For executing the UC functions within Databricks, use either SQL warehouse or Databricks Connect with serverless:
-    - SQL warehouse: create a SQL warehouse following [this instruction](https://docs.databricks.com/en/compute/sql-warehouse/create.html), and use the warehouse id when initializing the client.
+  Install databricks-connect package with `pip install databricks-connect>=15.1.0` to access serverless compute. **python>=3.10** is a requirement to install this version of the package.
+- For executing the UC functions within Databricks, use Databricks Connect with serverless:
     NOTE: **only `serverless` [SQL warehouse type](https://docs.databricks.com/en/admin/sql/warehouse-types.html#sql-warehouse-types) is supported** because of performance concerns.
-    - Databricks connect with serverless: Install databricks-connect package with `pip install databricks-connect==15.1.0`. No config needs to be passed when initializing the client.
+    - Databricks connect with serverless: Install databricks-connect package with `pip install databricks-connect>=15.1.0`. No config needs to be passed when initializing the client.
 
 #### Client initialization
 
