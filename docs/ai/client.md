@@ -480,6 +480,45 @@ function_info = client.get_function("your_catalog.your_schema.your_function_name
 
 ## Retrieving a UC function callable
 
+There are two primary ways of retrieving a function definition in native Python Callable format from Unity Catalog; one designed for use of the callable, and one designed for debugging.
+
+### Fetch a Python Callable directly
+
+The `get_function_as_callable` API is used to retrieve a recreated callable from a registered Unity Catalog Python function.
+The return type is directly usable:
+
+```python
+# Define a python callable
+
+def sample_python_func(a: int, b: int) -> int:
+    """
+    Returns the sum of a and b.
+
+    Args:
+        a: an int
+        b: another int
+
+    Returns:
+        The sum of a and b
+    """
+    return a + b
+
+# Create the function within Unity Catalog
+client.create_python_function(catalog=CATALOG, schema=SCHEMA, func=sample_python_func, replace=True)
+
+my_callable = client.get_function_as_callable(function_name=f"{CATALOG}.{SCHEMA}.sample_python_func)
+
+# Use the callable directly
+my_callable(2, 4)
+```
+
+This API exposes 2 additional parameters:
+
+- `register_function`: boolean value that determines whether to register the recreated function to the global (or, if provided, a custom) namespace.
+- `namespace`: A dict representing a namespace definition that can be used to register the recreated function to if a global scope is not desired for function reference usage.
+
+### Fetch a Python Callable as a string
+
 The `get_function_source` API is used to retrieve a recreated python callable definition (as a string) from a registered Unity Catalog Python function.
 In order to use this API, the function that you are fetching **must be** an `EXTERNAL` (python function) type function. When called, the function's metadata will
 be retrieved and the structure of the original callable will be rebuilt and returned as a string.
@@ -506,7 +545,7 @@ def sample_python_func(a: int, b: int) -> int:
 client.create_python_function(catalog=CATALOG, schema=SCHEMA, func=sample_python_func, replace=True)
 
 # Fetch the callable definition
-my_func_def = client.get_function_source(function_name=f"{CATALOG}.{SCHEMA}.sample_python_function")
+my_func_def = client.get_function_source(function_name=f"{CATALOG}.{SCHEMA}.sample_python_func")
 ```
 
 The returned value from the `get_function_source` API will be the same as the original input with a few caveats:

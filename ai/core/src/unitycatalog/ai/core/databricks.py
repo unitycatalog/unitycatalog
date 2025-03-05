@@ -25,7 +25,7 @@ from unitycatalog.ai.core.utils.callable_utils import (
     generate_wrapped_sql_function_body,
     get_callable_definition,
 )
-from unitycatalog.ai.core.utils.execution_utils import ExecutionMode
+from unitycatalog.ai.core.utils.execution_utils import ExecutionMode, load_function_from_string
 from unitycatalog.ai.core.utils.function_processing_utils import process_function_parameter_defaults
 from unitycatalog.ai.core.utils.type_utils import (
     column_type_to_python_type,
@@ -791,6 +791,28 @@ class DatabricksFunctionClient(BaseFunctionClient):
                 f"Function {function_name} is not an EXTERNAL Python function and cannot be retrieved."
             )
         return dynamically_construct_python_function(function_info)
+
+    @override
+    def get_function_as_callable(
+        self, function_name: str, register_function: bool = True, namespace: dict[str, Any] = None
+    ) -> Callable[..., Any]:
+        """
+        Returns the Python callable for an EXTERNAL Python function that is stored within Unity Catalog.
+        This function can only parse and extract the full callable definition for Python functions and
+        cannot be used on SQL or TABLE functions.
+
+        Args:
+            function_name: The name of the function to retrieve the Python callable for.
+            register_function: Whether to register the function in the namespace. Defaults to True.
+            namespace: The namespace to register the function in. Defaults to None (global)
+
+        Returns:
+            Callable[..., Any]: The Python callable for the function.
+        """
+        source = self.get_function_source(function_name)
+        return load_function_from_string(
+            func_def_str=source, register_function=register_function, namespace=namespace
+        )
 
 
 def is_scalar(function: "FunctionInfo") -> bool:

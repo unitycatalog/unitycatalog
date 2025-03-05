@@ -6,6 +6,7 @@ import re
 import textwrap
 from contextlib import contextmanager
 from dataclasses import dataclass
+from types import SimpleNamespace
 from typing import Any, Dict, List, Optional, Union
 
 import pytest
@@ -1819,3 +1820,44 @@ async def test_no_output_function_sandbox(uc_client):
         function_name=function_name, parameters={"a": 5, "b": 10}
     )
     assert "The function execution has completed, but no output was produced." in result.value
+
+
+def test_fetch_function_callable(uc_client):
+    function_name = f"{CATALOG}.{SCHEMA}.simple_func"
+    uc_client.create_python_function(func=simple_func, catalog=CATALOG, schema=SCHEMA, replace=True)
+
+    callable_def = uc_client.get_function_as_callable(function_name)
+    result = callable_def(5, 10)
+    assert result == 15
+
+
+def test_fetch_function_callable_namespace_scoped(uc_client):
+    constant = 10
+
+    def func_with_constant(a: int) -> int:
+        """
+        A function that adds a constant to an integer.
+        Args:
+            a: an integer
+        Returns:
+            The sum of a and the constant.
+        """
+        return a + constant
+
+    assert func_with_constant(5) == 15
+
+    function_name = f"{CATALOG}.{SCHEMA}.func_with_constant"
+    uc_client.create_python_function(
+        func=func_with_constant, catalog=CATALOG, schema=SCHEMA, replace=True
+    )
+
+    scoped_namespace = {"__builtins__": __builtins__, "constant": 5}
+
+    callable_def = uc_client.get_function_as_callable(
+        function_name=function_name, namespace=scoped_namespace
+    )
+
+    scoped_ns = SimpleNamespace(**scoped_namespace)
+
+    assert scoped_ns.func_with_constant(5) == 10
+    assert callable_def(5) == 10
