@@ -20,7 +20,7 @@ from unitycatalog.ai.core.client import (
 )
 from unitycatalog.ai.core.executor.local import run_in_sandbox, run_in_sandbox_async
 from unitycatalog.ai.core.types import Variant
-from unitycatalog.ai.core.utils.execution_utils import load_function_from_string
+from unitycatalog.ai.core.utils.execution_utils import ExecutionMode, load_function_from_string
 from unitycatalog.ai.test_utils.function_utils import (
     CATALOG,
     int_func_no_doc,
@@ -776,7 +776,8 @@ async def test_delete_nonexistent_function(uc_client):
 
 @pytest.mark.asyncio
 async def test_execute_function_with_error(uc_client):
-    uc_client.execution_mode = "local"
+    exec_mode = ExecutionMode("local", "unitycatalog")
+    uc_client.execution_mode = exec_mode
     function_name = f"{CATALOG}.{SCHEMA}.error_function"
     routine_definition = "raise ValueError('Intentional Error')"
     data_type = "STRING"
@@ -1669,7 +1670,8 @@ def test_long_argument_comment(uc_client: UnitycatalogFunctionClient):
 
 
 def test_local_function_execution_sync(uc_client: UnitycatalogFunctionClient):
-    uc_client.execution_mode = "local"
+    exec_mode = ExecutionMode("local", "unitycatalog")
+    uc_client.execution_mode = exec_mode
     function_name = f"{CATALOG}.{SCHEMA}.simple_func"
     uc_client.create_python_function(func=simple_func, catalog=CATALOG, schema=SCHEMA, replace=True)
 
@@ -1680,7 +1682,8 @@ def test_local_function_execution_sync(uc_client: UnitycatalogFunctionClient):
 
 @pytest.mark.asyncio
 async def test_local_function_execution_async(uc_client: UnitycatalogFunctionClient):
-    uc_client.execution_mode = "local"
+    exec_mode = ExecutionMode("local", "unitycatalog")
+    uc_client.execution_mode = exec_mode
     function_name = f"{CATALOG}.{SCHEMA}.simple_func"
     uc_client.create_python_function(func=simple_func, catalog=CATALOG, schema=SCHEMA, replace=True)
 
@@ -1692,7 +1695,8 @@ async def test_local_function_execution_async(uc_client: UnitycatalogFunctionCli
 
 
 def test_manual_function_sandbox_execution_sync(uc_client: UnitycatalogFunctionClient):
-    uc_client.execution_mode = "sandbox"
+    exec_mode = ExecutionMode("sandbox", "unitycatalog")
+    uc_client.execution_mode = exec_mode
     function_name = f"{CATALOG}.{SCHEMA}.simple_func"
     uc_client.create_python_function(func=simple_func, catalog=CATALOG, schema=SCHEMA, replace=True)
 
@@ -1705,7 +1709,8 @@ def test_manual_function_sandbox_execution_sync(uc_client: UnitycatalogFunctionC
 
 @pytest.mark.asyncio
 async def test_manual_function_sandbox_execution_async(uc_client: UnitycatalogFunctionClient):
-    uc_client.execution_mode = "sandbox"
+    exec_mode = ExecutionMode("sandbox", "unitycatalog")
+    uc_client.execution_mode = exec_mode
     function_name = f"{CATALOG}.{SCHEMA}.simple_func"
     uc_client.create_python_function(func=simple_func, catalog=CATALOG, schema=SCHEMA, replace=True)
 
@@ -1717,7 +1722,8 @@ async def test_manual_function_sandbox_execution_async(uc_client: UnitycatalogFu
 
 
 def test_function_exception_local(uc_client):
-    uc_client.execution_mode = "local"
+    exec_mode = ExecutionMode("local", "unitycatalog")
+    uc_client.execution_mode = exec_mode
 
     def raise_error(a: int, b: int) -> None:
         """
@@ -1741,7 +1747,8 @@ def test_function_exception_local(uc_client):
 
 @pytest.mark.asyncio
 async def test_function_exception_sandbox_async(uc_client):
-    uc_client.execution_mode = "sandbox"
+    exec_mode = ExecutionMode("sandbox", "unitycatalog")
+    uc_client.execution_mode = exec_mode
 
     def raise_error_async(a: int, b: int) -> None:
         """
@@ -1768,7 +1775,8 @@ async def test_function_exception_sandbox_async(uc_client):
 
 
 def test_no_output_function_local(uc_client):
-    uc_client.execution_mode = "local"
+    exec_mode = ExecutionMode("local", "unitycatalog")
+    uc_client.execution_mode = exec_mode
 
     def no_output(a: int, b: int) -> None:
         """
@@ -1790,7 +1798,8 @@ def test_no_output_function_local(uc_client):
 
 @pytest.mark.asyncio
 async def test_no_output_function_sandbox(uc_client):
-    uc_client.execution_mode = "sandbox"
+    exec_mode = ExecutionMode("sandbox", "unitycatalog")
+    uc_client.execution_mode = exec_mode
 
     def no_output(a: int, b: int) -> None:
         """

@@ -16,6 +16,7 @@ from pydantic import ValidationError
 
 from unitycatalog.ai.autogen.toolkit import UCFunctionToolkit
 from unitycatalog.ai.core.client import FunctionExecutionResult
+from unitycatalog.ai.core.utils.execution_utils import ExecutionMode
 from unitycatalog.ai.test_utils.client_utils import (
     TEST_IN_DATABRICKS,
     get_client,
@@ -84,7 +85,8 @@ def generate_function_info(
 @requires_databricks
 @pytest.mark.asyncio
 async def test_toolkit_e2e(dbx_client, execution_mode):
-    dbx_client.execution_mode = execution_mode
+    exec_mode = ExecutionMode(execution_mode, "databricks")
+    dbx_client.execution_mode = exec_mode
     with (
         set_default_client(dbx_client),
         create_function_and_cleanup(dbx_client, schema=SCHEMA) as func_obj,
@@ -114,7 +116,8 @@ async def test_toolkit_e2e(dbx_client, execution_mode):
 @requires_databricks
 @pytest.mark.asyncio
 async def test_toolkit_e2e_manually_passing_client(dbx_client, execution_mode):
-    dbx_client.execution_mode = execution_mode
+    exec_mode = ExecutionMode(execution_mode, "databricks")
+    dbx_client.execution_mode = exec_mode
     with (
         set_default_client(dbx_client),
         create_function_and_cleanup(dbx_client, schema=SCHEMA) as func_obj,
@@ -143,7 +146,8 @@ async def test_toolkit_e2e_manually_passing_client(dbx_client, execution_mode):
 @requires_databricks
 @pytest.mark.asyncio
 async def test_multiple_toolkits(dbx_client, execution_mode):
-    dbx_client.execution_mode = execution_mode
+    exec_mode = ExecutionMode(execution_mode, "databricks")
+    dbx_client.execution_mode = exec_mode
     with (
         set_default_client(dbx_client),
         create_function_and_cleanup(dbx_client, schema=SCHEMA) as func_obj,

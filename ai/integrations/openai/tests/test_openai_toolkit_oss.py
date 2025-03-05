@@ -13,6 +13,7 @@ from unitycatalog.ai.core.base import set_uc_function_client
 from unitycatalog.ai.core.client import (
     UnitycatalogFunctionClient,
 )
+from unitycatalog.ai.core.utils.execution_utils import ExecutionMode
 from unitycatalog.ai.core.utils.function_processing_utils import get_tool_name
 from unitycatalog.ai.openai.toolkit import UCFunctionToolkit
 from unitycatalog.ai.test_utils.function_utils_oss import (
@@ -54,7 +55,8 @@ async def uc_client():
 @pytest.mark.parametrize("execution_mode", ["local", "sandbox"])
 @pytest.mark.asyncio
 async def test_tool_calling(uc_client, execution_mode):
-    uc_client.execution_mode = execution_mode
+    exec_mode = ExecutionMode(execution_mode, "unitycatalog")
+    uc_client.execution_mode = exec_mode
     with (
         create_function_and_cleanup_oss(uc_client, schema=SCHEMA) as func_obj,
     ):
@@ -117,7 +119,8 @@ async def test_tool_calling(uc_client, execution_mode):
 @pytest.mark.parametrize("execution_mode", ["local", "sandbox"])
 @pytest.mark.asyncio
 async def test_tool_calling_with_multiple_choices(uc_client, execution_mode):
-    uc_client.execution_mode = execution_mode
+    exec_mode = ExecutionMode(execution_mode, "unitycatalog")
+    uc_client.execution_mode = exec_mode
     with (
         create_function_and_cleanup_oss(uc_client, schema=SCHEMA) as func_obj,
     ):

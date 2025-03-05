@@ -18,6 +18,7 @@ from langgraph.prebuilt import create_react_agent
 from unitycatalog.ai.core.base import (
     FunctionExecutionResult,
 )
+from unitycatalog.ai.core.utils.execution_utils import ExecutionMode
 from unitycatalog.ai.core.utils.function_processing_utils import get_tool_name
 from unitycatalog.ai.test_utils.client_utils import (
     TEST_IN_DATABRICKS,
@@ -53,7 +54,8 @@ SCHEMA = os.environ.get("SCHEMA", "ucai_langchain_test")
 @requires_databricks
 def test_toolkit_e2e(execution_mode):
     client = get_client()
-    client.execution_mode = execution_mode
+    exec_mode = ExecutionMode(execution_mode, "databricks")
+    client.execution_mode = exec_mode
     with set_default_client(client), create_function_and_cleanup(client, schema=SCHEMA) as func_obj:
         toolkit = UCFunctionToolkit(function_names=[func_obj.full_function_name])
         tools = toolkit.tools
@@ -76,7 +78,8 @@ def test_toolkit_e2e(execution_mode):
 @requires_databricks
 def test_toolkit_e2e_manually_passing_client(execution_mode):
     client = get_client()
-    client.execution_mode = execution_mode
+    exec_mode = ExecutionMode(execution_mode, "databricks")
+    client.execution_mode = exec_mode
     with create_function_and_cleanup(client, schema=SCHEMA) as func_obj:
         toolkit = UCFunctionToolkit(function_names=[func_obj.full_function_name], client=client)
         tools = toolkit.tools
@@ -100,7 +103,8 @@ def test_toolkit_e2e_manually_passing_client(execution_mode):
 @requires_databricks
 def test_toolkit_e2e_tools_with_no_params(execution_mode):
     client = get_client()
-    client.execution_mode = execution_mode
+    exec_mode = ExecutionMode(execution_mode, "databricks")
+    client.execution_mode = exec_mode
 
     def get_weather() -> str:
         """
@@ -131,7 +135,8 @@ def test_toolkit_e2e_tools_with_no_params(execution_mode):
 @requires_databricks
 def test_multiple_toolkits(execution_mode):
     client = get_client()
-    client.execution_mode = execution_mode
+    exec_mode = ExecutionMode(execution_mode, "databricks")
+    client.execution_mode = exec_mode
     with set_default_client(client), create_function_and_cleanup(client, schema=SCHEMA) as func_obj:
         toolkit1 = UCFunctionToolkit(function_names=[func_obj.full_function_name])
         toolkit2 = UCFunctionToolkit(function_names=[f"{CATALOG}.{SCHEMA}.*"])

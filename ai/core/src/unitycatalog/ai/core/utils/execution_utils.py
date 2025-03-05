@@ -1,6 +1,43 @@
 import ast
 
 
+class ExecutionMode:
+    """
+    A configuration class for execution modes that validates the provided mode
+    against allowed values based on the client type. It also exposes the current
+    configuration state.
+
+    Args:
+        mode: The execution mode to set.
+        client_type: The type of client to set the execution mode for.
+
+    """
+
+    _allowed_modes = {
+        "databricks": {"serverless", "local"},
+        "unitycatalog": {"sandbox", "local"},
+    }
+
+    def __init__(self, mode: str, client_type: str):
+        self.client_type = client_type.lower()
+        self.mode = self._validate_mode(mode)
+
+    def _validate_mode(self, mode: str) -> str:
+        mode = mode.lower()
+        allowed = self._allowed_modes.get(self.client_type)
+        if allowed is None:
+            raise ValueError(f"Unknown client type: {self.client_type}")
+        if mode not in allowed:
+            raise ValueError(
+                f"Execution mode '{mode}' is not valid for client '{self.client_type}'. "
+                f"Allowed values are: {', '.join(allowed)}."
+            )
+        return mode
+
+    def __str__(self) -> str:
+        return self.mode
+
+
 def load_function_from_string(
     func_def_str: str, register_function: bool = True, namespace: dict = None
 ) -> callable:

@@ -19,6 +19,7 @@ from unitycatalog.ai.core.base import (
 from unitycatalog.ai.core.client import (
     UnitycatalogFunctionClient,
 )
+from unitycatalog.ai.core.utils.execution_utils import ExecutionMode
 from unitycatalog.ai.core.utils.function_processing_utils import get_tool_name
 from unitycatalog.ai.langchain.toolkit import UCFunctionToolkit
 from unitycatalog.ai.test_utils.function_utils import (
@@ -72,7 +73,8 @@ async def uc_client():
 @pytest.mark.parametrize("execution_mode", ["local", "sandbox"])
 @pytest.mark.asyncio
 async def test_toolkit_e2e(uc_client, execution_mode):
-    uc_client.execution_mode = execution_mode
+    exec_mode = ExecutionMode(execution_mode, "unitycatalog")
+    uc_client.execution_mode = exec_mode
     with create_function_and_cleanup_oss(uc_client, schema=SCHEMA) as func_obj:
         toolkit = UCFunctionToolkit(function_names=[func_obj.full_function_name], client=uc_client)
         tools = toolkit.tools
@@ -93,7 +95,8 @@ async def test_toolkit_e2e(uc_client, execution_mode):
 @pytest.mark.parametrize("execution_mode", ["local", "sandbox"])
 @pytest.mark.asyncio
 async def test_toolkit_e2e_manually_passing_client(uc_client, execution_mode):
-    uc_client.execution_mode = execution_mode
+    exec_mode = ExecutionMode(execution_mode, "unitycatalog")
+    uc_client.execution_mode = exec_mode
     with create_function_and_cleanup_oss(uc_client, schema=SCHEMA) as func_obj:
         toolkit = UCFunctionToolkit(function_names=[func_obj.full_function_name], client=uc_client)
         tools = toolkit.tools
@@ -115,7 +118,8 @@ async def test_toolkit_e2e_manually_passing_client(uc_client, execution_mode):
 @pytest.mark.parametrize("execution_mode", ["local", "sandbox"])
 @pytest.mark.asyncio
 async def test_toolkit_e2e_tools_with_no_params(uc_client, execution_mode):
-    uc_client.execution_mode = execution_mode
+    exec_mode = ExecutionMode(execution_mode, "unitycatalog")
+    uc_client.execution_mode = exec_mode
 
     def get_weather() -> str:
         """
@@ -146,7 +150,8 @@ async def test_toolkit_e2e_tools_with_no_params(uc_client, execution_mode):
 @pytest.mark.parametrize("execution_mode", ["local", "sandbox"])
 @pytest.mark.asyncio
 async def test_multiple_toolkits(uc_client, execution_mode):
-    uc_client.execution_mode = execution_mode
+    exec_mode = ExecutionMode(execution_mode, "unitycatalog")
+    uc_client.execution_mode = exec_mode
     with create_function_and_cleanup_oss(uc_client, schema=SCHEMA) as func_obj:
         toolkit1 = UCFunctionToolkit(function_names=[func_obj.full_function_name], client=uc_client)
         toolkit2 = UCFunctionToolkit(function_names=[f"{CATALOG}.{SCHEMA}.*"], client=uc_client)

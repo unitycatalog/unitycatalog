@@ -36,6 +36,7 @@ from unitycatalog.ai.core.envs.databricks_env_vars import (
     UCAI_DATABRICKS_SERVERLESS_EXECUTION_RESULT_ROW_LIMIT,
 )
 from unitycatalog.ai.core.types import Variant
+from unitycatalog.ai.core.utils.execution_utils import ExecutionMode
 from unitycatalog.ai.test_utils.client_utils import (
     client,  # noqa: F401
     get_client,
@@ -697,7 +698,8 @@ def test_get_python_callable_integration_complex(client: DatabricksFunctionClien
 @retry_flaky_test()
 @requires_databricks
 def test_execute_function_in_local_sandbox(client: DatabricksFunctionClient):
-    client.execution_mode = "local"
+    exec_mode = ExecutionMode("local", "databricks")
+    client.execution_mode = exec_mode
 
     def add(a: int, b: int) -> int:
         """

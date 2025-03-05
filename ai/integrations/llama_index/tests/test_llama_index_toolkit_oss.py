@@ -15,6 +15,7 @@ from unitycatalog.ai.core.base import (
 from unitycatalog.ai.core.client import (
     UnitycatalogFunctionClient,
 )
+from unitycatalog.ai.core.utils.execution_utils import ExecutionMode
 from unitycatalog.ai.llama_index.toolkit import UCFunctionToolkit
 from unitycatalog.ai.test_utils.function_utils import (
     RETRIEVER_OUTPUT_CSV,
@@ -151,7 +152,8 @@ async def test_toolkit_creation_with_properties_argument_mocked():
 @pytest.mark.parametrize("execution_mode", ["local", "sandbox"])
 @pytest.mark.asyncio
 async def test_toolkit_e2e(uc_client, execution_mode):
-    uc_client.execution_mode = execution_mode
+    exec_mode = ExecutionMode(execution_mode, "unitycatalog")
+    uc_client.execution_mode = exec_mode
     with create_function_and_cleanup_oss(uc_client, schema=SCHEMA) as func_obj:
         toolkit = UCFunctionToolkit(
             function_names=[func_obj.full_function_name], client=uc_client, return_direct=True
@@ -177,7 +179,8 @@ async def test_toolkit_e2e(uc_client, execution_mode):
 @pytest.mark.parametrize("execution_mode", ["local", "sandbox"])
 @pytest.mark.asyncio
 async def test_toolkit_e2e_manually_passing_client(uc_client, execution_mode):
-    uc_client.execution_mode = execution_mode
+    exec_mode = ExecutionMode(execution_mode, "unitycatalog")
+    uc_client.execution_mode = exec_mode
     with create_function_and_cleanup_oss(uc_client, schema=SCHEMA) as func_obj:
         toolkit = UCFunctionToolkit(
             function_names=[func_obj.full_function_name], client=uc_client, return_direct=True
@@ -202,7 +205,8 @@ async def test_toolkit_e2e_manually_passing_client(uc_client, execution_mode):
 @pytest.mark.parametrize("execution_mode", ["local", "sandbox"])
 @pytest.mark.asyncio
 async def test_multiple_toolkits(uc_client, execution_mode):
-    uc_client.execution_mode = execution_mode
+    exec_mode = ExecutionMode(execution_mode, "unitycatalog")
+    uc_client.execution_mode = exec_mode
     with create_function_and_cleanup_oss(uc_client, schema=SCHEMA) as func_obj:
         toolkit1 = UCFunctionToolkit(function_names=[func_obj.full_function_name], client=uc_client)
         toolkit2 = UCFunctionToolkit(function_names=[f"{CATALOG}.{SCHEMA}.*"], client=uc_client)

@@ -16,6 +16,7 @@ from packaging import version
 from unitycatalog.ai.autogen.toolkit import UCFunctionToolkit
 from unitycatalog.ai.core.base import FunctionExecutionResult
 from unitycatalog.ai.core.client import UnitycatalogFunctionClient
+from unitycatalog.ai.core.utils.execution_utils import ExecutionMode
 from unitycatalog.ai.test_utils.function_utils import (
     RETRIEVER_OUTPUT_CSV,
     RETRIEVER_OUTPUT_SCALAR,
@@ -104,7 +105,8 @@ def generate_function_info(
 @pytest.mark.parametrize("execution_mode", ["local", "sandbox"])
 @pytest.mark.asyncio
 async def test_toolkit_e2e(uc_client, execution_mode):
-    uc_client.execution_mode = execution_mode
+    exec_mode = ExecutionMode(execution_mode, "unitycatalog")
+    uc_client.execution_mode = exec_mode
     with create_function_and_cleanup_oss(uc_client, schema=SCHEMA) as func_obj:
         toolkit = UCFunctionToolkit(
             function_names=[func_obj.full_function_name],
@@ -133,7 +135,8 @@ async def test_toolkit_e2e(uc_client, execution_mode):
 @pytest.mark.parametrize("execution_mode", ["local", "sandbox"])
 @pytest.mark.asyncio
 async def test_toolkit_e2e_manually_passing_client(uc_client, execution_mode):
-    uc_client.execution_mode = execution_mode
+    exec_mode = ExecutionMode(execution_mode, "unitycatalog")
+    uc_client.execution_mode = exec_mode
     with create_function_and_cleanup_oss(uc_client, schema=SCHEMA) as func_obj:
         toolkit = UCFunctionToolkit(
             function_names=[func_obj.full_function_name],
@@ -156,7 +159,8 @@ async def test_toolkit_e2e_manually_passing_client(uc_client, execution_mode):
 @pytest.mark.parametrize("execution_mode", ["local", "sandbox"])
 @pytest.mark.asyncio
 async def test_multiple_toolkits(uc_client, execution_mode):
-    uc_client.execution_mode = execution_mode
+    exec_mode = ExecutionMode(execution_mode, "unitycatalog")
+    uc_client.execution_mode = exec_mode
     with create_function_and_cleanup_oss(uc_client, schema=SCHEMA) as func_obj:
         toolkit1 = UCFunctionToolkit(
             function_names=[func_obj.full_function_name],

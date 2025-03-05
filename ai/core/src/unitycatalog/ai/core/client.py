@@ -25,6 +25,7 @@ from unitycatalog.ai.core.utils.callable_utils_oss import (
     generate_function_info,
     generate_wrapped_function_info,
 )
+from unitycatalog.ai.core.utils.execution_utils import ExecutionMode
 from unitycatalog.ai.core.utils.function_processing_utils import process_function_parameter_defaults
 from unitycatalog.ai.core.utils.type_utils import column_type_to_python_type
 from unitycatalog.ai.core.utils.validation_utils import (
@@ -375,7 +376,7 @@ class UnitycatalogFunctionClient(BaseFunctionClient):
             )
 
         self.uc = UnitycatalogClient(api_client)
-        self.execution_mode = self._validate_execution_mode(execution_mode)
+        self.execution_mode = ExecutionMode(execution_mode, "unitycatalog")
         self.func_cache = {}
         super().__init__()
 
@@ -383,24 +384,6 @@ class UnitycatalogFunctionClient(BaseFunctionClient):
         # and preventing Python's GC operation as well as to ensure that multiple instances of
         # this client are not present within a thread (eliminate a potential memory leak).
         atexit.register(self.close)
-
-    @classmethod
-    def _validate_execution_mode(cls, execution_mode: str) -> str:
-        """
-        Validate the execution mode.
-
-        Args:
-            execution_mode: The execution mode to validate.
-
-        Returns:
-            The validated execution mode.
-
-        Raises:
-            ValueError: If the execution mode is invalid.
-        """
-        if execution_mode not in ["local", "sandbox"]:
-            raise ValueError("Invalid execution mode. Allowed values are 'local' or 'sandbox'.")
-        return execution_mode
 
     async def close_async(self):
         """Asynchronously close the underlying ApiClient."""
@@ -894,9 +877,9 @@ class UnitycatalogFunctionClient(BaseFunctionClient):
     ) -> FunctionExecutionResult:
         try:
             func, parameters = self._prepare_function_and_params(function_info, parameters)
-            if self.execution_mode == "local":
+            if self.execution_mode.mode == "local":
                 result = func(**parameters)
-            elif self.execution_mode == "sandbox":
+            elif self.execution_mode.mode == "sandbox":
                 succeeded, result = run_in_sandbox(func, parameters)
                 if not succeeded:
                     raise Exception(result)
@@ -929,13 +912,13 @@ class UnitycatalogFunctionClient(BaseFunctionClient):
 
         try:
             func, parameters = self._prepare_function_and_params(function_info, parameters)
-            if self.execution_mode == "local":
+            if self.execution_mode.mode == "local":
                 if asyncio.iscoroutinefunction(func):
                     result = await func(**parameters)
                 else:
                     loop = asyncio.get_running_loop()
                     result = await loop.run_in_executor(None, partial(func, **parameters))
-            elif self.execution_mode == "sandbox":
+            elif self.execution_mode.mode == "sandbox":
                 succeeded, result = await run_in_sandbox_async(func, parameters)
                 if not succeeded:
                     raise Exception(result)
