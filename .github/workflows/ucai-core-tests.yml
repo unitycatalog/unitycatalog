@@ -76,7 +76,12 @@ jobs:
           dev/start_unitycatalog.sh
       - name: Run Tests
         run: |
-          pytest core/tests
+          pytest core/tests --ignore=core/tests/core/databricks/test_databricks_unit_tests.py
+      - name: Run Databricks Unit Tests
+        if: matrix.python-version == '3.10'
+        run: |
+          pip install databricks-connect==15.1.0
+          pytest core/tests/core/databricks/test_databricks_unit_tests.py
       - name: Stop Unity Catalog Server
         if: always()
         run: |
