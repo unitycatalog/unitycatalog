@@ -1,4 +1,7 @@
 import ast
+import logging
+
+_logger = logging.getLogger(__name__)
 
 
 class ExecutionMode:
@@ -31,6 +34,12 @@ class ExecutionMode:
             raise ValueError(
                 f"Execution mode '{mode}' is not valid for client '{self.client_type}'. "
                 f"Allowed values are: {', '.join(allowed)}."
+            )
+        if self.client_type == "databricks" and mode == "local":
+            _logger.warning(
+                "You are running in 'local' execution mode, which is intended only for development and debugging. "
+                "For production, please switch to 'serverless' execution mode. Before deploying, create a client "
+                "using 'serverless' mode to validate your code's behavior and ensure full compatibility."
             )
         return mode
 
