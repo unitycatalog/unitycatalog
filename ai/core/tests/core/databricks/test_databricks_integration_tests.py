@@ -774,3 +774,4 @@ def test_execute_function_with_custom_client(
             # Calling `execute_uc_function` call directly to skip the get_function call and check if config is passed into DB Connect correctly
             result = unauthorized_client._execute_uc_function(function_info, input_example)
             assert result.error is not None  # Should error out
+            assert "RETRIES_EXCEEDED" in result.error
