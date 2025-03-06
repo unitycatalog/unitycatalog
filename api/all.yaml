@@ -1262,7 +1262,7 @@ paths:
         - External Locations
       summary: Create an external location
       description: |
-        Creates a new external location entry in the metastore. The caller must be a metastore admin or have the **CREATE_EXTERNAL_LOCATION** privilege on both the metastore and the associated storage credential.
+        Creates a new external location entry in the metastore. The caller must be a metastore admin to be able to create external locations.
       operationId: createExternalLocation
       requestBody:
         required: true
