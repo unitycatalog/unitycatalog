@@ -579,13 +579,18 @@ class DatabricksFunctionClient(BaseFunctionClient):
         Returns:
             FunctionInfo: The function info.
         """
+        from databricks.sdk.errors.platform import PermissionDenied
+
         full_func_name = FullFunctionName.validate_full_function_name(function_name)
         if "*" in full_func_name.function:
             raise ValueError(
                 "function name cannot include *, to get all functions in a catalog and schema, "
                 "please use list_functions API instead."
             )
-        return self.client.functions.get(function_name)
+        try:
+            return self.client.functions.get(function_name)
+        except PermissionDenied as e:
+            raise PermissionError(f"Permission denied: {e}") from e
 
     @override
     def list_functions(
