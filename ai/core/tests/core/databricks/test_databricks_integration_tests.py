@@ -762,7 +762,7 @@ def test_execute_function_with_custom_client(
             assert result.value == function_sample.output
 
         # Client with fake config should fail as expected
-        function_info = serverless_client.get_function()
+        function_info = serverless_client.get_function(func_name)
         from databricks.sdk import WorkspaceClient
 
         w = WorkspaceClient(
