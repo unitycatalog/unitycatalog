@@ -100,6 +100,7 @@ def test_uc_function_to_litellm_tool(function_info, client):
         )
         assert tool["name"] == function_name.replace(".", "__")
 
+
 @pytest.mark.parametrize(
     "filter_accessible_functions",
     [True, False],
@@ -136,7 +137,8 @@ def uc_function_to_litellm_tool_permission_denied(filter_accessible_functions):
                 function_name=f"{CATALOG}.{SCHEMA}.test",
                 filter_accessible_functions=filter_accessible_functions,
             )
-            
+
+
 @pytest.mark.parametrize("execution_mode", ["serverless", "local"])
 @requires_databricks
 def test_toolkit_e2e(execution_mode):
