@@ -43,6 +43,7 @@ from unitycatalog.ai.test_utils.client_utils import (
     requires_databricks,
     retry_flaky_test,
     serverless_client,  # noqa: F401
+    serverless_client_with_config,  # noqa: F401
 )
 from unitycatalog.ai.test_utils.function_utils import (
     CATALOG,
