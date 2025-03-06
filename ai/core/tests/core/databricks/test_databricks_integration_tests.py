@@ -31,12 +31,12 @@ from tests.core.databricks.function_definitions import (
 )
 from unitycatalog.ai.core.databricks import (
     DatabricksFunctionClient,
+    ExecutionMode,
 )
 from unitycatalog.ai.core.envs.databricks_env_vars import (
     UCAI_DATABRICKS_SERVERLESS_EXECUTION_RESULT_ROW_LIMIT,
 )
 from unitycatalog.ai.core.types import Variant
-from unitycatalog.ai.core.utils.execution_utils import ExecutionMode
 from unitycatalog.ai.test_utils.client_utils import (
     client,  # noqa: F401
     get_client,
@@ -720,8 +720,7 @@ def test_get_function_as_callable(client: DatabricksFunctionClient):
 @retry_flaky_test()
 @requires_databricks
 def test_execute_function_in_local_sandbox(client: DatabricksFunctionClient):
-    exec_mode = ExecutionMode("local", "databricks")
-    client.execution_mode = exec_mode
+    client.execution_mode = ExecutionMode.LOCAL
 
     def add(a: int, b: int) -> int:
         """
@@ -736,7 +735,7 @@ def test_execute_function_in_local_sandbox(client: DatabricksFunctionClient):
         """
         return a + b
 
-    with create_python_function_and_cleanup(client, func=add, schema=SCHEMA) as func_obj:
+    with create_python_function_and_cleanup(client, func=add, schema=SCHEMA):
         function_name = f"{CATALOG}.{SCHEMA}.add"
         result = client.execute_function(function_name, {"a": 3, "b": 4})
         assert result.value == 7

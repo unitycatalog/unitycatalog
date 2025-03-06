@@ -6,6 +6,7 @@ import re
 import time
 from dataclasses import dataclass
 from decimal import Decimal
+from enum import Enum
 from io import StringIO
 from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional
 
@@ -25,7 +26,7 @@ from unitycatalog.ai.core.utils.callable_utils import (
     generate_wrapped_sql_function_body,
     get_callable_definition,
 )
-from unitycatalog.ai.core.utils.execution_utils import ExecutionMode, load_function_from_string
+from unitycatalog.ai.core.utils.execution_utils import load_function_from_string
 from unitycatalog.ai.core.utils.function_processing_utils import process_function_parameter_defaults
 from unitycatalog.ai.core.utils.type_utils import (
     column_type_to_python_type,
@@ -73,6 +74,30 @@ WAREHOUSE_DEFINED_NOT_SUPPORTED_MESSAGE = (
 
 
 _logger = logging.getLogger(__name__)
+
+
+class ExecutionMode(str, Enum):
+    SERVERLESS = "serverless"
+    LOCAL = "local"
+
+    def __str__(self) -> str:
+        return self.value
+
+    @classmethod
+    def validate(cls, value: str) -> "ExecutionMode":
+        try:
+            if value == cls.LOCAL.value:
+                _logger.warning(
+                    "You are running in 'local' execution mode, which is intended only for development and debugging. "
+                    "For production, please switch to 'serverless' execution mode. Before deploying, create a client "
+                    "using 'serverless' mode to validate your code's behavior and ensure full compatibility."
+                )
+            return cls(value)
+        except ValueError as e:
+            raise ValueError(
+                f"Execution mode '{value}' is not valid. "
+                f"Allowed values are: {', '.join(mode.value for mode in cls)}"
+            ) from e
 
 
 class SessionExpirationException(Exception):
@@ -226,7 +251,7 @@ class DatabricksFunctionClient(BaseFunctionClient):
         _warn_if_workspace_provided(**kwargs)
         self.client = client or get_default_databricks_workspace_client(profile=profile)
         self.profile = profile
-        self.execution_mode = ExecutionMode(execution_mode, "databricks")
+        self.execution_mode = ExecutionMode.validate(execution_mode)
         self.spark = None
         self.set_spark_session()
         self._is_default_client = client is None
@@ -676,13 +701,13 @@ class DatabricksFunctionClient(BaseFunctionClient):
         self, function_info: "FunctionInfo", parameters: Dict[str, Any], **kwargs: Any
     ) -> Any:
         check_function_info(function_info)
-        if self.execution_mode.mode == "serverless":
+        if self.execution_mode == ExecutionMode.SERVERLESS:
             return self._execute_uc_functions_with_serverless(function_info, parameters)
-        elif self.execution_mode.mode == "local":
+        elif self.execution_mode == ExecutionMode.LOCAL:
             return self._execute_uc_functions_with_local(function_info, parameters)
         else:
-            raise ValueError(
-                f"Execution mode {self.execution_mode} is not supported. Must be either 'serverless' or 'local'."
+            raise NotImplementedError(
+                f"Execution mode {self.execution_mode} is not supported for function execution."
             )
 
     @retry_on_session_expiration

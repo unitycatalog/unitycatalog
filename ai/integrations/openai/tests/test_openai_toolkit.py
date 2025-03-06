@@ -14,7 +14,7 @@ from openai.types.chat.chat_completion_message_tool_call import Function
 
 from tests.helper_functions import mock_chat_completion_response, mock_choice
 from unitycatalog.ai.core.base import set_uc_function_client
-from unitycatalog.ai.core.utils.execution_utils import ExecutionMode
+from unitycatalog.ai.core.databricks import ExecutionMode
 from unitycatalog.ai.core.utils.function_processing_utils import get_tool_name
 from unitycatalog.ai.core.utils.validation_utils import has_retriever_signature
 from unitycatalog.ai.openai.toolkit import UCFunctionToolkit
@@ -42,8 +42,7 @@ def env_setup(monkeypatch):
 @requires_databricks
 def test_tool_calling(execution_mode):
     client = get_client()
-    exec_mode = ExecutionMode(execution_mode, "databricks")
-    client.execution_mode = exec_mode
+    client.execution_mode = ExecutionMode(execution_mode)
     with (
         set_default_client(client),
         create_function_and_cleanup(client, schema=SCHEMA) as func_obj,
@@ -168,8 +167,7 @@ def test_tool_calling_with_trace_as_retriever():
 @requires_databricks
 def test_tool_calling_with_multiple_choices(execution_mode):
     client = get_client()
-    exec_mode = ExecutionMode(execution_mode, "databricks")
-    client.execution_mode = exec_mode
+    client.execution_mode = ExecutionMode(execution_mode)
     with (
         set_default_client(client),
         create_function_and_cleanup(client, schema=SCHEMA) as func_obj,
@@ -205,7 +203,6 @@ def test_tool_calling_with_multiple_choices(execution_mode):
             )
             choices = response.choices
             assert len(choices) == 3
-            # only choose one of the choices
             tool_calls = choices[0].message.tool_calls
             assert len(tool_calls) == 1
 
@@ -214,11 +211,9 @@ def test_tool_calling_with_multiple_choices(execution_mode):
             arguments = json.loads(tool_call.function.arguments)
             assert isinstance(arguments.get("number"), int)
 
-            # execute the function based on the arguments
             result = client.execute_function(func_name, arguments)
             assert result.value == "14"
 
-            # Create a message containing the result of the function call
             function_call_result_message = {
                 "role": "tool",
                 "content": json.dumps({"content": result.value}),
@@ -229,7 +224,6 @@ def test_tool_calling_with_multiple_choices(execution_mode):
                 "model": "gpt-4o-mini",
                 "messages": [*messages, assistant_message, function_call_result_message],
             }
-            # Generate final response
             openai.chat.completions.create(
                 model=completion_payload["model"], messages=completion_payload["messages"]
             )
@@ -290,11 +284,9 @@ RETURN SELECT extract(DAYOFWEEK_ISO FROM day), day
             assert isinstance(arguments.get("start"), str)
             assert isinstance(arguments.get("end"), str)
 
-            # execute the function based on the arguments
             result = client.execute_function(func_name, arguments)
             assert result.value is not None
 
-            # Create a message containing the result of the function call
             function_call_result_message = {
                 "role": "tool",
                 "content": json.dumps({"content": result.value}),
@@ -305,7 +297,6 @@ RETURN SELECT extract(DAYOFWEEK_ISO FROM day), day
                 "model": "gpt-4o-mini",
                 "messages": [*messages, assistant_message, function_call_result_message],
             }
-            # Generate final response
             openai.chat.completions.create(
                 model=completion_payload["model"], messages=completion_payload["messages"]
             )

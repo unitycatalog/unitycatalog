@@ -25,7 +25,7 @@ from unitycatalog.ai.core.utils.callable_utils_oss import (
     generate_function_info,
     generate_wrapped_function_info,
 )
-from unitycatalog.ai.core.utils.execution_utils import ExecutionMode, load_function_from_string
+from unitycatalog.ai.core.utils.execution_utils import load_function_from_string
 from unitycatalog.ai.core.utils.function_processing_utils import process_function_parameter_defaults
 from unitycatalog.ai.core.utils.type_utils import column_type_to_python_type
 from unitycatalog.ai.core.utils.validation_utils import (
@@ -99,6 +99,23 @@ SQL_TYPE_TO_PYTHON_TYPE_MAPPING_UC_OSS = {
 }
 
 _logger = logging.getLogger(__name__)
+
+
+class ExecutionMode(str, Enum):
+    LOCAL = "local"
+    SANDBOX = "sandbox"
+
+    def __str__(self) -> str:
+        return self.value
+
+    @classmethod
+    def validate(cls, value: str) -> "ExecutionMode":
+        try:
+            return cls(value)
+        except ValueError as e:
+            raise ValueError(
+                f"Invalid execution mode '{value}'. Allowed values are: {', '.join([mode.value for mode in cls])}"
+            ) from e
 
 
 def syncify_method(sync_method):
@@ -376,7 +393,7 @@ class UnitycatalogFunctionClient(BaseFunctionClient):
             )
 
         self.uc = UnitycatalogClient(api_client)
-        self.execution_mode = ExecutionMode(execution_mode, "unitycatalog")
+        self.execution_mode = ExecutionMode.validate(execution_mode)
         self.func_cache = {}
         super().__init__()
 
@@ -875,21 +892,23 @@ class UnitycatalogFunctionClient(BaseFunctionClient):
         parameters: Optional[dict[str, Any]] = None,
         **kwargs: Any,
     ) -> FunctionExecutionResult:
-        try:
-            func, parameters = self._prepare_function_and_params(function_info, parameters)
-            if self.execution_mode.mode == "local":
+        func, parameters = self._prepare_function_and_params(function_info, parameters)
+        if self.execution_mode == ExecutionMode.LOCAL:
+            try:
                 result = func(**parameters)
-            elif self.execution_mode.mode == "sandbox":
-                succeeded, result = run_in_sandbox(func, parameters)
-                if not succeeded:
-                    raise Exception(result)
-            else:
-                raise RuntimeError(f"Unknown execution_mode: {self.execution_mode}")
-            if not result:
-                result = NO_OUTPUT_MESSAGE
-            return FunctionExecutionResult(format="SCALAR", value=str(result))
-        except Exception as e:
-            return FunctionExecutionResult(error=str(e))
+            except Exception as e:
+                return FunctionExecutionResult(error=str(e))
+        elif self.execution_mode == ExecutionMode.SANDBOX:
+            succeeded, result = run_in_sandbox(func, parameters)
+            if not succeeded:
+                return FunctionExecutionResult(error=result)
+        else:
+            raise NotImplementedError(
+                f"Execution mode {self.execution_mode} is not supported for function execution."
+            )
+        if not result:
+            result = NO_OUTPUT_MESSAGE
+        return FunctionExecutionResult(format="SCALAR", value=str(result))
 
     async def execute_function_async(
         self,
@@ -911,18 +930,23 @@ class UnitycatalogFunctionClient(BaseFunctionClient):
         self.validate_input_params(function_info.input_params, parameters)
 
         func, parameters = self._prepare_function_and_params(function_info, parameters)
-        if self.execution_mode.mode == "local":
-            if asyncio.iscoroutinefunction(func):
-                result = await func(**parameters)
-            else:
-                loop = asyncio.get_running_loop()
-                result = await loop.run_in_executor(None, partial(func, **parameters))
-        elif self.execution_mode.mode == "sandbox":
+        if self.execution_mode == ExecutionMode.LOCAL:
+            try:
+                if asyncio.iscoroutinefunction(func):
+                    result = await func(**parameters)
+                else:
+                    loop = asyncio.get_running_loop()
+                    result = await loop.run_in_executor(None, partial(func, **parameters))
+            except Exception as e:
+                return FunctionExecutionResult(error=str(e))
+        elif self.execution_mode == ExecutionMode.SANDBOX:
             succeeded, result = await run_in_sandbox_async(func, parameters)
             if not succeeded:
                 return FunctionExecutionResult(error=result)
         else:
-            raise RuntimeError(f"Unknown execution_mode: {self.execution_mode}")
+            raise NotImplementedError(
+                f"Execution mode {self.execution_mode} is not supported for function execution."
+            )
         if not result:
             result = NO_OUTPUT_MESSAGE
         return FunctionExecutionResult(format="SCALAR", value=str(result))

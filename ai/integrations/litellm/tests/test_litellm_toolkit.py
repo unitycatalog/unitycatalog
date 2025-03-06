@@ -11,7 +11,7 @@ from databricks.sdk.service.catalog import (
 from pydantic import ValidationError
 
 from unitycatalog.ai.core.base import FunctionExecutionResult
-from unitycatalog.ai.core.utils.execution_utils import ExecutionMode
+from unitycatalog.ai.core.databricks import ExecutionMode
 from unitycatalog.ai.litellm.toolkit import UCFunctionToolkit
 from unitycatalog.ai.test_utils.client_utils import (
     client,  # noqa: F401
@@ -105,8 +105,7 @@ def test_uc_function_to_litellm_tool(function_info, client):
 @requires_databricks
 def test_toolkit_e2e(execution_mode):
     client = get_client()
-    exec_mode = ExecutionMode(execution_mode, "databricks")
-    client.execution_mode = exec_mode
+    client.execution_mode = ExecutionMode(execution_mode)
     with set_default_client(client), create_function_and_cleanup(client, schema=SCHEMA) as func_obj:
         toolkit = UCFunctionToolkit(
             function_names=[func_obj.full_function_name], return_direct=True
@@ -123,8 +122,7 @@ def test_toolkit_e2e(execution_mode):
 @requires_databricks
 def test_toolkit_e2e_with_client(execution_mode):
     client = get_client()
-    exec_mode = ExecutionMode(execution_mode, "databricks")
-    client.execution_mode = exec_mode
+    client.execution_mode = ExecutionMode(execution_mode)
     with set_default_client(client), create_function_and_cleanup(client, schema=SCHEMA) as func_obj:
         toolkit = UCFunctionToolkit(
             function_names=[func_obj.full_function_name],
