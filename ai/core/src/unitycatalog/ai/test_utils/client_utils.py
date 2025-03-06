@@ -25,9 +25,15 @@ def client() -> DatabricksFunctionClient:
     if TEST_IN_DATABRICKS:
         return DatabricksFunctionClient(profile=PROFILE)
     else:
-        with mock.patch(
-            "unitycatalog.ai.core.databricks.get_default_databricks_workspace_client",
-            return_value=mock.Mock(),
+        with (
+            mock.patch(
+                "unitycatalog.ai.core.databricks.get_default_databricks_workspace_client",
+                return_value=mock.Mock(),
+            ),
+            mock.patch(
+                "unitycatalog.ai.core.databricks.DatabricksFunctionClient.set_spark_session",
+                lambda self: None,
+            ),
         ):
             return DatabricksFunctionClient()
 
@@ -41,9 +47,15 @@ def get_client() -> DatabricksFunctionClient:
     if TEST_IN_DATABRICKS:
         return DatabricksFunctionClient(profile=PROFILE)
     else:
-        with mock.patch(
-            "unitycatalog.ai.core.databricks.get_default_databricks_workspace_client",
-            return_value=mock.Mock(),
+        with (
+            mock.patch(
+                "unitycatalog.ai.core.databricks.get_default_databricks_workspace_client",
+                return_value=mock.Mock(),
+            ),
+            mock.patch(
+                "unitycatalog.ai.core.databricks.DatabricksFunctionClient.set_spark_session",
+                lambda self: None,
+            ),
         ):
             return DatabricksFunctionClient()
 
