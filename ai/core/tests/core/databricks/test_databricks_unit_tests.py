@@ -536,7 +536,7 @@ def test_retry_on_session_expiration_decorator_exceeds_attempts(mock_sleep):
     with pytest.raises(RuntimeError, match="Failed to execute mock_function_always_fail after"):
         client.mock_function()
 
-    assert client.call_count == int(UCAI_DATABRICKS_SESSION_RETRY_MAX_ATTEMPTS.get())
+    assert client.call_count == UCAI_DATABRICKS_SESSION_RETRY_MAX_ATTEMPTS.get()
 
 
 @pytest.fixture
@@ -686,7 +686,7 @@ AS $$ return 1 $$"""
         with pytest.raises(RuntimeError, match="Failed to execute create_function after"):
             client.create_function(sql_function_body=sql_function_body)
 
-        max_attempts = int(UCAI_DATABRICKS_SESSION_RETRY_MAX_ATTEMPTS.get())
+        max_attempts = UCAI_DATABRICKS_SESSION_RETRY_MAX_ATTEMPTS.get()
         assert client.refresh_client_and_session.call_count == max_attempts - 1
         assert mock_spark_session.sql.call_count == max_attempts
         assert mock_time_sleep.call_count == max_attempts - 1
@@ -1570,3 +1570,40 @@ def test_reconstruct_callable_complex_function(complex_function_info):
 
     assert "def _internal(g: float) -> int:" in reconstructed
     assert "return str(a+b+_internal(4.5))" in reconstructed
+
+
+def test_local_execution_mode_warning(caplog):
+    with (
+        caplog.at_level(logging.WARNING),
+        patch(
+            "unitycatalog.ai.core.databricks.get_default_databricks_workspace_client",
+            return_value=MagicMock(),
+        ),
+        patch(
+            "unitycatalog.ai.core.databricks.DatabricksFunctionClient.set_spark_session",
+            lambda self: None,
+        ),
+    ):
+        DatabricksFunctionClient(execution_mode="local")
+    assert "You are running in 'local' execution mode, which is intended" in caplog.text
+
+
+@pytest.mark.parametrize(
+    "execution_mode",
+    ["LOCAL", "remote", "ServerLess", "invalid"],
+)
+def test_invalid_execution_mode(execution_mode):
+    with (
+        patch(
+            "unitycatalog.ai.core.databricks.get_default_databricks_workspace_client",
+            return_value=MagicMock(),
+        ),
+        patch(
+            "unitycatalog.ai.core.databricks.DatabricksFunctionClient.set_spark_session",
+            lambda self: None,
+        ),
+        pytest.raises(
+            ValueError, match=f"Execution mode '{execution_mode}' is not valid. Allowed values"
+        ),
+    ):
+        DatabricksFunctionClient(execution_mode=execution_mode)

@@ -15,6 +15,7 @@ dependencies = [
   "asyncio",
   "nest_asyncio",
   "unitycatalog-client",
+  "cloudpickle",
 ]
 keywords = ["unitycatalog", "ai", "databricks", "function", "tool", "genai"]
 classifiers = [
