@@ -49,7 +49,7 @@ def _generate_runner_script(function_source: str, cpu_time_limit: int, memory_li
     function_name = _extract_function_name(function_source)
     function_source = textwrap.dedent(function_source)
     script = f"""
-import sys, base64, json, traceback, asyncio, resource, os
+import sys, base64, cloudpickle, json, traceback, asyncio, resource, os
 
 {function_source}
 
@@ -68,17 +68,17 @@ def main():
     _limit_resources()
     try:
         b64_params = sys.argv[1]
-        params = __import__('cloudpickle').loads(__import__('base64').b64decode(b64_params))
+        params = cloudpickle.loads(base64.b64decode(b64_params))
         result = {function_name}(**params)
         if asyncio.iscoroutine(result):
             result = asyncio.run(result)
         if result is None:
             result = "{NO_OUTPUT_MESSAGE}"
-        print(__import__('json').dumps({{"success": True, "result": result}}))
+        print(json.dumps({{"success": True, "result": result}}))
         sys.stdout.flush()
     except Exception:
-        tb = __import__('traceback').format_exc()
-        print(__import__('json').dumps({{"success": False, "error": tb}}))
+        tb = traceback.format_exc()
+        print(json.dumps({{"success": False, "error": tb}}))
         sys.stdout.flush()
 
 if __name__ == "__main__":
@@ -98,11 +98,15 @@ def run_in_sandbox_subprocess(function_source: str, params: dict[str, Any]) -> t
     script that applies resource limits and executes the function.
     The runner returns a JSON message indicating success or error.
 
+    Args:
+        function_source: The source code of the function to execute.
+        params: The parameters to pass to the function.
+
     Returns:
         (success, result): If success is True, result is the function's return value (or a default message if None).
         Otherwise, result contains the error message.
     """
-    timeout = float(EXECUTOR_TIMEOUT.get())
+    timeout = EXECUTOR_TIMEOUT.get()
 
     pickled_params = cloudpickle.dumps(params)
     b64_params = base64.b64encode(pickled_params).decode("utf-8")
@@ -114,6 +118,9 @@ def run_in_sandbox_subprocess(function_source: str, params: dict[str, Any]) -> t
         function_source=function_source, cpu_time_limit=cpu_time_limit, memory_limit=memory_limit
     )
 
+    # NB: The tempfile is left on disk and is cleaned up after the subprocess completes within the
+    # `finally`` block later. This is due to the context manager for tempfile introducing a file lock on
+    # on the file which prevents the subprocess from reading the file.
     with tempfile.NamedTemporaryFile("w", delete=False, suffix=".py") as f:
         f.write(script)
         script_path = f.name
