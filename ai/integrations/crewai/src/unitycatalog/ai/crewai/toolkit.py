@@ -132,7 +132,8 @@ class UCFunctionToolkit(BaseModel):
         description_updated: Optional[bool] = False,
         cache_function: Callable = lambda _args, _result: True,
         result_as_answer: bool = False,
-        filter_accessible_functions: bool = False**kwargs,
+        filter_accessible_functions: bool = False,
+        **kwargs,
     ) -> Optional[CrewAIBaseTool]:
         """
         Converts a Unity Catalog function into a CrewAI tool.
