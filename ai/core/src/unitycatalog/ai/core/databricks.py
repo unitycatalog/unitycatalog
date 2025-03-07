@@ -285,10 +285,15 @@ class DatabricksFunctionClient(BaseFunctionClient):
         from databricks.connect.session import DatabricksSession as SparkSession
 
         if self.profile:
-            builder = SparkSession.builder.profile(self.profile)
+            builder = SparkSession.builder.profile(self.profile).serverless(True)
+        elif self.client is not None:
+            config = self.client.config
+            config.as_dict().pop("cluster_id", None)
+            config.serverless_compute_id = "auto"  # Setting Serverless to true by adding "auto"
+            builder = SparkSession.builder.sdkConfig(config)
         else:
-            builder = SparkSession.builder
-        self.spark = builder.serverless(True).getOrCreate()
+            builder = SparkSession.builder.serverless(True)
+        self.spark = builder.getOrCreate()
 
     def refresh_client_and_session(self):
         """
