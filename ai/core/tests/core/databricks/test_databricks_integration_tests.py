@@ -1,6 +1,7 @@
 import math
 import os
 from typing import Callable, Dict, List
+from unittest.mock import patch
 
 import pytest
 from databricks.sdk.errors import ResourceDoesNotExist
@@ -741,7 +742,7 @@ def test_execute_function_in_local_sandbox(client: DatabricksFunctionClient):
         result = client.execute_function(function_name, {"a": 3, "b": 4})
         assert result.value == 7
 
-        
+
 @requires_databricks
 def test_execute_function_with_custom_client(
     serverless_client: DatabricksFunctionClient,
@@ -765,13 +766,16 @@ def test_execute_function_with_custom_client(
         function_info = serverless_client.get_function(func_name)
         from databricks.sdk import WorkspaceClient
 
-        w = WorkspaceClient(
-            host=os.environ.get("DATABRICKS_HOST"), client_id="fake_id", client_secret="fake_secret"
-        )
-        unauthorized_client = DatabricksFunctionClient(client=w)
+        with patch("databricks.connect.validation.validate_session_serverless", return_value=None):
+            w = WorkspaceClient(
+                host=os.environ.get("DATABRICKS_HOST"),
+                client_id="fake_id",
+                client_secret="fake_secret",
+            )
+            unauthorized_client = DatabricksFunctionClient(client=w)
 
-        for input_example in function_sample.inputs:
-            # Calling `execute_uc_function` call directly to skip the get_function call and check if config is passed into DB Connect correctly
-            result = unauthorized_client._execute_uc_function(function_info, input_example)
-            assert result.error is not None  # Should error out
-            assert "RETRIES_EXCEEDED" in result.error
+            for input_example in function_sample.inputs:
+                # Calling `execute_uc_function` call directly to skip the get_function call and check if config is passed into DB Connect correctly
+                result = unauthorized_client._execute_uc_function(function_info, input_example)
+                assert result.error is not None  # Should error out
+                assert "RETRIES_EXCEEDED" in result.error
