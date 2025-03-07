@@ -185,7 +185,6 @@ def validate_type_hint(hint: Any) -> str:
     Returns:
         The corresponding SQL type.
     """
-
     if hasattr(hint, "__origin__") and hint.__origin__ is Union:
         non_none_types = [t for t in hint.__args__ if t is not type(None)]
         if len(non_none_types) == 1:
@@ -706,6 +705,8 @@ def validate_return_type(func_name: str, type_hints: dict[str, Any]) -> str:
         )
 
     return_type_hint = type_hints["return"]
+    if return_type_hint is None or return_type_hint is type(None):
+        return "NULL"
     try:
         sql_return_type = validate_type_hint(return_type_hint)
     except ValueError as e:
@@ -809,8 +810,10 @@ def _parse_sql_data_type(type_str: str) -> str:
     type_str = type_str.strip()
 
     if "<" not in type_str:
-        mapped = SQL_TYPE_TO_PYTHON_TYPE_MAPPING.get(type_str.upper())
-        return mapped.__name__ if mapped else type_str.lower()
+        if mapped := SQL_TYPE_TO_PYTHON_TYPE_MAPPING.get(type_str.upper()):
+            return mapped[0].__name__ if isinstance(mapped, tuple) else mapped.__name__
+        else:
+            return type_str.lower()
 
     outer, inner = type_str.split("<", 1)
     outer = outer.strip().upper()
@@ -870,7 +873,7 @@ def _reconstruct_docstring(function_info: "FunctionInfo", max_width: int = 100) 
                 arg_line,
                 width=max_width,
                 initial_indent=PRIMARY_INDENT,
-                subsequent_indent=WRAPPED_INDENT,
+                subsequent_indent=WRAPPED_INDENT + PRIMARY_INDENT,
             )
             doc_lines.append(wrapped_arg)
 
@@ -882,7 +885,7 @@ def _reconstruct_docstring(function_info: "FunctionInfo", max_width: int = 100) 
         return_type_str,
         width=max_width,
         initial_indent=PRIMARY_INDENT,
-        subsequent_indent=WRAPPED_INDENT,
+        subsequent_indent=WRAPPED_INDENT + PRIMARY_INDENT,
     )
     doc_lines.append(wrapped_return)
 
@@ -984,5 +987,39 @@ def dynamically_construct_python_function(
 
     adjusted_body = _parse_routine_definition(function_info.routine_definition)
     func_def += adjusted_body + "\n"
+
+    return func_def
+
+
+def get_callable_definition(function_info: "FunctionInfo") -> str:
+    """
+    Construct a Python function from the given FunctionInfo without docstring, comments, or types.
+    This funciton is purely used for local or sandboxed function execution encapsulated within a call to
+    `execute_function` and is not intended to be used for retrieving a callable definition.
+    Use `get_python_callable` instead if you want the original callable definition.
+
+    Args:
+        function_info: The FunctionInfo object containing the function metadata.
+
+    Returns:
+        The minimal re-constructed function definition.
+    """
+
+    if isinstance(function_info.routine_body, str):
+        function_type = function_info.routine_body
+    else:
+        function_type = function_info.routine_body.value
+
+    if function_type != "EXTERNAL":
+        raise NotImplementedError(
+            f"routine_body {function_type} is not supported. Only 'EXTERNAL' Python body extraction is supported."
+        )
+    param_names = []
+    if function_info.input_params and function_info.input_params.parameters:
+        param_names = [param.name for param in function_info.input_params.parameters]
+    function_head = f"{function_info.name}({', '.join(param_names)})"
+    func_def = f"def {function_head}:\n"
+    for line in function_info.routine_definition.split("\n"):
+        func_def += f"    {line}\n"
 
     return func_def

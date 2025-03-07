@@ -11,6 +11,7 @@ from databricks.sdk.service.catalog import (
 from pydantic import ValidationError
 
 from unitycatalog.ai.core.base import FunctionExecutionResult
+from unitycatalog.ai.core.databricks import ExecutionMode
 from unitycatalog.ai.litellm.toolkit import UCFunctionToolkit
 from unitycatalog.ai.test_utils.client_utils import (
     client,  # noqa: F401
@@ -100,9 +101,11 @@ def test_uc_function_to_litellm_tool(function_info, client):
         assert tool["name"] == function_name.replace(".", "__")
 
 
+@pytest.mark.parametrize("execution_mode", ["serverless", "local"])
 @requires_databricks
-def test_toolkit_e2e():
+def test_toolkit_e2e(execution_mode):
     client = get_client()
+    client.execution_mode = ExecutionMode(execution_mode)
     with set_default_client(client), create_function_and_cleanup(client, schema=SCHEMA) as func_obj:
         toolkit = UCFunctionToolkit(
             function_names=[func_obj.full_function_name], return_direct=True
@@ -115,9 +118,11 @@ def test_toolkit_e2e():
         assert func_obj.tool_name in [t["name"] for t in toolkit.tools]
 
 
+@pytest.mark.parametrize("execution_mode", ["serverless", "local"])
 @requires_databricks
-def test_toolkit_e2e_with_client():
+def test_toolkit_e2e_with_client(execution_mode):
     client = get_client()
+    client.execution_mode = ExecutionMode(execution_mode)
     with set_default_client(client), create_function_and_cleanup(client, schema=SCHEMA) as func_obj:
         toolkit = UCFunctionToolkit(
             function_names=[func_obj.full_function_name],

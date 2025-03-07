@@ -549,23 +549,6 @@ $$;
     assert sql_body.strip() == expected_sql.strip()
 
 
-def test_function_returning_none():
-    def func_returning_none(a: int) -> None:
-        """
-        A function that returns None.
-
-        Args:
-            a: An integer
-        """
-        return None
-
-    with pytest.raises(
-        ValueError,
-        match=" in return type for function 'func_returning_none': <class 'NoneType'>. Unsupported return type: <class 'NoneType'>.",
-    ):
-        generate_sql_function_body(func_returning_none, "test_catalog", "test_schema")
-
-
 def test_function_returning_any():
     def func_returning_any(a: int) -> Any:
         """

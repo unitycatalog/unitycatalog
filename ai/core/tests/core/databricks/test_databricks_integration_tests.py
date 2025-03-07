@@ -31,6 +31,7 @@ from tests.core.databricks.function_definitions import (
 )
 from unitycatalog.ai.core.databricks import (
     DatabricksFunctionClient,
+    ExecutionMode,
 )
 from unitycatalog.ai.core.envs.databricks_env_vars import (
     UCAI_DATABRICKS_SERVERLESS_EXECUTION_RESULT_ROW_LIMIT,
@@ -692,3 +693,49 @@ def test_get_python_callable_integration_complex(client: DatabricksFunctionClien
         assert "return {" in callable_def and '"result": [' in callable_def
         assert "Args:" in callable_def
         assert "Returns:" in callable_def
+
+
+@retry_flaky_test()
+@requires_databricks
+def test_get_function_as_callable(client: DatabricksFunctionClient):
+    def add(a: int, b: int) -> int:
+        """
+        Adds two integers.
+
+        Args:
+            a: The first integer.
+            b: The second integer.
+
+        Returns:
+            int: The sum of a and b.
+        """
+        return a + b
+
+    with create_python_function_and_cleanup(client, func=add, schema=SCHEMA):
+        function_name = f"{CATALOG}.{SCHEMA}.add"
+        func = client.get_function_as_callable(function_name)
+        assert func(3, 4) == 7
+
+
+@retry_flaky_test()
+@requires_databricks
+def test_execute_function_in_local_sandbox(client: DatabricksFunctionClient):
+    client.execution_mode = ExecutionMode.LOCAL
+
+    def add(a: int, b: int) -> int:
+        """
+        Adds two integers.
+
+        Args:
+            a: The first integer.
+            b: The second integer.
+
+        Returns:
+            int: The sum of a and b.
+        """
+        return a + b
+
+    with create_python_function_and_cleanup(client, func=add, schema=SCHEMA):
+        function_name = f"{CATALOG}.{SCHEMA}.add"
+        result = client.execute_function(function_name, {"a": 3, "b": 4})
+        assert result.value == 7

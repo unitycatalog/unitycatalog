@@ -236,6 +236,18 @@ class BaseFunctionClient(ABC):
             str: The Python callable definition as a string.
         """
 
+    @abstractmethod
+    def get_function_as_callable(self, function_name: str) -> Callable[..., Any]:
+        """
+        Get the Python callable function for a function by its name.
+
+        Args:
+            function_name: The name of the function to retrieve from Unity Catalog.
+
+        Returns:
+            Callable: The Python callable function.
+        """
+
 
 # TODO: update BaseFunctionClient to Union[BaseFunctionClient, AsyncBaseFunctionClient] after async client is supported
 def get_uc_function_client() -> Optional[BaseFunctionClient]:
