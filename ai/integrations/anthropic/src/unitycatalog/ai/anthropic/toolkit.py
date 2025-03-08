@@ -1,3 +1,4 @@
+import logging
 from typing import Any, Dict, List, Optional
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
@@ -9,6 +10,8 @@ from unitycatalog.ai.core.utils.function_processing_utils import (
     get_tool_name,
     process_function_names,
 )
+
+_logger = logging.getLogger(__name__)
 
 
 class AnthropicTool(BaseModel):
@@ -56,6 +59,11 @@ class UCFunctionToolkit(BaseModel):
         default=None, description="The client for managing functions."
     )
 
+    filter_accessible_functions: bool = Field(
+        default=False,
+        description="When set to true, UCFunctionToolkit is initialized with functions that only the client has access to",
+    )
+
     model_config = ConfigDict(arbitrary_types_allowed=True)
 
     @model_validator(mode="after")
@@ -69,6 +77,7 @@ class UCFunctionToolkit(BaseModel):
             function_names=self.function_names,
             tools_dict=self.tools_dict,
             client=self.client,
+            filter_accessible_functions=self.filter_accessible_functions,
             uc_function_to_tool_func=self.uc_function_to_anthropic_tool,
         )
         return self
@@ -78,6 +87,7 @@ class UCFunctionToolkit(BaseModel):
         *,
         function_name: str,
         client: Optional[BaseFunctionClient] = None,
+        filter_accessible_functions: bool = False,
     ) -> AnthropicTool:
         """
         Converts a Unity Catalog function to an Anthropic tool.
@@ -93,7 +103,13 @@ class UCFunctionToolkit(BaseModel):
 
         if function_name is None:
             raise ValueError("function_name must be provided.")
-        function_info = client.get_function(function_name)
+        try:
+            function_info = client.get_function(function_name)
+        except PermissionError as e:
+            _logger.info(f"Skipping {function_name} due to permission errors.")
+            if filter_accessible_functions:
+                return None
+            raise e
 
         fn_schema = generate_function_input_params_schema(function_info)
 

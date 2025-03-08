@@ -188,16 +188,100 @@ for func in functions.items:
 
 #### Executing a Function
 
-Note that function execution occurs in the main process of where you are calling this API from. Read the notes above about security considerations for unknown code execution before calling this API.
+Functions are executed by specifying a fully qualified function name to the `execute_function` or `execute_function_async` APIs. Integration packages
+(Toolkit instances) will call this client API when a GenAI service indicates that a tool call is needed to fulfill a request.
+
+The manual mode of executing a function via the client API is:
 
 ```python
 full_func_name = f"{CATALOG}.{SCHEMA}.add_numbers"
 parameters = {"a": 10.5, "b": 5.5}
 
-# Or synchronously
+# Async access
+result = await uc_client.execute_function_async(full_func_name, parameters)
+
+# Sync access
 result = uc_client.execute_function(full_func_name, parameters)
 
 print(result.value)  # Outputs: 16.0
+```
+
+There are two options for executing functions with the `UnitycatalogFunctionClient`:
+
+##### Sandbox Mode
+
+The `"sandbox"` option for callable execution allows for several enhanced security measures and system stability features that are not available
+in the within-main-process execution mode of `"local"`. It is the default configuration for instances of `UnitycatalogFunctionClient`.
+
+The sandbox mode offers:
+
+- Isolated process execution
+- Restrictions on total CPU runtime of the callable execution (to protect against computationally excessive functions)
+- Restrictions on virtual memory allocated to the process running the callable (only available on Linux)
+- Total wall-clock based timeout protection
+
+These configurations can be controlled by setting the following environment variables (listed with their defaults):
+
+| Environment Variable          | Default Value | Description                                             |
+|-------------------------------|---------------|---------------------------------------------------------|
+| `EXECUTOR_MAX_CPU_TIME_LIMIT` | 10 (seconds)  | Maximum allowable CPU execution time                    |
+| `EXECUTOR_MAX_MEMORY_LIMIT`   | 100 (MB)      | Maximum allowable Virtual Memory allocation for process |
+| `EXECUTOR_TIMEOUT`            | 20 (seconds)  | Maximum Total wall clock time                           |
+| `EXECUTOR_DISALLOWED_MODULES` | (see below)   | A list of blocked library imports                       |
+
+Note that the maximum CPU time limit is not based on wall clock time; rather, it is the time that the CPU has spent at 100% allocation working on executing
+the callable. Based on system scheduling and concurrent process activity, this is almost never equal to wall clock time and is in reality longer in duration
+than the wall clock execution time.
+
+There are restrictions in which packages can be imported for use within a sandbox environment.
+
+The following imports are not permitted:
+
+- `sys`
+- `subprocess`
+- `ctypes`
+- `socket`
+- `importlib`
+- `pickle`
+- `marshall`
+- `shutil`
+
+If you want to customize the allowed package imports, you can override the entire list by submitting a list of standard package names to the
+environment variable `EXECUTOR_DISALLOWED_MODULES` (must be a list[str]).
+
+In addition, callables executed within the sandbox environment do not have access to the built-in file `open` command.
+
+If your function requires access to these modules or needs to have access to the local operating system's file store, use the `"local"` mode of
+execution instead.
+
+##### Local Mode
+
+When creating an instance of a `UnitycatalogFunctionClient` you can specify the `execution_mode` as `"local"` to run your function in the main
+process in which you are calling the `execute_function` API.
+
+Local execution mode has no restrictions regarding allowable imports or the ability to access local file system directories and files, unlike the
+`"sandbox"` option. However, the sandbox mode is recommended in order to gain the stability benefits of isolated process execution, CPU and memory
+limits for callable execution, and the inability to use potentially dangerous libraries within function calls (i.e., `sys`, `shutil`, `marshall`, `subprocess`)
+
+Read the notes above about security considerations for unknown code execution before calling this API.
+
+To configure the client to use `"local"` mode, you can instantiate your client as follows:
+
+```python
+import asyncio
+from unitycatalog.ai.core.client import UnitycatalogFunctionClient
+from unitycatalog.client import ApiClient, Configuration
+
+# Configure the Unity Catalog API client
+config = Configuration(
+    host="http://localhost:8080/api/2.1/unity-catalog"  # Replace with your UC server URL
+)
+
+# Initialize the asynchronous ApiClient
+api_client = ApiClient(configuration=config)
+
+# Instantiate the UnitycatalogFunctionClient
+uc_client = UnitycatalogFunctionClient(api_client=api_client, execution_mode="local")
 ```
 
 #### Function Parameter Defaults
@@ -224,11 +308,10 @@ To use Databricks-managed Unity Catalog with this package, follow the [instructi
 
 - **[Highly recommended]** Use python>=3.10 for accessing all functionalities including function creation and function execution.
 - For creating UC functions with a SQL body definition, **only [serverless compute](https://docs.databricks.com/en/compute/use-compute.html#use-serverless-compute) is supported**.
-  Install databricks-connect package with `pip install databricks-connect==15.1.0` to access serverless compute. **python>=3.10** is a requirement to install this version of the package.
-- For executing the UC functions within Databricks, use either SQL warehouse or Databricks Connect with serverless:
-    - SQL warehouse: create a SQL warehouse following [this instruction](https://docs.databricks.com/en/compute/sql-warehouse/create.html), and use the warehouse id when initializing the client.
+  Install databricks-connect package with `pip install databricks-connect>=15.1.0` to access serverless compute. **python>=3.10** is a requirement to install this version of the package.
+- For executing the UC functions within Databricks, use Databricks Connect with serverless:
     NOTE: **only `serverless` [SQL warehouse type](https://docs.databricks.com/en/admin/sql/warehouse-types.html#sql-warehouse-types) is supported** because of performance concerns.
-    - Databricks connect with serverless: Install databricks-connect package with `pip install databricks-connect==15.1.0`. No config needs to be passed when initializing the client.
+    - Databricks connect with serverless: Install databricks-connect package with `pip install databricks-connect>=15.1.0`. No config needs to be passed when initializing the client.
 
 #### Client initialization
 
@@ -299,6 +382,45 @@ client.get_function(full_func_name)
 ```
 
 #### Retrieving a UC function callable
+
+There are two primary ways of retrieving a function definition in native Python Callable format from Unity Catalog; one designed for use of the callable, and one designed for debugging.
+
+##### Fetch a Python Callable directly
+
+The `get_function_as_callable` API is used to retrieve a recreated callable from a registered Unity Catalog Python function.
+The return type is directly usable:
+
+```python
+# Define a python callable
+
+def sample_python_func(a: int, b: int) -> int:
+    """
+    Returns the sum of a and b.
+
+    Args:
+        a: an int
+        b: another int
+
+    Returns:
+        The sum of a and b
+    """
+    return a + b
+
+# Create the function within Unity Catalog
+client.create_python_function(catalog=CATALOG, schema=SCHEMA, func=sample_python_func, replace=True)
+
+my_callable = client.get_function_as_callable(function_name=f"{CATALOG}.{SCHEMA}.sample_python_func)
+
+# Use the callable directly
+my_callable(2, 4)
+```
+
+This API exposes 2 additional parameters:
+
+- `register_function`: boolean value that determines whether to register the recreated function to the global (or, if provided, a custom) namespace.
+- `namespace`: A dict representing a namespace definition that can be used to register the recreated function to if a global scope is not desired for function reference usage.
+
+##### Fetch a Python Callable as a string
 
 The `get_function_source` API is used to retrieve a recreated python callable definition (as a string) from a registered Unity Catalog Python function.
 In order to use this API, the function that you are fetching **must be** an `EXTERNAL` (python function) type function. When called, the function's metadata will
@@ -373,6 +495,53 @@ Parameters passed into execute_function must be a dictionary that maps to the in
 result = client.execute_function(full_func_name, {"s": "some_string"})
 assert result.value == "some_string"
 ```
+
+Functions are executed by specifying a fully qualified function name to the `execute_function` API. Integration packages
+(Toolkit instances) will call this client API when a GenAI service indicates that a tool call is needed to fulfill a request.
+
+There are two options for executing functions with the `DatabricksFunctionClient`:
+
+##### Serverless Mode
+
+```python
+client = DatabricksFunctionClient(execution_mode="serverless")
+```
+
+The `"serverless"` option for callable execution allows for enhanced remote callable execution via a SQL Serverless endpoint, keeping your
+agent's process free from the burden or security risks associated with arbitrary code execution locally. This is the default configuration
+of the `DatabricksFunctionClient` and is highly recommended for production use cases.
+
+When your agent requests a tool to be executed, a request will be made with the appropriate function name and the parameters to pass in order
+to successfully execute the function. This remote code execution helps to ensure that callables with excessive computational complexity will not
+impact the functionality of your agent or impact the VM that it is running within.
+
+##### Local Mode
+
+```python
+client = DatabricksFunctionClient(execution_mode="local")
+```
+
+To help simplify development, the `"local"` execution mode is available. This mode of operation allows the `DatabricksFunctionClient` to utilize
+a local subprocess to execute your tool calls without having to make a request to a SQL serverless endpoint. It can be benficial when debugging
+agents and their tool calls to have a local stack trace for debugging. However, there are some restrictions on the content of callables within this mode.
+
+The `"local"` mode offers:
+
+- Restrictions on total CPU runtime of the callable execution (to protect against computationally excessive functions)
+- Restrictions on virtual memory allocated to the process running the callable (only available on Linux)
+- Total wall-clock based timeout protection
+
+These configurations can be controlled by setting the following environment variables (listed with their defaults):
+
+| Environment Variable          | Default Value | Description                                             |
+|-------------------------------|---------------|---------------------------------------------------------|
+| `EXECUTOR_MAX_CPU_TIME_LIMIT` | 10 (seconds)  | Maximum allowable CPU execution time                    |
+| `EXECUTOR_MAX_MEMORY_LIMIT`   | 100 (MB)      | Maximum allowable Virtual Memory allocation for process |
+| `EXECUTOR_TIMEOUT`            | 20 (seconds)  | Maximum Total wall clock time                           |
+
+Note that the maximum CPU time limit is not based on wall clock time; rather, it is the time that the CPU has spent at 100% allocation working on executing
+the callable. Based on system scheduling and concurrent process activity, this is almost never equal to wall clock time and is in reality longer in duration
+than the wall clock execution time.
 
 #### Execute a UC Python function locally
 
@@ -453,8 +622,8 @@ To manage the function execution behavior using Databricks client under differen
 
 | Environment Variable                                                | Description                                                                                                                                                                     | Default Value |
 |---------------------------------------------------------------------|---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|---------------|
-| `UCAI_DATABRICKS_SESSION_RETRY_MAX_ATTEMPTS`                        | Maximum number of attempts to retry refreshing the session client in case of token expiry.                                                               | `5`         |
-| `UCAI_DATABRICKS_SERVERLESS_EXECUTION_RESULT_ROW_LIMIT`             | Maximum number of rows when executing functions using serverless compute with `databricks-connect`.                                                                              | `100`         |
+| `UCAI_DATABRICKS_SESSION_RETRY_MAX_ATTEMPTS`                        | Maximum number of attempts to retry refreshing the session client in case of token expiry.                                                               | 5           |
+| `UCAI_DATABRICKS_SERVERLESS_EXECUTION_RESULT_ROW_LIMIT`             | Maximum number of rows when executing functions using serverless compute with `databricks-connect`.                                                                              | 100           |
                          | 100           |
 
 #### Reminders
