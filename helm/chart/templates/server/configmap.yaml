@@ -1,0 +1,31 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "unitycatalog.server.fullname" . }}-config-templates
+  labels:
+    {{- include "unitycatalog.server.labels" . | nindent 4 }}
+data:
+  server.log4j2.properties.template: |-
+    status=warn
+    appenders=console
+
+    appender.console.type=Console
+    appender.console.name=Console
+    appender.console.layout.type=PatternLayout
+    appender.console.layout.pattern=%d{HH:mm:ss.SSS} [%t] %-5level %logger{36} - %msg%n
+
+    rootLogger.level=info
+    rootLogger.appenderRefs=console
+    rootLogger.appenderRef.console.ref=Console
+  server.properties.template: |-
+    {{- include "unitycatalog.server.configTemplate" . | nindent 4 }}
+  hibernate.properties.template: |-
+    hibernate.connection.driver_class=org.h2.Driver
+    hibernate.connection.url=jdbc:h2:file:./etc/db/h2db;DB_CLOSE_DELAY=-1
+
+    hibernate.hbm2ddl.auto=update
+    hibernate.show_sql=false
+    hibernate.archive.autodetection=class
+    hibernate.use_sql_comments=true
+    org.hibernate.SQL=INFO
+    org.hibernate.type.descriptor.sql.BasicBinder=TRACE
