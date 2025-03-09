@@ -1,7 +1,8 @@
-from typing import Dict, Any, List
 import logging
+from typing import Any, Dict, List
 
 logger = logging.getLogger(__name__)
+
 
 def extract_response_details(response: Dict[str, Any]) -> Dict[str, Any]:
     """Extracts returnControl or chunks from Bedrock response"""
@@ -22,6 +23,7 @@ def extract_response_details(response: Dict[str, Any]) -> Dict[str, Any]:
         except Exception as e:
             logger.error(f"Error processing event: {e}")
     return response_details
+
 
 def extract_tool_calls_from_event(event: Dict[str, Any]) -> List[Dict[str, Any]]:
     """Extracts tool calls from a single event."""
@@ -45,6 +47,7 @@ def extract_tool_calls_from_event(event: Dict[str, Any]) -> List[Dict[str, Any]]
                 })
     return tool_calls
 
+
 def extract_tool_calls(response: Dict[str, Any]) -> List[Dict[str, Any]]:
     """Extracts tool calls from Bedrock response with support for multiple functions."""
     tool_calls = []
@@ -52,20 +55,21 @@ def extract_tool_calls(response: Dict[str, Any]) -> List[Dict[str, Any]]:
         tool_calls.extend(extract_tool_calls_from_event(event))
     return tool_calls
 
-def execute_tool_calls(tool_calls: List[Dict[str, Any]], 
-                      client: Any,
-                      catalog_name: str,
-                      schema_name: str,
-                      function_name: str) -> List[Dict[str, Any]]:
+
+def execute_tool_calls(tool_calls: List[Dict[str, Any]],
+                       client: Any,
+                       catalog_name: str,
+                       schema_name: str,
+                       function_name: str) -> List[Dict[str, Any]]:
     """Execute tool calls and return results."""
     results = []
     for tool_call in tool_calls:
         try:
             full_function_name = f"{catalog_name}.{schema_name}.{function_name}"
-            logger.info(f"Full Function Name: {full_function_name}") 
+            logger.info(f"Full Function Name: {full_function_name}")
             function_info = client.get_function(full_function_name)
             logger.info(f"Retrieved function info: {function_info}")
-            
+
             result = client.execute_function(
                 full_function_name,
                 tool_call['parameters']
@@ -82,8 +86,9 @@ def execute_tool_calls(tool_calls: List[Dict[str, Any]],
             })
     return results
 
-def generate_tool_call_session_state(tool_result: Dict[str, Any], 
-                                   tool_call: Dict[str, Any]) -> Dict[str, Any]:
+
+def generate_tool_call_session_state(tool_result: Dict[str, Any],
+                                     tool_call: Dict[str, Any]) -> Dict[str, Any]:
     """Generate session state for tool call results."""
     return {
         'invocationId': tool_result['invocation_id'],
