@@ -52,6 +52,6 @@ jobs:
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
 
-          # Use registry caching: https://tinyurl.com/4b8mfexr
-          cache-from: type=registry,ref=${{ env.IMAGE }}:buildcache
-          cache-to: type=registry,ref=${{ env.IMAGE }}:buildcache,mode=max
+          # Use github actions cache: https://docs.docker.com/build/cache/backends/gha/
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
