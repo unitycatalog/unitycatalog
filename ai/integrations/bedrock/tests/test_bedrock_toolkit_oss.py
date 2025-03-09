@@ -19,7 +19,7 @@ def mock_client():
         full_name=function_name,
         catalog_name="test_catalog",
         schema_name="test_schema",
-        comment="Mock function for testing"  # Only include valid params
+        comment="Mock function for testing",  # Only include valid params
     )
 
     client.get_function.return_value = mock_function_info
@@ -40,8 +40,7 @@ def mock_boto_client():
 def toolkit(mock_client):
     """Fixture for setting up the UCFunctionToolkit with a mock client"""
     return UCFunctionToolkit(
-        function_names=["test_catalog.test_schema.test_function"],
-        client=mock_client
+        function_names=["test_catalog.test_schema.test_function"], client=mock_client
     )
 
 
@@ -63,10 +62,7 @@ class TestToolkit:
 
     def test_bedrock_tool_response_get_stream(self):
         response = {
-            "completion": [
-                {"chunk": {"bytes": b"chunk1"}},
-                {"chunk": {"bytes": b"chunk2"}}
-            ]
+            "completion": [{"chunk": {"bytes": b"chunk1"}}, {"chunk": {"bytes": b"chunk2"}}]
         }
         tool_response = BedrockToolResponse(raw_response=response)
         stream = list(tool_response.get_stream())
