@@ -1,6 +1,6 @@
 import { Avatar, Button, Modal } from 'antd';
-import { useEffect, useRef, useState } from 'react';
-import OktaSignIn from '@okta/okta-signin-widget';
+import { useState } from 'react';
+import OktaSignInWidget from './OktaSignInWidget';
 
 interface OktaAuthButtonProps {
   onSuccess: (tokens: any) => void;
@@ -11,31 +11,11 @@ export default function OktaAuthButton({
   onSuccess,
   onError,
 }: OktaAuthButtonProps) {
-  const widgetRef = useRef<HTMLDivElement | null>(null);
   const [widgetModalOpen, setWidgetModalOpen] = useState(false);
 
-  useEffect(() => {
-    if (!widgetModalOpen) return;
-
-    const widget = new OktaSignIn({
-      baseUrl: process.env.REACT_APP_OKTA_DOMAIN,
-      clientId: process.env.REACT_APP_OKTA_CLIENT_ID,
-      redirectUri: window.location.origin + '/login/callback',
-      authParams: {
-        issuer: process.env.REACT_APP_OKTA_DOMAIN + '/oauth2/default',
-        scopes: ['openid', 'profile', 'email'],
-      },
-    });
-
-    widget.renderEl(
-      //@ts-ignore
-      { el: widgetRef.current },
-      onSuccess,
-      onError,
-    );
-
-    return () => widget.remove();
-  }, [widgetModalOpen, onSuccess, onError]);
+  const handleOnClick = () => {
+    setWidgetModalOpen(true);
+  };
 
   return (
     <>
@@ -48,12 +28,19 @@ export default function OktaAuthButton({
         }
         iconPosition={'start'}
         style={{ width: 240, height: 40, justifyContent: 'flex-start' }}
-        onClick={() => setWidgetModalOpen(true)}
+        onClick={() => handleOnClick()}
       >
         Continue with Okta
       </Button>
-      <Modal open={widgetModalOpen}>
-        <div ref={widgetRef} />
+      <Modal
+        open={widgetModalOpen}
+        footer={null}
+        destroyOnClose={true}
+        onCancel={() => {
+          setWidgetModalOpen(false);
+        }}
+      >
+        <OktaSignInWidget onSuccess={onSuccess} onError={onError} />
       </Modal>
     </>
   );

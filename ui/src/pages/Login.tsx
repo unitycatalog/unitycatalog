@@ -5,10 +5,12 @@ import OktaAuthButton from '../components/login/OktaAuthButton';
 import { useAuth } from '../context/auth-context';
 import KeycloakAuthButton from '../components/login/KeycloakAuthButton';
 import { useNavigate, useLocation } from 'react-router-dom';
+import { useNotification } from '../utils/NotificationContext';
 
 export default function LoginPage() {
   const { loginWithToken } = useAuth();
   const navigate = useNavigate();
+  const { setNotification } = useNotification();
   const location = useLocation();
   const from = location.state?.from || '/';
   const googleEnabled = process.env.REACT_APP_GOOGLE_AUTH_ENABLED === 'true';
@@ -16,7 +18,7 @@ export default function LoginPage() {
   const keycloakEnabled =
     process.env.REACT_APP_KEYCLOAK_AUTH_ENABLED === 'true';
 
-  const handleGoogleSignIn = async (idToken: string) => {
+  const handleSignIn = async (idToken: string) => {
     await loginWithToken(idToken).then(() => navigate(from, { replace: true }));
   };
 
@@ -62,12 +64,18 @@ export default function LoginPage() {
               Login to Unity Catalog
             </Typography.Title>
             {googleEnabled && (
-              <GoogleAuthButton onGoogleSignIn={handleGoogleSignIn} />
+              <GoogleAuthButton onGoogleSignIn={handleSignIn} />
             )}
             {oktaEnabled && (
               <OktaAuthButton
-                onSuccess={(tokens: any) => console.log('tokens', tokens)}
-                onError={(error: Error) => console.log('error', error)}
+                onSuccess={handleSignIn}
+                onError={(error: Error) =>
+                  setNotification(
+                    error.message ||
+                      'Login failed. Please contact your system administrator.',
+                    'error',
+                  )
+                }
               />
             )}
             {keycloakEnabled && <KeycloakAuthButton />}
