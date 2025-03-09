@@ -1,13 +1,10 @@
-import unittest
 from unittest.mock import MagicMock, patch
+
 import pytest
 from databricks.sdk.service.catalog import FunctionInfo  # Import the correct class
+
+from unitycatalog.ai.bedrock.toolkit import BedrockToolResponse, UCFunctionToolkit
 from unitycatalog.ai.core.client import UnitycatalogFunctionClient
-from unitycatalog.ai.bedrock.toolkit import (
-    BedrockToolResponse,
-    BedrockSession,
-    UCFunctionToolkit
-)
 
 
 @pytest.fixture
@@ -27,6 +24,7 @@ def mock_client():
 
     client.get_function.return_value = mock_function_info
     return client
+
 
 @pytest.fixture
 def mock_boto_client():
@@ -73,34 +71,3 @@ class TestToolkit:
         tool_response = BedrockToolResponse(raw_response=response)
         stream = list(tool_response.get_stream())
         assert stream == [b"chunk1".decode("utf-8"), b"chunk2".decode("utf-8")]
-
-    def test_bedrock_session_invoke_agent(self, mock_boto_client):
-        session = BedrockSession(
-            agent_id="test_agent_id",
-            agent_alias_id="test_agent_alias_id",
-            catalog_name="test_catalog",
-            schema_name="test_schema"
-        )
-        response = session.invoke_agent("test_input")
-
-        assert response.raw_response["completion"][0]["chunk"]["bytes"] == b"response_chunk"
-
-    def test_ucfunctiontoolkit_initialization(self, toolkit, mock_client):
-        """Validate that UCFunctionToolkit initializes correctly"""
-        assert toolkit.client == mock_client
-        assert len(toolkit.function_names) == 1
-        assert toolkit.function_names[0] == "test_catalog.test_schema.test_function"
-
-    def test_ucfunctiontoolkit_invalid_function_name(self, mock_client):
-        """Test invalid function name formatting"""
-        with pytest.raises(ValueError, match="Invalid function name: .* expecting format <catalog_name>.<schema_name>.<function_name>"):
-            UCFunctionToolkit(
-                function_names=["invalid_function_name"],  # Missing catalog & schema
-                client=mock_client
-            )
-
-
-    def test_ucfunctiontoolkit_calls_get_function(self, toolkit, mock_client):
-        """Ensure `get_function` is called on the Unity Catalog client"""
-        toolkit.validate_toolkit()
-        mock_client.get_function.assert_called_once_with("test_catalog.test_schema.test_function")

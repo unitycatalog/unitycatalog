@@ -1,11 +1,13 @@
 import unittest
 from unittest.mock import MagicMock
+
 from unitycatalog.ai.bedrock.utils import (
+    execute_tool_calls,
     extract_response_details,
     extract_tool_calls,
-    execute_tool_calls,
-    generate_tool_call_session_state
+    generate_tool_call_session_state,
 )
+
 
 class TestUtils(unittest.TestCase):
 
