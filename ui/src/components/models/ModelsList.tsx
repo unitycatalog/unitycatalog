@@ -34,6 +34,7 @@ export default function ModelsList({
           `/models/${record.catalog_name}/${record.schema_name}/${record.name}`,
         )
       }
+      rowKey={(record) => `model-${record.id}`}
       columns={[
         {
           title: 'Name',
