@@ -34,6 +34,7 @@ export default function VolumesList({
           `/volumes/${record.catalog_name}/${record.schema_name}/${record.name}`,
         )
       }
+      rowKey={(record) => `volume-${record.volume_id}`}
       columns={[
         {
           title: 'Name',

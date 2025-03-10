@@ -21,6 +21,7 @@ export default function CatalogsList() {
       }
       data={data?.catalogs}
       onRowClick={(record) => navigate(`/data/${record.name}`)}
+      rowKey={(record) => `catalog-${record.id}`}
       columns={[
         { title: 'Name', dataIndex: 'name', key: 'name', width: '60%' },
         {
