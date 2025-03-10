@@ -1,6 +1,15 @@
 import json
+import logging
+import warnings
 from typing import Any, Dict, List, Optional
 
+from langchain_core._api.deprecation import LangChainDeprecationWarning
+
+warnings.filterwarnings(
+    "ignore",
+    message=r".*As of langchain-core 0\.3\.0, LangChain uses pydantic v2 internally.*",
+    category=LangChainDeprecationWarning,
+)
 from langchain_core.pydantic_v1 import BaseModel, Field, root_validator
 from langchain_core.tools import StructuredTool
 
@@ -12,6 +21,8 @@ from unitycatalog.ai.core.utils.function_processing_utils import (
     process_function_names,
 )
 from unitycatalog.ai.core.utils.validation_utils import mlflow_tracing_enabled
+
+_logger = logging.getLogger(__name__)
 
 
 class UnityCatalogTool(StructuredTool):
@@ -39,6 +50,11 @@ class UCFunctionToolkit(BaseModel):
         description="The client for managing functions, must be an instance of BaseFunctionClient",
     )
 
+    filter_accessible_functions: bool = Field(
+        default=False,
+        description="When set to true, UCFunctionToolkit is initialized with functions that only the client has access to",
+    )
+
     class Config:
         arbitrary_types_allowed = True
 
@@ -54,6 +70,7 @@ class UCFunctionToolkit(BaseModel):
             function_names=function_names,
             tools_dict=tools_dict,
             client=client,
+            filter_accessible_functions=values["filter_accessible_functions"],
             uc_function_to_tool_func=cls.uc_function_to_langchain_tool,
         )
         return values
@@ -63,7 +80,8 @@ class UCFunctionToolkit(BaseModel):
         *,
         function_name: str,
         client: Optional[BaseFunctionClient] = None,
-    ) -> UnityCatalogTool:
+        filter_accessible_functions: bool = False,
+    ) -> Optional[UnityCatalogTool]:
         """
         Convert a UC function to Langchain StructuredTool
 
@@ -75,7 +93,13 @@ class UCFunctionToolkit(BaseModel):
 
         if function_name is None:
             raise ValueError("function_name must be provided.")
-        function_info = client.get_function(function_name)
+        try:
+            function_info = client.get_function(function_name)
+        except PermissionError as e:
+            _logger.info(f"Skipping {function_name} due to permission errors.")
+            if filter_accessible_functions:
+                return None
+            raise e
 
         def func(*args: Any, **kwargs: Any) -> str:
             args_json = json.loads(json.dumps(kwargs, default=str))

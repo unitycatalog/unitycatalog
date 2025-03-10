@@ -11,6 +11,7 @@ from databricks.sdk.service.catalog import (
 from pydantic import ValidationError
 
 from unitycatalog.ai.core.base import FunctionExecutionResult
+from unitycatalog.ai.core.databricks import ExecutionMode
 from unitycatalog.ai.litellm.toolkit import UCFunctionToolkit
 from unitycatalog.ai.test_utils.client_utils import (
     client,  # noqa: F401
@@ -100,9 +101,49 @@ def test_uc_function_to_litellm_tool(function_info, client):
         assert tool["name"] == function_name.replace(".", "__")
 
 
-@requires_databricks
-def test_toolkit_e2e():
+@pytest.mark.parametrize(
+    "filter_accessible_functions",
+    [True, False],
+)
+def uc_function_to_litellm_tool_permission_denied(filter_accessible_functions):
     client = get_client()
+    # Permission Error should be caught
+    with patch(
+        "unitycatalog.ai.core.databricks.DatabricksFunctionClient.get_function",
+        side_effect=PermissionError("Permission Denied to Underlying Assets"),
+    ):
+        if filter_accessible_functions:
+            tool = UCFunctionToolkit.uc_function_to_litellm_tool(
+                client=client,
+                function_name=f"{CATALOG}.{SCHEMA}.test",
+                filter_accessible_functions=filter_accessible_functions,
+            )
+            assert tool == None
+        else:
+            with pytest.raises(PermissionError):
+                tool = UCFunctionToolkit.uc_function_to_litellm_tool(
+                    client=client,
+                    function_name=f"{CATALOG}.{SCHEMA}.test",
+                    filter_accessible_functions=filter_accessible_functions,
+                )
+    # Other errors should not be Caught
+    with patch(
+        "unitycatalog.ai.core.databricks.DatabricksFunctionClient.get_function",
+        side_effect=ValueError("Wrong Get Function Call"),
+    ):
+        with pytest.raises(ValueError):
+            tool = UCFunctionToolkit.uc_function_to_litellm_tool(
+                client=client,
+                function_name=f"{CATALOG}.{SCHEMA}.test",
+                filter_accessible_functions=filter_accessible_functions,
+            )
+
+
+@pytest.mark.parametrize("execution_mode", ["serverless", "local"])
+@requires_databricks
+def test_toolkit_e2e(execution_mode):
+    client = get_client()
+    client.execution_mode = ExecutionMode(execution_mode)
     with set_default_client(client), create_function_and_cleanup(client, schema=SCHEMA) as func_obj:
         toolkit = UCFunctionToolkit(
             function_names=[func_obj.full_function_name], return_direct=True
@@ -115,9 +156,11 @@ def test_toolkit_e2e():
         assert func_obj.tool_name in [t["name"] for t in toolkit.tools]
 
 
+@pytest.mark.parametrize("execution_mode", ["serverless", "local"])
 @requires_databricks
-def test_toolkit_e2e_with_client():
+def test_toolkit_e2e_with_client(execution_mode):
     client = get_client()
+    client.execution_mode = ExecutionMode(execution_mode)
     with set_default_client(client), create_function_and_cleanup(client, schema=SCHEMA) as func_obj:
         toolkit = UCFunctionToolkit(
             function_names=[func_obj.full_function_name],

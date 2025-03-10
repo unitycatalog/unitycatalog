@@ -1,3 +1,4 @@
+import logging
 from typing import Any, Optional
 
 from openai import pydantic_function_tool
@@ -10,6 +11,8 @@ from unitycatalog.ai.core.utils.function_processing_utils import (
     get_tool_name,
     process_function_names,
 )
+
+_logger = logging.getLogger(__name__)
 
 
 class UCFunctionToolkit(BaseModel):
@@ -27,6 +30,10 @@ class UCFunctionToolkit(BaseModel):
     )
     client: Optional[BaseFunctionClient] = Field(
         default=None, description="The client for managing functions."
+    )
+    filter_accessible_functions: bool = Field(
+        default=False,
+        description="When set to true, UCFunctionToolkit is initialized with functions that only the client has access to",
     )
 
     model_config = ConfigDict(arbitrary_types_allowed=True)
@@ -54,7 +61,8 @@ class UCFunctionToolkit(BaseModel):
         client: Optional[BaseFunctionClient] = None,
         function_name: Optional[str] = None,
         function_info: Optional[Any] = None,
-    ) -> dict:
+        filter_accessible_functions: bool = False,
+    ) -> Optional[dict]:
         """
         Converts a Unity Catalog function to an Lite LLM tool definition.
 
@@ -71,7 +79,13 @@ class UCFunctionToolkit(BaseModel):
         client = validate_or_set_default_client(client)
 
         if function_name:
-            function_info = client.get_function(function_name)
+            try:
+                function_info = client.get_function(function_name)
+            except PermissionError as e:
+                _logger.info(f"Skipping {function_name} due to permission errors.")
+                if filter_accessible_functions:
+                    return None
+                raise e
         elif function_info:
             function_name = function_info.full_name
         else:

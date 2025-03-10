@@ -11,6 +11,7 @@ from openai.types.chat.chat_completion_message_tool_call import Function
 from tests.helper_functions import mock_chat_completion_response, mock_choice
 from unitycatalog.ai.core.base import set_uc_function_client
 from unitycatalog.ai.core.client import (
+    ExecutionMode,
     UnitycatalogFunctionClient,
 )
 from unitycatalog.ai.core.utils.function_processing_utils import get_tool_name
@@ -51,8 +52,10 @@ async def uc_client():
     await uc_api_client.close()
 
 
+@pytest.mark.parametrize("execution_mode", ["local", "sandbox"])
 @pytest.mark.asyncio
-async def test_tool_calling(uc_client):
+async def test_tool_calling(uc_client, execution_mode):
+    uc_client.execution_mode = ExecutionMode(execution_mode)
     with (
         create_function_and_cleanup_oss(uc_client, schema=SCHEMA) as func_obj,
     ):
@@ -66,14 +69,14 @@ async def test_tool_calling(uc_client):
                 "role": "system",
                 "content": "You are a helpful customer support assistant. Use the supplied tools to assist the user.",
             },
-            {"role": "user", "content": "What is the result of 2**10?"},
+            {"role": "user", "content": "What is the sum of 2 and 3?"},
         ]
 
         with mock.patch(
             "openai.chat.completions.create",
             return_value=mock_chat_completion_response(
                 function=Function(
-                    arguments='{"code":"result = 2**10\\nprint(result)"}',
+                    arguments='{"a": 2, "b": 3}',
                     name=func_obj.tool_name,
                 ),
             ),
@@ -88,11 +91,12 @@ async def test_tool_calling(uc_client):
             tool_call = tool_calls[0]
             assert tool_call.function.name == func_obj.tool_name
             arguments = json.loads(tool_call.function.arguments)
-            assert isinstance(arguments.get("code"), str)
+            assert isinstance(arguments.get("a"), int)
+            assert isinstance(arguments.get("b"), int)
 
             # execute the function based on the arguments
             result = uc_client.execute_function(func_name, arguments)
-            assert result.value == "1024\n"
+            assert result.value == "5"
 
             # Create a message containing the result of the function call
             function_call_result_message = {
@@ -111,8 +115,10 @@ async def test_tool_calling(uc_client):
             )
 
 
+@pytest.mark.parametrize("execution_mode", ["local", "sandbox"])
 @pytest.mark.asyncio
-async def test_tool_calling_with_multiple_choices(uc_client):
+async def test_tool_calling_with_multiple_choices(uc_client, execution_mode):
+    uc_client.execution_mode = ExecutionMode(execution_mode)
     with (
         create_function_and_cleanup_oss(uc_client, schema=SCHEMA) as func_obj,
     ):
@@ -126,11 +132,11 @@ async def test_tool_calling_with_multiple_choices(uc_client):
                 "role": "system",
                 "content": "You are a helpful customer support assistant. Use the supplied tools to assist the user.",
             },
-            {"role": "user", "content": "What is the result of 2**10?"},
+            {"role": "user", "content": "What is the sum of 2 and 4?"},
         ]
 
         function = Function(
-            arguments='{"code":"result = 2**10\\nprint(result)"}',
+            arguments='{"a": 2, "b": 4}',
             name=func_obj.tool_name,
         )
         with mock.patch(
@@ -154,11 +160,12 @@ async def test_tool_calling_with_multiple_choices(uc_client):
             tool_call = tool_calls[0]
             assert tool_call.function.name == func_obj.tool_name
             arguments = json.loads(tool_call.function.arguments)
-            assert isinstance(arguments.get("code"), str)
+            assert isinstance(arguments.get("a"), int)
+            assert isinstance(arguments.get("b"), int)
 
             # execute the function based on the arguments
             result = uc_client.execute_function(func_name, arguments)
-            assert result.value == "1024\n"
+            assert result.value == "6"
 
             # Create a message containing the result of the function call
             function_call_result_message = {

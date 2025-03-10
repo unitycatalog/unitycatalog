@@ -81,17 +81,12 @@ def create_function_and_cleanup(
     comment = "Executes Python code and returns its stdout."
     sql_body = (
         sql_body
-        or f"""CREATE OR REPLACE FUNCTION {func_name}(code STRING COMMENT 'Python code to execute. Remember to print the final result to stdout.')
+        or f"""CREATE OR REPLACE FUNCTION {func_name}(number INTEGER COMMENT 'Add a given number to 10.')
 RETURNS STRING
 LANGUAGE PYTHON
 COMMENT '{comment}'
 AS $$
-    import sys
-    from io import StringIO
-    stdout = StringIO()
-    sys.stdout = stdout
-    exec(code)
-    return stdout.getvalue()
+    return str(number + 10)
 $$
 """
     )

@@ -1004,7 +1004,7 @@ export interface components {
       /** @description User-provided free-form text description. */
       comment?: string;
       /** @description JSON-serialized key-value pair map, encoded (escaped) as a string. */
-      properties: string;
+      properties?: string;
       /** @description External language of the function. */
       external_language?: string;
     };
