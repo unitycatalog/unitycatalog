@@ -11,7 +11,7 @@ from databricks.sdk.service.catalog import (
 )
 
 from unitycatalog.ai.anthropic.toolkit import UCFunctionToolkit
-from unitycatalog.ai.core.base import set_uc_function_client
+from unitycatalog.ai.core.base import get_uc_function_client, set_uc_function_client
 from unitycatalog.ai.core.databricks import ExecutionMode
 from unitycatalog.ai.core.utils.function_processing_utils import get_tool_name
 from unitycatalog.ai.test_utils.client_utils import (
@@ -268,11 +268,10 @@ def test_tool_calling_with_multiple_tools_anthropic(execution_mode):
 def test_anthropic_toolkit_initialization():
     client = get_client()
 
-    with pytest.raises(
-        ValueError,
-        match=r"No client provided, either set the client when creating a toolkit or set the default client",
-    ):
-        toolkit = UCFunctionToolkit(function_names=[])
+    assert not get_uc_function_client()
+    toolkit = UCFunctionToolkit(function_names=[])
+    assert get_uc_function_client() is not None
+    set_uc_function_client(None)
 
     set_uc_function_client(client)
     toolkit = UCFunctionToolkit(function_names=[])

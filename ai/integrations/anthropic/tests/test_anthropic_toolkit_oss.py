@@ -332,9 +332,15 @@ async def test_tool_calling_with_multiple_tools_anthropic(uc_client, execution_m
 
 @pytest.mark.asyncio
 async def test_anthropic_toolkit_initialization(uc_client):
-    with pytest.raises(
-        ValidationError,
-        match=r"No client provided, either set the client when creating a toolkit or set the default client",
+    with (
+        mock.patch(
+            "unitycatalog.ai.core.utils.client_utils._is_databricks_client_available",
+            return_value=False,
+        ),
+        pytest.raises(
+            ValidationError,
+            match=r"No client provided, either set the client when creating a toolkit or set the default client",
+        ),
     ):
         toolkit = UCFunctionToolkit(function_names=[])
 
