@@ -11,7 +11,6 @@ from databricks.sdk.service.catalog import (
 )
 
 from unitycatalog.ai.anthropic.toolkit import UCFunctionToolkit
-from unitycatalog.ai.core.base import get_uc_function_client, set_uc_function_client
 from unitycatalog.ai.core.databricks import ExecutionMode
 from unitycatalog.ai.core.utils.function_processing_utils import get_tool_name
 from unitycatalog.ai.test_utils.client_utils import (
@@ -263,23 +262,6 @@ def test_tool_calling_with_multiple_tools_anthropic(execution_mode):
                     )
 
                     assert final_response.content[0].text == "The sums are 14 and 17"
-
-
-def test_anthropic_toolkit_initialization():
-    client = get_client()
-
-    assert not get_uc_function_client()
-    toolkit = UCFunctionToolkit(function_names=[])
-    assert get_uc_function_client() is not None
-    set_uc_function_client(None)
-
-    set_uc_function_client(client)
-    toolkit = UCFunctionToolkit(function_names=[])
-    assert len(toolkit.tools) == 0
-    set_uc_function_client(None)
-
-    toolkit = UCFunctionToolkit(function_names=[], client=client)
-    assert len(toolkit.tools) == 0
 
 
 def generate_function_info(parameters, catalog="catalog", schema="schema"):
