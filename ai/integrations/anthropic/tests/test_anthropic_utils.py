@@ -1,3 +1,4 @@
+from contextlib import nullcontext
 from unittest import mock
 from unittest.mock import Mock
 
@@ -209,8 +210,13 @@ def test_generate_tool_call_messages_validate_default_client(
     mock_message_single_tool, dummy_history
 ):
     client = None
-
-    with pytest.raises(ValueError, match="No client provided"):
+    with (
+        mock.patch(
+            "unitycatalog.ai.core.utils.client_utils._is_databricks_client_available",
+            return_value=False,
+        ),
+        pytest.raises(ValueError, match="No client provided"),
+    ):
         generate_tool_call_messages(
             response=mock_message_single_tool, conversation_history=dummy_history, client=client
         )
@@ -282,6 +288,14 @@ def test_generate_tool_call_messages_with_invalid_tool_use_block(mock_client, du
 def test_generate_tool_call_messages_with_tracing(
     dummy_history, format, function_output, data_type, full_data_type, return_params
 ):
+    if not TEST_IN_DATABRICKS:
+        patch_registry = mock.patch(
+            "mlflow.tracking._model_registry.utils._get_registry_uri_from_spark_session",
+            return_value="databricks-uc",
+        )
+    else:
+        patch_registry = nullcontext()
+
     with (
         mock.patch(
             "unitycatalog.ai.core.databricks.get_default_databricks_workspace_client",
@@ -295,6 +309,11 @@ def test_generate_tool_call_messages_with_tracing(
             "unitycatalog.ai.core.databricks.DatabricksFunctionClient.initialize_spark_session",
             return_value=None,
         ),
+        mock.patch(
+            "unitycatalog.ai.core.utils.client_utils._is_databricks_client_available",
+            return_value=False,
+        ),
+        patch_registry,
     ):
         function_mock = Mock(
             spec=FunctionInfo,

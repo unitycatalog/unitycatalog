@@ -332,8 +332,12 @@ def test_generate_tool_call_messages_no_tool_use(
 
 
 def test_generate_tool_call_messages_validate_default_client(
-    mock_message_single_tool, dummy_history
+    mock_message_single_tool, dummy_history, monkeypatch
 ):
+    monkeypatch.setattr(
+        "unitycatalog.ai.core.utils.client_utils._is_databricks_client_available",
+        lambda: False,
+    )
     client = None
 
     with pytest.raises(ValueError, match="No client provided"):

@@ -202,9 +202,6 @@ def test_multiple_toolkits(execution_mode):
 
 
 def test_toolkit_creation_errors():
-    with pytest.raises(ValidationError, match=r"No client provided"):
-        UCFunctionToolkit(function_names=[])
-
     with pytest.raises(ValidationError, match=r"Input should be an instance of BaseFunctionClient"):
         UCFunctionToolkit(function_names=[], client="client")
 
