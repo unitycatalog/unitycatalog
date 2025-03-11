@@ -15,6 +15,7 @@ def _is_databricks_client_available():
     Checks if the connection requirements to attach to a Databricks serverless cluster
     are available in the environment for automatic client selection purposes in
     toolkit instantiation.
+
     Returns:
         bool: True if the requirements are available, False otherwise.
     """
@@ -35,11 +36,14 @@ def validate_or_set_default_client(client: Optional[BaseFunctionClient] = None):
     client is available.
     If a client can be created automatically to connect to Databricks, a default client
     is set to connect to Databricks.
+
     Args:
         client (Optional[BaseFunctionClient]): The client to validate or set.
             Defaults to None.
+
     Returns:
         BaseFunctionClient: The validated client.
+
     Raises:
         ValueError: If no client is provided and no default client is available.
     """
@@ -50,16 +54,15 @@ def validate_or_set_default_client(client: Optional[BaseFunctionClient] = None):
             from unitycatalog.ai.core.databricks import DatabricksFunctionClient
 
             client = DatabricksFunctionClient()
-            set_uc_function_client(client)
 
-            _logger.info(
-                "Client has been set to DatabricksFunctionClient with default configuration."
-            )
         except Exception as e:
             raise ValueError(
-                "Attempted to set DatabricksFunctionClient as the default client, but encountered an error."
+                "Attempted to set DatabricksFunctionClient as the default client, but encountered an error. "
                 "Provide a client directly to your toolkit invocation to ensure connection to Unity Catalog."
             ) from e
+
+        set_uc_function_client(client)
+        _logger.info("Client has been set to DatabricksFunctionClient with default configuration.")
 
     if client is None:
         raise ValueError(

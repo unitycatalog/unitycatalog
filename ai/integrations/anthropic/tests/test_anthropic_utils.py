@@ -1,3 +1,4 @@
+from contextlib import nullcontext
 from unittest import mock
 from unittest.mock import Mock
 
@@ -293,7 +294,7 @@ def test_generate_tool_call_messages_with_tracing(
             return_value="databricks-uc",
         )
     else:
-        patch_registry = mock.nullcontext()
+        patch_registry = nullcontext()
 
     with (
         mock.patch(
