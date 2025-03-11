@@ -214,7 +214,8 @@ export type ErrorResponseBody<
   Path extends PathOf<Api>,
   Method extends HttpMethod,
   ErrorCode extends HttpErrorCode,
-> = ErrorWithStatus<Api, Path, Method, ErrorCode>;
+  ContentType extends MediaType = 'application/json',
+> = ErrorWithStatus<Api, Path, Method, ErrorCode, ContentType>;
 
 /**
  * Represents the type of predefined API responses of given `Api`, `Path` and `Method`.
@@ -223,9 +224,10 @@ export type SuccessResponse<
   Api extends Spec,
   Path extends PathOf<Api>,
   Method extends HttpMethod,
+  ContentType extends MediaType = 'application/json',
 > = {
   result: 'success';
-  data: SuccessResponseBody<Api, Path, Method>;
+  data: SuccessResponseBody<Api, Path, Method, ContentType>;
 };
 
 /**
@@ -236,9 +238,10 @@ export type ErrorResponse<
   Path extends PathOf<Api>,
   Method extends HttpMethod,
   ErrorCode extends HttpErrorCode,
+  ContentType extends MediaType = 'application/json',
 > = {
   result: 'error';
-  data: ErrorResponseBody<Api, Path, Method, ErrorCode>;
+  data: ErrorResponseBody<Api, Path, Method, ErrorCode, ContentType>;
 };
 
 /**
@@ -248,13 +251,14 @@ export type Request<
   Api extends Spec,
   Path extends PathOf<Api>,
   Method extends HttpMethod,
+  ContentType extends MediaType = 'application/json',
 > = {
   path: Path;
   method: Method;
   params?: {
     paths?: PathParam<Api, Path, Method>;
     query?: QueryParam<Api, Path, Method>;
-    body?: RequestBody<Api, Path, Method>;
+    body?: RequestBody<Api, Path, Method, ContentType>;
   };
 };
 
@@ -266,9 +270,10 @@ export type Response<
   Path extends PathOf<Api>,
   Method extends HttpMethod,
   ErrorCode extends HttpErrorCode,
+  ContentType extends MediaType = 'application/json',
 > =
-  | SuccessResponse<Api, Path, Method>
-  | ErrorResponse<Api, Path, Method, ErrorCode>;
+  | SuccessResponse<Api, Path, Method, ContentType>
+  | ErrorResponse<Api, Path, Method, ErrorCode, ContentType>;
 
 /**
  * Represents the type of predefined API components of given `Api` and `Component`.
@@ -296,13 +301,13 @@ export type RouteArgs<
   ErrorCode extends HttpErrorCode,
 > = {
   client: AxiosInstance;
-  request: Request<Api, Path, Method>;
+  request: Request<Api, Path, Method, MediaType>;
   config?: RequestConfig;
   errorMessage?: string;
   errorTypeGuard?: (response: {
     status: number;
     data: any;
-  }) => response is ErrorResponseBody<Api, Path, Method, ErrorCode>;
+  }) => response is ErrorResponseBody<Api, Path, Method, ErrorCode, MediaType>;
 };
 
 /**
@@ -320,16 +325,26 @@ export type Route<Api extends Spec> = {
     args: RouteArgs<Api, Path, Method, ErrorCode>,
   ): {
     path: () => string;
-    call: () => Promise<Response<Api, Path, Method, ErrorCode>>;
+    call: () => Promise<Response<Api, Path, Method, ErrorCode, MediaType>>;
   };
 };
 
 /**
  * Type-guard for the `ErrorResponse`.
  */
-export function isError<Api extends Spec, ErrorCode extends HttpErrorCode>(
-  response: Response<Api, PathOf<Api>, HttpMethod, ErrorCode>,
-): response is ErrorResponse<Api, PathOf<Api>, HttpMethod, ErrorCode> {
+export function isError<
+  Api extends Spec,
+  ErrorCode extends HttpErrorCode,
+  ContentType extends MediaType = 'application/json',
+>(
+  response: Response<Api, PathOf<Api>, HttpMethod, ErrorCode, ContentType>,
+): response is ErrorResponse<
+  Api,
+  PathOf<Api>,
+  HttpMethod,
+  ErrorCode,
+  ContentType
+> {
   return response.result === 'error';
 }
 
@@ -356,7 +371,8 @@ export function route<
   errorTypeGuard = (response: {
     status: number;
     data: any;
-  }): response is ErrorResponseBody<Api, Path, Method, ErrorCode> => false,
+  }): response is ErrorResponseBody<Api, Path, Method, ErrorCode, MediaType> =>
+    false,
 }: RouteArgs<Api, Path, Method, ErrorCode>) {
   // Converts a path like {key} into its actual value.
   const path = () =>
@@ -367,10 +383,12 @@ export function route<
     );
 
   // Conducts the actual API call.
-  const call = async (): Promise<Response<Api, Path, Method, ErrorCode>> => {
+  const call = async (): Promise<
+    Response<Api, Path, Method, ErrorCode, MediaType>
+  > => {
     try {
       const response = await client.request<
-        SuccessResponseBody<Api, Path, Method>
+        SuccessResponseBody<Api, Path, Method, MediaType>
       >({
         url: path(),
         method: request.method,

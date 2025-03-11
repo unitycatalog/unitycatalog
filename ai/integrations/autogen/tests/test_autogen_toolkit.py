@@ -220,6 +220,44 @@ async def test_uc_function_to_autogen_tool(dbx_client):
         assert result == "some_string"
 
 
+@pytest.mark.parametrize(
+    "filter_accessible_functions",
+    [True, False],
+)
+def test_uc_function_to_autogen_tool_permission_denied(filter_accessible_functions):
+    client = get_client()
+    # Permission Error should be caught
+    with mock.patch(
+        "unitycatalog.ai.core.databricks.DatabricksFunctionClient.get_function",
+        side_effect=PermissionError("Permission Denied to Underlying Assets"),
+    ):
+        if filter_accessible_functions:
+            tool = UCFunctionToolkit.uc_function_to_autogen_tool(
+                client=client,
+                function_name=f"{CATALOG}.{SCHEMA}.test",
+                filter_accessible_functions=filter_accessible_functions,
+            )
+            assert tool == None
+        else:
+            with pytest.raises(PermissionError):
+                tool = UCFunctionToolkit.uc_function_to_autogen_tool(
+                    client=client,
+                    function_name=f"{CATALOG}.{SCHEMA}.test",
+                    filter_accessible_functions=filter_accessible_functions,
+                )
+    # Other errors should not be Caught
+    with mock.patch(
+        "unitycatalog.ai.core.databricks.DatabricksFunctionClient.get_function",
+        side_effect=ValueError("Wrong Get Function Call"),
+    ):
+        with pytest.raises(ValueError):
+            tool = UCFunctionToolkit.uc_function_to_autogen_tool(
+                client=client,
+                function_name=f"{CATALOG}.{SCHEMA}.test",
+                filter_accessible_functions=filter_accessible_functions,
+            )
+
+
 @pytest.mark.skipif(
     skip_mlflow_test, reason="MLflow autologging is not supported for autogen_core 0.4.0 and above."
 )

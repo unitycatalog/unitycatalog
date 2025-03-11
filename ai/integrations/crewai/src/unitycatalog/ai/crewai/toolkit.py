@@ -82,6 +82,10 @@ class UCFunctionToolkit(BaseModel):
         default=None,
         description="Client for managing functions",
     )
+    filter_accessible_functions: bool = Field(
+        default=False,
+        description="When set to true, UCFunctionToolkit is initialized with functions that only the client has access to",
+    )
 
     model_config = ConfigDict(arbitrary_types_allowed=True)
 
@@ -112,6 +116,7 @@ class UCFunctionToolkit(BaseModel):
             function_names=self.function_names,
             tools_dict=self.tools_dict,
             client=self.client,
+            filter_accessible_functions=self.filter_accessible_functions,
             uc_function_to_tool_func=self.uc_function_to_crewai_tool,
             description_updated=self.description_updated,
             cache_function=self.cache_function,
@@ -127,8 +132,9 @@ class UCFunctionToolkit(BaseModel):
         description_updated: Optional[bool] = False,
         cache_function: Callable = lambda _args, _result: True,
         result_as_answer: bool = False,
+        filter_accessible_functions: bool = False,
         **kwargs,
-    ) -> CrewAIBaseTool:
+    ) -> Optional[CrewAIBaseTool]:
         """
         Converts a Unity Catalog function into a CrewAI tool.
 
@@ -148,7 +154,13 @@ class UCFunctionToolkit(BaseModel):
 
         if function_name is None:
             raise ValueError("function_name must be provided.")
-        function_info = client.get_function(function_name)
+        try:
+            function_info = client.get_function(function_name)
+        except PermissionError as e:
+            _logger.info(f"Skipping {function_name} due to permission errors.")
+            if filter_accessible_functions:
+                return None
+            raise e
 
         def func(**kwargs: Any) -> str:
             args_json = json.loads(json.dumps(kwargs, default=str))

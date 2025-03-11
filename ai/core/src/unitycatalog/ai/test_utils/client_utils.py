@@ -43,6 +43,18 @@ def serverless_client() -> DatabricksFunctionClient:
     return DatabricksFunctionClient(profile=PROFILE)
 
 
+@pytest.fixture
+def serverless_client_with_config() -> DatabricksFunctionClient:
+    from databricks.sdk import WorkspaceClient
+
+    w = WorkspaceClient(
+        host=os.environ.get("DATABRICKS_HOST"),
+        client_id=os.environ.get("DATABRICKS_CLIENT_ID"),
+        client_secret=os.environ.get("DATABRICKS_CLIENT_SECRET"),
+    )
+    return DatabricksFunctionClient(client=w)
+
+
 def get_client() -> DatabricksFunctionClient:
     if TEST_IN_DATABRICKS:
         return DatabricksFunctionClient(profile=PROFILE)
