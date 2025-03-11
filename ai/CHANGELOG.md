@@ -1,5 +1,41 @@
 # Changelog for Unity Catalog AI releases
 
+## Unity Catalog AI 0.3.0
+
+The 0.3.0 release of Unity Catalog AI includes several usability improvements, a safer function execution mode, features that expand the functionality of versatile function usage and enhancements to aid in more flexible composition of complex functions.
+
+### Major Changes
+
+- 🛡️ **Enhanced Security**: Functions now execute in a safer Process pool by default (using `'sandbox'` `execution_mode`), replacing the original main process implementation. This allows for timeout restrictions, CPU resource limitations, and blocks modules that access system resources. The legacy mode remains available via the `'local'` `execution_mode` parameter within the client constructor.
+
+- 🐞 **Developer-Friendly Debugging**: A new development-only execution mode for `DatabricksFunctionClient` enables local subprocess execution with runtime protection and timeout controls. While not for production use, this simplifies debugging and rapid iteration without requiring serverless cluster execution. Configure by changing the `execution_mode` from `'serverless'` to `'local'`.
+
+- 🔌 **Streamlined Integration in Databricks**: When using integration packages (e.g., `unitycatalog-openai`) with a `UCFunctionToolkit` instance, you no longer need to explicitly declare a `DatabricksFunctionClient` within the toolkit interface when a serverless connection is available and the ability to create a `WorkspaceClient` is met. A default connection will be established using standard credentials unless custom configuration is required.
+
+- 🔄 **Improved Connection Reliability**: Fixed credential refresh issues in the `DatabricksFunctionClient`, including the 24-hour cluster idle time error. Connections to inactive serverless compute instances now robustly reacquire authentication credentials.
+
+- 🧩 **Python Callable Access**: New `get_function_as_callable` APIs allow retrieval of UC-registered Python functions as direct Python callables, significantly improving developer productivity when testing, debugging, and validating complex functions.
+
+- 🔍 **Function Source Inspection**: Added `get_function_source` APIs to retrieve UC Python function definitions as strings, enabling easier inspection, debugging, modification, and reuse of existing functions.
+
+- 🤫 **Warning Suppression**: The persistent Pydantic V2 warning from LangChain API calls has been silenced.
+
+### Change log
+
+- Enable the ability to define a `UCFunctionToolkit` instance when a Databricks compute environment is available that will use the default serverless connection configuration if a client instance is not supplied to the constructor by @BenWilson2 in #938
+- Remove the included and outdated external `asyncio` package from the build files which causes issues with Python 3.13 by @BenWilson2 in #937
+- Address invoker access rights in the DatabricksFunctionClient by @aravind-segu in #933
+- Bridge the Workspace client configuration to the Databricks Connect interface by @aravind-segu in #930
+- Add support for safer local function execution in Unity Catalog and add a development-mode local execution mode for Databricks clients by @BenWilson2 in #925
+- Silence the LangChain pydantic version warning by @BenWilson2 in #927
+- Fix an issue where a connection to a serverless compute instance would not properly refresh client credentials and would not recover from a terminated instance by @BenWilson2 in #918
+- Remove the explicit version pinning for the databricks-connect dependency by @BenWilson2 in #928
+- Fix an issue in the toolkit creation example where a client definition was missing by @avriiil in #915
+- Add functionality for callable retrieval as a string definition from a registered UC Python function by @BenWilson2 in #912
+- Fix the toolkit instantiation example for LlamaIndex within the documentation usage guide by @BenWilson2 in #906
+- Fix the documentation guide sidebar to properly display all package integrations by @BenWilson2 in #900
+- Update links in the documentation to point to the correct notebooks within the repository by @avriiil in #894
+
 ## Unity Catalog AI 0.2.0
 
 The 0.2.0 release of Unity Catalog AI brings some exciting new functionality for using Unity Catalog for GenAI function execution.
