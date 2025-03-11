@@ -104,6 +104,18 @@ async def uc_client():
     await uc_api_client.close()
 
 
+def test_toolkit_creation_errors_no_client(monkeypatch):
+    monkeypatch.setattr(
+        "unitycatalog.ai.core.utils.client_utils._is_databricks_client_available", lambda: False
+    )
+
+    with pytest.raises(
+        ValidationError,
+        match=r"No client provided, either set the client when creating a toolkit or set the default client",
+    ):
+        UCFunctionToolkit(function_names=["test.test.test"])
+
+
 @pytest.mark.parametrize("execution_mode", ["local", "sandbox"])
 @pytest.mark.asyncio
 async def test_tool_calling_with_anthropic(uc_client, execution_mode):

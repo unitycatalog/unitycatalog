@@ -167,14 +167,6 @@ async def test_multiple_toolkits(dbx_client, execution_mode):
         assert result1 == result2
 
 
-def test_toolkit_creation_errors_no_client():
-    """
-    Example: if you didn't set a default client or pass one in, raises an error.
-    """
-    with pytest.raises(ValidationError, match=r"No client provided"):
-        UCFunctionToolkit(function_names=[])
-
-
 def test_toolkit_creation_errors_bad_client():
     """
     If you pass `client="client"` instead of a real BaseFunctionClient, you get a ValidationError.

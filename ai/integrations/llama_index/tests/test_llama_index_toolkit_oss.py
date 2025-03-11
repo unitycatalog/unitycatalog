@@ -6,7 +6,7 @@ from unittest import mock
 import pytest
 import pytest_asyncio
 from databricks.sdk.service.catalog import ColumnTypeName
-from pydantic import BaseModel
+from pydantic import BaseModel, ValidationError
 
 from unitycatalog.ai.core.base import (
     BaseFunctionClient,
@@ -119,6 +119,18 @@ def generate_mock_function_info(has_properties: bool = False) -> FunctionInfo:
 
 def generate_mock_execution_result(return_value: str = "result") -> FunctionExecutionResult:
     return FunctionExecutionResult(format="SCALAR", value=return_value)
+
+
+def test_toolkit_creation_errors_no_client(monkeypatch):
+    monkeypatch.setattr(
+        "unitycatalog.ai.core.utils.client_utils._is_databricks_client_available", lambda: False
+    )
+
+    with pytest.raises(
+        ValidationError,
+        match=r"No client provided, either set the client when creating a toolkit or set the default client",
+    ):
+        UCFunctionToolkit(function_names=["test.test.test"])
 
 
 @pytest.mark.asyncio
