@@ -1807,7 +1807,7 @@
 <div class="highlight"><pre><span></span><code><span class="kn">from</span> <span class="nn">unitycatalog.ai.langchain.toolkit</span> <span class="kn">import</span> <span class="n">UCFunctionToolkit</span>
 
 <span class="c1"># Create a UCFunctionToolkit that includes the UC function</span>
-<span class="n">toolkit</span> <span class="o">=</span> <span class="n">UCFunctionToolkit</span><span class="p">(</span><span class="n">function_names</span><span class="o">=</span><span class="p">[</span><span class="n">func_name</span><span class="p">])</span>
+<span class="n">toolkit</span> <span class="o">=</span> <span class="n">UCFunctionToolkit</span><span class="p">(</span><span class="n">function_names</span><span class="o">=</span><span class="p">[</span><span class="n">func_name</span><span class="p">],</span> <span class="n">client</span><span class="o">=</span><span class="n">client</span><span class="p">)</span>
 
 <span class="c1"># Fetch the tools stored in the toolkit</span>
 <span class="n">tools</span> <span class="o">=</span> <span class="n">toolkit</span><span class="o">.</span><span class="n">tools</span>

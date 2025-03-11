@@ -1817,8 +1817,8 @@
 <span class="n">python_exec_tool</span> <span class="o">=</span> <span class="n">tools</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
 
 <span class="c1"># Execute the tool directly</span>
-<span class="n">result</span> <span class="o">=</span> <span class="n">python_exec_tool</span><span class="o">.</span><span class="n">invoke</span><span class="p">({</span><span class="s2">&quot;code&quot;</span><span class="p">:</span> <span class="s2">&quot;print(1 + 1)&quot;</span><span class="p">})</span>
-<span class="nb">print</span><span class="p">(</span><span class="n">result</span><span class="p">)</span>  <span class="c1"># Outputs: 2</span>
+<span class="n">result</span> <span class="o">=</span> <span class="n">python_exec_tool</span><span class="o">.</span><span class="n">call</span><span class="p">(</span><span class="n">code</span><span class="o">=</span><span class="s2">&quot;print(1 + 1)&quot;</span><span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">result</span><span class="p">)</span>  <span class="c1"># Outputs: {&quot;format&quot;: &quot;SCALAR&quot;, &quot;value&quot;: &quot;2\n&quot;}</span>
 </code></pre></div>
 <h3 id="using-the-tool-in-a-llamaindex-reactagent">Using the tool in a LlamaIndex ReActAgent<a class="headerlink" href="#using-the-tool-in-a-llamaindex-reactagent" title="Permanent link">&para;</a></h3>
 <p>With our interface to our UC function defined as a LlamaIndex tool collection, we can directly use it within a LlamaIndex agent application.

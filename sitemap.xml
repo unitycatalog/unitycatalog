@@ -2,150 +2,150 @@
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
     <url>
          <loc>https://docs.unitycatalog.io/</loc>
-         <lastmod>2025-02-13</lastmod>
+         <lastmod>2025-03-11</lastmod>
     </url>
     <url>
          <loc>https://docs.unitycatalog.io/deployment/</loc>
-         <lastmod>2025-02-13</lastmod>
+         <lastmod>2025-03-11</lastmod>
     </url>
     <url>
          <loc>https://docs.unitycatalog.io/docker_compose/</loc>
-         <lastmod>2025-02-13</lastmod>
+         <lastmod>2025-03-11</lastmod>
     </url>
     <url>
          <loc>https://docs.unitycatalog.io/quickstart/</loc>
-         <lastmod>2025-02-13</lastmod>
+         <lastmod>2025-03-11</lastmod>
     </url>
     <url>
          <loc>https://docs.unitycatalog.io/ai/client/</loc>
-         <lastmod>2025-02-13</lastmod>
+         <lastmod>2025-03-11</lastmod>
     </url>
     <url>
          <loc>https://docs.unitycatalog.io/ai/quickstart/</loc>
-         <lastmod>2025-02-13</lastmod>
+         <lastmod>2025-03-11</lastmod>
     </url>
     <url>
          <loc>https://docs.unitycatalog.io/ai/usage/</loc>
-         <lastmod>2025-02-13</lastmod>
+         <lastmod>2025-03-11</lastmod>
     </url>
     <url>
          <loc>https://docs.unitycatalog.io/ai/integrations/</loc>
-         <lastmod>2025-02-13</lastmod>
+         <lastmod>2025-03-11</lastmod>
     </url>
     <url>
          <loc>https://docs.unitycatalog.io/ai/integrations/anthropic/</loc>
-         <lastmod>2025-02-13</lastmod>
+         <lastmod>2025-03-11</lastmod>
     </url>
     <url>
          <loc>https://docs.unitycatalog.io/ai/integrations/autogen/</loc>
-         <lastmod>2025-02-13</lastmod>
+         <lastmod>2025-03-11</lastmod>
     </url>
     <url>
          <loc>https://docs.unitycatalog.io/ai/integrations/crewai/</loc>
-         <lastmod>2025-02-13</lastmod>
+         <lastmod>2025-03-11</lastmod>
     </url>
     <url>
          <loc>https://docs.unitycatalog.io/ai/integrations/gemini/</loc>
-         <lastmod>2025-02-13</lastmod>
+         <lastmod>2025-03-11</lastmod>
     </url>
     <url>
          <loc>https://docs.unitycatalog.io/ai/integrations/langchain/</loc>
-         <lastmod>2025-02-13</lastmod>
+         <lastmod>2025-03-11</lastmod>
     </url>
     <url>
          <loc>https://docs.unitycatalog.io/ai/integrations/litellm/</loc>
-         <lastmod>2025-02-13</lastmod>
+         <lastmod>2025-03-11</lastmod>
     </url>
     <url>
          <loc>https://docs.unitycatalog.io/ai/integrations/llamaindex/</loc>
-         <lastmod>2025-02-13</lastmod>
+         <lastmod>2025-03-11</lastmod>
     </url>
     <url>
          <loc>https://docs.unitycatalog.io/ai/integrations/openai/</loc>
-         <lastmod>2025-02-13</lastmod>
+         <lastmod>2025-03-11</lastmod>
     </url>
     <url>
          <loc>https://docs.unitycatalog.io/integrations/</loc>
-         <lastmod>2025-02-13</lastmod>
+         <lastmod>2025-03-11</lastmod>
     </url>
     <url>
          <loc>https://docs.unitycatalog.io/integrations/unity-catalog-celerdata/</loc>
-         <lastmod>2025-02-13</lastmod>
+         <lastmod>2025-03-11</lastmod>
     </url>
     <url>
          <loc>https://docs.unitycatalog.io/integrations/unity-catalog-daft/</loc>
-         <lastmod>2025-02-13</lastmod>
+         <lastmod>2025-03-11</lastmod>
     </url>
     <url>
          <loc>https://docs.unitycatalog.io/integrations/unity-catalog-duckdb/</loc>
-         <lastmod>2025-02-13</lastmod>
+         <lastmod>2025-03-11</lastmod>
     </url>
     <url>
          <loc>https://docs.unitycatalog.io/integrations/unity-catalog-puppygraph/</loc>
-         <lastmod>2025-02-13</lastmod>
+         <lastmod>2025-03-11</lastmod>
     </url>
     <url>
          <loc>https://docs.unitycatalog.io/integrations/unity-catalog-spark/</loc>
-         <lastmod>2025-02-13</lastmod>
+         <lastmod>2025-03-11</lastmod>
     </url>
     <url>
          <loc>https://docs.unitycatalog.io/integrations/unity-catalog-spiceai/</loc>
-         <lastmod>2025-02-13</lastmod>
+         <lastmod>2025-03-11</lastmod>
     </url>
     <url>
          <loc>https://docs.unitycatalog.io/integrations/unity-catalog-trino/</loc>
-         <lastmod>2025-02-13</lastmod>
+         <lastmod>2025-03-11</lastmod>
     </url>
     <url>
          <loc>https://docs.unitycatalog.io/integrations/unity-catalog-xtable/</loc>
-         <lastmod>2025-02-13</lastmod>
+         <lastmod>2025-03-11</lastmod>
     </url>
     <url>
          <loc>https://docs.unitycatalog.io/server/auth/</loc>
-         <lastmod>2025-02-13</lastmod>
+         <lastmod>2025-03-11</lastmod>
     </url>
     <url>
          <loc>https://docs.unitycatalog.io/server/configuration/</loc>
-         <lastmod>2025-02-13</lastmod>
+         <lastmod>2025-03-11</lastmod>
     </url>
     <url>
          <loc>https://docs.unitycatalog.io/server/google-auth/</loc>
-         <lastmod>2025-02-13</lastmod>
+         <lastmod>2025-03-11</lastmod>
     </url>
     <url>
          <loc>https://docs.unitycatalog.io/server/users-privileges/</loc>
-         <lastmod>2025-02-13</lastmod>
+         <lastmod>2025-03-11</lastmod>
     </url>
     <url>
          <loc>https://docs.unitycatalog.io/usage/cli/</loc>
-         <lastmod>2025-02-13</lastmod>
+         <lastmod>2025-03-11</lastmod>
     </url>
     <url>
          <loc>https://docs.unitycatalog.io/usage/functions/</loc>
-         <lastmod>2025-02-13</lastmod>
+         <lastmod>2025-03-11</lastmod>
     </url>
     <url>
          <loc>https://docs.unitycatalog.io/usage/models/</loc>
-         <lastmod>2025-02-13</lastmod>
+         <lastmod>2025-03-11</lastmod>
     </url>
     <url>
          <loc>https://docs.unitycatalog.io/usage/ui/</loc>
-         <lastmod>2025-02-13</lastmod>
+         <lastmod>2025-03-11</lastmod>
     </url>
     <url>
          <loc>https://docs.unitycatalog.io/usage/volumes/</loc>
-         <lastmod>2025-02-13</lastmod>
+         <lastmod>2025-03-11</lastmod>
     </url>
     <url>
          <loc>https://docs.unitycatalog.io/usage/tables/deltalake/</loc>
-         <lastmod>2025-02-13</lastmod>
+         <lastmod>2025-03-11</lastmod>
     </url>
     <url>
          <loc>https://docs.unitycatalog.io/usage/tables/formats/</loc>
-         <lastmod>2025-02-13</lastmod>
+         <lastmod>2025-03-11</lastmod>
     </url>
     <url>
          <loc>https://docs.unitycatalog.io/usage/tables/uniform/</loc>
-         <lastmod>2025-02-13</lastmod>
+         <lastmod>2025-03-11</lastmod>
     </url>
 </urlset>
