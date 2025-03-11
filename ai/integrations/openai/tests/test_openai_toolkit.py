@@ -14,6 +14,7 @@ from openai.types.chat.chat_completion_message_tool_call import Function
 
 from tests.helper_functions import mock_chat_completion_response, mock_choice
 from unitycatalog.ai.core.base import set_uc_function_client
+from unitycatalog.ai.core.databricks import ExecutionMode
 from unitycatalog.ai.core.utils.function_processing_utils import get_tool_name
 from unitycatalog.ai.core.utils.validation_utils import has_retriever_signature
 from unitycatalog.ai.openai.toolkit import UCFunctionToolkit
@@ -37,9 +38,11 @@ def env_setup(monkeypatch):
     monkeypatch.setenv("OPENAI_API_KEY", "fake-key")
 
 
+@pytest.mark.parametrize("execution_mode", ["serverless", "local"])
 @requires_databricks
-def test_tool_calling():
+def test_tool_calling(execution_mode):
     client = get_client()
+    client.execution_mode = ExecutionMode(execution_mode)
     with (
         set_default_client(client),
         create_function_and_cleanup(client, schema=SCHEMA) as func_obj,
@@ -54,14 +57,14 @@ def test_tool_calling():
                 "role": "system",
                 "content": "You are a helpful customer support assistant. Use the supplied tools to assist the user.",
             },
-            {"role": "user", "content": "What is the result of 2**10?"},
+            {"role": "user", "content": "What is 2 + 10?"},
         ]
 
         with mock.patch(
             "openai.chat.completions.create",
             return_value=mock_chat_completion_response(
                 function=Function(
-                    arguments='{"code":"result = 2**10\\nprint(result)"}',
+                    arguments='{"number": 2}',
                     name=func_obj.tool_name,
                 ),
             ),
@@ -76,13 +79,11 @@ def test_tool_calling():
             tool_call = tool_calls[0]
             assert tool_call.function.name == func_obj.tool_name
             arguments = json.loads(tool_call.function.arguments)
-            assert isinstance(arguments.get("code"), str)
+            assert isinstance(arguments.get("number"), int)
 
-            # execute the function based on the arguments
             result = client.execute_function(func_name, arguments)
-            assert result.value == "1024\n"
+            assert result.value == "12"
 
-            # Create a message containing the result of the function call
             function_call_result_message = {
                 "role": "tool",
                 "content": json.dumps({"content": result.value}),
@@ -93,7 +94,6 @@ def test_tool_calling():
                 "model": "gpt-4o-mini",
                 "messages": [*messages, assistant_message, function_call_result_message],
             }
-            # Generate final response
             openai.chat.completions.create(
                 model=completion_payload["model"], messages=completion_payload["messages"]
             )
@@ -163,9 +163,11 @@ def test_tool_calling_with_trace_as_retriever():
             )
 
 
+@pytest.mark.parametrize("execution_mode", ["serverless", "local"])
 @requires_databricks
-def test_tool_calling_with_multiple_choices():
+def test_tool_calling_with_multiple_choices(execution_mode):
     client = get_client()
+    client.execution_mode = ExecutionMode(execution_mode)
     with (
         set_default_client(client),
         create_function_and_cleanup(client, schema=SCHEMA) as func_obj,
@@ -180,11 +182,11 @@ def test_tool_calling_with_multiple_choices():
                 "role": "system",
                 "content": "You are a helpful customer support assistant. Use the supplied tools to assist the user.",
             },
-            {"role": "user", "content": "What is the result of 2**10?"},
+            {"role": "user", "content": "What is the result of 4 + 10?"},
         ]
 
         function = Function(
-            arguments='{"code":"result = 2**10\\nprint(result)"}',
+            arguments='{"number": 4}',
             name=func_obj.tool_name,
         )
         with mock.patch(
@@ -201,20 +203,17 @@ def test_tool_calling_with_multiple_choices():
             )
             choices = response.choices
             assert len(choices) == 3
-            # only choose one of the choices
             tool_calls = choices[0].message.tool_calls
             assert len(tool_calls) == 1
 
             tool_call = tool_calls[0]
             assert tool_call.function.name == func_obj.tool_name
             arguments = json.loads(tool_call.function.arguments)
-            assert isinstance(arguments.get("code"), str)
+            assert isinstance(arguments.get("number"), int)
 
-            # execute the function based on the arguments
             result = client.execute_function(func_name, arguments)
-            assert result.value == "1024\n"
+            assert result.value == "14"
 
-            # Create a message containing the result of the function call
             function_call_result_message = {
                 "role": "tool",
                 "content": json.dumps({"content": result.value}),
@@ -225,7 +224,6 @@ def test_tool_calling_with_multiple_choices():
                 "model": "gpt-4o-mini",
                 "messages": [*messages, assistant_message, function_call_result_message],
             }
-            # Generate final response
             openai.chat.completions.create(
                 model=completion_payload["model"], messages=completion_payload["messages"]
             )
@@ -286,11 +284,9 @@ RETURN SELECT extract(DAYOFWEEK_ISO FROM day), day
             assert isinstance(arguments.get("start"), str)
             assert isinstance(arguments.get("end"), str)
 
-            # execute the function based on the arguments
             result = client.execute_function(func_name, arguments)
             assert result.value is not None
 
-            # Create a message containing the result of the function call
             function_call_result_message = {
                 "role": "tool",
                 "content": json.dumps({"content": result.value}),
@@ -301,7 +297,6 @@ RETURN SELECT extract(DAYOFWEEK_ISO FROM day), day
                 "model": "gpt-4o-mini",
                 "messages": [*messages, assistant_message, function_call_result_message],
             }
-            # Generate final response
             openai.chat.completions.create(
                 model=completion_payload["model"], messages=completion_payload["messages"]
             )
@@ -479,3 +474,41 @@ def test_function_definition_generation():
                 },
             },
         }
+
+
+@pytest.mark.parametrize(
+    "filter_accessible_functions",
+    [True, False],
+)
+def test_uc_function_to_openai_function_definition_permission_denied(filter_accessible_functions):
+    client = get_client()
+    # Permission Error should be caught
+    with mock.patch(
+        "unitycatalog.ai.core.databricks.DatabricksFunctionClient.get_function",
+        side_effect=PermissionError("Permission Denied to Underlying Assets"),
+    ):
+        if filter_accessible_functions:
+            tool = UCFunctionToolkit.uc_function_to_openai_function_definition(
+                client=client,
+                function_name="testName",
+                filter_accessible_functions=filter_accessible_functions,
+            )
+            assert tool == None
+        else:
+            with pytest.raises(PermissionError):
+                tool = UCFunctionToolkit.uc_function_to_openai_function_definition(
+                    client=client,
+                    function_name="testName",
+                    filter_accessible_functions=filter_accessible_functions,
+                )
+    # Other errors should not be Caught
+    with mock.patch(
+        "unitycatalog.ai.core.databricks.DatabricksFunctionClient.get_function",
+        side_effect=ValueError("Wrong Get Function Call"),
+    ):
+        with pytest.raises(ValueError):
+            tool = UCFunctionToolkit.uc_function_to_openai_function_definition(
+                client=client,
+                function_name="testName",
+                filter_accessible_functions=filter_accessible_functions,
+            )

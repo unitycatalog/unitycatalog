@@ -47,25 +47,20 @@ def create_function_and_cleanup_oss(
     schema: str,
     callable: Callable[..., Any] = None,
 ) -> Generator[FunctionObj, None, None]:
-    def execute_code(code: str) -> str:
+    def add_numbers(a: int, b: int) -> str:
         """
-        Executes Python code and returns its stdout.
+        Adds two numbers together.
 
         Args:
-            code: Python code to execute. Remember to print the final result to stdout.
+            a: First number.
+            b: Second number.
 
         Returns:
-            The stdout of the executed code.
+            The sum of the provided numbers.
         """
-        import sys
-        from io import StringIO
+        return str(a + b)
 
-        stdout = StringIO()
-        sys.stdout = stdout
-        exec(code)
-        return stdout.getvalue()
-
-    func = callable or execute_code
+    func = callable or add_numbers
 
     try:
         func_info = client.create_python_function(

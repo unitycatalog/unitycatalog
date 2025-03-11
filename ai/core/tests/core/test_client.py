@@ -79,6 +79,12 @@ class MockClient(BaseFunctionClient):
     def get_function_source(self):
         return ""
 
+    @override
+    def get_function_as_callable(
+        self, function_name: str, register_function: bool, namepace: dict[str, Any]
+    ):
+        return
+
 
 @pytest.fixture
 def client():

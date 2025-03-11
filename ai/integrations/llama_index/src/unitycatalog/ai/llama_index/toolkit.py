@@ -1,4 +1,5 @@
 import json
+import logging
 from dataclasses import asdict
 from typing import Any, Callable, Dict, List, Optional
 
@@ -14,6 +15,8 @@ from unitycatalog.ai.core.utils.function_processing_utils import (
     process_function_names,
 )
 from unitycatalog.ai.core.utils.validation_utils import mlflow_tracing_enabled
+
+_logger = logging.getLogger(__name__)
 
 
 class UnityCatalogTool(FunctionTool):
@@ -90,6 +93,10 @@ class UCFunctionToolkit(BaseModel):
         default=False,
         description="Whether the tool should return the output directly",
     )
+    filter_accessible_functions: bool = Field(
+        default=False,
+        description="When set to true, UCFunctionToolkit is initialized with functions that only the client has access to",
+    )
 
     model_config = ConfigDict(arbitrary_types_allowed=True)
 
@@ -111,6 +118,7 @@ class UCFunctionToolkit(BaseModel):
             function_names=self.function_names,
             tools_dict=self.tools_dict,
             client=client,
+            filter_accessible_functions=self.filter_accessible_functions,
             uc_function_to_tool_func=self.uc_function_to_llama_tool,
             return_direct=self.return_direct,
         )
@@ -131,7 +139,8 @@ class UCFunctionToolkit(BaseModel):
         function_name: str,
         client: Optional[BaseFunctionClient] = None,
         return_direct: bool = False,
-    ) -> FunctionTool:
+        filter_accessible_functions: bool = False,
+    ) -> Optional[FunctionTool]:
         """
         Converts a Unity Catalog function into a Llama tool.
 
@@ -147,7 +156,13 @@ class UCFunctionToolkit(BaseModel):
 
         if function_name is None:
             raise ValueError("function_name must be provided.")
-        function_info = client.get_function(function_name)
+        try:
+            function_info = client.get_function(function_name)
+        except PermissionError as e:
+            _logger.info(f"Skipping {function_name} due to permission errors.")
+            if filter_accessible_functions:
+                return None
+            raise e
 
         fn_schema = generate_function_input_params_schema(function_info)
 

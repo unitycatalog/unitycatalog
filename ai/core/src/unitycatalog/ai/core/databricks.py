@@ -6,6 +6,7 @@ import re
 import time
 from dataclasses import dataclass
 from decimal import Decimal
+from enum import Enum
 from io import StringIO
 from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional
 
@@ -16,13 +17,16 @@ from unitycatalog.ai.core.envs.databricks_env_vars import (
     UCAI_DATABRICKS_SERVERLESS_EXECUTION_RESULT_ROW_LIMIT,
     UCAI_DATABRICKS_SESSION_RETRY_MAX_ATTEMPTS,
 )
+from unitycatalog.ai.core.executor.local_subprocess import run_in_sandbox_subprocess
 from unitycatalog.ai.core.paged_list import PagedList
 from unitycatalog.ai.core.types import Variant
 from unitycatalog.ai.core.utils.callable_utils import (
     dynamically_construct_python_function,
     generate_sql_function_body,
     generate_wrapped_sql_function_body,
+    get_callable_definition,
 )
+from unitycatalog.ai.core.utils.execution_utils import load_function_from_string
 from unitycatalog.ai.core.utils.function_processing_utils import process_function_parameter_defaults
 from unitycatalog.ai.core.utils.type_utils import (
     column_type_to_python_type,
@@ -70,6 +74,30 @@ WAREHOUSE_DEFINED_NOT_SUPPORTED_MESSAGE = (
 
 
 _logger = logging.getLogger(__name__)
+
+
+class ExecutionMode(str, Enum):
+    SERVERLESS = "serverless"
+    LOCAL = "local"
+
+    def __str__(self) -> str:
+        return self.value
+
+    @classmethod
+    def validate(cls, value: str) -> "ExecutionMode":
+        try:
+            if value == cls.LOCAL.value:
+                _logger.warning(
+                    "You are running in 'local' execution mode, which is intended only for development and debugging. "
+                    "For production, please switch to 'serverless' execution mode. Before deploying, create a client "
+                    "using 'serverless' mode to validate your code's behavior and ensure full compatibility."
+                )
+            return cls(value)
+        except ValueError as e:
+            raise ValueError(
+                f"Execution mode '{value}' is not valid. "
+                f"Allowed values are: {', '.join(mode.value for mode in cls)}"
+            ) from e
 
 
 class SessionExpirationException(Exception):
@@ -150,7 +178,7 @@ def retry_on_session_expiration(func):
     """
     Decorator to retry a method upon session expiration errors with exponential backoff.
     """
-    max_attempts = int(UCAI_DATABRICKS_SESSION_RETRY_MAX_ATTEMPTS.get())
+    max_attempts = UCAI_DATABRICKS_SESSION_RETRY_MAX_ATTEMPTS.get()
 
     @functools.wraps(func)
     def wrapper(self, *args, **kwargs):
@@ -208,6 +236,7 @@ class DatabricksFunctionClient(BaseFunctionClient):
         client: Optional["WorkspaceClient"] = None,
         *,
         profile: Optional[str] = None,
+        execution_mode: str = "serverless",
         **kwargs: Any,
     ) -> None:
         """
@@ -217,10 +246,12 @@ class DatabricksFunctionClient(BaseFunctionClient):
             client: The databricks workspace client. If it's None, a default databricks workspace client
                 is generated based on the configuration. Defaults to None.
             profile: The configuration profile to use for databricks connect. Defaults to None.
+            execution_mode: The execution mode of the client. Defaults to "serverless".
         """
         _warn_if_workspace_provided(**kwargs)
         self.client = client or get_default_databricks_workspace_client(profile=profile)
         self.profile = profile
+        self.execution_mode = ExecutionMode.validate(execution_mode)
         self.spark = None
         self.set_spark_session()
         self._is_default_client = client is None
@@ -254,10 +285,15 @@ class DatabricksFunctionClient(BaseFunctionClient):
         from databricks.connect.session import DatabricksSession as SparkSession
 
         if self.profile:
-            builder = SparkSession.builder.profile(self.profile)
+            builder = SparkSession.builder.profile(self.profile).serverless(True)
+        elif self.client is not None:
+            config = self.client.config
+            config.as_dict().pop("cluster_id", None)
+            config.serverless_compute_id = "auto"  # Setting Serverless to true by adding "auto"
+            builder = SparkSession.builder.sdkConfig(config)
         else:
-            builder = SparkSession.builder
-        self.spark = builder.serverless(True).getOrCreate()
+            builder = SparkSession.builder.serverless(True)
+        self.spark = builder.getOrCreate()
 
     def refresh_client_and_session(self):
         """
@@ -548,13 +584,18 @@ class DatabricksFunctionClient(BaseFunctionClient):
         Returns:
             FunctionInfo: The function info.
         """
+        from databricks.sdk.errors.platform import PermissionDenied
+
         full_func_name = FullFunctionName.validate_full_function_name(function_name)
         if "*" in full_func_name.function:
             raise ValueError(
                 "function name cannot include *, to get all functions in a catalog and schema, "
                 "please use list_functions API instead."
             )
-        return self.client.functions.get(function_name)
+        try:
+            return self.client.functions.get(function_name)
+        except PermissionDenied as e:
+            raise PermissionError(f"Permission denied: {e}") from e
 
     @override
     def list_functions(
@@ -670,7 +711,14 @@ class DatabricksFunctionClient(BaseFunctionClient):
         self, function_info: "FunctionInfo", parameters: Dict[str, Any], **kwargs: Any
     ) -> Any:
         check_function_info(function_info)
-        return self._execute_uc_functions_with_serverless(function_info, parameters)
+        if self.execution_mode == ExecutionMode.SERVERLESS:
+            return self._execute_uc_functions_with_serverless(function_info, parameters)
+        elif self.execution_mode == ExecutionMode.LOCAL:
+            return self._execute_uc_functions_with_local(function_info, parameters)
+        else:
+            raise NotImplementedError(
+                f"Execution mode {self.execution_mode} is not supported for function execution."
+            )
 
     @retry_on_session_expiration
     def _execute_uc_functions_with_serverless(
@@ -687,7 +735,7 @@ class DatabricksFunctionClient(BaseFunctionClient):
             if is_scalar(function_info):
                 return FunctionExecutionResult(format="SCALAR", value=str(result.collect()[0][0]))
             else:
-                row_limit = int(UCAI_DATABRICKS_SERVERLESS_EXECUTION_RESULT_ROW_LIMIT.get())
+                row_limit = UCAI_DATABRICKS_SERVERLESS_EXECUTION_RESULT_ROW_LIMIT.get()
                 truncated = result.count() > row_limit
                 pdf = result.limit(row_limit).toPandas()
                 csv_buffer = StringIO()
@@ -703,6 +751,23 @@ class DatabricksFunctionClient(BaseFunctionClient):
             )
             error = f"Failed to execute function with command `{sql_command_msg}`\nError: {e}"
             return FunctionExecutionResult(error=error)
+
+    def _execute_uc_functions_with_local(
+        self, function_info: "FunctionInfo", parameters: Dict[str, Any]
+    ) -> FunctionExecutionResult:
+        if not is_scalar(function_info):
+            raise ValueError(
+                "Local sandbox execution is only supported for scalar Python functions. "
+                "Use 'serverless' execution mode for table functions."
+            )
+        _logger.info("Using local sandbox to execute functions.")
+
+        parameters = process_function_parameter_defaults(function_info, parameters)
+        python_def = get_callable_definition(function_info)
+        succeeded, result = run_in_sandbox_subprocess(python_def, parameters)
+        if not succeeded:
+            return FunctionExecutionResult(error=result)
+        return FunctionExecutionResult(format="SCALAR", value=result)
 
     @override
     def delete_function(
@@ -755,6 +820,28 @@ class DatabricksFunctionClient(BaseFunctionClient):
                 f"Function {function_name} is not an EXTERNAL Python function and cannot be retrieved."
             )
         return dynamically_construct_python_function(function_info)
+
+    @override
+    def get_function_as_callable(
+        self, function_name: str, register_function: bool = True, namespace: dict[str, Any] = None
+    ) -> Callable[..., Any]:
+        """
+        Returns the Python callable for an EXTERNAL Python function that is stored within Unity Catalog.
+        This function can only parse and extract the full callable definition for Python functions and
+        cannot be used on SQL or TABLE functions.
+
+        Args:
+            function_name: The name of the function to retrieve the Python callable for.
+            register_function: Whether to register the function in the namespace. Defaults to True.
+            namespace: The namespace to register the function in. Defaults to None (global)
+
+        Returns:
+            Callable[..., Any]: The Python callable for the function.
+        """
+        source = self.get_function_source(function_name)
+        return load_function_from_string(
+            func_def_str=source, register_function=register_function, namespace=namespace
+        )
 
 
 def is_scalar(function: "FunctionInfo") -> bool:

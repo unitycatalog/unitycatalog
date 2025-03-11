@@ -1,6 +1,7 @@
 import math
 import os
 from typing import Callable, Dict, List
+from unittest.mock import patch
 
 import pytest
 from databricks.sdk.errors import ResourceDoesNotExist
@@ -31,6 +32,7 @@ from tests.core.databricks.function_definitions import (
 )
 from unitycatalog.ai.core.databricks import (
     DatabricksFunctionClient,
+    ExecutionMode,
 )
 from unitycatalog.ai.core.envs.databricks_env_vars import (
     UCAI_DATABRICKS_SERVERLESS_EXECUTION_RESULT_ROW_LIMIT,
@@ -42,6 +44,7 @@ from unitycatalog.ai.test_utils.client_utils import (
     requires_databricks,
     retry_flaky_test,
     serverless_client,  # noqa: F401
+    serverless_client_with_config,  # noqa: F401
 )
 from unitycatalog.ai.test_utils.function_utils import (
     CATALOG,
@@ -692,3 +695,87 @@ def test_get_python_callable_integration_complex(client: DatabricksFunctionClien
         assert "return {" in callable_def and '"result": [' in callable_def
         assert "Args:" in callable_def
         assert "Returns:" in callable_def
+
+
+@retry_flaky_test()
+@requires_databricks
+def test_get_function_as_callable(client: DatabricksFunctionClient):
+    def add(a: int, b: int) -> int:
+        """
+        Adds two integers.
+
+        Args:
+            a: The first integer.
+            b: The second integer.
+
+        Returns:
+            int: The sum of a and b.
+        """
+        return a + b
+
+    with create_python_function_and_cleanup(client, func=add, schema=SCHEMA):
+        function_name = f"{CATALOG}.{SCHEMA}.add"
+        func = client.get_function_as_callable(function_name)
+        assert func(3, 4) == 7
+
+
+@retry_flaky_test()
+@requires_databricks
+def test_execute_function_in_local_sandbox(client: DatabricksFunctionClient):
+    client.execution_mode = ExecutionMode.LOCAL
+
+    def add(a: int, b: int) -> int:
+        """
+        Adds two integers.
+
+        Args:
+            a: The first integer.
+            b: The second integer.
+
+        Returns:
+            int: The sum of a and b.
+        """
+        return a + b
+
+    with create_python_function_and_cleanup(client, func=add, schema=SCHEMA):
+        function_name = f"{CATALOG}.{SCHEMA}.add"
+        result = client.execute_function(function_name, {"a": 3, "b": 4})
+        assert result.value == 7
+
+
+@requires_databricks
+def test_execute_function_with_custom_client(
+    serverless_client: DatabricksFunctionClient,
+    serverless_client_with_config: DatabricksFunctionClient,
+):
+    with generate_func_name_and_cleanup(serverless_client, schema=SCHEMA) as func_name:
+        function_sample = function_with_string_input(func_name)
+        serverless_client.create_function(sql_function_body=function_sample.sql_body)
+
+        # Client which created the function should execute successfully
+        for input_example in function_sample.inputs:
+            result = serverless_client.execute_function(func_name, input_example)
+            assert result.value == function_sample.output
+
+        # Client created from config should execute successfully
+        for input_example in function_sample.inputs:
+            result = serverless_client_with_config.execute_function(func_name, input_example)
+            assert result.value == function_sample.output
+
+        # Client with fake config should fail as expected
+        function_info = serverless_client.get_function(func_name)
+        from databricks.sdk import WorkspaceClient
+
+        with patch("databricks.connect.validation.validate_session_serverless", return_value=None):
+            w = WorkspaceClient(
+                host=os.environ.get("DATABRICKS_HOST"),
+                client_id="fake_id",
+                client_secret="fake_secret",
+            )
+            unauthorized_client = DatabricksFunctionClient(client=w)
+
+            for input_example in function_sample.inputs:
+                # Calling `execute_uc_function` call directly to skip the get_function call and check if config is passed into DB Connect correctly
+                result = unauthorized_client._execute_uc_function(function_info, input_example)
+                assert result.error is not None  # Should error out
+                assert "RETRIES_EXCEEDED" in result.error

@@ -12,9 +12,9 @@ requires-python = ">=3.9"
 dependencies = [
   "typing_extensions",
   "pydantic",
-  "asyncio",
   "nest_asyncio",
   "unitycatalog-client",
+  "cloudpickle",
 ]
 keywords = ["unitycatalog", "ai", "databricks", "function", "tool", "genai"]
 classifiers = [

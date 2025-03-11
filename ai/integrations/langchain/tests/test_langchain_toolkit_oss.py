@@ -17,6 +17,7 @@ from unitycatalog.ai.core.base import (
     FunctionExecutionResult,
 )
 from unitycatalog.ai.core.client import (
+    ExecutionMode,
     UnitycatalogFunctionClient,
 )
 from unitycatalog.ai.core.utils.function_processing_utils import get_tool_name
@@ -69,8 +70,10 @@ async def uc_client():
     await uc_api_client.close()
 
 
+@pytest.mark.parametrize("execution_mode", ["local", "sandbox"])
 @pytest.mark.asyncio
-async def test_toolkit_e2e(uc_client):
+async def test_toolkit_e2e(uc_client, execution_mode):
+    uc_client.execution_mode = ExecutionMode(execution_mode)
     with create_function_and_cleanup_oss(uc_client, schema=SCHEMA) as func_obj:
         toolkit = UCFunctionToolkit(function_names=[func_obj.full_function_name], client=uc_client)
         tools = toolkit.tools
@@ -79,17 +82,19 @@ async def test_toolkit_e2e(uc_client):
         assert tool.name == func_obj.tool_name
         assert tool.description == func_obj.comment
         assert tool.client_config == uc_client.to_dict()
-        tool.args_schema(**{"code": "print(1)"})
-        result = json.loads(tool.func(code="print(1)"))["value"]
-        assert result == "1\n"
+        tool.args_schema(**{"a": 1, "b": 2})
+        result = json.loads(tool.func(**{"a": 1, "b": 2}))["value"]
+        assert result == "3"
 
         toolkit = UCFunctionToolkit(function_names=[f"{CATALOG}.{SCHEMA}.*"], client=uc_client)
         assert len(toolkit.tools) >= 1
         assert func_obj.tool_name in [t.name for t in toolkit.tools]
 
 
+@pytest.mark.parametrize("execution_mode", ["local", "sandbox"])
 @pytest.mark.asyncio
-async def test_toolkit_e2e_manually_passing_client(uc_client):
+async def test_toolkit_e2e_manually_passing_client(uc_client, execution_mode):
+    uc_client.execution_mode = ExecutionMode(execution_mode)
     with create_function_and_cleanup_oss(uc_client, schema=SCHEMA) as func_obj:
         toolkit = UCFunctionToolkit(function_names=[func_obj.full_function_name], client=uc_client)
         tools = toolkit.tools
@@ -99,17 +104,20 @@ async def test_toolkit_e2e_manually_passing_client(uc_client):
         assert tool.description == func_obj.comment
         assert tool.uc_function_name == func_obj.full_function_name
         assert tool.client_config == uc_client.to_dict()
-        tool.args_schema(**{"code": "print(1)"})
-        result = json.loads(tool.func(code="print(1)"))["value"]
-        assert result == "1\n"
+        tool.args_schema(**{"a": 2, "b": 3})
+        result = json.loads(tool.func(**{"a": 2, "b": 3}))["value"]
+        assert result == "5"
 
         toolkit = UCFunctionToolkit(function_names=[f"{CATALOG}.{SCHEMA}.*"], client=uc_client)
         assert len(toolkit.tools) >= 1
         assert func_obj.tool_name in [t.name for t in toolkit.tools]
 
 
+@pytest.mark.parametrize("execution_mode", ["local", "sandbox"])
 @pytest.mark.asyncio
-async def test_toolkit_e2e_tools_with_no_params(uc_client):
+async def test_toolkit_e2e_tools_with_no_params(uc_client, execution_mode):
+    uc_client.execution_mode = ExecutionMode(execution_mode)
+
     def get_weather() -> str:
         """
         Get the weather.
@@ -136,14 +144,16 @@ async def test_toolkit_e2e_tools_with_no_params(uc_client):
         assert func_obj.tool_name in [t.name for t in toolkit.tools]
 
 
+@pytest.mark.parametrize("execution_mode", ["local", "sandbox"])
 @pytest.mark.asyncio
-async def test_multiple_toolkits(uc_client):
+async def test_multiple_toolkits(uc_client, execution_mode):
+    uc_client.execution_mode = ExecutionMode(execution_mode)
     with create_function_and_cleanup_oss(uc_client, schema=SCHEMA) as func_obj:
         toolkit1 = UCFunctionToolkit(function_names=[func_obj.full_function_name], client=uc_client)
         toolkit2 = UCFunctionToolkit(function_names=[f"{CATALOG}.{SCHEMA}.*"], client=uc_client)
         tool1 = toolkit1.tools[0]
         tool2 = [t for t in toolkit2.tools if t.name == func_obj.tool_name][0]
-        input_args = {"code": "print(1)"}
+        input_args = {"a": 3, "b": 4}
         assert (
             json.loads(tool1.func(**input_args))["value"]
             == json.loads(tool2.func(**input_args))["value"]
