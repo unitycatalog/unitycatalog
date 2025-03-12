@@ -1,6 +1,6 @@
 [project]
 name = "unitycatalog-crewai"
-version = "0.1.1"
+version = "0.2.0"
 description = "Support for Unity Catalog functions as CrewAI tools"
 authors = [
     { name="Michael Berk", email="michaelberk99@gmail.com" }
