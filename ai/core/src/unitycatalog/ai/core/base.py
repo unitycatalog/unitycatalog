@@ -253,7 +253,7 @@ class BaseFunctionClient(ABC):
 def get_uc_function_client() -> Optional[BaseFunctionClient]:
     global _uc_function_client
 
-    if client is None and _is_databricks_client_available():
+    if _uc_function_client is None and _is_databricks_client_available():
         try:
             from unitycatalog.ai.core.databricks import DatabricksFunctionClient
 
