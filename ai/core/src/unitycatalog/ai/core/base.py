@@ -267,7 +267,9 @@ def get_uc_function_client() -> Optional[BaseFunctionClient]:
             )
         else:
             set_uc_function_client(client)
-            _logger.info("Setting global UC Function client to DatabricksFunctionClient with default configuration.")
+            _logger.info(
+                "Setting global UC Function client to DatabricksFunctionClient with default configuration."
+            )
 
     with _client_lock:
         return _uc_function_client
