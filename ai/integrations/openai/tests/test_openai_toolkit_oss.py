@@ -281,7 +281,7 @@ async def test_tool_choice_param(uc_client):
 
 def test_toolkit_creation_errors_no_client(monkeypatch):
     monkeypatch.setattr(
-        "unitycatalog.ai.core.utils.client_utils._is_databricks_client_available", lambda: False
+        "unitycatalog.ai.core.base._is_databricks_client_available", lambda: False
     )
 
     with pytest.raises(

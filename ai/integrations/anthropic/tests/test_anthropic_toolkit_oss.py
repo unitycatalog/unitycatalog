@@ -106,7 +106,7 @@ async def uc_client():
 
 def test_toolkit_creation_errors_no_client(monkeypatch):
     monkeypatch.setattr(
-        "unitycatalog.ai.core.utils.client_utils._is_databricks_client_available", lambda: False
+        "unitycatalog.ai.core.base._is_databricks_client_available", lambda: False
     )
 
     with pytest.raises(
@@ -346,7 +346,7 @@ async def test_tool_calling_with_multiple_tools_anthropic(uc_client, execution_m
 async def test_anthropic_toolkit_initialization(uc_client):
     with (
         mock.patch(
-            "unitycatalog.ai.core.utils.client_utils._is_databricks_client_available",
+            "unitycatalog.ai.core.base._is_databricks_client_available",
             return_value=False,
         ),
         pytest.raises(

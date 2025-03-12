@@ -253,6 +253,22 @@ class BaseFunctionClient(ABC):
 def get_uc_function_client() -> Optional[BaseFunctionClient]:
     global _uc_function_client
 
+    if client is None and _is_databricks_client_available():
+        try:
+            from unitycatalog.ai.core.databricks import DatabricksFunctionClient
+
+            client = DatabricksFunctionClient()
+
+        except Exception as e:
+            _logger.warning(
+                "Attempted to set DatabricksFunctionClient as the default client, but encountered an error. "
+                "Provide a client directly to your toolkit invocation to ensure connection to Unity Catalog. "
+                f"Error: {e}"
+            )
+        else:
+            set_uc_function_client(client)
+            _logger.info("Setting global UC Function client to DatabricksFunctionClient with default configuration.")
+
     with _client_lock:
         return _uc_function_client
 
@@ -265,3 +281,21 @@ def set_uc_function_client(client: BaseFunctionClient) -> None:
 
     with _client_lock:
         _uc_function_client = client
+
+
+def _is_databricks_client_available():
+    """
+    Checks if the connection requirements to attach to a Databricks serverless cluster
+    are available in the environment for automatic client selection purposes in
+    toolkit instantiation.
+
+    Returns:
+        bool: True if the requirements are available, False otherwise.
+    """
+    try:
+        from databricks.connect.session import DatabricksSession
+
+        if hasattr(DatabricksSession.builder, "serverless"):
+            return True
+    except Exception:
+        return False
