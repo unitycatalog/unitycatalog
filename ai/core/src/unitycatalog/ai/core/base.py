@@ -254,8 +254,6 @@ def get_uc_function_client() -> Optional[BaseFunctionClient]:
     global _uc_function_client
 
     with _client_lock:
-        if _uc_function_client is None:
-            _logger.warning("UC function client is not set.")
         return _uc_function_client
 
 
