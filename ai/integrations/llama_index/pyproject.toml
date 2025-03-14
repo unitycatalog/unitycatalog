@@ -1,6 +1,6 @@
 [project]
 name = "unitycatalog-llamaindex"
-version = "0.1.0"
+version = "0.2.0"
 description = "Support for Unity Catalog functions as LlamaIndex tools"
 authors = [
     { name="Ben Wilson", email="benjamin.wilson@databricks.com" }
