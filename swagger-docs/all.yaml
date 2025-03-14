@@ -1,0 +1,2308 @@
+openapi: 3.0.0
+servers:
+  - url: http://localhost:8080/api/2.1/unity-catalog
+    description: Localhost reference server
+tags:
+  - name: Catalogs
+    description: |
+      A catalog is the first layer of Unity Catalog’s three-level namespace. It’s used to organize your data assets.
+  - name: Schemas
+    description: |
+      A schema (also called a database) is the second layer of Unity Catalog’s three-level namespace. A schema organizes tables, volumes and functions.
+  - name: Tables
+    description: |
+      A table resides in the third layer of Unity Catalog’s three-level namespace. It contains rows of data. 
+      A table can be managed or external.
+  - name: Volumes
+    description: |
+      Volumes are a Unity Catalog capability for accessing, storing, governing, organizing and processing files. Use cases include running machine learning on unstructured data such as image, audio, video, or PDF files, organizing data sets during the data exploration stages in data science, working with libraries that require access to the local file system on cluster machines, storing library and config files of arbitrary formats such as .whl or .txt centrally and providing secure access across workspaces to it, or transforming and querying non-tabular data files in ETL.
+  - name: Functions
+    description: |
+      Functions implement User-Defined Functions (UDFs) in Unity Catalog.
+      The function implementation can be a SQL expression/query or a python function, and it can be invoked wherever a table reference is allowed in a query.
+      In Unity Catalog, a function resides at the same level as a table, so it can be referenced with the form __catalog_name__.__schema_name__.__function_name__.
+  - name: RegisteredModels
+    description: |
+      Registered models are machine learning models that are stored within the Unity Catalog model registry. They are comprised of all versions of a single model that a user wishes to keep.
+      A registered model resides in the third layer of Unity Catalog’s three-level namespace, and can be referenced with the form __catalog_name__.__schema_name__.__model_name__.
+  - name: ModelVersions
+    description: |
+      Model versions contain all artifact files associated with an individual machine learning model. They are associated with a single parent model and have an integer identifier, indicating the version number of the model.
+      Model versions are referenced via model URI's using the Unity Catalog three-level namespace of the registered model and the version identifier.
+  - name: TemporaryCredentials
+    description: |
+      Temporary credentials are used to access storage locations or assets for a limited lifetime.
+  - name: Permissions
+    description: |
+      In Unity Catalog, data is secure by default. Access can be granted.
+  - name: Metastores
+    description: |
+      A metastore is the top-level container of objects in Unity Catalog that stores all UC assets.
+paths:
+  /catalogs:
+    post:
+      tags:
+        - Catalogs
+      operationId: createCatalog
+      summary: Create a catalog
+      description: |
+        Creates a new catalog instance.
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateCatalog'
+      responses:
+        '200':
+          description: The new catalog was successfully created.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CatalogInfo'
+    get:
+      tags:
+        - Catalogs
+      parameters:
+        - name: page_token
+          in: query
+          description: |
+            Opaque pagination token to go to next page based on previous query.
+          schema:
+            type: string
+          required: false
+        - name: max_results
+          in: query
+          description: |
+            Maximum number of catalogs to return.
+            - when set to a value greater than 0, the page length is the minimum of this value and a server configured value;
+            - when set to 0, the page length is set to a server configured value;
+            - when set to a value less than 0, an invalid parameter error is returned;
+          schema:
+            type: integer
+            format: int32
+            maximum: 1000
+          required: false
+      operationId: listCatalogs
+      summary: List catalogs
+      description: |
+        Lists the available catalogs. There is no guarantee of a specific ordering of the elements in the list.
+      responses:
+        '200':
+          description: The catalog list was successfully retrieved.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ListCatalogsResponse'
+  /catalogs/{name}:
+    parameters:
+      - name: name
+        in: path
+        description: The name of the catalog.
+        required: true
+        schema:
+          type: string
+    get:
+      tags:
+        - Catalogs
+      operationId: getCatalog
+      summary: Get a catalog
+      description: |
+        Gets the specified catalog.
+      responses:
+        '200':
+          description: The catalog was successfully retrieved.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CatalogInfo'
+    patch:
+      tags:
+        - Catalogs
+      operationId: updateCatalog
+      summary: Update a catalog
+      description: |
+        Updates the catalog that matches the supplied name.
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateCatalog'
+      responses:
+        '200':
+          description: The catalog was successfully updated.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CatalogInfo'
+    delete:
+      tags:
+        - Catalogs
+      operationId: deleteCatalog
+      summary: Delete a catalog
+      description: |
+        Deletes the catalog that matches the supplied name.
+      parameters:
+        - name: force
+          in: query
+          description: Force deletion even if the catalog is not empty.
+          required: false
+          schema:
+            type: boolean
+      responses:
+        '200':
+          description: The catalog was successfully deleted.
+          content:
+            application/json:
+              schema: {}
+  /schemas:
+    post:
+      tags:
+        - Schemas
+      operationId: createSchema
+      summary: Create a schema
+      description: |
+        Creates a new schema in the specified catalog.
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateSchema'
+      responses:
+        '200':
+          description: The new schema was successfully created.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SchemaInfo'
+    get:
+      tags:
+        - Schemas
+      parameters:
+        - name: catalog_name
+          in: query
+          description: Parent catalog for schemas of interest.
+          required: true
+          schema:
+            type: string
+        - name: max_results
+          in: query
+          description: |
+            Maximum number of schemas to return.
+            - when set to a value greater than 0, the page length is the minimum of this value and a server configured value;
+            - when set to 0, the page length is set to a server configured value;
+            - when set to a value less than 0, an invalid parameter error is returned;
+          schema:
+            type: integer
+            format: int32
+            maximum: 1000
+          required: false
+        - name: page_token
+          in: query
+          description: |
+            Opaque pagination token to go to next page based on previous query.
+          schema:
+            type: string
+          required: false
+      operationId: listSchemas
+      summary: List schemas
+      description: |
+        Gets an array of schemas for a catalog.
+        There is no guarantee of a specific ordering of the elements in the array.
+      responses:
+        '200':
+          description: The schemas list was successfully retrieved.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ListSchemasResponse'
+  /schemas/{full_name}:
+    parameters:
+      - name: full_name
+        in: path
+        description: Full name of the schema.
+        required: true
+        schema:
+          type: string
+    get:
+      tags:
+        - Schemas
+      operationId: getSchema
+      summary: Get a schema
+      description: |
+        Gets the specified schema for a catalog.
+      responses:
+        '200':
+          description: The schema was successfully retrieved.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SchemaInfo'
+    patch:
+      tags:
+        - Schemas
+      operationId: updateSchema
+      summary: Update a schema
+      description: |
+        Updates the specified schema.
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateSchema'
+      responses:
+        '200':
+          description: The schema was successfully updated.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SchemaInfo'
+    delete:
+      tags:
+        - Schemas
+      operationId: deleteSchema
+      summary: Delete a schema
+      description: |
+        Deletes the specified schema from the parent catalog.
+      parameters:
+        - name: force
+          in: query
+          description: Force deletion even if the catalog is not empty.
+          required: false
+          schema:
+            type: boolean
+      responses:
+        '200':
+          description: The schema was successfully deleted.
+          content:
+            application/json:
+              schema: {}
+  /tables:
+    post:
+      operationId: createTable
+      summary: |
+        Create a table. Only external table creation is supported.
+        WARNING: This API is experimental and will change in future versions.
+      tags:
+        - Tables
+      description: |
+        Creates a new external table instance.
+        WARNING: This API is experimental and will change in future versions.
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateTable'
+      responses:
+        '200':
+          description: The new external table was successfully created.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TableInfo'
+    get:
+      tags:
+        - Tables
+      parameters:
+        - name: catalog_name
+          in: query
+          description: Name of parent catalog for tables of interest.
+          required: true
+          schema:
+            type: string
+        - name: schema_name
+          in: query
+          description: Parent schema of tables.
+          required: true
+          schema:
+            type: string
+        - name: max_results
+          in: query
+          description: |
+            Maximum number of tables to return.
+            - when set to a value greater than 0, the page length is the minimum of this value and a server configured value;
+            - when set to 0, the page length is set to a server configured value;
+            - when set to a value less than 0, an invalid parameter error is returned;
+          required: false
+          schema:
+            type: integer
+            format: int32
+            maximum: 50
+        - name: page_token
+          in: query
+          description: Opaque token to send for the next page of results (pagination).
+          required: false
+          schema:
+            type: string
+      operationId: listTables
+      summary: List tables
+      description: |
+        Gets the list of all available tables under the parent catalog and schema.
+        There is no guarantee of a specific ordering of the elements in the array.
+      responses:
+        '200':
+          description: The tables list was successfully retrieved.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ListTablesResponse'
+  /tables/{full_name}:
+    parameters:
+      - name: full_name
+        in: path
+        description: Full name of the table.
+        required: true
+        schema:
+          type: string
+    get:
+      tags:
+        - Tables
+      operationId: getTable
+      summary: Get a table
+      description: |
+        Gets a table for a specific catalog and schema.
+      responses:
+        '200':
+          description: The table was successfully retrieved.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TableInfo'
+    delete:
+      tags:
+        - Tables
+      operationId: deleteTable
+      summary: Delete a table
+      description: |
+        Deletes a table from the specified parent catalog and schema.
+      responses:
+        '200':
+          description: The table was successfully deleted.
+          content:
+            application/json:
+              schema: {}
+  /volumes:
+    post:
+      tags:
+        - Volumes
+      operationId: createVolume
+      summary: Create a Volume
+      description: |
+        Creates a new volume.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateVolumeRequestContent'
+            examples:
+              CreateExternalVolumeExample:
+                summary: Create an External Volume
+                description: Create an External Volume and point the volume to a folder in the S3 bucket
+                value:
+                  catalog_name: main
+                  schema_name: default
+                  name: my_volume
+                  volume_type: EXTERNAL
+                  comment: This is my first volume
+      responses:
+        '200':
+          description: Successfully created the volume
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/VolumeInfo'
+              examples:
+                CreateVolumeExample:
+                  summary: Response of successful creation
+                  description: The properties of the volume will be returned if the operation succeeds
+                  value:
+                    catalog_name: main
+                    schema_name: default
+                    name: my_volume
+                    volume_type: EXTERNAL
+                    created_at: 1666369196203
+                    updated_at: 1666369196203
+                    comment: This is my first volume
+    get:
+      tags:
+        - Volumes
+      operationId: listVolumes
+      summary: List Volumes
+      description: |
+        Gets an array of available volumes under the parent catalog and schema.
+        There is no guarantee of a specific ordering of the elements in the array.
+      parameters:
+        - name: catalog_name
+          in: query
+          description: The identifier of the catalog
+          schema:
+            type: string
+          required: true
+          examples:
+            CatalogNameExample:
+              summary: Specify the target catalog to be `main`
+              description: Execute the operation against the `main` catalog
+              value: main
+        - name: schema_name
+          in: query
+          description: The identifier of the schema
+          schema:
+            type: string
+          required: true
+          examples:
+            SchemaNameExample:
+              summary: Specify the target schema to be `default`
+              description: Execute the operation against the `default` schema
+              value: default
+        - name: max_results
+          in: query
+          description: |+
+            Maximum number of volumes to return (page length).
+            
+            If not set, the page length is set to a server configured value.
+            - when set to a value greater than 0, the page length is the minimum of this value and a server configured value;
+            - when set to 0, the page length is set to a server configured value;
+            - when set to a value less than 0, an invalid parameter error is returned;
+            
+            Note: this parameter controls only the maximum number of volumes to return. The actual number of volumes returned in a page may be smaller than this value, including 0, even if there are more pages.
+
+          required: false
+          schema:
+            type: integer
+            format: int32
+            maximum: 10000
+        - name: page_token
+          in: query
+          description: Opaque token returned by a previous request. It must be included in the request to retrieve the next page of results (pagination).
+          required: false
+          schema:
+            type: string
+      responses:
+        '200':
+          description: The volume list was successfully retrieved
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ListVolumesResponseContent'
+              examples:
+                ListVolumesExample:
+                  summary: Response of success retrieval of the volumes
+                  description: A list of volume properties will be returned if the operation succeeds
+                  value:
+                    volumes:
+                      - catalog_name: main
+                        schema_name: default
+                        name: my_volume
+                        volume_type: EXTERNAL
+                        created_at: 1666369196203
+                        updated_at: 1666369196203
+                        comment: This is my first volume
+                      - catalog_name: main
+                        schema_name: default
+                        name: my_another_volume
+                        volume_type: EXTERNAL
+                        created_at: 1666369196203
+                        updated_at: 1666369196203
+                        comment: This is my other volume
+  /volumes/{name}:
+    parameters:
+      - name: name
+        in: path
+        description: The three-level (fully qualified) name of the volume
+        schema:
+          type: string
+        required: true
+        examples:
+          FullNameArgExample:
+            summary: Execute the operation against the volume named `my_volume` under `main` catalog and `default` schema
+            value: main.default.my_volume
+    get:
+      tags:
+        - Volumes
+      operationId: getVolume
+      summary: Get a Volume
+      description: |
+        Gets a volume for a specific catalog and schema.
+      responses:
+        '200':
+          description: Successfully retrieved the properties of the volume
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/VolumeInfo'
+              examples:
+                GetVolumeExample:
+                  summary: Response of successful retrieval of an existing volume
+                  description: The properties of the volume will be returned if the operation succeeds
+                  value:
+                    catalog_name: main
+                    schema_name: default
+                    name: my_volume
+                    volume_type: EXTERNAL
+                    created_at: 1666369196203
+                    updated_at: 1666369196203
+                    comment: This is my first volume
+    patch:
+      tags:
+        - Volumes
+      operationId: updateVolume
+      summary: Update a Volume
+      description: |
+        Updates the specified volume under the specified parent catalog and schema.
+        
+        Currently only the name or the comment of the volume could be updated.
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateVolumeRequestContent'
+            examples:
+              UpdateVolumeName:
+                summary: Update the name of the volume
+                description: Update the name of the volume
+                value:
+                  new_name: my_new_volume
+              UpdateVolumeComment:
+                summary: Update the comment of the volume
+                description: Update the comment of the volume
+                value:
+                  comment: This is my new volume
+      responses:
+        '200':
+          description: Successfully updated the properties of the volume
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/VolumeInfo'
+              examples:
+                UpdateVolumeName:
+                  summary: Update the name of the volume
+                  description: The new properties of the volume will be returned if the operation succeeds
+                  value:
+                    catalog_name: main
+                    schema_name: default
+                    name: my_new_volume
+                    volume_type: EXTERNAL
+                    created_at: 1666369196203
+                    updated_at: 1666369207415
+                    comment: This is my new volume
+    delete:
+      tags:
+        - Volumes
+      operationId: deleteVolume
+      summary: Delete a Volume
+      description: |
+        Deletes a volume from the specified parent catalog and schema.
+      responses:
+        '200':
+          description: Successfully deleted the volume
+          content:
+            application/json:
+              schema: {}
+  /temporary-model-version-credentials:
+    post:
+      operationId: generateTemporaryModelVersionCredentials
+      tags:
+        - TemporaryCredentials
+      summary: Generate temporary model version credentials. These credentials are used by clients to write and retrieve model artifacts from the model versions external storage location.
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/GenerateTemporaryModelVersionCredential'
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TemporaryCredentials'
+  /temporary-table-credentials:
+    post:
+      operationId: generateTemporaryTableCredentials
+      tags:
+        - TemporaryCredentials
+      summary: Generate temporary table credentials.
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/GenerateTemporaryTableCredential'
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TemporaryCredentials'
+  /temporary-volume-credentials:
+    post:
+      operationId: generateTemporaryVolumeCredentials
+      tags:
+        - TemporaryCredentials
+      summary: Generate temporary volume credentials.
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/GenerateTemporaryVolumeCredential'
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TemporaryCredentials'
+  "/functions":
+    post:
+      tags:
+        - Functions
+      operationId: createFunction
+      summary: |
+        Create a function.
+        WARNING: This API is experimental and will change in future versions.
+      description: |
+        Creates a new function instance.
+        WARNING: This API is experimental and will change in future versions.
+      requestBody:
+        content:
+          application/json:
+            schema:
+              "$ref": "#/components/schemas/CreateFunctionRequest"
+      responses:
+        '200':
+          description: The new function was successfully created.
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/FunctionInfo"
+    get:
+      tags:
+        - Functions
+      parameters:
+        - name: catalog_name
+          in: query
+          description: Name of parent catalog for functions of interest.
+          required: true
+          schema:
+            type: string
+        - name: schema_name
+          in: query
+          description: Parent schema of functions.
+          required: true
+          schema:
+            type: string
+        - name: max_results
+          in: query
+          description: |
+            Maximum number of functions to return.
+            - when set to a value greater than 0, the page length is the minimum of this value and a server configured value;
+            - when set to 0, the page length is set to a server configured value;
+            - when set to a value less than 0, an invalid parameter error is returned;
+          schema:
+            type: integer
+            format: int32
+            maximum: 1000
+          required: false
+        - name: page_token
+          in: query
+          description: 'Opaque pagination token to go to next page based on previous
+            query.'
+          schema:
+            type: string
+          required: false
+      operationId: listFunctions
+      summary: List functions
+      description: |
+        List functions within the specified parent catalog and schema.
+        There is no guarantee of a specific ordering of the elements in the array.
+      responses:
+        '200':
+          description: The function list was successfully retrieved.
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/ListFunctionsResponse"
+  "/functions/{name}":
+    parameters:
+      - name: name
+        in: path
+        description: The fully-qualified name of the function (of the form __catalog_name__.__schema_name__.__function__name__).
+        required: true
+        schema:
+          type: string
+    get:
+      tags:
+        - Functions
+      parameters: []
+      operationId: getFunction
+      summary: Get a function
+      description: 'Gets a function from within a parent catalog and schema.'
+      responses:
+        '200':
+          description: The function was successfully retrieved.
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/FunctionInfo"
+    delete:
+      tags:
+        - Functions
+      operationId: deleteFunction
+      summary: Delete a function
+      description: 'Deletes the function that matches the supplied name.'
+      responses:
+        '200':
+          description: The function was successfully deleted.
+          content:
+            application/json:
+              schema: {}
+  /models:
+    post:
+      operationId: createRegisteredModel
+      summary: |
+        Create a model.
+        WARNING: This API is experimental and will change in future versions.
+      tags:
+        - RegisteredModels
+      description: |
+        Creates a new model instance.
+        WARNING: This API is experimental and will change in future versions.
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateRegisteredModel'
+      responses:
+        '200':
+          description: The new registered model was successfully created.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RegisteredModelInfo'
+    get:
+      tags:
+        - RegisteredModels
+      parameters:
+        - name: catalog_name
+          in: query
+          description: Name of parent catalog for models of interest.
+          required: false
+          schema:
+            type: string
+        - name: schema_name
+          in: query
+          description: Name of parent schema for models of interest.
+          required: false
+          schema:
+            type: string
+        - name: max_results
+          in: query
+          description: |
+            Maximum number of models to return.
+            - when set to a value greater than 0, the page length is the minimum of this value and a server configured value;
+            - when set to 0, the page length is set to a server configured value;
+            - when set to a value less than 0, an invalid parameter error is returned;
+          required: false
+          schema:
+            type: integer
+            format: int32
+            maximum: 50
+        - name: page_token
+          in: query
+          description: Opaque token to send for the next page of results (pagination).
+          required: false
+          schema:
+            type: string
+      operationId: listRegisteredModels
+      summary: List models
+      description: |
+        Gets a paginated list of all available models either under the specified parent catalog and schema, or all models stored in UC.
+        There is no guarantee of a specific ordering of the elements in the array.
+      responses:
+        '200':
+          description: The models list was successfully retrieved.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ListRegisteredModelsResponse'
+  /models/{full_name}:
+    parameters:
+      - name: full_name
+        in: path
+        description: Full name of the model.
+        required: true
+        schema:
+          type: string
+    get:
+      tags:
+        - RegisteredModels
+      operationId: getRegisteredModel
+      summary: Get a specified registered model
+      description: |
+        Gets a fully specified registered model.
+      responses:
+        '200':
+          description: The registered model was successfully retrieved.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RegisteredModelInfo'
+    patch:
+      tags:
+        - RegisteredModels
+      operationId: updateRegisteredModel
+      summary: Update a registered model
+      description: |
+        Updates the specified registered model.
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateRegisteredModel'
+      responses:
+        '200':
+          description: The registered model was successfully updated.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RegisteredModelInfo'
+    delete:
+      tags:
+        - RegisteredModels
+      parameters:
+        - name: force
+          in: query
+          description: Force deletion even if the registered model still has model versions.
+          required: false
+          schema:
+            type: boolean
+      operationId: deleteRegisteredModel
+      summary: Delete a specified registered model.
+      description: |
+        Deletes a fully specified registered model. All versions of the model must have already been deleted.
+      responses:
+        '200':
+          description: The registered model was successfully deleted.
+          content:
+            application/json:
+              schema: {}
+  /models/versions:
+    post:
+      operationId: createModelVersion
+      summary: |
+        Create a model version.
+      tags:
+        - ModelVersions
+      description: |
+        Creates a new model version instance.
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateModelVersion'
+      responses:
+        '200':
+          description: The new model version was successfully created.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ModelVersionInfo'
+  /models/{full_name}/versions:
+    parameters:
+      - name: full_name
+        in: path
+        description: Full name of the registered model.
+        required: true
+        schema:
+          type: string
+      - name: max_results
+        in: query
+        description: |
+          Maximum number of model versions to return.
+          - when set to a value greater than 0, the page length is the minimum of this value and a server configured value;
+          - when set to 0, the page length is set to a server configured value;
+          - when set to a value less than 0, an invalid parameter error is returned;
+        required: false
+        schema:
+          type: integer
+          format: int32
+          maximum: 50
+      - name: page_token
+        in: query
+        description: Opaque token to send for the next page of results (pagination).
+        required: false
+        schema:
+          type: string
+    get:
+      tags:
+        - ModelVersions
+      operationId: listModelVersions
+      summary: List model versions of the specified registered model.
+      description: |
+        Gets the paginated list of all available model versions under the specified registered model.
+        There is no guarantee of a specific ordering of the elements in the array.
+      responses:
+        '200':
+          description: The model versions list was successfully retrieved.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ListModelVersionsResponse'
+  /models/{full_name}/versions/{version}:
+    parameters:
+      - name: full_name
+        in: path
+        description: Full name of the model.
+        required: true
+        schema:
+          type: string
+      - name: version
+        in: path
+        description: Version number of the model version.
+        required: true
+        schema:
+          type: integer
+          format: int64
+    get:
+      tags:
+        - ModelVersions
+      operationId: getModelVersion
+      summary: Get a model version
+      description: |
+        Gets a specific model version for a specific model.
+      responses:
+        '200':
+          description: The model version was successfully retrieved.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ModelVersionInfo'
+    patch:
+      tags:
+        - ModelVersions
+      operationId: updateModelVersion
+      summary: Update a model version
+      description: |
+        Updates the specified model version.
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateModelVersion'
+      responses:
+        '200':
+          description: The model version was successfully updated.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ModelVersionInfo'
+    delete:
+      tags:
+        - ModelVersions
+      operationId: deleteModelVersion
+      summary: Delete a model version
+      description: |
+        Deletes the specified model version.
+      responses:
+        '200':
+          description: The model version was successfully deleted.
+          content:
+            application/json:
+              schema: {}
+  /models/{full_name}/versions/{version}/finalize:
+    parameters:
+      - name: full_name
+        in: path
+        description: Full name of the model.
+        required: true
+        schema:
+          type: string
+      - name: version
+        in: path
+        description: Version number of the model version.
+        required: true
+        schema:
+          type: integer
+          format: int64
+    patch:
+      tags:
+        - ModelVersions
+      operationId: finalizeModelVersion
+      summary: Finalize a model version
+      description: |
+        Finalizes the status of the specified model version.
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/FinalizeModelVersion'
+      responses:
+        '200':
+          description: The model version was successfully finalized.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ModelVersionInfo'
+  /temporary-path-credentials:
+    post:
+      operationId: generateTemporaryPathCredentials
+      tags:
+        - TemporaryCredentials
+      summary: Generate temporary path credentials.
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/GenerateTemporaryPathCredential'
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TemporaryCredentials'
+  /permissions/{securable_type}/{full_name}:
+    parameters:
+      - name: securable_type
+        in: path
+        description: Type of securable.
+        required: true
+        schema:
+          $ref: '#/components/schemas/SecurableType'
+      - name: full_name
+        in: path
+        description: Full name of securable.
+        required: true
+        schema:
+          type: string
+    get:
+      tags:
+        - Grants
+      parameters:
+        - name: principal
+          in: query
+          description: |
+            If provided, only the permissions for the specified principal (user or group) are returned.
+          schema:
+            type: string
+          required: false
+      operationId: get
+      summary: Get permissions
+      description: |
+        Gets the permissions for a securable.
+      responses:
+        '200':
+          description: The permissions list for securable was successfully retrieved.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PermissionsList'
+    patch:
+      tags:
+        - Grants
+      operationId: update
+      summary: Update a permission
+      description: |
+        Updates the permissions for a securable.
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdatePermissions'
+      responses:
+        '200':
+          description: The permissions list for securable was successfully updated.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PermissionsList'
+  /metastore_summary:
+    get:
+      tags:
+        - Metastores
+      operationId: summary
+      summary: Get metastore summary
+      description: |
+        Gets information about the metastore hosted by this Unity Catalog service (currently the service hosts only one metastore)
+      responses:
+        '200':
+          description: The metastore summary was successfully retrieved.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GetMetastoreSummaryResponse'
+components:
+  schemas:
+    SecurablePropertiesMap:
+      description: A map of key-value properties attached to the securable.
+      type: object
+      additionalProperties:
+        type: string
+    VolumeType:
+      type: string
+      enum:
+        - MANAGED
+        - EXTERNAL
+      description: The type of the volume
+    CreateVolumeRequestContent:
+      type: object
+      properties:
+        catalog_name:
+          type: string
+          description: The name of the catalog where the schema and the volume are
+        schema_name:
+          type: string
+          description: The name of the schema where the volume is
+        name:
+          type: string
+          description: The name of the volume
+        "volume_type":
+          "$ref": "#/components/schemas/VolumeType"
+        comment:
+          type: string
+          maxLength: 65536
+          minLength: 1
+          description: The comment attached to the volume
+        storage_location:
+          type: string
+          description: The storage location of the volume
+      required:
+        - catalog_name
+        - schema_name
+        - name
+        - volume_type
+        - storage_location
+    ListVolumesResponseContent:
+      type: object
+      properties:
+        volumes:
+          type: array
+          items:
+            $ref: '#/components/schemas/VolumeInfo'
+        next_page_token:
+          description: |
+            Opaque token to retrieve the next page of results. Absent if there are no more pages.
+            __page_token__ should be set to this value for the next request to retrieve the next page of results.
+          type: string
+    UpdateVolumeRequestContent:
+      type: object
+      properties:
+        comment:
+          type: string
+          maxLength: 65536
+          minLength: 1
+          description: The comment attached to the volume
+        new_name:
+          description: New name for the volume.
+          type: string
+    VolumeInfo:
+      type: object
+      properties:
+        catalog_name:
+          type: string
+          description: The name of the catalog where the schema and the volume are
+        schema_name:
+          type: string
+          description: The name of the schema where the volume is
+        name:
+          type: string
+          description: The name of the volume
+        comment:
+          type: string
+          maxLength: 65536
+          minLength: 1
+          description: The comment attached to the volume
+        owner:
+          description: The identifier of the user who owns the volume
+          type: string
+        created_at:
+          type: integer
+          format: int64
+          description: Time at which this volume was created, in epoch milliseconds.
+        created_by:
+          description: TThe identifier of the user who created the volume
+          type: string
+        updated_at:
+          type: integer
+          format: int64
+          description: Time at which this volume was last modified, in epoch milliseconds.
+        updated_by:
+          description: The identifier of the user who updated the volume last time
+          type: string
+        volume_id:
+          type: string
+          description: Unique identifier of the volume
+        "volume_type":
+          "$ref": "#/components/schemas/VolumeType"
+        storage_location:
+          type: string
+          description: The storage location of the volume
+        full_name:
+          type: string
+          description: Full name of volume, in form of __catalog_name__.__schema_name__.__volume_name__.
+    ColumnTypeName:
+      description: Name of type (INT, STRUCT, MAP, etc.).
+      type: string
+      enum:
+        - BOOLEAN
+        - BYTE
+        - SHORT
+        - INT
+        - LONG
+        - FLOAT
+        - DOUBLE
+        - DATE
+        - TIMESTAMP
+        - TIMESTAMP_NTZ
+        - STRING
+        - BINARY
+        - DECIMAL
+        - INTERVAL
+        - ARRAY
+        - STRUCT
+        - MAP
+        - CHAR
+        - 'NULL'
+        - USER_DEFINED_TYPE
+        - TABLE_TYPE
+    ColumnInfo:
+      type: object
+      properties:
+        name:
+          description: Name of Column.
+          type: string
+        type_text:
+          description: Full data type specification as SQL/catalogString text.
+          type: string
+        type_json:
+          description: Full data type specification, JSON-serialized.
+          type: string
+        type_name:
+          $ref: '#/components/schemas/ColumnTypeName'
+        type_precision:
+          description: Digits of precision; required for DecimalTypes.
+          type: integer
+          format: int32
+        type_scale:
+          description: Digits to right of decimal; Required for DecimalTypes.
+          type: integer
+          format: int32
+        type_interval_type:
+          description: Format of IntervalType.
+          type: string
+        position:
+          description: Ordinal position of column (starting at position 0).
+          type: integer
+          format: int32
+        comment:
+          description: User-provided free-form text description.
+          type: string
+        nullable:
+          description: Whether field may be Null.
+          type: boolean
+          default: 'true'
+        partition_index:
+          description: Partition index for column.
+          type: integer
+          format: int32
+    TableType:
+      type: string
+      enum:
+        - MANAGED
+        - EXTERNAL
+    DataSourceFormat:
+      description: Data source format
+      type: string
+      enum:
+        - DELTA
+        - CSV
+        - JSON
+        - AVRO
+        - PARQUET
+        - ORC
+        - TEXT
+    TableInfo:
+      type: object
+      properties:
+        name:
+          description: Name of table, relative to parent schema.
+          type: string
+        catalog_name:
+          description: Name of parent catalog.
+          type: string
+        schema_name:
+          description: Name of parent schema relative to its parent catalog.
+          type: string
+        table_type:
+          $ref: '#/components/schemas/TableType'
+        data_source_format:
+          $ref: '#/components/schemas/DataSourceFormat'
+        columns:
+          description: The array of __ColumnInfo__ definitions of the table's columns.
+          type: array
+          items:
+            $ref: '#/components/schemas/ColumnInfo'
+        storage_location:
+          description: Storage root URL for table (for **MANAGED**, **EXTERNAL** tables)
+          type: string
+        comment:
+          description: User-provided free-form text description.
+          type: string
+        properties:
+          $ref: '#/components/schemas/SecurablePropertiesMap'
+        owner:
+          description: Username of current owner of table.
+          type: string
+        created_at:
+          description: Time at which this table was created, in epoch milliseconds.
+          type: integer
+          format: int64
+        created_by:
+          description: Username of table creator.
+          type: string
+        updated_at:
+          description: Time at which this table was last modified, in epoch milliseconds.
+          type: integer
+          format: int64
+        updated_by:
+          description: Username of user who last modified the table.
+          type: string
+        table_id:
+          description: Unique identifier for the table.
+          type: string
+    CreateTable:
+      type: object
+      properties:
+        name:
+          description: Name of table, relative to parent schema.
+          type: string
+        catalog_name:
+          description: Name of parent catalog.
+          type: string
+        schema_name:
+          description: Name of parent schema relative to its parent catalog.
+          type: string
+        table_type:
+          $ref: '#/components/schemas/TableType'
+        data_source_format:
+          $ref: '#/components/schemas/DataSourceFormat'
+        columns:
+          description: The array of __ColumnInfo__ definitions of the table's columns.
+          type: array
+          items:
+            $ref: '#/components/schemas/ColumnInfo'
+        storage_location:
+          description: Storage root URL for external table
+          type: string
+        comment:
+          description: User-provided free-form text description.
+          type: string
+        properties:
+          $ref: '#/components/schemas/SecurablePropertiesMap'
+      required:
+        - name
+        - catalog_name
+        - schema_name
+        - table_type
+        - data_source_format
+        - columns
+        - storage_location
+    ListTablesResponse:
+      type: object
+      properties:
+        tables:
+          description: An array of table information objects.
+          type: array
+          items:
+            $ref: '#/components/schemas/TableInfo'
+        next_page_token:
+          description: |
+            Opaque token to retrieve the next page of results. Absent if there are no more pages.
+            __page_token__ should be set to this value for the next request (for the next page of results).
+          type: string
+    SchemaInfo:
+      type: object
+      properties:
+        name:
+          description: Name of schema, relative to parent catalog.
+          type: string
+        catalog_name:
+          description: Name of parent catalog.
+          type: string
+        comment:
+          description: User-provided free-form text description.
+          type: string
+        properties:
+          $ref: '#/components/schemas/SecurablePropertiesMap'
+        full_name:
+          description: Full name of schema, in form of __catalog_name__.__schema_name__.
+          type: string
+        owner:
+          description: Username of current owner of schema.
+          type: string
+        created_at:
+          description: Time at which this schema was created, in epoch milliseconds.
+          type: integer
+          format: int64
+        created_by:
+          description: Username of schema creator.
+          type: string
+        updated_at:
+          description: Time at which this schema was last modified, in epoch milliseconds.
+          type: integer
+          format: int64
+        updated_by:
+          description: Username of user who last modified schema.
+          type: string
+        schema_id:
+          description: Unique identifier for the schema.
+          type: string
+    CreateSchema:
+      type: object
+      properties:
+        name:
+          description: Name of schema, relative to parent catalog.
+          type: string
+        catalog_name:
+          description: Name of parent catalog.
+          type: string
+        comment:
+          description: User-provided free-form text description.
+          type: string
+        properties:
+          $ref: '#/components/schemas/SecurablePropertiesMap'
+      required:
+        - name
+        - catalog_name
+    UpdateSchema:
+      type: object
+      properties:
+        comment:
+          description: User-provided free-form text description.
+          type: string
+        properties:
+          $ref: '#/components/schemas/SecurablePropertiesMap'
+        new_name:
+          description: New name for the schema.
+          type: string
+    ListSchemasResponse:
+      type: object
+      properties:
+        schemas:
+          description: An array of schema information objects.
+          type: array
+          items:
+            $ref: '#/components/schemas/SchemaInfo'
+        next_page_token:
+          type: string
+          description: |
+            Opaque token to retrieve the next page of results. Absent if there are no more pages.
+            __page_token__ should be set to this value for the next request (for the next page of results).
+    CatalogInfo:
+      type: object
+      properties:
+        name:
+          description: Name of catalog.
+          type: string
+        comment:
+          description: User-provided free-form text description.
+          type: string
+        properties:
+          $ref: '#/components/schemas/SecurablePropertiesMap'
+        owner:
+          description: Username of current owner of catalog.
+          type: string
+        created_at:
+          description: Time at which this catalog was created, in epoch milliseconds.
+          type: integer
+          format: int64
+        created_by:
+          description: Username of catalog creator.
+          type: string
+        updated_at:
+          description: Time at which this catalog was last modified, in epoch milliseconds.
+          type: integer
+          format: int64
+        updated_by:
+          description: Username of user who last modified catalog.
+          type: string
+        id:
+          description: Unique identifier for the catalog.
+          type: string
+    CreateCatalog:
+      type: object
+      properties:
+        name:
+          description: Name of catalog.
+          type: string
+        comment:
+          description: User-provided free-form text description.
+          type: string
+        properties:
+          $ref: '#/components/schemas/SecurablePropertiesMap'
+      required:
+        - name
+    UpdateCatalog:
+      type: object
+      properties:
+        comment:
+          description: User-provided free-form text description.
+          type: string
+        properties:
+          $ref: '#/components/schemas/SecurablePropertiesMap'
+        new_name:
+          description: New name for the catalog.
+          type: string
+    ListCatalogsResponse:
+      type: object
+      properties:
+        catalogs:
+          description: An array of catalog information objects.
+          type: array
+          items:
+            $ref: '#/components/schemas/CatalogInfo'
+        next_page_token:
+          type: string
+          description: |
+            Opaque token to retrieve the next page of results. Absent if there are no more pages.
+            __page_token__ should be set to this value for the next request (for the next page of results).
+    FunctionParameterType:
+      description: The type of function parameter.
+      type: string
+      enum:
+        - PARAM
+        - COLUMN
+    FunctionParameterMode:
+      description: The mode of the function parameter.
+      type: string
+      enum:
+        - IN
+    FunctionParameterInfo:
+      type: object
+      required:
+        - name
+        - type_text
+        - type_name
+        - type_json
+        - position
+      properties:
+        name:
+          description: Name of parameter.
+          type: string
+        type_text:
+          description: Full data type spec, SQL/catalogString text.
+          type: string
+        type_json:
+          description: Full data type spec, JSON-serialized.
+          type: string
+        type_name:
+          "$ref": "#/components/schemas/ColumnTypeName"
+        type_precision:
+          description: Digits of precision; required on Create for DecimalTypes.
+          type: integer
+          format: int32
+        type_scale:
+          description: Digits to right of decimal; Required on Create for DecimalTypes.
+          type: integer
+          format: int32
+        type_interval_type:
+          description: Format of IntervalType.
+          type: string
+        position:
+          description: Ordinal position of column (starting at position 0).
+          type: integer
+          format: int32
+        parameter_mode:
+          "$ref": "#/components/schemas/FunctionParameterMode"
+        parameter_type:
+          "$ref": "#/components/schemas/FunctionParameterType"
+        parameter_default:
+          description: Default value of the parameter.
+          type: string
+        comment:
+          description: User-provided free-form text description.
+          type: string
+    FunctionParameterInfos:
+      type: object
+      properties:
+        parameters:
+          description: The array of __FunctionParameterInfo__ definitions of the function's
+            parameters.
+          type: array
+          items:
+            "$ref": "#/components/schemas/FunctionParameterInfo"
+    CreateFunctionRequest:
+      type: object
+      properties:
+        function_info:
+          "$ref": "#/components/schemas/CreateFunction"
+      required:
+        - function_info
+    FunctionDependency:
+      description: A function that is dependent on a SQL object.
+      type: object
+      required:
+        - function_full_name
+      properties:
+        function_full_name:
+          description: Full name of the dependent function, in the form of __catalog_name__.__schema_name__.__function_name__.
+          type: string
+    TableDependency:
+      description: A table that is dependent on a SQL object.
+      type: object
+      required:
+        - table_full_name
+      properties:
+        table_full_name:
+          description: Full name of the dependent table, in the form of __catalog_name__.__schema_name__.__table_name__.
+          type: string
+    Dependency:
+      description: A dependency of a SQL object. Either the __table__ field or the
+        __function__ field must be defined.
+      type: object
+      properties:
+        table:
+          "$ref": "#/components/schemas/TableDependency"
+        function:
+          "$ref": "#/components/schemas/FunctionDependency"
+    DependencyList:
+      description: A list of dependencies.
+      type: object
+      properties:
+        dependencies:
+          description: Array of dependencies.
+          type: array
+          items:
+            "$ref": "#/components/schemas/Dependency"
+    CreateFunction:
+      type: object
+      required:
+        - name
+        - catalog_name
+        - schema_name
+        - input_params
+        - data_type
+        - full_data_type
+        - routine_body
+        - routine_definition
+        - parameter_style
+        - is_deterministic
+        - sql_data_access
+        - is_null_call
+        - security_type
+        - specific_name
+      properties:
+        name:
+          description: Name of function, relative to parent schema.
+          type: string
+        catalog_name:
+          description: Name of parent catalog.
+          type: string
+        schema_name:
+          description: Name of parent schema relative to its parent catalog.
+          type: string
+        input_params:
+          "$ref": "#/components/schemas/FunctionParameterInfos"
+        data_type:
+          "$ref": "#/components/schemas/ColumnTypeName"
+        full_data_type:
+          description: Pretty printed function data type.
+          type: string
+        return_params:
+          "$ref": "#/components/schemas/FunctionParameterInfos"
+        routine_body:
+          description: "Function language. When **EXTERNAL** is used, the language
+            of the routine function should be specified in the __external_language__
+            field, \nand the __return_params__ of the function cannot be used (as
+            **TABLE** return type is not supported),\nand the __sql_data_access__
+            field must be **NO_SQL**.\n"
+          type: string
+          enum:
+            - SQL
+            - EXTERNAL
+        routine_definition:
+          description: Function body.
+          type: string
+        routine_dependencies:
+          "$ref": "#/components/schemas/DependencyList"
+        parameter_style:
+          description: Function parameter style. **S** is the value for SQL.
+          type: string
+          enum:
+            - S
+        is_deterministic:
+          description: Whether the function is deterministic.
+          type: boolean
+        sql_data_access:
+          description: Function SQL data access.
+          type: string
+          enum:
+            - CONTAINS_SQL
+            - READS_SQL_DATA
+            - NO_SQL
+        is_null_call:
+          description: Function null call.
+          type: boolean
+        security_type:
+          description: Function security type.
+          type: string
+          enum:
+            - DEFINER
+        specific_name:
+          description: Specific name of the function; Reserved for future use.
+          type: string
+        comment:
+          description: User-provided free-form text description.
+          type: string
+        properties:
+          description: JSON-serialized key-value pair map, encoded (escaped) as a
+            string.
+          type: string
+        external_language:
+          description: External language of the function.
+          type: string
+    FunctionInfo:
+      type: object
+      properties:
+        name:
+          description: Name of function, relative to parent schema.
+          type: string
+        catalog_name:
+          description: Name of parent catalog.
+          type: string
+        schema_name:
+          description: Name of parent schema relative to its parent catalog.
+          type: string
+        input_params:
+          "$ref": "#/components/schemas/FunctionParameterInfos"
+        data_type:
+          "$ref": "#/components/schemas/ColumnTypeName"
+        full_data_type:
+          description: Pretty printed function data type.
+          type: string
+        return_params:
+          "$ref": "#/components/schemas/FunctionParameterInfos"
+        routine_body:
+          description: "Function language. When **EXTERNAL** is used, the language
+                of the routine function should be specified in the __external_language__
+                field, \nand the __return_params__ of the function cannot be used (as
+                **TABLE** return type is not supported),\nand the __sql_data_access__
+                field must be **NO_SQL**.\n"
+          type: string
+          enum:
+            - SQL
+            - EXTERNAL
+        routine_definition:
+          description: Function body.
+          type: string
+        routine_dependencies:
+          "$ref": "#/components/schemas/DependencyList"
+        parameter_style:
+          description: Function parameter style. **S** is the value for SQL.
+          type: string
+          enum:
+            - S
+        is_deterministic:
+          description: Whether the function is deterministic.
+          type: boolean
+        sql_data_access:
+          description: Function SQL data access.
+          type: string
+          enum:
+            - CONTAINS_SQL
+            - READS_SQL_DATA
+            - NO_SQL
+        is_null_call:
+          description: Function null call.
+          type: boolean
+        security_type:
+          description: Function security type.
+          type: string
+          enum:
+            - DEFINER
+        specific_name:
+          description: Specific name of the function; Reserved for future use.
+          type: string
+        comment:
+          description: User-provided free-form text description.
+          type: string
+        properties:
+          description: JSON-serialized key-value pair map, encoded (escaped) as a string.
+          type: string
+        full_name:
+          description: Full name of function, in form of __catalog_name__.__schema_name__.__function__name__
+          type: string
+        owner:
+          description: Username of current owner of function.
+          type: string
+        created_at:
+          description: Time at which this function was created, in epoch milliseconds.
+          type: integer
+          format: int64
+        created_by:
+          description: Username of function creator.
+          type: string
+        updated_at:
+          description: Time at which this function was last updated, in epoch milliseconds.
+          type: integer
+          format: int64
+        updated_by:
+          description: Username of user who last modified function.
+          type: string
+        function_id:
+          description: Id of Function, relative to parent schema.
+          type: string
+        external_language:
+          description: External language of the function.
+          type: string
+    ListFunctionsResponse:
+      type: object
+      properties:
+        functions:
+          description: An array of function information objects.
+          type: array
+          items:
+            "$ref": "#/components/schemas/FunctionInfo"
+        next_page_token:
+          type: string
+          description: |
+            Opaque token to retrieve the next page of results. Absent if there are no more pages.
+            __page_token__ should be set to this value for the next request (for the next page of results).
+    GenerateTemporaryModelVersionCredential:
+      example:
+        catalog_name: catalog_name
+        schema_name: schema_name
+        model_name: model_name
+        version: version
+        operation: null
+      properties:
+        catalog_name:
+          description: |
+            Catalog name for which temporary credentials are generated. 
+            Can be obtained from models/{full_name} (get model info) API.
+          type: string
+        schema_name:
+          description: |
+            Schema name for which temporary credentials are generated. 
+            Can be obtained from models/{full_name} (get model info) API.
+          type: string
+        model_name:
+          description: |
+            Model name for which temporary credentials are generated. 
+            Can be obtained from models/{full_name} (get model info) API.
+          type: string
+        version:
+          description: |
+            Model version for which temporary credentials are generated.
+          type: integer
+          format: int64
+        operation:
+          $ref: '#/components/schemas/ModelVersionOperation'
+      type: object
+      required:
+        - catalog_name
+        - schema_name
+        - model_name
+        - version
+        - operation
+    ModelVersionOperation:
+      enum:
+        - UNKNOWN_MODEL_VERSION_OPERATION
+        - READ_MODEL_VERSION
+        - READ_WRITE_MODEL_VERSION
+      type: string
+    GenerateTemporaryTableCredential:
+      example:
+        table_id: table_id
+        operation: null
+      properties:
+        table_id:
+          description: |
+            Table id for which temporary credentials are generated. 
+            Can be obtained from tables/{full_name} (get table info) API.
+          type: string
+        operation:
+          $ref: '#/components/schemas/TableOperation'
+      type: object
+      required:
+        - table_id
+        - operation
+    TableOperation:
+      enum:
+        - UNKNOWN_TABLE_OPERATION
+        - READ
+        - READ_WRITE
+      type: string
+    AwsCredentials:
+      properties:
+        access_key_id:
+          description: The access key ID that identifies the temporary credentials.
+          type: string
+        secret_access_key:
+          description: The secret access key that can be used to sign AWS API requests.
+          type: string
+        session_token:
+          description: The token that users must pass to AWS API to use the temporary
+            credentials.
+          type: string
+      type: object
+    AzureUserDelegationSAS:
+      properties:
+        sas_token:
+          description: Azure SAS Token
+          type: string
+      type: object
+    GcpOauthToken:
+      properties:
+        oauth_token:
+          description: Gcp Token
+          type: string
+      type: object
+    GenerateTemporaryVolumeCredential:
+      properties:
+        volume_id:
+          description: |
+            Volume id for which temporary credentials are generated. 
+            Can be obtained from volumes/{full_name} (get volume info) API.
+          type: string
+        operation:
+          $ref: '#/components/schemas/VolumeOperation'
+      type: object
+      required:
+        - volume_id
+        - operation
+    VolumeOperation:
+      enum:
+        - UNKNOWN_VOLUME_OPERATION
+        - READ_VOLUME
+        - WRITE_VOLUME
+      type: string
+    RegisteredModelInfo:
+      type: object
+      properties:
+        name:
+          description: The name of the registered model
+          type: string
+        catalog_name:
+          description: The name of the catalog where the schema and the registered model reside
+          type: string
+        schema_name:
+          description: The name of the schema where the registered model resides
+          type: string
+        storage_location:
+          description: The storage location on the cloud under which model version data files are stored
+          type: string
+        full_name:
+          description: The three-level (fully qualified) name of the registered model
+          type: string
+        comment:
+          description: The comment attached to the registered model
+          type: string
+        owner:
+          description: The identifier of the user who owns the registered model
+          type: string
+        created_at:
+          description: Creation timestamp of the registered model in milliseconds since the Unix epoch
+          type: integer
+          format: int64
+        created_by:
+          description: The identifier of the user who created the registered model
+          type: string
+        updated_at:
+          description: Last-update timestamp of the registered model in milliseconds since the Unix epoch
+          type: integer
+          format: int64
+        updated_by:
+          description: The identifier of the user who updated the registered model last time
+          type: string
+        id:
+          description: Unique identifier for the registered model.
+          type: string
+    ModelVersionInfo:
+      type: object
+      properties:
+        model_name:
+          description: The name of the parent registered model of the model version, relative to parent schema
+          type: string
+        catalog_name:
+          description: The name of the catalog containing the model version
+          type: string
+        schema_name:
+          description: The name of the schema containing the model version, relative to parent catalog
+          type: string
+        version:
+          description: Integer model version number, used to reference the model version in API requests.
+          type: integer
+          format: int64
+        source:
+          description: URI indicating the location of the source artifacts (files) for the model version
+          type: string
+        run_id:
+          description: The run id used by the ML package that generated the model.
+          type: string
+        status:
+          $ref: '#/components/schemas/ModelVersionStatus'
+        storage_location:
+          description: The storage location on the cloud under which model version data files are stored
+          type: string
+        comment:
+          description: The comment attached to the model version
+          type: string
+        created_at:
+          description: Time at which this model version was created, in epoch milliseconds.
+          type: integer
+          format: int64
+        created_by:
+          description: The identifier of the user who created the model version
+          type: string
+        updated_at:
+          description: Time at which this model version was last modified, in epoch milliseconds.
+          type: integer
+          format: int64
+        updated_by:
+          description: The identifier of the user who updated the model version last time
+          type: string
+        id:
+          description: Unique identifier for the model version.
+          type: string
+    ModelVersionStatus:
+      description: |
+        All possible model version statuses (MODEL_VERSION_STATUS_UNKNOWN, PENDING_REGISTRATION, FAILED_REGISTRATION, READY).
+        PENDING_REGISTRATION status indicates that the client has not completely written all model artifacts to external storage.
+        FAILED_REGISTRATION status indicates that the client has failed to write all model artifacts to external storage.
+        READY status indicates that the client has successfully written all model artifacts to external storage.
+      type: string
+      enum:
+        - MODEL_VERSION_STATUS_UNKNOWN
+        - PENDING_REGISTRATION
+        - FAILED_REGISTRATION
+        - READY
+    CreateRegisteredModel:
+      type: object
+      properties:
+        name:
+          description: Name of model, relative to parent schema.
+          type: string
+        catalog_name:
+          description: Name of parent catalog.
+          type: string
+        schema_name:
+          description: Name of parent schema relative to its parent catalog.
+          type: string
+        comment:
+          description: User-provided free-form text description.
+          type: string
+      required:
+        - name
+        - catalog_name
+        - schema_name
+    UpdateRegisteredModel:
+      type: object
+      properties:
+        comment:
+          description: User-provided free-form text description.
+          type: string
+        new_name:
+          description: New name for the model.
+          type: string
+    ListRegisteredModelsResponse:
+      type: object
+      properties:
+        registered_models:
+          description: An array of model information objects.
+          type: array
+          items:
+            "$ref": "#/components/schemas/RegisteredModelInfo"
+        next_page_token:
+          type: string
+          description: |
+            Opaque token to retrieve the next page of results. Absent if there are no more pages.
+            __page_token__ should be set to this value for the next request (for the next page of results).
+    CreateModelVersion:
+      type: object
+      properties:
+        model_name:
+          description: Name of registered model, relative to parent schema.
+          type: string
+        catalog_name:
+          description: Name of parent catalog.
+          type: string
+        schema_name:
+          description: Name of parent schema relative to its parent catalog.
+          type: string
+        source:
+          description: URI indicating the location of the source model artifacts.
+          type: string
+        run_id:
+          description: The run id used by the ML package that generated the model.
+          type: string
+        comment:
+          description: User-provided free-form text description.
+          type: string
+      required:
+        - model_name
+        - catalog_name
+        - schema_name
+        - source
+    UpdateModelVersion:
+      type: object
+      properties:
+        comment:
+          description: User-provided free-form text description.
+          type: string
+    ListModelVersionsResponse:
+      type: object
+      properties:
+        model_versions:
+          description: An array of model version information objects.
+          type: array
+          items:
+            "$ref": "#/components/schemas/ModelVersionInfo"
+        next_page_token:
+          type: string
+          description: |
+            Opaque token to retrieve the next page of results. Absent if there are no more pages.
+            __page_token__ should be set to this value for the next request (for the next page of results).
+    FinalizeModelVersion:
+      type: object
+      properties:
+        full_name:
+          description: The full name of the registered model to finalize.
+          type: string
+        version:
+          description: Version number of the version to finalize.
+          type: integer
+          format:  int64
+      required:
+        - full_name
+        - version
+    GenerateTemporaryPathCredential:
+      type: object
+      properties:
+        url:
+          description: The URL of the storage path for which temporary credentials need to be generated.
+          type: string
+        operation:
+          $ref: '#/components/schemas/PathOperation'
+      required:
+        - url
+        - operation
+    TemporaryCredentials:
+      type: object
+      properties:
+        aws_temp_credentials:
+          $ref: '#/components/schemas/AwsCredentials'
+        azure_user_delegation_sas:
+          $ref: '#/components/schemas/AzureUserDelegationSAS'
+        gcp_oauth_token:
+          $ref: '#/components/schemas/GcpOauthToken'
+        expiration_time:
+          description: |
+            Server time when the credential will expire, in epoch milliseconds.
+            The API client is advised to cache the credential given this expiration time.
+          type: integer
+          format: int64
+    PathOperation:
+      enum:
+        - UNKNOWN_PATH_OPERATION
+        - PATH_READ
+        - PATH_READ_WRITE
+        - PATH_CREATE_TABLE
+      type: string
+    PrincipalType:
+      type: string
+      enum:
+        - USER
+        - GROUP
+      description: The type of the principal.
+    SecurableType:
+      type: string
+      enum:
+        - metastore
+        - catalog
+        - schema
+        - table
+        - function
+        - volume
+        - registered_model
+      description: The type of the resource.
+    Privilege:
+      type: string
+      enum:
+        - CREATE CATALOG
+        - USE CATALOG
+        - CREATE SCHEMA
+        - USE SCHEMA
+        - CREATE TABLE
+        - SELECT
+        - MODIFY
+        - CREATE FUNCTION
+        - EXECUTE
+        - CREATE VOLUME
+        - READ VOLUME
+        - CREATE MODEL
+      description: The privilege to grant.
+    UpdatePermissions:
+      type: object
+      properties:
+        changes:
+          description: Array of permissions change objects.
+          type: array
+          items:
+            $ref: '#/components/schemas/PermissionsChange'
+      required:
+        - changes
+    PermissionsChange:
+      type: object
+      properties:
+        principal:
+          description: The principal whose privileges we are changing.
+          type: string
+        add:
+          description: The set of privileges to add.
+          type: array
+          items:
+            $ref: '#/components/schemas/Privilege'
+        remove:
+          description: The set of privileges to remove.
+          type: array
+          items:
+            $ref: '#/components/schemas/Privilege'
+      required:
+        - principal
+        - add
+        - remove
+    PermissionsList:
+      type: object
+      properties:
+        privilege_assignments:
+          description: The privileges assigned to each principal.
+          type: array
+          items:
+            $ref: '#/components/schemas/PrivilegeAssignment'
+      required:
+        - privilege_assignments
+    PrivilegeAssignment:
+      type: object
+      properties:
+        principal:
+          description: The principal (user email address or group name).
+          type: string
+        privileges:
+          description: The privileges assigned to the principal.
+          type: array
+          items:
+            $ref: '#/components/schemas/Privilege'
+      required:
+        - principal
+        - privileges
+    GetMetastoreSummaryResponse:
+      type: object
+      properties:
+        metastore_id:
+          description: Unique identifier of the metastore.
+          type: string
+info:
+  title: Unity Catalog API
+  version: '0.1'
