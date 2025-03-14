@@ -161,9 +161,7 @@ async def test_multiple_toolkits(uc_client, execution_mode):
 
 
 def test_toolkit_creation_errors_no_client(monkeypatch):
-    monkeypatch.setattr(
-        "unitycatalog.ai.core.utils.client_utils._is_databricks_client_available", lambda: False
-    )
+    monkeypatch.setattr("unitycatalog.ai.core.base._is_databricks_client_available", lambda: False)
 
     with pytest.raises(
         ValueError,

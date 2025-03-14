@@ -335,7 +335,7 @@ def test_generate_tool_call_messages_validate_default_client(
     mock_message_single_tool, dummy_history, monkeypatch
 ):
     monkeypatch.setattr(
-        "unitycatalog.ai.core.utils.client_utils._is_databricks_client_available",
+        "unitycatalog.ai.core.base._is_databricks_client_available",
         lambda: False,
     )
     client = None

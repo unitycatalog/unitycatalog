@@ -212,7 +212,7 @@ def test_generate_tool_call_messages_validate_default_client(
     client = None
     with (
         mock.patch(
-            "unitycatalog.ai.core.utils.client_utils._is_databricks_client_available",
+            "unitycatalog.ai.core.base._is_databricks_client_available",
             return_value=False,
         ),
         pytest.raises(ValueError, match="No client provided"),
@@ -310,7 +310,7 @@ def test_generate_tool_call_messages_with_tracing(
             return_value=None,
         ),
         mock.patch(
-            "unitycatalog.ai.core.utils.client_utils._is_databricks_client_available",
+            "unitycatalog.ai.core.base._is_databricks_client_available",
             return_value=False,
         ),
         patch_registry,
