@@ -1132,6 +1132,240 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/GetMetastoreSummaryResponse'
+  /credentials:
+    post:
+      tags:
+        - Credentials
+      operationId: createCredential
+      summary: Create a credential
+      description: Creates a new credential. The type of credential to be created is determined by the **purpose** field.
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateCredentialRequest"
+      responses:
+        200:
+          description: The new credential was successfully created.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CredentialInfo"
+    get:
+      tags:
+        - Credentials
+      operationId: listCredentials
+      summary: List credentials
+      description: |
+        Gets an array of credentials (as __CredentialInfo__ objects).
+        The array is limited to only those credentials the caller has permission to access.
+        If the caller is a metastore admin, retrieval of credentials is unrestricted.
+        There is no guarantee of a specific ordering of the elements in the array.
+      parameters:
+        - name: max_results
+          in: query
+          description: |
+            Maximum number of credentials to return.
+              - If not set, the default max page size is used.
+              - When set to a value greater than 0, the page length is the minimum of
+                this value and a server-configured value.
+              - When set to 0, the page length is set to a server-configured value
+                (recommended).
+              - When set to a value less than 0, an invalid parameter error is
+                returned.
+          schema:
+            type: integer
+            format: int32
+            maximum: 1000
+          required: false
+        - name: page_token
+          in: query
+          description: Opaque pagination token to go to next page based on previous query.
+          schema:
+            type: string
+          required: false
+        - name: purpose
+          in: query
+          description: Return only credentials for the specified purpose.
+          schema:
+            $ref: "#/components/schemas/CredentialPurpose"
+      responses:
+        200:
+          description: The credentials list was successfully retrieved.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ListCredentialsResponse"
+  /credentials/{name}:
+    parameters:
+      - name: name
+        in: path
+        description: Name of the credential.
+        required: true
+        schema:
+          type: string
+    get:
+      tags:
+        - Credentials
+      operationId: getCredential
+      summary: Get a credential
+      description: |
+        Gets a credential from the metastore.
+        The caller must be a metastore admin, the owner of the credential, or have some permission on the credential.
+      responses:
+        200:
+          description: The credential was successfully retrieved.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CredentialInfo"
+    patch:
+      tags:
+        - Credentials
+      operationId: updateCredential
+      summary: Update a credential
+      description: Updates a credential.
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateCredentialRequest"
+      responses:
+        200:
+          description: The credential was successfully updated.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CredentialInfo"
+    delete:
+      tags:
+        - Credentials
+      operationId: deleteCredential
+      summary: Delete a credential
+      description: Deletes a credential from the metastore. The caller must be a metastore admin or the owner of the credential.
+      parameters:
+        - name: force
+          in: query
+          description: Force deletion even if there are dependent external locations.
+          required: false
+          schema:
+            type: boolean
+      responses:
+        200:
+          description: The credential was successfully deleted.
+          content:
+            application/json:
+              schema: {}
+  /external-locations:
+    post:
+      tags:
+        - External Locations
+      summary: Create an external location
+      description: |
+        Creates a new external location entry in the metastore. The caller must be a metastore admin to be able to create external locations.
+      operationId: createExternalLocation
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateExternalLocation"
+      responses:
+        '200':
+          description: The new external location was successfully created.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ExternalLocationInfo"
+    get:
+      tags:
+        - External Locations
+      summary: List external locations
+      description: |
+        Gets an array of external locations (ExternalLocationInfo objects) from the metastore. The caller must be a metastore admin, the owner of the external location, or a user with some privilege on the external location.
+      operationId: listExternalLocations
+      parameters:
+        - name: max_results
+          in: query
+          description: |
+            Maximum number of external locations to return. If not set, all external locations are returned.
+          schema:
+            type: integer
+            format: int32
+            maximum: 1000
+          required: false
+        - name: page_token
+          in: query
+          description: Opaque pagination token to go to the next page.
+          schema:
+            type: string
+          required: false
+      responses:
+        '200':
+          description: The external location list was successfully retrieved.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ListExternalLocationsResponse"
+  /external-locations/{name}:
+    parameters:
+      - name: name
+        in: path
+        description: Name of the external location.
+        required: true
+        schema:
+          type: string
+    get:
+      tags:
+        - External Locations
+      summary: Get an external location
+      description: |
+        Gets an external location from the metastore. The caller must be a metastore admin, the owner of the external location, or a user with some privilege on the external location.
+      operationId: getExternalLocation
+      responses:
+        '200':
+          description: The external location was successfully retrieved.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ExternalLocationInfo"
+    delete:
+      tags:
+        - External Locations
+      summary: Delete an external location
+      description: Deletes the specified external location from the metastore. The caller must be a metastore admin or the owner of the external location.
+      operationId: deleteExternalLocation
+      parameters:
+        - name: force
+          in: query
+          description: Force deletion even if there are dependent external tables or mounts.
+          required: false
+          schema:
+            type: boolean
+      responses:
+        '200':
+          description: The external location was successfully deleted.
+    patch:
+      tags:
+        - External Locations
+      summary: Update an external location
+      description: |
+        Updates an external location in the metastore. The caller must be the owner of the external location or a metastore admin.
+      operationId: updateExternalLocation
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateExternalLocation"
+      responses:
+        '200':
+          description: The external location was successfully updated.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ExternalLocationInfo"
+
 components:
   schemas:
     SecurablePropertiesMap:
@@ -2303,6 +2537,194 @@ components:
         metastore_id:
           description: Unique identifier of the metastore.
           type: string
+    CredentialInfo:
+      type: object
+      properties:
+        name:
+          description: The credential name. The name must be unique within the metastore.
+          type: string
+        aws_iam_role:
+          $ref: '#/components/schemas/AwsIamRoleResponse'
+        comment:
+          description: Comment associated with the credential.
+          type: string
+        owner:
+          description: Username of current owner of credential.
+          type: string
+        full_name:
+          description: The full name of the credential.
+          type: string
+        id:
+          description: The unique identifier of the credential.
+          type: string
+        created_at:
+          description: Time at which this Credential was created, in epoch milliseconds.
+          type: integer
+          format: int64
+        created_by:
+          description: Username of credential creator.
+          type: string
+        updated_at:
+          description: Time at which this credential was last modified, in epoch milliseconds.
+          type: integer
+          format: int64
+        updated_by:
+          description: Username of user who last modified the credential.
+          type: string
+        purpose:
+          $ref: "#/components/schemas/CredentialPurpose"
+    CreateCredentialRequest:
+      type: object
+      required:
+        - name
+      properties:
+        name:
+          description: The credential name. The name must be unique within the metastore.
+          type: string
+        comment:
+          description: Comment associated with the credential.
+          type: string
+        aws_iam_role:
+          $ref: '#/components/schemas/AwsIamRoleRequest'
+        purpose:
+          $ref: "#/components/schemas/CredentialPurpose"
+    UpdateCredentialRequest:
+      type: object
+      properties:
+        comment:
+          description: Comment associated with the credential.
+          type: string
+        owner:
+          description: Username of current owner of credential.
+          type: string
+        aws_iam_role:
+          $ref: '#/components/schemas/AwsIamRoleRequest'
+        new_name:
+          description: New name for the credential.
+          type: string
+    AwsIamRoleArn:
+      description: The Amazon Resource Name (ARN) of the AWS IAM role used to vend temporary credentials.
+      type: string
+    AwsIamRoleRequest:
+      type: object
+      required:
+        - role_arn
+      properties:
+        role_arn:
+          $ref: "#/components/schemas/AwsIamRoleArn"
+    AwsIamRoleResponse:
+      type: object
+      required:
+        - role_arn
+      properties:
+        role_arn:
+          $ref: "#/components/schemas/AwsIamRoleArn"
+        unity_catalog_iam_arn:
+          description: The Amazon Resource Name (ARN) of the AWS IAM used by the Unity Catalog Server. This is the identity that is going to assume the AWS IAM role.
+          type: string
+        external_id:
+          description: The external ID used in role assumption to prevent confused deputy problem.
+          type: string
+    ListCredentialsResponse:
+      type: object
+      properties:
+        credentials:
+          description: An array of credential information objects.
+          type: array
+          items:
+            $ref: '#/components/schemas/CredentialInfo'
+        next_page_token:
+          type: string
+          description: |
+            Opaque token to retrieve the next page of results. Absent if there are no more pages.
+            __page_token__ should be set to this value for the next request (for the next page of results).
+    CredentialPurpose:
+      type: string
+      enum:
+        - STORAGE
+    ExternalLocationInfo:
+      type: object
+      properties:
+        name:
+          description: Name of the external location.
+          type: string
+        url:
+          description: Path URL of the external location.
+          type: string
+        credential_name:
+          description: Name of the storage credential used with this location.
+          type: string
+        comment:
+          description: User-provided free-form text description.
+          type: string
+        owner:
+          description: The owner of the external location.
+          type: string
+        credential_id:
+          description: Unique ID of the location's storage credential.
+          type: string
+        created_at:
+          description: Time at which this external location was created, in epoch milliseconds.
+          type: integer
+          format: int64
+        created_by:
+          description: Username of external location creator.
+          type: string
+        updated_at:
+          description: Time at which external location this was last modified, in epoch milliseconds.
+          type: integer
+          format: int64
+        updated_by:
+          description: Username of user who last modified the external location.
+          type: string
+    CreateExternalLocation:
+      type: object
+      required:
+        - name
+        - url
+        - credential_name
+      properties:
+        name:
+          description: Name of the external location.
+          type: string
+        url:
+          description: Path URL of the external location.
+          type: string
+        credential_name:
+          description: Name of the storage credential used with this location.
+          type: string
+        comment:
+          description: User-provided free-form text description.
+          type: string
+    UpdateExternalLocation:
+      type: object
+      properties:
+        url:
+          description: Path URL of the external location.
+          type: string
+        credential_name:
+          description: Name of the storage credential used with this location.
+          type: string
+        comment:
+          description: User-provided free-form text description.
+          type: string
+        owner:
+          description: The owner of the external location.
+          type: string
+        new_name:
+          description: New name for the external location.
+          type: string
+    ListExternalLocationsResponse:
+      type: object
+      properties:
+        external_locations:
+          description: An array of external locations.
+          type: array
+          items:
+            $ref: '#/components/schemas/ExternalLocationInfo'
+        next_page_token:
+          type: string
+          description: Opaque token to retrieve the next page of results. Absent if there are no more pages. __page_token__ should be set to this value for the next request (for the next page of results).
 info:
   title: Unity Catalog API
   version: '0.1'

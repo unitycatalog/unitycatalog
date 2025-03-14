@@ -12,6 +12,16 @@ All URIs are relative to *http://localhost:8080/api/2.1/unity-catalog*
 *CatalogsApi* | [**getCatalog**](Apis/CatalogsApi.md#getcatalog) | **GET** /catalogs/{name} | Get a catalog |
 *CatalogsApi* | [**listCatalogs**](Apis/CatalogsApi.md#listcatalogs) | **GET** /catalogs | List catalogs |
 *CatalogsApi* | [**updateCatalog**](Apis/CatalogsApi.md#updatecatalog) | **PATCH** /catalogs/{name} | Update a catalog |
+| *CredentialsApi* | [**createCredential**](Apis/CredentialsApi.md#createcredential) | **POST** /credentials | Create a credential |
+*CredentialsApi* | [**deleteCredential**](Apis/CredentialsApi.md#deletecredential) | **DELETE** /credentials/{name} | Delete a credential |
+*CredentialsApi* | [**getCredential**](Apis/CredentialsApi.md#getcredential) | **GET** /credentials/{name} | Get a credential |
+*CredentialsApi* | [**listCredentials**](Apis/CredentialsApi.md#listcredentials) | **GET** /credentials | List credentials |
+*CredentialsApi* | [**updateCredential**](Apis/CredentialsApi.md#updatecredential) | **PATCH** /credentials/{name} | Update a credential |
+| *ExternalLocationsApi* | [**createExternalLocation**](Apis/ExternalLocationsApi.md#createexternallocation) | **POST** /external-locations | Create an external location |
+*ExternalLocationsApi* | [**deleteExternalLocation**](Apis/ExternalLocationsApi.md#deleteexternallocation) | **DELETE** /external-locations/{name} | Delete an external location |
+*ExternalLocationsApi* | [**getExternalLocation**](Apis/ExternalLocationsApi.md#getexternallocation) | **GET** /external-locations/{name} | Get an external location |
+*ExternalLocationsApi* | [**listExternalLocations**](Apis/ExternalLocationsApi.md#listexternallocations) | **GET** /external-locations | List external locations |
+*ExternalLocationsApi* | [**updateExternalLocation**](Apis/ExternalLocationsApi.md#updateexternallocation) | **PATCH** /external-locations/{name} | Update an external location |
 | *FunctionsApi* | [**createFunction**](Apis/FunctionsApi.md#createfunction) | **POST** /functions | Create a function. WARNING: This API is experimental and will change in future versions.  |
 *FunctionsApi* | [**deleteFunction**](Apis/FunctionsApi.md#deletefunction) | **DELETE** /functions/{name} | Delete a function |
 *FunctionsApi* | [**getFunction**](Apis/FunctionsApi.md#getfunction) | **GET** /functions/{name} | Get a function |
@@ -54,11 +64,15 @@ All URIs are relative to *http://localhost:8080/api/2.1/unity-catalog*
 ## Documentation for Models
 
  - [AwsCredentials](./Models/AwsCredentials.md)
+ - [AwsIamRoleRequest](./Models/AwsIamRoleRequest.md)
+ - [AwsIamRoleResponse](./Models/AwsIamRoleResponse.md)
  - [AzureUserDelegationSAS](./Models/AzureUserDelegationSAS.md)
  - [CatalogInfo](./Models/CatalogInfo.md)
  - [ColumnInfo](./Models/ColumnInfo.md)
  - [ColumnTypeName](./Models/ColumnTypeName.md)
  - [CreateCatalog](./Models/CreateCatalog.md)
+ - [CreateCredentialRequest](./Models/CreateCredentialRequest.md)
+ - [CreateExternalLocation](./Models/CreateExternalLocation.md)
  - [CreateFunction](./Models/CreateFunction.md)
  - [CreateFunctionRequest](./Models/CreateFunctionRequest.md)
  - [CreateModelVersion](./Models/CreateModelVersion.md)
@@ -66,9 +80,12 @@ All URIs are relative to *http://localhost:8080/api/2.1/unity-catalog*
  - [CreateSchema](./Models/CreateSchema.md)
  - [CreateTable](./Models/CreateTable.md)
  - [CreateVolumeRequestContent](./Models/CreateVolumeRequestContent.md)
+ - [CredentialInfo](./Models/CredentialInfo.md)
+ - [CredentialPurpose](./Models/CredentialPurpose.md)
  - [DataSourceFormat](./Models/DataSourceFormat.md)
  - [Dependency](./Models/Dependency.md)
  - [DependencyList](./Models/DependencyList.md)
+ - [ExternalLocationInfo](./Models/ExternalLocationInfo.md)
  - [FinalizeModelVersion](./Models/FinalizeModelVersion.md)
  - [FunctionDependency](./Models/FunctionDependency.md)
  - [FunctionInfo](./Models/FunctionInfo.md)
@@ -83,6 +100,8 @@ All URIs are relative to *http://localhost:8080/api/2.1/unity-catalog*
  - [GenerateTemporaryVolumeCredential](./Models/GenerateTemporaryVolumeCredential.md)
  - [GetMetastoreSummaryResponse](./Models/GetMetastoreSummaryResponse.md)
  - [ListCatalogsResponse](./Models/ListCatalogsResponse.md)
+ - [ListCredentialsResponse](./Models/ListCredentialsResponse.md)
+ - [ListExternalLocationsResponse](./Models/ListExternalLocationsResponse.md)
  - [ListFunctionsResponse](./Models/ListFunctionsResponse.md)
  - [ListModelVersionsResponse](./Models/ListModelVersionsResponse.md)
  - [ListRegisteredModelsResponse](./Models/ListRegisteredModelsResponse.md)
@@ -107,6 +126,8 @@ All URIs are relative to *http://localhost:8080/api/2.1/unity-catalog*
  - [TableType](./Models/TableType.md)
  - [TemporaryCredentials](./Models/TemporaryCredentials.md)
  - [UpdateCatalog](./Models/UpdateCatalog.md)
+ - [UpdateCredentialRequest](./Models/UpdateCredentialRequest.md)
+ - [UpdateExternalLocation](./Models/UpdateExternalLocation.md)
  - [UpdateModelVersion](./Models/UpdateModelVersion.md)
  - [UpdatePermissions](./Models/UpdatePermissions.md)
  - [UpdateRegisteredModel](./Models/UpdateRegisteredModel.md)
