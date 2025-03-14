@@ -1,6 +1,6 @@
 [project]
 name = "unitycatalog-langchain"
-version = "0.1.1"
+version = "0.2.0"
 description = "Support for Unity Catalog functions as LangChain tools"
 authors = [
     { name="Serena Ruan", email="serena.ruan@databricks.com" }
