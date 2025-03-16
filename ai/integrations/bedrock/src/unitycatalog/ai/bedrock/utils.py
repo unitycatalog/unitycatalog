@@ -6,20 +6,20 @@ logger = logging.getLogger(__name__)
 
 def extract_response_details(response: Dict[str, Any]) -> Dict[str, Any]:
     """Extracts returnControl or chunks from Bedrock response."""
-    chunks = []  # Allows for lazy one-time concatenation of strings
-    tool_calls = []  # Simplifies tool identification collections
-    
+    chunks = []
+    tool_calls = []
+
     for event in response.get("completion", []):
         try:
             chunk = event.get("chunk", {}).get("bytes", b"").decode("utf-8")
             if chunk:
                 chunks.append(chunk)
-                
+
             if "returnControl" in event:
                 tool_calls.extend(extract_tool_calls_from_event(event))
         except Exception as e:
             logger.error(f"Error processing event: {e}")
-    
+
     return {"chunks": "".join(chunks), "tool_calls": tool_calls}
 
 
@@ -28,7 +28,7 @@ def extract_tool_calls_from_event(event: Dict[str, Any]) -> List[Dict[str, Any]]
     control_data = event.get("returnControl")
     if not control_data:  # We can short-circuit here
         return []
-    
+
     return [
         {
             "action_group": func_input["actionGroup"],
@@ -37,7 +37,7 @@ def extract_tool_calls_from_event(event: Dict[str, Any]) -> List[Dict[str, Any]]
             "parameters": {p["name"]: p["value"] for p in func_input.get("parameters", [])},
             "invocation_id": control_data["invocationId"],
         }
-        for invocation in control_data.get("invocationInputs", []) 
+        for invocation in control_data.get("invocationInputs", [])
         if (func_input := invocation.get("functionInvocationInput"))
     ]
 
@@ -62,9 +62,9 @@ def execute_tool_calls(
     for tool_call in tool_calls:
         try:
             full_function_name = f"{catalog_name}.{schema_name}.{function_name}"
-            #logger.info(f"Full Function Name: {full_function_name}")
-            #function_info = client.get_function(full_function_name)
-            #logger.info(f"Retrieved function info: {function_info}")
+            # logger.info(f"Full Function Name: {full_function_name}")
+            # function_info = client.get_function(full_function_name)
+            # logger.info(f"Retrieved function info: {function_info}")
 
             result = client.execute_function(full_function_name, tool_call["parameters"])
             results.append(
