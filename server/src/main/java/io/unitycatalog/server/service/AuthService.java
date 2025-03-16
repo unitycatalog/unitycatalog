@@ -90,7 +90,6 @@ public class AuthService {
    * the incoming identity (email, subject) matches a specific user in the system, once a user
    * management system is in place.
    *
-   * @param request The token exchange parameters
    * @return The token exchange response
    */
   @Post("/tokens")
