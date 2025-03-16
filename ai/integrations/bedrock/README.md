@@ -6,7 +6,7 @@ This project integrates Unity Catalog functions with AWS Bedrock. It provides to
 
 To install the package, run:
 ```bash
-pip install -e .
+pip install unitycatalog-bedrock
 ```
 
 ## Setup
