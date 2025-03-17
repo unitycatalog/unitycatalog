@@ -85,6 +85,48 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  '/auth/tokens': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Get a token using an OAuth2 flow
+     * @description Exchanges credentials for a token using the OAuth2 token exchange.
+     *
+     */
+    post: operations['getToken'];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/auth/logout': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Revoke access token cookie
+     * @description Revokes the access token cookie.
+     *
+     */
+    post: operations['logout'];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -175,6 +217,116 @@ export interface components {
       value?: string;
       /** @description If the email is primary. */
       primary?: boolean;
+    };
+    /**
+     * @description Grant type identifier, from RFC 8693 Section 2.
+     *     See https://datatracker.ietf.org/doc/html/rfc8693#section-2
+     *
+     * @enum {string}
+     */
+    GrantType: GrantType;
+    /**
+     * @description Token type identifier, from RFC 8693 Section 3.
+     *     See https://datatracker.ietf.org/doc/html/rfc8693#section-3
+     *
+     * @enum {string}
+     */
+    TokenType: TokenType;
+    /**
+     * @description Access token type identifier, from RFC 8693 Section 2.
+     *     See https://datatracker.ietf.org/doc/html/rfc8693#section-2
+     *
+     * @enum {string}
+     */
+    AccessTokenType: AccessTokenType;
+    /**
+     * @description Authorization endpoint response type, from RFC 6749 Section 3.
+     *     See https://datatracker.ietf.org/doc/html/rfc6749#section-3
+     *
+     * @enum {string}
+     */
+    ResponseType: ResponseType;
+    /**
+     * @description Authorization grant type, from RFC 6749 Section 4.
+     *     See https://datatracker.ietf.org/doc/html/rfc6749#section-4
+     *
+     * @enum {string}
+     */
+    AuthorizationGrantType: AuthorizationGrantType;
+    /**
+     * @description The /auth/tokens endpoint supports an extension type.
+     *     If ext=cookie is specified in the request query, the server will store a token in the user agent's cookie.
+     *
+     * @enum {string}
+     */
+    TokenEndpointExtensionType: TokenEndpointExtensionType;
+    /** @description OAuth2 token exchange request form.
+     *     See https://datatracker.ietf.org/doc/html/rfc8693
+     *      */
+    OAuthTokenExchangeForm: {
+      grant_type: components['schemas']['GrantType'];
+      /** @description The authorization scope for the token exchange request. */
+      scope?: string;
+      requested_token_type?: components['schemas']['TokenType'];
+      /** @description The security token that represents the identity of the party on behalf of whom the request is being made. */
+      subject_token: string;
+      subject_token_type: components['schemas']['TokenType'];
+      /** @description The security token that represents the identity of the acting party. */
+      actor_token?: string;
+      actor_token_type?: components['schemas']['TokenType'];
+    };
+    /** @description OAuth2 token exchange response.
+     *     See https://datatracker.ietf.org/doc/html/rfc8693
+     *      */
+    OAuthTokenExchangeInfo: {
+      /** @description The access token for the token exchange request. */
+      access_token: string;
+      issued_token_type: components['schemas']['TokenType'];
+      token_type: components['schemas']['AccessTokenType'];
+      /**
+       * Format: int64
+       * @description The lifetime of the access token in seconds for the token exchange.
+       */
+      expires_in?: number;
+      /** @description The authorization scope for the token exchange. */
+      scope?: string;
+      /** @description The refresh token for the token exchange. */
+      refresh_token?: string;
+    };
+    /** @description OAuth2 authorization request form.
+     *     See https://datatracker.ietf.org/doc/html/rfc6749
+     *      */
+    OAuthAuthorizationForm: {
+      response_type: components['schemas']['ResponseType'];
+      /** @description The client identifier that represents the registration information provided by the client */
+      client_id: string;
+      /** @description The URI that authorization server directs the resource owner's user-agent back to the client. */
+      redirect_uri?: string;
+      /** @description The scope of the access request. */
+      scope?: string;
+      /** @description An opaque value used by the client to maintain state between the request and callback. */
+      state?: string;
+    };
+    /** @description OAuth2 authorization request.
+     *     See https://datatracker.ietf.org/doc/html/rfc6749
+     *      */
+    OAuthAuthorizationInfo: {
+      /** @description The authorization code generated by the authorization server. */
+      code: string;
+      /** @description An opaque value used by the client to maintain state between the request and callback. */
+      state?: string;
+    };
+    /** @description OAuth2 access token request.
+     *     See https://datatracker.ietf.org/doc/html/rfc6749
+     *      */
+    OAuthAccessTokenForm: {
+      grant_type: components['schemas']['AuthorizationGrantType'];
+      /** @description The authorization code received from the authorization server. */
+      code: string;
+      /** @description The URI that authorization server directs the resource owner's user-agent back to the client. */
+      redirect_uri?: string;
+      /** @description The client identifier that represents the registration information provided by the client */
+      client_id?: string;
     };
   };
   responses: never;
@@ -329,8 +481,92 @@ export interface operations {
       };
     };
   };
+  getToken: {
+    parameters: {
+      query?: {
+        /** @description Specifies the index of the first result. First item is number 1. */
+        ext?: components['schemas']['TokenEndpointExtensionType'];
+      };
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        'application/x-www-form-urlencoded': {
+          grant_type: components['schemas']['GrantType'];
+          /** @description The authorization scope for the token exchange request. */
+          scope?: string;
+          requested_token_type?: components['schemas']['TokenType'];
+          /** @description The security token that represents the identity of the party on behalf of whom the request is being made. */
+          subject_token: string;
+          subject_token_type: components['schemas']['TokenType'];
+          /** @description The security token that represents the identity of the acting party. */
+          actor_token?: string;
+          actor_token_type?: components['schemas']['TokenType'];
+        };
+      };
+    };
+    responses: {
+      /** @description The token exchange was successfully granted. */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['OAuthTokenExchangeInfo'];
+        };
+      };
+    };
+  };
+  logout: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: {
+      content: {
+        'application/json': Record<string, never> | null;
+      };
+    };
+    responses: {
+      /** @description The access token will be revoked. */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
 }
 export enum UserState {
   ENABLED = 'ENABLED',
   DISABLED = 'DISABLED',
+}
+export enum GrantType {
+  TOKEN_EXCHANGE = 'urn:ietf:params:oauth:grant-type:token-exchange',
+}
+export enum TokenType {
+  ACCESS_TOKEN = 'urn:ietf:params:oauth:token-type:access_token',
+  REFRESH_TOKEN = 'urn:ietf:params:oauth:token-type:refresh_token',
+  ID_TOKEN = 'urn:ietf:params:oauth:token-type:id_token',
+  SAML1 = 'urn:ietf:params:oauth:token-type:saml1',
+  SAML2 = 'urn:ietf:params:oauth:token-type:saml2',
+  JWT = 'urn:ietf:params:oauth:token-type:jwt',
+}
+export enum AccessTokenType {
+  Bearer = 'Bearer',
+}
+export enum ResponseType {
+  code = 'code',
+  token = 'token',
+}
+export enum AuthorizationGrantType {
+  authorization_code = 'authorization_code',
+}
+export enum TokenEndpointExtensionType {
+  cookie = 'cookie',
 }

@@ -34,6 +34,7 @@ export default function FunctionsList({
           `/functions/${record.catalog_name}/${record.schema_name}/${record.name}`,
         )
       }
+      rowKey={(record) => `function-${record.function_id}`}
       columns={[
         {
           title: 'Name',

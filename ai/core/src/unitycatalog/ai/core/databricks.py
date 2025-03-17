@@ -3,10 +3,10 @@ import functools
 import json
 import logging
 import re
-import threading
 import time
 from dataclasses import dataclass
 from decimal import Decimal
+from enum import Enum
 from io import StringIO
 from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional
 
@@ -17,12 +17,16 @@ from unitycatalog.ai.core.envs.databricks_env_vars import (
     UCAI_DATABRICKS_SERVERLESS_EXECUTION_RESULT_ROW_LIMIT,
     UCAI_DATABRICKS_SESSION_RETRY_MAX_ATTEMPTS,
 )
+from unitycatalog.ai.core.executor.local_subprocess import run_in_sandbox_subprocess
 from unitycatalog.ai.core.paged_list import PagedList
 from unitycatalog.ai.core.types import Variant
 from unitycatalog.ai.core.utils.callable_utils import (
+    dynamically_construct_python_function,
     generate_sql_function_body,
     generate_wrapped_sql_function_body,
+    get_callable_definition,
 )
+from unitycatalog.ai.core.utils.execution_utils import load_function_from_string
 from unitycatalog.ai.core.utils.function_processing_utils import process_function_parameter_defaults
 from unitycatalog.ai.core.utils.type_utils import (
     column_type_to_python_type,
@@ -47,18 +51,19 @@ DATABRICKS_CONNECT_SUPPORTED_VERSION = "15.1.0"
 DATABRICKS_CONNECT_IMPORT_ERROR_MESSAGE = (
     "Could not import databricks-connect python package. "
     "To interact with UC functions using serverless compute, install the package with "
-    f"`pip install databricks-connect=={DATABRICKS_CONNECT_SUPPORTED_VERSION}`. "
+    f"`pip install databricks-connect>={DATABRICKS_CONNECT_SUPPORTED_VERSION}`. "
     "Please note this requires python>=3.10."
 )
 DATABRICKS_CONNECT_VERSION_NOT_SUPPORTED_ERROR_MESSAGE = (
     "Serverless is not supported by the "
     "current databricks-connect version, install with "
-    f"`pip install databricks-connect=={DATABRICKS_CONNECT_SUPPORTED_VERSION}` "
+    f"`pip install databricks-connect>={DATABRICKS_CONNECT_SUPPORTED_VERSION}` "
     "to use serverless compute in Databricks. Please note this requires python>=3.10."
 )
 SESSION_RETRY_BASE_DELAY = 1
-SESSION_RETRY_MAX_DELAY = 32
-SESSION_EXCEPTION_MESSAGE = "session_id is no longer usable"
+SESSION_RETRY_MAX_DELAY = 4
+SESSION_EXPIRED_MESSAGE = "session_id is no longer usable"
+SESSION_CHANGED_MESSAGE = "The existing Spark server driver has restarted."
 WAREHOUSE_DEFINED_NOT_SUPPORTED_MESSAGE = (
     "The argument `warehouse_id` was specified, which is no longer supported with "
     "the `DatabricksFunctionClient`. Please omit this argument as it is no longer used. "
@@ -70,8 +75,35 @@ WAREHOUSE_DEFINED_NOT_SUPPORTED_MESSAGE = (
 
 _logger = logging.getLogger(__name__)
 
-_classic_workspace_warning_emitted = False
-_classic_workspace_thread_lock = threading.Lock()
+
+class ExecutionMode(str, Enum):
+    SERVERLESS = "serverless"
+    LOCAL = "local"
+
+    def __str__(self) -> str:
+        return self.value
+
+    @classmethod
+    def validate(cls, value: str) -> "ExecutionMode":
+        try:
+            if value == cls.LOCAL.value:
+                _logger.warning(
+                    "You are running in 'local' execution mode, which is intended only for development and debugging. "
+                    "For production, please switch to 'serverless' execution mode. Before deploying, create a client "
+                    "using 'serverless' mode to validate your code's behavior and ensure full compatibility."
+                )
+            return cls(value)
+        except ValueError as e:
+            raise ValueError(
+                f"Execution mode '{value}' is not valid. "
+                f"Allowed values are: {', '.join(mode.value for mode in cls)}"
+            ) from e
+
+
+class SessionExpirationException(Exception):
+    """Exception raised when a session expiration error is detected."""
+
+    pass
 
 
 def get_default_databricks_workspace_client(profile=None) -> "WorkspaceClient":
@@ -94,34 +126,6 @@ def _validate_databricks_connect_available() -> bool:
             raise Exception(DATABRICKS_CONNECT_VERSION_NOT_SUPPORTED_ERROR_MESSAGE)
     except ImportError as e:
         raise Exception(DATABRICKS_CONNECT_IMPORT_ERROR_MESSAGE) from e
-
-
-def _try_get_spark_session_in_dbr() -> Any:
-    global _classic_workspace_warning_emitted
-    try:
-        # if in Databricks, fetch the current active session
-        from databricks.sdk.runtime import spark
-        from pyspark.sql.connect.session import SparkSession
-
-        with _classic_workspace_thread_lock:
-            if (
-                spark is not None
-                and not isinstance(spark, SparkSession)
-                and not _classic_workspace_warning_emitted
-            ):
-                _logger.warning(
-                    f"Current SparkSession {spark} in the active environment is not a "
-                    "pyspark.sql.connect.session.SparkSession instance. Classic runtime does not support "
-                    "all functionalities of the unitycatalog-ai framework. To use the full "
-                    "capabilities of unitycatalog-ai, execute your code using a client that is attached to "
-                    "a Serverless runtime cluster. To learn more about serverless, see the guide at: "
-                    "https://docs.databricks.com/en/compute/serverless/index.html#connect-to-serverless-compute "
-                    "for more details."
-                )
-                _classic_workspace_warning_emitted = True
-        return spark
-    except Exception:
-        return
 
 
 def _is_in_databricks_notebook_environment() -> bool:
@@ -174,44 +178,50 @@ def retry_on_session_expiration(func):
     """
     Decorator to retry a method upon session expiration errors with exponential backoff.
     """
-    max_attempts = int(UCAI_DATABRICKS_SESSION_RETRY_MAX_ATTEMPTS.get())
+    max_attempts = UCAI_DATABRICKS_SESSION_RETRY_MAX_ATTEMPTS.get()
 
     @functools.wraps(func)
     def wrapper(self, *args, **kwargs):
         for attempt in range(1, max_attempts + 1):
             try:
                 result = func(self, *args, **kwargs)
-                # for non-session related error in the result, we should directly return the result
                 if (
                     isinstance(result, FunctionExecutionResult)
                     and result.error
-                    and SESSION_EXCEPTION_MESSAGE in result.error
+                    and any(
+                        msg in result.error
+                        for msg in (SESSION_EXPIRED_MESSAGE, SESSION_CHANGED_MESSAGE)
+                    )
                 ):
-                    raise Exception(result.error)
+                    raise SessionExpirationException(result.error)
                 return result
-            except Exception as e:
-                error_message = str(e)
-                if SESSION_EXCEPTION_MESSAGE in error_message:
-                    if not self._is_default_client:
-                        refresh_message = f"Failed to execute {func.__name__} due to session expiration. Unable to automatically refresh session when using a custom client."
-                        raise RuntimeError(refresh_message) from e
+            except SessionExpirationException as e:
+                if not self._is_default_client:
+                    refresh_message = (
+                        f"Failed to execute {func.__name__} due to session expiration. "
+                        "Unable to automatically refresh session when using a custom client. "
+                        "Recreate the DatabricksFunctionClient with a new client to recreate "
+                        "the custom client session."
+                    )
+                    raise RuntimeError(refresh_message) from e
 
-                    if attempt < max_attempts:
-                        delay = min(
-                            SESSION_RETRY_BASE_DELAY * (2 ** (attempt - 1)),
-                            SESSION_RETRY_MAX_DELAY,
-                        )
-                        _logger.warning(
-                            f"Session expired. Attempt {attempt} of {max_attempts}. Refreshing session and retrying after {delay} seconds..."
-                        )
-                        self.refresh_client_and_session()
-                        time.sleep(delay)
-                        continue
-                    else:
-                        refresh_failure_message = f"Failed to execute {func.__name__} after {max_attempts} attempts due to session expiration."
-                        raise RuntimeError(refresh_failure_message) from e
+                if attempt < max_attempts:
+                    delay = min(
+                        SESSION_RETRY_BASE_DELAY * (2 ** (attempt - 1)), SESSION_RETRY_MAX_DELAY
+                    )
+                    _logger.warning(
+                        f"Session expired. Retrying attempt {attempt} of {max_attempts}. "
+                        f"Refreshing session and retrying after {delay} seconds..."
+                    )
+                    self.refresh_client_and_session()
+                    time.sleep(delay)
+                    continue
                 else:
-                    raise
+                    refresh_failure_message = (
+                        f"Failed to execute {func.__name__} after {max_attempts} attempts due to session expiration. "
+                        "Generate a new session_id by detaching and reattaching your compute."
+                    )
+                    raise RuntimeError(refresh_failure_message) from e
 
     return wrapper
 
@@ -226,6 +236,7 @@ class DatabricksFunctionClient(BaseFunctionClient):
         client: Optional["WorkspaceClient"] = None,
         *,
         profile: Optional[str] = None,
+        execution_mode: str = "serverless",
         **kwargs: Any,
     ) -> None:
         """
@@ -235,11 +246,14 @@ class DatabricksFunctionClient(BaseFunctionClient):
             client: The databricks workspace client. If it's None, a default databricks workspace client
                 is generated based on the configuration. Defaults to None.
             profile: The configuration profile to use for databricks connect. Defaults to None.
+            execution_mode: The execution mode of the client. Defaults to "serverless".
         """
         _warn_if_workspace_provided(**kwargs)
         self.client = client or get_default_databricks_workspace_client(profile=profile)
         self.profile = profile
-        self.spark = _try_get_spark_session_in_dbr()
+        self.execution_mode = ExecutionMode.validate(execution_mode)
+        self.spark = None
+        self.set_spark_session()
         self._is_default_client = client is None
         super().__init__()
 
@@ -250,20 +264,36 @@ class DatabricksFunctionClient(BaseFunctionClient):
             return not self.spark.is_stopped
         return self.spark.getActiveSession() is not None
 
-    def set_default_spark_session(self):
+    def set_spark_session(self):
+        """
+        Initialize the spark session with serverless compute if not already active.
+        """
         if not self._is_spark_session_active():
-            _validate_databricks_connect_available()
-            from databricks.connect.session import DatabricksSession as SparkSession
-
-            if self.profile:
-                builder = SparkSession.builder.profile(self.profile)
-            else:
-                builder = SparkSession.builder
-            self.spark = builder.serverless(True).getOrCreate()
+            self.initialize_spark_session()
 
     def stop_spark_session(self):
         if self._is_spark_session_active():
             self.spark.stop()
+
+    def initialize_spark_session(self):
+        """
+        Initialize the spark session with serverless compute.
+        This method is called when the spark session is not active.
+        """
+        _validate_databricks_connect_available()
+
+        from databricks.connect.session import DatabricksSession as SparkSession
+
+        if self.profile:
+            builder = SparkSession.builder.profile(self.profile).serverless(True)
+        elif self.client is not None:
+            config = self.client.config
+            config.as_dict().pop("cluster_id", None)
+            config.serverless_compute_id = "auto"  # Setting Serverless to true by adding "auto"
+            builder = SparkSession.builder.sdkConfig(config)
+        else:
+            builder = SparkSession.builder.serverless(True)
+        self.spark = builder.getOrCreate()
 
     def refresh_client_and_session(self):
         """
@@ -273,10 +303,9 @@ class DatabricksFunctionClient(BaseFunctionClient):
 
         _logger.info("Refreshing Databricks client and Spark session due to session expiration.")
         self.client = get_default_databricks_workspace_client(profile=self.profile)
-        if not _is_in_databricks_notebook_environment:
+        if not _is_in_databricks_notebook_environment():
             self.stop_spark_session()
-            self.set_default_spark_session()
-        self.spark = _try_get_spark_session_in_dbr()
+        self.initialize_spark_session()
 
     @retry_on_session_expiration
     @override
@@ -300,7 +329,7 @@ class DatabricksFunctionClient(BaseFunctionClient):
             FunctionInfo: The created function info.
         """
         if sql_function_body:
-            self.set_default_spark_session()
+            self.set_spark_session()
             # TODO: add timeout
             self.spark.sql(sql_function_body)
             created_function_info = self.get_function(extract_function_name(sql_function_body))
@@ -555,13 +584,18 @@ class DatabricksFunctionClient(BaseFunctionClient):
         Returns:
             FunctionInfo: The function info.
         """
+        from databricks.sdk.errors.platform import PermissionDenied
+
         full_func_name = FullFunctionName.validate_full_function_name(function_name)
         if "*" in full_func_name.function:
             raise ValueError(
                 "function name cannot include *, to get all functions in a catalog and schema, "
                 "please use list_functions API instead."
             )
-        return self.client.functions.get(function_name)
+        try:
+            return self.client.functions.get(function_name)
+        except PermissionDenied as e:
+            raise PermissionError(f"Permission denied: {e}") from e
 
     @override
     def list_functions(
@@ -677,14 +711,21 @@ class DatabricksFunctionClient(BaseFunctionClient):
         self, function_info: "FunctionInfo", parameters: Dict[str, Any], **kwargs: Any
     ) -> Any:
         check_function_info(function_info)
-        return self._execute_uc_functions_with_serverless(function_info, parameters)
+        if self.execution_mode == ExecutionMode.SERVERLESS:
+            return self._execute_uc_functions_with_serverless(function_info, parameters)
+        elif self.execution_mode == ExecutionMode.LOCAL:
+            return self._execute_uc_functions_with_local(function_info, parameters)
+        else:
+            raise NotImplementedError(
+                f"Execution mode {self.execution_mode} is not supported for function execution."
+            )
 
     @retry_on_session_expiration
     def _execute_uc_functions_with_serverless(
         self, function_info: "FunctionInfo", parameters: Dict[str, Any]
     ) -> FunctionExecutionResult:
         _logger.info("Using databricks connect to execute functions with serverless compute.")
-        self.set_default_spark_session()
+        self.set_spark_session()
 
         parameters = process_function_parameter_defaults(function_info, parameters)
 
@@ -694,7 +735,7 @@ class DatabricksFunctionClient(BaseFunctionClient):
             if is_scalar(function_info):
                 return FunctionExecutionResult(format="SCALAR", value=str(result.collect()[0][0]))
             else:
-                row_limit = int(UCAI_DATABRICKS_SERVERLESS_EXECUTION_RESULT_ROW_LIMIT.get())
+                row_limit = UCAI_DATABRICKS_SERVERLESS_EXECUTION_RESULT_ROW_LIMIT.get()
                 truncated = result.count() > row_limit
                 pdf = result.limit(row_limit).toPandas()
                 csv_buffer = StringIO()
@@ -710,6 +751,23 @@ class DatabricksFunctionClient(BaseFunctionClient):
             )
             error = f"Failed to execute function with command `{sql_command_msg}`\nError: {e}"
             return FunctionExecutionResult(error=error)
+
+    def _execute_uc_functions_with_local(
+        self, function_info: "FunctionInfo", parameters: Dict[str, Any]
+    ) -> FunctionExecutionResult:
+        if not is_scalar(function_info):
+            raise ValueError(
+                "Local sandbox execution is only supported for scalar Python functions. "
+                "Use 'serverless' execution mode for table functions."
+            )
+        _logger.info("Using local sandbox to execute functions.")
+
+        parameters = process_function_parameter_defaults(function_info, parameters)
+        python_def = get_callable_definition(function_info)
+        succeeded, result = run_in_sandbox_subprocess(python_def, parameters)
+        if not succeeded:
+            return FunctionExecutionResult(error=result)
+        return FunctionExecutionResult(format="SCALAR", value=result)
 
     @override
     def delete_function(
@@ -741,6 +799,49 @@ class DatabricksFunctionClient(BaseFunctionClient):
     def from_dict(cls, config: Dict[str, Any]):
         accept_keys = ["profile"]
         return cls(**{k: v for k, v in config.items() if k in accept_keys})
+
+    @override
+    def get_function_source(self, function_name: str) -> str:
+        """
+        Returns the Python callable definition as a string for an EXTERNAL Python function that
+        is stored within Unity Catalog. This function can only parse and extract the full callable
+        definition for Python functions and cannot be used on SQL or TABLE functions.
+
+        Args:
+            function_name: The name of the function to retrieve the Python callable definition for.
+
+        Returns:
+            str: The Python callable definition as a string.
+        """
+
+        function_info = self.get_function(function_name)
+        if function_info.routine_body.value != "EXTERNAL":
+            raise ValueError(
+                f"Function {function_name} is not an EXTERNAL Python function and cannot be retrieved."
+            )
+        return dynamically_construct_python_function(function_info)
+
+    @override
+    def get_function_as_callable(
+        self, function_name: str, register_function: bool = True, namespace: dict[str, Any] = None
+    ) -> Callable[..., Any]:
+        """
+        Returns the Python callable for an EXTERNAL Python function that is stored within Unity Catalog.
+        This function can only parse and extract the full callable definition for Python functions and
+        cannot be used on SQL or TABLE functions.
+
+        Args:
+            function_name: The name of the function to retrieve the Python callable for.
+            register_function: Whether to register the function in the namespace. Defaults to True.
+            namespace: The namespace to register the function in. Defaults to None (global)
+
+        Returns:
+            Callable[..., Any]: The Python callable for the function.
+        """
+        source = self.get_function_source(function_name)
+        return load_function_from_string(
+            func_def_str=source, register_function=register_function, namespace=namespace
+        )
 
 
 def is_scalar(function: "FunctionInfo") -> bool:

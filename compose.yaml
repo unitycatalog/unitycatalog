@@ -3,9 +3,7 @@ name: unitycatalog
 services:
 
   server:
-    build:
-      context: .
-      dockerfile: Dockerfile
+    image: unitycatalog/unitycatalog:latest
     ports:
       - "8080:8080"
     volumes:
@@ -23,7 +21,7 @@ services:
       - "3000:3000"
     depends_on:
       - server
-      
+
 volumes:
   # Persist docker volume across container restarts
   unitycatalog_data:

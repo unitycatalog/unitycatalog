@@ -21,9 +21,19 @@ from unitycatalog.ai.test_utils.function_utils import (
 
 @pytest.fixture
 def client() -> DatabricksFunctionClient:
-    with mock.patch(
-        "unitycatalog.ai.core.databricks.get_default_databricks_workspace_client",
-        return_value=mock.Mock(),
+    with (
+        mock.patch(
+            "unitycatalog.ai.core.databricks.get_default_databricks_workspace_client",
+            return_value=mock.Mock(),
+        ),
+        mock.patch(
+            "unitycatalog.ai.core.databricks._validate_databricks_connect_available",
+            return_value=True,
+        ),
+        mock.patch(
+            "unitycatalog.ai.core.databricks.DatabricksFunctionClient.initialize_spark_session",
+            return_value=None,
+        ),
     ):
         return DatabricksFunctionClient()
 

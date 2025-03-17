@@ -15,7 +15,7 @@ from packaging import version
 
 from unitycatalog.ai.autogen.toolkit import UCFunctionToolkit
 from unitycatalog.ai.core.base import FunctionExecutionResult
-from unitycatalog.ai.core.client import UnitycatalogFunctionClient
+from unitycatalog.ai.core.client import ExecutionMode, UnitycatalogFunctionClient
 from unitycatalog.ai.test_utils.function_utils import (
     RETRIEVER_OUTPUT_CSV,
     RETRIEVER_OUTPUT_SCALAR,
@@ -101,8 +101,10 @@ def generate_function_info(
     )
 
 
+@pytest.mark.parametrize("execution_mode", ["local", "sandbox"])
 @pytest.mark.asyncio
-async def test_toolkit_e2e(uc_client):
+async def test_toolkit_e2e(uc_client, execution_mode):
+    uc_client.execution_mode = ExecutionMode(execution_mode)
     with create_function_and_cleanup_oss(uc_client, schema=SCHEMA) as func_obj:
         toolkit = UCFunctionToolkit(
             function_names=[func_obj.full_function_name],
@@ -115,11 +117,10 @@ async def test_toolkit_e2e(uc_client):
         assert tool.description == (func_obj.comment or "")
         assert tool.name == func_obj.tool_name
 
-        input_args = {"code": "print(1)"}
+        input_args = {"a": 1, "b": 2}
         result_str = await tool.run_json(input_args, CancellationToken())
         result = json.loads(result_str)["value"]
-
-        assert result == "1\n"
+        assert result == "3"
 
         toolkit = UCFunctionToolkit(
             function_names=[f.full_name for f in uc_client.list_functions(CATALOG, SCHEMA)],
@@ -129,8 +130,10 @@ async def test_toolkit_e2e(uc_client):
         assert func_obj.tool_name in [t.name for t in toolkit.tools]
 
 
+@pytest.mark.parametrize("execution_mode", ["local", "sandbox"])
 @pytest.mark.asyncio
-async def test_toolkit_e2e_manually_passing_client(uc_client):
+async def test_toolkit_e2e_manually_passing_client(uc_client, execution_mode):
+    uc_client.execution_mode = ExecutionMode(execution_mode)
     with create_function_and_cleanup_oss(uc_client, schema=SCHEMA) as func_obj:
         toolkit = UCFunctionToolkit(
             function_names=[func_obj.full_function_name],
@@ -143,15 +146,17 @@ async def test_toolkit_e2e_manually_passing_client(uc_client):
         assert tool.name == func_obj.tool_name
         assert func_obj.comment in tool.description
 
-        input_args = {"code": "print(1)"}
+        input_args = {"a": 1, "b": 4}
         # Pass a CancellationToken to run_json
         result_str = await tool.run_json(input_args, CancellationToken())
         result = json.loads(result_str)["value"]
-        assert result == "1\n"
+        assert result == "5"
 
 
+@pytest.mark.parametrize("execution_mode", ["local", "sandbox"])
 @pytest.mark.asyncio
-async def test_multiple_toolkits(uc_client):
+async def test_multiple_toolkits(uc_client, execution_mode):
+    uc_client.execution_mode = ExecutionMode(execution_mode)
     with create_function_and_cleanup_oss(uc_client, schema=SCHEMA) as func_obj:
         toolkit1 = UCFunctionToolkit(
             function_names=[func_obj.full_function_name],
@@ -165,7 +170,7 @@ async def test_multiple_toolkits(uc_client):
         tool1 = toolkit1.tools[0]
         tool2 = [t for t in toolkit2.tools if t.name == func_obj.tool_name][0]
 
-        input_args = {"code": "print(1)"}
+        input_args = {"a": 2, "b": 4}
 
         # Must pass a CancellationToken
         result1_str = await tool1.run_json(input_args, CancellationToken())
@@ -176,12 +181,14 @@ async def test_multiple_toolkits(uc_client):
         assert result1 == result2
 
 
-def test_toolkit_creation_errors_no_client():
+def test_toolkit_creation_errors_no_client(monkeypatch):
+    monkeypatch.setattr("unitycatalog.ai.core.base._is_databricks_client_available", lambda: False)
+
     with pytest.raises(
         ValidationError,
         match=r"No client provided, either set the client when creating a toolkit or set the default client",
     ):
-        UCFunctionToolkit(function_names=[])
+        UCFunctionToolkit(function_names=["test.test.test"])
 
 
 def test_toolkit_creation_errors_invalid_client(uc_client):
