@@ -169,12 +169,14 @@ async def test_multiple_toolkits(uc_client, execution_mode):
         assert result1 == result2
 
 
-def test_toolkit_creation_errors_no_client():
+def test_toolkit_creation_errors_no_client(monkeypatch):
+    monkeypatch.setattr("unitycatalog.ai.core.base._is_databricks_client_available", lambda: False)
+
     with pytest.raises(
         ValidationError,
         match=r"No client provided, either set the client when creating a toolkit or set the default client",
     ):
-        UCFunctionToolkit(function_names=[])
+        UCFunctionToolkit(function_names=["test.test.test"])
 
 
 def test_toolkit_creation_errors_invalid_client(uc_client):

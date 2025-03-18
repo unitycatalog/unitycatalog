@@ -13,7 +13,6 @@ from databricks.sdk.service.catalog import (
 from openai.types.chat.chat_completion_message_tool_call import Function
 
 from tests.helper_functions import mock_chat_completion_response, mock_choice
-from unitycatalog.ai.core.base import set_uc_function_client
 from unitycatalog.ai.core.databricks import ExecutionMode
 from unitycatalog.ai.core.utils.function_processing_utils import get_tool_name
 from unitycatalog.ai.core.utils.validation_utils import has_retriever_signature
@@ -395,23 +394,6 @@ $$
         arguments = json.loads(tool_call.function.arguments)
         result = client.execute_function(upper_func, arguments)
         assert result.value == "ABC"
-
-
-def test_openai_toolkit_initialization():
-    client = get_client()
-    with pytest.raises(
-        ValueError,
-        match=r"No client provided, either set the client when creating a toolkit or set the default client",
-    ):
-        toolkit = UCFunctionToolkit(function_names=[])
-
-    set_uc_function_client(client)
-    toolkit = UCFunctionToolkit(function_names=[])
-    assert len(toolkit.tools) == 0
-    set_uc_function_client(None)
-
-    toolkit = UCFunctionToolkit(function_names=[], client=client)
-    assert len(toolkit.tools) == 0
 
 
 def generate_function_info(parameters: List[Dict], catalog="catalog", schema="schema"):

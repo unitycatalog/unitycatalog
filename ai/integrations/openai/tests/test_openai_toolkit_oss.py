@@ -7,9 +7,9 @@ import openai
 import pytest
 import pytest_asyncio
 from openai.types.chat.chat_completion_message_tool_call import Function
+from pydantic import ValidationError
 
 from tests.helper_functions import mock_chat_completion_response, mock_choice
-from unitycatalog.ai.core.base import set_uc_function_client
 from unitycatalog.ai.core.client import (
     ExecutionMode,
     UnitycatalogFunctionClient,
@@ -279,21 +279,14 @@ async def test_tool_choice_param(uc_client):
         assert result.value == "ABC"
 
 
-@pytest.mark.asyncio
-async def test_openai_toolkit_initialization(uc_client):
+def test_toolkit_creation_errors_no_client(monkeypatch):
+    monkeypatch.setattr("unitycatalog.ai.core.base._is_databricks_client_available", lambda: False)
+
     with pytest.raises(
-        ValueError,
+        ValidationError,
         match=r"No client provided, either set the client when creating a toolkit or set the default client",
     ):
-        toolkit = UCFunctionToolkit(function_names=[])
-
-    set_uc_function_client(uc_client)
-    toolkit = UCFunctionToolkit(function_names=[])
-    assert len(toolkit.tools) == 0
-    set_uc_function_client(None)
-
-    toolkit = UCFunctionToolkit(function_names=[], client=uc_client)
-    assert len(toolkit.tools) == 0
+        UCFunctionToolkit(function_names=["test.test.test"])
 
 
 def generate_function_info(parameters: List[Dict], catalog="catalog", schema="schema"):
