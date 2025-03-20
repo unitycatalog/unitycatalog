@@ -88,7 +88,16 @@ public class IcebergRestCatalogTest extends BaseServerTest {
         .isEqualTo(
             "{\"defaults\":{},\"overrides\":{\"prefix\":\"catalogs/"
                 + TestUtils.CATALOG_NAME
-                + "\"}}");
+                + "\"}"
+                + ",\"endpoints\":["
+                + "\"GET /v1/{prefix}/namespaces\","
+                + "\"GET /v1/{prefix}/namespaces/{namespace}\""
+                + ",\"HEAD /v1/{prefix}/namespaces/{namespace}/tables/{table}\","
+                + "\"GET /v1/{prefix}/namespaces/{namespace}/tables/{table}\","
+                + "\"GET /v1/{prefix}/namespaces/{namespace}/views/{view}\","
+                + "\"POST /v1/{prefix}/namespaces/{namespace}/tables/{table}/metrics\","
+                + "\"GET /v1/{prefix}/namespaces/{namespace}/tables\""
+                + "]}");
 
     // not setting warehouse param should result in 400 BadRequestException
     resp = client.get("/v1/config").aggregate().join();

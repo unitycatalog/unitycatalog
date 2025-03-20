@@ -31,6 +31,7 @@ import org.apache.iceberg.catalog.TableIdentifier;
 import org.apache.iceberg.exceptions.BadRequestException;
 import org.apache.iceberg.exceptions.NoSuchTableException;
 import org.apache.iceberg.exceptions.NoSuchViewException;
+import org.apache.iceberg.rest.Endpoint;
 import org.apache.iceberg.rest.responses.ConfigResponse;
 import org.apache.iceberg.rest.responses.GetNamespaceResponse;
 import org.apache.iceberg.rest.responses.ListNamespacesResponse;
@@ -43,6 +44,16 @@ import org.hibernate.SessionFactory;
 public class IcebergRestCatalogService {
 
   private static final String PREFIX_BASE = "catalogs/";
+
+  private static final List<Endpoint> ENDPOINTS =
+      List.of(
+          Endpoint.V1_LIST_NAMESPACES,
+          Endpoint.V1_LOAD_NAMESPACE,
+          Endpoint.V1_TABLE_EXISTS,
+          Endpoint.V1_LOAD_TABLE,
+          Endpoint.V1_LOAD_VIEW,
+          Endpoint.V1_REPORT_METRICS,
+          Endpoint.V1_LIST_TABLES);
 
   private final CatalogService catalogService;
   private final SchemaService schemaService;
@@ -79,7 +90,10 @@ public class IcebergRestCatalogService {
 
     // TODO: check catalog exists
     // set catalog prefix
-    return ConfigResponse.builder().withOverride("prefix", PREFIX_BASE + catalog).build();
+    return ConfigResponse.builder()
+        .withOverride("prefix", PREFIX_BASE + catalog)
+        .withEndpoints(ENDPOINTS)
+        .build();
   }
 
   // Namespace APIs
