@@ -11,9 +11,8 @@ pip install unitycatalog-bedrock
 
 ## Setup
 
-### Setting Up Unity Catalog Client
-
-To set up the Unity Catalog client, use the following code:
+### Setting Up Unity Catalog Client and Functions
+To set up the Unity Catalog client and functions, use the following code:
 
 ```python
 from unitycatalog.ai.core.client import UnitycatalogFunctionClient
@@ -27,6 +26,68 @@ def setup_uc_client():
     return UnitycatalogFunctionClient(api_client=api_client)
 
 client = setup_uc_client()
+
+
+CATALOG = "AICatalog"
+SCHEMA = "AISchema"
+
+def get_weather_in_celsius(location_id: str, fetch_date: str) -> str:
+    """
+    Fetches weather data (in Celsius) for a given location and date.
+
+    Args:
+        location_id (str): A unique identifier for the location.
+        fetch_date (str): The date to fetch the weather for (format: YYYY-MM-DD).
+
+    Raises:
+        Exception: For unexpected errors during execution.
+
+    Returns:
+        str: Temperature in Celsius.
+    """
+    try:
+        return str(23)
+    except Exception as e:
+        raise Exception(f"An unexpected error occurred: {e}")
+
+
+def get_weather_in_fahrenheit(location_id: str, fetch_date: str) -> str:
+    """
+    Fetches weather data (in fahrenheit) for a given location and date.
+
+    Args:
+        location_id (str): A unique identifier for the location.
+        fetch_date (str): The date to fetch the weather for (format: YYYY-MM-DD).
+
+    Raises:
+        Exception: For unexpected errors during execution.
+
+    Returns:
+        str: Temperature in fahrenheit.
+    """
+    try:
+        return str(72)
+    except Exception as e:
+        raise Exception(f"An unexpected error occurred: {e}")
+
+
+client.uc.create_catalog(name=CATALOG, comment="Catalog for AI functions")
+client.uc.create_schema(catalog_name=CATALOG, name=SCHEMA, comment="Schema for AI functions")
+
+client.create_python_function(
+    func=get_weather_in_celsius, 
+    catalog=CATALOG, 
+    schema=SCHEMA, 
+    replace=True)
+
+client.create_python_function(
+    func=get_weather_in_fahrenheit, 
+    catalog=CATALOG, 
+    schema=SCHEMA, 
+    replace=True)
+
+client.list_functions(catalog=CATALOG, schema=SCHEMA)
+
 ```
 
 ### Creating Bedrock Agents and Action Groups
