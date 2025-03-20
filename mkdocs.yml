@@ -31,6 +31,7 @@ nav:
       - CelerData: integrations/unity-catalog-celerdata.md
       - Daft: integrations/unity-catalog-daft.md
       - DuckDB: integrations/unity-catalog-duckdb.md
+      - Kuzu: integrations/unity-catalog-kuzu.md
       - PuppyGraph: integrations/unity-catalog-puppygraph.md
       - SpiceAI: integrations/unity-catalog-spiceai.md
       - Trino: integrations/unity-catalog-trino.md
