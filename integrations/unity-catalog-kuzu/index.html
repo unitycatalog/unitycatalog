@@ -12,13 +12,13 @@
         <meta name="author" content="unitycatalog">
       
       
-        <link rel="canonical" href="https://docs.unitycatalog.io/integrations/unity-catalog-duckdb/">
+        <link rel="canonical" href="https://docs.unitycatalog.io/integrations/unity-catalog-kuzu/">
       
       
-        <link rel="prev" href="../unity-catalog-daft/">
+        <link rel="prev" href="../unity-catalog-duckdb/">
       
       
-        <link rel="next" href="../unity-catalog-kuzu/">
+        <link rel="next" href="../unity-catalog-puppygraph/">
       
       
       <link rel="icon" href="../../assets/images/unitycatalog_256x256.png">
@@ -26,7 +26,7 @@
     
     
       
-        <title>DuckDB - Unity Catalog</title>
+        <title>Kuzu - Unity Catalog</title>
       
     
     
@@ -138,7 +138,7 @@
     <div data-md-component="skip">
       
         
-        <a href="#unity-catalog-duckdb-integration" class="md-skip">
+        <a href="#unity-catalog-kuzu-integration" class="md-skip">
           Skip to content
         </a>
       
@@ -173,7 +173,7 @@
         <div class="md-header__topic" data-md-component="header-topic">
           <span class="md-ellipsis">
             
-              DuckDB
+              Kuzu
             
           </span>
         </div>
@@ -952,6 +952,27 @@
                 
   
   
+  
+  
+    <li class="md-nav__item">
+      <a href="../unity-catalog-duckdb/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    DuckDB
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
     
   
   
@@ -968,7 +989,7 @@
           
   
   <span class="md-ellipsis">
-    DuckDB
+    Kuzu
   </span>
   
 
@@ -979,7 +1000,7 @@
         
   
   <span class="md-ellipsis">
-    DuckDB
+    Kuzu
   </span>
   
 
@@ -1001,9 +1022,96 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
-  <a href="#operate-on-delta-tables-with-duckdb" class="md-nav__link">
+  <a href="#prerequisites" class="md-nav__link">
     <span class="md-ellipsis">
-      Operate on Delta tables with DuckDB
+      Prerequisites
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#using-the-unity-catalog-extension-in-kuzu" class="md-nav__link">
+    <span class="md-ellipsis">
+      Using the Unity Catalog extension in Kuzu
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Using the Unity Catalog extension in Kuzu">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#1-attach-to-unity-catalog" class="md-nav__link">
+    <span class="md-ellipsis">
+      1. Attach to Unity Catalog
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#2-data-type-mapping-from-unity-catalog-to-kuzu" class="md-nav__link">
+    <span class="md-ellipsis">
+      2. Data type mapping from Unity Catalog to Kuzu
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#3-scan-data-from-table" class="md-nav__link">
+    <span class="md-ellipsis">
+      3. Scan data from table
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#4-use-statement" class="md-nav__link">
+    <span class="md-ellipsis">
+      4. USE statement
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#5-copy-data-from-a-delta-table" class="md-nav__link">
+    <span class="md-ellipsis">
+      5. Copy data from a Delta table
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#6-query-the-data-in-kuzu" class="md-nav__link">
+    <span class="md-ellipsis">
+      6. Query the data in Kuzu
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#7-detach-unity-catalog" class="md-nav__link">
+    <span class="md-ellipsis">
+      7. Detach Unity Catalog
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#contact" class="md-nav__link">
+    <span class="md-ellipsis">
+      Contact
     </span>
   </a>
   
@@ -1013,27 +1121,6 @@
   
 </nav>
       
-    </li>
-  
-
-              
-            
-              
-                
-  
-  
-  
-  
-    <li class="md-nav__item">
-      <a href="../unity-catalog-kuzu/" class="md-nav__link">
-        
-  
-  <span class="md-ellipsis">
-    Kuzu
-  </span>
-  
-
-      </a>
     </li>
   
 
@@ -1539,9 +1626,96 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
-  <a href="#operate-on-delta-tables-with-duckdb" class="md-nav__link">
+  <a href="#prerequisites" class="md-nav__link">
     <span class="md-ellipsis">
-      Operate on Delta tables with DuckDB
+      Prerequisites
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#using-the-unity-catalog-extension-in-kuzu" class="md-nav__link">
+    <span class="md-ellipsis">
+      Using the Unity Catalog extension in Kuzu
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Using the Unity Catalog extension in Kuzu">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#1-attach-to-unity-catalog" class="md-nav__link">
+    <span class="md-ellipsis">
+      1. Attach to Unity Catalog
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#2-data-type-mapping-from-unity-catalog-to-kuzu" class="md-nav__link">
+    <span class="md-ellipsis">
+      2. Data type mapping from Unity Catalog to Kuzu
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#3-scan-data-from-table" class="md-nav__link">
+    <span class="md-ellipsis">
+      3. Scan data from table
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#4-use-statement" class="md-nav__link">
+    <span class="md-ellipsis">
+      4. USE statement
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#5-copy-data-from-a-delta-table" class="md-nav__link">
+    <span class="md-ellipsis">
+      5. Copy data from a Delta table
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#6-query-the-data-in-kuzu" class="md-nav__link">
+    <span class="md-ellipsis">
+      6. Query the data in Kuzu
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#7-detach-unity-catalog" class="md-nav__link">
+    <span class="md-ellipsis">
+      7. Detach Unity Catalog
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#contact" class="md-nav__link">
+    <span class="md-ellipsis">
+      Contact
     </span>
   </a>
   
@@ -1562,7 +1736,7 @@
                   
 
   
-    <a href="https://github.com/unitycatalog/unitycatalog/edit/main/docs/integrations/unity-catalog-duckdb.md" title="Edit this page" class="md-content__button md-icon">
+    <a href="https://github.com/unitycatalog/unitycatalog/edit/main/docs/integrations/unity-catalog-kuzu.md" title="Edit this page" class="md-content__button md-icon">
       
       <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M10 20H6V4h7v5h5v3.1l2-2V8l-6-6H6c-1.1 0-2 .9-2 2v16c0 1.1.9 2 2 2h4zm10.2-7c.1 0 .3.1.4.2l1.3 1.3c.2.2.2.6 0 .8l-1 1-2.1-2.1 1-1c.1-.1.2-.2.4-.2m0 3.9L14.1 23H12v-2.1l6.1-6.1z"/></svg>
     </a>
@@ -1570,36 +1744,163 @@
   
 
 
-<h1 id="unity-catalog-duckdb-integration">Unity Catalog DuckDB Integration<a class="headerlink" href="#unity-catalog-duckdb-integration" title="Permanent link">&para;</a></h1>
-<h2 id="operate-on-delta-tables-with-duckdb">Operate on Delta tables with DuckDB<a class="headerlink" href="#operate-on-delta-tables-with-duckdb" title="Permanent link">&para;</a></h2>
-<p>To try operating on Delta tables with DuckDB, you will have to <a href="https://duckdb.org/docs/installation/">install it</a>
-(at least version 1.0).</p>
-<p>Let's start DuckDB and install a couple of extensions. To start DuckDB, run the command <code>duckdb</code> in the terminal.</p>
-<p>Then, in the DuckDB shell, run the following commands:</p>
-<div class="highlight"><pre><span></span><code>install<span class="w"> </span>uc_catalog<span class="w"> </span>from<span class="w"> </span>core_nightly<span class="p">;</span>
-load<span class="w"> </span>uc_catalog<span class="p">;</span>
-install<span class="w"> </span>delta<span class="p">;</span>
-load<span class="w"> </span>delta<span class="p">;</span>
+<h1 id="unity-catalog-kuzu-integration">Unity Catalog Kuzu Integration<a class="headerlink" href="#unity-catalog-kuzu-integration" title="Permanent link">&para;</a></h1>
+<p><a href="https://kuzudb.com/">Kuzu</a> is an embedded graph database built for query speed and scalability. It
+supports the property graph data model and the Cypher query language.</p>
+<p>Download and install the precompiled binary of Kuzu
+for your OS as per the instructions shown <a href="https://docs.kuzudb.com/installation/">here</a>.
+The <code>unity_catalog</code> functionality in Kuzu is made available via an extension that allows you to attach to a Unity Catalog and perform scan/copy operations on Delta tables.</p>
+<h2 id="prerequisites">Prerequisites<a class="headerlink" href="#prerequisites" title="Permanent link">&para;</a></h2>
+<p>To run the examples shown below, you need the following:</p>
+<ul>
+<li>A running Unity Catalog server</li>
+<li>Kuzu's <a href="https://docs.kuzudb.com/installation/#command-line-shell">CLI</a> installed</li>
+</ul>
+<p>Follow the steps in the Unity Catalog <a href="https://docs.unitycatalog.io/quickstart/">quickstart</a> docs to create a Unity Catalog server.</p>
+<div class="highlight"><pre><span></span><code><span class="c1"># Clone the repo</span>
+&gt;<span class="w"> </span>git<span class="w"> </span>clone<span class="w"> </span>git@github.com:unitycatalog/unitycatalog.git
+
+<span class="c1"># Ensure you have Java 18+ installed</span>
+&gt;<span class="w"> </span>java<span class="w"> </span>-version
+openjdk<span class="w"> </span>version<span class="w"> </span><span class="s2">&quot;23.0.2&quot;</span><span class="w"> </span><span class="m">2025</span>-01-21
+OpenJDK<span class="w"> </span>Runtime<span class="w"> </span>Environment<span class="w"> </span>Homebrew<span class="w"> </span><span class="o">(</span>build<span class="w"> </span><span class="m">23</span>.0.2<span class="o">)</span>
+OpenJDK<span class="w"> </span><span class="m">64</span>-Bit<span class="w"> </span>Server<span class="w"> </span>VM<span class="w"> </span>Homebrew<span class="w"> </span><span class="o">(</span>build<span class="w"> </span><span class="m">23</span>.0.2,<span class="w"> </span>mixed<span class="w"> </span>mode,<span class="w"> </span>sharing<span class="o">)</span>
+
+<span class="c1"># Run a local Unity Catalog server</span>
+&gt;<span class="w"> </span><span class="nb">cd</span><span class="w"> </span>unitycatalog
+&gt;<span class="w"> </span>bin/start-uc-server
 </code></pre></div>
-<p>If you have installed these extensions before, you may have to run <code>update extensions</code> and restart DuckDB
-for the following steps to work.</p>
-<p>Now that we have DuckDB all set up, let's try connecting to UC by specifying a secret.</p>
-<div class="highlight"><pre><span></span><code>CREATE<span class="w"> </span>SECRET<span class="w"> </span><span class="o">(</span>
-<span class="w">      </span>TYPE<span class="w"> </span>UC,
-<span class="w">      </span>TOKEN<span class="w"> </span><span class="s1">&#39;not-used&#39;</span>,
-<span class="w">      </span>ENDPOINT<span class="w"> </span><span class="s1">&#39;http://127.0.0.1:8080&#39;</span>,
-<span class="w">      </span>AWS_REGION<span class="w"> </span><span class="s1">&#39;us-east-2&#39;</span>
-<span class="w"> </span><span class="o">)</span><span class="p">;</span>
+<p>Once the Unity Catalog server is running, you can proceed with the rest of this tutorial by leveraging
+the <code>unity</code> numbers table that is pre-defined in the Unity Catalog.</p>
+<h2 id="using-the-unity-catalog-extension-in-kuzu">Using the Unity Catalog extension in Kuzu<a class="headerlink" href="#using-the-unity-catalog-extension-in-kuzu" title="Permanent link">&para;</a></h2>
+<p>Kuzu's Unity Catalog extension can be installed and loaded by running the following commands using the Kuzu CLI
+or your preferred language client API:</p>
+<div class="highlight"><pre><span></span><code><span class="n">INSTALL</span><span class="w"> </span><span class="n">unity_catalog</span><span class="p">;</span>
+<span class="k">LOAD</span><span class="w"> </span><span class="n">EXTENSION</span><span class="w"> </span><span class="n">unity_catalog</span><span class="p">;</span>
 </code></pre></div>
-<p>You should see it print a short table saying <code>Success</code> = <code>true</code>. Next we can attach the <code>unity</code> catalog to DuckDB.</p>
-<div class="highlight"><pre><span></span><code>ATTACH<span class="w"> </span><span class="s1">&#39;unity&#39;</span><span class="w"> </span>AS<span class="w"> </span>unity<span class="w"> </span><span class="o">(</span>TYPE<span class="w"> </span>UC_CATALOG<span class="o">)</span><span class="p">;</span>
+<p>In the following example, we will attach to the <code>default</code> schema under the <code>unity</code> catalog and scan the <code>numbers</code> Delta table.
+Note that the table, schema and catalog are pre-defined in the running Unity Catalog server, so you don't have to create them yourself.</p>
+<h4 id="1-attach-to-unity-catalog">1. Attach to Unity Catalog<a class="headerlink" href="#1-attach-to-unity-catalog" title="Permanent link">&para;</a></h4>
+<div class="highlight"><pre><span></span><code><span class="n">ATTACH</span><span class="w"> </span><span class="p">[</span><span class="k">CATALOG_NAME</span><span class="p">]</span><span class="w"> </span><span class="k">AS</span><span class="w"> </span><span class="p">[</span><span class="k">alias</span><span class="p">]</span><span class="w"> </span><span class="p">(</span><span class="n">dbtype</span><span class="w"> </span><span class="n">UC_CATALOG</span><span class="p">)</span>
 </code></pre></div>
-<p>Now we are ready to query. Try the following</p>
-<div class="highlight"><pre><span></span><code><span class="k">SHOW</span><span class="w"> </span><span class="k">ALL</span><span class="w"> </span><span class="n">TABLES</span><span class="p">;</span>
-<span class="k">SELECT</span><span class="w"> </span><span class="o">*</span><span class="w"> </span><span class="k">from</span><span class="w"> </span><span class="n">unity</span><span class="p">.</span><span class="k">default</span><span class="p">.</span><span class="n">numbers</span><span class="p">;</span>
+<ul>
+<li><code>CATALOG_NAME</code>: The catalog name to attach to in the Unity Catalog</li>
+<li><code>alias</code>: Database alias to use in Kuzu - If not provided, the catalog name will be used.
+  When attaching to multiple databases, it's recommended to use aliasing.</li>
+</ul>
+<p>For the example shown below, we will use the following command that attaches to the <code>default</code> schema under the <code>unity</code> catalog:</p>
+<div class="highlight"><pre><span></span><code><span class="n">ATTACH</span><span class="w"> </span><span class="s1">&#39;unity&#39;</span><span class="w"> </span><span class="k">AS</span><span class="w"> </span><span class="n">unity</span><span class="w"> </span><span class="p">(</span><span class="n">dbtype</span><span class="w"> </span><span class="n">UC_CATALOG</span><span class="p">);</span>
 </code></pre></div>
-<p>You should see the tables listed and the contents of the <code>numbers</code> table printed.
-To quit DuckDB, run the command <code>Ctrl+D</code> or type <code>.exit</code> in the DuckDB shell.</p>
+<p><strong>Note:</strong> Kuzu attaches to the <code>default</code> schema under the given catalog name. Specifying a custom schema to attach to is not currently supported.</p>
+<h4 id="2-data-type-mapping-from-unity-catalog-to-kuzu">2. Data type mapping from Unity Catalog to Kuzu<a class="headerlink" href="#2-data-type-mapping-from-unity-catalog-to-kuzu" title="Permanent link">&para;</a></h4>
+<p>The table below shows the mapping from Unity Catalog's type to Kuzu's type:
+| Data type in Unity Catalog         | Corresponding data type in Kuzu |
+|-----------------------------|----------------------------------|
+| BOOLEAN                     | BOOLEAN                           |
+| BYTE                        | UNSUPPORTED                          |
+| SHORT                       | INT16                                 |
+| INT                    | INT32                                 |
+| LONG                       | INT64                                 |
+| DOUBLE                     | DOUBLE                                 |
+| FLOAT                      | FLOAT                                 |
+| DATE                    | DATE                                 |
+| TIMESTAMP                    | TIMESTAMP                                 |
+| TIMESTAMP_NTZ                   | UNSUPPORTED                                 |
+| STRING                   | STRING                                 |
+| BINARY                       | UNSUPPORTED                      |
+| DECIMAL   | DECIMAL                                 |</p>
+<p>If the type is marked as "unsupported", we do not support scanning it in Kuzu.</p>
+<h4 id="3-scan-data-from-table">3. Scan data from table<a class="headerlink" href="#3-scan-data-from-table" title="Permanent link">&para;</a></h4>
+<p>Finally, we can utilize the <code>LOAD FROM</code> statement to scan the <code>numbers</code> table. Note that you need to prefix the 
+external <code>numbers</code> table with the database alias (in our example <code>unity</code>). See the <code>USE</code> statement which allows you to
+skip this prefixing for a specific default database.</p>
+<div class="highlight"><pre><span></span><code><span class="k">LOAD</span><span class="w"> </span><span class="k">FROM</span><span class="w"> </span><span class="n">unity</span><span class="p">.</span><span class="n">numbers</span>
+<span class="k">RETURN</span><span class="w"> </span><span class="o">*</span>
+</code></pre></div>
+<p>Result:</p>
+<div class="highlight"><pre><span></span><code>┌────────┬────────────┐
+│ as_int │ as_double  │
+│ INT32  │ DOUBLE     │
+├────────┼────────────┤
+│ 564    │ 188.755356 │
+│ 755    │ 883.610563 │
+│ 644    │ 203.439559 │
+│ 75     │ 277.880219 │
+│ 42     │ 403.857969 │
+│ 680    │ 797.691220 │
+│ 821    │ 767.799854 │
+│ 484    │ 344.003740 │
+│ 477    │ 380.678561 │
+│ 131    │ 35.443732  │
+│ 294    │ 209.322436 │
+│ 150    │ 329.197303 │
+│ 539    │ 425.661029 │
+│ 247    │ 477.742227 │
+│ 958    │ 509.371273 │
+└────────┴────────────┘
+</code></pre></div>
+<p>Currently, Kuzu only supports scanning from Delta Lake tables registered in the Unity Catalog.</p>
+<h4 id="4-use-statement">4. <code>USE</code> statement<a class="headerlink" href="#4-use-statement" title="Permanent link">&para;</a></h4>
+<p>If you want to refer to Delta tables without aliasing, e.g., referring to <code>unity.numbers</code> simply as <code>numbers</code>, you can also use the <code>USE</code> command to set a default namespace.</p>
+<p>Consider the same attached Unity Catalog as above:</p>
+<div class="highlight"><pre><span></span><code><span class="n">ATTACH</span><span class="w"> </span><span class="s1">&#39;unity&#39;</span><span class="w"> </span><span class="k">AS</span><span class="w"> </span><span class="n">unity</span><span class="w"> </span><span class="p">(</span><span class="n">dbtype</span><span class="w"> </span><span class="n">UC_CATALOG</span><span class="p">);</span>
+</code></pre></div>
+<p>Instead of defining the catalog name via <code>unity.numbers</code> for each subsequent clause, you can do:</p>
+<div class="highlight"><pre><span></span><code><span class="n">USE</span><span class="w"> </span><span class="n">unity</span><span class="p">;</span>
+<span class="k">LOAD</span><span class="w"> </span><span class="k">FROM</span><span class="w"> </span><span class="n">numbers</span>
+<span class="k">RETURN</span><span class="w"> </span><span class="o">*</span>
+</code></pre></div>
+<h4 id="5-copy-data-from-a-delta-table">5. Copy data from a Delta table<a class="headerlink" href="#5-copy-data-from-a-delta-table" title="Permanent link">&para;</a></h4>
+<p>The main purpose of the Unity Catalog extension is to facilitate seamless data transfer from tables in Unity Catalog to Kuzu.
+In this example, we continue using the <code>unity</code> database, but this time,
+we copy the data and persist it to Kuzu database. This is done with the <code>COPY FROM</code> statement. Here is an example:</p>
+<p>We first create a <code>numbers</code> table in Kuzu. In this example we will make <code>numbers</code> have the same schema as the one defined in the Unity Catalog.</p>
+<div class="highlight"><pre><span></span><code><span class="k">CREATE</span><span class="w"> </span><span class="n">NODE</span><span class="w"> </span><span class="k">TABLE</span><span class="w"> </span><span class="n">numbers</span><span class="w"> </span><span class="p">(</span><span class="n">id</span><span class="w"> </span><span class="n">INT32</span><span class="p">,</span><span class="w"> </span><span class="n">score</span><span class="w"> </span><span class="n">DOUBLE</span><span class="w"> </span><span class="p">,</span><span class="w"> </span><span class="k">PRIMARY</span><span class="w"> </span><span class="k">KEY</span><span class="p">(</span><span class="n">id</span><span class="p">));</span>
+</code></pre></div>
+<p>When the schemas are the same, we can copy the data from the external Unity Catalog table to the Kuzu table simply as follows.</p>
+<p><div class="highlight"><pre><span></span><code><span class="k">COPY</span><span class="w"> </span><span class="n">numbers</span><span class="w"> </span><span class="k">FROM</span><span class="w"> </span><span class="n">unity</span><span class="p">.</span><span class="n">numbers</span><span class="p">;</span>
+</code></pre></div>
+In some cases, you may want to copy data into a subset of the properties in the Kuzu table. The following example shows how to copy a <code>unity.score</code> Delta table into the <code>score</code> property of the <code>numbers(id, score)</code> node table in Kuzu (setting the IDs values to their default null).
+<div class="highlight"><pre><span></span><code><span class="k">COPY</span><span class="w"> </span><span class="n">numbers</span><span class="p">(</span><span class="n">score</span><span class="p">)</span><span class="w"> </span><span class="k">FROM</span><span class="w"> </span><span class="p">(</span><span class="k">LOAD</span><span class="w"> </span><span class="k">FROM</span><span class="w"> </span><span class="n">unity</span><span class="p">.</span><span class="n">score</span><span class="w"> </span><span class="k">RETURN</span><span class="w"> </span><span class="n">as_double</span><span class="p">);</span>
+<span class="o">`</span><span class="n">id</span><span class="o">`</span><span class="w"> </span><span class="k">and</span><span class="w"> </span><span class="o">`</span><span class="n">score</span><span class="o">`</span><span class="p">,</span><span class="w"> </span><span class="n">we</span><span class="w"> </span><span class="n">can</span><span class="w"> </span><span class="n">still</span><span class="w"> </span><span class="n">use</span><span class="w"> </span><span class="o">`</span><span class="k">COPY</span><span class="w"> </span><span class="k">FROM</span><span class="o">`</span><span class="w"> </span><span class="n">but</span><span class="w"> </span><span class="k">with</span><span class="w"> </span><span class="n">a</span><span class="w"> </span><span class="n">subquery</span><span class="w"> </span><span class="n">that</span><span class="w"> </span><span class="k">transforms</span><span class="w"> </span><span class="n">the</span><span class="w"> </span><span class="n">scanned</span><span class="w"> </span><span class="n">tuples</span><span class="w"> </span><span class="k">from</span><span class="w"> </span><span class="o">`</span><span class="n">unity</span><span class="p">.</span><span class="n">numbers</span><span class="o">`</span><span class="w"> </span><span class="k">into</span><span class="w"> </span><span class="n">the</span><span class="w"> </span><span class="k">schema</span><span class="w"> </span><span class="k">of</span><span class="w"> </span><span class="n">Kuzu</span><span class="w"> </span><span class="k">table</span><span class="p">.</span>
+<span class="o">```</span><span class="k">sql</span>
+<span class="k">COPY</span><span class="w"> </span><span class="n">numbers</span><span class="w"> </span><span class="k">FROM</span><span class="w"> </span><span class="p">(</span><span class="k">LOAD</span><span class="w"> </span><span class="k">FROM</span><span class="w"> </span><span class="n">unity</span><span class="p">.</span><span class="n">numbers</span><span class="w"> </span><span class="k">RETURN</span><span class="w"> </span><span class="n">score</span><span class="p">);</span>
+</code></pre></div></p>
+<h4 id="6-query-the-data-in-kuzu">6. Query the data in Kuzu<a class="headerlink" href="#6-query-the-data-in-kuzu" title="Permanent link">&para;</a></h4>
+<p>Finally, we can verify the data in the <code>numbers</code> table in Kuzu.</p>
+<div class="highlight"><pre><span></span><code><span class="k">MATCH</span><span class="w"> </span><span class="p">(</span><span class="n">n</span><span class="p">:</span><span class="n">numbers</span><span class="p">)</span><span class="w"> </span><span class="k">RETURN</span><span class="w"> </span><span class="n">n</span><span class="p">.*;</span>
+</code></pre></div>
+<p>Result:
+<div class="highlight"><pre><span></span><code>┌───────┬────────────┐
+│ n.id  │ n.score    │
+│ INT32 │ DOUBLE     │
+├───────┼────────────┤
+│ 564   │ 188.755356 │
+│ 755   │ 883.610563 │
+│ 644   │ 203.439559 │
+│ 75    │ 277.880219 │
+│ 42    │ 403.857969 │
+│ 680   │ 797.691220 │
+│ 821   │ 767.799854 │
+│ 484   │ 344.003740 │
+│ 477   │ 380.678561 │
+│ 131   │ 35.443732  │
+│ 294   │ 209.322436 │
+│ 150   │ 329.197303 │
+│ 539   │ 425.661029 │
+│ 247   │ 477.742227 │
+│ 958   │ 509.371273 │
+└───────┴────────────┘
+</code></pre></div></p>
+<h4 id="7-detach-unity-catalog">7. Detach Unity Catalog<a class="headerlink" href="#7-detach-unity-catalog" title="Permanent link">&para;</a></h4>
+<p>To detach a Unity Catalog, use <code>DETACH [ALIAS]</code> as follows:</p>
+<div class="highlight"><pre><span></span><code>DETACH unity
+</code></pre></div>
+<h2 id="contact">Contact<a class="headerlink" href="#contact" title="Permanent link">&para;</a></h2>
+<p>If you face any issues while using Kuzu's Unity Catalog extension,
+please reach out to the Kuzu team
+on <a href="https://kuzudb.com/chat">Discord</a>. Alternatively,
+you can open an issue or discussion in our <a href="https://github.com/kuzudb/kuzu">GitHub</a> repo.</p>
 
 
 
@@ -1673,7 +1974,7 @@ To quit DuckDB, run the command <code>Ctrl+D</code> or type <code>.exit</code> i
       <nav class="md-footer__inner md-grid" aria-label="Footer" >
         
           
-          <a href="../unity-catalog-daft/" class="md-footer__link md-footer__link--prev" aria-label="Previous: Daft">
+          <a href="../unity-catalog-duckdb/" class="md-footer__link md-footer__link--prev" aria-label="Previous: DuckDB">
             <div class="md-footer__button md-icon">
               
               <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
@@ -1683,20 +1984,20 @@ To quit DuckDB, run the command <code>Ctrl+D</code> or type <code>.exit</code> i
                 Previous
               </span>
               <div class="md-ellipsis">
-                Daft
+                DuckDB
               </div>
             </div>
           </a>
         
         
           
-          <a href="../unity-catalog-kuzu/" class="md-footer__link md-footer__link--next" aria-label="Next: Kuzu">
+          <a href="../unity-catalog-puppygraph/" class="md-footer__link md-footer__link--next" aria-label="Next: PuppyGraph">
             <div class="md-footer__title">
               <span class="md-footer__direction">
                 Next
               </span>
               <div class="md-ellipsis">
-                Kuzu
+                PuppyGraph
               </div>
             </div>
             <div class="md-footer__button md-icon">
