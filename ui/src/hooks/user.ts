@@ -1,5 +1,6 @@
 import { useMutation, useQuery } from '@tanstack/react-query';
 import { CLIENT } from '../context/client';
+import { TokenEndpointExtensionType } from '../types/api/control.gen';
 import { UC_AUTH_API_PREFIX } from '../utils/constants';
 import { route, isError, assertNever } from '../utils/openapi';
 import type {
@@ -8,71 +9,88 @@ import type {
 } from '../types/api/control.gen';
 import type {
   Model,
+  RequestBody,
   ErrorResponseBody,
   Route,
   SuccessResponseBody,
 } from '../utils/openapi';
 
-// TODO:
-// As of [28/11/2024], the OpenAPI specification for auth-related APIs has not been defined.
-// Once the specification is added, the following hooks should be updated.
-// SEE:
-// https://github.com/unitycatalog/unitycatalog/issues/768
-interface LoginResponse {
-  access_token: string;
-}
+export interface OAuthTokenExchangeInterface
+  extends Model<ControlComponent, 'OAuthTokenExchangeInfo'> {}
+
+export interface LoginWithTokenMutationParams
+  extends RequestBody<
+    ControlApi,
+    '/auth/tokens',
+    'post',
+    'application/x-www-form-urlencoded'
+  > {}
 
 export function useLoginWithToken() {
-  return useMutation<LoginResponse, Error, string>({
-    mutationFn: async (idToken) => {
-      const params = {
-        grantType: 'urn:ietf:params:oauth:grant-type:token-exchange',
-        requestedTokenType: 'urn:ietf:params:oauth:token-type:access_token',
-        subjectTokenType: 'urn:ietf:params:oauth:token-type:id_token',
-        subjectToken: idToken,
-      };
-
-      return CLIENT.post(`/auth/tokens?ext=cookie`, JSON.stringify(params), {
-        baseURL: `${UC_AUTH_API_PREFIX}`,
-      })
-        .then((response) => response.data)
-        .catch((e) => {
-          throw new Error(e.response?.data?.message || 'Failed to log in');
-        });
+  return useMutation<
+    OAuthTokenExchangeInterface,
+    Error,
+    LoginWithTokenMutationParams
+  >({
+    mutationFn: async (params: LoginWithTokenMutationParams) => {
+      const response = await (route as Route<ControlApi>)({
+        client: CLIENT,
+        request: {
+          path: '/auth/tokens',
+          method: 'post',
+          params: {
+            query: {
+              ext: TokenEndpointExtensionType.cookie,
+            },
+            body: params,
+          },
+        },
+        config: {
+          baseURL: UC_AUTH_API_PREFIX,
+          headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        },
+        errorMessage: 'Failed to login',
+      }).call();
+      if (isError(response)) {
+        // NOTE:
+        // When an expected error occurs, as defined in the OpenAPI specification, the following line will
+        // be executed. This block serves as a placeholder for expected errors.
+        return assertNever(response.data.status);
+      } else {
+        return response.data;
+      }
     },
   });
 }
 
-// TODO:
-// As of [28/11/2024], the OpenAPI specification for auth-related APIs has not been defined.
-// Once the specification is added, the following hooks should be updated.
-// SEE:
-// https://github.com/unitycatalog/unitycatalog/issues/768
-enum HttpStatus {
-  OK = 200,
-  CREATED = 201,
-  BAD_REQUEST = 400,
-  UNAUTHORIZED = 401,
-  NOT_FOUND = 404,
-  INTERNAL_SERVER_ERROR = 500,
-}
-
-interface LogoutResponse {
-  response: HttpStatus;
-}
+export interface LogoutCurrentUserMutationParams {}
 
 export function useLogoutCurrentUser() {
-  return useMutation<LogoutResponse, Error, {}>({
+  return useMutation<
+    SuccessResponseBody<ControlApi, '/auth/logout', 'post'>,
+    Error,
+    LogoutCurrentUserMutationParams
+  >({
     mutationFn: async () => {
-      return CLIENT.post(
-        `/auth/logout`,
-        {},
-        { baseURL: `${UC_AUTH_API_PREFIX}` },
-      )
-        .then((response) => response.data)
-        .catch((e) => {
-          throw new Error(e.response?.data?.message || 'Logout method failed');
-        });
+      const response = await (route as Route<ControlApi>)({
+        client: CLIENT,
+        request: {
+          path: '/auth/logout',
+          method: 'post',
+        },
+        config: {
+          baseURL: UC_AUTH_API_PREFIX,
+        },
+        errorMessage: 'Failed to logout',
+      }).call();
+      if (isError(response)) {
+        // NOTE:
+        // When an expected error occurs, as defined in the OpenAPI specification, the following line will
+        // be executed. This block serves as a placeholder for expected errors.
+        return assertNever(response.data.status);
+      } else {
+        return response.data;
+      }
     },
   });
 }
@@ -107,7 +125,7 @@ export function useGetCurrentUser() {
           method: 'get',
         },
         config: {
-          baseURL: `${UC_AUTH_API_PREFIX}`,
+          baseURL: UC_AUTH_API_PREFIX,
         },
         errorMessage: 'Failed to fetch user',
         errorTypeGuard: isExpectedError,

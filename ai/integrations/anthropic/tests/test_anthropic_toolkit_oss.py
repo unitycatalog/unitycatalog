@@ -9,6 +9,7 @@ from anthropic.types import Message, TextBlock, ToolUseBlock
 from unitycatalog.ai.anthropic.toolkit import UCFunctionToolkit
 from unitycatalog.ai.core.base import set_uc_function_client
 from unitycatalog.ai.core.client import (
+    ExecutionMode,
     UnitycatalogFunctionClient,
 )
 from unitycatalog.ai.core.utils.function_processing_utils import get_tool_name
@@ -59,6 +60,34 @@ def mock_anthropic_tool_response(function_name, input_data, message_id):
     )
 
 
+def simple_math(a: int, b: int) -> int:
+    """
+    Adds two numbers.
+
+    Args:
+        a: First number.
+        b: Second number.
+
+    Returns:
+        The sum of a and b.
+    """
+    return a + b
+
+
+def additional_math(a: int, b: int) -> int:
+    """
+    Multiplies two numbers
+
+    Args:
+        a: First number.
+        b: Second number.
+
+    Returns:
+        The product of a and b.
+    """
+    return a * b
+
+
 @pytest_asyncio.fixture
 async def uc_client():
     config = Configuration()
@@ -72,12 +101,26 @@ async def uc_client():
     yield uc_client
 
     uc_client.close()
-    uc_api_client.close()
+    await uc_api_client.close()
 
 
+def test_toolkit_creation_errors_no_client(monkeypatch):
+    monkeypatch.setattr("unitycatalog.ai.core.base._is_databricks_client_available", lambda: False)
+
+    with pytest.raises(
+        ValidationError,
+        match=r"No client provided, either set the client when creating a toolkit or set the default client",
+    ):
+        UCFunctionToolkit(function_names=["test.test.test"])
+
+
+@pytest.mark.parametrize("execution_mode", ["local", "sandbox"])
 @pytest.mark.asyncio
-async def test_tool_calling_with_anthropic(uc_client):
-    with create_function_and_cleanup_oss(uc_client, schema=SCHEMA) as func_obj:
+async def test_tool_calling_with_anthropic(uc_client, execution_mode):
+    uc_client.execution_mode = ExecutionMode(execution_mode)
+    with create_function_and_cleanup_oss(
+        uc_client, schema=SCHEMA, callable=simple_math
+    ) as func_obj:
         func_name = func_obj.full_function_name
         toolkit = UCFunctionToolkit(function_names=[func_name], client=uc_client)
         tools = toolkit.tools
@@ -86,7 +129,7 @@ async def test_tool_calling_with_anthropic(uc_client):
         messages = [
             {
                 "role": "user",
-                "content": "Please execute the following code: print('Hello, World!')",
+                "content": "What is the sum of 2 and 3?",
             },
         ]
 
@@ -95,7 +138,7 @@ async def test_tool_calling_with_anthropic(uc_client):
         with mock.patch("anthropic.resources.messages.Messages.create") as mock_create:
             mock_create.return_value = mock_anthropic_tool_response(
                 function_name=converted_func_name,
-                input_data={"code": "print('Hello, World!')"},
+                input_data={"a": 2, "b": 3},
                 message_id="msg_01H6Y3Z0XYZ123456789",
             )
 
@@ -107,10 +150,11 @@ async def test_tool_calling_with_anthropic(uc_client):
             assert len(tool_calls) == 2
             assert tool_calls[1].name == converted_func_name
             arguments = tool_calls[1].input
-            assert isinstance(arguments.get("code"), str)
+            assert isinstance(arguments.get("a"), int)
+            assert isinstance(arguments.get("b"), int)
 
             result = uc_client.execute_function(func_name, arguments)
-            assert result.value.strip() == "Hello, World!"
+            assert result.value.strip() == "5"
 
             function_call_result_message = {
                 "role": "user",
@@ -128,9 +172,7 @@ async def test_tool_calling_with_anthropic(uc_client):
                     id="msg_01H6Y3Z0XYZ123456780",
                     type="message",
                     content=[
-                        TextBlock(
-                            text="The code has been executed. Output:\n\nHello, World!", type="text"
-                        ),
+                        TextBlock(text="The sum of 2 and 3 is 5", type="text"),
                     ],
                     role="assistant",
                     model="claude-3-5-sonnet-20240620",
@@ -153,34 +195,41 @@ async def test_tool_calling_with_anthropic(uc_client):
                     max_tokens=200,
                 )
 
-                assert (
-                    final_response.content[0].text
-                    == "The code has been executed. Output:\n\nHello, World!"
-                )
+                assert final_response.content[0].text == "The sum of 2 and 3 is 5"
 
 
+@pytest.mark.parametrize("execution_mode", ["local", "sandbox"])
 @pytest.mark.asyncio
-async def test_tool_calling_with_multiple_tools_anthropic(uc_client):
-    with create_function_and_cleanup_oss(uc_client, schema=SCHEMA) as func_obj:
-        func_name = func_obj.full_function_name
-        toolkit = UCFunctionToolkit(function_names=[func_name], client=uc_client)
+async def test_tool_calling_with_multiple_tools_anthropic(uc_client, execution_mode):
+    uc_client.execution_mode = ExecutionMode(execution_mode)
+    with (
+        create_function_and_cleanup_oss(
+            uc_client, schema=SCHEMA, callable=simple_math
+        ) as func_obj_1,
+        create_function_and_cleanup_oss(
+            uc_client, schema=SCHEMA, callable=additional_math
+        ) as func_obj_2,
+    ):
+        func_name_1 = func_obj_1.full_function_name
+        func_name_2 = func_obj_2.full_function_name
+        toolkit = UCFunctionToolkit(function_names=[func_name_1, func_name_2], client=uc_client)
         tools = toolkit.tools
-        assert len(tools) == 1
+        assert len(tools) == 2
 
         messages = [
             {
                 "role": "user",
-                "content": "Please execute the following code: print('Hello from Paris!') and then print('Hello from New York!')",
+                "content": "What is the sum of 2 and 3 and the product of 4 and 5?",
             },
         ]
 
-        converted_func_name = get_tool_name(func_name)
+        converted_func_name_1 = get_tool_name(func_name_1)
+        converted_func_name_2 = get_tool_name(func_name_2)
 
-        code_paris = "print('Hello from Paris!')"
         with mock.patch("anthropic.resources.messages.Messages.create") as mock_create_first:
             mock_create_first.return_value = mock_anthropic_tool_response(
-                function_name=converted_func_name,
-                input_data={"code": code_paris},
+                function_name=converted_func_name_1,
+                input_data={"a": 2, "b": 3},
                 message_id="msg_01H6Y3Z0XYZ123456789",
             )
 
@@ -190,12 +239,13 @@ async def test_tool_calling_with_multiple_tools_anthropic(uc_client):
 
             tool_calls = response.content
             assert len(tool_calls) == 2
-            assert tool_calls[1].name == converted_func_name
+            assert tool_calls[1].name == converted_func_name_1
             arguments = tool_calls[1].input
-            assert isinstance(arguments.get("code"), str)
+            assert isinstance(arguments.get("a"), int)
+            assert isinstance(arguments.get("b"), int)
 
-            result = uc_client.execute_function(func_name, arguments)
-            assert result.value.strip() == "Hello from Paris!"
+            result = uc_client.execute_function(func_name_1, arguments)
+            assert result.value.strip() == "5"
 
             function_call_result_message = {
                 "role": "user",
@@ -208,11 +258,10 @@ async def test_tool_calling_with_multiple_tools_anthropic(uc_client):
                 ],
             }
 
-            code_new_york = "print('Hello from New York!')"
             with mock.patch("anthropic.resources.messages.Messages.create") as mock_create_second:
                 mock_create_second.return_value = mock_anthropic_tool_response(
-                    function_name=converted_func_name,
-                    input_data={"code": code_new_york},
+                    function_name=converted_func_name_2,
+                    input_data={"a": 4, "b": 5},
                     message_id="msg_01H6Y3Z0XYZ123456780",
                 )
 
@@ -231,13 +280,14 @@ async def test_tool_calling_with_multiple_tools_anthropic(uc_client):
 
                 final_tool_calls = response_second.content
                 assert len(final_tool_calls) == 2
-                assert final_tool_calls[1].name == converted_func_name
+                assert final_tool_calls[1].name == converted_func_name_2
                 arguments_second = final_tool_calls[1].input
-                assert isinstance(arguments_second.get("code"), str)
+                assert isinstance(arguments_second.get("a"), int)
+                assert isinstance(arguments_second.get("b"), int)
 
-                result_second = uc_client.execute_function(func_name, arguments_second)
+                result_second = uc_client.execute_function(func_name_2, arguments_second)
 
-                assert result_second.value.strip() == "Hello from New York!"
+                assert result_second.value.strip() == "20"
 
                 function_call_result_message_second = {
                     "role": "user",
@@ -258,7 +308,7 @@ async def test_tool_calling_with_multiple_tools_anthropic(uc_client):
                         type="message",
                         content=[
                             TextBlock(
-                                text="I've executed both code snippets. Output:\n\nHello, World!\nHello, World!",
+                                text="The sum of 2 and 3 is 5 and the product of 4 and 5 is 20",
                                 type="text",
                             ),
                         ],
@@ -286,15 +336,21 @@ async def test_tool_calling_with_multiple_tools_anthropic(uc_client):
 
                     assert (
                         final_response.content[0].text
-                        == "I've executed both code snippets. Output:\n\nHello, World!\nHello, World!"
+                        == "The sum of 2 and 3 is 5 and the product of 4 and 5 is 20"
                     )
 
 
 @pytest.mark.asyncio
 async def test_anthropic_toolkit_initialization(uc_client):
-    with pytest.raises(
-        ValidationError,
-        match=r"No client provided, either set the client when creating a toolkit or set the default client",
+    with (
+        mock.patch(
+            "unitycatalog.ai.core.base._is_databricks_client_available",
+            return_value=False,
+        ),
+        pytest.raises(
+            ValidationError,
+            match=r"No client provided, either set the client when creating a toolkit or set the default client",
+        ),
     ):
         toolkit = UCFunctionToolkit(function_names=[])
 

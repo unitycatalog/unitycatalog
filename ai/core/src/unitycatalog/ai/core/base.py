@@ -236,14 +236,42 @@ class BaseFunctionClient(ABC):
             str: The Python callable definition as a string.
         """
 
+    @abstractmethod
+    def get_function_as_callable(self, function_name: str) -> Callable[..., Any]:
+        """
+        Get the Python callable function for a function by its name.
+
+        Args:
+            function_name: The name of the function to retrieve from Unity Catalog.
+
+        Returns:
+            Callable: The Python callable function.
+        """
+
 
 # TODO: update BaseFunctionClient to Union[BaseFunctionClient, AsyncBaseFunctionClient] after async client is supported
 def get_uc_function_client() -> Optional[BaseFunctionClient]:
     global _uc_function_client
 
+    if _uc_function_client is None and _is_databricks_client_available():
+        try:
+            from unitycatalog.ai.core.databricks import DatabricksFunctionClient
+
+            client = DatabricksFunctionClient()
+
+        except Exception as e:
+            _logger.warning(
+                "Attempted to set DatabricksFunctionClient as the default client, but encountered an error. "
+                "Provide a client directly to your toolkit invocation to ensure connection to Unity Catalog. "
+                f"Error: {e}"
+            )
+        else:
+            set_uc_function_client(client)
+            _logger.info(
+                "Setting global UC Function client to DatabricksFunctionClient with default configuration."
+            )
+
     with _client_lock:
-        if _uc_function_client is None:
-            _logger.warning("UC function client is not set.")
         return _uc_function_client
 
 
@@ -255,3 +283,21 @@ def set_uc_function_client(client: BaseFunctionClient) -> None:
 
     with _client_lock:
         _uc_function_client = client
+
+
+def _is_databricks_client_available():
+    """
+    Checks if the connection requirements to attach to a Databricks serverless cluster
+    are available in the environment for automatic client selection purposes in
+    toolkit instantiation.
+
+    Returns:
+        bool: True if the requirements are available, False otherwise.
+    """
+    try:
+        from databricks.connect.session import DatabricksSession
+
+        if hasattr(DatabricksSession.builder, "serverless"):
+            return True
+    except Exception:
+        return False

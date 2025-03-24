@@ -22,6 +22,7 @@ export default function ColumnsList({
       loading={isLoading}
       title={<Typography.Title level={4}>Columns</Typography.Title>}
       data={data?.columns}
+      rowKey={(record) => `column-${record.name}`}
       columns={[
         {
           title: 'Name',
