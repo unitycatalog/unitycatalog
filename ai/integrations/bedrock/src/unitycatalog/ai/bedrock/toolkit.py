@@ -5,6 +5,11 @@ from typing import Any, Dict, Iterator, List, Optional, Union
 import boto3
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+from unitycatalog.ai.bedrock.utils import (
+    execute_tool_calls,
+    extract_response_details,
+    generate_tool_call_session_state,
+)
 from unitycatalog.ai.core.client import UnitycatalogFunctionClient
 from unitycatalog.ai.core.utils.client_utils import validate_or_set_default_client
 from unitycatalog.ai.core.utils.function_processing_utils import (
@@ -12,8 +17,6 @@ from unitycatalog.ai.core.utils.function_processing_utils import (
     get_tool_name,
     process_function_names,
 )
-
-from .utils import execute_tool_calls, extract_response_details, generate_tool_call_session_state
 
 # Setup AWS credentials if available
 boto3.setup_default_session()
@@ -32,7 +35,9 @@ class BedrockToolResponse(BaseModel):
     @property
     def requires_tool_execution(self) -> bool:
         """Returns True if the response requires tool execution."""
-        return any("returnControl" in event for event in self.raw_response.get("completion", []))
+        return any(
+            event.get("returnControl") is True for event in self.raw_response.get("completion", [])
+        )
 
     @property
     def final_response(self) -> Optional[str]:
@@ -46,7 +51,10 @@ class BedrockToolResponse(BaseModel):
     @property
     def is_streaming(self) -> bool:
         """Returns True if the response is a streaming response."""
-        return "chunk" in str(self.raw_response)
+        return any(
+            "chunk" in event and "bytes" in event["chunk"]
+            for event in self.raw_response.get("completion", [])
+        )
 
     def get_stream(self) -> Iterator[str]:
         """Yields chunks from a streaming response."""
@@ -54,23 +62,28 @@ class BedrockToolResponse(BaseModel):
             return
 
         for event in self.raw_response.get("completion", []):
-            if "chunk" in event:
-                chunk = event["chunk"].get("bytes", b"").decode("utf-8")
-                if chunk:
-                    yield chunk
+            if chunk := event.get("chunk", {}).get("bytes", b"").decode("utf-8"):
+                yield chunk
 
     def print_stream_with_wrapping(self, stream: Any, max_line_length: int = 50):
-        accumulated_line = ""  # Temporary storage for the current line
+        buffer = []
+        current_length = 0
 
         for chunk in stream:
-            accumulated_line += chunk  # Add chunk to the current line
+            buffer.append(chunk)
+            current_length += len(chunk)
 
-            while len(accumulated_line) >= max_line_length:
-                logger.info(accumulated_line[:max_line_length])  # Print fixed-length part
-                accumulated_line = accumulated_line[max_line_length:]  # Keep the remainder
+            if current_length >= max_line_length:
+                accumulated_line = "".join(buffer)
+                full_lines = len(accumulated_line) // max_line_length
+                for i in range(full_lines):
+                    logger.info(accumulated_line[i * max_line_length : (i + 1) * max_line_length])
+                leftover = accumulated_line[full_lines * max_line_length :]
+                buffer = [leftover] if leftover else []
+                current_length = len(leftover)
 
-        if accumulated_line:  # Print remaining part if not empty
-            logger.info(accumulated_line)
+        if buffer:
+            logger.info("".join(buffer))
 
 
 class BedrockSession:
@@ -82,22 +95,12 @@ class BedrockSession:
         agent_alias_id: str,
         catalog_name: str,
         schema_name: str,
-        # function_name: str,
     ):
-        """Initialize a Bedrock session."""
         self.agent_id = agent_id
         self.agent_alias_id = agent_alias_id
         self.client = boto3.client("bedrock-agent-runtime")
         self.catalog_name = catalog_name
         self.schema_name = schema_name
-        # self.function_name = function_name
-
-        logger.info(
-            f"Initialized BedrockSession with agent_id: {self.agent_id}, "
-            f"agent_alias_id: {self.agent_alias_id}, "
-            f"catalog_name: {self.catalog_name}, "
-            f"schema_name: {self.schema_name}"
-        )  # Debugging
 
     def invoke_agent(
         self,
@@ -106,28 +109,27 @@ class BedrockSession:
         session_id: str = None,
         session_state: dict = None,
         streaming_configurations: dict = None,
-        uc_client: Optional[UnitycatalogFunctionClient] = None,
+        uc_client: UnitycatalogFunctionClient = None,
     ) -> BedrockToolResponse:
         """Invoke the Bedrock agent with the given input text."""
+
         params = {
             "agentId": self.agent_id,
             "agentAliasId": self.agent_alias_id,
             "inputText": input_text,
+            **{
+                k: v
+                for k, v in {
+                    "enableTrace": enable_trace,
+                    "sessionId": session_id,
+                    "sessionState": session_state,
+                    "streamingConfigurations": streaming_configurations,
+                }.items()
+                if v is not None
+            },
         }
 
-        if enable_trace is not None:
-            params["enableTrace"] = enable_trace
-        if session_id is not None:
-            params["sessionId"] = session_id
-        if session_state is not None:
-            params["sessionState"] = session_state
-        if streaming_configurations is not None:
-            params["streamingConfigurations"] = streaming_configurations
-
-        # Invoke the agent
-        logger.debug(f"Invoking the agent with params:{params}")  # Debugging
         response = self.client.invoke_agent(**params)
-        logger.debug(f"Response from invoke agent: {response}")  # Debugging
 
         extracted_details = extract_response_details(response)
 
@@ -139,14 +141,10 @@ class BedrockSession:
         elif "tool_calls" in extracted_details and extracted_details["tool_calls"]:
             tool_calls = extracted_details["tool_calls"]
 
-            logger.debug(f"Tool Call Results: {tool_calls}")  # Debugging
-            if tool_calls and uc_client:
-                # There is a response with UC functions to call.
-                logger.debug(f"Tool Calls: {tool_calls[0]['function_name']}")  # Debugging
-
+            logger.debug(f"Tool Call Results: {tool_calls}")
+            if tool_calls:
                 function_name_to_execute = (tool_calls[0]["function_name"]).split("__")[1]
 
-                # Executing the UC functions in the current python environment
                 tool_results = execute_tool_calls(
                     tool_calls,
                     uc_client,
@@ -154,19 +152,14 @@ class BedrockSession:
                     schema_name=self.schema_name,
                     function_name=function_name_to_execute,
                 )
-                logger.debug(f"ToolResults: {tool_results}")  # Debugging
+                logger.debug(f"ToolResults: {tool_results}")
 
                 if tool_results:
-                    # Generate the agent session state for the next invocation with results.
                     session_state = generate_tool_call_session_state(tool_results[0], tool_calls[0])
-                    logger.debug(f"SessionState from tool_results: {session_state}")  # Debugging
 
                     logger.info("Sleeping for 65 seconds before invoking the agent again.")
                     time.sleep(65)  # TODO: Remove this sleep and make this exponential
 
-                logger.debug(
-                    f"SessionState before invoking agent again: {session_state}"
-                )  # Debugging
                 agent_stream_config = {
                     # Bedrock will apply safety checks every second while generating and streaming the output
                     "applyGuardrailInterval": 1000,
@@ -226,7 +219,6 @@ class UCFunctionToolkit(BaseModel):
         agent_alias_id: str,
         catalog_name: str,
         schema_name: str,
-        # function_name: str,
     ) -> BedrockSession:
         """Creates a new Bedrock session for interacting with an agent."""
         return BedrockSession(
@@ -234,7 +226,6 @@ class UCFunctionToolkit(BaseModel):
             agent_alias_id=agent_alias_id,
             catalog_name=catalog_name,
             schema_name=schema_name,
-            # function_name=function_name
         )
 
     @model_validator(mode="after")
@@ -252,24 +243,18 @@ class UCFunctionToolkit(BaseModel):
     @staticmethod
     def uc_function_to_bedrock_tool(
         *,
-        client: Optional[UnitycatalogFunctionClient] = None,
-        function_name: Optional[str] = None,
-        function_info: Optional[Any] = None,
+        client: UnitycatalogFunctionClient,
+        function_name: str,
     ) -> BedrockTool:
         """Converts a Unity Catalog function to a Bedrock tool."""
-        if function_name and function_info:
-            raise ValueError("Only one of function_name or function_info should be provided.")
+        if not function_name:
+            raise ValueError("A valid function_name must be provided.")
 
         client = validate_or_set_default_client(client)
         try:
-            if function_name:
-                function_info = client.get_function(function_name)
-            elif function_info:
-                function_name = function_info.full_name
-            else:
-                raise ValueError("Either function_name or function_info should be provided.")
+            function_info = client.get_function(function_name)
         except Exception as e:
-            raise ValueError(f"Failed to retrieve function info: {e}") from e
+            raise ValueError(f"Failed to retrieve function info for {function_name}: {e}") from e
 
         fn_schema = generate_function_input_params_schema(function_info)
         parameters = {

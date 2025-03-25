@@ -26,7 +26,7 @@ def extract_response_details(response: Dict[str, Any]) -> Dict[str, Any]:
 def extract_tool_calls_from_event(event: Dict[str, Any]) -> List[Dict[str, Any]]:
     """Extracts tool calls from a single event."""
     control_data = event.get("returnControl")
-    if not control_data:  # We can short-circuit here
+    if not control_data:
         return []
 
     return [
@@ -62,10 +62,6 @@ def execute_tool_calls(
     for tool_call in tool_calls:
         try:
             full_function_name = f"{catalog_name}.{schema_name}.{function_name}"
-            # logger.info(f"Full Function Name: {full_function_name}")
-            # function_info = client.get_function(full_function_name)
-            # logger.info(f"Retrieved function info: {function_info}")
-
             result = client.execute_function(full_function_name, tool_call["parameters"])
             results.append(
                 {"invocation_id": tool_call["invocation_id"], "result": str(result.value)}
