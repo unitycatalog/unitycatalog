@@ -89,3 +89,40 @@ def generate_tool_call_session_state(
             }
         ],
     }
+
+
+def retry_with_exponential_backoff(
+    func, max_retries=10, base_delay=1, backoff_factor=2, retryable_error="Rate limit exceeded"
+):
+    """
+    Retries a function with exponential backoff if a retryable error occurs.
+
+    Args:
+        func (callable): The function to retry.
+        max_retries (int): Maximum number of retries.
+        base_delay (int): Initial delay in seconds.
+        backoff_factor (int): Factor by which the delay increases after each retry.
+        retryable_error (str): The error message indicating a retryable error.
+
+    Returns:
+        Any: The result of the function if successful.
+
+    Raises:
+        Exception: If the maximum retries are exceeded or a non-retryable error occurs.
+    """
+    delay = base_delay
+    for attempt in range(1, max_retries + 1):
+        try:
+            return func()
+        except Exception as e:
+            error_message = str(e)
+            if retryable_error in error_message:
+                logger.warning(
+                    f"Retryable error encountered. Retrying in {delay} seconds (Attempt {attempt}/{max_retries})..."
+                )
+                time.sleep(delay)
+                delay *= backoff_factor
+            else:
+                logger.error(f"Non-retryable error encountered: {error_message}")
+                raise
+    raise Exception(f"Maximum retries ({max_retries}) exceeded.")

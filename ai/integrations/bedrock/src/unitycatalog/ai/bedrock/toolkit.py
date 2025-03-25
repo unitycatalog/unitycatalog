@@ -1,5 +1,4 @@
 import logging
-import time
 from typing import Any, Dict, Iterator, List, Optional, Union
 
 import boto3
@@ -16,6 +15,7 @@ from unitycatalog.ai.core.utils.function_processing_utils import (
     generate_function_input_params_schema,
     get_tool_name,
     process_function_names,
+    retry_with_exponential_backoff,
 )
 
 # Setup AWS credentials if available
@@ -102,6 +102,23 @@ class BedrockSession:
         self.catalog_name = catalog_name
         self.schema_name = schema_name
 
+    def _invoke_agent_with_backoff(
+        self, session_state, session_id, enable_trace, agent_stream_config, uc_client
+    ):
+        """Invokes the agent with exponential backoff logic."""
+
+        def invoke():
+            return self.invoke_agent(
+                input_text="",
+                session_id=session_id,
+                enable_trace=enable_trace,
+                session_state=session_state,
+                streaming_configurations=agent_stream_config,
+                uc_client=uc_client,
+            )
+
+        return retry_with_exponential_backoff(invoke)
+
     def invoke_agent(
         self,
         input_text: str,
@@ -157,15 +174,12 @@ class BedrockSession:
                 if tool_results:
                     session_state = generate_tool_call_session_state(tool_results[0], tool_calls[0])
 
-                    logger.info("Sleeping for 65 seconds before invoking the agent again.")
-                    time.sleep(65)  # TODO: Remove this sleep and make this exponential
-
                 agent_stream_config = {
                     # Bedrock will apply safety checks every second while generating and streaming the output
                     "applyGuardrailInterval": 1000,
                     "streamFinalResponse": True,
                 }
-                return self.invoke_agent(
+                return self._invoke_agent_with_backoff(
                     input_text="",
                     session_id=session_id,
                     enable_trace=enable_trace,
