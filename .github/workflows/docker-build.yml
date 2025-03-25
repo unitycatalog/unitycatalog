@@ -4,9 +4,6 @@ on:
   push:
     tags:
       - 'v*'
-  pull_request:
-    branches:
-      - main
 
 env:
   IMAGE: ${{ github.repository }} # unitycatalog/unitycatalog
