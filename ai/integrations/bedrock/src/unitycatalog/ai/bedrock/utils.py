@@ -15,7 +15,7 @@ def extract_response_details(response: Dict[str, Any]) -> Dict[str, Any]:
             if chunk:
                 chunks.append(chunk)
 
-            if "returnControl" in event:
+            if event.get("returnControl", {}):
                 tool_calls.extend(extract_tool_calls_from_event(event))
         except Exception as e:
             logger.error(f"Error processing event: {e}")

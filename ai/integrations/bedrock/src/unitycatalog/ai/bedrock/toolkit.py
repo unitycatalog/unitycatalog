@@ -8,6 +8,7 @@ from unitycatalog.ai.bedrock.utils import (
     execute_tool_calls,
     extract_response_details,
     generate_tool_call_session_state,
+    retry_with_exponential_backoff,
 )
 from unitycatalog.ai.core.client import UnitycatalogFunctionClient
 from unitycatalog.ai.core.utils.client_utils import validate_or_set_default_client
@@ -15,7 +16,6 @@ from unitycatalog.ai.core.utils.function_processing_utils import (
     generate_function_input_params_schema,
     get_tool_name,
     process_function_names,
-    retry_with_exponential_backoff,
 )
 
 # Setup AWS credentials if available
@@ -282,12 +282,3 @@ class UCFunctionToolkit(BaseModel):
             description=function_info.comment or "",
             parameters=parameters,
         )
-
-    @property
-    def tools(self) -> List[BedrockTool]:
-        """Gets all available tools."""
-        return list(self.tools_dict.values())
-
-    def get_tool(self, name: str) -> Optional[BedrockTool]:
-        """Gets a specific tool by name."""
-        return self.tools_dict.get(name)

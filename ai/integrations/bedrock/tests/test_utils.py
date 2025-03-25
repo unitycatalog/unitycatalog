@@ -1,5 +1,6 @@
-import unittest
 from unittest.mock import MagicMock
+
+import pytest
 
 from unitycatalog.ai.bedrock.utils import (
     execute_tool_calls,
@@ -9,117 +10,106 @@ from unitycatalog.ai.bedrock.utils import (
 )
 
 
-class TestUtils(unittest.TestCase):
-    def setUp(self):
-        self.mock_client = MagicMock()
-        self.catalog_name = "test_catalog"
-        self.schema_name = "test_schema"
-        self.function_name = "test_function"
+# Fixtures
+@pytest.fixture
+def mock_client():
+    """Fixture to provide a mocked client."""
+    return MagicMock()
 
-    def test_extract_response_details(self):
-        response = {
-            "completion": [
-                {"chunk": {"bytes": b"chunk1"}},
-                {
-                    "returnControl": {
-                        "invocationInputs": [
-                            {
-                                "functionInvocationInput": {
-                                    "actionGroup": "group1",
-                                    "function": "func1",
-                                    "parameters": [{"name": "param1", "value": "value1"}],
-                                }
-                            },
-                        ],
-                        "invocationId": "inv1",
-                    }
-                },
-            ]
-        }
-        expected = {
-            "chunks": "chunk1",
-            "tool_calls": [
-                {
-                    "action_group": "group1",
-                    "function": "func1",
-                    "function_name": "group1__func1",
-                    "parameters": {"param1": "value1"},
-                    "invocation_id": "inv1",
-                }
-            ],
-        }
-        result = extract_response_details(response)
-        self.assertEqual(result, expected)
 
-    def test_extract_tool_calls(self):
-        response = {
-            "completion": [
-                {
-                    "returnControl": {
-                        "invocationInputs": [
-                            {
-                                "functionInvocationInput": {
-                                    "actionGroup": "group1",
-                                    "function": "func1",
-                                    "parameters": [{"name": "param1", "value": "value1"}],
-                                }
-                            },
-                        ],
-                        "invocationId": "inv1",
-                    }
-                }
-            ]
-        }
-        expected = [
+@pytest.fixture
+def test_context():
+    """Fixture to provide common test context."""
+    return {
+        "catalog_name": "test_catalog",
+        "schema_name": "test_schema",
+        "function_name": "test_function",
+    }
+
+
+def test_extract_response_details():
+    """Test the extract_response_details function."""
+    response = {
+        "completion": [
+            {"chunk": {"bytes": b"chunk1"}},
+            {"chunk": {"bytes": b"chunk2"}},
+            {"returnControl": {"key": "value"}},
+        ]
+    }
+    result = extract_response_details(response)
+    assert result == {"chunks": "chunk1chunk2", "tool_calls": []}
+
+
+def test_extract_tool_calls(mock_client, test_context):
+    """Test the extract_tool_calls function."""
+    tool_calls = {
+        "completion": [
             {
-                "action_group": "group1",
-                "function": "func1",
-                "function_name": "group1__func1",
-                "parameters": {"param1": "value1"},
-                "invocation_id": "inv1",
+                "returnControl": {
+                    "invocationId": "12345",
+                    "invocationInputs": [
+                        {
+                            "functionInvocationInput": {
+                                "actionGroup": "example_action_group",
+                                "function": "example_function",
+                                "parameters": [{"name": "param1", "value": "value1"}],
+                            }
+                        }
+                    ],
+                }
             }
         ]
-        result = extract_tool_calls(response)
-        self.assertEqual(result, expected)
-
-    def test_execute_tool_calls(self):
-        tool_calls = [
-            {
-                "action_group": "group1",
-                "function": "func1",
-                "function_name": "group1__func1",
-                "parameters": {"param1": "value1"},
-                "invocation_id": "inv1",
-            }
-        ]
-        self.mock_client.get_function.return_value = {"function_info": "info"}
-        self.mock_client.execute_function.return_value = MagicMock(value="result_value")
-
-        expected = [{"invocation_id": "inv1", "result": "result_value"}]
-        result = execute_tool_calls(
-            tool_calls, self.mock_client, self.catalog_name, self.schema_name, self.function_name
-        )
-        self.assertEqual(result, expected)
-
-    def test_generate_tool_call_session_state(self):
-        tool_result = {"invocation_id": "inv1", "result": "result_value"}
-        tool_call = {"action_group": "group1", "function": "func1"}
-        expected = {
-            "invocationId": "inv1",
-            "returnControlInvocationResults": [
-                {
-                    "functionResult": {
-                        "actionGroup": "group1",
-                        "function": "func1",
-                        "confirmationState": "CONFIRM",
-                        "responseBody": {"TEXT": {"body": "result_value"}},
-                    }
-                }
-            ],
+    }
+    result = extract_tool_calls(tool_calls)
+    assert result == [
+        {
+            "action_group": "example_action_group",
+            "function": "example_function",
+            "function_name": "example_action_group__example_function",
+            "parameters": {"param1": "value1"},
+            "invocation_id": "12345",
         }
-        result = generate_tool_call_session_state(tool_result, tool_call)
-        self.assertEqual(result, expected)
+    ]
 
 
-if __name__ == "__main__":
-    unittest.main()
+def test_generate_tool_call_session_state(mock_client, test_context):
+    """Test the generate_tool_call_session_state function."""
+    tool_result = {"result": "success", "invocation_id": "12345"}  # Added "invocation_id"
+    tool_call = {
+        "toolCall": {"name": "example_tool"},
+        "action_group": "example_action_group",
+        "function": "example_function",
+    }
+    session_state = generate_tool_call_session_state(tool_result, tool_call)
+    assert session_state == {
+        "invocationId": "12345",
+        "returnControlInvocationResults": [
+            {
+                "functionResult": {
+                    "actionGroup": "example_action_group",
+                    "function": "example_function",
+                    "confirmationState": "CONFIRM",
+                    "responseBody": {"TEXT": {"body": "success"}},
+                }
+            }
+        ],
+    }
+
+
+def test_execute_tool_calls(mock_client, test_context):
+    """Test the execute_tool_calls function."""
+    tool_calls = [
+        {"name": "example_tool", "parameters": {"param1": "value1"}, "invocation_id": "12345"}
+    ]
+    mock_client.execute_function.return_value = MagicMock(value="success")
+    results = execute_tool_calls(
+        tool_calls,
+        mock_client,
+        catalog_name=test_context["catalog_name"],
+        schema_name=test_context["schema_name"],
+        function_name=test_context["function_name"],
+    )
+    assert results == [{"invocation_id": "12345", "result": "success"}]
+    mock_client.execute_function.assert_called_once_with(
+        "test_catalog.test_schema.test_function", {"param1": "value1"}
+    )
