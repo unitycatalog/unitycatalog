@@ -79,12 +79,12 @@ The table below shows the mapping from Unity Catalog's type to Kuzu's type:
 | LONG                       | INT64                           |
 | DOUBLE                     | DOUBLE                          |
 | FLOAT                      | FLOAT                           |
+| DECIMAL                    | DECIMAL                         |
 | DATE                       | DATE                            |
 | TIMESTAMP                  | TIMESTAMP                       |
 | TIMESTAMP_NTZ              | UNSUPPORTED                     |
 | STRING                     | STRING                          |
 | BINARY                     | UNSUPPORTED                     |
-| DECIMAL                    | DECIMAL                         |
 
 If the type is marked as "unsupported", we do not support scanning it in Kuzu.
 #### 3. Scan data from table
