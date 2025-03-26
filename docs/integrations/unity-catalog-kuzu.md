@@ -69,21 +69,22 @@ ATTACH 'unity' AS unity (dbtype UC_CATALOG);
 #### 2. Data type mapping from Unity Catalog to Kuzu
 
 The table below shows the mapping from Unity Catalog's type to Kuzu's type:
-| Data type in Unity Catalog         | Corresponding data type in Kuzu |
-|-----------------------------|----------------------------------|
-| BOOLEAN                     | BOOLEAN                           |
-| BYTE                        | UNSUPPORTED                          |
-| SHORT                       | INT16                                 |
-| INT                    | INT32                                 |
-| LONG                       | INT64                                 |
-| DOUBLE                     | DOUBLE                                 |
-| FLOAT                      | FLOAT                                 |
-| DATE                    | DATE                                 |
-| TIMESTAMP                    | TIMESTAMP                                 |
-| TIMESTAMP_NTZ                   | UNSUPPORTED                                 |
-| STRING                   | STRING                                 |
-| BINARY                       | UNSUPPORTED                      |
-| DECIMAL   | DECIMAL                                 |
+
+| Data type in Unity Catalog | Corresponding data type in Kuzu |
+| -------------------------- | ------------------------------- |
+| BOOLEAN                    | BOOLEAN                         |
+| BYTE                       | UNSUPPORTED                     |
+| SHORT                      | INT16                           |
+| INT                        | INT32                           |
+| LONG                       | INT64                           |
+| DOUBLE                     | DOUBLE                          |
+| FLOAT                      | FLOAT                           |
+| DATE                       | DATE                            |
+| TIMESTAMP                  | TIMESTAMP                       |
+| TIMESTAMP_NTZ              | UNSUPPORTED                     |
+| STRING                     | STRING                          |
+| BINARY                     | UNSUPPORTED                     |
+| DECIMAL                    | DECIMAL                         |
 
 If the type is marked as "unsupported", we do not support scanning it in Kuzu.
 #### 3. Scan data from table
