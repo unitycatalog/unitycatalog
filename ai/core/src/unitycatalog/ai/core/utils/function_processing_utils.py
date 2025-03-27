@@ -18,6 +18,7 @@ from unitycatalog.ai.core.utils.pydantic_utils import (
     PydanticField,
     PydanticFunctionInputParams,
     PydanticType,
+    handle_pydantic_validation_errors,
 )
 from unitycatalog.ai.core.utils.type_utils import (
     UC_DEFAULT_VALUE_TO_PYTHON_EQUIVALENT_MAPPING,
@@ -228,8 +229,14 @@ def param_info_to_pydantic_type(param_info: Any, strict: bool = False) -> Pydant
     description = param_info.comment or ""
     if param_info.parameter_default:
         # Note: DEFAULT is supported for LANGUAGE SQL only.
-        # TODO: verify this for all types
-        default = json.loads(param_info.parameter_default)
+        if param_info.parameter_default.strip().upper() == "NULL":
+            default = None
+        else:
+            try:
+                default = json.loads(param_info.parameter_default)
+            except json.JSONDecodeError:
+                # If JSON decoding fails, treat it as a string
+                default = param_info.parameter_default.strip()
         description = f"{description} (Default: {param_info.parameter_default})"
     elif nullable:
         pydantic_field_type = Optional[pydantic_field_type]
@@ -283,7 +290,6 @@ def generate_function_input_params_schema(
     return PydanticFunctionInputParams(pydantic_model=model, strict=pydantic_field.strict)
 
 
-# TODO: add UC OSS support
 def supported_param_info_types():
     types = ()
     try:
@@ -303,7 +309,6 @@ def supported_param_info_types():
     return types
 
 
-# TODO: add UC OSS support
 def supported_function_info_types():
     types = ()
     try:
@@ -397,6 +402,7 @@ def _execute_uc_function_with_retriever_tracing(
         return _execute_uc_function(function_info, parameters, **kwargs)
 
 
+@handle_pydantic_validation_errors
 def process_function_parameter_defaults(
     function_info: "FunctionInfo", parameters: Optional[dict[str, Any]] = None
 ) -> dict[str, Any]:
@@ -416,13 +422,20 @@ def process_function_parameter_defaults(
             if param.parameter_default is not None:
                 default_str = param.parameter_default.strip()
                 upper_str = default_str.upper()
-                if upper_str in UC_DEFAULT_VALUE_TO_PYTHON_EQUIVALENT_MAPPING:
+
+                if upper_str == "NULL":
+                    defaults[param.name] = None
+                elif upper_str in UC_DEFAULT_VALUE_TO_PYTHON_EQUIVALENT_MAPPING:
                     defaults[param.name] = UC_DEFAULT_VALUE_TO_PYTHON_EQUIVALENT_MAPPING[upper_str]
                 else:
                     try:
                         defaults[param.name] = ast.literal_eval(default_str)
-                    except ValueError:
-                        defaults[param.name] = default_str
+                    except (ValueError, SyntaxError):
+                        try:
+                            defaults[param.name] = json.loads(default_str)
+                        except json.JSONDecodeError:
+                            defaults[param.name] = default_str
+
     if parameters is None:
         parameters = {}
     return defaults | parameters
