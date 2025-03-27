@@ -651,6 +651,8 @@ class DatabricksFunctionClient(BaseFunctionClient):
     @override
     def _validate_param_type(self, value: Any, param_info: "FunctionParameterInfo") -> None:
         value_python_type = column_type_to_python_type(param_info.type_name.value)
+        if value is None and param_info.parameter_default == "NULL":
+            return
         if value_python_type is Variant:
             Variant.validate(value)
             return

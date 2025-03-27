@@ -62,7 +62,7 @@ def convert_pydantic_exception_to_readable(
                 friendly_messages.append(
                     f"Could not parse value for '{field_path}'. SQL NULL values should be handled as Python None."
                 )
-            elif "dict_type" in error_type or "json" in error_type.lower():
+            elif "dict" in error_type.lower() or "type_error.dict" in error_type:
                 friendly_messages.append(
                     f"Could not parse value for '{field_path}'. Input should be a valid dictionary."
                 )
