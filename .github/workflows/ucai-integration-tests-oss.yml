@@ -92,6 +92,11 @@ jobs:
         run: |
           pip install integrations/litellm[dev]
           pytest integrations/litellm/tests/test_litellm_toolkit_oss.py
+      - name: Run Semantic Kernel OSS Integration Tests
+        if: matrix.python-version == '3.10'
+        run: |
+          pip install integrations/semantic_kernel[dev]
+          pytest integrations/semantic_kernel/tests/test_semantic_kernel_toolkit_oss.py
       - name: Stop Unity Catalog Server
         run: |
           dev/teardown_server.sh
