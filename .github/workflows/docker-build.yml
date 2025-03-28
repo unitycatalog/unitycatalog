@@ -4,9 +4,6 @@ on:
   push:
     tags:
       - 'v*'
-  pull_request:
-    branches:
-      - main
 
 env:
   IMAGE: ${{ github.repository }} # unitycatalog/unitycatalog
@@ -33,6 +30,7 @@ jobs:
           images: ${{ env.IMAGE }}
 
       - name: Login to Docker Hub
+        if: ${{ github.event_name == 'push' && startsWith(github.ref, 'refs/tags/') }}
         uses: docker/login-action@v3
         with:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
@@ -51,6 +49,6 @@ jobs:
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
 
-          # Use registry caching: https://tinyurl.com/4b8mfexr
-          cache-from: type=registry,ref=${{ env.IMAGE }}:buildcache
-          cache-to: type=registry,ref=${{ env.IMAGE }}:buildcache,mode=max
+          # Use github actions cache: https://docs.docker.com/build/cache/backends/gha/
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
