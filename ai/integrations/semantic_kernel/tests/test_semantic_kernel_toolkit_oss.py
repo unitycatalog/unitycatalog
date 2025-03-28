@@ -10,7 +10,7 @@ from databricks.sdk.service.catalog import (
     FunctionParameterInfos,
 )
 from semantic_kernel import Kernel
-from semantic_kernel.functions import kernel_function,KernelArguments
+from semantic_kernel.functions import kernel_function, KernelArguments
 from semantic_kernel.functions.kernel_function_from_method import KernelFunctionFromMethod
 from semantic_kernel.functions.kernel_parameter_metadata import KernelParameterMetadata
 from semantic_kernel.exceptions import KernelInvokeException
@@ -45,6 +45,7 @@ except ImportError:
 
 SCHEMA = os.environ.get("SCHEMA", "ucai_semantic_kernel_test")
 
+
 @pytest_asyncio.fixture
 async def uc_client():
     config = Configuration()
@@ -60,6 +61,7 @@ async def uc_client():
     uc_client.close()
     await uc_api_client.close()
 
+
 @pytest.fixture
 def sample_semantic_kernel_tool():
     @kernel_function(name="sample_function", description="A sample function for testing.")
@@ -67,10 +69,9 @@ def sample_semantic_kernel_tool():
         return "dummy_result"
 
     return SemanticKernelTool(
-        fn=dummy_function,
-        name="sample_function",
-        description="A sample function for testing."
+        fn=dummy_function, name="sample_function", description="A sample function for testing."
     )
+
 
 def test_semantic_kernel_tool_to_dict(sample_semantic_kernel_tool):
     """Test the `to_dict` method of SemanticKernelTool."""
@@ -80,6 +81,7 @@ def test_semantic_kernel_tool_to_dict(sample_semantic_kernel_tool):
         "fn": sample_semantic_kernel_tool.fn,
     }
     assert sample_semantic_kernel_tool.model_dump() == expected_output
+
 
 @pytest.mark.parametrize("execution_mode", ["local", "sandbox"])
 @pytest.mark.asyncio
@@ -91,14 +93,12 @@ async def test_toolkit_e2e(uc_client, execution_mode):
         assert len(tools) == 1
         tool = tools[0]
         assert func_obj.comment in tool.description
-        print("this is the tool name" ,tool.name)
+        print("this is the tool name", tool.name)
 
         input_args = {"a": 5, "b": 6}
         k_ = Kernel()
-        output = await k_.invoke(
-                            tool.fn,
-                            KernelArguments(**input_args))
-        
+        output = await k_.invoke(tool.fn, KernelArguments(**input_args))
+
         result = json.loads(output.value)["value"]
         assert result == "11"
 
@@ -108,6 +108,7 @@ async def test_toolkit_e2e(uc_client, execution_mode):
         )
         assert len(toolkit.tools) >= 1
         assert func_obj.tool_name in [t.name for t in toolkit.tools]
+
 
 @pytest.mark.parametrize("execution_mode", ["local", "sandbox"])
 @pytest.mark.asyncio
@@ -122,10 +123,8 @@ async def test_toolkit_e2e_manually_passing_client(uc_client, execution_mode):
         assert func_obj.comment in tool.description
         input_args = {"a": 3, "b": 4}
         k_ = Kernel()
-        output = await k_.invoke(
-                            tool.fn,
-                            KernelArguments(**input_args))
-        
+        output = await k_.invoke(tool.fn, KernelArguments(**input_args))
+
         result = json.loads(output.value)["value"]
         assert result == "7"
 
@@ -136,6 +135,7 @@ async def test_toolkit_e2e_manually_passing_client(uc_client, execution_mode):
         assert len(toolkit.tools) >= 1
         assert func_obj.tool_name in [t.name for t in toolkit.tools]
 
+
 def test_toolkit_creation_errors_no_client(monkeypatch):
     monkeypatch.setattr("unitycatalog.ai.core.base._is_databricks_client_available", lambda: False)
 
@@ -145,9 +145,11 @@ def test_toolkit_creation_errors_no_client(monkeypatch):
     ):
         UCFunctionToolkit(function_names=["test.test.test"])
 
+
 def test_toolkit_creation_errors_invalid_client(uc_client):
     with pytest.raises(ValidationError, match=r"Input should be an instance of BaseFunctionClient"):
         UCFunctionToolkit(function_names=[], client="client")
+
 
 def test_toolkit_creation_errors_missing_function_names(uc_client):
     with pytest.raises(
@@ -156,12 +158,14 @@ def test_toolkit_creation_errors_missing_function_names(uc_client):
     ):
         UCFunctionToolkit(function_names=[], client=uc_client)
 
+
 def test_toolkit_function_argument_errors(uc_client):
     with pytest.raises(
         ValidationError,
         match=r"1 validation error for UCFunctionToolkit\nfunction_names\n  Field required",
     ):
         UCFunctionToolkit(client=uc_client)
+
 
 def generate_function_info(
     catalog="catalog",
@@ -182,7 +186,7 @@ def generate_function_info(
             "type_scale": 0,
             "position": 17,
             "parameter_type": FunctionParameterType.PARAM,
-            "parameter_default" : "123"
+            "parameter_default": "123",
         }
     ]
     return FunctionInfo(
@@ -199,20 +203,22 @@ def generate_function_info(
         return_params=return_params,
     )
 
+
 def test_convert_function_params_to_kernel_metadata():
     """Test conversion of function parameters to kernel metadata."""
     function_info = generate_function_info()
     kernel_params = UCFunctionToolkit.convert_function_params_to_kernel_metadata(function_info)
     print(function_info.model_dump())
-    
+
     assert len(kernel_params) == 1
     param = kernel_params[0]
     assert isinstance(param, KernelParameterMetadata)
     assert param.name == "x"
     assert param.description == "test comment"
-    assert param.default_value == '123'
+    assert param.default_value == "123"
     assert param.type_ == "string"
     assert param.is_required == True
+
 
 @pytest.mark.asyncio
 async def test_uc_function_to_semantic_kernel_tool(uc_client):
@@ -233,14 +239,12 @@ async def test_uc_function_to_semantic_kernel_tool(uc_client):
             function_name="catalog.schema.test", client=uc_client
         )
         k_ = Kernel()
-        output = await k_.invoke(
-                            tool.fn,
-                            KernelArguments(**{"x":"some_string"}))
-        
+        output = await k_.invoke(tool.fn, KernelArguments(**{"x": "some_string"}))
+
         result = json.loads(output.value)["value"]
 
-
         assert result == "some_string"
+
 
 @pytest.mark.asyncio
 async def test_toolkit_with_invalid_function_input(uc_client):
@@ -259,17 +263,17 @@ async def test_toolkit_with_invalid_function_input(uc_client):
             function_name="catalog.schema.test", client=uc_client
         )
 
-        with pytest.raises(KernelInvokeException, match="Error occurred while invoking function: 'test'"):
+        with pytest.raises(
+            KernelInvokeException, match="Error occurred while invoking function: 'test'"
+        ):
             k_ = Kernel()
-            output = await k_.invoke(
-                            tool.fn,
-                            KernelArguments(**invalid_inputs))
-        
+            output = await k_.invoke(tool.fn, KernelArguments(**invalid_inputs))
+
 
 def test_register_with_kernel(uc_client):
     """Test registering tools with a Semantic Kernel instance."""
     from semantic_kernel import Kernel
-    
+
     mock_function_info = generate_function_info()
     with (
         mock.patch(
@@ -278,14 +282,11 @@ def test_register_with_kernel(uc_client):
         ),
         mock.patch.object(uc_client, "get_function", return_value=mock_function_info),
     ):
-        toolkit = UCFunctionToolkit(
-            function_names=["catalog.schema.test"], 
-            client=uc_client
-        )
-        
+        toolkit = UCFunctionToolkit(function_names=["catalog.schema.test"], client=uc_client)
+
         kernel = Kernel()
         toolkit.register_with_kernel(kernel, plugin_name="test_plugin")
-        
+
         # Verify the function was registered
         assert "test_plugin" in kernel.plugins
         assert "test" in [func for func in kernel.plugins["test_plugin"].functions]

@@ -11,7 +11,7 @@ from databricks.sdk.service.catalog import (
     FunctionParameterInfos,
 )
 from semantic_kernel import Kernel
-from semantic_kernel.functions import kernel_function,KernelArguments
+from semantic_kernel.functions import kernel_function, KernelArguments
 from semantic_kernel.functions.kernel_function_from_method import KernelFunctionFromMethod
 from semantic_kernel.functions.kernel_parameter_metadata import KernelParameterMetadata
 from semantic_kernel.exceptions import KernelInvokeException
@@ -51,9 +51,7 @@ def sample_semantic_kernel_tool():
         return "dummy_result"
 
     return SemanticKernelTool(
-        fn=dummy_function,
-        name="sample_function",
-        description="A sample function for testing."
+        fn=dummy_function, name="sample_function", description="A sample function for testing."
     )
 
 
@@ -82,9 +80,7 @@ def test_toolkit_e2e(execution_mode):
 
         input_args = {"number": 4}
         k_ = Kernel()
-        output =   asyncio.run(k_.invoke(
-                            tool.fn,
-                            KernelArguments(**input_args)))
+        output = asyncio.run(k_.invoke(tool.fn, KernelArguments(**input_args)))
         result = json.loads(output.value)["value"]
         assert result == "14"
 
@@ -110,9 +106,7 @@ def test_toolkit_e2e_manually_passing_client(execution_mode):
         assert func_obj.comment in tool.description
         input_args = {"number": 5}
         k_ = Kernel()
-        output =   asyncio.run(k_.invoke(
-                            tool.fn,
-                            KernelArguments(**input_args)))
+        output = asyncio.run(k_.invoke(tool.fn, KernelArguments(**input_args)))
         result = json.loads(output.value)["value"]
         assert result == "15"
 
@@ -163,7 +157,7 @@ def generate_function_info(
             "type_scale": 0,
             "position": 17,
             "parameter_type": FunctionParameterType.PARAM,
-            "parameter_default" : "123"
+            "parameter_default": "123",
         }
     ]
     return FunctionInfo(
@@ -185,15 +179,16 @@ def test_convert_function_params_to_kernel_metadata():
     """Test conversion of function parameters to kernel metadata."""
     function_info = generate_function_info()
     kernel_params = UCFunctionToolkit.convert_function_params_to_kernel_metadata(function_info)
-    
+
     assert len(kernel_params) == 1
     param = kernel_params[0]
     assert isinstance(param, KernelParameterMetadata)
     assert param.name == "x"
     assert param.description == "test comment"
-    assert param.default_value == '123'
+    assert param.default_value == "123"
     assert param.type_ == "string"
     assert param.is_required == True
+
 
 @pytest.mark.asyncio
 def test_uc_function_to_semantic_kernel_tool(client):
@@ -212,9 +207,8 @@ def test_uc_function_to_semantic_kernel_tool(client):
             function_name=f"{CATALOG}.{SCHEMA}.test", client=client
         )
         k_ = Kernel()
-        output = asyncio.run( k_.invoke(tool.fn,
-                            KernelArguments(**{"x":"some_string"})))
-        
+        output = asyncio.run(k_.invoke(tool.fn, KernelArguments(**{"x": "some_string"})))
+
         result = json.loads(output.value)["value"]
         assert result == "some_string"
 
@@ -235,17 +229,17 @@ def test_toolkit_with_invalid_function_input(client):
             function_name="catalog.schema.test", client=client
         )
 
-        with pytest.raises(KernelInvokeException, match="Error occurred while invoking function: 'test'"):
+        with pytest.raises(
+            KernelInvokeException, match="Error occurred while invoking function: 'test'"
+        ):
             k_ = Kernel()
-            output = asyncio.run( k_.invoke(
-                            tool.fn,
-                            KernelArguments(**invalid_inputs)))
+            output = asyncio.run(k_.invoke(tool.fn, KernelArguments(**invalid_inputs)))
 
 
 def test_register_with_kernel(client):
     """Test registering tools with a Semantic Kernel instance."""
     from semantic_kernel import Kernel
-    
+
     mock_function_info = generate_function_info()
     with (
         mock.patch(
@@ -254,14 +248,11 @@ def test_register_with_kernel(client):
         ),
         mock.patch.object(client, "get_function", return_value=mock_function_info),
     ):
-        toolkit = UCFunctionToolkit(
-            function_names=["catalog.schema.test"], 
-            client=client
-        )
-        
+        toolkit = UCFunctionToolkit(function_names=["catalog.schema.test"], client=client)
+
         kernel = Kernel()
         toolkit.register_with_kernel(kernel, plugin_name="test_plugin")
-        
+
         # Verify the function was registered
         assert "test_plugin" in kernel.plugins
         assert "test" in [func for func in kernel.plugins["test_plugin"].functions]

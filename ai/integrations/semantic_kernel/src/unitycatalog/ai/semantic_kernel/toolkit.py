@@ -27,9 +27,7 @@ class SemanticKernelTool(BaseModel):
     Model representing a Semantic Kernel tool.
     """
 
-    fn: Callable = Field(
-        description="Kernel Function that will be used to execute the UC Function"
-    )
+    fn: Callable = Field(description="Kernel Function that will be used to execute the UC Function")
     name: str = Field(
         description="The name of the function.",
     )
@@ -70,8 +68,7 @@ class UCFunctionToolkit(BaseModel):
         self.client = validate_or_set_default_client(self.client)
 
         if not self.function_names:
-            raise ValueError(
-                "Cannot create tool instances without function_names being provided.")
+            raise ValueError("Cannot create tool instances without function_names being provided.")
 
         self.tools_dict = process_function_names(
             function_names=self.function_names,
@@ -86,52 +83,52 @@ class UCFunctionToolkit(BaseModel):
     def convert_function_params_to_kernel_metadata(function_info) -> List[KernelParameterMetadata]:
         """
         Convert Unity Catalog function info's input parameters to a list of KernelParameterMetadata.
-        
+
         Args:
             function_info_dict: The dictionary representation of function_info from function_info.as_dict()
-            
+
         Returns:
             list[KernelParameterMetadata]: List of kernel parameter metadata objects
         """
         kernel_params = []
-        input_params = getattr(getattr(function_info, "input_params",'{}'), 'parameters',[])
-        
+        input_params = getattr(getattr(function_info, "input_params", "{}"), "parameters", [])
+
         for param in input_params:
             # Parse the type_json to get parameter details
-            type_json = json.loads(getattr(param, "type_json",  '{}'))
-            param_type = type_json.get('type', 'string')  # Default to string if type not specified
-            
+            type_json = json.loads(getattr(param, "type_json", "{}"))
+            param_type = type_json.get("type", "string")  # Default to string if type not specified
+
             # Map SQL types to Python types
             type_mapping = {
-                    'string': str,
-                    'varchar': str,
-                    'char': str,
-                    'text': str,
-                    'double': float,
-                    'float': float,
-                    'integer': int,
-                    'bigint': int,
-                    'smallint': int,
-                    'long': int,          
-                    'boolean': bool,
-                    'array': list,
-                    'object': dict,
-                }
-            
+                "string": str,
+                "varchar": str,
+                "char": str,
+                "text": str,
+                "double": float,
+                "float": float,
+                "integer": int,
+                "bigint": int,
+                "smallint": int,
+                "long": int,
+                "boolean": bool,
+                "array": list,
+                "object": dict,
+            }
+
             # Get the Python type object
             type_object = type_mapping.get(param_type, str)
-            
+
             # Create the KernelParameterMetadata
             kernel_param = KernelParameterMetadata(
-                name=getattr(param, "name",  ''),
-                description=getattr(param, "comment",  ''),
-                default_value = getattr(param, "parameter_default",  None),
+                name=getattr(param, "name", ""),
+                description=getattr(param, "comment", ""),
+                default_value=getattr(param, "parameter_default", None),
                 type=param_type,
                 is_required=True,  # Unity Catalog parameters are required by default
-                type_object=type_object
+                type_object=type_object,
             )
             kernel_params.append(kernel_param)
-        
+
         return kernel_params
 
     @staticmethod
@@ -146,8 +143,7 @@ class UCFunctionToolkit(BaseModel):
         Converts a Unity Catalog function to a Semantic Kernel tool.
         """
         if function_name and function_info:
-            raise ValueError(
-                "Only one of function_name or function_info should be provided.")
+            raise ValueError("Only one of function_name or function_info should be provided.")
 
         client = validate_or_set_default_client(client)
 
@@ -155,19 +151,16 @@ class UCFunctionToolkit(BaseModel):
             try:
                 function_info = client.get_function(function_name)
             except PermissionError as e:
-                _logger.info(
-                    "Skipping %s due to permission errors.", function_name)
+                _logger.info("Skipping %s due to permission errors.", function_name)
                 if filter_accessible_functions:
                     return None
                 raise e
         elif function_info:
             function_name = function_info.full_name
         else:
-            raise ValueError(
-                "Either function_name or function_info should be provided.")
+            raise ValueError("Either function_name or function_info should be provided.")
 
-        input_params = UCFunctionToolkit.convert_function_params_to_kernel_metadata(
-            function_info)
+        input_params = UCFunctionToolkit.convert_function_params_to_kernel_metadata(function_info)
 
         output_params = KernelParameterMetadata(
             name="results",
@@ -183,8 +176,7 @@ class UCFunctionToolkit(BaseModel):
             result = client.execute_function(
                 function_name=function_name,
                 parameters=args_json,
-                enable_retriever_tracing=mlflow_tracing_enabled(
-                    "semantic-kernel"),
+                enable_retriever_tracing=mlflow_tracing_enabled("semantic-kernel"),
             )
             return result.to_json()
 
@@ -197,27 +189,26 @@ class UCFunctionToolkit(BaseModel):
         return SemanticKernelTool(
             fn=kernel_func,
             name=get_tool_name(function_name),
-            description=function_info.comment or "")
+            description=function_info.comment or "",
+        )
 
     def register_with_kernel(self, kernel: Kernel, plugin_name: str = "unity_catalog") -> Kernel:
         """
         Register all tools with a Semantic Kernel instance.
-        
+
         Args:
             kernel: A Semantic Kernel instance
             plugin_name: The name to give to the Unity Catalog plugin
-            
+
         Returns:
             The Kernel instance with the tools registered
         """
         for tool in self.tools_dict.values():
             k_function = tool.fn
             kernel.add_function(plugin_name, k_function)
-        
+
         return kernel
-    
-    
-    
+
     @property
     def tools(self) -> List[SemanticKernelTool]:
         """
