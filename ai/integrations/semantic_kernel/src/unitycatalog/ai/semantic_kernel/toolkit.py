@@ -1,6 +1,6 @@
 import json
 import logging
-from typing import Any, Dict, List, Optional, Callable
+from typing import Any, Callable, Dict, List, Optional
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
@@ -9,8 +9,6 @@ from semantic_kernel.functions import kernel_function
 from semantic_kernel.functions.kernel_function_decorator import kernel_function
 from semantic_kernel.functions.kernel_function_from_method import KernelFunctionFromMethod
 from semantic_kernel.functions.kernel_parameter_metadata import KernelParameterMetadata
-
-
 from unitycatalog.ai.core.client import BaseFunctionClient
 from unitycatalog.ai.core.utils.client_utils import validate_or_set_default_client
 from unitycatalog.ai.core.utils.function_processing_utils import (
