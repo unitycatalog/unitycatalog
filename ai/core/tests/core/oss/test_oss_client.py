@@ -1902,3 +1902,42 @@ def test_fetch_function_callable_namespace_scoped(uc_client):
 
     assert scoped_ns.func_with_constant(5) == 10
     assert callable_def(5) == 10
+
+
+def test_sql_function_with_null_default(uc_client: UnitycatalogFunctionClient):
+    function_name = f"{CATALOG}.{SCHEMA}.null_default_func"
+
+    uc_client.create_function(
+        function_name=function_name,
+        routine_definition=("return 'a is ' + ('NULL' if a is None else a) + ', b is ' + b"),
+        data_type="STRING",
+        full_data_type="STRING",
+        comment="Tests NULL default parameter handling",
+        parameters=[
+            FunctionParameterInfo(
+                name="a",
+                type_name="STRING",
+                type_text="string",
+                type_json='{"name":"a","type":"string","nullable":true,"metadata":{}}',
+                position=0,
+                parameter_default="NULL",
+            ),
+            FunctionParameterInfo(
+                name="b",
+                type_name="STRING",
+                type_text="string",
+                type_json='{"name":"b","type":"string","nullable":true,"metadata":{}}',
+                position=1,
+                parameter_default="'non-null-default'",
+            ),
+        ],
+        replace=True,
+    )
+
+    result = uc_client.execute_function(function_name=function_name, parameters={})
+    assert result.value == "a is NULL, b is non-null-default"
+
+    result = uc_client.execute_function(
+        function_name=function_name, parameters={"a": "custom-value"}
+    )
+    assert result.value == "a is custom-value, b is non-null-default"

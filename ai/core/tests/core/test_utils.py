@@ -13,6 +13,8 @@ from pydantic import BaseModel
 from unitycatalog.ai.core.utils.function_processing_utils import (
     FullFunctionName,
     generate_function_input_params_schema,
+    param_info_to_pydantic_type,
+    process_function_parameter_defaults,
     uc_type_json_to_pydantic_type,
 )
 from unitycatalog.ai.core.utils.type_utils import (
@@ -431,3 +433,72 @@ def test_generate_function_input_params_schema_with_non_ascii_chars():
     )
     pydantic_model = generate_function_input_params_schema(function_info).pydantic_model
     pydantic_model(**{"x": 123})
+
+
+def test_param_info_to_pydantic_type_with_sql_null():
+    param_info = FunctionParameterInfo(
+        name="nullable_param",
+        type_name="STRING",
+        type_text="string",
+        position=0,
+        parameter_default="NULL",
+        type_json='{"name":"nullable_param","type":"string","nullable":true,"metadata":{}}',
+    )
+
+    result = param_info_to_pydantic_type(param_info)
+
+    assert result.default is None
+    assert "Default: NULL" in result.description
+
+
+def test_param_info_to_pydantic_type_invalid_json():
+    param_info = FunctionParameterInfo(
+        name="non_json_param",
+        type_name="STRING",
+        type_text="string",
+        position=0,
+        parameter_default="not-json-value",
+        type_json='{"name":"non_json_param","type":"string","nullable":true,"metadata":{}}',
+    )
+
+    result = param_info_to_pydantic_type(param_info)
+
+    assert result.default == "not-json-value"
+    assert "Default: not-json-value" in result.description
+
+
+def test_process_function_parameter_defaults_with_null():
+    func_info = FunctionInfo(
+        catalog_name="catalog",
+        schema_name="schema",
+        name="test_func",
+        input_params=FunctionParameterInfos(
+            parameters=[
+                FunctionParameterInfo(
+                    name="null_param",
+                    type_name="STRING",
+                    type_text="string",
+                    position=0,
+                    parameter_default="NULL",
+                ),
+                FunctionParameterInfo(
+                    name="str_param",
+                    type_name="STRING",
+                    type_text="string",
+                    position=1,
+                    parameter_default="'default'",
+                ),
+            ]
+        ),
+    )
+
+    result = process_function_parameter_defaults(func_info, {})
+
+    assert result["null_param"] is None
+    assert result["str_param"] == "default"  # The quotes should be removed
+
+    # Test with provided parameters (should override defaults)
+    result = process_function_parameter_defaults(func_info, {"null_param": "override"})
+
+    assert result["null_param"] == "override"
+    assert result["str_param"] == "default"
