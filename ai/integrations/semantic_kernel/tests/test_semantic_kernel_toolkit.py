@@ -1,8 +1,7 @@
+import asyncio
 import json
 import os
-import asyncio
 from unittest import mock
-
 
 import pytest
 from databricks.sdk.service.catalog import (
@@ -10,18 +9,16 @@ from databricks.sdk.service.catalog import (
     FunctionParameterInfo,
     FunctionParameterInfos,
 )
-from semantic_kernel import Kernel
-from semantic_kernel.functions import kernel_function, KernelArguments
-from semantic_kernel.functions.kernel_function_from_method import KernelFunctionFromMethod
-from semantic_kernel.functions.kernel_parameter_metadata import KernelParameterMetadata
-from semantic_kernel.exceptions import KernelInvokeException
 from pydantic import ValidationError
+from semantic_kernel import Kernel
+from semantic_kernel.exceptions import KernelInvokeException
+from semantic_kernel.functions import KernelArguments, kernel_function
+from semantic_kernel.functions.kernel_parameter_metadata import KernelParameterMetadata
 
 from unitycatalog.ai.core.client import FunctionExecutionResult
 from unitycatalog.ai.core.databricks import ExecutionMode
 from unitycatalog.ai.semantic_kernel.toolkit import SemanticKernelTool, UCFunctionToolkit
 from unitycatalog.ai.test_utils.client_utils import (
-    TEST_IN_DATABRICKS,
     client,  # noqa: F401
     get_client,
     requires_databricks,

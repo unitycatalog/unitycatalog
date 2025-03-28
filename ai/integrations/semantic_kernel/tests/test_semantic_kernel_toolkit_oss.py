@@ -9,12 +9,11 @@ from databricks.sdk.service.catalog import (
     FunctionParameterInfo,
     FunctionParameterInfos,
 )
-from semantic_kernel import Kernel
-from semantic_kernel.functions import kernel_function, KernelArguments
-from semantic_kernel.functions.kernel_function_from_method import KernelFunctionFromMethod
-from semantic_kernel.functions.kernel_parameter_metadata import KernelParameterMetadata
-from semantic_kernel.exceptions import KernelInvokeException
 from pydantic import ValidationError
+from semantic_kernel import Kernel
+from semantic_kernel.exceptions import KernelInvokeException
+from semantic_kernel.functions import KernelArguments, kernel_function
+from semantic_kernel.functions.kernel_parameter_metadata import KernelParameterMetadata
 
 from unitycatalog.ai.core.base import FunctionExecutionResult
 from unitycatalog.ai.core.client import (
@@ -93,7 +92,6 @@ async def test_toolkit_e2e(uc_client, execution_mode):
         assert len(tools) == 1
         tool = tools[0]
         assert func_obj.comment in tool.description
-        print("this is the tool name", tool.name)
 
         input_args = {"a": 5, "b": 6}
         k_ = Kernel()
@@ -208,7 +206,6 @@ def test_convert_function_params_to_kernel_metadata():
     """Test conversion of function parameters to kernel metadata."""
     function_info = generate_function_info()
     kernel_params = UCFunctionToolkit.convert_function_params_to_kernel_metadata(function_info)
-    print(function_info.model_dump())
 
     assert len(kernel_params) == 1
     param = kernel_params[0]
