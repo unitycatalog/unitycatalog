@@ -36,8 +36,12 @@ However, if you are writing an application that allows for code to be injected t
 executed is unsafe (involving file system operations or accessing networks). If your use case involves such a function declaration that permits execution of arbitrary Python code, it is **highly advised** to run your Agent from an isolated environment
 with restricted permissions.
 
-**Note**: Future development efforts may involve the creation of a secure function execution environment to eliminate the risks
-associated with GenAI-generated Python code execution from within Unity Catalog functions.
+#### Examples and Tutorials
+
+To see interactive examples of end-to-end workflows using Unity Catalog client capabilities for GenAI tool use, you can view or download the following notebooks:
+
+- [Quickstart Notebook](https://github.com/unitycatalog/unitycatalog/blob/main/ai/core/UnityCatalog_Functions_Quickstart.ipynb)
+- [Dev Loop Notebook for function authoring](https://github.com/unitycatalog/unitycatalog/blob/main/ai/core/UnityCatalog_AI_DevLoop.ipynb)
 
 ### Using the Client for Agent tool calling
 
