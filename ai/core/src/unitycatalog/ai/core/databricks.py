@@ -47,7 +47,7 @@ if TYPE_CHECKING:
     )
     from databricks.sdk.service.sql import StatementState
 
-DATABRICKS_CONNECT_SUPPORTED_VERSION = "15.1.0"
+DATABRICKS_CONNECT_SUPPORTED_VERSION = "16.1.1"
 DATABRICKS_CONNECT_IMPORT_ERROR_MESSAGE = (
     "Could not import databricks-connect python package. "
     "To interact with UC functions using serverless compute, install the package with "
@@ -317,7 +317,7 @@ class DatabricksFunctionClient(BaseFunctionClient):
         """
         Create a UC function with the given sql body or function info.
 
-        Note: `databricks-connect` is required to use this function, make sure its version is 15.1.0 or above to use
+        Note: `databricks-connect` is required to use this function, make sure its version is 16.1.1 or above to use
             serverless compute.
 
         Args:
@@ -529,7 +529,7 @@ class DatabricksFunctionClient(BaseFunctionClient):
         """
         Create a wrapped function comprised of a `primary_func` function and in-lined wrapped `functions` within the `primary_func` body.
 
-        Note: `databricks-connect` is required to use this function, make sure its version is 15.1.0 or above to use
+        Note: `databricks-connect` is required to use this function, make sure its version is 16.1.1 or above to use
             serverless compute.
 
         Args:

@@ -193,7 +193,7 @@ def test_extract_tool_call_data_multiple_tools(mock_message_multiple_tools):
     ]
 
     assert len(tool_calls) == len(expected_values)
-    for tool_call, expected in zip(tool_calls, expected_values):
+    for tool_call, expected in zip(tool_calls, expected_values, strict=False):
         assert isinstance(tool_call, ToolCallData)
         assert tool_call.function_name == expected["function_name"]
         assert tool_call.arguments == expected["arguments"]
@@ -227,7 +227,7 @@ def test_extract_tool_call_data_multiple_choices_multiple_tools(
     ]
 
     for choice in result:
-        for tool_call, expected in zip(choice, expected_values):
+        for tool_call, expected in zip(choice, expected_values, strict=False):
             assert isinstance(tool_call, ToolCallData)
             assert tool_call.function_name == expected["function_name"]
             assert tool_call.arguments == expected["arguments"]
