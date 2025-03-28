@@ -7,7 +7,7 @@ authors = [
 ]
 readme = "README.md"
 license = { text="Apache-2.0" }
-requires-python = ">=3.9"
+requires-python = ">=3.10"
 dependencies = [
     "autogen-agentchat>=0.4.0",
     "autogen-core>=0.4.0",
@@ -45,7 +45,7 @@ only-include = ["src/unitycatalog/ai/autogen"]
 
 [tool.ruff]
 line-length = 100
-target-version = "py39"
+target-version = "py310"
 
 [tool.ruff.lint]
 select = [

@@ -25,7 +25,7 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
-          python-version: '3.9'
+          python-version: '3.10'
       - name: Install dependencies
         run: |
           pip install -r requirements/lint-requirements.txt
@@ -40,7 +40,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        python-version: ['3.9', '3.10']
+        python-version: ['3.10', '3.11']
         pydantic-version: [1, 2]
     timeout-minutes: 40
     defaults:
@@ -78,7 +78,6 @@ jobs:
         run: |
           pytest core/tests --ignore=core/tests/core/databricks/test_databricks_unit_tests.py
       - name: Run Databricks Unit Tests
-        if: matrix.python-version == '3.10'
         run: |
           pip install databricks-connect==16.1.1
           pytest core/tests/core/databricks/test_databricks_unit_tests.py
