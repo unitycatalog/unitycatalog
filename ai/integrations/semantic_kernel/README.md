@@ -44,6 +44,24 @@ CATALOG = "my_catalog"
 SCHEMA = "my_schema"
 ```
 
+### Databricks-managed Unity Catalog
+
+To use Databricks-managed Unity Catalog with this package, follow the [instructions](https://docs.databricks.com/en/dev-tools/cli/authentication.html#authentication-for-the-databricks-cli) to authenticate to your workspace and ensure that your access token has workspace-level privilege for managing UC functions.
+
+#### Client setup
+
+Initialize a client for managing UC functions in a Databricks workspace.
+
+```python
+from unitycatalog.ai.core.databricks import DatabricksFunctionClient
+# Initialize the Databricks client
+client = DatabricksFunctionClient(profile="<profile>")
+
+CATALOG = "AICatalog"
+SCHEMA = "AISchema"
+
+```
+
 ### Creating a Unity Catalog Function
 
 You can create a UC function by providing a Python callable. Below is an example (recommended) of using the `create_python_function` API that accepts a Python callable (function) as input.
@@ -75,24 +93,6 @@ function_info = uc_client.create_python_function(
 print(function_info)
 ```
 
-### Databricks-managed Unity Catalog
-
-To use Databricks-managed Unity Catalog with this package, follow the [instructions](https://docs.databricks.com/en/dev-tools/cli/authentication.html#authentication-for-the-databricks-cli) to authenticate to your workspace and ensure that your access token has workspace-level privilege for managing UC functions.
-
-#### Client setup
-
-Initialize a client for managing UC functions in a Databricks workspace, and set it as the global client.
-
-```python
-from unitycatalog.ai.core.base import set_uc_function_client
-from unitycatalog.ai.core.databricks import DatabricksFunctionClient
-
-client = DatabricksFunctionClient()
-
-# sets the default uc function client
-set_uc_function_client(client)
-```
-
 ## Using the Function as a Semantic Kernel Tool
 
 ### Create a UCFunctionToolkit instance
@@ -116,16 +116,22 @@ Now, let's use these Unity Catalog functions as plugins within a Semantic Kernel
 ```python
 import os
 from semantic_kernel import Kernel
+from semantic_kernel.connectors.ai.function_choice_behavior import FunctionChoiceBehavior
 from semantic_kernel.connectors.ai.open_ai import OpenAIChatCompletion
+from semantic_kernel.connectors.ai.prompt_execution_settings import PromptExecutionSettings
+from semantic_kernel.contents.chat_history import ChatHistory
 
 # Initialize the kernel with an AI service
 kernel = Kernel()
-kernel.add_chat_service(
-    "chat-gpt",
-    OpenAIChatCompletion(
-        "gpt-4", 
-        api_key=os.environ["OPENAI_API_KEY"]
-    )
+
+# Add chat completion service
+chat_completion_service = OpenAIChatCompletion(
+    ai_model_id="gpt-4", api_key=os.getenv("OPENAI_API_KEY")
+)
+
+# Set up execution settings
+settings = PromptExecutionSettings(
+    function_choice_behavior=FunctionChoiceBehavior.Auto(),
 )
 
 # Register Unity Catalog functions with the kernel
@@ -138,13 +144,25 @@ You are a helpful calculator assistant. Use the calculator tools to answer quest
 Question: What is 49 + 82?
 """
 
-# Run the prompt with the kernel
-functions = [
-    kernel.get_function("calculator", "add_numbers")
-]
+# Create toolkit instance
+toolkit = UCFunctionToolkit(function_names=[f"{CATALOG}.{SCHEMA}.add_numbers"], client=client)
 
-result = kernel.run_chat(chat_prompt, functions=functions)
-print(result)
+# Register Unity Catalog functions with the kernel
+toolkit.register_with_kernel(kernel, plugin_name="calculator")
+
+# Create chat history
+chat_history = ChatHistory()
+chat_history.add_user_message(
+    """You are a helpful calculator assistant. Use the calculator tools to answer questions about numbers.
+    Question: What is 49 + 82?"""
+)
+
+# Process the chat interaction
+response = await chat_completion_service.get_chat_message_content(
+    chat_history, settings, kernel=kernel
+)
+
+print("\nFinal Response:", response) 
 ```
 
 ### Showing Details of the Tool Call
@@ -152,9 +170,14 @@ print(result)
 You can review the conversation history and see how the LLM decided to call the function:
 
 ```python
-for content in kernel.chat_history:
-    print(content.role, "->", content.content)
-    print("-" * 80)
+print("\nChat History:") 
+print("-" * 80)  
+for message in chat_history.messages:
+    print(f"Role: {message.role}") 
+    print(f"Content: {message.content}")  
+    if message.content == "":
+        print(f"Details: {message.items}")  
+    print("-" * 80)  
 ```
 
 ## Advanced Features
@@ -190,4 +213,4 @@ This approach organizes your Unity Catalog functions into logical groups that ca
 
 ### Configurations for Databricks-only UC function execution
 
-We provide configurations for the Databricks Client to control the function execution behaviors, check [function execution arguments section](../../core/README.md#function-execution-arguments-configuration). 
+We provide configurations for the Databricks Client to control the function execution behaviors, check [function execution arguments section](../../core/README.md#function-execution-arguments-configuration).
