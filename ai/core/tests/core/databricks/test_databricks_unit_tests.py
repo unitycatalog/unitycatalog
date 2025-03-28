@@ -511,7 +511,8 @@ class MockClient:
         self.refresh_count += 1
 
 
-def test_retry_on_session_expiration_decorator():
+def test_retry_on_session_expiration_decorator(caplog):
+    caplog.set_level(logging.INFO)
     client = MockClient()
 
     result = client.mock_function()
@@ -519,6 +520,7 @@ def test_retry_on_session_expiration_decorator():
     assert result == "Success"
     assert client.call_count == 2
     assert client.refresh_count == 2
+    assert "Successfully re-acquired connection to a serverless instance." in caplog.text
 
 
 @patch("time.sleep", return_value=None)
