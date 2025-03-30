@@ -2,6 +2,10 @@
 
 You can use the Unity Catalog AI package with Semantic Kernel to utilize functions that are defined in Unity Catalog as tools within Semantic Kernel applications.
 
+## Prerequisites
+- Python 3.10 or later
+- Access to Unity Catalog or Databricks workspace
+
 ## Installation
 
 ### Client Library
@@ -144,9 +148,6 @@ You are a helpful calculator assistant. Use the calculator tools to answer quest
 Question: What is 49 + 82?
 """
 
-# Create toolkit instance
-toolkit = UCFunctionToolkit(function_names=[f"{CATALOG}.{SCHEMA}.add_numbers"], client=client)
-
 # Register Unity Catalog functions with the kernel
 toolkit.register_with_kernel(kernel, plugin_name="calculator")
 
@@ -158,6 +159,7 @@ chat_history.add_user_message(
 )
 
 # Process the chat interaction
+# Note: This is an async operation
 response = await chat_completion_service.get_chat_message_content(
     chat_history, settings, kernel=kernel
 )
