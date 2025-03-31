@@ -35,7 +35,9 @@ def extract_tool_calls_from_event(event: Dict[str, Any]) -> List[Dict[str, Any]]
             "action_group": func_input["actionGroup"],
             "function": func_input["function"],
             "function_name": f"{func_input['actionGroup']}__{func_input['function']}",
-            "parameters": {p["name"]: p["value"] for p in func_input.get("parameters", [])},
+            "parameters": {
+                p["name"]: p["value"] for p in func_input.get("parameters", [])
+            },
             "invocation_id": control_data["invocationId"],
         }
         for invocation in control_data.get("invocationInputs", [])
@@ -63,13 +65,20 @@ def execute_tool_calls(
     for tool_call in tool_calls:
         try:
             full_function_name = f"{catalog_name}.{schema_name}.{function_name}"
-            result = client.execute_function(full_function_name, tool_call["parameters"])
+            result = client.execute_function(
+                full_function_name, tool_call["parameters"]
+            )
             results.append(
-                {"invocation_id": tool_call["invocation_id"], "result": str(result.value)}
+                {
+                    "invocation_id": tool_call["invocation_id"],
+                    "result": str(result.value),
+                }
             )
         except Exception as e:
             logger.error(f"Error executing tool call: {e}")
-            results.append({"invocation_id": tool_call["invocation_id"], "error": str(e)})
+            results.append(
+                {"invocation_id": tool_call["invocation_id"], "error": str(e)}
+            )
     return results
 
 
@@ -93,7 +102,11 @@ def generate_tool_call_session_state(
 
 
 def retry_with_exponential_backoff(
-    func, max_retries=10, base_delay=1, backoff_factor=2, retryable_error="Rate limit exceeded"
+    func,
+    max_retries=10,
+    base_delay=1,
+    backoff_factor=2,
+    retryable_error="Rate limit exceeded",
 ):
     """
     Retries a function with exponential backoff if a retryable error occurs.

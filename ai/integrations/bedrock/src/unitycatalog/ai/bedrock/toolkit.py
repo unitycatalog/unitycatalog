@@ -36,7 +36,8 @@ class BedrockToolResponse(BaseModel):
     def requires_tool_execution(self) -> bool:
         """Returns True if the response requires tool execution."""
         return any(
-            event.get("returnControl") is True for event in self.raw_response.get("completion", [])
+            event.get("returnControl") is True
+            for event in self.raw_response.get("completion", [])
         )
 
     @property
@@ -77,7 +78,11 @@ class BedrockToolResponse(BaseModel):
                 accumulated_line = "".join(buffer)
                 full_lines = len(accumulated_line) // max_line_length
                 for i in range(full_lines):
-                    logger.info(accumulated_line[i * max_line_length : (i + 1) * max_line_length])
+                    logger.info(
+                        accumulated_line[
+                            i * max_line_length : (i + 1) * max_line_length
+                        ]
+                    )
                 leftover = accumulated_line[full_lines * max_line_length :]
                 buffer = [leftover] if leftover else []
                 current_length = len(leftover)
@@ -160,7 +165,9 @@ class BedrockSession:
 
             logger.debug(f"Tool Call Results: {tool_calls}")
             if tool_calls:
-                function_name_to_execute = (tool_calls[0]["function_name"]).split("__")[1]
+                function_name_to_execute = (tool_calls[0]["function_name"]).split("__")[
+                    1
+                ]
 
                 tool_results = execute_tool_calls(
                     tool_calls,
@@ -172,7 +179,9 @@ class BedrockSession:
                 logger.debug(f"ToolResults: {tool_results}")
 
                 if tool_results:
-                    session_state = generate_tool_call_session_state(tool_results[0], tool_calls[0])
+                    session_state = generate_tool_call_session_state(
+                        tool_results[0], tool_calls[0]
+                    )
 
                 agent_stream_config = {
                     # Bedrock will apply safety checks every second while generating and streaming the output
@@ -189,7 +198,9 @@ class BedrockSession:
                 )
 
         return BedrockToolResponse(
-            raw_response=response, tool_calls=tool_calls, response_body=final_response_body
+            raw_response=response,
+            tool_calls=tool_calls,
+            response_body=final_response_body,
         )
 
 
@@ -197,7 +208,9 @@ class BedrockTool(BaseModel):
     """Model representing a Unity Catalog function as a Bedrock tool."""
 
     name: str = Field(description="The name of the function.")
-    description: str = Field(description="A brief description of the function's purpose.")
+    description: str = Field(
+        description="A brief description of the function's purpose."
+    )
     parameters: Dict[str, Any] = Field(
         description="The parameters schema required by the function."
     )
@@ -268,13 +281,19 @@ class UCFunctionToolkit(BaseModel):
         try:
             function_info = client.get_function(function_name)
         except Exception as e:
-            raise ValueError(f"Failed to retrieve function info for {function_name}: {e}") from e
+            raise ValueError(
+                f"Failed to retrieve function info for {function_name}: {e}"
+            ) from e
 
         fn_schema = generate_function_input_params_schema(function_info)
         parameters = {
             "type": "object",
-            "properties": fn_schema.pydantic_model.model_json_schema().get("properties", {}),
-            "required": fn_schema.pydantic_model.model_json_schema().get("required", []),
+            "properties": fn_schema.pydantic_model.model_json_schema().get(
+                "properties", {}
+            ),
+            "required": fn_schema.pydantic_model.model_json_schema().get(
+                "required", []
+            ),
         }
 
         return BedrockTool(
