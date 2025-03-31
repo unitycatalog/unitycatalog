@@ -154,7 +154,7 @@ async def test_tool_calling_with_anthropic(uc_client, execution_mode):
             assert isinstance(arguments.get("b"), int)
 
             result = uc_client.execute_function(func_name, arguments)
-            assert result.value.strip() == "5"
+            assert result.value == 5
 
             function_call_result_message = {
                 "role": "user",
@@ -245,7 +245,7 @@ async def test_tool_calling_with_multiple_tools_anthropic(uc_client, execution_m
             assert isinstance(arguments.get("b"), int)
 
             result = uc_client.execute_function(func_name_1, arguments)
-            assert result.value.strip() == "5"
+            assert result.value == 5
 
             function_call_result_message = {
                 "role": "user",
@@ -287,7 +287,7 @@ async def test_tool_calling_with_multiple_tools_anthropic(uc_client, execution_m
 
                 result_second = uc_client.execute_function(func_name_2, arguments_second)
 
-                assert result_second.value.strip() == "20"
+                assert result_second.value == 20
 
                 function_call_result_message_second = {
                     "role": "user",
