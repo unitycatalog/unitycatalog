@@ -523,7 +523,8 @@ class MockClient:
         SESSION_HANDLE_INVALID_MESSAGE,
     ],
 )
-def test_retry_on_session_expiration_varied_messages(error_message):
+def test_retry_on_session_expiration_varied_messages(error_message, caplog):
+    caplog.set_level(logging.INFO)
     client = MockClient(error_message=error_message)
 
     result = client.mock_function()
@@ -531,6 +532,7 @@ def test_retry_on_session_expiration_varied_messages(error_message):
     assert result == "Success"
     assert client.call_count == 2
     assert client.refresh_count == 2
+    assert "Successfully re-acquired connection to a serverless instance." in caplog.text
 
 
 @patch("time.sleep", return_value=None)

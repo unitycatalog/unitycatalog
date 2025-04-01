@@ -199,6 +199,7 @@ def retry_on_session_expiration(func):
                     )
                 ):
                     raise SessionExpirationException(result.error)
+                _logger.info("Successfully re-acquired connection to a serverless instance.")
                 return result
             except SessionExpirationException as e:
                 if not self._is_default_client:
