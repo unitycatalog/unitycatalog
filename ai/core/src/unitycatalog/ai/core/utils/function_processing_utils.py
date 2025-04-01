@@ -422,7 +422,10 @@ def process_function_parameter_defaults(
             if param.parameter_default is not None:
                 default_str = param.parameter_default.strip()
                 upper_str = default_str.upper()
-
+                # NB: Pydantic requires a NoneType definition to be explicity set directly. If retrieiving
+                # this type from a lookup mapping (as is done with True / False as registered in
+                # UC_DEFAULT_VALUE_TO_PYTHON_EQUIVALENT_MAPPING), it will not be recognized
+                # as a NoneType properly.
                 if upper_str == "NULL":
                     defaults[param.name] = None
                 elif upper_str in UC_DEFAULT_VALUE_TO_PYTHON_EQUIVALENT_MAPPING:
