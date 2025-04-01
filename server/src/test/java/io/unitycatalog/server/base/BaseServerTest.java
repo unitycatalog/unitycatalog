@@ -2,7 +2,7 @@ package io.unitycatalog.server.base;
 
 import io.unitycatalog.server.UnityCatalogServer;
 import io.unitycatalog.server.persist.utils.HibernateConfigurator;
-import io.unitycatalog.server.service.credential.CredentialOperations;
+import io.unitycatalog.server.service.credential.CloudCredentialVendor;
 import io.unitycatalog.server.utils.ServerProperties;
 import io.unitycatalog.server.utils.TestUtils;
 import java.util.Properties;
@@ -18,7 +18,7 @@ public abstract class BaseServerTest {
   protected static UnityCatalogServer unityCatalogServer;
   protected static Properties serverProperties;
   protected static HibernateConfigurator hibernateConfigurator;
-  protected static CredentialOperations credentialOperations;
+  protected static CloudCredentialVendor cloudCredentialVendor;
 
   protected void setUpProperties() {
     serverProperties = new Properties();
@@ -50,7 +50,7 @@ public abstract class BaseServerTest {
           UnityCatalogServer.builder()
               .port(port)
               .serverProperties(initServerProperties)
-              .credentialOperations(credentialOperations)
+              .credentialOperations(cloudCredentialVendor)
               .build();
       unityCatalogServer.start();
       serverConfig.setServerUrl("http://localhost:" + port);

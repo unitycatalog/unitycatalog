@@ -23,9 +23,9 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import software.amazon.awssdk.services.sts.model.StsException;
 
 @ExtendWith(MockitoExtension.class)
-public class CredentialOperationsTest {
+public class CloudCredentialVendorTest {
   @Mock ServerProperties serverProperties;
-  CredentialOperations credentialsOperations;
+  CloudCredentialVendor credentialsOperations;
 
   @Test
   public void testGenerateS3TemporaryCredentials() {
@@ -45,7 +45,7 @@ public class CredentialOperationsTest {
                     .sessionToken(SESSION_TOKEN)
                     .build()));
     AwsCredentialVendor awsCredentialVendor = new AwsCredentialVendor(serverProperties);
-    credentialsOperations = new CredentialOperations(awsCredentialVendor, null, null);
+    credentialsOperations = new CloudCredentialVendor(awsCredentialVendor, null, null);
     TemporaryCredentials s3TemporaryCredentials =
         credentialsOperations.vendCredential(
             "s3://storageBase/abc", Set.of(CredentialContext.Privilege.SELECT));
@@ -68,7 +68,7 @@ public class CredentialOperationsTest {
                     .awsRoleArn(ROLE_ARN)
                     .build()));
     awsCredentialVendor = new AwsCredentialVendor(serverProperties);
-    credentialsOperations = new CredentialOperations(awsCredentialVendor, null, null);
+    credentialsOperations = new CloudCredentialVendor(awsCredentialVendor, null, null);
     assertThatThrownBy(
             () ->
                 credentialsOperations.vendCredential(
@@ -85,7 +85,7 @@ public class CredentialOperationsTest {
     when(serverProperties.getAdlsConfigurations())
         .thenReturn(Map.of("uctest", ADLSStorageConfig.builder().testMode(true).build()));
     AzureCredentialVendor azureCredentialVendor = new AzureCredentialVendor(serverProperties);
-    credentialsOperations = new CredentialOperations(null, azureCredentialVendor, null);
+    credentialsOperations = new CloudCredentialVendor(null, azureCredentialVendor, null);
     TemporaryCredentials azureTemporaryCredentials =
         credentialsOperations.vendCredential(
             "abfss://test@uctest.dfs.core.windows.net", Set.of(CredentialContext.Privilege.UPDATE));
@@ -103,7 +103,7 @@ public class CredentialOperationsTest {
                     .clientSecret(CLIENT_SECRET)
                     .build()));
     azureCredentialVendor = new AzureCredentialVendor(serverProperties);
-    credentialsOperations = new CredentialOperations(null, azureCredentialVendor, null);
+    credentialsOperations = new CloudCredentialVendor(null, azureCredentialVendor, null);
     assertThatThrownBy(
             () ->
                 credentialsOperations.vendCredential(
@@ -117,7 +117,7 @@ public class CredentialOperationsTest {
     when(serverProperties.getGcsConfigurations())
         .thenReturn(Map.of("gs://uctest", "testing://test"));
     GcpCredentialVendor gcpCredentialVendor = new GcpCredentialVendor(serverProperties);
-    credentialsOperations = new CredentialOperations(null, null, gcpCredentialVendor);
+    credentialsOperations = new CloudCredentialVendor(null, null, gcpCredentialVendor);
     TemporaryCredentials gcpTemporaryCredentials =
         credentialsOperations.vendCredential(
             "gs://uctest/abc/xyz", Set.of(CredentialContext.Privilege.UPDATE));
@@ -126,7 +126,7 @@ public class CredentialOperationsTest {
     // Use default creds
     when(serverProperties.getGcsConfigurations()).thenReturn(Map.of("gs://uctest", ""));
     gcpCredentialVendor = new GcpCredentialVendor(serverProperties);
-    credentialsOperations = new CredentialOperations(null, null, gcpCredentialVendor);
+    credentialsOperations = new CloudCredentialVendor(null, null, gcpCredentialVendor);
     assertThatThrownBy(
             () ->
                 credentialsOperations.vendCredential(

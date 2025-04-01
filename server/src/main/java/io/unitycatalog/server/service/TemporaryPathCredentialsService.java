@@ -9,7 +9,7 @@ import io.unitycatalog.server.exception.GlobalExceptionHandler;
 import io.unitycatalog.server.model.GenerateTemporaryPathCredential;
 import io.unitycatalog.server.model.PathOperation;
 import io.unitycatalog.server.service.credential.CredentialContext;
-import io.unitycatalog.server.service.credential.CredentialOperations;
+import io.unitycatalog.server.service.credential.CloudCredentialVendor;
 
 import java.util.Collections;
 import java.util.Set;
@@ -20,9 +20,9 @@ import static io.unitycatalog.server.service.credential.CredentialContext.Privil
 
 @ExceptionHandler(GlobalExceptionHandler.class)
 public class TemporaryPathCredentialsService {
-    private final CredentialOperations credentialOps;
+    private final CloudCredentialVendor credentialOps;
 
-    public TemporaryPathCredentialsService(CredentialOperations credentialOps) {
+    public TemporaryPathCredentialsService(CloudCredentialVendor credentialOps) {
         this.credentialOps = credentialOps;
     }
 

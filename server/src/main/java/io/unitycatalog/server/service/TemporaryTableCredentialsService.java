@@ -17,7 +17,7 @@ import io.unitycatalog.server.persist.Repositories;
 import io.unitycatalog.server.persist.TableRepository;
 import io.unitycatalog.server.persist.UserRepository;
 import io.unitycatalog.server.service.credential.CredentialContext;
-import io.unitycatalog.server.service.credential.CredentialOperations;
+import io.unitycatalog.server.service.credential.CloudCredentialVendor;
 import lombok.SneakyThrows;
 
 import java.util.Collections;
@@ -35,11 +35,11 @@ public class TemporaryTableCredentialsService {
   private final UserRepository userRepository;
 
   private final UnityAccessEvaluator evaluator;
-  private final CredentialOperations credentialOps;
+  private final CloudCredentialVendor credentialOps;
   private final KeyMapper keyMapper;
 
   @SneakyThrows
-  public TemporaryTableCredentialsService(UnityCatalogAuthorizer authorizer, CredentialOperations credentialOps, Repositories repositories) {
+  public TemporaryTableCredentialsService(UnityCatalogAuthorizer authorizer, CloudCredentialVendor credentialOps, Repositories repositories) {
     this.evaluator = new UnityAccessEvaluator(authorizer);
     this.credentialOps = credentialOps;
     this.keyMapper = new KeyMapper(repositories);
