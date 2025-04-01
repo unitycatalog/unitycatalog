@@ -21,6 +21,9 @@ from databricks.sdk.service.catalog import (
 )
 
 from unitycatalog.ai.core.databricks import (
+    SESSION_CHANGED_MESSAGE,
+    SESSION_EXPIRED_MESSAGE,
+    SESSION_HANDLE_INVALID_MESSAGE,
     DatabricksFunctionClient,
     SessionExpirationException,
     dynamically_construct_python_function,
@@ -495,25 +498,34 @@ def test_function_with_union_return_type(client: DatabricksFunctionClient):
 
 
 class MockClient:
-    def __init__(self):
+    def __init__(self, error_message):
         self.call_count = 0
         self.refresh_count = 0
         self._is_default_client = True
+        self.error_message = error_message
 
     @retry_on_session_expiration
     def mock_function(self):
         if self.call_count < 2:
             self.call_count += 1
-            raise SessionExpirationException("session_id is no longer usable")
+            raise SessionExpirationException(self.error_message)
         return "Success"
 
     def refresh_client_and_session(self):
         self.refresh_count += 1
 
 
-def test_retry_on_session_expiration_decorator(caplog):
+@pytest.mark.parametrize(
+    "error_message",
+    [
+        SESSION_EXPIRED_MESSAGE,
+        SESSION_CHANGED_MESSAGE,
+        SESSION_HANDLE_INVALID_MESSAGE,
+    ],
+)
+def test_retry_on_session_expiration_varied_messages(error_message, caplog):
     caplog.set_level(logging.INFO)
-    client = MockClient()
+    client = MockClient(error_message=error_message)
 
     result = client.mock_function()
 
@@ -524,21 +536,32 @@ def test_retry_on_session_expiration_decorator(caplog):
 
 
 @patch("time.sleep", return_value=None)
-def test_retry_on_session_expiration_decorator_exceeds_attempts(mock_sleep):
-    client = MockClient()
-    client._is_default_client = True
+@pytest.mark.parametrize(
+    "error_message",
+    [
+        SESSION_EXPIRED_MESSAGE,
+        SESSION_CHANGED_MESSAGE,
+        SESSION_HANDLE_INVALID_MESSAGE,
+    ],
+)
+def test_retry_on_session_expiration_exceeds_attempts(mock_sleep, error_message):
+    client = MockClient(error_message=error_message)
 
     @retry_on_session_expiration
     def mock_function_always_fail(self):
         self.call_count += 1
-        raise SessionExpirationException("session_id is no longer usable")
+        raise SessionExpirationException(self.error_message)
 
     client.mock_function = mock_function_always_fail.__get__(client)
 
-    with pytest.raises(RuntimeError, match="Failed to execute mock_function_always_fail after"):
+    with pytest.raises(
+        RuntimeError,
+        match=f"Failed to execute mock_function_always_fail after {UCAI_DATABRICKS_SESSION_RETRY_MAX_ATTEMPTS.get()} attempts",
+    ):
         client.mock_function()
 
     assert client.call_count == UCAI_DATABRICKS_SESSION_RETRY_MAX_ATTEMPTS.get()
+    assert client.refresh_count == UCAI_DATABRICKS_SESSION_RETRY_MAX_ATTEMPTS.get() - 1
 
 
 @pytest.fixture
