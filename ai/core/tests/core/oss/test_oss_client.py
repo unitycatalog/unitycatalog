@@ -466,7 +466,7 @@ async def test_list_functions(uc_client: UnitycatalogFunctionClient):
             full_data_type="INT",
             routine_definition="return x+y",
             input_data={"x": 1, "y": 2},
-            expected_result="3",
+            expected_result=3,
             comment="test",
         ),
         FunctionObj(
@@ -483,7 +483,7 @@ async def test_list_functions(uc_client: UnitycatalogFunctionClient):
             full_data_type="DOUBLE",
             routine_definition="return sum(x)",
             input_data={"x": (1, 2, 3)},
-            expected_result="6",
+            expected_result=6,
             comment="test",
         ),
         FunctionObj(
@@ -500,7 +500,7 @@ async def test_list_functions(uc_client: UnitycatalogFunctionClient):
             full_data_type="BOOLEAN",
             routine_definition="return x",
             input_data={"x": True},
-            expected_result="True",
+            expected_result=True,
             comment="test",
         ),
         FunctionObj(
@@ -534,7 +534,7 @@ async def test_list_functions(uc_client: UnitycatalogFunctionClient):
             full_data_type="BYTE",
             routine_definition="return x",
             input_data={"x": 127},
-            expected_result="127",
+            expected_result=127,
             comment="test",
         ),
         FunctionObj(
@@ -551,7 +551,7 @@ async def test_list_functions(uc_client: UnitycatalogFunctionClient):
             full_data_type="SHORT",
             routine_definition="return x",
             input_data={"x": 32767},
-            expected_result="32767",
+            expected_result=32767,
             comment="test",
         ),
         FunctionObj(
@@ -568,7 +568,7 @@ async def test_list_functions(uc_client: UnitycatalogFunctionClient):
             full_data_type="LONG",
             routine_definition="return x",
             input_data={"x": 2**63 - 1},
-            expected_result=f"{2**63 - 1}",
+            expected_result=2**63 - 1,
             comment="test",
         ),
         FunctionObj(
@@ -691,7 +691,7 @@ async def test_list_functions(uc_client: UnitycatalogFunctionClient):
             full_data_type="INT",
             routine_definition="return x['key1']",
             input_data={"x": {"key1": 1, "key2": 2}},
-            expected_result="1",
+            expected_result=1,
             comment="test",
         ),
         FunctionObj(
@@ -904,8 +904,8 @@ async def test_function_caching(uc_client):
     result1 = uc_client.execute_function(function_name=function_name, parameters={"x": 2})
     result2 = uc_client.execute_function(function_name=function_name, parameters={"x": 3})
 
-    assert result1.value == "4"
-    assert result2.value == "6"
+    assert result1.value == 4
+    assert result2.value == 6
 
     assert function_name.split(".")[-1] in uc_client.func_cache
 
@@ -938,7 +938,7 @@ async def test_function_overwrite_cache_invalidate(uc_client):
 
     # Execute the function to cache it
     result1 = uc_client.execute_function(function_name=function_name, parameters={"x": 2})
-    assert result1.value == "4"
+    assert result1.value == 4
 
     # Overwrite the function with a new definition
     new_routine_definition = "return x * 3"
@@ -955,7 +955,7 @@ async def test_function_overwrite_cache_invalidate(uc_client):
 
     # Execute the function again to check if the cache is invalidated
     result2 = uc_client.execute_function(function_name=function_name, parameters={"x": 2})
-    assert result2.value == "6"
+    assert result2.value == 6
 
 
 @pytest.mark.asyncio
@@ -1699,7 +1699,7 @@ def test_local_function_execution_sync(uc_client: UnitycatalogFunctionClient):
     uc_client.create_python_function(func=simple_func, catalog=CATALOG, schema=SCHEMA, replace=True)
 
     result = uc_client.execute_function(function_name=function_name, parameters={"a": 5, "b": 10})
-    assert result.value == "15"
+    assert result.value == 15
     assert result.format == "SCALAR"
 
 
@@ -1712,7 +1712,7 @@ async def test_local_function_execution_async(uc_client: UnitycatalogFunctionCli
     result = await uc_client.execute_function_async(
         function_name=function_name, parameters={"a": 5, "b": 10}
     )
-    assert result.value == "15"
+    assert result.value == 15
     assert result.format == "SCALAR"
 
 

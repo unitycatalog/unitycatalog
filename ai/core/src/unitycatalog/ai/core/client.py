@@ -911,7 +911,7 @@ class UnitycatalogFunctionClient(BaseFunctionClient):
             )
         if not result:
             result = NO_OUTPUT_MESSAGE
-        return FunctionExecutionResult(format="SCALAR", value=str(result))
+        return FunctionExecutionResult(format="SCALAR", value=result)
 
     async def execute_function_async(
         self,
@@ -952,7 +952,7 @@ class UnitycatalogFunctionClient(BaseFunctionClient):
             )
         if not result:
             result = NO_OUTPUT_MESSAGE
-        return FunctionExecutionResult(format="SCALAR", value=str(result))
+        return FunctionExecutionResult(format="SCALAR", value=result)
 
     async def delete_function_async(
         self,
