@@ -4,6 +4,7 @@ import inspect
 import json
 import logging
 import os
+import re
 from hashlib import md5
 from io import StringIO
 from typing import Any, Callable, Dict, List, Optional, Tuple, Union
@@ -442,3 +443,35 @@ def process_function_parameter_defaults(
     if parameters is None:
         parameters = {}
     return defaults | parameters
+
+
+def extract_function_name(sql_body: str) -> str:
+    """
+    Extract function name from the sql body.
+    CREATE FUNCTION syntax reference: https://docs.databricks.com/en/sql/language-manual/sql-ref-syntax-ddl-create-sql-function.html#syntax
+    """
+    # NOTE: catalog/schema/function names follow guidance here:
+    # https://docs.databricks.com/en/sql/language-manual/sql-ref-names.html#catalog-name
+    pattern = re.compile(
+        r"""
+        CREATE\s+(?:OR\s+REPLACE\s+)?      # Match 'CREATE OR REPLACE' or just 'CREATE'
+        (?:TEMPORARY\s+)?                  # Match optional 'TEMPORARY'
+        FUNCTION\s+(?:IF\s+NOT\s+EXISTS\s+)?  # Match 'FUNCTION' and optional 'IF NOT EXISTS'
+        (?P<name>[^ /.]+\.[^ /.]+\.[^ /.]+)          # Capture the function name (including schema if present)
+        \s*\(                              # Match opening parenthesis after function name
+    """,
+        re.IGNORECASE | re.VERBOSE,
+    )
+
+    match = pattern.search(sql_body)
+    if match:
+        result = match.group("name")
+        full_function_name = FullFunctionName.validate_full_function_name(result)
+        # backticks are only required in SQL, not in python APIs
+        return str(full_function_name)
+    raise ValueError(
+        f"Could not extract function name from the sql body: {sql_body}.\nPlease "
+        "make sure the sql body follows the syntax of CREATE FUNCTION "
+        "statement in Databricks: "
+        "https://docs.databricks.com/en/sql/language-manual/sql-ref-syntax-ddl-create-sql-function.html#syntax."
+    )
