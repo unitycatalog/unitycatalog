@@ -16,56 +16,57 @@ import org.slf4j.LoggerFactory;
 
 /**
  * Utility class for handling encryption and decryption operations.
- * 
- * <p>This class provides methods to securely encrypt and decrypt sensitive data
- * such as cloud credentials. It uses AES-GCM (Galois/Counter Mode) which provides
- * both confidentiality and authentication.
- * 
+ *
+ * <p>This class provides methods to securely encrypt and decrypt sensitive data such as cloud
+ * credentials. It uses AES-GCM (Galois/Counter Mode) which provides both confidentiality and
+ * authentication.
+ *
  * <p>The encryption key can be provided through:
+ *
  * <ol>
- *   <li>System property "encryption.key"</li>
- *   <li>Environment variable "encryption.key"</li>
+ *   <li>System property "encryption.key"
+ *   <li>Environment variable "encryption.key"
  * </ol>
- * 
- * <p>If no key is provided, a random key will be generated on startup. Note that this 
- * approach is not suitable for production as it will generate a new key each time 
- * the application starts, making previously encrypted data unreadable. In a production 
- * environment, always provide a consistent encryption key.
- * 
+ *
+ * <p>If no key is provided, a random key will be generated on startup. Note that this approach is
+ * not suitable for production as it will generate a new key each time the application starts,
+ * making previously encrypted data unreadable. In a production environment, always provide a
+ * consistent encryption key.
+ *
  * <p>The generated key is a 256-bit AES key encoded as a Base64 string.
- * 
+ *
  * <p>Example usage:
+ *
  * <pre>
  * // Encrypt sensitive data
  * String sensitiveData = "secret-password";
  * String encrypted = EncryptionUtils.encrypt(sensitiveData);
- * 
+ *
  * // Decrypt when needed
  * String decrypted = EncryptionUtils.decrypt(encrypted);
  * </pre>
  */
 public class EncryptionUtils {
   private static final Logger LOGGER = LoggerFactory.getLogger(EncryptionUtils.class);
-  
+
   /** The encryption algorithm used (AES in GCM mode with no padding) */
   private static final String ALGORITHM = "AES/GCM/NoPadding";
-  
+
   /** Length of the Initialization Vector (IV) in bytes */
   private static final int GCM_IV_LENGTH = 12;
-  
+
   /** Length of the GCM authentication tag in bits */
   private static final int GCM_TAG_LENGTH = 128;
-  
+
   /** Property name for the encryption key */
   private static final String KEY_PROPERTY = "encryption.key";
-  
+
   /** The secret key used for encryption and decryption */
   private static SecretKey secretKey;
 
   /**
-   * Static initializer that sets up the encryption key on class loading.
-   * Tries to get a key from properties or environment variables, 
-   * falling back to generating a new key if none is found.
+   * Static initializer that sets up the encryption key on class loading. Tries to get a key from
+   * properties or environment variables, falling back to generating a new key if none is found.
    */
   static {
     initializeSecretKey();
@@ -73,9 +74,9 @@ public class EncryptionUtils {
 
   /**
    * Initializes the secret key used for encryption/decryption operations.
-   * 
-   * <p>Checks for an existing key in the system properties or environment variables.
-   * If no key is found or the provided key is invalid, generates a new key.
+   *
+   * <p>Checks for an existing key in the system properties or environment variables. If no key is
+   * found or the provided key is invalid, generates a new key.
    */
   private static void initializeSecretKey() {
     // Try to get key from properties or environment
@@ -100,11 +101,11 @@ public class EncryptionUtils {
 
   /**
    * Generates a new random AES-256 encryption key.
-   * 
-   * <p>This method is called when no valid key is provided through properties
-   * or environment variables. The generated key is logged as a warning since
-   * using a randomly generated key in production is not recommended.
-   * 
+   *
+   * <p>This method is called when no valid key is provided through properties or environment
+   * variables. The generated key is logged as a warning since using a randomly generated key in
+   * production is not recommended.
+   *
    * @throws BaseException if key generation fails
    */
   private static void generateNewKey() {
@@ -126,13 +127,14 @@ public class EncryptionUtils {
 
   /**
    * Encrypts a plaintext string using AES-GCM.
-   * 
+   *
    * <p>The encryption process:
+   *
    * <ol>
-   *   <li>Generates a random initialization vector (IV)</li>
-   *   <li>Encrypts the data using AES-GCM with the IV and secret key</li>
-   *   <li>Combines the IV and encrypted data</li>
-   *   <li>Encodes the result as a Base64 string</li>
+   *   <li>Generates a random initialization vector (IV)
+   *   <li>Encrypts the data using AES-GCM with the IV and secret key
+   *   <li>Combines the IV and encrypted data
+   *   <li>Encodes the result as a Base64 string
    * </ol>
    *
    * @param plaintext The text to encrypt
@@ -167,13 +169,14 @@ public class EncryptionUtils {
 
   /**
    * Decrypts a previously encrypted string using AES-GCM.
-   * 
+   *
    * <p>The decryption process:
+   *
    * <ol>
-   *   <li>Decodes the Base64 string</li>
-   *   <li>Extracts the IV from the beginning of the decoded data</li>
-   *   <li>Extracts the ciphertext from the remainder of the decoded data</li>
-   *   <li>Decrypts using AES-GCM with the extracted IV and the secret key</li>
+   *   <li>Decodes the Base64 string
+   *   <li>Extracts the IV from the beginning of the decoded data
+   *   <li>Extracts the ciphertext from the remainder of the decoded data
+   *   <li>Decrypts using AES-GCM with the extracted IV and the secret key
    * </ol>
    *
    * @param encryptedData Base64-encoded encrypted string including IV
