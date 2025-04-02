@@ -20,10 +20,10 @@ import static io.unitycatalog.server.service.credential.CredentialContext.Privil
 
 @ExceptionHandler(GlobalExceptionHandler.class)
 public class TemporaryPathCredentialsService {
-    private final CloudCredentialVendor credentialOps;
+    private final CloudCredentialVendor cloudCredentialVendor;
 
-    public TemporaryPathCredentialsService(CloudCredentialVendor credentialOps) {
-        this.credentialOps = credentialOps;
+    public TemporaryPathCredentialsService(CloudCredentialVendor cloudCredentialVendor) {
+        this.cloudCredentialVendor = cloudCredentialVendor;
     }
 
     @Post("")
@@ -32,7 +32,7 @@ public class TemporaryPathCredentialsService {
     public HttpResponse generateTemporaryPathCredential(
         GenerateTemporaryPathCredential generateTemporaryPathCredential) {
         return HttpResponse.ofJson(
-                credentialOps.vendCredential(
+                cloudCredentialVendor.vendCredential(
                         generateTemporaryPathCredential.getUrl(),
                         pathOperationToPrivileges(generateTemporaryPathCredential.getOperation())));
     }

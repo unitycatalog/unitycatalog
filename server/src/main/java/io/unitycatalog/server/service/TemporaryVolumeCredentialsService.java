@@ -35,13 +35,13 @@ public class TemporaryVolumeCredentialsService {
   private final UserRepository userRepository;
 
   private final UnityAccessEvaluator evaluator;
-  private final CloudCredentialVendor credentialOps;
+  private final CloudCredentialVendor cloudCredentialVendor;
   private final KeyMapper keyMapper;
 
   @SneakyThrows
-  public TemporaryVolumeCredentialsService(UnityCatalogAuthorizer authorizer, CloudCredentialVendor credentialOps, Repositories repositories) {
+  public TemporaryVolumeCredentialsService(UnityCatalogAuthorizer authorizer, CloudCredentialVendor cloudCredentialVendor, Repositories repositories) {
     this.evaluator = new UnityAccessEvaluator(authorizer);
-    this.credentialOps = credentialOps;
+    this.cloudCredentialVendor = cloudCredentialVendor;
     this.keyMapper = new KeyMapper(repositories);
     this.volumeRepository = repositories.getVolumeRepository();
     this.userRepository = repositories.getUserRepository();
@@ -57,7 +57,7 @@ public class TemporaryVolumeCredentialsService {
     }
     VolumeInfo volumeInfo = volumeRepository.getVolumeById(volumeId);
     return HttpResponse.ofJson(
-            credentialOps.vendCredential(
+            cloudCredentialVendor.vendCredential(
                     volumeInfo.getStorageLocation(),
                     volumeOperationToPrivileges(generateTemporaryVolumeCredential.getOperation())));
   }
