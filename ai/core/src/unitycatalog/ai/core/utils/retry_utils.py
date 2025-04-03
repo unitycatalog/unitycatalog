@@ -12,33 +12,28 @@ SESSION_HANDLE_INVALID_MESSAGE = "INVALID_HANDLE"
 SESSION_RETRY_BASE_DELAY = 1
 SESSION_RETRY_MAX_DELAY = 4
 
+_SESSION_EXPIRATION_PATTERNS = [
+    SESSION_CHANGED_MESSAGE,
+    SESSION_EXPIRED_MESSAGE,
+    SESSION_HANDLE_INVALID_MESSAGE,
+]
 
-class SessionErrorHandler:
+
+def _is_session_expired(error_message: str) -> bool:
     """
-    Handler for session expiration errors based on error messages coming from connection
-    attempts with the serverless Spark service.
+    Check if the error message indicates that the session is expired.
+
+    Internal utility function used by the retry decorator.
+
+    Args:
+        error_message (str): The error message to check.
+
+    Returns:
+        bool: True if the session is expired, False otherwise.
     """
-
-    _SESSION_EXPIRATION_PATTERNS = [
-        SESSION_CHANGED_MESSAGE,
-        SESSION_EXPIRED_MESSAGE,
-        SESSION_HANDLE_INVALID_MESSAGE,
-    ]
-
-    @classmethod
-    def is_session_expired(cls, error_message: str) -> bool:
-        """
-        Check if the error message indicates that the session is expired.
-
-        Args:
-            error_message (str): The error message to check.
-
-        Returns:
-            bool: True if the session is expired, False otherwise.
-        """
-        if not error_message:
-            return False
-        return any(pattern in error_message for pattern in cls._SESSION_EXPIRATION_PATTERNS)
+    if not error_message:
+        return False
+    return any(pattern in error_message for pattern in _SESSION_EXPIRATION_PATTERNS)
 
 
 class SessionExpirationException(Exception):
@@ -58,11 +53,7 @@ def retry_on_session_expiration(func):
         for attempt in range(1, max_attempts + 1):
             try:
                 result = func(self, *args, **kwargs)
-                if (
-                    hasattr(result, "error")
-                    and result.error
-                    and SessionErrorHandler.is_session_expired(result.error)
-                ):
+                if hasattr(result, "error") and result.error and _is_session_expired(result.error):
                     raise SessionExpirationException(result.error)
                 _logger.info("Successfully re-acquired connection to a serverless instance.")
                 return result
