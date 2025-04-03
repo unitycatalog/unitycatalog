@@ -11,7 +11,7 @@ from databricks.sdk.service.catalog import (
 )
 
 from unitycatalog.ai.anthropic.toolkit import UCFunctionToolkit
-from unitycatalog.ai.core.databricks import ExecutionMode
+from unitycatalog.ai.core.utils.execution_utils import ExecutionModeDatabricks
 from unitycatalog.ai.core.utils.function_processing_utils import get_tool_name
 from unitycatalog.ai.test_utils.client_utils import (
     get_client,
@@ -51,7 +51,7 @@ def mock_anthropic_tool_response(function_name, input_data, message_id):
 @requires_databricks
 def test_tool_calling_with_anthropic(execution_mode):
     client = get_client()
-    client.execution_mode = ExecutionMode(execution_mode)
+    client.execution_mode = ExecutionModeDatabricks(execution_mode)
     with (
         set_default_client(client),
         create_function_and_cleanup(client, schema=SCHEMA) as func_obj,
@@ -136,7 +136,7 @@ def test_tool_calling_with_anthropic(execution_mode):
 @requires_databricks
 def test_tool_calling_with_multiple_tools_anthropic(execution_mode):
     client = get_client()
-    client.execution_mode = ExecutionMode(execution_mode)
+    client.execution_mode = ExecutionModeDatabricks(execution_mode)
     with (
         set_default_client(client),
         create_function_and_cleanup(client, schema=SCHEMA) as func_obj,
