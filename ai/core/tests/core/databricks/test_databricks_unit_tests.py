@@ -21,16 +21,18 @@ from databricks.sdk.service.catalog import (
 )
 
 from unitycatalog.ai.core.databricks import (
+    DatabricksFunctionClient,
+    dynamically_construct_python_function,
+    extract_function_name,
+)
+from unitycatalog.ai.core.envs.databricks_env_vars import UCAI_DATABRICKS_SESSION_RETRY_MAX_ATTEMPTS
+from unitycatalog.ai.core.utils.retry_utils import (
     SESSION_CHANGED_MESSAGE,
     SESSION_EXPIRED_MESSAGE,
     SESSION_HANDLE_INVALID_MESSAGE,
-    DatabricksFunctionClient,
     SessionExpirationException,
-    dynamically_construct_python_function,
-    extract_function_name,
     retry_on_session_expiration,
 )
-from unitycatalog.ai.core.envs.databricks_env_vars import UCAI_DATABRICKS_SESSION_RETRY_MAX_ATTEMPTS
 from unitycatalog.ai.test_utils.client_utils import client  # noqa: F401
 from unitycatalog.ai.test_utils.function_utils import (
     CATALOG,

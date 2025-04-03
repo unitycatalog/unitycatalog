@@ -25,7 +25,7 @@ from unitycatalog.ai.core.utils.callable_utils_oss import (
     generate_function_info,
     generate_wrapped_function_info,
 )
-from unitycatalog.ai.core.utils.execution_utils import load_function_from_string
+from unitycatalog.ai.core.utils.execution_utils import ExecutionMode, load_function_from_string
 from unitycatalog.ai.core.utils.function_processing_utils import process_function_parameter_defaults
 from unitycatalog.ai.core.utils.type_utils import column_type_to_python_type
 from unitycatalog.ai.core.utils.validation_utils import (
@@ -99,23 +99,6 @@ SQL_TYPE_TO_PYTHON_TYPE_MAPPING_UC_OSS = {
 }
 
 _logger = logging.getLogger(__name__)
-
-
-class ExecutionMode(str, Enum):
-    LOCAL = "local"
-    SANDBOX = "sandbox"
-
-    def __str__(self) -> str:
-        return self.value
-
-    @classmethod
-    def validate(cls, value: str) -> "ExecutionMode":
-        try:
-            return cls(value)
-        except ValueError as e:
-            raise ValueError(
-                f"Invalid execution mode '{value}'. Allowed values are: {', '.join([mode.value for mode in cls])}"
-            ) from e
 
 
 def syncify_method(sync_method):
