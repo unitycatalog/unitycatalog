@@ -1,95 +1,187 @@
-# src/unitycatalog/ai/bedrock/envs/bedrock_env_vars.py
-
-import json
 import logging
-import os
-from typing import Dict, Optional
-
-from .base import BaseEnvVars
+from typing import Any, Dict, Optional
 
 logger = logging.getLogger(__name__)
 
-DEFAULT_MODEL_QUOTA_CODES = {
-    "anthropic.claude-3-sonnet-20240229-v1:0": "L-254CACF4",
-    "anthropic.claude-3-sonnet-20240229-v1:1": "L-79E773B3",
-}
+from unitycatalog.ai.bedrock.envs import config_manager
 
 
-class BedrockEnvVars(BaseEnvVars):
-    def __init__(self, env: Optional[dict] = None):
-        full_env = env if env else os.environ
-        self._env = {k: v for k, v in full_env.items() if k.startswith("BEDROCK_")}
+class BedrockEnvVars:
+    _instance = None
 
+    def __new__(cls, *args, **kwargs):
+        if cls._instance is None:
+            cls._instance = object.__new__(cls)
+            cls._instance._initialized = False
+            logger.info("Creating a new instance of BedrockEnvVars")
+        else:
+            logger.info("Reusing the existing instance of BedrockEnvVars")
+        return cls._instance
+
+    def __init__(self, load_from_file: bool = True):
+        if not self._initialized:
+            # Initialize default values
+            self._aws_profile = "default"
+            self._aws_region = "us-east-1"
+            self._bedrock_model_id = None
+            self._bedrock_agent_name = None
+            self._bedrock_agent_id = None
+            self._bedrock_agent_alias_id = None
+            self._bedrock_session_id = "default-session"
+            self._bedrock_rpm_limit = 1
+
+            # Load from config file if requested
+            if load_from_file:
+                self.load_from_file()
+
+            self._initialized = True
+            logger.info("Initialized BedrockEnvVars with default values")
+
+    @classmethod
+    def get_instance(cls, load_from_file: bool = True):
+        """Get the singleton instance of BedrockEnvVars."""
+        if cls._instance is None:
+            cls._instance = cls(load_from_file)
+        return cls._instance
+
+    # -------------------- File Persistence Methods --------------------
+    def save_to_file(self) -> bool:
+        """Save current configuration to file."""
+        config = {
+            "aws_profile": self._aws_profile,
+            "aws_region": self._aws_region,
+            "bedrock_model_id": self._bedrock_model_id,
+            "bedrock_agent_name": self._bedrock_agent_name,
+            "bedrock_agent_id": self._bedrock_agent_id,
+            "bedrock_agent_alias_id": self._bedrock_agent_alias_id,
+            "bedrock_session_id": self._bedrock_session_id,
+            "bedrock_rps_limit": self._bedrock_rpm_limit,
+        }
+        return config_manager.save_config(config)
+
+    def load_from_file(self) -> bool:
+        """Load configuration from file."""
+        config = config_manager.load_config()
+        if not config:
+            return False
+
+        # Update attributes from config
+        if "aws_profile" in config:
+            self._aws_profile = config["aws_profile"]
+        if "aws_region" in config:
+            self._aws_region = config["aws_region"]
+        if "bedrock_model_id" in config:
+            self._bedrock_model_id = config["bedrock_model_id"]
+        if "bedrock_agent_name" in config:
+            self._bedrock_agent_name = config["bedrock_agent_name"]
+        if "bedrock_agent_id" in config:
+            self._bedrock_agent_id = config["bedrock_agent_id"]
+        if "bedrock_agent_alias_id" in config:
+            self._bedrock_agent_alias_id = config["bedrock_agent_alias_id"]
+        if "bedrock_session_id" in config:
+            self._bedrock_session_id = config["bedrock_session_id"]
+        if "bedrock_rpm_limit" in config:
+            self._bedrock_rpm_limit = config["bedrock_rpm_limit"]
+
+        logger.info("Loaded configuration from file")
+        return True
+
+    # -------------------- Property Setters with Auto-Save --------------------
     @property
-    def aws_profile(self) -> Optional[str]:
-        return self._env.get("BEDROCK_AWS_PROFILE", "default")
+    def aws_profile(self) -> str:
+        return self._aws_profile
+
+    @aws_profile.setter
+    def aws_profile(self, value: str):
+        self._aws_profile = value
+        self.save_to_file()
 
     @property
     def aws_region(self) -> str:
-        return self._env.get("BEDROCK_AWS_REGION", "us-west-2")
+        return self._aws_region
+
+    @aws_region.setter
+    def aws_region(self, value: str):
+        self._aws_region = value
+        self.save_to_file()
 
     @property
     def bedrock_model_id(self) -> Optional[str]:
-        return self._env.get("BEDROCK_MODEL_ID")
+        return self._bedrock_model_id
+
+    @bedrock_model_id.setter
+    def bedrock_model_id(self, value: str):
+        self._bedrock_model_id = value
+        self.save_to_file()
 
     @property
-    def bedrock_model_name(self) -> Optional[str]:
-        return self._env.get("BEDROCK_MODEL_NAME")
+    def bedrock_agent_name(self) -> Optional[str]:
+        return self._bedrock_agent_name
+
+    @bedrock_agent_name.setter
+    def bedrock_agent_name(self, value: str):
+        self._bedrock_agent_name = value
+        self.save_to_file()
 
     @property
     def bedrock_agent_id(self) -> Optional[str]:
-        return self._env.get("BEDROCK_AGENT_ID")
+        return self._bedrock_agent_id
+
+    @bedrock_agent_id.setter
+    def bedrock_agent_id(self, value: str):
+        self._bedrock_agent_id = value
+        self.save_to_file()
 
     @property
     def bedrock_agent_alias_id(self) -> Optional[str]:
-        return self._env.get("BEDROCK_AGENT_ALIAS_ID")
+        return self._bedrock_agent_alias_id
+
+    @bedrock_agent_alias_id.setter
+    def bedrock_agent_alias_id(self, value: str):
+        self._bedrock_agent_alias_id = value
+        self.save_to_file()
 
     @property
     def bedrock_session_id(self) -> str:
-        return self._env.get("BEDROCK_SESSION_ID", "default-session")
+        return self._bedrock_session_id
+
+    @bedrock_session_id.setter
+    def bedrock_session_id(self, value: str):
+        self._bedrock_session_id = value
+        self.save_to_file()
 
     @property
-    def bedrock_rps_limit(self) -> Optional[int]:
-        val = self._env.get("BEDROCK_RPS_LIMIT")
-        return int(val) if val is not None else None
+    def bedrock_rpm_limit(self) -> Optional[int]:
+        return self._bedrock_rpm_limit
 
-    @property
-    def bedrock_model_quota_codes(self) -> Dict[str, str]:
-        raw = self._env.get("BEDROCK_MODEL_QUOTA_CODES")
-        user_map = {}
+    @bedrock_rpm_limit.setter
+    def bedrock_rpm_limit(self, value: str):
+        self._bedrock_rpm_limit = value
+        self.save_to_file()
 
-        if raw:
-            try:
-                user_map = json.loads(raw)
-            except json.JSONDecodeError:
-                try:
-                    user_map = dict(pair.split("=") for pair in raw.split(","))
-                except Exception as e:
-                    raise ValueError(
-                        f"Invalid BEDROCK_MODEL_QUOTA_CODES format: {raw}"
-                    ) from e
-
-        return {**DEFAULT_MODEL_QUOTA_CODES, **user_map}
-
-    @property
-    def bedrock_model_quota_code(self) -> Optional[str]:
-        model_id = self.bedrock_model_id
-        code = self.bedrock_model_quota_codes.get(model_id)
-
-        if model_id and model_id not in self._env.get("BEDROCK_MODEL_QUOTA_CODES", ""):
-            logger.warning(f"Using default quota code for model '{model_id}': {code}")
-
-        return code
-
-    def as_dict(self) -> dict:
+    # -------------------- Utilities --------------------
+    def as_dict(self) -> Dict[str, Any]:
+        """Return all environment variables as a dictionary."""
         return {
             "aws_profile": self.aws_profile,
             "aws_region": self.aws_region,
             "bedrock_model_id": self.bedrock_model_id,
-            "bedrock_model_name": self.bedrock_model_name,
+            "bedrock_agent_name": self.bedrock_agent_name,
             "bedrock_agent_id": self.bedrock_agent_id,
             "bedrock_agent_alias_id": self.bedrock_agent_alias_id,
             "bedrock_session_id": self.bedrock_session_id,
-            "bedrock_rps_limit": self.bedrock_rps_limit,
-            "bedrock_model_quota_code": self.bedrock_model_quota_code,
+            "bedrock_rpm_limit": self.bedrock_rpm_limit,
         }
+
+    def reset(self):
+        """Reset all values to defaults."""
+        self._aws_profile = "default"
+        self._aws_region = "us-east-1"
+        self._bedrock_model_id = None
+        self._bedrock_agent_name = None
+        self._bedrock_agent_id = None
+        self._bedrock_agent_alias_id = None
+        self._bedrock_session_id = "default-session"
+        self._bedrock_rpm_limit = 1
+        logger.info("Reset BedrockEnvVars to default values")
+        self.save_to_file()  # Save the reset values

@@ -1,4 +1,4 @@
-'''
+"""
 import boto3
 import functools
 import random
@@ -85,7 +85,7 @@ def test_bedrock_agent_with_throttling():
     model_id = "anthropic.claude-3-sonnet-20240229-v1:0"
     session_id = "test-session-001"
     input_text = "Hello Bedrock agent!"
-    profile_name = None  
+    profile_name = None
 
     throttler = BedrockThrottler(model_id, profile_name=profile_name)
     print(f"🚦 RPS limit from quota: {throttler.rps_limit} req/min\n")
@@ -109,4 +109,4 @@ def test_bedrock_agent_with_throttling():
 # --- Entry Point ---
 if __name__ == "__main__":
     test_bedrock_agent_with_throttling()
-    '''
+"""
