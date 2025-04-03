@@ -93,8 +93,12 @@ def test_bedrock_tool_creation(mock_function_info, mock_fn_schema):
         name=get_tool_name(mock_function_info.name),
         description=mock_function_info.comment,
         parameters={
-            "properties": mock_fn_schema.pydantic_model.model_json_schema().get("properties", {}),
-            "required": mock_fn_schema.pydantic_model.model_json_schema().get("required", []),
+            "properties": mock_fn_schema.pydantic_model.model_json_schema().get(
+                "properties", {}
+            ),
+            "required": mock_fn_schema.pydantic_model.model_json_schema().get(
+                "required", []
+            ),
         },
     )
 

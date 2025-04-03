@@ -40,7 +40,9 @@ def extract_tool_calls_from_event(event: Dict[str, Any]) -> List[Dict[str, Any]]
             "action_group": func_input["actionGroup"],
             "function": func_input["function"],
             "function_name": f"{func_input['actionGroup']}__{func_input['function']}",
-            "parameters": {p["name"]: p["value"] for p in func_input.get("parameters", [])},
+            "parameters": {
+                p["name"]: p["value"] for p in func_input.get("parameters", [])
+            },
             "invocation_id": control_data["invocationId"],
         }
         for invocation in control_data.get("invocationInputs", [])
@@ -68,7 +70,9 @@ def execute_tool_calls(
     for tool_call in tool_calls:
         try:
             full_function_name = f"{catalog_name}.{schema_name}.{function_name}"
-            result = client.execute_function(full_function_name, tool_call["parameters"])
+            result = client.execute_function(
+                full_function_name, tool_call["parameters"]
+            )
             results.append(
                 {
                     "invocation_id": tool_call["invocation_id"],
@@ -77,7 +81,9 @@ def execute_tool_calls(
             )
         except Exception as e:
             logger.error(f"Error executing tool call: {e}")
-            results.append({"invocation_id": tool_call["invocation_id"], "error": str(e)})
+            results.append(
+                {"invocation_id": tool_call["invocation_id"], "error": str(e)}
+            )
     return results
 
 
@@ -163,7 +169,9 @@ def retry_with_exponential_backoff(
         if rate_limit is None or rate_limit <= 0:
             # Try to get from model-specific limits
             rate_limit = MODEL_LIMITS.get(model_id, 1)  # Default to 1 if not found
-            logger.info(f"Using model-specific rate limit: {rate_limit}/minute for {model_id}")
+            logger.info(
+                f"Using model-specific rate limit: {rate_limit}/minute for {model_id}"
+            )
         else:
             logger.info(f"Using environment rate limit: {rate_limit}/minute")
 
@@ -187,7 +195,9 @@ def retry_with_exponential_backoff(
             # If we've reached the rate limit in the window, wait
             if len(recent_calls) >= effective_limit:
                 # Calculate when the oldest call will expire from our window
-                next_available_slot = recent_calls[0] + timedelta(seconds=window_seconds)
+                next_available_slot = recent_calls[0] + timedelta(
+                    seconds=window_seconds
+                )
                 wait_seconds = (next_available_slot - now).total_seconds()
 
                 if wait_seconds > 0:
@@ -220,7 +230,9 @@ def retry_with_exponential_backoff(
             return func()
 
         except Exception as e:
-            error_message = str(e).lower()  # Convert to lowercase for case-insensitive matching
+            error_message = str(
+                e
+            ).lower()  # Convert to lowercase for case-insensitive matching
 
             # Check if this is a retryable error by looking for any matching patterns
             is_retryable = any(
