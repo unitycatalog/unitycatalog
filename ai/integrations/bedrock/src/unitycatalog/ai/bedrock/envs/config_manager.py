@@ -9,7 +9,7 @@ logger = logging.getLogger(__name__)
 def get_config_file_path():
     """Get the path to the configuration file."""
     # Find the directory of the current module
-    base_dir = Path(__file__).parent.parent.parent.parent.parent.parent
+    base_dir = os.getcwd()
     config_path = os.path.join(base_dir, "config.json")
     return config_path
 
