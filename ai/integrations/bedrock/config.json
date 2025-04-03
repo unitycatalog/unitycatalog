@@ -2,9 +2,9 @@
   "aws_profile": "default",
   "aws_region": "us-east-1",
   "bedrock_model_id": "anthropic.claude-3-5-sonnet-20240620-v1:0",
-  "bedrock_agent_name": "ucai-bedrock-agent-137664f0",
-  "bedrock_agent_id": "LZGJIRFD1U",
-  "bedrock_agent_alias_id": "71KZZVZGCY",
+  "bedrock_agent_name": "ucai-bedrock-agent-e7c8a55d",
+  "bedrock_agent_id": "MIDTEN3RZJ",
+  "bedrock_agent_alias_id": "F1INHC6KYM",
   "bedrock_session_id": "default-session",
   "bedrock_rps_limit": 1
 }

@@ -74,7 +74,10 @@ def test_extract_tool_calls(mock_client, test_context):
 
 def test_generate_tool_call_session_state(mock_client, test_context):
     """Test the generate_tool_call_session_state function."""
-    tool_result = {"result": "success", "invocation_id": "12345"}  # Added "invocation_id"
+    tool_result = {
+        "result": "success",
+        "invocation_id": "12345",
+    }  # Added "invocation_id"
     tool_call = {
         "toolCall": {"name": "example_tool"},
         "action_group": "example_action_group",
@@ -99,7 +102,11 @@ def test_generate_tool_call_session_state(mock_client, test_context):
 def test_execute_tool_calls(mock_client, test_context):
     """Test the execute_tool_calls function."""
     tool_calls = [
-        {"name": "example_tool", "parameters": {"param1": "value1"}, "invocation_id": "12345"}
+        {
+            "name": "example_tool",
+            "parameters": {"param1": "value1"},
+            "invocation_id": "12345",
+        }
     ]
     mock_client.execute_function.return_value = MagicMock(value="success")
     results = execute_tool_calls(
