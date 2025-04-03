@@ -7,7 +7,7 @@ authors = [
 ]
 readme = "README.md"
 license = { text="Apache-2.0" }
-requires-python = ">=3.9"
+requires-python = ">=3.10"
 dependencies = [
     "langchain>=0.2.0",
     "langchain-community>=0.2.0",
@@ -46,7 +46,7 @@ only-include = ["src/unitycatalog/ai/langchain"]
 
 [tool.ruff]
 line-length = 100
-target-version = "py39"
+target-version = "py310"
 
 [tool.ruff.lint]
 select = [
