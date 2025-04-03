@@ -297,7 +297,7 @@ The `DatabricksFunctionClient` is a core component of the Unity Catalog AI Core 
 ### Caveats for Databricks
 
 - **Python Version**: Python 3.10 or higher is **required** when using `databricks-connect` for serverless compute.
-- **Databricks Connect**: To create UC functions using SQL body definitions or to execute functions using serverless compute, `databricks-connect` version `16.1.1` or above is required.
+- **Databricks Connect**: To create UC functions using SQL body definitions or to execute functions using serverless compute, `databricks-connect` version `15.1.0` or above is required.
 - **Serverless Compute**: In order to create and execute functions, a serverless compute connection **is required**.
 
 ### Dependencies and Environments
