@@ -19,13 +19,13 @@ import static io.unitycatalog.server.utils.Constants.URI_SCHEME_ABFSS;
 import static io.unitycatalog.server.utils.Constants.URI_SCHEME_GS;
 import static io.unitycatalog.server.utils.Constants.URI_SCHEME_S3;
 
-public class CredentialOperations {
+public class CloudCredentialVendor {
 
   private final AwsCredentialVendor awsCredentialVendor;
   private final AzureCredentialVendor azureCredentialVendor;
   private final GcpCredentialVendor gcpCredentialVendor;
 
-  public CredentialOperations(
+  public CloudCredentialVendor(
           AwsCredentialVendor awsCredentialVendor,
           AzureCredentialVendor azureCredentialVendor,
           GcpCredentialVendor gcpCredentialVendor) {

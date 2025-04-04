@@ -12,7 +12,7 @@ import io.unitycatalog.client.model.AzureUserDelegationSAS;
 import io.unitycatalog.client.model.GcpOauthToken;
 import io.unitycatalog.client.model.TemporaryCredentials;
 import io.unitycatalog.server.service.credential.CredentialContext;
-import io.unitycatalog.server.service.credential.CredentialOperations;
+import io.unitycatalog.server.service.credential.CloudCredentialVendor;
 import io.unitycatalog.server.service.credential.aws.AwsCredentialVendor;
 import io.unitycatalog.server.service.credential.azure.AzureCredential;
 import io.unitycatalog.server.service.credential.azure.AzureCredentialVendor;
@@ -20,8 +20,6 @@ import io.unitycatalog.server.service.credential.gcp.GcpCredentialVendor;
 import java.time.Instant;
 import java.util.Date;
 import java.util.List;
-import java.util.Map;
-import java.util.function.Function;
 import java.util.stream.Stream;
 
 import org.junit.jupiter.params.provider.Arguments;
@@ -57,7 +55,7 @@ public abstract class BaseCRUDTestWithMockCredentials extends BaseCRUDTest {
     setupAzureCredentials();
     setupGcpCredentials();
 
-    credentialOperations = new CredentialOperations(
+    cloudCredentialVendor = new CloudCredentialVendor(
             awsCredentialVendor,
             azureCredentialVendor,
             gcpCredentialVendor

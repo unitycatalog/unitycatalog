@@ -14,7 +14,7 @@ import io.unitycatalog.server.persist.ModelRepository;
 import io.unitycatalog.server.persist.Repositories;
 import io.unitycatalog.server.persist.UserRepository;
 import io.unitycatalog.server.persist.utils.RepositoryUtils;
-import io.unitycatalog.server.service.credential.CredentialOperations;
+import io.unitycatalog.server.service.credential.CloudCredentialVendor;
 import io.unitycatalog.server.service.credential.CredentialContext;
 import lombok.SneakyThrows;
 
@@ -34,13 +34,13 @@ public class TemporaryModelVersionCredentialsService {
     private final UserRepository userRepository;
 
     private final UnityAccessEvaluator evaluator;
-    private final CredentialOperations credentialOps;
+    private final CloudCredentialVendor cloudCredentialVendor;
     private final KeyMapper keyMapper;
 
     @SneakyThrows
-    public TemporaryModelVersionCredentialsService(UnityCatalogAuthorizer authorizer, CredentialOperations credentialOps, Repositories repositories) {
+    public TemporaryModelVersionCredentialsService(UnityCatalogAuthorizer authorizer, CloudCredentialVendor cloudCredentialVendor, Repositories repositories) {
         this.evaluator = new UnityAccessEvaluator(authorizer);
-        this.credentialOps = credentialOps;
+        this.cloudCredentialVendor = cloudCredentialVendor;
         this.keyMapper = new KeyMapper(repositories);
         this.modelRepository = repositories.getModelRepository();
         this.userRepository = repositories.getUserRepository();
@@ -72,7 +72,7 @@ public class TemporaryModelVersionCredentialsService {
             throw new BaseException(ErrorCode.INVALID_ARGUMENT, "Cannot request read/write credentials on a model version that has been finalized: " + fullName + "/" + modelVersion);
         }
         return HttpResponse.ofJson(
-                credentialOps.vendCredential(
+                cloudCredentialVendor.vendCredential(
                         modelVersionInfo.getStorageLocation(),
                         modelVersionOperationToPrivileges(requestedOperation)));
     }
