@@ -7,7 +7,6 @@ from unitycatalog.ai.core.utils.function_processing_utils import get_tool_name
 from unitycatalog.client import FunctionInfo
 
 
-# Fixtures
 @pytest.fixture
 def raw_response_with_chunks():
     """Fixture to provide a raw response with chunks."""
