@@ -58,7 +58,6 @@ def mock_fn_schema():
     return mock_schema
 
 
-# Tests
 def test_bedrock_tool_response_final_response(raw_response_with_chunks):
     """Test the final_response property of BedrockToolResponse."""
     response = BedrockToolResponse(raw_response=raw_response_with_chunks)

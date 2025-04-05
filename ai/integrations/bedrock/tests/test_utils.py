@@ -10,7 +10,6 @@ from unitycatalog.ai.bedrock.utils import (
 )
 
 
-# Fixtures
 @pytest.fixture
 def mock_client():
     """Fixture to provide a mocked client."""
@@ -77,7 +76,7 @@ def test_generate_tool_call_session_state(mock_client, test_context):
     tool_result = {
         "result": "success",
         "invocation_id": "12345",
-    }  # Added "invocation_id"
+    }  
     tool_call = {
         "toolCall": {"name": "example_tool"},
         "action_group": "example_action_group",
