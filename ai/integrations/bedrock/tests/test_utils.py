@@ -76,7 +76,7 @@ def test_generate_tool_call_session_state(mock_client, test_context):
     tool_result = {
         "result": "success",
         "invocation_id": "12345",
-    }  
+    }
     tool_call = {
         "toolCall": {"name": "example_tool"},
         "action_group": "example_action_group",
