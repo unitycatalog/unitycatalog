@@ -1,6 +1,6 @@
 # unitycatalog-bedrock
 
-This package provides integration between Unity Catalog functions and AWS Bedrock.
+This package provides integration between OSS Unity Catalog functions and AWS Bedrock. Support for Databricks Unity Catalog will be added in the next release. 
 
 ---
 
@@ -18,16 +18,17 @@ pip install unitycatalog-bedrock
 
 The Bedrock integration uses the following configuration variables:
 
-| Variable                  | Description                                      | Default Value                                             |
-|---------------------------|--------------------------------------------------|-----------------------------------------------------------|
-| `aws_profile`             | AWS profile to use for authentication            | `default`                                                 |
-| `aws_region`              | AWS region for Bedrock services                  | `us-east-1`                                               |
-| `bedrock_model_id`        | ID of the Bedrock foundation model               | `anthropic.claude-3-5-sonnet-20240620-v1:0`              |
-| `bedrock_agent_name`      | Name of the Bedrock agent                        | Generated unique name                                     |
-| `bedrock_agent_id`        | ID of the Bedrock agent                          | `None`                                                    |
-| `bedrock_agent_alias_id`  | ID of the Bedrock agent alias                    | `None`                                                    |
-| `bedrock_session_id`      | Session ID for Bedrock interactions              | `default-session`                                         |
-| `bedrock_rpm_limit`       | Rate limit for Bedrock API requests per minute  | `1`                                                       |
+| Variable                          | Description                                      | Default Value                                             |
+|-----------------------------------|--------------------------------------------------|-----------------------------------------------------------|
+| `aws_profile`                     | AWS profile to use for authentication            | `default`                                                 |
+| `aws_region`                      | AWS region for Bedrock services                  | `us-east-1`                                               |
+| `bedrock_model_id`                | ID of the Bedrock foundation model               | `anthropic.claude-3-5-sonnet-20240620-v1:0`               |
+| `bedrock_agent_name`              | Name of the Bedrock agent                        | Generated unique name                                     |
+| `bedrock_agent_id`                | ID of the Bedrock agent                          | `None`                                                    |
+| `bedrock_agent_alias_id`          | ID of the Bedrock agent alias                    | `None`                                                    |
+| `bedrock_session_id`              | Session ID for Bedrock interactions              | `default-session`                                         |
+| `bedrock_rpm_limit`               | Rate limit for Bedrock API requests per minute   | `1`                                                        |
+| `require_bedrock_confirmation`    | Get user confirmation before invoking action group function               |`DISABLED`                                                            |
 
 Configuration values are automatically saved to a `config.json` file in the project directory.
 

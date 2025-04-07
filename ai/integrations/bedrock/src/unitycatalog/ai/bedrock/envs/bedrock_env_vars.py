@@ -29,6 +29,7 @@ class BedrockEnvVars:
             self._bedrock_agent_alias_id = None
             self._bedrock_session_id = "default-session"
             self._bedrock_rpm_limit = 1
+            self._require_bedrock_confirmation = "DISABLED"
 
             # Load from config file if requested
             if load_from_file:
@@ -56,6 +57,7 @@ class BedrockEnvVars:
             "bedrock_agent_alias_id": self._bedrock_agent_alias_id,
             "bedrock_session_id": self._bedrock_session_id,
             "bedrock_rps_limit": self._bedrock_rpm_limit,
+            "require_bedrock_confirmation": self._require_bedrock_confirmation,
         }
         return config_manager.save_config(config)
 
@@ -82,6 +84,8 @@ class BedrockEnvVars:
             self._bedrock_session_id = config["bedrock_session_id"]
         if "bedrock_rpm_limit" in config:
             self._bedrock_rpm_limit = config["bedrock_rpm_limit"]
+        if "require_bedrock_confirmation" in config:
+            self._require_bedrock_confirmation = config["require_bedrock_confirmation"]
 
         logger.info("Loaded configuration from file")
         return True
@@ -159,6 +163,15 @@ class BedrockEnvVars:
         self._bedrock_rpm_limit = value
         self.save_to_file()
 
+    @property
+    def require_bedrock_confirmation(self) -> Optional[str]:
+        return self._require_bedrock_confirmation
+
+    @require_bedrock_confirmation.setter
+    def require_bedrock_confirmation(self, value: str):
+        self._bedrock_rpm_limit = value
+        self.save_to_file()
+
     # -------------------- Utilities --------------------
     def as_dict(self) -> Dict[str, Any]:
         """Return all environment variables as a dictionary."""
@@ -171,6 +184,7 @@ class BedrockEnvVars:
             "bedrock_agent_alias_id": self.bedrock_agent_alias_id,
             "bedrock_session_id": self.bedrock_session_id,
             "bedrock_rpm_limit": self.bedrock_rpm_limit,
+            "require_bedrock_confirmation": self.require_bedrock_confirmation,
         }
 
     def reset(self):

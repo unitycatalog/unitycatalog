@@ -4,6 +4,7 @@ from typing import Any, Dict, Iterator, List, Optional, Union
 import boto3
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+from unitycatalog.ai.bedrock.envs.bedrock_env_vars import BedrockEnvVars
 from unitycatalog.ai.bedrock.utils import (
     execute_tool_calls,
     extract_response_details,
@@ -209,20 +210,21 @@ class BedrockTool(BaseModel):
     parameters: Dict[str, Any] = Field(
         description="The parameters schema required by the function."
     )
-    requireConfirmation: str = Field(
-        default="ENABLED",
-        description="Whether confirmation is required before executing the function.",
-    )
 
     model_config = ConfigDict(arbitrary_types_allowed=True)
 
     def to_dict(self) -> Dict[str, Union[str, Dict[str, Any]]]:
         """Convert the tool to a dictionary format for Bedrock."""
+        bedrock_env = BedrockEnvVars.get_instance(load_from_file=True)
+        requireConfirmation: str = Field(
+            default=bedrock_env.require_bedrock_confirmation,
+            description="Whether confirmation is required before executing the function.",
+        )
         return {
             "name": self.name,
             "description": self.description,
             "parameters": self.parameters,
-            "requireConfirmation": self.requireConfirmation,
+            "requireConfirmation": requireConfirmation,
         }
 
 
