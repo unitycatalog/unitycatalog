@@ -17,6 +17,7 @@ public abstract class BaseCredentialCRUDTest extends BaseCRUDTest {
   private static final String CREDENTIAL_NAME = "uc_testcredential";
   private static final String NEW_CREDENTIAL_NAME = CREDENTIAL_NAME + "_new";
   private static final String DUMMY_ROLE_ARN = "arn:aws:iam::123456789012:role/role-name";
+  private static final String NEW_ROLE_ARN = "arn:aws:iam::987654321098:role/new-role-name";
   protected CredentialOperations credentialOperations;
 
   protected abstract CredentialOperations createCredentialOperations(ServerConfig config);
@@ -52,11 +53,16 @@ public abstract class BaseCredentialCRUDTest extends BaseCRUDTest {
 
     // Update storage credential
     UpdateCredentialRequest UpdateCredentialRequest =
-        new UpdateCredentialRequest().newName(NEW_CREDENTIAL_NAME).comment(COMMENT2);
+        new UpdateCredentialRequest()
+            .newName(NEW_CREDENTIAL_NAME)
+            .comment(COMMENT2)
+            .awsIamRole(new AwsIamRoleRequest().roleArn(NEW_ROLE_ARN));
+
     CredentialInfo updatedCredentialInfo =
         credentialOperations.updateCredential(CREDENTIAL_NAME, UpdateCredentialRequest);
     assertThat(updatedCredentialInfo.getName()).isEqualTo(NEW_CREDENTIAL_NAME);
     assertThat(updatedCredentialInfo.getComment()).isEqualTo(COMMENT2);
+    assertThat(updatedCredentialInfo.getAwsIamRole().getRoleArn()).isEqualTo(NEW_ROLE_ARN);
 
     // Delete storage credential
     credentialOperations.deleteCredential(NEW_CREDENTIAL_NAME);

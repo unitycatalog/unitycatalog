@@ -68,7 +68,7 @@ public class CredentialService {
 
     @Patch("/{name}")
     @AuthorizeExpression("""
-            #authorize(#principal, #credential, OWNER)
+            #authorize(#principal, #metastore, OWNER)
             """)
     @AuthorizeKey(METASTORE)
     public HttpResponse updateCredential(

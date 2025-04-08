@@ -5,7 +5,6 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import io.unitycatalog.server.model.AwsIamRoleResponse;
 import io.unitycatalog.server.model.CredentialInfo;
 import io.unitycatalog.server.model.CredentialPurpose;
-import io.unitycatalog.server.utils.EncryptionUtils;
 import jakarta.persistence.*;
 import java.time.Instant;
 import java.util.Date;
@@ -81,9 +80,8 @@ public class CredentialDAO extends IdentifiableDAO {
       if (credentialInfo.getAwsIamRole() != null) {
         credentialDAOBuilder.credentialType(CredentialType.AWS_IAM_ROLE);
         String jsonCredential = objectMapper.writeValueAsString(credentialInfo.getAwsIamRole());
-        // Encrypt the credential before storing
-        String encryptedCredential = EncryptionUtils.encrypt(jsonCredential);
-        credentialDAOBuilder.credential(encryptedCredential);
+        // TODO: encrypt the credential
+        credentialDAOBuilder.credential(jsonCredential);
       } else {
         throw new IllegalArgumentException("Unknown credential type");
       }
@@ -106,13 +104,11 @@ public class CredentialDAO extends IdentifiableDAO {
             .updatedAt(getUpdatedAt() != null ? getUpdatedAt().getTime() : null)
             .updatedBy(getUpdatedBy());
     try {
-      // Decrypt the credential before using
-      String decryptedCredential = EncryptionUtils.decrypt(getCredential());
-
+      // TODO: decrypt the credential
       switch (getCredentialType()) {
         case AWS_IAM_ROLE:
           credentialInfo.setAwsIamRole(
-              objectMapper.readValue(decryptedCredential, AwsIamRoleResponse.class));
+              objectMapper.readValue(getCredential(), AwsIamRoleResponse.class));
           break;
         default:
           throw new IllegalArgumentException("Unknown credential type");
