@@ -4,18 +4,18 @@ All URIs are relative to *http://localhost:8080/api/2.1/unity-catalog*
 
 | Method | HTTP request | Description |
 |------------- | ------------- | -------------|
-| [**createCredential**](CredentialsApi.md#createCredential) | **POST** /credentials | Create a credential |
-| [**deleteCredential**](CredentialsApi.md#deleteCredential) | **DELETE** /credentials/{name} | Delete a credential |
-| [**getCredential**](CredentialsApi.md#getCredential) | **GET** /credentials/{name} | Get a credential |
-| [**listCredentials**](CredentialsApi.md#listCredentials) | **GET** /credentials | List credentials |
-| [**updateCredential**](CredentialsApi.md#updateCredential) | **PATCH** /credentials/{name} | Update a credential |
+| [**createCredential**](CredentialsApi.md#createCredential) | **POST** /credentials | Create a Credential. |
+| [**deleteCredential**](CredentialsApi.md#deleteCredential) | **DELETE** /credentials/{name} | Delete a Credential. |
+| [**getCredential**](CredentialsApi.md#getCredential) | **GET** /credentials/{name} | Get a Credential. |
+| [**listCredentials**](CredentialsApi.md#listCredentials) | **GET** /credentials | List Credentials. |
+| [**updateCredential**](CredentialsApi.md#updateCredential) | **PATCH** /credentials/{name} | Update a Credential. |
 
 
 <a name="createCredential"></a>
 # **createCredential**
 > CredentialInfo createCredential(CreateCredentialRequest)
 
-Create a credential
+Create a Credential.
 
     Creates a new credential. The type of credential to be created is determined by the **purpose** field. 
 
@@ -42,7 +42,7 @@ No authorization required
 # **deleteCredential**
 > oas_any_type_not_mapped deleteCredential(name, force)
 
-Delete a credential
+Delete a Credential.
 
     Deletes a credential from the metastore. The caller must be a metastore admin or the owner of the credential. 
 
@@ -70,7 +70,7 @@ No authorization required
 # **getCredential**
 > CredentialInfo getCredential(name)
 
-Get a credential
+Get a Credential.
 
     Gets a credential from the metastore. The caller must be a metastore admin, the owner of the credential, or have some permission on the credential. 
 
@@ -97,7 +97,7 @@ No authorization required
 # **listCredentials**
 > ListCredentialsResponse listCredentials(max\_results, page\_token, purpose)
 
-List credentials
+List Credentials.
 
     Gets an array of credentials (as __CredentialInfo__ objects). The array is limited to only those credentials the caller has permission to access. If the caller is a metastore admin, retrieval of credentials is unrestricted. There is no guarantee of a specific ordering of the elements in the array. 
 
@@ -126,7 +126,7 @@ No authorization required
 # **updateCredential**
 > CredentialInfo updateCredential(name, UpdateCredentialRequest)
 
-Update a credential
+Update a Credential.
 
     Updates a credential. 
 

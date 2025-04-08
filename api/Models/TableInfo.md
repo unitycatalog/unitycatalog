@@ -9,7 +9,7 @@
 | **table\_type** | [**TableType**](TableType.md) |  | [optional] [default to null] |
 | **data\_source\_format** | [**DataSourceFormat**](DataSourceFormat.md) |  | [optional] [default to null] |
 | **columns** | [**List**](ColumnInfo.md) | The array of __ColumnInfo__ definitions of the table&#39;s columns. | [optional] [default to null] |
-| **storage\_location** | **String** | Storage root URL for table (for **MANAGED**, **EXTERNAL** tables) | [optional] [default to null] |
+| **storage\_location** | **String** | Storage root URL for table (for **MANAGED**, **EXTERNAL** tables). | [optional] [default to null] |
 | **comment** | **String** | User-provided free-form text description. | [optional] [default to null] |
 | **properties** | **Map** | A map of key-value properties attached to the securable. | [optional] [default to null] |
 | **owner** | **String** | Username of current owner of table. | [optional] [default to null] |

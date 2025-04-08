@@ -21,7 +21,7 @@
 | **specific\_name** | **String** | Specific name of the function; Reserved for future use. | [optional] [default to null] |
 | **comment** | **String** | User-provided free-form text description. | [optional] [default to null] |
 | **properties** | **String** | JSON-serialized key-value pair map, encoded (escaped) as a string. | [optional] [default to null] |
-| **full\_name** | **String** | Full name of function, in form of __catalog_name__.__schema_name__.__function__name__ | [optional] [default to null] |
+| **full\_name** | **String** | Full name of function, in form of __catalog_name__.__schema_name__.__function__name__. | [optional] [default to null] |
 | **owner** | **String** | Username of current owner of function. | [optional] [default to null] |
 | **created\_at** | **Long** | Time at which this function was created, in epoch milliseconds. | [optional] [default to null] |
 | **created\_by** | **String** | Username of function creator. | [optional] [default to null] |
