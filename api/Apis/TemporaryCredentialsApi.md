@@ -4,17 +4,19 @@ All URIs are relative to *http://localhost:8080/api/2.1/unity-catalog*
 
 | Method | HTTP request | Description |
 |------------- | ------------- | -------------|
-| [**generateTemporaryModelVersionCredentials**](TemporaryCredentialsApi.md#generateTemporaryModelVersionCredentials) | **POST** /temporary-model-version-credentials | Generate temporary model version credentials. These credentials are used by clients to write and retrieve model artifacts from the model versions external storage location. |
-| [**generateTemporaryPathCredentials**](TemporaryCredentialsApi.md#generateTemporaryPathCredentials) | **POST** /temporary-path-credentials | Generate temporary path credentials. |
-| [**generateTemporaryTableCredentials**](TemporaryCredentialsApi.md#generateTemporaryTableCredentials) | **POST** /temporary-table-credentials | Generate temporary table credentials. |
-| [**generateTemporaryVolumeCredentials**](TemporaryCredentialsApi.md#generateTemporaryVolumeCredentials) | **POST** /temporary-volume-credentials | Generate temporary volume credentials. |
+| [**generateTemporaryModelVersionCredentials**](TemporaryCredentialsApi.md#generateTemporaryModelVersionCredentials) | **POST** /temporary-model-version-credentials | Generate temporary model version credentials |
+| [**generateTemporaryPathCredentials**](TemporaryCredentialsApi.md#generateTemporaryPathCredentials) | **POST** /temporary-path-credentials | Generate temporary path credentials |
+| [**generateTemporaryTableCredentials**](TemporaryCredentialsApi.md#generateTemporaryTableCredentials) | **POST** /temporary-table-credentials | Generate temporary table credentials |
+| [**generateTemporaryVolumeCredentials**](TemporaryCredentialsApi.md#generateTemporaryVolumeCredentials) | **POST** /temporary-volume-credentials | Generate temporary volume credentials |
 
 
 <a name="generateTemporaryModelVersionCredentials"></a>
 # **generateTemporaryModelVersionCredentials**
 > TemporaryCredentials generateTemporaryModelVersionCredentials(GenerateTemporaryModelVersionCredential)
 
-Generate temporary model version credentials. These credentials are used by clients to write and retrieve model artifacts from the model versions external storage location.
+Generate temporary model version credentials
+
+    These credentials are used by clients to write and retrieve model artifacts from the model version&#39;s external storage location. 
 
 ### Parameters
 
@@ -39,7 +41,9 @@ No authorization required
 # **generateTemporaryPathCredentials**
 > TemporaryCredentials generateTemporaryPathCredentials(GenerateTemporaryPathCredential)
 
-Generate temporary path credentials.
+Generate temporary path credentials
+
+    Generates temporary credentials for accessing a storage path. 
 
 ### Parameters
 
@@ -64,7 +68,9 @@ No authorization required
 # **generateTemporaryTableCredentials**
 > TemporaryCredentials generateTemporaryTableCredentials(GenerateTemporaryTableCredential)
 
-Generate temporary table credentials.
+Generate temporary table credentials
+
+    Generates temporary credentials for accessing table data. 
 
 ### Parameters
 
@@ -89,7 +95,9 @@ No authorization required
 # **generateTemporaryVolumeCredentials**
 > TemporaryCredentials generateTemporaryVolumeCredentials(GenerateTemporaryVolumeCredential)
 
-Generate temporary volume credentials.
+Generate temporary volume credentials
+
+    Generates temporary credentials for accessing volume data. 
 
 ### Parameters
 

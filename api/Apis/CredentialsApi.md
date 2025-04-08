@@ -17,7 +17,7 @@ All URIs are relative to *http://localhost:8080/api/2.1/unity-catalog*
 
 Create a credential
 
-    Creates a new credential. The type of credential to be created is determined by the **purpose** field.
+    Creates a new credential. The type of credential to be created is determined by the **purpose** field. 
 
 ### Parameters
 
@@ -44,7 +44,7 @@ No authorization required
 
 Delete a credential
 
-    Deletes a credential from the metastore. The caller must be a metastore admin or the owner of the credential.
+    Deletes a credential from the metastore. The caller must be a metastore admin or the owner of the credential. 
 
 ### Parameters
 
@@ -128,7 +128,7 @@ No authorization required
 
 Update a credential
 
-    Updates a credential.
+    Updates a credential. 
 
 ### Parameters
 

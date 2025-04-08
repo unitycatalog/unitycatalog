@@ -44,7 +44,7 @@ No authorization required
 
 Delete an external location
 
-    Deletes the specified external location from the metastore. The caller must be a metastore admin or the owner of the external location.
+    Deletes the specified external location from the metastore. The caller must be a metastore admin or the owner of the external location. 
 
 ### Parameters
 

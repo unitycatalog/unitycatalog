@@ -1,4 +1,7 @@
 openapi: 3.0.0
+info:
+  title: Unity Catalog API
+  version: '0.1'
 servers:
   - url: http://localhost:8080/api/2.1/unity-catalog
     description: Localhost reference server
@@ -40,6 +43,7 @@ tags:
       A metastore is the top-level container of objects in Unity Catalog that stores all UC assets.
 paths:
   /catalogs:
+    description: Endpoint for managing catalogs in Unity Catalog.
     post:
       tags:
         - Catalogs
@@ -94,6 +98,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/ListCatalogsResponse'
   /catalogs/{name}:
+    description: Endpoint for managing a specific catalog in Unity Catalog.
     parameters:
       - name: name
         in: path
@@ -155,6 +160,7 @@ paths:
             application/json:
               schema: {}
   /schemas:
+    description: Endpoint for managing schemas in Unity Catalog.
     post:
       tags:
         - Schemas
@@ -216,6 +222,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/ListSchemasResponse'
   /schemas/{full_name}:
+    description: Endpoint for managing a specific schema in Unity Catalog.
     parameters:
       - name: full_name
         in: path
@@ -277,6 +284,7 @@ paths:
             application/json:
               schema: {}
   /tables:
+    description: Endpoint for managing tables in Unity Catalog.
     post:
       operationId: createTable
       summary: |
@@ -346,6 +354,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/ListTablesResponse'
   /tables/{full_name}:
+    description: Endpoint for managing a specific table in Unity Catalog.
     parameters:
       - name: full_name
         in: path
@@ -381,11 +390,12 @@ paths:
             application/json:
               schema: {}
   /volumes:
+    description: Endpoint for managing volumes in Unity Catalog.
     post:
       tags:
         - Volumes
       operationId: createVolume
-      summary: Create a Volume
+      summary: Create a volume
       description: |
         Creates a new volume.
       requestBody:
@@ -406,7 +416,7 @@ paths:
                   comment: This is my first volume
       responses:
         '200':
-          description: Successfully created the volume
+          description: The volume was successfully created.
           content:
             application/json:
               schema:
@@ -427,7 +437,7 @@ paths:
       tags:
         - Volumes
       operationId: listVolumes
-      summary: List Volumes
+      summary: List volumes
       description: |
         Gets an array of available volumes under the parent catalog and schema.
         There is no guarantee of a specific ordering of the elements in the array.
@@ -479,7 +489,7 @@ paths:
             type: string
       responses:
         '200':
-          description: The volume list was successfully retrieved
+          description: The volume list was successfully retrieved.
           content:
             application/json:
               schema:
@@ -505,6 +515,7 @@ paths:
                         updated_at: 1666369196203
                         comment: This is my other volume
   /volumes/{name}:
+    description: Endpoint for managing a specific volume in Unity Catalog.
     parameters:
       - name: name
         in: path
@@ -520,12 +531,12 @@ paths:
       tags:
         - Volumes
       operationId: getVolume
-      summary: Get a Volume
+      summary: Get a volume
       description: |
         Gets a volume for a specific catalog and schema.
       responses:
         '200':
-          description: Successfully retrieved the properties of the volume
+          description: The volume was successfully retrieved.
           content:
             application/json:
               schema:
@@ -546,7 +557,7 @@ paths:
       tags:
         - Volumes
       operationId: updateVolume
-      summary: Update a Volume
+      summary: Update a volume
       description: |
         Updates the specified volume under the specified parent catalog and schema.
         
@@ -569,7 +580,7 @@ paths:
                   comment: This is my new volume
       responses:
         '200':
-          description: Successfully updated the properties of the volume
+          description: The volume was successfully updated.
           content:
             application/json:
               schema:
@@ -590,21 +601,24 @@ paths:
       tags:
         - Volumes
       operationId: deleteVolume
-      summary: Delete a Volume
+      summary: Delete a volume
       description: |
         Deletes a volume from the specified parent catalog and schema.
       responses:
         '200':
-          description: Successfully deleted the volume
+          description: The volume was successfully deleted.
           content:
             application/json:
               schema: {}
   /temporary-model-version-credentials:
+    description: Endpoint for generating temporary credentials for model versions.
     post:
       operationId: generateTemporaryModelVersionCredentials
       tags:
         - TemporaryCredentials
-      summary: Generate temporary model version credentials. These credentials are used by clients to write and retrieve model artifacts from the model versions external storage location.
+      summary: Generate temporary model version credentials
+      description: |
+        These credentials are used by clients to write and retrieve model artifacts from the model version's external storage location.
       requestBody:
         content:
           application/json:
@@ -612,17 +626,20 @@ paths:
               $ref: '#/components/schemas/GenerateTemporaryModelVersionCredential'
       responses:
         '200':
-          description: Successful response
+          description: The temporary credentials were successfully generated.
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/TemporaryCredentials'
   /temporary-table-credentials:
+    description: Endpoint for generating temporary credentials for tables.
     post:
       operationId: generateTemporaryTableCredentials
       tags:
         - TemporaryCredentials
-      summary: Generate temporary table credentials.
+      summary: Generate temporary table credentials
+      description: |
+        Generates temporary credentials for accessing table data.
       requestBody:
         content:
           application/json:
@@ -630,17 +647,20 @@ paths:
               $ref: '#/components/schemas/GenerateTemporaryTableCredential'
       responses:
         '200':
-          description: Successful response
+          description: The temporary credentials were successfully generated.
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/TemporaryCredentials'
   /temporary-volume-credentials:
+    description: Endpoint for generating temporary credentials for volumes.
     post:
       operationId: generateTemporaryVolumeCredentials
       tags:
         - TemporaryCredentials
-      summary: Generate temporary volume credentials.
+      summary: Generate temporary volume credentials
+      description: |
+        Generates temporary credentials for accessing volume data.
       requestBody:
         content:
           application/json:
@@ -648,12 +668,13 @@ paths:
               $ref: '#/components/schemas/GenerateTemporaryVolumeCredential'
       responses:
         '200':
-          description: Successful response
+          description: The temporary credentials were successfully generated.
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/TemporaryCredentials'
   "/functions":
+    description: Endpoint for managing functions in Unity Catalog.
     post:
       tags:
         - Functions
@@ -724,6 +745,7 @@ paths:
               schema:
                 "$ref": "#/components/schemas/ListFunctionsResponse"
   "/functions/{name}":
+    description: Endpoint for managing a specific function in Unity Catalog.
     parameters:
       - name: name
         in: path
@@ -737,7 +759,8 @@ paths:
       parameters: []
       operationId: getFunction
       summary: Get a function
-      description: 'Gets a function from within a parent catalog and schema.'
+      description: |
+        Gets a function from within a parent catalog and schema.
       responses:
         '200':
           description: The function was successfully retrieved.
@@ -750,7 +773,8 @@ paths:
         - Functions
       operationId: deleteFunction
       summary: Delete a function
-      description: 'Deletes the function that matches the supplied name.'
+      description: |
+        Deletes the function that matches the supplied name.
       responses:
         '200':
           description: The function was successfully deleted.
@@ -758,6 +782,7 @@ paths:
             application/json:
               schema: {}
   /models:
+    description: Endpoint for managing registered models in Unity Catalog.
     post:
       operationId: createRegisteredModel
       summary: |
@@ -827,6 +852,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/ListRegisteredModelsResponse'
   /models/{full_name}:
+    description: Endpoint for managing a specific registered model in Unity Catalog.
     parameters:
       - name: full_name
         in: path
@@ -888,6 +914,7 @@ paths:
             application/json:
               schema: {}
   /models/versions:
+    description: Endpoint for managing model versions in Unity Catalog.
     post:
       operationId: createModelVersion
       summary: |
@@ -909,6 +936,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/ModelVersionInfo'
   /models/{full_name}/versions:
+    description: Endpoint for managing versions of a specific registered model in Unity Catalog.
     parameters:
       - name: full_name
         in: path
@@ -950,6 +978,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/ListModelVersionsResponse'
   /models/{full_name}/versions/{version}:
+    description: Endpoint for managing a specific version of a registered model in Unity Catalog.
     parameters:
       - name: full_name
         in: path
@@ -1011,6 +1040,7 @@ paths:
             application/json:
               schema: {}
   /models/{full_name}/versions/{version}/finalize:
+    description: Endpoint for finalizing a specific version of a registered model in Unity Catalog.
     parameters:
       - name: full_name
         in: path
@@ -1045,11 +1075,14 @@ paths:
               schema:
                 $ref: '#/components/schemas/ModelVersionInfo'
   /temporary-path-credentials:
+    description: Endpoint for generating temporary credentials for storage paths.
     post:
       operationId: generateTemporaryPathCredentials
       tags:
         - TemporaryCredentials
-      summary: Generate temporary path credentials.
+      summary: Generate temporary path credentials
+      description: |
+        Generates temporary credentials for accessing a storage path.
       requestBody:
         content:
           application/json:
@@ -1057,12 +1090,13 @@ paths:
               $ref: '#/components/schemas/GenerateTemporaryPathCredential'
       responses:
         '200':
-          description: Successful response
+          description: The temporary credentials were successfully generated.
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/TemporaryCredentials'
   /permissions/{securable_type}/{full_name}:
+    description: Endpoint for managing permissions on securable objects in Unity Catalog.
     parameters:
       - name: securable_type
         in: path
@@ -1118,6 +1152,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/PermissionsList'
   /metastore_summary:
+    description: Endpoint for retrieving metastore summary information.
     get:
       tags:
         - Metastores
@@ -1133,19 +1168,21 @@ paths:
               schema:
                 $ref: '#/components/schemas/GetMetastoreSummaryResponse'
   /credentials:
+    description: Endpoint for managing credentials in Unity Catalog.
     post:
       tags:
         - Credentials
       operationId: createCredential
       summary: Create a credential
-      description: Creates a new credential. The type of credential to be created is determined by the **purpose** field.
+      description: |
+        Creates a new credential. The type of credential to be created is determined by the **purpose** field.
       requestBody:
         content:
           application/json:
             schema:
               $ref: "#/components/schemas/CreateCredentialRequest"
       responses:
-        200:
+        '200':
           description: The new credential was successfully created.
           content:
             application/json:
@@ -1190,13 +1227,14 @@ paths:
           schema:
             $ref: "#/components/schemas/CredentialPurpose"
       responses:
-        200:
+        '200':
           description: The credentials list was successfully retrieved.
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/ListCredentialsResponse"
   /credentials/{name}:
+    description: Endpoint for managing a specific credential in Unity Catalog.
     parameters:
       - name: name
         in: path
@@ -1213,7 +1251,7 @@ paths:
         Gets a credential from the metastore.
         The caller must be a metastore admin, the owner of the credential, or have some permission on the credential.
       responses:
-        200:
+        '200':
           description: The credential was successfully retrieved.
           content:
             application/json:
@@ -1224,14 +1262,15 @@ paths:
         - Credentials
       operationId: updateCredential
       summary: Update a credential
-      description: Updates a credential.
+      description: |
+        Updates a credential.
       requestBody:
         content:
           application/json:
             schema:
               $ref: "#/components/schemas/UpdateCredentialRequest"
       responses:
-        200:
+        '200':
           description: The credential was successfully updated.
           content:
             application/json:
@@ -1242,7 +1281,8 @@ paths:
         - Credentials
       operationId: deleteCredential
       summary: Delete a credential
-      description: Deletes a credential from the metastore. The caller must be a metastore admin or the owner of the credential.
+      description: |
+        Deletes a credential from the metastore. The caller must be a metastore admin or the owner of the credential.
       parameters:
         - name: force
           in: query
@@ -1251,12 +1291,13 @@ paths:
           schema:
             type: boolean
       responses:
-        200:
+        '200':
           description: The credential was successfully deleted.
           content:
             application/json:
               schema: {}
   /external-locations:
+    description: Endpoint for managing external locations in Unity Catalog.
     post:
       tags:
         - External Locations
@@ -1308,6 +1349,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/ListExternalLocationsResponse"
   /external-locations/{name}:
+    description: Endpoint for managing a specific external location in Unity Catalog.
     parameters:
       - name: name
         in: path
@@ -1333,7 +1375,8 @@ paths:
       tags:
         - External Locations
       summary: Delete an external location
-      description: Deletes the specified external location from the metastore. The caller must be a metastore admin or the owner of the external location.
+      description: |
+        Deletes the specified external location from the metastore. The caller must be a metastore admin or the owner of the external location.
       operationId: deleteExternalLocation
       parameters:
         - name: force
@@ -1365,7 +1408,6 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ExternalLocationInfo"
-
 components:
   schemas:
     SecurablePropertiesMap:
@@ -1455,7 +1497,7 @@ components:
           format: int64
           description: Time at which this volume was created, in epoch milliseconds.
         created_by:
-          description: TThe identifier of the user who created the volume
+          description: The identifier of the user who created the volume
           type: string
         updated_at:
           type: integer
@@ -1541,6 +1583,7 @@ components:
           type: integer
           format: int32
     TableType:
+      description: Defines whether a table is managed by Unity Catalog or externally stored.
       type: string
       enum:
         - MANAGED
@@ -2141,11 +2184,12 @@ components:
         - version
         - operation
     ModelVersionOperation:
+      description: Defines the type of operation to perform on a model version.
+      type: string
       enum:
         - UNKNOWN_MODEL_VERSION_OPERATION
         - READ_MODEL_VERSION
         - READ_WRITE_MODEL_VERSION
-      type: string
     GenerateTemporaryTableCredential:
       example:
         table_id: table_id
@@ -2163,11 +2207,12 @@ components:
         - table_id
         - operation
     TableOperation:
+      description: Defines the type of operation to perform on a table.
+      type: string
       enum:
         - UNKNOWN_TABLE_OPERATION
         - READ
         - READ_WRITE
-      type: string
     AwsCredentials:
       properties:
         access_key_id:
@@ -2207,11 +2252,12 @@ components:
         - volume_id
         - operation
     VolumeOperation:
+      description: Defines the type of operation to perform on a volume.
+      type: string
       enum:
         - UNKNOWN_VOLUME_OPERATION
         - READ_VOLUME
         - WRITE_VOLUME
-      type: string
     RegisteredModelInfo:
       type: object
       properties:
@@ -2438,12 +2484,13 @@ components:
           type: integer
           format: int64
     PathOperation:
+      description: Defines the type of operation to perform on a storage path.
+      type: string
       enum:
         - UNKNOWN_PATH_OPERATION
         - PATH_READ
         - PATH_READ_WRITE
         - PATH_CREATE_TABLE
-      type: string
     PrincipalType:
       type: string
       enum:
@@ -2725,6 +2772,3 @@ components:
         next_page_token:
           type: string
           description: Opaque token to retrieve the next page of results. Absent if there are no more pages. __page_token__ should be set to this value for the next request (for the next page of results).
-info:
-  title: Unity Catalog API
-  version: '0.1'

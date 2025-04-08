@@ -43,7 +43,7 @@ No authorization required
 
 Delete a function
 
-    Deletes the function that matches the supplied name.
+    Deletes the function that matches the supplied name. 
 
 ### Parameters
 
@@ -70,7 +70,7 @@ No authorization required
 
 Get a function
 
-    Gets a function from within a parent catalog and schema.
+    Gets a function from within a parent catalog and schema. 
 
 ### Parameters
 
