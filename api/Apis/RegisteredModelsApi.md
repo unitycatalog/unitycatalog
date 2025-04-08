@@ -4,18 +4,18 @@ All URIs are relative to *http://localhost:8080/api/2.1/unity-catalog*
 
 | Method | HTTP request | Description |
 |------------- | ------------- | -------------|
-| [**createRegisteredModel**](RegisteredModelsApi.md#createRegisteredModel) | **POST** /models | Create a Model. |
-| [**deleteRegisteredModel**](RegisteredModelsApi.md#deleteRegisteredModel) | **DELETE** /models/{full_name} | Delete a Registered Model. |
-| [**getRegisteredModel**](RegisteredModelsApi.md#getRegisteredModel) | **GET** /models/{full_name} | Get a Registered Model. |
-| [**listRegisteredModels**](RegisteredModelsApi.md#listRegisteredModels) | **GET** /models | List Models. |
-| [**updateRegisteredModel**](RegisteredModelsApi.md#updateRegisteredModel) | **PATCH** /models/{full_name} | Update a Registered Model. |
+| [**createRegisteredModel**](RegisteredModelsApi.md#createRegisteredModel) | **POST** /models | Create a Model |
+| [**deleteRegisteredModel**](RegisteredModelsApi.md#deleteRegisteredModel) | **DELETE** /models/{full_name} | Delete a Registered Model |
+| [**getRegisteredModel**](RegisteredModelsApi.md#getRegisteredModel) | **GET** /models/{full_name} | Get a Registered Model |
+| [**listRegisteredModels**](RegisteredModelsApi.md#listRegisteredModels) | **GET** /models | List Models |
+| [**updateRegisteredModel**](RegisteredModelsApi.md#updateRegisteredModel) | **PATCH** /models/{full_name} | Update a Registered Model |
 
 
 <a name="createRegisteredModel"></a>
 # **createRegisteredModel**
 > RegisteredModelInfo createRegisteredModel(CreateRegisteredModel)
 
-Create a Model.
+Create a Model
 
     Creates a new model instance. WARNING: This API is experimental and will change in future versions. 
 
@@ -42,7 +42,7 @@ No authorization required
 # **deleteRegisteredModel**
 > oas_any_type_not_mapped deleteRegisteredModel(full\_name, force)
 
-Delete a Registered Model.
+Delete a Registered Model
 
     Deletes a fully specified registered model. All versions of the model must have already been deleted. 
 
@@ -70,7 +70,7 @@ No authorization required
 # **getRegisteredModel**
 > RegisteredModelInfo getRegisteredModel(full\_name)
 
-Get a Registered Model.
+Get a Registered Model
 
     Gets a fully specified registered model. 
 
@@ -97,7 +97,7 @@ No authorization required
 # **listRegisteredModels**
 > ListRegisteredModelsResponse listRegisteredModels(catalog\_name, schema\_name, max\_results, page\_token)
 
-List Models.
+List Models
 
     Gets a paginated list of all available models either under the specified parent catalog and schema, or all models stored in UC. There is no guarantee of a specific ordering of the elements in the array. 
 
@@ -127,7 +127,7 @@ No authorization required
 # **updateRegisteredModel**
 > RegisteredModelInfo updateRegisteredModel(full\_name, UpdateRegisteredModel)
 
-Update a Registered Model.
+Update a Registered Model
 
     Updates the specified registered model. 
 

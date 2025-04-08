@@ -4,18 +4,18 @@ All URIs are relative to *http://localhost:8080/api/2.1/unity-catalog*
 
 | Method | HTTP request | Description |
 |------------- | ------------- | -------------|
-| [**createExternalLocation**](ExternalLocationsApi.md#createExternalLocation) | **POST** /external-locations | Create an External Location. |
-| [**deleteExternalLocation**](ExternalLocationsApi.md#deleteExternalLocation) | **DELETE** /external-locations/{name} | Delete an External Location. |
-| [**getExternalLocation**](ExternalLocationsApi.md#getExternalLocation) | **GET** /external-locations/{name} | Get an External Location. |
+| [**createExternalLocation**](ExternalLocationsApi.md#createExternalLocation) | **POST** /external-locations | Create an External Location |
+| [**deleteExternalLocation**](ExternalLocationsApi.md#deleteExternalLocation) | **DELETE** /external-locations/{name} | Delete an External Location |
+| [**getExternalLocation**](ExternalLocationsApi.md#getExternalLocation) | **GET** /external-locations/{name} | Get an External Location |
 | [**listExternalLocations**](ExternalLocationsApi.md#listExternalLocations) | **GET** /external-locations | List External Locations |
-| [**updateExternalLocation**](ExternalLocationsApi.md#updateExternalLocation) | **PATCH** /external-locations/{name} | Update an External Location. |
+| [**updateExternalLocation**](ExternalLocationsApi.md#updateExternalLocation) | **PATCH** /external-locations/{name} | Update an External Location |
 
 
 <a name="createExternalLocation"></a>
 # **createExternalLocation**
 > ExternalLocationInfo createExternalLocation(CreateExternalLocation)
 
-Create an External Location.
+Create an External Location
 
     Creates a new external location entry in the metastore. The caller must be a metastore admin to be able to create external locations. 
 
@@ -42,7 +42,7 @@ No authorization required
 # **deleteExternalLocation**
 > deleteExternalLocation(name, force)
 
-Delete an External Location.
+Delete an External Location
 
     Deletes the specified external location from the metastore. The caller must be a metastore admin or the owner of the external location. 
 
@@ -70,7 +70,7 @@ No authorization required
 # **getExternalLocation**
 > ExternalLocationInfo getExternalLocation(name)
 
-Get an External Location.
+Get an External Location
 
     Gets an external location from the metastore. The caller must be a metastore admin, the owner of the external location, or a user with some privilege on the external location. 
 
@@ -125,7 +125,7 @@ No authorization required
 # **updateExternalLocation**
 > ExternalLocationInfo updateExternalLocation(name, UpdateExternalLocation)
 
-Update an External Location.
+Update an External Location
 
     Updates an external location in the metastore. The caller must be the owner of the external location or a metastore admin. 
 

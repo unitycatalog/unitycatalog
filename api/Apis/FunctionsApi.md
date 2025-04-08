@@ -4,17 +4,17 @@ All URIs are relative to *http://localhost:8080/api/2.1/unity-catalog*
 
 | Method | HTTP request | Description |
 |------------- | ------------- | -------------|
-| [**createFunction**](FunctionsApi.md#createFunction) | **POST** /functions | Create a Function. |
-| [**deleteFunction**](FunctionsApi.md#deleteFunction) | **DELETE** /functions/{name} | Delete a Function. |
-| [**getFunction**](FunctionsApi.md#getFunction) | **GET** /functions/{name} | Get a Function. |
-| [**listFunctions**](FunctionsApi.md#listFunctions) | **GET** /functions | List Functions. |
+| [**createFunction**](FunctionsApi.md#createFunction) | **POST** /functions | Create a Function |
+| [**deleteFunction**](FunctionsApi.md#deleteFunction) | **DELETE** /functions/{name} | Delete a Function |
+| [**getFunction**](FunctionsApi.md#getFunction) | **GET** /functions/{name} | Get a Function |
+| [**listFunctions**](FunctionsApi.md#listFunctions) | **GET** /functions | List Functions |
 
 
 <a name="createFunction"></a>
 # **createFunction**
 > FunctionInfo createFunction(CreateFunctionRequest)
 
-Create a Function.
+Create a Function
 
     Creates a new function instance. WARNING: This API is experimental and will change in future versions. 
 
@@ -41,7 +41,7 @@ No authorization required
 # **deleteFunction**
 > oas_any_type_not_mapped deleteFunction(name)
 
-Delete a Function.
+Delete a Function
 
     Deletes the function that matches the supplied name. 
 
@@ -68,7 +68,7 @@ No authorization required
 # **getFunction**
 > FunctionInfo getFunction(name)
 
-Get a Function.
+Get a Function
 
     Gets a function from within a parent catalog and schema. 
 
@@ -95,7 +95,7 @@ No authorization required
 # **listFunctions**
 > ListFunctionsResponse listFunctions(catalog\_name, schema\_name, max\_results, page\_token)
 
-List Functions.
+List Functions
 
     List functions within the specified parent catalog and schema. There is no guarantee of a specific ordering of the elements in the array. 
 

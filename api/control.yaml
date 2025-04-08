@@ -19,7 +19,7 @@ paths:
       tags:
         - Users
       operationId: createUser
-      summary: Create a user
+      summary: Create an User
       description: |
         Creates a new user.
       requestBody:
@@ -38,7 +38,7 @@ paths:
       tags:
         - Users
       operationId: listUsers
-      summary: List users
+      summary: List Users
       description: |
         Gets details for all the users.
       parameters:
@@ -82,7 +82,7 @@ paths:
       tags:
         - Users
       operationId: getUser
-      summary: Get a user
+      summary: Get an User
       description: |
         Gets the specified user.
       responses:
@@ -96,7 +96,7 @@ paths:
       tags:
         - Users
       operationId: updateUser
-      summary: Update a user
+      summary: Update an User
       description: |
         Updates the user that matches the supplied id.
       requestBody:
@@ -115,7 +115,7 @@ paths:
       tags:
         - Users
       operationId: deleteUser
-      summary: Delete a user
+      summary: Delete an User
       description: |
         Deletes the user that matches the supplied id.
       responses:
@@ -130,7 +130,7 @@ paths:
       tags:
         - Users
       operationId: getSelf
-      summary: Get the current user
+      summary: Get the Current User
       description: |
         Gets the user from the jwt token provided.
       responses:
@@ -146,7 +146,7 @@ paths:
       tags:
         - OAuth2
       operationId: getToken
-      summary: Get a token using an OAuth2 flow
+      summary: Get a Token Using an OAuth2 Flow
       description: |
         Exchanges credentials for a token using the OAuth2 token exchange.
       parameters:
@@ -214,7 +214,7 @@ paths:
       tags:
         - OAuth2
       operationId: logout
-      summary: Revoke access token cookie
+      summary: Revoke Access Token Cookie
       description: |
         Revokes the access token cookie.
       # NOTE:

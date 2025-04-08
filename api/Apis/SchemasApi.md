@@ -4,18 +4,18 @@ All URIs are relative to *http://localhost:8080/api/2.1/unity-catalog*
 
 | Method | HTTP request | Description |
 |------------- | ------------- | -------------|
-| [**createSchema**](SchemasApi.md#createSchema) | **POST** /schemas | Create a Schema. |
-| [**deleteSchema**](SchemasApi.md#deleteSchema) | **DELETE** /schemas/{full_name} | Delete a Schema. |
-| [**getSchema**](SchemasApi.md#getSchema) | **GET** /schemas/{full_name} | Get a Schema. |
-| [**listSchemas**](SchemasApi.md#listSchemas) | **GET** /schemas | List Schemas. |
-| [**updateSchema**](SchemasApi.md#updateSchema) | **PATCH** /schemas/{full_name} | Update a Schema. |
+| [**createSchema**](SchemasApi.md#createSchema) | **POST** /schemas | Create a Schema |
+| [**deleteSchema**](SchemasApi.md#deleteSchema) | **DELETE** /schemas/{full_name} | Delete a Schema |
+| [**getSchema**](SchemasApi.md#getSchema) | **GET** /schemas/{full_name} | Get a Schema |
+| [**listSchemas**](SchemasApi.md#listSchemas) | **GET** /schemas | List Schemas |
+| [**updateSchema**](SchemasApi.md#updateSchema) | **PATCH** /schemas/{full_name} | Update a Schema |
 
 
 <a name="createSchema"></a>
 # **createSchema**
 > SchemaInfo createSchema(CreateSchema)
 
-Create a Schema.
+Create a Schema
 
     Creates a new schema in the specified catalog. 
 
@@ -42,7 +42,7 @@ No authorization required
 # **deleteSchema**
 > oas_any_type_not_mapped deleteSchema(full\_name, force)
 
-Delete a Schema.
+Delete a Schema
 
     Deletes the specified schema from the parent catalog. 
 
@@ -70,7 +70,7 @@ No authorization required
 # **getSchema**
 > SchemaInfo getSchema(full\_name)
 
-Get a Schema.
+Get a Schema
 
     Gets the specified schema for a catalog. 
 
@@ -97,7 +97,7 @@ No authorization required
 # **listSchemas**
 > ListSchemasResponse listSchemas(catalog\_name, max\_results, page\_token)
 
-List Schemas.
+List Schemas
 
     Gets an array of schemas for a catalog. There is no guarantee of a specific ordering of the elements in the array. 
 
@@ -126,7 +126,7 @@ No authorization required
 # **updateSchema**
 > SchemaInfo updateSchema(full\_name, UpdateSchema)
 
-Update a Schema.
+Update a Schema
 
     Updates the specified schema. 
 

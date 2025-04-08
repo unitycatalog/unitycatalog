@@ -4,18 +4,18 @@ All URIs are relative to *http://localhost:8080/api/2.1/unity-catalog*
 
 | Method | HTTP request | Description |
 |------------- | ------------- | -------------|
-| [**createVolume**](VolumesApi.md#createVolume) | **POST** /volumes | Create a Volume. |
-| [**deleteVolume**](VolumesApi.md#deleteVolume) | **DELETE** /volumes/{name} | Delete a Volume. |
-| [**getVolume**](VolumesApi.md#getVolume) | **GET** /volumes/{name} | Get a Volume. |
-| [**listVolumes**](VolumesApi.md#listVolumes) | **GET** /volumes | List Volumes. |
-| [**updateVolume**](VolumesApi.md#updateVolume) | **PATCH** /volumes/{name} | Update a Volume. |
+| [**createVolume**](VolumesApi.md#createVolume) | **POST** /volumes | Create a Volume |
+| [**deleteVolume**](VolumesApi.md#deleteVolume) | **DELETE** /volumes/{name} | Delete a Volume |
+| [**getVolume**](VolumesApi.md#getVolume) | **GET** /volumes/{name} | Get a Volume |
+| [**listVolumes**](VolumesApi.md#listVolumes) | **GET** /volumes | List Volumes |
+| [**updateVolume**](VolumesApi.md#updateVolume) | **PATCH** /volumes/{name} | Update a Volume |
 
 
 <a name="createVolume"></a>
 # **createVolume**
 > VolumeInfo createVolume(CreateVolumeRequestContent)
 
-Create a Volume.
+Create a Volume
 
     Creates a new volume. 
 
@@ -42,7 +42,7 @@ No authorization required
 # **deleteVolume**
 > oas_any_type_not_mapped deleteVolume(name)
 
-Delete a Volume.
+Delete a Volume
 
     Deletes a volume from the specified parent catalog and schema. 
 
@@ -69,7 +69,7 @@ No authorization required
 # **getVolume**
 > VolumeInfo getVolume(name)
 
-Get a Volume.
+Get a Volume
 
     Gets a volume for a specific catalog and schema. 
 
@@ -96,7 +96,7 @@ No authorization required
 # **listVolumes**
 > ListVolumesResponseContent listVolumes(catalog\_name, schema\_name, max\_results, page\_token)
 
-List Volumes.
+List Volumes
 
     Gets an array of available volumes under the parent catalog and schema. There is no guarantee of a specific ordering of the elements in the array. 
 
@@ -126,7 +126,7 @@ No authorization required
 # **updateVolume**
 > VolumeInfo updateVolume(name, UpdateVolumeRequestContent)
 
-Update a Volume.
+Update a Volume
 
     Updates the specified volume under the specified parent catalog and schema.  Currently only the name or the comment of the volume could be updated. 
 

@@ -4,19 +4,19 @@ All URIs are relative to *http://localhost:8080/api/2.1/unity-catalog*
 
 | Method | HTTP request | Description |
 |------------- | ------------- | -------------|
-| [**createModelVersion**](ModelVersionsApi.md#createModelVersion) | **POST** /models/versions | Create a Model Version. |
-| [**deleteModelVersion**](ModelVersionsApi.md#deleteModelVersion) | **DELETE** /models/{full_name}/versions/{version} | Delete a Model Version. |
-| [**finalizeModelVersion**](ModelVersionsApi.md#finalizeModelVersion) | **PATCH** /models/{full_name}/versions/{version}/finalize | Finalize a Model Version. |
-| [**getModelVersion**](ModelVersionsApi.md#getModelVersion) | **GET** /models/{full_name}/versions/{version} | Get a Model Version. |
-| [**listModelVersions**](ModelVersionsApi.md#listModelVersions) | **GET** /models/{full_name}/versions | List Model Versions of the Specified Registered Model. |
-| [**updateModelVersion**](ModelVersionsApi.md#updateModelVersion) | **PATCH** /models/{full_name}/versions/{version} | Update a Model Version. |
+| [**createModelVersion**](ModelVersionsApi.md#createModelVersion) | **POST** /models/versions | Create a Model Version |
+| [**deleteModelVersion**](ModelVersionsApi.md#deleteModelVersion) | **DELETE** /models/{full_name}/versions/{version} | Delete a Model Version |
+| [**finalizeModelVersion**](ModelVersionsApi.md#finalizeModelVersion) | **PATCH** /models/{full_name}/versions/{version}/finalize | Finalize a Model Version |
+| [**getModelVersion**](ModelVersionsApi.md#getModelVersion) | **GET** /models/{full_name}/versions/{version} | Get a Model Version |
+| [**listModelVersions**](ModelVersionsApi.md#listModelVersions) | **GET** /models/{full_name}/versions | List Model Versions of the Specified Registered Model |
+| [**updateModelVersion**](ModelVersionsApi.md#updateModelVersion) | **PATCH** /models/{full_name}/versions/{version} | Update a Model Version |
 
 
 <a name="createModelVersion"></a>
 # **createModelVersion**
 > ModelVersionInfo createModelVersion(CreateModelVersion)
 
-Create a Model Version.
+Create a Model Version
 
     Creates a new model version instance. 
 
@@ -43,7 +43,7 @@ No authorization required
 # **deleteModelVersion**
 > oas_any_type_not_mapped deleteModelVersion(full\_name, version)
 
-Delete a Model Version.
+Delete a Model Version
 
     Deletes the specified model version. 
 
@@ -71,7 +71,7 @@ No authorization required
 # **finalizeModelVersion**
 > ModelVersionInfo finalizeModelVersion(full\_name, version, FinalizeModelVersion)
 
-Finalize a Model Version.
+Finalize a Model Version
 
     Finalizes the status of the specified model version. 
 
@@ -100,7 +100,7 @@ No authorization required
 # **getModelVersion**
 > ModelVersionInfo getModelVersion(full\_name, version)
 
-Get a Model Version.
+Get a Model Version
 
     Gets a specific model version for a specific model. 
 
@@ -128,7 +128,7 @@ No authorization required
 # **listModelVersions**
 > ListModelVersionsResponse listModelVersions(full\_name, max\_results, page\_token)
 
-List Model Versions of the Specified Registered Model.
+List Model Versions of the Specified Registered Model
 
     Gets the paginated list of all available model versions under the specified registered model. There is no guarantee of a specific ordering of the elements in the array. 
 
@@ -157,7 +157,7 @@ No authorization required
 # **updateModelVersion**
 > ModelVersionInfo updateModelVersion(full\_name, version, UpdateModelVersion)
 
-Update a Model Version.
+Update a Model Version
 
     Updates the specified model version. 
 

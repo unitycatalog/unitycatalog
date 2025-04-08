@@ -4,17 +4,17 @@ All URIs are relative to *http://localhost:8080/api/2.1/unity-catalog*
 
 | Method | HTTP request | Description |
 |------------- | ------------- | -------------|
-| [**createTable**](TablesApi.md#createTable) | **POST** /tables | Create a Table. |
-| [**deleteTable**](TablesApi.md#deleteTable) | **DELETE** /tables/{full_name} | Delete a Table. |
-| [**getTable**](TablesApi.md#getTable) | **GET** /tables/{full_name} | Get a Table. |
-| [**listTables**](TablesApi.md#listTables) | **GET** /tables | List Tables. |
+| [**createTable**](TablesApi.md#createTable) | **POST** /tables | Create a Table |
+| [**deleteTable**](TablesApi.md#deleteTable) | **DELETE** /tables/{full_name} | Delete a Table |
+| [**getTable**](TablesApi.md#getTable) | **GET** /tables/{full_name} | Get a Table |
+| [**listTables**](TablesApi.md#listTables) | **GET** /tables | List Tables |
 
 
 <a name="createTable"></a>
 # **createTable**
 > TableInfo createTable(CreateTable)
 
-Create a Table.
+Create a Table
 
     Creates a new external table instance. WARNING: This API is experimental and will change in future versions. 
 
@@ -41,7 +41,7 @@ No authorization required
 # **deleteTable**
 > oas_any_type_not_mapped deleteTable(full\_name)
 
-Delete a Table.
+Delete a Table
 
     Deletes a table from the specified parent catalog and schema. 
 
@@ -68,7 +68,7 @@ No authorization required
 # **getTable**
 > TableInfo getTable(full\_name)
 
-Get a Table.
+Get a Table
 
     Gets a table for a specific catalog and schema. 
 
@@ -95,7 +95,7 @@ No authorization required
 # **listTables**
 > ListTablesResponse listTables(catalog\_name, schema\_name, max\_results, page\_token)
 
-List Tables.
+List Tables
 
     Gets the list of all available tables under the parent catalog and schema. There is no guarantee of a specific ordering of the elements in the array. 
 

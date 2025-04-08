@@ -48,7 +48,7 @@ paths:
       tags:
         - Catalogs
       operationId: createCatalog
-      summary: Create a Catalog.
+      summary: Create a Catalog
       description: |
         Creates a new catalog instance.
       requestBody:
@@ -87,7 +87,7 @@ paths:
             maximum: 1000
           required: false
       operationId: listCatalogs
-      summary: List Catalogs.
+      summary: List Catalogs
       description: |
         Lists the available catalogs. There is no guarantee of a specific ordering of the elements in the list.
       responses:
@@ -110,7 +110,7 @@ paths:
       tags:
         - Catalogs
       operationId: getCatalog
-      summary: Get a Catalog.
+      summary: Get a Catalog
       description: |
         Gets the specified catalog.
       responses:
@@ -124,7 +124,7 @@ paths:
       tags:
         - Catalogs
       operationId: updateCatalog
-      summary: Update a Catalog.
+      summary: Update a Catalog
       description: |
         Updates the catalog that matches the supplied name.
       requestBody:
@@ -143,7 +143,7 @@ paths:
       tags:
         - Catalogs
       operationId: deleteCatalog
-      summary: Delete a Catalog.
+      summary: Delete a Catalog
       description: |
         Deletes the catalog that matches the supplied name.
       parameters:
@@ -165,7 +165,7 @@ paths:
       tags:
         - Schemas
       operationId: createSchema
-      summary: Create a Schema.
+      summary: Create a Schema
       description: |
         Creates a new schema in the specified catalog.
       requestBody:
@@ -210,7 +210,7 @@ paths:
             type: string
           required: false
       operationId: listSchemas
-      summary: List Schemas.
+      summary: List Schemas
       description: |
         Gets an array of schemas for a catalog.
         There is no guarantee of a specific ordering of the elements in the array.
@@ -234,7 +234,7 @@ paths:
       tags:
         - Schemas
       operationId: getSchema
-      summary: Get a Schema.
+      summary: Get a Schema
       description: |
         Gets the specified schema for a catalog.
       responses:
@@ -248,7 +248,7 @@ paths:
       tags:
         - Schemas
       operationId: updateSchema
-      summary: Update a Schema.
+      summary: Update a Schema
       description: |
         Updates the specified schema.
       requestBody:
@@ -267,7 +267,7 @@ paths:
       tags:
         - Schemas
       operationId: deleteSchema
-      summary: Delete a Schema.
+      summary: Delete a Schema
       description: |
         Deletes the specified schema from the parent catalog.
       parameters:
@@ -287,7 +287,7 @@ paths:
     description: Endpoint for managing tables in Unity Catalog.
     post:
       operationId: createTable
-      summary: Create a Table.
+      summary: Create a Table
       tags:
         - Tables
       description: |
@@ -340,7 +340,7 @@ paths:
           schema:
             type: string
       operationId: listTables
-      summary: List Tables.
+      summary: List Tables
       description: |
         Gets the list of all available tables under the parent catalog and schema.
         There is no guarantee of a specific ordering of the elements in the array.
@@ -364,7 +364,7 @@ paths:
       tags:
         - Tables
       operationId: getTable
-      summary: Get a Table.
+      summary: Get a Table
       description: |
         Gets a table for a specific catalog and schema.
       responses:
@@ -378,7 +378,7 @@ paths:
       tags:
         - Tables
       operationId: deleteTable
-      summary: Delete a Table.
+      summary: Delete a Table
       description: |
         Deletes a table from the specified parent catalog and schema.
       responses:
@@ -393,7 +393,7 @@ paths:
       tags:
         - Volumes
       operationId: createVolume
-      summary: Create a Volume.
+      summary: Create a Volume
       description: |
         Creates a new volume.
       requestBody:
@@ -404,7 +404,7 @@ paths:
               $ref: '#/components/schemas/CreateVolumeRequestContent'
             examples:
               CreateExternalVolumeExample:
-                summary: Create an External Volume.
+                summary: Create an External Volume
                 description: Create an External Volume and point the volume to a folder in the S3 bucket.
                 value:
                   catalog_name: main
@@ -421,7 +421,7 @@ paths:
                 $ref: '#/components/schemas/VolumeInfo'
               examples:
                 CreateVolumeExample:
-                  summary: Response of Successful Creation.
+                  summary: Response of Successful Creation
                   description: The properties of the volume will be returned if the operation succeeds.
                   value:
                     catalog_name: main
@@ -435,7 +435,7 @@ paths:
       tags:
         - Volumes
       operationId: listVolumes
-      summary: List Volumes.
+      summary: List Volumes
       description: |
         Gets an array of available volumes under the parent catalog and schema.
         There is no guarantee of a specific ordering of the elements in the array.
@@ -448,7 +448,7 @@ paths:
           required: true
           examples:
             CatalogNameExample:
-              summary: Specify the Target Catalog to be `main`.
+              summary: Specify the Target Catalog to be `main`
               description: Execute the operation against the `main` catalog.
               value: main
         - name: schema_name
@@ -459,7 +459,7 @@ paths:
           required: true
           examples:
             SchemaNameExample:
-              summary: Specify the Target Schema to be `default`.
+              summary: Specify the Target Schema to be `default`
               description: Execute the operation against the `default` schema.
               value: default
         - name: max_results
@@ -494,7 +494,7 @@ paths:
                 $ref: '#/components/schemas/ListVolumesResponseContent'
               examples:
                 ListVolumesExample:
-                  summary: Response of Success Retrieval of the Volumes.
+                  summary: Response of Success Retrieval of the Volumes
                   description: A list of volume properties will be returned if the operation succeeds.
                   value:
                     volumes:
@@ -523,13 +523,13 @@ paths:
         required: true
         examples:
           FullNameArgExample:
-            summary: Execute the Operation against the Volume Named `my_volume` under `main` Catalog and `default` Schema.
+            summary: Execute the Operation against the Volume Named `my_volume` under `main` Catalog and `default` Schema
             value: main.default.my_volume
     get:
       tags:
         - Volumes
       operationId: getVolume
-      summary: Get a Volume.
+      summary: Get a Volume
       description: |
         Gets a volume for a specific catalog and schema.
       responses:
@@ -541,7 +541,7 @@ paths:
                 $ref: '#/components/schemas/VolumeInfo'
               examples:
                 GetVolumeExample:
-                  summary: Response of Successful Retrieval of an Existing Volume.
+                  summary: Response of Successful Retrieval of an Existing Volume
                   description: The properties of the volume will be returned if the operation succeeds.
                   value:
                     catalog_name: main
@@ -555,7 +555,7 @@ paths:
       tags:
         - Volumes
       operationId: updateVolume
-      summary: Update a Volume.
+      summary: Update a Volume
       description: |
         Updates the specified volume under the specified parent catalog and schema.
         
@@ -567,12 +567,12 @@ paths:
               $ref: '#/components/schemas/UpdateVolumeRequestContent'
             examples:
               UpdateVolumeName:
-                summary: Update the Name of the Volume.
+                summary: Update the Name of the Volume
                 description: Update the name of the volume.
                 value:
                   new_name: my_new_volume
               UpdateVolumeComment:
-                summary: Update the Comment of the Volume.
+                summary: Update the Comment of the Volume
                 description: Update the comment of the volume.
                 value:
                   comment: This is my new volume
@@ -585,7 +585,7 @@ paths:
                 $ref: '#/components/schemas/VolumeInfo'
               examples:
                 UpdateVolumeName:
-                  summary: Update the Name of the Volume.
+                  summary: Update the Name of the Volume
                   description: The new properties of the volume will be returned if the operation succeeds.
                   value:
                     catalog_name: main
@@ -599,7 +599,7 @@ paths:
       tags:
         - Volumes
       operationId: deleteVolume
-      summary: Delete a Volume.
+      summary: Delete a Volume
       description: |
         Deletes a volume from the specified parent catalog and schema.
       responses:
@@ -614,7 +614,7 @@ paths:
       operationId: generateTemporaryModelVersionCredentials
       tags:
         - TemporaryCredentials
-      summary: Generate Temporary Model Version Credentials.
+      summary: Generate Temporary Model Version Credentials
       description: |
         Generates temporary model version credentials. These credentials are used by clients to write and retrieve model artifacts from the model version's external storage location.
       requestBody:
@@ -635,7 +635,7 @@ paths:
       operationId: generateTemporaryTableCredentials
       tags:
         - TemporaryCredentials
-      summary: Generate Temporary Table Credentials.
+      summary: Generate Temporary Table Credentials
       description: |
         Generates temporary credentials for accessing table data.
       requestBody:
@@ -656,7 +656,7 @@ paths:
       operationId: generateTemporaryVolumeCredentials
       tags:
         - TemporaryCredentials
-      summary: Generate Temporary Volume Credentials.
+      summary: Generate Temporary Volume Credentials
       description: |
         Generates temporary credentials for accessing volume data.
       requestBody:
@@ -677,7 +677,7 @@ paths:
       tags:
         - Functions
       operationId: createFunction
-      summary: Create a Function.
+      summary: Create a Function
       description: |
         Creates a new function instance.
         WARNING: This API is experimental and will change in future versions.
@@ -729,7 +729,7 @@ paths:
             type: string
           required: false
       operationId: listFunctions
-      summary: List Functions.
+      summary: List Functions
       description: |
         List functions within the specified parent catalog and schema.
         There is no guarantee of a specific ordering of the elements in the array.
@@ -754,7 +754,7 @@ paths:
         - Functions
       parameters: []
       operationId: getFunction
-      summary: Get a Function.
+      summary: Get a Function
       description: |
         Gets a function from within a parent catalog and schema.
       responses:
@@ -768,7 +768,7 @@ paths:
       tags:
         - Functions
       operationId: deleteFunction
-      summary: Delete a Function.
+      summary: Delete a Function
       description: |
         Deletes the function that matches the supplied name.
       responses:
@@ -781,7 +781,7 @@ paths:
     description: Endpoint for managing registered models in Unity Catalog.
     post:
       operationId: createRegisteredModel
-      summary: Create a Model.
+      summary: Create a Model
       tags:
         - RegisteredModels
       description: |
@@ -834,7 +834,7 @@ paths:
           schema:
             type: string
       operationId: listRegisteredModels
-      summary: List Models.
+      summary: List Models
       description: |
         Gets a paginated list of all available models either under the specified parent catalog and schema, or all models stored in UC.
         There is no guarantee of a specific ordering of the elements in the array.
@@ -858,7 +858,7 @@ paths:
       tags:
         - RegisteredModels
       operationId: getRegisteredModel
-      summary: Get a Registered Model.
+      summary: Get a Registered Model
       description: |
         Gets a fully specified registered model.
       responses:
@@ -872,7 +872,7 @@ paths:
       tags:
         - RegisteredModels
       operationId: updateRegisteredModel
-      summary: Update a Registered Model.
+      summary: Update a Registered Model
       description: |
         Updates the specified registered model.
       requestBody:
@@ -898,7 +898,7 @@ paths:
           schema:
             type: boolean
       operationId: deleteRegisteredModel
-      summary: Delete a Registered Model.
+      summary: Delete a Registered Model
       description: |
         Deletes a fully specified registered model. All versions of the model must have already been deleted.
       responses:
@@ -911,7 +911,7 @@ paths:
     description: Endpoint for managing model versions in Unity Catalog.
     post:
       operationId: createModelVersion
-      summary: Create a Model Version.
+      summary: Create a Model Version
       tags:
         - ModelVersions
       description: |
@@ -959,7 +959,7 @@ paths:
       tags:
         - ModelVersions
       operationId: listModelVersions
-      summary: List Model Versions of the Specified Registered Model.
+      summary: List Model Versions of the Specified Registered Model
       description: |
         Gets the paginated list of all available model versions under the specified registered model.
         There is no guarantee of a specific ordering of the elements in the array.
@@ -990,7 +990,7 @@ paths:
       tags:
         - ModelVersions
       operationId: getModelVersion
-      summary: Get a Model Version.
+      summary: Get a Model Version
       description: |
         Gets a specific model version for a specific model.
       responses:
@@ -1004,7 +1004,7 @@ paths:
       tags:
         - ModelVersions
       operationId: updateModelVersion
-      summary: Update a Model Version.
+      summary: Update a Model Version
       description: |
         Updates the specified model version.
       requestBody:
@@ -1023,7 +1023,7 @@ paths:
       tags:
         - ModelVersions
       operationId: deleteModelVersion
-      summary: Delete a Model Version.
+      summary: Delete a Model Version
       description: |
         Deletes the specified model version.
       responses:
@@ -1052,7 +1052,7 @@ paths:
       tags:
         - ModelVersions
       operationId: finalizeModelVersion
-      summary: Finalize a Model Version.
+      summary: Finalize a Model Version
       description: |
         Finalizes the status of the specified model version.
       requestBody:
@@ -1073,7 +1073,7 @@ paths:
       operationId: generateTemporaryPathCredentials
       tags:
         - TemporaryCredentials
-      summary: Generate Temporary Path Credentials.
+      summary: Generate Temporary Path Credentials
       description: |
         Generates temporary credentials for accessing a storage path.
       requestBody:
@@ -1115,7 +1115,7 @@ paths:
             type: string
           required: false
       operationId: get
-      summary: Get Permissions.
+      summary: Get Permissions
       description: |
         Gets the permissions for a securable.
       responses:
@@ -1129,7 +1129,7 @@ paths:
       tags:
         - Grants
       operationId: update
-      summary: Update a Permission.
+      summary: Update a Permission
       description: |
         Updates the permissions for a securable.
       requestBody:
@@ -1150,7 +1150,7 @@ paths:
       tags:
         - Metastores
       operationId: summary
-      summary: Get a Metastore Summary.
+      summary: Get a Metastore Summary
       description: |
         Gets information about the metastore hosted by this Unity Catalog service (currently the service hosts only one metastore).
       responses:
@@ -1166,7 +1166,7 @@ paths:
       tags:
         - Credentials
       operationId: createCredential
-      summary: Create a Credential.
+      summary: Create a Credential
       description: |
         Creates a new credential. The type of credential to be created is determined by the **purpose** field.
       requestBody:
@@ -1185,7 +1185,7 @@ paths:
       tags:
         - Credentials
       operationId: listCredentials
-      summary: List Credentials.
+      summary: List Credentials
       description: |
         Gets an array of credentials (as __CredentialInfo__ objects).
         The array is limited to only those credentials the caller has permission to access.
@@ -1239,7 +1239,7 @@ paths:
       tags:
         - Credentials
       operationId: getCredential
-      summary: Get a Credential.
+      summary: Get a Credential
       description: |
         Gets a credential from the metastore.
         The caller must be a metastore admin, the owner of the credential, or have some permission on the credential.
@@ -1254,7 +1254,7 @@ paths:
       tags:
         - Credentials
       operationId: updateCredential
-      summary: Update a Credential.
+      summary: Update a Credential
       description: |
         Updates a credential.
       requestBody:
@@ -1273,7 +1273,7 @@ paths:
       tags:
         - Credentials
       operationId: deleteCredential
-      summary: Delete a Credential.
+      summary: Delete a Credential
       description: |
         Deletes a credential from the metastore. The caller must be a metastore admin or the owner of the credential.
       parameters:
@@ -1294,7 +1294,7 @@ paths:
     post:
       tags:
         - External Locations
-      summary: Create an External Location.
+      summary: Create an External Location
       description: |
         Creates a new external location entry in the metastore. The caller must be a metastore admin to be able to create external locations.
       operationId: createExternalLocation
@@ -1353,7 +1353,7 @@ paths:
     get:
       tags:
         - External Locations
-      summary: Get an External Location.
+      summary: Get an External Location
       description: |
         Gets an external location from the metastore. The caller must be a metastore admin, the owner of the external location, or a user with some privilege on the external location.
       operationId: getExternalLocation
@@ -1367,7 +1367,7 @@ paths:
     delete:
       tags:
         - External Locations
-      summary: Delete an External Location.
+      summary: Delete an External Location
       description: |
         Deletes the specified external location from the metastore. The caller must be a metastore admin or the owner of the external location.
       operationId: deleteExternalLocation
@@ -1384,7 +1384,7 @@ paths:
     patch:
       tags:
         - External Locations
-      summary: Update an External Location.
+      summary: Update an External Location
       description: |
         Updates an external location in the metastore. The caller must be the owner of the external location or a metastore admin.
       operationId: updateExternalLocation

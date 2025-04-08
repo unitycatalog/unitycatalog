@@ -4,15 +4,15 @@ All URIs are relative to *http://localhost:8080/api/2.1/unity-catalog*
 
 | Method | HTTP request | Description |
 |------------- | ------------- | -------------|
-| [**get**](GrantsApi.md#get) | **GET** /permissions/{securable_type}/{full_name} | Get Permissions. |
-| [**update**](GrantsApi.md#update) | **PATCH** /permissions/{securable_type}/{full_name} | Update a Permission. |
+| [**get**](GrantsApi.md#get) | **GET** /permissions/{securable_type}/{full_name} | Get Permissions |
+| [**update**](GrantsApi.md#update) | **PATCH** /permissions/{securable_type}/{full_name} | Update a Permission |
 
 
 <a name="get"></a>
 # **get**
 > PermissionsList get(securable\_type, full\_name, principal)
 
-Get Permissions.
+Get Permissions
 
     Gets the permissions for a securable. 
 
@@ -41,7 +41,7 @@ No authorization required
 # **update**
 > PermissionsList update(securable\_type, full\_name, UpdatePermissions)
 
-Update a Permission.
+Update a Permission
 
     Updates the permissions for a securable. 
 
