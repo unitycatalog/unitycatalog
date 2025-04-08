@@ -32,12 +32,12 @@ from tests.core.databricks.function_definitions import (
 )
 from unitycatalog.ai.core.databricks import (
     DatabricksFunctionClient,
-    ExecutionMode,
 )
 from unitycatalog.ai.core.envs.databricks_env_vars import (
     UCAI_DATABRICKS_SERVERLESS_EXECUTION_RESULT_ROW_LIMIT,
 )
 from unitycatalog.ai.core.types import Variant
+from unitycatalog.ai.core.utils.execution_utils import ExecutionModeDatabricks
 from unitycatalog.ai.test_utils.client_utils import (
     client,  # noqa: F401
     get_client,
@@ -722,7 +722,7 @@ def test_get_function_as_callable(client: DatabricksFunctionClient):
 @retry_flaky_test()
 @requires_databricks
 def test_execute_function_in_local_sandbox(client: DatabricksFunctionClient):
-    client.execution_mode = ExecutionMode.LOCAL
+    client.execution_mode = ExecutionModeDatabricks.LOCAL
 
     def add(a: int, b: int) -> int:
         """
@@ -766,16 +766,45 @@ def test_execute_function_with_custom_client(
         function_info = serverless_client.get_function(func_name)
         from databricks.sdk import WorkspaceClient
 
-        with patch("databricks.connect.validation.validate_session_serverless", return_value=None):
+        with patch.object(DatabricksFunctionClient, "initialize_spark_session") as mock_init:
+            mock_init.side_effect = ValueError("Authentication failed with provided credentials")
+
             w = WorkspaceClient(
                 host=os.environ.get("DATABRICKS_HOST"),
                 client_id="fake_id",
                 client_secret="fake_secret",
             )
-            unauthorized_client = DatabricksFunctionClient(client=w)
 
-            for input_example in function_sample.inputs:
-                # Calling `execute_uc_function` call directly to skip the get_function call and check if config is passed into DB Connect correctly
-                result = unauthorized_client._execute_uc_function(function_info, input_example)
-                assert result.error is not None  # Should error out
-                assert "RETRIES_EXCEEDED" in result.error
+            with pytest.raises(ValueError, match="Authentication failed"):
+                DatabricksFunctionClient(client=w)
+
+
+@retry_flaky_test()
+@requires_databricks
+def test_sql_function_with_null_default_databricks(client: DatabricksFunctionClient):
+    sql_body = f"""
+CREATE OR REPLACE FUNCTION {CATALOG}.{SCHEMA}.null_default_func(
+    a STRING DEFAULT NULL COMMENT 'string default NULL',
+    b STRING DEFAULT 'non-null-default' COMMENT 'string with regular default'
+)
+RETURNS STRING
+CONTAINS SQL
+COMMENT 'Tests NULL default parameter handling'
+RETURN CASE WHEN a IS NULL THEN 'a is NULL, b is ' || b ELSE a || ', b is ' || b END;
+"""
+    with create_function_and_cleanup(client=client, schema=SCHEMA, sql_body=sql_body):
+        func_name = f"{CATALOG}.{SCHEMA}.null_default_func"
+
+        result = client.execute_function(func_name, parameters={})
+        assert result.value == "a is NULL, b is non-null-default"
+
+        result = client.execute_function(func_name, parameters={"a": None})
+        assert result.value == "a is NULL, b is non-null-default"
+
+        result = client.execute_function(func_name, parameters={"a": "custom-value"})
+        assert result.value == "custom-value, b is non-null-default"
+
+        result = client.execute_function(
+            func_name, parameters={"a": "custom-value", "b": "custom-b"}
+        )
+        assert result.value == "custom-value, b is custom-b"
