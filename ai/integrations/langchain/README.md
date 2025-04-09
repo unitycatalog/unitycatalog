@@ -136,12 +136,12 @@ from unitycatalog.ai.langchain.toolkit import UCFunctionToolkit
 # create a UCFunctionToolkit that includes the above UC function
 toolkit = UCFunctionToolkit(function_names=[f"{CATALOG}.{SCHEMA}.python_exec"])
 
-# fetch the tools stored in the toolkit
-tools = toolkit.tools
-python_exec_tool = tools[0]
+# Printing the tool definition will display the configured metadata for the instance.
+print(python_exec_tool)
 
-# execute the tool directly
-python_exec_tool.invoke({"code": "print(1)"})
+# Execute the tool directly
+result = client.execute_function(function_name=func_name, parameters={"code": "print(1 + 1)"})
+print(result.value)  # Outputs: 2
 ```
 
 ### Use the tools in a Langchain Agent
