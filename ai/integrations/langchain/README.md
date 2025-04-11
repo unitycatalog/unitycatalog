@@ -140,7 +140,7 @@ toolkit = UCFunctionToolkit(function_names=[f"{CATALOG}.{SCHEMA}.python_exec"])
 print(python_exec_tool)
 
 # Execute the tool directly
-result = client.execute_function(function_name=func_name, parameters={"code": "print(1 + 1)"})
+result = client.execute_function(function_name=f"{CATALOG}.{SCHEMA}.python_exec", parameters={"code": "print(1 + 1)"})
 print(result.value)  # Outputs: 2
 ```
 
