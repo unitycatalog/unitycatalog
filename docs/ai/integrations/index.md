@@ -101,3 +101,19 @@ pip install unitycatalog-gemini
 To learn more about using UC functions with Gemini as tools:
 
 [Guide](gemini.md): Detailed guide on integrating Unity Catalog AI with Gemini for tool calling functionality.
+
+## Bedrock
+
+[AWS Bedrock](https://aws.amazon.com/bedrock/) enables you to build and scale Generative AI applications using foundation models. The Unity Catalog AI integration with Bedrock allows you to utilize Unity Catalog functions as tools in Bedrock agent workflows. This integration supports features like rate limiting, recursive tool execution, and streaming responses, making it easier to build intelligent and scalable applications.
+
+Installation:
+
+```sh
+pip install unitycatalog-bedrock
+```
+
+To learn more about this integration:
+
+[Guide](bedrock.md): Step-by-step instructions to integrate Unity Catalog AI with AWS Bedrock.
+[Example Notebook](../../integrations/bedrock/bedrock_example.ipynb): A Jupyter notebook demonstrating practical usage of the integration.
+
