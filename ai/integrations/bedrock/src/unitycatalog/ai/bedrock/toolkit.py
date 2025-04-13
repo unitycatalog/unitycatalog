@@ -84,6 +84,18 @@ class BedrockSession:
         self.catalog_name = catalog_name
         self.schema_name = schema_name
 
+        # Fetch values from BedrockEnvVars
+        bedrock_env = BedrockEnvVars()
+        self.aws_profile = bedrock_env.aws_profile
+        self.aws_region = bedrock_env.aws_region
+        self.model_id = bedrock_env.bedrock_model_id
+        self.rpm_limit = bedrock_env.bedrock_rpm_limit
+
+        logger.info(f"Initialized BedrockSession with AWS Profile: {self.aws_profile}")
+        logger.info(
+            f"AWS Region: {self.aws_region}, Model ID: {self.model_id}, RPM Limit: {self.rpm_limit}"
+        )
+
     def invoke_agent(
         self,
         input_text: str,
@@ -92,11 +104,10 @@ class BedrockSession:
         session_state: dict = None,
         streaming_configurations: dict = None,
         uc_client: UnitycatalogFunctionClient = None,
+        model_id: str = "anthropic.claude-3-5-sonnet-20240620-v1:0",
+        rpm_limit: int = 1,
     ) -> BedrockToolResponse:
         """Invoke the Bedrock agent with the given input text."""
-        bedrock_env = BedrockEnvVars.get_instance(load_from_file=True)
-        model_id = bedrock_env.bedrock_model_id
-        rpm_limit = bedrock_env.bedrock_rpm_limit
 
         # Apply rate limiting before making the request
         logger.debug(f"Applying rate limiting for model_id={model_id} with rpm_limit={rpm_limit}")

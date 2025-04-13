@@ -1,6 +1,24 @@
-# unitycatalog-bedrock
+# Unity Catalog Bedrock Integration
 
-This package provides integration between OSS Unity Catalog functions and AWS Bedrock. Support for Databricks Unity Catalog will be added in the next release.
+This repository provides tools and utilities for integrating Unity Catalog functions with [AWS Bedrock](https://aws.amazon.com/bedrock/) agents. It includes functionality for creating Bedrock agents, managing rate limits, and invoking Unity Catalog functions as Bedrock tools.
+
+---
+
+## Key Features
+
+### Toolkit Enhancements
+- **`BedrockToolResponse`**: Added properties to handle streaming responses (`is_streaming`, `get_stream`).
+- **`BedrockSession`**: Enhanced to support recursive tool execution and rate-limited agent invocation.
+- **`UCFunctionToolkit`**: Simplified session creation and validation for Unity Catalog functions.
+
+### Rate Limiter
+- **Dynamic Rate Limiting**: Added `reduce_limit` method to dynamically adjust rate limits after throttling.
+- **Retry Decorator**: Enhanced retry logic with exponential backoff, jitter, and rate-limiting integration.
+
+### Notebook Updates
+- **`bedrock_example.ipynb`**:
+  - Demonstrates creating Bedrock agents, IAM roles, and action groups.
+  - Shows how to invoke Unity Catalog functions as Bedrock tools.
 
 ---
 
@@ -14,9 +32,60 @@ pip install unitycatalog-bedrock
 
 ---
 
-## Core User Journey (CUJ)
+## Configuration Variables
 
-This section outlines the key steps to set up, configure, and use the Unity Catalog Bedrock integration.
+The Bedrock integration uses the following environment variables for configuration:
+
+| Variable                          | Default Value       | Description                                                                 |
+|-----------------------------------|---------------------|-----------------------------------------------------------------------------|
+| `AWS_PROFILE`                     | `default`           | AWS profile to use for authentication.                                     |
+| `AWS_REGION`                      | `us-east-1`         | AWS region where Bedrock services are hosted.                              |
+| `BEDROCK_MODEL_ID`                | `None`              | The ID of the Bedrock foundation model to be used.                         |
+| `BEDROCK_AGENT_NAME`              | `None`              | A unique name for the Bedrock agent.                                       |
+| `BEDROCK_AGENT_ID`                | `None`              | The unique identifier of the Bedrock agent.                                |
+| `BEDROCK_AGENT_ALIAS_ID`          | `None`              | Alias ID for the Bedrock agent.                                            |
+| `BEDROCK_SESSION_ID`              | `default-session`   | A session ID for Bedrock interactions.                                     |
+| `BEDROCK_RPM_LIMIT`               | `1`                 | Requests-per-minute limit for Bedrock agents.                              |
+| `REQUIRE_BEDROCK_CONFIRMATION`    | `DISABLED`          | Whether confirmation is required before invoking action group functions.   |
+
+### Detailed Explanation of Key Variables
+
+1. **`AWS_PROFILE`**:  
+   This variable allows you to specify which AWS profile to use for authentication. If you have multiple profiles configured in your AWS CLI, you can set this to the desired profile name. For example:
+   ```bash
+   export AWS_PROFILE=my-aws-profile
+   ```
+
+2. **`AWS_REGION`**:  
+   The AWS region where your Bedrock services are hosted. Ensure that this matches the region of your Bedrock foundation models and agents. For example:
+   ```bash
+   export AWS_REGION=us-west-2
+   ```
+
+3. **`BEDROCK_MODEL_ID`**:  
+   This specifies the foundation model to be used by the Bedrock agent. You can find the list of available models in the [AWS Bedrock Documentation](https://docs.aws.amazon.com/bedrock/latest/userguide/what-is-bedrock.html). For example:
+   ```bash
+   export BEDROCK_MODEL_ID=anthropic.claude-3-5-sonnet-20240620-v1:0
+   ```
+
+4. **`BEDROCK_AGENT_NAME`**:  
+   A unique name for your Bedrock agent. This helps identify the agent in your AWS account. If not set, a unique name will be generated automatically.
+
+5. **`BEDROCK_RPM_LIMIT`**:  
+   This variable controls the rate of API requests to Bedrock. It is important to set this value according to the service quotas for your account. For example:
+   ```bash
+   export BEDROCK_RPM_LIMIT=5
+   ```
+
+6. **`REQUIRE_BEDROCK_CONFIRMATION`**:  
+   This flag determines whether user confirmation is required before invoking action group functions. Set it to `ENABLED` to prompt for confirmation or `DISABLED` to skip it. For example:
+   ```bash
+   export REQUIRE_BEDROCK_CONFIRMATION=ENABLED
+   ```
+
+---
+
+## Core User Journey (CUJ)
 
 ### Step 1: Install the Package
 
@@ -40,6 +109,8 @@ Provide the following details:
 - **AWS Access Key ID**
 - **AWS Secret Access Key**
 - **Default region** (e.g., `us-east-1`)
+
+For more details, refer to the [AWS CLI Configuration Guide](https://docs.aws.amazon.com/cli/latest/userguide/cli-configure-files.html).
 
 ---
 
@@ -72,6 +143,8 @@ client.create_python_function(
 )
 ```
 
+For more information on Unity Catalog functions, see the [Databricks Unity Catalog Documentation](https://docs.databricks.com/data-governance/unity-catalog/index.html).
+
 ---
 
 ### Step 4: Create a Bedrock Agent
@@ -102,6 +175,8 @@ Create a Bedrock agent and configure it to use Unity Catalog functions. Follow t
    )
    ```
 
+   For more details, refer to the [AWS IAM Documentation](https://docs.aws.amazon.com/IAM/latest/UserGuide/introduction.html).
+
 2. **Create the Agent**:  
    Use the AWS SDK to create a Bedrock agent.
 
@@ -114,6 +189,8 @@ Create a Bedrock agent and configure it to use Unity Catalog functions. Follow t
        instruction="You are a weather agent to fetch the current weather.",
    )
    ```
+
+   For more information, see the [AWS Bedrock Documentation](https://docs.aws.amazon.com/bedrock/latest/userguide/what-is-bedrock.html).
 
 3. **Wait for Agent Readiness**:  
    Ensure the agent is in the `READY` state before proceeding.
@@ -160,11 +237,13 @@ action_group_response = bedrock_agent_client.create_agent_action_group(
 )
 ```
 
+For more details, refer to the [AWS Bedrock Action Groups Documentation](https://docs.aws.amazon.com/bedrock/latest/userguide/agents.html).
+
 ---
 
 ### Step 6: Invoke the Agent
 
-Use the `invoke_agent` method to interact with the Bedrock agent and invoke Unity Catalog functions.
+Use the `invoke_agent` method to interact with the Bedrock agent and invoke Unity Catalog functions. The method now supports specifying `model_id` and `rpm_limit`.
 
 ```python
 import uuid
@@ -183,6 +262,8 @@ response = uc_f_toolkit.create_session(
     enable_trace=True,
     session_id=session_id,
     uc_client=uc_f_toolkit.client,
+    model_id=bedrock_env.bedrock_model_id,  # Specify the model ID
+    rpm_limit=bedrock_env.bedrock_rpm_limit,  # Specify the RPM limit
 )
 
 print(response.response_body)
@@ -190,229 +271,16 @@ print(response.response_body)
 
 ---
 
-### Step 7: Handle Tool Responses
-
-The `unitycatalog-bedrock` utilities abstract the process of handling tool responses and continuing the conversation. These utilities automatically parse the response, execute the required Unity Catalog functions, and construct the next message for the agent. This simplifies the workflow for developers, allowing them to focus on building intelligent applications without worrying about low-level details.
-
----
-
-## Configuration Variables
-
-The Bedrock integration uses the following configuration variables. These variables are essential for customizing the behavior of the integration and ensuring it works seamlessly with your AWS Bedrock setup.
-
-| Variable                          | Description                                      | Default Value                                             |
-|-----------------------------------|--------------------------------------------------|-----------------------------------------------------------|
-| `aws_profile`                     | AWS profile to use for authentication. This is useful when managing multiple AWS accounts. | `default`                                                 |
-| `aws_region`                      | AWS region where Bedrock services are hosted. Ensure this matches the region of your Bedrock resources. | `us-east-1`                                               |
-| `bedrock_model_id`                | The ID of the Bedrock foundation model to be used. This specifies the model that the agent will invoke. | `anthropic.claude-3-5-sonnet-20240620-v1:0`               |
-| `bedrock_agent_name`              | A unique name for the Bedrock agent. If not provided, a unique name will be generated automatically. | Generated unique name                                     |
-| `bedrock_agent_id`                | The unique identifier of the Bedrock agent. This is required for invoking the agent. | `None`                                                    |
-| `bedrock_agent_alias_id`          | The alias ID for the Bedrock agent. Aliases allow you to manage agent versions and deployments. | `None`                                                    |
-| `bedrock_session_id`              | A session ID for Bedrock interactions. This helps track and manage conversations or workflows. | `default-session`                                         |
-| `bedrock_rpm_limit`               | The rate limit for Bedrock API requests per minute. This ensures compliance with AWS service quotas. | `1`                                                       |
-| `require_bedrock_confirmation`    | A flag to enforce user confirmation before invoking action group functions. Set to `ENABLED` for confirmation or `DISABLED` to skip it. | `DISABLED`                                                |
-
-### Detailed Explanation of Key Variables
-
-1. **`aws_profile`**:  
-   This variable allows you to specify which AWS profile to use for authentication. If you have multiple profiles configured in your AWS CLI, you can set this to the desired profile name. For example:
-   ```bash
-   export aws_profile=my-aws-profile
-   ```
-
-2. **`aws_region`**:  
-   The AWS region where your Bedrock services are hosted. Ensure that this matches the region of your Bedrock foundation models and agents. For example:
-   ```bash
-   export aws_region=us-west-2
-   ```
-
-3. **`bedrock_model_id`**:  
-   This specifies the foundation model to be used by the Bedrock agent. You can find the list of available models in the [AWS Bedrock documentation](https://docs.aws.amazon.com/bedrock/latest/userguide/what-is-bedrock.html). For example:
-   ```bash
-   export bedrock_model_id=anthropic.claude-3-5-sonnet-20240620-v1:0
-   ```
-
-4. **`bedrock_agent_name`**:  
-   A unique name for your Bedrock agent. This helps identify the agent in your AWS account. If not set, a unique name will be generated automatically.
-
-5. **`bedrock_rpm_limit`**:  
-   This variable controls the rate of API requests to Bedrock. It is important to set this value according to the service quotas for your account. For example:
-   ```bash
-   export bedrock_rpm_limit=5
-   ```
-
-6. **`require_bedrock_confirmation`**:  
-   This flag determines whether user confirmation is required before invoking action group functions. Set it to `ENABLED` to prompt for confirmation or `DISABLED` to skip it. For example:
-   ```bash
-   export require_bedrock_confirmation=ENABLED
-   ```
-
-Configuration values are automatically saved to a `config.json` file in the project directory. You can edit this file directly or use environment variables to override the defaults.
-
----
-
-## Setup
-
-### AWS Credentials
-
-Before using this integration, ensure your AWS credentials are properly configured.
-
-```bash
-aws configure
-```
-
-### Creating Bedrock Agents and Action Groups
-
-The setup process includes:
-
-- Creating IAM policies and roles for the Bedrock agent  
-- Creating a Bedrock agent with specific permissions  
-- Configuring action groups for the agent with Unity Catalog functions  
-- Creating agent aliases for deployment  
-
-> **Important:** When creating Bedrock agents, you must wait for the agent to be in the `READY` state before adding action groups. The agent creation is asynchronous and may take several minutes.
-
-<pre>
-# Example of waiting for agent to be ready
-import time
-import boto3
-import logging
-
-logger = logging.getLogger(__name__)
-
-def wait_for_agent_ready(agent_id, max_wait_time=900, check_interval=30):
-    """Wait for a Bedrock agent to be in the READY state."""
-    bedrock_agent_client = boto3.client('bedrock-agent')
-    
-    start_time = time.time()
-    elapsed_time = 0
-    
-    logger.info(f"Waiting for agent {agent_id} to be ready...")
-    
-    while elapsed_time < max_wait_time:
-        try:
-            response = bedrock_agent_client.get_agent(agentId=agent_id)
-            status = response['agent']['agentStatus']
-            
-            if status == 'READY':
-                logger.info(f"Agent {agent_id} is now ready")
-                return True
-            elif status == 'FAILED':
-                logger.error(f"Agent creation failed: {response['agent'].get('agentStatusReason')}")
-                return False
-                
-            if int(elapsed_time) % 60 < check_interval:
-                logger.info(f"Current agent status: {status} (waited {int(elapsed_time)}s)")
-                
-        except Exception as e:
-            logger.warning(f"Error checking agent status: {e}")
-        
-        time.sleep(check_interval)
-        elapsed_time = time.time() - start_time
-    
-    logger.error(f"Timeout waiting for agent to be ready (waited {int(elapsed_time)}s)")
-    return False
-
-if wait_for_agent_ready(agent_id):
-    # Create action groups here
-    # ...
-</pre>
-
----
-
-## Agent Function Specifications
-
-This package supports defining function specifications in a format compatible with [Amazon Bedrock Agents](https://docs.aws.amazon.com/bedrock/latest/userguide/agents.html), based on the [`AWS::Bedrock::Agent.Function`](https://docs.aws.amazon.com/AWSCloudFormation/latest/UserGuide/aws-properties-bedrock-agent-function.html) CloudFormation resource.
-
-Each function definition includes:
-
-- **`name`**: A unique identifier for the function.
-- **`description`**: A human-readable explanation of the function's purpose.
-- **`parameters`**: A schema specifying expected inputs, including:
-  - Parameter name
-  - Description
-  - Type (`string`, `number`, etc.)
-  - Required/optional status
-- **`requireConfirmation`**: Optional flag to enforce user confirmation before invocation (`ENABLED` or `DISABLED`).Set to `DISABLED` by default.
-
-### Example Function Definition
-
-```python
-require_confirmation = "DISABLED"  # Set to "ENABLED" or "DISABLED"
-
-def get_agent_functions(require_confirmation="DISABLED"):
-    """
-    Get agent functions with the specified confirmation requirement.
-    
-    Args:
-        require_confirmation: "ENABLED" or "DISABLED" for function confirmation
-        
-    Returns:
-        List of agent function definitions
-    """
-    return [
-        {
-            "name": "get_weather_in_celsius",
-            "description": "Fetch the current weather in celsius for a given location and date",
-            "parameters": {
-                "location_id": {
-                    "description": "The unique identifier of the location to retrieve the temperature for",
-                    "required": True,
-                    "type": "string",
-                },
-                "fetch_date": {
-                    "description": "The specific date for which the temperature needs to be retrieved",
-                    "required": True,
-                    "type": "string",
-                },
-            },
-            "requireConfirmation": require_confirmation,
-        },
-        {
-            "name": "get_weather_in_fahrenheit",
-            "description": "Fetch the current weather in fahrenheit for a given location and date",
-            "parameters": {
-                "location_id": {
-                    "description": "The unique identifier of the location to retrieve the temperature for",
-                    "required": True,
-                    "type": "string",
-                },
-                "fetch_date": {
-                    "description": "The specific date for which the temperature needs to be retrieved",
-                    "required": True,
-                    "type": "string",
-                },
-            },
-            "requireConfirmation": require_confirmation,
-        },
-    ]
-
-agent_functions = get_agent_functions()
-logger.info(f"agent_functions: {agent_functions}")
-```
-
-This format enables dynamic generation of function specifications for use in Bedrock action groups, allowing flexible control over user confirmation behavior.
----
-
-## Rate Limiting
-
-The package includes built-in rate limiting to respect AWS Bedrock quotas. The default quota for Claude 3.5 Sonnet is **1 request per minute**, but this can be customized through the `bedrock_rpm_limit` configuration variable.
-
-Check [AWS Service Limits](https://docs.aws.amazon.com/general/latest/gr/aws_service_limits.html) for the rate limits applicable to your account for the corresponding model.
-
-The `retry_with_exponential_backoff` function handles both rate limiting and retries for transient errors.
-
----
-
 ## Examples
 
-For detailed examples, see:
+For a detailed example, see:
 
-- `bedrock_setup.ipynb`: Setting up Bedrock agents and action groups  
-- `bedrock_examples.ipynb`: Using the Bedrock integration with Unity Catalog
+- [`bedrock_example.ipynb`](./bedrock_example.ipynb): Demonstrates setting up Bedrock agents, creating action groups, and invoking Unity Catalog functions.
 
 ---
 
-## Support
+## Contributing
 
-For issues or questions, please contact the Unity Catalog team.
+Contributions are welcome! Please submit a pull request or open an issue for any bugs or feature requests.
+
+---

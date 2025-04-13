@@ -3,6 +3,17 @@ from typing import Any, Dict, List
 
 logger = logging.getLogger(__name__)
 
+# List of errors that should trigger a retry
+RETRYABLE_ERRORS = [
+    "Rate limit exceeded",
+    "throttlingException",
+    "Your request rate is too high",
+    "TooManyRequestsException",
+    "ServiceUnavailable",
+    "Throttling",
+    "ThrottlingException",
+]
+
 
 def extract_response_details(response: Dict[str, Any]) -> Dict[str, Any]:
     """Extracts returnControl or chunks from Bedrock response."""
@@ -94,13 +105,25 @@ def generate_tool_call_session_state(
     }
 
 
-# List of errors that should trigger a retry
-RETRYABLE_ERRORS = [
-    "Rate limit exceeded",
-    "throttlingException",
-    "Your request rate is too high",
-    "TooManyRequestsException",
-    "ServiceUnavailable",
-    "Throttling",
-    "ThrottlingException",
-]
+from pprint import pformat
+
+
+def pretty_print(obj, indent=2, width=100):
+    """
+    Pretty-print the dictionary representation of an object.
+
+    Args:
+        obj: A dictionary-like object or an object with an `as_dict()` method.
+        indent (int): Number of spaces for indentation.
+        width (int): Maximum width of each line.
+
+    Returns:
+        str: A formatted string representation of the object.
+    """
+    if hasattr(obj, "as_dict") and callable(obj.as_dict):
+        # If the object has an `as_dict()` method, use it
+        obj = obj.as_dict()
+    elif not isinstance(obj, dict):
+        raise ValueError("The provided object must be a dictionary or have an 'as_dict()' method.")
+
+    return pformat(obj, indent=indent, width=width)
