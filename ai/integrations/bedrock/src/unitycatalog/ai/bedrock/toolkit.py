@@ -5,11 +5,12 @@ import boto3
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from unitycatalog.ai.bedrock.envs.bedrock_env_vars import BedrockEnvVars
+from unitycatalog.ai.bedrock.ratelimiter import _rate_limiter, retry
 from unitycatalog.ai.bedrock.utils import (
+    RETRYABLE_ERRORS,
     execute_tool_calls,
     extract_response_details,
     generate_tool_call_session_state,
-    retry_with_exponential_backoff,
 )
 from unitycatalog.ai.core.client import UnitycatalogFunctionClient
 from unitycatalog.ai.core.utils.client_utils import validate_or_set_default_client
@@ -66,26 +67,6 @@ class BedrockToolResponse(BaseModel):
             if chunk := event.get("chunk", {}).get("bytes", b"").decode("utf-8"):
                 yield chunk
 
-    def print_stream_with_wrapping(self, stream: Any, max_line_length: int = 50):
-        buffer = []
-        current_length = 0
-
-        for chunk in stream:
-            buffer.append(chunk)
-            current_length += len(chunk)
-
-            if current_length >= max_line_length:
-                accumulated_line = "".join(buffer)
-                full_lines = len(accumulated_line) // max_line_length
-                for i in range(full_lines):
-                    logger.info(accumulated_line[i * max_line_length : (i + 1) * max_line_length])
-                leftover = accumulated_line[full_lines * max_line_length :]
-                buffer = [leftover] if leftover else []
-                current_length = len(leftover)
-
-        if buffer:
-            logger.info("".join(buffer))
-
 
 class BedrockSession:
     """Manages a session with AWS Bedrock agent runtime."""
@@ -103,29 +84,6 @@ class BedrockSession:
         self.catalog_name = catalog_name
         self.schema_name = schema_name
 
-    def _invoke_agent_with_backoff(
-        self,
-        input_text,
-        session_state,
-        session_id,
-        enable_trace,
-        streaming_configurations,
-        uc_client,
-    ):
-        """Invokes the agent with exponential backoff logic."""
-
-        def invoke():
-            return self.invoke_agent(
-                input_text=input_text,
-                session_id=session_id,
-                enable_trace=enable_trace,
-                session_state=session_state,
-                streaming_configurations=streaming_configurations,
-                uc_client=uc_client,
-            )
-
-        return retry_with_exponential_backoff(invoke)
-
     def invoke_agent(
         self,
         input_text: str,
@@ -136,25 +94,44 @@ class BedrockSession:
         uc_client: UnitycatalogFunctionClient = None,
     ) -> BedrockToolResponse:
         """Invoke the Bedrock agent with the given input text."""
+        bedrock_env = BedrockEnvVars.get_instance(load_from_file=True)
+        model_id = bedrock_env.bedrock_model_id
+        rpm_limit = bedrock_env.bedrock_rpm_limit
 
-        params = {
-            "agentId": self.agent_id,
-            "agentAliasId": self.agent_alias_id,
-            "inputText": input_text,
-            **{
-                k: v
-                for k, v in {
-                    "enableTrace": enable_trace,
-                    "sessionId": session_id,
-                    "sessionState": session_state,
-                    "streamingConfigurations": streaming_configurations,
-                }.items()
-                if v is not None
-            },
-        }
+        # Apply rate limiting before making the request
+        logger.debug(f"Applying rate limiting for model_id={model_id} with rpm_limit={rpm_limit}")
+        _rate_limiter.wait_if_needed(model_id, rpm_limit)
 
-        response = self.client.invoke_agent(**params)
+        @retry(
+            max_retries=5,  # Set the maximum number of retries
+            base_delay=2,  # Initial delay in seconds
+            backoff_factor=2,  # Exponential backoff multiplier
+            retryable_errors=RETRYABLE_ERRORS,  # Use the shared list of retryable errors
+            model_id=model_id,  # Dynamically fetched model ID
+            rpm_limit=rpm_limit,  # Dynamically fetched RPM limit
+        )
+        def invoke():
+            params = {
+                "agentId": self.agent_id,
+                "agentAliasId": self.agent_alias_id,
+                "inputText": input_text,
+                **{
+                    k: v
+                    for k, v in {
+                        "enableTrace": enable_trace,
+                        "sessionId": session_id,
+                        "sessionState": session_state,
+                        "streamingConfigurations": streaming_configurations,
+                    }.items()
+                    if v is not None
+                },
+            }
 
+            logger.debug(f"Invoking Bedrock agent with params: {params}")
+            response = self.client.invoke_agent(**params)
+            return response
+
+        response = invoke()
         extracted_details = extract_response_details(response)
 
         tool_calls = []
@@ -186,7 +163,12 @@ class BedrockSession:
                     "applyGuardrailInterval": 1000,
                     "streamFinalResponse": True,
                 }
-                return self._invoke_agent_with_backoff(
+
+                # Apply rate limiting before recursive call
+                logger.debug(f"Applying rate limiting for recursive call with model_id={model_id}")
+                _rate_limiter.wait_if_needed(model_id, rpm_limit)
+
+                return self.invoke_agent(
                     input_text="",
                     session_id=session_id,
                     enable_trace=enable_trace,
