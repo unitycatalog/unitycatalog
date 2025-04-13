@@ -115,5 +115,4 @@ pip install unitycatalog-bedrock
 To learn more about this integration:
 
 [Guide](bedrock.md): Step-by-step instructions to integrate Unity Catalog AI with AWS Bedrock.
-[Example Notebook](../../integrations/bedrock/bedrock_example.ipynb): A Jupyter notebook demonstrating practical usage of the integration.
 
