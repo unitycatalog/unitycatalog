@@ -138,7 +138,6 @@ public class TransactionManagerTest {
     RuntimeException hibernateException =
         new RuntimeException("HibernateException: cannot write in read-only session");
     doThrow(hibernateException).when(session).persist(any());
-
     // Execute and verify
     assertThatThrownBy(
             () ->
