@@ -127,4 +127,38 @@ public class TransactionManagerTest {
     // Verify session is closed even after error
     verify(session).close();
   }
+
+  @Test
+  public void testWriteInReadOnlyTransactionFails() {
+    // Setup
+    Object entity = new Object();
+    String errorMessage = "Attempt to write in read-only session";
+
+    // Mock a write operation failure
+    RuntimeException hibernateException =
+        new RuntimeException("HibernateException: cannot write in read-only session");
+    doThrow(hibernateException).when(session).persist(any());
+
+    // Execute and verify
+    assertThatThrownBy(
+            () ->
+                TransactionManager.executeWithTransaction(
+                    sessionFactory,
+                    session -> {
+                      session.persist(entity); // This should fail in read-only mode
+                      return null;
+                    },
+                    errorMessage,
+                    /* readOnly = */ true))
+        .isInstanceOf(BaseException.class)
+        .hasMessageContaining(errorMessage)
+        .hasMessageContaining(hibernateException.getMessage());
+
+    // Verify the transaction was rolled back
+    verify(transaction).rollback();
+    verify(transaction, never()).commit();
+
+    // Verify session was set to read-only
+    verify(session).setDefaultReadOnly(true);
+  }
 }

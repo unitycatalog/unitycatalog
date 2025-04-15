@@ -67,7 +67,7 @@ public class CredentialRepository {
           return storageCredentialInfo;
         },
         "Failed to add storage credential",
-        false);
+        /* readOnly = */ false);
   }
 
   public CredentialInfo getCredential(String name) {
@@ -82,7 +82,7 @@ public class CredentialRepository {
           return dao.toCredentialInfo();
         },
         "Failed to get storage credential",
-        true);
+        /* readOnly = */ true);
   }
 
   protected CredentialDAO getCredentialDAO(Session session, String name) {
@@ -114,7 +114,7 @@ public class CredentialRepository {
           return new ListCredentialsResponse().credentials(results).nextPageToken(nextPageToken);
         },
         "Failed to list storage credentials",
-        true);
+        /* readOnly = */ true);
   }
 
   public CredentialInfo updateCredential(String name, UpdateCredentialRequest updateCredential) {
@@ -150,7 +150,7 @@ public class CredentialRepository {
           return existingCredential.toCredentialInfo();
         },
         "Failed to update storage credential",
-        false);
+        /* readOnly = */ false);
   }
 
   private static void updateCredentialFields(
@@ -185,7 +185,7 @@ public class CredentialRepository {
           return credentialInfo;
         },
         "Failed to delete credential",
-        false);
+        /* readOnly = */ false);
   }
 
   private static AwsIamRoleResponse fromAwsIamRoleRequest(AwsIamRoleRequest awsIamRoleRequest) {
