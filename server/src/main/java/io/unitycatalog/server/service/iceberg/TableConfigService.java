@@ -1,9 +1,9 @@
 package io.unitycatalog.server.service.iceberg;
 
 import com.google.auth.oauth2.AccessToken;
+import io.unitycatalog.server.service.credential.CloudCredentialVendor;
 import io.unitycatalog.server.utils.ServerProperties;
 import io.unitycatalog.server.service.credential.CredentialContext;
-import io.unitycatalog.server.service.credential.CredentialOperations;
 import io.unitycatalog.server.service.credential.aws.S3StorageConfig;
 import io.unitycatalog.server.service.credential.azure.ADLSLocationUtils;
 import io.unitycatalog.server.service.credential.azure.AzureCredential;
@@ -26,12 +26,12 @@ import static io.unitycatalog.server.utils.Constants.URI_SCHEME_S3;
 
 public class TableConfigService {
 
-  private final CredentialOperations credentialOperations;
+  private final CloudCredentialVendor cloudCredentialVendor;
   private final Map<String, S3StorageConfig> s3Configurations;
 
-  public TableConfigService(CredentialOperations credentialOperations, ServerProperties serverProperties) {
+  public TableConfigService(CloudCredentialVendor cloudCredentialVendor, ServerProperties serverProperties) {
     this.s3Configurations = serverProperties.getS3Configurations();
-    this.credentialOperations = credentialOperations;
+    this.cloudCredentialVendor = cloudCredentialVendor;
   }
 
   public Map<String, String> getTableConfig(TableMetadata tableMetadata) {
@@ -52,13 +52,13 @@ public class TableConfigService {
     ADLSLocationUtils.ADLSLocationParts locationParts =
       ADLSLocationUtils.parseLocation(context.getStorageBase());
 
-    AzureCredential azureCredential = credentialOperations.vendAzureCredential(context);
+    AzureCredential azureCredential = cloudCredentialVendor.vendAzureCredential(context);
 
     return Map.of(AzureProperties.ADLS_SAS_TOKEN_PREFIX + locationParts.account(), azureCredential.getSasToken());
   }
 
   private Map<String, String> getGCSConfig(CredentialContext context) {
-    AccessToken token = credentialOperations.vendGcpToken(context);
+    AccessToken token = cloudCredentialVendor.vendGcpToken(context);
 
     return Map.of(
       GCPProperties.GCS_OAUTH2_TOKEN, token.getTokenValue(),
@@ -67,7 +67,7 @@ public class TableConfigService {
 
   private Map<String, String> getS3Config(CredentialContext context) {
     S3StorageConfig s3StorageConfig = s3Configurations.get(context.getStorageBase());
-    Credentials awsCredential = credentialOperations.vendAwsCredential(context);
+    Credentials awsCredential = cloudCredentialVendor.vendAwsCredential(context);
 
     return Map.of(S3FileIOProperties.ACCESS_KEY_ID, awsCredential.accessKeyId(),
       S3FileIOProperties.SECRET_ACCESS_KEY, awsCredential.secretAccessKey(),
