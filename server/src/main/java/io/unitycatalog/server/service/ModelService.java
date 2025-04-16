@@ -12,6 +12,7 @@ import io.unitycatalog.server.exception.GlobalExceptionHandler;
 import io.unitycatalog.server.model.*;
 import io.unitycatalog.server.persist.*;
 import io.unitycatalog.server.persist.model.Privileges;
+import io.unitycatalog.server.service.utils.AuthorizedService;
 
 import java.util.List;
 import java.util.Map;
@@ -26,26 +27,23 @@ import static io.unitycatalog.server.model.SecurableType.REGISTERED_MODEL;
 import static io.unitycatalog.server.model.SecurableType.SCHEMA;
 
 @ExceptionHandler(GlobalExceptionHandler.class)
-public class ModelService {
+public class ModelService extends AuthorizedService {
 
   private final ModelRepository modelRepository;
   private final SchemaRepository schemaRepository;
   private final CatalogRepository catalogRepository;
   private final MetastoreRepository metastoreRepository;
-  private final UserRepository userRepository;
 
-  private final UnityCatalogAuthorizer authorizer;
   private final UnityAccessEvaluator evaluator;
 
   @SneakyThrows
   public ModelService(UnityCatalogAuthorizer authorizer, Repositories repositories) {
-    this.authorizer = authorizer;
+    super(authorizer, repositories.getUserRepository());
     this.evaluator = new UnityAccessEvaluator(authorizer);
     this.catalogRepository = repositories.getCatalogRepository();
     this.schemaRepository = repositories.getSchemaRepository();
     this.modelRepository = repositories.getModelRepository();
     this.metastoreRepository = repositories.getMetastoreRepository();
-    this.userRepository = repositories.getUserRepository();
   }
 
   @Post("")
@@ -63,7 +61,12 @@ public class ModelService {
     assert createRegisteredModel != null;
     RegisteredModelInfo createRegisteredModelResponse =
         modelRepository.createRegisteredModel(createRegisteredModel);
-    initializeAuthorizations(createRegisteredModelResponse);
+    
+    SchemaInfo schemaInfo =
+        schemaRepository.getSchema(
+            createRegisteredModelResponse.getCatalogName() + "." + createRegisteredModelResponse.getSchemaName());
+    initializeHierarchicalAuthorization(createRegisteredModelResponse.getId(), schemaInfo.getSchemaId());
+    
     return HttpResponse.ofJson(createRegisteredModelResponse);
   }
 
@@ -125,7 +128,12 @@ public class ModelService {
       @Param("full_name") @AuthorizeKey(REGISTERED_MODEL) String fullName, @Param("force") Optional<Boolean> force) {
     RegisteredModelInfo registeredModelInfo = modelRepository.getRegisteredModel(fullName);
     modelRepository.deleteRegisteredModel(fullName, force.orElse(false));
-    removeAuthorizations(registeredModelInfo);
+    
+    SchemaInfo schemaInfo =
+        schemaRepository.getSchema(
+            registeredModelInfo.getCatalogName() + "." + registeredModelInfo.getSchemaName());
+    removeHierarchicalAuthorizations(registeredModelInfo.getId(), schemaInfo.getSchemaId());
+    
     return HttpResponse.of(HttpStatus.OK);
   }
 
@@ -218,19 +226,6 @@ public class ModelService {
     return HttpResponse.ofJson(finalizeModelVersionResponse);
   }
 
-  private void initializeAuthorizations(RegisteredModelInfo registeredModelInfo) {
-    SchemaInfo schemaInfo =
-        schemaRepository.getSchema(
-            registeredModelInfo.getCatalogName() + "." + registeredModelInfo.getSchemaName());
-    UUID principalId = userRepository.findPrincipalId();
-    // add owner privilege
-    authorizer.grantAuthorization(
-        principalId, UUID.fromString(registeredModelInfo.getId()), Privileges.OWNER);
-    // make table a child of the schema
-    authorizer.addHierarchyChild(
-        UUID.fromString(schemaInfo.getSchemaId()), UUID.fromString(registeredModelInfo.getId()));
-  }
-
   public void filterModels(String expression, List<RegisteredModelInfo> entries) {
     // TODO: would be nice to move this to filtering in the Decorator response
     UUID principalId = userRepository.findPrincipalId();
@@ -254,16 +249,4 @@ public class ModelService {
                       UUID.fromString(ti.getId()));
             });
   }
-
-  private void removeAuthorizations(RegisteredModelInfo registeredModelInfo) {
-    SchemaInfo schemaInfo =
-        schemaRepository.getSchema(
-            registeredModelInfo.getCatalogName() + "." + registeredModelInfo.getSchemaName());
-    // remove any direct authorizations on the table
-    authorizer.clearAuthorizationsForResource(UUID.fromString(registeredModelInfo.getId()));
-    // remove link to the parent schema
-    authorizer.removeHierarchyChild(
-        UUID.fromString(schemaInfo.getSchemaId()), UUID.fromString(registeredModelInfo.getId()));
-  }
-
 }

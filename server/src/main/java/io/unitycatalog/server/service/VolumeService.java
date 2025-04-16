@@ -22,6 +22,7 @@ import io.unitycatalog.server.model.UpdateVolumeRequestContent;
 import io.unitycatalog.server.model.VolumeInfo;
 import io.unitycatalog.server.persist.*;
 import io.unitycatalog.server.persist.model.Privileges;
+import io.unitycatalog.server.service.utils.AuthorizedService;
 import lombok.SneakyThrows;
 
 import java.util.List;
@@ -35,25 +36,22 @@ import static io.unitycatalog.server.model.SecurableType.SCHEMA;
 import static io.unitycatalog.server.model.SecurableType.VOLUME;
 
 @ExceptionHandler(GlobalExceptionHandler.class)
-public class VolumeService {
+public class VolumeService extends AuthorizedService {
   private final VolumeRepository volumeRepository;
   private final SchemaRepository schemaRepository;
   private final CatalogRepository catalogRepository;
   private final MetastoreRepository metastoreRepository;
-  private final UserRepository userRepository;
 
-  private final UnityCatalogAuthorizer authorizer;
   private final UnityAccessEvaluator evaluator;
 
   @SneakyThrows
   public VolumeService(UnityCatalogAuthorizer authorizer, Repositories repositories) {
-    this.authorizer = authorizer;
-    this.evaluator = new UnityAccessEvaluator(authorizer);
+    super(authorizer, repositories.getUserRepository());
     this.volumeRepository = repositories.getVolumeRepository();
     this.schemaRepository = repositories.getSchemaRepository();
     this.catalogRepository = repositories.getCatalogRepository();
     this.metastoreRepository = repositories.getMetastoreRepository();
-    this.userRepository = repositories.getUserRepository();
+    this.evaluator = new UnityAccessEvaluator(authorizer);
   }
 
   @Post("")
@@ -69,7 +67,11 @@ public class VolumeService {
                                    CreateVolumeRequestContent createVolumeRequest) {
     // Throw error if catalog/schema does not exist
     VolumeInfo volumeInfo = volumeRepository.createVolume(createVolumeRequest);
-    initializeAuthorizations(volumeInfo);
+    
+    SchemaInfo schemaInfo =
+            schemaRepository.getSchema(volumeInfo.getCatalogName() + "." + volumeInfo.getSchemaName());
+    initializeHierarchicalAuthorization(volumeInfo.getVolumeId(), schemaInfo.getSchemaId());
+    
     return HttpResponse.ofJson(volumeInfo);
   }
 
@@ -128,7 +130,11 @@ public class VolumeService {
   public HttpResponse deleteVolume(@Param("full_name") @AuthorizeKey(VOLUME) String fullName) {
     VolumeInfo volumeInfo = volumeRepository.getVolume(fullName);
     volumeRepository.deleteVolume(fullName);
-    removeAuthorizations(volumeInfo);
+    
+    SchemaInfo schemaInfo =
+            schemaRepository.getSchema(volumeInfo.getCatalogName() + "." + volumeInfo.getSchemaName());
+    removeHierarchicalAuthorizations(volumeInfo.getVolumeId(), schemaInfo.getSchemaId());
+    
     return HttpResponse.of(HttpStatus.OK);
   }
 
@@ -155,27 +161,4 @@ public class VolumeService {
                       UUID.fromString(vi.getVolumeId()));
             });
   }
-
-  private void initializeAuthorizations(VolumeInfo volumeInfo) {
-    SchemaInfo schemaInfo =
-            schemaRepository.getSchema(volumeInfo.getCatalogName() + "." + volumeInfo.getSchemaName());
-    UUID principalId = userRepository.findPrincipalId();
-    // add owner privilege
-    authorizer.grantAuthorization(
-            principalId, UUID.fromString(volumeInfo.getVolumeId()), Privileges.OWNER);
-    // make table a child of the schema
-    authorizer.addHierarchyChild(
-            UUID.fromString(schemaInfo.getSchemaId()), UUID.fromString(volumeInfo.getVolumeId()));
-  }
-
-  private void removeAuthorizations(VolumeInfo volumeInfo) {
-    SchemaInfo schemaInfo =
-            schemaRepository.getSchema(volumeInfo.getCatalogName() + "." + volumeInfo.getSchemaName());
-    // remove any direct authorizations on the table
-    authorizer.clearAuthorizationsForResource(UUID.fromString(volumeInfo.getVolumeId()));
-    // remove link to the parent schema
-    authorizer.removeHierarchyChild(
-            UUID.fromString(schemaInfo.getSchemaId()), UUID.fromString(volumeInfo.getVolumeId()));
-  }
-
 }

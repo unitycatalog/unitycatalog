@@ -19,7 +19,7 @@ import io.unitycatalog.server.model.FunctionInfo;
 import io.unitycatalog.server.model.ListFunctionsResponse;
 import io.unitycatalog.server.model.SchemaInfo;
 import io.unitycatalog.server.persist.*;
-import io.unitycatalog.server.persist.model.Privileges;
+import io.unitycatalog.server.service.utils.AuthorizedService;
 import lombok.SneakyThrows;
 
 import java.util.List;
@@ -33,26 +33,20 @@ import static io.unitycatalog.server.model.SecurableType.METASTORE;
 import static io.unitycatalog.server.model.SecurableType.SCHEMA;
 
 @ExceptionHandler(GlobalExceptionHandler.class)
-public class FunctionService {
+public class FunctionService extends AuthorizedService {
 
   private final FunctionRepository functionRepository;
   private final SchemaRepository schemaRepository;
   private final CatalogRepository catalogRepository;
   private final MetastoreRepository metastoreRepository;
-  private final UserRepository userRepository;
-
-  private final UnityCatalogAuthorizer authorizer;
-  private final UnityAccessEvaluator evaluator;
 
   @SneakyThrows
   public FunctionService(UnityCatalogAuthorizer authorizer, Repositories repositories) {
-    this.authorizer = authorizer;
-    this.evaluator = new UnityAccessEvaluator(authorizer);
+    super(authorizer, repositories.getUserRepository());
     this.catalogRepository = repositories.getCatalogRepository();
     this.schemaRepository = repositories.getSchemaRepository();
     this.functionRepository = repositories.getFunctionRepository();
     this.metastoreRepository = repositories.getMetastoreRepository();
-    this.userRepository = repositories.getUserRepository();
   }
 
   @Post("")
@@ -67,7 +61,11 @@ public class FunctionService {
                                       })
                                       CreateFunctionRequest createFunctionRequest) {
     FunctionInfo functionInfo = functionRepository.createFunction(createFunctionRequest);
-    initializeAuthorizations(functionInfo);
+    
+    SchemaInfo schemaInfo =
+            schemaRepository.getSchema(functionInfo.getCatalogName() + "." + functionInfo.getSchemaName());
+    initializeHierarchicalAuthorization(functionInfo.getFunctionId(), schemaInfo.getSchemaId());
+    
     return HttpResponse.ofJson(functionInfo);
   }
 
@@ -111,7 +109,11 @@ public class FunctionService {
       @Param("name") @AuthorizeKey(FUNCTION) String name, @Param("force") Optional<Boolean> force) {
     FunctionInfo functionInfo = functionRepository.getFunction(name);
     functionRepository.deleteFunction(name, force.orElse(false));
-    removeAuthorizations(functionInfo);
+    
+    SchemaInfo schemaInfo =
+            schemaRepository.getSchema(functionInfo.getCatalogName() + "." + functionInfo.getSchemaName());
+    removeHierarchicalAuthorizations(functionInfo.getFunctionId(), schemaInfo.getSchemaId());
+    
     return HttpResponse.of(HttpStatus.OK);
   }
 
@@ -138,27 +140,4 @@ public class FunctionService {
                       UUID.fromString(fi.getFunctionId()));
             });
   }
-
-  private void initializeAuthorizations(FunctionInfo functionInfo) {
-    SchemaInfo schemaInfo =
-            schemaRepository.getSchema(functionInfo.getCatalogName() + "." + functionInfo.getSchemaName());
-    UUID principalId = userRepository.findPrincipalId();
-    // add owner privilege
-    authorizer.grantAuthorization(
-            principalId, UUID.fromString(functionInfo.getFunctionId()), Privileges.OWNER);
-    // make table a child of the schema
-    authorizer.addHierarchyChild(
-            UUID.fromString(schemaInfo.getSchemaId()), UUID.fromString(functionInfo.getFunctionId()));
-  }
-
-  private void removeAuthorizations(FunctionInfo functionInfo) {
-    SchemaInfo schemaInfo =
-            schemaRepository.getSchema(functionInfo.getCatalogName() + "." + functionInfo.getSchemaName());
-    // remove any direct authorizations on the table
-    authorizer.clearAuthorizationsForResource(UUID.fromString(functionInfo.getFunctionId()));
-    // remove link to the parent schema
-    authorizer.removeHierarchyChild(
-            UUID.fromString(schemaInfo.getSchemaId()), UUID.fromString(functionInfo.getFunctionId()));
-  }
-
 }
