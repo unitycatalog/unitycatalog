@@ -19,7 +19,6 @@ import io.unitycatalog.server.model.UpdateCatalog;
 import io.unitycatalog.server.persist.CatalogRepository;
 import io.unitycatalog.server.persist.MetastoreRepository;
 import io.unitycatalog.server.persist.Repositories;
-import io.unitycatalog.server.service.utils.AuthorizedService;
 import lombok.SneakyThrows;
 
 import java.util.List;

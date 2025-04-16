@@ -1,4 +1,4 @@
-package io.unitycatalog.server.service.utils;
+package io.unitycatalog.server.service;
 
 import io.unitycatalog.server.auth.UnityCatalogAuthorizer;
 import io.unitycatalog.server.auth.decorator.UnityAccessEvaluator;

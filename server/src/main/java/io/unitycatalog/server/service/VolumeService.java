@@ -21,8 +21,6 @@ import io.unitycatalog.server.model.SchemaInfo;
 import io.unitycatalog.server.model.UpdateVolumeRequestContent;
 import io.unitycatalog.server.model.VolumeInfo;
 import io.unitycatalog.server.persist.*;
-import io.unitycatalog.server.persist.model.Privileges;
-import io.unitycatalog.server.service.utils.AuthorizedService;
 import lombok.SneakyThrows;
 
 import java.util.List;

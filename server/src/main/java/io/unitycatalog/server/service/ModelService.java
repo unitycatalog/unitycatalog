@@ -11,8 +11,6 @@ import io.unitycatalog.server.auth.decorator.UnityAccessEvaluator;
 import io.unitycatalog.server.exception.GlobalExceptionHandler;
 import io.unitycatalog.server.model.*;
 import io.unitycatalog.server.persist.*;
-import io.unitycatalog.server.persist.model.Privileges;
-import io.unitycatalog.server.service.utils.AuthorizedService;
 
 import java.util.List;
 import java.util.Map;

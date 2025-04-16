@@ -18,7 +18,6 @@ import io.unitycatalog.server.model.ListTablesResponse;
 import io.unitycatalog.server.model.SchemaInfo;
 import io.unitycatalog.server.model.TableInfo;
 import io.unitycatalog.server.persist.*;
-import io.unitycatalog.server.service.utils.AuthorizedService;
 import lombok.SneakyThrows;
 
 import java.util.List;

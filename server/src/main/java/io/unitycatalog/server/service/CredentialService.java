@@ -13,7 +13,6 @@ import io.unitycatalog.server.model.ListCredentialsResponse;
 import io.unitycatalog.server.model.UpdateCredentialRequest;
 import io.unitycatalog.server.persist.CredentialRepository;
 import io.unitycatalog.server.persist.Repositories;
-import io.unitycatalog.server.service.utils.AuthorizedService;
 import lombok.SneakyThrows;
 
 import java.util.Optional;

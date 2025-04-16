@@ -11,7 +11,6 @@ import io.unitycatalog.server.auth.UnityCatalogAuthorizer;
 import io.unitycatalog.server.auth.annotation.AuthorizeExpression;
 import io.unitycatalog.server.auth.annotation.AuthorizeKey;
 import io.unitycatalog.server.auth.annotation.AuthorizeKeys;
-import io.unitycatalog.server.auth.decorator.UnityAccessEvaluator;
 import io.unitycatalog.server.exception.GlobalExceptionHandler;
 import io.unitycatalog.server.model.CatalogInfo;
 import io.unitycatalog.server.model.CreateFunctionRequest;
@@ -19,7 +18,6 @@ import io.unitycatalog.server.model.FunctionInfo;
 import io.unitycatalog.server.model.ListFunctionsResponse;
 import io.unitycatalog.server.model.SchemaInfo;
 import io.unitycatalog.server.persist.*;
-import io.unitycatalog.server.service.utils.AuthorizedService;
 import lombok.SneakyThrows;
 
 import java.util.List;
