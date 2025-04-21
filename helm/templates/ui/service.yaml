@@ -14,4 +14,4 @@ spec:
       name: ui
   selector:
     {{- include "unitycatalog.ui.selectorLabels" . | nindent 4 }}
-{{- end }}
+{{- end -}}

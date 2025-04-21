@@ -22,3 +22,6 @@
 .idea/
 *.tmproj
 .vscode/
+
+# Helm-docs files
+README.md.gotmpl

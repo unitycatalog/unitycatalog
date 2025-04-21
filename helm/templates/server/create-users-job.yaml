@@ -1,0 +1,63 @@
+{{- if and .Values.auth.enabled .Values.auth.users -}}
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: "{{ include "unitycatalog.server.fullname" . }}-create-users"
+  labels: {{- include "unitycatalog.server.labels" . | nindent 4 }}
+  annotations:
+    {{- with .Values.server.createUsersJob.extraAnnotations }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+spec:
+  ttlSecondsAfterFinished: {{ .Values.server.createUsersJob.ttlSecondsAfterFinished }}
+  backoffLimit: {{ .Values.server.createUsersJob.backoffLimit }}
+  template:
+    spec:
+      serviceAccountName: {{ include "unitycatalog.serviceAccountName" . | quote }}
+      containers:
+        - name: create-users
+          image: "{{ .Values.server.createUsersJob.image.repository }}:{{ .Values.server.createUsersJob.image.tag }}"
+          imagePullPolicy: {{ .Values.server.createUsersJob.image.pullPolicy | quote }}
+          command:
+            - /bin/sh
+            - -c
+            - |-
+              set -ex
+
+              apk add --no-cache openssl
+              apk add --no-cache jwt-cli --repository=https://dl-cdn.alpinelinux.org/alpine/edge/testing/
+
+              jwt encode --iss INTERNAL --sub server --alg RS512 --secret "@/key/private_key.pem"
+
+              until curl -H "Authorization: Bearer $(cat /home/unitycatalog/etc/conf/token.txt)" \
+              -X GET "http://localhost:{{ .Values.server.deployment.port }}/api/1.0/unity-control/scim2/Users" \
+              -H "Content-Type: application/json"
+              do
+                  echo "Waiting for Unity Catalog server API to be available..."
+                  sleep 1
+              done
+
+              {{- range $index, $user := .Values.auth.users }}
+              if curl -H "Authorization: Bearer $(cat /home/unitycatalog/etc/conf/token.txt)" \
+              -X GET "http://localhost:{{ $.Values.server.deployment.port }}/api/1.0/unity-control/scim2/Users" \
+              -H "Content-Type: application/json" | jq -e '.Resources[] | select(.emails[0].value == "{{ $user.email }}")'
+              then
+                  echo "User {{ $user.email }} already exists"
+              else
+                  echo "User {{ $user.email }} is being created"
+                  curl -H "Authorization: Bearer $(cat /home/unitycatalog/etc/conf/token.txt)" \
+                  -X POST "http://localhost:{{ $.Values.server.deployment.port }}/api/1.0/unity-control/scim2/Users" \
+                  -H "Content-Type: application/json" \
+                  -d '{"displayName": "{{ $user.name }}", "emails": [{"primary": true, "value": "{{ $user.email }}"}]}'
+                  echo "User {{ $user.email }} created"
+              fi
+              {{- end }}
+          volumeMounts:
+            - name: jwt-key-volume
+              mountPath: /key
+      volumes:
+        - name: jwt-key-volume
+          secret:
+            secretName: {{ include "unitycatalog.server.jwtKeypairSecretName" . | quote }}
+      restartPolicy: OnFailure
+{{- end -}}

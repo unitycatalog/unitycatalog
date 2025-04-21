@@ -1,11 +1,12 @@
+{{- if .Values.server.enabled -}}
 apiVersion: v1
 kind: Service
 metadata:
-  name: {{ include "unitycatalog.server.fullname" . }}
+  name: {{ include "unitycatalog.server.fullname" . | quote }}
   labels:
     {{- include "unitycatalog.server.labels" . | nindent 4 }}
 spec:
-  type: {{ .Values.server.service.type }}
+  type: {{ .Values.server.service.type | quote }}
   ports:
     - port: {{ .Values.server.service.port }}
       targetPort: api
@@ -13,3 +14,4 @@ spec:
       name: api
   selector:
     {{- include "unitycatalog.server.selectorLabels" . | nindent 4 }}
+{{- end -}}

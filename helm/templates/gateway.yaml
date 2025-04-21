@@ -1,0 +1,32 @@
+{{- if and .Values.httpRoute.enabled .Values.httpRoute.gateway.create }}
+apiVersion: gateway.networking.k8s.io/v1
+kind: Gateway
+metadata:
+  name: "{{ include "unitycatalog.fullname" . }}-gateway"
+  labels:
+    {{- include "unitycatalog.commonLabels" . | nindent 4 }}
+  {{- with .Values.httpRoute.gateway.annotations }}
+  annotations: {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  gatewayClassName: {{ required "Gateway class name is required" .Values.httpRoute.gateway.gatewayClassName | quote }}
+  listeners:
+    {{- if .Values.httpRoute.gateway.defaultListener }}
+    - name: http
+      port: {{ default (ternary 80 443 (empty .Values.httpRoute.gateway.defaultListener.tlsSecretName)) .Values.httpRoute.gateway.defaultListener.port }}
+      protocol: {{ default (ternary "HTTP" "HTTPS" (empty .Values.httpRoute.gateway.defaultListener.tlsSecretName)) .Values.httpRoute.gateway.defaultListener.protocol | quote }}
+      hostname: {{ required "Host is required" .Values.httpRoute.host | quote }}
+      {{- if .Values.httpRoute.gateway.defaultListener.tlsSecretName }}
+      tls:
+        mode: Terminate
+        certificateRefs:
+          - name: {{ .Values.httpRoute.gateway.defaultListener.tlsSecretName | quote }}
+      {{- end }}
+      allowedRoutes:
+        namespaces:
+          from: Same
+    {{- end }}
+    {{- with .Values.httpRoute.gateway.extraListeners }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+{{- end }}

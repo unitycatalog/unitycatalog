@@ -2,23 +2,24 @@
 Expand the name of the chart.
 */}}
 {{- define "unitycatalog.name" -}}
-{{- default .Chart.Name .Values.nameOverride | trunc 63 | trimSuffix "-" }}
+{{- default .Chart.Name .Values.nameOverride | trunc 56 | trimSuffix "-" }}
 {{- end }}
 
 {{/*
 Create a default fully qualified app name.
-We truncate at 63 chars because some Kubernetes name fields are limited to this (by the DNS naming spec).
+We truncate at 56 chars for all fullnames depending on this to fit 63 characters (longest suffix "-server").
+Some Kubernetes name fields are limited to this (by the DNS naming spec).
 If release name contains chart name it will be used as a full name.
 */}}
 {{- define "unitycatalog.fullname" -}}
 {{- if .Values.fullnameOverride }}
-{{- .Values.fullnameOverride | trunc 63 | trimSuffix "-" }}
+{{- .Values.fullnameOverride | trunc 56 | trimSuffix "-" }}
 {{- else }}
 {{- $name := default .Chart.Name .Values.nameOverride }}
 {{- if contains $name .Release.Name }}
-{{- .Release.Name | trunc 63 | trimSuffix "-" }}
+{{- .Release.Name | trunc 56 | trimSuffix "-" }}
 {{- else }}
-{{- printf "%s-%s" .Release.Name $name | trunc 63 | trimSuffix "-" }}
+{{- printf "%s-%s" .Release.Name $name | trunc 56 | trimSuffix "-" }}
 {{- end }}
 {{- end }}
 {{- end }}
@@ -27,7 +28,7 @@ If release name contains chart name it will be used as a full name.
 Create chart name and version as used by the chart label.
 */}}
 {{- define "unitycatalog.chart" -}}
-{{- printf "%s-%s" .Chart.Name .Chart.Version | replace "+" "_" | trunc 63 | trimSuffix "-" }}
+{{- printf "%s-%s" .Chart.Name .Chart.Version | replace "+" "_" | trunc 56 | trimSuffix "-" }}
 {{- end }}
 
 {{/*
@@ -38,7 +39,7 @@ helm.sh/chart: {{ include "unitycatalog.chart" . }}
 {{- if .Chart.AppVersion }}
 app.kubernetes.io/version: {{ .Chart.AppVersion | quote }}
 {{- end }}
-app.kubernetes.io/managed-by: {{ .Release.Service }}
+app.kubernetes.io/managed-by: {{ .Release.Service | quote }}
 {{- end }}
 
 {{/*
@@ -68,8 +69,9 @@ Server labels
 Server selector labels
 */}}
 {{- define "unitycatalog.server.selectorLabels" -}}
-app.kubernetes.io/name: {{ include "unitycatalog.name" . }}-server
-app.kubernetes.io/instance: {{ .Release.Name }}
+app.kubernetes.io/name: "unitycatalog"
+app.kubernetes.io/component: "server"
+app.kubernetes.io/instance: {{ .Release.Name | quote }}
 {{- end }}
 
 {{/*
@@ -77,13 +79,6 @@ Server full name
 */}}
 {{- define "unitycatalog.server.fullname" -}}
 {{- include "unitycatalog.fullname" . }}-server
-{{- end }}
-
-{{/*
-Server API endpoint
-*/}}
-{{- define "unitycatalog.server.apiEndpoint" -}}
-http://{{ include "unitycatalog.server.fullname" . }}:{{ .Values.server.service.port }}
 {{- end }}
 
 {{/*
@@ -102,8 +97,9 @@ UI labels
 UI selector labels
 */}}
 {{- define "unitycatalog.ui.selectorLabels" -}}
-app.kubernetes.io/name: {{ include "unitycatalog.name" . }}-ui
-app.kubernetes.io/instance: {{ .Release.Name }}
+app.kubernetes.io/name: "unitycatalog"
+app.kubernetes.io/component: "ui"
+app.kubernetes.io/instance: {{ .Release.Name | quote }}
 {{- end }}
 
 {{/*
@@ -111,4 +107,18 @@ UI full name
 */}}
 {{- define "unitycatalog.ui.fullname" -}}
 {{- include "unitycatalog.fullname" . }}-ui
+{{- end }}
+
+{{/*
+File DB PVC name}}
+*/}}
+{{- define "unitycatalog.server.db.filePvcName" -}}
+{{- default (printf "%s-%s" (include "unitycatalog.server.fullname" .) "db") .Values.server.db.fileConfig.persistence.pvcName }}
+{{- end }}
+
+{{/*
+Keypair secret name
+*/}}
+{{- define "unitycatalog.server.jwtKeypairSecretName" -}}
+{{- default (printf "%s-%s" (include "unitycatalog.server.fullname" .) "jwt-key") .Values.server.jwtKeypairSecret.name }}
 {{- end }}

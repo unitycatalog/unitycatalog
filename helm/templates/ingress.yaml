@@ -1,0 +1,43 @@
+{{- if .Values.ingress.enabled }}
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: {{ include "unitycatalog.fullname" . | quote }}
+  labels:
+    {{- include "unitycatalog.commonLabels" . | nindent 4 }}
+  {{- with .Values.ingress.annotations }}
+  annotations: {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  {{- with .Values.ingress.ingressClassName }}
+  ingressClassName: {{ . | quote }}
+  {{- end }}
+  {{- if .Values.ingress.tlsSecretName }}
+  tls:
+    - hosts:
+        - {{ required "Host is required" .Values.ingress.host | quote }}
+      secretName: {{ .Values.ingress.tlsSecretName | quote }}
+  {{- end }}
+  rules:
+    - host: {{ .Values.ingress.host | quote }}
+      http:
+        paths:
+          {{- if .Values.server.enabled }}
+          - path: "/api"
+            pathType: "Prefix"
+            backend:
+              service:
+                name: {{ include "unitycatalog.server.fullname" . | quote }}
+                port:
+                  name: api
+          {{- end }}
+          {{- if .Values.ui.enabled }}
+          - path: "/"
+            pathType: "Prefix"
+            backend:
+              service:
+                name: {{ include "unitycatalog.ui.fullname" . | quote }}
+                port:
+                  name: ui
+          {{- end }}
+{{- end }}
