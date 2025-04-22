@@ -46,7 +46,7 @@
 
 ## Table
 - `SELECT`  
-- `EXECUTE`
+- `MODIFY`
 
 ## Volume
 - `READ VOLUME`
