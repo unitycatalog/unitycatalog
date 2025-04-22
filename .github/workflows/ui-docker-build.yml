@@ -1,0 +1,58 @@
+name: Build and Push Docker Images - unitycatalog-ui
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - ui
+
+env:
+  IMAGE: unitycatalog/unitycatalog-ui
+
+jobs:
+  build-and-push:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+        # Required for multi-arch builds
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Generate Metadata and Tags
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.IMAGE }}
+          tags: |
+            type=sha
+
+      - name: Login to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Build and Push Docker Image
+        uses: docker/build-push-action@v6
+        with:
+          context: ui
+          # Push tagged releases to the registry.
+          # E.g. the commit with short SHA "5d668c1" would
+          # result in the tagged image:
+          # "unitycatalog/unitycatalog-ui:sha-5d668c1".
+          # See here for more info: https://tinyurl.com/yh8252m2
+          push: true
+          platforms: linux/amd64,linux/arm64
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+
+          # Use github actions cache: https://docs.docker.com/build/cache/backends/gha/
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
