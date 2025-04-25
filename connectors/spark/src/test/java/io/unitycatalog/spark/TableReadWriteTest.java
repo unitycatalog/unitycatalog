@@ -159,7 +159,7 @@ public class TableReadWriteTest extends BaseSparkIntegrationTest {
     assertThat(row.getString(1)).isEqualTo("a");
 
     Dataset<Row> df = session.sql("SELECT * FROM VALUES (2, 'b') AS t(i, s);");
-    df.write().format("delta").mode("overwrite").save();
+    df.write().format("delta").mode("overwrite").saveAsTable(fullTableName);
     Row row2 = session.sql("SELECT * FROM " + fullTableName).collectAsList().get(0);
     assertThat(row2.getInt(0)).isEqualTo(2);
     assertThat(row2.getString(1)).isEqualTo("b");

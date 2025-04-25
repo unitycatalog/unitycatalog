@@ -164,14 +164,14 @@ class UCSingleCatalog extends TableCatalog with SupportsNamespaces with Logging
 
   override def stageCreate(ident: Identifier, columns: Array[Column], partitions: Array[Transform], properties: java.util.Map[String, String]): StagedTable = {
     val oldProperties = loadTableProperties(ident, properties)
-    val newTable = super.createTable(ident, columns, partitions, oldProperties ++ properties)
+    val newTable = createTable(ident, columns, partitions, oldProperties ++ properties)
     BestEffortStagedTable(ident, Option(newTable).getOrElse(loadTable(ident)), this)
   }
 
   override def stageReplace(ident: Identifier, columns: Array[Column], partitions: Array[Transform], properties: java.util.Map[String, String]): StagedTable = {
     val oldProperties = loadTableProperties(ident, properties)
     this.dropTable(ident)
-    val newTable = super.createTable(ident, columns, partitions, oldProperties ++ properties)
+    val newTable = createTable(ident, columns, partitions, oldProperties ++ properties)
     BestEffortStagedTable(ident, Option(newTable).getOrElse(loadTable(ident)), this)
   }
 
@@ -181,7 +181,7 @@ class UCSingleCatalog extends TableCatalog with SupportsNamespaces with Logging
     catch {
       case _: NoSuchTableException => // this is fine
     }
-    val newTable = super.createTable(ident, columns, partitions, oldProperties ++ properties)
+    val newTable = createTable(ident, columns, partitions, oldProperties ++ properties)
     BestEffortStagedTable(ident, Option(newTable).getOrElse(loadTable(ident)), this)
   }
 
@@ -189,7 +189,7 @@ class UCSingleCatalog extends TableCatalog with SupportsNamespaces with Logging
     if (UCSingleCatalog.DELTA_CATALOG_LOADED.get() &&
       properties.get("provider").equalsIgnoreCase("delta")) {
       try {
-        this.loadTable(ident).properties()
+        loadTable(ident).properties()
       } catch {
         case _: Exception => new util.HashMap[String, String]()
       }
