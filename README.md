@@ -248,3 +248,11 @@ imposes an upper bound. Please check the [JDK compatibility](https://docs.scala-
 
 For an overview of how to contribute to the documentation, please see our introduction [here](./docs/README.md).
 For the official documentation, please take a look at [https://docs.unitycatalog.io/](https://docs.unitycatalog.io/).
+
+## Contribution
+
+We welcome contributions! Please make sure to review our [CONTRIBUTING.md](./CONTRIBUTING.md) guide before submitting changes.
+
+It covers how to get involved, communication protocols, coding standards, and how to propose major features or enhancements. The guide also includes frequently asked questions (FAQ), such as how non-maintainers can initiate [GitHub Discussions](https://github.com/unitycatalog/unitycatalog/discussions).
+
+If you’re unsure where to start or have questions, feel free to open an [issue](https://github.com/unitycatalog/unitycatalog/issues) or join the discussion on [Slack](https://unitycatalog.slack.com/).
