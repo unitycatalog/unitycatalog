@@ -14,7 +14,7 @@ import org.apache.spark.sql.catalyst.analysis.{NoSuchNamespaceException, NoSuchT
 import org.apache.spark.sql.catalyst.catalog.{CatalogStorageFormat, CatalogTable, CatalogTableType, CatalogUtils}
 import org.apache.spark.sql.connector.catalog._
 import org.apache.spark.sql.connector.expressions.Transform
-import org.apache.spark.sql.connector.metric.CustomTaskMetric
+import org.apache.spark.sql.connector.write.{LogicalWriteInfo, WriteBuilder}
 import org.apache.spark.sql.types.{BinaryType, BooleanType, ByteType, DataType, DoubleType, FloatType, IntegerType, LongType, ShortType, StringType, StructField, StructType, TimestampNTZType, TimestampType}
 import org.apache.spark.sql.util.CaseInsensitiveStringMap
 
@@ -209,12 +209,7 @@ class UCSingleCatalog extends TableCatalog with SupportsNamespaces with Logging
     override def abortStagedChanges(): Unit = catalog.dropTable(ident)
 
     override def commitStagedChanges(): Unit = {}
-    // BEGIN-EDGE
 
-    override def reportDriverMetrics(): Array[CustomTaskMetric] = Array.empty
-    // END-EDGE
-
-    // Pass through
     override def name(): String = table.name()
 
     override def schema(): StructType = table.schema()
@@ -227,7 +222,7 @@ class UCSingleCatalog extends TableCatalog with SupportsNamespaces with Logging
 
     override def newWriteBuilder(info: LogicalWriteInfo): WriteBuilder = table match {
       case supportsWrite: SupportsWrite => supportsWrite.newWriteBuilder(info)
-      case _ => throw DeltaErrors.unsupportedWriteStagedTable(name)
+      case _ => throw new UnsupportedOperationException()(name)
     }
   }
 }
