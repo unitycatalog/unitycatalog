@@ -14,9 +14,11 @@ import org.apache.spark.sql.catalyst.analysis.{NoSuchNamespaceException, NoSuchT
 import org.apache.spark.sql.catalyst.catalog.{CatalogStorageFormat, CatalogTable, CatalogTableType, CatalogUtils}
 import org.apache.spark.sql.connector.catalog._
 import org.apache.spark.sql.connector.expressions.Transform
+import org.apache.spark.sql.connector.metric.CustomTaskMetric
 import org.apache.spark.sql.types.{BinaryType, BooleanType, ByteType, DataType, DoubleType, FloatType, IntegerType, LongType, ShortType, StringType, StructField, StructType, TimestampNTZType, TimestampType}
 import org.apache.spark.sql.util.CaseInsensitiveStringMap
 
+import java.util.Map
 import scala.collection.convert.ImplicitConversions._
 import scala.collection.JavaConverters._
 import scala.language.existentials
@@ -24,12 +26,15 @@ import scala.language.existentials
 /**
  * A Spark catalog plugin to get/manage tables in Unity Catalog.
  */
-class UCSingleCatalog extends TableCatalog with SupportsNamespaces with Logging {
+class UCSingleCatalog extends TableCatalog with SupportsNamespaces with Logging
+  with StagingTableCatalog {
 
   private[this] var apiClient: ApiClient = null;
   private[this] var temporaryCredentialsApi: TemporaryCredentialsApi = null
 
   @volatile private var delegate: TableCatalog = null
+
+  @volatile private var ucProxy: TableCatalog = null
 
   override def initialize(name: String, options: CaseInsensitiveStringMap): Unit = {
     val urlStr = options.get("uri")
@@ -50,6 +55,7 @@ class UCSingleCatalog extends TableCatalog with SupportsNamespaces with Logging 
     temporaryCredentialsApi = new TemporaryCredentialsApi(apiClient)
     val proxy = new UCProxy(apiClient, temporaryCredentialsApi)
     proxy.initialize(name, options)
+    ucProxy = proxy
     if (UCSingleCatalog.LOAD_DELTA_CATALOG.get()) {
       try {
         delegate = Class.forName("org.apache.spark.sql.delta.catalog.DeltaCatalog")
@@ -158,6 +164,71 @@ class UCSingleCatalog extends TableCatalog with SupportsNamespaces with Logging 
 
   override def dropNamespace(namespace: Array[String], cascade: Boolean): Boolean = {
     delegate.asInstanceOf[DelegatingCatalogExtension].dropNamespace(namespace, cascade)
+  }
+
+  override def stageCreate(ident: Identifier, columns: Array[Column], partitions: Array[Transform], properties: util.Map[String, String]): StagedTable = {
+    val oldProperties = loadTableProperties(ident, properties)
+    val newTable = super.createTable(ident, columns, partitions, oldProperties ++ properties)
+    BestEffortStagedTable(ident, Option(newTable).getOrElse(loadTable(ident)), this)
+  }
+
+  override def stageReplace(ident: Identifier, columns: Array[Column], partitions: Array[Transform], properties: util.Map[String, String]): StagedTable = {
+    val oldProperties = loadTableProperties(ident, properties)
+    super.dropTable(ident)
+    val newTable = super.createTable(ident, columns, partitions, oldProperties ++ properties)
+    BestEffortStagedTable(ident, Option(newTable).getOrElse(loadTable(ident)), this)
+  }
+
+  override def stageCreateOrReplace(ident: Identifier, columns: Array[Column], partitions: Array[Transform], properties: util.Map[String, String]): StagedTable = {
+    val oldProperties = loadTableProperties(ident, properties)
+    try super.dropTable(ident)
+    catch {
+      case _: NoSuchTableException => // this is fine
+    }
+    val newTable = super.createTable(ident, columns, partitions, oldProperties ++ properties)
+    BestEffortStagedTable(ident, Option(newTable).getOrElse(loadTable(ident)), this)
+  }
+
+  def loadTableProperties(ident: Identifier, properties: util.Map[String, String]): util.Map[String, String] = {
+    if (ucProxy != null && ucProxy == this.delegate &&
+      properties.get("provider").equalsIgnoreCase("delta")) {
+      try {
+        this.loadTable(ident).properties()
+      } catch {
+        case _: Exception => new util.HashMap[String, String]()
+      }
+    } else {
+      new util.HashMap[String, String]()
+    }
+  }
+
+  private case class BestEffortStagedTable(
+      ident: Identifier,
+      table: Table,
+      catalog: TableCatalog) extends StagedTable with SupportsWrite {
+    override def abortStagedChanges(): Unit = catalog.dropTable(ident)
+
+    override def commitStagedChanges(): Unit = {}
+    // BEGIN-EDGE
+
+    override def reportDriverMetrics(): Array[CustomTaskMetric] = Array.empty
+    // END-EDGE
+
+    // Pass through
+    override def name(): String = table.name()
+
+    override def schema(): StructType = table.schema()
+
+    override def partitioning(): Array[Transform] = table.partitioning()
+
+    override def capabilities(): util.Set[TableCapability] = table.capabilities()
+
+    override def properties(): util.Map[String, String] = table.properties()
+
+    override def newWriteBuilder(info: LogicalWriteInfo): WriteBuilder = table match {
+      case supportsWrite: SupportsWrite => supportsWrite.newWriteBuilder(info)
+      case _ => throw DeltaErrors.unsupportedWriteStagedTable(name)
+    }
   }
 }
 
