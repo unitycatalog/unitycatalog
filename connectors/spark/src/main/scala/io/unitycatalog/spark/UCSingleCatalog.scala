@@ -188,7 +188,10 @@ class UCSingleCatalog extends TableCatalog with SupportsNamespaces with Logging
     if (UCSingleCatalog.DELTA_CATALOG_LOADED.get() &&
       properties.get("provider").equalsIgnoreCase("delta")) {
       try {
-        loadTable(ident).properties()
+        val props = new util.HashMap[String, String](loadTable(ident).properties())
+        props.remove("delta.minReaderVersion")
+        props.remove("delta.minWriterVersion")
+        props
       } catch {
         case _: Exception => new util.HashMap[String, String]()
       }
