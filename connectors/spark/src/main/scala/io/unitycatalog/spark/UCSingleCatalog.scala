@@ -176,7 +176,7 @@ class UCSingleCatalog extends TableCatalog with SupportsNamespaces with Logging
 
   override def stageCreateOrReplace(ident: Identifier, columns: Array[Column], partitions: Array[Transform], properties: java.util.Map[String, String]): StagedTable = {
     val oldProperties = loadTableProperties(ident, properties)
-    try this.dropTable(ident)
+    try dropTable(ident)
     catch {
       case _: NoSuchTableException => // this is fine
     }
@@ -200,6 +200,36 @@ class UCSingleCatalog extends TableCatalog with SupportsNamespaces with Logging
     }
   }
 
+  private def removeDeltaProperties(properties: util.Map[String, String]): util.Map[String, String] = {
+    properties.remove("delta.minReaderVersion")
+    properties.remove("delta.minWriterVersion")
+    properties
+  }
+
+  private case class BestEffortStagedTable(
+      ident: Identifier,
+      table: Table,
+      catalog: TableCatalog) extends StagedTable with SupportsWrite {
+    override def abortStagedChanges(): Unit = catalog.dropTable(ident)
+
+    override def commitStagedChanges(): Unit = {}
+
+    override def name(): String = table.name()
+
+    override def schema(): StructType = table.schema()
+
+    override def partitioning(): Array[Transform] = table.partitioning()
+
+    override def capabilities(): util.Set[TableCapability] = table.capabilities()
+
+    override def properties(): util.Map[String, String] = table.properties()
+
+    override def newWriteBuilder(info: LogicalWriteInfo): WriteBuilder = table match {
+      case supportsWrite: SupportsWrite => supportsWrite.newWriteBuilder(info)
+      case _ => throw new ApiException("Unsupported Table: " + name)
+    }
+  }
+  
   override def stageCreate(ident: Identifier, schema: StructType, partitions: Array[Transform], properties: util.Map[String, String]): StagedTable = {
     throw new AssertionError("deprecated `stageCreate` should not be called")
   }

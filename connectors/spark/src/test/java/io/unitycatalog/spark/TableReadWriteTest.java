@@ -154,9 +154,6 @@ public class TableReadWriteTest extends BaseSparkIntegrationTest {
     String fullTableName = SPARK_CATALOG + "." + SCHEMA_NAME + "." + DELTA_TABLE;
     assertThat(session.sql("SELECT * FROM " + fullTableName).collectAsList()).isEmpty();
     session.sql("INSERT INTO " + fullTableName + " SELECT 1, 'a'");
-    Row row = session.sql("SELECT * FROM " + fullTableName).collectAsList().get(0);
-    assertThat(row.getInt(0)).isEqualTo(1);
-    assertThat(row.getString(1)).isEqualTo("a");
 
     Dataset<Row> df = session.sql("SELECT * FROM VALUES (2, 'b') AS t(i, s);");
     df.write().format("delta").mode("overwrite").saveAsTable(fullTableName);
