@@ -164,12 +164,14 @@ class UCSingleCatalog extends TableCatalog with SupportsNamespaces with Logging
 
   override def stageCreate(ident: Identifier, columns: Array[Column], partitions: Array[Transform], properties: java.util.Map[String, String]): StagedTable = {
     createTable(ident, columns, partitions, properties)
+    null
   }
 
   override def stageReplace(ident: Identifier, columns: Array[Column], partitions: Array[Transform], properties: java.util.Map[String, String]): StagedTable = {
     val oldProperties = loadTableProperties(ident, properties)
     this.dropTable(ident)
     createTable(ident, columns, partitions, oldProperties ++ properties)
+    null
   }
 
   override def stageCreateOrReplace(ident: Identifier, columns: Array[Column], partitions: Array[Transform], properties: java.util.Map[String, String]): StagedTable = {
@@ -179,6 +181,7 @@ class UCSingleCatalog extends TableCatalog with SupportsNamespaces with Logging
       case _: NoSuchTableException => // this is fine
     }
     createTable(ident, columns, partitions, oldProperties ++ properties)
+    null
   }
 
   private def loadTableProperties(ident: Identifier, properties: util.Map[String, String]): util.Map[String, String] = {
