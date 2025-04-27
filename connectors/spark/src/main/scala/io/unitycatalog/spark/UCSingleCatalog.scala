@@ -163,15 +163,13 @@ class UCSingleCatalog extends TableCatalog with SupportsNamespaces with Logging
   }
 
   override def stageCreate(ident: Identifier, columns: Array[Column], partitions: Array[Transform], properties: java.util.Map[String, String]): StagedTable = {
-    val newTable = createTable(ident, columns, partitions, properties)
-    BestEffortStagedTable(ident, Option(newTable).getOrElse(loadTable(ident)), this)
+    createTable(ident, columns, partitions, properties)
   }
 
   override def stageReplace(ident: Identifier, columns: Array[Column], partitions: Array[Transform], properties: java.util.Map[String, String]): StagedTable = {
     val oldProperties = loadTableProperties(ident, properties)
     this.dropTable(ident)
-    val newTable = createTable(ident, columns, partitions, oldProperties ++ properties)
-    BestEffortStagedTable(ident, Option(newTable).getOrElse(loadTable(ident)), this)
+    createTable(ident, columns, partitions, oldProperties ++ properties)
   }
 
   override def stageCreateOrReplace(ident: Identifier, columns: Array[Column], partitions: Array[Transform], properties: java.util.Map[String, String]): StagedTable = {
@@ -180,8 +178,7 @@ class UCSingleCatalog extends TableCatalog with SupportsNamespaces with Logging
     catch {
       case _: NoSuchTableException => // this is fine
     }
-    val newTable = createTable(ident, columns, partitions, oldProperties ++ properties)
-    BestEffortStagedTable(ident, Option(newTable).getOrElse(loadTable(ident)), this)
+    createTable(ident, columns, partitions, oldProperties ++ properties)
   }
 
   private def loadTableProperties(ident: Identifier, properties: util.Map[String, String]): util.Map[String, String] = {
@@ -197,30 +194,6 @@ class UCSingleCatalog extends TableCatalog with SupportsNamespaces with Logging
       }
     } else {
       new util.HashMap[String, String]()
-    }
-  }
-    
-  private case class BestEffortStagedTable(
-      ident: Identifier,
-      table: Table,
-      catalog: TableCatalog) extends StagedTable with SupportsWrite {
-    override def abortStagedChanges(): Unit = catalog.dropTable(ident)
-
-    override def commitStagedChanges(): Unit = {}
-
-    override def name(): String = table.name()
-
-    override def schema(): StructType = table.schema()
-
-    override def partitioning(): Array[Transform] = table.partitioning()
-
-    override def capabilities(): util.Set[TableCapability] = table.capabilities()
-
-    override def properties(): util.Map[String, String] = table.properties()
-
-    override def newWriteBuilder(info: LogicalWriteInfo): WriteBuilder = table match {
-      case supportsWrite: SupportsWrite => supportsWrite.newWriteBuilder(info)
-      case _ => throw new ApiException("Unsupported Table: " + name)
     }
   }
 
