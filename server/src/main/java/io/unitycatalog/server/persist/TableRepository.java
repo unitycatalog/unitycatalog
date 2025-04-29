@@ -10,6 +10,7 @@ import io.unitycatalog.server.persist.dao.TableInfoDAO;
 import io.unitycatalog.server.persist.utils.FileOperations;
 import io.unitycatalog.server.persist.utils.PagedListingHelper;
 import io.unitycatalog.server.persist.utils.RepositoryUtils;
+import io.unitycatalog.server.persist.utils.TransactionManager;
 import io.unitycatalog.server.utils.Constants;
 import io.unitycatalog.server.utils.IdentityUtils;
 import io.unitycatalog.server.utils.ValidationUtils;
@@ -17,7 +18,6 @@ import java.util.*;
 import java.util.stream.Collectors;
 import org.hibernate.Session;
 import org.hibernate.SessionFactory;
-import org.hibernate.Transaction;
 import org.hibernate.query.Query;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -38,71 +38,59 @@ public class TableRepository {
 
   public TableInfo getTableById(String tableId) {
     LOGGER.debug("Getting table by id: {}", tableId);
-    try (Session session = sessionFactory.openSession()) {
-      session.setDefaultReadOnly(true);
-      Transaction tx = session.beginTransaction();
-      try {
-        TableInfoDAO tableInfoDAO = session.get(TableInfoDAO.class, UUID.fromString(tableId));
-        if (tableInfoDAO == null) {
-          throw new BaseException(ErrorCode.NOT_FOUND, "Table not found: " + tableId);
-        }
-        SchemaInfoDAO schemaInfoDAO = session.get(SchemaInfoDAO.class, tableInfoDAO.getSchemaId());
-        if (schemaInfoDAO == null) {
-          throw new BaseException(
-              ErrorCode.NOT_FOUND, "Schema not found: " + tableInfoDAO.getSchemaId());
-        }
-        CatalogInfoDAO catalogInfoDAO =
-            session.get(CatalogInfoDAO.class, schemaInfoDAO.getCatalogId());
-        if (catalogInfoDAO == null) {
-          throw new BaseException(
-              ErrorCode.NOT_FOUND, "Catalog not found: " + schemaInfoDAO.getCatalogId());
-        }
-        TableInfo tableInfo = tableInfoDAO.toTableInfo(true);
-        tableInfo.setSchemaName(schemaInfoDAO.getName());
-        tableInfo.setCatalogName(catalogInfoDAO.getName());
-        tx.commit();
-        return tableInfo;
-      } catch (Exception e) {
-        if (tx != null && tx.getStatus().canRollback()) {
-          tx.rollback();
-        }
-        throw e;
-      }
-    }
+    return TransactionManager.executeWithTransaction(
+        sessionFactory,
+        session -> {
+          TableInfoDAO tableInfoDAO = session.get(TableInfoDAO.class, UUID.fromString(tableId));
+          if (tableInfoDAO == null) {
+            throw new BaseException(ErrorCode.NOT_FOUND, "Table not found: " + tableId);
+          }
+          SchemaInfoDAO schemaInfoDAO =
+              session.get(SchemaInfoDAO.class, tableInfoDAO.getSchemaId());
+          if (schemaInfoDAO == null) {
+            throw new BaseException(
+                ErrorCode.NOT_FOUND, "Schema not found: " + tableInfoDAO.getSchemaId());
+          }
+          CatalogInfoDAO catalogInfoDAO =
+              session.get(CatalogInfoDAO.class, schemaInfoDAO.getCatalogId());
+          if (catalogInfoDAO == null) {
+            throw new BaseException(
+                ErrorCode.NOT_FOUND, "Catalog not found: " + schemaInfoDAO.getCatalogId());
+          }
+          TableInfo tableInfo = tableInfoDAO.toTableInfo(true);
+          tableInfo.setSchemaName(schemaInfoDAO.getName());
+          tableInfo.setCatalogName(catalogInfoDAO.getName());
+          return tableInfo;
+        },
+        "Failed to get table by ID",
+        /* readOnly = */ true);
   }
 
   public TableInfo getTable(String fullName) {
     LOGGER.debug("Getting table: {}", fullName);
-    TableInfo tableInfo = null;
-    try (Session session = sessionFactory.openSession()) {
-      session.setDefaultReadOnly(true);
-      Transaction tx = session.beginTransaction();
-      try {
-        String[] parts = fullName.split("\\.");
-        if (parts.length != 3) {
-          throw new BaseException(ErrorCode.INVALID_ARGUMENT, "Invalid table name: " + fullName);
-        }
-        String catalogName = parts[0];
-        String schemaName = parts[1];
-        String tableName = parts[2];
-        TableInfoDAO tableInfoDAO = findTable(session, catalogName, schemaName, tableName);
-        if (tableInfoDAO == null) {
-          throw new BaseException(ErrorCode.NOT_FOUND, "Table not found: " + fullName);
-        }
-        tableInfo = tableInfoDAO.toTableInfo(true);
-        tableInfo.setCatalogName(catalogName);
-        tableInfo.setSchemaName(schemaName);
-        RepositoryUtils.attachProperties(
-            tableInfo, tableInfo.getTableId(), Constants.TABLE, session);
-        tx.commit();
-        return tableInfo;
-      } catch (Exception e) {
-        if (tx != null && tx.getStatus().canRollback()) {
-          tx.rollback();
-        }
-        throw e;
-      }
-    }
+    return TransactionManager.executeWithTransaction(
+        sessionFactory,
+        session -> {
+          String[] parts = fullName.split("\\.");
+          if (parts.length != 3) {
+            throw new BaseException(ErrorCode.INVALID_ARGUMENT, "Invalid table name: " + fullName);
+          }
+          String catalogName = parts[0];
+          String schemaName = parts[1];
+          String tableName = parts[2];
+          TableInfoDAO tableInfoDAO = findTable(session, catalogName, schemaName, tableName);
+          if (tableInfoDAO == null) {
+            throw new BaseException(ErrorCode.NOT_FOUND, "Table not found: " + fullName);
+          }
+          TableInfo tableInfo = tableInfoDAO.toTableInfo(true);
+          tableInfo.setCatalogName(catalogName);
+          tableInfo.setSchemaName(schemaName);
+          RepositoryUtils.attachProperties(
+              tableInfo, tableInfo.getTableId(), Constants.TABLE, session);
+          return tableInfo;
+        },
+        "Failed to get table",
+        /* readOnly = */ true);
   }
 
   public String getTableUniformMetadataLocation(
@@ -146,57 +134,46 @@ public class TableRepository {
     String fullName = getTableFullName(tableInfo);
     LOGGER.debug("Creating table: {}", fullName);
 
-    Transaction tx;
-    try (Session session = sessionFactory.openSession()) {
-      String catalogName = tableInfo.getCatalogName();
-      String schemaName = tableInfo.getSchemaName();
-      UUID schemaId = getSchemaId(session, catalogName, schemaName);
-      tx = session.beginTransaction();
+    return TransactionManager.executeWithTransaction(
+        sessionFactory,
+        session -> {
+          String catalogName = tableInfo.getCatalogName();
+          String schemaName = tableInfo.getSchemaName();
+          UUID schemaId = getSchemaId(session, catalogName, schemaName);
 
-      try {
-        // Check if table already exists
-        TableInfoDAO existingTable = findBySchemaIdAndName(session, schemaId, tableInfo.getName());
-        if (existingTable != null) {
-          throw new BaseException(ErrorCode.ALREADY_EXISTS, "Table already exists: " + fullName);
-        }
-        if (TableType.MANAGED.equals(tableInfo.getTableType())) {
-          throw new BaseException(
-              ErrorCode.INVALID_ARGUMENT, "MANAGED table creation is not supported yet.");
-        }
-        // only external table creation is supported at this time
-        if (tableInfo.getStorageLocation() == null) {
-          throw new BaseException(
-              ErrorCode.INVALID_ARGUMENT, "Storage location is required for external table");
-        }
-        TableInfoDAO tableInfoDAO = TableInfoDAO.from(tableInfo);
-        tableInfoDAO.setSchemaId(schemaId);
-        // create columns
-        tableInfoDAO
-            .getColumns()
-            .forEach(
-                c -> {
-                  c.setId(UUID.randomUUID());
-                  c.setTable(tableInfoDAO);
-                });
-        // create properties
-        PropertyDAO.from(tableInfo.getProperties(), tableInfoDAO.getId(), Constants.TABLE)
-            .forEach(session::persist);
-        session.persist(tableInfoDAO);
-        tx.commit();
-      } catch (RuntimeException e) {
-        if (tx != null && tx.getStatus().canRollback()) {
-          tx.rollback();
-        }
-        throw e;
-      }
-    } catch (RuntimeException e) {
-      if (e instanceof BaseException) {
-        throw e;
-      }
-      throw new BaseException(
-          ErrorCode.INTERNAL, "Error creating table: " + fullName + ". " + e.getMessage(), e);
-    }
-    return tableInfo;
+          // Check if table already exists
+          TableInfoDAO existingTable =
+              findBySchemaIdAndName(session, schemaId, tableInfo.getName());
+          if (existingTable != null) {
+            throw new BaseException(ErrorCode.ALREADY_EXISTS, "Table already exists: " + fullName);
+          }
+          if (TableType.MANAGED.equals(tableInfo.getTableType())) {
+            throw new BaseException(
+                ErrorCode.INVALID_ARGUMENT, "MANAGED table creation is not supported yet.");
+          }
+          // only external table creation is supported at this time
+          if (tableInfo.getStorageLocation() == null) {
+            throw new BaseException(
+                ErrorCode.INVALID_ARGUMENT, "Storage location is required for external table");
+          }
+          TableInfoDAO tableInfoDAO = TableInfoDAO.from(tableInfo);
+          tableInfoDAO.setSchemaId(schemaId);
+          // create columns
+          tableInfoDAO
+              .getColumns()
+              .forEach(
+                  c -> {
+                    c.setId(UUID.randomUUID());
+                    c.setTable(tableInfoDAO);
+                  });
+          // create properties
+          PropertyDAO.from(tableInfo.getProperties(), tableInfoDAO.getId(), Constants.TABLE)
+              .forEach(session::persist);
+          session.persist(tableInfoDAO);
+          return tableInfo;
+        },
+        "Error creating table: " + fullName,
+        /* readOnly = */ false);
   }
 
   public TableInfoDAO findBySchemaIdAndName(Session session, UUID schemaId, String name) {
@@ -239,30 +216,22 @@ public class TableRepository {
       Optional<String> pageToken,
       Boolean omitProperties,
       Boolean omitColumns) {
-    try (Session session = sessionFactory.openSession()) {
-      session.setDefaultReadOnly(true);
-      Transaction tx = session.beginTransaction();
-      try {
-        UUID schemaId = getSchemaId(session, catalogName, schemaName);
-        ListTablesResponse response =
-            listTables(
-                session,
-                schemaId,
-                catalogName,
-                schemaName,
-                maxResults,
-                pageToken,
-                omitProperties,
-                omitColumns);
-        tx.commit();
-        return response;
-      } catch (Exception e) {
-        if (tx != null && tx.getStatus().canRollback()) {
-          tx.rollback();
-        }
-        throw e;
-      }
-    }
+    return TransactionManager.executeWithTransaction(
+        sessionFactory,
+        session -> {
+          UUID schemaId = getSchemaId(session, catalogName, schemaName);
+          return listTables(
+              session,
+              schemaId,
+              catalogName,
+              schemaName,
+              maxResults,
+              pageToken,
+              omitProperties,
+              omitColumns);
+        },
+        "Failed to list tables",
+        /* readOnly = */ true);
   }
 
   public ListTablesResponse listTables(
@@ -292,26 +261,22 @@ public class TableRepository {
   }
 
   public void deleteTable(String fullName) {
-    try (Session session = sessionFactory.openSession()) {
-      Transaction tx = session.beginTransaction();
-      String[] parts = fullName.split("\\.");
-      if (parts.length != 3) {
-        throw new BaseException(ErrorCode.INVALID_ARGUMENT, "Invalid table name: " + fullName);
-      }
-      String catalogName = parts[0];
-      String schemaName = parts[1];
-      String tableName = parts[2];
-      try {
-        UUID schemaId = getSchemaId(session, catalogName, schemaName);
-        deleteTable(session, schemaId, tableName);
-        tx.commit();
-      } catch (RuntimeException e) {
-        if (tx != null && tx.getStatus().canRollback()) {
-          tx.rollback();
-        }
-        throw e;
-      }
-    }
+    TransactionManager.executeWithTransaction(
+        sessionFactory,
+        session -> {
+          String[] parts = fullName.split("\\.");
+          if (parts.length != 3) {
+            throw new BaseException(ErrorCode.INVALID_ARGUMENT, "Invalid table name: " + fullName);
+          }
+          String catalogName = parts[0];
+          String schemaName = parts[1];
+          String tableName = parts[2];
+          UUID schemaId = getSchemaId(session, catalogName, schemaName);
+          deleteTable(session, schemaId, tableName);
+          return null;
+        },
+        "Failed to delete table",
+        /* readOnly = */ false);
   }
 
   public void deleteTable(Session session, UUID schemaId, String tableName) {

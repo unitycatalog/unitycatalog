@@ -29,6 +29,9 @@ public class RepositoryUtils {
     try {
       List<PropertyDAO> propertyDAOList =
           PropertyRepository.findProperties(session, UUID.fromString(uuid), entityType);
+      if (propertyDAOList.isEmpty()) {
+        return entityInfo;
+      }
       Class<?> entityClass = PROPERTY_TYPE_MAP.getOrDefault(entityType, Map.class);
       Method setPropertiesMethod =
           entityInfo.getClass().getMethod("setProperties", entityClass);
