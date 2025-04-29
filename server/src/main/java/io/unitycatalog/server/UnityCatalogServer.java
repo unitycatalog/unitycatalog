@@ -27,7 +27,7 @@ import io.unitycatalog.server.persist.utils.HibernateConfigurator;
 import io.unitycatalog.server.security.SecurityConfiguration;
 import io.unitycatalog.server.security.SecurityContext;
 import io.unitycatalog.server.service.*;
-import io.unitycatalog.server.service.credential.CredentialOperations;
+import io.unitycatalog.server.service.credential.CloudCredentialVendor;
 import io.unitycatalog.server.service.credential.aws.AwsCredentialVendor;
 import io.unitycatalog.server.service.credential.azure.AzureCredentialVendor;
 import io.unitycatalog.server.service.credential.gcp.GcpCredentialVendor;
@@ -82,16 +82,17 @@ public class UnityCatalogServer {
     if (unityCatalogServerBuilder.serverProperties == null) {
       unityCatalogServerBuilder.serverProperties(new ServerProperties(SERVER_PROPERTIES_FILE));
     }
-    if (unityCatalogServerBuilder.credentialOperations == null) {
+    if (unityCatalogServerBuilder.cloudCredentialVendor == null) {
       AwsCredentialVendor awsCredentialVendor =
           new AwsCredentialVendor(unityCatalogServerBuilder.serverProperties);
       AzureCredentialVendor azureCredentialVendor =
           new AzureCredentialVendor(unityCatalogServerBuilder.serverProperties);
       GcpCredentialVendor gcpCredentialVendor =
           new GcpCredentialVendor(unityCatalogServerBuilder.serverProperties);
-      CredentialOperations credentialOperations =
-          new CredentialOperations(awsCredentialVendor, azureCredentialVendor, gcpCredentialVendor);
-      unityCatalogServerBuilder.credentialOperations(credentialOperations);
+      CloudCredentialVendor cloudCredentialVendor =
+          new CloudCredentialVendor(
+              awsCredentialVendor, azureCredentialVendor, gcpCredentialVendor);
+      unityCatalogServerBuilder.credentialOperations(cloudCredentialVendor);
     }
   }
 
@@ -147,7 +148,7 @@ public class UnityCatalogServer {
       UnityCatalogAuthorizer authorizer,
       Repositories repositories) {
     LOGGER.info("Adding Unity Catalog API services...");
-    CredentialOperations credentialOperations = unityCatalogServerBuilder.credentialOperations;
+    CloudCredentialVendor cloudCredentialVendor = unityCatalogServerBuilder.cloudCredentialVendor;
 
     // Add support for Unity Catalog APIs
     AuthService authService =
@@ -161,20 +162,20 @@ public class UnityCatalogServer {
     TableService tableService = new TableService(authorizer, repositories);
     FunctionService functionService = new FunctionService(authorizer, repositories);
     ModelService modelService = new ModelService(authorizer, repositories);
+    CredentialService credentialService = new CredentialService(authorizer, repositories);
     ExternalLocationService externalLocationService =
         new ExternalLocationService(authorizer, repositories);
-    StorageCredentialService storageCredentialService =
-        new StorageCredentialService(authorizer, repositories);
     MetastoreService metastoreService = new MetastoreService(repositories);
     // TODO: combine these into a single service in a follow-up PR
     TemporaryTableCredentialsService temporaryTableCredentialsService =
-        new TemporaryTableCredentialsService(authorizer, credentialOperations, repositories);
+        new TemporaryTableCredentialsService(authorizer, cloudCredentialVendor, repositories);
     TemporaryVolumeCredentialsService temporaryVolumeCredentialsService =
-        new TemporaryVolumeCredentialsService(authorizer, credentialOperations, repositories);
+        new TemporaryVolumeCredentialsService(authorizer, cloudCredentialVendor, repositories);
     TemporaryModelVersionCredentialsService temporaryModelVersionCredentialsService =
-        new TemporaryModelVersionCredentialsService(authorizer, credentialOperations, repositories);
+        new TemporaryModelVersionCredentialsService(
+            authorizer, cloudCredentialVendor, repositories);
     TemporaryPathCredentialsService temporaryPathCredentialsService =
-        new TemporaryPathCredentialsService(credentialOperations);
+        new TemporaryPathCredentialsService(cloudCredentialVendor);
 
     JacksonRequestConverterFunction requestConverterFunction =
         new JacksonRequestConverterFunction(
@@ -224,15 +225,14 @@ public class UnityCatalogServer {
             BASE_PATH + "temporary-path-credentials",
             temporaryPathCredentialsService,
             requestConverterFunction)
+        .annotatedService(BASE_PATH + "credentials", credentialService,
+            requestConverterFunction)
         .annotatedService(
-            BASE_PATH + "external-locations", externalLocationService, requestConverterFunction)
-        .annotatedService(
-            BASE_PATH + "storage-credentials", storageCredentialService, requestConverterFunction);
-
+            BASE_PATH + "external-locations", externalLocationService, requestConverterFunction);
     addIcebergApiServices(
         armeriaServerBuilder,
         unityCatalogServerBuilder.serverProperties,
-        unityCatalogServerBuilder.credentialOperations,
+        unityCatalogServerBuilder.cloudCredentialVendor,
         catalogService,
         schemaService,
         tableService,
@@ -242,7 +242,7 @@ public class UnityCatalogServer {
   private void addIcebergApiServices(
       ServerBuilder armeriaServerBuilder,
       ServerProperties serverProperties,
-      CredentialOperations credentialOperations,
+      CloudCredentialVendor cloudCredentialVendor,
       CatalogService catalogService,
       SchemaService schemaService,
       TableService tableService,
@@ -256,9 +256,9 @@ public class UnityCatalogServer {
     JacksonResponseConverterFunction icebergResponseConverter =
         new JacksonResponseConverterFunction(icebergMapper);
     MetadataService metadataService =
-        new MetadataService(new FileIOFactory(credentialOperations, serverProperties));
+        new MetadataService(new FileIOFactory(cloudCredentialVendor, serverProperties));
     TableConfigService tableConfigService =
-        new TableConfigService(credentialOperations, serverProperties);
+        new TableConfigService(cloudCredentialVendor, serverProperties);
 
     armeriaServerBuilder.annotatedService(
         BASE_PATH + "iceberg",
@@ -355,7 +355,7 @@ public class UnityCatalogServer {
   public static class Builder {
     private int port;
     private ServerProperties serverProperties;
-    private CredentialOperations credentialOperations;
+    private CloudCredentialVendor cloudCredentialVendor;
 
     private Builder() {}
 
@@ -370,8 +370,8 @@ public class UnityCatalogServer {
     }
 
     public UnityCatalogServer.Builder credentialOperations(
-        CredentialOperations credentialOperations) {
-      this.credentialOperations = credentialOperations;
+        CloudCredentialVendor cloudCredentialVendor) {
+      this.cloudCredentialVendor = cloudCredentialVendor;
       return this;
     }
 

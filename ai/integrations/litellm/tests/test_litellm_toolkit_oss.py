@@ -7,6 +7,7 @@ from pydantic import ValidationError
 
 from unitycatalog.ai.core.base import FunctionExecutionResult
 from unitycatalog.ai.core.client import UnitycatalogFunctionClient
+from unitycatalog.ai.core.utils.execution_utils import ExecutionMode
 from unitycatalog.ai.litellm.toolkit import UCFunctionToolkit
 from unitycatalog.ai.test_utils.function_utils_oss import (
     CATALOG,
@@ -40,8 +41,10 @@ async def uc_client():
     uc_api_client.close()
 
 
+@pytest.mark.parametrize("execution_mode", ["local", "sandbox"])
 @pytest.mark.asyncio
-async def test_toolkit_e2e(uc_client):
+async def test_toolkit_e2e(uc_client, execution_mode):
+    uc_client.execution_mode = ExecutionMode(execution_mode)
     with create_function_and_cleanup_oss(uc_client, schema=SCHEMA) as func_obj:
         toolkit = UCFunctionToolkit(function_names=[func_obj.full_function_name], client=uc_client)
         tools = toolkit.tools
@@ -57,8 +60,10 @@ async def test_toolkit_e2e(uc_client):
         assert func_obj.tool_name in [t["name"] for t in toolkit.tools]
 
 
+@pytest.mark.parametrize("execution_mode", ["local", "sandbox"])
 @pytest.mark.asyncio
-async def test_toolkit_e2e_manually_passing_client(uc_client):
+async def test_toolkit_e2e_manually_passing_client(uc_client, execution_mode):
+    uc_client.execution_mode = ExecutionMode(execution_mode)
     with create_function_and_cleanup_oss(uc_client, schema=SCHEMA) as func_obj:
         toolkit = UCFunctionToolkit(function_names=[func_obj.full_function_name], client=uc_client)
         tools = toolkit.tools
@@ -75,8 +80,10 @@ async def test_toolkit_e2e_manually_passing_client(uc_client):
         assert func_obj.tool_name in [t["name"] for t in toolkit.tools]
 
 
+@pytest.mark.parametrize("execution_mode", ["local", "sandbox"])
 @pytest.mark.asyncio
-async def test_multiple_toolkits(uc_client):
+async def test_multiple_toolkits(uc_client, execution_mode):
+    uc_client.execution_mode = ExecutionMode(execution_mode)
     with create_function_and_cleanup_oss(uc_client, schema=SCHEMA) as func_obj:
         toolkit1 = UCFunctionToolkit(function_names=[func_obj.full_function_name], client=uc_client)
         toolkit2 = UCFunctionToolkit(function_names=[f"{CATALOG}.{SCHEMA}.*"], client=uc_client)
@@ -85,13 +92,14 @@ async def test_multiple_toolkits(uc_client):
         assert all(isinstance(toolkit.tools[0], dict) for toolkit in toolkits)
 
 
-def test_toolkit_creation_errors_no_client():
-    """Test that UCFunctionToolkit raises ValidationError when no client is provided."""
+def test_toolkit_creation_errors_no_client(monkeypatch):
+    monkeypatch.setattr("unitycatalog.ai.core.base._is_databricks_client_available", lambda: False)
+
     with pytest.raises(
         ValidationError,
         match=r"No client provided, either set the client when creating a toolkit or set the default client",
     ):
-        UCFunctionToolkit(function_names=[])
+        UCFunctionToolkit(function_names=["test.test.test"])
 
 
 def test_toolkit_creation_errors_invalid_client(uc_client):

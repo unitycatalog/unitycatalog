@@ -1,6 +1,7 @@
 import math
 import os
 from typing import Callable, Dict, List
+from unittest.mock import patch
 
 import pytest
 from databricks.sdk.errors import ResourceDoesNotExist
@@ -36,12 +37,14 @@ from unitycatalog.ai.core.envs.databricks_env_vars import (
     UCAI_DATABRICKS_SERVERLESS_EXECUTION_RESULT_ROW_LIMIT,
 )
 from unitycatalog.ai.core.types import Variant
+from unitycatalog.ai.core.utils.execution_utils import ExecutionModeDatabricks
 from unitycatalog.ai.test_utils.client_utils import (
     client,  # noqa: F401
     get_client,
     requires_databricks,
     retry_flaky_test,
     serverless_client,  # noqa: F401
+    serverless_client_with_config,  # noqa: F401
 )
 from unitycatalog.ai.test_utils.function_utils import (
     CATALOG,
@@ -639,3 +642,169 @@ def test_execute_python_function_no_params_databricks(client: DatabricksFunction
             ValueError, match="Function does not have input parameters, but parameters"
         ):
             client.execute_function(func_obj.full_function_name, parameters={"unexpected": "value"})
+
+
+@retry_flaky_test()
+@requires_databricks
+def test_get_python_callable_integration_complex(client: DatabricksFunctionClient):
+    def complex_python_func(
+        a: int,
+        b: float,
+        c: str,
+        d: bool,
+        e: list[str],
+        f: dict[str, int],
+        g: Variant,
+        h: dict[str, list[int]],
+        i: dict[str, list[dict[str, list[int]]]],
+    ) -> dict[str, list[str]]:
+        """
+        A complex function that processes various types.
+
+        Args:
+            a: an int
+            b: a float
+            c: a string
+            d: a bool
+            e: a list of strings
+            f: a dict mapping strings to ints
+            g: a variant value
+            h: a dict mapping strings to lists of ints
+            i: a dict mapping strings to lists of dicts mapping strings to lists of ints
+
+        Returns:
+            dict[str, list[str]]: A dictionary with a single key "result" and a list of string representations.
+        """
+
+        def _helper(x: float) -> int:
+            return int(x) + a
+
+        return {"result": [str(a), str(b), c, str(d), ",".join(e), str(f), str(g), str(h), str(i)]}
+
+    with create_python_function_and_cleanup(client, func=complex_python_func, schema=SCHEMA):
+        function_name = f"{CATALOG}.{SCHEMA}.complex_python_func"
+        callable_def = client.get_function_source(function_name)
+
+        expected_header = (
+            "def complex_python_func(a: int, b: float, c: str, d: bool, e: list[str], "
+            "f: dict[str, int], g: Variant, h: dict[str, list[int]], i: dict[str, list[dict[str, list[int]]]]) -> dict[str, list[str]]:"
+        )
+
+        assert expected_header in callable_def
+        assert "def _helper(x: float) -> int:" in callable_def
+        assert "return {" in callable_def and '"result": [' in callable_def
+        assert "Args:" in callable_def
+        assert "Returns:" in callable_def
+
+
+@retry_flaky_test()
+@requires_databricks
+def test_get_function_as_callable(client: DatabricksFunctionClient):
+    def add(a: int, b: int) -> int:
+        """
+        Adds two integers.
+
+        Args:
+            a: The first integer.
+            b: The second integer.
+
+        Returns:
+            int: The sum of a and b.
+        """
+        return a + b
+
+    with create_python_function_and_cleanup(client, func=add, schema=SCHEMA):
+        function_name = f"{CATALOG}.{SCHEMA}.add"
+        func = client.get_function_as_callable(function_name)
+        assert func(3, 4) == 7
+
+
+@retry_flaky_test()
+@requires_databricks
+def test_execute_function_in_local_sandbox(client: DatabricksFunctionClient):
+    client.execution_mode = ExecutionModeDatabricks.LOCAL
+
+    def add(a: int, b: int) -> int:
+        """
+        Adds two integers.
+
+        Args:
+            a: The first integer.
+            b: The second integer.
+
+        Returns:
+            int: The sum of a and b.
+        """
+        return a + b
+
+    with create_python_function_and_cleanup(client, func=add, schema=SCHEMA):
+        function_name = f"{CATALOG}.{SCHEMA}.add"
+        result = client.execute_function(function_name, {"a": 3, "b": 4})
+        assert result.value == 7
+
+
+@requires_databricks
+def test_execute_function_with_custom_client(
+    serverless_client: DatabricksFunctionClient,
+    serverless_client_with_config: DatabricksFunctionClient,
+):
+    with generate_func_name_and_cleanup(serverless_client, schema=SCHEMA) as func_name:
+        function_sample = function_with_string_input(func_name)
+        serverless_client.create_function(sql_function_body=function_sample.sql_body)
+
+        # Client which created the function should execute successfully
+        for input_example in function_sample.inputs:
+            result = serverless_client.execute_function(func_name, input_example)
+            assert result.value == function_sample.output
+
+        # Client created from config should execute successfully
+        for input_example in function_sample.inputs:
+            result = serverless_client_with_config.execute_function(func_name, input_example)
+            assert result.value == function_sample.output
+
+        # Client with fake config should fail as expected
+        function_info = serverless_client.get_function(func_name)
+        from databricks.sdk import WorkspaceClient
+
+        with patch.object(DatabricksFunctionClient, "initialize_spark_session") as mock_init:
+            mock_init.side_effect = ValueError("Authentication failed with provided credentials")
+
+            w = WorkspaceClient(
+                host=os.environ.get("DATABRICKS_HOST"),
+                client_id="fake_id",
+                client_secret="fake_secret",
+            )
+
+            with pytest.raises(ValueError, match="Authentication failed"):
+                DatabricksFunctionClient(client=w)
+
+
+@retry_flaky_test()
+@requires_databricks
+def test_sql_function_with_null_default_databricks(client: DatabricksFunctionClient):
+    sql_body = f"""
+CREATE OR REPLACE FUNCTION {CATALOG}.{SCHEMA}.null_default_func(
+    a STRING DEFAULT NULL COMMENT 'string default NULL',
+    b STRING DEFAULT 'non-null-default' COMMENT 'string with regular default'
+)
+RETURNS STRING
+CONTAINS SQL
+COMMENT 'Tests NULL default parameter handling'
+RETURN CASE WHEN a IS NULL THEN 'a is NULL, b is ' || b ELSE a || ', b is ' || b END;
+"""
+    with create_function_and_cleanup(client=client, schema=SCHEMA, sql_body=sql_body):
+        func_name = f"{CATALOG}.{SCHEMA}.null_default_func"
+
+        result = client.execute_function(func_name, parameters={})
+        assert result.value == "a is NULL, b is non-null-default"
+
+        result = client.execute_function(func_name, parameters={"a": None})
+        assert result.value == "a is NULL, b is non-null-default"
+
+        result = client.execute_function(func_name, parameters={"a": "custom-value"})
+        assert result.value == "custom-value, b is non-null-default"
+
+        result = client.execute_function(
+            func_name, parameters={"a": "custom-value", "b": "custom-b"}
+        )
+        assert result.value == "custom-value, b is custom-b"

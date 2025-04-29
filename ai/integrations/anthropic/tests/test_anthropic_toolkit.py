@@ -11,7 +11,7 @@ from databricks.sdk.service.catalog import (
 )
 
 from unitycatalog.ai.anthropic.toolkit import UCFunctionToolkit
-from unitycatalog.ai.core.base import set_uc_function_client
+from unitycatalog.ai.core.utils.execution_utils import ExecutionModeDatabricks
 from unitycatalog.ai.core.utils.function_processing_utils import get_tool_name
 from unitycatalog.ai.test_utils.client_utils import (
     get_client,
@@ -24,8 +24,6 @@ SCHEMA = os.environ.get("SCHEMA", "ucai_core_test")
 
 
 def mock_anthropic_tool_response(function_name, input_data, message_id):
-    input_data["code"] = 'print("Hello, World!")'
-
     return Message(
         id=message_id,
         type="message",
@@ -34,7 +32,7 @@ def mock_anthropic_tool_response(function_name, input_data, message_id):
             ToolUseBlock(
                 id="toolu_01A09q90qw90lq917835lq9",
                 name=function_name,
-                input=input_data,  # Now contains escaped code
+                input=input_data,
                 type="tool_use",
             ),
         ],
@@ -49,9 +47,11 @@ def mock_anthropic_tool_response(function_name, input_data, message_id):
     )
 
 
+@pytest.mark.parametrize("execution_mode", ["serverless", "local"])
 @requires_databricks
-def test_tool_calling_with_anthropic():
+def test_tool_calling_with_anthropic(execution_mode):
     client = get_client()
+    client.execution_mode = ExecutionModeDatabricks(execution_mode)
     with (
         set_default_client(client),
         create_function_and_cleanup(client, schema=SCHEMA) as func_obj,
@@ -64,7 +64,7 @@ def test_tool_calling_with_anthropic():
         messages = [
             {
                 "role": "user",
-                "content": "Please execute the following code: print('Hello, World!')",
+                "content": "What is the sum of 2 and 10?",
             },
         ]
 
@@ -73,7 +73,7 @@ def test_tool_calling_with_anthropic():
         with mock.patch("anthropic.resources.messages.Messages.create") as mock_create:
             mock_create.return_value = mock_anthropic_tool_response(
                 function_name=converted_func_name,
-                input_data={"code": "print('Hello, World!')"},
+                input_data={"number": 2},
                 message_id="msg_01H6Y3Z0XYZ123456789",
             )
 
@@ -85,10 +85,10 @@ def test_tool_calling_with_anthropic():
             assert len(tool_calls) == 2
             assert tool_calls[1].name == converted_func_name
             arguments = tool_calls[1].input
-            assert isinstance(arguments.get("code"), str)
+            assert isinstance(arguments.get("number"), int)
 
             result = client.execute_function(func_name, arguments)
-            assert result.value.strip() == "Hello, World!"
+            assert result.value.strip() == "12"
 
             function_call_result_message = {
                 "role": "user",
@@ -106,9 +106,7 @@ def test_tool_calling_with_anthropic():
                     id="msg_01H6Y3Z0XYZ123456780",
                     type="message",
                     content=[
-                        TextBlock(
-                            text="The code has been executed. Output:\n\nHello, World!", type="text"
-                        ),
+                        TextBlock(text="The number is 12", type="text"),
                     ],
                     role="assistant",
                     model="claude-3-5-sonnet-20240620",
@@ -131,15 +129,14 @@ def test_tool_calling_with_anthropic():
                     max_tokens=200,
                 )
 
-                assert (
-                    final_response.content[0].text
-                    == "The code has been executed. Output:\n\nHello, World!"
-                )
+                assert final_response.content[0].text == "The number is 12"
 
 
+@pytest.mark.parametrize("execution_mode", ["serverless", "local"])
 @requires_databricks
-def test_tool_calling_with_multiple_tools_anthropic():
+def test_tool_calling_with_multiple_tools_anthropic(execution_mode):
     client = get_client()
+    client.execution_mode = ExecutionModeDatabricks(execution_mode)
     with (
         set_default_client(client),
         create_function_and_cleanup(client, schema=SCHEMA) as func_obj,
@@ -152,17 +149,16 @@ def test_tool_calling_with_multiple_tools_anthropic():
         messages = [
             {
                 "role": "user",
-                "content": "Please execute the following code: print('Hello from Paris!') and then print('Hello from New York!')",
+                "content": "Please add 4 to 10 and then 7 to 10.",
             },
         ]
 
         converted_func_name = get_tool_name(func_name)
 
-        code_paris = "print('Hello from Paris!')"
         with mock.patch("anthropic.resources.messages.Messages.create") as mock_create_first:
             mock_create_first.return_value = mock_anthropic_tool_response(
                 function_name=converted_func_name,
-                input_data={"code": code_paris},
+                input_data={"number": 4},
                 message_id="msg_01H6Y3Z0XYZ123456789",
             )
 
@@ -174,10 +170,10 @@ def test_tool_calling_with_multiple_tools_anthropic():
             assert len(tool_calls) == 2
             assert tool_calls[1].name == converted_func_name
             arguments = tool_calls[1].input
-            assert isinstance(arguments.get("code"), str)
+            assert isinstance(arguments.get("number"), int)
 
             result = client.execute_function(func_name, arguments)
-            assert result.value.strip() == "Hello, World!"
+            assert result.value.strip() == "14"
 
             function_call_result_message = {
                 "role": "user",
@@ -190,11 +186,10 @@ def test_tool_calling_with_multiple_tools_anthropic():
                 ],
             }
 
-            code_new_york = "print('Hello from New York!')"
             with mock.patch("anthropic.resources.messages.Messages.create") as mock_create_second:
                 mock_create_second.return_value = mock_anthropic_tool_response(
                     function_name=converted_func_name,
-                    input_data={"code": code_new_york},
+                    input_data={"number": 7},
                     message_id="msg_01H6Y3Z0XYZ123456780",
                 )
 
@@ -215,11 +210,11 @@ def test_tool_calling_with_multiple_tools_anthropic():
                 assert len(final_tool_calls) == 2
                 assert final_tool_calls[1].name == converted_func_name
                 arguments_second = final_tool_calls[1].input
-                assert isinstance(arguments_second.get("code"), str)
+                assert isinstance(arguments_second.get("number"), int)
 
                 result_second = client.execute_function(func_name, arguments_second)
 
-                assert result_second.value.strip() == "Hello, World!"
+                assert result_second.value.strip() == "17"
 
                 function_call_result_message_second = {
                     "role": "user",
@@ -240,7 +235,7 @@ def test_tool_calling_with_multiple_tools_anthropic():
                         type="message",
                         content=[
                             TextBlock(
-                                text="I've executed both code snippets. Output:\n\nHello, World!\nHello, World!",
+                                text="The sums are 14 and 17",
                                 type="text",
                             ),
                         ],
@@ -266,28 +261,7 @@ def test_tool_calling_with_multiple_tools_anthropic():
                         max_tokens=200,
                     )
 
-                    assert (
-                        final_response.content[0].text
-                        == "I've executed both code snippets. Output:\n\nHello, World!\nHello, World!"
-                    )
-
-
-def test_anthropic_toolkit_initialization():
-    client = get_client()
-
-    with pytest.raises(
-        ValueError,
-        match=r"No client provided, either set the client when creating a toolkit or set the default client",
-    ):
-        toolkit = UCFunctionToolkit(function_names=[])
-
-    set_uc_function_client(client)
-    toolkit = UCFunctionToolkit(function_names=[])
-    assert len(toolkit.tools) == 0
-    set_uc_function_client(None)
-
-    toolkit = UCFunctionToolkit(function_names=[], client=client)
-    assert len(toolkit.tools) == 0
+                    assert final_response.content[0].text == "The sums are 14 and 17"
 
 
 def generate_function_info(parameters, catalog="catalog", schema="schema"):
@@ -346,3 +320,41 @@ def test_anthropic_tool_definition_generation():
                 "required": [],
             },
         }
+
+
+@pytest.mark.parametrize(
+    "filter_accessible_functions",
+    [True, False],
+)
+def test_uc_function_to_anthropic_tool_permission_denied(filter_accessible_functions):
+    client = get_client()
+    # Permission Error should be caught
+    with mock.patch(
+        "unitycatalog.ai.core.databricks.DatabricksFunctionClient.get_function",
+        side_effect=PermissionError("Permission Denied to Underlying Assets"),
+    ):
+        if filter_accessible_functions:
+            tool = UCFunctionToolkit.uc_function_to_anthropic_tool(
+                client=client,
+                function_name="code",
+                filter_accessible_functions=filter_accessible_functions,
+            )
+            assert tool == None
+        else:
+            with pytest.raises(PermissionError):
+                tool = UCFunctionToolkit.uc_function_to_anthropic_tool(
+                    client=client,
+                    function_name="code",
+                    filter_accessible_functions=filter_accessible_functions,
+                )
+    # Other errors should not be Caught
+    with mock.patch(
+        "unitycatalog.ai.core.databricks.DatabricksFunctionClient.get_function",
+        side_effect=ValueError("Wrong Get Function Call"),
+    ):
+        with pytest.raises(ValueError):
+            tool = UCFunctionToolkit.uc_function_to_anthropic_tool(
+                client=client,
+                function_name="code",
+                filter_accessible_functions=filter_accessible_functions,
+            )

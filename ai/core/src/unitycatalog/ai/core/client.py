@@ -4,18 +4,28 @@ import datetime
 import decimal
 import logging
 from enum import Enum
-from functools import lru_cache, wraps
+from functools import lru_cache, partial, wraps
 from typing import Any, Callable, Dict, List, Optional, Union
 
 import nest_asyncio
 from typing_extensions import override
 
 from unitycatalog.ai.core.base import BaseFunctionClient, FunctionExecutionResult
+from unitycatalog.ai.core.executor.local import (
+    NO_OUTPUT_MESSAGE,
+    run_in_sandbox,
+    run_in_sandbox_async,
+)
 from unitycatalog.ai.core.paged_list import PagedList
+from unitycatalog.ai.core.utils.callable_utils import (
+    dynamically_construct_python_function,
+    get_callable_definition,
+)
 from unitycatalog.ai.core.utils.callable_utils_oss import (
     generate_function_info,
     generate_wrapped_function_info,
 )
+from unitycatalog.ai.core.utils.execution_utils import ExecutionMode, load_function_from_string
 from unitycatalog.ai.core.utils.function_processing_utils import process_function_parameter_defaults
 from unitycatalog.ai.core.utils.type_utils import column_type_to_python_type
 from unitycatalog.ai.core.utils.validation_utils import (
@@ -60,8 +70,8 @@ ALLOWED_DATA_TYPES = {
     "STRUCT",
     "MAP",
     "CHAR",
+    "NULL",
     # below types are not supported in python execution so we excluded them
-    # "NULL",
     # "USER_DEFINED_TYPE",
     # "TABLE_TYPE",
 }
@@ -340,12 +350,23 @@ class UnitycatalogFunctionClient(BaseFunctionClient):
     Unity Catalog function client for managing and executing functions in Unity Catalog OSS.
     """
 
-    def __init__(self, api_client: ApiClient, **kwargs: Any) -> None:
+    def __init__(
+        self, api_client: ApiClient, execution_mode: str = "sandbox", **kwargs: Any
+    ) -> None:
         """
         Initialize the UnitycatalogFunctionClient.
 
         Args:
             api_client: An instance of unitycatalog.client.ApiClient that has been constructed with the desired Configuration.
+            execution_mode: Set the function execution mode of the client. Options are:
+                - "local": Execute functions directly in the local Python main process. This mode is not recommended for
+                    production use as it may lead to unwanted side effects, potential security issues,
+                    and has no protection against excessive resource usage.
+                - "sandbox": (Default) Execute functions in a sandboxed subprocess using multiprocessing. This mode is preferred
+                    for production use as it provides a controlled environment for function execution. Note that there
+                    are restrictions on core library use in Python as well as a block on interfacing with the local filesystem
+                    via standard Python APIs. If your functions require access to the local filesystem, consider using the
+                    "local" execution mode.
             **kwargs: Additional keyword arguments.
         """
 
@@ -355,6 +376,7 @@ class UnitycatalogFunctionClient(BaseFunctionClient):
             )
 
         self.uc = UnitycatalogClient(api_client)
+        self.execution_mode = ExecutionMode.validate(execution_mode)
         self.func_cache = {}
         super().__init__()
 
@@ -819,6 +841,9 @@ class UnitycatalogFunctionClient(BaseFunctionClient):
 
     @override
     def _validate_param_type(self, value: Any, param_info: FunctionParameterInfo) -> None:
+        if value is None and param_info.parameter_default == "NULL":
+            return
+
         value_python_type = column_type_to_python_type(
             param_info.type_name, mapping=SQL_TYPE_TO_PYTHON_TYPE_MAPPING_UC_OSS
         )
@@ -829,6 +854,23 @@ class UnitycatalogFunctionClient(BaseFunctionClient):
             )
         validate_param(value, param_info.type_name, param_info.type_text)
 
+    def _prepare_function_and_params(
+        self, function_info: FunctionInfo, parameters: Optional[dict[str, Any]] = None
+    ) -> tuple[Callable[..., Any], dict[str, Any]]:
+        """
+        Extracts or dynamically constructs the function from the FunctionInfo,
+        applies parameter defaults, and caches the function for future calls.
+        """
+        parameters = process_function_parameter_defaults(function_info, parameters)
+        if function_info.name in self.func_cache:
+            func = self.func_cache[function_info.name]
+        else:
+            python_function = get_callable_definition(function_info)
+            exec(python_function, self.func_cache)
+            func = self.func_cache[function_info.name]
+            self.func_cache[function_info.name] = lru_cache()(func)
+        return func, parameters
+
     @override
     def _execute_uc_function(
         self,
@@ -836,29 +878,64 @@ class UnitycatalogFunctionClient(BaseFunctionClient):
         parameters: Optional[dict[str, Any]] = None,
         **kwargs: Any,
     ) -> FunctionExecutionResult:
-        if function_info.name in self.func_cache:
-            parameters = process_function_parameter_defaults(function_info, parameters)
-
-            result = self.func_cache[function_info.name](**parameters)
+        func, parameters = self._prepare_function_and_params(function_info, parameters)
+        if self.execution_mode == ExecutionMode.LOCAL:
             try:
-                return FunctionExecutionResult(format="SCALAR", value=str(result))
-            except Exception as e:
-                return FunctionExecutionResult(error=str(e))
-        else:
-            python_function = dynamically_construct_python_function(function_info)
-            exec(python_function, self.func_cache)
-            try:
-                func = self.func_cache[function_info.name]
-
-                parameters = process_function_parameter_defaults(function_info, parameters)
-
                 result = func(**parameters)
-
-                self.func_cache[function_info.name] = lru_cache()(func)
-
-                return FunctionExecutionResult(format="SCALAR", value=str(result))
             except Exception as e:
                 return FunctionExecutionResult(error=str(e))
+        elif self.execution_mode == ExecutionMode.SANDBOX:
+            succeeded, result = run_in_sandbox(func, parameters)
+            if not succeeded:
+                return FunctionExecutionResult(error=result)
+        else:
+            raise NotImplementedError(
+                f"Execution mode {self.execution_mode} is not supported for function execution."
+            )
+        if not result:
+            result = NO_OUTPUT_MESSAGE
+        return FunctionExecutionResult(format="SCALAR", value=result)
+
+    async def execute_function_async(
+        self,
+        function_name: str,
+        parameters: Optional[dict[str, Any]] = None,
+        **kwargs: Any,
+    ) -> FunctionExecutionResult:
+        """
+        Execute a function in Unity Catalog asynchronously.
+
+        Args:
+            function_name: The name of the function to execute in the form of `<catalog>.<schema>.<function name>`.
+            parameters: Optional dictionary of parameters to pass to the function.
+            **kwargs: Additional keyword arguments.
+        """
+        with self._lock:
+            function_info = self.get_function(function_name, **kwargs)
+        parameters = parameters or {}
+        self.validate_input_params(function_info.input_params, parameters)
+
+        func, parameters = self._prepare_function_and_params(function_info, parameters)
+        if self.execution_mode == ExecutionMode.LOCAL:
+            try:
+                if asyncio.iscoroutinefunction(func):
+                    result = await func(**parameters)
+                else:
+                    loop = asyncio.get_running_loop()
+                    result = await loop.run_in_executor(None, partial(func, **parameters))
+            except Exception as e:
+                return FunctionExecutionResult(error=str(e))
+        elif self.execution_mode == ExecutionMode.SANDBOX:
+            succeeded, result = await run_in_sandbox_async(func, parameters)
+            if not succeeded:
+                return FunctionExecutionResult(error=result)
+        else:
+            raise NotImplementedError(
+                f"Execution mode {self.execution_mode} is not supported for function execution."
+            )
+        if not result:
+            result = NO_OUTPUT_MESSAGE
+        return FunctionExecutionResult(format="SCALAR", value=result)
 
     async def delete_function_async(
         self,
@@ -907,30 +984,50 @@ class UnitycatalogFunctionClient(BaseFunctionClient):
         elements = ["uc"]
         return {k: getattr(self, k) for k in elements if getattr(self, k) is not None}
 
+    @override
+    def get_function_source(self, function_name: str) -> str:
+        """
+        Returns the Python callable definition as a string for an EXTERNAL Python function that
+        is stored within Unity Catalog. This function can only parse and extract the full callable
+        definition for Python functions and cannot be used on SQL or TABLE functions.
 
-def dynamically_construct_python_function(function_info: FunctionInfo) -> str:
-    """
-    Construct a Python function from the given FunctionInfo.
+        NOTE: To unify the behavior of creating a valid Python callable, existing indentation in the
+        stored function body will be unified to a consistent indentation level of `4` spaces.
 
-    Args:
-        function_info: The FunctionInfo object containing the function metadata.
+        Args:
+            function_name: The name of the function to retrieve the Python callable definition for.
 
-    Returns:
-        The re-constructed function definition.
-    """
+        Returns:
+            str: The Python callable definition as a string.
+        """
+        function_info = self.get_function(function_name)
+        if function_info.routine_body != "EXTERNAL":
+            raise ValueError(
+                f"Function {function_name} is not an EXTERNAL Python function and cannot be retrieved."
+            )
+        return dynamically_construct_python_function(function_info=function_info)
 
-    param_names = []
-    if function_info.input_params and function_info.input_params.parameters:
-        param_names = [param.name for param in function_info.input_params.parameters]
-    function_head = f"{function_info.name}({', '.join(param_names)})"
-    func_def = f"def {function_head}:\n"
-    if function_info.routine_body == "EXTERNAL":
-        for line in function_info.routine_definition.split("\n"):
-            func_def += f"    {line}\n"
-    else:
-        raise NotImplementedError(f"routine_body {function_info.routine_body} not supported")
+    @override
+    def get_function_as_callable(
+        self, function_name: str, register_function: bool = True, namespace: dict[str, Any] = None
+    ) -> Callable[..., Any]:
+        """
+        Returns the Python callable for an EXTERNAL Python function that is stored within Unity Catalog.
+        This function can only parse and extract the full callable definition for Python functions and
+        cannot be used on SQL or TABLE functions.
 
-    return func_def
+        Args:
+            function_name: The name of the function to retrieve the Python callable for.
+            register_function: Whether to register the function in the namespace. Defaults to True.
+            namespace: The namespace to register the function in. Defaults to None (global)
+
+        Returns:
+            Callable[..., Any]: The Python callable for the function.
+        """
+        source = self.get_function_source(function_name)
+        return load_function_from_string(
+            func_def_str=source, register_function=register_function, namespace=namespace
+        )
 
 
 def validate_input_parameter(

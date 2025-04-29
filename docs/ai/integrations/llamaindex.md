@@ -110,8 +110,9 @@ tools = toolkit.tools
 python_exec_tool = tools[0]
 
 # Execute the tool directly
-result = python_exec_tool.invoke({"code": "print(1 + 1)"})
-print(result)  # Outputs: 2
+result = python_exec_tool.call(code="print(1 + 1)")
+print(result)  # Outputs: {"format": "SCALAR", "value": "2\n"}
+
 ```
 
 ### Using the tool in a LlamaIndex ReActAgent

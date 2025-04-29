@@ -25,6 +25,11 @@ Before you begin, ensure you have the following:
 Ensure that you have met all of the prerequisites and have followed the
 [Unity Catalog Quickstart Guide](../quickstart.md). Once your server is up and running and you are able to create a catalog, schemas, and functions, you're all set to continue with this guide.
 
+To see interactive examples of end-to-end workflows using Unity Catalog client capabilities for GenAI tool use, you can view or download the following notebooks:
+
+- [Quickstart Notebook](https://github.com/unitycatalog/unitycatalog/blob/main/ai/core/UnityCatalog_Functions_Quickstart.ipynb)
+- [Dev Loop Notebook for function authoring](https://github.com/unitycatalog/unitycatalog/blob/main/ai/core/UnityCatalog_AI_DevLoop.ipynb)
+
 ### Databricks Unity Catalog
 
 If you are going to interface with ``Databricks Unity Catalog``, you can install the optional package extension from PyPI:

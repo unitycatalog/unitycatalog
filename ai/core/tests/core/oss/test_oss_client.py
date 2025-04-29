@@ -6,6 +6,7 @@ import re
 import textwrap
 from contextlib import contextmanager
 from dataclasses import dataclass
+from types import SimpleNamespace
 from typing import Any, Dict, List, Optional, Union
 
 import pytest
@@ -18,7 +19,9 @@ from unitycatalog.ai.core.client import (
     validate_input_parameter,
     validate_param,
 )
+from unitycatalog.ai.core.executor.local import run_in_sandbox, run_in_sandbox_async
 from unitycatalog.ai.core.types import Variant
+from unitycatalog.ai.core.utils.execution_utils import load_function_from_string
 from unitycatalog.ai.test_utils.function_utils import (
     CATALOG,
     int_func_no_doc,
@@ -88,6 +91,20 @@ def simple_function_obj():
         expected_result="test",
         comment="test",
     )
+
+
+def simple_func(a: int, b: int) -> int:
+    """
+    A simple local function.
+
+    Args:
+        a: an int
+        b: an int
+
+    Returns:
+        int: The sum of a and b.
+    """
+    return a + b
 
 
 @pytest_asyncio.fixture
@@ -449,7 +466,7 @@ async def test_list_functions(uc_client: UnitycatalogFunctionClient):
             full_data_type="INT",
             routine_definition="return x+y",
             input_data={"x": 1, "y": 2},
-            expected_result="3",
+            expected_result=3,
             comment="test",
         ),
         FunctionObj(
@@ -466,7 +483,7 @@ async def test_list_functions(uc_client: UnitycatalogFunctionClient):
             full_data_type="DOUBLE",
             routine_definition="return sum(x)",
             input_data={"x": (1, 2, 3)},
-            expected_result="6",
+            expected_result=6,
             comment="test",
         ),
         FunctionObj(
@@ -483,7 +500,7 @@ async def test_list_functions(uc_client: UnitycatalogFunctionClient):
             full_data_type="BOOLEAN",
             routine_definition="return x",
             input_data={"x": True},
-            expected_result="True",
+            expected_result=True,
             comment="test",
         ),
         FunctionObj(
@@ -517,7 +534,7 @@ async def test_list_functions(uc_client: UnitycatalogFunctionClient):
             full_data_type="BYTE",
             routine_definition="return x",
             input_data={"x": 127},
-            expected_result="127",
+            expected_result=127,
             comment="test",
         ),
         FunctionObj(
@@ -534,7 +551,7 @@ async def test_list_functions(uc_client: UnitycatalogFunctionClient):
             full_data_type="SHORT",
             routine_definition="return x",
             input_data={"x": 32767},
-            expected_result="32767",
+            expected_result=32767,
             comment="test",
         ),
         FunctionObj(
@@ -551,7 +568,7 @@ async def test_list_functions(uc_client: UnitycatalogFunctionClient):
             full_data_type="LONG",
             routine_definition="return x",
             input_data={"x": 2**63 - 1},
-            expected_result=f"{2**63 - 1}",
+            expected_result=2**63 - 1,
             comment="test",
         ),
         FunctionObj(
@@ -674,7 +691,7 @@ async def test_list_functions(uc_client: UnitycatalogFunctionClient):
             full_data_type="INT",
             routine_definition="return x['key1']",
             input_data={"x": {"key1": 1, "key2": 2}},
-            expected_result="1",
+            expected_result=1,
             comment="test",
         ),
         FunctionObj(
@@ -760,6 +777,7 @@ async def test_delete_nonexistent_function(uc_client):
 
 @pytest.mark.asyncio
 async def test_execute_function_with_error(uc_client):
+    uc_client.execution_mode = "local"
     function_name = f"{CATALOG}.{SCHEMA}.error_function"
     routine_definition = "raise ValueError('Intentional Error')"
     data_type = "STRING"
@@ -777,6 +795,30 @@ async def test_execute_function_with_error(uc_client):
     )
 
     result = uc_client.execute_function(function_name=function_name, parameters={})
+    assert result.error == "Intentional Error"
+    assert result.value is None
+
+
+@pytest.mark.asyncio
+async def test_execute_function_with_error_async(uc_client):
+    uc_client.execution_mode = "local"
+    function_name = f"{CATALOG}.{SCHEMA}.error_function"
+    routine_definition = "raise ValueError('Intentional Error')"
+    data_type = "STRING"
+    parameters = []
+
+    uc_client.create_function(
+        function_name=function_name,
+        routine_definition=routine_definition,
+        data_type=data_type,
+        full_data_type=data_type,
+        parameters=parameters,
+        timeout=10,
+        replace=True,
+        comment="test",
+    )
+
+    result = await uc_client.execute_function_async(function_name=function_name, parameters={})
     assert result.error == "Intentional Error"
     assert result.value is None
 
@@ -862,8 +904,8 @@ async def test_function_caching(uc_client):
     result1 = uc_client.execute_function(function_name=function_name, parameters={"x": 2})
     result2 = uc_client.execute_function(function_name=function_name, parameters={"x": 3})
 
-    assert result1.value == "4"
-    assert result2.value == "6"
+    assert result1.value == 4
+    assert result2.value == 6
 
     assert function_name.split(".")[-1] in uc_client.func_cache
 
@@ -896,7 +938,7 @@ async def test_function_overwrite_cache_invalidate(uc_client):
 
     # Execute the function to cache it
     result1 = uc_client.execute_function(function_name=function_name, parameters={"x": 2})
-    assert result1.value == "4"
+    assert result1.value == 4
 
     # Overwrite the function with a new definition
     new_routine_definition = "return x * 3"
@@ -913,7 +955,7 @@ async def test_function_overwrite_cache_invalidate(uc_client):
 
     # Execute the function again to check if the cache is invalidated
     result2 = uc_client.execute_function(function_name=function_name, parameters={"x": 2})
-    assert result2.value == "6"
+    assert result2.value == 6
 
 
 @pytest.mark.asyncio
@@ -1432,3 +1474,470 @@ def test_create_function_with_none_param_default(uc_client: UnitycatalogFunction
     uc_client.create_python_function(func=null_func, catalog=CATALOG, schema=SCHEMA, replace=True)
     result = uc_client.execute_function(function_name=full_name, parameters={})
     assert result.value == "None"
+
+
+def test_get_python_callable_integration_complex(uc_client: UnitycatalogFunctionClient):
+    def complex_python_func(
+        a: int,
+        b: float,
+        c: str,
+        d: bool,
+        e: list[str],
+        f: dict[str, int],
+        h: dict[str, list[int]],
+        i: dict[str, list[dict[str, list[int]]]],
+    ) -> dict[str, list[str]]:
+        """
+        A complex function that processes various types.
+
+        Args:
+            a: an int
+            b: a float
+            c: a string
+            d: a bool
+            e: a list of strings
+            f: a dict mapping strings to ints
+            h: a dict mapping strings to lists of ints
+            i: a dict mapping strings to lists of dicts mapping strings to lists of ints
+
+        Returns:
+            dict[str, list[str]]: A dictionary with a single key "result" and a list of string representations.
+        """
+
+        def _helper(x: float) -> int:
+            return int(x) + a
+
+        return {"result": [str(a), str(b), c, str(d), ",".join(e), str(f), str(h), str(i)]}
+
+    function_name = f"{CATALOG}.{SCHEMA}.complex_python_func"
+    uc_client.create_python_function(
+        func=complex_python_func, catalog=CATALOG, schema=SCHEMA, replace=True
+    )
+    callable_def = uc_client.get_function_source(function_name)
+
+    expected_header = (
+        "def complex_python_func(a: int, b: float, c: str, d: bool, e: list[str], "
+        "f: dict[str, int], h: dict[str, list[int]], i: dict[str, list[dict[str, "
+        "list[int]]]]) -> dict[str, list[str]]:"
+    )
+
+    assert expected_header in callable_def
+    assert "def _helper(x: float) -> int:" in callable_def
+    assert "return {" in callable_def and '"result": [' in callable_def
+    assert "Args:" in callable_def
+    assert "Returns:" in callable_def
+
+
+def test_tuple_handling(uc_client: UnitycatalogFunctionClient):
+    def tuple_func(a: tuple[int], b: tuple[str], c: list[tuple[str]]) -> tuple[str]:
+        """
+        A function that processes tuples.
+
+        Args:
+            a: a tuple of integers
+            b: a tuple of strings
+            c: a list of tuples of strings
+
+        Returns:
+            tuple[str]: A tuple with the first string and the sum of integers.
+        """
+        return b[0], str(sum(a))
+
+    function_name = f"{CATALOG}.{SCHEMA}.tuple_func"
+    uc_client.create_python_function(func=tuple_func, catalog=CATALOG, schema=SCHEMA, replace=True)
+    callable_def = uc_client.get_function_source(function_name)
+    expected_header = "def tuple_func(a: list[int], b: list[str], c: list[list[str]]) -> list[str]:"
+    assert expected_header in callable_def
+    assert "return b" in callable_def
+    assert "Args:" in callable_def
+    assert "Returns:" in callable_def
+
+
+def test_get_python_callable_integration_standard_indent(uc_client: UnitycatalogFunctionClient):
+    def simple_func(a: int, b: int) -> int:
+        """
+        A simple test function.
+
+        Args:
+          a: an int
+          b: an int
+
+        Returns:
+          int: The sum of a and b.
+        """
+
+        def _internal(x: int) -> int:
+            return x + a
+
+        return _internal(b)
+
+    function_name = f"{CATALOG}.{SCHEMA}.simple_func"
+
+    uc_client.create_python_function(func=simple_func, catalog=CATALOG, schema=SCHEMA, replace=True)
+
+    callable_def = uc_client.get_function_source(function_name)
+
+    expected_def = (
+        "def simple_func(a: int, b: int) -> int:\n"
+        '    """\n'
+        "    A simple test function.\n"
+        "    \n"
+        "    Args:\n"
+        "        a: an int\n"
+        "        b: an int\n"
+        "    \n"
+        "    Returns:\n"
+        "        int\n"
+        '    """\n'
+        "    def _internal(x: int) -> int:\n"
+        "        return x + a\n\n"
+        "    return _internal(b)\n"
+    )
+
+    # Assert exact match.
+    assert callable_def == expected_def, f"Expected:\n{expected_def}\nGot:\n{callable_def}"
+
+
+def test_get_python_callable_integration_complex(uc_client: UnitycatalogFunctionClient):
+    def complex_func(a: int, b: int) -> float:
+        """
+        A complex test function.
+
+        Args:
+          a: an int
+          b: an int
+
+        Returns:
+          int: The product of a and b plus 10.
+        """
+        import math
+
+        def _inner(x: int) -> int:
+            return x + 5
+
+        def _helper(y: int) -> int:
+            def _nested(z: int) -> int:
+                return z * 2
+
+            return _nested(y) + _inner(y)
+
+        return _helper(a) + math.sqrt(b)
+
+    function_name = f"{CATALOG}.{SCHEMA}.complex_func"
+
+    uc_client.create_python_function(
+        func=complex_func, catalog=CATALOG, schema=SCHEMA, replace=True
+    )
+
+    callable_def = uc_client.get_function_source(function_name)
+
+    expected_def = (
+        "def complex_func(a: int, b: int) -> float:\n"
+        '    """\n'
+        "    A complex test function.\n"
+        "    \n"
+        "    Args:\n"
+        "        a: an int\n"
+        "        b: an int\n"
+        "    \n"
+        "    Returns:\n"
+        "        float\n"
+        '    """\n'
+        "    import math\n\n"
+        "    def _inner(x: int) -> int:\n"
+        "        return x + 5\n\n"
+        "    def _helper(y: int) -> int:\n"
+        "        def _nested(z: int) -> int:\n"
+        "            return z * 2\n\n"
+        "        return _nested(y) + _inner(y)\n\n"
+        "    return _helper(a) + math.sqrt(b)\n"
+    )
+
+    assert callable_def == expected_def, f"Expected:\n{expected_def}\nGot:\n{callable_def}"
+
+
+def test_long_argument_comment(uc_client: UnitycatalogFunctionClient):
+    def long_comment_func(a: int) -> int:
+        """
+        A function with a long argument comment.
+
+        Args:
+            a: An integer that represents the first number. Like some integers, this one is also an integer.
+            This comment is intentionally long.
+
+        Returns:
+            The integer value.
+        """
+        return a
+
+    function_name = f"{CATALOG}.{SCHEMA}.long_comment_func"
+    uc_client.create_python_function(
+        func=long_comment_func, catalog=CATALOG, schema=SCHEMA, replace=True
+    )
+    callable_def = uc_client.get_function_source(function_name)
+    expected_header = (
+        "def long_comment_func(a: int) -> int:\n"
+        '    """\n'
+        "    A function with a long argument comment.\n"
+        "    \n"
+        "    Args:\n"
+        "        a: An integer that represents the first number. Like some integers, this one is also an integer.\n"
+        "          This comment is intentionally long.\n"
+        "    \n"
+        "    Returns:\n"
+        "        int\n"
+        '    """\n'
+    )
+    assert callable_def.startswith(expected_header), (
+        f"Expected:\n{expected_header}\nGot:\n{callable_def}"
+    )
+
+
+def test_local_function_execution_sync(uc_client: UnitycatalogFunctionClient):
+    uc_client.execution_mode = "local"
+    function_name = f"{CATALOG}.{SCHEMA}.simple_func"
+    uc_client.create_python_function(func=simple_func, catalog=CATALOG, schema=SCHEMA, replace=True)
+
+    result = uc_client.execute_function(function_name=function_name, parameters={"a": 5, "b": 10})
+    assert result.value == 15
+    assert result.format == "SCALAR"
+
+
+@pytest.mark.asyncio
+async def test_local_function_execution_async(uc_client: UnitycatalogFunctionClient):
+    uc_client.execution_mode = "local"
+    function_name = f"{CATALOG}.{SCHEMA}.simple_func"
+    uc_client.create_python_function(func=simple_func, catalog=CATALOG, schema=SCHEMA, replace=True)
+
+    result = await uc_client.execute_function_async(
+        function_name=function_name, parameters={"a": 5, "b": 10}
+    )
+    assert result.value == 15
+    assert result.format == "SCALAR"
+
+
+def test_manual_function_sandbox_execution_sync(uc_client: UnitycatalogFunctionClient):
+    uc_client.execution_mode = "sandbox"
+    function_name = f"{CATALOG}.{SCHEMA}.simple_func"
+    uc_client.create_python_function(func=simple_func, catalog=CATALOG, schema=SCHEMA, replace=True)
+
+    retrieved = uc_client.get_function_source(function_name)
+    converted = load_function_from_string(retrieved)
+    success, result = run_in_sandbox(converted, {"a": 5, "b": 10})
+    assert success
+    assert result == 15
+
+
+@pytest.mark.asyncio
+async def test_manual_function_sandbox_execution_async(uc_client: UnitycatalogFunctionClient):
+    uc_client.execution_mode = "sandbox"
+    function_name = f"{CATALOG}.{SCHEMA}.simple_func"
+    uc_client.create_python_function(func=simple_func, catalog=CATALOG, schema=SCHEMA, replace=True)
+
+    retrieved = uc_client.get_function_source(function_name)
+    converted = load_function_from_string(retrieved)
+    success, result = await run_in_sandbox_async(converted, {"a": 5, "b": 10})
+    assert success
+    assert result == 15
+
+
+def test_function_exception_local_python_function(uc_client):
+    uc_client.execution_mode = "local"
+
+    def raise_error(a: int, b: int) -> None:
+        """
+        Raises an exception for testing purposes.
+        Args:
+            a: an integer
+            b: another integer
+        Raises:
+            ValueError: Intentional error for testing
+        Returns:
+            Nothing
+        """
+        raise ValueError("Intentional error for testing")
+
+    function_name = f"{CATALOG}.{SCHEMA}.raise_error"
+    uc_client.create_python_function(func=raise_error, catalog=CATALOG, schema=SCHEMA, replace=True)
+    result = uc_client.execute_function(function_name=function_name, parameters={"a": 1, "b": 2})
+    assert result.error is not None
+    assert "Intentional error for testing" in result.error
+
+
+@pytest.mark.asyncio
+async def test_function_exception_local_python_function_async(uc_client):
+    uc_client.execution_mode = "local"
+
+    def raise_error(a: int, b: int) -> None:
+        """
+        Raises an exception for testing purposes.
+        Args:
+            a: an integer
+            b: another integer
+        Raises:
+            ValueError: Intentional error for testing
+        Returns:
+            Nothing
+        """
+        raise ValueError("Intentional error for testing")
+
+    function_name = f"{CATALOG}.{SCHEMA}.raise_error"
+    uc_client.create_python_function(func=raise_error, catalog=CATALOG, schema=SCHEMA, replace=True)
+    result = await uc_client.execute_function_async(
+        function_name=function_name, parameters={"a": 1, "b": 2}
+    )
+    assert result.error is not None
+    assert "Intentional error for testing" in result.error
+
+
+@pytest.mark.asyncio
+async def test_function_exception_sandbox_async(uc_client):
+    uc_client.execution_mode = "sandbox"
+
+    def raise_error_async(a: int, b: int) -> None:
+        """
+        Raises an exception for testing purposes.
+        Args:
+            a: an integer
+            b: another integer
+        Raises:
+            ValueError: Intentional error for testing
+        Returns:
+            Nothing
+        """
+        raise ValueError("Async intentional error")
+
+    function_name = f"{CATALOG}.{SCHEMA}.raise_error_async"
+    uc_client.create_python_function(
+        func=raise_error_async, catalog=CATALOG, schema=SCHEMA, replace=True
+    )
+    result = await uc_client.execute_function_async(
+        function_name=function_name, parameters={"a": 1, "b": 2}
+    )
+    assert result.error is not None
+    assert "Async intentional error" in result.error
+
+
+def test_no_output_function_local(uc_client):
+    uc_client.execution_mode = "local"
+
+    def no_output(a: int, b: int) -> None:
+        """
+        A function that does not return anything.
+        Args:
+            a: an integer
+            b: another integer
+        Returns:
+            None
+        """
+        a + b
+        return None
+
+    function_name = f"{CATALOG}.{SCHEMA}.no_output"
+    uc_client.create_python_function(func=no_output, catalog=CATALOG, schema=SCHEMA, replace=True)
+    result = uc_client.execute_function(function_name=function_name, parameters={"a": 5, "b": 10})
+    assert "The function execution has completed, but no output was produced." in result.value
+
+
+@pytest.mark.asyncio
+async def test_no_output_function_sandbox(uc_client):
+    uc_client.execution_mode = "sandbox"
+
+    def no_output(a: int, b: int) -> None:
+        """
+        A function that does not return anything.
+        Args:
+            a: an integer
+            b: another integer
+        Returns:
+            None
+        """
+        a + b
+        return None
+
+    function_name = f"{CATALOG}.{SCHEMA}.no_output"
+    uc_client.create_python_function(func=no_output, catalog=CATALOG, schema=SCHEMA, replace=True)
+    result = await uc_client.execute_function_async(
+        function_name=function_name, parameters={"a": 5, "b": 10}
+    )
+    assert "The function execution has completed, but no output was produced." in result.value
+
+
+def test_fetch_function_callable(uc_client):
+    function_name = f"{CATALOG}.{SCHEMA}.simple_func"
+    uc_client.create_python_function(func=simple_func, catalog=CATALOG, schema=SCHEMA, replace=True)
+
+    callable_def = uc_client.get_function_as_callable(function_name)
+    result = callable_def(5, 10)
+    assert result == 15
+
+
+def test_fetch_function_callable_namespace_scoped(uc_client):
+    constant = 10
+
+    def func_with_constant(a: int) -> int:
+        """
+        A function that adds a constant to an integer.
+        Args:
+            a: an integer
+        Returns:
+            The sum of a and the constant.
+        """
+        return a + constant
+
+    assert func_with_constant(5) == 15
+
+    function_name = f"{CATALOG}.{SCHEMA}.func_with_constant"
+    uc_client.create_python_function(
+        func=func_with_constant, catalog=CATALOG, schema=SCHEMA, replace=True
+    )
+
+    scoped_namespace = {"__builtins__": __builtins__, "constant": 5}
+
+    callable_def = uc_client.get_function_as_callable(
+        function_name=function_name, namespace=scoped_namespace
+    )
+
+    scoped_ns = SimpleNamespace(**scoped_namespace)
+
+    assert scoped_ns.func_with_constant(5) == 10
+    assert callable_def(5) == 10
+
+
+def test_sql_function_with_null_default(uc_client: UnitycatalogFunctionClient):
+    function_name = f"{CATALOG}.{SCHEMA}.null_default_func"
+
+    uc_client.create_function(
+        function_name=function_name,
+        routine_definition=("return 'a is ' + ('NULL' if a is None else a) + ', b is ' + b"),
+        data_type="STRING",
+        full_data_type="STRING",
+        comment="Tests NULL default parameter handling",
+        parameters=[
+            FunctionParameterInfo(
+                name="a",
+                type_name="STRING",
+                type_text="string",
+                type_json='{"name":"a","type":"string","nullable":true,"metadata":{}}',
+                position=0,
+                parameter_default="NULL",
+            ),
+            FunctionParameterInfo(
+                name="b",
+                type_name="STRING",
+                type_text="string",
+                type_json='{"name":"b","type":"string","nullable":true,"metadata":{}}',
+                position=1,
+                parameter_default="'non-null-default'",
+            ),
+        ],
+        replace=True,
+    )
+
+    result = uc_client.execute_function(function_name=function_name, parameters={})
+    assert result.value == "a is NULL, b is non-null-default"
+
+    result = uc_client.execute_function(
+        function_name=function_name, parameters={"a": "custom-value"}
+    )
+    assert result.value == "a is custom-value, b is non-null-default"

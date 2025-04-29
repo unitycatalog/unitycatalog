@@ -27,6 +27,7 @@ lazy val sparkVersion = "3.5.3"
 lazy val jacksonVersion = "2.17.0"
 lazy val openApiToolsJacksonBindNullableVersion = "0.2.6"
 lazy val log4jVersion = "2.24.3"
+val orgApacheHttpVersion = "4.5.14"
 
 lazy val commonSettings = Seq(
   organization := orgName,
@@ -142,6 +143,8 @@ lazy val controlApi = (project in file("target/control/java"))
       "com.fasterxml.jackson.core" % "jackson-annotations" % jacksonVersion,
       "com.fasterxml.jackson.core" % "jackson-databind" % jacksonVersion,
       "com.fasterxml.jackson.datatype" % "jackson-datatype-jsr310" % jacksonVersion,
+      "org.apache.httpcomponents" % "httpclient" % orgApacheHttpVersion,
+      "org.apache.httpcomponents" % "httpmime" % orgApacheHttpVersion,
     ),
     (Compile / compile) := ((Compile / compile) dependsOn generate).value,
 
@@ -347,10 +350,10 @@ lazy val server = (project in file("server"))
       "org.apache.httpcomponents" % "httpclient" % "4.5.14",
 
       // Iceberg REST Catalog dependencies
-      "org.apache.iceberg" % "iceberg-core" % "1.5.2",
-      "org.apache.iceberg" % "iceberg-aws" % "1.5.2",
-      "org.apache.iceberg" % "iceberg-azure" % "1.5.2",
-      "org.apache.iceberg" % "iceberg-gcp" % "1.5.2",
+      "org.apache.iceberg" % "iceberg-core" % "1.8.1",
+      "org.apache.iceberg" % "iceberg-aws" % "1.8.1",
+      "org.apache.iceberg" % "iceberg-azure" % "1.8.1",
+      "org.apache.iceberg" % "iceberg-gcp" % "1.8.1",
       "software.amazon.awssdk" % "s3" % "2.24.0",
       "software.amazon.awssdk" % "sts" % "2.24.0",
       "io.vertx" % "vertx-core" % "4.3.5",
@@ -479,7 +482,7 @@ lazy val controlModels = (project in file("server") / "target" / "controlmodels"
 
 lazy val cli = (project in file("examples") / "cli")
   .dependsOn(server % "test->test")
-  .dependsOn(serverModels, controlModels)
+  .dependsOn(serverModels)
   .dependsOn(client % "compile->compile;test->test")
   .dependsOn(controlApi % "compile->compile")
   .settings(
@@ -665,4 +668,3 @@ def generateClasspathFile(targetDir: File, classpath: Classpath): Unit = {
 }
 
 val generate = taskKey[Unit]("generate code from APIs")
-

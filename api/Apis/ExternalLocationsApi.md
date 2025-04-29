@@ -17,7 +17,7 @@ All URIs are relative to *http://localhost:8080/api/2.1/unity-catalog*
 
 Create an external location
 
-    Creates a new external location entry in the metastore. The caller must be a metastore admin or have the **CREATE_EXTERNAL_LOCATION** privilege on both the metastore and the associated storage credential. 
+    Creates a new external location entry in the metastore. The caller must be a metastore admin to be able to create external locations. 
 
 ### Parameters
 

@@ -109,9 +109,12 @@ toolkit = UCFunctionToolkit(function_names=[func_name])
 tools = toolkit.tools
 python_exec_tool = tools[0]
 
+# Printing the tool definition will display the configured metadata for the instance.
+print(python_exec_tool)
+
 # Execute the tool directly
-result = python_exec_tool.invoke({"code": "print(1 + 1)"})
-print(result)  # Outputs: 2
+result = client.execute_function(function_name=func_name, parameters={"code": "print(1 + 1)"})
+print(result.value)  # Outputs: 2
 ```
 
 ### Send a tool-enabled question to OpenAI

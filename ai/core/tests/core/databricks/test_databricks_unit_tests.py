@@ -22,10 +22,17 @@ from databricks.sdk.service.catalog import (
 
 from unitycatalog.ai.core.databricks import (
     DatabricksFunctionClient,
+    dynamically_construct_python_function,
     extract_function_name,
-    retry_on_session_expiration,
 )
 from unitycatalog.ai.core.envs.databricks_env_vars import UCAI_DATABRICKS_SESSION_RETRY_MAX_ATTEMPTS
+from unitycatalog.ai.core.utils.retry_utils import (
+    SESSION_CHANGED_MESSAGE,
+    SESSION_EXPIRED_MESSAGE,
+    SESSION_HANDLE_INVALID_MESSAGE,
+    SessionExpirationException,
+    retry_on_session_expiration,
+)
 from unitycatalog.ai.test_utils.client_utils import client  # noqa: F401
 from unitycatalog.ai.test_utils.function_utils import (
     CATALOG,
@@ -493,48 +500,70 @@ def test_function_with_union_return_type(client: DatabricksFunctionClient):
 
 
 class MockClient:
-    def __init__(self):
+    def __init__(self, error_message):
         self.call_count = 0
         self.refresh_count = 0
         self._is_default_client = True
+        self.error_message = error_message
 
     @retry_on_session_expiration
     def mock_function(self):
         if self.call_count < 2:
             self.call_count += 1
-            raise Exception("session_id is no longer usable")
+            raise SessionExpirationException(self.error_message)
         return "Success"
 
     def refresh_client_and_session(self):
         self.refresh_count += 1
 
 
-def test_retry_on_session_expiration_decorator():
-    client = MockClient()
+@pytest.mark.parametrize(
+    "error_message",
+    [
+        SESSION_EXPIRED_MESSAGE,
+        SESSION_CHANGED_MESSAGE,
+        SESSION_HANDLE_INVALID_MESSAGE,
+    ],
+)
+def test_retry_on_session_expiration_varied_messages(error_message, caplog):
+    caplog.set_level(logging.INFO)
+    client = MockClient(error_message=error_message)
 
     result = client.mock_function()
 
     assert result == "Success"
     assert client.call_count == 2
     assert client.refresh_count == 2
+    assert "Successfully re-acquired connection to a serverless instance." in caplog.text
 
 
 @patch("time.sleep", return_value=None)
-def test_retry_on_session_expiration_decorator_exceeds_attempts(mock_sleep):
-    client = MockClient()
-    client._is_default_client = True
+@pytest.mark.parametrize(
+    "error_message",
+    [
+        SESSION_EXPIRED_MESSAGE,
+        SESSION_CHANGED_MESSAGE,
+        SESSION_HANDLE_INVALID_MESSAGE,
+    ],
+)
+def test_retry_on_session_expiration_exceeds_attempts(mock_sleep, error_message):
+    client = MockClient(error_message=error_message)
 
     @retry_on_session_expiration
     def mock_function_always_fail(self):
         self.call_count += 1
-        raise Exception("session_id is no longer usable")
+        raise SessionExpirationException(self.error_message)
 
     client.mock_function = mock_function_always_fail.__get__(client)
 
-    with pytest.raises(RuntimeError, match="Failed to execute mock_function_always_fail after"):
+    with pytest.raises(
+        RuntimeError,
+        match=f"Failed to execute mock_function_always_fail after {UCAI_DATABRICKS_SESSION_RETRY_MAX_ATTEMPTS.get()} attempts",
+    ):
         client.mock_function()
 
-    assert client.call_count == int(UCAI_DATABRICKS_SESSION_RETRY_MAX_ATTEMPTS.get())
+    assert client.call_count == UCAI_DATABRICKS_SESSION_RETRY_MAX_ATTEMPTS.get()
+    assert client.refresh_count == UCAI_DATABRICKS_SESSION_RETRY_MAX_ATTEMPTS.get() - 1
 
 
 @pytest.fixture
@@ -572,7 +601,7 @@ def test_execute_function_success(mock_workspace_client, mock_spark_session, moc
 
     client = DatabricksFunctionClient(client=mock_workspace_client)
 
-    client.set_default_spark_session = MagicMock()
+    client.set_spark_session = MagicMock()
     client.spark = mock_spark_session
 
     client.get_function = MagicMock(return_value=mock_function_info)
@@ -606,7 +635,7 @@ def test_execute_function_with_retry(mock_workspace_client, mock_spark_session, 
         mock_spark_session.sql.side_effect = side_effect
 
         client = DatabricksFunctionClient(client=mock_workspace_client)
-        client.set_default_spark_session = MagicMock()
+        client.set_spark_session = MagicMock()
         client.spark = mock_spark_session
         client._is_default_client = True
 
@@ -636,11 +665,14 @@ AS $$
 $$
 """
 
-        mock_spark_session.sql.side_effect = [Exception("session_id is no longer usable"), None]
+        mock_spark_session.sql.side_effect = [
+            SessionExpirationException("session_id is no longer usable"),
+            None,
+        ]
 
         client = DatabricksFunctionClient(client=mock_workspace_client)
         client._is_default_client = True
-        client.set_default_spark_session = MagicMock()
+        client.set_spark_session = MagicMock()
         client.spark = mock_spark_session
 
         mock_function_info = MagicMock()
@@ -668,28 +700,32 @@ def test_create_function_retry_exceeds_attempts(mock_workspace_client, mock_spar
 RETURNS INT
 AS $$ return 1 $$"""
 
-        mock_spark_session.sql.side_effect = Exception("session_id is no longer usable")
+        mock_spark_session.sql.side_effect = SessionExpirationException(
+            "session_id is no longer usable"
+        )
 
         client = DatabricksFunctionClient(client=mock_workspace_client)
         client._is_default_client = True
-        client.set_default_spark_session = MagicMock()
+        client.set_spark_session = MagicMock()
         client.spark = mock_spark_session
         client.refresh_client_and_session = MagicMock()
 
         with pytest.raises(RuntimeError, match="Failed to execute create_function after"):
             client.create_function(sql_function_body=sql_function_body)
 
-        max_attempts = int(UCAI_DATABRICKS_SESSION_RETRY_MAX_ATTEMPTS.get())
+        max_attempts = UCAI_DATABRICKS_SESSION_RETRY_MAX_ATTEMPTS.get()
         assert client.refresh_client_and_session.call_count == max_attempts - 1
         assert mock_spark_session.sql.call_count == max_attempts
         assert mock_time_sleep.call_count == max_attempts - 1
 
 
 def test_no_retry_with_custom_client(mock_workspace_client, mock_spark_session, mock_function_info):
-    mock_spark_session.sql.side_effect = Exception("session_id is no longer usable")
+    mock_spark_session.sql.side_effect = SessionExpirationException(
+        "session_id is no longer usable"
+    )
 
     client = DatabricksFunctionClient(client=mock_workspace_client)
-    client.set_default_spark_session = MagicMock()
+    client.set_spark_session = MagicMock()
     client.spark = mock_spark_session
     client._is_default_client = False
 
@@ -765,7 +801,7 @@ def test_execute_function_with_mock_string_input(
 
     client = DatabricksFunctionClient(client=mock_workspace_client)
 
-    client.set_default_spark_session = MagicMock()
+    client.set_spark_session = MagicMock()
     client.spark = mock_spark_session
     client.get_function = MagicMock(return_value=mock_function_info)
 
@@ -817,7 +853,7 @@ greet("World")"""
 
     client = DatabricksFunctionClient(client=mock_workspace_client)
 
-    client.set_default_spark_session = MagicMock()
+    client.set_spark_session = MagicMock()
     client.spark = mock_spark_session
 
     client.get_function = MagicMock(return_value=mock_function_info)
@@ -865,7 +901,7 @@ def test_execute_function_with_variant_input(
     expected_args = {"a": 10}
 
     client = DatabricksFunctionClient(client=mock_workspace_client)
-    client.set_default_spark_session = MagicMock()
+    client.set_spark_session = MagicMock()
     client.spark = mock_spark_session
     client.get_function = MagicMock(return_value=mock_function_info)
 
@@ -911,7 +947,7 @@ def test_execute_function_warnings_missing_descriptions(mock_workspace_client, m
     )
 
     client = DatabricksFunctionClient(client=mock_workspace_client)
-    client.set_default_spark_session = MagicMock()
+    client.set_spark_session = MagicMock()
     client.spark = mock_spark_session
     client.get_function = MagicMock(return_value=func_info)
 
@@ -1050,7 +1086,17 @@ def test_create_python_function_with_environment_version(client: DatabricksFunct
 
 
 def test_workspace_provided_issues_warning(mock_workspace_client, caplog):
-    with caplog.at_level(logging.WARNING):
+    with (
+        caplog.at_level(logging.WARNING),
+        patch(
+            "unitycatalog.ai.core.databricks.get_default_databricks_workspace_client",
+            return_value=MagicMock(),
+        ),
+        patch(
+            "unitycatalog.ai.core.databricks.DatabricksFunctionClient.set_spark_session",
+            lambda self: None,
+        ),
+    ):
         DatabricksFunctionClient(client=mock_workspace_client, warehouse_id="id")
 
     assert "The argument `warehouse_id` was specified" in caplog.text
@@ -1093,7 +1139,7 @@ def test_create_wrapped_function_databricks(mock_workspace_client, mock_spark_se
             DatabricksFunctionClient, "create_function", return_value="dummy_func_info"
         ) as mock_create_func:
             client = DatabricksFunctionClient(client=mock_workspace_client)
-            client.set_default_spark_session = MagicMock()
+            client.set_spark_session = MagicMock()
             client.spark = mock_spark_session
 
             result = client.create_wrapped_function(
@@ -1128,7 +1174,7 @@ def test_create_wrapped_function_with_dependencies(mock_workspace_client, mock_s
             DatabricksFunctionClient, "create_function", return_value="dummy_func_info"
         ) as mock_create_func:
             client = DatabricksFunctionClient(client=mock_workspace_client)
-            client.set_default_spark_session = MagicMock()
+            client.set_spark_session = MagicMock()
             client.spark = mock_spark_session
 
             result = client.create_wrapped_function(
@@ -1154,8 +1200,7 @@ def test_create_wrapped_function_with_dependencies(mock_workspace_client, mock_s
             assert result == "dummy_func_info"
 
 
-def test_create_wrapped_function_invalid_primary_databricks(mock_workspace_client):
-    client = DatabricksFunctionClient(client=mock_workspace_client)
+def test_create_wrapped_function_invalid_primary_databricks(client: DatabricksFunctionClient):
     with pytest.raises(ValueError, match="The provided primary function is not callable."):
         client.create_wrapped_function(
             primary_func="not_callable",
@@ -1164,13 +1209,6 @@ def test_create_wrapped_function_invalid_primary_databricks(mock_workspace_clien
             schema="sch",
             replace=False,
         )
-
-
-def test_workspace_provided_issues_warning(mock_workspace_client, caplog):
-    with caplog.at_level(logging.WARNING):
-        DatabricksFunctionClient(client=mock_workspace_client, warehouse_id="id")
-
-    assert "The argument `warehouse_id` was specified" in caplog.text
 
 
 def test_execute_function_with_default_params_databricks(mock_workspace_client, mock_spark_session):
@@ -1213,7 +1251,7 @@ def test_execute_function_with_default_params_databricks(mock_workspace_client, 
     )
 
     client = DatabricksFunctionClient(client=mock_workspace_client)
-    client.set_default_spark_session = MagicMock()
+    client.set_spark_session = MagicMock()
     client.spark = mock_spark_session
     client.get_function = MagicMock(return_value=dummy_func_info)
 
@@ -1285,7 +1323,7 @@ def test_execute_function_with_all_defaults_databricks(mock_workspace_client, mo
     )
 
     client = DatabricksFunctionClient(client=mock_workspace_client)
-    client.set_default_spark_session = MagicMock()
+    client.set_spark_session = MagicMock()
     client.spark = mock_spark_session
     client.get_function = MagicMock(return_value=dummy_func_info)
 
@@ -1327,7 +1365,7 @@ def test_execute_function_no_params_databricks(mock_workspace_client, mock_spark
     )
 
     client = DatabricksFunctionClient(client=mock_workspace_client)
-    client.set_default_spark_session = MagicMock()
+    client.set_spark_session = MagicMock()
     client.spark = mock_spark_session
     client.get_function = MagicMock(return_value=dummy_func_info)
 
@@ -1377,7 +1415,7 @@ def test_execute_function_with_none_default_databricks(mock_workspace_client, mo
     )
 
     client = DatabricksFunctionClient(client=mock_workspace_client)
-    client.set_default_spark_session = MagicMock()
+    client.set_spark_session = MagicMock()
     client.spark = mock_spark_session
     client.get_function = MagicMock(return_value=dummy_func_info)
 
@@ -1388,3 +1426,211 @@ def test_execute_function_with_none_default_databricks(mock_workspace_client, mo
     result = client.execute_function(f"{CATALOG}.{SCHEMA}.null_func", parameters={})
     assert result.error is None, f"Execution error: {result.error}"
     assert result.value == "None"
+
+
+class DummyParameter:
+    def __init__(self, name: str, type_text: str, comment: str):
+        self.name = name
+        self.type_text = type_text
+        self.comment = comment
+
+
+class DummyInputParams:
+    def __init__(self, parameters):
+        self.parameters = parameters
+
+
+class DummyType:
+    def __init__(self, value: str, name: str):
+        self.value = value
+        self.__name__ = name
+
+
+class DummyFunctionInfo:
+    pass
+
+
+def test_get_python_callable_valid(client: DatabricksFunctionClient):
+    fake_function_info = MagicMock()
+    fake_function_info.name = "my_func"
+    fake_function_info.routine_body = DummyType("EXTERNAL", "EXTERNAL")
+    fake_function_info.routine_definition = "return x * 2"
+    fake_function_info.comment = "A function that doubles the input"
+
+    fake_param = MagicMock()
+    fake_param.name = "x"
+    fake_param.type_text = "int"
+    fake_param.type_json = (
+        '{"name": "x", "type": "int", "nullable": true, "metadata": {"comment": "an int"}}'
+    )
+    fake_param.comment = "an int"
+    fake_function_info.input_params = DummyInputParams([fake_param])
+    fake_function_info.full_data_type = "STRING"
+
+    client.get_function = MagicMock(return_value=fake_function_info)
+
+    result = client.get_function_source("my_func")
+    assert "def my_func(x: int) -> str:" in result
+    assert '"""' in result
+    assert "A function that doubles the input" in result
+    assert "Args:" in result
+    assert "x: an int" in result
+    assert "return x * 2" in result
+
+
+def test_get_python_callable_non_external(client: DatabricksFunctionClient):
+    fake_function_info = MagicMock()
+    fake_function_info.name = "non_external_func"
+    fake_function_info.routine_body = MagicMock(value="SQL")
+    fake_function_info.routine_definition = "SELECT 1"
+    fake_function_info.input_params = MagicMock(parameters=[])
+    fake_function_info.data_type = MagicMock(value="STRING")
+
+    client.get_function = MagicMock(return_value=fake_function_info)
+
+    with pytest.raises(ValueError, match="is not an EXTERNAL Python function"):
+        client.get_function_source("non_external_func")
+
+
+def test_get_python_callable_multiline(client: DatabricksFunctionClient):
+    fake_function_info = MagicMock()
+    fake_function_info.name = "multi_line_func"
+    fake_function_info.routine_body = DummyType("EXTERNAL", "EXTERNAL")
+    fake_function_info.routine_definition = "line1\nline2\nline3"
+    fake_function_info.input_params = DummyInputParams([])  # No parameters.
+    fake_function_info.full_data_type = "STRING"
+    fake_function_info.comment = ""
+
+    client.get_function = MagicMock(return_value=fake_function_info)
+
+    result = client.get_function_source("multi_line_func")
+    assert "def multi_line_func() -> str:" in result
+    assert "line1" in result
+    assert "line2" in result
+    assert "line3" in result
+
+
+@pytest.fixture
+def complex_function_info():
+    # Build parameters for a complex function.
+    a = DummyParameter(
+        "a",
+        "LONG",
+        "an int",
+    )
+    b = DummyParameter(
+        "b",
+        "DOUBLE",
+        "a float",
+    )
+    c = DummyParameter(
+        "c",
+        "STRING",
+        "a string",
+    )
+    d = DummyParameter(
+        "d",
+        "BOOLEAN",
+        "some bool",
+    )
+    e = DummyParameter(
+        "e",
+        "ARRAY<STRING>",
+        "a list of str",
+    )
+    f = DummyParameter(
+        "f",
+        "MAP<STRING, LONG>",
+        "a dict of str to int",
+    )
+    g = DummyParameter(
+        "g",
+        "VARIANT",
+        "a variant",
+    )
+    h = DummyParameter(
+        "h",
+        "MAP<STRING, ARRAY<LONG>>",
+        "a complex type",
+    )
+    i = DummyParameter(
+        "i",
+        "MAP<STRING, ARRAY<MAP<STRING, ARRAY<LONG>>>>",
+        "a very complex type",
+    )
+
+    dummy_params = DummyInputParams([a, b, c, d, e, f, g, h, i])
+
+    func_info = DummyFunctionInfo()
+    func_info.name = "test_func"
+    func_info.input_params = dummy_params
+    func_info.routine_body = DummyType("EXTERNAL", "EXTERNAL")
+    func_info.routine_definition = (
+        "    def _internal(g: float) -> int:\n"
+        "        return g + c\n\n"
+        "    return str(a+b+_internal(4.5)) + c + str(d) + str(e) + str(f) + str(g)"
+    )
+    func_info.full_data_type = "MAP<STRING, ARRAY<STRING>>"
+    func_info.comment = "Just doing some testing here"
+    return func_info
+
+
+def test_reconstruct_callable_complex_function(complex_function_info):
+    reconstructed = dynamically_construct_python_function(complex_function_info)
+
+    expected_header = (
+        "test_func(a: int, b: float, c: str, d: bool, e: list[str], f: dict[str, int], "
+        "g: Variant, h: dict[str, list[int]], i: dict[str, list[dict[str, list[int]]]]) -> dict[str, list[str]]"
+    )
+    assert expected_header in reconstructed
+
+    assert "Just doing some testing here" in reconstructed
+    assert "a: an int" in reconstructed
+    assert "b: a float" in reconstructed
+    assert "c: a string" in reconstructed
+    assert "d: some bool" in reconstructed
+    assert "e: a list of str" in reconstructed
+    assert "f: a dict of str to int" in reconstructed
+    assert "g: a variant" in reconstructed
+    assert "h: a complex type" in reconstructed
+    assert "i: a very complex type" in reconstructed
+
+    assert "def _internal(g: float) -> int:" in reconstructed
+    assert "return str(a+b+_internal(4.5))" in reconstructed
+
+
+def test_local_execution_mode_warning(caplog):
+    with (
+        caplog.at_level(logging.WARNING),
+        patch(
+            "unitycatalog.ai.core.databricks.get_default_databricks_workspace_client",
+            return_value=MagicMock(),
+        ),
+        patch(
+            "unitycatalog.ai.core.databricks.DatabricksFunctionClient.set_spark_session",
+            lambda self: None,
+        ),
+    ):
+        DatabricksFunctionClient(execution_mode="local")
+    assert "You are running in 'local' execution mode, which is intended" in caplog.text
+
+
+@pytest.mark.parametrize(
+    "execution_mode",
+    ["LOCAL", "remote", "ServerLess", "invalid"],
+)
+def test_invalid_execution_mode(execution_mode):
+    with (
+        patch(
+            "unitycatalog.ai.core.databricks.get_default_databricks_workspace_client",
+            return_value=MagicMock(),
+        ),
+        patch(
+            "unitycatalog.ai.core.databricks.DatabricksFunctionClient.set_spark_session",
+            lambda self: None,
+        ),
+        pytest.raises(
+            ValueError, match=f"Execution mode '{execution_mode}' is not valid. Allowed values"
+        ),
+    ):
+        DatabricksFunctionClient(execution_mode=execution_mode)

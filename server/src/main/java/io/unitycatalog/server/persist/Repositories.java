@@ -22,8 +22,8 @@ public class Repositories {
   private final MetastoreRepository metastoreRepository;
   private final FunctionRepository functionRepository;
   private final ModelRepository modelRepository;
+  private final CredentialRepository credentialRepository;
   private final ExternalLocationRepository externalLocationRepository;
-  private final StorageCredentialRepository storageCredentialRepository;
 
   public Repositories(SessionFactory sessionFactory, ServerProperties serverProperties) {
     this.sessionFactory = sessionFactory;
@@ -37,7 +37,7 @@ public class Repositories {
     this.metastoreRepository = new MetastoreRepository(this, sessionFactory);
     this.functionRepository = new FunctionRepository(this, sessionFactory);
     this.modelRepository = new ModelRepository(this, sessionFactory);
+    this.credentialRepository = new CredentialRepository(this, sessionFactory);
     this.externalLocationRepository = new ExternalLocationRepository(this, sessionFactory);
-    this.storageCredentialRepository = new StorageCredentialRepository(this, sessionFactory);
   }
 }

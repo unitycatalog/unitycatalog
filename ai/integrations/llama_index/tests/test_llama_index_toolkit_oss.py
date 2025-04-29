@@ -6,7 +6,7 @@ from unittest import mock
 import pytest
 import pytest_asyncio
 from databricks.sdk.service.catalog import ColumnTypeName
-from pydantic import BaseModel
+from pydantic import BaseModel, ValidationError
 
 from unitycatalog.ai.core.base import (
     BaseFunctionClient,
@@ -15,6 +15,7 @@ from unitycatalog.ai.core.base import (
 from unitycatalog.ai.core.client import (
     UnitycatalogFunctionClient,
 )
+from unitycatalog.ai.core.utils.execution_utils import ExecutionMode
 from unitycatalog.ai.llama_index.toolkit import UCFunctionToolkit
 from unitycatalog.ai.test_utils.function_utils import (
     RETRIEVER_OUTPUT_CSV,
@@ -120,6 +121,16 @@ def generate_mock_execution_result(return_value: str = "result") -> FunctionExec
     return FunctionExecutionResult(format="SCALAR", value=return_value)
 
 
+def test_toolkit_creation_errors_no_client(monkeypatch):
+    monkeypatch.setattr("unitycatalog.ai.core.base._is_databricks_client_available", lambda: False)
+
+    with pytest.raises(
+        ValidationError,
+        match=r"No client provided, either set the client when creating a toolkit or set the default client",
+    ):
+        UCFunctionToolkit(function_names=["test.test.test"])
+
+
 @pytest.mark.asyncio
 async def test_toolkit_creation_with_properties_argument_mocked():
     """
@@ -148,8 +159,10 @@ async def test_toolkit_creation_with_properties_argument_mocked():
             UCFunctionToolkit(function_names=["catalog.schema.test_function"], client=mock_client)
 
 
+@pytest.mark.parametrize("execution_mode", ["local", "sandbox"])
 @pytest.mark.asyncio
-async def test_toolkit_e2e(uc_client):
+async def test_toolkit_e2e(uc_client, execution_mode):
+    uc_client.execution_mode = ExecutionMode(execution_mode)
     with create_function_and_cleanup_oss(uc_client, schema=SCHEMA) as func_obj:
         toolkit = UCFunctionToolkit(
             function_names=[func_obj.full_function_name], client=uc_client, return_direct=True
@@ -163,17 +176,19 @@ async def test_toolkit_e2e(uc_client):
         assert tool.uc_function_name == func_obj.full_function_name
         assert tool.client_config == uc_client.to_dict()
 
-        input_args = {"code": "print(1)"}
+        input_args = {"a": 1, "b": 2}
         result = json.loads(tool.fn(**input_args))["value"]
-        assert result == "1\n"
+        assert result == "3"
 
         toolkit = UCFunctionToolkit(function_names=[f"{CATALOG}.{SCHEMA}.*"], client=uc_client)
         assert len(toolkit.tools) >= 1
         assert func_obj.tool_name in [t.metadata.name for t in toolkit.tools]
 
 
+@pytest.mark.parametrize("execution_mode", ["local", "sandbox"])
 @pytest.mark.asyncio
-async def test_toolkit_e2e_manually_passing_client(uc_client):
+async def test_toolkit_e2e_manually_passing_client(uc_client, execution_mode):
+    uc_client.execution_mode = ExecutionMode(execution_mode)
     with create_function_and_cleanup_oss(uc_client, schema=SCHEMA) as func_obj:
         toolkit = UCFunctionToolkit(
             function_names=[func_obj.full_function_name], client=uc_client, return_direct=True
@@ -186,23 +201,25 @@ async def test_toolkit_e2e_manually_passing_client(uc_client):
         assert tool.metadata.description == func_obj.comment
         assert tool.uc_function_name == func_obj.full_function_name
         assert tool.client_config == uc_client.to_dict()
-        input_args = {"code": "print(1)"}
+        input_args = {"a": 1, "b": 2}
         result = json.loads(tool.fn(**input_args))["value"]
-        assert result == "1\n"
+        assert result == "3"
 
         toolkit = UCFunctionToolkit(function_names=[f"{CATALOG}.{SCHEMA}.*"], client=uc_client)
         assert len(toolkit.tools) >= 1
         assert func_obj.tool_name in [t.metadata.name for t in toolkit.tools]
 
 
+@pytest.mark.parametrize("execution_mode", ["local", "sandbox"])
 @pytest.mark.asyncio
-async def test_multiple_toolkits(uc_client):
+async def test_multiple_toolkits(uc_client, execution_mode):
+    uc_client.execution_mode = ExecutionMode(execution_mode)
     with create_function_and_cleanup_oss(uc_client, schema=SCHEMA) as func_obj:
         toolkit1 = UCFunctionToolkit(function_names=[func_obj.full_function_name], client=uc_client)
         toolkit2 = UCFunctionToolkit(function_names=[f"{CATALOG}.{SCHEMA}.*"], client=uc_client)
         tool1 = toolkit1.tools[0]
         tool2 = [t for t in toolkit2.tools if t.metadata.name == func_obj.tool_name][0]
-        input_args = {"code": "print(1)"}
+        input_args = {"a": 2, "b": 3}
         result1 = json.loads(tool1.fn(**input_args))["value"]
         result2 = json.loads(tool2.fn(**input_args))["value"]
         assert result1 == result2

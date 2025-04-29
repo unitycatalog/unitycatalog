@@ -4,6 +4,7 @@ import inspect
 import json
 import logging
 import os
+import re
 from hashlib import md5
 from io import StringIO
 from typing import Any, Callable, Dict, List, Optional, Tuple, Union
@@ -18,6 +19,7 @@ from unitycatalog.ai.core.utils.pydantic_utils import (
     PydanticField,
     PydanticFunctionInputParams,
     PydanticType,
+    handle_pydantic_validation_errors,
 )
 from unitycatalog.ai.core.utils.type_utils import (
     UC_DEFAULT_VALUE_TO_PYTHON_EQUIVALENT_MAPPING,
@@ -199,9 +201,10 @@ def process_function_names(
                     if token is None:
                         break
             else:
-                tools_dict[name] = uc_function_to_tool_func(
-                    function_name=name, client=client, **kwargs
-                )
+                tool = uc_function_to_tool_func(function_name=name, client=client, **kwargs)
+                # Skip adding this tool if this function returns None
+                if tool:
+                    tools_dict[name] = tool
     return tools_dict
 
 
@@ -227,8 +230,14 @@ def param_info_to_pydantic_type(param_info: Any, strict: bool = False) -> Pydant
     description = param_info.comment or ""
     if param_info.parameter_default:
         # Note: DEFAULT is supported for LANGUAGE SQL only.
-        # TODO: verify this for all types
-        default = json.loads(param_info.parameter_default)
+        if param_info.parameter_default.strip().upper() == "NULL":
+            default = None
+        else:
+            try:
+                default = json.loads(param_info.parameter_default)
+            except json.JSONDecodeError:
+                # If JSON decoding fails, treat it as a string
+                default = param_info.parameter_default.strip()
         description = f"{description} (Default: {param_info.parameter_default})"
     elif nullable:
         pydantic_field_type = Optional[pydantic_field_type]
@@ -282,7 +291,6 @@ def generate_function_input_params_schema(
     return PydanticFunctionInputParams(pydantic_model=model, strict=pydantic_field.strict)
 
 
-# TODO: add UC OSS support
 def supported_param_info_types():
     types = ()
     try:
@@ -302,7 +310,6 @@ def supported_param_info_types():
     return types
 
 
-# TODO: add UC OSS support
 def supported_function_info_types():
     types = ()
     try:
@@ -396,6 +403,7 @@ def _execute_uc_function_with_retriever_tracing(
         return _execute_uc_function(function_info, parameters, **kwargs)
 
 
+@handle_pydantic_validation_errors
 def process_function_parameter_defaults(
     function_info: "FunctionInfo", parameters: Optional[dict[str, Any]] = None
 ) -> dict[str, Any]:
@@ -415,13 +423,55 @@ def process_function_parameter_defaults(
             if param.parameter_default is not None:
                 default_str = param.parameter_default.strip()
                 upper_str = default_str.upper()
-                if upper_str in UC_DEFAULT_VALUE_TO_PYTHON_EQUIVALENT_MAPPING:
+                # NB: Pydantic requires a NoneType definition to be explicity set directly. If retrieiving
+                # this type from a lookup mapping (as is done with True / False as registered in
+                # UC_DEFAULT_VALUE_TO_PYTHON_EQUIVALENT_MAPPING), it will not be recognized
+                # as a NoneType properly.
+                if upper_str == "NULL":
+                    defaults[param.name] = None
+                elif upper_str in UC_DEFAULT_VALUE_TO_PYTHON_EQUIVALENT_MAPPING:
                     defaults[param.name] = UC_DEFAULT_VALUE_TO_PYTHON_EQUIVALENT_MAPPING[upper_str]
                 else:
                     try:
                         defaults[param.name] = ast.literal_eval(default_str)
-                    except ValueError:
-                        defaults[param.name] = default_str
+                    except (ValueError, SyntaxError):
+                        try:
+                            defaults[param.name] = json.loads(default_str)
+                        except json.JSONDecodeError:
+                            defaults[param.name] = default_str
+
     if parameters is None:
         parameters = {}
     return defaults | parameters
+
+
+def extract_function_name(sql_body: str) -> str:
+    """
+    Extract function name from the sql body.
+    CREATE FUNCTION syntax reference: https://docs.databricks.com/en/sql/language-manual/sql-ref-syntax-ddl-create-sql-function.html#syntax
+    """
+    # NOTE: catalog/schema/function names follow guidance here:
+    # https://docs.databricks.com/en/sql/language-manual/sql-ref-names.html#catalog-name
+    pattern = re.compile(
+        r"""
+        CREATE\s+(?:OR\s+REPLACE\s+)?      # Match 'CREATE OR REPLACE' or just 'CREATE'
+        (?:TEMPORARY\s+)?                  # Match optional 'TEMPORARY'
+        FUNCTION\s+(?:IF\s+NOT\s+EXISTS\s+)?  # Match 'FUNCTION' and optional 'IF NOT EXISTS'
+        (?P<name>[^ /.]+\.[^ /.]+\.[^ /.]+)          # Capture the function name (including schema if present)
+        \s*\(                              # Match opening parenthesis after function name
+    """,
+        re.IGNORECASE | re.VERBOSE,
+    )
+
+    match = pattern.search(sql_body)
+    if match:
+        result = match.group("name")
+        full_function_name = FullFunctionName.validate_full_function_name(result)
+        # backticks are only required in SQL, not in python APIs
+        return str(full_function_name)
+    raise ValueError(
+        f"Could not extract function name from the sql body: {sql_body}.\nPlease "
+        "make sure the sql body follows the syntax of CREATE FUNCTION "
+        "statement in Databricks: "
+        "https://docs.databricks.com/en/sql/language-manual/sql-ref-syntax-ddl-create-sql-function.html#syntax."
+    )
