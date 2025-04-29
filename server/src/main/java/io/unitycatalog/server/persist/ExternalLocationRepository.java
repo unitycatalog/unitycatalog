@@ -2,19 +2,16 @@ package io.unitycatalog.server.persist;
 
 import io.unitycatalog.server.exception.BaseException;
 import io.unitycatalog.server.exception.ErrorCode;
-import io.unitycatalog.server.model.CreateExternalLocation;
-import io.unitycatalog.server.model.ExternalLocationInfo;
-import io.unitycatalog.server.model.ListExternalLocationsResponse;
-import io.unitycatalog.server.model.UpdateExternalLocation;
+import io.unitycatalog.server.model.*;
+import io.unitycatalog.server.persist.dao.CredentialDAO;
 import io.unitycatalog.server.persist.dao.ExternalLocationDAO;
-import io.unitycatalog.server.persist.dao.StorageCredentialDAO;
 import io.unitycatalog.server.persist.utils.PagedListingHelper;
+import io.unitycatalog.server.persist.utils.TransactionManager;
 import io.unitycatalog.server.utils.IdentityUtils;
 import io.unitycatalog.server.utils.ValidationUtils;
 import java.util.*;
 import org.hibernate.Session;
 import org.hibernate.SessionFactory;
-import org.hibernate.Transaction;
 import org.hibernate.query.Query;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -31,72 +28,78 @@ public class ExternalLocationRepository {
     this.sessionFactory = sessionFactory;
   }
 
+  /**
+   * Validates and retrieves credential DAO for the given credential name.
+   *
+   * @param session The Hibernate session
+   * @param credentialName The name of the credential to validate
+   * @return The validated CredentialDAO
+   * @throws BaseException if credential doesn't exist or is not of type storage
+   */
+  private CredentialDAO validateAndGetCredentialDAO(Session session, String credentialName) {
+    CredentialDAO credentialDAO =
+        repositories.getCredentialRepository().getCredentialDAO(session, credentialName);
+    if (credentialDAO == null) {
+      throw new BaseException(ErrorCode.NOT_FOUND, "Credential not found: " + credentialName);
+    }
+    if (!credentialDAO.getPurpose().equals(CredentialPurpose.STORAGE)) {
+      throw new BaseException(
+          ErrorCode.INVALID_ARGUMENT, "Credential not of type storage: " + credentialName);
+    }
+    return credentialDAO;
+  }
+
   public ExternalLocationDAO addExternalLocation(CreateExternalLocation createExternalLocation) {
     ValidationUtils.validateSqlObjectName(createExternalLocation.getName());
     String callerId = IdentityUtils.findPrincipalEmailAddress();
 
-    try (Session session = sessionFactory.openSession()) {
-      StorageCredentialDAO storageCredentialDAO =
-          repositories
-              .getStorageCredentialRepository()
-              .getStorageCredentialDAO(session, createExternalLocation.getCredentialName());
-      if (storageCredentialDAO == null) {
-        throw new BaseException(
-            ErrorCode.NOT_FOUND,
-            "Storage credential not found: " + createExternalLocation.getCredentialName());
-      }
-      UUID externalLocationId = UUID.randomUUID();
-      ExternalLocationDAO externalLocationDAO =
-          ExternalLocationDAO.builder()
-              .id(externalLocationId)
-              .name(createExternalLocation.getName())
-              .url(createExternalLocation.getUrl())
-              .comment(createExternalLocation.getComment())
-              .owner(callerId)
-              .credentialId(storageCredentialDAO.getId())
-              .createdAt(new Date())
-              .createdBy(callerId)
-              .build();
-      Transaction tx = session.beginTransaction();
-      try {
-        if (getExternalLocationDAO(session, createExternalLocation.getName()) != null) {
-          throw new BaseException(
-              ErrorCode.ALREADY_EXISTS,
-              "External location already exists: " + createExternalLocation.getName());
-        }
-        session.persist(externalLocationDAO);
-        LOGGER.info("External location added: {}", externalLocationDAO.getName());
-        tx.commit();
-        return externalLocationDAO;
-      } catch (Exception e) {
-        tx.rollback();
-        LOGGER.error("Failed to add external location", e);
-        throw e;
-      }
-    }
+    return TransactionManager.executeWithTransaction(
+        sessionFactory,
+        session -> {
+          if (getExternalLocationDAO(session, createExternalLocation.getName()) != null) {
+            throw new BaseException(
+                ErrorCode.ALREADY_EXISTS,
+                "External location already exists: " + createExternalLocation.getName());
+          }
+
+          CredentialDAO credentialDAO =
+              validateAndGetCredentialDAO(session, createExternalLocation.getCredentialName());
+          UUID externalLocationId = UUID.randomUUID();
+          ExternalLocationDAO externalLocationDAO =
+              ExternalLocationDAO.builder()
+                  .id(externalLocationId)
+                  .name(createExternalLocation.getName())
+                  .url(createExternalLocation.getUrl())
+                  .comment(createExternalLocation.getComment())
+                  .owner(callerId)
+                  .credentialId(credentialDAO.getId())
+                  .createdAt(new Date())
+                  .createdBy(callerId)
+                  .build();
+          session.persist(externalLocationDAO);
+          LOGGER.info("External location added: {}", externalLocationDAO.getName());
+          return externalLocationDAO;
+        },
+        "Failed to add external location",
+        /* readOnly = */ false);
   }
 
   public ExternalLocationInfo getExternalLocation(String name) {
-    try (Session session = sessionFactory.openSession()) {
-      session.setDefaultReadOnly(true);
-      Transaction tx = session.beginTransaction();
-      try {
-        ExternalLocationDAO externalLocationDAO = getExternalLocationDAO(session, name);
-        if (externalLocationDAO == null) {
-          throw new BaseException(ErrorCode.NOT_FOUND, "External location not found: " + name);
-        }
-        LOGGER.info("External location retrieved: {}", externalLocationDAO.getName());
-        tx.commit();
-        return externalLocationDAO.toExternalLocationInfo();
-      } catch (Exception e) {
-        tx.rollback();
-        LOGGER.error("Failed to get external location", e);
-        throw e;
-      }
-    }
+    return TransactionManager.executeWithTransaction(
+        sessionFactory,
+        session -> {
+          ExternalLocationDAO externalLocationDAO = getExternalLocationDAO(session, name);
+          if (externalLocationDAO == null) {
+            throw new BaseException(ErrorCode.NOT_FOUND, "External location not found: " + name);
+          }
+          LOGGER.info("External location retrieved: {}", externalLocationDAO.getName());
+          return externalLocationDAO.toExternalLocationInfo();
+        },
+        "Failed to get external location",
+        /* readOnly = */ true);
   }
 
-  private ExternalLocationDAO getExternalLocationDAO(Session session, String name) {
+  protected ExternalLocationDAO getExternalLocationDAO(Session session, String name) {
     Query<ExternalLocationDAO> query =
         session.createQuery(
             "FROM ExternalLocationDAO WHERE name = :value", ExternalLocationDAO.class);
@@ -107,102 +110,83 @@ public class ExternalLocationRepository {
 
   public ListExternalLocationsResponse listExternalLocations(
       Optional<Integer> maxResults, Optional<String> pageToken) {
-    try (Session session = sessionFactory.openSession()) {
-      session.setDefaultReadOnly(true);
-      Transaction tx = session.beginTransaction();
-      try {
-        List<ExternalLocationDAO> daoList =
-            LISTING_HELPER.listEntity(session, maxResults, pageToken, /* parentEntityId = */ null);
-        String nextPageToken = LISTING_HELPER.getNextPageToken(daoList, maxResults);
-        List<ExternalLocationInfo> results = new ArrayList<>();
-        for (ExternalLocationDAO dao : daoList) {
-          results.add(dao.toExternalLocationInfo());
-        }
-        tx.commit();
-        return new ListExternalLocationsResponse()
-            .externalLocations(results)
-            .nextPageToken(nextPageToken);
-      } catch (Exception e) {
-        tx.rollback();
-        LOGGER.error("Failed to list external locations", e);
-        throw e;
-      }
-    }
+    return TransactionManager.executeWithTransaction(
+        sessionFactory,
+        session -> {
+          List<ExternalLocationDAO> daoList =
+              LISTING_HELPER.listEntity(
+                  session, maxResults, pageToken, /* parentEntityId = */ null);
+          String nextPageToken = LISTING_HELPER.getNextPageToken(daoList, maxResults);
+          List<ExternalLocationInfo> results = new ArrayList<>();
+          for (ExternalLocationDAO dao : daoList) {
+            results.add(dao.toExternalLocationInfo());
+          }
+          return new ListExternalLocationsResponse()
+              .externalLocations(results)
+              .nextPageToken(nextPageToken);
+        },
+        "Failed to list external locations",
+        /* readOnly = */ true);
   }
 
   public ExternalLocationInfo updateExternalLocation(
       String name, UpdateExternalLocation updateExternalLocation) {
     String callerId = IdentityUtils.findPrincipalEmailAddress();
 
-    try (Session session = sessionFactory.openSession()) {
-      Transaction tx = session.beginTransaction();
-      try {
-        ExternalLocationDAO existingLocation = getExternalLocationDAO(session, name);
-        if (existingLocation == null) {
-          throw new BaseException(ErrorCode.NOT_FOUND, "External location not found: " + name);
-        }
-
-        // Update fields if provided
-        if (updateExternalLocation.getNewName() != null) {
-          ValidationUtils.validateSqlObjectName(updateExternalLocation.getNewName());
-          if (getExternalLocationDAO(session, updateExternalLocation.getNewName()) != null) {
-            throw new BaseException(
-                ErrorCode.ALREADY_EXISTS,
-                "External location already exists: " + updateExternalLocation.getNewName());
+    return TransactionManager.executeWithTransaction(
+        sessionFactory,
+        session -> {
+          ExternalLocationDAO existingLocation = getExternalLocationDAO(session, name);
+          if (existingLocation == null) {
+            throw new BaseException(ErrorCode.NOT_FOUND, "External location not found: " + name);
           }
-          existingLocation.setName(updateExternalLocation.getNewName());
-        }
-        if (updateExternalLocation.getUrl() != null) {
-          existingLocation.setUrl(updateExternalLocation.getUrl());
-        }
-        if (updateExternalLocation.getComment() != null) {
-          existingLocation.setComment(updateExternalLocation.getComment());
-        }
-        if (updateExternalLocation.getCredentialName() != null) {
-          StorageCredentialDAO storageCredentialDAO =
-              repositories
-                  .getStorageCredentialRepository()
-                  .getStorageCredentialDAO(session, updateExternalLocation.getCredentialName());
-          if (storageCredentialDAO == null) {
-            throw new BaseException(
-                ErrorCode.NOT_FOUND,
-                "Storage credential not found: " + updateExternalLocation.getCredentialName());
+
+          // Update fields if provided
+          if (updateExternalLocation.getNewName() != null) {
+            ValidationUtils.validateSqlObjectName(updateExternalLocation.getNewName());
+            if (getExternalLocationDAO(session, updateExternalLocation.getNewName()) != null) {
+              throw new BaseException(
+                  ErrorCode.ALREADY_EXISTS,
+                  "External location already exists: " + updateExternalLocation.getNewName());
+            }
+            existingLocation.setName(updateExternalLocation.getNewName());
           }
-          existingLocation.setCredentialId(storageCredentialDAO.getId());
-        }
+          if (updateExternalLocation.getUrl() != null) {
+            existingLocation.setUrl(updateExternalLocation.getUrl());
+          }
+          if (updateExternalLocation.getComment() != null) {
+            existingLocation.setComment(updateExternalLocation.getComment());
+          }
+          if (updateExternalLocation.getCredentialName() != null) {
+            CredentialDAO credentialDAO =
+                validateAndGetCredentialDAO(session, updateExternalLocation.getCredentialName());
+            existingLocation.setCredentialId(credentialDAO.getId());
+          }
 
-        existingLocation.setUpdatedAt(new Date());
-        existingLocation.setUpdatedBy(callerId);
+          existingLocation.setUpdatedAt(new Date());
+          existingLocation.setUpdatedBy(callerId);
 
-        session.merge(existingLocation);
-        LOGGER.info("Updated external location: {}", name);
-        tx.commit();
-        return existingLocation.toExternalLocationInfo();
-      } catch (Exception e) {
-        tx.rollback();
-        LOGGER.error("Failed to update external location", e);
-        throw e;
-      }
-    }
+          session.merge(existingLocation);
+          LOGGER.info("Updated external location: {}", name);
+          return existingLocation.toExternalLocationInfo();
+        },
+        "Failed to update external location",
+        /* readOnly = */ false);
   }
 
   public ExternalLocationDAO deleteExternalLocation(String name) {
-    try (Session session = sessionFactory.openSession()) {
-      Transaction tx = session.beginTransaction();
-      try {
-        ExternalLocationDAO existingLocation = getExternalLocationDAO(session, name);
-        if (existingLocation == null) {
-          throw new BaseException(ErrorCode.NOT_FOUND, "External location not found: " + name);
-        }
-        session.remove(existingLocation);
-        LOGGER.info("Deleted external location: {}", name);
-        tx.commit();
-        return existingLocation;
-      } catch (Exception e) {
-        tx.rollback();
-        LOGGER.error("Failed to delete external location", e);
-        throw e;
-      }
-    }
+    return TransactionManager.executeWithTransaction(
+        sessionFactory,
+        session -> {
+          ExternalLocationDAO existingLocation = getExternalLocationDAO(session, name);
+          if (existingLocation == null) {
+            throw new BaseException(ErrorCode.NOT_FOUND, "External location not found: " + name);
+          }
+          session.remove(existingLocation);
+          LOGGER.info("Deleted external location: {}", name);
+          return existingLocation;
+        },
+        "Failed to delete external location",
+        /* readOnly = */ false);
   }
 }

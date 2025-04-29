@@ -9,7 +9,7 @@ import io.unitycatalog.client.ApiException;
 import io.unitycatalog.client.model.*;
 import io.unitycatalog.server.base.BaseCRUDTest;
 import io.unitycatalog.server.base.ServerConfig;
-import io.unitycatalog.server.base.storagecredential.StorageCredentialOperations;
+import io.unitycatalog.server.base.credential.CredentialOperations;
 import io.unitycatalog.server.exception.ErrorCode;
 import java.util.Optional;
 import org.junit.jupiter.api.BeforeEach;
@@ -27,17 +27,16 @@ public abstract class BaseExternalLocationCRUDTest extends BaseCRUDTest {
   protected abstract ExternalLocationOperations createExternalLocationOperations(
       ServerConfig config);
 
-  protected StorageCredentialOperations storageCredentialOperations;
+  protected CredentialOperations credentialOperations;
 
-  protected abstract StorageCredentialOperations createStorageCredentialOperations(
-      ServerConfig config);
+  protected abstract CredentialOperations createCredentialOperations(ServerConfig config);
 
   @BeforeEach
   @Override
   public void setUp() {
     super.setUp();
     externalLocationOperations = createExternalLocationOperations(serverConfig);
-    storageCredentialOperations = createStorageCredentialOperations(serverConfig);
+    credentialOperations = createCredentialOperations(serverConfig);
   }
 
   @Test
@@ -54,26 +53,26 @@ public abstract class BaseExternalLocationCRUDTest extends BaseCRUDTest {
             () -> externalLocationOperations.createExternalLocation(createExternalLocation))
         .isInstanceOf(ApiException.class)
         .hasFieldOrPropertyWithValue("code", ErrorCode.NOT_FOUND.getHttpStatus().code())
-        .hasMessageContaining("Storage credential not found: " + CREDENTIAL_NAME);
+        .hasMessageContaining("Credential not found: " + CREDENTIAL_NAME);
 
     assertThat(externalLocationOperations.listExternalLocations(Optional.empty()))
         .noneMatch(
             externalLocationInfo -> externalLocationInfo.getName().equals(EXTERNAL_LOCATION_NAME));
 
-    CreateStorageCredential createStorageCredential =
-        new CreateStorageCredential()
+    CreateCredentialRequest createCredentialRequest =
+        new CreateCredentialRequest()
             .name(CREDENTIAL_NAME)
             .comment(COMMENT)
+            .purpose(CredentialPurpose.STORAGE)
             .awsIamRole(new AwsIamRoleRequest().roleArn(DUMMY_ROLE_ARN));
-    StorageCredentialInfo storageCredentialInfo =
-        storageCredentialOperations.createStorageCredential(createStorageCredential);
+    CredentialInfo credentialInfo = credentialOperations.createCredential(createCredentialRequest);
 
     ExternalLocationInfo externalLocationInfo =
         externalLocationOperations.createExternalLocation(createExternalLocation);
     assertThat(externalLocationInfo.getName()).isEqualTo(EXTERNAL_LOCATION_NAME);
     assertThat(externalLocationInfo.getComment()).isEqualTo(COMMENT);
     assertThat(externalLocationInfo.getUrl()).isEqualTo(URL);
-    assertThat(externalLocationInfo.getCredentialId()).isEqualTo(storageCredentialInfo.getId());
+    assertThat(externalLocationInfo.getCredentialId()).isEqualTo(credentialInfo.getId());
 
     // List external locations
     assertThat(externalLocationOperations.listExternalLocations(Optional.empty()))
@@ -95,8 +94,7 @@ public abstract class BaseExternalLocationCRUDTest extends BaseCRUDTest {
     assertThat(updatedExternalLocationInfo.getName()).isEqualTo(NEW_EXTERNAL_LOCATION_NAME);
     assertThat(updatedExternalLocationInfo.getComment()).isEqualTo(COMMENT2);
     assertThat(updatedExternalLocationInfo.getUrl()).isEqualTo(NEW_URL);
-    assertThat(updatedExternalLocationInfo.getCredentialId())
-        .isEqualTo(storageCredentialInfo.getId());
+    assertThat(updatedExternalLocationInfo.getCredentialId()).isEqualTo(credentialInfo.getId());
 
     // Delete external location
     externalLocationOperations.deleteExternalLocation(NEW_EXTERNAL_LOCATION_NAME);

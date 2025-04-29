@@ -225,8 +225,7 @@ public class UnityCatalogServer {
             BASE_PATH + "temporary-path-credentials",
             temporaryPathCredentialsService,
             requestConverterFunction)
-        .annotatedService(BASE_PATH + "credentials", credentialService,
-            requestConverterFunction)
+        .annotatedService(BASE_PATH + "credentials", credentialService, requestConverterFunction)
         .annotatedService(
             BASE_PATH + "external-locations", externalLocationService, requestConverterFunction);
     addIcebergApiServices(
