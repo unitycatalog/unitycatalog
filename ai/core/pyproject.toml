@@ -122,5 +122,8 @@ docstring-code-line-length = 88
 [tool.ruff.lint.pydocstyle]
 convention = "google"
 
+[tool.ruff.lint.per-file-ignores]
+"*.ipynb" = ["T201", "T203"] # ignore print statements in notebooks
+
 [tool.pytest.ini_options]
 pythonpath = ["src"]

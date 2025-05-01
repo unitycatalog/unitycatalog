@@ -22,12 +22,11 @@ _client_lock = threading.Lock()
 class FunctionExecutionResult:
     """
     Result of executing a function.
-    Value is always string, even if the function returns a scalar or a collection.
     """
 
     error: Optional[str] = None
     format: Optional[Literal["SCALAR", "CSV"]] = None
-    value: Optional[str] = None
+    value: Optional[Any] = None
     truncated: Optional[bool] = None
 
     def to_json(self) -> str:

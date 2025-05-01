@@ -15,7 +15,8 @@ from packaging import version
 
 from unitycatalog.ai.autogen.toolkit import UCFunctionToolkit
 from unitycatalog.ai.core.base import FunctionExecutionResult
-from unitycatalog.ai.core.client import ExecutionMode, UnitycatalogFunctionClient
+from unitycatalog.ai.core.client import UnitycatalogFunctionClient
+from unitycatalog.ai.core.utils.execution_utils import ExecutionMode
 from unitycatalog.ai.test_utils.function_utils import (
     RETRIEVER_OUTPUT_CSV,
     RETRIEVER_OUTPUT_SCALAR,

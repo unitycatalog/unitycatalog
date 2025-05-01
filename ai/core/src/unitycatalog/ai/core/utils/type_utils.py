@@ -64,7 +64,6 @@ UC_TYPE_JSON_MAPPING = {
 }
 
 UC_DEFAULT_VALUE_TO_PYTHON_EQUIVALENT_MAPPING = {
-    "NULL": None,
     "TRUE": True,
     "FALSE": False,
 }

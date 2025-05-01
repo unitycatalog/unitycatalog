@@ -1,12 +1,8 @@
 import base64
-import functools
 import json
 import logging
-import re
-import time
 from dataclasses import dataclass
 from decimal import Decimal
-from enum import Enum
 from io import StringIO
 from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional
 
@@ -15,7 +11,6 @@ from typing_extensions import override
 from unitycatalog.ai.core.base import BaseFunctionClient, FunctionExecutionResult
 from unitycatalog.ai.core.envs.databricks_env_vars import (
     UCAI_DATABRICKS_SERVERLESS_EXECUTION_RESULT_ROW_LIMIT,
-    UCAI_DATABRICKS_SESSION_RETRY_MAX_ATTEMPTS,
 )
 from unitycatalog.ai.core.executor.local_subprocess import run_in_sandbox_subprocess
 from unitycatalog.ai.core.paged_list import PagedList
@@ -26,8 +21,15 @@ from unitycatalog.ai.core.utils.callable_utils import (
     generate_wrapped_sql_function_body,
     get_callable_definition,
 )
-from unitycatalog.ai.core.utils.execution_utils import load_function_from_string
-from unitycatalog.ai.core.utils.function_processing_utils import process_function_parameter_defaults
+from unitycatalog.ai.core.utils.execution_utils import (
+    ExecutionModeDatabricks,
+    load_function_from_string,
+)
+from unitycatalog.ai.core.utils.function_processing_utils import (
+    extract_function_name,
+    process_function_parameter_defaults,
+)
+from unitycatalog.ai.core.utils.retry_utils import retry_on_session_expiration
 from unitycatalog.ai.core.utils.type_utils import (
     column_type_to_python_type,
     convert_timedelta_to_interval_str,
@@ -60,10 +62,6 @@ DATABRICKS_CONNECT_VERSION_NOT_SUPPORTED_ERROR_MESSAGE = (
     f"`pip install databricks-connect>={DATABRICKS_CONNECT_SUPPORTED_VERSION}` "
     "to use serverless compute in Databricks. Please note this requires python>=3.10."
 )
-SESSION_RETRY_BASE_DELAY = 1
-SESSION_RETRY_MAX_DELAY = 4
-SESSION_EXPIRED_MESSAGE = "session_id is no longer usable"
-SESSION_CHANGED_MESSAGE = "The existing Spark server driver has restarted."
 WAREHOUSE_DEFINED_NOT_SUPPORTED_MESSAGE = (
     "The argument `warehouse_id` was specified, which is no longer supported with "
     "the `DatabricksFunctionClient`. Please omit this argument as it is no longer used. "
@@ -74,36 +72,6 @@ WAREHOUSE_DEFINED_NOT_SUPPORTED_MESSAGE = (
 
 
 _logger = logging.getLogger(__name__)
-
-
-class ExecutionMode(str, Enum):
-    SERVERLESS = "serverless"
-    LOCAL = "local"
-
-    def __str__(self) -> str:
-        return self.value
-
-    @classmethod
-    def validate(cls, value: str) -> "ExecutionMode":
-        try:
-            if value == cls.LOCAL.value:
-                _logger.warning(
-                    "You are running in 'local' execution mode, which is intended only for development and debugging. "
-                    "For production, please switch to 'serverless' execution mode. Before deploying, create a client "
-                    "using 'serverless' mode to validate your code's behavior and ensure full compatibility."
-                )
-            return cls(value)
-        except ValueError as e:
-            raise ValueError(
-                f"Execution mode '{value}' is not valid. "
-                f"Allowed values are: {', '.join(mode.value for mode in cls)}"
-            ) from e
-
-
-class SessionExpirationException(Exception):
-    """Exception raised when a session expiration error is detected."""
-
-    pass
 
 
 def get_default_databricks_workspace_client(profile=None) -> "WorkspaceClient":
@@ -142,90 +110,6 @@ def _warn_if_workspace_provided(**kwargs):
         _logger.warning(WAREHOUSE_DEFINED_NOT_SUPPORTED_MESSAGE)
 
 
-def extract_function_name(sql_body: str) -> str:
-    """
-    Extract function name from the sql body.
-    CREATE FUNCTION syntax reference: https://docs.databricks.com/en/sql/language-manual/sql-ref-syntax-ddl-create-sql-function.html#syntax
-    """
-    # NOTE: catalog/schema/function names follow guidance here:
-    # https://docs.databricks.com/en/sql/language-manual/sql-ref-names.html#catalog-name
-    pattern = re.compile(
-        r"""
-        CREATE\s+(?:OR\s+REPLACE\s+)?      # Match 'CREATE OR REPLACE' or just 'CREATE'
-        (?:TEMPORARY\s+)?                  # Match optional 'TEMPORARY'
-        FUNCTION\s+(?:IF\s+NOT\s+EXISTS\s+)?  # Match 'FUNCTION' and optional 'IF NOT EXISTS'
-        (?P<name>[^ /.]+\.[^ /.]+\.[^ /.]+)          # Capture the function name (including schema if present)
-        \s*\(                              # Match opening parenthesis after function name
-    """,
-        re.IGNORECASE | re.VERBOSE,
-    )
-
-    match = pattern.search(sql_body)
-    if match:
-        result = match.group("name")
-        full_function_name = FullFunctionName.validate_full_function_name(result)
-        # backticks are only required in SQL, not in python APIs
-        return str(full_function_name)
-    raise ValueError(
-        f"Could not extract function name from the sql body: {sql_body}.\nPlease "
-        "make sure the sql body follows the syntax of CREATE FUNCTION "
-        "statement in Databricks: "
-        "https://docs.databricks.com/en/sql/language-manual/sql-ref-syntax-ddl-create-sql-function.html#syntax."
-    )
-
-
-def retry_on_session_expiration(func):
-    """
-    Decorator to retry a method upon session expiration errors with exponential backoff.
-    """
-    max_attempts = UCAI_DATABRICKS_SESSION_RETRY_MAX_ATTEMPTS.get()
-
-    @functools.wraps(func)
-    def wrapper(self, *args, **kwargs):
-        for attempt in range(1, max_attempts + 1):
-            try:
-                result = func(self, *args, **kwargs)
-                if (
-                    isinstance(result, FunctionExecutionResult)
-                    and result.error
-                    and any(
-                        msg in result.error
-                        for msg in (SESSION_EXPIRED_MESSAGE, SESSION_CHANGED_MESSAGE)
-                    )
-                ):
-                    raise SessionExpirationException(result.error)
-                return result
-            except SessionExpirationException as e:
-                if not self._is_default_client:
-                    refresh_message = (
-                        f"Failed to execute {func.__name__} due to session expiration. "
-                        "Unable to automatically refresh session when using a custom client. "
-                        "Recreate the DatabricksFunctionClient with a new client to recreate "
-                        "the custom client session."
-                    )
-                    raise RuntimeError(refresh_message) from e
-
-                if attempt < max_attempts:
-                    delay = min(
-                        SESSION_RETRY_BASE_DELAY * (2 ** (attempt - 1)), SESSION_RETRY_MAX_DELAY
-                    )
-                    _logger.warning(
-                        f"Session expired. Retrying attempt {attempt} of {max_attempts}. "
-                        f"Refreshing session and retrying after {delay} seconds..."
-                    )
-                    self.refresh_client_and_session()
-                    time.sleep(delay)
-                    continue
-                else:
-                    refresh_failure_message = (
-                        f"Failed to execute {func.__name__} after {max_attempts} attempts due to session expiration. "
-                        "Generate a new session_id by detaching and reattaching your compute."
-                    )
-                    raise RuntimeError(refresh_failure_message) from e
-
-    return wrapper
-
-
 class DatabricksFunctionClient(BaseFunctionClient):
     """
     Databricks UC function calling client
@@ -251,7 +135,7 @@ class DatabricksFunctionClient(BaseFunctionClient):
         _warn_if_workspace_provided(**kwargs)
         self.client = client or get_default_databricks_workspace_client(profile=profile)
         self.profile = profile
-        self.execution_mode = ExecutionMode.validate(execution_mode)
+        self.execution_mode = ExecutionModeDatabricks.validate(execution_mode)
         self.spark = None
         self.set_spark_session()
         self._is_default_client = client is None
@@ -651,6 +535,8 @@ class DatabricksFunctionClient(BaseFunctionClient):
     @override
     def _validate_param_type(self, value: Any, param_info: "FunctionParameterInfo") -> None:
         value_python_type = column_type_to_python_type(param_info.type_name.value)
+        if value is None and param_info.parameter_default == "NULL":
+            return
         if value_python_type is Variant:
             Variant.validate(value)
             return
@@ -711,9 +597,9 @@ class DatabricksFunctionClient(BaseFunctionClient):
         self, function_info: "FunctionInfo", parameters: Dict[str, Any], **kwargs: Any
     ) -> Any:
         check_function_info(function_info)
-        if self.execution_mode == ExecutionMode.SERVERLESS:
+        if self.execution_mode == ExecutionModeDatabricks.SERVERLESS:
             return self._execute_uc_functions_with_serverless(function_info, parameters)
-        elif self.execution_mode == ExecutionMode.LOCAL:
+        elif self.execution_mode == ExecutionModeDatabricks.LOCAL:
             return self._execute_uc_functions_with_local(function_info, parameters)
         else:
             raise NotImplementedError(
