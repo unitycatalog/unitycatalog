@@ -35,7 +35,7 @@ This will return the 1 pre-loaded schema `unity` when run against the default lo
 
 ## How to retrieve schema metadata
 
-To retrieve metadata about a schema catalog, use the `GET` command at the `/schemas/<full-schema-name>` endpoint. The full name refers to the standard hierarchical Unity Catalog namespace: `catalog.schema`. For example:
+To retrieve metadata about a specific schema, use the `GET` command at the `/schemas/<full-schema-name>` endpoint. The full name refers to the standard hierarchical Unity Catalog namespace: `catalog.schema`. For example:
 
 ```python
 BASE_URL = "http://localhost:8080/api/2.1/unity-catalog"
