@@ -33,123 +33,105 @@ response.json()
 
 This will return the 1 pre-loaded schema `unity` when run against the default local Unity Catalog server.
 
-## How to retrieve catalog metadata
+## How to retrieve schema metadata
 
-To retrieve metadata about a specific catalog, use the `GET` command at the `/schemas/<catalog-name>` endpoint. For example:
+To retrieve metadata about a schema catalog, use the `GET` command at the `/schemas/<full-schema-name>` endpoint. The full name refers to the standard hierarchical Unity Catalog namespace: `catalog.schema`. For example:
 
 ```python
-> BASE_URL = "http://localhost:8080/api/2.1/unity-catalog"
-> ENDPOINT = "/schemas/unity"
-> URL = f"{BASE_URL}{ENDPOINT}"
+BASE_URL = "http://localhost:8080/api/2.1/unity-catalog"
+ENDPOINT = "/schemas/unity.default"
+URL = f"{BASE_URL}{ENDPOINT}"
 
-> response = requests.get(URL, headers=headers)
-> data = response.json()
-> data
+response = requests.get(URL, headers=headers)
+response.json()
 ```
 
-This will return all available metadata for the specified catalog:
+This will return all available metadata for the specified schema:
 
 ```
-{'name': 'unity',
- 'comment': 'Main catalog',
+{'name': 'default',
+ 'catalog_name': 'unity',
+ 'comment': 'Default schema',
  'properties': {},
+ 'full_name': 'unity.default',
  'owner': None,
- 'created_at': 1721238005334,
+ 'created_at': 1721238005571,
  'created_by': None,
  'updated_at': None,
  'updated_by': None,
- 'id': 'f029b870-9468-4f10-badc-630b41e5690d'}
+ 'schema_id': 'b08dfd57-a939-46cf-b102-9b906b884fae'}
 ```
 
-## How to create a catalog
+## How to create a schema
 
-Use the `POST` command at the `/schemas` endpoint to create a new catalog:
+Use the `POST` command at the `/schemas` endpoint to create a new catalog. Provide the schema name, catalog name and an optional comment along with the request:
 
 ```python
-> BASE_URL = "http://localhost:8080/api/2.1/unity-catalog"
-> ENDPOINT = "/schemas"
-> URL = f"{BASE_URL}{ENDPOINT}"
+BASE_URL = "http://localhost:8080/api/2.1/unity-catalog"
+ENDPOINT = "/schemas"
+URL = f"{BASE_URL}{ENDPOINT}"
 
-> data = {
->     "name": "my_new_catalog",
->     "comment": "Created via REST API"
-> }
+data = {
+    "name": "my_schema",
+    "catalog_name": "unity",
+    "comment": "My new schema"
+}
 
-> response = requests.post(URL, headers=headers, json=data)
-> response.json()
+response = requests.post(URL, headers=headers, json=data)
+response.json()
 ```
 
 This will return:
 
 ```
-{'name': 'my_new_catalog',
- 'comment': 'Created via REST API',
+{'name': 'my_schema',
+ 'catalog_name': 'unity',
+ 'comment': 'My new schema',
  'properties': {},
+ 'full_name': 'unity.my_schema',
  'owner': None,
- 'created_at': 1745157750562,
+ 'created_at': 1746192903542,
  'created_by': None,
- 'updated_at': 1745157750562,
+ 'updated_at': 1746192903542,
  'updated_by': None,
- 'id': '08601e1a-d940-419c-8bfe-7667ea9bcab8'}
+ 'schema_id': '673993a0-c617-4bee-8d6e-03290151cb89'}
 ```
 
-## How to update a catalog
+## How to update a schema
 
-Use the `PATCH` command at the `/schemas/<catalog-name>` endpoint to partially update an existing catalog. Include the fields to update in a dictionary and send this with the PATCH request. For example, to update the comment field of the catalog we just created above:
+Use the `PATCH` command at the `/schemas/<full-schema-name>` endpoint to partially update an existing catalog. Include the fields to update in a dictionary and send this with the PATCH request. For example, to update the comment field of the schema we just created above:
 
 ```python
-> BASE_URL = "http://localhost:8080/api/2.1/unity-catalog"
-> ENDPOINT = "/schemas/my_new_catalog"
-> URL = f"{BASE_URL}{ENDPOINT}"
+BASE_URL = "http://localhost:8080/api/2.1/unity-catalog"
+ENDPOINT = "/schemas/unity.my_schema"
+URL = f"{BASE_URL}{ENDPOINT}"
 
-> data = {
->     "comment": "This is the updated catalog description"
-> }
+data = {
+    "comment": "Updated schema description"
+}
 
-> response = requests.patch(URL, json=data, headers=headers)
-> response.json()
+response = requests.patch(URL, headers=headers, json=data)
+response.json()
 ```
 
-This should return:
+This has successfully updated only the comment field without having to rewrite the entire schema.
 
-```
-{'name': 'my_new_catalog',
- 'comment': 'This is the updated catalog description',
- 'properties': {},
- 'owner': None,
- 'created_at': 1745158805225,
- 'created_by': None,
- 'updated_at': 1745158807128,
- 'updated_by': None,
- 'id': 'aeb72f8b-9d4b-4128-be97-639e914e785c'}
-```
+## How to delete a schema
 
-This has successfully updated only the comment field without having to rewrite the entire catalog.
-
-## How to delete a catalog
-
-Use the `DELETE` command at the `/schemas/<catalog-name>` endpoint to delete a specific catalog.
+Use the `DELETE` command at the `/schemas/<full-schema-name>` endpoint to delete a specific schema.
 
 <!-- prettier-ignore -->
 !!! tip "Force Delete"
     You can add the `force` parameter to force a delete even if the catalog is not empty.
 
 ```python
-> BASE_URL = "http://localhost:8080/api/2.1/unity-catalog"
-> ENDPOINT = "/schemas/my_new_catalog"
-> URL = f"{BASE_URL}{ENDPOINT}"
+BASE_URL = "http://localhost:8080/api/2.1/unity-catalog"
+ENDPOINT = "/schemas/unity.my_schema"
+URL = f"{BASE_URL}{ENDPOINT}"
 
-> params = {"force": "true"}
-> response = requests.delete(URL, headers=headers, params=params)
+params = {"force": "true"}  # Optional
 
-> if response.status_code == 200:
->     print("✅ The catalog was successfully deleted.")
-> else:
->     print("❌ Failed to delete catalog:", response.text)
+response = requests.delete(URL, headers=headers, params=params)
 ```
 
-This should return:
-
-```
-✅ The catalog was successfully deleted.
-```
+This will delete the schema.
