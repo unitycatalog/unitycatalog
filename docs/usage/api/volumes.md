@@ -10,7 +10,7 @@ Use the `/volumes` endpoint to work with volumes.
 | PATCH  | Partially update an existing volume, e.g. the description | PATCH /volumes/my_volume  |
 | DELETE | Remove a volume                                           | DELETE /volumes/my_volume |
 
-The following sections show how to use each of these methods.
+The following sections show how to use each of these methods. Examples are demonstrated using Python and the `requests` library.
 
 <!-- prettier-ignore -->
 !!! note "Unity Catalog server"

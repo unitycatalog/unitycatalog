@@ -10,7 +10,7 @@ Use the `/catalogs` endpoint to work with catalogs.
 | PATCH  | Partially update an existing catalog, e.g. the description | PATCH /catalogs/my_catalog  |
 | DELETE | Remove a catalog                                           | DELETE /catalogs/my_catalog |
 
-The following sections show how to use each of these methods.
+The following sections show how to use each of these methods. Examples are demonstrated using Python and the `requests` library.
 
 <!-- prettier-ignore -->
 !!! note "Unity Catalog server"

@@ -9,7 +9,7 @@ Use the `/tables` endpoint to work with tables.
 | POST   | Create a new table                    | POST /tables            |
 | DELETE | Remove a table                        | DELETE /tables/my_table |
 
-The following sections show how to use each of these methods.
+The following sections show how to use each of these methods. Examples are demonstrated using Python and the `requests` library.
 
 <!-- prettier-ignore -->
 !!! note "Unity Catalog server"

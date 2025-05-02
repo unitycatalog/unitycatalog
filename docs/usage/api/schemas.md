@@ -10,7 +10,7 @@ Use the `/schemas` endpoint to work with schemas.
 | PATCH  | Partially update an existing schema, e.g. the description | PATCH /schemas/my_schema  |
 | DELETE | Remove a schema                                           | DELETE /schemas/my_schema |
 
-The following sections show how to use each of these methods.
+The following sections show how to use each of these methods. Examples are demonstrated using Python and the `requests` library.
 
 <!-- prettier-ignore -->
 !!! note "Unity Catalog server"
