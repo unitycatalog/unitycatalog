@@ -113,7 +113,7 @@ Use the `PATCH` command at the `/catalogs/<catalog-name>` endpoint to partially 
 > response.json()
 ```
 
-This should return:
+This will return:
 
 ```
 {'name': 'my_new_catalog',
