@@ -113,6 +113,23 @@ This will return:
  'full_name': 'unity.default.my_new_volume'}
 ```
 
+## How to update a volume.
+
+Use the `PATCH` command at the `/volumes/<full-volume-name>` endpoint to update a specific volume. Currently changing the `name` and `comment` fields are supported:
+
+```python
+BASE_URL = "http://localhost:8080/api/2.1/unity-catalog"
+ENDPOINT = "/volumes/unity.default.my_new_volume"
+URL = f"{BASE_URL}{ENDPOINT}"
+
+data = {
+    "new_name": "my_newest_volume",
+}
+
+response = requests.patch(URL, json=data, headers=headers)
+response.json()
+```
+
 ## How to delete a volume
 
 Use the DELETE command at the `/volumes/<full-volume-name>` endpoint to delete a specific volume. The full name is the 3-level namespace reference to your volume: `catalog.schema.volume`. For example, to delete the volume that was just created:
