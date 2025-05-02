@@ -1,6 +1,6 @@
 # Unity Catalog REST API Documentation
 
-This section provides detailed information on how to interact with the Unity Catalog programmatically using RESTful endpoints.
+This section provides detailed information on how to interact with the Unity Catalog programmatically using the REST API.
 
 ## Overview
 
