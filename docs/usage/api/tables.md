@@ -2,12 +2,12 @@
 
 Use the `/tables` endpoint to work with tables.
 
-| Method | Description                             | Example                 |
-| ------ | --------------------------------------- | ----------------------- |
-| GET    | Retrieve a list of tables               | GET /tables             |
-| GET    | Retrieve metadata of a specific catalog | GET /tables/my_table    |
-| POST   | Create a new catalog                    | POST /tables            |
-| DELETE | Remove a catalog                        | DELETE /tables/my_table |
+| Method | Description                           | Example                 |
+| ------ | ------------------------------------- | ----------------------- |
+| GET    | Retrieve a list of tables             | GET /tables             |
+| GET    | Retrieve metadata of a specific table | GET /tables/my_table    |
+| POST   | Create a new table                    | POST /tables            |
+| DELETE | Remove a table                        | DELETE /tables/my_table |
 
 The following sections show how to use each of these methods.
 
@@ -30,7 +30,7 @@ params = {
 }
 
 response = requests.get(URL, headers=headers, params=params)
-data = response.json()
+response.json()
 ```
 
 This will return the 4 pre-loaded tables when running on the default Unity Catalog local server:
@@ -49,8 +49,7 @@ ENDPOINT = "/tables/unity.default.marksheet"
 URL = f"{BASE_URL}{ENDPOINT}"
 
 response = requests.get(URL, headers=headers)
-data = response.json()
-data
+response.json()
 ```
 
 This will return all available metadata for the specified table:
@@ -111,8 +110,7 @@ data = {
 headers = {"Content-Type": "application/json"}
 
 response = requests.post(URL, json=data, headers=headers)
-data = response.json()
-data
+response.json()
 ```
 
 1. Change the path to "s3://my-bucket/..." for s3 tables
