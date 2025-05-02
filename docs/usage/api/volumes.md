@@ -2,12 +2,13 @@
 
 Use the `/volumes` endpoint to work with volumes.
 
-| Method | Description                             | Example                   |
-| ------ | --------------------------------------- | ------------------------- |
-| GET    | Retrieve a list of volumes              | GET /volumes              |
-| GET    | Retrieve metadata of a specific catalog | GET /volumes/my_volume    |
-| POST   | Create a new catalog                    | POST /volumes             |
-| DELETE | Remove a catalog                        | DELETE /volumes/my_volume |
+| Method | Description                                               | Example                   |
+| ------ | --------------------------------------------------------- | ------------------------- |
+| GET    | Retrieve a list of volumes                                | GET /volumes              |
+| GET    | Retrieve metadata of a specific volume                    | GET /volumes/my_volume    |
+| POST   | Create a new volume                                       | POST /volumes             |
+| PATCH  | Partially update an existing volume, e.g. the description | PATCH /volumes/my_volume  |
+| DELETE | Remove a volume                                           | DELETE /volumes/my_volume |
 
 The following sections show how to use each of these methods.
 
@@ -30,7 +31,7 @@ params = {
 }
 
 response = requests.get(URL, headers=headers, params=params)
-data = response.json()
+response.json()
 ```
 
 This will return the 2 pre-loaded volumes when running on the default Unity Catalog local server:
@@ -47,7 +48,7 @@ ENDPOINT = "/volumes/unity.default.json_files"
 URL = f"{BASE_URL}{ENDPOINT}"
 
 response = requests.get(URL, headers=headers)
-data = response.json()
+response.json()
 ```
 
 This will return all available metadata for the specified volume:
@@ -89,8 +90,7 @@ data = {
 headers = {"Content-Type": "application/json"}
 
 response = requests.post(URL, json=data, headers=headers)
-data = response.json()
-data
+response.json()
 ```
 
 1. Use "s3://my-bucket/..." for s3 tables
