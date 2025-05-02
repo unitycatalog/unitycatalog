@@ -2,13 +2,13 @@
 
 Use the `/catalogs` endpoint to work with catalogs.
 
-| Method | Description                                                | Example                     |
-| ------ | ---------------------------------------------------------- | --------------------------- |
-| GET    | Retrieve a list of catalogs                                | GET /catalogs               |
-| GET    | Retrieve metadata of a specific catalog                    | GET /catalogs/my_catalog    |
-| POST   | Create a new catalog                                       | POST /catalogs              |
-| PATCH  | Partially update an existing catalog, e.g. the description | PATCH /catalogs/my_catalog  |
-| DELETE | Remove a catalog                                           | DELETE /catalogs/my_catalog |
+| Method | Description                                                | Endpoint          |
+| ------ | ---------------------------------------------------------- | ----------------- |
+| GET    | Retrieve a list of catalogs                                | /catalogs         |
+| GET    | Retrieve metadata of a specific catalog                    | /catalogs/catalog |
+| POST   | Create a new catalog                                       | /catalogs         |
+| PATCH  | Partially update an existing catalog, e.g. the description | /catalogs/catalog |
+| DELETE | Remove a catalog                                           | /catalogs/catalog |
 
 The following sections show how to use each of these methods. Examples are demonstrated using Python and the `requests` library.
 

@@ -2,13 +2,13 @@
 
 Use the `/volumes` endpoint to work with volumes.
 
-| Method | Description                                               | Example                   |
-| ------ | --------------------------------------------------------- | ------------------------- |
-| GET    | Retrieve a list of volumes                                | GET /volumes              |
-| GET    | Retrieve metadata of a specific volume                    | GET /volumes/my_volume    |
-| POST   | Create a new volume                                       | POST /volumes             |
-| PATCH  | Partially update an existing volume, e.g. the description | PATCH /volumes/my_volume  |
-| DELETE | Remove a volume                                           | DELETE /volumes/my_volume |
+| Method | Description                                               | Endpoint                       |
+| ------ | --------------------------------------------------------- | ------------------------------ |
+| GET    | Retrieve a list of volumes                                | /volumes                       |
+| GET    | Retrieve metadata of a specific volume                    | /volumes/catalog.schema.volume |
+| POST   | Create a new volume                                       | /volumes                       |
+| PATCH  | Partially update an existing volume, e.g. the description | /volumes/catalog.schema.volume |
+| DELETE | Remove a volume                                           | /volumes/catalog.schema.volume |
 
 The following sections show how to use each of these methods. Examples are demonstrated using Python and the `requests` library.
 

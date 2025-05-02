@@ -2,12 +2,12 @@
 
 Use the `/models` endpoint to work with models.
 
-| Method | Description                           | Example                 |
-| ------ | ------------------------------------- | ----------------------- |
-| GET    | Retrieve a list of models             | GET /models             |
-| GET    | Retrieve metadata of a specific model | GET /models/my_model    |
-| POST   | Create a new model                    | POST /models            |
-| DELETE | Remove a model                        | DELETE /models/my_model |
+| Method | Description                           | Endpoint                     |
+| ------ | ------------------------------------- | ---------------------------- |
+| GET    | Retrieve a list of models             | /models                      |
+| GET    | Retrieve metadata of a specific model | /models/catalog.schema.model |
+| POST   | Create a new model                    | /models                      |
+| DELETE | Remove a model                        | /models/catalog.schema.model |
 
 The following sections show how to use each of these methods. Examples are demonstrated using Python and the `requests` library.
 

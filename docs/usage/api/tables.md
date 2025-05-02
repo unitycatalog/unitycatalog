@@ -2,12 +2,12 @@
 
 Use the `/tables` endpoint to work with tables.
 
-| Method | Description                           | Example                 |
-| ------ | ------------------------------------- | ----------------------- |
-| GET    | Retrieve a list of tables             | GET /tables             |
-| GET    | Retrieve metadata of a specific table | GET /tables/my_table    |
-| POST   | Create a new table                    | POST /tables            |
-| DELETE | Remove a table                        | DELETE /tables/my_table |
+| Method | Description                           | Endpoint                     |
+| ------ | ------------------------------------- | ---------------------------- |
+| GET    | Retrieve a list of tables             | /tables                      |
+| GET    | Retrieve metadata of a specific table | /tables/catalog.schema.table |
+| POST   | Create a new table                    | /tables                      |
+| DELETE | Remove a table                        | /tables/catalog.schema.table |
 
 The following sections show how to use each of these methods. Examples are demonstrated using Python and the `requests` library.
 

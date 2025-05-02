@@ -2,12 +2,12 @@
 
 Use the `/functions` endpoint to work with functions.
 
-| Method | Description                              | Example                       |
-| ------ | ---------------------------------------- | ----------------------------- |
-| GET    | Retrieve a list of functions             | GET /functions                |
-| GET    | Retrieve metadata of a specific function | GET /functions/my_function    |
-| POST   | Create a new function                    | POST /functions               |
-| DELETE | Remove a function                        | DELETE /functions/my_function |
+| Method | Description                              | Endpoint                           |
+| ------ | ---------------------------------------- | ---------------------------------- |
+| GET    | Retrieve a list of functions             | /functions                         |
+| GET    | Retrieve metadata of a specific function | /functions/catalog.schema.function |
+| POST   | Create a new function                    | /functions                         |
+| DELETE | Remove a function                        | /functions/catalog.schema.function |
 
 The following sections show how to use each of these methods. Examples are demonstrated using Python and the `requests` library.
 

@@ -2,13 +2,13 @@
 
 Use the `/schemas` endpoint to work with schemas.
 
-| Method | Description                                               | Example                   |
-| ------ | --------------------------------------------------------- | ------------------------- |
-| GET    | Retrieve a list of schemas                                | GET /schemas              |
-| GET    | Retrieve metadata of a specific schema                    | GET /schemas/my_schema    |
-| POST   | Create a new schema                                       | POST /schemas             |
-| PATCH  | Partially update an existing schema, e.g. the description | PATCH /schemas/my_schema  |
-| DELETE | Remove a schema                                           | DELETE /schemas/my_schema |
+| Method | Description                                               | Endpoint                |
+| ------ | --------------------------------------------------------- | ----------------------- |
+| GET    | Retrieve a list of schemas                                | /schemas                |
+| GET    | Retrieve metadata of a specific schema                    | /schemas/catalog.schema |
+| POST   | Create a new schema                                       | /schemas                |
+| PATCH  | Partially update an existing schema, e.g. the description | /schemas/catalog.schema |
+| DELETE | Remove a schema                                           | /schemas/catalog.schema |
 
 The following sections show how to use each of these methods. Examples are demonstrated using Python and the `requests` library.
 
