@@ -12,7 +12,6 @@ The Unity Catalog REST API allows you to manage and interact with Unity Catalog 
 - Volumes
 - Models
 - Functions
-- Credentials
 
 Each subsection shows how to use the REST API with the corresponding type of asset.
 
