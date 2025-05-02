@@ -17,7 +17,7 @@ The following sections show how to use each of these methods.
 
 ## How to list tables
 
-Use the `GET` command at the `/tables` endpoint to retrieve a list of all available tables on the server.
+Use the `GET` command at the `/tables` endpoint to retrieve a list of all available tables on the server. You will need to specify the catalog and schema names using the params keyword argument.
 
 ```python
 BASE_URL = "http://localhost:8080/api/2.1/unity-catalog"
@@ -31,26 +31,17 @@ params = {
 
 response = requests.get(URL, headers=headers, params=params)
 data = response.json()
-
-tables = data.get("tables", [])
-for table in tables:
-    print(f"• {table['name']}")
 ```
 
-This will output the names of the 4 pre-loaded tables when running on the default Unity Catalog local server:
-
-```
+This will return the 4 pre-loaded tables when running on the default Unity Catalog local server:
 • marksheet
 • marksheet_uniform
 • numbers
 • user_countries
-```
-
-Here we use a second GET command and a `for` loop to fetch only the table names from the returned data JSON response. Note that there is no guarantee of a specific ordering of the elements in the list.
 
 ## How to retrieve table metadata
 
-To retrieve metadata about a specific table, use the `GET` command at the `/tables/<table-name>` endpoint. For example:
+To retrieve metadata about a specific table, use the GET command at the `/tables/<full-table-name>` endpoint. The full name means the 3-level namespace reference in the standard Unity Catalog format: `catalog.schema.table`. For example:
 
 ```python
 BASE_URL = "http://localhost:8080/api/2.1/unity-catalog"
@@ -62,7 +53,7 @@ data = response.json()
 data
 ```
 
-This will return all available metadata for the specified table (truncated for legibility):
+This will return all available metadata for the specified table:
 
 ```
 {'name': 'marksheet',
@@ -100,7 +91,7 @@ This will return all available metadata for the specified table (truncated for l
 
 ## How to create a table
 
-Use the `POST` command at the `/tables` endpoint to create a new table:
+Use the POST command at the `/tables` endpoint to create a new table. You will need to supply a dictionary containing the table, catalog and schema names as well as the Table Type, Data Source Format, and Storage Location.
 
 ```python
 BASE_URL = "http://localhost:8080/api/2.1/unity-catalog"
@@ -113,7 +104,7 @@ data = {
     "schema_name": "default",
     "table_type": "EXTERNAL",
     "data_source_format": "DELTA",
-    "storage_location": "file:///Users/rpelgrim/tmp", # or use "s3://my-bucket/..." for s3 tables
+    "storage_location": "file:///Users/user/tmp", # (1)
     "comment": "External table pointing to local directory"
 }
 
@@ -123,6 +114,8 @@ response = requests.post(URL, json=data, headers=headers)
 data = response.json()
 data
 ```
+
+1. Change the path to "s3://my-bucket/..." for s3 tables
 
 This will return:
 
@@ -146,7 +139,7 @@ This will return:
 
 ## How to delete a table
 
-Use the `DELETE` command at the `/tables/<table-name>` endpoint to delete a specific table.
+Use the DELETE command at the `/tables/<full-table-name>` endpoint to delete a specific table. The full name is the 3-level namespace reference to your table: `catalog.schema.table`. For example, to delete the table that was just created:
 
 ```python
 BASE_URL = "http://localhost:8080/api/2.1/unity-catalog"
@@ -154,13 +147,4 @@ ENDPOINT = "/tables/unity.default.my_new_table"
 URL = f"{BASE_URL}{ENDPOINT}"
 
 response = requests.delete(URL)
-
-if response.status_code == 200:
-    print("✅ The table was successfully deleted.")
-else:
-    print("❌ Failed to delete table:", response.text)
-```
-
-```
-✅ The table was successfully deleted.
 ```
