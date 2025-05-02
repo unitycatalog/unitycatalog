@@ -22,7 +22,6 @@ nav:
           - Volumes: usage/api/volumes.md
           - Functions: usage/api/functions.md
           - Models: usage/api/models.md
-          - Credentials: usage/api/credentials.md
       - Tables:
           - Delta Lake: usage/tables/deltalake.md
           - Formats: usage/tables/formats.md
