@@ -38,7 +38,7 @@ This will return the 2 pre-loaded volumes when running on the default Unity Cata
 • json_files
 • txt_files
 
-## How to retrieve volume metadata
+## How to get volume metadata
 
 To retrieve metadata about a specific volume, use the GET command at the `/volumes/<full-volume-name>` endpoint. The full name means the 3-level namespace reference in the standard Unity Catalog format: `catalog.schema.volume`. For example:
 

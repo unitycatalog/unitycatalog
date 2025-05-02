@@ -36,7 +36,7 @@ Use the `GET` command at the `/catalogs` endpoint to retrieve a list of all avai
 
 Here we use a second GET command and a `for` loop to fetch only the catalog names from the return data JSON response. Note that there is no guarantee of a specific ordering of the elements in the list.
 
-## How to retrieve catalog metadata
+## How to get catalog metadata
 
 To retrieve metadata about a specific catalog, use the `GET` command at the `/catalogs/<catalog-name>` endpoint. For example:
 

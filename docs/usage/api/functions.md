@@ -33,7 +33,7 @@ response = requests.get(URL, params=params)
 response.json()
 ```
 
-## How to retrieve function metadata
+## How to get function metadata
 
 To retrieve metadata about a specific function, use the GET command at the `/functions/<full-function-name>` endpoint. The full name means the 3-level namespace reference in the standard Unity Catalog format: `catalog.schema.function`.
 
@@ -45,8 +45,7 @@ ENDPOINT = "/functions/unity.default.lowercase"
 URL = f"{BASE_URL}{ENDPOINT}"
 
 response = requests.get(URL, headers=headers)
-data = response.json()
-data
+response.json()
 ```
 
 This will return all available metadata for the specified function:

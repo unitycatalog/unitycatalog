@@ -17,7 +17,7 @@ The following sections show how to use each of these methods. Examples are demon
 
 ## How to list tables
 
-Use the `GET` command at the `/tables` endpoint to retrieve a list of all available tables on the server. You will need to specify the catalog and schema names using the params keyword argument.
+Use the `GET` command at the `/tables` endpoint to retrieve a list of all available tables on the server. You will need to specify the catalog and schema names.
 
 ```python
 BASE_URL = "http://localhost:8080/api/2.1/unity-catalog"
@@ -39,7 +39,7 @@ This will return the 4 pre-loaded tables when running on the default Unity Catal
 • numbers
 • user_countries
 
-## How to retrieve table metadata
+## How to get table metadata
 
 To retrieve metadata about a specific table, use the GET command at the `/tables/<full-table-name>` endpoint. The full name means the 3-level namespace reference in the standard Unity Catalog format: `catalog.schema.table`. For example:
 
