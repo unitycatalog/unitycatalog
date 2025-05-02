@@ -18,7 +18,7 @@ The following sections show how to use each of these methods.
 
 ## How to list catalogs
 
-Use the `GET` command at the `/catalogs endpoint` to retrieve a list of all available catalogs on the server.
+Use the `GET` command at the `/catalogs` endpoint to retrieve a list of all available catalogs on the server.
 
 ```python
 > BASE_URL = "http://localhost:8080/api/2.1/unity-catalog"
@@ -34,7 +34,7 @@ Use the `GET` command at the `/catalogs endpoint` to retrieve a list of all avai
 • unity
 ```
 
-Here we use a second GET command and a for loop to fetch only the catalog names from the return data JSON response. Note that there is no guarantee of a specific ordering of the elements in the list.
+Here we use a second GET command and a `for` loop to fetch only the catalog names from the return data JSON response. Note that there is no guarantee of a specific ordering of the elements in the list.
 
 ## How to retrieve catalog metadata
 

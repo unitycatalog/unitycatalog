@@ -1,7 +1,5 @@
 # How to work with Tables using the REST API
 
-# How to work with tables using the REST API
-
 Use the `/tables` endpoint to work with tables.
 
 | Method | Description                             | Example                 |
@@ -48,7 +46,7 @@ This will output the names of the 4 pre-loaded tables when running on the defaul
 • user_countries
 ```
 
-Here we use a second GET command and a for loop to fetch only the table names from the returned data JSON response. Note that there is no guarantee of a specific ordering of the elements in the list.
+Here we use a second GET command and a `for` loop to fetch only the table names from the returned data JSON response. Note that there is no guarantee of a specific ordering of the elements in the list.
 
 ## How to retrieve table metadata
 
@@ -158,11 +156,11 @@ URL = f"{BASE_URL}{ENDPOINT}"
 response = requests.delete(URL)
 
 if response.status_code == 200:
-    print("✅ The catalog was successfully deleted.")
+    print("✅ The table was successfully deleted.")
 else:
-    print("❌ Failed to delete catalog:", response.text)
+    print("❌ Failed to delete table:", response.text)
 ```
 
 ```
-✅ The catalog was successfully deleted.
+✅ The table was successfully deleted.
 ```
