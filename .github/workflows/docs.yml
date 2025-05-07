@@ -1,0 +1,46 @@
+name: Deploy Documentation
+
+on:
+  workflow_dispatch:
+
+jobs:
+  markdown-link-check:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v3
+    - uses: gaurav-nelson/github-action-markdown-link-check@v1
+      with:
+        folder-path: docs
+
+  build-and-deploy-docs:
+    needs: [markdown-link-check]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+
+      - name: Setup Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.x'
+
+      - name: Install dependencies
+        run: |
+          python -m venv venv
+          source venv/bin/activate
+          pip install -r docs/requirements.txt
+
+      - name: Build documentation
+        run: |
+          source venv/bin/activate
+          mkdocs build
+
+      - name: Deploy to GitHub Pages
+        uses: peaceiris/actions-gh-pages@v3
+        with:
+          folder: site
+          user_name: 'GitHub Action'
+          user_email: 'action@github.com'
+          commit_message: 'Deploy documentation'
