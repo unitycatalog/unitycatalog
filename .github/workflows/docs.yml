@@ -1,0 +1,45 @@
+name: Deploy Documentation
+
+on:
+  workflow_dispatch:
+
+jobs:
+  markdown-link-check:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v3
+    - uses: gaurav-nelson/github-action-markdown-link-check@1.0.15
+      with:
+        config-file: docs/mlc-config.json
+        folder-path: docs
+
+  build-and-deploy-docs:
+    needs: [markdown-link-check]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+
+      - name: Setup Python Environment
+        run: |
+          python -m venv venv
+          source venv/bin/activate
+          pip install --upgrade pip
+      - name: Install Documentation Dependencies
+        run: |
+          source venv/bin/activate
+          pip install -r ./requirements-docs.txt
+      - name: Build documentation
+        run: |
+          source venv/bin/activate
+          mkdocs build
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: JamesIves/github-pages-deploy-action@4.1.0
+        with:
+          folder: site
+          branch: gh-pages
+          git-config-name: "Github Action"
+          commit-message: "doc update for tag `${{ github.event.client_payload.tag || github.ref_name }}`"
