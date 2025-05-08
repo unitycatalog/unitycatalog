@@ -1634,3 +1634,8 @@ def test_invalid_execution_mode(execution_mode):
         ),
     ):
         DatabricksFunctionClient(execution_mode=execution_mode)
+
+
+def test_no_spark_session_created_for_local_execution_mode():
+    client = DatabricksFunctionClient(execution_mode="local")
+    assert client.spark is None
