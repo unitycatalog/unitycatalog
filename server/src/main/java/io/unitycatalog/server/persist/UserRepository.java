@@ -7,6 +7,7 @@ import io.unitycatalog.server.persist.dao.UserDAO;
 import io.unitycatalog.server.persist.model.CreateUser;
 import io.unitycatalog.server.persist.model.UpdateUser;
 import io.unitycatalog.server.persist.utils.PagedListingHelper;
+import io.unitycatalog.server.persist.utils.TransactionManager;
 import io.unitycatalog.server.utils.IdentityUtils;
 import java.util.ArrayList;
 import java.util.List;
@@ -16,7 +17,6 @@ import java.util.function.Predicate;
 import java.util.stream.Collectors;
 import org.hibernate.Session;
 import org.hibernate.SessionFactory;
-import org.hibernate.Transaction;
 import org.hibernate.query.Query;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -41,88 +41,78 @@ public class UserRepository {
             .state(User.StateEnum.ENABLED)
             .createdAt(System.currentTimeMillis());
 
-    try (Session session = sessionFactory.openSession()) {
-      Transaction tx = session.beginTransaction();
-      try {
-        if (getUserByEmail(session, user.getEmail()) != null
-            || (user.getExternalId() != null
-                && getUserByExternalId(session, user.getExternalId()) != null)) {
-          throw new BaseException(
-              ErrorCode.ALREADY_EXISTS, "User already exists: " + user.getEmail());
-        }
-        session.persist(UserDAO.from(user));
-        tx.commit();
-        return user;
-      } catch (Exception e) {
-        tx.rollback();
-        throw e;
-      }
-    }
+    return TransactionManager.executeWithTransaction(
+        sessionFactory,
+        session -> {
+          if (getUserByEmail(session, user.getEmail()) != null
+              || (user.getExternalId() != null
+                  && getUserByExternalId(session, user.getExternalId()) != null)) {
+            throw new BaseException(
+                ErrorCode.ALREADY_EXISTS, "User already exists: " + user.getEmail());
+          }
+          session.persist(UserDAO.from(user));
+          return user;
+        },
+        "Failed to create user",
+        /* readOnly = */ false);
   }
 
   public List<User> listUsers(int startIndex, int maxUsers, Predicate<User> filter) {
-    try (Session session = sessionFactory.openSession()) {
-      session.setDefaultReadOnly(true);
-      Transaction tx = session.beginTransaction();
-      int count = 0;
-      List<User> users = new ArrayList<>();
-      try {
-        Optional<String> nextPageToken = Optional.empty();
-        boolean hasMore = true;
-        while (users.size() < maxUsers && hasMore) {
-          List<UserDAO> userDAOs =
-              LISTING_HELPER.listEntity(session, Optional.empty(), nextPageToken, null);
+    return TransactionManager.executeWithTransaction(
+        sessionFactory,
+        session -> {
+          int count = 0;
+          List<User> users = new ArrayList<>();
 
-          List<User> userBlock =
-              userDAOs.stream()
-                  .map(UserDAO::toUser)
-                  .filter(filter::test)
-                  .collect(Collectors.toList());
+          Optional<String> nextPageToken = Optional.empty();
+          boolean hasMore = true;
+          while (users.size() < maxUsers && hasMore) {
+            List<UserDAO> userDAOs =
+                LISTING_HELPER.listEntity(session, Optional.empty(), nextPageToken, null);
 
-          if (count + userBlock.size() < startIndex) {
-            // if we haven't reached the start index, skip the block
-            count += userBlock.size();
-          } else if (count >= startIndex) {
-            // we've already reached the start index, add the whole block
-            users.addAll(userBlock);
-            count += userBlock.size();
-          } else {
-            // we'll reach the start index in this block somewhere.
-            int firstIndex = startIndex - count;
-            users.addAll(userBlock.subList(firstIndex, userBlock.size()));
-            count += userBlock.size();
+            List<User> userBlock =
+                userDAOs.stream()
+                    .map(UserDAO::toUser)
+                    .filter(filter::test)
+                    .collect(Collectors.toList());
+
+            if (count + userBlock.size() < startIndex) {
+              // if we haven't reached the start index, skip the block
+              count += userBlock.size();
+            } else if (count >= startIndex) {
+              // we've already reached the start index, add the whole block
+              users.addAll(userBlock);
+              count += userBlock.size();
+            } else {
+              // we'll reach the start index in this block somewhere.
+              int firstIndex = startIndex - count;
+              users.addAll(userBlock.subList(firstIndex, userBlock.size()));
+              count += userBlock.size();
+            }
+            nextPageToken =
+                Optional.ofNullable(
+                    userDAOs.isEmpty() ? null : userDAOs.get(userDAOs.size() - 1).getName());
+            hasMore = nextPageToken.isPresent();
           }
-          nextPageToken =
-              Optional.ofNullable(
-                  userDAOs.isEmpty() ? null : userDAOs.get(userDAOs.size() - 1).getName());
-          hasMore = nextPageToken.isPresent();
-        }
 
-        tx.commit();
-        return users.subList(0, Math.min(users.size(), maxUsers));
-      } catch (Exception e) {
-        tx.rollback();
-        throw e;
-      }
-    }
+          return users.subList(0, Math.min(users.size(), maxUsers));
+        },
+        "Failed to list users",
+        /* readOnly = */ true);
   }
 
   public User getUser(String id) {
-    try (Session session = sessionFactory.openSession()) {
-      session.setDefaultReadOnly(true);
-      Transaction tx = session.beginTransaction();
-      try {
-        UserDAO userDAO = getUserById(session, id);
-        if (userDAO == null) {
-          throw new BaseException(ErrorCode.NOT_FOUND, "User not found: " + id);
-        }
-        tx.commit();
-        return userDAO.toUser();
-      } catch (Exception e) {
-        tx.rollback();
-        throw e;
-      }
-    }
+    return TransactionManager.executeWithTransaction(
+        sessionFactory,
+        session -> {
+          UserDAO userDAO = getUserById(session, id);
+          if (userDAO == null) {
+            throw new BaseException(ErrorCode.NOT_FOUND, "User not found: " + id);
+          }
+          return userDAO.toUser();
+        },
+        "Failed to get user",
+        /* readOnly = */ true);
   }
 
   public UserDAO getUserById(Session session, String id) {
@@ -133,21 +123,17 @@ public class UserRepository {
   }
 
   public User getUserByEmail(String email) {
-    try (Session session = sessionFactory.openSession()) {
-      session.setDefaultReadOnly(true);
-      Transaction tx = session.beginTransaction();
-      try {
-        UserDAO userDAO = getUserByEmail(session, email);
-        if (userDAO == null) {
-          throw new BaseException(ErrorCode.NOT_FOUND, "User not found: " + email);
-        }
-        tx.commit();
-        return userDAO.toUser();
-      } catch (Exception e) {
-        tx.rollback();
-        throw e;
-      }
-    }
+    return TransactionManager.executeWithTransaction(
+        sessionFactory,
+        session -> {
+          UserDAO userDAO = getUserByEmail(session, email);
+          if (userDAO == null) {
+            throw new BaseException(ErrorCode.NOT_FOUND, "User not found: " + email);
+          }
+          return userDAO.toUser();
+        },
+        "Failed to get user by email",
+        /* readOnly = */ true);
   }
 
   public UserDAO getUserByEmail(Session session, String email) {
@@ -166,53 +152,48 @@ public class UserRepository {
   }
 
   public User updateUser(String id, UpdateUser updateUser) {
-    try (Session session = sessionFactory.openSession()) {
-      Transaction tx = session.beginTransaction();
-      try {
-        UserDAO userDAO = getUserById(session, id);
-        if (userDAO == null) {
-          throw new BaseException(ErrorCode.NOT_FOUND, "User not found: " + id);
-        }
-        if (updateUser.getName() != null) {
-          userDAO.setName(updateUser.getName());
-        }
-        if (updateUser.getActive() != null) {
-          userDAO.setState(
-              updateUser.getActive()
-                  ? User.StateEnum.ENABLED.toString()
-                  : User.StateEnum.DISABLED.toString());
-        }
-        if (updateUser.getExternalId() != null) {
-          userDAO.setExternalId(updateUser.getExternalId());
-        }
-        session.merge(userDAO);
-        tx.commit();
-        return userDAO.toUser();
-      } catch (Exception e) {
-        tx.rollback();
-        throw e;
-      }
-    }
+    return TransactionManager.executeWithTransaction(
+        sessionFactory,
+        session -> {
+          UserDAO userDAO = getUserById(session, id);
+          if (userDAO == null) {
+            throw new BaseException(ErrorCode.NOT_FOUND, "User not found: " + id);
+          }
+          if (updateUser.getName() != null) {
+            userDAO.setName(updateUser.getName());
+          }
+          if (updateUser.getActive() != null) {
+            userDAO.setState(
+                updateUser.getActive()
+                    ? User.StateEnum.ENABLED.toString()
+                    : User.StateEnum.DISABLED.toString());
+          }
+          if (updateUser.getExternalId() != null) {
+            userDAO.setExternalId(updateUser.getExternalId());
+          }
+          session.merge(userDAO);
+          return userDAO.toUser();
+        },
+        "Failed to update user",
+        /* readOnly = */ false);
   }
 
   public void deleteUser(String id) {
-    try (Session session = sessionFactory.openSession()) {
-      Transaction tx = session.beginTransaction();
-      try {
-        UserDAO userDAO = getUserById(session, id);
-        if (userDAO != null) {
-          userDAO.setState(User.StateEnum.DISABLED.toString());
-          session.merge(userDAO);
-          tx.commit();
-          LOGGER.info("Deleted user: {}", id);
-        } else {
-          throw new BaseException(ErrorCode.NOT_FOUND, "User not found: " + id);
-        }
-      } catch (Exception e) {
-        tx.rollback();
-        throw e;
-      }
-    }
+    TransactionManager.executeWithTransaction(
+        sessionFactory,
+        session -> {
+          UserDAO userDAO = getUserById(session, id);
+          if (userDAO != null) {
+            userDAO.setState(User.StateEnum.DISABLED.toString());
+            session.merge(userDAO);
+            LOGGER.info("Deleted user: {}", id);
+            return null;
+          } else {
+            throw new BaseException(ErrorCode.NOT_FOUND, "User not found: " + id);
+          }
+        },
+        "Failed to delete user",
+        /* readOnly = */ false);
   }
 
   public UUID findPrincipalId() {
