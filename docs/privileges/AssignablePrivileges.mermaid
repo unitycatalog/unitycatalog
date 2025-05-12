@@ -1,0 +1,131 @@
+flowchart TD
+    %% Main Components as vertical blocks with clear links
+    
+    subgraph MS["Metastore"]
+        direction TB
+        MTitle["Metastore"]
+        
+        subgraph MSOps["Operations"]
+            direction TB
+            MO1["CREATE CATALOG"]
+        end
+    end
+    
+    subgraph CAT["Catalog"]
+        direction TB
+        CTitle["Catalog"]
+        
+        subgraph CATOps["Operations"]
+            direction TB
+            
+            subgraph COps1["Create Operations"]
+                direction TB
+                CO1["CREATE FUNCTION"]
+                CO2["CREATE SCHEMA"]
+                CO3["CREATE TABLE"]
+                CO4["CREATE MODEL"]
+                CO5["CREATE VOLUME"]
+            end
+            
+            subgraph COps2["Access Operations"]
+                direction TB
+                CO6["READ VOLUME"]
+            end
+            
+            subgraph COps3["Usage Operations"]
+                direction TB
+                CO7["USE CATALOG"]
+                CO8["USE SCHEMA"]
+            end
+            
+            subgraph COps4["Manipulation Operations"]
+                direction TB
+                CO9["EXECUTE"]
+                CO10["MODIFY"]
+                CO11["SELECT"]
+            end
+        end
+    end
+    
+    subgraph SCH["Schema"]
+        direction TB
+        STitle["Schema"]
+        
+        subgraph SCHOps["Operations"]
+            direction TB
+            
+            subgraph SOps1["Create Operations"]
+                direction TB
+                SO1["CREATE FUNCTION"]
+                SO2["CREATE MODEL"]
+                SO3["CREATE TABLE"]
+                SO4["CREATE VOLUME"]
+            end
+            
+            subgraph SOps2["Access Operations"]
+                direction TB
+                SO5["READ VOLUME"]
+            end
+            
+            subgraph SOps3["Usage Operations"]
+                direction TB
+                SO6["USE SCHEMA"]
+            end
+            
+            subgraph SOps4["Manipulation Operations"]
+                direction TB
+                SO7["EXECUTE"]
+                SO8["MODIFY"]
+                SO9["SELECT"]
+            end
+        end
+    end
+    
+    subgraph TBL["Table"]
+        direction TB
+        TTitle["Table"]
+        
+        subgraph TBLOps["Operations"]
+            direction TB
+            TO1["SELECT"]
+            TO2["MODIFY"]
+        end
+    end
+    
+    subgraph VOL["Volume"]
+        direction TB
+        VTitle["Volume"]
+        
+        subgraph VOLOps["Operations"]
+            direction TB
+            VO1["READ VOLUME"]
+        end
+    end
+    
+    subgraph FUNC["Function"]
+        direction TB
+        FTitle["Function"]
+        
+        subgraph FUNCOps["Operations"]
+            direction TB
+            FO1["EXECUTE"]
+        end
+    end
+    
+    %% Connections between blocks to represent hierarchy
+    MS --> CAT
+    CAT --> SCH
+    SCH --> TBL
+    SCH --> VOL
+    SCH --> FUNC
+    
+    %% Styling
+    classDef blockTitle fill:#333,stroke:none,color:white,font-weight:bold
+    classDef operation fill:white,stroke:#999,stroke-width:1px,stroke-dasharray:3,rx:5
+    classDef block fill:#f5f5f5,stroke:#888,stroke-width:2px,rx:8
+    classDef opsGroup fill:#f9f9f9,stroke:#ddd,stroke-width:1px
+    
+    class MTitle,CTitle,STitle,TTitle,VTitle,FTitle blockTitle
+    class MO1,CO1,CO2,CO3,CO4,CO5,CO6,CO7,CO8,CO9,CO10,CO11,SO1,SO2,SO3,SO4,SO5,SO6,SO7,SO8,SO9,TO1,TO2,VO1,FO1 operation
+    class MS,CAT,SCH,TBL,VOL,FUNC block
+    class MSOps,CATOps,SCHOps,TBLOps,VOLOps,FUNCOps,COps1,COps2,COps3,COps4,SOps1,SOps2,SOps3,SOps4 opsGroup
