@@ -1,5 +1,5 @@
 # Object Hierarchy
-
+ 
 - **Metastore**  
   - **Catalog**  
     - **Schema**  
