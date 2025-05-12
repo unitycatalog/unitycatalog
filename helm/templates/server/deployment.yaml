@@ -131,6 +131,9 @@ spec:
                   name: {{ .Values.auth.clientSecretName | quote }}
                   key: clientSecret
           {{- end }}
+      {{- with .Values.server.deployment.extraInitContainers }}
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
       containers:
         - name: server
           {{- with .Values.server.deployment.securityContext }}
@@ -198,6 +201,9 @@ spec:
           {{- with .Values.server.deployment.extraVolumeMounts }}
             {{- toYaml . | nindent 12 }}
           {{- end }}
+      {{- with .Values.server.deployment.extraContainers }}
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
       volumes:
         - configMap:
             name: "{{ include "unitycatalog.fullname" . }}-server-config-templates"

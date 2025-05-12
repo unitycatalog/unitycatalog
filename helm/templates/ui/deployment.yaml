@@ -39,6 +39,9 @@ spec:
                 echo "Waiting for server ({{ include "unitycatalog.server.fullname" . }}:{{ .Values.server.service.port }}) to be ready..."
                 sleep 2
               done
+      {{- with .Values.ui.deployment.extraInitContainers }}
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
       containers:
         - name: ui
           {{- with .Values.ui.deployment.securityContext }}
@@ -139,6 +142,9 @@ spec:
           {{- with .Values.ui.deployment.extraVolumeMounts }}
           volumeMounts: {{- toYaml . | nindent 12 }}
           {{- end }}
+      {{- with .Values.ui.deployment.extraContainers }}
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
       {{- with .Values.ui.deployment.extraVolumes }}
       volumes: {{- toYaml . | nindent 8 }}
       {{- end }}

@@ -345,6 +345,22 @@ server:
     #
     imagePullSecrets:
 
+    # -- (array) List of additional init containers to be added to the server pod
+    # @default -- not set
+    # @raw
+    #
+    # [Kubernetes docs](https://kubernetes.io/docs/concepts/workloads/pods/#pod)
+    #
+    extraInitContainers:
+
+    # -- (array) List of additional containers to be added to the server pod
+    # @default -- not set
+    # @raw
+    #
+    # [Kubernetes docs](https://kubernetes.io/docs/concepts/workloads/pods/#pod)
+    #
+    extraContainers:
+
     # -- (object) Additional annotations for the pod
     # @default -- not set
     # @raw
@@ -608,6 +624,22 @@ ui:
     #
     imagePullSecrets:
 
+    # -- (array) List of additional init containers to be added to the UI pods
+    # @default -- not set
+    # @raw
+    #
+    # [Kubernetes docs](https://kubernetes.io/docs/concepts/workloads/pods/#pod)
+    #
+    extraInitContainers:
+
+    # -- (array) List of additional containers to be added to the UI pods
+    # @default -- not set
+    # @raw
+    #
+    # [Kubernetes docs](https://kubernetes.io/docs/concepts/workloads/pods/#pod)
+    #
+    extraContainers:
+
     # -- (object) Additional annotations for the UI pods
     # @default -- not set
     # @raw
@@ -763,7 +795,7 @@ ingress:
   #
   enabled: false
 
-  # -- (array) Ingress host configuration (Required for TLS)
+  # -- (string) Ingress host configuration (Required for TLS)
   # @default -- not set
   host:
 
