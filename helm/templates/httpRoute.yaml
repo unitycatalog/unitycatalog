@@ -12,12 +12,7 @@ spec:
   hostnames:
     - {{ required "Host is required" .Values.httpRoute.host | quote }}
   parentRefs:
-    {{- if .Values.httpRoute.gateway.create }}
-    - name: "{{ include "unitycatalog.fullname" . }}-gateway"
-      kind: Gateway
-      group: gateway.networking.k8s.io
-    {{- end }}
-    {{- with .Values.httpRoute.extraParentRefs }}
+    {{- with .Values.httpRoute.parentRefs }}
     {{- toYaml . | nindent 4 }}
     {{- end }}
   rules:

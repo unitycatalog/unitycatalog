@@ -94,10 +94,7 @@ spec:
             - /bin/bash
             - -c
             - |-
-              {{- if .Values.ui.proxyApiRequests }}
-              {{- if or .Values.ingress.enabled .Values.httpRoute.enabled }}
-              {{- fail "Proxying API requests must be disabled when using httpRoute or ingress" }}
-              {{- end }}
+              {{- if eq (include "unitycatalog.ui.proxyApiRequests" .) "true" }}
               jq --arg proxy \
                 "{{ tpl .Values.ui.serverUrl . }}" \
                 '.proxy = $proxy' package.json > temp.json

@@ -5,7 +5,6 @@ ui:
     image:
       repository: ghcr.io/sdwbgn/unitycatalog-helm/docker/unitycatalog-ui
       tag: 0.2.1-5d668c1
-  proxyApiRequests: false
 server:
   deployment:
     replicaCount: 2
@@ -26,8 +25,7 @@ server:
 httpRoute:
   enabled: true
   host: mydomain.example.com
-  gateway:
-    create: true
-    gatewayClassName: public
-    defaultListener:
-      tlsSecretName: gateway-certificate
+  parentRefs:
+    - name: my-gateway
+      kind: Gateway
+      group: gateway.networking.k8s.io

@@ -6,28 +6,24 @@ This chart deploys [Unity Catalog](https://github.com/unitycatalog/unitycatalog)
 using the [Helm](https://github.com/helm/helm) package manager.
 
 ## Prerequisites
-
 - Kubernetes 1.20+ cluster
 - Helm 3.1+
 
 ## Features
-
 - Deploys Unity Catalog server and UI
-- Supports OAuth authentication: Google, Okta, Keycloak
+- Supports OAuth authentication
 - Supports Unity Catalog versions: 0.2.1
 - Supports file H2DB and PostgreSQL as a database
 - Customizable configuration for server and UI using Helm values
 
 ## Installing the Chart
-
 To install the chart with the release name `unitycatalog`:
 
 ```sh
-helm install unitycatalog ./chart
+helm install unitycatalog .
 ```
 
 ## Uninstalling the Chart
-
 To uninstall the `unitycatalog` chart:
 
 ```sh
@@ -38,8 +34,12 @@ The command removes all the Kubernetes components associated with the chart and 
 If persistent volumes are used, they are not deleted by default. To delete them, you need to manually delete the PVCs.
 
 ## Configuration
-
 The following table lists the configurable parameters of the Unity Catalog chart and their default values.
+
+> **Note**
+>
+> Auth integration in UI works only with Google OAuth provider and
+> it does not work with UC versions 0.2.1 and below.
 
 ## Values
 
@@ -61,7 +61,6 @@ not set
 			<td>OAuth authorization URL
 
 Example: `https://accounts.google.com/o/oauth2/auth`
-
 </td>
 		</tr>
 		<tr>
@@ -74,10 +73,8 @@ not set
 			<td>OAuth client secret name
 
 Client secret must contain the following keys:
-
 - `clientId`: OAuth client ID
 - `clientSecret`: OAuth client secret
-
 </td>
 		</tr>
 		<tr>
@@ -90,7 +87,6 @@ Client secret must contain the following keys:
 			<td>OAuth cookie timeout
 
 Example: `P5D` (5 days)
-
 </td>
 		</tr>
 		<tr>
@@ -103,32 +99,6 @@ false
 			<td>Enable OAuth authentication</td>
 		</tr>
 		<tr>
-			<td>auth.keycloakRealmId</td>
-			<td>string</td>
-			<td><pre lang="">
-not set
-</pre>
-</td>
-			<td>Keycloak realm ID
-
-Example: `my-realm`
-
-</td>
-		</tr>
-		<tr>
-			<td>auth.oktaDomain</td>
-			<td>string</td>
-			<td><pre lang="">
-not set
-</pre>
-</td>
-			<td>Okta domain
-
-Example: `example.okta.com`
-
-</td>
-		</tr>
-		<tr>
 			<td>auth.provider</td>
 			<td>string</td>
 			<td><pre lang="json">
@@ -137,10 +107,9 @@ Example: `example.okta.com`
 </td>
 			<td>OAuth provider
 
-Supported values: `google`, `okta`, `keycloak`, `other`
+Supported values: `google`, `other`
 
 other: Use this option if you want to use a custom OAuth provider. UI does not have any built-in support for this option.
-
 </td>
 		</tr>
 		<tr>
@@ -162,7 +131,6 @@ not set
 			<td>OAuth token URL
 
 Example: `https://oauth2.googleapis.com/token`
-
 </td>
 		</tr>
 		<tr>
@@ -177,13 +145,12 @@ not set
 TODO: It is not possible to create proper admin account. This is a workaround.
 
 Example:
-
 ```yaml
 users:
 - name: admin
   email: test@example.com
+  canCreateCatalogs: true    # Optional (default: false)
 ```
-
 </td>
 		</tr>
 		<tr>
@@ -214,105 +181,7 @@ false
 			<td>Enable httpRoute for the server
 
 [Kubernetes docs](https://gateway-api.sigs.k8s.io/api-types/httproute/)
-
 </td>
-		</tr>
-		<tr>
-			<td>httpRoute.extraParentRefs</td>
-			<td>string</td>
-			<td><pre lang="">
-not set
-</pre>
-</td>
-			<td>HTTPRoute parent references
-
-Example:
-
-```yaml
-extraParentRefs:
-  - name: my-gateway
-    namespace: my-namespace
-    kind: Gateway
-    group: gateway.networking.k8s.io
-```
-
-</td>
-		</tr>
-		<tr>
-			<td>httpRoute.gateway.annotations</td>
-			<td>object</td>
-			<td><pre lang="">
-not set
-</pre>
-</td>
-			<td>Gateway annotations</td>
-		</tr>
-		<tr>
-			<td>httpRoute.gateway.create</td>
-			<td>bool</td>
-			<td><pre lang="json">
-true
-</pre>
-</td>
-			<td>Create a parent Gateway resource for the HTTPRoute
-
-If set to true, a Gateway resource will be created, and the HTTPRoute will be attached to it.
-If set to false, you must specify the parentRef field.
-
-</td>
-		</tr>
-		<tr>
-			<td>httpRoute.gateway.defaultListener.port</td>
-			<td>int</td>
-			<td><pre lang="">
-80 or 443 (if TLS is enabled)
-</pre>
-</td>
-			<td>Gateway listener port</td>
-		</tr>
-		<tr>
-			<td>httpRoute.gateway.defaultListener.protocol</td>
-			<td>string</td>
-			<td><pre lang="">
-HTTP or HTTPS (if TLS is enabled)
-</pre>
-</td>
-			<td>Gateway listener protocol</td>
-		</tr>
-		<tr>
-			<td>httpRoute.gateway.defaultListener.tlsSecretName</td>
-			<td>string</td>
-			<td><pre lang="">
-not set
-</pre>
-</td>
-			<td>Gateway listener TLS secret name
-
-If set, TLS will be enabled for the Gateway listener
-
-</td>
-		</tr>
-		<tr>
-			<td>httpRoute.gateway.extraListeners</td>
-			<td>array</td>
-			<td><pre lang="">
-not set
-</pre>
-</td>
-			<td>Gateway extra listeners
-
-[Kubernetes docs](https://gateway-api.sigs.k8s.io/api-types/gateway/)
-
-</td>
-		</tr>
-		<tr>
-			<td>httpRoute.gateway.gatewayClassName</td>
-			<td>string</td>
-			<td><pre lang="json">
-null
-</pre>
-</td>
-			<td>Gateway class name @default --</td>
 		</tr>
 		<tr>
 			<td>httpRoute.host</td>
@@ -322,6 +191,25 @@ not set
 </pre>
 </td>
 			<td>HTTPRoute host configuration (Required for httpRoute)</td>
+		</tr>
+		<tr>
+			<td>httpRoute.parentRefs</td>
+			<td>string</td>
+			<td><pre lang="">
+not set
+</pre>
+</td>
+			<td>HTTPRoute parent references
+
+Example:
+```yaml
+parentRefs:
+  - name: my-gateway
+    namespace: my-namespace
+    kind: Gateway
+    group: gateway.networking.k8s.io
+```
+</td>
 		</tr>
 		<tr>
 			<td>ingress.annotations</td>
@@ -342,7 +230,6 @@ false
 			<td>Enable ingress for the server
 
 [Kubernetes docs](https://kubernetes.io/docs/concepts/services-networking/ingress/)
-
 </td>
 		</tr>
 		<tr>
@@ -352,7 +239,7 @@ false
 not set
 </pre>
 </td>
-			<td>Ingress host configuration (Required for ingress)</td>
+			<td>Ingress host configuration (Required for TLS)</td>
 		</tr>
 		<tr>
 			<td>ingress.ingressClassName</td>
@@ -373,7 +260,6 @@ not set
 			<td>Ingress TLS secret name
 
 If set, TLS will be enabled for the ingress
-
 </td>
 		</tr>
 		<tr>
@@ -395,13 +281,11 @@ not set
 			<td>Extra config properties that will be added to server.properties
 
 Example:
-
 ```yaml
 extraProperties:
   my-config.property1: my-value1
   my-config.property2: my-value2
 ```
-
 </td>
 		</tr>
 		<tr>
@@ -414,13 +298,11 @@ not set
 			<td>Server configuration template override
 
 Example:
-
 ```
 server.env=prod
 server.port=8080
 ...other config properties...
 ```
-
 </td>
 		</tr>
 		<tr>
@@ -433,7 +315,6 @@ server.port=8080
 			<td>Backoff limit for the create users job
 
 [Kubernetes docs](https://kubernetes.io/docs/concepts/workloads/controllers/jobs-run-to-completion/)
-
 </td>
 		</tr>
 		<tr>
@@ -446,7 +327,6 @@ not set
 			<td>Additional annotations for the create users job
 
 [Kubernetes docs](https://kubernetes.io/docs/concepts/overview/working-with-objects/annotations/)
-
 </td>
 		</tr>
 		<tr>
@@ -486,7 +366,6 @@ not set
 			<td>TTL for the create users job (in seconds)
 
 [Kubernetes docs](https://kubernetes.io/docs/concepts/workloads/controllers/ttlafterfinished/)
-
 </td>
 		</tr>
 		<tr>
@@ -519,7 +398,6 @@ true
 			<td>Enable persistence for the file database volume
 
 If set to false, all data will be lost when the pod is deleted
-
 </td>
 		</tr>
 		<tr>
@@ -541,7 +419,6 @@ derived from the chart parameters and metadata
 			<td>Size of the file database volume
 
 Example: `1Gi`
-
 </td>
 		</tr>
 		<tr>
@@ -554,7 +431,6 @@ not set
 			<td>Storage class for the file database volume
 
 If not set, the default storage class will be used
-
 </td>
 		</tr>
 		<tr>
@@ -585,12 +461,10 @@ not set
 			<td>Postgres params
 
 Example:
-
 ```yaml
 params:
   sslfactory: my.custom.SSLFactory
 ```
-
 </td>
 		</tr>
 		<tr>
@@ -603,7 +477,6 @@ not set
 			<td>PostgreSQL database host (Required)
 
 Example: `mydb.123456789012.us-east-1.rds.amazonaws.com`
-
 </td>
 		</tr>
 		<tr>
@@ -625,7 +498,6 @@ not set
 			<td>PostgreSQL user password secret name
 
 If not set, connection will be made without a password
-
 </td>
 		</tr>
 		<tr>
@@ -656,7 +528,6 @@ verify-full
 			<td>PostgreSQL SSL mode
 
 [Documentation](https://jdbc.postgresql.org/documentation/ssl/)
-
 </td>
 		</tr>
 		<tr>
@@ -669,14 +540,12 @@ public root CAs
 			<td>PostgreSQL SSL root certificate
 
 Example:
-
 ```yaml
 rootCert: |
   -----BEGIN CERTIFICATE-----
   ...certificate data...
   -----END CERTIFICATE-----
 ```
-
 </td>
 		</tr>
 		<tr>
@@ -716,7 +585,6 @@ postgres
 			<td>Database type
 
 Supported values: `file`, `postgresql`
-
 </td>
 		</tr>
 		<tr>
@@ -729,7 +597,6 @@ not set
 			<td>Node affinity for the deployment
 
 [Kubernetes docs](https://kubernetes.io/docs/concepts/scheduling-eviction/assign-pod-node/)
-
 </td>
 		</tr>
 		<tr>
@@ -744,7 +611,6 @@ false
 If set to true, the liveness probe will be enabled.
 
 [Kubernetes docs](https://kubernetes.io/docs/tasks/configure-pod-container/configure-liveness-readiness-startup-probes/)
-
 </td>
 		</tr>
 		<tr>
@@ -759,7 +625,6 @@ false
 If set to true, the readiness probe will be enabled.
 
 [Kubernetes docs](https://kubernetes.io/docs/tasks/configure-pod-container/configure-liveness-readiness-startup-probes/)
-
 </td>
 		</tr>
 		<tr>
@@ -774,7 +639,6 @@ true
 If set to true, the startup probe will be enabled.
 
 [Kubernetes docs](https://kubernetes.io/docs/tasks/configure-pod-container/configure-liveness-readiness-startup-probes/)
-
 </td>
 		</tr>
 		<tr>
@@ -787,7 +651,6 @@ not set
 			<td>Additional annotations for the pod
 
 [Kubernetes docs](https://kubernetes.io/docs/concepts/overview/working-with-objects/annotations/)
-
 </td>
 		</tr>
 		<tr>
@@ -800,7 +663,6 @@ not set
 			<td>Additional labels for the pod
 
 [Kubernetes docs](https://kubernetes.io/docs/concepts/overview/working-with-objects/labels/)
-
 </td>
 		</tr>
 		<tr>
@@ -813,7 +675,6 @@ not set
 			<td>List of additional volume mounts for the pod
 
 [Kubernetes docs](https://kubernetes.io/docs/concepts/storage/volumes/)
-
 </td>
 		</tr>
 		<tr>
@@ -826,7 +687,6 @@ not set
 			<td>List of additional volumes to be mounted in the pod
 
 [Kubernetes docs](https://kubernetes.io/docs/concepts/storage/volumes/)
-
 </td>
 		</tr>
 		<tr>
@@ -866,7 +726,6 @@ not set
 			<td>Image pull secrets for the server
 
 [Kubernetes docs](https://kubernetes.io/docs/concepts/containers/images/#specifying-imagepullsecrets-on-a-pod)
-
 </td>
 		</tr>
 		<tr>
@@ -906,7 +765,6 @@ not set
 			<td>Security context for the init container
 
 [Kubernetes docs](https://kubernetes.io/docs/concepts/policy/security-context/)
-
 </td>
 		</tr>
 		<tr>
@@ -919,7 +777,6 @@ tcpSocket:<br>  port: api<br>timeoutSeconds: 10<br>periodSeconds: 10<br>failureT
 			<td>Liveness probe
 
 [Kubernetes docs](https://kubernetes.io/docs/tasks/configure-pod-container/configure-liveness-readiness-startup-probes/)
-
 </td>
 		</tr>
 		<tr>
@@ -932,7 +789,6 @@ not set
 			<td>Node selector for the deployment
 
 [Kubernetes docs](https://kubernetes.io/docs/concepts/scheduling-eviction/assign-pod-node/)
-
 </td>
 		</tr>
 		<tr>
@@ -950,7 +806,6 @@ By default, the pod security context has `fsGroup` set to `101` to allow the con
 to write to the mounted volumes.
 
 [Kubernetes docs](https://kubernetes.io/docs/concepts/policy/security-context/)
-
 </td>
 		</tr>
 		<tr>
@@ -972,7 +827,6 @@ tcpSocket:<br>  port: api<br>timeoutSeconds: 10<br>periodSeconds: 10<br>failureT
 			<td>Readiness probe
 
 [Kubernetes docs](https://kubernetes.io/docs/tasks/configure-pod-container/configure-liveness-readiness-startup-probes/)
-
 </td>
 		</tr>
 		<tr>
@@ -985,7 +839,6 @@ tcpSocket:<br>  port: api<br>timeoutSeconds: 10<br>periodSeconds: 10<br>failureT
 			<td>Number of replicas
 
 For replica count higher than 1 - use an external database
-
 </td>
 		</tr>
 		<tr>
@@ -998,7 +851,6 @@ not set
 			<td>Resources for the deployment
 
 [Kubernetes docs](https://kubernetes.io/docs/concepts/configuration/manage-resources-containers/)
-
 </td>
 		</tr>
 		<tr>
@@ -1011,7 +863,6 @@ not set
 			<td>Security context for the container
 
 [Kubernetes docs](https://kubernetes.io/docs/concepts/policy/security-context/)
-
 </td>
 		</tr>
 		<tr>
@@ -1024,7 +875,6 @@ tcpSocket:<br>  port: api<br>timeoutSeconds: 10<br>periodSeconds: 10<br>failureT
 			<td>Startup probe
 
 [Kubernetes docs](https://kubernetes.io/docs/tasks/configure-pod-container/configure-liveness-readiness-startup-probes/)
-
 </td>
 		</tr>
 		<tr>
@@ -1037,7 +887,6 @@ not set
 			<td>Tolerations for the deployment
 
 [Kubernetes docs](https://kubernetes.io/docs/concepts/scheduling-eviction/taint-and-toleration/)
-
 </td>
 		</tr>
 		<tr>
@@ -1050,7 +899,6 @@ not set
 			<td>Update strategy for the deployment
 
 [Kubernetes docs](https://kubernetes.io/docs/concepts/workloads/controllers/deployment/#updating-a-deployment)
-
 </td>
 		</tr>
 		<tr>
@@ -1072,13 +920,11 @@ not set
 			<td>Server hibernate configuration template override
 
 Example:
-
 ```
 hibernate.dialect=org.hibernate.dialect.MySQLDialect
 hibernate.connection.driver_class=com.mysql.cj.jdbc.Driver
 ...other hibernate config properties...
 ```
-
 </td>
 		</tr>
 		<tr>
@@ -1091,7 +937,6 @@ true
 			<td>Create keypair secret
 
 If set to true, the secret will be created with a random keypair
-
 </td>
 		</tr>
 		<tr>
@@ -1104,14 +949,21 @@ derived from the chart parameters and metadata
 			<td>Name of the keypair secret for JWT signing
 
 The secret must contain the following keys:
-
 - `public_key.der`: Public key in DER format
 - `private_key.der`: Private key in DER format
 - `key_id.txt`: Key ID
 
 [Kubernetes docs](https://github.com/unitycatalog/unitycatalog/blob/main/server/src/main/java/io/unitycatalog/server/security/SecurityConfiguration.java)
-
 </td>
+		</tr>
+		<tr>
+			<td>server.logLevel</td>
+			<td>string</td>
+			<td><pre lang="">
+info
+</pre>
+</td>
+			<td>Log level for the server</td>
 		</tr>
 		<tr>
 			<td>server.service.port</td>
@@ -1177,7 +1029,6 @@ not set
 			<td>ADLS credentials for accessing the storage
 
 Example:
-
 ```yaml
 adls:
 - storageAccountName: my-storage-account
@@ -1185,11 +1036,9 @@ adls:
 ```
 
 Credential secret must contain the following keys:
-
 - `tenantId`: Azure tenant ID
 - `clientId`: Azure client ID
 - `clientSecret`: Azure client secret
-
 </td>
 		</tr>
 		<tr>
@@ -1202,7 +1051,6 @@ not set
 			<td>GCS credentials for accessing the storage
 
 Example:
-
 ```yaml
 gcs:
 - bucketPath: gs://my-bucket-name
@@ -1210,9 +1058,7 @@ gcs:
 ```
 
 Credential secret must contain the following keys:
-
 - `jsonKey`: GCP service account JSON key
-
 </td>
 		</tr>
 		<tr>
@@ -1225,7 +1071,6 @@ not set
 			<td>S3 credentials for accessing the storage
 
 Example:
-
 ```yaml
 s3:
 - bucketPath: s3://my-bucket-path
@@ -1235,10 +1080,8 @@ s3:
 ```
 
 Credential secret must contain the following keys:
-
 - `accessKey`: AWS access key
 - `secretKey`: AWS secret key
-
 </td>
 		</tr>
 		<tr>
@@ -1251,7 +1094,6 @@ not set
 			<td>Root path for the model storage
 
 Example: `s3://bucket/path`
-
 </td>
 		</tr>
 		<tr>
@@ -1264,7 +1106,6 @@ not set
 			<td>Node affinity for the UI deployment
 
 [Kubernetes docs](https://kubernetes.io/docs/concepts/scheduling-eviction/assign-pod-node/)
-
 </td>
 		</tr>
 		<tr>
@@ -1279,7 +1120,6 @@ false
 If set to true, the liveness probe will be enabled.
 
 [Kubernetes docs](https://kubernetes.io/docs/tasks/configure-pod-container/configure-liveness-readiness-startup-probes/)
-
 </td>
 		</tr>
 		<tr>
@@ -1294,7 +1134,6 @@ false
 If set to true, the readiness probe will be enabled.
 
 [Kubernetes docs](https://kubernetes.io/docs/tasks/configure-pod-container/configure-liveness-readiness-startup-probes/)
-
 </td>
 		</tr>
 		<tr>
@@ -1309,7 +1148,6 @@ true
 If set to true, the startup probe will be enabled.
 
 [Kubernetes docs](https://kubernetes.io/docs/tasks/configure-pod-container/configure-liveness-readiness-startup-probes/)
-
 </td>
 		</tr>
 		<tr>
@@ -1322,7 +1160,6 @@ not set
 			<td>Additional annotations for the UI pods
 
 [Kubernetes docs](https://kubernetes.io/docs/concepts/overview/working-with-objects/labels/)
-
 </td>
 		</tr>
 		<tr>
@@ -1335,7 +1172,6 @@ not set
 			<td>Additional labels for the UI pods
 
 [Kubernetes docs](https://kubernetes.io/docs/concepts/overview/working-with-objects/annotations/)
-
 </td>
 		</tr>
 		<tr>
@@ -1348,7 +1184,6 @@ not set
 			<td>List of additional volume mounts for the pod
 
 [Kubernetes docs](https://kubernetes.io/docs/concepts/storage/volumes/)
-
 </td>
 		</tr>
 		<tr>
@@ -1361,7 +1196,6 @@ not set
 			<td>List of additional volumes to be mounted in the pod
 
 [Kubernetes docs](https://kubernetes.io/docs/concepts/storage/volumes/)
-
 </td>
 		</tr>
 		<tr>
@@ -1401,7 +1235,6 @@ not set
 			<td>Image pull secrets for the UI
 
 [Kubernetes docs](https://kubernetes.io/docs/concepts/containers/images/#specifying-imagepullsecrets-on-a-pod)
-
 </td>
 		</tr>
 		<tr>
@@ -1441,7 +1274,6 @@ tcpSocket:<br>  port: ui<br>timeoutSeconds: 10<br>periodSeconds: 10<br>failureTh
 			<td>Liveness probe
 
 [Kubernetes docs](https://kubernetes.io/docs/tasks/configure-pod-container/configure-liveness-readiness-startup-probes/)
-
 </td>
 		</tr>
 		<tr>
@@ -1454,7 +1286,6 @@ not set
 			<td>Node selector for the UI deployment
 
 [Kubernetes docs](https://kubernetes.io/docs/concepts/scheduling-eviction/assign-pod-node/)
-
 </td>
 		</tr>
 		<tr>
@@ -1467,7 +1298,6 @@ not set
 			<td>Security context for the UI pod
 
 [Kubernetes docs](https://kubernetes.io/docs/concepts/policy/security-context/)
-
 </td>
 		</tr>
 		<tr>
@@ -1489,7 +1319,6 @@ tcpSocket:<br>  port: ui<br>timeoutSeconds: 10<br>periodSeconds: 10<br>failureTh
 			<td>Readiness probe
 
 [Kubernetes docs](https://kubernetes.io/docs/tasks/configure-pod-container/configure-liveness-readiness-startup-probes/)
-
 </td>
 		</tr>
 		<tr>
@@ -1511,7 +1340,6 @@ not set
 			<td>Resources for the UI deployment
 
 [Kubernetes docs](https://kubernetes.io/docs/concepts/configuration/manage-resources-containers/)
-
 </td>
 		</tr>
 		<tr>
@@ -1524,7 +1352,6 @@ not set
 			<td>Security context for the UI container
 
 [Kubernetes docs](https://kubernetes.io/docs/concepts/policy/security-context/)
-
 </td>
 		</tr>
 		<tr>
@@ -1537,7 +1364,6 @@ tcpSocket:<br>  port: ui<br>timeoutSeconds: 10<br>periodSeconds: 10<br>failureTh
 			<td>Startup probe
 
 [Kubernetes docs](https://kubernetes.io/docs/tasks/configure-pod-container/configure-liveness-readiness-startup-probes/)
-
 </td>
 		</tr>
 		<tr>
@@ -1550,7 +1376,6 @@ not set
 			<td>Tolerations for the UI deployment
 
 [Kubernetes docs](https://kubernetes.io/docs/concepts/scheduling-eviction/taint-and-toleration/)
-
 </td>
 		</tr>
 		<tr>
@@ -1563,7 +1388,6 @@ not set
 			<td>Update strategy for the deployment
 
 [Kubernetes docs](https://kubernetes.io/docs/concepts/workloads/controllers/deployment/#updating-a-deployment)
-
 </td>
 		</tr>
 		<tr>
@@ -1578,8 +1402,8 @@ true
 		<tr>
 			<td>ui.proxyApiRequests</td>
 			<td>bool</td>
-			<td><pre lang="">
-true
+			<td><pre lang="json">
+null
 </pre>
 </td>
 			<td>Enable proxy API requests
@@ -1587,7 +1411,6 @@ true
 If set to true, the UI will proxy API requests to the server.
 It will only accept requests from the server with the host header `localhost`.
 For production deployment with a load balancer that routes traffic to the UI and server, set this to false.
-
 </td>
 		</tr>
 		<tr>
@@ -1601,7 +1424,6 @@ http://{{ include "unitycatalog.server.fullname" . }}:{{ .Values.server.service.
 
 The server URL is used by the UI to connect to the server.
 The default value is set to the server service URL.
-
 </td>
 		</tr>
 		<tr>
@@ -1625,6 +1447,5 @@ The default value is set to the server service URL.
 	</tbody>
 </table>
 
-______________________________________________________________________
-
+----------------------------------------------
 Autogenerated from chart metadata using [helm-docs v1.14.2](https://github.com/norwoodj/helm-docs/releases/v1.14.2)

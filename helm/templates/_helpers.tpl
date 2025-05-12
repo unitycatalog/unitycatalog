@@ -122,3 +122,19 @@ Keypair secret name
 {{- define "unitycatalog.server.jwtKeypairSecretName" -}}
 {{- default (printf "%s-%s" (include "unitycatalog.server.fullname" .) "jwt-key") .Values.server.jwtKeypairSecret.name }}
 {{- end }}
+
+{{/*
+Enable UI API proxy
+*/}}
+{{- define "unitycatalog.ui.proxyApiRequests" -}}
+{{- if quote .Values.ui.proxyApiRequests | empty }}
+    {{- not (or .Values.ingress.enabled .Values.httpRoute.enabled) }}
+{{- else if .Values.ui.proxyApiRequests }}
+    {{- if or .Values.ingress.enabled .Values.httpRoute.enabled }}
+    {{- fail "Proxying API requests must be disabled when using httpRoute or ingress" }}
+    {{- end -}}
+    true
+{{- else -}}
+    false
+{{- end }}
+{{- end }}

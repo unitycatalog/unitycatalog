@@ -77,6 +77,7 @@ auth:
   # users:
   # - name: admin
   #   email: test@example.com
+  #   canCreateCatalogs: true    # Optional (default: false)
   # ```
   #
   users:
@@ -84,7 +85,7 @@ auth:
   # -- (string) OAuth provider
   # @raw
   #
-  # Supported values: `google`, `okta`, `keycloak`, `other`
+  # Supported values: `google`, `other`
   #
   # other: Use this option if you want to use a custom OAuth provider. UI does not have any built-in support for this option.
   #
@@ -96,14 +97,16 @@ auth:
   #
   # Example: `https://accounts.google.com/o/oauth2/auth`
   #
-  authorizationUrl:
+  authorizationUrl: https://accounts.google.com/o/oauth2/auth
+
   # -- (string) OAuth token URL
   # @default -- not set
   # @raw
   #
   # Example: `https://oauth2.googleapis.com/token`
   #
-  tokenUrl:
+  tokenUrl: https://oauth2.googleapis.com/token
+
   # -- (string) OAuth client secret name
   # @default -- not set
   # @raw
@@ -117,28 +120,13 @@ auth:
   # -- (int) OAuth redirect port
   # @default -- not set
   redirectPort:
+
   # -- (string) OAuth cookie timeout
   # @raw
   #
   # Example: `P5D` (5 days)
   #
   cookieTimeout: P5D
-
-  # -- (string) Okta domain
-  # @default -- not set
-  # @raw
-  #
-  # Example: `example.okta.com`
-  #
-  oktaDomain:
-
-  # -- (string) Keycloak realm ID
-  # @default -- not set
-  # @raw
-  #
-  # Example: `my-realm`
-  #
-  keycloakRealmId:
 
 server:
   # -- (bool) Enable the server deployment
@@ -553,6 +541,10 @@ server:
     #
     create: true
 
+  # -- (string) Log level for the server
+  # @default -- info
+  logLevel: info
+
 ui:
   # -- (bool) Enable the UI
   enabled: true
@@ -564,14 +556,14 @@ ui:
     port: 3000
 
   # -- (bool) Enable proxy API requests
-  # @default -- true
+  # @default -- `false`, if using ingress or httpRoute, otherwise `true`
   # @raw
   #
   # If set to true, the UI will proxy API requests to the server.
   # It will only accept requests from the server with the host header `localhost`.
   # For production deployment with a load balancer that routes traffic to the UI and server, set this to false.
   #
-  proxyApiRequests: true
+  proxyApiRequests:
 
   # -- (tpl/string) Server URL for the UI to connect to
   # @default -- http://{{ include "unitycatalog.server.fullname" . }}:{{ .Values.server.service.port }}
@@ -771,7 +763,7 @@ ingress:
   #
   enabled: false
 
-  # -- (array) Ingress host configuration (Required for ingress)
+  # -- (array) Ingress host configuration (Required for TLS)
   # @default -- not set
   host:
 
@@ -799,48 +791,6 @@ httpRoute:
   #
   enabled: false
 
-  gateway:
-    # -- (bool) Create a parent Gateway resource for the HTTPRoute
-    # @raw
-    #
-    # If set to true, a Gateway resource will be created, and the HTTPRoute will be attached to it.
-    # If set to false, you must specify the parentRef field.
-    #
-    create: true
-
-    # -- (string) Gateway class name
-    # @default --
-    gatewayClassName:
-
-    defaultListener:
-      # -- (int) Gateway listener port
-      # @default -- 80 or 443 (if TLS is enabled)
-      port:
-
-      # -- (string) Gateway listener protocol
-      # @default -- HTTP or HTTPS (if TLS is enabled)
-      protocol:
-
-      # -- (string) Gateway listener TLS secret name
-      # @default -- not set
-      # @raw
-      #
-      # If set, TLS will be enabled for the Gateway listener
-      #
-      tlsSecretName:
-
-    # -- (array) Gateway extra listeners
-    # @default -- not set
-    # @raw
-    #
-    # [Kubernetes docs](https://gateway-api.sigs.k8s.io/api-types/gateway/)
-    #
-    extraListeners:
-
-    # -- (object) Gateway annotations
-    # @default -- not set
-    annotations:
-
   # -- (array) HTTPRoute host configuration (Required for httpRoute)
   # @default -- not set
   host:
@@ -851,14 +801,14 @@ httpRoute:
   #
   # Example:
   # ```yaml
-  # extraParentRefs:
+  # parentRefs:
   #   - name: my-gateway
   #     namespace: my-namespace
   #     kind: Gateway
   #     group: gateway.networking.k8s.io
   # ```
   #
-  extraParentRefs:
+  parentRefs:
 
   # -- (object) HTTPRoute annotations
   # @default -- not set

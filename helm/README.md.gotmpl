@@ -12,7 +12,7 @@ using the [Helm](https://github.com/helm/helm) package manager.
 
 ## Features
 - Deploys Unity Catalog server and UI
-- Supports OAuth authentication: Google, Okta, Keycloak
+- Supports OAuth authentication
 - Supports Unity Catalog versions: 0.2.1
 - Supports file H2DB and PostgreSQL as a database
 - Customizable configuration for server and UI using Helm values
@@ -21,7 +21,7 @@ using the [Helm](https://github.com/helm/helm) package manager.
 To install the chart with the release name `unitycatalog`:
 
 ```sh
-helm install unitycatalog ./chart
+helm install unitycatalog .
 ```
 
 ## Uninstalling the Chart
@@ -36,6 +36,11 @@ If persistent volumes are used, they are not deleted by default. To delete them,
 
 ## Configuration
 The following table lists the configurable parameters of the Unity Catalog chart and their default values.
+
+> **Note**
+>
+> Auth integration in UI works only with Google OAuth provider and
+> it does not work with UC versions 0.2.1 and below.
 
 {{ template "chart.valuesSectionHtml" . }}
 

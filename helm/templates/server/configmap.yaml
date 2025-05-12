@@ -6,17 +6,7 @@ metadata:
   labels: {{- include "unitycatalog.server.labels" . | nindent 4 }}
 data:
   server.log4j2.properties.template: |-
-    status=warn
-    appenders=console
-
-    appender.console.type=Console
-    appender.console.name=Console
-    appender.console.layout.type=PatternLayout
-    appender.console.layout.pattern=%d{HH:mm:ss.SSS} [%t] %-5level %logger{36} - %msg%n
-
-    rootLogger.level=info
-    rootLogger.appenderRefs=console
-    rootLogger.appenderRef.console.ref=Console
+    {{- include "unitycatalog.server.log4j2ConfigTemplate" . | nindent 4 }}
   server.properties.template: |-
     {{- include "unitycatalog.server.configTemplate" . | nindent 4 }}
   hibernate.properties.template: |-

@@ -13,6 +13,7 @@ spec:
       annotations:
         checksum/serverConfig: {{ include "unitycatalog.server.configTemplate" . | sha256sum | quote }}
         checksum/hibernateConfig: {{ include "unitycatalog.server.hibernateConfigTemplate" . | sha256sum | quote }}
+        checksum/log4j2Config: {{ include "unitycatalog.server.log4j2ConfigTemplate" . | sha256sum | quote }}
       {{- with .Values.server.deployment.extraPodAnnotations }}
         {{- toYaml . | nindent 8 }}
       {{- end }}
