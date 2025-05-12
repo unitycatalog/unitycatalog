@@ -1,4 +1,5 @@
 import json
+import logging
 from typing import Any, Callable, Dict, List, Optional
 
 from google.generativeai.types import CallableFunctionDeclaration, content_types
@@ -15,6 +16,8 @@ from unitycatalog.ai.core.utils.pydantic_utils import (
     PydanticFunctionInputParams,
 )
 from unitycatalog.ai.core.utils.validation_utils import mlflow_tracing_enabled
+
+_logger = logging.getLogger(__name__)
 
 
 class GeminiTool(BaseModel):
@@ -58,6 +61,10 @@ class UCFunctionToolkit(BaseModel):
     client: Optional[BaseFunctionClient] = Field(
         default=None, description="The client for managing functions."
     )
+    filter_accessible_functions: bool = Field(
+        default=False,
+        description="When set to true, UCFunctionToolkit is initialized with functions that only the client has access to",
+    )
 
     model_config = ConfigDict(arbitrary_types_allowed=True)
 
@@ -75,6 +82,7 @@ class UCFunctionToolkit(BaseModel):
             function_names=self.function_names,
             tools_dict=self.tools_dict,
             client=self.client,
+            filter_accessible_functions=self.filter_accessible_functions,
             uc_function_to_tool_func=self.uc_function_to_gemini_tool,
         )
         return self
@@ -129,7 +137,8 @@ class UCFunctionToolkit(BaseModel):
         client: Optional[BaseFunctionClient] = None,
         function_name: Optional[str] = None,
         function_info: Optional[Any] = None,
-    ) -> GeminiTool:
+        filter_accessible_functions: bool = False,
+    ) -> Optional[GeminiTool]:
         """
         Converts a Unity Catalog function to an Autogen tool.
 
@@ -146,7 +155,13 @@ class UCFunctionToolkit(BaseModel):
         client = validate_or_set_default_client(client)
 
         if function_name:
-            function_info = client.get_function(function_name)
+            try:
+                function_info = client.get_function(function_name)
+            except PermissionError as e:
+                _logger.info(f"Skipping {function_name} due to permission errors.")
+                if filter_accessible_functions:
+                    return None
+                raise e
         elif function_info:
             function_name = function_info.full_name
         else:

@@ -6,15 +6,13 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import io.unitycatalog.server.exception.BaseException;
 import io.unitycatalog.server.persist.utils.FileOperations;
 import io.unitycatalog.server.persist.utils.UriUtils;
-import java.util.Properties;
 import org.junit.jupiter.api.Test;
 
 public class FileOperationsTest {
   @Test
   public void testUriUtils() {
-    Properties properties = new Properties();
-    properties.setProperty("storage-root.models", "/tmp");
-    ServerProperties serverProperties = new ServerProperties(properties);
+    ServerProperties serverProperties = new ServerProperties();
+    serverProperties.set(ServerProperties.Property.MODEL_STORAGE_ROOT, "/tmp");
     FileOperations fileOperations = new FileOperations(serverProperties);
 
     String modelPathUri = fileOperations.getModelStorageLocation("catalog", "schema", "my-model");
@@ -32,8 +30,8 @@ public class FileOperationsTest {
     // cleanup the created catalog
     UriUtils.deleteStorageLocationPath("file:/tmp/catalog");
 
-    properties.setProperty("storage-root.models", "file:///tmp/random");
-    serverProperties = new ServerProperties(properties);
+    serverProperties = new ServerProperties();
+    serverProperties.set(ServerProperties.Property.MODEL_STORAGE_ROOT, "file:///tmp/random");
     fileOperations = new FileOperations(serverProperties);
 
     modelPathUri = fileOperations.getModelStorageLocation("catalog", "schema", "my-model");

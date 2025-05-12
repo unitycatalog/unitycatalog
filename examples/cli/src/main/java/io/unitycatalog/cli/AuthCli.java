@@ -11,16 +11,15 @@ import com.fasterxml.jackson.databind.ObjectWriter;
 import io.unitycatalog.cli.utils.CliParams;
 import io.unitycatalog.cli.utils.CliUtils;
 import io.unitycatalog.cli.utils.Oauth2CliExchange;
-import io.unitycatalog.cli.utils.Oauth2CliExchange.GrantTypes;
-import io.unitycatalog.cli.utils.Oauth2CliExchange.TokenTypes;
 import io.unitycatalog.client.ApiClient;
 import io.unitycatalog.client.ApiException;
+import io.unitycatalog.control.model.GrantType;
+import io.unitycatalog.control.model.OAuthTokenExchangeForm;
+import io.unitycatalog.control.model.TokenType;
 import java.io.IOException;
 import java.net.URI;
-import java.net.URLEncoder;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
-import java.nio.charset.StandardCharsets;
 import java.util.HashMap;
 import java.util.Map;
 import org.apache.commons.cli.CommandLine;
@@ -75,24 +74,21 @@ public class AuthCli {
   private static String doExchange(ApiClient apiClient, Map<String, String> login)
       throws JsonProcessingException, ApiException {
 
-    URI tokensEndpoint = URI.create(apiClient.getBaseUri() + "/auth/tokens");
+    URI endpoint = URI.create(apiClient.getBaseUri() + "/auth/tokens");
 
-    StringBuilder builder = new StringBuilder();
-    builder
-        .append("grant_type=")
-        .append(URLEncoder.encode(GrantTypes.TOKEN_EXCHANGE, StandardCharsets.UTF_8))
-        .append("&requested_token_type=")
-        .append(URLEncoder.encode(TokenTypes.ACCESS, StandardCharsets.UTF_8))
-        .append("&subject_token_type=")
-        .append(URLEncoder.encode(TokenTypes.ID, StandardCharsets.UTF_8))
-        .append("&subject_token=")
-        .append(URLEncoder.encode(login.get("identityToken"), StandardCharsets.UTF_8));
+    String body =
+        new OAuthTokenExchangeForm()
+            .grantType(GrantType.TOKEN_EXCHANGE)
+            .requestedTokenType(TokenType.ACCESS_TOKEN)
+            .subjectTokenType(TokenType.ID_TOKEN)
+            .subjectToken(login.get("identityToken"))
+            .toUrlQueryString();
 
     HttpRequest request =
         HttpRequest.newBuilder()
-            .uri(tokensEndpoint)
+            .uri(endpoint)
             .header("Content-Type", "application/x-www-form-urlencoded")
-            .POST(HttpRequest.BodyPublishers.ofString(builder.toString()))
+            .POST(HttpRequest.BodyPublishers.ofString(body))
             .build();
 
     try {
@@ -109,19 +105,6 @@ public class AuthCli {
       }
     } catch (InterruptedException | IOException e) {
       throw new ApiException(e);
-    }
-  }
-
-  static class Login {
-    @JsonProperty("identity_token")
-    private String identity_token;
-
-    public void setIdentity_token(String identity_token) {
-      this.identity_token = identity_token;
-    }
-
-    public String getIdentity_token() {
-      return identity_token;
     }
   }
 

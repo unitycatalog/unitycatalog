@@ -1,6 +1,6 @@
 [project]
 name = "unitycatalog-gemini"
-version = "0.1.0"
+version = "0.2.0"
 description = "Support for Unity Catalog functions as Gemini tools"
 authors = [
     { name="Puneet Jain", email="puneet.jain@databricks.com" }
@@ -58,7 +58,7 @@ select = [
   "T201",
   "T203",
   # misuse of typing.TYPE_CHECKING
-  "TCH004",
+  "TC004",
   # import rules
   "TID251",
   # undefined-local-with-import-star

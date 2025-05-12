@@ -1,0 +1,68 @@
+[project]
+name = "unitycatalog-litellm"
+version = "0.2.0"
+description = "Support for Unity Catalog functions as LiteLLM tools"
+authors = [
+    { name="Michael Berk", email="michael.berk@databricks.com" }
+]
+readme = "README.md"
+license = { text="Apache-2.0" }
+requires-python = ">=3.9"
+dependencies = [
+    "litellm>=1.50.1",
+    "unitycatalog-ai",
+]
+
+[project.optional-dependencies]
+databricks-dev = [
+  "unitycatalog-ai[databricks-dev]",
+]
+
+dev = [
+  "unitycatalog-ai[dev]",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build]
+include = [
+  "src/unitycatalog/ai/litellm/*"
+]
+
+[tool.hatch.build.targets.wheel]
+sources = ["src"]
+only-include = ["src/unitycatalog/ai/litellm"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py39"
+
+[tool.ruff.lint]
+select = [
+  # isort
+  "I",
+  # bugbear rules
+  "B",
+  # remove unused imports
+  "F401",
+  # bare except statements
+  "E722",
+  # print statements
+  "T201",
+  "T203",
+  # misuse of typing.TYPE_CHECKING
+  "TC004",
+  # import rules
+  "TID251",
+  # undefined-local-with-import-star
+  "F403",
+]
+
+[tool.ruff.format]
+docstring-code-format = true
+docstring-code-line-length = 88
+
+[tool.ruff.lint.pydocstyle]
+convention = "google"

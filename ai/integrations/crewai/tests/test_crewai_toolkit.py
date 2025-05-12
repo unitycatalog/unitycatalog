@@ -15,9 +15,9 @@ from src.unitycatalog.ai.crewai.toolkit import UCFunctionToolkit
 from unitycatalog.ai.core.base import (
     FunctionExecutionResult,
 )
+from unitycatalog.ai.core.utils.execution_utils import ExecutionModeDatabricks
 from unitycatalog.ai.test_utils.client_utils import (
     TEST_IN_DATABRICKS,
-    USE_SERVERLESS,
     client,  # noqa: F401
     get_client,
     requires_databricks,
@@ -35,11 +35,11 @@ from unitycatalog.ai.test_utils.function_utils import (
 SCHEMA = os.environ.get("SCHEMA", "ucai_crewai_test")
 
 
+@pytest.mark.parametrize("execution_mode", ["serverless", "local"])
 @requires_databricks
-@pytest.mark.parametrize("use_serverless", [True, False])
-def test_toolkit_e2e(use_serverless, monkeypatch):
-    monkeypatch.setenv(USE_SERVERLESS, str(use_serverless))
+def test_toolkit_e2e(execution_mode):
     client = get_client()
+    client.execution_mode = ExecutionModeDatabricks(execution_mode)
     with set_default_client(client), create_function_and_cleanup(client, schema=SCHEMA) as func_obj:
         toolkit = UCFunctionToolkit(function_names=[func_obj.full_function_name])
         tools = toolkit.tools
@@ -49,63 +49,60 @@ def test_toolkit_e2e(use_serverless, monkeypatch):
         assert func_obj.comment in tool.description
         assert tool.client_config == client.to_dict()
 
-        input_args = {"code": "print(1)"}
-        result = json.loads(tool.fn(**input_args))["value"]
-        assert result == "1\n"
+        input_args = {"number": 1}
+        raw_result = tool.fn(**input_args)
+        result = json.loads(raw_result)["value"]
+        assert result == "11"
 
         toolkit = UCFunctionToolkit(function_names=[f"{CATALOG}.{SCHEMA}.*"])
         assert len(toolkit.tools) >= 1
         assert func_obj.tool_name in [t.name for t in toolkit.tools]
 
 
+@pytest.mark.parametrize("execution_mode", ["serverless", "local"])
 @requires_databricks
-@pytest.mark.parametrize("use_serverless", [True, False])
-def test_toolkit_e2e_manually_passing_client(use_serverless, monkeypatch):
-    monkeypatch.setenv(USE_SERVERLESS, str(use_serverless))
+def test_toolkit_e2e_manually_passing_client(execution_mode):
     client = get_client()
+    client.execution_mode = ExecutionModeDatabricks(execution_mode)
     with set_default_client(client), create_function_and_cleanup(client, schema=SCHEMA) as func_obj:
         toolkit = UCFunctionToolkit(function_names=[func_obj.full_function_name], client=client)
         tools = toolkit.tools
         assert len(tools) == 1
         tool = tools[0]
         assert tool.name == func_obj.tool_name
-        # Validate CrewAI description format
         assert func_obj.full_function_name.replace(".", "__") in tool.description
         assert func_obj.comment in tool.description
-        assert (
-            "{'code': {'description': 'Python code to execute. Remember to print the final result to stdout.'"
-            in tool.description
-        )
+        assert "{'number': {'description': 'Add a given number to 10.'" in tool.description
         assert tool.client_config == client.to_dict()
-        input_args = {"code": "print(1)"}
-        result = json.loads(tool.fn(**input_args))["value"]
-        assert result == "1\n"
+        input_args = {"number": 2}
+        raw_result = tool.fn(**input_args)
+        result = json.loads(raw_result)["value"]
+        assert result == "12"
 
         toolkit = UCFunctionToolkit(function_names=[f"{CATALOG}.{SCHEMA}.*"], client=client)
         assert len(toolkit.tools) >= 1
         assert func_obj.tool_name in [t.name for t in toolkit.tools]
 
 
+@pytest.mark.parametrize("execution_mode", ["serverless", "local"])
 @requires_databricks
-@pytest.mark.parametrize("use_serverless", [True, False])
-def test_multiple_toolkits(use_serverless, monkeypatch):
-    monkeypatch.setenv(USE_SERVERLESS, str(use_serverless))
+def test_multiple_toolkits(execution_mode):
     client = get_client()
+    client.execution_mode = ExecutionModeDatabricks(execution_mode)
     with set_default_client(client), create_function_and_cleanup(client, schema=SCHEMA) as func_obj:
         toolkit1 = UCFunctionToolkit(function_names=[func_obj.full_function_name])
         toolkit2 = UCFunctionToolkit(function_names=[f"{CATALOG}.{SCHEMA}.*"])
         tool1 = toolkit1.tools[0]
         tool2 = [t for t in toolkit2.tools if t.name == func_obj.tool_name][0]
-        input_args = {"code": "print(1)"}
-        result1 = json.loads(tool1.fn(**input_args))["value"]
-        result2 = json.loads(tool2.fn(**input_args))["value"]
+        input_args = {"number": 3}
+        raw_result1 = tool1.fn(**input_args)
+        raw_result2 = tool2.fn(**input_args)
+        result1 = json.loads(raw_result1)["value"]
+        result2 = json.loads(raw_result2)["value"]
         assert result1 == result2
 
 
 def test_toolkit_creation_errors():
-    with pytest.raises(ValidationError, match=r"No client provided"):
-        UCFunctionToolkit(function_names=[])
-
     with pytest.raises(ValidationError, match=r"Input should be an instance of BaseFunctionClient"):
         UCFunctionToolkit(function_names=[], client="client")
 
@@ -179,6 +176,44 @@ def test_uc_function_to_crewai_tool(client):
 
 
 @pytest.mark.parametrize(
+    "filter_accessible_functions",
+    [True, False],
+)
+def test_uc_function_to_crewai_tool_permission_denied(filter_accessible_functions):
+    client = get_client()
+    # Permission Error should be caught
+    with mock.patch(
+        "unitycatalog.ai.core.databricks.DatabricksFunctionClient.get_function",
+        side_effect=PermissionError("Permission Denied to Underlying Assets"),
+    ):
+        if filter_accessible_functions:
+            tool = UCFunctionToolkit.uc_function_to_crewai_tool(
+                client=client,
+                function_name=f"{CATALOG}.{SCHEMA}.test",
+                filter_accessible_functions=filter_accessible_functions,
+            )
+            assert tool == None
+        else:
+            with pytest.raises(PermissionError):
+                tool = UCFunctionToolkit.uc_function_to_crewai_tool(
+                    client=client,
+                    function_name=f"{CATALOG}.{SCHEMA}.test",
+                    filter_accessible_functions=filter_accessible_functions,
+                )
+    # Other errors should not be Caught
+    with mock.patch(
+        "unitycatalog.ai.core.databricks.DatabricksFunctionClient.get_function",
+        side_effect=ValueError("Wrong Get Function Call"),
+    ):
+        with pytest.raises(ValueError):
+            tool = UCFunctionToolkit.uc_function_to_crewai_tool(
+                client=client,
+                function_name=f"{CATALOG}.{SCHEMA}.test",
+                filter_accessible_functions=filter_accessible_functions,
+            )
+
+
+@pytest.mark.parametrize(
     "format,function_output",
     [
         ("SCALAR", RETRIEVER_OUTPUT_SCALAR),
@@ -191,11 +226,9 @@ def test_uc_function_to_crewai_tool(client):
         (ColumnTypeName.TABLE_TYPE, RETRIEVER_TABLE_FULL_DATA_TYPE, RETRIEVER_TABLE_RETURN_PARAMS),
     ],
 )
-@pytest.mark.parametrize("use_serverless", [True, False])
 def test_crewai_tool_with_tracing_as_retriever(
-    use_serverless, monkeypatch, format, function_output, data_type, full_data_type, return_params
+    format, function_output, data_type, full_data_type, return_params
 ):
-    monkeypatch.setenv(USE_SERVERLESS, str(use_serverless))
     client = get_client()
     mock_function_info = generate_function_info(
         name=f"test_{format}",

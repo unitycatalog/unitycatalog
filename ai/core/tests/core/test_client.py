@@ -1,6 +1,7 @@
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass
 from typing import Any, Callable, Dict, List, Optional
+from unittest.mock import patch
 
 import pytest
 from typing_extensions import override
@@ -44,6 +45,12 @@ class MockClient(BaseFunctionClient):
         return {}
 
     @override
+    def create_wrapped_function(
+        self, primary_func: Callable, functions: List[Callable], **kwargs: Any
+    ) -> Any:
+        return ""
+
+    @override
     def list_functions(self, catalog: str, schema: str) -> Any:
         """List functions in a catalog and schema"""
         return [{}]
@@ -68,6 +75,16 @@ class MockClient(BaseFunctionClient):
     @override
     def to_dict(self):
         return {}
+
+    @override
+    def get_function_source(self):
+        return ""
+
+    @override
+    def get_function_as_callable(
+        self, function_name: str, register_function: bool, namepace: dict[str, Any]
+    ):
+        return
 
 
 @pytest.fixture
@@ -109,11 +126,19 @@ def test_validate_input_params(client):
 
 
 def test_set_function_info(client):
+    set_uc_function_client(None)
+
     set_uc_function_client(client)
     assert get_uc_function_client() == client
 
     set_uc_function_client(None)
-    assert get_uc_function_client() is None
+
+    with patch("unitycatalog.ai.core.databricks.DatabricksFunctionClient", return_value=None):
+        with patch(
+            "unitycatalog.ai.core.databricks.get_default_databricks_workspace_client",
+            return_value=None,
+        ):
+            assert get_uc_function_client() is None
 
     def client_check(client):
         set_uc_function_client(client)

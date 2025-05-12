@@ -24,12 +24,14 @@ nav:
   - Server:
       - Configuration: server/configuration.md
       - Auth: server/auth.md
+      - Users and Privileges: server/users-privileges.md
   - Integrations:
       - Overview: integrations/index.md
       - Apache Spark: integrations/unity-catalog-spark.md
       - CelerData: integrations/unity-catalog-celerdata.md
       - Daft: integrations/unity-catalog-daft.md
       - DuckDB: integrations/unity-catalog-duckdb.md
+      - Kuzu: integrations/unity-catalog-kuzu.md
       - PuppyGraph: integrations/unity-catalog-puppygraph.md
       - SpiceAI: integrations/unity-catalog-spiceai.md
       - Trino: integrations/unity-catalog-trino.md
@@ -47,6 +49,8 @@ nav:
           - Anthropic: ai/integrations/anthropic.md
           - CrewAI: ai/integrations/crewai.md
           - AutoGen: ai/integrations/autogen.md
+          - LiteLLM: ai/integrations/litellm.md
+          - Gemini: ai/integrations/gemini.md
 
 exclude_docs: |
   README.md
