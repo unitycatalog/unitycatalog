@@ -554,7 +554,7 @@ lazy val spark = (project in file("connectors/spark"))
   .dependsOn(client)
   .settings(
     name := s"$artifactNamePrefix-spark",
-    scalaVersion := scala212,
+    scalaVersion := scala213,
     crossScalaVersions := Seq(scala212, scala213),
     commonSettings,
     scalaReleaseSettings,
