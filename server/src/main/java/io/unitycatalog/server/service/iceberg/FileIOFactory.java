@@ -2,9 +2,9 @@ package io.unitycatalog.server.service.iceberg;
 
 import com.google.auth.oauth2.AccessToken;
 import io.unitycatalog.server.exception.BaseException;
+import io.unitycatalog.server.service.credential.CloudCredentialVendor;
 import io.unitycatalog.server.utils.ServerProperties;
 import io.unitycatalog.server.service.credential.CredentialContext;
-import io.unitycatalog.server.service.credential.CredentialOperations;
 import io.unitycatalog.server.service.credential.aws.S3StorageConfig;
 import io.unitycatalog.server.service.credential.azure.ADLSLocationUtils;
 import io.unitycatalog.server.service.credential.azure.AzureCredential;
@@ -34,11 +34,11 @@ import static io.unitycatalog.server.utils.Constants.URI_SCHEME_S3;
 
 public class FileIOFactory {
 
-  private final CredentialOperations credentialOps;
+  private final CloudCredentialVendor cloudCredentialVendor;
   private final Map<String, S3StorageConfig> s3Configurations;
 
-  public FileIOFactory(CredentialOperations credentialOps, ServerProperties serverProperties) {
-    this.credentialOps = credentialOps;
+  public FileIOFactory(CloudCredentialVendor cloudCredentialVendor, ServerProperties serverProperties) {
+    this.cloudCredentialVendor = cloudCredentialVendor;
     this.s3Configurations = serverProperties.getS3Configurations();
   }
 
@@ -55,7 +55,7 @@ public class FileIOFactory {
 
   protected ADLSFileIO getADLSFileIO(URI tableLocationUri) {
     CredentialContext credentialContext = getCredentialContextFromTableLocation(tableLocationUri);
-    AzureCredential credential = credentialOps.vendAzureCredential(credentialContext);
+    AzureCredential credential = cloudCredentialVendor.vendAzureCredential(credentialContext);
     ADLSLocationUtils.ADLSLocationParts locationParts = ADLSLocationUtils.parseLocation(tableLocationUri.toString());
 
     // NOTE: when fileio caching is implemented, need to set/deal with expiry here
@@ -70,7 +70,7 @@ public class FileIOFactory {
   @SneakyThrows
   protected GCSFileIO getGCSFileIO(URI tableLocationUri) {
     CredentialContext credentialContext = getCredentialContextFromTableLocation(tableLocationUri);
-    AccessToken gcpToken = credentialOps.vendGcpToken(credentialContext);
+    AccessToken gcpToken = cloudCredentialVendor.vendGcpToken(credentialContext);
 
     // NOTE: when fileio caching is implemented, need to set/deal with expiry here
     Map<String, String> properties =
@@ -104,7 +104,7 @@ public class FileIOFactory {
 
   private AwsCredentialsProvider getAwsCredentialsProvider(CredentialContext context) {
     try {
-      Credentials awsSessionCredentials = credentialOps.vendAwsCredential(context);
+      Credentials awsSessionCredentials = cloudCredentialVendor.vendAwsCredential(context);
       return StaticCredentialsProvider.create(
         AwsSessionCredentials.create(awsSessionCredentials.accessKeyId(), awsSessionCredentials.secretAccessKey(), awsSessionCredentials.sessionToken()));
     } catch (BaseException e) {

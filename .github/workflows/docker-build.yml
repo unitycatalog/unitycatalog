@@ -1,12 +1,23 @@
-name: Build and Push Docker Images
+name: Build and Push Docker Images - unitycatalog
 
 on:
   push:
     tags:
       - 'v*'
+    branches:
+      - main
+    paths:
+      - build/**
+      - project/**
+      - examples/**
+      - server/**
+      - api/**
+      - clients/python/**
+      - version.sbt
+      - build.sbt
 
 env:
-  IMAGE: ${{ github.repository }} # unitycatalog/unitycatalog
+  IMAGE: unitycatalog/unitycatalog
 
 jobs:
   build-and-push:
@@ -44,7 +55,7 @@ jobs:
           # "refs/tags/v0.2.0" would result the tagged image
           # "unitycatalog/unitycatalog:v0.2.0".
           # See here for more info: https://tinyurl.com/yh8252m2
-          push: ${{ github.event_name == 'push' && contains(github.ref, 'refs/tags/') }}
+          push: true
           platforms: linux/amd64,linux/arm64
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
