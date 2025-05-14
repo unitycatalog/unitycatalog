@@ -21,7 +21,7 @@ lazy val scala212 = "2.12.15"
 lazy val scala213 = "2.13.14"
 
 lazy val deltaVersion = "3.2.1"
-lazy val sparkVersion = "3.5.3"
+lazy val sparkVersion = "4.0.0"
 
 // Library versions
 lazy val jacksonVersion = "2.17.0"
@@ -57,6 +57,8 @@ lazy val commonSettings = Seq(
     ExclusionRule("org.slf4j", "slf4j-reload4j")
   ),
   resolvers += Resolver.mavenLocal,
+  // TODO: revert this. Testing Spark RC only.
+  resolvers += "Apache Spark 4.0 (RC6) Staging" at "https://repository.apache.org/content/repositories/orgapachespark-1484/",
   autoScalaLibrary := false,
   crossPaths := false,  // No scala cross building
   assembly / assemblyMergeStrategy := {
@@ -552,7 +554,7 @@ lazy val spark = (project in file("connectors/spark"))
   .dependsOn(client)
   .settings(
     name := s"$artifactNamePrefix-spark",
-    scalaVersion := scala212,
+    scalaVersion := scala213,
     crossScalaVersions := Seq(scala212, scala213),
     commonSettings,
     scalaReleaseSettings,
