@@ -386,7 +386,7 @@ public class TableReadWriteTest extends BaseSparkIntegrationTest {
   }
 
   @Test
-  public void testCreateExternalTableWithoutLocation() {
+  public void testCreateExternalTableWithoutLocation() throws IOException {
     SparkSession session = createSparkSessionWithCatalogs(CATALOG_NAME);
 
     String fullTableName1 = CATALOG_NAME + "." + SCHEMA_NAME + "." + PARQUET_TABLE;
@@ -564,6 +564,8 @@ public class TableReadWriteTest extends BaseSparkIntegrationTest {
     try {
       JavaUtils.deleteRecursively(dataDir);
     } catch (IOException e) {
+      throw new RuntimeException(e);
+    } catch (InterruptedException e) {
       throw new RuntimeException(e);
     }
   }
