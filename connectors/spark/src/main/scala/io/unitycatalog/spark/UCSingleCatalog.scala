@@ -72,6 +72,10 @@ class UCSingleCatalog extends TableCatalog with SupportsNamespaces with Logging 
 
   override def loadTable(ident: Identifier): Table = delegate.loadTable(ident)
 
+  override def loadTable(ident: Identifier, version:  String): Table = delegate.loadTable(ident, version)
+
+  override def loadTable(ident: Identifier, timestamp:  Long): Table = delegate.loadTable(ident, timestamp)
+
   override def tableExists(ident: Identifier): Boolean = {
     delegate.tableExists(ident)
   }

@@ -18,10 +18,10 @@ from langgraph.prebuilt import create_react_agent
 from unitycatalog.ai.core.base import (
     FunctionExecutionResult,
 )
+from unitycatalog.ai.core.utils.execution_utils import ExecutionModeDatabricks
 from unitycatalog.ai.core.utils.function_processing_utils import get_tool_name
 from unitycatalog.ai.test_utils.client_utils import (
     TEST_IN_DATABRICKS,
-    USE_SERVERLESS,
     client,  # noqa: F401
     get_client,
     requires_databricks,
@@ -50,11 +50,11 @@ from unitycatalog.ai.langchain.toolkit import UCFunctionToolkit
 SCHEMA = os.environ.get("SCHEMA", "ucai_langchain_test")
 
 
+@pytest.mark.parametrize("execution_mode", ["serverless", "local"])
 @requires_databricks
-@pytest.mark.parametrize("use_serverless", [True, False])
-def test_toolkit_e2e(use_serverless, monkeypatch):
-    monkeypatch.setenv(USE_SERVERLESS, str(use_serverless))
+def test_toolkit_e2e(execution_mode):
     client = get_client()
+    client.execution_mode = ExecutionModeDatabricks(execution_mode)
     with set_default_client(client), create_function_and_cleanup(client, schema=SCHEMA) as func_obj:
         toolkit = UCFunctionToolkit(function_names=[func_obj.full_function_name])
         tools = toolkit.tools
@@ -63,20 +63,21 @@ def test_toolkit_e2e(use_serverless, monkeypatch):
         assert tool.name == func_obj.tool_name
         assert tool.description == func_obj.comment
         assert tool.client_config == client.to_dict()
-        tool.args_schema(**{"code": "print(1)"})
-        result = json.loads(tool.func(code="print(1)"))["value"]
-        assert result == "1\n"
+        tool.args_schema(**{"number": 1})
+        raw_result = tool.func(number=1)
+        result = json.loads(raw_result)["value"]
+        assert result == "11"
 
         toolkit = UCFunctionToolkit(function_names=[f"{CATALOG}.{SCHEMA}.*"])
         assert len(toolkit.tools) >= 1
         assert func_obj.tool_name in [t.name for t in toolkit.tools]
 
 
+@pytest.mark.parametrize("execution_mode", ["serverless", "local"])
 @requires_databricks
-@pytest.mark.parametrize("use_serverless", [True, False])
-def test_toolkit_e2e_manually_passing_client(use_serverless, monkeypatch):
-    monkeypatch.setenv(USE_SERVERLESS, str(use_serverless))
+def test_toolkit_e2e_manually_passing_client(execution_mode):
     client = get_client()
+    client.execution_mode = ExecutionModeDatabricks(execution_mode)
     with create_function_and_cleanup(client, schema=SCHEMA) as func_obj:
         toolkit = UCFunctionToolkit(function_names=[func_obj.full_function_name], client=client)
         tools = toolkit.tools
@@ -86,20 +87,21 @@ def test_toolkit_e2e_manually_passing_client(use_serverless, monkeypatch):
         assert tool.description == func_obj.comment
         assert tool.uc_function_name == func_obj.full_function_name
         assert tool.client_config == client.to_dict()
-        tool.args_schema(**{"code": "print(1)"})
-        result = json.loads(tool.func(code="print(1)"))["value"]
-        assert result == "1\n"
+        tool.args_schema(**{"number": 2})
+        raw_result = tool.func(number=2)
+        result = json.loads(raw_result)["value"]
+        assert result == "12"
 
         toolkit = UCFunctionToolkit(function_names=[f"{CATALOG}.{SCHEMA}.*"], client=client)
         assert len(toolkit.tools) >= 1
         assert func_obj.tool_name in [t.name for t in toolkit.tools]
 
 
+@pytest.mark.parametrize("execution_mode", ["serverless", "local"])
 @requires_databricks
-@pytest.mark.parametrize("use_serverless", [True, False])
-def test_toolkit_e2e_tools_with_no_params(use_serverless, monkeypatch):
-    monkeypatch.setenv(USE_SERVERLESS, str(use_serverless))
+def test_toolkit_e2e_tools_with_no_params(execution_mode):
     client = get_client()
+    client.execution_mode = ExecutionModeDatabricks(execution_mode)
 
     def get_weather() -> str:
         """
@@ -117,7 +119,8 @@ def test_toolkit_e2e_tools_with_no_params(use_serverless, monkeypatch):
         assert tool.uc_function_name == func_obj.full_function_name
         assert tool.client_config == client.to_dict()
         tool.args_schema()
-        result = json.loads(tool.func())["value"]
+        raw_result = tool.func()
+        result = json.loads(raw_result)["value"]
         assert result == "sunny"
 
         toolkit = UCFunctionToolkit(function_names=[f"{CATALOG}.{SCHEMA}.*"], client=client)
@@ -125,24 +128,21 @@ def test_toolkit_e2e_tools_with_no_params(use_serverless, monkeypatch):
         assert func_obj.tool_name in [t.name for t in toolkit.tools]
 
 
+@pytest.mark.parametrize("execution_mode", ["serverless", "local"])
 @requires_databricks
-@pytest.mark.parametrize("use_serverless", [True, False])
-def test_multiple_toolkits(use_serverless, monkeypatch):
-    monkeypatch.setenv(USE_SERVERLESS, str(use_serverless))
+def test_multiple_toolkits(execution_mode):
     client = get_client()
+    client.execution_mode = ExecutionModeDatabricks(execution_mode)
     with set_default_client(client), create_function_and_cleanup(client, schema=SCHEMA) as func_obj:
         toolkit1 = UCFunctionToolkit(function_names=[func_obj.full_function_name])
         toolkit2 = UCFunctionToolkit(function_names=[f"{CATALOG}.{SCHEMA}.*"])
         tool1 = toolkit1.tools[0]
         tool2 = [t for t in toolkit2.tools if t.name == func_obj.tool_name][0]
-        input_args = {"code": "print(1)"}
+        input_args = {"number": 8}
         assert tool1.func(**input_args) == tool2.func(**input_args)
 
 
 def test_toolkit_creation_errors():
-    with pytest.raises(ValueError, match=r"No client provided"):
-        UCFunctionToolkit(function_names=[])
-
     with pytest.raises(ValueError, match=r"instance of BaseFunctionClient expected"):
         UCFunctionToolkit(function_names=[], client="client")
 
@@ -204,6 +204,44 @@ def test_uc_function_to_langchain_tool():
 
 
 @pytest.mark.parametrize(
+    "filter_accessible_functions",
+    [True, False],
+)
+def test_uc_function_to_langchain_tool_permission_denied(filter_accessible_functions):
+    client = get_client()
+    # Permission Error should be caught
+    with mock.patch(
+        "unitycatalog.ai.core.databricks.DatabricksFunctionClient.get_function",
+        side_effect=PermissionError("Permission Denied to Underlying Assets"),
+    ):
+        if filter_accessible_functions:
+            tool = UCFunctionToolkit.uc_function_to_langchain_tool(
+                client=client,
+                function_name=f"{CATALOG}.{SCHEMA}.test",
+                filter_accessible_functions=filter_accessible_functions,
+            )
+            assert tool == None
+        else:
+            with pytest.raises(PermissionError):
+                tool = UCFunctionToolkit.uc_function_to_langchain_tool(
+                    client=client,
+                    function_name=f"{CATALOG}.{SCHEMA}.test",
+                    filter_accessible_functions=filter_accessible_functions,
+                )
+    # Other errors should not be Caught
+    with mock.patch(
+        "unitycatalog.ai.core.databricks.DatabricksFunctionClient.get_function",
+        side_effect=ValueError("Wrong Get Function Call"),
+    ):
+        with pytest.raises(ValueError):
+            tool = UCFunctionToolkit.uc_function_to_langchain_tool(
+                client=client,
+                function_name=f"{CATALOG}.{SCHEMA}.test",
+                filter_accessible_functions=filter_accessible_functions,
+            )
+
+
+@pytest.mark.parametrize(
     "format,function_output",
     [
         ("SCALAR", RETRIEVER_OUTPUT_SCALAR),
@@ -216,11 +254,9 @@ def test_uc_function_to_langchain_tool():
         (ColumnTypeName.TABLE_TYPE, RETRIEVER_TABLE_FULL_DATA_TYPE, RETRIEVER_TABLE_RETURN_PARAMS),
     ],
 )
-@pytest.mark.parametrize("use_serverless", [True, False])
 def test_langchain_tool_trace_as_retriever(
-    use_serverless, monkeypatch, format, function_output, data_type, full_data_type, return_params
+    format, function_output, data_type, full_data_type, return_params
 ):
-    monkeypatch.setenv(USE_SERVERLESS, str(use_serverless))
     client = get_client()
     mock_function_info = generate_function_info(
         name=f"test_{format}",
@@ -271,10 +307,8 @@ def test_langchain_tool_trace_as_retriever(
 
 
 @requires_databricks
-@pytest.mark.parametrize("use_serverless", [True, False])
 @pytest.mark.parametrize("schema", [SCHEMA, "ucai_langchain_test_star"])
-def test_langgraph_agents(monkeypatch, use_serverless, schema):
-    monkeypatch.setenv(USE_SERVERLESS, str(use_serverless))
+def test_langgraph_agents(schema):
     client = get_client()
     with create_function_and_cleanup(client, schema=schema) as func_obj:
         if schema == SCHEMA:

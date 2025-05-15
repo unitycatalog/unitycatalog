@@ -52,6 +52,12 @@ You can create a UC function either by providing a Python callable or by submitt
 To create a UC function from a Python function, define your function with appropriate type hints and a Google-style docstring:
 
 ```python
+# replace with your own catalog and schema
+CATALOG = "catalog"
+SCHEMA = "schema"
+
+func_name = f"{CATALOG}.{SCHEMA}.add_numbers"
+
 def add_numbers(a: float, b: float) -> float:
     """
     Adds two numbers and returns the result.
@@ -88,39 +94,11 @@ Initialize a client for managing UC functions in a Databricks workspace, and set
 from unitycatalog.ai.core.base import set_uc_function_client
 from unitycatalog.ai.core.databricks import DatabricksFunctionClient
 
-client = DatabricksFunctionClient(
-    warehouse_id="..." # replace with the warehouse_id
-    cluster_id="..." # optional, only pass when you want to use cluster for function creation
-)
+client = DatabricksFunctionClient()
 
 # sets the default uc function client
 set_uc_function_client(client)
 ```
-
-### Create a Function in UC
-
-Create a python UDF in Unity Catalog with the client
-
-```python
-# replace with your own catalog and schema
-CATALOG = "catalog"
-SCHEMA = "schema"
-
-func_name = f"{CATALOG}.{SCHEMA}.python_exec"
-# define the function body in SQL
-sql_body = f"""CREATE OR REPLACE FUNCTION {func_name}(location STRING COMMENT 'Retrieves the current weather from a provided location.')
-RETURNS STRING
-LANGUAGE PYTHON
-COMMENT 'Returns the current weather from a given location and returns the temperature in degrees Celsius.'
-AS $$
-    return "31.9 C"
-$$
-"""
-
-client.create_function(sql_function_body=sql_body)
-```
-
-Now that the function is created and stored in the corresponding catalog and schema, we can use it within Gemini's SDK.
 
 ## Using the Function as a GenAI Tool
 
@@ -135,7 +113,7 @@ To begin, we will need an instance of the tool function interface from the `unit
 from unitycatalog.ai.gemini.toolkit import UCFunctionToolkit
 
 # Create an instance of the toolkit with the function that was created earlier.
-toolkit = UCFunctionToolkit(function_names=[f"{CATALOG}.{SCHEMA}.python_exec"], client=client)
+toolkit = UCFunctionToolkit(function_names=[func_name], client=client)
 
 # Access the tool definitions that are in the interface that Gemini's SDK expects
 tools = toolkit.generate_callable_tool_list()
@@ -152,8 +130,7 @@ When you send a query to the Gemini model, it will automatically detect if it ne
 # Interface with Gemini via their SDK
 from google.generativeai import GenerativeModel
 
-multi = "What's the weather in Nome, AK and in Death Valley, CA?"
-
+multi = "What is 49 + 82?"
 
 model = GenerativeModel(
     model_name="gemini-2.0-flash-exp", tools=tools
@@ -161,11 +138,12 @@ model = GenerativeModel(
 
 chat = model.start_chat(enable_automatic_function_calling=True)
 
-response = chat.send_message("What's the weather in Nome, AK and in Death Valley, CA?")
+response = chat.send_message(multi)
 print(response)
 ```
 
 ### Showing Details of the Tool Call
+
 You can review the conversation history and see how the LLM decided to call the function:
 
 ```python
@@ -173,14 +151,17 @@ for content in chat.history:
     print(content.role, "->", [type(part).to_dict(part) for part in content.parts])
     print("-" * 80)
 ```
+
 ## Manually execute function calls
+
 if you prefer more control, you can manually detect and execute function calls:
+
 ```python
 from google.generativeai.types import content_types
 from unitycatalog.ai.gemini.utils import get_function_calls,generate_tool_call_messages
 
 history = []
-question = "What's the weather in Nome, AK and in Death Valley, CA?"
+question = "What is 23 + 99?"
 
 
 content = content_types.to_content(question)
@@ -201,4 +182,4 @@ response
 
 ### Configurations for Databricks-only UC function execution
 
-We provide configurations for the Databricks Client to control the function execution behaviors, check [function execution arguments section](../../README.md#function-execution-arguments-configuration).
+We provide configurations for the Databricks Client to control the function execution behaviors, check [function execution arguments section](../../core/README.md#function-execution-arguments-configuration).

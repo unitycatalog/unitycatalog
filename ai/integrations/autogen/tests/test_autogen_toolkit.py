@@ -16,9 +16,9 @@ from pydantic import ValidationError
 
 from unitycatalog.ai.autogen.toolkit import UCFunctionToolkit
 from unitycatalog.ai.core.client import FunctionExecutionResult
+from unitycatalog.ai.core.utils.execution_utils import ExecutionModeDatabricks
 from unitycatalog.ai.test_utils.client_utils import (
     TEST_IN_DATABRICKS,
-    USE_SERVERLESS,
     get_client,
     requires_databricks,
     set_default_client,
@@ -81,11 +81,11 @@ def generate_function_info(
     )
 
 
+@pytest.mark.parametrize("execution_mode", ["serverless", "local"])
 @requires_databricks
-@pytest.mark.parametrize("use_serverless", [True, False])
 @pytest.mark.asyncio
-async def test_toolkit_e2e(use_serverless, monkeypatch, dbx_client):
-    monkeypatch.setenv(USE_SERVERLESS, str(use_serverless))
+async def test_toolkit_e2e(dbx_client, execution_mode):
+    dbx_client.execution_mode = ExecutionModeDatabricks(execution_mode)
     with (
         set_default_client(dbx_client),
         create_function_and_cleanup(dbx_client, schema=SCHEMA) as func_obj,
@@ -98,14 +98,11 @@ async def test_toolkit_e2e(use_serverless, monkeypatch, dbx_client):
 
         assert func_obj.comment in tool.description
 
-        # 2) Provide some input arguments
-        input_args = {"code": "print(1)"}
-        # 3) Call the tool
+        input_args = {"number": 5}
         result_str = await tool.run_json(input_args, CancellationToken())
         result = json.loads(result_str)["value"]
-        assert result == "1\n"
+        assert result == "15"
 
-        # Re-check multiple functions
         toolkit2 = UCFunctionToolkit(
             function_names=[f.full_name for f in dbx_client.list_functions(CATALOG, SCHEMA)],
             client=dbx_client,
@@ -114,11 +111,11 @@ async def test_toolkit_e2e(use_serverless, monkeypatch, dbx_client):
         assert func_obj.tool_name in [t.name for t in toolkit2.tools]
 
 
+@pytest.mark.parametrize("execution_mode", ["serverless", "local"])
 @requires_databricks
-@pytest.mark.parametrize("use_serverless", [True, False])
 @pytest.mark.asyncio
-async def test_toolkit_e2e_manually_passing_client(use_serverless, monkeypatch, dbx_client):
-    monkeypatch.setenv(USE_SERVERLESS, str(use_serverless))
+async def test_toolkit_e2e_manually_passing_client(dbx_client, execution_mode):
+    dbx_client.execution_mode = ExecutionModeDatabricks(execution_mode)
     with (
         set_default_client(dbx_client),
         create_function_and_cleanup(dbx_client, schema=SCHEMA) as func_obj,
@@ -130,12 +127,11 @@ async def test_toolkit_e2e_manually_passing_client(use_serverless, monkeypatch, 
         assert tool.name == func_obj.tool_name
         assert func_obj.comment in tool.description
 
-        input_args = {"code": "print(1)"}
+        input_args = {"number": 2}
         result_str = await tool.run_json(input_args, CancellationToken())
         result = json.loads(result_str)["value"]
-        assert result == "1\n"
+        assert result == "12"
 
-        # Re-check multiple
         toolkit2 = UCFunctionToolkit(
             function_names=[f.full_name for f in dbx_client.list_functions(CATALOG, SCHEMA)],
             client=dbx_client,
@@ -144,11 +140,11 @@ async def test_toolkit_e2e_manually_passing_client(use_serverless, monkeypatch, 
         assert func_obj.tool_name in [t.name for t in toolkit2.tools]
 
 
+@pytest.mark.parametrize("execution_mode", ["serverless", "local"])
 @requires_databricks
-@pytest.mark.parametrize("use_serverless", [True, False])
 @pytest.mark.asyncio
-async def test_multiple_toolkits(use_serverless, monkeypatch, dbx_client):
-    monkeypatch.setenv(USE_SERVERLESS, str(use_serverless))
+async def test_multiple_toolkits(dbx_client, execution_mode):
+    dbx_client.execution_mode = ExecutionModeDatabricks(execution_mode)
     with (
         set_default_client(dbx_client),
         create_function_and_cleanup(dbx_client, schema=SCHEMA) as func_obj,
@@ -163,20 +159,12 @@ async def test_multiple_toolkits(use_serverless, monkeypatch, dbx_client):
         tool1 = toolkit1.tools[0]
         tool2 = [t for t in toolkit2.tools if t.name == func_obj.tool_name][0]
 
-        input_args = {"code": "print(1)"}
+        input_args = {"number": 1}
         result1_str = await tool1.run_json(input_args, CancellationToken())
         result2_str = await tool2.run_json(input_args, CancellationToken())
         result1 = json.loads(result1_str)["value"]
         result2 = json.loads(result2_str)["value"]
         assert result1 == result2
-
-
-def test_toolkit_creation_errors_no_client():
-    """
-    Example: if you didn't set a default client or pass one in, raises an error.
-    """
-    with pytest.raises(ValidationError, match=r"No client provided"):
-        UCFunctionToolkit(function_names=[])
 
 
 def test_toolkit_creation_errors_bad_client():
@@ -232,6 +220,44 @@ async def test_uc_function_to_autogen_tool(dbx_client):
         assert result == "some_string"
 
 
+@pytest.mark.parametrize(
+    "filter_accessible_functions",
+    [True, False],
+)
+def test_uc_function_to_autogen_tool_permission_denied(filter_accessible_functions):
+    client = get_client()
+    # Permission Error should be caught
+    with mock.patch(
+        "unitycatalog.ai.core.databricks.DatabricksFunctionClient.get_function",
+        side_effect=PermissionError("Permission Denied to Underlying Assets"),
+    ):
+        if filter_accessible_functions:
+            tool = UCFunctionToolkit.uc_function_to_autogen_tool(
+                client=client,
+                function_name=f"{CATALOG}.{SCHEMA}.test",
+                filter_accessible_functions=filter_accessible_functions,
+            )
+            assert tool == None
+        else:
+            with pytest.raises(PermissionError):
+                tool = UCFunctionToolkit.uc_function_to_autogen_tool(
+                    client=client,
+                    function_name=f"{CATALOG}.{SCHEMA}.test",
+                    filter_accessible_functions=filter_accessible_functions,
+                )
+    # Other errors should not be Caught
+    with mock.patch(
+        "unitycatalog.ai.core.databricks.DatabricksFunctionClient.get_function",
+        side_effect=ValueError("Wrong Get Function Call"),
+    ):
+        with pytest.raises(ValueError):
+            tool = UCFunctionToolkit.uc_function_to_autogen_tool(
+                client=client,
+                function_name=f"{CATALOG}.{SCHEMA}.test",
+                filter_accessible_functions=filter_accessible_functions,
+            )
+
+
 @pytest.mark.skipif(
     skip_mlflow_test, reason="MLflow autologging is not supported for autogen_core 0.4.0 and above."
 )
@@ -248,11 +274,9 @@ async def test_uc_function_to_autogen_tool(dbx_client):
         (ColumnTypeName.TABLE_TYPE, RETRIEVER_TABLE_FULL_DATA_TYPE, RETRIEVER_TABLE_RETURN_PARAMS),
     ],
 )
-@pytest.mark.parametrize("use_serverless", [True, False])
 def test_autogen_tool_with_tracing_as_retriever(
-    use_serverless, monkeypatch, format, function_output, data_type, full_data_type, return_params
+    format, function_output, data_type, full_data_type, return_params
 ):
-    monkeypatch.setenv(USE_SERVERLESS, str(use_serverless))
     client = get_client()
     mock_function_info = generate_function_info(
         name=f"test_{format}",

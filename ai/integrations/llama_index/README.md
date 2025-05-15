@@ -88,9 +88,7 @@ Initialize a client for managing UC functions in a Databricks workspace, and set
 from unitycatalog.ai.core.base import set_uc_function_client
 from unitycatalog.ai.core.databricks import DatabricksFunctionClient
 
-client = DatabricksFunctionClient(
-    warehouse_id="..." # replace with the warehouse_id
-)
+client = DatabricksFunctionClient()
 
 # sets the default uc function client
 set_uc_function_client(client)
@@ -150,6 +148,9 @@ If you would like to validate that your tool is functional prior to proceeding t
 my_tool = tools[0]
 
 my_tool.fn(**{"code": "print(1)"})
+
+# or use the `call` API
+my_tool.call(code="print(1)")
 ```
 
 ### Utilize our function as a tool within a ReActAgent in LlamaIndex

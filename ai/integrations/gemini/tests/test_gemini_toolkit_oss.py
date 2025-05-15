@@ -5,7 +5,6 @@ from unittest import mock
 import pytest
 import pytest_asyncio
 from databricks.sdk.service.catalog import (
-    ColumnTypeName,
     FunctionInfo,
     FunctionParameterInfo,
     FunctionParameterInfos,
@@ -14,14 +13,12 @@ from google.generativeai.types import CallableFunctionDeclaration
 from pydantic import ValidationError
 
 from unitycatalog.ai.core.base import FunctionExecutionResult
-from unitycatalog.ai.core.client import FunctionExecutionResult, UnitycatalogFunctionClient
-from unitycatalog.ai.gemini.toolkit import GeminiTool, UCFunctionToolkit
-from unitycatalog.ai.test_utils.function_utils import (
-    RETRIEVER_OUTPUT_CSV,
-    RETRIEVER_OUTPUT_SCALAR,
-    RETRIEVER_TABLE_FULL_DATA_TYPE,
-    RETRIEVER_TABLE_RETURN_PARAMS_OSS,
+from unitycatalog.ai.core.client import (
+    FunctionExecutionResult,
+    UnitycatalogFunctionClient,
 )
+from unitycatalog.ai.core.utils.execution_utils import ExecutionMode
+from unitycatalog.ai.gemini.toolkit import GeminiTool, UCFunctionToolkit
 from unitycatalog.ai.test_utils.function_utils_oss import (
     CATALOG,
     create_function_and_cleanup_oss,
@@ -69,7 +66,7 @@ async def uc_client():
     yield uc_client
 
     uc_client.close()
-    uc_api_client.close()
+    await uc_api_client.close()
 
 
 @pytest.fixture
@@ -108,8 +105,10 @@ def test_gemini_tool_to_dict(sample_gemini_tool):
     assert sample_gemini_tool.to_dict() == expected_output
 
 
+@pytest.mark.parametrize("execution_mode", ["local", "sandbox"])
 @pytest.mark.asyncio
-async def test_toolkit_e2e(uc_client):
+async def test_toolkit_e2e(uc_client, execution_mode):
+    uc_client.execution_mode = ExecutionMode(execution_mode)
     with create_function_and_cleanup_oss(uc_client, schema=SCHEMA) as func_obj:
         toolkit = UCFunctionToolkit(function_names=[func_obj.full_function_name], client=uc_client)
         tools = toolkit.tools
@@ -117,9 +116,9 @@ async def test_toolkit_e2e(uc_client):
         tool = tools[0]
         assert func_obj.comment in tool.description
 
-        input_args = {"code": "print(1)"}
+        input_args = {"a": 5, "b": 6}
         result = json.loads(tool.fn(**input_args))["value"]
-        assert result == "1\n"
+        assert result == "11"
 
         toolkit = UCFunctionToolkit(
             function_names=[f.full_name for f in uc_client.list_functions(CATALOG, SCHEMA)],
@@ -129,8 +128,10 @@ async def test_toolkit_e2e(uc_client):
         assert func_obj.tool_name in [t.name for t in toolkit.tools]
 
 
+@pytest.mark.parametrize("execution_mode", ["local", "sandbox"])
 @pytest.mark.asyncio
-async def test_toolkit_e2e_manually_passing_client(uc_client):
+async def test_toolkit_e2e_manually_passing_client(uc_client, execution_mode):
+    uc_client.execution_mode = ExecutionMode(execution_mode)
     with create_function_and_cleanup_oss(uc_client, schema=SCHEMA) as func_obj:
         toolkit = UCFunctionToolkit(function_names=[func_obj.full_function_name], client=uc_client)
         tools = toolkit.tools
@@ -138,9 +139,9 @@ async def test_toolkit_e2e_manually_passing_client(uc_client):
         tool = tools[0]
         assert tool.name == func_obj.tool_name
         assert func_obj.comment in tool.description
-        input_args = {"code": "print(1)"}
+        input_args = {"a": 3, "b": 4}
         result = json.loads(tool.fn(**input_args))["value"]
-        assert result == "1\n"
+        assert result == "7"
 
         toolkit = UCFunctionToolkit(
             function_names=[f.full_name for f in uc_client.list_functions(CATALOG, SCHEMA)],
@@ -150,8 +151,10 @@ async def test_toolkit_e2e_manually_passing_client(uc_client):
         assert func_obj.tool_name in [t.name for t in toolkit.tools]
 
 
+@pytest.mark.parametrize("execution_mode", ["local", "sandbox"])
 @pytest.mark.asyncio
-async def test_multiple_toolkits(uc_client):
+async def test_multiple_toolkits(uc_client, execution_mode):
+    uc_client.execution_mode = ExecutionMode(execution_mode)
     with create_function_and_cleanup_oss(uc_client, schema=SCHEMA) as func_obj:
         toolkit1 = UCFunctionToolkit(function_names=[func_obj.full_function_name], client=uc_client)
         toolkit2 = UCFunctionToolkit(
@@ -160,18 +163,20 @@ async def test_multiple_toolkits(uc_client):
         )
         tool1 = toolkit1.tools[0]
         tool2 = [t for t in toolkit2.tools if t.name == func_obj.tool_name][0]
-        input_args = {"code": "print(1)"}
+        input_args = {"a": 2, "b": 3}
         result1 = json.loads(tool1.fn(**input_args))["value"]
         result2 = json.loads(tool2.fn(**input_args))["value"]
         assert result1 == result2
 
 
-def test_toolkit_creation_errors_no_client():
+def test_toolkit_creation_errors_no_client(monkeypatch):
+    monkeypatch.setattr("unitycatalog.ai.core.base._is_databricks_client_available", lambda: False)
+
     with pytest.raises(
         ValidationError,
         match=r"No client provided, either set the client when creating a toolkit or set the default client",
     ):
-        UCFunctionToolkit(function_names=[])
+        UCFunctionToolkit(function_names=["test.test.test"])
 
 
 def test_toolkit_creation_errors_invalid_client(uc_client):
@@ -254,9 +259,9 @@ def test_convert_to_gemini_schema_with_valid_function_info():
         },
     }
 
-    assert (
-        result_schema == expected_schema
-    ), "The generated schema does not match the expected output."
+    assert result_schema == expected_schema, (
+        "The generated schema does not match the expected output."
+    )
 
 
 @pytest.mark.asyncio
@@ -279,62 +284,6 @@ async def test_uc_function_to_gemini_tool(uc_client):
         )
         result = json.loads(tool.fn(x="some_string"))["value"]
         assert result == "some_string"
-
-
-@pytest.mark.parametrize(
-    "format,function_output",
-    [
-        ("SCALAR", RETRIEVER_OUTPUT_SCALAR),
-        ("CSV", RETRIEVER_OUTPUT_CSV),
-    ],
-)
-@pytest.mark.parametrize(
-    "data_type,full_data_type,return_params",
-    [
-        (
-            ColumnTypeName.TABLE_TYPE,
-            RETRIEVER_TABLE_FULL_DATA_TYPE,
-            RETRIEVER_TABLE_RETURN_PARAMS_OSS,
-        ),
-    ],
-)
-@pytest.mark.asyncio
-async def test_crewai_tool_with_tracing_as_retriever(
-    uc_client, format, function_output, data_type, full_data_type, return_params
-):
-    mock_function_info = generate_function_info(
-        name=f"test_{format}",
-        data_type=data_type,
-        full_data_type=full_data_type,
-        return_params=return_params,
-    )
-
-    with (
-        mock.patch.object(uc_client, "get_function", return_value=mock_function_info),
-        mock.patch.object(
-            uc_client,
-            "_execute_uc_function",
-            return_value=FunctionExecutionResult(format=format, value=function_output),
-        ),
-        mock.patch.object(uc_client, "validate_input_params"),
-    ):
-        import mlflow
-
-        mlflow.gemini.autolog()
-
-        tool = UCFunctionToolkit.uc_function_to_gemini_tool(
-            function_name=mock_function_info.full_name, client=uc_client
-        )
-        tool.fn(x="some_string")
-
-        trace = mlflow.get_last_active_trace()
-        assert trace is not None
-        assert trace.data.spans[0].name == mock_function_info.full_name
-        assert trace.info.execution_time_ms is not None
-        assert trace.data.request == '{"x": "some_string"}'
-        assert trace.data.response == RETRIEVER_OUTPUT_SCALAR
-
-        mlflow.gemini.autolog(disable=True)
 
 
 @pytest.mark.asyncio
@@ -389,14 +338,14 @@ def test_generate_callable_tool_list(uc_client):
 
     gemini_tool = callable_tools[0]
     tool = tools[0]
-    assert isinstance(
-        gemini_tool, CallableFunctionDeclaration
-    ), "The tool should be a CallableFunctionDeclaration."
-    assert (
-        tool.name == "catalog__schema__test_function"
-    ), "The tool's name does not match the expected name."
-    assert (
-        tool.description == "Executes Python code and returns its stdout."
-    ), "The tool's description does not match the expected description."
+    assert isinstance(gemini_tool, CallableFunctionDeclaration), (
+        "The tool should be a CallableFunctionDeclaration."
+    )
+    assert tool.name == "catalog__schema__test_function", (
+        "The tool's name does not match the expected name."
+    )
+    assert tool.description == "Executes Python code and returns its stdout.", (
+        "The tool's description does not match the expected description."
+    )
     assert "parameters" in tool.schema, "The tool's schema should include parameters."
     assert tool.schema["parameters"]["required"] == ["x"], "The required parameters do not match."

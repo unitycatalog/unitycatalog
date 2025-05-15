@@ -1,12 +1,18 @@
 import re
+import textwrap
 import warnings
 from typing import Any, Dict, List, Optional, Tuple, Union
 
 import pytest
 
+from unitycatalog.ai.core.types import Variant
 from unitycatalog.ai.core.utils.callable_utils import (
+    _parse_routine_definition,
+    _parse_sql_data_type,
+    dynamically_construct_python_function,
     generate_sql_function_body,
 )
+from unitycatalog.ai.core.utils.type_utils import SQL_TYPE_TO_PYTHON_TYPE_MAPPING
 
 # ---------------------------
 # Tests for Simple Functions and Docstrings
@@ -186,7 +192,6 @@ def test_function_with_extra_docstring_params_ignored():
             func_with_extra_param_in_docstring, "test_catalog", "test_schema"
         )
 
-    # Define the expected SQL, stripping leading/trailing whitespace for accurate comparison
     expected_sql = """
 CREATE FUNCTION `test_catalog`.`test_schema`.`func_with_extra_param_in_docstring`(a LONG COMMENT 'The first argument')
 RETURNS STRING
@@ -197,11 +202,107 @@ AS $$
 $$;
     """
 
-    assert (
-        sql_body.strip() == expected_sql.strip()
-    ), f"Generated SQL does not match expected SQL.\nGenerated SQL:\n{sql_body}\nExpected SQL:\n{expected_sql}"
+    assert sql_body.strip() == expected_sql.strip()
 
     assert len(record) == 1
+
+
+# ---------------------------
+# Tests for environment dependency specifications
+# ---------------------------
+
+
+def test_environment_dependencies_formatting():
+    def func_with_env_deps(a: int) -> str:
+        """
+        A function that requires specific environment dependencies.
+
+        Args:
+            a: An integer
+
+        Returns:
+            str: A string representation of the integer
+        """
+        return str(a)
+
+    sql_body = generate_sql_function_body(
+        func_with_env_deps, "test_catalog", "test_schema", True, ["numpy", "pandas"]
+    )
+
+    expected_sql = """
+CREATE OR REPLACE FUNCTION `test_catalog`.`test_schema`.`func_with_env_deps`(a LONG COMMENT 'An integer')
+RETURNS STRING
+LANGUAGE PYTHON
+ENVIRONMENT (dependencies = '["numpy", "pandas"]', environment_version = 'None')
+COMMENT 'A function that requires specific environment dependencies.'
+AS $$
+    return str(a)
+$$;
+    """
+
+    assert sql_body.strip() == expected_sql.strip()
+
+
+def test_environment_dependencies_formatting_env_specified():
+    def func_with_env_deps(a: int) -> str:
+        """
+        A function that requires specific environment dependencies.
+
+        Args:
+            a: An integer
+
+        Returns:
+            str: A string representation of the integer
+        """
+        return str(a)
+
+    sql_body = generate_sql_function_body(
+        func_with_env_deps, "test_catalog", "test_schema", True, ["numpy", "pandas"], "1"
+    )
+
+    expected_sql = """
+CREATE OR REPLACE FUNCTION `test_catalog`.`test_schema`.`func_with_env_deps`(a LONG COMMENT 'An integer')
+RETURNS STRING
+LANGUAGE PYTHON
+ENVIRONMENT (dependencies = '["numpy", "pandas"]', environment_version = '1')
+COMMENT 'A function that requires specific environment dependencies.'
+AS $$
+    return str(a)
+$$;
+    """
+
+    assert sql_body.strip() == expected_sql.strip()
+
+
+def test_environment_version_formatting_no_deps():
+    def func_with_env_deps(a: int) -> str:
+        """
+        A function that requires specific environment dependencies.
+
+        Args:
+            a: An integer
+
+        Returns:
+            str: A string representation of the integer
+        """
+        return str(a)
+
+    sql_body = generate_sql_function_body(
+        func_with_env_deps, "test_catalog", "test_schema", True, environment_version="1"
+    )
+
+    expected_sql = """
+CREATE OR REPLACE FUNCTION `test_catalog`.`test_schema`.`func_with_env_deps`(a LONG COMMENT 'An integer')
+RETURNS STRING
+LANGUAGE PYTHON
+ENVIRONMENT (environment_version = '1')
+COMMENT 'A function that requires specific environment dependencies.'
+AS $$
+    return str(a)
+$$;
+    """
+
+    assert sql_body.strip() == expected_sql.strip()
 
 
 # ---------------------------
@@ -448,23 +549,6 @@ $$;
     assert sql_body.strip() == expected_sql.strip()
 
 
-def test_function_returning_none():
-    def func_returning_none(a: int) -> None:
-        """
-        A function that returns None.
-
-        Args:
-            a: An integer
-        """
-        return None
-
-    with pytest.raises(
-        ValueError,
-        match=" in return type for function 'func_returning_none': <class 'NoneType'>. Unsupported return type: <class 'NoneType'>.",
-    ):
-        generate_sql_function_body(func_returning_none, "test_catalog", "test_schema")
-
-
 def test_function_returning_any():
     def func_returning_any(a: int) -> Any:
         """
@@ -619,6 +703,88 @@ $$;
     assert sql_body.strip() == expected_sql.strip()
 
 
+def test_function_with_variant_param():
+    def func_with_variant(a: Variant) -> str:
+        """
+        A function that accepts a VARIANT parameter.
+
+        Args:
+            a: A variant parameter.
+
+        Returns:
+            str: The string representation of the variant.
+        """
+        return str(a)
+
+    sql_body = generate_sql_function_body(func_with_variant, "test_catalog", "test_schema", True)
+    expected_sql = """
+CREATE OR REPLACE FUNCTION `test_catalog`.`test_schema`.`func_with_variant`(a VARIANT COMMENT 'A variant parameter.')
+RETURNS STRING
+LANGUAGE PYTHON
+COMMENT 'A function that accepts a VARIANT parameter.'
+AS $$
+    return str(a)
+$$;
+    """
+    assert sql_body.strip() == expected_sql.strip()
+
+
+def test_function_with_list_of_variant():
+    from typing import List
+
+    def func_list_of_variant(a: List[Variant]) -> str:
+        """
+        A function that accepts a list of VARIANTs.
+
+        Args:
+            a: A list of variant values.
+
+        Returns:
+            str: The string representation of the list.
+        """
+        return str(a)
+
+    sql_body = generate_sql_function_body(func_list_of_variant, "test_catalog", "test_schema", True)
+    expected_sql = """
+CREATE OR REPLACE FUNCTION `test_catalog`.`test_schema`.`func_list_of_variant`(a ARRAY<VARIANT> COMMENT 'A list of variant values.')
+RETURNS STRING
+LANGUAGE PYTHON
+COMMENT 'A function that accepts a list of VARIANTs.'
+AS $$
+    return str(a)
+$$;
+    """
+    assert sql_body.strip() == expected_sql.strip()
+
+
+def test_function_with_dict_of_variant():
+    from typing import Dict
+
+    def func_dict_of_variant(a: Dict[str, Variant]) -> str:
+        """
+        A function that accepts a dictionary with string keys and VARIANT values.
+
+        Args:
+            a: A dictionary of variant values.
+
+        Returns:
+            str: The string representation of the dictionary.
+        """
+        return str(a)
+
+    sql_body = generate_sql_function_body(func_dict_of_variant, "test_catalog", "test_schema", True)
+    expected_sql = """
+CREATE OR REPLACE FUNCTION `test_catalog`.`test_schema`.`func_dict_of_variant`(a MAP<STRING, VARIANT> COMMENT 'A dictionary of variant values.')
+RETURNS STRING
+LANGUAGE PYTHON
+COMMENT 'A function that accepts a dictionary with string keys and VARIANT values.'
+AS $$
+    return str(a)
+$$;
+    """
+    assert sql_body.strip() == expected_sql.strip()
+
+
 # ---------------------------
 # Tests for Return Types
 # ---------------------------
@@ -693,6 +859,29 @@ LANGUAGE PYTHON
 COMMENT 'A function with a complex return type.'
 AS $$
     return {"numbers": [1, 2, 3]}
+$$;
+    """
+    assert sql_body.strip() == expected_sql.strip()
+
+
+def test_function_with_variant_return():
+    def func_variant_return() -> Variant:
+        """
+        A function that returns a VARIANT.
+
+        Returns:
+            Variant: A variant value.
+        """
+        return {"key": 123}
+
+    sql_body = generate_sql_function_body(func_variant_return, "test_catalog", "test_schema", True)
+    expected_sql = """
+CREATE OR REPLACE FUNCTION `test_catalog`.`test_schema`.`func_variant_return`()
+RETURNS VARIANT
+LANGUAGE PYTHON
+COMMENT 'A function that returns a VARIANT.'
+AS $$
+    return {"key": 123}
 $$;
     """
     assert sql_body.strip() == expected_sql.strip()
@@ -1538,3 +1727,179 @@ def test_no_warnings_when_consistent():
         generate_sql_function_body(consistent_func, "test_catalog", "test_schema")
 
     assert len(record) == 0
+
+
+class FakeParam:
+    def __init__(self, name: str, type_text: str):
+        self.name = name
+        self.type_text = type_text
+
+
+# ---------------------------
+# Parametrized Tests for Return Type Parsing
+# ---------------------------
+
+
+@pytest.mark.parametrize(
+    "input_type, expected",
+    [
+        ("bigint", SQL_TYPE_TO_PYTHON_TYPE_MAPPING.get("BIGINT", int).__name__),
+        ("ARRAY<INT>", "list[int]"),
+        ("MAP<STRING, ARRAY<STRING>>", "dict[str, list[str]]"),
+        ("MAP<STRING, MAP<STRING, DOUBLE>>", "dict[str, dict[str, float]]"),
+        ("STRUCT<field1:INT, field2:STRING>", "dict"),
+    ],
+)
+def test_parse_full_sql_data_type_for_return_types(input_type: str, expected: str):
+    result = _parse_sql_data_type(input_type)
+    assert result == expected
+
+
+# ---------------------------
+# Parametrized Tests for Parameter Type Extraction
+# ---------------------------
+
+
+@pytest.mark.parametrize(
+    "param_name, type_text, expected",
+    [
+        (
+            "e",
+            "ARRAY<STRING>",
+            "e: list[str]",
+        ),
+        (
+            "f",
+            "MAP<STRING, LONG>",
+            "f: dict[str, int]",
+        ),
+        (
+            "h",
+            "MAP<STRING, ARRAY<LONG>>",
+            "h: dict[str, list[int]]",
+        ),
+        (
+            "i",
+            "MAP<STRING, ARRAY<MAP<STRING, ARRAY<LONG>>>>",
+            "i: dict[str, list[dict[str, list[int]]]]",
+        ),
+    ],
+)
+def test_extract_collection_types(param_name: str, type_text: str, expected: str):
+    fake_param = FakeParam(param_name, type_text)
+    result = f"{fake_param.name}: {_parse_sql_data_type(fake_param.type_text)}"
+    assert result == expected
+
+
+class DummyParameter:
+    def __init__(self, name: str, type_json: str, comment: str):
+        self.name = name
+        self.type_json = type_json
+        self.comment = comment
+
+
+class DummyInputParams:
+    def __init__(self, parameters):
+        self.parameters = parameters
+
+
+class DummyRoutineBody:
+    def __init__(self, value: str):
+        self.value = value
+
+
+class DummyFunctionInfo:
+    pass
+
+
+def build_expected_definition(func_name: str, routine_definition: str, comment: str) -> str:
+    """
+    Given the function name, the raw routine definition, and an overall comment,
+    build the complete expected function definition string.
+
+    The expected definition has:
+      - A header: "def <func_name>() -> str:" (since full_data_type "STRING" maps to "str")
+      - A reconstructed docstring that uses the provided comment and a "Returns:" section
+        that shows "str" (the parsed return type).
+      - A function body that is normalized by our _parse_routine_definition helper.
+
+    Returns:
+        The expected full function definition as a string.
+    """
+    header = f"def {func_name}() -> str:"
+    # Build the docstring.
+    wrapped_comment = textwrap.fill(comment.strip(), width=100)
+    # Here we assume that if no explicit returns text is stored, we use the parsed type "str".
+    wrapped_return = textwrap.fill(
+        "str", width=100, initial_indent="    ", subsequent_indent="    "
+    )
+    doc_lines = [
+        wrapped_comment,
+        "",
+        "Returns:",
+        wrapped_return,
+    ]
+    indented_doc = "\n".join("    " + line for line in doc_lines)
+    docstring = f'    """\n{indented_doc}\n    """\n'
+    # Use our helper _parse_routine_definition to normalize the routine definition.
+    expected_body = _parse_routine_definition(routine_definition)
+    expected_def = f"{header}\n{docstring}{expected_body}\n"
+    return expected_def
+
+
+test_cases = [
+    # 1. Already properly indented with 4 spaces.
+    ("    return a + b", "    return a + b"),
+    # 2. Indented with 2 spaces.
+    ("  return a + b", "    return a + b"),
+    # 3. Nested definition: outer indent 2, nested line indent 6, outer again indent 2.
+    (
+        "  def _helper(x):\n      return x * 2\n  return _helper(a)",
+        "    def _helper(x):\n        return x * 2\n    return _helper(a)",
+    ),
+    # 4. Inconsistent indentation: first line indent 2, second line flush left, third line indent 4.
+    (
+        "  line one\nline two\n    line three",
+        # Because one nonempty line is flush left, baseline becomes 0, so every nonempty line gets fixed 4-space indent.
+        "        line one\n    line two\n            line three",
+    ),
+    # 5. Contains a blank line; nonempty lines have indents 2 and 4, so baseline = 2.
+    ("  line one\n\n    line three\n", "    line one\n\n        line three"),
+    # 6. Nested definitions: outer indent 2, inner indent 4, inner's body indent 6, then outer again indent 2.
+    (
+        "  def outer():\n    def inner():\n      return 1\n    return inner()",
+        "    def outer():\n        def inner():\n            return 1\n        return inner()",
+    ),
+    # 7. Already flush left.
+    ("def foo():\n    return 'bar'", "    def foo():\n        return 'bar'"),
+    # 8. Trailing whitespace.
+    ("    return a + b    \n   ", "    return a + b"),
+    # 9. Uses a tab.
+    ("\treturn a + b", "    return a + b"),
+    # 10. All flush left.
+    ("return a + b", "    return a + b"),
+]
+
+
+@pytest.mark.parametrize("input_body, expected_normalized", test_cases)
+def test_parse_routine_definition_indentation(input_body, expected_normalized):
+    # Expand tabs to spaces
+    input_body = "\n".join(line.expandtabs(4) for line in input_body.splitlines())
+    result = _parse_routine_definition(input_body)
+    assert result == expected_normalized, f"Expected:\n{expected_normalized}\nGot:\n{result}"
+
+
+@pytest.mark.parametrize("input_body, expected_normalized", test_cases)
+def test_dynamically_construct_python_function_indentation(input_body, expected_normalized):
+    # Create a dummy FunctionInfo object.
+    dummy = DummyFunctionInfo()
+    dummy.name = "test_func"
+    dummy.input_params = DummyInputParams([])  # No parameters.
+    dummy.full_data_type = "STRING"  # Maps to "str"
+    dummy.comment = "Test function"
+    dummy.routine_body = DummyRoutineBody("EXTERNAL")
+    dummy.routine_definition = input_body
+
+    reconstructed = dynamically_construct_python_function(dummy)
+    expected_def = build_expected_definition("test_func", input_body, "Test function")
+    assert reconstructed == expected_def, f"Expected:\n{expected_def}\nGot:\n{reconstructed}"

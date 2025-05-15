@@ -9,14 +9,8 @@ import pytest
 from unitycatalog.ai.core.base import set_uc_function_client
 from unitycatalog.ai.core.databricks import DatabricksFunctionClient
 
-USE_SERVERLESS = "USE_SERVERLESS"
 TEST_IN_DATABRICKS = os.environ.get("TEST_IN_DATABRICKS", "false").lower() == "true"
-WAREHOUSE_ID = os.environ.get("WAREHOUSE_ID", "warehouse_id")
 PROFILE = os.environ.get("DATABRICKS_CONFIG_PROFILE")
-
-
-def use_serverless():
-    return os.environ.get(USE_SERVERLESS, "false").lower() == "true"
 
 
 def requires_databricks(test_func):
@@ -26,17 +20,22 @@ def requires_databricks(test_func):
     )(test_func)
 
 
-# TODO: CI -- only support python 3.10, test with databricks-connect 15.1.0 + serverless
 @pytest.fixture
 def client() -> DatabricksFunctionClient:
     if TEST_IN_DATABRICKS:
-        return DatabricksFunctionClient(warehouse_id=WAREHOUSE_ID, profile=PROFILE)
+        return DatabricksFunctionClient(profile=PROFILE)
     else:
-        with mock.patch(
-            "unitycatalog.ai.core.databricks.get_default_databricks_workspace_client",
-            return_value=mock.Mock(),
+        with (
+            mock.patch(
+                "unitycatalog.ai.core.databricks.get_default_databricks_workspace_client",
+                return_value=mock.Mock(),
+            ),
+            mock.patch(
+                "unitycatalog.ai.core.databricks.DatabricksFunctionClient.set_spark_session",
+                lambda self: None,
+            ),
         ):
-            return DatabricksFunctionClient(warehouse_id=WAREHOUSE_ID)
+            return DatabricksFunctionClient()
 
 
 @pytest.fixture
@@ -44,23 +43,33 @@ def serverless_client() -> DatabricksFunctionClient:
     return DatabricksFunctionClient(profile=PROFILE)
 
 
+@pytest.fixture
+def serverless_client_with_config() -> DatabricksFunctionClient:
+    from databricks.sdk import WorkspaceClient
+
+    w = WorkspaceClient(
+        host=os.environ.get("DATABRICKS_HOST"),
+        client_id=os.environ.get("DATABRICKS_CLIENT_ID"),
+        client_secret=os.environ.get("DATABRICKS_CLIENT_SECRET"),
+    )
+    return DatabricksFunctionClient(client=w)
+
+
 def get_client() -> DatabricksFunctionClient:
     if TEST_IN_DATABRICKS:
-        return (
-            DatabricksFunctionClient(profile=PROFILE)
-            if use_serverless()
-            else DatabricksFunctionClient(warehouse_id=WAREHOUSE_ID, profile=PROFILE)
-        )
+        return DatabricksFunctionClient(profile=PROFILE)
     else:
-        with mock.patch(
-            "unitycatalog.ai.core.databricks.get_default_databricks_workspace_client",
-            return_value=mock.Mock(),
+        with (
+            mock.patch(
+                "unitycatalog.ai.core.databricks.get_default_databricks_workspace_client",
+                return_value=mock.Mock(),
+            ),
+            mock.patch(
+                "unitycatalog.ai.core.databricks.DatabricksFunctionClient.set_spark_session",
+                lambda self: None,
+            ),
         ):
-            return (
-                DatabricksFunctionClient()
-                if use_serverless()
-                else DatabricksFunctionClient(warehouse_id=WAREHOUSE_ID)
-            )
+            return DatabricksFunctionClient()
 
 
 @contextmanager

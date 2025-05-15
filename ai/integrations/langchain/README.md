@@ -88,9 +88,7 @@ Initialize a client for managing UC functions in a Databricks workspace, and set
 from unitycatalog.ai.core.base import set_uc_function_client
 from unitycatalog.ai.core.databricks import DatabricksFunctionClient
 
-client = DatabricksFunctionClient(
-    warehouse_id="..." # replace with the warehouse_id
-)
+client = DatabricksFunctionClient()
 
 # sets the default uc function client
 set_uc_function_client(client)
@@ -138,12 +136,12 @@ from unitycatalog.ai.langchain.toolkit import UCFunctionToolkit
 # create a UCFunctionToolkit that includes the above UC function
 toolkit = UCFunctionToolkit(function_names=[f"{CATALOG}.{SCHEMA}.python_exec"])
 
-# fetch the tools stored in the toolkit
-tools = toolkit.tools
-python_exec_tool = tools[0]
+# Printing the tool definition will display the configured metadata for the instance.
+print(python_exec_tool)
 
-# execute the tool directly
-python_exec_tool.invoke({"code": "print(1)"})
+# Execute the tool directly
+result = client.execute_function(function_name=f"{CATALOG}.{SCHEMA}.python_exec", parameters={"code": "print(1 + 1)"})
+print(result.value)  # Outputs: 2
 ```
 
 ### Use the tools in a Langchain Agent
