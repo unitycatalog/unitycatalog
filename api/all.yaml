@@ -333,6 +333,22 @@ paths:
           required: false
           schema:
             type: string
+        - name: read_st_as_managed
+          in: query
+          description: |
+            Whether to read Streaming Tables as Managed tables.
+          required: false
+          schema:
+            type: boolean
+            default: true
+        - name: read_mv_as_managed
+          in: query
+          description: |
+            Whether to read Materialized Views as Managed tables.
+          required: false
+          schema:
+            type: boolean
+            default: true
       operationId: listTables
       summary: List tables
       description: |
@@ -360,6 +376,23 @@ paths:
       summary: Get a table
       description: |
         Gets a table for a specific catalog and schema.
+      parameters:
+        - name: read_st_as_managed
+          in: query
+          description: |
+            Whether to read Streaming Tables as Managed tables.
+          required: false
+          schema:
+            type: boolean
+            default: true
+        - name: read_mv_as_managed
+          in: query
+          description: |
+            Whether to read Materialized Views as Managed tables.
+          required: false
+          schema:
+            type: boolean
+            default: true
       responses:
         '200':
           description: The table was successfully retrieved.
@@ -2158,6 +2191,14 @@ components:
           type: string
         operation:
           $ref: '#/components/schemas/TableOperation'
+        read_st_as_managed:
+          description: |
+            Whether to read Streaming Tables as Managed tables.
+            type: boolean
+        read_mv_as_managed:
+          description: |
+            Whether to read Materialized Views as Managed tables.
+          type: boolean
       type: object
       required:
         - table_id
