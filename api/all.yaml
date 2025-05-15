@@ -2194,7 +2194,7 @@ components:
         read_st_as_managed:
           description: |
             Whether to read Streaming Tables as Managed tables.
-            type: boolean
+          type: boolean
         read_mv_as_managed:
           description: |
             Whether to read Materialized Views as Managed tables.
