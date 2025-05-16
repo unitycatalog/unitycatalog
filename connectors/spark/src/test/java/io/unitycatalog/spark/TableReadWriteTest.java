@@ -134,11 +134,11 @@ public class TableReadWriteTest extends BaseSparkIntegrationTest {
 
     setupExternalDeltaTable(SPARK_CATALOG, DELTA_TABLE, new ArrayList<>(0), session);
     String t1 = SPARK_CATALOG + "." + SCHEMA_NAME + "." + DELTA_TABLE;
-    session.sql("INSERT INTO " + t1 + " SELECT 1, 'a'");
+    session.sql("INSERT INTO " + t1 + " SELECT 1, 'a', '2025-05-16'");
 
     String timestamp = Instant.now().toString();
 
-    session.sql("INSERT INTO " + t1 + " SELECT 2, 'b'");
+    session.sql("INSERT INTO " + t1 + " SELECT 2, 'b', '2025-05-16");
 
     // Time-travel to before the last insert, we should only see the first inserted row.
     validateTimeTravelDeltaTable(session.sql("SELECT * FROM " + t1 + " VERSION AS OF 1"));
@@ -368,7 +368,7 @@ public class TableReadWriteTest extends BaseSparkIntegrationTest {
           .sql(
               "CREATE TABLE "
                   + fullTableName2
-                  + "(i INT, s STRING) USING PARQUET LOCATION '"
+                  + "(i INT, s STRING, d DATE) USING PARQUET LOCATION '"
                   + path2
                   + "'")
           .collect();
@@ -498,7 +498,7 @@ public class TableReadWriteTest extends BaseSparkIntegrationTest {
     CredentialTestFileSystem.credentialCheckEnabled = false;
     session.sql(
         String.format(
-            "CREATE TABLE delta.`%s`(i INT, s STRING) USING delta %s", location, partitionClause));
+            "CREATE TABLE delta.`%s`(i INT, s STRING, d DATE) USING delta %s", location, partitionClause));
     CredentialTestFileSystem.credentialCheckEnabled = true;
   }
 
@@ -533,6 +533,8 @@ public class TableReadWriteTest extends BaseSparkIntegrationTest {
     if (partitionIndex1 == -1) partitionIndex1 = null;
     Integer partitionIndex2 = partitionColumns.indexOf("s");
     if (partitionIndex2 == -1) partitionIndex2 = null;
+    Integer partitionIndex3 = partitionColumns.indexOf("d");
+    if (partitionIndex3 == -1) partitionIndex3 = null;
 
     ColumnInfo c1 =
         new ColumnInfo()
@@ -557,6 +559,17 @@ public class TableReadWriteTest extends BaseSparkIntegrationTest {
             .partitionIndex(partitionIndex2)
             .comment("String column")
             .nullable(true);
+
+    ColumnInfo c3 =
+        new ColumnInfo()
+            .name("d")
+            .typeText("DATE")
+            .typeJson("{\"type\": \"date\"}")
+            .typeName(ColumnTypeName.DATE)
+            .position(2)
+            .partitionIndex(partitionIndex3)
+            .comment("Date column")
+            .nullable(true);
     TableType tableType;
     if (isManaged) {
       tableType = TableType.MANAGED;
@@ -568,7 +581,7 @@ public class TableReadWriteTest extends BaseSparkIntegrationTest {
             .name(tableName)
             .catalogName(catalogName)
             .schemaName(SCHEMA_NAME)
-            .columns(Arrays.asList(c1, c2))
+            .columns(Arrays.asList(c1, c2, c3))
             .comment(COMMENT)
             .tableType(tableType)
             .dataSourceFormat(format);
