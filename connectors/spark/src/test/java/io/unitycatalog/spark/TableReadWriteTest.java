@@ -3,6 +3,7 @@ package io.unitycatalog.spark;
 import static io.unitycatalog.server.utils.TestUtils.*;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 
 import io.unitycatalog.client.ApiException;
 import io.unitycatalog.client.model.*;
@@ -14,13 +15,17 @@ import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
+import java.util.concurrent.TimeoutException;
 import org.apache.spark.network.util.JavaUtils;
 import org.apache.spark.sql.Dataset;
 import org.apache.spark.sql.Row;
 import org.apache.spark.sql.SparkSession;
+import org.apache.spark.sql.streaming.StreamingQueryException;
+import org.apache.spark.sql.streaming.Trigger;
 import org.apache.spark.sql.types.DataTypes;
 import org.apache.spark.sql.types.StructType;
 import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
@@ -128,6 +133,7 @@ public class TableReadWriteTest extends BaseSparkIntegrationTest {
     assertThat(rows).hasSize(1);
     assertThat(rows.get(0).getInt(0)).isEqualTo(1);
   }
+
   @Test
   public void testTimeTravelDeltaTable() throws ApiException, IOException {
     SparkSession session = createSparkSessionWithCatalogs(SPARK_CATALOG);
@@ -142,7 +148,8 @@ public class TableReadWriteTest extends BaseSparkIntegrationTest {
 
     // Time-travel to before the last insert, we should only see the first inserted row.
     validateTimeTravelDeltaTable(session.sql("SELECT * FROM " + t1 + " VERSION AS OF 1"));
-    validateTimeTravelDeltaTable(session.sql("SELECT * FROM " + t1 + " TIMESTAMP AS OF '" + timestamp + "'"));
+    validateTimeTravelDeltaTable(
+        session.sql("SELECT * FROM " + t1 + " TIMESTAMP AS OF '" + timestamp + "'"));
     validateTimeTravelDeltaTable(session.read().option("versionAsOf", 1).table(t1));
     validateTimeTravelDeltaTable(session.read().option("timestampAsOf", timestamp).table(t1));
 
@@ -383,6 +390,15 @@ public class TableReadWriteTest extends BaseSparkIntegrationTest {
     SparkSession session = createSparkSessionWithCatalogs(SPARK_CATALOG, CATALOG_NAME);
     String path1 = generateTableLocation(SPARK_CATALOG, DELTA_TABLE);
     String path2 = generateTableLocation(CATALOG_NAME, DELTA_TABLE);
+    List<ColumnInfo> tableSchema =
+        List.of(
+            new ColumnInfo()
+                .name("name")
+                .typeText("string")
+                .typeJson("\"string\"")
+                .typeName(ColumnTypeName.STRING)
+                .position(0)
+                .nullable(true));
     session.sql(String.format("CREATE TABLE delta.`%s`(name STRING) USING delta", path1));
     session.sql(String.format("CREATE TABLE delta.`%s`(name STRING) USING delta", path2));
 
@@ -391,8 +407,12 @@ public class TableReadWriteTest extends BaseSparkIntegrationTest {
         "CREATE TABLE " + fullTableName1 + "(name STRING) USING delta LOCATION '" + path1 + "'");
     assertThat(session.catalog().tableExists(fullTableName1)).isTrue();
     TableInfo tableInfo1 = tableOperations.getTable(fullTableName1);
-    // By default, Delta tables do not store schema in the catalog.
-    assertThat(tableInfo1.getColumns()).isEmpty();
+    /*
+    By default, Delta tables do not store schema in the catalog.
+    In this case, the schema is stored in the catalog because
+    "spark.databricks.delta.catalog.update.enabled" is set to true
+     */
+    assertThat(tableInfo1.getColumns()).isEqualTo(tableSchema);
     assertThat(session.table(fullTableName1).collectAsList()).isEmpty();
     StructType schema1 = session.table(fullTableName1).schema();
     assertThat(schema1.apply(0).name()).isEqualTo("name");
@@ -403,8 +423,12 @@ public class TableReadWriteTest extends BaseSparkIntegrationTest {
         "CREATE TABLE " + fullTableName2 + "(name STRING) USING delta LOCATION '" + path2 + "'");
     assertThat(session.catalog().tableExists(fullTableName2)).isTrue();
     TableInfo tableInfo2 = tableOperations.getTable(fullTableName2);
-    // By default, Delta tables do not store schema in the catalog.
-    assertThat(tableInfo2.getColumns()).isEmpty();
+    /*
+    By default, Delta tables do not store schema in the catalog.
+    In this case, the schema is stored in the catalog because
+    "spark.databricks.delta.catalog.update.enabled" is set to true
+     */
+    assertThat(tableInfo2.getColumns()).isEqualTo(tableSchema);
     assertThat(session.table(fullTableName2).collectAsList()).isEmpty();
     StructType schema2 = session.table(fullTableName2).schema();
     assertThat(schema2.apply(0).name()).isEqualTo("name");
@@ -480,17 +504,51 @@ public class TableReadWriteTest extends BaseSparkIntegrationTest {
     session.close();
   }
 
+  // TODO #715: Remove ignore when Delta is updated to version including
+  // https://github.com/delta-io/delta/pull/4550
+  @Disabled
   @Test
-  public void testReadStream() throws IOException {
+  public void testReadWriteStream() throws IOException, TimeoutException, StreamingQueryException {
     SparkSession session = createSparkSessionWithCatalogs(SPARK_CATALOG);
-    String path = generateTableLocation(SPARK_CATALOG, DELTA_TABLE);
-    session.sql(String.format("CREATE TABLE delta.`%s`(name STRING) USING delta", path));
-    String fullTableName = SPARK_CATALOG + "." + SCHEMA_NAME + "." + DELTA_TABLE;
+    String inputTableName = DELTA_TABLE + "_input";
+    String outputTableName = DELTA_TABLE + "_output";
+    String inputPath = generateTableLocation(SPARK_CATALOG, inputTableName);
+    String outputPath = generateTableLocation(SPARK_CATALOG, outputTableName);
+
+    session.sql(String.format("CREATE TABLE delta.`%s`(name STRING) USING delta", inputPath));
+    String inputTableFullName = SPARK_CATALOG + "." + SCHEMA_NAME + "." + inputTableName;
     session.sql(
-        "CREATE TABLE " + fullTableName + "(name STRING) USING delta LOCATION '" + path + "'");
-    // Just make sure we won't hit analysis error.
-    session.readStream().table(fullTableName);
-    session.close();
+        "CREATE TABLE "
+            + inputTableFullName
+            + "(name STRING) USING delta LOCATION '"
+            + inputPath
+            + "'");
+    session.sql("INSERT INTO " + inputTableFullName + " VALUES ('a'), ('b')");
+
+    String outputTableFullName = SPARK_CATALOG + "." + SCHEMA_NAME + "." + outputTableName;
+    session.sql(
+        " CREATE TABLE "
+            + outputTableFullName
+            + " USING delta LOCATION '"
+            + outputPath
+            + "' AS SELECT * FROM "
+            + inputTableFullName
+            + " LIMIT 1 ");
+    // Just make sure we won't hit an analysis error.
+    assertDoesNotThrow(
+        () -> {
+          session
+              .readStream()
+              .table(inputTableFullName)
+              .writeStream()
+              .format("DELTA")
+              .outputMode("append")
+              .trigger(Trigger.AvailableNow())
+              .option("checkpointLocation", outputPath)
+              .toTable(outputTableFullName)
+              .awaitTermination();
+        });
+    session.stop();
   }
 
   private String generateTableLocation(String catalogName, String tableName) throws IOException {
