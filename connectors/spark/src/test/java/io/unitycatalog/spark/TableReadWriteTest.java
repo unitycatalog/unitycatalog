@@ -10,10 +10,12 @@ import io.unitycatalog.server.base.table.TableOperations;
 import io.unitycatalog.server.sdk.tables.SdkTableOperations;
 import java.io.File;
 import java.io.IOException;
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import org.apache.spark.network.util.JavaUtils;
+import org.apache.spark.sql.Dataset;
 import org.apache.spark.sql.Row;
 import org.apache.spark.sql.SparkSession;
 import org.apache.spark.sql.types.DataTypes;
@@ -117,6 +119,32 @@ public class TableReadWriteTest extends BaseSparkIntegrationTest {
         .first()
         .extracting(row -> row.get(0))
         .isEqualTo(1);
+
+    session.stop();
+  }
+
+  private void validateTimeTravelDeltaTable(Dataset<Row> df) {
+    List<Row> rows = df.collectAsList();
+    assertThat(rows).hasSize(1);
+    assertThat(rows.get(0).getInt(0)).isEqualTo(1);
+  }
+  @Test
+  public void testTimeTravelDeltaTable() throws ApiException, IOException {
+    SparkSession session = createSparkSessionWithCatalogs(SPARK_CATALOG);
+
+    setupExternalDeltaTable(SPARK_CATALOG, DELTA_TABLE, new ArrayList<>(0), session);
+    String t1 = SPARK_CATALOG + "." + SCHEMA_NAME + "." + DELTA_TABLE;
+    session.sql("INSERT INTO " + t1 + " SELECT 1, 'a'");
+
+    String timestamp = Instant.now().toString();
+
+    session.sql("INSERT INTO " + t1 + " SELECT 2, 'b'");
+
+    // Time-travel to before the last insert, we should only see the first inserted row.
+    validateTimeTravelDeltaTable(session.sql("SELECT * FROM " + t1 + " VERSION AS OF 1"));
+    validateTimeTravelDeltaTable(session.sql("SELECT * FROM " + t1 + " TIMESTAMP AS OF '" + timestamp + "'"));
+    validateTimeTravelDeltaTable(session.read().option("versionAsOf", 1).table(t1));
+    validateTimeTravelDeltaTable(session.read().option("timestampAsOf", timestamp).table(t1));
 
     session.stop();
   }
