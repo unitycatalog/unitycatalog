@@ -90,7 +90,8 @@ public class AuthService {
    * the incoming identity (email, subject) matches a specific user in the system, once a user
    * management system is in place.
    *
-   * @param request The token exchange parameters
+   * @param ext Specifies whether the issued token should be set as a cookie.
+   * @param form The OAuth 2.0 token exchange request form.
    * @return The token exchange response
    */
   @Post("/tokens")

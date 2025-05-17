@@ -6,6 +6,7 @@ Unity Catalog integrates with many other great tools. Below is a non-exhaustive 
 - [Daft](unity-catalog-daft.md)
 - [DuckDB](unity-catalog-duckdb.md)
 - [PuppyGraph](unity-catalog-puppygraph.md)
+- [Kuzu](unity-catalog-kuzu.md)
 - [Spark](unity-catalog-spark.md)
 - [SpiceAI](unity-catalog-spiceai.md)
 - [Trino](unity-catalog-trino.md)

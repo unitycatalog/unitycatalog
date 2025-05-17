@@ -29,6 +29,7 @@ This is a community effort. Unity Catalog is supported by
 - [Granica](https://granica.ai/)
 - [Immuta](https://www.immuta.com/)
 - [Informatica](https://www.informatica.com/)
+- [Kuzu](https://www.kuzudb.com/)
 - [LanceDB](https://lancedb.com/)
 - [LangChain](https://www.langchain.com/)
 - [LlamaIndex](https://www.llamaindex.ai/)
