@@ -24,7 +24,10 @@ import scala.language.existentials
 /**
  * A Spark catalog plugin to get/manage tables in Unity Catalog.
  */
-class UCSingleCatalog extends TableCatalog with SupportsNamespaces with Logging {
+class UCSingleCatalog
+  extends TableCatalog
+  with SupportsNamespaces
+  with Logging {
 
   private[this] var apiClient: ApiClient = null;
   private[this] var temporaryCredentialsApi: TemporaryCredentialsApi = null
@@ -71,6 +74,10 @@ class UCSingleCatalog extends TableCatalog with SupportsNamespaces with Logging 
   override def listTables(namespace: Array[String]): Array[Identifier] = delegate.listTables(namespace)
 
   override def loadTable(ident: Identifier): Table = delegate.loadTable(ident)
+
+  override def loadTable(ident: Identifier, version:  String): Table = delegate.loadTable(ident, version)
+
+  override def loadTable(ident: Identifier, timestamp:  Long): Table = delegate.loadTable(ident, timestamp)
 
   override def tableExists(ident: Identifier): Boolean = {
     delegate.tableExists(ident)
@@ -231,7 +238,6 @@ private class UCProxy(
     response.getTables.toSeq.map(table => Identifier.of(namespace, table.getName)).toArray
   }
 
-
   override def loadTable(ident: Identifier): Table = {
     val t = try {
       tablesApi.getTable(name + "." + ident.toString)
@@ -290,7 +296,8 @@ private class UCProxy(
     // sources, here we return the `V1Table` which only contains the table metadata. Spark will
     // resolve the data source and create scan node later.
     Class.forName("org.apache.spark.sql.connector.catalog.V1Table")
-      .getDeclaredConstructor(classOf[CatalogTable]).newInstance(sparkTable)
+      .getDeclaredConstructor(classOf[CatalogTable])
+      .newInstance(sparkTable)
       .asInstanceOf[Table]
   }
 
