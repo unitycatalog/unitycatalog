@@ -1,5 +1,5 @@
 object Versions {
-  val antlrVersion = "4.13.1"
+  val antlrVersion = "4.9.3"
   val deltaVersion = "3.2.1"
   val jacksonVersion = "2.19.0"
   val log4jVersion = "2.24.3"
