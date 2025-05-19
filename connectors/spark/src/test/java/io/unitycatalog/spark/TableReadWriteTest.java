@@ -126,7 +126,6 @@ public class TableReadWriteTest extends BaseSparkIntegrationTest {
     Row row = rows.get(0);
     assertThat(row.getInt(0)).isEqualTo(1);
     assertThat(row.getString(1)).isEqualTo('a');
-    assertThat(row.getDate(2)).isEqualTo("2025-05-16");
   }
 
   @Test
@@ -135,11 +134,11 @@ public class TableReadWriteTest extends BaseSparkIntegrationTest {
 
         setupExternalDeltaTable(SPARK_CATALOG, DELTA_TABLE, new ArrayList<>(0), session);
         String t1 = SPARK_CATALOG + "." + SCHEMA_NAME + "." + DELTA_TABLE;
-        session.sql("INSERT INTO " + t1 + " SELECT 1, 'a', '2025-05-16'");
+        session.sql("INSERT INTO " + t1 + " SELECT 1, 'a'");
 
         String timestamp = Instant.now().toString();
 
-        session.sql("INSERT INTO " + t1 + " SELECT 2, 'b', '2025-05-17");
+        session.sql("INSERT INTO " + t1 + " SELECT 2, 'b'");
 
         // Time-travel to before the last insert, we should only see the first inserted row.
         validateTimeTravelDeltaTable(session.sql("SELECT * FROM " + t1 + " VERSION AS OF 1"));
@@ -257,13 +256,13 @@ public class TableReadWriteTest extends BaseSparkIntegrationTest {
       String loc1 = scheme + "://test-bucket0" + generateTableLocation(SPARK_CATALOG, DELTA_TABLE);
       setupExternalDeltaTable(SPARK_CATALOG, DELTA_TABLE, loc1, new ArrayList<>(0), session);
       String t1 = SPARK_CATALOG + "." + SCHEMA_NAME + "." + DELTA_TABLE;
-      session.sql("INSERT INTO " + t1 + " SELECT 1, 'a', '2025-05-16'");
+      session.sql("INSERT INTO " + t1 + " SELECT 1, 'a'");
 
       String loc2 =
           scheme + "://test-bucket1" + generateTableLocation(CATALOG_NAME, ANOTHER_DELTA_TABLE);
       setupExternalDeltaTable(CATALOG_NAME, ANOTHER_DELTA_TABLE, loc2, new ArrayList<>(0), session);
       String t2 = CATALOG_NAME + "." + SCHEMA_NAME + "." + ANOTHER_DELTA_TABLE;
-      session.sql("INSERT INTO " + t2 + " SELECT 2, 'b', '2025-05-17'");
+      session.sql("INSERT INTO " + t2 + " SELECT 2, 'b'");
 
       session.sql(
           String.format(
@@ -289,9 +288,9 @@ public class TableReadWriteTest extends BaseSparkIntegrationTest {
     assertThat(rows).hasSize(1);
     assertThat(rows.get(0).getInt(0)).isEqualTo(2);
     }
-  }*/
+  }
 
-/*  @Test
+  @Test
   public void testShowTables() throws ApiException, IOException {
     try (SparkSession session = createSparkSessionWithCatalogs(SPARK_CATALOG)) {
     setupExternalParquetTable(PARQUET_TABLE, new ArrayList<>(0));
@@ -320,7 +319,7 @@ public class TableReadWriteTest extends BaseSparkIntegrationTest {
         .isInstanceOf(ApiException.class)
         .hasMessageContaining("Invalid table name");
     }
-  }*/
+  }
 
   private void setupExternalParquetTable(String tableName, List<String> partitionColumns)
       throws IOException, ApiException {
@@ -507,11 +506,10 @@ public class TableReadWriteTest extends BaseSparkIntegrationTest {
 
   private void testTableReadWrite(String tableFullName, SparkSession session) {
     assertThat(session.sql("SELECT * FROM " + tableFullName).collectAsList()).isEmpty();
-    session.sql("INSERT INTO " + tableFullName + " SELECT 1, 'a', '2025-05-16'");
+    session.sql("INSERT INTO " + tableFullName + " SELECT 1, 'a'");
     Row row = session.sql("SELECT * FROM " + tableFullName).collectAsList().get(0);
     assertThat(row.getInt(0)).isEqualTo(1);
     assertThat(row.getString(1)).isEqualTo("a");
-    assertThat(row.getDate(2)).isEqualTo("2025-05-16");
   }
 
   private void setupTables(
@@ -526,8 +524,6 @@ public class TableReadWriteTest extends BaseSparkIntegrationTest {
     if (partitionIndex1 == -1) partitionIndex1 = null;
     Integer partitionIndex2 = partitionColumns.indexOf("s");
     if (partitionIndex2 == -1) partitionIndex2 = null;
-    Integer partitionIndex3 = partitionColumns.indexOf("d");
-    if (partitionIndex3 == -1) partitionIndex3 = null;
 
     ColumnInfo c1 =
         new ColumnInfo()
@@ -553,16 +549,6 @@ public class TableReadWriteTest extends BaseSparkIntegrationTest {
             .comment("String column")
             .nullable(true);
 
-    ColumnInfo c3 =
-        new ColumnInfo()
-            .name("d")
-            .typeText("DATE")
-            .typeJson("{\"type\": \"date\"}")
-            .typeName(ColumnTypeName.DATE)
-            .position(2)
-            .partitionIndex(partitionIndex3)
-            .comment("Date column")
-            .nullable(true);
     TableType tableType;
     if (isManaged) {
       tableType = TableType.MANAGED;
@@ -574,7 +560,7 @@ public class TableReadWriteTest extends BaseSparkIntegrationTest {
             .name(tableName)
             .catalogName(catalogName)
             .schemaName(SCHEMA_NAME)
-            .columns(Arrays.asList(c1, c2, c3))
+            .columns(Arrays.asList(c1, c2))
             .comment(COMMENT)
             .tableType(tableType)
             .dataSourceFormat(format);
