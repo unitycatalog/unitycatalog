@@ -126,7 +126,10 @@ public class TableReadWriteTest extends BaseSparkIntegrationTest {
   private void validateTimeTravelDeltaTable(Dataset<Row> df) {
     List<Row> rows = df.collectAsList();
     assertThat(rows).hasSize(1);
-    assertThat(rows.get(0).getInt(0)).isEqualTo(1);
+    Row row = rows.get(0);
+    assertThat(row.getInt(0)).isEqualTo(1);
+    assertThat(row.getString(1)).isEqualTo('a');
+    assertThat(row.getDate(2)).isEqualTo("2025-05-16");
   }
   @Test
   public void testTimeTravelDeltaTable() throws ApiException, IOException {
@@ -138,7 +141,7 @@ public class TableReadWriteTest extends BaseSparkIntegrationTest {
 
     String timestamp = Instant.now().toString();
 
-    session.sql("INSERT INTO " + t1 + " SELECT 2, 'b', '2025-05-16");
+    session.sql("INSERT INTO " + t1 + " SELECT 2, 'b', '2025-05-17");
 
     // Time-travel to before the last insert, we should only see the first inserted row.
     validateTimeTravelDeltaTable(session.sql("SELECT * FROM " + t1 + " VERSION AS OF 1"));
@@ -260,13 +263,13 @@ public class TableReadWriteTest extends BaseSparkIntegrationTest {
     String loc1 = scheme + "://test-bucket0" + generateTableLocation(SPARK_CATALOG, DELTA_TABLE);
     setupExternalDeltaTable(SPARK_CATALOG, DELTA_TABLE, loc1, new ArrayList<>(0), session);
     String t1 = SPARK_CATALOG + "." + SCHEMA_NAME + "." + DELTA_TABLE;
-    session.sql("INSERT INTO " + t1 + " SELECT 1, 'a'");
+    session.sql("INSERT INTO " + t1 + " SELECT 1, 'a', '2025-05-16'");
 
     String loc2 =
         scheme + "://test-bucket1" + generateTableLocation(CATALOG_NAME, ANOTHER_DELTA_TABLE);
     setupExternalDeltaTable(CATALOG_NAME, ANOTHER_DELTA_TABLE, loc2, new ArrayList<>(0), session);
     String t2 = CATALOG_NAME + "." + SCHEMA_NAME + "." + ANOTHER_DELTA_TABLE;
-    session.sql("INSERT INTO " + t2 + " SELECT 2, 'b'");
+    session.sql("INSERT INTO " + t2 + " SELECT 2, 'b', '2025-05-17'");
 
     session.sql(
         String.format(
@@ -515,10 +518,11 @@ public class TableReadWriteTest extends BaseSparkIntegrationTest {
 
   private void testTableReadWrite(String tableFullName, SparkSession session) {
     assertThat(session.sql("SELECT * FROM " + tableFullName).collectAsList()).isEmpty();
-    session.sql("INSERT INTO " + tableFullName + " SELECT 1, 'a'");
+    session.sql("INSERT INTO " + tableFullName + " SELECT 1, 'a', '2025-05-16'");
     Row row = session.sql("SELECT * FROM " + tableFullName).collectAsList().get(0);
     assertThat(row.getInt(0)).isEqualTo(1);
     assertThat(row.getString(1)).isEqualTo("a");
+    assertThat(row.getDate(2)).isEqualTo("2025-05-16");
   }
 
   private void setupTables(
