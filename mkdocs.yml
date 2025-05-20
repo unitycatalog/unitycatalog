@@ -14,6 +14,14 @@ nav:
   - Usage:
       - CLI: usage/cli.md
       - UI: usage/ui.md
+      - API:
+          - Overview: usage/api/index.md
+          - Catalogs: usage/api/catalogs.md
+          - Schemas: usage/api/schemas.md
+          - Tables: usage/api/tables.md
+          - Volumes: usage/api/volumes.md
+          - Functions: usage/api/functions.md
+          - Models: usage/api/models.md
       - Tables:
           - Delta Lake: usage/tables/deltalake.md
           - Formats: usage/tables/formats.md
