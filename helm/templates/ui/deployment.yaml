@@ -1,0 +1,163 @@
+{{- if .Values.ui.enabled -}}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "unitycatalog.ui.fullname" . | quote }}
+  labels: {{- include "unitycatalog.ui.labels" . | nindent 4 }}
+spec:
+  replicas: {{ .Values.ui.deployment.replicaCount }}
+  selector:
+    matchLabels: {{- include "unitycatalog.ui.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      {{- with .Values.ui.deployment.extraPodAnnotations }}
+      annotations: {{- toYaml . | nindent 8 }}
+      {{- end }}
+      labels:
+        {{- include "unitycatalog.ui.labels" . | nindent 8 }}
+        {{- with .Values.ui.deployment.extraPodLabels }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+    spec:
+      {{- with .Values.ui.deployment.imagePullSecrets }}
+      imagePullSecrets: {{- toYaml . | nindent 8 }}
+      {{- end }}
+      serviceAccountName: {{ include "unitycatalog.serviceAccountName" . | quote }}
+      {{- with .Values.ui.deployment.podSecurityContext }}
+      securityContext: {{- toYaml . | nindent 8 }}
+      {{- end }}
+      initContainers:
+        - name: wait-for-server
+          image: "{{ .Values.ui.deployment.initContainer.image.repository }}:{{ .Values.ui.deployment.initContainer.image.tag }}"
+          imagePullPolicy: {{ .Values.ui.deployment.initContainer.image.pullPolicy | quote }}
+          command:
+            - /bin/sh
+            - -c
+            - |-
+              until nc -z {{ include "unitycatalog.server.fullname" . }} {{ .Values.server.service.port }}
+              do
+                echo "Waiting for server ({{ include "unitycatalog.server.fullname" . }}:{{ .Values.server.service.port }}) to be ready..."
+                sleep 2
+              done
+      {{- with .Values.ui.deployment.extraInitContainers }}
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      containers:
+        - name: ui
+          {{- with .Values.ui.deployment.securityContext }}
+          securityContext: {{- toYaml . | nindent 12 }}
+          {{- end }}
+          image: "{{ .Values.ui.deployment.image.repository }}:{{ .Values.ui.deployment.image.tag | default .Chart.AppVersion }}"
+          imagePullPolicy: {{ .Values.ui.deployment.image.pullPolicy | quote }}
+          ports:
+            - name: ui
+              containerPort: {{ .Values.ui.deployment.port }}
+              protocol: TCP
+
+          {{- if .Values.ui.deployment.enableLivenessProbe }}
+          {{- if .Values.ui.deployment.livenessProbe }}
+          livenessProbe: {{- toYaml . | nindent 12 }}
+          {{- else }}
+          livenessProbe:
+            tcpSocket:
+              port: ui
+            timeoutSeconds: 10
+            periodSeconds: 10
+            failureThreshold: 30 # 5 minutes
+          {{- end }}
+          {{- end }}
+
+          {{- if .Values.ui.deployment.enableReadinessProbe }}
+          {{- if .Values.ui.deployment.readinessProbe }}
+          readinessProbe: {{- toYaml . | nindent 12 }}
+          {{- else }}
+          readinessProbe:
+            tcpSocket:
+              port: ui
+            timeoutSeconds: 10
+            periodSeconds: 10
+            failureThreshold: 30 # 5 minutes
+          {{- end }}
+          {{- end }}
+
+          {{- if .Values.ui.deployment.enableStartupProbe }}
+          {{- if .Values.ui.deployment.startupProbe }}
+          startupProbe: {{- toYaml . | nindent 12 }}
+          {{- else }}
+          startupProbe:
+            tcpSocket:
+              port: ui
+            timeoutSeconds: 10
+            periodSeconds: 10
+            failureThreshold: 30 # 5 minutes
+          {{- end }}
+          {{- end }}
+
+          command:
+            - /bin/bash
+            - -c
+            - |-
+              {{- if eq (include "unitycatalog.ui.proxyApiRequests" .) "true" }}
+              jq --arg proxy \
+                "{{ tpl .Values.ui.serverUrl . }}" \
+                '.proxy = $proxy' package.json > temp.json
+              {{- else }}
+              jq '.proxy = null' package.json > temp.json
+              {{- end }}
+              mv temp.json package.json
+              yarn start
+          env:
+          {{- if .Values.auth.enabled }}
+            - name: REACT_APP_GOOGLE_AUTH_ENABLED
+              value: "{{ eq .Values.auth.provider "google" }}"
+            - name: REACT_APP_GOOGLE_CLIENT_ID
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.auth.clientSecretName | quote }}
+                  key: clientId
+            - name: REACT_APP_OKTA_AUTH_ENABLED
+              value: "{{ eq .Values.auth.provider "okta" }}"
+            - name: REACT_APP_OKTA_DOMAIN
+              value: "{{ .Values.auth.oktaDomain }}"
+            - name: REACT_APP_OKTA_CLIENT_ID
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.auth.clientSecretName | quote }}
+                  key: clientId
+            - name: REACT_APP_KEYCLOAK_AUTH_ENABLED
+              value: "{{ eq .Values.auth.provider "keycloak" }}"
+            - name: REACT_APP_KEYCLOAK_URL
+              value: "{{ .Values.auth.authorizationUrl }}"
+            - name: REACT_APP_KEYCLOAK_REALM_ID
+              value: "{{ .Values.auth.keycloakRealmId }}"
+            - name: REACT_APP_KEYCLOAK_CLIENT_ID
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.auth.clientSecretName | quote }}
+                  key: clientId
+          {{- end }}
+          {{- with .Values.ui.deployment.resources }}
+          resources: {{- toYaml . | nindent 12 }}
+          {{- end }}
+          {{- with .Values.ui.deployment.extraVolumeMounts }}
+          volumeMounts: {{- toYaml . | nindent 12 }}
+          {{- end }}
+      {{- with .Values.ui.deployment.extraContainers }}
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.ui.deployment.extraVolumes }}
+      volumes: {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.ui.deployment.nodeSelector }}
+      nodeSelector: {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.ui.deployment.affinity }}
+      affinity: {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.ui.deployment.tolerations }}
+      tolerations: {{- toYaml . | nindent 8 }}
+      {{- end }}
+  {{- with .Values.ui.deployment.updateStrategy }}
+  strategy: {{- toYaml . | nindent 4 }}
+  {{- end }}
+{{- end -}}
