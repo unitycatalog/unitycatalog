@@ -6,4 +6,6 @@ sources: ["https://github.com/unitycatalog/unitycatalog/tree/main/helm"]
 type: application
 
 version: 0.1.0
-appVersion: "v0.2.1"
+
+# Use latest unstable version until we have a stable version with proper UI support
+appVersion: main
