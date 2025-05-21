@@ -130,11 +130,16 @@ class UCSingleCatalog extends TableCatalog with SupportsNamespaces with Logging 
   override def createTable(ident: Identifier, schema: StructType, partitions: Array[Transform], properties: util.Map[String, String]): Table = {
     throw new AssertionError("deprecated `createTable` should not be called")
   }
-  override def alterTable(ident: Identifier, changes: TableChange*): Table = ???
+
+  override def alterTable(ident: Identifier, changes: TableChange*): Table = {
+    throw new UnsupportedOperationException("Altering a table is not supported yet in Unity Catalog")
+  }
 
   override def dropTable(ident: Identifier): Boolean = delegate.dropTable(ident)
 
-  override def renameTable(oldIdent: Identifier, newIdent: Identifier): Unit = ???
+  override def renameTable(oldIdent: Identifier, newIdent: Identifier): Unit = {
+    throw new UnsupportedOperationException("Renaming a table is not supported yet in Unity Catalog")
+  }
 
   override def listNamespaces(): Array[Array[String]] = {
     delegate.asInstanceOf[DelegatingCatalogExtension].listNamespaces()
@@ -370,7 +375,9 @@ private class UCProxy(
     }
   }
 
-  override def alterTable(ident: Identifier, changes: TableChange*): Table = ???
+  override def alterTable(ident: Identifier, changes: TableChange*): Table = {
+    throw new UnsupportedOperationException("Altering a table is not supported yet in Unity Catalog")
+  }
 
   override def dropTable(ident: Identifier): Boolean = {
     checkUnsupportedNestedNamespace(ident.namespace())
@@ -379,7 +386,9 @@ private class UCProxy(
     if (ret == 200) true else false
   }
 
-  override def renameTable(oldIdent: Identifier, newIdent: Identifier): Unit = ???
+  override def renameTable(oldIdent: Identifier, newIdent: Identifier): Unit = {
+    throw new UnsupportedOperationException("Renaming a table is not supported yet in Unity Catalog")
+  }
 
   private def checkUnsupportedNestedNamespace(namespace: Array[String]): Unit = {
     if (namespace.length > 1) {
@@ -394,7 +403,7 @@ private class UCProxy(
   }
 
   override def listNamespaces(namespace: Array[String]): Array[Array[String]] = {
-    throw new UnsupportedOperationException("Multi-layer namespace is not supported in Unity Catalog")
+    throw new UnsupportedOperationException("Multi-layer namespace is not supported yet in Unity Catalog")
   }
 
   override def loadNamespaceMetadata(namespace: Array[String]): util.Map[String, String] = {
@@ -428,7 +437,9 @@ private class UCProxy(
     schemasApi.createSchema(createSchema)
   }
 
-  override def alterNamespace(namespace: Array[String], changes: NamespaceChange*): Unit = ???
+  override def alterNamespace(namespace: Array[String], changes: NamespaceChange*): Unit = {
+    throw new UnsupportedOperationException("Renaming a namespace is not supported yet in Unity Catalog")
+  }
 
   override def dropNamespace(namespace: Array[String], cascade: Boolean): Boolean = {
     checkUnsupportedNestedNamespace(namespace)
