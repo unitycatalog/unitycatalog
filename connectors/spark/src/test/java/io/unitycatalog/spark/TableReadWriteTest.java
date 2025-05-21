@@ -362,7 +362,7 @@ public class TableReadWriteTest extends BaseSparkIntegrationTest {
             .sql(
                 "CREATE TABLE "
                     + fullTableName2
-                    + "(i INT, s STRING, d DATE) USING PARQUET LOCATION '"
+                    + "(i INT, s STRING) USING PARQUET LOCATION '"
                     + path2
                     + "'")
             .collect();
@@ -489,7 +489,7 @@ public class TableReadWriteTest extends BaseSparkIntegrationTest {
     CredentialTestFileSystem.credentialCheckEnabled = false;
     session.sql(
         String.format(
-            "CREATE TABLE delta.`%s`(i INT, s STRING, d DATE) USING delta %s", location, partitionClause));
+            "CREATE TABLE delta.`%s`(i INT, s STRING) USING delta %s", location, partitionClause));
     CredentialTestFileSystem.credentialCheckEnabled = true;
   }
 
