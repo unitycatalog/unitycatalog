@@ -125,7 +125,7 @@ public class TableReadWriteTest extends BaseSparkIntegrationTest {
     assertThat(rows).hasSize(1);
     Row row = rows.get(0);
     assertThat(row.getInt(0)).isEqualTo(1);
-    assertThat(row.getString(1)).isEqualTo('a');
+    assertThat(row.getString(1)).isEqualTo("a");
   }
 
   @Test
