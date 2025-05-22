@@ -403,7 +403,7 @@ private class UCProxy(
   }
 
   override def listNamespaces(namespace: Array[String]): Array[Array[String]] = {
-    throw new UnsupportedOperationException("Multi-layer namespace is not supported yet in Unity Catalog")
+    throw new UnsupportedOperationException("Multi-layer namespace is not supported in Unity Catalog")
   }
 
   override def loadNamespaceMetadata(namespace: Array[String]): util.Map[String, String] = {
