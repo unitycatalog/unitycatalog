@@ -132,13 +132,13 @@ class UCSingleCatalog extends TableCatalog with SupportsNamespaces with Logging 
   }
 
   override def alterTable(ident: Identifier, changes: TableChange*): Table = {
-    throw new UnsupportedOperationException("Altering a table is not supported yet in Unity Catalog")
+    throw new UnsupportedOperationException("Altering a table is not supported yet")
   }
 
   override def dropTable(ident: Identifier): Boolean = delegate.dropTable(ident)
 
   override def renameTable(oldIdent: Identifier, newIdent: Identifier): Unit = {
-    throw new UnsupportedOperationException("Renaming a table is not supported yet in Unity Catalog")
+    throw new UnsupportedOperationException("Renaming a table is not supported yet")
   }
 
   override def listNamespaces(): Array[Array[String]] = {
@@ -376,7 +376,7 @@ private class UCProxy(
   }
 
   override def alterTable(ident: Identifier, changes: TableChange*): Table = {
-    throw new UnsupportedOperationException("Altering a table is not supported yet in Unity Catalog")
+    throw new UnsupportedOperationException("Altering a table is not supported yet")
   }
 
   override def dropTable(ident: Identifier): Boolean = {
@@ -387,7 +387,7 @@ private class UCProxy(
   }
 
   override def renameTable(oldIdent: Identifier, newIdent: Identifier): Unit = {
-    throw new UnsupportedOperationException("Renaming a table is not supported yet in Unity Catalog")
+    throw new UnsupportedOperationException("Renaming a table is not supported yet")
   }
 
   private def checkUnsupportedNestedNamespace(namespace: Array[String]): Unit = {
@@ -438,7 +438,7 @@ private class UCProxy(
   }
 
   override def alterNamespace(namespace: Array[String], changes: NamespaceChange*): Unit = {
-    throw new UnsupportedOperationException("Renaming a namespace is not supported yet in Unity Catalog")
+    throw new UnsupportedOperationException("Renaming a namespace is not supported yet")
   }
 
   override def dropNamespace(namespace: Array[String], cascade: Boolean): Boolean = {
