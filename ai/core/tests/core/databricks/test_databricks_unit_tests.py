@@ -1634,3 +1634,12 @@ def test_invalid_execution_mode(execution_mode):
         ),
     ):
         DatabricksFunctionClient(execution_mode=execution_mode)
+
+
+def test_no_spark_session_created_for_local_execution_mode():
+    with patch(
+        "unitycatalog.ai.core.databricks.get_default_databricks_workspace_client",
+        return_value=MagicMock(),
+    ):
+        client = DatabricksFunctionClient(execution_mode="local")
+        assert client.spark is None
