@@ -40,7 +40,7 @@ from unitycatalog.client import (
     FunctionsApi,
     SchemasApi,
 )
-from unitycatalog.client.exceptions import NotFoundException, ServiceException
+from unitycatalog.client.exceptions import NotFoundException
 
 SCHEMA = "uc_test"
 _logger = logging.getLogger(__name__)
