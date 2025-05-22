@@ -137,7 +137,8 @@ class DatabricksFunctionClient(BaseFunctionClient):
         self.profile = profile
         self.execution_mode = ExecutionModeDatabricks.validate(execution_mode)
         self.spark = None
-        self.set_spark_session()
+        if self.execution_mode == ExecutionModeDatabricks.SERVERLESS:
+            self.set_spark_session()
         self._is_default_client = client is None
         super().__init__()
 
