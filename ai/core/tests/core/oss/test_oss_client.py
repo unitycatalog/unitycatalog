@@ -763,8 +763,7 @@ async def test_create_function_invalid_data_type(uc_client):
 async def test_get_nonexistent_function(uc_client):
     function_name = f"{CATALOG}.{SCHEMA}.nonexistent_function"
 
-    with pytest.raises(ServiceException, match="(500)"):
-        uc_client.get_function(function_name=function_name)
+    assert uc_client.get_function(function_name=function_name) is None
 
 
 @pytest.mark.asyncio
