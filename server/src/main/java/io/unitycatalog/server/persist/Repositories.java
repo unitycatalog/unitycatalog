@@ -23,6 +23,7 @@ public class Repositories {
   private final FunctionRepository functionRepository;
   private final ModelRepository modelRepository;
   private final CredentialRepository credentialRepository;
+  private final ExternalLocationRepository externalLocationRepository;
 
   public Repositories(SessionFactory sessionFactory, ServerProperties serverProperties) {
     this.sessionFactory = sessionFactory;
@@ -37,5 +38,6 @@ public class Repositories {
     this.functionRepository = new FunctionRepository(this, sessionFactory);
     this.modelRepository = new ModelRepository(this, sessionFactory);
     this.credentialRepository = new CredentialRepository(this, sessionFactory);
+    this.externalLocationRepository = new ExternalLocationRepository(this, sessionFactory);
   }
 }
