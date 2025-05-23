@@ -34,7 +34,7 @@ class UCSingleCatalog extends TableCatalog with SupportsNamespaces with Logging 
   override def initialize(name: String, options: CaseInsensitiveStringMap): Unit = {
     val urlStr = options.get("uri")
     if (urlStr == null) {
-      throw new IllegalArgumentException("uri must be specified for Unity Catalog")
+      throw new IllegalArgumentException(s"uri must be specified for Unity Catalog '$name'")
     }
     val url = new URI(urlStr)
     apiClient = new ApiClient()
