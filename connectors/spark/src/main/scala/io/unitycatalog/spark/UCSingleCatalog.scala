@@ -234,13 +234,13 @@ private class UCProxy(
     val schemaName = namespace.head
     val maxResults = 0
     val pageToken = null
-    val response: ListTablesResponse = tablesApi.listTables(catalogName, schemaName, maxResults, pageToken)
+    val response: ListTablesResponse = tablesApi.listTables(catalogName, schemaName, maxResults, pageToken, true, true)
     response.getTables.toSeq.map(table => Identifier.of(namespace, table.getName)).toArray
   }
 
   override def loadTable(ident: Identifier): Table = {
     val t = try {
-      tablesApi.getTable(name + "." + ident.toString)
+      tablesApi.getTable(name + "." + ident.toString, true, true)
     } catch {
       case e: ApiException if e.getCode == 404 =>
         throw new NoSuchTableException(ident)
