@@ -295,7 +295,7 @@ async def test_langgraph_agents(uc_client):
         toolkit = UCFunctionToolkit(function_names=[func_obj.full_function_name], client=uc_client)
         system_message = "You are a helpful assistant. Make sure to use tool for information."
         llm = ChatDatabricks(endpoint="databricks-meta-llama-3-1-70b-instruct")
-        agent = create_react_agent(llm, toolkit.tools, state_modifier=system_message)
+        agent = create_react_agent(llm, toolkit.tools, prompt=system_message)
         chain = agent | RunnableGenerator(wrap_output)
 
         with mock.patch.object(
