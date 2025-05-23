@@ -5,6 +5,7 @@ import sbt.{Attributed, util}
 import sbt.Keys.*
 import sbtlicensereport.license.{DepModuleInfo, LicenseCategory, LicenseInfo}
 import ReleaseSettings.*
+import Versions.*
 
 import scala.language.implicitConversions
 
@@ -16,18 +17,6 @@ val artifactNamePrefix = "unitycatalog"
 // until Spark 4 comes out with newer Java compatibility
 lazy val javacRelease11 = Seq("--release", "11")
 lazy val javacRelease17 = Seq("--release", "17")
-
-lazy val scala212 = "2.12.15"
-lazy val scala213 = "2.13.14"
-
-lazy val deltaVersion = "3.2.1"
-lazy val sparkVersion = "3.5.3"
-
-// Library versions
-lazy val jacksonVersion = "2.17.0"
-lazy val openApiToolsJacksonBindNullableVersion = "0.2.6"
-lazy val log4jVersion = "2.24.3"
-val orgApacheHttpVersion = "4.5.14"
 
 lazy val commonSettings = Seq(
   organization := orgName,
@@ -48,8 +37,8 @@ lazy val commonSettings = Seq(
     "-ea",
   ),
   libraryDependencies ++= Seq(
-    "org.slf4j" % "slf4j-api" % "2.0.13",
-    "org.slf4j" % "slf4j-log4j12" % "2.0.13" % Test,
+    "org.slf4j" % "slf4j-api" % slf4jVersion,
+    "org.slf4j" % "slf4j-log4j12" % slf4jVersion % Test,
     "org.apache.logging.log4j" % "log4j-slf4j2-impl" % log4jVersion,
     "org.apache.logging.log4j" % "log4j-api" % log4jVersion
   ),
@@ -60,7 +49,7 @@ lazy val commonSettings = Seq(
   autoScalaLibrary := false,
   crossPaths := false,  // No scala cross building
   assembly / assemblyMergeStrategy := {
-    case PathList("META-INF", xs @ _*) => MergeStrategy.discard
+    case PathList("META-INF", _) => MergeStrategy.discard
     case _ => MergeStrategy.first
   },
 
@@ -93,7 +82,7 @@ lazy val commonSettings = Seq(
   licenseDepExclusions := {
     // LGPL 2.1: https://www.gnu.org/licenses/old-licenses/lgpl-2.1.html
     // https://en.wikipedia.org/wiki/GNU_Lesser_General_Public_License
-    // We can use and distribute the, but not modify the source code
+    // We can use and distribute, but not modify the source code
     case DepModuleInfo("org.hibernate.orm", _, _) => true
     case DepModuleInfo("com.unboundid.scim2", _, _) => true
     case DepModuleInfo("com.unboundid.product.scim2", _, _) => true
@@ -306,7 +295,7 @@ lazy val server = (project in file("server"))
     mainClass := Some(orgName + ".server.UnityCatalogServer"),
     commonSettings,
     javaOnlyReleaseSettings,
-    javafmtCheckSettings,
+    javafmtCheckSettings(),
     javaCheckstyleSettings(file("dev") / "checkstyle-config.xml"),
     Compile / compile / javacOptions ++= Seq(
       "-processor",
@@ -330,7 +319,6 @@ lazy val server = (project in file("server"))
       "org.hibernate.orm" % "hibernate-core" % "6.5.0.Final",
 
       "jakarta.activation" % "jakarta.activation-api" % "2.1.3",
-      "net.bytebuddy" % "byte-buddy" % "1.14.15",
       "org.projectlombok" % "lombok" % "1.18.32" % Provided,
 
       // For ALDS access
@@ -562,19 +550,18 @@ lazy val spark = (project in file("connectors/spark"))
     javaCheckstyleSettings(file("dev/checkstyle-config.xml")),
     Compile / compile / javacOptions ++= javacRelease11,
     libraryDependencies ++= Seq(
-      "org.apache.spark" %% "spark-sql" % sparkVersion % Provided,
-      "com.fasterxml.jackson.core" % "jackson-databind" % "2.15.0",
-      "com.fasterxml.jackson.module" %% "jackson-module-scala" % "2.15.0",
-      "com.fasterxml.jackson.core" % "jackson-annotations" % "2.15.0",
-      "com.fasterxml.jackson.core" % "jackson-core" % "2.15.0",
-      "com.fasterxml.jackson.dataformat" % "jackson-dataformat-xml" % "2.15.0",
-      "org.antlr" % "antlr4-runtime" % "4.9.3",
-      "org.antlr" % "antlr4" % "4.9.3",
+      "org.apache.spark" %% "spark-sql" % spark3Version % Provided,
+      "com.fasterxml.jackson.core" % "jackson-databind" % jacksonVersion,
+      "com.fasterxml.jackson.module" %% "jackson-module-scala" % jacksonVersion,
+      "com.fasterxml.jackson.core" % "jackson-annotations" % jacksonVersion,
+      "com.fasterxml.jackson.core" % "jackson-core" % jacksonVersion,
+      "com.fasterxml.jackson.dataformat" % "jackson-dataformat-xml" % jacksonVersion,
+      "org.antlr" % "antlr4-runtime" % antlrVersion,
+      "org.antlr" % "antlr4" % antlrVersion,
       "com.google.cloud.bigdataoss" % "util-hadoop" % "3.0.2" % Provided,
       "org.apache.hadoop" % "hadoop-azure" % "3.4.0" % Provided,
     ),
     libraryDependencies ++= Seq(
-      // Test dependencies
       "org.junit.jupiter" % "junit-jupiter" % "5.10.3" % Test,
       "org.assertj" % "assertj-core" % "3.26.3" % Test,
       "org.mockito" % "mockito-core" % "5.11.0" % Test,
@@ -585,13 +572,13 @@ lazy val spark = (project in file("connectors/spark"))
       "io.delta" %% "delta-spark" % deltaVersion % Test,
     ),
     dependencyOverrides ++= Seq(
-      "com.fasterxml.jackson.core" % "jackson-databind" % "2.15.0",
-      "com.fasterxml.jackson.module" %% "jackson-module-scala" % "2.15.0",
-      "com.fasterxml.jackson.core" % "jackson-annotations" % "2.15.0",
-      "com.fasterxml.jackson.core" % "jackson-core" % "2.15.0",
-      "com.fasterxml.jackson.dataformat" % "jackson-dataformat-xml" % "2.15.0",
-      "org.antlr" % "antlr4-runtime" % "4.9.3",
-      "org.antlr" % "antlr4" % "4.9.3",
+      "com.fasterxml.jackson.core" % "jackson-databind" % jacksonVersion,
+      "com.fasterxml.jackson.module" %% "jackson-module-scala" % jacksonVersion,
+      "com.fasterxml.jackson.core" % "jackson-annotations" % jacksonVersion,
+      "com.fasterxml.jackson.core" % "jackson-core" % jacksonVersion,
+      "com.fasterxml.jackson.dataformat" % "jackson-dataformat-xml" % jacksonVersion,
+      "org.antlr" % "antlr4-runtime" % antlrVersion,
+      "org.antlr" % "antlr4" % antlrVersion,
     ),
     Test / unmanagedJars += (serverShaded / assembly).value,
     licenseDepExclusions := {
@@ -638,13 +625,13 @@ lazy val integrationTests = (project in file("integration-tests"))
       "io.unitycatalog" %% "unitycatalog-spark" % "0.2.0" % Test,
     ),
     dependencyOverrides ++= Seq(
-      "com.fasterxml.jackson.core" % "jackson-databind" % "2.15.0",
-      "com.fasterxml.jackson.module" %% "jackson-module-scala" % "2.15.0",
-      "com.fasterxml.jackson.core" % "jackson-annotations" % "2.15.0",
-      "com.fasterxml.jackson.core" % "jackson-core" % "2.15.0",
-      "com.fasterxml.jackson.dataformat" % "jackson-dataformat-xml" % "2.15.0",
-      "org.antlr" % "antlr4-runtime" % "4.9.3",
-      "org.antlr" % "antlr4" % "4.9.3",
+      "com.fasterxml.jackson.core" % "jackson-databind" % jacksonVersion,
+      "com.fasterxml.jackson.module" %% "jackson-module-scala" % jacksonVersion,
+      "com.fasterxml.jackson.core" % "jackson-annotations" % jacksonVersion,
+      "com.fasterxml.jackson.core" % "jackson-core" % jacksonVersion,
+      "com.fasterxml.jackson.dataformat" % "jackson-dataformat-xml" % jacksonVersion,
+      "org.antlr" % "antlr4-runtime" % antlrVersion,
+      "org.antlr" % "antlr4" % antlrVersion,
       "org.apache.hadoop" % "hadoop-client-api" % "3.3.6",
     ),
     Test / javaOptions += s"-Duser.dir=${((ThisBuild / baseDirectory).value / "integration-tests").getAbsolutePath}",
