@@ -1,0 +1,84 @@
+{{- if and .Values.auth.enabled .Values.auth.users -}}
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: "{{ include "unitycatalog.server.fullname" . }}-create-users"
+  labels: {{- include "unitycatalog.server.labels" . | nindent 4 }}
+  annotations:
+    "helm.sh/hook": post-install,post-upgrade
+    "helm.sh/hook-delete-policy": before-hook-creation
+    {{- with .Values.server.createUsersJob.extraAnnotations }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+spec:
+  ttlSecondsAfterFinished: {{ .Values.server.createUsersJob.ttlSecondsAfterFinished }}
+  backoffLimit: {{ .Values.server.createUsersJob.backoffLimit }}
+  template:
+    spec:
+      serviceAccountName: {{ include "unitycatalog.serviceAccountName" . | quote }}
+      containers:
+        - name: create-users
+          image: "{{ .Values.server.createUsersJob.image.repository }}:{{ .Values.server.createUsersJob.image.tag }}"
+          imagePullPolicy: {{ .Values.server.createUsersJob.image.pullPolicy | quote }}
+          command:
+            - /bin/sh
+            - -c
+            - |-
+              set -eo pipefail
+
+              apk add --no-cache curl
+              apk add --no-cache jq
+              apk add --no-cache uuidgen
+              apk add --no-cache openssl
+              apk add --no-cache jwt-cli --repository=https://dl-cdn.alpinelinux.org/alpine/edge/testing/
+
+              KID=$(cat /key/key_id.txt)
+              TOKEN=$(jwt encode --kid ${KID} --jti $(uuidgen | tr '[:upper:]' '[:lower:]') --iss internal --sub admin --alg RS512 --secret "@/key/private_key.pem")
+
+              until curl --fail-with-body -H "Authorization: Bearer ${TOKEN}" \
+              -X GET "http://{{ include "unitycatalog.server.fullname" . }}:{{ .Values.server.deployment.port }}/api/1.0/unity-control/scim2/Users" \
+              -H "Content-Type: application/json"
+              do
+                  echo "Waiting for Unity Catalog server API to be available..."
+                  sleep 1
+              done
+
+              METASTORE_ID=$(curl --fail-with-body -H "Authorization: Bearer ${TOKEN}" \
+              -X GET "http://{{ include "unitycatalog.server.fullname" . }}:{{ .Values.server.deployment.port }}/api/2.1/unity-catalog/metastore_summary" \
+              -H "Content-Type: application/json" | jq -e '.metastore_id')
+
+              USERS_RESPONSE=$(curl --fail-with-body -H "Authorization: Bearer ${TOKEN}" \
+                  -X GET "http://{{ include "unitycatalog.server.fullname" $ }}:{{ $.Values.server.deployment.port }}/api/1.0/unity-control/scim2/Users" \
+                  -H "Content-Type: application/json")
+
+              {{- range $index, $user := .Values.auth.users }}
+              if echo "${USERS_RESPONSE}" | jq -e '.Resources[] | select(.emails[0].value == "{{ $user.email }}")'
+              then
+                  USER_ID=$(echo "${USERS_RESPONSE}" | jq -r '.Resources[] | select(.emails[0].value == "{{ $user.email }}") | .id')
+                  echo "User {{ $user.email }} already exists"
+              else
+                  echo "User {{ $user.email }} is being created"
+                  USER_ID=$(curl --fail-with-body -H "Authorization: Bearer ${TOKEN}" \
+                  -X POST "http://{{ include "unitycatalog.server.fullname" $ }}:{{ $.Values.server.deployment.port }}/api/1.0/unity-control/scim2/Users" \
+                  -H "Content-Type: application/json" \
+                  -d '{"displayName": "{{ $user.name }}", "emails": [{"primary": true, "value": "{{ $user.email }}"}]}' | jq -r '.id')
+                  echo "User {{ $user.email }} created"
+              fi
+              {{- if $user.canCreateCatalogs }}
+              echo "Granting CREATE CATALOG permission to {{ $user.email }}"
+
+              curl --fail-with-body -H "Authorization: Bearer ${TOKEN}" \
+              -X PATCH "http://{{ include "unitycatalog.server.fullname" $ }}:{{ $.Values.server.deployment.port }}/api/2.1/unity-catalog/permissions/metastore/${METASTORE_ID}" \
+              -H "Content-Type: application/json" \
+              -d "{\"changes\": [{\"principal\": \"{{ $user.email }}\", \"add\": [\"CREATE CATALOG\"]}]}"
+              {{- end }}
+              {{- end }}
+          volumeMounts:
+            - name: jwt-key-volume
+              mountPath: /key
+      volumes:
+        - name: jwt-key-volume
+          secret:
+            secretName: {{ include "unitycatalog.server.jwtKeypairSecretName" . | quote }}
+      restartPolicy: OnFailure
+{{- end -}}
