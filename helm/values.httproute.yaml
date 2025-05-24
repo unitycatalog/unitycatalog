@@ -1,10 +1,6 @@
 ui:
   deployment:
     replicaCount: 2
-    # TODO: We need proper UI image
-    image:
-      repository: ghcr.io/sdwbgn/unitycatalog-helm/docker/unitycatalog-ui
-      tag: 0.2.1-5d668c1
 server:
   deployment:
     replicaCount: 2

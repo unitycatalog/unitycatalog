@@ -13,7 +13,7 @@ repos:
     hooks:
       - id: mdformat
         args: [ --number ]
-        exclude: ".github|api|CODE_OF_CONDUCT.md"
+        exclude: ".github|api|CODE_OF_CONDUCT.md|helm"
         require_serial: true
         additional_dependencies:
           - mdformat_frontmatter
@@ -24,4 +24,4 @@ repos:
         files: ^helm/
         args:
           - --chart-search-root=helm
-          - --output-file=helm/README.md
+          - --output-file=README.md

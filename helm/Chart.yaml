@@ -5,7 +5,7 @@ home: "https://github.com/unitycatalog/unitycatalog/tree/main/helm"
 sources: ["https://github.com/unitycatalog/unitycatalog/tree/main/helm"]
 type: application
 
-version: 0.1.0
+version: 0.0.1-pre.1
 
-# Use latest unstable version until we have a stable version with proper UI support
+# Use latest unstable version until we have a stable version of UC Server that works with UI
 appVersion: main
