@@ -542,8 +542,7 @@ server:
     # @raw
     #
     # The secret must contain the following keys:
-    # - `public_key.der`: Public key in DER format
-    # - `private_key.der`: Private key in DER format
+    # - `private_key.der` or `private_key.pem`: Private key in DER or PEM format
     # - `key_id.txt`: Key ID
     #
     # [Kubernetes docs](https://github.com/unitycatalog/unitycatalog/blob/main/server/src/main/java/io/unitycatalog/server/security/SecurityConfiguration.java)
@@ -605,6 +604,14 @@ ui:
         pullPolicy: IfNotPresent
         # -- (string) Tag for the UI init container
         tag: latest
+
+      # -- (object) Security context for the init container
+      # @default -- not set
+      # @raw
+      #
+      # [Kubernetes docs](https://kubernetes.io/docs/concepts/policy/security-context/)
+      #
+      securityContext:
 
     image:
       # -- (string) Repository for the UI image

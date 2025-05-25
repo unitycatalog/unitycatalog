@@ -45,13 +45,39 @@ spec:
               envsubst < /home/unitycatalog/etc/confTemplates/server.properties.template > /home/unitycatalog/etc/conf/server.properties
               envsubst < /home/unitycatalog/etc/confTemplates/server.log4j2.properties.template > /home/unitycatalog/etc/conf/server.log4j2.properties
               envsubst < /home/unitycatalog/etc/confTemplates/hibernate.properties.template > /home/unitycatalog/etc/conf/hibernate.properties
-              cp /home/unitycatalog/etc/confJwtKey/* /home/unitycatalog/etc/conf
-              openssl pkcs8 -topk8 -inform PEM -outform DER -nocrypt \
-                  -in /home/unitycatalog/etc/conf/private_key.pem \
-                  -out /home/unitycatalog/etc/conf/private_key.der
-              openssl rsa -pubout -inform PEM -outform DER \
-                  -in /home/unitycatalog/etc/conf/private_key.pem \
-                  -out /home/unitycatalog/etc/conf/public_key.der
+
+              echo "Generating DER format keys (private_key.der and public_key.der) if they do not exist..."
+              if [ -f /home/unitycatalog/etc/conf/private_key.der ] && [ -f /home/unitycatalog/etc/conf/public_key.der ]; then
+                echo "DER format keys already exist, skipping generation."
+              elif [ -f /home/unitycatalog/etc/confJwtKey/private_key.der ]; then
+                echo "Using /home/unitycatalog/etc/confJwtKey/private_key.der..."
+                cp /home/unitycatalog/etc/confJwtKey/private_key.der /home/unitycatalog/etc/conf/private_key.der
+                openssl rsa -pubout -inform DER -outform DER \
+                    -in /home/unitycatalog/etc/confJwtKey/private_key.der \
+                    -out /home/unitycatalog/etc/conf/public_key.der
+              elif [ -f /home/unitycatalog/etc/confJwtKey/private_key.pem ]; then
+                echo "Using /home/unitycatalog/etc/confJwtKey/private_key.pem..."
+                openssl pkcs8 -topk8 -inform PEM -outform DER -nocrypt \
+                    -in /home/unitycatalog/etc/confJwtKey/private_key.pem \
+                    -out /home/unitycatalog/etc/conf/private_key.der
+                openssl rsa -pubout -inform PEM -outform DER \
+                    -in /home/unitycatalog/etc/confJwtKey/private_key.pem \
+                    -out /home/unitycatalog/etc/conf/public_key.der
+              else
+                echo "ERROR: No private_key.der or private_key.pem found in /home/unitycatalog/etc/conf or /home/unitycatalog/etc/confJwtKey"
+                exit 1
+              fi
+
+              echo "Looking up key_id.txt..."
+              if [ -f /home/unitycatalog/etc/conf/key_id.txt ]; then
+                echo "Key ID file already exists, skipping..."
+              elif [ -f /home/unitycatalog/etc/confJwtKey/key_id.txt ]; then
+                echo "Using /home/unitycatalog/etc/confJwtKey/key_id.txt..."
+                cp /home/unitycatalog/etc/confJwtKey/key_id.txt /home/unitycatalog/etc/conf/key_id.txt
+              else
+                echo "ERROR: No key_id.txt found in /home/unitycatalog/etc/confJwtKey"
+                exit 1
+              fi
 
               {{- if and (eq .Values.server.db.type "postgresql") .Values.server.db.postgresqlConfig.ssl.enabled }}
               echo "${DB_ROOT_CERT}" > /home/unitycatalog/etc/conf/dbrootca.crt

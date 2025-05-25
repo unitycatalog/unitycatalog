@@ -28,6 +28,9 @@ spec:
       {{- end }}
       initContainers:
         - name: wait-for-server
+          {{- with .Values.ui.deployment.initContainer.securityContext }}
+          securityContext: {{- toYaml . | nindent 12 }}
+          {{- end }}
           image: "{{ .Values.ui.deployment.initContainer.image.repository }}:{{ .Values.ui.deployment.initContainer.image.tag }}"
           imagePullPolicy: {{ .Values.ui.deployment.initContainer.image.pullPolicy | quote }}
           command:

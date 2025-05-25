@@ -972,8 +972,7 @@ derived from the chart parameters and metadata
 			<td>Name of the keypair secret for JWT signing
 
 The secret must contain the following keys:
-- `public_key.der`: Public key in DER format
-- `private_key.der`: Private key in DER format
+- `private_key.der` or `private_key.pem`: Private key in DER or PEM format
 - `key_id.txt`: Key ID
 
 [Kubernetes docs](https://github.com/unitycatalog/unitycatalog/blob/main/server/src/main/java/io/unitycatalog/server/security/SecurityConfiguration.java)
@@ -1310,6 +1309,18 @@ not set
 </pre>
 </td>
 			<td>Tag for the UI init container</td>
+		</tr>
+		<tr>
+			<td>ui.deployment.initContainer.securityContext</td>
+			<td>object</td>
+			<td><pre lang="">
+not set
+</pre>
+</td>
+			<td>Security context for the init container
+
+[Kubernetes docs](https://kubernetes.io/docs/concepts/policy/security-context/)
+</td>
 		</tr>
 		<tr>
 			<td>ui.deployment.livenessProbe</td>

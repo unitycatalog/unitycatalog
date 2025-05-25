@@ -32,8 +32,22 @@ spec:
               apk add --no-cache openssl
               apk add --no-cache jwt-cli --repository=https://dl-cdn.alpinelinux.org/alpine/edge/testing/
 
-              KID=$(cat /key/key_id.txt)
-              TOKEN=$(jwt encode --kid ${KID} --jti $(uuidgen | tr '[:upper:]' '[:lower:]') --iss internal --sub admin --alg RS512 --secret "@/key/private_key.pem")
+              if [ -f /key/private_key.pem ]; then
+                KEY="/key/private_key.pem"
+              elif [ -f /key/private_key.der ]; then
+                KEY="/key/private_key.der"
+              else
+                echo "Private key not found in /key directory. Exiting."
+                exit 1
+              fi
+              if [ -f /key/key_id.txt ]; then
+                KID=$(cat /key/key_id.txt)
+              else
+                echo "Key ID not found in /key directory. Exiting."
+                exit 1
+              fi
+
+              TOKEN=$(jwt encode --kid ${KID} --jti $(uuidgen | tr '[:upper:]' '[:lower:]') --iss internal --sub admin --alg RS512 --secret "@${KEY}")
 
               until curl --fail-with-body -H "Authorization: Bearer ${TOKEN}" \
               -X GET "http://{{ include "unitycatalog.server.fullname" . }}:{{ .Values.server.deployment.port }}/api/1.0/unity-control/scim2/Users" \
