@@ -333,7 +333,7 @@ paths:
           required: false
           schema:
             type: string
-        - name: read_st_as_managed
+        - name: read_streaming_table_as_managed
           in: query
           description: |
             Whether to read Streaming Tables as Managed tables.
@@ -341,7 +341,7 @@ paths:
           schema:
             type: boolean
             default: true
-        - name: read_mv_as_managed
+        - name: read_materialized_view_as_managed
           in: query
           description: |
             Whether to read Materialized Views as Managed tables.
@@ -377,7 +377,7 @@ paths:
       description: |
         Gets a table for a specific catalog and schema.
       parameters:
-        - name: read_st_as_managed
+        - name: read_streaming_table_as_managed
           in: query
           description: |
             Whether to read Streaming Tables as Managed tables.
@@ -385,7 +385,7 @@ paths:
           schema:
             type: boolean
             default: true
-        - name: read_mv_as_managed
+        - name: read_materialized_view_as_managed
           in: query
           description: |
             Whether to read Materialized Views as Managed tables.
@@ -1578,6 +1578,8 @@ components:
       enum:
         - MANAGED
         - EXTERNAL
+        - STREAMING_TABLE
+        - MATERIALIZED_VIEW
     DataSourceFormat:
       description: Data source format
       type: string
