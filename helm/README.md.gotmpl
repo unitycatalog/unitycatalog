@@ -1,0 +1,46 @@
+{{ template "chart.header" . }}
+{{ template "chart.deprecationWarning" . }}
+
+{{ template "chart.badgesSection" . }}
+
+This chart deploys [Unity Catalog](https://github.com/unitycatalog/unitycatalog) on a Kubernetes cluster
+using the [Helm](https://github.com/helm/helm) package manager.
+
+## Prerequisites
+- Kubernetes 1.20+ cluster
+- Helm 3.1+
+
+## Features
+- Deploys Unity Catalog server and UI
+- Supports OAuth authentication
+- Supports file H2DB and PostgreSQL as a database
+- Customizable configuration for server and UI using Helm values
+
+## Installing the Chart
+To install the chart with the release name `unitycatalog`:
+
+```sh
+helm install unitycatalog .
+```
+
+## Uninstalling the Chart
+To uninstall the `unitycatalog` chart:
+
+```sh
+helm uninstall unitycatalog
+```
+
+The command removes all the Kubernetes components associated with the chart and deletes the release.
+If persistent volumes are used, they are not deleted by default. To delete them, you need to manually delete the PVCs.
+
+## Configuration
+The following table lists the configurable parameters of the Unity Catalog chart and their default values.
+
+> **Note**
+>
+> Auth integration in UI works only with Google OAuth provider and
+> it does not work with UC versions 0.2.1 and below.
+
+{{ template "chart.valuesSectionHtml" . }}
+
+{{ template "helm-docs.versionFooter" . }}
