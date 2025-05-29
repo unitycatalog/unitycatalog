@@ -234,7 +234,7 @@ private class UCProxy(
     val schemaName = namespace.head
     val maxResults = 0
     val pageToken = null
-    val response: ListTablesResponse = tablesApi.listTables(catalogName, schemaName, maxResults, pageToken, true, true)
+    val response: ListTablesResponse = tablesApi.listTables(catalogName, schemaName, maxResults, pageToken)
     response.getTables.toSeq.map(table => Identifier.of(namespace, table.getName)).toArray
   }
 

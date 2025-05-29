@@ -146,9 +146,7 @@ public class TableCli {
                 json.getString(CliParams.CATALOG_NAME.getServerParam()),
                 json.getString(CliParams.SCHEMA_NAME.getServerParam()),
                 maxResults,
-                pageToken,
-                true,
-                true)
+                pageToken)
             .getTables());
   }
 

@@ -333,22 +333,6 @@ paths:
           required: false
           schema:
             type: string
-        - name: read_streaming_table_as_managed
-          in: query
-          description: |
-            Whether to read Streaming Tables as Managed tables.
-          required: false
-          schema:
-            type: boolean
-            default: true
-        - name: read_materialized_view_as_managed
-          in: query
-          description: |
-            Whether to read Materialized Views as Managed tables.
-          required: false
-          schema:
-            type: boolean
-            default: true
       operationId: listTables
       summary: List tables
       description: |

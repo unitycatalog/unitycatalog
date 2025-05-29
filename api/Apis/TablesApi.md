@@ -95,7 +95,7 @@ No authorization required
 
 <a name="listTables"></a>
 # **listTables**
-> ListTablesResponse listTables(catalog\_name, schema\_name, max\_results, page\_token, read\_streaming\_table\_as\_managed, read\_materialized\_view\_as\_managed)
+> ListTablesResponse listTables(catalog\_name, schema\_name, max\_results, page\_token)
 
 List tables
 
@@ -109,8 +109,6 @@ List tables
 | **schema\_name** | **String**| Parent schema of tables. | [default to null] |
 | **max\_results** | **Integer**| Maximum number of tables to return. - when set to a value greater than 0, the page length is the minimum of this value and a server configured value; - when set to 0, the page length is set to a server configured value; - when set to a value less than 0, an invalid parameter error is returned;  | [optional] [default to null] |
 | **page\_token** | **String**| Opaque token to send for the next page of results (pagination). | [optional] [default to null] |
-| **read\_streaming\_table\_as\_managed** | **Boolean**| Whether to read Streaming Tables as Managed tables.  | [optional] [default to true] |
-| **read\_materialized\_view\_as\_managed** | **Boolean**| Whether to read Materialized Views as Managed tables.  | [optional] [default to true] |
 
 ### Return type
 
