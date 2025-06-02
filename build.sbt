@@ -350,10 +350,10 @@ lazy val server = (project in file("server"))
       "org.apache.httpcomponents" % "httpclient" % "4.5.14",
 
       // Iceberg REST Catalog dependencies
-      "org.apache.iceberg" % "iceberg-core" % "1.9.0",
-      "org.apache.iceberg" % "iceberg-aws" % "1.9.0",
-      "org.apache.iceberg" % "iceberg-azure" % "1.9.0",
-      "org.apache.iceberg" % "iceberg-gcp" % "1.9.0",
+      "org.apache.iceberg" % "iceberg-core" % "1.9.1",
+      "org.apache.iceberg" % "iceberg-aws" % "1.9.1",
+      "org.apache.iceberg" % "iceberg-azure" % "1.9.1",
+      "org.apache.iceberg" % "iceberg-gcp" % "1.9.1",
       "software.amazon.awssdk" % "s3" % "2.24.0",
       "software.amazon.awssdk" % "sts" % "2.24.0",
       "io.vertx" % "vertx-core" % "4.3.5",
