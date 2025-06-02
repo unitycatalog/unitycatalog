@@ -143,7 +143,7 @@ def test_toolkit_creation_errors():
         UCFunctionToolkit(function_names=[], client="client")
 
 
-def test_toolkit_creation_errors(client):
+def test_toolkit_creation_errors_with_client(client):
     with pytest.raises(
         ValueError, match=r"Cannot create tool instances without function_names being provided."
     ):

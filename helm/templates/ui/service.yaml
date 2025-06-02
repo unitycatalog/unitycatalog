@@ -1,0 +1,17 @@
+{{- if .Values.ui.enabled -}}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "unitycatalog.ui.fullname" . }}
+  labels:
+    {{- include "unitycatalog.ui.labels" . | nindent 4 }}
+spec:
+  type: {{ .Values.ui.service.type }}
+  ports:
+    - port: {{ .Values.ui.service.port }}
+      targetPort: ui
+      protocol: TCP
+      name: ui
+  selector:
+    {{- include "unitycatalog.ui.selectorLabels" . | nindent 4 }}
+{{- end -}}
