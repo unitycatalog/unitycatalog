@@ -30,7 +30,10 @@ public class SdkTableOperations implements TableOperations {
 
   @Override
   public TableInfo getTable(String tableFullName) throws ApiException {
-    return tablesApi.getTable(tableFullName, true, true);
+    return tablesApi.getTable(
+        tableFullName,
+        /* readStreamingTableAsManaged = */ true,
+        /* readMaterializedViewAsManaged = */ true);
   }
 
   @Override

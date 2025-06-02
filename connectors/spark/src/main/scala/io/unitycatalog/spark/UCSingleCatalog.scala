@@ -240,7 +240,10 @@ private class UCProxy(
 
   override def loadTable(ident: Identifier): Table = {
     val t = try {
-      tablesApi.getTable(name + "." + ident.toString, true, true)
+      tablesApi.getTable(
+        name + "." + ident.toString,
+        /* readStreamingTableAsManaged = */ true,
+        /* readMaterializedViewAsManaged = */ true)
     } catch {
       case e: ApiException if e.getCode == 404 =>
         throw new NoSuchTableException(ident)
