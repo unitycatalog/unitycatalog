@@ -154,20 +154,21 @@ public class TableCli {
       throws JsonProcessingException, ApiException {
     String fullName = json.getString(CliParams.FULL_NAME.val());
     return objectWriter.writeValueAsString(
-         tablesApi.getTable(
-             fullName,
-             /* readStreamingTableAsManaged = */ true,
-             /* readMaterializedViewAsManaged = */ true));
+        tablesApi.getTable(
+            fullName,
+            /* readStreamingTableAsManaged = */ true,
+            /* readMaterializedViewAsManaged = */ true));
   }
 
   private static String readTable(
       TemporaryCredentialsApi temporaryCredentialsApi, TablesApi tablesApi, JSONObject json)
       throws ApiException {
     String fullTableName = json.getString(CliParams.FULL_NAME.getServerParam());
-    TableInfo info = tablesApi.getTable(
-        fullTableName,
-        /* readStreamingTableAsManaged = */ true,
-        /* readMaterializedViewAsManaged = */ true);
+    TableInfo info =
+        tablesApi.getTable(
+            fullTableName,
+            /* readStreamingTableAsManaged = */ true,
+            /* readMaterializedViewAsManaged = */ true);
     if (!DataSourceFormat.DELTA.equals(info.getDataSourceFormat())) {
       throw new CliException("Only delta tables are supported for read operations");
     }
@@ -190,10 +191,11 @@ public class TableCli {
       TemporaryCredentialsApi temporaryCredentialsApi, TablesApi tablesApi, JSONObject json)
       throws ApiException {
     String fullTableName = json.getString(CliParams.FULL_NAME.getServerParam());
-    TableInfo info = tablesApi.getTable(
-        fullTableName,
-        /* readStreamingTableAsManaged = */ true,
-        /* readMaterializedViewAsManaged = */ true);
+    TableInfo info =
+        tablesApi.getTable(
+            fullTableName,
+            /* readStreamingTableAsManaged = */ true,
+            /* readMaterializedViewAsManaged = */ true);
     if (!DataSourceFormat.DELTA.equals(info.getDataSourceFormat())) {
       throw new CliException("Only delta tables are supported for write operations");
     }
