@@ -1,7 +1,6 @@
 package io.unitycatalog.server.service;
 
-import static org.assertj.core.api.AssertionsForClassTypes.assertThat;
-import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.assertj.core.api.Assertions.assertThat;
 
 import com.linecorp.armeria.client.WebClient;
 import com.linecorp.armeria.common.AggregatedHttpResponse;
@@ -37,13 +36,13 @@ public class AuthServiceTest extends BaseServerTest {
     RequestHeaders headersWithCookie = buildRequestHeader(true);
 
     AggregatedHttpResponse response = client.execute(headersWithCookie).aggregate().join();
-    assertEquals(HttpStatus.OK, response.status());
+    assertThat(response.status()).isEqualTo(HttpStatus.OK);
     assertThat(response.contentUtf8()).isEqualTo(EMPTY_RESPONSE);
 
     // Logout without cookie should return 200 status
     RequestHeaders headersWithoutCookie = buildRequestHeader(false);
     response = client.execute(headersWithoutCookie).aggregate().join();
-    assertEquals(HttpStatus.OK, response.status());
+    assertThat(response.status()).isEqualTo(HttpStatus.OK);
     assertThat(response.contentUtf8()).isEqualTo(EMPTY_RESPONSE);
   }
 
