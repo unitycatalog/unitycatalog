@@ -1,4 +1,7 @@
 openapi: 3.0.0
+info:
+  title: Unity Control API
+  version: '0.1'
 servers:
   - url: http://localhost:8080/api/1.0/unity-control
     description: Localhost reference server
@@ -6,14 +9,17 @@ tags:
   - name: Users
     description: |
       A user is the identity recognized by Unity Catalog.
-
+  - name: OAuth2
+    description: |
+      OAuth2 authentication endpoints.
 paths:
   /scim2/Users:
+    description: Endpoint for managing SCIM user resources.
     post:
       tags:
         - Users
       operationId: createUser
-      summary: Create a user
+      summary: Create an User
       description: |
         Creates a new user.
       requestBody:
@@ -31,6 +37,10 @@ paths:
     get:
       tags:
         - Users
+      operationId: listUsers
+      summary: List Users
+      description: |
+        Gets details for all the users.
       parameters:
         - name: filter
           in: query
@@ -52,10 +62,6 @@ paths:
             type: integer
             format: int32
           required: false
-      operationId: listUsers
-      summary: List users
-      description: |
-        Gets details for all the users.
       responses:
         '200':
           description: The user list was successfully retrieved.
@@ -64,6 +70,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/UserResourceList'
   /scim2/Users/{id}:
+    description: Endpoint for managing a specific SCIM user resource.
     parameters:
       - name: id
         in: path
@@ -75,7 +82,7 @@ paths:
       tags:
         - Users
       operationId: getUser
-      summary: Get a user
+      summary: Get an User
       description: |
         Gets the specified user.
       responses:
@@ -89,7 +96,7 @@ paths:
       tags:
         - Users
       operationId: updateUser
-      summary: Update a user
+      summary: Update an User
       description: |
         Updates the user that matches the supplied id.
       requestBody:
@@ -108,7 +115,7 @@ paths:
       tags:
         - Users
       operationId: deleteUser
-      summary: Delete a user
+      summary: Delete an User
       description: |
         Deletes the user that matches the supplied id.
       responses:
@@ -118,11 +125,12 @@ paths:
             application/scim+json:
               schema: {}
   /scim2/Me:
+    description: Endpoint for retrieving the current user's information.
     get:
       tags:
         - Users
       operationId: getSelf
-      summary: Get the current user
+      summary: Get the Current User
       description: |
         Gets the user from the jwt token provided.
       responses:
@@ -133,9 +141,14 @@ paths:
               schema:
                 $ref: '#/components/schemas/UserResource'
   /auth/tokens:
+    description: Endpoint for OAuth2 token operations.
     post:
       tags:
         - OAuth2
+      operationId: getToken
+      summary: Get a Token Using an OAuth2 Flow
+      description: |
+        Exchanges credentials for a token using the OAuth2 token exchange.
       parameters:
         - in: query
           name: ext
@@ -143,10 +156,6 @@ paths:
           schema:
             $ref: '#/components/schemas/TokenEndpointExtensionType'
           required: false
-      operationId: getToken
-      summary: Get a token using an OAuth2 flow
-      description: |
-        Exchanges credentials for a token using the OAuth2 token exchange.
       # NOTE:
       # When specifying `application/x-www-form-urlencoded` as the content type in the OpenAPI schema,
       # the OpenAPI Generator does not generate request models from the schema.
@@ -200,11 +209,12 @@ paths:
               schema:
                 $ref: '#/components/schemas/OAuthTokenExchangeInfo'
   /auth/logout:
+    description: Endpoint for revoking access tokens.
     post:
       tags:
         - OAuth2
       operationId: logout
-      summary: Revoke access token cookie
+      summary: Revoke Access Token Cookie
       description: |
         Revokes the access token cookie.
       # NOTE:
@@ -227,10 +237,15 @@ paths:
       responses:
         '200':
           description: The access token will be revoked.
-
 components:
   schemas:
     User:
+      description: Represents a user in the system with their basic information.
+      type: object
+      required:
+        - id
+        - name
+        - email
       properties:
         id:
           description: The unique identifier of the user.
@@ -261,11 +276,6 @@ components:
           description: The time the user was last updated.
           type: integer
           format: int64
-      type: object
-      required:
-        - id
-        - name
-        - email
     UserResourceList:
       description: List of SCIM User resources.
       type: object
@@ -275,33 +285,36 @@ components:
           type: integer
           format: int32
         itemsPerPage:
-            description: The number of items per page.
-            type: integer
-            format: int32
+          description: The number of items per page.
+          type: integer
+          format: int32
         startIndex:
-            description: The index of the first result.
-            type: integer
-            format: int32
+          description: The index of the first result.
+          type: integer
+          format: int32
         Resources:
-            description: The list of User resources.
-            type: array
-            items:
-                $ref: '#/components/schemas/UserResource'
+          description: The list of User resources.
+          type: array
+          items:
+            $ref: '#/components/schemas/UserResource'
         id:
-            description: User list id metadata.
-            type: string
+          description: User list id metadata.
+          type: string
         externalId:
-            description: User list external id metadata.
-            type: string
+          description: User list external id metadata.
+          type: string
         meta:
           description: The metadata of the user.
           type: object
           properties:
             resourceType:
+              description: The type of resource.
               type: string
             created:
+              description: The timestamp when the resource was created.
               type: string
             lastModified:
+              description: The timestamp when the resource was last modified.
               type: string
     UserResource:
       description: SCIM provides a resource type for "User" resources.
@@ -322,15 +335,17 @@ components:
           items:
             $ref: '#/components/schemas/Email'
         active:
-            description: The active status of the user.
-            type: boolean
+          description: The active status of the user.
+          type: boolean
         meta:
           description: The metadata of the user.
           type: object
           properties:
             created:
+              description: The timestamp when the user was created.
               type: string
             lastModified:
+              description: The timestamp when the user was last modified.
               type: string
         photos:
           description: The photos of the user.
@@ -339,7 +354,7 @@ components:
             type: object
             properties:
               value:
-                description: The url of the user's photo.
+                description: The URL of the user's photo.
                 type: string
     Email:
       description: SCIM email for a user.
@@ -527,7 +542,3 @@ components:
         client_id:
           description: The client identifier that represents the registration information provided by the client
           type: string
-
-info:
-  title: Unity Control API
-  version: '0.1'
