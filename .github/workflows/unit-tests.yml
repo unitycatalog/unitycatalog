@@ -27,5 +27,14 @@ jobs:
 
     - name: Run tests with coverage
       run: build/sbt -J-Xmx2G +jacoco
+    - name: Upload test artifacts
+      if: always()
+      uses: actions/upload-artifact@v4
+      with:
+        name: sbt-test-results
+        path: |
+          connectors/spark/target/test-reports/**/*.xml
+          examples/cli/target/test-reports/**/*.xml
+
     - name: Run license check
       run: build/sbt licenseCheck
