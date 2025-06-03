@@ -28,16 +28,19 @@ public class AwsCredentialVendor {
 
   public AwsCredentialVendor(ServerProperties serverProperties) {
     this.s3Configurations = serverProperties.getS3Configurations();
-    System.out.println("----------------");
-    System.out.println("Loaded S3 config keys: " + s3Configurations.keySet());
+    // System.out.println("----------------");
+    // System.out.println("Loaded S3 config keys: " + s3Configurations.keySet());
   }
 
   public Credentials vendAwsCredentials(CredentialContext context) {
     S3StorageConfig s3StorageConfig = s3Configurations.get(context.getStorageBase());
 
-    System.out.println("----------------");
-    System.out.println(s3StorageConfig);
-    System.out.println(context.getStorageBase());
+    // System.out.println("----------------");
+    // System.out.println("Requested storage base: " + context.getStorageBase());
+    // System.out.println("Available configurations: " + s3Configurations.keySet());
+
+    // System.out.println(s3StorageConfig);
+    // System.out.println(context.getStorageBase());
     System.out.flush();
 
     if (s3StorageConfig == null) {
@@ -78,7 +81,7 @@ public class AwsCredentialVendor {
         .credentials();
   }
 
-  public Credentials vendCloudflareR2Credentials(
+  private Credentials vendCloudflareR2Credentials(
       S3StorageConfig s3StorageConfig, CredentialContext context) {
     // Extract account_id from
     String endpoint = s3StorageConfig.getEndpoint();
@@ -120,31 +123,39 @@ public class AwsCredentialVendor {
       body.put("bucket", bucket);
       body.put("permission", permission);
 
-      System.out.println("Cloudflare R2 Debug:");
-      System.out.println("accountId: " + accountId);
-      System.out.println("bucketPath: " + bucketPath);
-      System.out.println("bucket: " + bucket);
-      System.out.println("permission: " + permission);
-      System.out.println("parentAccessKeyId: " + parentAccessKeyId);
-      System.out.println("apiKey: " + apiKey);
-      String r2Url =
-          "https://api.cloudflare.com/client/v4/accounts/"
-              + accountId
-              + "/r2/temp-access-credentials";
-      System.out.println("URL: " + r2Url);
-      System.out.println("Request Body: " + body.toString());
+      // System.out.println("Cloudflare R2 Debug:");
+      // System.out.println("accountId: " + accountId);
+      // System.out.println("bucketPath: " + bucketPath);
+      // System.out.println("bucket: " + bucket);
+      // System.out.println("permission: " + permission);
+      // System.out.println("parentAccessKeyId: " + parentAccessKeyId);
+      // System.out.println("apiKey: " + apiKey);
+      // String r2Url =
+      //     "https://api.cloudflare.com/client/v4/accounts/"
+      //         + accountId
+      //         + "/r2/temp-access-credentials";
+      // System.out.println("URL: " + r2Url);
+      // System.out.println("Request Body: " + body.toString());
 
-      HttpRequest request =
-          HttpRequest.newBuilder()
-              .uri(
-                  URI.create(
-                      "https://api.cloudflare.com/client/v4/accounts/"
-                          + accountId
-                          + "/r2/temp-access-credentials"))
-              .header("Authorization", "Bearer " + apiKey)
-              .header("Content-Type", "application/json")
-              .POST(HttpRequest.BodyPublishers.ofString(body.toString()))
-              .build();
+      HttpRequest request = null;
+      try {
+        request =
+            HttpRequest.newBuilder()
+                .uri(
+                    URI.create(
+                        "https://api.cloudflare.com/client/v4/accounts/"
+                            + accountId
+                            + "/r2/temp-access-credentials"))
+                .header("Authorization", "Bearer " + apiKey)
+                .header("Content-Type", "application/json")
+                .POST(HttpRequest.BodyPublishers.ofString(body.toString()))
+                .build();
+      } catch (Exception e) {
+        e.printStackTrace();
+        throw new BaseException(
+            ErrorCode.FAILED_PRECONDITION,
+            "Error building R2 credentials request: " + e.getMessage());
+      }
 
       HttpResponse<String> response = client.send(request, HttpResponse.BodyHandlers.ofString());
       JSONObject json = new JSONObject(response.body());
@@ -156,6 +167,9 @@ public class AwsCredentialVendor {
       }
 
       JSONObject creds = json.getJSONObject("result");
+
+      // System.out.println("--------final output------------");
+      // System.out.println(creds);
 
       return Credentials.builder()
           .accessKeyId(creds.optString("accessKeyId"))

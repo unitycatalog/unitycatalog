@@ -87,9 +87,9 @@ public class ServerProperties {
               .build();
       s3BucketConfigMap.put(bucketPath, s3StorageConfig);
 
-      System.out.println("----------------");
-      System.out.println(bucketPath);
-      System.out.println(i);
+      // System.out.println("----------------");
+      // System.out.println(bucketPath);
+      // System.out.println(i);
 
       i++;
     }
