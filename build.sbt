@@ -52,7 +52,8 @@ lazy val commonSettings = Seq(
     "org.slf4j" % "slf4j-log4j12" % "2.0.13" % Test,
     "org.apache.logging.log4j" % "log4j-slf4j2-impl" % log4jVersion,
     "org.apache.logging.log4j" % "log4j-api" % log4jVersion,
-    "ch.qos.logback" % "logback-classic" % "1.2.11"
+    "ch.qos.logback" % "logback-classic" % "1.2.11",
+    "org.postgresql" % "postgresql" % "42.7.6"
   ),
   excludeDependencies ++= Seq(
     ExclusionRule("org.slf4j", "slf4j-reload4j")
