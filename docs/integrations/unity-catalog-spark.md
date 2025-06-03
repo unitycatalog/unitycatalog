@@ -95,7 +95,7 @@ You can run the code below to work with data stored in the `unity` catalog that 
     ```sh
     bin/spark-sql --name "local-uc-test" \
         --master "local[*]" \
-        --packages "io.delta:delta-spark_2.12:3.2.1,io.unitycatalog:unitycatalog-spark_2.12:0.2.0" \
+        --packages "io.delta:delta-spark_2.13:4.0.0,io.unitycatalog:unitycatalog-spark_2.13:0.3.0" \
         --conf "spark.sql.extensions=io.delta.sql.DeltaSparkSessionExtension" \
         --conf "spark.sql.catalog.spark_catalog=io.unitycatalog.spark.UCSingleCatalog" \
         --conf "spark.sql.catalog.<catalog_name>=io.unitycatalog.spark.UCSingleCatalog" \
@@ -109,7 +109,7 @@ You can run the code below to work with data stored in the `unity` catalog that 
     ```sh
     bin/pyspark --name "local-uc-test" \
         --master "local[*]" \
-        --packages "io.delta:delta-spark_2.12:3.2.1,io.unitycatalog:unitycatalog-spark_2.12:0.2.0" \
+        --packages "io.delta:delta-spark_2.13:4.0.0,io.unitycatalog:unitycatalog-spark_2.13:0.3.0" \
         --conf "spark.sql.extensions=io.delta.sql.DeltaSparkSessionExtension" \
         --conf "spark.sql.catalog.spark_catalog=io.unitycatalog.spark.UCSingleCatalog" \
         --conf "spark.sql.catalog.<catalog_name>=io.unitycatalog.spark.UCSingleCatalog" \
@@ -148,7 +148,7 @@ command.
     ```sh
     bin/spark-sql --name "s3-uc-test" \
         --master "local[*]" \
-        --packages "org.apache.hadoop:hadoop-aws:3.3.4,io.delta:delta-spark_2.12:3.2.1,io.unitycatalog:unitycatalog-spark_2.12:0.2.0" \
+        --packages "org.apache.hadoop:hadoop-aws:3.3.4,io.delta:delta-spark_2.13:4.0.0,io.unitycatalog:unitycatalog-spark_2.13:0.3.0" \
         --conf "spark.sql.extensions=io.delta.sql.DeltaSparkSessionExtension" \
         --conf "spark.sql.catalog.spark_catalog=io.unitycatalog.spark.UCSingleCatalog" \
         --conf "spark.hadoop.fs.s3.impl=org.apache.hadoop.fs.s3a.S3AFileSystem" \
@@ -163,7 +163,7 @@ command.
     ```sh
     bin/spark-sql --name "azure-uc-test" \
         --master "local[*]" \
-        --packages "org.apache.hadoop:hadoop-azure:3.3.6,io.delta:delta-spark_2.12:3.2.1,io.unitycatalog:unitycatalog-spark_2.12:0.2.0" \
+        --packages "org.apache.hadoop:hadoop-azure:3.3.6,io.delta:delta-spark_2.13:4.0.0,io.unitycatalog:unitycatalog-spark_2.13:0.3.0" \
         --conf "spark.sql.extensions=io.delta.sql.DeltaSparkSessionExtension" \
         --conf "spark.sql.catalog.spark_catalog=io.unitycatalog.spark.UCSingleCatalog" \
         --conf "spark.sql.catalog.<catalog_name>=io.unitycatalog.spark.UCSingleCatalog" \
@@ -178,7 +178,7 @@ command.
     bin/spark-sql --name "gcs-uc-test" \
         --master "local[*]" \
         --jars "https://repo1.maven.org/maven2/com/google/cloud/bigdataoss/gcs-connector/3.0.2/gcs-connector-3.0.2-shaded.jar" \
-        --packages "io.delta:delta-spark_2.12:3.2.1,io.unitycatalog:unitycatalog-spark_2.12:0.2.0" \
+        --packages "io.delta:delta-spark_2.13:4.0.0,io.unitycatalog:unitycatalog-spark_2.13:0.3.0" \
         --conf "spark.sql.extensions=io.delta.sql.DeltaSparkSessionExtension" \
         --conf "spark.sql.catalog.spark_catalog=io.unitycatalog.spark.UCSingleCatalog" \
         --conf "spark.hadoop.fs.gs.impl=com.google.cloud.hadoop.fs.gcs.GoogleHadoopFileSystem" \
