@@ -17,11 +17,10 @@ val artifactNamePrefix = "unitycatalog"
 lazy val javacRelease11 = Seq("--release", "11")
 lazy val javacRelease17 = Seq("--release", "17")
 
-lazy val scala212 = "2.12.15"
-lazy val scala213 = "2.13.14"
+lazy val scala213 = "2.13.16"
 
-lazy val deltaVersion = "3.2.1"
-lazy val sparkVersion = "3.5.3"
+lazy val deltaVersion = "4.0.0"
+lazy val sparkVersion = "4.0.0"
 
 // Library versions
 lazy val jacksonVersion = "2.17.0"
@@ -115,6 +114,8 @@ useCoursier := true
 
 // Configure resolvers
 resolvers ++= Seq(
+  // TODO: Remove this once Delta 4.0 is published.
+  "Delta" at "https://oss.sonatype.org/content/repositories/iodelta-1229",
   "Sonatype OSS Releases" at "https://oss.sonatype.org/content/repositories/releases/",
   "Maven Central" at "https://repo1.maven.org/maven2/",
 )
@@ -308,6 +309,7 @@ lazy val server = (project in file("server"))
     javaOnlyReleaseSettings,
     javafmtCheckSettings,
     javaCheckstyleSettings(file("dev") / "checkstyle-config.xml"),
+    resolvers += "Delta" at "https://oss.sonatype.org/content/repositories/iodelta-1229",
     Compile / compile / javacOptions ++= Seq(
       "-processor",
       "lombok.launch.AnnotationProcessorHider$AnnotationProcessor"
@@ -493,6 +495,8 @@ lazy val cli = (project in file("examples") / "cli")
     javafmtCheckSettings,
     javaCheckstyleSettings(file("dev") / "checkstyle-config.xml"),
     Compile / compile / javacOptions ++= javacRelease17,
+    // TODO: Remove when Delta 4.0 is released.
+    resolvers += "Delta" at "https://oss.sonatype.org/content/repositories/iodelta-1229",
     libraryDependencies ++= Seq(
       "commons-cli" % "commons-cli" % "1.7.0",
       "org.json" % "json" % "20240303",
@@ -552,8 +556,8 @@ lazy val spark = (project in file("connectors/spark"))
   .dependsOn(client)
   .settings(
     name := s"$artifactNamePrefix-spark",
-    scalaVersion := scala212,
-    crossScalaVersions := Seq(scala212, scala213),
+    scalaVersion := scala213,
+    crossScalaVersions := Seq(scala213),
     commonSettings,
     scalaReleaseSettings,
     javaOptions ++= Seq(
@@ -561,6 +565,8 @@ lazy val spark = (project in file("connectors/spark"))
     ),
     javaCheckstyleSettings(file("dev/checkstyle-config.xml")),
     Compile / compile / javacOptions ++= javacRelease11,
+    // TODO: Remove this once Delta 4.0 is published.
+    resolvers += "Delta" at "https://oss.sonatype.org/content/repositories/iodelta-1229",
     libraryDependencies ++= Seq(
       "org.apache.spark" %% "spark-sql" % sparkVersion % Provided,
       "com.fasterxml.jackson.core" % "jackson-databind" % "2.15.0",
@@ -568,8 +574,8 @@ lazy val spark = (project in file("connectors/spark"))
       "com.fasterxml.jackson.core" % "jackson-annotations" % "2.15.0",
       "com.fasterxml.jackson.core" % "jackson-core" % "2.15.0",
       "com.fasterxml.jackson.dataformat" % "jackson-dataformat-xml" % "2.15.0",
-      "org.antlr" % "antlr4-runtime" % "4.9.3",
-      "org.antlr" % "antlr4" % "4.9.3",
+      "org.antlr" % "antlr4-runtime" % "4.13.1",
+      "org.antlr" % "antlr4" % "4.13.1",
       "com.google.cloud.bigdataoss" % "util-hadoop" % "3.0.2" % Provided,
       "org.apache.hadoop" % "hadoop-azure" % "3.4.0" % Provided,
     ),
@@ -590,8 +596,8 @@ lazy val spark = (project in file("connectors/spark"))
       "com.fasterxml.jackson.core" % "jackson-annotations" % "2.15.0",
       "com.fasterxml.jackson.core" % "jackson-core" % "2.15.0",
       "com.fasterxml.jackson.dataformat" % "jackson-dataformat-xml" % "2.15.0",
-      "org.antlr" % "antlr4-runtime" % "4.9.3",
-      "org.antlr" % "antlr4" % "4.9.3",
+      "org.antlr" % "antlr4-runtime" % "4.13.1",
+      "org.antlr" % "antlr4" % "4.13.1",
     ),
     Test / unmanagedJars += (serverShaded / assembly).value,
     licenseDepExclusions := {
@@ -621,21 +627,23 @@ lazy val integrationTests = (project in file("integration-tests"))
   .settings(
     name := s"$artifactNamePrefix-integration-tests",
     commonSettings,
+    scalaVersion := scala213,
     javaOptions ++= Seq(
       "--add-exports=java.base/sun.nio.ch=ALL-UNNAMED",
     ),
     skipReleaseSettings,
+    resolvers += "Delta" at "https://oss.sonatype.org/content/repositories/iodelta-1229",
     libraryDependencies ++= Seq(
       "org.junit.jupiter" % "junit-jupiter" % "5.10.3" % Test,
       "net.aichler" % "jupiter-interface" % JupiterKeys.jupiterVersion.value % Test,
       "org.assertj" % "assertj-core" % "3.26.3" % Test,
       "org.projectlombok" % "lombok" % "1.18.32" % Provided,
-      "org.apache.spark" %% "spark-sql" % "3.5.3" % Test,
-      "io.delta" %% "delta-spark" % "3.2.1" % Test,
+      "org.apache.spark" %% "spark-sql" % sparkVersion % Test,
+      "io.delta" %% "delta-spark" % deltaVersion % Test,
       "org.apache.hadoop" % "hadoop-aws" % "3.3.6" % Test,
       "org.apache.hadoop" % "hadoop-azure" % "3.3.6" % Test,
       "com.google.cloud.bigdataoss" % "gcs-connector" % "3.0.2" % Test classifier "shaded",
-      "io.unitycatalog" %% "unitycatalog-spark" % "0.2.0" % Test,
+      "io.unitycatalog" %% "unitycatalog-spark" % "0.3.0-SNAPSHOT" % Test,
     ),
     dependencyOverrides ++= Seq(
       "com.fasterxml.jackson.core" % "jackson-databind" % "2.15.0",
@@ -643,8 +651,8 @@ lazy val integrationTests = (project in file("integration-tests"))
       "com.fasterxml.jackson.core" % "jackson-annotations" % "2.15.0",
       "com.fasterxml.jackson.core" % "jackson-core" % "2.15.0",
       "com.fasterxml.jackson.dataformat" % "jackson-dataformat-xml" % "2.15.0",
-      "org.antlr" % "antlr4-runtime" % "4.9.3",
-      "org.antlr" % "antlr4" % "4.9.3",
+      "org.antlr" % "antlr4-runtime" % "4.13.1",
+      "org.antlr" % "antlr4" % "4.13.1",
       "org.apache.hadoop" % "hadoop-client-api" % "3.3.6",
     ),
     Test / javaOptions += s"-Duser.dir=${((ThisBuild / baseDirectory).value / "integration-tests").getAbsolutePath}",
