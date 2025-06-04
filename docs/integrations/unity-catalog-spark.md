@@ -97,7 +97,7 @@ You can run the code below to work with data stored in the `unity` catalog that 
         --master "local[*]" \
         --packages "io.delta:delta-spark_2.13:4.0.0,io.unitycatalog:unitycatalog-spark_2.13:0.3.0" \
         --conf "spark.sql.extensions=io.delta.sql.DeltaSparkSessionExtension" \
-        --conf "spark.sql.catalog.spark_catalog=io.unitycatalog.spark.UCSingleCatalog" \
+        --conf "spark.sql.catalog.spark_catalog=org.apache.spark.sql.delta.catalog.DeltaCatalog" \
         --conf "spark.sql.catalog.<catalog_name>=io.unitycatalog.spark.UCSingleCatalog" \
         --conf "spark.sql.catalog.<catalog_name>.uri=http://localhost:8080" \
         --conf "spark.sql.catalog.<catalog_name>.token=" \
@@ -111,7 +111,7 @@ You can run the code below to work with data stored in the `unity` catalog that 
         --master "local[*]" \
         --packages "io.delta:delta-spark_2.13:4.0.0,io.unitycatalog:unitycatalog-spark_2.13:0.3.0" \
         --conf "spark.sql.extensions=io.delta.sql.DeltaSparkSessionExtension" \
-        --conf "spark.sql.catalog.spark_catalog=io.unitycatalog.spark.UCSingleCatalog" \
+        --conf "spark.sql.catalog.spark_catalog=org.apache.spark.sql.delta.catalog.DeltaCatalog" \
         --conf "spark.sql.catalog.<catalog_name>=io.unitycatalog.spark.UCSingleCatalog" \
         --conf "spark.sql.catalog.<catalog_name>.uri=http://localhost:8080" \
         --conf "spark.sql.catalog.<catalog_name>.token=" \
@@ -148,9 +148,9 @@ command.
     ```sh
     bin/spark-sql --name "s3-uc-test" \
         --master "local[*]" \
-        --packages "org.apache.hadoop:hadoop-aws:3.3.4,io.delta:delta-spark_2.13:4.0.0,io.unitycatalog:unitycatalog-spark_2.13:0.3.0" \
+        --packages "org.apache.hadoop:hadoop-aws:3.4.1,io.delta:delta-spark_2.13:4.0.0,io.unitycatalog:unitycatalog-spark_2.13:0.3.0" \
         --conf "spark.sql.extensions=io.delta.sql.DeltaSparkSessionExtension" \
-        --conf "spark.sql.catalog.spark_catalog=io.unitycatalog.spark.UCSingleCatalog" \
+        --conf "spark.sql.catalog.spark_catalog=org.apache.spark.sql.delta.catalog.DeltaCatalog" \
         --conf "spark.hadoop.fs.s3.impl=org.apache.hadoop.fs.s3a.S3AFileSystem" \
         --conf "spark.sql.catalog.<catalog_name>=io.unitycatalog.spark.UCSingleCatalog" \
         --conf "spark.sql.catalog.<catalog_name>.uri=http://localhost:8080" \
@@ -165,7 +165,7 @@ command.
         --master "local[*]" \
         --packages "org.apache.hadoop:hadoop-azure:3.3.6,io.delta:delta-spark_2.13:4.0.0,io.unitycatalog:unitycatalog-spark_2.13:0.3.0" \
         --conf "spark.sql.extensions=io.delta.sql.DeltaSparkSessionExtension" \
-        --conf "spark.sql.catalog.spark_catalog=io.unitycatalog.spark.UCSingleCatalog" \
+        --conf "spark.sql.catalog.spark_catalog=org.apache.spark.sql.delta.catalog.DeltaCatalog" \
         --conf "spark.sql.catalog.<catalog_name>=io.unitycatalog.spark.UCSingleCatalog" \
         --conf "spark.sql.catalog.<catalog_name>.uri=http://localhost:8080" \
         --conf "spark.sql.catalog.<catalog_name>.token=" \
@@ -180,7 +180,7 @@ command.
         --jars "https://repo1.maven.org/maven2/com/google/cloud/bigdataoss/gcs-connector/3.0.2/gcs-connector-3.0.2-shaded.jar" \
         --packages "io.delta:delta-spark_2.13:4.0.0,io.unitycatalog:unitycatalog-spark_2.13:0.3.0" \
         --conf "spark.sql.extensions=io.delta.sql.DeltaSparkSessionExtension" \
-        --conf "spark.sql.catalog.spark_catalog=io.unitycatalog.spark.UCSingleCatalog" \
+        --conf "spark.sql.catalog.spark_catalog=org.apache.spark.sql.delta.catalog.DeltaCatalog" \
         --conf "spark.hadoop.fs.gs.impl=com.google.cloud.hadoop.fs.gcs.GoogleHadoopFileSystem" \
         --conf "spark.hadoop.fs.AbstractFileSystem.gs.impl=com.google.cloud.hadoop.fs.gcs.GoogleHadoopFS" \
         --conf "spark.sql.catalog.<catalog_name>=io.unitycatalog.spark.UCSingleCatalog" \
