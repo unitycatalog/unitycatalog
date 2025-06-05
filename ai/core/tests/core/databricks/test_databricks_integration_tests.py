@@ -39,6 +39,7 @@ from unitycatalog.ai.core.envs.databricks_env_vars import (
 from unitycatalog.ai.core.types import Variant
 from unitycatalog.ai.core.utils.execution_utils import ExecutionModeDatabricks
 from unitycatalog.ai.test_utils.client_utils import (
+    PROFILE,
     client,  # noqa: F401
     get_client,
     requires_databricks,
@@ -808,3 +809,29 @@ RETURN CASE WHEN a IS NULL THEN 'a is NULL, b is ' || b ELSE a || ', b is ' || b
             func_name, parameters={"a": "custom-value", "b": "custom-b"}
         )
         assert result.value == "custom-value, b is custom-b"
+
+
+@retry_flaky_test()
+@requires_databricks
+def test_execute_function_in_local_sandbox_spark_session_creation():
+    client = DatabricksFunctionClient(profile=PROFILE, execution_mode="local")
+    assert client.spark is None
+
+    def add(a: int, b: int) -> int:
+        """
+        Adds two integers.
+
+        Args:
+            a: The first integer.
+            b: The second integer.
+
+        Returns:
+            int: The sum of a and b.
+        """
+        return a + b
+
+    with create_python_function_and_cleanup(client, func=add, schema=SCHEMA):
+        assert client.spark is not None
+        function_name = f"{CATALOG}.{SCHEMA}.add"
+        result = client.execute_function(function_name, {"a": 3, "b": 4})
+        assert result.value == 7

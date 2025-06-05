@@ -1,24 +1,15 @@
-name: Build and Push Docker Images - unitycatalog
+name: Build and Push Docker Images - unitycatalog-ui
 
 on:
   push:
-    tags:
-      - 'v*'
     branches:
       - main
     paths:
-      - build/**
-      - project/**
-      - examples/**
-      - server/**
-      - api/**
-      - clients/python/**
-      - version.sbt
-      - build.sbt
+      - ui/**
   workflow_dispatch: {}
 
 env:
-  IMAGE: unitycatalog/unitycatalog
+  IMAGE: unitycatalog/unitycatalog-ui
 
 jobs:
   build-and-push:
@@ -45,7 +36,6 @@ jobs:
           images: ${{ env.IMAGE }}
           tags: |
             type=ref,event=branch
-            type=ref,event=tag
             type=sha,enable=${{ github.ref == 'refs/heads/main' }},prefix={{branch}}-
 
       - name: Login to Docker Hub
@@ -59,10 +49,12 @@ jobs:
         if: ${{ contains(fromJSON('["push", "workflow_dispatch"]'), github.event_name) && (startsWith(github.ref, 'refs/tags/') || github.ref == 'refs/heads/main') }}
         uses: docker/build-push-action@v6
         with:
-          context: .
+          context: ./ui
           # Push only tagged releases to registry. Eg. the git ref
-          # "refs/tags/v0.2.0" would result the tagged image
-          # "unitycatalog/unitycatalog:v0.2.0".
+          # E.g. the commit with short SHA "5d668c1" to main branch would
+          # result in the tagged images:
+          # "unitycatalog/unitycatalog-ui:main-5d668c1" and
+          # "unitycatalog/unitycatalog-ui:main".
           # See here for more info: https://tinyurl.com/yh8252m2
           push: true
           platforms: linux/amd64,linux/arm64
