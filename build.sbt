@@ -114,8 +114,6 @@ useCoursier := true
 
 // Configure resolvers
 resolvers ++= Seq(
-  // TODO: Remove this once Delta 4.0 is published.
-  "Delta" at "https://oss.sonatype.org/content/repositories/iodelta-1229",
   "Sonatype OSS Releases" at "https://oss.sonatype.org/content/repositories/releases/",
   "Maven Central" at "https://repo1.maven.org/maven2/",
 )
@@ -309,7 +307,6 @@ lazy val server = (project in file("server"))
     javaOnlyReleaseSettings,
     javafmtCheckSettings,
     javaCheckstyleSettings(file("dev") / "checkstyle-config.xml"),
-    resolvers += "Delta" at "https://oss.sonatype.org/content/repositories/iodelta-1229",
     Compile / compile / javacOptions ++= Seq(
       "-processor",
       "lombok.launch.AnnotationProcessorHider$AnnotationProcessor"
@@ -495,8 +492,6 @@ lazy val cli = (project in file("examples") / "cli")
     javafmtCheckSettings,
     javaCheckstyleSettings(file("dev") / "checkstyle-config.xml"),
     Compile / compile / javacOptions ++= javacRelease17,
-    // TODO: Remove when Delta 4.0 is released.
-    resolvers += "Delta" at "https://oss.sonatype.org/content/repositories/iodelta-1229",
     libraryDependencies ++= Seq(
       "commons-cli" % "commons-cli" % "1.7.0",
       "org.json" % "json" % "20240303",
@@ -565,8 +560,6 @@ lazy val spark = (project in file("connectors/spark"))
     ),
     javaCheckstyleSettings(file("dev/checkstyle-config.xml")),
     Compile / compile / javacOptions ++= javacRelease11,
-    // TODO: Remove this once Delta 4.0 is published.
-    resolvers += "Delta" at "https://oss.sonatype.org/content/repositories/iodelta-1229",
     libraryDependencies ++= Seq(
       "org.apache.spark" %% "spark-sql" % sparkVersion % Provided,
       "com.fasterxml.jackson.core" % "jackson-databind" % "2.15.0",
@@ -632,7 +625,6 @@ lazy val integrationTests = (project in file("integration-tests"))
       "--add-exports=java.base/sun.nio.ch=ALL-UNNAMED",
     ),
     skipReleaseSettings,
-    resolvers += "Delta" at "https://oss.sonatype.org/content/repositories/iodelta-1229",
     libraryDependencies ++= Seq(
       "org.junit.jupiter" % "junit-jupiter" % "5.10.3" % Test,
       "net.aichler" % "jupiter-interface" % JupiterKeys.jupiterVersion.value % Test,
@@ -643,7 +635,7 @@ lazy val integrationTests = (project in file("integration-tests"))
       "org.apache.hadoop" % "hadoop-aws" % "3.3.6" % Test,
       "org.apache.hadoop" % "hadoop-azure" % "3.3.6" % Test,
       "com.google.cloud.bigdataoss" % "gcs-connector" % "3.0.2" % Test classifier "shaded",
-      "io.unitycatalog" %% "unitycatalog-spark" % "0.3.0-SNAPSHOT" % Test,
+      "io.unitycatalog" %% "unitycatalog-spark" % "0.2.0" % Test,
     ),
     dependencyOverrides ++= Seq(
       "com.fasterxml.jackson.core" % "jackson-databind" % "2.15.0",
