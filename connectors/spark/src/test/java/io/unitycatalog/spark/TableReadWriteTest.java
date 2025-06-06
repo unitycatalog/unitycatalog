@@ -129,10 +129,7 @@ public class TableReadWriteTest extends BaseSparkIntegrationTest {
     assertThat(rows.get(0).getInt(0)).isEqualTo(1);
   }
 
-  // TODO: There's a regression in Delta 4.0 RC1 that breaks time-travel.
-  // When this test fails, it actually brings down the server side and all following tests also
-  // start failing. Commenting it out for now, needs to be re-enabled before release.
-  //@Test
+  @Test
   public void testTimeTravelDeltaTable() throws ApiException, IOException {
     SparkSession session = createSparkSessionWithCatalogs(SPARK_CATALOG);
 
