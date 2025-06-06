@@ -106,7 +106,6 @@ You can run the code below to work with data stored in a Unity Catalog server.
         --master "local[*]" \
         --packages "io.delta:delta-spark_2.13:4.0.0,io.unitycatalog:unitycatalog-spark_2.13:0.3.0" \
         --conf "spark.sql.extensions=io.delta.sql.DeltaSparkSessionExtension" \
-        --conf "spark.sql.catalog.spark_catalog=org.apache.spark.sql.delta.catalog.DeltaCatalog" \
         --conf "spark.sql.catalog.<catalog_name>=io.unitycatalog.spark.UCSingleCatalog" \
         --conf "spark.sql.catalog.<catalog_name>.uri=http://localhost:8080" \
         --conf "spark.sql.catalog.<catalog_name>.token=" \
