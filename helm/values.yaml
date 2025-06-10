@@ -618,10 +618,8 @@ ui:
       repository: unitycatalog/unitycatalog-ui
       # -- (string) Pull policy for the UI image
       pullPolicy: IfNotPresent
-
       # -- (string) Tag for the UI image
-      # @default -- {{ .Chart.AppVersion }}
-      tag:
+      tag: main
 
     # -- (array) Image pull secrets for the UI
     # @default -- not set
