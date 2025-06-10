@@ -29,7 +29,7 @@ public class BaseSparkTest {
                         .appName("test")
                         .master("local[*]")
                         .config("spark.sql.extensions", "io.delta.sql.DeltaSparkSessionExtension")
-                        .config("spark.sql.catalog.spark_catalog", "io.unitycatalog.spark.UCSingleCatalog")
+                        .config("spark.sql.catalog.spark_catalog", "org.apache.spark.sql.delta.catalog.DeltaCatalog")
                         // s3 conf
                         .config("spark.hadoop.fs.s3.impl", "org.apache.hadoop.fs.s3a.S3AFileSystem")
                         // GCS conf
