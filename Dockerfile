@@ -39,6 +39,10 @@ COPY --from=base --parents \
     $HOME/.cache/ \
     /
 
+# Install utilities that are useful for management (used in helm chart)
+RUN apk add --no-cache curl jq uuidgen openssl envsubst
+RUN apk add --no-cache jwt-cli --repository=https://dl-cdn.alpinelinux.org/alpine/edge/testing/
+
 # Create a service user with read and execute permissions and write permissions of the ./etc directory
 RUN <<EOF
 apk add --no-cache bash
