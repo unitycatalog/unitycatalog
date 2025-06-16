@@ -1,0 +1,85 @@
+[project]
+name = "unitycatalog-bedrock"
+version = "0.1.0"
+description = "Support for Unity Catalog functions as Bedrock Action groups"
+authors = [
+    { name="Sreeram Thoom", email="sreeramreddy.thoom@databricks.com" },
+    { name="Udit Anand", email="udit.anand@databricks.com" }
+]
+readme = "README.md"
+license = { text="Apache-2.0" }
+requires-python = ">=3.9"
+dependencies = [
+    "boto3",
+    "unitycatalog-ai",
+    "pydantic<3,>=2",
+]
+
+[project.optional-dependencies]
+databricks = [
+  "unitycatalog-ai[databricks]",
+]
+
+databricks-dev = [
+  "unitycatalog-ai[databricks-dev]",
+]
+
+dev = [
+  "unitycatalog-ai[dev]",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build]
+include = [
+  "src/unitycatalog/ai/bedrock/*"
+]
+
+[tool.hatch.build.targets.wheel]
+sources = ["src"]
+only-include = ["src/unitycatalog/ai/bedrock"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py39"
+
+[tool.ruff.lint]
+select = [
+  # isort
+  "I",
+  # bugbear rules
+  "B",
+  # remove unused imports
+  "F401",
+  # bare except statements
+  "E722",
+  # print statements
+  "T201",
+  "T203",
+  # misuse of typing.TYPE_CHECKING
+  "TC004",
+  # import rules
+  "TID251",
+  # undefined-local-with-import-star
+  "F403",
+]
+
+[tool.ruff.format]
+docstring-code-format = true
+docstring-code-line-length = 88
+
+[tool.ruff.lint.pydocstyle]
+convention = "google"
+
+[tool.pytest.ini_options]
+
+testpaths = [
+    "tests",
+]
+
+markers = [
+    "bedrock: Bedrock response parsing",
+    "toolkit: Toolkit response parsing",
+]
