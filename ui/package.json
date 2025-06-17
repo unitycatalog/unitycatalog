@@ -5,6 +5,8 @@
   "proxy": "http://localhost:8080",
   "dependencies": {
     "@ant-design/icons": "^5.3.7",
+    "@azure/msal-browser": "^4.13.1",
+    "@azure/msal-react": "^3.0.12",
     "@okta/okta-auth-js": "^7.7.0",
     "@okta/okta-signin-widget": "^7.21.0",
     "@tanstack/react-query": "^5.50.1",

@@ -10,24 +10,26 @@ import com.auth0.jwt.JWTVerifier;
 import com.auth0.jwt.algorithms.Algorithm;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.linecorp.armeria.client.WebClient;
 import io.unitycatalog.server.exception.ErrorCode;
 import io.unitycatalog.server.exception.OAuthInvalidClientException;
 import io.unitycatalog.server.exception.OAuthInvalidRequestException;
 import io.unitycatalog.server.security.SecurityContext;
+
+import java.net.URI;
 import java.net.URL;
+import java.net.http.HttpClient;
+import java.net.http.HttpRequest;
+import java.net.http.HttpResponse;
 import java.nio.file.Path;
 import java.security.interfaces.RSAPublicKey;
 import java.util.Map;
 
-import io.unitycatalog.server.service.AuthService;
 import lombok.SneakyThrows;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 public class JwksOperations {
 
-  private final WebClient webClient = WebClient.builder().build();
   private static final ObjectMapper mapper = new ObjectMapper();
   private final SecurityContext securityContext;
 
@@ -55,6 +57,13 @@ public class JwksOperations {
 
   @SneakyThrows
   private Algorithm algorithmForJwk(Jwk jwk) {
+    LOGGER.debug("Jimmi-- JWK Values '{}'", jwk);
+    if (jwk.getAlgorithm() == null  && jwk.getType().equals("RSA")) {
+      LOGGER.debug("Jimmi-- Algorithm is null, assuming RS256 for JWK '{}'", jwk.getId());
+        // If the JWK doesn't specify an algorithm, we assume RS256.
+      return Algorithm.RSA256((RSAPublicKey) jwk.getPublicKey(), null);
+    }
+
     return switch (jwk.getAlgorithm()) {
       case "RS256" -> Algorithm.RSA256((RSAPublicKey) jwk.getPublicKey(), null);
       case "RS384" -> Algorithm.RSA384((RSAPublicKey) jwk.getPublicKey(), null);
@@ -89,11 +98,15 @@ public class JwksOperations {
       var path = wellKnownConfigUrl + ".well-known/openid-configuration";
       LOGGER.debug("path: {}", path);
 
-      String response = webClient
-              .get(path)
-              .aggregate()
-              .join()
-              .contentUtf8();
+
+     HttpClient httpClient = HttpClient.newHttpClient();
+     HttpRequest httpRequest = HttpRequest.newBuilder()
+         .uri(URI.create(path))
+         .GET()
+         .build();
+
+     HttpResponse<String> httpResponse = httpClient.send(httpRequest, HttpResponse.BodyHandlers.ofString());
+     String response = httpResponse.body();
 
       // TODO: We should cache this. No need to fetch it each time.
       Map<String, Object> configMap = mapper.readValue(response, new TypeReference<>() {});
