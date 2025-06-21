@@ -345,7 +345,7 @@ def test_gemini_tool_calling_with_trace_as_retriever():
             expected_result = "page_content,metadata\ntesting,\"{'doc_uri': 'https://docs.databricks.com/', 'chunk_id': '1'}\"\n"
             assert result.value == expected_result
 
-            trace = mlflow.get_last_active_trace()
+            trace = mlflow.get_trace(mlflow.get_last_active_trace_id())
             assert trace is not None
             assert trace.data.spans[0].name == func_name
             assert trace.info.execution_time_ms is not None
