@@ -21,8 +21,8 @@ const msalConfig = {
         storeAuthStateInCookie: false,
     },
 };
-
-if (!msalConfig.auth.clientId) {
+const msEnabled = process.env.REACT_APP_MS_AUTH_ENABLED === 'true';
+if (!msalConfig.auth.clientId && msEnabled) {
     throw new Error("MSAL clientId is not defined. Please check your configuration.");
 }
 const msalInstance = new PublicClientApplication(msalConfig);
@@ -36,7 +36,6 @@ export default function LoginPage() {
     const oktaEnabled = process.env.REACT_APP_OKTA_AUTH_ENABLED === 'true';
     const keycloakEnabled =
         process.env.REACT_APP_KEYCLOAK_AUTH_ENABLED === 'true';
-    const msEnabled = process.env.REACT_APP_MS_AUTH_ENABLED === 'true';
 
   const handleGoogleSignIn = async (idToken: string) => {
     await loginWithToken(idToken).then(() => navigate(from, { replace: true }));
