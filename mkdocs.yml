@@ -59,6 +59,7 @@ nav:
           - AutoGen: ai/integrations/autogen.md
           - LiteLLM: ai/integrations/litellm.md
           - Gemini: ai/integrations/gemini.md
+          - Bedrock: ai/integrations/bedrock.md
 
 exclude_docs: |
   README.md
