@@ -35,7 +35,9 @@ import ModelVersionDetails from './pages/ModelVersionDetails';
 // As of [19/02/2025], this implementation should be updated once the following PR are merged.
 // SEE:
 // https://github.com/unitycatalog/unitycatalog/pull/809
-const authEnabled = process.env.REACT_APP_GOOGLE_AUTH_ENABLED === 'true';
+const authEnabled =
+    (process.env.REACT_APP_GOOGLE_AUTH_ENABLED || '').trim() === 'true' ||
+    (process.env.REACT_APP_MS_AUTH_ENABLED || '').trim() === 'true';
 
 const router = createBrowserRouter([
   {

@@ -9,7 +9,18 @@ import { useNavigate, useLocation } from 'react-router-dom';
 
 import { MsalProvider } from "@azure/msal-react";
 import { PublicClientApplication } from "@azure/msal-browser";
-import { msalConfig } from "../authConfig";
+
+const msalConfig = {
+    auth: {
+        clientId: process.env.REACT_APP_MS_CLIENT_ID || "",
+        authority: process.env.REACT_APP_MS_AUTHORITY || "",
+        redirectUri: "http://localhost:3000",
+    },
+    cache: {
+        cacheLocation: "localStorage",
+        storeAuthStateInCookie: false,
+    },
+};
 
 if (!msalConfig.auth.clientId) {
     throw new Error("MSAL clientId is not defined. Please check your configuration.");
@@ -17,15 +28,15 @@ if (!msalConfig.auth.clientId) {
 const msalInstance = new PublicClientApplication(msalConfig);
 
 export default function LoginPage() {
-  const { loginWithToken } = useAuth();
-  const navigate = useNavigate();
-  const location = useLocation();
-  const from = location.state?.from || '/';
-  const googleEnabled = process.env.REACT_APP_GOOGLE_AUTH_ENABLED === 'true';
-  const oktaEnabled = process.env.REACT_APP_OKTA_AUTH_ENABLED === 'true';
-  const keycloakEnabled =
-    process.env.REACT_APP_KEYCLOAK_AUTH_ENABLED === 'true';
-  const msEnabled = process.env.REACT_APP_MS_AUTH_ENABLED === 'true';
+    const {loginWithToken} = useAuth();
+    const navigate = useNavigate();
+    const location = useLocation();
+    const from = location.state?.from || '/';
+    const googleEnabled = process.env.REACT_APP_GOOGLE_AUTH_ENABLED === 'true';
+    const oktaEnabled = process.env.REACT_APP_OKTA_AUTH_ENABLED === 'true';
+    const keycloakEnabled =
+        process.env.REACT_APP_KEYCLOAK_AUTH_ENABLED === 'true';
+    const msEnabled = process.env.REACT_APP_MS_AUTH_ENABLED === 'true';
 
   const handleGoogleSignIn = async (idToken: string) => {
     await loginWithToken(idToken).then(() => navigate(from, { replace: true }));
@@ -80,7 +91,9 @@ export default function LoginPage() {
               {googleEnabled && (
                 <GoogleAuthButton onGoogleSignIn={handleGoogleSignIn} />
               )}
-              {msEnabled && <MSAuthButton onMSSignIn={handleMSSignIn}/>}
+              {msEnabled &&
+                  (<MSAuthButton onMSSignIn={handleMSSignIn} />
+              )}
               {oktaEnabled && (
                 <OktaAuthButton
                   onSuccess={(tokens: any) => console.log('tokens', tokens)}
@@ -88,7 +101,7 @@ export default function LoginPage() {
                 />
               )}
               {keycloakEnabled && <KeycloakAuthButton />}
-              {!googleEnabled && !oktaEnabled && !keycloakEnabled && (
+              {!googleEnabled && !oktaEnabled && !keycloakEnabled  && !msEnabled && (
                 <Typography>Auth providers have not been enabled</Typography>
               )}
             </Flex>

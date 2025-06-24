@@ -57,9 +57,8 @@ public class JwksOperations {
 
   @SneakyThrows
   private Algorithm algorithmForJwk(Jwk jwk) {
-    LOGGER.debug("Jimmi-- JWK Values '{}'", jwk);
     if (jwk.getAlgorithm() == null  && jwk.getType().equals("RSA")) {
-      LOGGER.debug("Jimmi-- Algorithm is null, assuming RS256 for JWK '{}'", jwk.getId());
+      LOGGER.debug("Algorithm is null, assuming RS256 for JWK '{}'", jwk.getId());
         // If the JWK doesn't specify an algorithm, we assume RS256.
       return Algorithm.RSA256((RSAPublicKey) jwk.getPublicKey(), null);
     }

@@ -1,8 +1,10 @@
 import React from "react";
 import { useMsal } from "@azure/msal-react";
-import { loginRequest } from "../../authConfig";
 import { Avatar, Button } from 'antd';
 
+const loginRequest = {
+  scopes: ["openid", "profile", "email"]
+};
 interface MSAuthButtonProps {
   onMSSignIn: (idToken: string) => Promise<void>;
 }
