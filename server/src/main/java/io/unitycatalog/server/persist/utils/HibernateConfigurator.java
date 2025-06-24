@@ -52,6 +52,7 @@ public class HibernateConfigurator {
       configuration.addAnnotatedClass(UserDAO.class);
       configuration.addAnnotatedClass(MetastoreDAO.class);
       configuration.addAnnotatedClass(CredentialDAO.class);
+      configuration.addAnnotatedClass(ExternalLocationDAO.class);
 
       ServiceRegistry serviceRegistry =
           new StandardServiceRegistryBuilder().applySettings(configuration.getProperties()).build();

@@ -293,7 +293,7 @@ async def test_autogen_tool_with_tracing_as_retriever(
 
         import mlflow
 
-        trace = mlflow.get_last_active_trace()
+        trace = mlflow.get_trace(mlflow.get_last_active_trace_id())
         assert trace is not None
         assert trace.data.spans[0].name == mock_function_info.full_name
         assert trace.info.execution_time_ms is not None
