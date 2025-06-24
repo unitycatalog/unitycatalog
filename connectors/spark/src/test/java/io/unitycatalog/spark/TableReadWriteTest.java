@@ -481,6 +481,19 @@ public class TableReadWriteTest extends BaseSparkIntegrationTest {
     session.close();
   }
 
+  @Test
+  public void testReadStream() throws IOException {
+    SparkSession session = createSparkSessionWithCatalogs(SPARK_CATALOG);
+    String path = generateTableLocation(SPARK_CATALOG, DELTA_TABLE);
+    session.sql(String.format("CREATE TABLE delta.`%s`(name STRING) USING delta", path));
+    String fullTableName = SPARK_CATALOG + "." + SCHEMA_NAME + "." + DELTA_TABLE;
+    session.sql(
+        "CREATE TABLE " + fullTableName + "(name STRING) USING delta LOCATION '" + path + "'");
+    // Just make sure we won't hit analysis error.
+    session.readStream().table(fullTableName);
+    session.close();
+  }
+
   private String generateTableLocation(String catalogName, String tableName) throws IOException {
     return new File(new File(dataDir, catalogName), tableName).getCanonicalPath();
   }
