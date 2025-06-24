@@ -20,7 +20,7 @@ lazy val javacRelease17 = Seq("--release", "17")
 lazy val scala213 = "2.13.16"
 
 lazy val deltaVersion = "4.0.0"
-lazy val sparkVersion = "3.5.3"
+lazy val sparkVersion = "4.0.0"
 
 // Library versions
 lazy val jacksonVersion = "2.17.0"
@@ -551,7 +551,7 @@ lazy val spark = (project in file("connectors/spark"))
   .dependsOn(client)
   .settings(
     name := s"$artifactNamePrefix-spark",
-    scalaVersion := scala212,
+    scalaVersion := scala213,
     crossScalaVersions := Seq(scala213),
     commonSettings,
     scalaReleaseSettings,
