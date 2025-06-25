@@ -37,9 +37,9 @@ spec:
             - /bin/sh
             - -c
             - |-
-              until nc -z {{ include "unitycatalog.server.fullname" . }} {{ .Values.server.service.port }}
+              until nc -z {{ .Values.ui.serverUrl }}
               do
-                echo "Waiting for server ({{ include "unitycatalog.server.fullname" . }}:{{ .Values.server.service.port }}) to be ready..."
+                echo "Waiting for server ({{ .Values.ui.serverUrl }}) to be ready..."
                 sleep 2
               done
       {{- with .Values.ui.deployment.extraInitContainers }}
