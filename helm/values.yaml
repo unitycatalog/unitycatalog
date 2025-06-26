@@ -299,6 +299,13 @@ server:
     type: ClusterIP
     # -- (int) Service port for the server
     port: 8080
+    # -- (object) Additional annotations for the service
+    # @default -- not set
+    # @raw
+    #
+    # [Kubernetes docs](https://kubernetes.io/docs/concepts/overview/working-with-objects/annotations/)
+    #
+    annotations:
 
   deployment:
     # -- (int) Number of replicas
@@ -569,6 +576,13 @@ ui:
     type: ClusterIP
     # -- (int) Service port for the UI
     port: 3000
+    # -- (object) Additional annotations for the service
+    # @default -- not set
+    # @raw
+    #
+    # [Kubernetes docs](https://kubernetes.io/docs/concepts/overview/working-with-objects/annotations/)
+    #
+    annotations:
 
   # -- (bool) Enable proxy API requests
   # @default -- `false`, if using ingress or httpRoute, otherwise `true`

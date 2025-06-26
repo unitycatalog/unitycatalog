@@ -207,7 +207,7 @@ spec:
               port: api
             timeoutSeconds: 10
             periodSeconds: 10
-            failureThreshold: 30 # 5 minutes
+            failureThreshold: 60 # 10 minutes
           {{- end }}
           {{- end }}
 
