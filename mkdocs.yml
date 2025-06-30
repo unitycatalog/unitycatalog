@@ -139,7 +139,5 @@ markdown_extensions:
       custom_fences:
         - name: mermaid
           class: mermaid
-          format: !!python/name:pymdownx.superfences.fence_code_format
         - name: plantuml
           class: plantuml
-          format: !!python/name:pymdownx.superfences.fence_code_format
