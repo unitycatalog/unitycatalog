@@ -219,10 +219,12 @@ spec:
               mountPath: /home/unitycatalog/etc/db
           {{- end }}
           {{- range $index, $config := .Values.storage.credentials.gcs }}
+            {{- if $config.credentialsSecretName }}
             - name: gcs-credentials-{{ $index }}
               mountPath: /home/unitycatalog/etc/conf/gcs-credentials-{{ $index }}.json
               subPath: jsonKey
               readOnly: true
+            {{- end }}
           {{- end }}
           {{- with .Values.server.deployment.extraVolumeMounts }}
             {{- toYaml . | nindent 12 }}
@@ -248,9 +250,11 @@ spec:
             claimName: {{ include "unitycatalog.server.db.filePvcName" . | quote }}
       {{- end }}
       {{- range $index, $config := .Values.storage.credentials.gcs }}
+        {{- if $config.credentialsSecretName }}
         - name: gcs-credentials-{{ $index }}
           secret:
             secretName: {{ $config.credentialsSecretName | quote }}
+        {{- end}}
       {{- end }}
       {{- with .Values.server.deployment.extraVolumes }}
         {{- toYaml . | nindent 8 }}
