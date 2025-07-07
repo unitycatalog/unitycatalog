@@ -312,7 +312,7 @@ public class TableReadWriteTest extends BaseSparkIntegrationTest {
       String tableName,
       List<String> partitionColumns) throws IOException, ApiException {
     String location = generateTableLocation(catalogName, tableName);
-    setupExternalParquetTable(tableName, location, partitionColumns);
+    setupExternalParquetTable(catalogName, tableName, location, partitionColumns);
   }
 
   private void setupExternalParquetTable(
