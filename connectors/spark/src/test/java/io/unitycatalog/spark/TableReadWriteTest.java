@@ -136,13 +136,13 @@ public class TableReadWriteTest extends BaseSparkIntegrationTest {
     SparkSession session = createSparkSessionWithCatalogs(SPARK_CATALOG);
 
     String loc1 = scheme + "://test-bucket0" + generateTableLocation(SPARK_CATALOG, PARQUET_TABLE);
-    setupExternalParquetTable(PARQUET_TABLE, loc1, new ArrayList<>(0));
+    setupExternalParquetTable(SPARK_CATALOG, PARQUET_TABLE, loc1, new ArrayList<>(0));
     String t1 = SPARK_CATALOG + "." + SCHEMA_NAME + "." + PARQUET_TABLE;
     testTableReadWrite(t1, session);
 
     String loc2 =
         scheme + "://test-bucket1" + generateTableLocation(SPARK_CATALOG, ANOTHER_PARQUET_TABLE);
-    setupExternalParquetTable(ANOTHER_PARQUET_TABLE, loc2, new ArrayList<>(0));
+    setupExternalParquetTable(SPARK_CATALOG, ANOTHER_PARQUET_TABLE, loc2, new ArrayList<>(0));
     String t2 = SPARK_CATALOG + "." + SCHEMA_NAME + "." + ANOTHER_PARQUET_TABLE;
     testTableReadWrite(t2, session);
 
