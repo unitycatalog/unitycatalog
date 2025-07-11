@@ -229,7 +229,7 @@ Nicely done!
 
 ### Delta Lake with Daft
 
-Here is an example of how you can use Delta Lake’s powerful features from Unity Catalog using [Daft](https://getdaft.io)
+Here is an example of how you can use Delta Lake’s powerful features from Unity Catalog using [Daft](https://www.daft.ai)
 
 You need to have a Unity Catalog server running to connect to.
 
