@@ -464,14 +464,14 @@ class UnitycatalogFunctionClient(BaseFunctionClient):
             )
 
         try:
-            await self.get_function_async(str(function_name), timeout=timeout)
-            if replace:
-                _logger.info(f"Function {function_name} already exists, replacing it.")
-                await self.delete_function_async(str(function_name), timeout=timeout)
-            else:
-                raise ValueError(
-                    f"Function {function_name} already exists. Set replace=True to overwrite it."
-                )
+            if await self.get_function_async(str(function_name), timeout=timeout):
+                if replace:
+                    _logger.info(f"Function {function_name} already exists, replacing it.")
+                    await self.delete_function_async(str(function_name), timeout=timeout)
+                else:
+                    raise ValueError(
+                        f"Function {function_name} already exists. Set replace=True to overwrite it."
+                    )
         except ServiceException:
             pass
 
@@ -739,7 +739,7 @@ class UnitycatalogFunctionClient(BaseFunctionClient):
 
     async def get_function_async(
         self, function_name: str, timeout: Optional[float] = None, **kwargs: Any
-    ) -> FunctionInfo:
+    ) -> Optional[FunctionInfo]:
         """
         Retrieve a function by its full name asynchronously.
 

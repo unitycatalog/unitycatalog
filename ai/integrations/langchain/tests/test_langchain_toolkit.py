@@ -296,7 +296,7 @@ def test_langchain_tool_trace_as_retriever(
         result = tool.func(x="some_string")
         assert json.loads(result)["value"] == function_output
 
-        trace = mlflow.get_last_active_trace()
+        trace = mlflow.get_trace(mlflow.get_last_active_trace_id())
         assert trace is not None
         assert trace.data.spans[0].name == mock_function_info.full_name
         assert trace.info.execution_time_ms is not None
@@ -317,7 +317,7 @@ def test_langgraph_agents(schema):
             toolkit = UCFunctionToolkit(function_names=[f"{CATALOG}.{schema}.*"], client=client)
         system_message = "You are a helpful assistant. Make sure to use tool for information."
         llm = ChatDatabricks(endpoint="databricks-meta-llama-3-1-70b-instruct")
-        agent = create_react_agent(llm, toolkit.tools, state_modifier=system_message)
+        agent = create_react_agent(llm, toolkit.tools, prompt=system_message)
         chain = agent | RunnableGenerator(wrap_output)
         # we need this mock as the serving endpoint is not stable
         with mock.patch.object(

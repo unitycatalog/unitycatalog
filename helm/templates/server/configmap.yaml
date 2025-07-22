@@ -1,0 +1,18 @@
+{{- if .Values.server.enabled -}}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: "{{ include "unitycatalog.server.fullname" . }}-config-templates"
+  labels: {{- include "unitycatalog.server.labels" . | nindent 4 }}
+data:
+  server.log4j2.properties.template: |-
+    {{- include "unitycatalog.server.log4j2ConfigTemplate" . | nindent 4 }}
+  server.properties.template: |-
+    {{- include "unitycatalog.server.configTemplate" . | nindent 4 }}
+  hibernate.properties.template: |-
+    {{- include "unitycatalog.server.hibernateConfigTemplate" . | nindent 4 }}
+  {{- if and (eq .Values.server.db.type "postgresql") .Values.server.db.postgresqlConfig.ssl.rootCert }}
+  dbcaroot.crt: |
+    {{- .Values.server.db.postgresqlConfig.ssl.rootCert | nindent 4 }}
+  {{- end }}
+{{- end -}}

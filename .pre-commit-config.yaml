@@ -13,7 +13,15 @@ repos:
     hooks:
       - id: mdformat
         args: [ --number ]
-        exclude: ".github|api|CODE_OF_CONDUCT.md"
+        exclude: ".github|api|CODE_OF_CONDUCT.md|helm"
         require_serial: true
         additional_dependencies:
           - mdformat_frontmatter
+  - repo: https://github.com/norwoodj/helm-docs
+    rev: v1.14.2
+    hooks:
+      - id: helm-docs
+        files: ^helm/
+        args:
+          - --chart-search-root=helm
+          - --output-file=README.md
