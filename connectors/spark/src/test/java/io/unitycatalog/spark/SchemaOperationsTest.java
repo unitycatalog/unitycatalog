@@ -11,10 +11,12 @@ import org.apache.spark.sql.SparkSession;
 import org.apache.spark.sql.catalyst.analysis.NoSuchNamespaceException;
 import org.junit.jupiter.api.Test;
 
+import java.io.IOException;
+
 public class SchemaOperationsTest extends BaseSparkIntegrationTest {
 
   @Test
-  public void testCreateSchema() {
+  public void testCreateSchema() throws IOException {
     try (SparkSession session = createSparkSessionWithCatalogs(CATALOG_NAME, SPARK_CATALOG)) {
       session.catalog().setCurrentCatalog(CATALOG_NAME);
       session.sql("CREATE DATABASE my_test_database;");
@@ -31,7 +33,7 @@ public class SchemaOperationsTest extends BaseSparkIntegrationTest {
   }
 
   @Test
-  public void testSetCurrentDB() {
+  public void testSetCurrentDB() throws IOException {
     try (SparkSession session = createSparkSessionWithCatalogs(SPARK_CATALOG, TestUtils.CATALOG_NAME)) {
       session.catalog().setCurrentCatalog(TestUtils.CATALOG_NAME);
       session.catalog().setCurrentDatabase(SCHEMA_NAME);
@@ -43,7 +45,7 @@ public class SchemaOperationsTest extends BaseSparkIntegrationTest {
   }
 
   @Test
-  public void testListSchema() {
+  public void testListSchema() throws IOException {
     try (SparkSession session = createSparkSessionWithCatalogs(SPARK_CATALOG)) {
       Row row = session.sql("SHOW SCHEMAS").collectAsList().get(0);
       assertThat(row.getString(0)).isEqualTo(SCHEMA_NAME);
@@ -54,7 +56,7 @@ public class SchemaOperationsTest extends BaseSparkIntegrationTest {
   }
 
   @Test
-  public void testLoadSchema() {
+  public void testLoadSchema() throws IOException {
     try (SparkSession session = createSparkSessionWithCatalogs(SPARK_CATALOG)) {
 
       Row[] rows = (Row[]) session.sql("DESC SCHEMA " + SCHEMA_NAME).collect();
