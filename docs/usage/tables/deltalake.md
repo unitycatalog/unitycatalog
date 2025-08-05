@@ -123,9 +123,63 @@ This command has multiple parameters:
 Run the command below with the correct `path/to/storage` to create a new DELTA table with 2 columns: `some_numbers` and `some_letters`.
 You can get the storage location from the `STORAGE_LOCATION` field of your `bin/uc table get ...` call above.
 
-```sh
-bin/uc table create --full_name unity.default.test --columns "some_numbers INT, some_letters STRING, some_times TIMESTAMP" --storage_location file:///Users/avriiil/Documents/git/my-forks/unitycatalog/etc/data/external/unity/default/tables/test
-```
+=== "CLI"
+    ```sh
+    bin/uc table create --full_name unity.default.test --columns "some_numbers INT, some_letters STRING, some_times TIMESTAMP" --storage_location file:///Users/avriiil/Documents/git/my-forks/unitycatalog/etc/data/external/unity/default/tables/test
+    ```
+
+=== "Java API"
+    ```java
+    import io.unitycatalog.client.ApiClient;
+    import io.unitycatalog.client.api.TablesApi;
+    import io.unitycatalog.client.model.CreateTable;
+    import io.unitycatalog.client.model.ColumnInfo;
+    import io.unitycatalog.client.model.TableType;
+    import io.unitycatalog.client.model.DataSourceFormat;
+    import io.unitycatalog.client.model.ColumnTypeName;
+    import java.util.List;
+
+    // Initialize the API client
+    ApiClient apiClient = new ApiClient();
+    apiClient.setBasePath("http://localhost:8080/api/2.1/unity-catalog");
+    TablesApi tablesApi = new TablesApi(apiClient);
+
+    // Create column definitions
+    ColumnInfo someNumbersColumn = new ColumnInfo()
+        .name("some_numbers")
+        .typeText("INT")
+        .typeName(ColumnTypeName.INT)
+        .position(0)
+        .nullable(true);
+
+    ColumnInfo someLettersColumn = new ColumnInfo()
+        .name("some_letters")
+        .typeText("STRING")
+        .typeName(ColumnTypeName.STRING)
+        .position(1)
+        .nullable(true);
+
+    ColumnInfo someTimesColumn = new ColumnInfo()
+        .name("some_times")
+        .typeText("TIMESTAMP")
+        .typeName(ColumnTypeName.TIMESTAMP)
+        .position(2)
+        .nullable(true);
+
+    // Create the table request
+    CreateTable createTableRequest = new CreateTable()
+        .name("test")
+        .catalogName("unity")
+        .schemaName("default")
+        .columns(List.of(someNumbersColumn, someLettersColumn, someTimesColumn))
+        .storageLocation("file:///Users/avriiil/Documents/git/my-forks/unitycatalog/etc/data/external/unity/default/tables/test")
+        .tableType(TableType.EXTERNAL)
+        .dataSourceFormat(DataSourceFormat.DELTA);
+
+    // Create the table
+    TableInfo tableInfo = tablesApi.createTable(createTableRequest);
+    System.out.println("Table created: " + tableInfo.getTableId());
+    ```
 
 This should output:
 
