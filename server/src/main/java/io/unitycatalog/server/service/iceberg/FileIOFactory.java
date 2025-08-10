@@ -2,6 +2,7 @@ package io.unitycatalog.server.service.iceberg;
 
 import com.google.auth.oauth2.AccessToken;
 import io.unitycatalog.server.exception.BaseException;
+import io.unitycatalog.server.exception.ErrorCode;
 import io.unitycatalog.server.service.credential.CloudCredentialVendor;
 import io.unitycatalog.server.utils.ServerProperties;
 import io.unitycatalog.server.service.credential.CredentialContext;
@@ -87,19 +88,37 @@ public class FileIOFactory {
     S3StorageConfig s3StorageConfig = s3Configurations.get(context.getStorageBase());
 
     S3FileIO s3FileIO =
-        new S3FileIO(() -> getS3Client(getAwsCredentialsProvider(context), s3StorageConfig.getRegion()));
+        new S3FileIO(() -> getS3Client(getAwsCredentialsProvider(context), s3StorageConfig));
 
     s3FileIO.initialize(Map.of());
 
     return s3FileIO;
   }
 
-  protected S3Client getS3Client(AwsCredentialsProvider awsCredentialsProvider, String region) {
-    return S3Client.builder()
-        .region(Region.of(region))
-        .credentialsProvider(awsCredentialsProvider)
-        .forcePathStyle(false)
-        .build();
+  protected S3Client getS3Client(AwsCredentialsProvider awsCredentialsProvider, S3StorageConfig s3StorageConfig) {
+    var s3ClientBuilder = S3Client.builder()
+        .region(Region.of(s3StorageConfig.getRegion()))
+        .credentialsProvider(awsCredentialsProvider);
+    
+    // Configure path style access if specified (required for MinIO and most S3-compatible services)
+    if (s3StorageConfig.getPathStyleAccess() != null) {
+      s3ClientBuilder.forcePathStyle(s3StorageConfig.getPathStyleAccess());
+    } else {
+      s3ClientBuilder.forcePathStyle(false);
+    }
+    
+    // Configure custom S3 endpoint if specified
+    if (s3StorageConfig.getS3Endpoint() != null && !s3StorageConfig.getS3Endpoint().isEmpty()) {
+      try {
+        URI s3EndpointUri = URI.create(s3StorageConfig.getS3Endpoint());
+        s3ClientBuilder.endpointOverride(s3EndpointUri);
+      } catch (IllegalArgumentException e) {
+        throw new BaseException(ErrorCode.INVALID_ARGUMENT, 
+            "Invalid S3 endpoint URL: " + s3StorageConfig.getS3Endpoint());
+      }
+    }
+    
+    return s3ClientBuilder.build();
   }
 
   private AwsCredentialsProvider getAwsCredentialsProvider(CredentialContext context) {

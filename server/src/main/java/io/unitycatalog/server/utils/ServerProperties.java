@@ -69,10 +69,20 @@ public class ServerProperties {
       String accessKey = properties.getProperty("s3.accessKey." + i);
       String secretKey = properties.getProperty("s3.secretKey." + i);
       String sessionToken = properties.getProperty("s3.sessionToken." + i);
+      String s3Endpoint = properties.getProperty("s3.endpoint." + i);
+      String stsEndpoint = properties.getProperty("s3.stsEndpoint." + i);
+      String pathStyleAccessStr = properties.getProperty("s3.pathStyleAccess." + i);
+      String sslEnabledStr = properties.getProperty("s3.sslEnabled." + i);
+
       if ((bucketPath == null || region == null || awsRoleArn == null)
           && (accessKey == null || secretKey == null || sessionToken == null)) {
         break;
       }
+
+      Boolean pathStyleAccess =
+          pathStyleAccessStr != null ? Boolean.parseBoolean(pathStyleAccessStr) : null;
+      Boolean sslEnabled = sslEnabledStr != null ? Boolean.parseBoolean(sslEnabledStr) : null;
+
       S3StorageConfig s3StorageConfig =
           S3StorageConfig.builder()
               .bucketPath(bucketPath)
@@ -81,6 +91,10 @@ public class ServerProperties {
               .accessKey(accessKey)
               .secretKey(secretKey)
               .sessionToken(sessionToken)
+              .s3Endpoint(s3Endpoint)
+              .stsEndpoint(stsEndpoint)
+              .pathStyleAccess(pathStyleAccess)
+              .sslEnabled(sslEnabled)
               .build();
       s3BucketConfigMap.put(bucketPath, s3StorageConfig);
       i++;

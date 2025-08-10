@@ -69,9 +69,22 @@ public class TableConfigService {
     S3StorageConfig s3StorageConfig = s3Configurations.get(context.getStorageBase());
     Credentials awsCredential = cloudCredentialVendor.vendAwsCredential(context);
 
-    return Map.of(S3FileIOProperties.ACCESS_KEY_ID, awsCredential.accessKeyId(),
-      S3FileIOProperties.SECRET_ACCESS_KEY, awsCredential.secretAccessKey(),
-      S3FileIOProperties.SESSION_TOKEN, awsCredential.sessionToken(),
-      AwsClientProperties.CLIENT_REGION, s3StorageConfig.getRegion());
+    var configMap = new java.util.HashMap<String, String>();
+    configMap.put(S3FileIOProperties.ACCESS_KEY_ID, awsCredential.accessKeyId());
+    configMap.put(S3FileIOProperties.SECRET_ACCESS_KEY, awsCredential.secretAccessKey());
+    configMap.put(S3FileIOProperties.SESSION_TOKEN, awsCredential.sessionToken());
+    configMap.put(AwsClientProperties.CLIENT_REGION, s3StorageConfig.getRegion());
+    
+    // Add custom S3 endpoint configuration if specified
+    if (s3StorageConfig.getS3Endpoint() != null && !s3StorageConfig.getS3Endpoint().isEmpty()) {
+      configMap.put(S3FileIOProperties.ENDPOINT, s3StorageConfig.getS3Endpoint());
+    }
+    
+    // Configure path style access if specified
+    if (s3StorageConfig.getPathStyleAccess() != null && s3StorageConfig.getPathStyleAccess()) {
+      configMap.put(S3FileIOProperties.PATH_STYLE_ACCESS, "true");
+    }
+    
+    return configMap;
   }
 }

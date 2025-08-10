@@ -64,17 +64,51 @@ The server config file is at the location `etc/conf/server.properties` (relative
 For enabling server to vend AWS temporary credentials to access S3 buckets (for accessing External tables/volumes),
 the following parameters need to be set:
 
+### Basic S3 Configuration
+
 - `s3.bucketPath.i`: The S3 path of the bucket where the data is stored. Should be in the format `s3://<bucket-name>`.
-- `s3.accessKey.i`: The AWS access key, an identifier of temp credentials.
-- `s3.secretKey.i`: The AWS secret key used to sign API requests to AWS.
-- `s3.sessionToken.i`: THE AWS session token, used to verify that the request is coming from a trusted source.
+- `s3.region.i`: The AWS region where the bucket is located.
+- `s3.awsRoleArn.i`: The AWS IAM role ARN to assume for generating temporary credentials.
+- `s3.accessKey.i`: (Optional) The AWS access key. If not provided, uses DefaultCredentialsProviderChain.
+- `s3.secretKey.i`: (Optional) The AWS secret key used to sign API requests to AWS.
+- `s3.sessionToken.i`: (Optional) The AWS session token. If provided, these credentials are used directly without downscoping.
+
+### Advanced S3 Configuration (for S3-compatible services like MinIO)
+
+- `s3.endpoint.i`: (Optional) Custom S3 endpoint URL for S3-compatible services (e.g., `http://minio:9000`).
+- `s3.stsEndpoint.i`: (Optional) Custom STS endpoint URL for services with STS support (e.g., `http://minio:9000`).
+- `s3.pathStyleAccess.i`: (Optional) Enable path-style access (`true`/`false`). Required for MinIO and some S3-compatible services.
+- `s3.sslEnabled.i`: (Optional) Enable/disable SSL for S3 connections (`true`/`false`).
 
 You can configure multiple buckets by incrementing the index *i* in the above parameters. The starting index should
 be 0.
 
-All the above parameters are required for each index. For vending temporary credentials, the server matches the bucket
-path in the table/volume storage_location with the bucket path in the configuration and returns the corresponding
-access key, secret key, and session token.
+### Example Configurations
+
+#### AWS S3 Configuration
+```properties
+s3.bucketPath.0=s3://my-bucket
+s3.region.0=us-west-2
+s3.awsRoleArn.0=arn:aws:iam::123456789012:role/MyRole
+s3.accessKey.0=AKIAIOSFODNN7EXAMPLE
+s3.secretKey.0=wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY
+```
+
+#### MinIO Configuration
+```properties
+s3.bucketPath.1=s3://minio-bucket
+s3.region.1=us-east-1
+s3.awsRoleArn.1=arn:minio:iam::account:role/your-role
+s3.accessKey.1=minioadmin
+s3.secretKey.1=minioadmin
+s3.endpoint.1=http://localhost:9000
+s3.stsEndpoint.1=http://localhost:9000
+s3.pathStyleAccess.1=true
+s3.sslEnabled.1=false
+```
+
+For vending temporary credentials, the server matches the bucket path in the table/volume storage_location with the 
+bucket path in the configuration and returns the corresponding credentials based on the configuration.
 
 Any params that are not required can be left empty.
 
