@@ -53,3 +53,5 @@ metastore_db/
 spark-warehouse/
 derby.log
 .pr-docs/
+etc/conf/server.properties.local
+test-with-local-config.sh
