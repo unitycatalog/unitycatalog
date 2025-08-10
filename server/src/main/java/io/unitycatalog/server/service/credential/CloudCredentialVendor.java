@@ -6,6 +6,7 @@ import io.unitycatalog.server.exception.ErrorCode;
 import io.unitycatalog.server.model.*;
 import io.unitycatalog.server.persist.utils.FileOperations;
 import io.unitycatalog.server.service.credential.aws.AwsCredentialVendor;
+import io.unitycatalog.server.service.credential.aws.S3StorageConfig;
 import io.unitycatalog.server.service.credential.azure.AzureCredential;
 import io.unitycatalog.server.service.credential.azure.AzureCredentialVendor;
 import io.unitycatalog.server.service.credential.gcp.GcpCredentialVendor;
@@ -76,6 +77,10 @@ public class CloudCredentialVendor {
 
   public Credentials vendAwsCredential(CredentialContext context) {
     return awsCredentialVendor.vendAwsCredentials(context);
+  }
+  
+  public S3StorageConfig getS3StorageConfig(String storageBase) {
+    return awsCredentialVendor.getS3StorageConfig(storageBase);
   }
 
   public AzureCredential vendAzureCredential(CredentialContext context) {

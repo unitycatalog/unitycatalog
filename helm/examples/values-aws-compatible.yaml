@@ -1,0 +1,60 @@
+# Example values for Unity Catalog with AWS-compatible services
+# This configuration demonstrates using custom S3-compatible endpoints
+# that might be provided by cloud providers or enterprise storage solutions
+
+storage:
+  modelStorageRoot: s3://unity-catalog/models
+  
+  credentials:
+    s3:
+    # Example: Wasabi Cloud Storage
+    - bucketPath: s3://my-wasabi-bucket
+      region: us-east-1
+      awsRoleArn: arn:aws:iam::123456789012:role/unity-catalog-role
+      credentialsSecretName: wasabi-credentials
+      endpoint: https://s3.wasabisys.com
+      # Wasabi uses virtual-hosted-style URLs
+      pathStyleAccess: false
+      sslEnabled: true
+
+    # Example: DigitalOcean Spaces
+    - bucketPath: s3://my-spaces-bucket
+      region: nyc3
+      credentialsSecretName: digitalocean-credentials
+      endpoint: https://nyc3.digitaloceanspaces.com
+      pathStyleAccess: false
+      sslEnabled: true
+
+    # Example: Backblaze B2
+    - bucketPath: s3://my-b2-bucket
+      region: us-west-002
+      credentialsSecretName: backblaze-credentials
+      endpoint: https://s3.us-west-002.backblazeb2.com
+      pathStyleAccess: false
+      sslEnabled: true
+
+    # Example: Custom enterprise S3 service with STS
+    - bucketPath: s3://enterprise-bucket
+      region: corp-region-1
+      awsRoleArn: arn:aws:iam::999999999999:role/enterprise-role
+      credentialsSecretName: enterprise-credentials
+      endpoint: https://s3.corp.example.com
+      stsEndpoint: https://sts.corp.example.com
+      # Some enterprise services might require path-style
+      pathStyleAccess: true
+      sslEnabled: true
+
+# Example secret creation:
+# kubectl create secret generic wasabi-credentials \
+#   --from-literal=accessKey=YOUR_ACCESS_KEY \
+#   --from-literal=secretKey=YOUR_SECRET_KEY
+
+server:
+  db:
+    type: postgresql
+    postgresqlConfig:
+      host: postgres.database.svc.cluster.local
+      port: 5432
+      dbName: unitycatalog
+      username: unitycatalog
+      passwordSecretName: postgres-password

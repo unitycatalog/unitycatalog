@@ -84,6 +84,32 @@ public class DeltaKernelUtils {
       conf.set("fs.s3a.session.token", awsTempCredentials.getSessionToken());
       conf.set("fs.s3a.impl", "org.apache.hadoop.fs.s3a.S3AFileSystem");
       conf.set("fs.s3a.path.style.access", "true");
+
+      // Support custom S3 endpoints for S3-compatible services (MinIO, Ceph, etc.)
+      // Read from environment variable or server configuration
+      String s3Endpoint = System.getenv("UC_S3_ENDPOINT");
+
+      // Alternative: read from server properties (for future use)
+      // String s3Endpoint = System.getenv("UC_S3_ENDPOINT");
+      // if (s3Endpoint == null) {
+      //   s3Endpoint = System.getProperty("uc.s3.endpoint");
+      // }
+
+      if (s3Endpoint != null && !s3Endpoint.isEmpty()) {
+        conf.set("fs.s3a.endpoint", s3Endpoint);
+        // Also set connection SSL based on endpoint protocol
+        if (s3Endpoint.startsWith("https://")) {
+          conf.set("fs.s3a.connection.ssl.enabled", "true");
+        } else if (s3Endpoint.startsWith("http://")) {
+          conf.set("fs.s3a.connection.ssl.enabled", "false");
+        }
+
+        // Additional settings that might be needed for non-AWS S3 services
+        conf.set(
+            "fs.s3a.aws.credentials.provider",
+            "org.apache.hadoop.fs.s3a.TemporaryAWSCredentialsProvider");
+        conf.set("fs.s3a.endpoint.region", "us-east-1");
+      }
     } else if (tablePathUri.getScheme().equals("file")) {
       conf.set("fs.file.impl", "org.apache.hadoop.fs.LocalFileSystem");
     } else {
@@ -99,6 +125,13 @@ public class DeltaKernelUtils {
       Table table = Table.forPath(engine, substituteSchemeForS3(tablePath));
       Snapshot snapshot = table.getLatestSnapshot(engine);
       StructType readSchema = snapshot.getSchema();
+
+      // Check if we have too many columns for ASCII table display
+      if (readSchema.fields().size() > 10) {
+        // For tables with many columns, use a simpler display format
+        return readDeltaTableSimple(engine, readSchema, snapshot, maxResults);
+      }
+
       Object[] schema =
           readSchema.fields().stream()
               .map(x -> x.getName() + "(" + x.getDataType().toString() + ")")
@@ -122,6 +155,45 @@ public class DeltaKernelUtils {
       return at.render();
     } catch (Exception e) {
       throw new IllegalArgumentException("Failed to read delta table", e);
+    }
+  }
+
+  private static String readDeltaTableSimple(
+      Engine engine, StructType readSchema, Snapshot snapshot, int maxResults) {
+    try {
+      StringBuilder sb = new StringBuilder();
+      sb.append("Table Schema:\n");
+      readSchema
+          .fields()
+          .forEach(
+              field ->
+                  sb.append("  - ")
+                      .append(field.getName())
+                      .append(" (")
+                      .append(field.getDataType())
+                      .append(")\n"));
+
+      sb.append("\nData Preview (").append(maxResults).append(" rows):\n");
+      sb.append("=".repeat(80)).append("\n");
+
+      ScanBuilder scanBuilder = snapshot.getScanBuilder().withReadSchema(readSchema);
+      List<Row> rowData =
+          DeltaKernelReadUtils.readData(engine, readSchema, scanBuilder.build(), maxResults);
+
+      int rowNum = 1;
+      for (Row row : rowData) {
+        sb.append("Row ").append(rowNum++).append(":\n");
+        for (int i = 0; i < readSchema.fields().size(); i++) {
+          String fieldName = readSchema.at(i).getName();
+          String value = DeltaKernelReadUtils.getValue(row, i);
+          sb.append("  ").append(fieldName).append(": ").append(value).append("\n");
+        }
+        sb.append("-".repeat(40)).append("\n");
+      }
+
+      return sb.toString();
+    } catch (Exception e) {
+      throw new RuntimeException("Failed to read table data", e);
     }
   }
 

@@ -1,0 +1,36 @@
+# Example values for Unity Catalog with MinIO
+# This is an example configuration for using Unity Catalog with MinIO
+# MinIO is an S3-compatible object storage service
+
+storage:
+  modelStorageRoot: s3://unity-catalog/models
+  
+  credentials:
+    s3:
+    # Configuration for MinIO bucket
+    - bucketPath: s3://unity-catalog
+      region: us-east-1
+      # MinIO doesn't use IAM roles, so we don't set awsRoleArn
+      credentialsSecretName: minio-credentials
+      # MinIO endpoint
+      endpoint: http://minio.minio-namespace.svc.cluster.local:9000
+      # MinIO requires path-style access
+      pathStyleAccess: true
+      # Disable SSL for internal cluster communication
+      sslEnabled: false
+
+# Example secret for MinIO credentials:
+# kubectl create secret generic minio-credentials \
+#   --from-literal=accessKey=minioadmin \
+#   --from-literal=secretKey=minioadmin
+
+server:
+  db:
+    # Use PostgreSQL for production deployments
+    type: postgresql
+    postgresqlConfig:
+      host: postgres.database-namespace.svc.cluster.local
+      port: 5432
+      dbName: unitycatalog
+      username: unitycatalog
+      passwordSecretName: postgres-password

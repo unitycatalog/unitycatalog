@@ -47,3 +47,9 @@ __pycache__
 dist/
 *.egg-info/
 Pipfile
+
+# Spark test artifacts
+metastore_db/
+spark-warehouse/
+derby.log
+.pr-docs/

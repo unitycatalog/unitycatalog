@@ -1,0 +1,44 @@
+# Example values for Unity Catalog with LocalStack
+# This configuration is for local development and testing with LocalStack
+# LocalStack provides a local AWS cloud stack for development
+
+storage:
+  modelStorageRoot: s3://unity-catalog/models
+  
+  credentials:
+    s3:
+    # LocalStack configuration
+    - bucketPath: s3://unity-catalog
+      region: us-east-1
+      # LocalStack doesn't require real AWS credentials
+      credentialsSecretName: localstack-credentials
+      # LocalStack endpoint (default port 4566)
+      endpoint: http://localstack.localstack-namespace.svc.cluster.local:4566
+      # LocalStack STS endpoint
+      stsEndpoint: http://localstack.localstack-namespace.svc.cluster.local:4566
+      # LocalStack requires path-style access
+      pathStyleAccess: true
+      # No SSL for local development
+      sslEnabled: false
+
+# Example secret for LocalStack (can use dummy credentials):
+# kubectl create secret generic localstack-credentials \
+#   --from-literal=accessKey=test \
+#   --from-literal=secretKey=test
+
+server:
+  # For local development, file database is sufficient
+  db:
+    type: file
+    fileConfig:
+      persistence:
+        enabled: true
+        size: 1Gi
+
+  # Development log level
+  logLevel: debug
+
+# UI configuration for development
+ui:
+  enabled: true
+  proxyApiRequests: true

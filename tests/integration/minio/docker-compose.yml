@@ -1,0 +1,47 @@
+services:
+  minio:
+    image: minio/minio:latest
+    container_name: uc-minio
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    environment:
+      MINIO_ROOT_USER: minioadmin
+      MINIO_ROOT_PASSWORD: minioadmin
+      MINIO_REGION_NAME: us-east-1
+    command: server /data --console-address ":9001"
+    volumes:
+      - minio_data:/data
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - uc-network
+
+  # Create bucket and setup after MinIO starts
+  minio-setup:
+    image: minio/mc:latest
+    container_name: uc-minio-setup
+    depends_on:
+      minio:
+        condition: service_healthy
+    entrypoint: >
+      /bin/sh -c "
+      /usr/bin/mc config host add myminio http://minio:9000 minioadmin minioadmin;
+      /usr/bin/mc mb myminio/unity-catalog-test || true;
+      /usr/bin/mc mb myminio/delta-tables || true;
+      /usr/bin/mc anonymous set download myminio/unity-catalog-test;
+      /usr/bin/mc anonymous set download myminio/delta-tables;
+      echo 'MinIO buckets created successfully';
+      "
+    networks:
+      - uc-network
+
+volumes:
+  minio_data:
+
+networks:
+  uc-network:
+    driver: bridge

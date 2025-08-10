@@ -83,6 +83,16 @@ public class DeltaKernelReadUtils {
       return new String(row.getBinary(columnOrdinal));
     } else if (dataType instanceof DecimalType) {
       return row.getDecimal(columnOrdinal).toString();
+    } else if (dataType.toString().equalsIgnoreCase("timestamp_ntz")) {
+      // TimestampNTZ (timestamp without timezone) - stored as microseconds since epoch
+      // but interpreted without timezone adjustments
+      long microSecsSinceEpoch = row.getLong(columnOrdinal);
+      LocalDateTime dateTime =
+          LocalDateTime.ofEpochSecond(
+              microSecsSinceEpoch / 1_000_000 /* epochSecond */,
+              (int) (1000 * (microSecsSinceEpoch % 1_000_000)) /* nanoOfSecond */,
+              ZoneOffset.UTC);
+      return dateTime.toString();
     } else {
       throw new UnsupportedOperationException("unsupported data type: " + dataType);
     }

@@ -1,0 +1,45 @@
+# Example values for Unity Catalog with Ceph Object Storage
+# This is an example configuration for using Unity Catalog with Ceph RGW (RADOS Gateway)
+# Ceph RGW provides an S3-compatible interface to Ceph storage
+
+storage:
+  modelStorageRoot: s3://unity-catalog/models
+  
+  credentials:
+    s3:
+    # Configuration for Ceph RGW
+    - bucketPath: s3://unity-catalog
+      region: us-east-1
+      credentialsSecretName: ceph-credentials
+      # Ceph RGW endpoint
+      endpoint: https://ceph-rgw.storage.example.com
+      # Optional: Custom STS endpoint if using Ceph with STS
+      stsEndpoint: https://ceph-sts.storage.example.com
+      # Ceph can use both path-style and virtual-hosted-style
+      # Set to true if your Ceph setup requires path-style
+      pathStyleAccess: false
+      # Enable SSL for production
+      sslEnabled: true
+
+    # Additional bucket configuration
+    - bucketPath: s3://data-lake
+      region: us-east-1
+      credentialsSecretName: ceph-credentials-datalake
+      endpoint: https://ceph-rgw.storage.example.com
+      pathStyleAccess: false
+      sslEnabled: true
+
+# Example secret for Ceph credentials:
+# kubectl create secret generic ceph-credentials \
+#   --from-literal=accessKey=YOUR_CEPH_ACCESS_KEY \
+#   --from-literal=secretKey=YOUR_CEPH_SECRET_KEY
+
+server:
+  db:
+    type: postgresql
+    postgresqlConfig:
+      host: postgres.database.svc.cluster.local
+      port: 5432
+      dbName: unitycatalog
+      username: unitycatalog
+      passwordSecretName: postgres-password

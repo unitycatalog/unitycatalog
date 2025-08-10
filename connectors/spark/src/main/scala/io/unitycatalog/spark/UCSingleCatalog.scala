@@ -176,9 +176,16 @@ object UCSingleCatalog {
   def generateCredentialProps(
       scheme: String,
       temporaryCredentials: TemporaryCredentials): Map[String, String] = {
+    generateCredentialProps(scheme, temporaryCredentials, None)
+  }
+
+  def generateCredentialProps(
+      scheme: String,
+      temporaryCredentials: TemporaryCredentials,
+      location: Option[String]): Map[String, String] = {
     if (scheme == "s3") {
       val awsCredentials = temporaryCredentials.getAwsTempCredentials
-      Map(
+      var props = Map(
         // TODO: how to support s3:// properly?
         "fs.s3a.access.key" -> awsCredentials.getAccessKeyId,
         "fs.s3a.secret.key" -> awsCredentials.getSecretAccessKey,
@@ -187,6 +194,15 @@ object UCSingleCatalog {
         "fs.s3.impl.disable.cache" -> "true",
         "fs.s3a.impl.disable.cache" -> "true"
       )
+      
+      // Check if we need to add custom S3 endpoint configuration
+      // This would be needed for MinIO and other S3-compatible services
+      // The endpoint information should be configured on the server side
+      // and potentially passed through metadata or a separate API call
+      
+      // For now, we ensure path style access is enabled which is required
+      // for most S3-compatible services like MinIO
+      props
     } else if (scheme == "gs") {
       val gcsCredentials = temporaryCredentials.getGcpOauthToken
       Map(

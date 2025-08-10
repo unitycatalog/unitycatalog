@@ -22,6 +22,18 @@ s3.region.{{ $index }}={{ $config.region }}
 s3.awsRoleArn.{{ $index }}={{ $config.awsRoleArn }}
 s3.accessKey.{{ $index }}=${S3_ACCESS_KEY_{{ $index }}}
 s3.secretKey.{{ $index }}=${S3_SECRET_KEY_{{ $index }}}
+{{- if $config.endpoint }}
+s3.endpoint.{{ $index }}={{ $config.endpoint }}
+{{- end }}
+{{- if $config.stsEndpoint }}
+s3.stsEndpoint.{{ $index }}={{ $config.stsEndpoint }}
+{{- end }}
+{{- if $config.pathStyleAccess }}
+s3.pathStyleAccess.{{ $index }}={{ $config.pathStyleAccess }}
+{{- end }}
+{{- if hasKey $config "sslEnabled" }}
+s3.sslEnabled.{{ $index }}={{ $config.sslEnabled }}
+{{- end }}
 {{- end }}
 
 {{- range $index, $config := .Values.storage.credentials.adls }}

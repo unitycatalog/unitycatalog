@@ -1099,11 +1099,28 @@ s3:
   region: us-east-1
   awsRoleArn: arn:aws:iam::123456789012:role/my-role
   credentialsSecretName: my-bucket-secret
+  # Optional: Custom S3 endpoint for S3-compatible services (MinIO, Ceph, etc.)
+  endpoint: https://minio.example.com
+  # Optional: Custom STS endpoint for S3-compatible services
+  stsEndpoint: https://sts.example.com
+  # Optional: Use path-style access (default: false)
+  pathStyleAccess: true
+  # Optional: Enable/disable SSL for S3 endpoint (default: true)
+  sslEnabled: false
 ```
 
 Credential secret must contain the following keys:
 - `accessKey`: AWS access key
 - `secretKey`: AWS secret key
+
+### S3-Compatible Services Configuration
+
+Unity Catalog supports S3-compatible object storage services like MinIO, Ceph, and others. Use the following additional fields:
+
+- `endpoint`: Custom S3 endpoint URL (e.g., `https://minio.example.com`)
+- `stsEndpoint`: Custom STS endpoint for credential vending
+- `pathStyleAccess`: Set to `true` for path-style access (required for MinIO and some other services)
+- `sslEnabled`: Set to `false` to disable SSL (useful for local testing)
 </td>
 		</tr>
 		<tr>

@@ -1,0 +1,27 @@
+# Unity Catalog Server Configuration for MinIO Testing
+server.env=test
+server.authorization=disable
+
+# Storage root for models (using local storage for simplicity)
+storage-root.models=file:/tmp/ucroot-test
+
+# MinIO S3 Configuration
+# Configuration for unity-catalog-test bucket
+s3.bucketPath.0=s3://unity-catalog-test
+s3.region.0=us-east-1
+s3.accessKey.0=minioadmin
+s3.secretKey.0=minioadmin
+s3.endpoint.0=http://localhost:9000
+s3.stsEndpoint.0=http://localhost:9000
+s3.pathStyleAccess.0=true
+s3.sslEnabled.0=false
+
+# Configuration for delta-tables bucket
+s3.bucketPath.1=s3://delta-tables
+s3.region.1=us-east-1
+s3.accessKey.1=minioadmin
+s3.secretKey.1=minioadmin
+s3.endpoint.1=http://localhost:9000
+s3.stsEndpoint.1=http://localhost:9000
+s3.pathStyleAccess.1=true
+s3.sslEnabled.1=false
