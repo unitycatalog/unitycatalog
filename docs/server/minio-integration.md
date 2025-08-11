@@ -69,6 +69,7 @@ Use the MinIO client (`mc`) to set up IAM policies and roles:
 mc alias set myminio http://localhost:9000 minioadmin minioadmin
 
 # Create a policy for data access
+# For bash/zsh:
 cat > /tmp/data-access-policy.json <<EOF
 {
   "Version": "2012-10-17",
@@ -89,6 +90,26 @@ cat > /tmp/data-access-policy.json <<EOF
   ]
 }
 EOF
+
+# For fish shell users, use echo with quotes:
+echo '{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Effect": "Allow",
+      "Action": [
+        "s3:GetObject",
+        "s3:PutObject",
+        "s3:DeleteObject",
+        "s3:ListBucket"
+      ],
+      "Resource": [
+        "arn:aws:s3:::unity-catalog-data/*",
+        "arn:aws:s3:::unity-catalog-data"
+      ]
+    }
+  ]
+}' > /tmp/data-access-policy.json
 
 # Create the policy
 mc admin policy create myminio data-access-policy /tmp/data-access-policy.json
