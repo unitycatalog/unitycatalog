@@ -70,6 +70,23 @@ To have Unity Catalog work with cloud object storage as the storage location for
     gcs.jsonKeyFilePath.0=/path/to/<SECRET>/gcp-key-uc-testing.json
     ```
 
+=== "S3-Compatible Services (MinIO, Ceph, etc.)"
+
+    ```sh
+    ## S3 Storage Config for S3-compatible services
+    s3.bucketPath.0=<S3_BUCKET>
+    s3.region.0=<S3_REGION>
+    s3.awsRoleArn.0=<S3_ROLE>  # Optional for non-AWS services
+    s3.accessKey.0=<SECRET>
+    s3.secretKey.0=<SECRET>
+    
+    # Additional configuration for S3-compatible services
+    s3.endpoint.0=<S3_ENDPOINT>  # e.g., http://minio:9000
+    s3.stsEndpoint.0=<STS_ENDPOINT>  # Optional, if different from S3 endpoint
+    s3.pathStyleAccess.0=true  # Required for MinIO and most S3-compatible services
+    s3.sslEnabled.0=false  # Set to true for HTTPS endpoints
+    ```
+
 ### [Optional] Restart Unity Catalog Server
 
 If the UC Server is already started, please restart it to account for the cloud storage server properties.
@@ -186,6 +203,35 @@ command.
         --conf "spark.sql.catalog.<catalog_name>.token=" \
         --conf "spark.sql.defaultCatalog=<catalog_name>"
     ```
+
+=== "S3-Compatible Services (MinIO, Ceph, etc.)"
+
+    ```sh
+    bin/spark-sql --name "minio-uc-test" \
+        --master "local[*]" \
+        --packages "org.apache.hadoop:hadoop-aws:3.4.1,io.delta:delta-spark_2.13:4.0.0,io.unitycatalog:unitycatalog-spark_2.13:0.3.0" \
+        --conf "spark.sql.extensions=io.delta.sql.DeltaSparkSessionExtension" \
+        --conf "spark.hadoop.fs.s3a.impl=org.apache.hadoop.fs.s3a.S3AFileSystem" \
+        --conf "spark.hadoop.fs.s3a.endpoint=<S3_ENDPOINT>" \
+        --conf "spark.hadoop.fs.s3a.path.style.access=true" \
+        --conf "spark.hadoop.fs.s3a.connection.ssl.enabled=<true|false>" \
+        --conf "spark.sql.catalog.<catalog_name>=io.unitycatalog.spark.UCSingleCatalog" \
+        --conf "spark.sql.catalog.<catalog_name>.uri=http://localhost:8080" \
+        --conf "spark.sql.catalog.<catalog_name>.token=" \
+        --conf "spark.sql.defaultCatalog=<catalog_name>"
+    ```
+
+    !!! info "Important Configuration for S3-Compatible Services"
+        When using S3-compatible services like MinIO or Ceph, you must configure both Unity Catalog server 
+        AND Spark with the same S3 endpoint:
+        
+        - **Unity Catalog Server**: Handles credential vending via STS AssumeRole
+        - **Spark Client**: Needs the endpoint to access the actual data
+        
+        Key S3 configuration parameters:
+        - `spark.hadoop.fs.s3a.endpoint`: The S3-compatible service endpoint (e.g., `http://minio:9000`)
+        - `spark.hadoop.fs.s3a.path.style.access`: Set to `true` for MinIO and most S3-compatible services
+        - `spark.hadoop.fs.s3a.connection.ssl.enabled`: Match your endpoint protocol (`http`=`false`, `https`=`true`)
 
 ## Using Spark SQL to query Unity Catalog schemas and tables
 
