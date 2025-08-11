@@ -2,6 +2,43 @@
 
 This guide explains how to configure Unity Catalog to work with MinIO, an S3-compatible object storage service that supports AWS STS (Security Token Service) for temporary credential generation.
 
+## Quick Start: Running MinIO Locally with Docker
+
+For local testing and development, you can quickly spin up a MinIO instance using Docker:
+
+```bash
+# Run MinIO container with persistent storage
+docker run -d \
+  --name minio \
+  -p 9000:9000 \
+  -p 9001:9001 \
+  -e MINIO_ROOT_USER=minioadmin \
+  -e MINIO_ROOT_PASSWORD=minioadmin \
+  -v minio-data:/data \
+  quay.io/minio/minio:latest \
+  server /data --console-address ":9001"
+
+# Create the Unity Catalog bucket
+docker exec minio mc alias set local http://localhost:9000 minioadmin minioadmin
+docker exec minio mc mb local/unity-catalog-data
+
+# Verify MinIO is running
+curl http://localhost:9000/minio/health/live
+```
+
+After running these commands:
+- MinIO API will be available at: `http://localhost:9000`
+- MinIO Console (Web UI) will be available at: `http://localhost:9001`
+- Default credentials: `minioadmin` / `minioadmin`
+
+To stop and remove the MinIO container:
+```bash
+docker stop minio
+docker rm minio
+# Optional: Remove the persistent volume
+docker volume rm minio-data
+```
+
 ## Prerequisites
 
 1. MinIO server with STS enabled
@@ -132,6 +169,14 @@ val spark = SparkSession.builder()
 
 ## Creating Tables with MinIO Storage
 
+### 0. Create a Catalog
+
+Ensure you have created a catalog in Unity Catalog:
+
+```sql
+CREATE CATALOG IF NOT EXISTS unity;
+```
+
 ### 1. Create a Schema
 
 ```sql
@@ -151,6 +196,7 @@ LOCATION 's3://unity-catalog-data/tables/sample_table';
 ```
 
 ### 3. Create a Managed Table
+WARNING: Managed tables are not currently supported by the Spark connector for Unity Catalog with MinIO. Use external tables instead.
 
 ```sql
 CREATE TABLE unity.minio_schema.managed_table (
