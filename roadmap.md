@@ -8,14 +8,14 @@ features may move in/out of milestones pending available resources and prioritie
 ### Storage management
 
 By more tightly integrating the already release credential and external locations API with the rest of the server
-internals, the next release will allow for more fingrained, dynsmic, and online management of storage locations and their
-credentials. Futhrtermore operators can delegate some storage management to the catalog via the managed locations
+internals, the next release will allow for more fingrained, dynamic, and online management of storage locations and their
+credentials. Furthermore operators can delegate some storage management to the catalog via the managed locations
 for catalogs and schemas features.
 
 ### Catalog managed commits
 
-Catalog managed commits are the basis for many new and powerful client (Delta) and server side features. As such
-supporting the table scan and commit APIs is a key priority for the upcoming release.
+Catalog managed commits are the basis for many new and powerful client (Delta) and server side features.
+Supporting the table scan and commit APIs is a key priority for the upcoming release.
 
 ### End to end OAuth support
 
