@@ -1,3 +1,29 @@
+# Unity Catalog Roadmap
+
+This document outlines the roadmap for the Unity Catalog open source project. As always,
+features may move in/out of milestones pending available resources and priorities.
+
+## 0.4 Release priorities
+
+### Storage management
+
+By more tightly integrating the already release credential and external locations API with the rest of the server
+internals, the next release will allow for more fingrained, dynsmic, and online management of storage locations and their
+credentials. Futhrtermore operators can delegate some storage management to the catalog via the managed locations
+for catalogs and schemas features.
+
+### Catalog managed commits
+
+Catalog managed commits are the basis for many new and powerful client (Delta) and server side features. As such
+supporting the table scan and commit APIs is a key priority for the upcoming release.
+
+### End to end OAuth support
+
+OAuth is pervasive - especially in the cloud - and the unity client will support the most common OAuth flows
+for authentication.
+
+## Full roadmap
+
 <table>
   <tr>
     <td><b>Feature</b></td>
@@ -139,7 +165,7 @@
   </tr>
   <tr>
     <td>OAuth client-side support</td>
-    <td>API + Server</td>
+    <td>Spark integration</td>
     <td></td>
     <td></td>
     <td></td>
