@@ -7,8 +7,8 @@ features may move in/out of milestones pending available resources and prioritie
 
 ### Storage management
 
-By more tightly integrating the already release credential and external locations API with the rest of the server
-internals, the next release will allow for more fingrained, dynamic, and online management of storage locations and their
+By more tightly integrating the already released credential and external locations API with the rest of the server
+internals, the next release will allow for more fine-grained, dynamic, and online management of storage locations and their
 credentials. Furthermore operators can delegate some storage management to the catalog via the managed locations
 for catalogs and schemas features.
 
@@ -19,7 +19,7 @@ Supporting the table scan and commit APIs is a key priority for the upcoming rel
 
 ### End to end OAuth support
 
-OAuth is pervasive - especially in the cloud - and the unity client will support the most common OAuth flows
+OAuth support is important for cloud users and RBAC, and unity client plans to support common OAuth flows
 for authentication.
 
 ## Full roadmap
