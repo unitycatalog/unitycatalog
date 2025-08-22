@@ -15,7 +15,7 @@ import org.apache.spark.sql.catalyst.analysis.{NoSuchNamespaceException, NoSuchT
 import org.apache.spark.sql.catalyst.catalog.{CatalogStorageFormat, CatalogTable, CatalogTableType, CatalogUtils}
 import org.apache.spark.sql.connector.catalog._
 import org.apache.spark.sql.connector.expressions.Transform
-import org.apache.spark.sql.types.{BinaryType, BooleanType, ByteType, DataType, DoubleType, FloatType, IntegerType, LongType, ShortType, StringType, StructField, StructType, TimestampNTZType, TimestampType}
+import org.apache.spark.sql.types.{BinaryType, BooleanType, ByteType, DataType, DateType, DoubleType, FloatType, IntegerType, LongType, ShortType, StringType, StructField, StructType, TimestampNTZType, TimestampType}
 import org.apache.spark.sql.util.CaseInsensitiveStringMap
 import org.sparkproject.guava.base.Preconditions
 
@@ -358,6 +358,7 @@ private class UCProxy(
       case FloatType => ColumnTypeName.FLOAT
       case DoubleType => ColumnTypeName.DOUBLE
       case ByteType => ColumnTypeName.BYTE
+      case DateType => ColumnTypeName.DATE
       case BinaryType => ColumnTypeName.BINARY
       case TimestampNTZType => ColumnTypeName.TIMESTAMP_NTZ
       case TimestampType => ColumnTypeName.TIMESTAMP
