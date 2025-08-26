@@ -13,7 +13,7 @@ from google.generativeai.types import CallableFunctionDeclaration
 from pydantic import ValidationError
 
 from unitycatalog.ai.core.client import FunctionExecutionResult
-from unitycatalog.ai.core.databricks import ExecutionMode
+from unitycatalog.ai.core.utils.execution_utils import ExecutionModeDatabricks
 from unitycatalog.ai.core.utils.validation_utils import has_retriever_signature
 from unitycatalog.ai.gemini.toolkit import GeminiTool, UCFunctionToolkit
 from unitycatalog.ai.test_utils.client_utils import (
@@ -73,7 +73,7 @@ def test_gemini_tool_to_dict(sample_gemini_tool):
 @requires_databricks
 def test_toolkit_e2e(execution_mode):
     client = get_client()
-    client.execution_mode = ExecutionMode(execution_mode)
+    client.execution_mode = ExecutionModeDatabricks(execution_mode)
     with set_default_client(client), create_function_and_cleanup(client, schema=SCHEMA) as func_obj:
         toolkit = UCFunctionToolkit(function_names=[func_obj.full_function_name])
         tools = toolkit.tools
@@ -97,7 +97,7 @@ def test_toolkit_e2e(execution_mode):
 @requires_databricks
 def test_toolkit_e2e_manually_passing_client(execution_mode):
     client = get_client()
-    client.execution_mode = ExecutionMode(execution_mode)
+    client.execution_mode = ExecutionModeDatabricks(execution_mode)
     with set_default_client(client), create_function_and_cleanup(client, schema=SCHEMA) as func_obj:
         toolkit = UCFunctionToolkit(function_names=[func_obj.full_function_name], client=client)
         tools = toolkit.tools
@@ -122,7 +122,7 @@ def test_toolkit_e2e_manually_passing_client(execution_mode):
 @requires_databricks
 def test_multiple_toolkits(execution_mode):
     client = get_client()
-    client.execution_mode = ExecutionMode(execution_mode)
+    client.execution_mode = ExecutionModeDatabricks(execution_mode)
     with set_default_client(client), create_function_and_cleanup(client, schema=SCHEMA) as func_obj:
         toolkit1 = UCFunctionToolkit(function_names=[func_obj.full_function_name])
         toolkit2 = UCFunctionToolkit(
@@ -143,7 +143,7 @@ def test_toolkit_creation_errors():
         UCFunctionToolkit(function_names=[], client="client")
 
 
-def test_toolkit_creation_errors(client):
+def test_toolkit_creation_errors_with_client(client):
     with pytest.raises(
         ValueError, match=r"Cannot create tool instances without function_names being provided."
     ):
@@ -345,7 +345,7 @@ def test_gemini_tool_calling_with_trace_as_retriever():
             expected_result = "page_content,metadata\ntesting,\"{'doc_uri': 'https://docs.databricks.com/', 'chunk_id': '1'}\"\n"
             assert result.value == expected_result
 
-            trace = mlflow.get_last_active_trace()
+            trace = mlflow.get_trace(mlflow.get_last_active_trace_id())
             assert trace is not None
             assert trace.data.spans[0].name == func_name
             assert trace.info.execution_time_ms is not None

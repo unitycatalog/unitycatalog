@@ -1,5 +1,47 @@
 # Changelog for Unity Catalog AI releases
 
+## Unity Catalog AI 0.3.1
+
+The 0.3.1 release of Unity Catalog AI includes important bug fixes, improved error handling, and enhanced reliability for function execution and client connections.
+
+### Bug Fixes and Improvements
+
+- 🔧 **Improved Function Client Defaults**: Fixed default client configuration in `get_uc_function_client` to automatically set up DatabricksFunctionClient when Databricks environment is available, eliminating unnecessary warnings during toolkit initialization.
+
+- 🛡️ **Enhanced SQL NULL Handling**: Improved handling of SQL NULL default parameters in both Databricks and OSS clients, ensuring proper validation and execution when NULL values are used as function parameter defaults.
+
+- 🔄 **Better Connection Recovery**: Enhanced retry handling logic for DatabricksFunctionClient with improved session expiration detection patterns, including support for `INVALID_HANDLE` errors and more robust reconnection notifications.
+
+- 🐞 **Smarter Spark Session Management**: Optimized Spark session creation to only initialize when needed - sessions are now created on-demand for function creation rather than during client initialization in local execution mode.
+
+- 📋 **Improved Error Messages**: Added better error handling for Pydantic validation errors with user-friendly messages, particularly for SQL NULL parameter issues and type validation failures.
+
+- 🔧 **Dependency Version Updates**: Set maximum version constraint for `databricks-connect` to `<16.4` to ensure compatibility with serverless compute environments.
+
+- 📚 **Enhanced Documentation**: Added comprehensive development loop tutorial notebook and updated integration documentation with corrected examples and improved usage patterns.
+
+### Technical Improvements
+
+- Function execution now returns native Python types instead of string-wrapped values for better type consistency
+- Improved function parameter default processing with better JSON parsing fallback mechanisms  
+- Enhanced retry mechanisms with exponential backoff for session expiration scenarios
+- Better separation of concerns between execution modes and client initialization
+- Streamlined toolkit creation process with automatic client detection
+
+### Change log
+
+- Set default client in get_uc_function_client by @serena-ruan and @BenWilson2 in #940
+- Add Unity Catalog AI client devloop tutorial by @BenWilson2 in #950
+- Add notification for successful serverless endpoint reconnection in Unity Catalog AI client by @BenWilson2 in #951
+- Unity Catalog AI client handling of SQL NULL default parameters by @BenWilson2 in #952
+- Update match coverage for serverless endpoint unavailability for DatabricksFunctionClient by @BenWilson2 in #953
+- Remove string wrapping from function clients return values by @BenWilson2 in #958
+- Improve retry handling logic for DatabricksFunctionClient by @BenWilson2 in #961
+- Fix incorrect function execution call in documentation by @BenWilson2 in #969
+- Only create Spark session in serverless mode by @serena-ruan in #998
+- Set maximum version of databricks-connect for Databricks integration by @smurching in #1011
+- Fix OSS client create function handling when function doesn't exist by @serena-ruan in #1012
+
 ## Unity Catalog AI 0.3.0
 
 The 0.3.0 release of Unity Catalog AI includes several usability improvements, a safer function execution mode, features that expand the functionality of versatile function usage and enhancements to aid in more flexible composition of complex functions.

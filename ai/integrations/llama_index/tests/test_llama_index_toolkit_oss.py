@@ -13,9 +13,9 @@ from unitycatalog.ai.core.base import (
     FunctionExecutionResult,
 )
 from unitycatalog.ai.core.client import (
-    ExecutionMode,
     UnitycatalogFunctionClient,
 )
+from unitycatalog.ai.core.utils.execution_utils import ExecutionMode
 from unitycatalog.ai.llama_index.toolkit import UCFunctionToolkit
 from unitycatalog.ai.test_utils.function_utils import (
     RETRIEVER_OUTPUT_CSV,
@@ -337,7 +337,7 @@ def test_toolkit_with_tracing_as_retriever(
 
         import mlflow
 
-        trace = mlflow.get_last_active_trace()
+        trace = mlflow.get_trace(mlflow.get_last_active_trace_id())
         assert trace is not None
         assert trace.data.spans[0].name == mock_function_info.full_name
         assert trace.info.execution_time_ms is not None

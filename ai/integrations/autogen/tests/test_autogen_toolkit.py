@@ -16,7 +16,7 @@ from pydantic import ValidationError
 
 from unitycatalog.ai.autogen.toolkit import UCFunctionToolkit
 from unitycatalog.ai.core.client import FunctionExecutionResult
-from unitycatalog.ai.core.databricks import ExecutionMode
+from unitycatalog.ai.core.utils.execution_utils import ExecutionModeDatabricks
 from unitycatalog.ai.test_utils.client_utils import (
     TEST_IN_DATABRICKS,
     get_client,
@@ -85,7 +85,7 @@ def generate_function_info(
 @requires_databricks
 @pytest.mark.asyncio
 async def test_toolkit_e2e(dbx_client, execution_mode):
-    dbx_client.execution_mode = ExecutionMode(execution_mode)
+    dbx_client.execution_mode = ExecutionModeDatabricks(execution_mode)
     with (
         set_default_client(dbx_client),
         create_function_and_cleanup(dbx_client, schema=SCHEMA) as func_obj,
@@ -115,7 +115,7 @@ async def test_toolkit_e2e(dbx_client, execution_mode):
 @requires_databricks
 @pytest.mark.asyncio
 async def test_toolkit_e2e_manually_passing_client(dbx_client, execution_mode):
-    dbx_client.execution_mode = ExecutionMode(execution_mode)
+    dbx_client.execution_mode = ExecutionModeDatabricks(execution_mode)
     with (
         set_default_client(dbx_client),
         create_function_and_cleanup(dbx_client, schema=SCHEMA) as func_obj,
@@ -144,7 +144,7 @@ async def test_toolkit_e2e_manually_passing_client(dbx_client, execution_mode):
 @requires_databricks
 @pytest.mark.asyncio
 async def test_multiple_toolkits(dbx_client, execution_mode):
-    dbx_client.execution_mode = ExecutionMode(execution_mode)
+    dbx_client.execution_mode = ExecutionModeDatabricks(execution_mode)
     with (
         set_default_client(dbx_client),
         create_function_and_cleanup(dbx_client, schema=SCHEMA) as func_obj,
@@ -315,7 +315,7 @@ def test_autogen_tool_with_tracing_as_retriever(
         result = tool.fn(x="some input")
         assert json.loads(result)["value"] == function_output
 
-        trace = mlflow.get_last_active_trace()
+        trace = mlflow.get_trace(mlflow.get_last_active_trace_id())
         assert trace is not None
         assert trace.data.spans[0].name == mock_function_info.full_name
         assert trace.info.execution_time_ms is not None

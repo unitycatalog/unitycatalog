@@ -70,13 +70,13 @@ only-include = ["src/unitycatalog/ai/core"]
 databricks = [
   "databricks-sdk>=0.32.0",
   "pandas",
-  "databricks-connect>=15.1.0"
+  "databricks-connect>=15.1.0,<17.1"
 ]
 databricks-dev = [
   "hatch",
   "pytest",
   "databricks-sdk>=0.32.0",
-  "databricks-connect>=15.1.0",
+  "databricks-connect>=15.1.0,<17.1",
   "pandas",
   "ruff==0.9.3",
 ]
@@ -85,7 +85,7 @@ dev = [
   "pytest",
   "pytest-asyncio",
   "databricks-sdk>=0.32.0",
-  "databricks-connect",
+  "databricks-connect<17.1",
   "pandas",
   "ruff==0.9.3",
 ]
@@ -121,6 +121,9 @@ docstring-code-line-length = 88
 
 [tool.ruff.lint.pydocstyle]
 convention = "google"
+
+[tool.ruff.lint.per-file-ignores]
+"*.ipynb" = ["T201", "T203"] # ignore print statements in notebooks
 
 [tool.pytest.ini_options]
 pythonpath = ["src"]

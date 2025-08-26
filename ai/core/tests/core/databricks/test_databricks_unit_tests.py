@@ -22,12 +22,17 @@ from databricks.sdk.service.catalog import (
 
 from unitycatalog.ai.core.databricks import (
     DatabricksFunctionClient,
-    SessionExpirationException,
     dynamically_construct_python_function,
     extract_function_name,
-    retry_on_session_expiration,
 )
 from unitycatalog.ai.core.envs.databricks_env_vars import UCAI_DATABRICKS_SESSION_RETRY_MAX_ATTEMPTS
+from unitycatalog.ai.core.utils.retry_utils import (
+    SESSION_CHANGED_MESSAGE,
+    SESSION_EXPIRED_MESSAGE,
+    SESSION_HANDLE_INVALID_MESSAGE,
+    SessionExpirationException,
+    retry_on_session_expiration,
+)
 from unitycatalog.ai.test_utils.client_utils import client  # noqa: F401
 from unitycatalog.ai.test_utils.function_utils import (
     CATALOG,
@@ -495,48 +500,70 @@ def test_function_with_union_return_type(client: DatabricksFunctionClient):
 
 
 class MockClient:
-    def __init__(self):
+    def __init__(self, error_message):
         self.call_count = 0
         self.refresh_count = 0
         self._is_default_client = True
+        self.error_message = error_message
 
     @retry_on_session_expiration
     def mock_function(self):
         if self.call_count < 2:
             self.call_count += 1
-            raise SessionExpirationException("session_id is no longer usable")
+            raise SessionExpirationException(self.error_message)
         return "Success"
 
     def refresh_client_and_session(self):
         self.refresh_count += 1
 
 
-def test_retry_on_session_expiration_decorator():
-    client = MockClient()
+@pytest.mark.parametrize(
+    "error_message",
+    [
+        SESSION_EXPIRED_MESSAGE,
+        SESSION_CHANGED_MESSAGE,
+        SESSION_HANDLE_INVALID_MESSAGE,
+    ],
+)
+def test_retry_on_session_expiration_varied_messages(error_message, caplog):
+    caplog.set_level(logging.INFO)
+    client = MockClient(error_message=error_message)
 
     result = client.mock_function()
 
     assert result == "Success"
     assert client.call_count == 2
     assert client.refresh_count == 2
+    assert "Successfully re-acquired connection to a serverless instance." in caplog.text
 
 
 @patch("time.sleep", return_value=None)
-def test_retry_on_session_expiration_decorator_exceeds_attempts(mock_sleep):
-    client = MockClient()
-    client._is_default_client = True
+@pytest.mark.parametrize(
+    "error_message",
+    [
+        SESSION_EXPIRED_MESSAGE,
+        SESSION_CHANGED_MESSAGE,
+        SESSION_HANDLE_INVALID_MESSAGE,
+    ],
+)
+def test_retry_on_session_expiration_exceeds_attempts(mock_sleep, error_message):
+    client = MockClient(error_message=error_message)
 
     @retry_on_session_expiration
     def mock_function_always_fail(self):
         self.call_count += 1
-        raise SessionExpirationException("session_id is no longer usable")
+        raise SessionExpirationException(self.error_message)
 
     client.mock_function = mock_function_always_fail.__get__(client)
 
-    with pytest.raises(RuntimeError, match="Failed to execute mock_function_always_fail after"):
+    with pytest.raises(
+        RuntimeError,
+        match=f"Failed to execute mock_function_always_fail after {UCAI_DATABRICKS_SESSION_RETRY_MAX_ATTEMPTS.get()} attempts",
+    ):
         client.mock_function()
 
     assert client.call_count == UCAI_DATABRICKS_SESSION_RETRY_MAX_ATTEMPTS.get()
+    assert client.refresh_count == UCAI_DATABRICKS_SESSION_RETRY_MAX_ATTEMPTS.get() - 1
 
 
 @pytest.fixture
@@ -1607,3 +1634,12 @@ def test_invalid_execution_mode(execution_mode):
         ),
     ):
         DatabricksFunctionClient(execution_mode=execution_mode)
+
+
+def test_no_spark_session_created_for_local_execution_mode():
+    with patch(
+        "unitycatalog.ai.core.databricks.get_default_databricks_workspace_client",
+        return_value=MagicMock(),
+    ):
+        client = DatabricksFunctionClient(execution_mode="local")
+        assert client.spark is None

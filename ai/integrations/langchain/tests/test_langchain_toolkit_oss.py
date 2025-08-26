@@ -17,9 +17,9 @@ from unitycatalog.ai.core.base import (
     FunctionExecutionResult,
 )
 from unitycatalog.ai.core.client import (
-    ExecutionMode,
     UnitycatalogFunctionClient,
 )
+from unitycatalog.ai.core.utils.execution_utils import ExecutionMode
 from unitycatalog.ai.core.utils.function_processing_utils import get_tool_name
 from unitycatalog.ai.langchain.toolkit import UCFunctionToolkit
 from unitycatalog.ai.test_utils.function_utils import (
@@ -279,7 +279,7 @@ def test_langchain_tool_trace_as_retriever(
         result = tool.func(x="some_string")
         assert json.loads(result)["value"] == function_output
 
-        trace = mlflow.get_last_active_trace()
+        trace = mlflow.get_trace(mlflow.get_last_active_trace_id())
         assert trace is not None
         assert trace.data.spans[0].name == mock_function_info.full_name
         assert trace.info.execution_time_ms is not None
@@ -295,7 +295,7 @@ async def test_langgraph_agents(uc_client):
         toolkit = UCFunctionToolkit(function_names=[func_obj.full_function_name], client=uc_client)
         system_message = "You are a helpful assistant. Make sure to use tool for information."
         llm = ChatDatabricks(endpoint="databricks-meta-llama-3-1-70b-instruct")
-        agent = create_react_agent(llm, toolkit.tools, state_modifier=system_message)
+        agent = create_react_agent(llm, toolkit.tools, prompt=system_message)
         chain = agent | RunnableGenerator(wrap_output)
 
         with mock.patch.object(

@@ -17,7 +17,7 @@ from unitycatalog.ai.core.base import (
     BaseFunctionClient,
     FunctionExecutionResult,
 )
-from unitycatalog.ai.core.databricks import ExecutionMode
+from unitycatalog.ai.core.utils.execution_utils import ExecutionModeDatabricks
 from unitycatalog.ai.llama_index.toolkit import UCFunctionToolkit, extract_properties
 from unitycatalog.ai.test_utils.client_utils import (
     TEST_IN_DATABRICKS,
@@ -132,7 +132,7 @@ def test_toolkit_creation_with_properties_argument_mocked():
 @requires_databricks
 def test_toolkit_e2e(execution_mode):
     client = get_client()
-    client.execution_mode = ExecutionMode(execution_mode)
+    client.execution_mode = ExecutionModeDatabricks(execution_mode)
     with set_default_client(client), create_function_and_cleanup(client, schema=SCHEMA) as func_obj:
         toolkit = UCFunctionToolkit(
             function_names=[func_obj.full_function_name], return_direct=True
@@ -160,7 +160,7 @@ def test_toolkit_e2e(execution_mode):
 @requires_databricks
 def test_toolkit_e2e_manually_passing_client(execution_mode):
     client = get_client()
-    client.execution_mode = ExecutionMode(execution_mode)
+    client.execution_mode = ExecutionModeDatabricks(execution_mode)
     with set_default_client(client), create_function_and_cleanup(client, schema=SCHEMA) as func_obj:
         toolkit = UCFunctionToolkit(
             function_names=[func_obj.full_function_name], client=client, return_direct=True
@@ -187,7 +187,7 @@ def test_toolkit_e2e_manually_passing_client(execution_mode):
 @requires_databricks
 def test_multiple_toolkits(execution_mode):
     client = get_client()
-    client.execution_mode = ExecutionMode(execution_mode)
+    client.execution_mode = ExecutionModeDatabricks(execution_mode)
     with set_default_client(client), create_function_and_cleanup(client, schema=SCHEMA) as func_obj:
         toolkit1 = UCFunctionToolkit(function_names=[func_obj.full_function_name])
         toolkit2 = UCFunctionToolkit(function_names=[f"{CATALOG}.{SCHEMA}.*"])
@@ -389,7 +389,7 @@ def test_toolkit_with_tracing_as_retriever(
         result = tool.fn(x="some input")
         assert json.loads(result)["value"] == function_output
 
-        trace = mlflow.get_last_active_trace()
+        trace = mlflow.get_trace(mlflow.get_last_active_trace_id())
         assert trace is not None
         assert trace.data.spans[0].name == mock_function_info.full_name
         assert trace.info.execution_time_ms is not None

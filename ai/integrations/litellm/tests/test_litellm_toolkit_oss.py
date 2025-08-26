@@ -6,7 +6,8 @@ import pytest_asyncio
 from pydantic import ValidationError
 
 from unitycatalog.ai.core.base import FunctionExecutionResult
-from unitycatalog.ai.core.client import ExecutionMode, UnitycatalogFunctionClient
+from unitycatalog.ai.core.client import UnitycatalogFunctionClient
+from unitycatalog.ai.core.utils.execution_utils import ExecutionMode
 from unitycatalog.ai.litellm.toolkit import UCFunctionToolkit
 from unitycatalog.ai.test_utils.function_utils_oss import (
     CATALOG,

@@ -1,0 +1,23 @@
+{{- if .Values.server.enabled -}}
+{{- if and (eq .Values.server.db.type "file") .Values.server.db.fileConfig.persistence.createPVC }}
+{{ $exists := lookup "v1" "PersistentVolumeClaim" .Release.Namespace (include "unitycatalog.server.db.filePvcName" .) }}
+{{- if not $exists }}
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ include "unitycatalog.server.db.filePvcName" . | quote }}
+  labels: {{- include "unitycatalog.server.labels" . | nindent 4 }}
+  annotations:
+    helm.sh/hook: pre-install
+    helm.sh/resource-policy: "keep"
+spec:
+  accessModes: {{ toYaml .Values.server.db.fileConfig.persistence.accessModes | nindent 4 }}
+  resources:
+    requests:
+      storage: {{ .Values.server.db.fileConfig.persistence.size | quote }}
+  {{- with .Values.server.db.fileConfig.persistence.storageClassName }}
+  storageClassName: {{ . | quote }}
+  {{- end }}
+{{- end -}}
+{{- end -}}
+{{- end -}}

@@ -1,4 +1,49 @@
 import ast
+import logging
+from enum import Enum
+
+_logger = logging.getLogger(__name__)
+
+
+class ExecutionMode(str, Enum):
+    LOCAL = "local"
+    SANDBOX = "sandbox"
+
+    def __str__(self) -> str:
+        return self.value
+
+    @classmethod
+    def validate(cls, value: str) -> "ExecutionMode":
+        try:
+            return cls(value)
+        except ValueError as e:
+            raise ValueError(
+                f"Invalid execution mode '{value}'. Allowed values are: {', '.join([mode.value for mode in cls])}"
+            ) from e
+
+
+class ExecutionModeDatabricks(str, Enum):
+    SERVERLESS = "serverless"
+    LOCAL = "local"
+
+    def __str__(self) -> str:
+        return self.value
+
+    @classmethod
+    def validate(cls, value: str) -> "ExecutionModeDatabricks":
+        try:
+            if value == cls.LOCAL.value:
+                _logger.warning(
+                    "You are running in 'local' execution mode, which is intended only for development and debugging. "
+                    "For production, please switch to 'serverless' execution mode. Before deploying, create a client "
+                    "using 'serverless' mode to validate your code's behavior and ensure full compatibility."
+                )
+            return cls(value)
+        except ValueError as e:
+            raise ValueError(
+                f"Execution mode '{value}' is not valid. "
+                f"Allowed values are: {', '.join(mode.value for mode in cls)}"
+            ) from e
 
 
 def load_function_from_string(

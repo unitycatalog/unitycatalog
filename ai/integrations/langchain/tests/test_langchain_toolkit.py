@@ -18,7 +18,7 @@ from langgraph.prebuilt import create_react_agent
 from unitycatalog.ai.core.base import (
     FunctionExecutionResult,
 )
-from unitycatalog.ai.core.databricks import ExecutionMode
+from unitycatalog.ai.core.utils.execution_utils import ExecutionModeDatabricks
 from unitycatalog.ai.core.utils.function_processing_utils import get_tool_name
 from unitycatalog.ai.test_utils.client_utils import (
     TEST_IN_DATABRICKS,
@@ -54,7 +54,7 @@ SCHEMA = os.environ.get("SCHEMA", "ucai_langchain_test")
 @requires_databricks
 def test_toolkit_e2e(execution_mode):
     client = get_client()
-    client.execution_mode = ExecutionMode(execution_mode)
+    client.execution_mode = ExecutionModeDatabricks(execution_mode)
     with set_default_client(client), create_function_and_cleanup(client, schema=SCHEMA) as func_obj:
         toolkit = UCFunctionToolkit(function_names=[func_obj.full_function_name])
         tools = toolkit.tools
@@ -77,7 +77,7 @@ def test_toolkit_e2e(execution_mode):
 @requires_databricks
 def test_toolkit_e2e_manually_passing_client(execution_mode):
     client = get_client()
-    client.execution_mode = ExecutionMode(execution_mode)
+    client.execution_mode = ExecutionModeDatabricks(execution_mode)
     with create_function_and_cleanup(client, schema=SCHEMA) as func_obj:
         toolkit = UCFunctionToolkit(function_names=[func_obj.full_function_name], client=client)
         tools = toolkit.tools
@@ -101,7 +101,7 @@ def test_toolkit_e2e_manually_passing_client(execution_mode):
 @requires_databricks
 def test_toolkit_e2e_tools_with_no_params(execution_mode):
     client = get_client()
-    client.execution_mode = ExecutionMode(execution_mode)
+    client.execution_mode = ExecutionModeDatabricks(execution_mode)
 
     def get_weather() -> str:
         """
@@ -132,7 +132,7 @@ def test_toolkit_e2e_tools_with_no_params(execution_mode):
 @requires_databricks
 def test_multiple_toolkits(execution_mode):
     client = get_client()
-    client.execution_mode = ExecutionMode(execution_mode)
+    client.execution_mode = ExecutionModeDatabricks(execution_mode)
     with set_default_client(client), create_function_and_cleanup(client, schema=SCHEMA) as func_obj:
         toolkit1 = UCFunctionToolkit(function_names=[func_obj.full_function_name])
         toolkit2 = UCFunctionToolkit(function_names=[f"{CATALOG}.{SCHEMA}.*"])
@@ -296,7 +296,7 @@ def test_langchain_tool_trace_as_retriever(
         result = tool.func(x="some_string")
         assert json.loads(result)["value"] == function_output
 
-        trace = mlflow.get_last_active_trace()
+        trace = mlflow.get_trace(mlflow.get_last_active_trace_id())
         assert trace is not None
         assert trace.data.spans[0].name == mock_function_info.full_name
         assert trace.info.execution_time_ms is not None
@@ -317,7 +317,7 @@ def test_langgraph_agents(schema):
             toolkit = UCFunctionToolkit(function_names=[f"{CATALOG}.{schema}.*"], client=client)
         system_message = "You are a helpful assistant. Make sure to use tool for information."
         llm = ChatDatabricks(endpoint="databricks-meta-llama-3-1-70b-instruct")
-        agent = create_react_agent(llm, toolkit.tools, state_modifier=system_message)
+        agent = create_react_agent(llm, toolkit.tools, prompt=system_message)
         chain = agent | RunnableGenerator(wrap_output)
         # we need this mock as the serving endpoint is not stable
         with mock.patch.object(
