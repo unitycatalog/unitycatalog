@@ -5,6 +5,9 @@ metadata:
   name: {{ include "unitycatalog.ui.fullname" . }}
   labels:
     {{- include "unitycatalog.ui.labels" . | nindent 4 }}
+  {{- with .Values.ui.service.annotations }}
+  annotations: {{- toYaml . | nindent 4 }}
+  {{- end }}
 spec:
   type: {{ .Values.ui.service.type }}
   ports:
