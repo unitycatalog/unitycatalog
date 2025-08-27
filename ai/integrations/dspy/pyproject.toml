@@ -1,0 +1,73 @@
+[project]
+name = "unitycatalog-dspy"
+version = "0.3.0"
+description = "Support for Unity Catalog functions as DSPy tools"
+authors = [
+    { name="Unity Catalog Team", email="unity-catalog@databricks.com" }
+]
+readme = "README.md"
+license = { text="Apache-2.0" }
+requires-python = ">=3.10"
+dependencies = [
+    "dspy-ai>=3.0.0",
+    "unitycatalog-ai",
+    "pydantic<3,>=2",
+]
+
+[project.optional-dependencies]
+databricks = [
+  "unitycatalog-ai[databricks]",
+]
+
+databricks-dev = [
+  "unitycatalog-ai[databricks-dev]",
+]
+
+dev = [
+  "unitycatalog-ai[dev]",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build]
+include = [
+  "src/unitycatalog/ai/dspy/*"
+]
+
+[tool.hatch.build.targets.wheel]
+sources = ["src"]
+only-include = ["src/unitycatalog/ai/dspy"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py39"
+
+[tool.ruff.lint]
+select = [
+  # isort
+  "I",
+  # bugbear rules
+  "B",
+  # remove unused imports
+  "F401",
+  # bare except statements
+  "E722",
+  # print statements
+  "T201",
+  "T203",
+  # misuse of typing.TYPE_CHECKING
+  "TC004",
+  # import rules
+  "TID251",
+  # undefined-local-with-import-star
+  "F403",
+]
+
+[tool.ruff.format]
+docstring-code-format = true
+docstring-code-line-length = 88
+
+[tool.ruff.lint.pydocstyle]
+convention = "google"
