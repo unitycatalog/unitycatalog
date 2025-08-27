@@ -3,8 +3,8 @@ import os
 import typing
 from unittest import mock
 
-import pytest
 import dspy
+import pytest
 from databricks.sdk.service.catalog import (
     FunctionInfo,
     FunctionParameterInfo,
@@ -16,7 +16,7 @@ from unitycatalog.ai.core.base import BaseFunctionClient
 from unitycatalog.ai.core.client import FunctionExecutionResult
 from unitycatalog.ai.core.utils.execution_utils import ExecutionModeDatabricks
 from unitycatalog.ai.core.utils.validation_utils import has_retriever_signature
-from unitycatalog.ai.dspy.toolkit import UnityCatalogDSPyToolWrapper, UCFunctionToolkit
+from unitycatalog.ai.dspy.toolkit import UCFunctionToolkit, UnityCatalogDSPyToolWrapper
 from unitycatalog.ai.test_utils.client_utils import (
     TEST_IN_DATABRICKS,
     client,  # noqa: F401
@@ -32,6 +32,7 @@ from unitycatalog.ai.test_utils.function_utils import (
 from unitycatalog.client.models.function_parameter_type import FunctionParameterType
 
 SCHEMA = os.environ.get("SCHEMA", "ucai_dspy_test")
+
 
 class MockFunctionExecutionResult:
     def __init__(self, return_value: str):
@@ -49,8 +50,8 @@ def sample_dspy_tool():
     name = "test_test_test"
     description = "Simple function to test the tool adapter."
     args_dict = {
-        'y': {'anyOf': [{'type': 'string'}, {'type': 'null'}]},
-        'x': {'anyOf': [{'type': 'number'}, {'type': 'null'}]}
+        "y": {"anyOf": [{"type": "string"}, {"type": "null"}]},
+        "x": {"anyOf": [{"type": "number"}, {"type": "null"}]},
     }
     arg_types = {"x": float, "y": str}
     arg_desc = {"x": "A number parameter", "y": "A string parameter"}
@@ -66,9 +67,7 @@ def sample_dspy_tool():
     )
 
     return UnityCatalogDSPyToolWrapper(
-        tool=dspy_tool,
-        uc_function_name="test.test.test",
-        client_config={"profile": None}
+        tool=dspy_tool, uc_function_name="test.test.test", client_config={"profile": None}
     )
 
 
@@ -81,12 +80,12 @@ def test_dspy_tool_wrapper_to_dict(sample_dspy_tool):
             "name": "test_test_test",
             "description": "Simple function to test the tool adapter.",
             "args": {
-                'y': {'anyOf': [{'type': 'string'}, {'type': 'null'}]}, 
-                'x': {'anyOf': [{'type': 'number'}, {'type': 'null'}]}
+                "y": {"anyOf": [{"type": "string"}, {"type": "null"}]},
+                "x": {"anyOf": [{"type": "number"}, {"type": "null"}]},
             },
             "arg_types": {"x": float, "y": str},
             "arg_desc": {"x": "A number parameter", "y": "A string parameter"},
-        }
+        },
     }
     assert sample_dspy_tool.to_dict() == expected_output
 
@@ -228,9 +227,7 @@ def test_convert_to_dspy_schema_with_valid_function_info():
 
     # Expected output
     expected_schema = {
-        "args_dict": {
-            "x": {'anyOf': [{'type': 'string'}, {'type': 'null'}]}
-        },
+        "args_dict": {"x": {"anyOf": [{"type": "string"}, {"type": "null"}]}},
         "args_desc": {"x": "test comment"},
         "args_type": {"x": typing.Optional[str]},
     }
@@ -255,16 +252,16 @@ def test_uc_function_to_dspy_tool(client):
         tool_wrapper = UCFunctionToolkit.uc_function_to_dspy_tool(
             function_name=f"{CATALOG}.{SCHEMA}.test", client=client
         )
-        
+
         # Validate tool wrapper attributes
         assert tool_wrapper.uc_function_name == f"{CATALOG}.{SCHEMA}.test"
         assert tool_wrapper.client_config == client.to_dict()
-        
+
         # Validate underlying DSPy tool
         tool = tool_wrapper.tool
         assert tool.name == f"{CATALOG}__{SCHEMA}__test"
         assert tool.desc == "Executes Python code and returns its stdout."
-        
+
         result = json.loads(tool.func(x="some_string"))["value"]
         assert result == "some_string"
 
@@ -338,7 +335,7 @@ def test_dspy_tool_calling_with_trace_as_retriever():
         input_args = {"query": "What are the page contents?"}
         result = tool.func(**input_args)
         result_data = json.loads(result)
-        
+
         # Verify the result structure
         assert "value" in result_data
         expected_result = "page_content,metadata\ntesting,\"{'doc_uri': 'https://docs.databricks.com/', 'chunk_id': '1'}\"\n"
@@ -347,16 +344,16 @@ def test_dspy_tool_calling_with_trace_as_retriever():
         # Test MLflow tracing if available
         try:
             mlflow.dspy.autolog()
-            
+
             # Execute again to capture trace
             result = tool.func(**input_args)
-            
+
             trace = mlflow.get_trace(mlflow.get_last_active_trace_id())
             assert trace is not None
             assert trace.data.spans[0].name == func_name
             assert trace.info.execution_time_ms is not None
             assert trace.data.request == json.dumps(input_args)
-            
+
             mlflow.dspy.autolog(disable=True)
         except Exception:
             # MLflow tracing might not be available in test environment
@@ -410,14 +407,14 @@ def test_generate_dspy_tool_list(client):
 
     dspy_tool = dspy_tools[0]
     tool = tools[0]
-    assert hasattr(dspy_tool, 'name'), "The tool should have a name attribute."
+    assert hasattr(dspy_tool, "name"), "The tool should have a name attribute."
     assert tool.name == "catalog__schema__test_function", (
         "The tool's name does not match the expected name."
     )
     assert tool.desc == "Executes Python code and returns its stdout.", (
         "The tool's description does not match the expected description."
     )
-    assert hasattr(tool, 'args'), "The tool should have args attribute."
+    assert hasattr(tool, "args"), "The tool should have args attribute."
     assert "x" in tool.args, "The tool's args should include the parameter x."
 
 
@@ -434,15 +431,13 @@ def test_toolkit_get_tool_methods(client):
             return_value=FunctionExecutionResult(format="SCALAR", value="some_string"),
         ),
     ):
-        toolkit = UCFunctionToolkit(
-            function_names=["catalog.schema.test_function"], client=client
-        )
-        
+        toolkit = UCFunctionToolkit(function_names=["catalog.schema.test_function"], client=client)
+
         # Test get_tool
         tool = toolkit.get_tool("catalog.schema.test_function")
         assert tool is not None
         assert tool.name == "catalog__schema__test_function"
-        
+
         # Test get_tool_wrapper
         tool_wrapper = toolkit.get_tool_wrapper("catalog.schema.test_function")
         assert tool_wrapper is not None
@@ -454,9 +449,9 @@ def test_toolkit_convert_to_dspy_schema_no_parameters():
     """Test schema conversion with no parameters."""
     mock_function_info = generate_function_info()
     mock_function_info.input_params.parameters = []
-    
+
     schema = UCFunctionToolkit.convert_to_dspy_schema(mock_function_info)
-    
+
     assert schema["args_dict"] == {}
     assert schema["args_desc"] == {}
     assert schema["args_type"] == {}
@@ -466,7 +461,7 @@ def test_toolkit_convert_to_dspy_schema_none_parameters():
     """Test schema conversion with None parameters raises error."""
     mock_function_info = generate_function_info()
     mock_function_info.input_params.parameters = None
-    
+
     with pytest.raises(ValueError, match="Function input parameters are None"):
         UCFunctionToolkit.convert_to_dspy_schema(mock_function_info)
 
@@ -474,13 +469,13 @@ def test_toolkit_convert_to_dspy_schema_none_parameters():
 def test_toolkit_convert_to_dspy_schema_strict_mode():
     """Test schema conversion with strict mode enabled."""
     mock_function_info = generate_function_info()
-    
+
     schema = UCFunctionToolkit.convert_to_dspy_schema(mock_function_info, strict=True)
-    
+
     assert "args_dict" in schema
     assert "args_desc" in schema
     assert "args_type" in schema
-    
+
     # Check that the schema contains the expected parameter
     assert "x" in schema["args_dict"]
     assert "x" in schema["args_type"]
@@ -490,13 +485,13 @@ def test_toolkit_convert_to_dspy_schema_strict_mode():
 def test_toolkit_convert_to_dspy_schema_non_strict_mode():
     """Test schema conversion with strict mode disabled."""
     mock_function_info = generate_function_info()
-    
+
     schema = UCFunctionToolkit.convert_to_dspy_schema(mock_function_info, strict=False)
-    
+
     assert "args_dict" in schema
     assert "args_desc" in schema
     assert "args_type" in schema
-    
+
     # Should still work but with potentially different type handling
     assert "x" in schema["args_dict"]
     assert "x" in schema["args_type"]
@@ -507,11 +502,11 @@ def test_toolkit_filter_accessible_functions(client):
     """Test toolkit with accessible function filtering."""
     with create_function_and_cleanup(client, schema=SCHEMA) as func_obj:
         toolkit = UCFunctionToolkit(
-            function_names=[func_obj.full_function_name], 
+            function_names=[func_obj.full_function_name],
             client=client,
-            filter_accessible_functions=True
+            filter_accessible_functions=True,
         )
-        
+
         # Should still work with accessible functions
         assert len(toolkit.tools) == 1
         assert toolkit.get_tool(func_obj.full_function_name) is not None
@@ -522,17 +517,17 @@ def test_toolkit_to_dict_serialization(client):
     """Test that toolkit can be properly serialized."""
     with create_function_and_cleanup(client, schema=SCHEMA) as func_obj:
         toolkit = UCFunctionToolkit(function_names=[func_obj.full_function_name], client=client)
-        
+
         # Test basic properties
-        assert hasattr(toolkit, 'function_names')
-        assert hasattr(toolkit, 'tools_dict')
-        assert hasattr(toolkit, 'client')
-        assert hasattr(toolkit, 'filter_accessible_functions')
-        
+        assert hasattr(toolkit, "function_names")
+        assert hasattr(toolkit, "tools_dict")
+        assert hasattr(toolkit, "client")
+        assert hasattr(toolkit, "filter_accessible_functions")
+
         # Test that toolkit is a valid Pydantic model
         toolkit_dict = toolkit.model_dump()
         assert isinstance(toolkit_dict, dict)
-        assert 'function_names' in toolkit_dict
+        assert "function_names" in toolkit_dict
 
 
 def generate_mock_function_info(has_properties: bool = False):
@@ -550,19 +545,21 @@ def generate_mock_function_info(has_properties: bool = False):
             "parameter_type": FunctionParameterType.PARAM,
         }
     ]
-    
+
     if has_properties:
-        parameters.append({
-            "comment": "properties parameter",
-            "name": "properties",
-            "type_text": "map<string, string>",
-            "type_json": '{"name":"properties","type":"MAP","nullable":true}',
-            "type_name": "MAP",
-            "type_precision": 0,
-            "type_scale": 0,
-            "position": 2,
-            "parameter_type": FunctionParameterType.PARAM,
-        })
+        parameters.append(
+            {
+                "comment": "properties parameter",
+                "name": "properties",
+                "type_text": "map<string, string>",
+                "type_json": '{"name":"properties","type":"MAP","nullable":true}',
+                "type_name": "MAP",
+                "type_precision": 0,
+                "type_scale": 0,
+                "position": 2,
+                "parameter_type": FunctionParameterType.PARAM,
+            }
+        )
 
     return FunctionInfo(
         catalog_name="catalog",
@@ -572,7 +569,9 @@ def generate_mock_function_info(has_properties: bool = False):
         input_params=FunctionParameterInfos(
             parameters=[FunctionParameterInfo(**param) for param in parameters]
         ),
-        comment="A test function without properties argument" if not has_properties else "A test function with properties argument",
+        comment="A test function without properties argument"
+        if not has_properties
+        else "A test function with properties argument",
         data_type=None,
         full_data_type=None,
         return_params=None,
@@ -606,7 +605,7 @@ def test_toolkit_creation_without_properties_argument_mocked():
         tool = tools[0]
         assert tool.name == "catalog__schema__test_function"
         assert tool.desc == "A test function without properties argument"
-        
+
         # Get the tool wrapper to access UC-specific attributes
         tool_wrapper = toolkit.get_tool_wrapper("catalog.schema.test_function")
         assert tool_wrapper.uc_function_name == "catalog.schema.test_function"
@@ -615,4 +614,3 @@ def test_toolkit_creation_without_properties_argument_mocked():
         input_args = {"x": "some_string"}
         result = json.loads(tool.func(**input_args))["value"]
         assert result == "some_string"
-

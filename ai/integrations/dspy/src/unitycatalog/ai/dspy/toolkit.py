@@ -1,10 +1,10 @@
 import json
 import logging
-from typing import Any, Callable, Dict, List, Optional
+from typing import Any, Dict, List, Optional
+
+from pydantic import BaseModel, ConfigDict, Field, TypeAdapter, model_validator
 
 import dspy
-from pydantic import BaseModel, ConfigDict, Field, model_validator, TypeAdapter
-
 from unitycatalog.ai.core.base import BaseFunctionClient
 from unitycatalog.ai.core.utils.client_utils import validate_or_set_default_client
 from unitycatalog.ai.core.utils.function_processing_utils import (
@@ -22,13 +22,13 @@ _logger = logging.getLogger(__name__)
 
 class UnityCatalogDSPyToolWrapper(BaseModel):
     """Pydantic wrapper for Unity Catalog DSPy Tool that holds the real dspy.adapters.Tool instance."""
-    
+
     tool: dspy.adapters.Tool = Field(description="The underlying dspy.adapters.Tool instance")
     uc_function_name: str = Field(description="The full UC function name")
     client_config: Dict[str, Any] = Field(description="Client configuration dictionary")
-    
+
     model_config = ConfigDict(arbitrary_types_allowed=True)
-    
+
     def to_dict(self) -> Dict[str, Any]:
         """Converts the wrapper into a dictionary."""
         return {
@@ -40,13 +40,13 @@ class UnityCatalogDSPyToolWrapper(BaseModel):
                 "args": self.tool.args,
                 "arg_types": self.tool.arg_types,
                 "arg_desc": self.tool.arg_desc,
-            }
+            },
         }
 
 
 class UCFunctionToolkit(BaseModel):
     """Toolkit for managing Unity Catalog functions as DSPy tools."""
-    
+
     function_names: List[str] = Field(
         description="List of function names in 'catalog.schema.function' format.",
     )
@@ -108,21 +108,17 @@ class UCFunctionToolkit(BaseModel):
         for param_info in param_infos:
             pydantic_field = param_info_to_pydantic_type(param_info, strict=strict)
             args = TypeAdapter(pydantic_field.pydantic_type).json_schema()
-            
+
             if pydantic_field.default:
                 args["default"] = pydantic_field.default
-            
+
             if pydantic_field.description:
                 args_desc[param_info.name] = pydantic_field.description
-            
+
             args_dict[param_info.name] = args
             args_type[param_info.name] = pydantic_field.pydantic_type
 
-        return {
-            "args_dict": args_dict,
-            "args_desc": args_desc,
-            "args_type": args_type
-        }
+        return {"args_dict": args_dict, "args_desc": args_desc, "args_type": args_type}
 
     @staticmethod
     def uc_function_to_dspy_tool(
@@ -146,7 +142,7 @@ class UCFunctionToolkit(BaseModel):
         """
         if function_name and function_info:
             raise ValueError("Only one of function_name or function_info should be provided.")
-        
+
         client = validate_or_set_default_client(client)
 
         if function_name:
@@ -163,7 +159,9 @@ class UCFunctionToolkit(BaseModel):
             raise ValueError("Either function_name or function_info should be provided.")
 
         if function_info is None:
-            raise ValueError("Could not find function info for the given function name or function info.")
+            raise ValueError(
+                "Could not find function info for the given function name or function info."
+            )
 
         schema_data = UCFunctionToolkit.convert_to_dspy_schema(function_info, strict=True)
 
@@ -186,7 +184,7 @@ class UCFunctionToolkit(BaseModel):
             arg_types=schema_data["args_type"],
             arg_desc=schema_data["args_desc"],
         )
-        
+
         # Wrap it in our Pydantic wrapper
         return UnityCatalogDSPyToolWrapper(
             tool=dspy_tool,
@@ -207,4 +205,3 @@ class UCFunctionToolkit(BaseModel):
     def get_tool_wrapper(self, function_name: str) -> Optional[UnityCatalogDSPyToolWrapper]:
         """Get a specific tool wrapper by function name."""
         return self.tools_dict.get(function_name)
-
