@@ -1,4 +1,4 @@
-# 🚀 Using Unity Catalog AI with DSPy
+# Using Unity Catalog AI with DSPy
 
 You can use functions defined within Unity Catalog (UC) directly as tools within [DSPy](https://dspy-docs.vercel.app/) with this package. DSPy is a framework for optimizing LLM prompts and programs, and this integration allows you to seamlessly use Unity Catalog functions as tools in your DSPy workflows.
 
@@ -139,7 +139,7 @@ from unitycatalog.ai.dspy.toolkit import UCFunctionToolkit
 toolkit = UCFunctionToolkit(function_names=[func_name])
 
 # Get the DSPy-compatible tools definitions
-tools = toolkit.tools_dict
+tools = toolkit.tools
 ```
 
 If you would like to validate that your tool is functional prior to proceeding to integrate it with DSPy, you can call the tool directly:
@@ -149,7 +149,7 @@ my_tool_wrapper = tools[func_name]
 my_tool = my_tool_wrapper.tool
 
 # Call the tool directly
-result = my_tool.fn(code="print(1)")
+result = my_tool.func({"code":"print(1)"})
 print(result)
 ```
 
@@ -326,25 +326,6 @@ toolkit = UCFunctionToolkit(
 )
 ```
 
-## Configuration
-
-### Environment Variables
-
-- `MLFLOW_TRACING_ENABLED`: Set to "true" to enable MLflow tracing
-- `UNITY_CATALOG_CLIENT_CONFIG`: JSON string for client configuration
-
-### Client Configuration
-
-```python
-client_config = {
-    "workspace_url": "https://your-workspace.cloud.databricks.com",
-    "token": "your-token",
-    "catalog": "your-catalog"
-}
-
-client = DatabricksFunctionClient(**client_config)
-```
-
 ### Configurations for Databricks managed UC functions execution
 
 We provide configurations for databricks client to control the function execution behaviors, check [function execution arguments section](../../README.md#function-execution-arguments-configuration).
@@ -368,35 +349,3 @@ git clone <repository>
 cd ai/integrations/dspy
 pip install -e ".[dev]"
 ```
-
-### Running Tests
-
-```bash
-pytest tests/
-```
-
-### Code Quality
-
-```bash
-ruff check src/
-ruff format src/
-```
-
-## Contributing
-
-1. Fork the repository
-2. Create a feature branch
-3. Make your changes
-4. Add tests
-5. Submit a pull request
-
-## License
-
-Apache 2.0 License - see LICENSE file for details.
-
-## Support
-
-For issues and questions:
-- Check the documentation
-- Open an issue on GitHub
-- Contact the Unity Catalog team
