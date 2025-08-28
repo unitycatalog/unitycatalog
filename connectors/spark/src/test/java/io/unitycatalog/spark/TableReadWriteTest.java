@@ -481,6 +481,17 @@ public class TableReadWriteTest extends BaseSparkIntegrationTest {
     session.close();
   }
 
+  @Test
+  public void testTableWithDateType() throws IOException {
+    try (SparkSession session = createSparkSessionWithCatalogs(SPARK_CATALOG)) {
+      String path1 = generateTableLocation(SPARK_CATALOG, DELTA_TABLE);
+      String fullTableName = SPARK_CATALOG + "." + SCHEMA_NAME + "." + DELTA_TABLE;
+      session.sql(String.format("CREATE TABLE delta.`%s` (start_date DATE) USING delta", path1));
+      session.sql(String.format("CREATE TABLE %s (start_date DATE) USING delta LOCATION '%s'", fullTableName, path1));
+      assertThat(session.catalog().tableExists(fullTableName)).isTrue();
+    }
+  }
+
   private String generateTableLocation(String catalogName, String tableName) throws IOException {
     return new File(new File(dataDir, catalogName), tableName).getCanonicalPath();
   }
