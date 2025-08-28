@@ -31,22 +31,40 @@ class UCSingleCatalog
 
   private[this] var apiClient: ApiClient = null;
   private[this] var temporaryCredentialsApi: TemporaryCredentialsApi = null
+  private[this] var oauth2Provider: OAuth2CredentialExchangeProvider = null
 
   @volatile private var delegate: TableCatalog = null
+  @volatile private var token: String = null
 
   override def initialize(name: String, options: CaseInsensitiveStringMap): Unit = {
     val urlStr = options.get("uri")
     if (urlStr == null) {
       throw new IllegalArgumentException(s"uri must be specified for Unity Catalog '$name'")
     }
+
+    val oauth2ServerUri = options.get("oauth2-server-uri")
+    val credential = options.get("credential")
+    if (oauth2ServerUri != null && oauth2ServerUri.nonEmpty && credential != null && credential.nonEmpty) {
+      logInfo("Configuring OAuth2 credential exchange.")
+      try {
+        oauth2Provider = new OAuth2CredentialExchangeProvider(oauth2ServerUri, credential, t => token = t)
+      } catch {
+        case e: OAuth2Exception =>
+          logError(e.getMessage)
+      }
+    } else {
+      token = options.get("token")
+    }
+
     val url = new URI(urlStr)
     apiClient = new ApiClient()
       .setHost(url.getHost)
       .setPort(url.getPort)
       .setScheme(url.getScheme)
-    val token = options.get("token")
+
     if (token != null && token.nonEmpty) {
       apiClient = apiClient.setRequestInterceptor { request =>
+        // Updates to `token` will be reflected here each time the interceptor is called.
         request.header("Authorization", "Bearer " + token)
       }
     }
@@ -309,6 +327,8 @@ private class UCProxy(
   override def createTable(ident: Identifier, schema: StructType, partitions: Array[Transform], properties: util.Map[String, String]): Table = {
     checkUnsupportedNestedNamespace(ident.namespace())
     assert(properties.get("provider") != null)
+
+    System.err.println(s"XXX table properties: $properties")
 
     val createTable = new CreateTable()
     createTable.setName(ident.name())
