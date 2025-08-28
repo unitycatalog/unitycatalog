@@ -16,7 +16,7 @@ from semantic_kernel.functions import KernelArguments, kernel_function
 from semantic_kernel.functions.kernel_parameter_metadata import KernelParameterMetadata
 
 from unitycatalog.ai.core.client import FunctionExecutionResult
-from unitycatalog.ai.core.databricks import ExecutionMode
+from unitycatalog.ai.core.utils.execution_utils import ExecutionMode
 from unitycatalog.ai.semantic_kernel.toolkit import SemanticKernelTool, UCFunctionToolkit
 from unitycatalog.ai.test_utils.client_utils import (
     client,  # noqa: F401
