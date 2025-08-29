@@ -9,9 +9,11 @@ readme = "README.md"
 license = { text="Apache-2.0" }
 requires-python = ">=3.9"
 dependencies = [
-    "autogen-agentchat>=0.4.0",
-    "autogen-core>=0.4.0",
+    "autogen-agentchat>=0.4.2",
+    "autogen-core>=0.4.2",
     "openai>=1.46.1",
+    "autogen_ext>=0.4.2",
+    "tiktoken>=0.9.0",
     "unitycatalog-ai",
     "pydantic<3,>=2",
 ]
