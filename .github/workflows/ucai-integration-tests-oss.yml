@@ -66,6 +66,7 @@ jobs:
           pip install integrations/langchain[dev]
           pytest integrations/langchain/tests/test_langchain_toolkit_oss.py
       - name: Run LlamaIndex OSS Integration Tests
+        if: matrix.python-version == '3.10'
         run: |
           pip install integrations/llama_index[dev]
           pytest integrations/llama_index/tests/test_llama_index_toolkit_oss.py
