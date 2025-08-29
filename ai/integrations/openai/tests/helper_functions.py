@@ -5,7 +5,10 @@ from openai.types.chat.chat_completion import (
     ChatCompletionMessage,
     Choice,
 )
-from openai.types.chat.chat_completion_message_tool_call import ChatCompletionMessageToolCall,Function
+from openai.types.chat.chat_completion_message_tool_call import (
+    ChatCompletionMessageToolCall,
+    Function,
+)
 from openai.types.completion_usage import CompletionTokensDetails, CompletionUsage
 
 
