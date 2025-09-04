@@ -316,8 +316,6 @@ private class UCProxy(
     checkUnsupportedNestedNamespace(ident.namespace())
     assert(properties.get("provider") != null)
 
-    System.err.println(s"XXX table properties: $properties")
-
     val createTable = new CreateTable()
     createTable.setName(ident.name())
     createTable.setSchemaName(ident.namespace().head)
