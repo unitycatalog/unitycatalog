@@ -136,6 +136,53 @@ auth:
   #
   cookieTimeout: P5D
 
+bootstrap:
+  # -- (bool) Enable Azure AD bootstrap for initial OWNER setup
+  # @raw
+  #
+  # When enabled, creates a Job that calls the bootstrap endpoint during initial deployment.
+  # Requires Azure AD authentication and proper tenant configuration.
+  #
+  enabled: false
+
+  # -- (int) Bootstrap window duration in minutes
+  # @raw
+  #
+  # Time window after server start during which bootstrap is allowed without existing OWNER privileges.
+  #
+  windowMinutes: 30
+
+  initialOwner:
+    # -- (string) Azure AD User Principal Name (UPN) for the initial OWNER
+    # @default -- not set
+    # @raw
+    #
+    # Example: `admin@contoso.onmicrosoft.com`
+    #
+    upn: ""
+
+  azure:
+    # -- (string) Azure AD client secret name for service principal authentication
+    # @default -- not set
+    # @raw
+    #
+    # If not provided, the job will attempt to use Azure Managed Identity.
+    # 
+    # Secret must contain the following keys:
+    # - `clientId`: Azure AD application client ID
+    # - `clientSecret`: Azure AD application client secret
+    # - `tenantId`: Azure AD tenant ID
+    #
+    clientSecretName:
+
+tokens:
+  # -- (bool) Enable PAT token management features
+  # @raw
+  #
+  # When enabled, provides Personal Access Token creation and management capabilities.
+  #
+  enabled: false
+
 server:
   # -- (bool) Enable the server deployment
   enabled: true

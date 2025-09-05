@@ -1,0 +1,111 @@
+{{- if .Values.bootstrap.enabled -}}
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: "{{ include "unitycatalog.server.fullname" . }}-azure-bootstrap"
+  labels: {{- include "unitycatalog.server.labels" . | nindent 4 }}
+  annotations:
+    "helm.sh/hook": post-install,post-upgrade
+    "helm.sh/hook-delete-policy": before-hook-creation
+    "helm.sh/hook-weight": "1"
+spec:
+  ttlSecondsAfterFinished: 300
+  backoffLimit: 3
+  template:
+    spec:
+      serviceAccountName: {{ include "unitycatalog.serviceAccountName" . | quote }}
+      containers:
+        - name: azure-bootstrap
+          image: "mcr.microsoft.com/azure-cli:latest"
+          imagePullPolicy: IfNotPresent
+          command:
+            - /bin/bash
+            - -c
+            - |-
+              set -eo pipefail
+              
+              echo "Starting Azure AD OWNER bootstrap process..."
+              
+              # Install required tools
+              apk add --no-cache curl jq
+              
+              # Wait for Unity Catalog server to be available
+              echo "Waiting for Unity Catalog server API..."
+              until curl --fail-with-body -k \
+                -X GET "http://{{ include "unitycatalog.server.fullname" . }}:{{ .Values.server.deployment.port }}/api/2.1/unity-catalog/metastore_summary" \
+                -H "Content-Type: application/json" \
+                --max-time 10
+              do
+                  echo "Unity Catalog server not ready, waiting..."
+                  sleep 5
+              done
+              
+              # Get metastore ID
+              METASTORE_ID=$(curl --fail-with-body -k \
+                -X GET "http://{{ include "unitycatalog.server.fullname" . }}:{{ .Values.server.deployment.port }}/api/2.1/unity-catalog/metastore_summary" \
+                -H "Content-Type: application/json" | jq -r '.metastore_id')
+              
+              echo "Found metastore ID: ${METASTORE_ID}"
+              
+              # Get Azure AD token using managed identity or service principal
+              echo "Acquiring Azure AD token..."
+              if [ -n "${AZURE_CLIENT_ID}" ] && [ -n "${AZURE_CLIENT_SECRET}" ] && [ -n "${AZURE_TENANT_ID}" ]; then
+                # Service Principal authentication
+                AZURE_TOKEN=$(curl --fail-with-body -X POST \
+                  "https://login.microsoftonline.com/${AZURE_TENANT_ID}/oauth2/v2.0/token" \
+                  -H "Content-Type: application/x-www-form-urlencoded" \
+                  -d "client_id=${AZURE_CLIENT_ID}&client_secret=${AZURE_CLIENT_SECRET}&scope=https://graph.microsoft.com/.default&grant_type=client_credentials" \
+                  | jq -r '.access_token')
+              else
+                # Managed Identity authentication (preferred in Azure)
+                AZURE_TOKEN=$(curl --fail-with-body -H "Metadata: true" \
+                  "http://169.254.169.254/metadata/identity/oauth2/token?api-version=2018-02-01&resource=https://graph.microsoft.com/" \
+                  | jq -r '.access_token')
+              fi
+              
+              echo "Azure AD token acquired successfully"
+              
+              # Call Unity Catalog bootstrap endpoint
+              echo "Calling bootstrap endpoint..."
+              BOOTSTRAP_RESPONSE=$(curl --fail-with-body -k \
+                -X POST "http://{{ include "unitycatalog.server.fullname" . }}:{{ .Values.server.deployment.port }}/api/2.1/unity-catalog/admins/bootstrap-owner" \
+                -H "Authorization: Bearer ${AZURE_TOKEN}" \
+                -H "Content-Type: application/json" \
+                -d "{\"metastoreId\": \"${METASTORE_ID}\"}")
+              
+              echo "Bootstrap response: ${BOOTSTRAP_RESPONSE}"
+              
+              # Extract and securely store PAT token if provided
+              PAT_TOKEN=$(echo "${BOOTSTRAP_RESPONSE}" | jq -r '.patToken // empty')
+              if [ -n "${PAT_TOKEN}" ] && [ "${PAT_TOKEN}" != "null" ] && [ "${PAT_TOKEN}" != "[HIDDEN - Already Issued]" ]; then
+                echo "PAT token received and stored in bootstrap-pat-token secret"
+                kubectl create secret generic "{{ include "unitycatalog.server.fullname" . }}-bootstrap-pat-token" \
+                  --from-literal=token="${PAT_TOKEN}" \
+                  --dry-run=client -o yaml | kubectl apply -f -
+                echo "⚠️  IMPORTANT: Retrieve PAT token from secret '{{ include "unitycatalog.server.fullname" . }}-bootstrap-pat-token' and store securely. This token will not be shown again."
+              else
+                echo "No new PAT token in response (bootstrap already completed or idempotent)"
+              fi
+              
+              echo "Azure AD OWNER bootstrap completed successfully"
+          env:
+            # Azure authentication can use either service principal or managed identity
+            {{- if .Values.bootstrap.azure.clientSecretName }}
+            - name: AZURE_CLIENT_ID
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.bootstrap.azure.clientSecretName }}
+                  key: clientId
+            - name: AZURE_CLIENT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.bootstrap.azure.clientSecretName }}
+                  key: clientSecret
+            - name: AZURE_TENANT_ID
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.bootstrap.azure.clientSecretName }}
+                  key: tenantId
+            {{- end }}
+      restartPolicy: OnFailure
+{{- end -}}

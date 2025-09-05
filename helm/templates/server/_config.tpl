@@ -14,6 +14,14 @@ server.redirect-port={{ .Values.auth.redirectPort }}
 server.cookie-timeout={{ .Values.auth.cookieTimeout }}
 {{- end }}
 
+{{- if .Values.bootstrap.enabled }}
+bootstrap.windowMinutes={{ .Values.bootstrap.windowMinutes }}
+{{- if .Values.bootstrap.initialOwner.upn }}
+bootstrap.initialOwner.upn={{ .Values.bootstrap.initialOwner.upn }}
+{{- end }}
+bootstrap.disableLegacyLocalAdmin=false
+{{- end }}
+
 storage-root.models={{ .Values.storage.modelStorageRoot }}
 
 {{- range $index, $config := .Values.storage.credentials.s3 }}

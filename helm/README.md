@@ -40,6 +40,25 @@ The following table lists the configurable parameters of the Unity Catalog chart
 > Auth integration in UI works only with Google OAuth provider and
 > it does not work with UC versions 0.2.1 and below.
 
+### Azure AD Bootstrap
+
+For production deployments, use Azure AD-based OWNER bootstrap instead of legacy local admin tokens:
+
+```yaml
+bootstrap:
+  enabled: true
+  windowMinutes: 30
+  initialOwner:
+    upn: "admin@contoso.onmicrosoft.com"
+
+tokens:
+  enabled: true
+```
+
+This creates a Job that authenticates with Azure AD and establishes the initial OWNER. A PAT token is generated and stored in a Kubernetes secret for administrative access.
+
+See [BOOTSTRAP_MIGRATION.md](./BOOTSTRAP_MIGRATION.md) for detailed migration guidance.
+
 ## Values
 
 <table>

@@ -1,0 +1,28 @@
+# Example values override for Azure AD Bootstrap
+# Save as: azure-bootstrap-values.yaml
+
+# Enable Azure AD bootstrap functionality
+bootstrap:
+  enabled: true
+  windowMinutes: 20  # Reduced window for production security
+  initialOwner:
+    upn: "alice@contoso.com"  # Your Azure AD admin UPN
+  azure:
+    # Optional: Service principal credentials (if not using managed identity)
+    # clientSecretName: azure-bootstrap-credentials
+
+# Enable PAT token management
+tokens:
+  enabled: true
+
+# Optional: Azure tenant configuration for reference
+# (Not used directly by chart but helpful for documentation)
+azure:
+  tenantId: "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"
+  
+# Optional: Disable legacy features in production
+server:
+  config:
+    extraProperties:
+      # Uncomment after successful bootstrap to disable legacy admin
+      # bootstrap.disableLegacyLocalAdmin: "true"
