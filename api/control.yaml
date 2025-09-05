@@ -1,13 +1,60 @@
 openapi: 3.0.0
 servers:
-  - url: http://localhost:8080/api/1.0/unity-control
+  - url: http://localhost:8080/api/2.1/unity-catalog
     description: Localhost reference server
 tags:
   - name: Users
     description: |
       A user is the identity recognized by Unity Catalog.
+  - name: Admins
+    description: |
+      Administrative operations for Unity Catalog setup and bootstrapping.
 
 paths:
+  /admins/bootstrap-owner:
+    post:
+      tags:
+        - Admins
+      operationId: bootstrapOwner
+      summary: Bootstrap Azure principal as OWNER
+      description: |
+        **PREVIEW FEATURE**: Bootstrap an Azure AD principal as OWNER of the Unity Catalog instance.
+        This endpoint creates the initial administrative user with full OWNER privileges when
+        no OWNER exists. Can only be called once successfully per catalog instance.
+        
+        Required JWT claims:
+        - `oid`: Azure AD object ID
+        - `preferred_username` or `upn`: User principal name
+        - `name`: Display name
+      x-uc-stage: public_preview
+      x-uc-since: 0.3.0
+      security:
+        - azureJwt: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/BootstrapOwnerRequest'
+      responses:
+        '200':
+          description: OWNER successfully bootstrapped
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BootstrapOwnerResponse'
+        '409':
+          description: Conflict - OWNER already exists
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: Forbidden - Invalid Azure JWT or insufficient claims
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
   /scim2/Users:
     post:
       tags:
@@ -229,7 +276,68 @@ paths:
           description: The access token will be revoked.
 
 components:
+  securitySchemes:
+    azureJwt:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: Azure AD JWT token with required claims (oid, preferred_username, name)
   schemas:
+    BootstrapOwnerRequest:
+      type: object
+      required:
+        - metastore_id
+      properties:
+        metastore_id:
+          type: string
+          description: The metastore ID to grant OWNER privileges on
+          example: "main"
+    BootstrapOwnerResponse:
+      type: object
+      required:
+        - user_id
+        - principal_email
+        - metastore_id
+        - pat_token
+      properties:
+        user_id:
+          type: string
+          description: The created user ID
+          example: "00000000-0000-0000-0000-000000000001"
+        principal_email:
+          type: string
+          description: The Azure principal email
+          example: "admin@company.com"
+        metastore_id:
+          type: string
+          description: The metastore where OWNER was granted
+          example: "main"
+        pat_token:
+          type: string
+          description: Personal access token for the new OWNER (display once only)
+          example: "pat_xxx...xxx"
+        message:
+          type: string
+          description: Success message
+          example: "OWNER bootstrap completed successfully"
+    ErrorResponse:
+      type: object
+      required:
+        - error_code
+        - message
+      properties:
+        error_code:
+          type: string
+          description: Machine-readable error code
+          example: "OWNER_ALREADY_EXISTS"
+        message:
+          type: string
+          description: Human-readable error message
+          example: "An OWNER already exists for this metastore"
+        details:
+          type: object
+          description: Additional error context
+          additionalProperties: true
     User:
       properties:
         id:
