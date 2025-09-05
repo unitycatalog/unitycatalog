@@ -26,6 +26,7 @@ import io.unitycatalog.server.persist.Repositories;
 import io.unitycatalog.server.persist.utils.HibernateConfigurator;
 import io.unitycatalog.server.security.SecurityConfiguration;
 import io.unitycatalog.server.security.SecurityContext;
+import io.unitycatalog.server.security.jwt.JwksOperations;
 import io.unitycatalog.server.service.*;
 import io.unitycatalog.server.service.credential.CloudCredentialVendor;
 import io.unitycatalog.server.service.credential.aws.AwsCredentialVendor;
@@ -176,6 +177,12 @@ public class UnityCatalogServer {
             authorizer, cloudCredentialVendor, repositories);
     TemporaryPathCredentialsService temporaryPathCredentialsService =
         new TemporaryPathCredentialsService(cloudCredentialVendor);
+    // TODO: Configure Azure tenant ID from server properties
+    String azureTenantId =
+        unityCatalogServerBuilder.serverProperties.getProperty("azure.tenant.id", "common");
+    JwksOperations jwksOperations = new JwksOperations(azureTenantId);
+    AdminBootstrapService adminBootstrapService =
+        new AdminBootstrapService(authorizer, repositories, jwksOperations);
 
     JacksonRequestConverterFunction requestConverterFunction =
         new JacksonRequestConverterFunction(
@@ -227,7 +234,8 @@ public class UnityCatalogServer {
             requestConverterFunction)
         .annotatedService(BASE_PATH + "credentials", credentialService, requestConverterFunction)
         .annotatedService(
-            BASE_PATH + "external-locations", externalLocationService, requestConverterFunction);
+            BASE_PATH + "external-locations", externalLocationService, requestConverterFunction)
+        .annotatedService(BASE_PATH + "admins", adminBootstrapService, requestConverterFunction);
     addIcebergApiServices(
         armeriaServerBuilder,
         unityCatalogServerBuilder.serverProperties,

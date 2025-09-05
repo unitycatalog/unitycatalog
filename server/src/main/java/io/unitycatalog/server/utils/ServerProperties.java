@@ -189,4 +189,17 @@ public class ServerProperties {
     String authorization = getProperty("server.authorization", "disable");
     return authorization.equalsIgnoreCase("enable");
   }
+
+  // Bootstrap configuration getters
+  public int getBootstrapWindowMinutes() {
+    return Integer.parseInt(getProperty("bootstrap.windowMinutes", "30"));
+  }
+
+  public String getBootstrapInitialOwnerUpn() {
+    return getProperty("bootstrap.initialOwner.upn");
+  }
+
+  public boolean isLegacyLocalAdminDisabled() {
+    return Boolean.parseBoolean(getProperty("bootstrap.disableLegacyLocalAdmin", "false"));
+  }
 }
