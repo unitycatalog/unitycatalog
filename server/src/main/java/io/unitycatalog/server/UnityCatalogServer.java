@@ -184,6 +184,27 @@ public class UnityCatalogServer {
     AdminBootstrapService adminBootstrapService =
         new AdminBootstrapService(authorizer, repositories, jwksOperations);
 
+    BootstrapStatusService bootstrapStatusService =
+        new BootstrapStatusService(
+            authorizer, repositories, unityCatalogServerBuilder.serverProperties);
+    ClaimAdminService claimAdminService =
+        new ClaimAdminService(
+            authorizer, repositories, jwksOperations, unityCatalogServerBuilder.serverProperties);
+
+    BootstrapTokenExchangeService bootstrapTokenExchangeService =
+        new BootstrapTokenExchangeService(
+            authorizer,
+            repositories,
+            jwksOperations,
+            unityCatalogServerBuilder.serverProperties,
+            securityContext);
+
+    AzureLoginService azureLoginService =
+        new AzureLoginService(
+            securityContext,
+            unityCatalogServerBuilder.serverProperties,
+            bootstrapTokenExchangeService);
+
     JacksonRequestConverterFunction requestConverterFunction =
         new JacksonRequestConverterFunction(
             JsonMapper.builder()
@@ -195,9 +216,32 @@ public class UnityCatalogServer {
                 .disable(SerializationFeature.WRITE_DATES_AS_TIMESTAMPS)
                 .serializationInclusion(JsonInclude.Include.NON_NULL)
                 .build());
+
+    JacksonResponseConverterFunction controlResponseConverterFunction =
+        new JacksonResponseConverterFunction(
+            JsonMapper.builder()
+                .disable(SerializationFeature.WRITE_DATES_AS_TIMESTAMPS)
+                .serializationInclusion(JsonInclude.Include.NON_NULL)
+                .build());
     armeriaServerBuilder
         .service("/", (ctx, req) -> HttpResponse.of("Hello, Unity Catalog!"))
         .annotatedService(CONTROL_PATH + "auth", authService, requestConverterFunction)
+        .annotatedService(
+            CONTROL_PATH + "auth/bootstrap",
+            bootstrapTokenExchangeService,
+            requestConverterFunction)
+        .annotatedService(
+            CONTROL_PATH + "auth/azure-login", azureLoginService, requestConverterFunction)
+        .annotatedService(
+            CONTROL_PATH + "admins",
+            adminBootstrapService,
+            requestConverterFunction,
+            controlResponseConverterFunction)
+        .annotatedService(
+            CONTROL_PATH + "admins/status",
+            bootstrapStatusService,
+            requestConverterFunction,
+            controlResponseConverterFunction)
         .annotatedService(
             CONTROL_PATH + "scim2/Users",
             scim2UserService,
@@ -235,7 +279,11 @@ public class UnityCatalogServer {
         .annotatedService(BASE_PATH + "credentials", credentialService, requestConverterFunction)
         .annotatedService(
             BASE_PATH + "external-locations", externalLocationService, requestConverterFunction)
-        .annotatedService(BASE_PATH + "admins", adminBootstrapService, requestConverterFunction);
+        .annotatedService(
+            BASE_PATH + "admins",
+            claimAdminService,
+            requestConverterFunction,
+            controlResponseConverterFunction);
     addIcebergApiServices(
         armeriaServerBuilder,
         unityCatalogServerBuilder.serverProperties,
@@ -296,6 +344,10 @@ public class UnityCatalogServer {
           .routeDecorator()
           .pathPrefix(CONTROL_PATH)
           .exclude(CONTROL_PATH + "auth/tokens")
+          .exclude(CONTROL_PATH + "auth/bootstrap/token-exchange")
+          .exclude(CONTROL_PATH + "auth/azure-login/start")
+          .exclude(CONTROL_PATH + "auth/azure-login/callback")
+          .exclude(CONTROL_PATH + "admins/bootstrap-owner")
           .build(accessDecorator);
 
       AuthDecorator authDecorator = new AuthDecorator(securityContext, repositories);
@@ -304,6 +356,10 @@ public class UnityCatalogServer {
           .routeDecorator()
           .pathPrefix(CONTROL_PATH)
           .exclude(CONTROL_PATH + "auth/tokens")
+          .exclude(CONTROL_PATH + "auth/bootstrap/token-exchange")
+          .exclude(CONTROL_PATH + "auth/azure-login/start")
+          .exclude(CONTROL_PATH + "auth/azure-login/callback")
+          .exclude(CONTROL_PATH + "admins/bootstrap-owner")
           .build(authDecorator);
 
       ExceptionHandlingDecorator exceptionDecorator =

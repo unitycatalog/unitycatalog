@@ -187,6 +187,22 @@ server:
   # -- (bool) Enable the server deployment
   enabled: true
 
+# Bootstrap configuration for initial admin setup
+bootstrap:
+  # -- (bool) Enable Azure AD admin claiming via UI
+  enabled: false
+  # -- (array) Optional: restrict claiming to specific email domains
+  # @raw
+  #
+  # Example:
+  # ```yaml
+  # allowedDomains:
+  #   - "contoso.com"
+  #   - "fabrikam.com"
+  # ```
+  #
+  allowedDomains: []
+
   db:
     # -- (string) Database type
     # @raw

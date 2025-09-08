@@ -299,7 +299,7 @@ lazy val server = (project in file("server"))
   .dependsOn(client % "test->test")
   // Server and control models are added as provided to avoid them being added as maven dependencies
   // This is because the server and control models are included in the server jar
-  .dependsOn(serverModels % "provided", controlModels % "provided")
+  .dependsOn(serverModels % "provided", controlModels)
   .settings (
     name := s"$artifactNamePrefix-server",
     mainClass := Some(orgName + ".server.UnityCatalogServer"),

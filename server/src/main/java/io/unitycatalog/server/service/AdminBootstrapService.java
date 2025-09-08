@@ -41,7 +41,7 @@ public class AdminBootstrapService extends AuthorizedService {
     this.unityAccessUtil = new UnityAccessUtil(repositories);
   }
 
-  @Post("/admins/bootstrap-owner")
+  @Post("/bootstrap-owner")
   public BootstrapOwnerResponse bootstrapOwner(
       @Header("Authorization") String authorization, @RequestObject BootstrapOwnerRequest request) {
 

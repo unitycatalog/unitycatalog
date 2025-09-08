@@ -280,6 +280,8 @@ public class UnityCatalogCli {
       controlClient.setPort(uri.getPort());
     }
     controlClient.setScheme(uri.getScheme());
+    // Set the base path for control API endpoints
+    controlClient.setBasePath("/api/1.0/unity-control");
     String customAuthToken = loadProperty(CliUtils.AUTH_TOKEN, cmd);
     if (!customAuthToken.isEmpty()) {
       controlClient.setRequestInterceptor(

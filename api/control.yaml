@@ -49,12 +49,63 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
-        '403':
-          description: Forbidden - Invalid Azure JWT or insufficient claims
+
+  /admins/bootstrap-status:
+    get:
+      tags:
+        - Admins
+      operationId: getBootstrapStatus
+      summary: Get bootstrap status and configuration
+      description: |
+        **PREVIEW FEATURE**: Returns current bootstrap configuration and admin state.
+        Available to Azure-authenticated principals during bootstrap operations.
+      x-uc-stage: public_preview
+      x-uc-since: 0.3.0
+      security:
+        - azureJwt: []
+      responses:
+        '200':
+          description: Bootstrap status retrieved successfully
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ErrorResponse'
+                $ref: '#/components/schemas/BootstrapStatus'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /admins/claim-admin:
+    post:
+      tags:
+        - Admins
+      operationId: claimAdmin
+      summary: Claim admin privileges for authenticated principal
+      description: |
+        **PREVIEW FEATURE**: Allows Azure-authenticated principal to claim OWNER privileges
+        when no Azure admin exists and bootstrap is enabled. This is the preferred method
+        for UI-based admin claiming.
+      x-uc-stage: public_preview
+      x-uc-since: 0.3.0
+      security:
+        - azureJwt: []
+      responses:
+        '200':
+          description: Admin privileges claimed successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ClaimAdminResponse'
+        '400':
+          $ref: '#/components/responses/InvalidRequest'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '403':
+          $ref: '#/components/responses/PermissionDenied'
+        '409':
+          $ref: '#/components/responses/ResourceConflict'
+        '500':
+          $ref: '#/components/responses/InternalError'
   /scim2/Users:
     post:
       tags:
@@ -274,6 +325,140 @@ paths:
       responses:
         '200':
           description: The access token will be revoked.
+  /auth/bootstrap/token-exchange:
+    post:
+      tags:
+        - OAuth2
+      operationId: bootstrapTokenExchange
+      summary: Get a token during bootstrap with user creation
+      description: |
+        **BOOTSTRAP FEATURE**: Exchange Azure AD JWT for Unity Catalog access token during bootstrap window.
+        This endpoint validates Azure JWT, creates users if they don't exist, and returns a Unity Catalog
+        access token. Only works during the bootstrap window when bootstrap is enabled.
+        
+        Required JWT claims:
+        - `oid`: Azure AD object ID
+        - `preferred_username` or `upn`: User principal name
+        - `name`: Display name
+      x-uc-stage: public_preview
+      x-uc-since: 0.3.0
+      security:
+        - azureJwt: []
+      responses:
+        '200':
+          description: Token exchange successful with user creation
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OAuthTokenExchangeInfo'
+        '400':
+          description: Bad request - missing or invalid Azure JWT
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: Forbidden - bootstrap window closed or not enabled
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error during token creation
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /auth/azure-login/start:
+    post:
+      tags:
+        - OAuth2
+      operationId: startAzureLogin
+      summary: Start Azure AD OAuth2 login flow
+      description: |
+        **BOOTSTRAP FEATURE**: Initiate Azure AD OAuth2 login flow for users not yet in Unity Catalog.
+        Returns an authorization URL and session ID for completing the login process.
+        This is the API equivalent of `bin/uc auth login` that works without requiring
+        the user to already be in the Unity Catalog database.
+      x-uc-stage: public_preview
+      x-uc-since: 0.3.0
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AzureLoginStartRequest'
+      responses:
+        '200':
+          description: Azure login flow initiated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AzureLoginStartResponse'
+        '400':
+          description: Bad request - invalid parameters
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '503':
+          description: Azure AD configuration not available
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /auth/azure-login/callback:
+    get:
+      tags:
+        - OAuth2
+      operationId: completeAzureLogin
+      summary: Complete Azure AD OAuth2 login flow
+      description: |
+        **BOOTSTRAP FEATURE**: Complete Azure AD OAuth2 login flow by exchanging authorization code
+        for Unity Catalog access token. Creates user if they don't exist (during bootstrap window).
+        This endpoint handles the OAuth2 callback and returns a Unity Catalog token.
+      x-uc-stage: public_preview
+      x-uc-since: 0.3.0
+      parameters:
+        - name: code
+          in: query
+          required: true
+          description: Authorization code from Azure AD
+          schema:
+            type: string
+        - name: state
+          in: query
+          required: true
+          description: State parameter containing CSRF protection and session information
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Azure login completed successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OAuthTokenExchangeInfo'
+        '400':
+          description: Bad request - invalid authorization code or session
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: Forbidden - bootstrap required but not enabled/available
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error during login completion
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
 
 components:
   securitySchemes:
@@ -320,6 +505,62 @@ components:
           type: string
           description: Success message
           example: "OWNER bootstrap completed successfully"
+
+    AzureLoginStartRequest:
+      type: object
+      properties:
+        redirect_uri:
+          type: string
+          description: Optional custom redirect URI for OAuth2 callback
+          example: "http://localhost:3000/auth/callback"
+        scope:
+          type: string
+          description: OAuth2 scope to request
+          default: "openid profile email"
+          example: "openid profile email"
+
+    AzureLoginStartResponse:
+      type: object
+      required:
+        - authorization_url
+        - session_id
+        - expires_in
+      properties:
+        authorization_url:
+          type: string
+          description: Azure AD authorization URL to redirect user to
+          example: "https://login.microsoftonline.com/tenant/oauth2/v2.0/authorize?..."
+        session_id:
+          type: string
+          description: Session ID to use when completing the login flow
+          example: "sess_1234567890abcdef"
+        expires_in:
+          type: integer
+          description: Session expiration time in seconds
+          example: 300
+        state:
+          type: string
+          description: OAuth2 state parameter for CSRF protection
+          example: "abcd1234"
+
+    AzureLoginCallbackRequest:
+      type: object
+      required:
+        - session_id
+        - authorization_code
+      properties:
+        session_id:
+          type: string
+          description: Session ID from the start login response
+          example: "sess_1234567890abcdef"
+        authorization_code:
+          type: string
+          description: Authorization code from Azure AD callback
+          example: "M.C1234-abcd..."
+        state:
+          type: string
+          description: OAuth2 state parameter for verification
+          example: "abcd1234"
     ErrorResponse:
       type: object
       required:
@@ -635,6 +876,41 @@ components:
         client_id:
           description: The client identifier that represents the registration information provided by the client
           type: string
+
+    BootstrapStatus:
+      type: object
+      required:
+        - bootstrapEnabled
+        - hasAzureAdmin
+      properties:
+        bootstrapEnabled:
+          type: boolean
+          description: Whether bootstrap functionality is enabled
+        hasAzureAdmin:
+          type: boolean  
+          description: Whether an Azure-authenticated admin already exists
+        allowedDomains:
+          type: array
+          items:
+            type: string
+          description: Optional list of allowed email domains for admin claiming
+
+    ClaimAdminResponse:
+      type: object
+      required:
+        - userId
+        - principalEmail
+        - message
+      properties:
+        userId:
+          type: string
+          description: Unity Catalog user ID for claimed admin
+        principalEmail:
+          type: string
+          description: Email address of claimed admin principal
+        message:
+          type: string
+          description: Success message with next steps
 
 info:
   title: Unity Control API

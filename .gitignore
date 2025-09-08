@@ -55,3 +55,4 @@ derby.log
 .pr-docs/
 etc/conf/server.properties.local
 test-with-local-config.sh
+test-azure-jwt-generator.java
