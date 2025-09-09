@@ -88,6 +88,12 @@ Let's list the tables.
 bin/uc table list --catalog unity --schema default
 ```
 
+> **Note**: For production environments with authentication enabled, you can use Personal Access Tokens (PATs):
+> ```sh
+> bin/uc --auth_token $UC_DAPI_TOKEN table list --catalog unity --schema default
+> ```
+> See the [Personal Access Tokens Guide](docs/server/personal-access-tokens.md) for more information.
+
 You should see a few tables. Some details are truncated because of the nested nature of the data.
 To see all the content, you can add `--output jsonPretty` to any command.
 
@@ -171,6 +177,45 @@ yarn start
 You can interact with a Unity Catalog server to create and manage catalogs, schemas and tables,
 operate on volumes and functions from the CLI, and much more.
 See the [cli usage](docs/usage/cli.md) for more details.
+
+## Web UI & Admin Panel
+
+Unity Catalog includes a web-based user interface for browsing and managing your data assets:
+
+- **Data Browser**: Explore catalogs, schemas, tables, functions, and volumes through an intuitive web interface
+- **Admin Panel**: Manage users and permissions with a comprehensive admin interface
+  - **User Management**: Create, edit, and delete Unity Catalog users via SCIM2 API
+  - **Permission Management**: Grant and revoke permissions on catalogs, schemas, and tables
+  - **Bootstrap Integration**: Claim initial admin privileges through Azure authentication
+
+### Getting Started with Admin Panel
+
+1. **Access**: Visit `http://localhost:3000/admin` (when UI is running)
+2. **Authentication**: Sign in with Azure AD credentials
+3. **Admin Privileges**: System automatically detects your admin status
+4. **Bootstrap**: New instances provide guided setup to claim admin privileges
+
+For detailed guidance:
+- [UI Admin Panel Guide](docs/ui-admin-panel.md) - Complete feature documentation
+- [Admin Panel Quick Start](docs/ui-admin-panel-quickstart.md) - Quick reference guide
+- [Azure Bootstrap Guide](docs/bootstrap-azure-guide.md) - Initial admin setup process
+- [Personal Access Tokens Guide](docs/server/personal-access-tokens.md) - CLI, API, and Spark authentication
+
+## Authentication & API Access
+
+Unity Catalog supports multiple authentication methods:
+
+### Personal Access Tokens (PATs)
+- **DAPI Tokens**: Use `dapi_` prefixed tokens for CLI, API calls, and Spark integration
+- **CLI Usage**: `bin/uc --auth_token $UC_DAPI_TOKEN table list --catalog unity --schema default`
+- **API Usage**: Include `Authorization: Bearer dapi_...` header in HTTP requests
+- **Spark Integration**: Configure Spark to use DAPI tokens for Unity Catalog access
+- **Admin Operations**: Users with OWNER privileges can perform administrative tasks
+
+### Azure AD Integration
+- **JWT Tokens**: Use Azure AD tokens for initial authentication and bootstrap operations
+- **Bootstrap Flow**: Claim initial admin privileges using Azure AD authentication
+- **SCIM2 API**: Manage users and groups with Azure AD integration
 
 ## APIs and Compatibility
 

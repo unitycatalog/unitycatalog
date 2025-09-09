@@ -14,6 +14,10 @@ nav:
   - Usage:
       - CLI: usage/cli.md
       - UI: usage/ui.md
+      - Admin Panel:
+          - Overview: ui-admin-panel.md
+          - Quick Start: ui-admin-panel-quickstart.md
+          - Azure Bootstrap: bootstrap-azure-guide.md
       - API:
           - Overview: usage/api/index.md
           - Catalogs: usage/api/catalogs.md

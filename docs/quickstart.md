@@ -1,6 +1,32 @@
 # Quickstart
 
-This quickstart shows how to run Unity Catalog on localhost which is great for experimentation and testing.
+This quickstart shows how to run Unity Catalog on localhost which i## Verify Unity Catalog server is running
+
+Let's create a new Terminal window and verify that the Unity Catalog server is running.
+
+Unity Catalog has a few built-in tables that are great for quick experimentation. You can access these tables using either unauthenticated commands (for local development) or authenticated commands using Personal Access Tokens (PATs).
+
+### Unauthenticated Access (Local Development)
+
+For local development and testing, you can access Unity Catalog without authentication:
+
+```sh
+bin/uc table list --catalog unity --schema default
+```
+
+### Authenticated Access with DAPI Tokens
+
+For production use or when authentication is enabled, use Personal Access Tokens (PATs):
+
+```bash
+# Set your DAPI token (create one via the UI or API)
+export UC_DAPI_TOKEN="dapi_rwNSYEki6vow5jOI6MdDWJY-A4lkW-vWzZyAh-18q54"
+
+# List tables with authentication
+bin/uc --auth_token $UC_DAPI_TOKEN table list --catalog unity --schema default
+```
+
+Both approaches should show the same output:r experimentation and testing.
 
 ## How to start the Unity Catalog server
 
@@ -41,6 +67,43 @@ should see:
 ```
 
 Well, that was pretty easy!
+
+## Authentication with Personal Access Tokens (PATs)
+
+Unity Catalog supports Personal Access Tokens (PATs) for programmatic access. These tokens use the `dapi_` prefix and can be used with the CLI, APIs, and Spark integration.
+
+### Creating a Personal Access Token
+
+1. **Via Unity Catalog UI**: Create tokens through the admin panel at `http://localhost:3000`
+2. **Via API**: Create tokens using Azure AD authentication or existing PAT tokens
+
+```bash
+# Create a token via API (requires existing authentication)
+curl -X POST "http://localhost:8080/api/2.1/unity-catalog/tokens" \
+  -H "Authorization: Bearer $EXISTING_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "comment": "My development token",
+    "lifetimeSeconds": 3600
+  }'
+```
+
+### Using PAT Tokens with CLI
+
+Export your DAPI token and use it with CLI commands:
+
+```bash
+export UC_DAPI_TOKEN="dapi_rwNSYEki6vow5jOI6MdDWJY-A4lkW-vWzZyAh-18q54"
+
+# List catalogs with authentication
+bin/uc --auth_token $UC_DAPI_TOKEN catalog list
+
+# List schemas
+bin/uc --auth_token $UC_DAPI_TOKEN schema list --catalog unity
+
+# List tables
+bin/uc --auth_token $UC_DAPI_TOKEN table list --catalog unity --schema default
+```
 
 ## Verify Unity Catalog server is running
 

@@ -11,6 +11,23 @@ Personal Access Tokens provide a secure way to authenticate with Unity Catalog A
 - **Scoped**: Inherit the permissions of the creating user
 - **Time-limited**: Have configurable expiration times
 - **Revocable**: Can be revoked by the owner or administrators
+- **DAPI prefix**: Unity Catalog PATs use the `dapi_` prefix for easy identification
+
+## Token Types
+
+Unity Catalog supports two types of authentication tokens:
+
+### 1. Personal Access Tokens (PATs) - `dapi_` prefix
+- Created through the UI or API
+- Used for CLI, API calls, and Spark integration
+- Begin with `dapi_` (e.g., `dapi_rwNSYEki6vow5jOI6MdDWJY-A4lkW-vWzZyAh-18q54`)
+- Support all Unity Catalog operations based on user permissions
+
+### 2. Azure AD JWT Tokens
+- Obtained from Azure AD OAuth flow
+- Used for initial authentication and bootstrap operations
+- Begin with `eyJ` (standard JWT format)
+- Time-limited based on Azure AD configuration
 
 ## Prerequisites
 
@@ -62,7 +79,7 @@ curl -X POST "http://localhost:8080/api/2.1/unity-catalog/tokens" \
 ```json
 {
   "tokenId": "tok_1234567890abcdef",
-  "tokenValue": "pat_1234567890abcdef1234567890abcdef",
+  "tokenValue": "dapi_rwNSYEki6vow5jOI6MdDWJY-A4lkW-vWzZyAh-18q54",
   "comment": "My development token",
   "createdAt": "2025-01-15T10:30:00Z",
   "expiresAt": "2025-01-15T11:30:00Z"
@@ -70,6 +87,8 @@ curl -X POST "http://localhost:8080/api/2.1/unity-catalog/tokens" \
 ```
 
 > ⚠️ **Important**: Save the `tokenValue` immediately. It will not be shown again.
+> 
+> **Note**: Unity Catalog PATs use the `dapi_` prefix to distinguish them from other token types.
 
 ### Using Default TTL
 
@@ -123,13 +142,98 @@ curl -X GET "http://localhost:8080/api/2.1/unity-catalog/tokens?includeAll=true"
 
 ## Using Personal Access Tokens
 
-### API Authentication
+### CLI Authentication
 
-Use PAT tokens in the `Authorization` header:
+Unity Catalog CLI supports DAPI token authentication with the `--auth_token` parameter:
 
 ```bash
+# List catalogs
+bin/uc --auth_token $UC_DAPI_TOKEN catalog list
+
+# List schemas
+bin/uc --auth_token $UC_DAPI_TOKEN schema list --catalog unity
+
+# List tables
+bin/uc --auth_token $UC_DAPI_TOKEN table list --catalog unity --schema default
+
+# Read table data
+bin/uc --auth_token $UC_DAPI_TOKEN table read --full_name unity.default.numbers
+```
+
+**Environment Variable Setup:**
+```bash
+export UC_DAPI_TOKEN="dapi_rwNSYEki6vow5jOI6MdDWJY-A4lkW-vWzZyAh-18q54"
+bin/uc --auth_token $UC_DAPI_TOKEN catalog list
+```
+
+### API Authentication
+
+Use DAPI tokens in the `Authorization` header with `Bearer` authentication:
+
+```bash
+# List catalogs
 curl -X GET "http://localhost:8080/api/2.1/unity-catalog/catalogs" \
-  -H "Authorization: Bearer pat_1234567890abcdef1234567890abcdef"
+  -H "Authorization: Bearer dapi_rwNSYEki6vow5jOI6MdDWJY-A4lkW-vWzZyAh-18q54"
+
+# Create catalog
+curl -X POST "http://localhost:8080/api/2.1/unity-catalog/catalogs" \
+  -H "Authorization: Bearer dapi_rwNSYEki6vow5jOI6MdDWJY-A4lkW-vWzZyAh-18q54" \
+  -H "Content-Type: application/json" \
+  -d '{"name": "my_catalog", "comment": "Test catalog"}'
+
+# Get temporary table credentials (requires OWNER privileges)
+curl -X POST "http://localhost:8080/api/2.1/unity-catalog/temporary-table-credentials" \
+  -H "Authorization: Bearer dapi_rwNSYEki6vow5jOI6MdDWJY-A4lkW-vWzZyAh-18q54" \
+  -H "Content-Type: application/json" \
+  -d '{"tableId": "your-table-id", "operation": "READ_WRITE"}'
+```
+
+### Spark Integration
+
+DAPI tokens work with Apache Spark for Unity Catalog integration:
+
+**Spark 4.0.0+ Configuration:**
+```bash
+# Set environment variable
+export UC_DAPI_TOKEN="dapi_rwNSYEki6vow5jOI6MdDWJY-A4lkW-vWzZyAh-18q54"
+
+# Launch Spark with Unity Catalog
+spark-shell \
+  --conf "spark.sql.catalog.unity.type=unitycatalog" \
+  --conf "spark.sql.catalog.unity.uri=http://localhost:8080" \
+  --conf "spark.sql.catalog.unity.token=$UC_DAPI_TOKEN"
+```
+
+**Spark SQL Example:**
+```sql
+-- Use Unity Catalog
+USE CATALOG unity;
+
+-- Query tables
+SELECT * FROM unity.default.numbers LIMIT 10;
+
+-- Create table
+CREATE TABLE unity.default.my_spark_table (
+  id INT,
+  name STRING
+) USING DELTA;
+```
+
+**PySpark Example:**
+```python
+from pyspark.sql import SparkSession
+import os
+
+spark = SparkSession.builder \
+    .appName("Unity Catalog DAPI Example") \
+    .config("spark.sql.catalog.unity.type", "unitycatalog") \
+    .config("spark.sql.catalog.unity.uri", "http://localhost:8080") \
+    .config("spark.sql.catalog.unity.token", os.environ.get("UC_DAPI_TOKEN")) \
+    .getOrCreate()
+
+# Read from Unity Catalog
+df = spark.table("unity.default.numbers")
+df.show()
 ```
 
 ### SDK Usage
@@ -139,7 +243,7 @@ curl -X GET "http://localhost:8080/api/2.1/unity-catalog/catalogs" \
 from unitycatalog.sdk import ApiClient, CatalogsApi
 
 client = ApiClient()
-client.set_default_header('Authorization', 'Bearer pat_1234567890abcdef1234567890abcdef')
+client.set_default_header('Authorization', 'Bearer dapi_rwNSYEki6vow5jOI6MdDWJY-A4lkW-vWzZyAh-18q54')
 catalogs_api = CatalogsApi(client)
 
 catalogs = catalogs_api.list_catalogs()
@@ -148,13 +252,61 @@ catalogs = catalogs_api.list_catalogs()
 **Java SDK:**
 ```java
 ApiClient client = new ApiClient();
-client.addDefaultHeader("Authorization", "Bearer pat_1234567890abcdef1234567890abcdef");
+client.addDefaultHeader("Authorization", "Bearer dapi_rwNSYEki6vow5jOI6MdDWJY-A4lkW-vWzZyAh-18q54");
 CatalogsApi catalogsApi = new CatalogsApi(client);
 
 ListCatalogsResponse catalogs = catalogsApi.listCatalogs(null, null);
 ```
 
-## Revoking Personal Access Tokens
+## DAPI Token Capabilities
+
+### Administrative Operations
+
+DAPI tokens inherit the full privileges of the creating user. Users with OWNER/Admin roles can perform administrative operations:
+
+**Temporary Credentials**: Only users with OWNER privileges can request temporary table/volume credentials for cloud storage access:
+
+```bash
+# Request temporary table credentials (requires OWNER privileges)
+curl -X POST "http://localhost:8080/api/2.1/unity-catalog/temporary-table-credentials" \
+  -H "Authorization: Bearer $UC_DAPI_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "tableId": "your-table-id",
+    "operation": "READ_WRITE"
+  }'
+```
+
+**User Management**: Admin users can manage other users and permissions:
+
+```bash
+# List all users (admin only)
+curl -X GET "http://localhost:8080/api/2.1/unity-catalog/users" \
+  -H "Authorization: Bearer $UC_DAPI_TOKEN"
+
+# Grant permissions (admin only)
+curl -X POST "http://localhost:8080/api/2.1/unity-catalog/permissions" \
+  -H "Authorization: Bearer $UC_DAPI_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "principal": "user@example.com",
+    "securable_type": "CATALOG",
+    "securable_name": "my_catalog",
+    "privilege": "USE_CATALOG"
+  }'
+```
+
+### Privilege Verification
+
+To verify your token has admin privileges, try accessing admin-only endpoints:
+
+```bash
+# Test admin access - will succeed for OWNER users
+curl -X GET "http://localhost:8080/api/2.1/unity-catalog/tokens?includeAll=true" \
+  -H "Authorization: Bearer $UC_DAPI_TOKEN"
+```
+
+If you receive a `403 Forbidden` response, your token does not have admin privileges.
 
 ### Revoke Your Own Token
 
