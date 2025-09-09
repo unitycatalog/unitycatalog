@@ -13,6 +13,7 @@ import {
   Outlet,
   RouterProvider,
   useNavigate,
+  useLocation,
 } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { QUERY_STALE_TIME } from './utils/constants';
@@ -29,7 +30,15 @@ import ModelDetails from './pages/ModelDetails';
 import Login from './pages/Login';
 import { AuthProvider, useAuth } from './context/auth-context';
 import { UserOutlined } from '@ant-design/icons';
+import { MsalProvider } from '@azure/msal-react';
+import { msalInstance, MsalAuthProvider } from './context/msal-auth-context';
+import { RequireAuth } from './components/RequireAuth';
 import ModelVersionDetails from './pages/ModelVersionDetails';
+import { AuthDebug } from './pages/AuthDebug';
+import { AdminPanel } from './pages/AdminPanel';
+import { AdminStatusDebug } from './components/AdminStatusDebug';
+import { useAdminStatus } from './hooks/adminStatus';
+import DeveloperTokens from './pages/DeveloperTokens';
 
 // TODO:
 // As of [19/02/2025], this implementation should be updated once the following PR are merged.
@@ -44,36 +53,56 @@ const router = createBrowserRouter([
     element: <AppProvider />,
     children: [
       {
+        path: '/login',
+        element: <Login />,
+      },
+      {
+        path: '/auth/debug',
+        element: <RequireAuth><AuthDebug /></RequireAuth>,
+      },
+      {
+        path: '/admin/debug',
+        element: <RequireAuth><AdminStatusDebug /></RequireAuth>,
+      },
+      {
+        path: '/admin',
+        element: <RequireAuth><AdminPanel /></RequireAuth>,
+      },
+      {
+        path: '/tokens',
+        element: <RequireAuth><DeveloperTokens /></RequireAuth>,
+      },
+      {
         path: '/',
-        element: <CatalogsList />,
+        element: <RequireAuth><CatalogsList /></RequireAuth>,
       },
       {
         path: '/data/:catalog',
-        element: <CatalogDetails />,
+        element: <RequireAuth><CatalogDetails /></RequireAuth>,
       },
       {
         path: '/data/:catalog/:schema',
-        element: <SchemaDetails />,
+        element: <RequireAuth><SchemaDetails /></RequireAuth>,
       },
       {
         path: '/data/:catalog/:schema/:table',
-        element: <TableDetails />,
+        element: <RequireAuth><TableDetails /></RequireAuth>,
       },
       {
         path: '/volumes/:catalog/:schema/:volume',
-        element: <VolumeDetails />,
+        element: <RequireAuth><VolumeDetails /></RequireAuth>,
       },
       {
         path: '/functions/:catalog/:schema/:ucFunction',
-        element: <FunctionDetails />,
+        element: <RequireAuth><FunctionDetails /></RequireAuth>,
       },
       {
         path: '/models/:catalog/:schema/:model',
-        element: <ModelDetails />,
+        element: <RequireAuth><ModelDetails /></RequireAuth>,
       },
       {
         path: '/models/:catalog/:schema/:model/versions/:version',
-        element: <ModelVersionDetails />,
+        element: <RequireAuth><ModelVersionDetails /></RequireAuth>,
       },
     ],
   },
@@ -81,7 +110,50 @@ const router = createBrowserRouter([
 
 function AppProvider() {
   const { logout, currentUser } = useAuth();
+  const { data: adminStatus } = useAdminStatus();
   const navigate = useNavigate();
+  const location = useLocation();
+
+  // Determine selected menu keys based on current path
+  const selectedKeys = useMemo(() => {
+    if (location.pathname.startsWith('/admin')) {
+      return ['admin'];
+    }
+    if (location.pathname.startsWith('/tokens')) {
+      return ['tokens'];
+    }
+    return ['catalogs'];
+  }, [location.pathname]);
+
+  const navigationItems = useMemo(() => {
+    const items = [
+      {
+        key: 'catalogs',
+        label: 'Catalogs',
+        onClick: () => navigate('/'),
+      },
+    ];
+    
+    // Add Developer Tokens tab for authenticated users
+    if (currentUser) {
+      items.push({
+        key: 'tokens',
+        label: 'Developer Tokens',
+        onClick: () => navigate('/tokens'),
+      });
+    }
+    
+    // Add Admin tab if user has admin privileges
+    if (adminStatus?.isAdmin) {
+      items.push({
+        key: 'admin',
+        label: 'Admin',
+        onClick: () => navigate('/admin'),
+      });
+    }
+    
+    return items;
+  }, [adminStatus?.isAdmin, currentUser, navigate]);
 
   const profileMenuItems = useMemo(
     (): MenuProps['items'] => [
@@ -148,14 +220,8 @@ function AppProvider() {
             <Menu
               theme="dark"
               mode="horizontal"
-              defaultSelectedKeys={['catalogs']}
-              items={[
-                {
-                  key: 'catalogs',
-                  label: 'Catalogs',
-                  onClick: () => navigate('/'),
-                },
-              ]}
+              selectedKeys={selectedKeys}
+              items={navigationItems}
               style={{ flex: 1, minWidth: 0 }}
             />
           </div>
@@ -223,9 +289,13 @@ function App() {
   return authEnabled ? (
     <NotificationProvider>
       <QueryClientProvider client={queryClient}>
-        <AuthProvider>
-          <RouterProvider router={router} fallbackElement={<p>Loading...</p>} />
-        </AuthProvider>
+        <MsalProvider instance={msalInstance}>
+          <AuthProvider>
+            <MsalAuthProvider>
+              <RouterProvider router={router} fallbackElement={<p>Loading...</p>} />
+            </MsalAuthProvider>
+          </AuthProvider>
+        </MsalProvider>
       </QueryClientProvider>
     </NotificationProvider>
   ) : (

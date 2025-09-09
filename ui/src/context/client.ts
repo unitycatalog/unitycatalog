@@ -9,4 +9,5 @@ export const CLIENT = axios.create({
   headers: {
     'Content-type': 'application/json',
   },
+  withCredentials: true, // Enable sending cookies for authentication
 });

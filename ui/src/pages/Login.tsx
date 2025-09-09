@@ -1,4 +1,4 @@
-import { Flex, Layout, Typography } from 'antd';
+import { Flex, Layout, Typography, Button } from 'antd';
 import React from 'react';
 import GoogleAuthButton from '../components/login/GoogleAuthButton';
 import MSAuthButton from '../components/login/MSAuthButton';
@@ -6,34 +6,17 @@ import OktaAuthButton from '../components/login/OktaAuthButton';
 import { useAuth } from '../context/auth-context';
 import KeycloakAuthButton from '../components/login/KeycloakAuthButton';
 import { useNavigate, useLocation } from 'react-router-dom';
-
-import { MsalProvider } from "@azure/msal-react";
-import { PublicClientApplication } from "@azure/msal-browser";
-
-const msalConfig = {
-    auth: {
-        clientId: process.env.REACT_APP_MS_CLIENT_ID || "",
-        authority: process.env.REACT_APP_MS_AUTHORITY || "",
-        redirectUri: "http://localhost:3000",
-    },
-    cache: {
-        cacheLocation: "localStorage",
-        storeAuthStateInCookie: false,
-    },
-};
-const msEnabled = process.env.REACT_APP_MS_AUTH_ENABLED === 'true';
-if (!msalConfig.auth.clientId && msEnabled) {
-    throw new Error("MSAL clientId is not defined. Please check your configuration.");
-}
-const msalInstance = new PublicClientApplication(msalConfig);
+import { useMsalAuth } from '../context/msal-auth-context';
 
 export default function LoginPage() {
     const {loginWithToken} = useAuth();
+    const { login } = useMsalAuth();
     const navigate = useNavigate();
     const location = useLocation();
     const from = location.state?.from || '/';
     const googleEnabled = process.env.REACT_APP_GOOGLE_AUTH_ENABLED === 'true';
     const oktaEnabled = process.env.REACT_APP_OKTA_AUTH_ENABLED === 'true';
+    const msEnabled = process.env.REACT_APP_MS_AUTH_ENABLED === 'true';
     const keycloakEnabled =
         process.env.REACT_APP_KEYCLOAK_AUTH_ENABLED === 'true';
 
@@ -45,8 +28,16 @@ export default function LoginPage() {
         await loginWithToken(idToken).then(() => navigate(from, { replace: true }));
     };
 
+  const handleAzureLogin = async () => {
+    try {
+      await login();
+      navigate(from, { replace: true });
+    } catch (error) {
+      console.error('Azure login failed:', error);
+    }
+  };
+
   return (
-    <MsalProvider instance={msalInstance}>
       <Layout
         hasSider={false}
         style={{
@@ -90,8 +81,18 @@ export default function LoginPage() {
               {googleEnabled && (
                 <GoogleAuthButton onGoogleSignIn={handleGoogleSignIn} />
               )}
-              {msEnabled &&
-                  (<MSAuthButton onMSSignIn={handleMSSignIn} />
+              {msEnabled && (
+                <>
+                  <MSAuthButton onMSSignIn={handleMSSignIn} />
+                  <Button 
+                    type="primary" 
+                    size="large" 
+                    onClick={handleAzureLogin}
+                    style={{ width: '100%' }}
+                  >
+                    Sign in with Azure AD (MSAL)
+                  </Button>
+                </>
               )}
               {oktaEnabled && (
                 <OktaAuthButton
@@ -107,6 +108,5 @@ export default function LoginPage() {
           </div>
         </Flex>
       </Layout>
-    </MsalProvider>
   );
 }
