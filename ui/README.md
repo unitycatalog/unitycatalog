@@ -32,11 +32,40 @@ You will also see any lint errors in the console.
 
 ### Authenticate and Login
 
-OSS Unity Catalog supports Sign in with Google. You can authenticate with Google by clicking the "Sign in with Google" button on the login page, once OAuth has been configured. To configure this, follow the steps to obtain a [Google API Client ID](https://developers.google.com/identity/gsi/web/guides/get-google-api-clientid) and configure your OAuth consent screen.
+Unity Catalog UI supports multiple authentication providers: Google OAuth, Microsoft Azure AD, Okta, and Keycloak. 
 
-NOTE: The google client ID should match what is configured in the server.properties file on the server side. See README in root directory. In order for login to work, authentication must be enabled on server side AND UI side and users must be added to users table.
+#### Configuration
 
-Once you have the client ID, add it to the `.env` file after `REACT_APP_GOOGLE_CLIENT_ID=` and change the `REACT_APP_GOOGLE_AUTH_ENABLED` flag from false to true. Restart yarn. 
+1. **Copy the environment template:**
+   ```bash
+   cp .env.example .env
+   ```
+
+2. **Configure your authentication provider in `.env`:**
+
+   **For Google OAuth:**
+   - Set `REACT_APP_GOOGLE_AUTH_ENABLED=true`
+   - Add your Google client ID to `REACT_APP_GOOGLE_CLIENT_ID`
+   - Follow [Google API Client ID setup](https://developers.google.com/identity/gsi/web/guides/get-google-api-clientid)
+
+   **For Microsoft Azure AD:**
+   - Set `REACT_APP_MS_AUTH_ENABLED=true` 
+   - Add your Azure SPA client ID to `REACT_APP_MS_CLIENT_ID`
+   - Add your tenant ID to `REACT_APP_MS_AUTHORITY=https://login.microsoftonline.com/your-tenant-id`
+
+   **For Okta:**
+   - Set `REACT_APP_OKTA_AUTH_ENABLED=true`
+   - Configure `REACT_APP_OKTA_DOMAIN`, `REACT_APP_OKTA_CLIENT_ID`
+
+   **For Keycloak:**
+   - Set `REACT_APP_KEYCLOAK_AUTH_ENABLED=true`
+   - Configure `REACT_APP_KEYCLOAK_URL`, `REACT_APP_KEYCLOAK_REALM_ID`, `REACT_APP_KEYCLOAK_CLIENT_ID`
+
+3. **Server-side configuration:** The authentication provider must also be configured in the server's `etc/conf/server.properties`. See the main README for server setup details.
+
+4. **Restart the UI:** Run `yarn start` after configuration changes.
+
+**Important:** The `.env` file contains sensitive configuration and is not tracked by git. Never commit real credentials to the repository. 
 
 ## References
 
