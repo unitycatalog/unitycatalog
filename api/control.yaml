@@ -460,6 +460,125 @@ paths:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
 
+  /tokens:
+    post:
+      tags:
+        - Developer Tokens
+      operationId: createDeveloperToken
+      summary: Create a new developer token (Personal Access Token)
+      description: |
+        Creates a new developer token (Personal Access Token) for API access.
+        The token value is returned once and cannot be retrieved again.
+        Tokens have a maximum lifetime of 60 days and include a scope for authorization.
+      x-uc-stage: public_preview
+      x-uc-since: 0.3.0
+      security:
+        - azureJwt: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateDeveloperTokenRequest'
+      responses:
+        '201':
+          description: Developer token created successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CreateDeveloperTokenResponse'
+        '400':
+          description: Bad request - invalid parameters or TTL too long
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: Unauthorized - invalid or missing authentication
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+    get:
+      tags:
+        - Developer Tokens
+      operationId: listDeveloperTokens
+      summary: List developer tokens for authenticated user
+      description: |
+        Lists all developer tokens for the authenticated user.
+        Token values are never returned, only metadata.
+      x-uc-stage: public_preview
+      x-uc-since: 0.3.0
+      security:
+        - azureJwt: []
+      responses:
+        '200':
+          description: List of developer tokens
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ListDeveloperTokensResponse'
+        '401':
+          description: Unauthorized - invalid or missing authentication
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /tokens/{tokenId}:
+    delete:
+      tags:
+        - Developer Tokens
+      operationId: revokeDeveloperToken
+      summary: Revoke a developer token
+      description: |
+        Revokes (deletes) a developer token. Once revoked, the token becomes invalid
+        and cannot be used for API access.
+      x-uc-stage: public_preview
+      x-uc-since: 0.3.0
+      security:
+        - azureJwt: []
+      parameters:
+        - name: tokenId
+          in: path
+          required: true
+          description: Unique identifier of the token to revoke
+          schema:
+            type: string
+      responses:
+        '204':
+          description: Token revoked successfully
+        '401':
+          description: Unauthorized - invalid or missing authentication
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Token not found or not owned by authenticated user
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
 components:
   securitySchemes:
     azureJwt:
@@ -911,6 +1030,96 @@ components:
         message:
           type: string
           description: Success message with next steps
+
+    CreateDeveloperTokenRequest:
+      type: object
+      required:
+        - comment
+      properties:
+        comment:
+          type: string
+          description: Human-readable description of the token purpose
+          example: "API access for my automation scripts"
+          maxLength: 255
+        lifetimeSeconds:
+          type: integer
+          description: Token lifetime in seconds (maximum 5184000 = 60 days)
+          minimum: 3600
+          maximum: 5184000
+          example: 86400
+          default: 86400
+
+    CreateDeveloperTokenResponse:
+      type: object
+      required:
+        - tokenId
+        - tokenValue
+        - comment
+        - creationTime
+        - expiryTime
+        - tokenStatus
+      properties:
+        tokenId:
+          type: string
+          description: Unique identifier for the token
+          example: "550e8400-e29b-41d4-a716-446655440000"
+        tokenValue:
+          type: string
+          description: The actual token value (shown only once)
+          example: "dapi_123abc456def789..."
+        comment:
+          type: string
+          description: Human-readable description of the token purpose
+        creationTime:
+          type: integer
+          format: int64
+          description: Token creation time (Unix timestamp in milliseconds)
+        expiryTime:
+          type: integer
+          format: int64
+          description: Token expiry time (Unix timestamp in milliseconds)
+        tokenStatus:
+          type: string
+          enum: [ACTIVE, REVOKED]
+          description: Current status of the token
+
+    ListDeveloperTokensResponse:
+      type: object
+      required:
+        - tokens
+      properties:
+        tokens:
+          type: array
+          items:
+            $ref: '#/components/schemas/DeveloperTokenInfo'
+
+    DeveloperTokenInfo:
+      type: object
+      required:
+        - tokenId
+        - comment
+        - creationTime
+        - expiryTime
+        - tokenStatus
+      properties:
+        tokenId:
+          type: string
+          description: Unique identifier for the token
+        comment:
+          type: string
+          description: Human-readable description of the token purpose
+        creationTime:
+          type: integer
+          format: int64
+          description: Token creation time (Unix timestamp in milliseconds)
+        expiryTime:
+          type: integer
+          format: int64
+          description: Token expiry time (Unix timestamp in milliseconds)
+        tokenStatus:
+          type: string
+          enum: [ACTIVE, REVOKED]
+          description: Current status of the token
 
 info:
   title: Unity Control API
