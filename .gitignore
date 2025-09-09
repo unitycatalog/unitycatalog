@@ -54,5 +54,6 @@ spark-warehouse/
 derby.log
 .pr-docs/
 etc/conf/server.properties.local
+etc/conf/server.properties.backup
 test-with-local-config.sh
 test-azure-jwt-generator.java
