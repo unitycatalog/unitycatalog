@@ -199,6 +199,8 @@ public class UnityCatalogServer {
             unityCatalogServerBuilder.serverProperties,
             securityContext);
 
+    DeveloperTokenService developerTokenService = new DeveloperTokenService(repositories);
+
     AzureLoginService azureLoginService =
         new AzureLoginService(
             securityContext,
@@ -283,7 +285,8 @@ public class UnityCatalogServer {
             BASE_PATH + "admins",
             claimAdminService,
             requestConverterFunction,
-            controlResponseConverterFunction);
+            controlResponseConverterFunction)
+        .annotatedService(BASE_PATH + "tokens", developerTokenService, requestConverterFunction);
     addIcebergApiServices(
         armeriaServerBuilder,
         unityCatalogServerBuilder.serverProperties,

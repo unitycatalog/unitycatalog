@@ -25,6 +25,7 @@ public class Repositories {
   private final CredentialRepository credentialRepository;
   private final ExternalLocationRepository externalLocationRepository;
   private final BootstrapStateRepository bootstrapStateRepository;
+  private final DeveloperTokenRepository developerTokenRepository;
 
   public Repositories(SessionFactory sessionFactory, ServerProperties serverProperties) {
     this.sessionFactory = sessionFactory;
@@ -41,5 +42,6 @@ public class Repositories {
     this.credentialRepository = new CredentialRepository(this, sessionFactory);
     this.externalLocationRepository = new ExternalLocationRepository(this, sessionFactory);
     this.bootstrapStateRepository = new BootstrapStateRepository(sessionFactory);
+    this.developerTokenRepository = new DeveloperTokenRepository(sessionFactory);
   }
 }
