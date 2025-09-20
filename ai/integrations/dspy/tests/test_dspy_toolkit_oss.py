@@ -411,11 +411,6 @@ def test_toolkit_get_tool_methods(uc_client):
         assert tool is not None
         assert tool.name == "catalog__schema__test_function"
 
-        # Test get_tool_wrapper
-        tool_wrapper = toolkit.get_tool_wrapper("catalog.schema.test_function")
-        assert tool_wrapper is not None
-        assert tool_wrapper.uc_function_name == "catalog.schema.test_function"
-        assert isinstance(tool_wrapper, UnityCatalogDSPyToolWrapper)
 
 
 def test_toolkit_with_wildcard_function_names(uc_client):

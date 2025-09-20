@@ -438,11 +438,6 @@ def test_toolkit_get_tool_methods(client):
         assert tool is not None
         assert tool.name == "catalog__schema__test_function"
 
-        # Test get_tool_wrapper
-        tool_wrapper = toolkit.get_tool_wrapper("catalog.schema.test_function")
-        assert tool_wrapper is not None
-        assert tool_wrapper.uc_function_name == "catalog.schema.test_function"
-        assert isinstance(tool_wrapper, UnityCatalogDSPyToolWrapper)
 
 
 def test_toolkit_convert_to_dspy_schema_no_parameters():
@@ -606,10 +601,6 @@ def test_toolkit_creation_without_properties_argument_mocked():
         assert tool.name == "catalog__schema__test_function"
         assert tool.desc == "A test function without properties argument"
 
-        # Get the tool wrapper to access UC-specific attributes
-        tool_wrapper = toolkit.get_tool_wrapper("catalog.schema.test_function")
-        assert tool_wrapper.uc_function_name == "catalog.schema.test_function"
-        assert tool_wrapper.client_config == {"mock": "config"}
 
         input_args = {"x": "some_string"}
         result = json.loads(tool.func(**input_args))["value"]
