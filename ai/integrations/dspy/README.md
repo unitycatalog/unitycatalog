@@ -1,6 +1,6 @@
 # Using Unity Catalog AI with DSPy
 
-You can use functions defined within Unity Catalog (UC) directly as tools within [DSPy](https://dspy-docs.vercel.app/) with this package. DSPy is a framework for optimizing LLM prompts and programs, and this integration allows you to seamlessly use Unity Catalog functions as tools in your DSPy workflows.
+You can use functions defined within Unity Catalog (UC) directly as tools within [DSPy](https://dspy.ai/) with this package. DSPy is a framework for building modular AI applications and optimize their performance. This integration allows you to seamlessly use Unity Catalog functions as tools in your DSPy workflows.
 
 ## Installation
 
