@@ -442,7 +442,7 @@ def test_toolkit_validation_error_handling():
     """Test that toolkit properly handles validation errors."""
     # Test with empty function names
     with pytest.raises(
-        ValueError, match="Cannot create tool instances without function_names being provided"
+        ValueError, match="1 validation error for UCFunctionToolkit"
     ):
         UCFunctionToolkit(function_names=[])
 
