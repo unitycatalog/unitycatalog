@@ -412,7 +412,6 @@ def test_toolkit_get_tool_methods(uc_client):
         assert tool.name == "catalog__schema__test_function"
 
 
-
 def test_toolkit_with_wildcard_function_names(uc_client):
     """Test toolkit with wildcard function names."""
     with create_function_and_cleanup_oss(uc_client, schema=SCHEMA) as func_obj:
@@ -436,9 +435,7 @@ def test_toolkit_error_handling(uc_client):
 def test_toolkit_validation_error_handling():
     """Test that toolkit properly handles validation errors."""
     # Test with empty function names
-    with pytest.raises(
-        ValueError, match="1 validation error for UCFunctionToolkit"
-    ):
+    with pytest.raises(ValueError, match="1 validation error for UCFunctionToolkit"):
         UCFunctionToolkit(function_names=[])
 
     # Test with None function names

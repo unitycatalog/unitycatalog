@@ -439,7 +439,6 @@ def test_toolkit_get_tool_methods(client):
         assert tool.name == "catalog__schema__test_function"
 
 
-
 def test_toolkit_convert_to_dspy_schema_no_parameters():
     """Test schema conversion with no parameters."""
     mock_function_info = generate_function_info()
@@ -600,7 +599,6 @@ def test_toolkit_creation_without_properties_argument_mocked():
         tool = tools[0]
         assert tool.name == "catalog__schema__test_function"
         assert tool.desc == "A test function without properties argument"
-
 
         input_args = {"x": "some_string"}
         result = json.loads(tool.func(**input_args))["value"]
