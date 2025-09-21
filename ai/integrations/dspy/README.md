@@ -1,6 +1,6 @@
 # Using Unity Catalog AI with DSPy
 
-You can use functions defined within Unity Catalog (UC) directly as tools within [DSPy](https://dspy.ai/) with this package. DSPy is a framework for building modular AI applications and optimize their performance. This integration allows you to seamlessly use Unity Catalog functions as tools in your DSPy workflows.
+You can use functions defined within Unity Catalog (UC) directly as tools within [DSPy](https://dspy.ai/) with this package. DSPy is a framework for building modular AI applications and optimizing their performance. This integration allows you to seamlessly use Unity Catalog functions as tools in your DSPy workflows.
 
 ## Installation
 
@@ -52,22 +52,38 @@ You can create a UC function either by providing a Python callable or by submitt
 To create a UC function from a Python function, define your function with appropriate type hints and a Google-style docstring:
 
 ```python
-def add_numbers(a: float, b: float) -> float:
-    """
-    Adds two numbers and returns the result.
+def get_weather(city: str) -> str:
+    """Retrieve mock weather information for a given city.
+
+    This function looks up predefined mock weather data for a set of cities.
+    If the city is not found in the dataset, a default message is returned.
 
     Args:
-        a (float): First number.
-        b (float): Second number.
+        city (str): The name of the city to retrieve weather data for.
 
     Returns:
-        float: The sum of the two numbers.
+        str: A string describing the weather for the given city, or
+        "Weather data not available" if the city is not in the dataset.
+
+    Example:
+        >>> get_weather("New York")
+        'Sunny, 25°C'
+
+        >>> get_weather("Boston")
+        'Weather data not available'
     """
-    return a + b
+    mock_data = {
+        "New York": "Sunny, 25°C",
+        "Los Angeles": "Cloudy, 20°C",
+        "Chicago": "Rainy, 15°C",
+        "Houston": "Thunderstorms, 30°C",
+        "Phoenix": "Sunny, 35°C",
+    }
+    return mock_data.get(city, "Weather data not available")
 
 # Create the function within the Unity Catalog catalog and schema specified
 function_info = uc_client.create_python_function(
-    func=add_numbers,
+    func=get_weather,
     catalog=CATALOG,
     schema=SCHEMA,
     replace=False,  # Set to True to overwrite if the function already exists
@@ -89,9 +105,6 @@ from unitycatalog.ai.core.base import set_uc_function_client
 from unitycatalog.ai.core.databricks import DatabricksFunctionClient
 
 client = DatabricksFunctionClient()
-
-# sets the default uc function client
-set_uc_function_client(client)
 ```
 
 #### Create a UC function
@@ -104,19 +117,20 @@ create a Python function that is wrapped within the SQL body format for UC and t
 CATALOG = "catalog"
 SCHEMA = "schema"
 
-func_name = f"{CATALOG}.{SCHEMA}.python_exec"
+func_name = f"{CATALOG}.{SCHEMA}.get_weather"
 # define the function body in UC SQL functions format
-sql_body = f"""CREATE OR REPLACE FUNCTION {func_name}(code STRING COMMENT 'Python code to execute. Remember to print the final result to stdout.')
+sql_body = f"""CREATE OR REPLACE FUNCTION {func_name}(city STRING COMMENT 'The name of the city to retrieve weather data for.')
 RETURNS STRING
 LANGUAGE PYTHON
-COMMENT 'Executes Python code and returns its stdout.'
+COMMENT 'Retrieve mock weather information for a given city.'
 AS $$
-    import sys
-    from io import StringIO
-    stdout = StringIO()
-    sys.stdout = stdout
-    exec(code)
-    return stdout.getvalue()
+    mock_data = {
+        "New York": "Sunny, 25°C",
+        "Los Angeles": "Cloudy, 20°C",
+        "Chicago": "Rainy, 15°C",
+        "Houston": "Thunderstorms, 30°C",
+        "Phoenix": "Sunny, 35°C"}
+    return mock_data.get(city, "Weather data not available")
 $$
 """
 
@@ -145,98 +159,35 @@ tools = toolkit.tools
 If you would like to validate that your tool is functional prior to proceeding to integrate it with DSPy, you can call the tool directly:
 
 ```python
-my_tool_wrapper = tools[func_name]
-my_tool = my_tool_wrapper.tool
-
-# Call the tool directly
-result = my_tool.func({"code":"print(1)"})
-print(result)
+my_tool = toolkit.get_tool(func_name)
+if my_tool:
+    # Call the tool directly
+    result = my_tool.func({"city": "New York"})
+    print(result)
+else:
+    print("Tool not found")
 ```
 
 ### Utilize our function as a tool within a DSPy program
 
 With our interface to our UC function defined as a DSPy tool collection, we can directly use it within a DSPy program application.
-Below, we are going to create a simple DSPy program and verify that it properly calls our UC function.
+Below, we are going to create a ReAct agent and verify that it properly calls our UC function.
 
 ```python
 import dspy
 
-class SimpleToolProgram(dspy.Module):
-    """A simple DSPy program that uses Unity Catalog functions as tools."""
-    
-    def __init__(self, tool):
-        super().__init__()
-        self.tool = tool
-    
-    def forward(self, **kwargs):
-        """Execute the tool with the given parameters."""
-        try:
-            result = self.tool.fn(**kwargs)
-            return result
-        except Exception as e:
-            return f"Error executing tool: {e}"
+# Create a ReAct agent with our weather tool
+react_agent = dspy.ReAct(
+    signature="question -> answer",
+    tools= toolkit.tools,
+    max_iters=5)
 
-# Create an instance of the program
-program = SimpleToolProgram(my_tool)
-
-# Execute the program
-result = program(code="print('Hello from DSPy!')")
-print(f"Program result: {result}")
+# Example: Ask the agent to reason about weather
+result = react_agent(question="What's the weather like in Tokyo?")
+print(result.answer)
+print("Tool calls made:", result.trajectory)
 ```
 
-### Advanced: Creating a DSPy Chain
-
-You can create more complex DSPy programs that chain multiple operations together:
-
-```python
-class AdvancedToolChain(dspy.Module):
-    """An advanced DSPy program that chains multiple tool operations."""
-    
-    def __init__(self, toolkit):
-        super().__init__()
-        self.toolkit = toolkit
-    
-    def forward(self, operation_type: str, **params):
-        """Execute different operations based on the operation type."""
-        
-        if operation_type == "data_processing":
-            # Use a specific tool for data processing
-            tool_wrapper = self.toolkit.tools_dict.get(func_name)
-            if tool_wrapper:
-                return tool_wrapper.tool.fn(**params)
-            else:
-                return "Data processing tool not available"
-        
-        elif operation_type == "analysis":
-            # Use a different tool for analysis
-            # Add your analysis tool logic here
-            return "Analysis operation completed"
-        
-        else:
-            return f"Unknown operation type: {operation_type}"
-
-# Create and use the advanced chain
-advanced_chain = AdvancedToolChain(toolkit)
-result = advanced_chain(operation_type="data_processing", code="print('Processing data...')")
-print(result)
-```
-
-### Loading All Accessible Functions
-
-You can also load all functions that your client has access to, which is useful for discovery and development:
-
-```python
-# Load all accessible functions
-all_functions_toolkit = UCFunctionToolkit(
-    function_names=[],  # Empty list to load all
-    client=client,
-    filter_accessible_functions=True
-)
-
-print(f"Loaded {len(all_functions_toolkit.tools_dict)} accessible functions")
-for func_name, tool_wrapper in all_functions_toolkit.tools_dict.items():
-    print(f"  - {func_name}: {tool_wrapper.tool.name}")
-```
 
 ## Features
 
@@ -249,17 +200,6 @@ for func_name, tool_wrapper in all_functions_toolkit.tools_dict.items():
 
 ## API Reference
 
-### UnityCatalogDSPyToolWrapper
-
-A Pydantic model representing a Unity Catalog function as a DSPy tool wrapper.
-
-**Attributes:**
-- `tool`: The underlying dspy.adapters.Tool instance
-- `uc_function_name`: The full Unity Catalog function name
-- `client_config`: Client configuration dictionary
-
-**Methods:**
-- `to_dict()`: Convert wrapper to dictionary representation
 
 ### UCFunctionToolkit
 
@@ -269,35 +209,33 @@ Main toolkit class for managing Unity Catalog functions as DSPy tools.
 - `function_names`: List of function names to load (required)
 - `client`: Unity Catalog client instance (optional, will use default if not provided)
 - `filter_accessible_functions`: Whether to filter by permissions (default: False)
-- `tools_dict`: Internal tools dictionary (auto-populated)
+
+**Properties:**
+- `tools`: List of all underlying `dspy.Tool` instances
 
 **Methods:**
-- `tools_dict`: Property returning all available tools as a dictionary
-- `get_tool(function_name)`: Get a specific tool by function name
-- `add_function(function_name)`: Add a new function to the toolkit
-- `remove_function(function_name)`: Remove a function from the toolkit
+- `get_tool(function_name)`: Get a specific underlying `dspy.Tool` by function name
 
 ## Advanced Usage
 
 ### Custom Function Execution
 
 ```python
-# Access the underlying function execution
-tool_wrapper = toolkit.tools_dict[func_name]
-tool = tool_wrapper.tool
-result = tool.fn(param1="value1", param2="value2")
+tool = toolkit.get_tool(func_name)
+if tool:
+    result = tool.fn(city="New York")
 ```
 
 ### Schema Inspection
 
 ```python
 # Examine the generated schema for a tool
-tool_wrapper = toolkit.tools_dict[func_name]
-tool = tool_wrapper.tool
-print(f"Tool name: {tool.name}")
-print(f"Tool description: {tool.desc}")
-print(f"Tool arguments: {tool.args}")
-print(f"Tool argument types: {tool.arg_types}")
+tool = toolkit.get_tool(func_name)
+if tool:
+    print(f"Tool name: {tool.name}")
+    print(f"Tool description: {tool.desc}")
+    print(f"Tool arguments: {tool.args}")
+    print(f"Tool argument types: {tool.arg_types}")
 ```
 
 ### Error Handling
@@ -332,12 +270,12 @@ We provide configurations for databricks client to control the function executio
 
 ## Examples
 
-See the `examples/` directory and the `dspy_databricks_example.ipynb` notebook for complete working examples:
+See the `dspy_databricks_example.ipynb` notebook for complete working examples:
 
 - Basic function execution
 - DSPy program integration
+- ReAct agent reasoning
 - Error handling patterns
-- Performance optimization
 - Advanced tool chaining
 
 ## Development
