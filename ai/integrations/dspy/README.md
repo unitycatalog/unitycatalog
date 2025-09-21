@@ -223,7 +223,7 @@ Main toolkit class for managing Unity Catalog functions as DSPy tools.
 ```python
 tool = toolkit.get_tool(func_name)
 if tool:
-    result = tool.fn(city="New York")
+    result = tool.func(city="New York")
 ```
 
 ### Schema Inspection
