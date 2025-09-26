@@ -29,30 +29,35 @@ class UCSingleCatalog
   with SupportsNamespaces
   with Logging {
 
-  private[this] var apiClient: ApiClient = null;
+  private[this] var url: URI = null
+  private[this] var token: String = null
+  private[this] var apiClient: ApiClient = null
   private[this] var temporaryCredentialsApi: TemporaryCredentialsApi = null
 
   @volatile private var delegate: TableCatalog = null
 
   override def initialize(name: String, options: CaseInsensitiveStringMap): Unit = {
+    // Initialize the url
     val urlStr = options.get("uri")
     if (urlStr == null) {
       throw new IllegalArgumentException(s"uri must be specified for Unity Catalog '$name'")
     }
-    val url = new URI(urlStr)
-    apiClient = new ApiClient()
-      .setHost(url.getHost)
-      .setPort(url.getPort)
-      .setScheme(url.getScheme)
-    val token = options.get("token")
-    if (token != null && token.nonEmpty) {
-      apiClient = apiClient.setRequestInterceptor { request =>
-        request.header("Authorization", "Bearer " + token)
-      }
-    }
+    url = new URI(urlStr)
+
+    // Initialize the token.
+    token = options.get("token")
+
+    // Initialize the api client.
+    apiClient = ApiClientFactory.createApiClient(url, token)
+
+    // Initialize the temporary credentials api.
     temporaryCredentialsApi = new TemporaryCredentialsApi(apiClient)
+
+    // Initialize the UC proxy.
     val proxy = new UCProxy(apiClient, temporaryCredentialsApi)
     proxy.initialize(name, options)
+
+    // Initialize the delegate table catalog.
     if (UCSingleCatalog.LOAD_DELTA_CATALOG.get()) {
       try {
         delegate = Class.forName("org.apache.spark.sql.delta.catalog.DeltaCatalog")
@@ -109,12 +114,14 @@ class UCSingleCatalog
     } else if (hasLocationClause) {
       val location = properties.get(TableCatalog.PROP_LOCATION)
       assert(location != null)
+
+      // It's a per-table temporary path credentials.
       val cred = temporaryCredentialsApi.generateTemporaryPathCredentials(
         new GenerateTemporaryPathCredential().url(location).operation(PathOperation.PATH_CREATE_TABLE))
+
       val newProps = new util.HashMap[String, String]
       newProps.putAll(properties)
-      val credentialProps = UCSingleCatalog.generateCredentialProps(
-        CatalogUtils.stringToURI(location).getScheme, cred)
+      val credentialProps = UCSingleCatalog.generateCredentialProps(url, token, location, cred)
       newProps.putAll(credentialProps.asJava)
       // TODO: Delta requires the options to be set twice in the properties, with and without the
       //       `option.` prefix. We should revisit this in Delta.
@@ -174,20 +181,21 @@ object UCSingleCatalog {
   val DELTA_CATALOG_LOADED = ThreadLocal.withInitial[Boolean](() => false)
 
   def generateCredentialProps(
-      scheme: String,
+      url: URI,
+      token: String,
+      tableLocation: String,
       temporaryCredentials: TemporaryCredentials): Map[String, String] = {
-    if (scheme == "s3") {
-      val awsCredentials = temporaryCredentials.getAwsTempCredentials
+    if (url.getScheme == "s3") {
       Map(
-        // TODO: how to support s3:// properly?
-        "fs.s3a.access.key" -> awsCredentials.getAccessKeyId,
-        "fs.s3a.secret.key" -> awsCredentials.getSecretAccessKey,
-        "fs.s3a.session.token" -> awsCredentials.getSessionToken,
+        "fs.s3a.unitycatalog.uri" -> s"${url.toString}",
+        "fs.s3a.unitycatalog.token" -> token,
+        "fs.s3a.unitycatalog.table.location" -> tableLocation,
+        "fs.s3a.aws.credentials.provider" -> classOf[AwsVendedTokenProvider].getName,
         "fs.s3a.path.style.access" -> "true",
         "fs.s3.impl.disable.cache" -> "true",
         "fs.s3a.impl.disable.cache" -> "true"
       )
-    } else if (scheme == "gs") {
+    } else if (url.getScheme == "gs") {
       val gcsCredentials = temporaryCredentials.getGcpOauthToken
       Map(
         GcsVendedTokenProvider.ACCESS_TOKEN_KEY -> gcsCredentials.getOauthToken,
@@ -197,7 +205,7 @@ object UCSingleCatalog {
         "fs.gs.auth.access.token.provider" -> classOf[GcsVendedTokenProvider].getName,
         "fs.gs.impl.disable.cache" -> "true"
       )
-    } else if (scheme == "abfs" || scheme == "abfss") {
+    } else if (url.getScheme == "abfs" || url.getScheme == "abfss") {
       val azCredentials = temporaryCredentials.getAzureUserDelegationSas
       Map(
         FS_AZURE_ACCOUNT_AUTH_TYPE_PROPERTY_NAME -> "SAS",
@@ -218,11 +226,25 @@ private class UCProxy(
     apiClient: ApiClient,
     temporaryCredentialsApi: TemporaryCredentialsApi) extends TableCatalog with SupportsNamespaces {
   private[this] var name: String = null
+  private[this] var url: URI = null
+  private[this] var token: String = null
   private[this] var tablesApi: TablesApi = null
   private[this] var schemasApi: SchemasApi = null
 
   override def initialize(name: String, options: CaseInsensitiveStringMap): Unit = {
     this.name = name
+
+    // Initialize the url
+    // (FIXME) --> try to unify with the UCSingleCatalog#initialize(..)
+    val urlStr = options.get("uri")
+    if (urlStr == null) {
+      throw new IllegalArgumentException(s"uri must be specified for Unity Catalog '$name'")
+    }
+    this.url = new URI(urlStr)
+
+    // Initialize the token
+    this.token = options.get("token")
+
     tablesApi = new TablesApi(apiClient)
     schemasApi = new SchemasApi(apiClient)
   }
@@ -278,8 +300,7 @@ private class UCProxy(
           )
       }
     }
-    val extraSerdeProps = UCSingleCatalog.generateCredentialProps(
-      uri.getScheme, temporaryCredentials)
+    val extraSerdeProps = UCSingleCatalog.generateCredentialProps(url, token, )
     val sparkTable = CatalogTable(
       identifier,
       tableType = if (t.getTableType == TableType.MANAGED) {
