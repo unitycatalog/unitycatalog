@@ -121,7 +121,11 @@ class UCSingleCatalog
 
       val newProps = new util.HashMap[String, String]
       newProps.putAll(properties)
-      val credentialProps = UCSingleCatalog.generateCredentialProps(url, token, location, cred)
+      val credentialProps = UCSingleCatalog.generateCredentialProps(
+        url,
+        token,
+        TempCredentialRequest.TempPathCredentialRequest.of(location, PathOperation.PATH_CREATE_TABLE),
+        cred)
       newProps.putAll(credentialProps.asJava)
       // TODO: Delta requires the options to be set twice in the properties, with and without the
       //       `option.` prefix. We should revisit this in Delta.
@@ -183,13 +187,13 @@ object UCSingleCatalog {
   def generateCredentialProps(
       url: URI,
       token: String,
-      tableLocation: String,
+      tempCredRequest: TempCredentialRequest,
       temporaryCredentials: TemporaryCredentials): Map[String, String] = {
     if (url.getScheme == "s3") {
       Map(
         "fs.s3a.unitycatalog.uri" -> s"${url.toString}",
         "fs.s3a.unitycatalog.token" -> token,
-        "fs.s3a.unitycatalog.table.location" -> tableLocation,
+        "fs.s3a.unitycatalog.credential.request" -> tempCredRequest.serialize(),
         "fs.s3a.aws.credentials.provider" -> classOf[AwsVendedTokenProvider].getName,
         "fs.s3a.path.style.access" -> "true",
         "fs.s3.impl.disable.cache" -> "true",
@@ -300,7 +304,7 @@ private class UCProxy(
           )
       }
     }
-    val extraSerdeProps = UCSingleCatalog.generateCredentialProps(url, token, )
+    val extraSerdeProps = UCSingleCatalog.generateCredentialProps(url, token, TempCredentialRequest.TempTableCredentialRequest.of(tableId, TableOperation.READ_WRITE), temporaryCredentials)
     val sparkTable = CatalogTable(
       identifier,
       tableType = if (t.getTableType == TableType.MANAGED) {

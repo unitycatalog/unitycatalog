@@ -1,10 +1,13 @@
 package io.unitycatalog.spark;
 
 import io.unitycatalog.client.model.PathOperation;
+import io.unitycatalog.client.model.TableOperation;
 import org.apache.hadoop.shaded.com.google.gson.JsonObject;
 import org.apache.hadoop.shaded.com.google.gson.JsonParser;
 
 public interface TempCredentialRequest {
+    TempCredRequestType type();
+
     String serialize();
 
     static TempCredentialRequest deserialize(String content) {
@@ -19,7 +22,7 @@ public interface TempCredentialRequest {
             case TABLE -> {
                 String tableId = json.getAsJsonPrimitive("tableId").getAsString();
                 String operation = json.getAsJsonPrimitive("operation").getAsString();
-                return new TempTableCredentialRequest(tableId, PathOperation.fromValue(operation));
+                return new TempTableCredentialRequest(tableId, TableOperation.fromValue(operation));
             }
         }
 
@@ -55,9 +58,26 @@ public interface TempCredentialRequest {
         private final String path;
         private final PathOperation operation;
 
-        TempPathCredentialRequest(String path, PathOperation operation) {
+        private TempPathCredentialRequest(String path, PathOperation operation) {
             this.path = path;
             this.operation = operation;
+        }
+
+        public static TempPathCredentialRequest of(String path, PathOperation operation) {
+            return new TempPathCredentialRequest(path, operation);
+        }
+
+        public String path(){
+            return path;
+        }
+
+        public PathOperation operation(){
+            return operation;
+        }
+
+        @Override
+        public TempCredRequestType type() {
+            return TempCredRequestType.PATH;
         }
 
         @Override
@@ -72,11 +92,28 @@ public interface TempCredentialRequest {
 
     class TempTableCredentialRequest implements TempCredentialRequest {
         private final String tableId;
-        private final PathOperation operation;
+        private final TableOperation operation;
 
-        TempTableCredentialRequest(String tableId, PathOperation operation) {
+        private TempTableCredentialRequest(String tableId, TableOperation operation) {
             this.tableId = tableId;
             this.operation = operation;
+        }
+
+        public static TempTableCredentialRequest of(String tableId, TableOperation operation) {
+            return new TempTableCredentialRequest(tableId, operation);
+        }
+
+        public String tableId(){
+            return tableId;
+        }
+
+        public TableOperation operation(){
+            return operation;
+        }
+
+        @Override
+        public TempCredRequestType type() {
+            return TempCredRequestType.TABLE;
         }
 
         @Override
