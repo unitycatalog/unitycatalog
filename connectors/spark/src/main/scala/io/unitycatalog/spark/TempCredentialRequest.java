@@ -14,12 +14,12 @@ public interface TempCredentialRequest {
         JsonObject json = JsonParser.parseString(content).getAsJsonObject();
         String type = json.getAsJsonPrimitive("type").getAsString();
         switch (TempCredRequestType.of(type)){
-            case PATH -> {
+            case PATH: {
                 String path = json.getAsJsonPrimitive("path").getAsString();
                 String operation = json.getAsJsonPrimitive("operation").getAsString();
                 return new TempPathCredentialRequest(path, PathOperation.fromValue(operation));
             }
-            case TABLE -> {
+            case TABLE: {
                 String tableId = json.getAsJsonPrimitive("tableId").getAsString();
                 String operation = json.getAsJsonPrimitive("operation").getAsString();
                 return new TempTableCredentialRequest(tableId, TableOperation.fromValue(operation));
