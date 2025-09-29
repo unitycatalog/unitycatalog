@@ -3,26 +3,40 @@ package io.unitycatalog.spark;
 import io.unitycatalog.client.ApiClient;
 import io.unitycatalog.client.ApiException;
 import io.unitycatalog.client.api.TemporaryCredentialsApi;
-import io.unitycatalog.client.model.GenerateTemporaryPathCredential;
-import io.unitycatalog.client.model.GenerateTemporaryTableCredential;
 import io.unitycatalog.client.model.TemporaryCredentials;
 import org.apache.hadoop.conf.Configuration;
 import software.amazon.awssdk.auth.credentials.AwsCredentials;
 import software.amazon.awssdk.auth.credentials.AwsCredentialsProvider;
 
 import java.net.URI;
-import java.net.URISyntaxException;
 
 public class AwsVendedTokenProvider implements AwsCredentialsProvider {
     private final Configuration conf;
+    private final URI uri;
+    private final String token;
 
     private volatile AwsS3Credentials awsS3Credentials;
+    private volatile ApiClient lazyApiClient = null;
 
     /**
      * Constructor for the hadoop's CredentialProviderListFactory#buildAWSProviderList to initialize.
      */
     public AwsVendedTokenProvider(URI ignored, Configuration conf) {
         this.conf = conf;
+        this.uri = URI.create(conf.get("fs.s3a.unitycatalog.uri"));
+        this.token = conf.get("fs.s3a.unitycatalog.token");
+    }
+
+    private ApiClient apiClient() {
+        if(lazyApiClient == null) {
+            synchronized (this) {
+                if(lazyApiClient == null) {
+                    lazyApiClient = ApiClientFactory.createApiClient(uri, token);
+                }
+            }
+        }
+
+        return lazyApiClient;
     }
 
     @Override
@@ -42,44 +56,15 @@ public class AwsVendedTokenProvider implements AwsCredentialsProvider {
         return awsS3Credentials;
     }
 
-    private AwsS3Credentials createS3Credentials() throws URISyntaxException, ApiException {
-        URI uri = new URI(conf.get("fs.s3a.unitycatalog.uri"));
-        String token = conf.get("fs.s3a.unitycatalog.token");
-
-        ApiClient apiClient = ApiClientFactory.createApiClient(uri, token);
-        TemporaryCredentialsApi tempCredApi = new TemporaryCredentialsApi(apiClient);
+    private AwsS3Credentials createS3Credentials() throws ApiException {
+        TemporaryCredentialsApi tempCredApi = new TemporaryCredentialsApi(apiClient());
 
         // Get the temp credential request.
         String jsonRequest = conf.get("fs.s3a.unitycatalog.credential.request");
-        TempCredentialRequest generalRequest = TempCredentialRequest.deserialize(jsonRequest);
+        TempCredentialRequest request = TempCredentialRequest.deserialize(jsonRequest);
+        TemporaryCredentials cred = request.generate(tempCredApi);
 
-        switch (generalRequest.type()) {
-            case PATH: {
-                TempCredentialRequest.TempPathCredentialRequest request = (TempCredentialRequest.TempPathCredentialRequest) generalRequest;
-                TemporaryCredentials cred = tempCredApi.generateTemporaryPathCredentials(
-                        new GenerateTemporaryPathCredential()
-                                .url(request.path())
-                                .operation(request.operation())
-                );
-
-                return new AwsS3Credentials(cred);
-            }
-
-            case TABLE: {
-                TempCredentialRequest.TempTableCredentialRequest request = (TempCredentialRequest.TempTableCredentialRequest) generalRequest;
-                TemporaryCredentials cred = tempCredApi.generateTemporaryTableCredentials(
-                        new GenerateTemporaryTableCredential()
-                                .tableId(request.tableId())
-                                .operation(request.operation())
-                );
-
-                return new AwsS3Credentials(cred);
-            }
-
-            default: {
-                throw new IllegalStateException("Unsupported temporary credential type " + generalRequest.type());
-            }
-        }
+        return new AwsS3Credentials(cred);
     }
 
     private static class AwsS3Credentials implements AwsCredentials {

@@ -1,7 +1,8 @@
 package io.unitycatalog.spark;
 
-import io.unitycatalog.client.model.PathOperation;
-import io.unitycatalog.client.model.TableOperation;
+import io.unitycatalog.client.ApiException;
+import io.unitycatalog.client.api.TemporaryCredentialsApi;
+import io.unitycatalog.client.model.*;
 import org.apache.hadoop.shaded.com.google.gson.JsonObject;
 import org.apache.hadoop.shaded.com.google.gson.JsonParser;
 
@@ -9,6 +10,32 @@ public interface TempCredentialRequest {
     TempCredRequestType type();
 
     String serialize();
+
+    default TemporaryCredentials generate(TemporaryCredentialsApi tempCredApi) throws ApiException {
+        switch (type()) {
+            case PATH: {
+                TempCredentialRequest.TempPathCredentialRequest request = (TempCredentialRequest.TempPathCredentialRequest)this;
+                return tempCredApi.generateTemporaryPathCredentials(
+                        new GenerateTemporaryPathCredential()
+                                .url(request.path())
+                                .operation(request.operation())
+                );
+            }
+
+            case TABLE: {
+                TempCredentialRequest.TempTableCredentialRequest request = (TempCredentialRequest.TempTableCredentialRequest)this;
+                return tempCredApi.generateTemporaryTableCredentials(
+                        new GenerateTemporaryTableCredential()
+                                .tableId(request.tableId())
+                                .operation(request.operation())
+                );
+            }
+
+            default: {
+                throw new IllegalStateException("Unsupported temporary credential type " + type());
+            }
+        }
+    }
 
     static TempCredentialRequest deserialize(String content) {
         JsonObject json = JsonParser.parseString(content).getAsJsonObject();
