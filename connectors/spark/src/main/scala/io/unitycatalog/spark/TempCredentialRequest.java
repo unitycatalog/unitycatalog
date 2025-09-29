@@ -12,29 +12,24 @@ public interface TempCredentialRequest {
     String serialize();
 
     default TemporaryCredentials generate(TemporaryCredentialsApi tempCredApi) throws ApiException {
-        switch (type()) {
-            case PATH: {
-                TempCredentialRequest.TempPathCredentialRequest request = (TempCredentialRequest.TempPathCredentialRequest)this;
-                return tempCredApi.generateTemporaryPathCredentials(
+        return switch (type()) {
+            case PATH -> {
+                TempPathCredentialRequest request = (TempPathCredentialRequest) this;
+                yield tempCredApi.generateTemporaryPathCredentials(
                         new GenerateTemporaryPathCredential()
                                 .url(request.path())
                                 .operation(request.operation())
                 );
             }
-
-            case TABLE: {
-                TempCredentialRequest.TempTableCredentialRequest request = (TempCredentialRequest.TempTableCredentialRequest)this;
-                return tempCredApi.generateTemporaryTableCredentials(
+            case TABLE -> {
+                TempTableCredentialRequest request = (TempTableCredentialRequest) this;
+                yield tempCredApi.generateTemporaryTableCredentials(
                         new GenerateTemporaryTableCredential()
                                 .tableId(request.tableId())
                                 .operation(request.operation())
                 );
             }
-
-            default: {
-                throw new IllegalStateException("Unsupported temporary credential type " + type());
-            }
-        }
+        };
     }
 
     static TempCredentialRequest deserialize(String content) {
@@ -68,7 +63,7 @@ public interface TempCredentialRequest {
         PATH("PATH"),
         TABLE("TABLE");
 
-        private String type;
+        private final String type;
 
         TempCredRequestType(String type) {
             this.type = type;
