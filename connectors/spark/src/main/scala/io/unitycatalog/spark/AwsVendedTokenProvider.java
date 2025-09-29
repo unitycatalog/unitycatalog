@@ -50,7 +50,7 @@ public class AwsVendedTokenProvider implements AwsCredentialsProvider {
         TemporaryCredentialsApi tempCredApi = new TemporaryCredentialsApi(apiClient);
 
         // Get the temp credential request.
-        String jsonRequest = conf.get("fs.s3a.unitycatalog.request");
+        String jsonRequest = conf.get("fs.s3a.unitycatalog.credential.request");
         TempCredentialRequest generalRequest = TempCredentialRequest.deserialize(jsonRequest);
 
         switch (generalRequest.type()) {

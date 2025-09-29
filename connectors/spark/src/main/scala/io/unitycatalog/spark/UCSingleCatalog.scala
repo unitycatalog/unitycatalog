@@ -57,7 +57,7 @@ class UCSingleCatalog
     val proxy = new UCProxy(apiClient, temporaryCredentialsApi)
     proxy.initialize(name, options)
 
-    // Initialize the delegate table catalog.
+    // Initialize the delegate catalog.
     if (UCSingleCatalog.LOAD_DELTA_CATALOG.get()) {
       try {
         delegate = Class.forName("org.apache.spark.sql.delta.catalog.DeltaCatalog")
@@ -119,14 +119,18 @@ class UCSingleCatalog
       val cred = temporaryCredentialsApi.generateTemporaryPathCredentials(
         new GenerateTemporaryPathCredential().url(location).operation(PathOperation.PATH_CREATE_TABLE))
 
+      // Add the table properties.
       val newProps = new util.HashMap[String, String]
       newProps.putAll(properties)
+
+      // Add the object storage credential info.
       val credentialProps = UCSingleCatalog.generateCredentialProps(
         url,
         token,
-        TempCredentialRequest.TempPathCredentialRequest.of(location, PathOperation.PATH_CREATE_TABLE),
+        TempCredentialRequest.forPath(location, PathOperation.PATH_CREATE_TABLE),
         cred)
       newProps.putAll(credentialProps.asJava)
+
       // TODO: Delta requires the options to be set twice in the properties, with and without the
       //       `option.` prefix. We should revisit this in Delta.
       val prefix = TableCatalog.OPTION_PREFIX
@@ -304,7 +308,11 @@ private class UCProxy(
           )
       }
     }
-    val extraSerdeProps = UCSingleCatalog.generateCredentialProps(url, token, TempCredentialRequest.TempTableCredentialRequest.of(tableId, TableOperation.READ_WRITE), temporaryCredentials)
+    val extraSerdeProps = UCSingleCatalog.generateCredentialProps(
+      url,
+      token,
+      TempCredentialRequest.forTable(tableId, TableOperation.READ_WRITE),
+      temporaryCredentials)
     val sparkTable = CatalogTable(
       identifier,
       tableType = if (t.getTableType == TableType.MANAGED) {

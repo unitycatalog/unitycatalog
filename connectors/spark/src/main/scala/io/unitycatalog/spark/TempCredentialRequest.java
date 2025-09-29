@@ -29,6 +29,14 @@ public interface TempCredentialRequest {
         throw  new UnsupportedOperationException();
     }
 
+    static TempCredentialRequest forPath(String path, PathOperation operation) {
+        return new TempPathCredentialRequest(path, operation);
+    }
+
+    static TempCredentialRequest forTable(String tableId, TableOperation operation) {
+        return new TempTableCredentialRequest(tableId, operation);
+    }
+
     enum TempCredRequestType {
         PATH("PATH"),
         TABLE("TABLE");
@@ -63,10 +71,6 @@ public interface TempCredentialRequest {
             this.operation = operation;
         }
 
-        public static TempPathCredentialRequest of(String path, PathOperation operation) {
-            return new TempPathCredentialRequest(path, operation);
-        }
-
         public String path(){
             return path;
         }
@@ -97,10 +101,6 @@ public interface TempCredentialRequest {
         private TempTableCredentialRequest(String tableId, TableOperation operation) {
             this.tableId = tableId;
             this.operation = operation;
-        }
-
-        public static TempTableCredentialRequest of(String tableId, TableOperation operation) {
-            return new TempTableCredentialRequest(tableId, operation);
         }
 
         public String tableId(){
