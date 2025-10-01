@@ -7,6 +7,7 @@ import io.unitycatalog.client.model.TemporaryCredentials;
 import org.apache.hadoop.conf.Configuration;
 import software.amazon.awssdk.auth.credentials.AwsCredentials;
 import software.amazon.awssdk.auth.credentials.AwsCredentialsProvider;
+import software.amazon.awssdk.auth.credentials.AwsSessionCredentials;
 
 import java.net.URI;
 
@@ -53,7 +54,7 @@ public class AwsVendedTokenProvider implements AwsCredentialsProvider {
             }
         }
 
-        return awsS3Credentials;
+        return awsS3Credentials.awsSessionCredentials;
     }
 
     private AwsS3Credentials createS3Credentials() throws ApiException {
@@ -67,37 +68,23 @@ public class AwsVendedTokenProvider implements AwsCredentialsProvider {
         return new AwsS3Credentials(cred);
     }
 
-    private static class AwsS3Credentials implements AwsCredentials {
-        private final String accessKeyId;
-        private final String secretAccessKey;
-        private final String sessionToken;
+    private static class AwsS3Credentials {
         private final Long expiresTimeMillis;
+        private final AwsSessionCredentials awsSessionCredentials;
 
         AwsS3Credentials(TemporaryCredentials credentials) {
             assert credentials.getAwsTempCredentials() != null;
 
-            this.accessKeyId = credentials.getAwsTempCredentials().getAccessKeyId();
-            this.secretAccessKey = credentials.getAwsTempCredentials().getSecretAccessKey();
-            this.sessionToken = credentials.getAwsTempCredentials().getSessionToken();
             this.expiresTimeMillis = credentials.getExpirationTime();
-        }
-
-        @Override
-        public String accessKeyId() {
-            return accessKeyId;
-        }
-
-        @Override
-        public String secretAccessKey() {
-            return secretAccessKey;
+            this.awsSessionCredentials = AwsSessionCredentials.builder()
+                    .accessKeyId(credentials.getAwsTempCredentials().getAccessKeyId())
+                    .secretAccessKey(credentials.getAwsTempCredentials().getSecretAccessKey())
+                    .sessionToken(credentials.getAwsTempCredentials().getSessionToken())
+                    .build();
         }
 
         public boolean readyToRenew() {
-            if(expiresTimeMillis == null || expiresTimeMillis <= System.currentTimeMillis() + 30 * 1000) {
-                return true;
-            } else{
-                return false;
-            }
+            return expiresTimeMillis == null || expiresTimeMillis <= System.currentTimeMillis() + 30 * 1000;
         }
     }
 }
