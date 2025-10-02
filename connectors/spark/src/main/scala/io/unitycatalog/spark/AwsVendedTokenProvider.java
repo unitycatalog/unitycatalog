@@ -3,7 +3,7 @@ package io.unitycatalog.spark;
 import io.unitycatalog.client.ApiClient;
 import io.unitycatalog.client.ApiException;
 import io.unitycatalog.client.api.TemporaryCredentialsApi;
-import io.unitycatalog.client.model.TemporaryCredentials;
+import io.unitycatalog.client.model.*;
 import org.apache.hadoop.conf.Configuration;
 import software.amazon.awssdk.auth.credentials.AwsCredentials;
 import software.amazon.awssdk.auth.credentials.AwsCredentialsProvider;
@@ -24,8 +24,8 @@ public class AwsVendedTokenProvider implements AwsCredentialsProvider {
      */
     public AwsVendedTokenProvider(URI ignored, Configuration conf) {
         this.conf = conf;
-        this.uri = URI.create(conf.get("fs.s3a.unitycatalog.uri"));
-        this.token = conf.get("fs.s3a.unitycatalog.token");
+        this.uri = URI.create(conf.get(Constants.UNITY_CATALOG_URI));
+        this.token = conf.get(Constants.UNITY_CATALOG_TOKEN);
     }
 
     private ApiClient apiClient() {
@@ -60,26 +60,47 @@ public class AwsVendedTokenProvider implements AwsCredentialsProvider {
     private AwsS3Credentials createS3Credentials() throws ApiException {
         TemporaryCredentialsApi tempCredApi = new TemporaryCredentialsApi(apiClient());
 
-        // Get the temp credential request.
-        String jsonRequest = conf.get("fs.s3a.unitycatalog.credential.request");
-        TempCredentialRequest request = TempCredentialRequest.deserialize(jsonRequest);
-        TemporaryCredentials cred = request.generate(tempCredApi);
+        // Generate the temporary credential via requesting UnityCatalog.
+        TemporaryCredentials tempCred;
+        String type = conf.get(Constants.UNITY_CATALOG_CREDENTIALS_TYPE);
+        // TODO We will need to retry the temporary credential request if any recoverable failure, for better robust.
+        if (Constants.UNITY_CATALOG_TABLE_CREDENTIALS_TYPE.equals(type)) {
+            String path = conf.get(Constants.UNITY_CATALOG_PATH);
+            String pathOperation = conf.get(Constants.UNITY_CATALOG_PATH_OPERATION);
 
-        return new AwsS3Credentials(cred);
+            tempCred = tempCredApi.generateTemporaryPathCredentials(
+                    new GenerateTemporaryPathCredential()
+                            .url(path)
+                            .operation(PathOperation.fromValue(pathOperation))
+            );
+        } else if(Constants.UNITY_CATALOG_PATH_CREDENTIALS_TYPE.equals(type)) {
+            String table = conf.get(Constants.UNITY_CATALOG_TABLE);
+            String tableOperation = conf.get(Constants.UNITY_CATALOG_TABLE_OPERATION);
+
+            tempCred = tempCredApi.generateTemporaryTableCredentials(
+                    new GenerateTemporaryTableCredential()
+                            .tableId(table)
+                            .operation(TableOperation.fromValue(tableOperation))
+            );
+        } else {
+            throw new IllegalArgumentException("Unsupported unity catalog temporary credentials type: " + type);
+        }
+
+        return new AwsS3Credentials(tempCred);
     }
 
     private static class AwsS3Credentials {
         private final Long expiresTimeMillis;
         private final AwsSessionCredentials awsSessionCredentials;
 
-        AwsS3Credentials(TemporaryCredentials credentials) {
-            assert credentials.getAwsTempCredentials() != null;
+        AwsS3Credentials(TemporaryCredentials tempCred) {
+            assert tempCred.getAwsTempCredentials() != null;
 
-            this.expiresTimeMillis = credentials.getExpirationTime();
+            this.expiresTimeMillis = tempCred.getExpirationTime();
             this.awsSessionCredentials = AwsSessionCredentials.builder()
-                    .accessKeyId(credentials.getAwsTempCredentials().getAccessKeyId())
-                    .secretAccessKey(credentials.getAwsTempCredentials().getSecretAccessKey())
-                    .sessionToken(credentials.getAwsTempCredentials().getSessionToken())
+                    .accessKeyId(tempCred.getAwsTempCredentials().getAccessKeyId())
+                    .secretAccessKey(tempCred.getAwsTempCredentials().getSecretAccessKey())
+                    .sessionToken(tempCred.getAwsTempCredentials().getSessionToken())
                     .build();
         }
 

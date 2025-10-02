@@ -38,14 +38,10 @@ class UCSingleCatalog
 
   override def initialize(name: String, options: CaseInsensitiveStringMap): Unit = {
     // Initialize the url
-    val urlStr = options.get("uri")
-    if (urlStr == null) {
-      throw new IllegalArgumentException(s"uri must be specified for Unity Catalog '$name'")
-    }
-    url = new URI(urlStr)
+    url = OptionsUtil.getUrl(options)
 
     // Initialize the token.
-    token = options.get("token")
+    token = OptionsUtil.getToken(options)
 
     // Initialize the api client.
     apiClient = ApiClientFactory.createApiClient(url, token)
@@ -124,10 +120,11 @@ class UCSingleCatalog
       newProps.putAll(properties)
 
       // Add the object storage credential info.
-      val credentialProps = UCSingleCatalog.generateCredentialProps(
+      val credentialProps = UCSingleCatalog.createPathBasedCredProps(
         url,
         token,
-        TempCredentialRequest.forPath(location, PathOperation.PATH_CREATE_TABLE),
+        location,
+        PathOperation.PATH_CREATE_TABLE,
         cred)
       newProps.putAll(credentialProps.asJava)
 
@@ -188,33 +185,50 @@ object UCSingleCatalog {
   val LOAD_DELTA_CATALOG = ThreadLocal.withInitial[Boolean](() => true)
   val DELTA_CATALOG_LOADED = ThreadLocal.withInitial[Boolean](() => false)
 
-  def generateCredentialProps(
-      url: URI,
-      token: String,
-      tempCredRequest: TempCredentialRequest,
-      temporaryCredentials: TemporaryCredentials): Map[String, String] = {
+  def createPathBasedCredProps(url: URI, token: String, path: String, pathOp: PathOperation, tempCred: TemporaryCredentials): Map[String, String] = {
+    val props = commonProps(url, token, tempCred)
+
+    // Keys for the path based temporary credential requests.
+    props.add(Constants.UNITY_CATALOG_PATH, path)
+    props.add(Constants.UNITY_CATALOG_PATH_OPERATION, pathOp.getValue)
+    props.add(Constants.UNITY_CATALOG_CREDENTIALS_TYPE, Constants.UNITY_CATALOG_PATH_CREDENTIALS_TYPE)
+
+    props
+  }
+
+  def createTableBasedCredProps(url: URI, token: String, table: String, tableOp: TableOperation, tempCred: TemporaryCredentials): Map[String, String] = {
+    val props = commonProps(url, token, tempCred)
+
+    // Keys for the path based temporary credential requests.
+    props.add(Constants.UNITY_CATALOG_TABLE, table)
+    props.add(Constants.UNITY_CATALOG_TABLE_OPERATION, tableOp.getValue)
+    props.add(Constants.UNITY_CATALOG_CREDENTIALS_TYPE, Constants.UNITY_CATALOG_TABLE_CREDENTIALS_TYPE)
+
+    props
+  }
+
+  def commonProps(url: URI, token: String, tempCred: TemporaryCredentials): Map[String, String] = {
     if (url.getScheme == "s3") {
       Map(
-        "fs.s3a.unitycatalog.uri" -> s"${url.toString}",
-        "fs.s3a.unitycatalog.token" -> token,
-        "fs.s3a.unitycatalog.credential.request" -> tempCredRequest.serialize(),
+        Constants.UNITY_CATALOG_URI -> url.toString,
+        Constants.UNITY_CATALOG_TOKEN -> token,
         "fs.s3a.aws.credentials.provider" -> classOf[AwsVendedTokenProvider].getName,
         "fs.s3a.path.style.access" -> "true",
         "fs.s3.impl.disable.cache" -> "true",
         "fs.s3a.impl.disable.cache" -> "true"
       )
     } else if (url.getScheme == "gs") {
-      val gcsCredentials = temporaryCredentials.getGcpOauthToken
+      val gcsCredentials = tempCred.getGcpOauthToken
       Map(
         GcsVendedTokenProvider.ACCESS_TOKEN_KEY -> gcsCredentials.getOauthToken,
-        GcsVendedTokenProvider.ACCESS_TOKEN_EXPIRATION_KEY -> temporaryCredentials.getExpirationTime.toString,
+        GcsVendedTokenProvider.ACCESS_TOKEN_EXPIRATION_KEY -> tempCred.getExpirationTime.toString,
         "fs.gs.create.items.conflict.check.enable" -> "false",
         "fs.gs.auth.type" -> "ACCESS_TOKEN_PROVIDER",
         "fs.gs.auth.access.token.provider" -> classOf[GcsVendedTokenProvider].getName,
         "fs.gs.impl.disable.cache" -> "true"
       )
     } else if (url.getScheme == "abfs" || url.getScheme == "abfss") {
-      val azCredentials = temporaryCredentials.getAzureUserDelegationSas
+      val azCredentials = tempCred.getAzureUserDelegationSas
       Map(
         FS_AZURE_ACCOUNT_AUTH_TYPE_PROPERTY_NAME -> "SAS",
         FS_AZURE_ACCOUNT_IS_HNS_ENABLED -> "true",
@@ -243,15 +257,10 @@ private class UCProxy(
     this.name = name
 
     // Initialize the url
-    // (FIXME) --> try to unify with the UCSingleCatalog#initialize(..)
-    val urlStr = options.get("uri")
-    if (urlStr == null) {
-      throw new IllegalArgumentException(s"uri must be specified for Unity Catalog '$name'")
-    }
-    this.url = new URI(urlStr)
+    this.url = OptionsUtil.getUrl(options)
 
     // Initialize the token
-    this.token = options.get("token")
+    this.token = OptionsUtil.getToken(options)
 
     tablesApi = new TablesApi(apiClient)
     schemasApi = new SchemasApi(apiClient)
@@ -308,10 +317,11 @@ private class UCProxy(
           )
       }
     }
-    val extraSerdeProps = UCSingleCatalog.generateCredentialProps(
+    val extraSerdeProps = UCSingleCatalog.createTableBasedCredProps(
       url,
       token,
-      TempCredentialRequest.forTable(tableId, TableOperation.READ_WRITE),
+      tableId,
+      TableOperation.READ_WRITE,
       temporaryCredentials)
     val sparkTable = CatalogTable(
       identifier,
@@ -483,3 +493,18 @@ private class UCProxy(
     true
   }
 }
+
+object OptionsUtil {
+  def getUrl(options: CaseInsensitiveStringMap): URI = {
+    val urlStr = options.get("uri")
+    if (urlStr == null) {
+      throw new IllegalArgumentException(s"uri must be specified in Unity Catalog options")
+    }
+    new URI(urlStr)
+  }
+
+  def getToken(options: CaseInsensitiveStringMap): String = {
+    options.get("token")
+  }
+}
+
