@@ -119,8 +119,6 @@ public class AwsVendedTokenProvider implements AwsCredentialsProvider {
         }
 
         public boolean readyToRenew() {
-            System.out.println("expiresTimeMillis: " + expiresTimeMillis);
-            System.out.println("targetTime: " + (System.currentTimeMillis() + renewalLeadTime));
             return expiresTimeMillis == null || expiresTimeMillis <= System.currentTimeMillis() + renewalLeadTime;
         }
     }
