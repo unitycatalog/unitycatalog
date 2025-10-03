@@ -1,4 +1,3 @@
 package io.unitycatalog.spark;
 
-public class AwsCredRenewIntegrationTest {
-}
+public class AwsCredRenewIntegrationTest {}

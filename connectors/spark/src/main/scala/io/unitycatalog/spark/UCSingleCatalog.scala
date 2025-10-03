@@ -121,7 +121,8 @@ class UCSingleCatalog
 
       // Add the object storage credential info.
       val credentialProps = UCSingleCatalog.createPathBasedCredProps(
-        url,
+        CatalogUtils.stringToURI(location).getScheme,
+        url.toString,
         token,
         location,
         PathOperation.PATH_CREATE_TABLE,
@@ -185,8 +186,8 @@ object UCSingleCatalog {
   val LOAD_DELTA_CATALOG = ThreadLocal.withInitial[Boolean](() => true)
   val DELTA_CATALOG_LOADED = ThreadLocal.withInitial[Boolean](() => false)
 
-  private def createPathBasedCredProps(url: URI, token: String, path: String, pathOp: PathOperation, tempCred: TemporaryCredentials): Map[String, String] = {
-    val props = commonProps(url, token, tempCred)
+  private def createPathBasedCredProps(scheme: String, unityCatalogURL: String, unityCatalogToken: String, path: String, pathOp: PathOperation, tempCred: TemporaryCredentials): Map[String, String] = {
+    val props = commonProps(scheme, unityCatalogURL, unityCatalogToken, tempCred)
 
     // Add keys for the path based temporary credential requests.
     props ++ Map(
@@ -196,8 +197,8 @@ object UCSingleCatalog {
     )
   }
 
-  def createTableBasedCredProps(url: URI, token: String, table: String, tableOp: TableOperation, tempCred: TemporaryCredentials): Map[String, String] = {
-    val props = commonProps(url, token, tempCred)
+  def createTableBasedCredProps(scheme: String, unityCatalogURL: String, unityCatalogToken: String, table: String, tableOp: TableOperation, tempCred: TemporaryCredentials): Map[String, String] = {
+    val props = commonProps(scheme, unityCatalogURL, unityCatalogToken, tempCred)
 
     // Add keys for the path based temporary credential requests.
     props ++ Map(
@@ -207,21 +208,21 @@ object UCSingleCatalog {
     )
   }
 
-  private def commonProps(url: URI, token: String, tempCred: TemporaryCredentials): Map[String, String] = {
-    if (url.getScheme == "s3") {
+  private def commonProps(scheme: String, unityCatalogURL: String, unityCatalogToken: String, tempCred: TemporaryCredentials): Map[String, String] = {
+    if (scheme == "s3") {
       val awsCredentials = tempCred.getAwsTempCredentials
       Map(
         "fs.s3a.access.key" -> awsCredentials.getAccessKeyId,
         "fs.s3a.secret.key" -> awsCredentials.getSecretAccessKey,
         "fs.s3a.session.token" -> awsCredentials.getSessionToken,
-        Constants.UNITY_CATALOG_URI -> url.toString,
-        Constants.UNITY_CATALOG_TOKEN -> token,
+        Constants.UNITY_CATALOG_URI -> unityCatalogURL,
+        Constants.UNITY_CATALOG_TOKEN -> unityCatalogToken,
         "fs.s3a.aws.credentials.provider" -> classOf[AwsVendedTokenProvider].getName,
         "fs.s3a.path.style.access" -> "true",
         "fs.s3.impl.disable.cache" -> "true",
         "fs.s3a.impl.disable.cache" -> "true"
       )
-    } else if (url.getScheme == "gs") {
+    } else if (scheme == "gs") {
       val gcsCredentials = tempCred.getGcpOauthToken
       Map(
         GcsVendedTokenProvider.ACCESS_TOKEN_KEY -> gcsCredentials.getOauthToken,
@@ -231,7 +232,7 @@ object UCSingleCatalog {
         "fs.gs.auth.access.token.provider" -> classOf[GcsVendedTokenProvider].getName,
         "fs.gs.impl.disable.cache" -> "true"
       )
-    } else if (url.getScheme == "abfs" || url.getScheme == "abfss") {
+    } else if (scheme == "abfs" || scheme == "abfss") {
       val azCredentials = tempCred.getAzureUserDelegationSas
       Map(
         FS_AZURE_ACCOUNT_AUTH_TYPE_PROPERTY_NAME -> "SAS",
@@ -322,7 +323,8 @@ private class UCProxy(
       }
     }
     val extraSerdeProps = UCSingleCatalog.createTableBasedCredProps(
-      url,
+      uri.getScheme,
+      url.toString,
       token,
       tableId,
       TableOperation.READ_WRITE,
