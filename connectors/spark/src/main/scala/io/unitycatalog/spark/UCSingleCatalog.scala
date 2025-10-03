@@ -185,15 +185,15 @@ object UCSingleCatalog {
   val LOAD_DELTA_CATALOG = ThreadLocal.withInitial[Boolean](() => true)
   val DELTA_CATALOG_LOADED = ThreadLocal.withInitial[Boolean](() => false)
 
-  def createPathBasedCredProps(url: URI, token: String, path: String, pathOp: PathOperation, tempCred: TemporaryCredentials): Map[String, String] = {
+  private def createPathBasedCredProps(url: URI, token: String, path: String, pathOp: PathOperation, tempCred: TemporaryCredentials): Map[String, String] = {
     val props = commonProps(url, token, tempCred)
 
-    // Keys for the path based temporary credential requests.
-    props.add(Constants.UNITY_CATALOG_PATH, path)
-    props.add(Constants.UNITY_CATALOG_PATH_OPERATION, pathOp.getValue)
-    props.add(Constants.UNITY_CATALOG_CREDENTIALS_TYPE, Constants.UNITY_CATALOG_PATH_CREDENTIALS_TYPE)
-
-    props
+    // Add keys for the path based temporary credential requests.
+    props ++ Map(
+      Constants.UNITY_CATALOG_PATH -> path,
+      Constants.UNITY_CATALOG_PATH_OPERATION -> pathOp.getValue,
+      Constants.UNITY_CATALOG_CREDENTIALS_TYPE -> Constants.UNITY_CATALOG_PATH_CREDENTIALS_TYPE
+    )
   }
 
   def createTableBasedCredProps(url: URI, token: String, table: String, tableOp: TableOperation, tempCred: TemporaryCredentials): Map[String, String] = {
@@ -207,9 +207,13 @@ object UCSingleCatalog {
     )
   }
 
-  def commonProps(url: URI, token: String, tempCred: TemporaryCredentials): Map[String, String] = {
+  private def commonProps(url: URI, token: String, tempCred: TemporaryCredentials): Map[String, String] = {
     if (url.getScheme == "s3") {
+      val awsCredentials = tempCred.getAwsTempCredentials
       Map(
+        "fs.s3a.access.key" -> awsCredentials.getAccessKeyId,
+        "fs.s3a.secret.key" -> awsCredentials.getSecretAccessKey,
+        "fs.s3a.session.token" -> awsCredentials.getSessionToken,
         Constants.UNITY_CATALOG_URI -> url.toString,
         Constants.UNITY_CATALOG_TOKEN -> token,
         "fs.s3a.aws.credentials.provider" -> classOf[AwsVendedTokenProvider].getName,
