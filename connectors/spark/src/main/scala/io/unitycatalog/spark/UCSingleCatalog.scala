@@ -199,12 +199,12 @@ object UCSingleCatalog {
   def createTableBasedCredProps(url: URI, token: String, table: String, tableOp: TableOperation, tempCred: TemporaryCredentials): Map[String, String] = {
     val props = commonProps(url, token, tempCred)
 
-    // Keys for the path based temporary credential requests.
-    props.add(Constants.UNITY_CATALOG_TABLE, table)
-    props.add(Constants.UNITY_CATALOG_TABLE_OPERATION, tableOp.getValue)
-    props.add(Constants.UNITY_CATALOG_CREDENTIALS_TYPE, Constants.UNITY_CATALOG_TABLE_CREDENTIALS_TYPE)
-
-    props
+    // Add keys for the path based temporary credential requests.
+    props ++ Map(
+      Constants.UNITY_CATALOG_TABLE -> table,
+      Constants.UNITY_CATALOG_TABLE_OPERATION -> tableOp.getValue,
+      Constants.UNITY_CATALOG_CREDENTIALS_TYPE -> Constants.UNITY_CATALOG_TABLE_CREDENTIALS_TYPE
+    )
   }
 
   def commonProps(url: URI, token: String, tempCred: TemporaryCredentials): Map[String, String] = {
