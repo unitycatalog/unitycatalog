@@ -571,6 +571,7 @@ lazy val spark = (project in file("connectors/spark"))
       "org.antlr" % "antlr4" % "4.13.1",
       "com.google.cloud.bigdataoss" % "util-hadoop" % "3.0.2" % Provided,
       "org.apache.hadoop" % "hadoop-azure" % "3.4.0" % Provided,
+      "software.amazon.awssdk" % "auth" % "2.25.37",
     ),
     libraryDependencies ++= Seq(
       // Test dependencies

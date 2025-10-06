@@ -143,7 +143,8 @@ public class TableReadWriteTest extends BaseSparkIntegrationTest {
 
     // Time-travel to before the last insert, we should only see the first inserted row.
     validateTimeTravelDeltaTable(session.sql("SELECT * FROM " + t1 + " VERSION AS OF 1"));
-    validateTimeTravelDeltaTable(session.sql("SELECT * FROM " + t1 + " TIMESTAMP AS OF '" + timestamp + "'"));
+    validateTimeTravelDeltaTable(
+        session.sql("SELECT * FROM " + t1 + " TIMESTAMP AS OF '" + timestamp + "'"));
     validateTimeTravelDeltaTable(session.read().option("versionAsOf", 1).table(t1));
     validateTimeTravelDeltaTable(session.read().option("timestampAsOf", timestamp).table(t1));
 
