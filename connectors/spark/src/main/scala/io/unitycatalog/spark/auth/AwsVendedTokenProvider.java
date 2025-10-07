@@ -1,0 +1,53 @@
+package io.unitycatalog.spark.auth;
+
+import io.unitycatalog.spark.UCHadoopConf;
+import java.net.URI;
+import org.apache.hadoop.conf.Configuration;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import software.amazon.awssdk.auth.credentials.AwsCredentials;
+import software.amazon.awssdk.auth.credentials.AwsCredentialsProvider;
+import software.amazon.awssdk.auth.credentials.AwsSessionCredentials;
+
+public class AwsVendedTokenProvider extends GeneralCredentialProvider
+    implements AwsCredentialsProvider {
+  private final Logger LOG = LoggerFactory.getLogger(AwsVendedTokenProvider.class);
+
+  public AwsVendedTokenProvider(URI ignored, Configuration conf) {
+    super(ignored, conf);
+  }
+
+  @Override
+  public GeneralCredential initGeneralCredential(Configuration conf) {
+    if (conf.get(UCHadoopConf.UC_INIT_ACCESS_KEY) != null
+        && conf.get(UCHadoopConf.UC_INIT_SECRET_KEY) != null
+        && conf.get(UCHadoopConf.UC_INIT_SESSION_TOKEN) != null
+        && conf.get(UCHadoopConf.UC_INIT_EXPIRED_TIME) != null) {
+
+      LOG.info("Setting up {} with the initialized credentials", this.getClass());
+
+      String accessKey = conf.get(UCHadoopConf.UC_INIT_ACCESS_KEY);
+      String secretKey = conf.get(UCHadoopConf.UC_INIT_SECRET_KEY);
+      String sessionToken = conf.get(UCHadoopConf.UC_INIT_SESSION_TOKEN);
+      long expiredTimeMillis = conf.getLong(UCHadoopConf.UC_INIT_EXPIRED_TIME, 0L);
+
+      return GeneralCredential.forAws(accessKey, secretKey, sessionToken, expiredTimeMillis);
+    } else {
+      return null;
+    }
+  }
+
+  @Override
+  public AwsCredentials resolveCredentials() {
+    GeneralCredential general = accessCredentials();
+    io.unitycatalog.client.model.AwsCredentials awsTempCred = general
+        .temporaryCredentials()
+        .getAwsTempCredentials();
+
+    return AwsSessionCredentials.builder()
+        .accessKeyId(awsTempCred.getAccessKeyId())
+        .secretAccessKey(awsTempCred.getSecretAccessKey())
+        .sessionToken(awsTempCred.getSessionToken())
+        .build();
+  }
+}

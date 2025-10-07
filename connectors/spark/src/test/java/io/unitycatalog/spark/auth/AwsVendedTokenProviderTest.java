@@ -1,4 +1,4 @@
-package io.unitycatalog.spark;
+package io.unitycatalog.spark.auth;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
@@ -9,6 +9,7 @@ import io.unitycatalog.client.api.TemporaryCredentialsApi;
 import io.unitycatalog.client.model.PathOperation;
 import io.unitycatalog.client.model.TableOperation;
 import io.unitycatalog.client.model.TemporaryCredentials;
+import io.unitycatalog.spark.UCHadoopConf;
 import java.net.URI;
 import org.apache.hadoop.conf.Configuration;
 import org.junit.jupiter.api.Test;
@@ -19,14 +20,13 @@ public class AwsVendedTokenProviderTest {
   @Test
   public void testTableBasedTemporaryCredentialsRenew() throws Exception {
     Configuration conf = new Configuration();
-    conf.set(Constants.UNITY_CATALOG_URI, "http://localhost:8080");
-    conf.set(Constants.UNITY_CATALOG_TOKEN, "unity-catalog-token");
+    conf.set(UCHadoopConf.UC_URI, "http://localhost:8080");
+    conf.set(UCHadoopConf.UC_TOKEN, "unity-catalog-token");
 
     // For table-based temporary requests.
-    conf.set(
-        Constants.UNITY_CATALOG_CREDENTIALS_TYPE, Constants.UNITY_CATALOG_TABLE_CREDENTIALS_TYPE);
-    conf.set(Constants.UNITY_CATALOG_TABLE, "test");
-    conf.set(Constants.UNITY_CATALOG_TABLE_OPERATION, TableOperation.READ.getValue());
+    conf.set(UCHadoopConf.UC_CREDENTIALS_TYPE, UCHadoopConf.UC_CREDENTIALS_TYPE_TABLE_VALUE);
+    conf.set(UCHadoopConf.UC_TABLE_ID, "test");
+    conf.set(UCHadoopConf.UC_TABLE_OPERATION, TableOperation.READ.getValue());
 
     long expirationTime1 = System.currentTimeMillis() + 1000 + 3 * 1000L;
     long expirationTime2 = System.currentTimeMillis() + 1000 + 6 * 1000L;
@@ -47,14 +47,13 @@ public class AwsVendedTokenProviderTest {
   @Test
   public void testPathBasedTemporaryCredentialsRenew() throws Exception {
     Configuration conf = new Configuration();
-    conf.set(Constants.UNITY_CATALOG_URI, "http://localhost:8080");
-    conf.set(Constants.UNITY_CATALOG_TOKEN, "unity-catalog-token");
+    conf.set(UCHadoopConf.UC_URI, "http://localhost:8080");
+    conf.set(UCHadoopConf.UC_TOKEN, "unity-catalog-token");
 
     // For path-based temporary requests.
-    conf.set(
-        Constants.UNITY_CATALOG_CREDENTIALS_TYPE, Constants.UNITY_CATALOG_PATH_CREDENTIALS_TYPE);
-    conf.set(Constants.UNITY_CATALOG_PATH, "test");
-    conf.set(Constants.UNITY_CATALOG_PATH_OPERATION, PathOperation.PATH_READ.getValue());
+    conf.set(UCHadoopConf.UC_CREDENTIALS_TYPE, UCHadoopConf.UC_CREDENTIALS_TYPE_PATH_VALUE);
+    conf.set(UCHadoopConf.UC_PATH, "test");
+    conf.set(UCHadoopConf.UC_PATH_OPERATION, PathOperation.PATH_READ.getValue());
 
     long expirationTime1 = System.currentTimeMillis() + 1000 + 3 * 1000L;
     long expirationTime2 = System.currentTimeMillis() + 1000 + 6 * 1000L;
