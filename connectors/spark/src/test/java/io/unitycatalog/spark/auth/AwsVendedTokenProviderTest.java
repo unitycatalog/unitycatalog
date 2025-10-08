@@ -99,10 +99,10 @@ public class AwsVendedTokenProviderTest {
     conf.set(UCHadoopConf.UC_TABLE_OPERATION, TableOperation.READ.getValue());
 
     // Use the generated credential to initialize the provider.
-    conf.set(UCHadoopConf.UC_INIT_ACCESS_KEY, "accessKeyId0");
-    conf.set(UCHadoopConf.UC_INIT_SECRET_KEY, "secretAccessKey0");
-    conf.set(UCHadoopConf.UC_INIT_SESSION_TOKEN, "sessionToken0");
-    conf.setLong(UCHadoopConf.UC_INIT_EXPIRED_TIME, System.currentTimeMillis() + 4 * 1000L);
+    conf.set(UCHadoopConf.S3A_INIT_ACCESS_KEY, "accessKeyId0");
+    conf.set(UCHadoopConf.S3A_INIT_SECRET_KEY, "secretAccessKey0");
+    conf.set(UCHadoopConf.S3A_INIT_SESSION_TOKEN, "sessionToken0");
+    conf.setLong(UCHadoopConf.S3A_INIT_CRED_EXPIRED_TIME, System.currentTimeMillis() + 4 * 1000L);
 
     // Mock the path-based temporary credentials' generation.
     TemporaryCredentialsApi tempCredApi = mock(TemporaryCredentialsApi.class);
@@ -230,10 +230,10 @@ public class AwsVendedTokenProviderTest {
     conf.set(UCHadoopConf.UC_PATH_OPERATION, PathOperation.PATH_READ.getValue());
 
     // Use the generated credential to initialize the provider.
-    conf.set(UCHadoopConf.UC_INIT_ACCESS_KEY, "accessKeyId0");
-    conf.set(UCHadoopConf.UC_INIT_SECRET_KEY, "secretAccessKey0");
-    conf.set(UCHadoopConf.UC_INIT_SESSION_TOKEN, "sessionToken0");
-    conf.setLong(UCHadoopConf.UC_INIT_EXPIRED_TIME, System.currentTimeMillis() + 4 * 1000L);
+    conf.set(UCHadoopConf.S3A_INIT_ACCESS_KEY, "accessKeyId0");
+    conf.set(UCHadoopConf.S3A_INIT_SECRET_KEY, "secretAccessKey0");
+    conf.set(UCHadoopConf.S3A_INIT_SESSION_TOKEN, "sessionToken0");
+    conf.setLong(UCHadoopConf.S3A_INIT_CRED_EXPIRED_TIME, System.currentTimeMillis() + 4 * 1000L);
 
     // Mock the path-based temporary credentials' generation.
     TemporaryCredentialsApi tempCredApi = mock(TemporaryCredentialsApi.class);

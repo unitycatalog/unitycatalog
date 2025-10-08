@@ -10,21 +10,21 @@ import software.amazon.awssdk.auth.credentials.AwsSessionCredentials;
 public class AwsVendedTokenProvider extends GeneralCredentialProvider
     implements AwsCredentialsProvider {
 
-  public AwsVendedTokenProvider(URI ignored, Configuration conf) {
-    super(ignored, conf);
+  public AwsVendedTokenProvider(URI uri, Configuration conf) {
+    super(uri, conf);
   }
 
   @Override
   public GeneralCredential initGeneralCredential(Configuration conf) {
-    if (conf.get(UCHadoopConf.UC_INIT_ACCESS_KEY) != null
-        && conf.get(UCHadoopConf.UC_INIT_SECRET_KEY) != null
-        && conf.get(UCHadoopConf.UC_INIT_SESSION_TOKEN) != null
-        && conf.get(UCHadoopConf.UC_INIT_EXPIRED_TIME) != null) {
+    if (conf.get(UCHadoopConf.S3A_INIT_ACCESS_KEY) != null
+        && conf.get(UCHadoopConf.S3A_INIT_SECRET_KEY) != null
+        && conf.get(UCHadoopConf.S3A_INIT_SESSION_TOKEN) != null
+        && conf.get(UCHadoopConf.S3A_INIT_CRED_EXPIRED_TIME) != null) {
 
-      String accessKey = conf.get(UCHadoopConf.UC_INIT_ACCESS_KEY);
-      String secretKey = conf.get(UCHadoopConf.UC_INIT_SECRET_KEY);
-      String sessionToken = conf.get(UCHadoopConf.UC_INIT_SESSION_TOKEN);
-      long expiredTimeMillis = conf.getLong(UCHadoopConf.UC_INIT_EXPIRED_TIME, 0L);
+      String accessKey = conf.get(UCHadoopConf.S3A_INIT_ACCESS_KEY);
+      String secretKey = conf.get(UCHadoopConf.S3A_INIT_SECRET_KEY);
+      String sessionToken = conf.get(UCHadoopConf.S3A_INIT_SESSION_TOKEN);
+      long expiredTimeMillis = conf.getLong(UCHadoopConf.S3A_INIT_CRED_EXPIRED_TIME, 0L);
 
       return GeneralCredential.forAws(accessKey, secretKey, sessionToken, expiredTimeMillis);
     } else {

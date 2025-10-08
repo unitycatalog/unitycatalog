@@ -19,8 +19,8 @@ public abstract class GeneralCredentialProvider {
   private static final long DEFAULT_RENEWAL_LEAD_TIME_MILLIS = 30 * 1000;
 
   private final Configuration conf;
-  private final URI uri;
-  private final String token;
+  private final URI ucUri;
+  private final String ucToken;
 
   private volatile long renewalLeadTime = DEFAULT_RENEWAL_LEAD_TIME_MILLIS;
   private volatile GeneralCredential credential;
@@ -29,16 +29,16 @@ public abstract class GeneralCredentialProvider {
   /**
    * Constructor for the hadoop's CredentialProviderListFactory#buildAWSProviderList to initialize.
    */
-  public GeneralCredentialProvider(URI ignored, Configuration conf) {
+  public GeneralCredentialProvider(URI uri, Configuration conf) {
     this.conf = conf;
 
     String uriStr = conf.get(UCHadoopConf.UC_URI);
     Preconditions.checkNotNull(uriStr, "'%s' is not set", UCHadoopConf.UC_URI);
-    this.uri = URI.create(uriStr);
+    this.ucUri = URI.create(uriStr);
 
     String ucTokenStr = conf.get(UCHadoopConf.UC_TOKEN);
     Preconditions.checkNotNull(ucTokenStr, "'%s' is not set", UCHadoopConf.UC_TOKEN);
-    this.token = conf.get(UCHadoopConf.UC_TOKEN);
+    this.ucToken = conf.get(UCHadoopConf.UC_TOKEN);
 
     // The initialized credentials passing-through the hadoop configuration.
     this.credential = initGeneralCredential(conf);
@@ -71,7 +71,7 @@ public abstract class GeneralCredentialProvider {
     if (tempCredApi == null) {
       synchronized (this) {
         if (tempCredApi == null) {
-          tempCredApi = new TemporaryCredentialsApi(ApiClientFactory.createApiClient(uri, token));
+          tempCredApi = new TemporaryCredentialsApi(ApiClientFactory.createApiClient(ucUri, ucToken));
         }
       }
     }
