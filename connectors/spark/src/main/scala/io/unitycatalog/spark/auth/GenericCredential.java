@@ -3,14 +3,14 @@ package io.unitycatalog.spark.auth;
 import io.unitycatalog.client.model.AwsCredentials;
 import io.unitycatalog.client.model.TemporaryCredentials;
 
-public class GeneralCredential {
+public class GenericCredential {
   private final TemporaryCredentials tempCred;
 
-  public GeneralCredential(TemporaryCredentials tempCred) {
+  public GenericCredential(TemporaryCredentials tempCred) {
     this.tempCred = tempCred;
   }
 
-  public static GeneralCredential forAws(
+  public static GenericCredential forAws(
       String accessKey,
       String secretKey,
       String sessionToken,
@@ -26,7 +26,7 @@ public class GeneralCredential {
     tempCred.setAwsTempCredentials(awsCredentials);
     tempCred.setExpirationTime(expiredTimeMillis);
 
-    return new GeneralCredential(tempCred);
+    return new GenericCredential(tempCred);
   }
 
   public TemporaryCredentials temporaryCredentials() {

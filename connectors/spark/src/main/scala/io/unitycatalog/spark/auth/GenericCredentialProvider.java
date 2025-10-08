@@ -13,7 +13,7 @@ import java.net.URI;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.shaded.com.google.common.base.Preconditions;
 
-public abstract class GeneralCredentialProvider {
+public abstract class GenericCredentialProvider {
   // The time remaining until expiration, we will try to renew the credential before the expiration
   // time.
   private static final long DEFAULT_RENEWAL_LEAD_TIME_MILLIS = 30 * 1000;
@@ -23,10 +23,10 @@ public abstract class GeneralCredentialProvider {
   private final String ucToken;
 
   private volatile long renewalLeadTime = DEFAULT_RENEWAL_LEAD_TIME_MILLIS;
-  private volatile GeneralCredential credential;
+  private volatile GenericCredential credential;
   private volatile TemporaryCredentialsApi tempCredApi;
 
-  public GeneralCredentialProvider(URI ignored, Configuration conf) {
+  public GenericCredentialProvider(Configuration conf) {
     this.conf = conf;
 
     String ucUriStr = conf.get(UCHadoopConf.UC_URI_KEY);
@@ -43,9 +43,9 @@ public abstract class GeneralCredentialProvider {
     this.credential = initGeneralCredential(conf);
   }
 
-  public abstract GeneralCredential initGeneralCredential(Configuration conf);
+  public abstract GenericCredential initGeneralCredential(Configuration conf);
 
-  public GeneralCredential accessCredentials() {
+  public GenericCredential accessCredentials() {
     if (credential == null || credential.readyToRenew(renewalLeadTime)) {
       synchronized (this) {
         if (credential == null || credential.readyToRenew(renewalLeadTime)) {
@@ -70,7 +70,8 @@ public abstract class GeneralCredentialProvider {
     if (tempCredApi == null) {
       synchronized (this) {
         if (tempCredApi == null) {
-          tempCredApi = new TemporaryCredentialsApi(ApiClientFactory.createApiClient(ucUri, ucToken));
+          tempCredApi = new TemporaryCredentialsApi(
+              ApiClientFactory.createApiClient(ucUri, ucToken));
         }
       }
     }
@@ -78,14 +79,14 @@ public abstract class GeneralCredentialProvider {
     return tempCredApi;
   }
 
-  private GeneralCredential createGeneralCredentials() throws ApiException {
+  private GenericCredential createGeneralCredentials() throws ApiException {
     TemporaryCredentialsApi tempCredApi = temporaryCredentialsApi();
 
     // Generate the temporary credential via requesting UnityCatalog.
     TemporaryCredentials tempCred;
     String type = conf.get(UCHadoopConf.UC_CREDENTIALS_TYPE_KEY);
     // TODO We will need to retry the temporary credential request if any recoverable failure, for
-    // better robust.
+    // more robustness.
     if (UCHadoopConf.UC_CREDENTIALS_TYPE_PATH_VALUE.equals(type)) {
       String path = conf.get(UCHadoopConf.UC_PATH_KEY);
       String pathOperation = conf.get(UCHadoopConf.UC_PATH_OPERATION_KEY);
@@ -110,6 +111,6 @@ public abstract class GeneralCredentialProvider {
           type, UCHadoopConf.UC_CREDENTIALS_TYPE_KEY));
     }
 
-    return new GeneralCredential(tempCred);
+    return new GenericCredential(tempCred);
   }
 }

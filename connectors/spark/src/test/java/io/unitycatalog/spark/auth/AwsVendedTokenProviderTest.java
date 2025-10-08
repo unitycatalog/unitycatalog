@@ -20,7 +20,6 @@ import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.s3a.AWSCredentialProviderList;
 import org.apache.hadoop.fs.s3a.Constants;
 import org.apache.hadoop.fs.s3a.auth.CredentialProviderListFactory;
-import org.apache.hadoop.security.alias.CredentialProvider;
 import org.junit.jupiter.api.Test;
 import software.amazon.awssdk.auth.credentials.AwsCredentialsProvider;
 import software.amazon.awssdk.auth.credentials.AwsSessionCredentials;
@@ -32,13 +31,13 @@ public class AwsVendedTokenProviderTest {
     Configuration conf = new Configuration();
 
     // Verify the UC URI validation error message.
-    assertThatThrownBy(() -> new AwsVendedTokenProvider(null, conf))
+    assertThatThrownBy(() -> new AwsVendedTokenProvider(conf))
         .isInstanceOf(NullPointerException.class)
         .hasMessage("'%s' is not set in hadoop configuration", UCHadoopConf.UC_URI_KEY);
 
     // Verify the UC Token validation error message.
     conf.set(UCHadoopConf.UC_URI_KEY, "http://localhost:8080");
-    assertThatThrownBy(() -> new AwsVendedTokenProvider(null, conf))
+    assertThatThrownBy(() -> new AwsVendedTokenProvider(conf))
         .isInstanceOf(NullPointerException.class)
         .hasMessage("'%s' is not set in hadoop configuration", UCHadoopConf.UC_TOKEN_KEY);
   }
@@ -85,7 +84,7 @@ public class AwsVendedTokenProviderTest {
     TemporaryCredentialsApi tempCredApi = mock(TemporaryCredentialsApi.class);
     when(tempCredApi.generateTemporaryTableCredentials(any())).thenReturn(cred1).thenReturn(cred2);
 
-    AwsVendedTokenProvider provider = new TestAwsVendedTokenProvider(null, conf, tempCredApi);
+    AwsVendedTokenProvider provider = new TestAwsVendedTokenProvider(conf, tempCredApi);
     provider.setRenewalLeadTime(3 * 1000L);
 
     // Use the cred1 for the 1st access.
@@ -150,7 +149,7 @@ public class AwsVendedTokenProviderTest {
                 System.currentTimeMillis() + 10 * 1000L));
 
     // Initialize the credential provider.
-    AwsVendedTokenProvider provider = new TestAwsVendedTokenProvider(null, conf, tempCredApi);
+    AwsVendedTokenProvider provider = new TestAwsVendedTokenProvider(conf, tempCredApi);
     provider.setRenewalLeadTime(3 * 1000L);
 
     // cred0 is valid.
@@ -216,7 +215,7 @@ public class AwsVendedTokenProviderTest {
     TemporaryCredentialsApi tempCredApi = mock(TemporaryCredentialsApi.class);
     when(tempCredApi.generateTemporaryPathCredentials(any())).thenReturn(cred1).thenReturn(cred2);
 
-    AwsVendedTokenProvider provider = new TestAwsVendedTokenProvider(null, conf, tempCredApi);
+    AwsVendedTokenProvider provider = new TestAwsVendedTokenProvider(conf, tempCredApi);
     provider.setRenewalLeadTime(3 * 1000L);
 
     // Use the cred1 for the 1st access.
@@ -281,7 +280,7 @@ public class AwsVendedTokenProviderTest {
                 System.currentTimeMillis() + 10 * 1000L));
 
     // Initialize the credential provider.
-    AwsVendedTokenProvider provider = new TestAwsVendedTokenProvider(null, conf, tempCredApi);
+    AwsVendedTokenProvider provider = new TestAwsVendedTokenProvider(conf, tempCredApi);
     provider.setRenewalLeadTime(3 * 1000L);
 
     // cred0 is valid.
@@ -344,9 +343,8 @@ public class AwsVendedTokenProviderTest {
   static class TestAwsVendedTokenProvider extends AwsVendedTokenProvider {
     private final TemporaryCredentialsApi tempCredApi;
 
-    TestAwsVendedTokenProvider(
-        URI ignored, Configuration conf, TemporaryCredentialsApi tempCredApi) {
-      super(ignored, conf);
+    TestAwsVendedTokenProvider(Configuration conf, TemporaryCredentialsApi tempCredApi) {
+      super(conf);
       this.tempCredApi = tempCredApi;
     }
 
