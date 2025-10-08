@@ -96,8 +96,8 @@ public class AwsVendedTokenProviderTest {
     // Use the cred1 for the 2nd access, since it's valid.
     assertCredentials(provider.resolveCredentials(), cred1);
 
-    // Sleep 2 seconds to wait the cred1 to be expired.
-    Thread.sleep(2000L);
+    // Sleep to renew, cred2 will be valid.
+    Thread.sleep(1000L);
 
     // Use the cred2 for the 3rd access, since cred1 it's expired.
     assertCredentials(provider.resolveCredentials(), cred2);
@@ -199,7 +199,7 @@ public class AwsVendedTokenProviderTest {
     // Use the cred1 for the 2nd access, since it's valid.
     assertCredentials(provider.resolveCredentials(), cred1);
 
-    // Sleep 4 seconds to wait the cred1 to be expired.
+    // Sleep to renew.
     Thread.sleep(1000L);
 
     // Use the cred2 for the 3rd access, since cred1 it's expired.
