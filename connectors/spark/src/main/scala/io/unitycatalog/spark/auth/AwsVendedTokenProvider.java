@@ -3,15 +3,12 @@ package io.unitycatalog.spark.auth;
 import io.unitycatalog.spark.UCHadoopConf;
 import java.net.URI;
 import org.apache.hadoop.conf.Configuration;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 import software.amazon.awssdk.auth.credentials.AwsCredentials;
 import software.amazon.awssdk.auth.credentials.AwsCredentialsProvider;
 import software.amazon.awssdk.auth.credentials.AwsSessionCredentials;
 
 public class AwsVendedTokenProvider extends GeneralCredentialProvider
     implements AwsCredentialsProvider {
-  private final Logger LOG = LoggerFactory.getLogger(AwsVendedTokenProvider.class);
 
   public AwsVendedTokenProvider(URI ignored, Configuration conf) {
     super(ignored, conf);
@@ -23,8 +20,6 @@ public class AwsVendedTokenProvider extends GeneralCredentialProvider
         && conf.get(UCHadoopConf.UC_INIT_SECRET_KEY) != null
         && conf.get(UCHadoopConf.UC_INIT_SESSION_TOKEN) != null
         && conf.get(UCHadoopConf.UC_INIT_EXPIRED_TIME) != null) {
-
-      LOG.info("Setting up {} with the initialized credentials", this.getClass());
 
       String accessKey = conf.get(UCHadoopConf.UC_INIT_ACCESS_KEY);
       String secretKey = conf.get(UCHadoopConf.UC_INIT_SECRET_KEY);

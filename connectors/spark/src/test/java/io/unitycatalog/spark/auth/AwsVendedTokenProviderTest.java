@@ -1,6 +1,7 @@
 package io.unitycatalog.spark.auth;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
@@ -18,7 +19,23 @@ import software.amazon.awssdk.auth.credentials.AwsSessionCredentials;
 public class AwsVendedTokenProviderTest {
 
   @Test
-  public void testTableBasedTemporaryCredentialsRenew() throws Exception {
+  public void testConstructor() {
+    Configuration conf = new Configuration();
+
+    // Verify the UC URI validation error message.
+    assertThatThrownBy(() -> new AwsVendedTokenProvider(null, conf))
+        .isInstanceOf(NullPointerException.class)
+        .hasMessage("'%s' is not set", UCHadoopConf.UC_URI);
+
+    // Verify the UC Token validation error message.
+    conf.set(UCHadoopConf.UC_URI, "http://localhost:8080");
+    assertThatThrownBy(() -> new AwsVendedTokenProvider(null, conf))
+        .isInstanceOf(NullPointerException.class)
+        .hasMessage("'%s' is not set", UCHadoopConf.UC_TOKEN);
+  }
+
+  @Test
+  public void testTableTemporaryCredentialsRenew() throws Exception {
     Configuration conf = new Configuration();
     conf.set(UCHadoopConf.UC_URI, "http://localhost:8080");
     conf.set(UCHadoopConf.UC_TOKEN, "unity-catalog-token");
@@ -31,10 +48,10 @@ public class AwsVendedTokenProviderTest {
     long expirationTime1 = System.currentTimeMillis() + 1000 + 3 * 1000L;
     long expirationTime2 = System.currentTimeMillis() + 1000 + 6 * 1000L;
     TemporaryCredentials cred1 =
-        initAwsTempCredentials(
+        newAwsTempCredentials(
             "accessKeyId1", "secretAccessKey1", "sessionToken1", expirationTime1);
     TemporaryCredentials cred2 =
-        initAwsTempCredentials(
+        newAwsTempCredentials(
             "accessKeyId2", "secretAccessKey2", "sessionToken2", expirationTime2);
 
     // Mock the table-based temporary credentials' generation.
@@ -45,7 +62,11 @@ public class AwsVendedTokenProviderTest {
   }
 
   @Test
-  public void testPathBasedTemporaryCredentialsRenew() throws Exception {
+  public void testTableTemporaryCredentialsRenewWithInitialCredentials() throws Exception {
+  }
+
+  @Test
+  public void testPathTemporaryCredentialsRenew() throws Exception {
     Configuration conf = new Configuration();
     conf.set(UCHadoopConf.UC_URI, "http://localhost:8080");
     conf.set(UCHadoopConf.UC_TOKEN, "unity-catalog-token");
@@ -58,10 +79,10 @@ public class AwsVendedTokenProviderTest {
     long expirationTime1 = System.currentTimeMillis() + 1000 + 3 * 1000L;
     long expirationTime2 = System.currentTimeMillis() + 1000 + 6 * 1000L;
     TemporaryCredentials cred1 =
-        initAwsTempCredentials(
+        newAwsTempCredentials(
             "accessKeyId1", "secretAccessKey1", "sessionToken1", expirationTime1);
     TemporaryCredentials cred2 =
-        initAwsTempCredentials(
+        newAwsTempCredentials(
             "accessKeyId2", "secretAccessKey2", "sessionToken2", expirationTime2);
 
     // Mock the path-based temporary credentials' generation.
@@ -69,6 +90,78 @@ public class AwsVendedTokenProviderTest {
     when(tempCredApi.generateTemporaryPathCredentials(any())).thenReturn(cred1).thenReturn(cred2);
 
     testCredentialsRenew(conf, tempCredApi);
+  }
+
+  @Test
+  public void testPathTemporaryCredentialsRenewWithInitialCredentials() throws Exception {
+    Configuration conf = new Configuration();
+    conf.set(UCHadoopConf.UC_URI, "http://localhost:8080");
+    conf.set(UCHadoopConf.UC_TOKEN, "unity-catalog-token");
+
+    // For path-based temporary requests.
+    conf.set(UCHadoopConf.UC_CREDENTIALS_TYPE, UCHadoopConf.UC_CREDENTIALS_TYPE_PATH_VALUE);
+    conf.set(UCHadoopConf.UC_PATH, "test");
+    conf.set(UCHadoopConf.UC_PATH_OPERATION, PathOperation.PATH_READ.getValue());
+
+    // Use the generated credential to initialize the provider.
+    conf.set(UCHadoopConf.UC_INIT_ACCESS_KEY, "accessKeyId0");
+    conf.set(UCHadoopConf.UC_INIT_SECRET_KEY, "secretAccessKey0");
+    conf.set(UCHadoopConf.UC_INIT_SESSION_TOKEN, "sessionToken0");
+    conf.setLong(UCHadoopConf.UC_INIT_EXPIRED_TIME, System.currentTimeMillis() + 4 * 1000L);
+
+    // Mock the path-based temporary credentials' generation.
+    TemporaryCredentialsApi tempCredApi = mock(TemporaryCredentialsApi.class);
+    when(tempCredApi.generateTemporaryPathCredentials(any()))
+        .thenReturn(
+            newAwsTempCredentials("accessKeyId1", "secretAccessKey1", "sessionToken1",
+                System.currentTimeMillis() + 7 * 1000L))
+        .thenReturn(
+            newAwsTempCredentials("accessKeyId2", "secretAccessKey2", "sessionToken2",
+                System.currentTimeMillis() + 10 * 1000L));
+
+    // Initialize the credential provider.
+    AwsVendedTokenProvider provider = new TestAwsVendedTokenProvider(null, conf, tempCredApi);
+    provider.setRenewalLeadTime(3 * 1000L);
+
+    // cred0 is valid.
+    AwsSessionCredentials awsCred0 = (AwsSessionCredentials) provider.resolveCredentials();
+    assertThat(awsCred0.accessKeyId()).isEqualTo("accessKeyId0");
+    assertThat(awsCred0.secretAccessKey()).isEqualTo("secretAccessKey0");
+    assertThat(awsCred0.sessionToken()).isEqualTo("sessionToken0");
+
+    // cred0 is still valid.
+    awsCred0 = (AwsSessionCredentials) provider.resolveCredentials();
+    assertThat(awsCred0.accessKeyId()).isEqualTo("accessKeyId0");
+    assertThat(awsCred0.secretAccessKey()).isEqualTo("secretAccessKey0");
+    assertThat(awsCred0.sessionToken()).isEqualTo("sessionToken0");
+
+    Thread.sleep(4 * 1000L);
+
+    // cred0 is invalid while cred1 is valid.
+    AwsSessionCredentials awsCred1 = (AwsSessionCredentials) provider.resolveCredentials();
+    assertThat(awsCred1.accessKeyId()).isEqualTo("accessKeyId1");
+    assertThat(awsCred1.secretAccessKey()).isEqualTo("secretAccessKey1");
+    assertThat(awsCred1.sessionToken()).isEqualTo("sessionToken1");
+
+    // cred1 is still valid.
+    awsCred1 = (AwsSessionCredentials) provider.resolveCredentials();
+    assertThat(awsCred1.accessKeyId()).isEqualTo("accessKeyId1");
+    assertThat(awsCred1.secretAccessKey()).isEqualTo("secretAccessKey1");
+    assertThat(awsCred1.sessionToken()).isEqualTo("sessionToken1");
+
+    Thread.sleep(4 * 1000L);
+
+    // cred1 is expired, while cred2 is valid.
+    AwsSessionCredentials awsCred2 = (AwsSessionCredentials) provider.resolveCredentials();
+    assertThat(awsCred2.accessKeyId()).isEqualTo("accessKeyId2");
+    assertThat(awsCred2.secretAccessKey()).isEqualTo("secretAccessKey2");
+    assertThat(awsCred2.sessionToken()).isEqualTo("sessionToken2");
+
+    // cred2 is still valid.
+    awsCred2 = (AwsSessionCredentials) provider.resolveCredentials();
+    assertThat(awsCred2.accessKeyId()).isEqualTo("accessKeyId2");
+    assertThat(awsCred2.secretAccessKey()).isEqualTo("secretAccessKey2");
+    assertThat(awsCred2.sessionToken()).isEqualTo("sessionToken2");
   }
 
   public void testCredentialsRenew(Configuration conf, TemporaryCredentialsApi tempCredApi)
@@ -104,7 +197,7 @@ public class AwsVendedTokenProviderTest {
     assertThat(awsCred4.sessionToken()).isEqualTo("sessionToken2");
   }
 
-  private TemporaryCredentials initAwsTempCredentials(
+  private TemporaryCredentials newAwsTempCredentials(
       String accessKeyId, String secretAccessKey, String sessionToken, long expirationTime) {
     io.unitycatalog.client.model.AwsCredentials awsCred =
         new io.unitycatalog.client.model.AwsCredentials();

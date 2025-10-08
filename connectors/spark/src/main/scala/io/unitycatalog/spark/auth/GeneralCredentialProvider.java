@@ -1,6 +1,5 @@
 package io.unitycatalog.spark.auth;
 
-import io.unitycatalog.client.ApiClient;
 import io.unitycatalog.client.ApiException;
 import io.unitycatalog.client.api.TemporaryCredentialsApi;
 import io.unitycatalog.client.model.GenerateTemporaryPathCredential;
@@ -25,7 +24,7 @@ public abstract class GeneralCredentialProvider {
 
   private volatile long renewalLeadTime = DEFAULT_RENEWAL_LEAD_TIME_MILLIS;
   private volatile GeneralCredential credential;
-  private volatile ApiClient lazyApiClient = null;
+  private volatile TemporaryCredentialsApi tempCredApi;
 
   /**
    * Constructor for the hadoop's CredentialProviderListFactory#buildAWSProviderList to initialize.
@@ -46,18 +45,6 @@ public abstract class GeneralCredentialProvider {
   }
 
   public abstract GeneralCredential initGeneralCredential(Configuration conf);
-
-  private ApiClient apiClient() {
-    if (lazyApiClient == null) {
-      synchronized (this) {
-        if (lazyApiClient == null) {
-          lazyApiClient = ApiClientFactory.createApiClient(uri, token);
-        }
-      }
-    }
-
-    return lazyApiClient;
-  }
 
   public GeneralCredential accessCredentials() {
     if (credential == null || credential.readyToRenew(renewalLeadTime)) {
@@ -81,7 +68,15 @@ public abstract class GeneralCredentialProvider {
   }
 
   protected TemporaryCredentialsApi temporaryCredentialsApi() {
-    return new TemporaryCredentialsApi(apiClient());
+    if (tempCredApi == null) {
+      synchronized (this) {
+        if (tempCredApi == null) {
+          tempCredApi = new TemporaryCredentialsApi(ApiClientFactory.createApiClient(uri, token));
+        }
+      }
+    }
+
+    return tempCredApi;
   }
 
   private GeneralCredential createGeneralCredentials() throws ApiException {
