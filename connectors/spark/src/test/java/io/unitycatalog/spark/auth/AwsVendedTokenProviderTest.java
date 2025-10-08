@@ -7,6 +7,7 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
 import io.unitycatalog.client.api.TemporaryCredentialsApi;
+import io.unitycatalog.client.model.AwsCredentials;
 import io.unitycatalog.client.model.PathOperation;
 import io.unitycatalog.client.model.TableOperation;
 import io.unitycatalog.client.model.TemporaryCredentials;
@@ -73,8 +74,8 @@ public class AwsVendedTokenProviderTest {
     conf.set(UCHadoopConf.UC_TABLE_ID_KEY, "test");
     conf.set(UCHadoopConf.UC_TABLE_OPERATION_KEY, TableOperation.READ.getValue());
 
-    long expirationTime1 = System.currentTimeMillis() + 1000 + 3 * 1000L;
-    long expirationTime2 = System.currentTimeMillis() + 1000 + 6 * 1000L;
+    long expirationTime1 = System.currentTimeMillis() + 1000 + 1000L;
+    long expirationTime2 = System.currentTimeMillis() + 1000 + 2000L;
     TemporaryCredentials cred1 =
         newAwsTempCredentials("accessKeyId1", "secretAccessKey1", "sessionToken1", expirationTime1);
     TemporaryCredentials cred2 =
@@ -82,37 +83,27 @@ public class AwsVendedTokenProviderTest {
 
     // Mock the table-based temporary credentials' generation.
     TemporaryCredentialsApi tempCredApi = mock(TemporaryCredentialsApi.class);
-    when(tempCredApi.generateTemporaryTableCredentials(any())).thenReturn(cred1).thenReturn(cred2);
+    when(tempCredApi.generateTemporaryTableCredentials(any()))
+        .thenReturn(cred1)
+        .thenReturn(cred2);
 
     AwsVendedTokenProvider provider = new TestAwsVendedTokenProvider(conf, tempCredApi);
-    provider.setRenewalLeadTime(3 * 1000L);
+    provider.setRenewalLeadTime(1000L);
 
     // Use the cred1 for the 1st access.
-    AwsSessionCredentials awsCred1 = (AwsSessionCredentials) provider.resolveCredentials();
-    assertThat(awsCred1.accessKeyId()).isEqualTo("accessKeyId1");
-    assertThat(awsCred1.secretAccessKey()).isEqualTo("secretAccessKey1");
-    assertThat(awsCred1.sessionToken()).isEqualTo("sessionToken1");
+    assertCredentials(provider.resolveCredentials(), cred1);
 
     // Use the cred1 for the 2nd access, since it's valid.
-    AwsSessionCredentials awsCred2 = (AwsSessionCredentials) provider.resolveCredentials();
-    assertThat(awsCred2.accessKeyId()).isEqualTo("accessKeyId1");
-    assertThat(awsCred2.secretAccessKey()).isEqualTo("secretAccessKey1");
-    assertThat(awsCred2.sessionToken()).isEqualTo("sessionToken1");
+    assertCredentials(provider.resolveCredentials(), cred1);
 
-    // Sleep 4 seconds to wait the cred1 to be expired.
-    Thread.sleep(4 * 1000L);
+    // Sleep 2 seconds to wait the cred1 to be expired.
+    Thread.sleep(2000L);
 
     // Use the cred2 for the 3rd access, since cred1 it's expired.
-    AwsSessionCredentials awsCred3 = (AwsSessionCredentials) provider.resolveCredentials();
-    assertThat(awsCred3.accessKeyId()).isEqualTo("accessKeyId2");
-    assertThat(awsCred3.secretAccessKey()).isEqualTo("secretAccessKey2");
-    assertThat(awsCred3.sessionToken()).isEqualTo("sessionToken2");
+    assertCredentials(provider.resolveCredentials(), cred2);
 
     // Use the cred3 for the 4th access, since cred2 is valid.
-    AwsSessionCredentials awsCred4 = (AwsSessionCredentials) provider.resolveCredentials();
-    assertThat(awsCred4.accessKeyId()).isEqualTo("accessKeyId2");
-    assertThat(awsCred4.secretAccessKey()).isEqualTo("secretAccessKey2");
-    assertThat(awsCred4.sessionToken()).isEqualTo("sessionToken2");
+    assertCredentials(provider.resolveCredentials(), cred2);
   }
 
   @Test
@@ -127,70 +118,52 @@ public class AwsVendedTokenProviderTest {
     conf.set(UCHadoopConf.UC_TABLE_OPERATION_KEY, TableOperation.READ.getValue());
 
     // Use the generated credential to initialize the provider.
-    conf.set(UCHadoopConf.S3A_INIT_ACCESS_KEY, "accessKeyId0");
-    conf.set(UCHadoopConf.S3A_INIT_SECRET_KEY, "secretAccessKey0");
-    conf.set(UCHadoopConf.S3A_INIT_SESSION_TOKEN, "sessionToken0");
-    conf.setLong(UCHadoopConf.S3A_INIT_CRED_EXPIRED_TIME, System.currentTimeMillis() + 4 * 1000L);
+    TemporaryCredentials cred0 =
+        newAwsTempCredentials("accessKeyId0", "secretAccessKey0", "sessionToken0",
+            System.currentTimeMillis() + 2000L);
+    conf.set(UCHadoopConf.S3A_INIT_ACCESS_KEY, cred0.getAwsTempCredentials().getAccessKeyId());
+    conf.set(UCHadoopConf.S3A_INIT_SECRET_KEY, cred0.getAwsTempCredentials().getSecretAccessKey());
+    conf.set(UCHadoopConf.S3A_INIT_SESSION_TOKEN, cred0.getAwsTempCredentials().getSessionToken());
+    conf.setLong(UCHadoopConf.S3A_INIT_CRED_EXPIRED_TIME, cred0.getExpirationTime());
 
     // Mock the path-based temporary credentials' generation.
     TemporaryCredentialsApi tempCredApi = mock(TemporaryCredentialsApi.class);
+    TemporaryCredentials cred1 =
+        newAwsTempCredentials("accessKeyId1", "secretAccessKey1",
+            "sessionToken1", System.currentTimeMillis() + 3000L);
+    TemporaryCredentials cred2 =
+        newAwsTempCredentials("accessKeyId2", "secretAccessKey2",
+            "sessionToken2", System.currentTimeMillis() + 4000L);
+
     when(tempCredApi.generateTemporaryTableCredentials(any()))
-        .thenReturn(
-            newAwsTempCredentials(
-                "accessKeyId1",
-                "secretAccessKey1",
-                "sessionToken1",
-                System.currentTimeMillis() + 7 * 1000L))
-        .thenReturn(
-            newAwsTempCredentials(
-                "accessKeyId2",
-                "secretAccessKey2",
-                "sessionToken2",
-                System.currentTimeMillis() + 10 * 1000L));
+        .thenReturn(cred1)
+        .thenReturn(cred2);
 
     // Initialize the credential provider.
     AwsVendedTokenProvider provider = new TestAwsVendedTokenProvider(conf, tempCredApi);
-    provider.setRenewalLeadTime(3 * 1000L);
+    provider.setRenewalLeadTime(1000L);
 
     // cred0 is valid.
-    AwsSessionCredentials awsCred0 = (AwsSessionCredentials) provider.resolveCredentials();
-    assertThat(awsCred0.accessKeyId()).isEqualTo("accessKeyId0");
-    assertThat(awsCred0.secretAccessKey()).isEqualTo("secretAccessKey0");
-    assertThat(awsCred0.sessionToken()).isEqualTo("sessionToken0");
+    assertCredentials(provider.resolveCredentials(), cred0);
 
     // cred0 is still valid.
-    awsCred0 = (AwsSessionCredentials) provider.resolveCredentials();
-    assertThat(awsCred0.accessKeyId()).isEqualTo("accessKeyId0");
-    assertThat(awsCred0.secretAccessKey()).isEqualTo("secretAccessKey0");
-    assertThat(awsCred0.sessionToken()).isEqualTo("sessionToken0");
+    assertCredentials(provider.resolveCredentials(), cred0);
 
-    Thread.sleep(3 * 1000L);
+    Thread.sleep(1000L);
 
     // cred0 is invalid while cred1 is valid.
-    AwsSessionCredentials awsCred1 = (AwsSessionCredentials) provider.resolveCredentials();
-    assertThat(awsCred1.accessKeyId()).isEqualTo("accessKeyId1");
-    assertThat(awsCred1.secretAccessKey()).isEqualTo("secretAccessKey1");
-    assertThat(awsCred1.sessionToken()).isEqualTo("sessionToken1");
+    assertCredentials(provider.resolveCredentials(), cred1);
 
     // cred1 is still valid.
-    awsCred1 = (AwsSessionCredentials) provider.resolveCredentials();
-    assertThat(awsCred1.accessKeyId()).isEqualTo("accessKeyId1");
-    assertThat(awsCred1.secretAccessKey()).isEqualTo("secretAccessKey1");
-    assertThat(awsCred1.sessionToken()).isEqualTo("sessionToken1");
+    assertCredentials(provider.resolveCredentials(), cred1);
 
-    Thread.sleep(3 * 1000L);
+    Thread.sleep(1000L);
 
     // cred1 is expired, while cred2 is valid.
-    AwsSessionCredentials awsCred2 = (AwsSessionCredentials) provider.resolveCredentials();
-    assertThat(awsCred2.accessKeyId()).isEqualTo("accessKeyId2");
-    assertThat(awsCred2.secretAccessKey()).isEqualTo("secretAccessKey2");
-    assertThat(awsCred2.sessionToken()).isEqualTo("sessionToken2");
+    assertCredentials(provider.resolveCredentials(), cred2);
 
     // cred2 is still valid.
-    awsCred2 = (AwsSessionCredentials) provider.resolveCredentials();
-    assertThat(awsCred2.accessKeyId()).isEqualTo("accessKeyId2");
-    assertThat(awsCred2.secretAccessKey()).isEqualTo("secretAccessKey2");
-    assertThat(awsCred2.sessionToken()).isEqualTo("sessionToken2");
+    assertCredentials(provider.resolveCredentials(), cred2);
   }
 
   @Test
@@ -204,8 +177,8 @@ public class AwsVendedTokenProviderTest {
     conf.set(UCHadoopConf.UC_PATH_KEY, "test");
     conf.set(UCHadoopConf.UC_PATH_OPERATION_KEY, PathOperation.PATH_READ.getValue());
 
-    long expirationTime1 = System.currentTimeMillis() + 1000 + 3 * 1000L;
-    long expirationTime2 = System.currentTimeMillis() + 1000 + 6 * 1000L;
+    long expirationTime1 = System.currentTimeMillis() + 2000L;
+    long expirationTime2 = System.currentTimeMillis() + 3000L;
     TemporaryCredentials cred1 =
         newAwsTempCredentials("accessKeyId1", "secretAccessKey1", "sessionToken1", expirationTime1);
     TemporaryCredentials cred2 =
@@ -213,37 +186,27 @@ public class AwsVendedTokenProviderTest {
 
     // Mock the path-based temporary credentials' generation.
     TemporaryCredentialsApi tempCredApi = mock(TemporaryCredentialsApi.class);
-    when(tempCredApi.generateTemporaryPathCredentials(any())).thenReturn(cred1).thenReturn(cred2);
+    when(tempCredApi.generateTemporaryPathCredentials(any()))
+        .thenReturn(cred1)
+        .thenReturn(cred2);
 
     AwsVendedTokenProvider provider = new TestAwsVendedTokenProvider(conf, tempCredApi);
-    provider.setRenewalLeadTime(3 * 1000L);
+    provider.setRenewalLeadTime(1000L);
 
     // Use the cred1 for the 1st access.
-    AwsSessionCredentials awsCred1 = (AwsSessionCredentials) provider.resolveCredentials();
-    assertThat(awsCred1.accessKeyId()).isEqualTo("accessKeyId1");
-    assertThat(awsCred1.secretAccessKey()).isEqualTo("secretAccessKey1");
-    assertThat(awsCred1.sessionToken()).isEqualTo("sessionToken1");
+    assertCredentials(provider.resolveCredentials(), cred1);
 
     // Use the cred1 for the 2nd access, since it's valid.
-    AwsSessionCredentials awsCred2 = (AwsSessionCredentials) provider.resolveCredentials();
-    assertThat(awsCred2.accessKeyId()).isEqualTo("accessKeyId1");
-    assertThat(awsCred2.secretAccessKey()).isEqualTo("secretAccessKey1");
-    assertThat(awsCred2.sessionToken()).isEqualTo("sessionToken1");
+    assertCredentials(provider.resolveCredentials(), cred1);
 
     // Sleep 4 seconds to wait the cred1 to be expired.
-    Thread.sleep(4 * 1000L);
+    Thread.sleep(1000L);
 
     // Use the cred2 for the 3rd access, since cred1 it's expired.
-    AwsSessionCredentials awsCred3 = (AwsSessionCredentials) provider.resolveCredentials();
-    assertThat(awsCred3.accessKeyId()).isEqualTo("accessKeyId2");
-    assertThat(awsCred3.secretAccessKey()).isEqualTo("secretAccessKey2");
-    assertThat(awsCred3.sessionToken()).isEqualTo("sessionToken2");
+    assertCredentials(provider.resolveCredentials(), cred2);
 
     // Use the cred3 for the 4th access, since cred2 is valid.
-    AwsSessionCredentials awsCred4 = (AwsSessionCredentials) provider.resolveCredentials();
-    assertThat(awsCred4.accessKeyId()).isEqualTo("accessKeyId2");
-    assertThat(awsCred4.secretAccessKey()).isEqualTo("secretAccessKey2");
-    assertThat(awsCred4.sessionToken()).isEqualTo("sessionToken2");
+    assertCredentials(provider.resolveCredentials(), cred2);
   }
 
   @Test
@@ -258,70 +221,69 @@ public class AwsVendedTokenProviderTest {
     conf.set(UCHadoopConf.UC_PATH_OPERATION_KEY, PathOperation.PATH_READ.getValue());
 
     // Use the generated credential to initialize the provider.
-    conf.set(UCHadoopConf.S3A_INIT_ACCESS_KEY, "accessKeyId0");
-    conf.set(UCHadoopConf.S3A_INIT_SECRET_KEY, "secretAccessKey0");
-    conf.set(UCHadoopConf.S3A_INIT_SESSION_TOKEN, "sessionToken0");
-    conf.setLong(UCHadoopConf.S3A_INIT_CRED_EXPIRED_TIME, System.currentTimeMillis() + 4 * 1000L);
+    TemporaryCredentials cred0 =
+        newAwsTempCredentials("accessKeyId0", "secretAccessKey0",
+            "sessionToken0", System.currentTimeMillis() + 2000L);
+    conf.set(UCHadoopConf.S3A_INIT_ACCESS_KEY, cred0.getAwsTempCredentials().getAccessKeyId());
+    conf.set(UCHadoopConf.S3A_INIT_SECRET_KEY, cred0.getAwsTempCredentials().getSecretAccessKey());
+    conf.set(UCHadoopConf.S3A_INIT_SESSION_TOKEN, cred0.getAwsTempCredentials().getSessionToken());
+    conf.setLong(UCHadoopConf.S3A_INIT_CRED_EXPIRED_TIME, cred0.getExpirationTime());
 
     // Mock the path-based temporary credentials' generation.
     TemporaryCredentialsApi tempCredApi = mock(TemporaryCredentialsApi.class);
+    TemporaryCredentials cred1 = newAwsTempCredentials(
+        "accessKeyId1",
+        "secretAccessKey1",
+        "sessionToken1",
+        System.currentTimeMillis() + 3000L);
+    TemporaryCredentials cred2 = newAwsTempCredentials(
+        "accessKeyId2",
+        "secretAccessKey2",
+        "sessionToken2",
+        System.currentTimeMillis() + 4000L);
     when(tempCredApi.generateTemporaryPathCredentials(any()))
-        .thenReturn(
-            newAwsTempCredentials(
-                "accessKeyId1",
-                "secretAccessKey1",
-                "sessionToken1",
-                System.currentTimeMillis() + 7 * 1000L))
-        .thenReturn(
-            newAwsTempCredentials(
-                "accessKeyId2",
-                "secretAccessKey2",
-                "sessionToken2",
-                System.currentTimeMillis() + 10 * 1000L));
+        .thenReturn(cred1)
+        .thenReturn(cred2);
 
     // Initialize the credential provider.
     AwsVendedTokenProvider provider = new TestAwsVendedTokenProvider(conf, tempCredApi);
-    provider.setRenewalLeadTime(3 * 1000L);
+    provider.setRenewalLeadTime(1000L);
 
     // cred0 is valid.
-    AwsSessionCredentials awsCred0 = (AwsSessionCredentials) provider.resolveCredentials();
-    assertThat(awsCred0.accessKeyId()).isEqualTo("accessKeyId0");
-    assertThat(awsCred0.secretAccessKey()).isEqualTo("secretAccessKey0");
-    assertThat(awsCred0.sessionToken()).isEqualTo("sessionToken0");
+    assertCredentials(provider.resolveCredentials(), cred0);
 
     // cred0 is still valid.
-    awsCred0 = (AwsSessionCredentials) provider.resolveCredentials();
-    assertThat(awsCred0.accessKeyId()).isEqualTo("accessKeyId0");
-    assertThat(awsCred0.secretAccessKey()).isEqualTo("secretAccessKey0");
-    assertThat(awsCred0.sessionToken()).isEqualTo("sessionToken0");
+    assertCredentials(provider.resolveCredentials(), cred0);
 
-    Thread.sleep(3 * 1000L);
+    Thread.sleep(1000L);
 
     // cred0 is invalid while cred1 is valid.
-    AwsSessionCredentials awsCred1 = (AwsSessionCredentials) provider.resolveCredentials();
-    assertThat(awsCred1.accessKeyId()).isEqualTo("accessKeyId1");
-    assertThat(awsCred1.secretAccessKey()).isEqualTo("secretAccessKey1");
-    assertThat(awsCred1.sessionToken()).isEqualTo("sessionToken1");
+    assertCredentials(provider.resolveCredentials(), cred1);
 
     // cred1 is still valid.
-    awsCred1 = (AwsSessionCredentials) provider.resolveCredentials();
-    assertThat(awsCred1.accessKeyId()).isEqualTo("accessKeyId1");
-    assertThat(awsCred1.secretAccessKey()).isEqualTo("secretAccessKey1");
-    assertThat(awsCred1.sessionToken()).isEqualTo("sessionToken1");
+    assertCredentials(provider.resolveCredentials(), cred1);
 
-    Thread.sleep(3 * 1000L);
+    Thread.sleep(1000L);
 
     // cred1 is expired, while cred2 is valid.
-    AwsSessionCredentials awsCred2 = (AwsSessionCredentials) provider.resolveCredentials();
-    assertThat(awsCred2.accessKeyId()).isEqualTo("accessKeyId2");
-    assertThat(awsCred2.secretAccessKey()).isEqualTo("secretAccessKey2");
-    assertThat(awsCred2.sessionToken()).isEqualTo("sessionToken2");
+    assertCredentials(provider.resolveCredentials(), cred2);
 
     // cred2 is still valid.
-    awsCred2 = (AwsSessionCredentials) provider.resolveCredentials();
-    assertThat(awsCred2.accessKeyId()).isEqualTo("accessKeyId2");
-    assertThat(awsCred2.secretAccessKey()).isEqualTo("secretAccessKey2");
-    assertThat(awsCred2.sessionToken()).isEqualTo("sessionToken2");
+    assertCredentials(provider.resolveCredentials(), cred2);
+  }
+
+  private void assertCredentials(
+      software.amazon.awssdk.auth.credentials.AwsCredentials actual,
+      TemporaryCredentials expected) {
+    assertThat(actual).isInstanceOf(AwsSessionCredentials.class);
+    AwsSessionCredentials actualSessionCred = (AwsSessionCredentials) actual;
+
+    assertThat(expected.getAwsTempCredentials()).isNotNull();
+    AwsCredentials expectedAwsCred = expected.getAwsTempCredentials();
+
+    assertThat(actualSessionCred.accessKeyId()).isEqualTo(expectedAwsCred.getAccessKeyId());
+    assertThat(actualSessionCred.secretAccessKey()).isEqualTo(expectedAwsCred.getSecretAccessKey());
+    assertThat(actualSessionCred.sessionToken()).isEqualTo(expectedAwsCred.getSessionToken());
   }
 
   private TemporaryCredentials newAwsTempCredentials(
