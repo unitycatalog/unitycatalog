@@ -65,14 +65,7 @@ public class AwsVendedTokenProviderTest {
 
   @Test
   public void testTableTemporaryCredentialsRenew() throws Exception {
-    Configuration conf = new Configuration();
-    conf.set(UCHadoopConf.UC_URI_KEY, "http://localhost:8080");
-    conf.set(UCHadoopConf.UC_TOKEN_KEY, "unity-catalog-token");
-
-    // For table-based temporary requests.
-    conf.set(UCHadoopConf.UC_CREDENTIALS_TYPE_KEY, UCHadoopConf.UC_CREDENTIALS_TYPE_TABLE_VALUE);
-    conf.set(UCHadoopConf.UC_TABLE_ID_KEY, "test");
-    conf.set(UCHadoopConf.UC_TABLE_OPERATION_KEY, TableOperation.READ.getValue());
+    Configuration conf = newTableBasedConf();
 
     long expirationTime1 = System.currentTimeMillis() + 1000 + 1000L;
     long expirationTime2 = System.currentTimeMillis() + 1000 + 2000L;
@@ -108,23 +101,13 @@ public class AwsVendedTokenProviderTest {
 
   @Test
   public void testTableTemporaryCredentialsRenewWithInitialCredentials() throws Exception {
-    Configuration conf = new Configuration();
-    conf.set(UCHadoopConf.UC_URI_KEY, "http://localhost:8080");
-    conf.set(UCHadoopConf.UC_TOKEN_KEY, "unity-catalog-token");
-
-    // For table-based temporary requests.
-    conf.set(UCHadoopConf.UC_CREDENTIALS_TYPE_KEY, UCHadoopConf.UC_CREDENTIALS_TYPE_TABLE_VALUE);
-    conf.set(UCHadoopConf.UC_TABLE_ID_KEY, "test");
-    conf.set(UCHadoopConf.UC_TABLE_OPERATION_KEY, TableOperation.READ.getValue());
+    Configuration conf = newTableBasedConf();
 
     // Use the generated credential to initialize the provider.
     TemporaryCredentials cred0 =
         newAwsTempCredentials("accessKeyId0", "secretAccessKey0", "sessionToken0",
             System.currentTimeMillis() + 2000L);
-    conf.set(UCHadoopConf.S3A_INIT_ACCESS_KEY, cred0.getAwsTempCredentials().getAccessKeyId());
-    conf.set(UCHadoopConf.S3A_INIT_SECRET_KEY, cred0.getAwsTempCredentials().getSecretAccessKey());
-    conf.set(UCHadoopConf.S3A_INIT_SESSION_TOKEN, cred0.getAwsTempCredentials().getSessionToken());
-    conf.setLong(UCHadoopConf.S3A_INIT_CRED_EXPIRED_TIME, cred0.getExpirationTime());
+    setInitialCredentials(conf, cred0);
 
     // Mock the path-based temporary credentials' generation.
     TemporaryCredentialsApi tempCredApi = mock(TemporaryCredentialsApi.class);
@@ -168,14 +151,7 @@ public class AwsVendedTokenProviderTest {
 
   @Test
   public void testPathTemporaryCredentialsRenew() throws Exception {
-    Configuration conf = new Configuration();
-    conf.set(UCHadoopConf.UC_URI_KEY, "http://localhost:8080");
-    conf.set(UCHadoopConf.UC_TOKEN_KEY, "unity-catalog-token");
-
-    // For path-based temporary requests.
-    conf.set(UCHadoopConf.UC_CREDENTIALS_TYPE_KEY, UCHadoopConf.UC_CREDENTIALS_TYPE_PATH_VALUE);
-    conf.set(UCHadoopConf.UC_PATH_KEY, "test");
-    conf.set(UCHadoopConf.UC_PATH_OPERATION_KEY, PathOperation.PATH_READ.getValue());
+    Configuration conf = newPathBasedConf();
 
     long expirationTime1 = System.currentTimeMillis() + 2000L;
     long expirationTime2 = System.currentTimeMillis() + 3000L;
@@ -211,23 +187,13 @@ public class AwsVendedTokenProviderTest {
 
   @Test
   public void testPathTemporaryCredentialsRenewWithInitialCredentials() throws Exception {
-    Configuration conf = new Configuration();
-    conf.set(UCHadoopConf.UC_URI_KEY, "http://localhost:8080");
-    conf.set(UCHadoopConf.UC_TOKEN_KEY, "unity-catalog-token");
-
-    // For path-based temporary requests.
-    conf.set(UCHadoopConf.UC_CREDENTIALS_TYPE_KEY, UCHadoopConf.UC_CREDENTIALS_TYPE_PATH_VALUE);
-    conf.set(UCHadoopConf.UC_PATH_KEY, "test");
-    conf.set(UCHadoopConf.UC_PATH_OPERATION_KEY, PathOperation.PATH_READ.getValue());
+    Configuration conf = newPathBasedConf();
 
     // Use the generated credential to initialize the provider.
     TemporaryCredentials cred0 =
         newAwsTempCredentials("accessKeyId0", "secretAccessKey0",
             "sessionToken0", System.currentTimeMillis() + 2000L);
-    conf.set(UCHadoopConf.S3A_INIT_ACCESS_KEY, cred0.getAwsTempCredentials().getAccessKeyId());
-    conf.set(UCHadoopConf.S3A_INIT_SECRET_KEY, cred0.getAwsTempCredentials().getSecretAccessKey());
-    conf.set(UCHadoopConf.S3A_INIT_SESSION_TOKEN, cred0.getAwsTempCredentials().getSessionToken());
-    conf.setLong(UCHadoopConf.S3A_INIT_CRED_EXPIRED_TIME, cred0.getExpirationTime());
+    setInitialCredentials(conf, cred0);
 
     // Mock the path-based temporary credentials' generation.
     TemporaryCredentialsApi tempCredApi = mock(TemporaryCredentialsApi.class);
@@ -272,7 +238,40 @@ public class AwsVendedTokenProviderTest {
     assertCredentials(provider.resolveCredentials(), cred2);
   }
 
-  private void assertCredentials(
+  private static Configuration newTableBasedConf() {
+    Configuration conf = new Configuration();
+    conf.set(UCHadoopConf.UC_URI_KEY, "http://localhost:8080");
+    conf.set(UCHadoopConf.UC_TOKEN_KEY, "unity-catalog-token");
+
+    // For table-based temporary requests.
+    conf.set(UCHadoopConf.UC_CREDENTIALS_TYPE_KEY, UCHadoopConf.UC_CREDENTIALS_TYPE_TABLE_VALUE);
+    conf.set(UCHadoopConf.UC_TABLE_ID_KEY, "test");
+    conf.set(UCHadoopConf.UC_TABLE_OPERATION_KEY, TableOperation.READ.getValue());
+
+    return conf;
+  }
+
+  private static Configuration newPathBasedConf() {
+    Configuration conf = new Configuration();
+    conf.set(UCHadoopConf.UC_URI_KEY, "http://localhost:8080");
+    conf.set(UCHadoopConf.UC_TOKEN_KEY, "unity-catalog-token");
+
+    // For path-based temporary requests.
+    conf.set(UCHadoopConf.UC_CREDENTIALS_TYPE_KEY, UCHadoopConf.UC_CREDENTIALS_TYPE_PATH_VALUE);
+    conf.set(UCHadoopConf.UC_PATH_KEY, "test");
+    conf.set(UCHadoopConf.UC_PATH_OPERATION_KEY, PathOperation.PATH_READ.getValue());
+
+    return conf;
+  }
+
+  private static void setInitialCredentials(Configuration conf, TemporaryCredentials cred) {
+    conf.set(UCHadoopConf.S3A_INIT_ACCESS_KEY, cred.getAwsTempCredentials().getAccessKeyId());
+    conf.set(UCHadoopConf.S3A_INIT_SECRET_KEY, cred.getAwsTempCredentials().getSecretAccessKey());
+    conf.set(UCHadoopConf.S3A_INIT_SESSION_TOKEN, cred.getAwsTempCredentials().getSessionToken());
+    conf.setLong(UCHadoopConf.S3A_INIT_CRED_EXPIRED_TIME, cred.getExpirationTime());
+  }
+
+  private static void assertCredentials(
       software.amazon.awssdk.auth.credentials.AwsCredentials actual,
       TemporaryCredentials expected) {
     assertThat(actual).isInstanceOf(AwsSessionCredentials.class);
@@ -286,7 +285,7 @@ public class AwsVendedTokenProviderTest {
     assertThat(actualSessionCred.sessionToken()).isEqualTo(expectedAwsCred.getSessionToken());
   }
 
-  private TemporaryCredentials newAwsTempCredentials(
+  private static TemporaryCredentials newAwsTempCredentials(
       String accessKeyId, String secretAccessKey, String sessionToken, long expirationTime) {
     io.unitycatalog.client.model.AwsCredentials awsCred =
         new io.unitycatalog.client.model.AwsCredentials();
