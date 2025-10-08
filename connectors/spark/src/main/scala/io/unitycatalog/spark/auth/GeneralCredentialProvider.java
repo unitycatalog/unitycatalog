@@ -26,18 +26,17 @@ public abstract class GeneralCredentialProvider {
   private volatile GeneralCredential credential;
   private volatile TemporaryCredentialsApi tempCredApi;
 
-  /**
-   * Constructor for the hadoop's CredentialProviderListFactory#buildAWSProviderList to initialize.
-   */
-  public GeneralCredentialProvider(URI uri, Configuration conf) {
+  public GeneralCredentialProvider(URI ignored, Configuration conf) {
     this.conf = conf;
 
-    String uriStr = conf.get(UCHadoopConf.UC_URI);
-    Preconditions.checkNotNull(uriStr, "'%s' is not set", UCHadoopConf.UC_URI);
-    this.ucUri = URI.create(uriStr);
+    String ucUriStr = conf.get(UCHadoopConf.UC_URI);
+    Preconditions.checkNotNull(ucUriStr,
+        "'%s' is not set in hadoop configuration", UCHadoopConf.UC_URI);
+    this.ucUri = URI.create(ucUriStr);
 
     String ucTokenStr = conf.get(UCHadoopConf.UC_TOKEN);
-    Preconditions.checkNotNull(ucTokenStr, "'%s' is not set", UCHadoopConf.UC_TOKEN);
+    Preconditions.checkNotNull(ucTokenStr,
+        "'%s' is not set in hadoop configuration", UCHadoopConf.UC_TOKEN);
     this.ucToken = conf.get(UCHadoopConf.UC_TOKEN);
 
     // The initialized credentials passing-through the hadoop configuration.

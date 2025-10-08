@@ -25,13 +25,13 @@ public class AwsVendedTokenProviderTest {
     // Verify the UC URI validation error message.
     assertThatThrownBy(() -> new AwsVendedTokenProvider(null, conf))
         .isInstanceOf(NullPointerException.class)
-        .hasMessage("'%s' is not set", UCHadoopConf.UC_URI);
+        .hasMessage("'%s' is not set in hadoop configuration", UCHadoopConf.UC_URI);
 
     // Verify the UC Token validation error message.
     conf.set(UCHadoopConf.UC_URI, "http://localhost:8080");
     assertThatThrownBy(() -> new AwsVendedTokenProvider(null, conf))
         .isInstanceOf(NullPointerException.class)
-        .hasMessage("'%s' is not set", UCHadoopConf.UC_TOKEN);
+        .hasMessage("'%s' is not set in hadoop configuration", UCHadoopConf.UC_TOKEN);
   }
 
   @Test
