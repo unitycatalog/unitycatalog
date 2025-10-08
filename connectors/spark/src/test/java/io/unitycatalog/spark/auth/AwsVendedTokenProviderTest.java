@@ -11,9 +11,18 @@ import io.unitycatalog.client.model.PathOperation;
 import io.unitycatalog.client.model.TableOperation;
 import io.unitycatalog.client.model.TemporaryCredentials;
 import io.unitycatalog.spark.UCHadoopConf;
+import java.io.IOException;
 import java.net.URI;
+import java.util.ArrayList;
+import java.util.HashSet;
+import java.util.List;
 import org.apache.hadoop.conf.Configuration;
+import org.apache.hadoop.fs.s3a.AWSCredentialProviderList;
+import org.apache.hadoop.fs.s3a.Constants;
+import org.apache.hadoop.fs.s3a.auth.CredentialProviderListFactory;
+import org.apache.hadoop.security.alias.CredentialProvider;
 import org.junit.jupiter.api.Test;
+import software.amazon.awssdk.auth.credentials.AwsCredentialsProvider;
 import software.amazon.awssdk.auth.credentials.AwsSessionCredentials;
 
 public class AwsVendedTokenProviderTest {
@@ -25,25 +34,45 @@ public class AwsVendedTokenProviderTest {
     // Verify the UC URI validation error message.
     assertThatThrownBy(() -> new AwsVendedTokenProvider(null, conf))
         .isInstanceOf(NullPointerException.class)
-        .hasMessage("'%s' is not set in hadoop configuration", UCHadoopConf.UC_URI);
+        .hasMessage("'%s' is not set in hadoop configuration", UCHadoopConf.UC_URI_KEY);
 
     // Verify the UC Token validation error message.
-    conf.set(UCHadoopConf.UC_URI, "http://localhost:8080");
+    conf.set(UCHadoopConf.UC_URI_KEY, "http://localhost:8080");
     assertThatThrownBy(() -> new AwsVendedTokenProvider(null, conf))
         .isInstanceOf(NullPointerException.class)
-        .hasMessage("'%s' is not set in hadoop configuration", UCHadoopConf.UC_TOKEN);
+        .hasMessage("'%s' is not set in hadoop configuration", UCHadoopConf.UC_TOKEN_KEY);
+  }
+
+  @Test
+  public void testLoadingTokenProvider() throws IOException {
+    Configuration conf = new Configuration();
+    conf.set(Constants.AWS_CREDENTIALS_PROVIDER, AwsVendedTokenProvider.class.getName());
+    conf.set(UCHadoopConf.UC_URI_KEY, "http://localhost:8080");
+    conf.set(UCHadoopConf.UC_TOKEN_KEY, "unity-catalog-token");
+
+    AWSCredentialProviderList list = CredentialProviderListFactory.buildAWSProviderList(
+        URI.create("s3://bucket/key"),
+        conf,
+        Constants.AWS_CREDENTIALS_PROVIDER,
+        new ArrayList<>(),
+        new HashSet<>()
+    );
+
+    List<AwsCredentialsProvider> providers = list.getProviders();
+    assertThat(providers).hasSize(1);
+    assertThat(providers.get(0)).isInstanceOf(AwsVendedTokenProvider.class);
   }
 
   @Test
   public void testTableTemporaryCredentialsRenew() throws Exception {
     Configuration conf = new Configuration();
-    conf.set(UCHadoopConf.UC_URI, "http://localhost:8080");
-    conf.set(UCHadoopConf.UC_TOKEN, "unity-catalog-token");
+    conf.set(UCHadoopConf.UC_URI_KEY, "http://localhost:8080");
+    conf.set(UCHadoopConf.UC_TOKEN_KEY, "unity-catalog-token");
 
     // For table-based temporary requests.
-    conf.set(UCHadoopConf.UC_CREDENTIALS_TYPE, UCHadoopConf.UC_CREDENTIALS_TYPE_TABLE_VALUE);
-    conf.set(UCHadoopConf.UC_TABLE_ID, "test");
-    conf.set(UCHadoopConf.UC_TABLE_OPERATION, TableOperation.READ.getValue());
+    conf.set(UCHadoopConf.UC_CREDENTIALS_TYPE_KEY, UCHadoopConf.UC_CREDENTIALS_TYPE_TABLE_VALUE);
+    conf.set(UCHadoopConf.UC_TABLE_ID_KEY, "test");
+    conf.set(UCHadoopConf.UC_TABLE_OPERATION_KEY, TableOperation.READ.getValue());
 
     long expirationTime1 = System.currentTimeMillis() + 1000 + 3 * 1000L;
     long expirationTime2 = System.currentTimeMillis() + 1000 + 6 * 1000L;
@@ -90,13 +119,13 @@ public class AwsVendedTokenProviderTest {
   @Test
   public void testTableTemporaryCredentialsRenewWithInitialCredentials() throws Exception {
     Configuration conf = new Configuration();
-    conf.set(UCHadoopConf.UC_URI, "http://localhost:8080");
-    conf.set(UCHadoopConf.UC_TOKEN, "unity-catalog-token");
+    conf.set(UCHadoopConf.UC_URI_KEY, "http://localhost:8080");
+    conf.set(UCHadoopConf.UC_TOKEN_KEY, "unity-catalog-token");
 
     // For table-based temporary requests.
-    conf.set(UCHadoopConf.UC_CREDENTIALS_TYPE, UCHadoopConf.UC_CREDENTIALS_TYPE_TABLE_VALUE);
-    conf.set(UCHadoopConf.UC_TABLE_ID, "test");
-    conf.set(UCHadoopConf.UC_TABLE_OPERATION, TableOperation.READ.getValue());
+    conf.set(UCHadoopConf.UC_CREDENTIALS_TYPE_KEY, UCHadoopConf.UC_CREDENTIALS_TYPE_TABLE_VALUE);
+    conf.set(UCHadoopConf.UC_TABLE_ID_KEY, "test");
+    conf.set(UCHadoopConf.UC_TABLE_OPERATION_KEY, TableOperation.READ.getValue());
 
     // Use the generated credential to initialize the provider.
     conf.set(UCHadoopConf.S3A_INIT_ACCESS_KEY, "accessKeyId0");
@@ -168,13 +197,13 @@ public class AwsVendedTokenProviderTest {
   @Test
   public void testPathTemporaryCredentialsRenew() throws Exception {
     Configuration conf = new Configuration();
-    conf.set(UCHadoopConf.UC_URI, "http://localhost:8080");
-    conf.set(UCHadoopConf.UC_TOKEN, "unity-catalog-token");
+    conf.set(UCHadoopConf.UC_URI_KEY, "http://localhost:8080");
+    conf.set(UCHadoopConf.UC_TOKEN_KEY, "unity-catalog-token");
 
     // For path-based temporary requests.
-    conf.set(UCHadoopConf.UC_CREDENTIALS_TYPE, UCHadoopConf.UC_CREDENTIALS_TYPE_PATH_VALUE);
-    conf.set(UCHadoopConf.UC_PATH, "test");
-    conf.set(UCHadoopConf.UC_PATH_OPERATION, PathOperation.PATH_READ.getValue());
+    conf.set(UCHadoopConf.UC_CREDENTIALS_TYPE_KEY, UCHadoopConf.UC_CREDENTIALS_TYPE_PATH_VALUE);
+    conf.set(UCHadoopConf.UC_PATH_KEY, "test");
+    conf.set(UCHadoopConf.UC_PATH_OPERATION_KEY, PathOperation.PATH_READ.getValue());
 
     long expirationTime1 = System.currentTimeMillis() + 1000 + 3 * 1000L;
     long expirationTime2 = System.currentTimeMillis() + 1000 + 6 * 1000L;
@@ -221,13 +250,13 @@ public class AwsVendedTokenProviderTest {
   @Test
   public void testPathTemporaryCredentialsRenewWithInitialCredentials() throws Exception {
     Configuration conf = new Configuration();
-    conf.set(UCHadoopConf.UC_URI, "http://localhost:8080");
-    conf.set(UCHadoopConf.UC_TOKEN, "unity-catalog-token");
+    conf.set(UCHadoopConf.UC_URI_KEY, "http://localhost:8080");
+    conf.set(UCHadoopConf.UC_TOKEN_KEY, "unity-catalog-token");
 
     // For path-based temporary requests.
-    conf.set(UCHadoopConf.UC_CREDENTIALS_TYPE, UCHadoopConf.UC_CREDENTIALS_TYPE_PATH_VALUE);
-    conf.set(UCHadoopConf.UC_PATH, "test");
-    conf.set(UCHadoopConf.UC_PATH_OPERATION, PathOperation.PATH_READ.getValue());
+    conf.set(UCHadoopConf.UC_CREDENTIALS_TYPE_KEY, UCHadoopConf.UC_CREDENTIALS_TYPE_PATH_VALUE);
+    conf.set(UCHadoopConf.UC_PATH_KEY, "test");
+    conf.set(UCHadoopConf.UC_PATH_OPERATION_KEY, PathOperation.PATH_READ.getValue());
 
     // Use the generated credential to initialize the provider.
     conf.set(UCHadoopConf.S3A_INIT_ACCESS_KEY, "accessKeyId0");

@@ -29,15 +29,15 @@ public abstract class GeneralCredentialProvider {
   public GeneralCredentialProvider(URI ignored, Configuration conf) {
     this.conf = conf;
 
-    String ucUriStr = conf.get(UCHadoopConf.UC_URI);
+    String ucUriStr = conf.get(UCHadoopConf.UC_URI_KEY);
     Preconditions.checkNotNull(ucUriStr,
-        "'%s' is not set in hadoop configuration", UCHadoopConf.UC_URI);
+        "'%s' is not set in hadoop configuration", UCHadoopConf.UC_URI_KEY);
     this.ucUri = URI.create(ucUriStr);
 
-    String ucTokenStr = conf.get(UCHadoopConf.UC_TOKEN);
+    String ucTokenStr = conf.get(UCHadoopConf.UC_TOKEN_KEY);
     Preconditions.checkNotNull(ucTokenStr,
-        "'%s' is not set in hadoop configuration", UCHadoopConf.UC_TOKEN);
-    this.ucToken = conf.get(UCHadoopConf.UC_TOKEN);
+        "'%s' is not set in hadoop configuration", UCHadoopConf.UC_TOKEN_KEY);
+    this.ucToken = conf.get(UCHadoopConf.UC_TOKEN_KEY);
 
     // The initialized credentials passing-through the hadoop configuration.
     this.credential = initGeneralCredential(conf);
@@ -83,12 +83,12 @@ public abstract class GeneralCredentialProvider {
 
     // Generate the temporary credential via requesting UnityCatalog.
     TemporaryCredentials tempCred;
-    String type = conf.get(UCHadoopConf.UC_CREDENTIALS_TYPE);
+    String type = conf.get(UCHadoopConf.UC_CREDENTIALS_TYPE_KEY);
     // TODO We will need to retry the temporary credential request if any recoverable failure, for
     // better robust.
     if (UCHadoopConf.UC_CREDENTIALS_TYPE_PATH_VALUE.equals(type)) {
-      String path = conf.get(UCHadoopConf.UC_PATH);
-      String pathOperation = conf.get(UCHadoopConf.UC_PATH_OPERATION);
+      String path = conf.get(UCHadoopConf.UC_PATH_KEY);
+      String pathOperation = conf.get(UCHadoopConf.UC_PATH_OPERATION_KEY);
 
       tempCred = tempCredApi.generateTemporaryPathCredentials(
           new GenerateTemporaryPathCredential()
@@ -96,8 +96,8 @@ public abstract class GeneralCredentialProvider {
               .operation(PathOperation.fromValue(pathOperation))
       );
     } else if (UCHadoopConf.UC_CREDENTIALS_TYPE_TABLE_VALUE.equals(type)) {
-      String tableId = conf.get(UCHadoopConf.UC_TABLE_ID);
-      String tableOperation = conf.get(UCHadoopConf.UC_TABLE_OPERATION);
+      String tableId = conf.get(UCHadoopConf.UC_TABLE_ID_KEY);
+      String tableOperation = conf.get(UCHadoopConf.UC_TABLE_OPERATION_KEY);
 
       tempCred = tempCredApi.generateTemporaryTableCredentials(
           new GenerateTemporaryTableCredential()
@@ -107,7 +107,7 @@ public abstract class GeneralCredentialProvider {
     } else {
       throw new IllegalArgumentException(String.format(
           "Unsupported unity catalog temporary credentials type '%s', please check '%s'",
-          type, UCHadoopConf.UC_CREDENTIALS_TYPE));
+          type, UCHadoopConf.UC_CREDENTIALS_TYPE_KEY));
     }
 
     return new GeneralCredential(tempCred);
