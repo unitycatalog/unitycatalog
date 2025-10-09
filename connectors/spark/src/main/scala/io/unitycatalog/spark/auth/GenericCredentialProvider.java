@@ -22,7 +22,7 @@ public abstract class GenericCredentialProvider {
   private final URI ucUri;
   private final String ucToken;
 
-  private volatile long renewalLeadTime = DEFAULT_RENEWAL_LEAD_TIME_MILLIS;
+  private volatile long renewalLeadTimeMillis = DEFAULT_RENEWAL_LEAD_TIME_MILLIS;
   private volatile GenericCredential credential;
   private volatile TemporaryCredentialsApi tempCredApi;
 
@@ -40,17 +40,17 @@ public abstract class GenericCredentialProvider {
     this.ucToken = conf.get(UCHadoopConf.UC_TOKEN_KEY);
 
     // The initialized credentials passing-through the hadoop configuration.
-    this.credential = initGeneralCredential(conf);
+    this.credential = initGenericCredential(conf);
   }
 
-  public abstract GenericCredential initGeneralCredential(Configuration conf);
+  public abstract GenericCredential initGenericCredential(Configuration conf);
 
   public GenericCredential accessCredentials() {
-    if (credential == null || credential.readyToRenew(renewalLeadTime)) {
+    if (credential == null || credential.readyToRenew(renewalLeadTimeMillis)) {
       synchronized (this) {
-        if (credential == null || credential.readyToRenew(renewalLeadTime)) {
+        if (credential == null || credential.readyToRenew(renewalLeadTimeMillis)) {
           try {
-            credential = createGeneralCredentials();
+            credential = createGenericCredentials();
           } catch (Exception e) {
             throw new RuntimeException(e);
           }
@@ -62,8 +62,8 @@ public abstract class GenericCredentialProvider {
   }
 
   // For testing purpose only.
-  void setRenewalLeadTime(long renewalLeadTime) {
-    this.renewalLeadTime = renewalLeadTime;
+  void setRenewalLeadTimeMillis(long renewalLeadTimeMillis) {
+    this.renewalLeadTimeMillis = renewalLeadTimeMillis;
   }
 
   protected TemporaryCredentialsApi temporaryCredentialsApi() {
@@ -79,7 +79,7 @@ public abstract class GenericCredentialProvider {
     return tempCredApi;
   }
 
-  private GenericCredential createGeneralCredentials() throws ApiException {
+  private GenericCredential createGenericCredentials() throws ApiException {
     TemporaryCredentialsApi tempCredApi = temporaryCredentialsApi();
 
     // Generate the temporary credential via requesting UnityCatalog.

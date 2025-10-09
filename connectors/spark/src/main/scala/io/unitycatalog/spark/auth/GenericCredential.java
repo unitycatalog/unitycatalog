@@ -36,12 +36,12 @@ public class GenericCredential {
   /**
    * Decide whether it's time to renew the credential/token in advance.
    *
-   * @param renewalLeadTime The amount of time before something expires when the renewal process
-   *                        should start.
+   * @param renewalLeadTimeMillis The amount of time before something expires when the renewal
+   *                              process should start.
    * @return true if it's ready to renew.
    */
-  public boolean readyToRenew(long renewalLeadTime) {
+  public boolean readyToRenew(long renewalLeadTimeMillis) {
     return tempCred.getExpirationTime() != null &&
-        tempCred.getExpirationTime() <= System.currentTimeMillis() + renewalLeadTime;
+        tempCred.getExpirationTime() <= System.currentTimeMillis() + renewalLeadTimeMillis;
   }
 }

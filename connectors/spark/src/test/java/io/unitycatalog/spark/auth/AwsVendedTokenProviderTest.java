@@ -50,13 +50,13 @@ public class AwsVendedTokenProviderTest {
     conf.set(UCHadoopConf.UC_URI_KEY, "http://localhost:8080");
     conf.set(UCHadoopConf.UC_TOKEN_KEY, "unity-catalog-token");
 
-    AWSCredentialProviderList list = CredentialProviderListFactory.buildAWSProviderList(
-        URI.create("s3://bucket/key"),
-        conf,
-        Constants.AWS_CREDENTIALS_PROVIDER,
-        new ArrayList<>(),
-        new HashSet<>()
-    );
+    AWSCredentialProviderList list =
+        CredentialProviderListFactory.buildAWSProviderList(
+            URI.create("s3://bucket/key"),
+            conf,
+            Constants.AWS_CREDENTIALS_PROVIDER,
+            new ArrayList<>(),
+            new HashSet<>());
 
     List<AwsCredentialsProvider> providers = list.getProviders();
     assertThat(providers).hasSize(1);
@@ -76,12 +76,10 @@ public class AwsVendedTokenProviderTest {
 
     // Mock the table-based temporary credentials' generation.
     TemporaryCredentialsApi tempCredApi = mock(TemporaryCredentialsApi.class);
-    when(tempCredApi.generateTemporaryTableCredentials(any()))
-        .thenReturn(cred1)
-        .thenReturn(cred2);
+    when(tempCredApi.generateTemporaryTableCredentials(any())).thenReturn(cred1).thenReturn(cred2);
 
     AwsVendedTokenProvider provider = new TestAwsVendedTokenProvider(conf, tempCredApi);
-    provider.setRenewalLeadTime(1000L);
+    provider.setRenewalLeadTimeMillis(1000L);
 
     // Use the cred1 for the 1st access.
     assertCredentials(provider.resolveCredentials(), cred1);
@@ -105,26 +103,33 @@ public class AwsVendedTokenProviderTest {
 
     // Use the generated credential to initialize the provider.
     TemporaryCredentials cred0 =
-        newAwsTempCredentials("accessKeyId0", "secretAccessKey0", "sessionToken0",
+        newAwsTempCredentials(
+            "accessKeyId0",
+            "secretAccessKey0",
+            "sessionToken0",
             System.currentTimeMillis() + 2000L);
     setInitialCredentials(conf, cred0);
 
     // Mock the path-based temporary credentials' generation.
     TemporaryCredentialsApi tempCredApi = mock(TemporaryCredentialsApi.class);
     TemporaryCredentials cred1 =
-        newAwsTempCredentials("accessKeyId1", "secretAccessKey1",
-            "sessionToken1", System.currentTimeMillis() + 3000L);
+        newAwsTempCredentials(
+            "accessKeyId1",
+            "secretAccessKey1",
+            "sessionToken1",
+            System.currentTimeMillis() + 3000L);
     TemporaryCredentials cred2 =
-        newAwsTempCredentials("accessKeyId2", "secretAccessKey2",
-            "sessionToken2", System.currentTimeMillis() + 4000L);
+        newAwsTempCredentials(
+            "accessKeyId2",
+            "secretAccessKey2",
+            "sessionToken2",
+            System.currentTimeMillis() + 4000L);
 
-    when(tempCredApi.generateTemporaryTableCredentials(any()))
-        .thenReturn(cred1)
-        .thenReturn(cred2);
+    when(tempCredApi.generateTemporaryTableCredentials(any())).thenReturn(cred1).thenReturn(cred2);
 
     // Initialize the credential provider.
     AwsVendedTokenProvider provider = new TestAwsVendedTokenProvider(conf, tempCredApi);
-    provider.setRenewalLeadTime(1000L);
+    provider.setRenewalLeadTimeMillis(1000L);
 
     // cred0 is valid.
     assertCredentials(provider.resolveCredentials(), cred0);
@@ -162,12 +167,10 @@ public class AwsVendedTokenProviderTest {
 
     // Mock the path-based temporary credentials' generation.
     TemporaryCredentialsApi tempCredApi = mock(TemporaryCredentialsApi.class);
-    when(tempCredApi.generateTemporaryPathCredentials(any()))
-        .thenReturn(cred1)
-        .thenReturn(cred2);
+    when(tempCredApi.generateTemporaryPathCredentials(any())).thenReturn(cred1).thenReturn(cred2);
 
     AwsVendedTokenProvider provider = new TestAwsVendedTokenProvider(conf, tempCredApi);
-    provider.setRenewalLeadTime(1000L);
+    provider.setRenewalLeadTimeMillis(1000L);
 
     // Use the cred1 for the 1st access.
     assertCredentials(provider.resolveCredentials(), cred1);
@@ -191,29 +194,32 @@ public class AwsVendedTokenProviderTest {
 
     // Use the generated credential to initialize the provider.
     TemporaryCredentials cred0 =
-        newAwsTempCredentials("accessKeyId0", "secretAccessKey0",
-            "sessionToken0", System.currentTimeMillis() + 2000L);
+        newAwsTempCredentials(
+            "accessKeyId0",
+            "secretAccessKey0",
+            "sessionToken0",
+            System.currentTimeMillis() + 2000L);
     setInitialCredentials(conf, cred0);
 
     // Mock the path-based temporary credentials' generation.
     TemporaryCredentialsApi tempCredApi = mock(TemporaryCredentialsApi.class);
-    TemporaryCredentials cred1 = newAwsTempCredentials(
-        "accessKeyId1",
-        "secretAccessKey1",
-        "sessionToken1",
-        System.currentTimeMillis() + 3000L);
-    TemporaryCredentials cred2 = newAwsTempCredentials(
-        "accessKeyId2",
-        "secretAccessKey2",
-        "sessionToken2",
-        System.currentTimeMillis() + 4000L);
-    when(tempCredApi.generateTemporaryPathCredentials(any()))
-        .thenReturn(cred1)
-        .thenReturn(cred2);
+    TemporaryCredentials cred1 =
+        newAwsTempCredentials(
+            "accessKeyId1",
+            "secretAccessKey1",
+            "sessionToken1",
+            System.currentTimeMillis() + 3000L);
+    TemporaryCredentials cred2 =
+        newAwsTempCredentials(
+            "accessKeyId2",
+            "secretAccessKey2",
+            "sessionToken2",
+            System.currentTimeMillis() + 4000L);
+    when(tempCredApi.generateTemporaryPathCredentials(any())).thenReturn(cred1).thenReturn(cred2);
 
     // Initialize the credential provider.
     AwsVendedTokenProvider provider = new TestAwsVendedTokenProvider(conf, tempCredApi);
-    provider.setRenewalLeadTime(1000L);
+    provider.setRenewalLeadTimeMillis(1000L);
 
     // cred0 is valid.
     assertCredentials(provider.resolveCredentials(), cred0);

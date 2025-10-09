@@ -18,7 +18,7 @@ public class AwsVendedTokenProvider extends GenericCredentialProvider
   }
 
   @Override
-  public GenericCredential initGeneralCredential(Configuration conf) {
+  public GenericCredential initGenericCredential(Configuration conf) {
     if (conf.get(UCHadoopConf.S3A_INIT_ACCESS_KEY) != null
         && conf.get(UCHadoopConf.S3A_INIT_SECRET_KEY) != null
         && conf.get(UCHadoopConf.S3A_INIT_SESSION_TOKEN) != null
@@ -42,7 +42,7 @@ public class AwsVendedTokenProvider extends GenericCredentialProvider
   public AwsCredentials resolveCredentials() {
     GenericCredential generic = accessCredentials();
 
-    // Wrap the GeneralCredential as an AwsCredentials.
+    // Wrap the GenericCredential as an AwsCredentials.
     io.unitycatalog.client.model.AwsCredentials awsTempCred = generic
         .temporaryCredentials()
         .getAwsTempCredentials();
