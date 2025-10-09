@@ -4,18 +4,18 @@ All URIs are relative to *http://localhost:8080/api/2.1/unity-catalog*
 
 | Method | HTTP request | Description |
 |------------- | ------------- | -------------|
-| [**createCatalog**](CatalogsApi.md#createCatalog) | **POST** /catalogs | Create a catalog |
-| [**deleteCatalog**](CatalogsApi.md#deleteCatalog) | **DELETE** /catalogs/{name} | Delete a catalog |
-| [**getCatalog**](CatalogsApi.md#getCatalog) | **GET** /catalogs/{name} | Get a catalog |
-| [**listCatalogs**](CatalogsApi.md#listCatalogs) | **GET** /catalogs | List catalogs |
-| [**updateCatalog**](CatalogsApi.md#updateCatalog) | **PATCH** /catalogs/{name} | Update a catalog |
+| [**createCatalog**](CatalogsApi.md#createCatalog) | **POST** /catalogs | Create a Catalog |
+| [**deleteCatalog**](CatalogsApi.md#deleteCatalog) | **DELETE** /catalogs/{name} | Delete a Catalog |
+| [**getCatalog**](CatalogsApi.md#getCatalog) | **GET** /catalogs/{name} | Get a Catalog |
+| [**listCatalogs**](CatalogsApi.md#listCatalogs) | **GET** /catalogs | List Catalogs |
+| [**updateCatalog**](CatalogsApi.md#updateCatalog) | **PATCH** /catalogs/{name} | Update a Catalog |
 
 
 <a name="createCatalog"></a>
 # **createCatalog**
 > CatalogInfo createCatalog(CreateCatalog)
 
-Create a catalog
+Create a Catalog
 
     Creates a new catalog instance. 
 
@@ -42,7 +42,7 @@ No authorization required
 # **deleteCatalog**
 > oas_any_type_not_mapped deleteCatalog(name, force)
 
-Delete a catalog
+Delete a Catalog
 
     Deletes the catalog that matches the supplied name. 
 
@@ -70,7 +70,7 @@ No authorization required
 # **getCatalog**
 > CatalogInfo getCatalog(name)
 
-Get a catalog
+Get a Catalog
 
     Gets the specified catalog. 
 
@@ -97,7 +97,7 @@ No authorization required
 # **listCatalogs**
 > ListCatalogsResponse listCatalogs(page\_token, max\_results)
 
-List catalogs
+List Catalogs
 
     Lists the available catalogs. There is no guarantee of a specific ordering of the elements in the list. 
 
@@ -125,7 +125,7 @@ No authorization required
 # **updateCatalog**
 > CatalogInfo updateCatalog(name, UpdateCatalog)
 
-Update a catalog
+Update a Catalog
 
     Updates the catalog that matches the supplied name. 
 
