@@ -5,14 +5,19 @@ import static org.apache.hadoop.fs.azurebfs.constants.ConfigurationKeys.FS_AZURE
 import static org.apache.hadoop.fs.azurebfs.constants.ConfigurationKeys.FS_AZURE_SAS_TOKEN_PROVIDER_TYPE;
 
 import io.unitycatalog.client.ApiClient;
+import io.unitycatalog.client.ApiException;
 import io.unitycatalog.client.api.TemporaryCredentialsApi;
 import io.unitycatalog.client.model.AwsCredentials;
 import io.unitycatalog.client.model.AzureUserDelegationSAS;
 import io.unitycatalog.client.model.GcpOauthToken;
+import io.unitycatalog.client.model.GenerateTemporaryPathCredential;
+import io.unitycatalog.client.model.PathOperation;
 import io.unitycatalog.client.model.TemporaryCredentials;
 import java.lang.reflect.InvocationTargetException;
 import java.net.URI;
+import java.util.HashMap;
 import java.util.Map;
+import org.apache.hadoop.fs.Path;
 import org.apache.hadoop.shaded.com.google.common.base.Preconditions;
 import org.apache.hadoop.shaded.com.google.common.collect.ImmutableMap;
 import org.apache.spark.sql.catalyst.analysis.NamespaceAlreadyExistsException;
@@ -20,6 +25,7 @@ import org.apache.spark.sql.catalyst.analysis.NoSuchNamespaceException;
 import org.apache.spark.sql.catalyst.analysis.NoSuchTableException;
 import org.apache.spark.sql.catalyst.analysis.NonEmptyNamespaceException;
 import org.apache.spark.sql.catalyst.analysis.TableAlreadyExistsException;
+import org.apache.spark.sql.catalyst.catalog.CatalogUtils;
 import org.apache.spark.sql.connector.catalog.DelegatingCatalogExtension;
 import org.apache.spark.sql.connector.catalog.Identifier;
 import org.apache.spark.sql.connector.catalog.NamespaceChange;
@@ -120,7 +126,56 @@ public class UCSingleCatalog2 implements TableCatalog, SupportsNamespaces {
       org.apache.spark.sql.connector.catalog.Column[] columns,
       Transform[] partitions,
       Map<String, String> properties) throws TableAlreadyExistsException, NoSuchNamespaceException {
-    return null;
+    boolean hasExternalClause = properties.containsKey(TableCatalog.PROP_EXTERNAL);
+    boolean hasLocationClause = properties.containsKey(TableCatalog.PROP_LOCATION);
+
+    if (hasExternalClause && !hasLocationClause) {
+      throw new RuntimeException("Cannot create EXTERNAL TABLE without location.");
+    }
+
+    boolean isPathTable = ident.namespace().length == 1 && new Path(ident.name()).isAbsolute();
+    // If both EXTERNAL and LOCATION are not specified in the CREATE TABLE command, and the table is
+    // not a path table like parquet.`/file/path`, we generate the UC-managed table location here.
+    if (!hasExternalClause && !hasLocationClause && !isPathTable) {
+      Map<String, String> newProps = new HashMap<>(properties);
+      // TODO: here we use a fake location for managed table, we should generate table location
+      //       properly when Unity Catalog supports creating managed table.
+      newProps.put(TableCatalog.PROP_LOCATION, properties.get("__FAKE_PATH__"));
+      // `PROP_IS_MANAGED_LOCATION` is used to indicate that the table location is not
+      // user-specified but system-generated, which is exactly the case here.
+      newProps.put(TableCatalog.PROP_IS_MANAGED_LOCATION, "true");
+      return delegate.createTable(ident, columns, partitions, newProps);
+    } else if (hasLocationClause) {
+      String location = properties.get(TableCatalog.PROP_LOCATION);
+      assert location != null;
+
+      TemporaryCredentials cred;
+      try {
+        cred = tempCredApi.generateTemporaryPathCredentials(
+            new GenerateTemporaryPathCredential()
+                .url(location)
+                .operation(PathOperation.PATH_CREATE_TABLE)
+        );
+      } catch (ApiException e) {
+        throw new RuntimeException(e);
+      }
+
+      Map<String, String> newProps = new HashMap<>(properties);
+      Map<String, String> credentialProps = UCSingleCatalog2.generateCredentialProps(
+          CatalogUtils.stringToURI(location).getScheme(), cred
+      );
+      newProps.putAll(credentialProps);
+
+      // TODO: Delta requires the options to be set twice in the properties, with and without the
+      //       `option.` prefix. We should revisit this in Delta.
+      String prefix = TableCatalog.OPTION_PREFIX;
+      credentialProps.forEach((k, v) -> newProps.put(prefix + k, v));
+      return delegate.createTable(ident, columns, partitions, newProps);
+    } else {
+      // TODO: for path-based tables, Spark should generate a location property using the qualified
+      //       path string.
+      return delegate.createTable(ident, columns, partitions, properties);
+    }
   }
 
   @Override
@@ -178,7 +233,7 @@ public class UCSingleCatalog2 implements TableCatalog, SupportsNamespaces {
     return ((DelegatingCatalogExtension) delegate).dropNamespace(namespace, cascade);
   }
 
-  private Map<String, String> generateCredentialProps(
+  private static Map<String, String> generateCredentialProps(
       String scheme,
       TemporaryCredentials temporaryCredentials) {
     if (scheme.equals("s3")) {
