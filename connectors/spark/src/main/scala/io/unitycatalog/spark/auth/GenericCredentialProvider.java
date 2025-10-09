@@ -22,18 +22,17 @@ public abstract class GenericCredentialProvider {
   // The global credential cache, for saving QPS to unity catalog server.
   static final Map<GenericCredKey, GenericCredential> CACHE = new ConcurrentHashMap<>();
 
-  private final Configuration conf;
-  private final URI ucUri;
-  private final String ucToken;
-
-  private final boolean globalCredCacheEnabled;
-  private final GenericCredKey genericCredKey;
+  private Configuration conf;
+  private URI ucUri;
+  private String ucToken;
+  private boolean globalCredCacheEnabled;
+  private GenericCredKey genericCredKey;
 
   private volatile long renewalLeadTimeMillis = DEFAULT_RENEWAL_LEAD_TIME_MILLIS;
   private volatile GenericCredential credential;
   private volatile TemporaryCredentialsApi tempCredApi;
 
-  public GenericCredentialProvider(Configuration conf) {
+  protected void initialize(Configuration conf) {
     this.conf = conf;
 
     String ucUriStr = conf.get(UCHadoopConf.UC_URI_KEY);

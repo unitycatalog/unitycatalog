@@ -3,6 +3,7 @@ package io.unitycatalog.spark
 import io.unitycatalog.client.{ApiClient, ApiException}
 import io.unitycatalog.client.api.{SchemasApi, TablesApi, TemporaryCredentialsApi}
 import io.unitycatalog.client.model.{ColumnInfo, ColumnTypeName, CreateSchema, CreateTable, DataSourceFormat, GenerateTemporaryPathCredential, GenerateTemporaryTableCredential, ListTablesResponse, PathOperation, SchemaInfo, TableOperation, TableType, TemporaryCredentials}
+import io.unitycatalog.spark.auth.AbfsVendedTokenProvider
 
 import java.net.URI
 import java.util
@@ -26,8 +27,8 @@ import scala.language.existentials
  */
 class UCSingleCatalog
   extends TableCatalog
-  with SupportsNamespaces
-  with Logging {
+    with SupportsNamespaces
+    with Logging {
 
   private[this] var apiClient: ApiClient = null;
   private[this] var temporaryCredentialsApi: TemporaryCredentialsApi = null
@@ -75,24 +76,25 @@ class UCSingleCatalog
 
   override def loadTable(ident: Identifier): Table = delegate.loadTable(ident)
 
-  override def loadTable(ident: Identifier, version:  String): Table = delegate.loadTable(ident, version)
+  override def loadTable(ident: Identifier, version: String): Table = delegate.loadTable(ident, version)
 
-  override def loadTable(ident: Identifier, timestamp:  Long): Table = delegate.loadTable(ident, timestamp)
+  override def loadTable(ident: Identifier, timestamp: Long): Table = delegate.loadTable(ident, timestamp)
 
   override def tableExists(ident: Identifier): Boolean = {
     delegate.tableExists(ident)
   }
 
   override def createTable(
-      ident: Identifier,
-      columns: Array[Column],
-      partitions: Array[Transform],
-      properties: util.Map[String, String]): Table = {
+                            ident: Identifier,
+                            columns: Array[Column],
+                            partitions: Array[Transform],
+                            properties: util.Map[String, String]): Table = {
     val hasExternalClause = properties.containsKey(TableCatalog.PROP_EXTERNAL)
     val hasLocationClause = properties.containsKey(TableCatalog.PROP_LOCATION)
     if (hasExternalClause && !hasLocationClause) {
       throw new ApiException("Cannot create EXTERNAL TABLE without location.")
     }
+
     def isPathTable = ident.namespace().length == 1 && new Path(ident.name()).isAbsolute
     // If both EXTERNAL and LOCATION are not specified in the CREATE TABLE command, and the table is
     // not a path table like parquet.`/file/path`, we generate the UC-managed table location here.
@@ -174,8 +176,8 @@ object UCSingleCatalog {
   val DELTA_CATALOG_LOADED = ThreadLocal.withInitial[Boolean](() => false)
 
   def generateCredentialProps(
-      scheme: String,
-      temporaryCredentials: TemporaryCredentials): Map[String, String] = {
+                               scheme: String,
+                               temporaryCredentials: TemporaryCredentials): Map[String, String] = {
     if (scheme == "s3") {
       val awsCredentials = temporaryCredentials.getAwsTempCredentials
       Map(
@@ -203,7 +205,7 @@ object UCSingleCatalog {
         FS_AZURE_ACCOUNT_AUTH_TYPE_PROPERTY_NAME -> "SAS",
         FS_AZURE_ACCOUNT_IS_HNS_ENABLED -> "true",
         FS_AZURE_SAS_TOKEN_PROVIDER_TYPE -> classOf[AbfsVendedTokenProvider].getName,
-        AbfsVendedTokenProvider.ACCESS_TOKEN_KEY -> azCredentials.getSasToken,
+        UCHadoopConf.AZURE_SAS_TOKEN -> azCredentials.getSasToken,
         "fs.abfs.impl.disable.cache" -> "true",
         "fs.abfss.impl.disable.cache" -> "true"
       )
@@ -215,8 +217,8 @@ object UCSingleCatalog {
 
 // An internal proxy to talk to the UC client.
 private class UCProxy(
-    apiClient: ApiClient,
-    temporaryCredentialsApi: TemporaryCredentialsApi) extends TableCatalog with SupportsNamespaces {
+                       apiClient: ApiClient,
+                       temporaryCredentialsApi: TemporaryCredentialsApi) extends TableCatalog with SupportsNamespaces {
   private[this] var name: String = null
   private[this] var tablesApi: TablesApi = null
   private[this] var schemasApi: SchemasApi = null
@@ -419,14 +421,22 @@ private class UCProxy(
     }
     // flatten the schema properties to a map, with the key prefixed by "properties:"
     val metadata = schema.getProperties.asScala.map {
-      case (k, v) =>  SchemaInfo.JSON_PROPERTY_PROPERTIES + ":" + k -> v
+      case (k, v) => SchemaInfo.JSON_PROPERTY_PROPERTIES + ":" + k -> v
     }
     metadata(SchemaInfo.JSON_PROPERTY_NAME) = schema.getName
     metadata(SchemaInfo.JSON_PROPERTY_CATALOG_NAME) = schema.getCatalogName
     metadata(SchemaInfo.JSON_PROPERTY_COMMENT) = schema.getComment
     metadata(SchemaInfo.JSON_PROPERTY_FULL_NAME) = schema.getFullName
-    metadata(SchemaInfo.JSON_PROPERTY_CREATED_AT) = if (schema.getCreatedAt != null) {schema.getCreatedAt.toString} else {"null"}
-    metadata(SchemaInfo.JSON_PROPERTY_UPDATED_AT) = if (schema.getUpdatedAt != null) {schema.getUpdatedAt.toString} else {"null"}
+    metadata(SchemaInfo.JSON_PROPERTY_CREATED_AT) = if (schema.getCreatedAt != null) {
+      schema.getCreatedAt.toString
+    } else {
+      "null"
+    }
+    metadata(SchemaInfo.JSON_PROPERTY_UPDATED_AT) = if (schema.getUpdatedAt != null) {
+      schema.getUpdatedAt.toString
+    } else {
+      "null"
+    }
     metadata(SchemaInfo.JSON_PROPERTY_SCHEMA_ID) = schema.getSchemaId
     metadata.asJava
   }

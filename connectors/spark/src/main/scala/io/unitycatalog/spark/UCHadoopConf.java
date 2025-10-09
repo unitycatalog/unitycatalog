@@ -11,6 +11,10 @@ public class UCHadoopConf {
   // Expired time in milliseconds.
   public static final String S3A_INIT_CRED_EXPIRED_TIME = "fs.s3a.init.credential.expired.time";
 
+  // Keys for the initialized azure credentials.
+  public static final String AZURE_SAS_TOKEN = "fs.azure.sas.fixed.token";
+  public static final String AZURE_SAS_TOKEN_EXPIRED_TIME = "fs.azure.sas.fixed.token.expired.time";
+
   // Keys for the UnityCatalog client.
   public static final String UC_URI_KEY = "unitycatalog.uri";
   public static final String UC_TOKEN_KEY = "unitycatalog.token";
