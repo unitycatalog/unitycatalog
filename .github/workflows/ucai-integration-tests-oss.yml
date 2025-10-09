@@ -92,6 +92,10 @@ jobs:
         run: |
           pip install integrations/litellm[dev]
           pytest integrations/litellm/tests/test_litellm_toolkit_oss.py
+      - name: Run Bedrock OSS Integration Tests
+        run: |
+            pip install integrations/bedrock[dev]
+            pytest integrations/bedrock/tests/test_bedrock_toolkit_oss.py
       - name: Stop Unity Catalog Server
         run: |
           dev/teardown_server.sh
