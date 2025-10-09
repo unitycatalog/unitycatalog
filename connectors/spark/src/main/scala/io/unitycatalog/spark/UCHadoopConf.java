@@ -27,4 +27,9 @@ public class UCHadoopConf {
   public static final String UC_CREDENTIALS_TYPE_KEY = "unitycatalog.credentials.type";
   public static final String UC_CREDENTIALS_TYPE_TABLE_VALUE = "table";
   public static final String UC_CREDENTIALS_TYPE_PATH_VALUE = "path";
+
+  // Key to enable the global credential cache.
+  public static final String UC_GLOBAL_CREDENTIAL_CACHE_ENABLED_KEY =
+      "unitycatalog.global.credential.cache.enabled";
+  public static final boolean UC_GLOBAL_CREDENTIAL_CACHE_ENABLED_VALUE = true;
 }
