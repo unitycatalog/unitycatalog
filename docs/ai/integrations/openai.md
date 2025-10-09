@@ -103,7 +103,7 @@ calling capabilities. Ensure that the model that you are selecting to interface 
 from unitycatalog.ai.openai.toolkit import UCFunctionToolkit
 
 # Create a UCFunctionToolkit that includes the UC function
-toolkit = UCFunctionToolkit(function_names=[func_name])
+toolkit = UCFunctionToolkit(function_names=[func_name], client=client)
 
 # Fetch the tools stored in the toolkit
 tools = toolkit.tools
