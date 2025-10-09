@@ -3,6 +3,7 @@ package io.unitycatalog.spark
 import io.unitycatalog.client.{ApiClient, ApiException}
 import io.unitycatalog.client.api.{SchemasApi, TablesApi, TemporaryCredentialsApi}
 import io.unitycatalog.client.model.{ColumnInfo, ColumnTypeName, CreateSchema, CreateTable, DataSourceFormat, GenerateTemporaryPathCredential, GenerateTemporaryTableCredential, ListTablesResponse, PathOperation, SchemaInfo, TableOperation, TableType, TemporaryCredentials}
+import io.unitycatalog.spark.auth.AbfsVendedTokenProvider
 
 import java.net.URI
 import java.util
@@ -203,7 +204,7 @@ object UCSingleCatalog {
         FS_AZURE_ACCOUNT_AUTH_TYPE_PROPERTY_NAME -> "SAS",
         FS_AZURE_ACCOUNT_IS_HNS_ENABLED -> "true",
         FS_AZURE_SAS_TOKEN_PROVIDER_TYPE -> classOf[AbfsVendedTokenProvider].getName,
-        AbfsVendedTokenProvider.ACCESS_TOKEN_KEY -> azCredentials.getSasToken,
+        UCHadoopConf.AZURE_SAS_TOKEN -> azCredentials.getSasToken,
         "fs.abfs.impl.disable.cache" -> "true",
         "fs.abfss.impl.disable.cache" -> "true"
       )

@@ -1,6 +1,7 @@
 package io.unitycatalog.spark.auth;
 
 import io.unitycatalog.client.model.AwsCredentials;
+import io.unitycatalog.client.model.AzureUserDelegationSAS;
 import io.unitycatalog.client.model.TemporaryCredentials;
 import java.util.Objects;
 
@@ -25,6 +26,17 @@ public class GenericCredential {
     // Initialize the unity catalog's temporary credentials.
     TemporaryCredentials tempCred = new TemporaryCredentials();
     tempCred.setAwsTempCredentials(awsCredentials);
+    tempCred.setExpirationTime(expiredTimeMillis);
+
+    return new GenericCredential(tempCred);
+  }
+
+  public static GenericCredential forAzure(String sasToken, long expiredTimeMillis) {
+    AzureUserDelegationSAS azureSAS = new AzureUserDelegationSAS();
+    azureSAS.setSasToken(sasToken);
+
+    TemporaryCredentials tempCred = new TemporaryCredentials();
+    tempCred.setAzureUserDelegationSas(azureSAS);
     tempCred.setExpirationTime(expiredTimeMillis);
 
     return new GenericCredential(tempCred);

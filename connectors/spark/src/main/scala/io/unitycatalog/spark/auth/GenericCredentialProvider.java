@@ -30,17 +30,20 @@ public abstract class GenericCredentialProvider {
     globalCache = CacheBuilder.newBuilder().maximumSize(maxSize).build();
   }
 
-  private final Configuration conf;
-  private final URI ucUri;
-  private final String ucToken;
-  private final String credUid;
-  private final boolean credCacheEnabled;
+  private Configuration conf;
+  private URI ucUri;
+  private String ucToken;
+  private String credUid;
+  private boolean credCacheEnabled;
 
   private volatile long renewalLeadTimeMillis = DEFAULT_RENEWAL_LEAD_TIME_MILLIS;
   private volatile GenericCredential credential;
   private volatile TemporaryCredentialsApi tempCredApi;
 
-  public GenericCredentialProvider(Configuration conf) {
+  public GenericCredentialProvider() {
+  }
+
+  protected void initialize(Configuration conf) {
     this.conf = conf;
 
     String ucUriStr = conf.get(UCHadoopConf.UC_URI_KEY);
