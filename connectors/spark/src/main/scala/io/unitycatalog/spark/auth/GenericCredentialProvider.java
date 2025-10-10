@@ -11,16 +11,25 @@ import io.unitycatalog.spark.ApiClientFactory;
 import io.unitycatalog.spark.UCHadoopConf;
 import java.net.URI;
 import org.apache.hadoop.conf.Configuration;
-import org.apache.hadoop.shaded.com.google.common.base.Preconditions;
+import org.sparkproject.guava.base.Preconditions;
+import org.sparkproject.guava.cache.Cache;
+import org.sparkproject.guava.cache.CacheBuilder;
 
 public abstract class GenericCredentialProvider {
-  // The time remaining until expiration, we will try to renew the credential before the expiration
-  // time.
+  // The remaining time before expiration, used to trigger renewal in advance.
   private static final long DEFAULT_RENEWAL_LEAD_TIME_MILLIS = 30 * 1000;
+
+  // The credential cache, for saving QPS to unity catalog server.
+  static final Cache<String, GenericCredential> CACHE = CacheBuilder
+      .newBuilder()
+      .maximumSize(1000)
+      .build();
 
   private final Configuration conf;
   private final URI ucUri;
   private final String ucToken;
+  private final String credUid;
+  private final boolean credCacheEnabled;
 
   private volatile long renewalLeadTimeMillis = DEFAULT_RENEWAL_LEAD_TIME_MILLIS;
   private volatile GenericCredential credential;
@@ -39,6 +48,15 @@ public abstract class GenericCredentialProvider {
         "'%s' is not set in hadoop configuration", UCHadoopConf.UC_TOKEN_KEY);
     this.ucToken = conf.get(UCHadoopConf.UC_TOKEN_KEY);
 
+    this.credUid = conf.get(UCHadoopConf.UC_CREDENTIALS_UID_KEY);
+    Preconditions.checkState(credUid != null && !credUid.isEmpty(),
+        "Credential UID cannot be null or empty, '%s' is not set in hadoop configuration",
+        UCHadoopConf.UC_CREDENTIALS_UID_KEY);
+
+    this.credCacheEnabled = conf.getBoolean(
+        UCHadoopConf.UC_CREDENTIAL_CACHE_ENABLED_KEY,
+        UCHadoopConf.UC_CREDENTIAL_CACHE_ENABLED_DEFAULT_VALUE);
+
     // The initialized credentials passing-through the hadoop configuration.
     this.credential = initGenericCredential(conf);
   }
@@ -50,8 +68,8 @@ public abstract class GenericCredentialProvider {
       synchronized (this) {
         if (credential == null || credential.readyToRenew(renewalLeadTimeMillis)) {
           try {
-            credential = createGenericCredentials();
-          } catch (Exception e) {
+            credential = renewCredential();
+          } catch (ApiException e) {
             throw new RuntimeException(e);
           }
         }
@@ -77,6 +95,24 @@ public abstract class GenericCredentialProvider {
     }
 
     return tempCredApi;
+  }
+
+  private GenericCredential renewCredential() throws ApiException {
+    if (credCacheEnabled) {
+      synchronized (CACHE) {
+        GenericCredential cached = CACHE.getIfPresent(credUid);
+        // Use the cached one if existing and valid.
+        if (cached != null && !cached.readyToRenew(renewalLeadTimeMillis)) {
+          return cached;
+        }
+        // Renew the credential and update the cache.
+        GenericCredential renewed = createGenericCredentials();
+        CACHE.put(credUid, renewed);
+        return renewed;
+      }
+    } else {
+      return createGenericCredentials();
+    }
   }
 
   private GenericCredential createGenericCredentials() throws ApiException {
