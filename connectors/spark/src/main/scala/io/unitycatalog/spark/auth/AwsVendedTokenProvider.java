@@ -14,7 +14,7 @@ public class AwsVendedTokenProvider extends GenericCredentialProvider
    * Constructor for the hadoop's CredentialProviderListFactory#buildAWSProviderList to initialize.
    */
   public AwsVendedTokenProvider(Configuration conf) {
-    super(conf);
+    initialize(conf);
   }
 
   @Override
@@ -47,7 +47,7 @@ public class AwsVendedTokenProvider extends GenericCredentialProvider
         .temporaryCredentials()
         .getAwsTempCredentials();
     Preconditions.checkNotNull(awsTempCred,
-        "AWS temp credential of generic credentials cannot be null");
+        "AWS temp credential of generic credential cannot be null");
 
     return AwsSessionCredentials.builder()
         .accessKeyId(awsTempCred.getAccessKeyId())

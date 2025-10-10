@@ -1,7 +1,9 @@
 package io.unitycatalog.spark.auth;
 
 import io.unitycatalog.client.model.AwsCredentials;
+import io.unitycatalog.client.model.AzureUserDelegationSAS;
 import io.unitycatalog.client.model.TemporaryCredentials;
+import java.util.Objects;
 
 public class GenericCredential {
   private final TemporaryCredentials tempCred;
@@ -29,6 +31,17 @@ public class GenericCredential {
     return new GenericCredential(tempCred);
   }
 
+  public static GenericCredential forAzure(String sasToken, long expiredTimeMillis) {
+    AzureUserDelegationSAS azureSAS = new AzureUserDelegationSAS();
+    azureSAS.setSasToken(sasToken);
+
+    TemporaryCredentials tempCred = new TemporaryCredentials();
+    tempCred.setAzureUserDelegationSas(azureSAS);
+    tempCred.setExpirationTime(expiredTimeMillis);
+
+    return new GenericCredential(tempCred);
+  }
+
   public TemporaryCredentials temporaryCredentials() {
     return tempCred;
   }
@@ -43,5 +56,24 @@ public class GenericCredential {
   public boolean readyToRenew(long renewalLeadTimeMillis) {
     return tempCred.getExpirationTime() != null &&
         tempCred.getExpirationTime() <= System.currentTimeMillis() + renewalLeadTimeMillis;
+  }
+
+  @Override
+  public int hashCode() {
+    return Objects.hashCode(tempCred);
+  }
+
+  @Override
+  public boolean equals(Object o) {
+    if (this == o) {
+      return true;
+    }
+
+    if (o == null || getClass() != o.getClass()) {
+      return false;
+    }
+
+    GenericCredential that = (GenericCredential) o;
+    return Objects.equals(tempCred, that.tempCred);
   }
 }

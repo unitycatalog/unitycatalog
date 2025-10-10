@@ -11,6 +11,10 @@ public class UCHadoopConf {
   // Expired time in milliseconds.
   public static final String S3A_INIT_CRED_EXPIRED_TIME = "fs.s3a.init.credential.expired.time";
 
+  // Keys for the initialized azure credentials.
+  public static final String AZURE_SAS_TOKEN = "fs.azure.sas.fixed.token";
+  public static final String AZURE_SAS_TOKEN_EXPIRED_TIME = "fs.azure.sas.fixed.token.expired.time";
+
   // Keys for the UnityCatalog client.
   public static final String UC_URI_KEY = "unitycatalog.uri";
   public static final String UC_TOKEN_KEY = "unitycatalog.token";
@@ -27,4 +31,9 @@ public class UCHadoopConf {
   public static final String UC_CREDENTIALS_TYPE_KEY = "unitycatalog.credentials.type";
   public static final String UC_CREDENTIALS_TYPE_TABLE_VALUE = "table";
   public static final String UC_CREDENTIALS_TYPE_PATH_VALUE = "path";
+
+  // Key to enable the global credential cache.
+  public static final String UC_GLOBAL_CREDENTIAL_CACHE_ENABLED_KEY =
+      "unitycatalog.global.credential.cache.enabled";
+  public static final boolean UC_GLOBAL_CREDENTIAL_CACHE_ENABLED_VALUE = true;
 }
