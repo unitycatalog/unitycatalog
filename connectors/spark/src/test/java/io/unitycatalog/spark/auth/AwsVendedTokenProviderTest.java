@@ -17,6 +17,7 @@ import java.net.URI;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
+import java.util.UUID;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.s3a.AWSCredentialProviderList;
 import org.apache.hadoop.fs.s3a.Constants;
@@ -31,12 +32,12 @@ public class AwsVendedTokenProviderTest {
 
   @BeforeEach
   public void before() {
-    GenericCredentialProvider.CACHE.clear();
+    GenericCredentialProvider.CACHE.invalidateAll();
   }
 
   @AfterEach
   public void after() {
-    GenericCredentialProvider.CACHE.clear();
+    GenericCredentialProvider.CACHE.invalidateAll();
   }
 
   @Test
@@ -57,13 +58,8 @@ public class AwsVendedTokenProviderTest {
 
   @Test
   public void testLoadingTokenProvider() throws IOException {
-    Configuration conf = new Configuration();
+    Configuration conf = newTableBasedConf("unity-catalog-table");
     conf.set(Constants.AWS_CREDENTIALS_PROVIDER, AwsVendedTokenProvider.class.getName());
-    conf.set(UCHadoopConf.UC_URI_KEY, "http://localhost:8080");
-    conf.set(UCHadoopConf.UC_TOKEN_KEY, "unity-catalog-token");
-    conf.set(UCHadoopConf.UC_CREDENTIALS_TYPE_KEY, UCHadoopConf.UC_CREDENTIALS_TYPE_TABLE_VALUE);
-    conf.set(UCHadoopConf.UC_TABLE_ID_KEY, "unity-catalog-table");
-    conf.set(UCHadoopConf.UC_TABLE_OPERATION_KEY, "READ");
 
     AWSCredentialProviderList list =
         CredentialProviderListFactory.buildAWSProviderList(
@@ -325,6 +321,7 @@ public class AwsVendedTokenProviderTest {
     Configuration conf = new Configuration();
     conf.set(UCHadoopConf.UC_URI_KEY, "http://localhost:8080");
     conf.set(UCHadoopConf.UC_TOKEN_KEY, "unity-catalog-token");
+    conf.set(UCHadoopConf.UC_CREDENTIALS_UID_KEY, UUID.randomUUID().toString());
 
     // For table-based temporary requests.
     conf.set(UCHadoopConf.UC_CREDENTIALS_TYPE_KEY, UCHadoopConf.UC_CREDENTIALS_TYPE_TABLE_VALUE);
@@ -342,6 +339,7 @@ public class AwsVendedTokenProviderTest {
     Configuration conf = new Configuration();
     conf.set(UCHadoopConf.UC_URI_KEY, "http://localhost:8080");
     conf.set(UCHadoopConf.UC_TOKEN_KEY, "unity-catalog-token");
+    conf.set(UCHadoopConf.UC_CREDENTIALS_UID_KEY, UUID.randomUUID().toString());
 
     // For path-based temporary requests.
     conf.set(UCHadoopConf.UC_CREDENTIALS_TYPE_KEY, UCHadoopConf.UC_CREDENTIALS_TYPE_PATH_VALUE);
@@ -366,7 +364,8 @@ public class AwsVendedTokenProviderTest {
     assertThat(expectedSize).isEqualTo(creds.length);
     assertThat(AwsVendedTokenProvider.CACHE.size()).isEqualTo(expectedSize);
     for (TemporaryCredentials cred : creds) {
-      assertThat(AwsVendedTokenProvider.CACHE.values()).contains(new GenericCredential(cred));
+      assertThat(AwsVendedTokenProvider.CACHE.asMap().values())
+          .contains(new GenericCredential(cred));
     }
   }
 

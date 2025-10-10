@@ -15,6 +15,10 @@ public class UCHadoopConf {
   public static final String UC_URI_KEY = "unitycatalog.uri";
   public static final String UC_TOKEN_KEY = "unitycatalog.token";
 
+  // Key for a credential unique ID. It identifies a job-level credential for a specific table,
+  // meaning the same job and table combination will share the same credential.
+  public static final String UC_CREDENTIALS_UID_KEY = "unitycatalog.credentials.uid";
+
   // Keys for table based temporary credential requests
   public static final String UC_TABLE_ID_KEY = "unitycatalog.table.id";
   public static final String UC_TABLE_OPERATION_KEY = "unitycatalog.table.operation";
