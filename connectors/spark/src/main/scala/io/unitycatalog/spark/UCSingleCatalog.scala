@@ -176,10 +176,15 @@ object UCSingleCatalog {
   def generateCredentialProps(
       scheme: String,
       temporaryCredentials: TemporaryCredentials): Map[String, String] = {
-    if (scheme == "s3") {
+    if (scheme == "s3" || scheme == "s3a") {
       val awsCredentials = temporaryCredentials.getAwsTempCredentials
       Map(
         // TODO: how to support s3:// properly?
+         "fs.s3a.aws.credentials.provider" -> classOf[AwsVendedTokenProvider].getName,
+        // Store credentials in configuration for the provider to access
+        AwsVendedTokenProvider.ACCESS_KEY_ID -> awsCredentials.getAccessKeyId,
+        AwsVendedTokenProvider.SECRET_ACCESS_KEY -> awsCredentials.getSecretAccessKey,
+        AwsVendedTokenProvider.SESSION_TOKEN -> awsCredentials.getSessionToken,
         "fs.s3a.access.key" -> awsCredentials.getAccessKeyId,
         "fs.s3a.secret.key" -> awsCredentials.getSecretAccessKey,
         "fs.s3a.session.token" -> awsCredentials.getSessionToken,
