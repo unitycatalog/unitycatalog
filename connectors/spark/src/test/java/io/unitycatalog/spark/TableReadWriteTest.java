@@ -40,8 +40,8 @@ public class TableReadWriteTest extends BaseSparkIntegrationTest {
 
   @Test
   public void testNoDeltaCatalog() throws IOException, ApiException {
-    UCSingleCatalog.LOAD_DELTA_CATALOG().set(false);
-    UCSingleCatalog.DELTA_CATALOG_LOADED().set(false);
+    Utils.LOAD_DELTA_CATALOG.set(false);
+    Utils.DELTA_CATALOG_LOADED.set(false);
     SparkSession.Builder builder =
         SparkSession.builder()
             .appName("test")
@@ -58,7 +58,7 @@ public class TableReadWriteTest extends BaseSparkIntegrationTest {
     SparkSession session = builder.getOrCreate();
     setupExternalParquetTable(PARQUET_TABLE, new ArrayList<>(0));
     testTableReadWrite("spark_catalog." + SCHEMA_NAME + "." + PARQUET_TABLE, session);
-    assertThat(UCSingleCatalog.DELTA_CATALOG_LOADED().get()).isEqualTo(false);
+    assertThat(Utils.DELTA_CATALOG_LOADED.get()).isEqualTo(false);
     session.close();
   }
 
@@ -590,7 +590,7 @@ public class TableReadWriteTest extends BaseSparkIntegrationTest {
   @Override
   public void cleanUp() {
     super.cleanUp();
-    UCSingleCatalog.LOAD_DELTA_CATALOG().set(true);
+    Utils.LOAD_DELTA_CATALOG.set(true);
     try {
       JavaUtils.deleteRecursively(dataDir);
     } catch (IOException e) {
