@@ -11,7 +11,7 @@ import io.unitycatalog.spark.ApiClientFactory;
 import io.unitycatalog.spark.UCHadoopConf;
 import java.net.URI;
 import org.apache.hadoop.conf.Configuration;
-import org.apache.hadoop.shaded.com.google.common.base.Preconditions;
+import org.sparkproject.guava.base.Preconditions;
 import org.sparkproject.guava.cache.Cache;
 import org.sparkproject.guava.cache.CacheBuilder;
 
@@ -67,7 +67,11 @@ public abstract class GenericCredentialProvider {
     if (credential == null || credential.readyToRenew(renewalLeadTimeMillis)) {
       synchronized (this) {
         if (credential == null || credential.readyToRenew(renewalLeadTimeMillis)) {
-          credential = renewCredential();
+          try {
+            credential = renewCredential();
+          } catch (ApiException e) {
+            throw new RuntimeException(e);
+          }
         }
       }
     }
@@ -93,7 +97,7 @@ public abstract class GenericCredentialProvider {
     return tempCredApi;
   }
 
-  private GenericCredential renewCredential() {
+  private GenericCredential renewCredential() throws ApiException {
     if (credCacheEnabled) {
       synchronized (CACHE) {
         GenericCredential cached = CACHE.getIfPresent(credUid);
@@ -111,51 +115,38 @@ public abstract class GenericCredentialProvider {
     }
   }
 
-  private GenericCredential createGenericCredentials() {
+  private GenericCredential createGenericCredentials() throws ApiException {
     TemporaryCredentialsApi tempCredApi = temporaryCredentialsApi();
 
     // Generate the temporary credential via requesting UnityCatalog.
-    try {
-      String type = conf.get(UCHadoopConf.UC_CREDENTIALS_TYPE_KEY);
-      if (UCHadoopConf.UC_CREDENTIALS_TYPE_PATH_VALUE.equals(type)) {
-        String path = conf.get(UCHadoopConf.UC_PATH_KEY);
-        Preconditions.checkNotNull(path,
-            "'%s' is not set in hadoop configuration", UCHadoopConf.UC_PATH_KEY);
+    TemporaryCredentials tempCred;
+    String type = conf.get(UCHadoopConf.UC_CREDENTIALS_TYPE_KEY);
+    // TODO We will need to retry the temporary credential request if any recoverable failure, for
+    // more robustness.
+    if (UCHadoopConf.UC_CREDENTIALS_TYPE_PATH_VALUE.equals(type)) {
+      String path = conf.get(UCHadoopConf.UC_PATH_KEY);
+      String pathOperation = conf.get(UCHadoopConf.UC_PATH_OPERATION_KEY);
 
-        String pathOpStr = conf.get(UCHadoopConf.UC_PATH_OPERATION_KEY);
-        Preconditions.checkNotNull(pathOpStr,
-            "'%s' is not set in hadoop configuration", UCHadoopConf.UC_PATH_OPERATION_KEY);
-        PathOperation pathOp = PathOperation.valueOf(pathOpStr);
+      tempCred = tempCredApi.generateTemporaryPathCredentials(
+          new GenerateTemporaryPathCredential()
+              .url(path)
+              .operation(PathOperation.fromValue(pathOperation))
+      );
+    } else if (UCHadoopConf.UC_CREDENTIALS_TYPE_TABLE_VALUE.equals(type)) {
+      String tableId = conf.get(UCHadoopConf.UC_TABLE_ID_KEY);
+      String tableOperation = conf.get(UCHadoopConf.UC_TABLE_OPERATION_KEY);
 
-        TemporaryCredentials tempCred = tempCredApi.generateTemporaryPathCredentials(
-            new GenerateTemporaryPathCredential()
-                .url(path)
-                .operation(pathOp)
-        );
-        return new GenericCredential(tempCred);
-      } else if (UCHadoopConf.UC_CREDENTIALS_TYPE_TABLE_VALUE.equals(type)) {
-        String tableId = conf.get(UCHadoopConf.UC_TABLE_ID_KEY);
-        Preconditions.checkNotNull(tableId,
-            "'%s' is not set in hadoop configuration", UCHadoopConf.UC_TABLE_ID_KEY);
-
-        String tableOpStr = conf.get(UCHadoopConf.UC_TABLE_OPERATION_KEY);
-        Preconditions.checkNotNull(tableOpStr,
-            "'%s' is not set in hadoop configuration", UCHadoopConf.UC_TABLE_OPERATION_KEY);
-        TableOperation tableOp = TableOperation.valueOf(tableOpStr);
-
-        TemporaryCredentials tempCred = tempCredApi.generateTemporaryTableCredentials(
-            new GenerateTemporaryTableCredential()
-                .tableId(tableId)
-                .operation(tableOp)
-        );
-        return new GenericCredential(tempCred);
-      } else {
-        throw new IllegalArgumentException(String.format(
-            "Unsupported unity catalog temporary credentials type '%s', please check '%s'",
-            type, UCHadoopConf.UC_CREDENTIALS_TYPE_KEY));
-      }
-    } catch (ApiException e) {
-      throw new RuntimeException(e);
+      tempCred = tempCredApi.generateTemporaryTableCredentials(
+          new GenerateTemporaryTableCredential()
+              .tableId(tableId)
+              .operation(TableOperation.fromValue(tableOperation))
+      );
+    } else {
+      throw new IllegalArgumentException(String.format(
+          "Unsupported unity catalog temporary credentials type '%s', please check '%s'",
+          type, UCHadoopConf.UC_CREDENTIALS_TYPE_KEY));
     }
+
+    return new GenericCredential(tempCred);
   }
 }
