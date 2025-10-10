@@ -40,16 +40,9 @@ class UCSingleCatalog
       throw new IllegalArgumentException(s"uri must be specified for Unity Catalog '$name'")
     }
     val url = new URI(urlStr)
-    apiClient = new ApiClient()
-      .setHost(url.getHost)
-      .setPort(url.getPort)
-      .setScheme(url.getScheme)
     val token = options.get("token")
-    if (token != null && token.nonEmpty) {
-      apiClient = apiClient.setRequestInterceptor { request =>
-        request.header("Authorization", "Bearer " + token)
-      }
-    }
+
+    apiClient = ApiClientFactory.createApiClient(url, token)
     temporaryCredentialsApi = new TemporaryCredentialsApi(apiClient)
     val proxy = new UCProxy(apiClient, temporaryCredentialsApi)
     proxy.initialize(name, options)
@@ -179,10 +172,13 @@ object UCSingleCatalog {
     if (scheme == "s3") {
       val awsCredentials = temporaryCredentials.getAwsTempCredentials
       Map(
-        // TODO: how to support s3:// properly?
-        "fs.s3a.access.key" -> awsCredentials.getAccessKeyId,
-        "fs.s3a.secret.key" -> awsCredentials.getSecretAccessKey,
-        "fs.s3a.session.token" -> awsCredentials.getSessionToken,
+        UCHadoopConf.UC_URI_KEY -> "uri",
+        UCHadoopConf.UC_TOKEN_KEY -> "token",
+        UCHadoopConf.S3A_INIT_ACCESS_KEY  -> awsCredentials.getAccessKeyId,
+        UCHadoopConf.S3A_INIT_SECRET_KEY -> awsCredentials.getSecretAccessKey,
+        UCHadoopConf.S3A_INIT_SESSION_TOKEN -> awsCredentials.getSessionToken,
+        UCHadoopConf.S3A_INIT_CRED_EXPIRED_TIME -> String.valueOf(temporaryCredentials
+          .getExpirationTime),
         "fs.s3a.path.style.access" -> "true",
         "fs.s3.impl.disable.cache" -> "true",
         "fs.s3a.impl.disable.cache" -> "true"

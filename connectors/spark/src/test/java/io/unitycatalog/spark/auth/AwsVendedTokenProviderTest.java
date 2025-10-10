@@ -291,7 +291,7 @@ public class AwsVendedTokenProviderTest {
     assertThat(actualSessionCred.sessionToken()).isEqualTo(expectedAwsCred.getSessionToken());
   }
 
-  private static TemporaryCredentials newAwsTempCredentials(
+  public static TemporaryCredentials newAwsTempCredentials(
       String accessKeyId, String secretAccessKey, String sessionToken, long expirationTime) {
     io.unitycatalog.client.model.AwsCredentials awsCred =
         new io.unitycatalog.client.model.AwsCredentials();
