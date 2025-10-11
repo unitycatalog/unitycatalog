@@ -40,8 +40,8 @@ public class TableReadWriteTest extends BaseSparkIntegrationTest {
 
   @Test
   public void testNoDeltaCatalog() throws IOException, ApiException {
-    UCSingleCatalog.LOAD_DELTA_CATALOG().set(false);
-    UCSingleCatalog.DELTA_CATALOG_LOADED().set(false);
+    Utils.LOAD_DELTA_CATALOG.set(false);
+    Utils.DELTA_CATALOG_LOADED.set(false);
     SparkSession.Builder builder =
         SparkSession.builder()
             .appName("test")
@@ -58,7 +58,7 @@ public class TableReadWriteTest extends BaseSparkIntegrationTest {
     SparkSession session = builder.getOrCreate();
     setupExternalParquetTable(PARQUET_TABLE, new ArrayList<>(0));
     testTableReadWrite("spark_catalog." + SCHEMA_NAME + "." + PARQUET_TABLE, session);
-    assertThat(UCSingleCatalog.DELTA_CATALOG_LOADED().get()).isEqualTo(false);
+    assertThat(Utils.DELTA_CATALOG_LOADED.get()).isEqualTo(false);
     session.close();
   }
 
@@ -421,17 +421,17 @@ public class TableReadWriteTest extends BaseSparkIntegrationTest {
 
     String fullTableName1 = CATALOG_NAME + "." + SCHEMA_NAME + "." + PARQUET_TABLE;
     assertThatThrownBy(
-            () -> {
-              session.sql(
-                  "CREATE EXTERNAL TABLE " + fullTableName1 + "(name STRING) USING parquet");
-            })
+        () -> {
+          session.sql(
+              "CREATE EXTERNAL TABLE " + fullTableName1 + "(name STRING) USING parquet");
+        })
         .hasMessageContaining("Cannot create EXTERNAL TABLE without location");
 
     String fullTableName2 = CATALOG_NAME + "." + SCHEMA_NAME + "." + DELTA_TABLE;
     assertThatThrownBy(
-            () -> {
-              session.sql("CREATE EXTERNAL TABLE " + fullTableName2 + "(name STRING) USING delta");
-            })
+        () -> {
+          session.sql("CREATE EXTERNAL TABLE " + fullTableName2 + "(name STRING) USING delta");
+        })
         .hasMessageContaining("Cannot create EXTERNAL TABLE without location");
 
     session.close();
@@ -443,12 +443,12 @@ public class TableReadWriteTest extends BaseSparkIntegrationTest {
     String fullTableName = CATALOG_NAME + "." + SCHEMA_NAME + "." + PARQUET_TABLE;
     String location = generateTableLocation(CATALOG_NAME, PARQUET_TABLE);
     assertThatThrownBy(
-            () -> {
-              session.sql(
-                  String.format(
-                      "CREATE TABLE %s(name STRING) USING parquet TBLPROPERTIES(__FAKE_PATH__='%s')",
-                      fullTableName, location));
-            })
+        () -> {
+          session.sql(
+              String.format(
+                  "CREATE TABLE %s(name STRING) USING parquet TBLPROPERTIES(__FAKE_PATH__='%s')",
+                  fullTableName, location));
+        })
         .hasMessageContaining("not support managed table");
     session.close();
   }
@@ -460,23 +460,23 @@ public class TableReadWriteTest extends BaseSparkIntegrationTest {
     String fullTableName1 = SPARK_CATALOG + "." + SCHEMA_NAME + "." + DELTA_TABLE;
     String location1 = generateTableLocation(SPARK_CATALOG, DELTA_TABLE);
     assertThatThrownBy(
-            () -> {
-              session.sql(
-                  String.format(
-                      "CREATE TABLE %s(name STRING) USING delta TBLPROPERTIES(__FAKE_PATH__='%s')",
-                      fullTableName1, location1));
-            })
+        () -> {
+          session.sql(
+              String.format(
+                  "CREATE TABLE %s(name STRING) USING delta TBLPROPERTIES(__FAKE_PATH__='%s')",
+                  fullTableName1, location1));
+        })
         .hasMessageContaining("not support managed table");
 
     String fullTableName2 = CATALOG_NAME + "." + SCHEMA_NAME + "." + DELTA_TABLE;
     String location2 = generateTableLocation(CATALOG_NAME, DELTA_TABLE);
     assertThatThrownBy(
-            () -> {
-              session.sql(
-                  String.format(
-                      "CREATE TABLE %s(name STRING) USING delta TBLPROPERTIES(__FAKE_PATH__='%s')",
-                      fullTableName2, location2));
-            })
+        () -> {
+          session.sql(
+              String.format(
+                  "CREATE TABLE %s(name STRING) USING delta TBLPROPERTIES(__FAKE_PATH__='%s')",
+                  fullTableName2, location2));
+        })
         .hasMessageContaining("not support managed table");
 
     session.close();
