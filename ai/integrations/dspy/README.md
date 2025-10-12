@@ -150,7 +150,8 @@ an LLM), which are exposed with a UC interface through the use of the `unitycata
 from unitycatalog.ai.dspy.toolkit import UCFunctionToolkit
 
 # Pass the UC function name that we created to the constructor
-toolkit = UCFunctionToolkit(function_names=[func_name])
+toolkit = UCFunctionToolkit(function_names=[func_name],
+                             client=client)
 
 # Get the DSPy-compatible tools definitions
 tools = toolkit.tools

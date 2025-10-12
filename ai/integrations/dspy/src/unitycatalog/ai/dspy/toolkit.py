@@ -21,9 +21,9 @@ _logger = logging.getLogger(__name__)
 
 
 class UnityCatalogDSPyToolWrapper(BaseModel):
-    """Pydantic wrapper for Unity Catalog DSPy Tool that holds the real dspy.adapters.Tool instance."""
+    """Pydantic wrapper for Unity Catalog DSPy Tool that holds the real dspy.Tool instance."""
 
-    tool: dspy.Tool = Field(description="The underlying dspy.adapters.Tool instance")
+    tool: dspy.Tool = Field(description="The underlying dspy.Tool instance")
     uc_function_name: str = Field(description="The full UC function name")
     client_config: Dict[str, Any] = Field(description="Client configuration dictionary")
 
@@ -175,8 +175,8 @@ class UCFunctionToolkit(BaseModel):
             )
             return result.to_json()
 
-        # Create the real dspy.adapters.Tool instance
-        dspy_tool = dspy.adapters.Tool(
+        # Create the real dspy.Tool instance
+        dspy_tool = dspy.Tool(
             func=func,
             name=get_tool_name(function_name),
             desc=function_info.comment or "",
@@ -193,11 +193,11 @@ class UCFunctionToolkit(BaseModel):
         )
 
     @property
-    def tools(self) -> List[dspy.adapters.Tool]:
-        """Get all underlying dspy.adapters.Tool instances from the toolkit."""
+    def tools(self) -> List[dspy.Tool]:
+        """Get all underlying dspy.Tool instances from the toolkit."""
         return [wrapper.tool for wrapper in self.tools_dict.values()]
 
-    def get_tool(self, function_name: str) -> Optional[dspy.adapters.Tool]:
+    def get_tool(self, function_name: str) -> Optional[dspy.Tool]:
         """Get a specific underlying tool by function name."""
         wrapper = self.tools_dict.get(function_name)
         return wrapper.tool if wrapper else None
