@@ -57,7 +57,7 @@ def sample_dspy_tool():
     arg_desc = {"x": "A number parameter", "y": "A string parameter"}
 
     # Create a proper DSPy Tool instance instead of a mock
-    dspy_tool = dspy.adapters.Tool(
+    dspy_tool = dspy.Tool(
         func=dummy_function,
         name=name,
         desc=description,
