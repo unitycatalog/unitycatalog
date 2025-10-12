@@ -57,17 +57,16 @@ fi
 LOG_FILE="${LOG_FILE:-uc_server.log}"
 : > "$LOG_FILE"
 
-# Always kill the server on exit
-cleanup() {
+# Cleanup function for when server fails to start (only called on error paths)
+cleanup_on_failure() {
   if [[ -n "${UC_SERVER_PID:-}" ]] && kill -0 "$UC_SERVER_PID" 2>/dev/null; then
-    echo "Stopping UC server (PID $UC_SERVER_PID)..."
+    echo "Cleaning up failed UC server (PID $UC_SERVER_PID)..."
     kill "$UC_SERVER_PID" 2>/dev/null || true
     sleep 2
     kill -9 "$UC_SERVER_PID" 2>/dev/null || true
   fi
   rm -f uc_server.pid
 }
-trap cleanup EXIT
 
 echo "Starting UC server..."
 bin/start-uc-server >"$LOG_FILE" 2>&1 &
@@ -81,6 +80,7 @@ check_process() {
     echo "=== Server Logs (tail) ==="
     tail -n 200 "$LOG_FILE" || true
     echo "=========================="
+    cleanup_on_failure
     return 1
   fi
   return 0
@@ -111,4 +111,5 @@ echo "UC server failed to start within $((LOOP_COUNT * SLEEP_DURATION)) seconds"
 echo "=== Server Logs (tail) ==="
 tail -n 400 "$LOG_FILE" || true
 echo "=========================="
+cleanup_on_failure
 exit 1
