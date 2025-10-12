@@ -65,12 +65,14 @@ cleanup() {
     sleep 2
     kill -9 "$UC_SERVER_PID" 2>/dev/null || true
   fi
+  rm -f uc_server.pid
 }
 trap cleanup EXIT
 
 echo "Starting UC server..."
 bin/start-uc-server >"$LOG_FILE" 2>&1 &
 UC_SERVER_PID=$!
+echo "$UC_SERVER_PID" > uc_server.pid
 echo "UC server started with PID $UC_SERVER_PID"
 
 check_process() {
