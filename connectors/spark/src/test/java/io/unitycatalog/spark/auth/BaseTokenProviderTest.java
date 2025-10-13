@@ -10,6 +10,7 @@ import io.unitycatalog.client.model.PathOperation;
 import io.unitycatalog.client.model.TableOperation;
 import io.unitycatalog.client.model.TemporaryCredentials;
 import io.unitycatalog.spark.UCHadoopConf;
+import java.util.UUID;
 import org.apache.hadoop.conf.Configuration;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -295,6 +296,7 @@ public abstract class BaseTokenProviderTest<T extends GenericCredentialProvider>
     Configuration conf = new Configuration();
     conf.set(UCHadoopConf.UC_URI_KEY, "http://localhost:8080");
     conf.set(UCHadoopConf.UC_TOKEN_KEY, "unity-catalog-token");
+    conf.set(UCHadoopConf.UC_CREDENTIALS_UID_KEY, UUID.randomUUID().toString());
 
     // For table-based temporary requests.
     conf.set(UCHadoopConf.UC_CREDENTIALS_TYPE_KEY, UCHadoopConf.UC_CREDENTIALS_TYPE_TABLE_VALUE);
@@ -312,6 +314,7 @@ public abstract class BaseTokenProviderTest<T extends GenericCredentialProvider>
     Configuration conf = new Configuration();
     conf.set(UCHadoopConf.UC_URI_KEY, "http://localhost:8080");
     conf.set(UCHadoopConf.UC_TOKEN_KEY, "unity-catalog-token");
+    conf.set(UCHadoopConf.UC_CREDENTIALS_UID_KEY, UUID.randomUUID().toString());
 
     // For path-based temporary requests.
     conf.set(UCHadoopConf.UC_CREDENTIALS_TYPE_KEY, UCHadoopConf.UC_CREDENTIALS_TYPE_PATH_VALUE);
