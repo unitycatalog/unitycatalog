@@ -151,11 +151,11 @@ distinct advantages. But the challenges when working with these formats include:
 
 - No ACID transactions for these data lakes meaning it's easier to accidentally corrupt your data
 - It is not easy to delete rows from these tables
-- These table storage foramts do not offer DML transactions
+- These table storage formats do not offer DML transactions
 - They lack advanced features from schema evolution and enforcement to deletion vectors to change data feed
 - Slow file listing overhead when working with cloud object stores such as AWS S3, Azure ADLSgen2, and
     Google Cloud Storage
-- Potentialy expensive footer reads to gather statistics for file skipping
+- Potentially expensive footer reads to gather statistics for file skipping
 
 Open table formats like Apache Iceberg and Delta Lake are specifically designed to overcome these challenges. Storing
 your data in a lakehouse format is almost always more advantageous than storing it in traditional table storage
