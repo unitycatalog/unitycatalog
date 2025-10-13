@@ -16,6 +16,7 @@ import org.apache.spark.sql.connector.catalog._
 import org.apache.spark.sql.connector.expressions.Transform
 import org.apache.spark.sql.types.{BinaryType, BooleanType, ByteType, DataType, DoubleType, FloatType, IntegerType, LongType, ShortType, StringType, StructField, StructType, TimestampNTZType, TimestampType}
 import org.apache.spark.sql.util.CaseInsensitiveStringMap
+import org.sparkproject.guava.base.Preconditions
 
 import scala.collection.convert.ImplicitConversions._
 import scala.collection.JavaConverters._
@@ -38,9 +39,7 @@ class UCSingleCatalog
 
   override def initialize(name: String, options: CaseInsensitiveStringMap): Unit = {
     val urlStr = options.get("uri")
-    if (urlStr == null) {
-      throw new IllegalArgumentException(s"uri must be specified for Unity Catalog '$name'")
-    }
+    Preconditions.checkArgument(urlStr != null, s"uri must be specified for Unity Catalog '$name'")
     uri = new URI(urlStr)
     token = options.get("token")
 
@@ -185,9 +184,7 @@ private class UCProxy(
     this.name = name
 
     val urlStr = options.get("uri")
-    if (urlStr == null) {
-      throw new IllegalArgumentException(s"uri must be specified for Unity Catalog '$name'")
-    }
+    Preconditions.checkArgument(urlStr != null, s"uri must be specified for Unity Catalog '$name'")
     uri = new URI(urlStr)
     token = options.get("token")
 

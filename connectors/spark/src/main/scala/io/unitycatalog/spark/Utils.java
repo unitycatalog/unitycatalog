@@ -24,8 +24,10 @@ public class Utils {
       ThreadLocal.withInitial(() -> false);
 
   public static Map<String, String> s3TableCredProps(
-      String uri, String token,
-      String tableId, TableOperation tableOp,
+      String uri,
+      String token,
+      String tableId,
+      TableOperation tableOp,
       TemporaryCredentials tempCreds) {
     Map<String, String> map = new HashMap<>();
     // Set to use the AwsVendedTokenProvider
@@ -52,8 +54,10 @@ public class Utils {
   }
 
   public static Map<String, String> s3PathCredProps(
-      String uri, String token,
-      String path, PathOperation pathOp,
+      String uri,
+      String token,
+      String path,
+      PathOperation pathOp,
       TemporaryCredentials tempCreds
   ) {
     Map<String, String> map = new HashMap<>();
@@ -113,8 +117,10 @@ public class Utils {
 
   public static Map<String, String> createTableCredProps(
       String scheme,
-      String uri, String token,
-      String tableId, TableOperation tableOp,
+      String uri,
+      String token,
+      String tableId,
+      TableOperation tableOp,
       TemporaryCredentials tempCreds) {
     switch (scheme) {
       case "s3a":
@@ -131,8 +137,10 @@ public class Utils {
 
   public static Map<String, String> createPathCredProps(
       String scheme,
-      String uri, String token,
-      String path, PathOperation pathOp,
+      String uri,
+      String token,
+      String path,
+      PathOperation pathOp,
       TemporaryCredentials tempCreds) {
     switch (scheme) {
       case "s3a":
