@@ -17,15 +17,28 @@ import java.net.URI;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
+import java.util.UUID;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.s3a.AWSCredentialProviderList;
 import org.apache.hadoop.fs.s3a.Constants;
 import org.apache.hadoop.fs.s3a.auth.CredentialProviderListFactory;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import software.amazon.awssdk.auth.credentials.AwsCredentialsProvider;
 import software.amazon.awssdk.auth.credentials.AwsSessionCredentials;
 
 public class AwsVendedTokenProviderTest {
+
+  @BeforeEach
+  public void before() {
+    GenericCredentialProvider.globalCache.invalidateAll();
+  }
+
+  @AfterEach
+  public void after() {
+    GenericCredentialProvider.globalCache.invalidateAll();
+  }
 
   @Test
   public void testConstructor() {
@@ -45,10 +58,8 @@ public class AwsVendedTokenProviderTest {
 
   @Test
   public void testLoadingTokenProvider() throws IOException {
-    Configuration conf = new Configuration();
+    Configuration conf = newTableBasedConf("unity-catalog-table");
     conf.set(Constants.AWS_CREDENTIALS_PROVIDER, AwsVendedTokenProvider.class.getName());
-    conf.set(UCHadoopConf.UC_URI_KEY, "http://localhost:8080");
-    conf.set(UCHadoopConf.UC_TOKEN_KEY, "unity-catalog-token");
 
     AWSCredentialProviderList list =
         CredentialProviderListFactory.buildAWSProviderList(
@@ -67,12 +78,8 @@ public class AwsVendedTokenProviderTest {
   public void testTableTemporaryCredentialsRenew() throws Exception {
     Configuration conf = newTableBasedConf();
 
-    long expirationTime1 = System.currentTimeMillis() + 1000 + 1000L;
-    long expirationTime2 = System.currentTimeMillis() + 1000 + 2000L;
-    TemporaryCredentials cred1 =
-        newAwsTempCredentials("accessKeyId1", "secretAccessKey1", "sessionToken1", expirationTime1);
-    TemporaryCredentials cred2 =
-        newAwsTempCredentials("accessKeyId2", "secretAccessKey2", "sessionToken2", expirationTime2);
+    TemporaryCredentials cred1 = newAwsTempCred("1", System.currentTimeMillis() + 2000L);
+    TemporaryCredentials cred2 = newAwsTempCred("2", System.currentTimeMillis() + 3000L);
 
     // Mock the table-based temporary credentials' generation.
     TemporaryCredentialsApi tempCredApi = mock(TemporaryCredentialsApi.class);
@@ -102,28 +109,13 @@ public class AwsVendedTokenProviderTest {
     Configuration conf = newTableBasedConf();
 
     // Use the generated credential to initialize the provider.
-    TemporaryCredentials cred0 =
-        newAwsTempCredentials(
-            "accessKeyId0",
-            "secretAccessKey0",
-            "sessionToken0",
-            System.currentTimeMillis() + 2000L);
+    TemporaryCredentials cred0 = newAwsTempCred("0", System.currentTimeMillis() + 2000L);
     setInitialCredentials(conf, cred0);
 
     // Mock the path-based temporary credentials' generation.
     TemporaryCredentialsApi tempCredApi = mock(TemporaryCredentialsApi.class);
-    TemporaryCredentials cred1 =
-        newAwsTempCredentials(
-            "accessKeyId1",
-            "secretAccessKey1",
-            "sessionToken1",
-            System.currentTimeMillis() + 3000L);
-    TemporaryCredentials cred2 =
-        newAwsTempCredentials(
-            "accessKeyId2",
-            "secretAccessKey2",
-            "sessionToken2",
-            System.currentTimeMillis() + 4000L);
+    TemporaryCredentials cred1 = newAwsTempCred("1", System.currentTimeMillis() + 3000L);
+    TemporaryCredentials cred2 = newAwsTempCred("2", System.currentTimeMillis() + 4000L);
 
     when(tempCredApi.generateTemporaryTableCredentials(any())).thenReturn(cred1).thenReturn(cred2);
 
@@ -160,10 +152,8 @@ public class AwsVendedTokenProviderTest {
 
     long expirationTime1 = System.currentTimeMillis() + 2000L;
     long expirationTime2 = System.currentTimeMillis() + 3000L;
-    TemporaryCredentials cred1 =
-        newAwsTempCredentials("accessKeyId1", "secretAccessKey1", "sessionToken1", expirationTime1);
-    TemporaryCredentials cred2 =
-        newAwsTempCredentials("accessKeyId2", "secretAccessKey2", "sessionToken2", expirationTime2);
+    TemporaryCredentials cred1 = newAwsTempCred("1", expirationTime1);
+    TemporaryCredentials cred2 = newAwsTempCred("2", expirationTime2);
 
     // Mock the path-based temporary credentials' generation.
     TemporaryCredentialsApi tempCredApi = mock(TemporaryCredentialsApi.class);
@@ -193,28 +183,13 @@ public class AwsVendedTokenProviderTest {
     Configuration conf = newPathBasedConf();
 
     // Use the generated credential to initialize the provider.
-    TemporaryCredentials cred0 =
-        newAwsTempCredentials(
-            "accessKeyId0",
-            "secretAccessKey0",
-            "sessionToken0",
-            System.currentTimeMillis() + 2000L);
+    TemporaryCredentials cred0 = newAwsTempCred("0", System.currentTimeMillis() + 2000L);
     setInitialCredentials(conf, cred0);
 
     // Mock the path-based temporary credentials' generation.
     TemporaryCredentialsApi tempCredApi = mock(TemporaryCredentialsApi.class);
-    TemporaryCredentials cred1 =
-        newAwsTempCredentials(
-            "accessKeyId1",
-            "secretAccessKey1",
-            "sessionToken1",
-            System.currentTimeMillis() + 3000L);
-    TemporaryCredentials cred2 =
-        newAwsTempCredentials(
-            "accessKeyId2",
-            "secretAccessKey2",
-            "sessionToken2",
-            System.currentTimeMillis() + 4000L);
+    TemporaryCredentials cred1 = newAwsTempCred("1", System.currentTimeMillis() + 3000L);
+    TemporaryCredentials cred2 = newAwsTempCred("2", System.currentTimeMillis() + 4000L);
     when(tempCredApi.generateTemporaryPathCredentials(any())).thenReturn(cred1).thenReturn(cred2);
 
     // Initialize the credential provider.
@@ -244,30 +219,138 @@ public class AwsVendedTokenProviderTest {
     assertCredentials(provider.resolveCredentials(), cred2);
   }
 
-  private static Configuration newTableBasedConf() {
+  @Test
+  public void testGlobalCredCache() throws Exception {
+    Configuration confA = newTableBasedConf("tableA");
+    Configuration confB = newTableBasedConf("tableB");
+    Configuration confC = newPathBasedConf("pathC");
+    Configuration confD = newPathBasedConf("pathD");
+
+    TemporaryCredentialsApi tempCredApi = mock(TemporaryCredentialsApi.class);
+    // For TableA's 1st renewal
+    TemporaryCredentials cred1 = newAwsTempCred("1", System.currentTimeMillis() + 2000L);
+    // For TableB's 1st renewal
+    TemporaryCredentials cred2 = newAwsTempCred("2", System.currentTimeMillis() + 2000L);
+    // For PathC's 1st renewal
+    TemporaryCredentials cred3 = newAwsTempCred("3", System.currentTimeMillis() + 2000L);
+    // For PathD's 1st renewal
+    TemporaryCredentials cred4 = newAwsTempCred("4", System.currentTimeMillis() + 2000L);
+    // For TableA's 2nd renewal
+    TemporaryCredentials cred5 = newAwsTempCred("5", System.currentTimeMillis() + 3000L);
+    // For TableB's 2nd renewal
+    TemporaryCredentials cred6 = newAwsTempCred("6", System.currentTimeMillis() + 3000L);
+    // For PathC's 2nd renewal
+    TemporaryCredentials cred7 = newAwsTempCred("7", System.currentTimeMillis() + 3000L);
+    // For PathD's 2nd renewal
+    TemporaryCredentials cred8 = newAwsTempCred("8", System.currentTimeMillis() + 3000L);
+    when(tempCredApi.generateTemporaryTableCredentials(any()))
+        .thenReturn(cred1)
+        .thenReturn(cred2)
+        .thenReturn(cred5)
+        .thenReturn(cred6);
+    when(tempCredApi.generateTemporaryPathCredentials(any()))
+        .thenReturn(cred3)
+        .thenReturn(cred4)
+        .thenReturn(cred7)
+        .thenReturn(cred8);
+
+    AwsVendedTokenProvider providerA = new TestAwsVendedTokenProvider(confA, tempCredApi);
+    providerA.setRenewalLeadTimeMillis(1000L);
+
+    AwsVendedTokenProvider providerB = new TestAwsVendedTokenProvider(confB, tempCredApi);
+    providerB.setRenewalLeadTimeMillis(1000L);
+
+    AwsVendedTokenProvider providerC = new TestAwsVendedTokenProvider(confC, tempCredApi);
+    providerC.setRenewalLeadTimeMillis(1000L);
+
+    AwsVendedTokenProvider providerD = new TestAwsVendedTokenProvider(confD, tempCredApi);
+    providerD.setRenewalLeadTimeMillis(1000L);
+
+    // TableA: 1st access.
+    assertCredentials(providerA.resolveCredentials(), cred1);
+    assertGlobalCache(1, cred1);
+
+    // TableB: 1st access.
+    assertCredentials(providerB.resolveCredentials(), cred2);
+    assertGlobalCache(2, cred1, cred2);
+
+    // PathC: 1st access.
+    assertCredentials(providerC.resolveCredentials(), cred3);
+    assertGlobalCache(3, cred1, cred2, cred3);
+
+    // PathD: 1st access.
+    assertCredentials(providerD.resolveCredentials(), cred4);
+    assertGlobalCache(4, cred1, cred2, cred3, cred4);
+
+    // TableA: 2nd access.
+    assertCredentials(providerA.resolveCredentials(), cred1);
+    assertGlobalCache(4, cred1, cred2, cred3, cred4);
+
+    // TableB: 2nd access.
+    assertCredentials(providerB.resolveCredentials(), cred2);
+    assertGlobalCache(4, cred1, cred2, cred3, cred4);
+
+    // PathC: 2nd access.
+    assertCredentials(providerC.resolveCredentials(), cred3);
+    assertGlobalCache(4, cred1, cred2, cred3, cred4);
+
+    // PathD: 2nd access.
+    assertCredentials(providerC.resolveCredentials(), cred3);
+    assertGlobalCache(4, cred1, cred2, cred3, cred4);
+
+    Thread.sleep(1000L);
+
+    // TableA: 3rd access. renew cred1 to cred5.
+    assertCredentials(providerA.resolveCredentials(), cred5);
+    assertGlobalCache(4, cred5, cred2, cred3, cred4);
+
+    // TableB: 3rd access. renew cred2 to cred6.
+    assertCredentials(providerB.resolveCredentials(), cred6);
+    assertGlobalCache(4, cred5, cred6, cred3, cred4);
+
+    // PathC: 3rd access. renew cred3 to cred7.
+    assertCredentials(providerC.resolveCredentials(), cred7);
+    assertGlobalCache(4, cred5, cred6, cred7, cred4);
+
+    // PathD: 3rd access. renew cred4 to cred8.
+    assertCredentials(providerD.resolveCredentials(), cred8);
+    assertGlobalCache(4, cred5, cred6, cred7, cred8);
+  }
+
+  private static Configuration newTableBasedConf(String tableId) {
     Configuration conf = new Configuration();
     conf.set(UCHadoopConf.UC_URI_KEY, "http://localhost:8080");
     conf.set(UCHadoopConf.UC_TOKEN_KEY, "unity-catalog-token");
+    conf.set(UCHadoopConf.UC_CREDENTIALS_UID_KEY, UUID.randomUUID().toString());
 
     // For table-based temporary requests.
     conf.set(UCHadoopConf.UC_CREDENTIALS_TYPE_KEY, UCHadoopConf.UC_CREDENTIALS_TYPE_TABLE_VALUE);
-    conf.set(UCHadoopConf.UC_TABLE_ID_KEY, "test");
+    conf.set(UCHadoopConf.UC_TABLE_ID_KEY, tableId);
     conf.set(UCHadoopConf.UC_TABLE_OPERATION_KEY, TableOperation.READ.getValue());
 
     return conf;
   }
 
-  private static Configuration newPathBasedConf() {
+  private static Configuration newTableBasedConf() {
+    return newTableBasedConf("testTableId");
+  }
+
+  private static Configuration newPathBasedConf(String path) {
     Configuration conf = new Configuration();
     conf.set(UCHadoopConf.UC_URI_KEY, "http://localhost:8080");
     conf.set(UCHadoopConf.UC_TOKEN_KEY, "unity-catalog-token");
+    conf.set(UCHadoopConf.UC_CREDENTIALS_UID_KEY, UUID.randomUUID().toString());
 
     // For path-based temporary requests.
     conf.set(UCHadoopConf.UC_CREDENTIALS_TYPE_KEY, UCHadoopConf.UC_CREDENTIALS_TYPE_PATH_VALUE);
-    conf.set(UCHadoopConf.UC_PATH_KEY, "test");
+    conf.set(UCHadoopConf.UC_PATH_KEY, path);
     conf.set(UCHadoopConf.UC_PATH_OPERATION_KEY, PathOperation.PATH_READ.getValue());
 
     return conf;
+  }
+
+  private static Configuration newPathBasedConf() {
+    return newPathBasedConf("path");
   }
 
   private static void setInitialCredentials(Configuration conf, TemporaryCredentials cred) {
@@ -275,6 +358,15 @@ public class AwsVendedTokenProviderTest {
     conf.set(UCHadoopConf.S3A_INIT_SECRET_KEY, cred.getAwsTempCredentials().getSecretAccessKey());
     conf.set(UCHadoopConf.S3A_INIT_SESSION_TOKEN, cred.getAwsTempCredentials().getSessionToken());
     conf.setLong(UCHadoopConf.S3A_INIT_CRED_EXPIRED_TIME, cred.getExpirationTime());
+  }
+
+  private static void assertGlobalCache(int expectedSize, TemporaryCredentials... creds) {
+    assertThat(expectedSize).isEqualTo(creds.length);
+    assertThat(AwsVendedTokenProvider.globalCache.size()).isEqualTo(expectedSize);
+    for (TemporaryCredentials cred : creds) {
+      assertThat(AwsVendedTokenProvider.globalCache.asMap().values())
+          .contains(new GenericCredential(cred));
+    }
   }
 
   private static void assertCredentials(
@@ -291,8 +383,16 @@ public class AwsVendedTokenProviderTest {
     assertThat(actualSessionCred.sessionToken()).isEqualTo(expectedAwsCred.getSessionToken());
   }
 
-  private static TemporaryCredentials newAwsTempCredentials(
-      String accessKeyId, String secretAccessKey, String sessionToken, long expirationTime) {
+  private static TemporaryCredentials newAwsTempCred(String idSuffix, long expirationTimeMs) {
+    return newAwsTempCred(
+        "accessKeyId" + idSuffix,
+        "secretAccessKey" + idSuffix,
+        "sessionToken" + idSuffix,
+        expirationTimeMs);
+  }
+
+  private static TemporaryCredentials newAwsTempCred(
+      String accessKeyId, String secretAccessKey, String sessionToken, long expirationTimeMs) {
     io.unitycatalog.client.model.AwsCredentials awsCred =
         new io.unitycatalog.client.model.AwsCredentials();
     awsCred.setAccessKeyId(accessKeyId);
@@ -302,7 +402,7 @@ public class AwsVendedTokenProviderTest {
     TemporaryCredentials tempCred = new TemporaryCredentials();
 
     tempCred.setAwsTempCredentials(awsCred);
-    tempCred.setExpirationTime(expirationTime);
+    tempCred.setExpirationTime(expirationTimeMs);
 
     return tempCred;
   }
