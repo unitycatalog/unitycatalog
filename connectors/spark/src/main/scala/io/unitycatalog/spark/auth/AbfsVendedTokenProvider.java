@@ -15,18 +15,19 @@ public class AbfsVendedTokenProvider extends GenericCredentialProvider implement
 
   @Override
   public GenericCredential initGenericCredential(Configuration conf) {
-    if (conf.get(UCHadoopConf.AZURE_SAS_TOKEN) != null
-        && conf.get(UCHadoopConf.AZURE_SAS_TOKEN_EXPIRED_TIME) != null) {
+    if (conf.get(UCHadoopConf.AZURE_INIT_SAS_TOKEN) != null
+        && conf.get(UCHadoopConf.AZURE_INIT_SAS_TOKEN_EXPIRED_TIME) != null) {
 
-      String azureSas = conf.get(UCHadoopConf.AZURE_SAS_TOKEN);
-      Preconditions.checkNotNull(azureSas, "Azure SAS token not set, please check configure key " +
-          "'%s' in hadoop configuration", UCHadoopConf.AZURE_SAS_TOKEN);
+      String sasToken = conf.get(UCHadoopConf.AZURE_INIT_SAS_TOKEN);
+      Preconditions.checkNotNull(sasToken, "Azure SAS token not set, please check " +
+          "'%s' in hadoop configuration", UCHadoopConf.AZURE_INIT_SAS_TOKEN);
 
-      long expiredTimeMillis = conf.getLong(UCHadoopConf.AZURE_SAS_TOKEN_EXPIRED_TIME, 0L);
+      long expiredTimeMillis = conf.getLong(UCHadoopConf.AZURE_INIT_SAS_TOKEN_EXPIRED_TIME, 0L);
       Preconditions.checkState(expiredTimeMillis > 0,
-          "Azure SAS token expired time must be greater than 0");
+          "Azure SAS token expired time must be greater than 0, please check '%s' in hadoop " +
+              "configuration", UCHadoopConf.AZURE_INIT_SAS_TOKEN_EXPIRED_TIME);
 
-      return GenericCredential.forAzure(azureSas, expiredTimeMillis);
+      return GenericCredential.forAzure(sasToken, expiredTimeMillis);
     } else {
       return null;
     }
@@ -37,8 +38,7 @@ public class AbfsVendedTokenProvider extends GenericCredentialProvider implement
     GenericCredential generic = accessCredentials();
 
     AzureUserDelegationSAS azureSAS = generic.temporaryCredentials().getAzureUserDelegationSas();
-    Preconditions.checkNotNull(azureSAS,
-        "Azure SAS of generic credential cannot be null");
+    Preconditions.checkNotNull(azureSAS, "Azure SAS of generic credential cannot be null");
 
     return azureSAS.getSasToken();
   }

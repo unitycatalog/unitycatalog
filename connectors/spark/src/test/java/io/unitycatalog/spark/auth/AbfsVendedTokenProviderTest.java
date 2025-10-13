@@ -4,6 +4,7 @@ import static org.apache.hadoop.fs.azurebfs.constants.ConfigurationKeys.FS_AZURE
 import static org.apache.hadoop.fs.azurebfs.constants.ConfigurationKeys.FS_AZURE_SAS_TOKEN_PROVIDER_TYPE;
 import static org.apache.hadoop.fs.azurebfs.services.AuthType.SAS;
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.AssertionsForClassTypes.assertThatThrownBy;
 
 import io.unitycatalog.client.api.TemporaryCredentialsApi;
 import io.unitycatalog.client.model.AzureUserDelegationSAS;
@@ -48,8 +49,10 @@ public class AbfsVendedTokenProviderTest extends BaseTokenProviderTest<AbfsVende
 
   @Override
   protected void setInitialCred(Configuration conf, TemporaryCredentials cred) {
-    conf.set(UCHadoopConf.AZURE_SAS_TOKEN, cred.getAzureUserDelegationSas().getSasToken());
-    conf.setLong(UCHadoopConf.AZURE_SAS_TOKEN_EXPIRED_TIME, cred.getExpirationTime());
+    assertThat(cred.getAzureUserDelegationSas()).isNotNull();
+    assertThat(cred.getExpirationTime()).isNotNull();
+    conf.set(UCHadoopConf.AZURE_INIT_SAS_TOKEN, cred.getAzureUserDelegationSas().getSasToken());
+    conf.setLong(UCHadoopConf.AZURE_INIT_SAS_TOKEN_EXPIRED_TIME, cred.getExpirationTime());
   }
 
   @Override
@@ -60,6 +63,31 @@ public class AbfsVendedTokenProviderTest extends BaseTokenProviderTest<AbfsVende
     AzureUserDelegationSAS expectedSAS = expected.getAzureUserDelegationSas();
 
     assertThat(expectedSAS.getSasToken()).isEqualTo(sasToken);
+  }
+
+  @Test
+  public void testConstructor() {
+    Configuration conf = new Configuration();
+    AbfsVendedTokenProvider provider = new AbfsVendedTokenProvider();
+
+    // Verify the UC URI validation error message.
+    assertThatThrownBy(() -> provider.initialize(conf))
+        .isInstanceOf(NullPointerException.class)
+        .hasMessage("'%s' is not set in hadoop configuration", UCHadoopConf.UC_URI_KEY);
+
+    // Verify the UC Token validation error message.
+    conf.set(UCHadoopConf.UC_URI_KEY, "http://localhost:8080");
+    assertThatThrownBy(() -> provider.initialize(conf))
+        .isInstanceOf(NullPointerException.class)
+        .hasMessage("'%s' is not set in hadoop configuration", UCHadoopConf.UC_TOKEN_KEY);
+
+    // Verify the UID validation error message.
+    conf.set(UCHadoopConf.UC_TOKEN_KEY, "unity-catalog-token");
+    assertThatThrownBy(() -> provider.initialize(conf))
+        .isInstanceOf(IllegalStateException.class)
+        .hasMessage(
+            "Credential UID cannot be null or empty, '%s' is not set in hadoop configuration",
+            UCHadoopConf.UC_CREDENTIALS_UID_KEY);
   }
 
   @Test

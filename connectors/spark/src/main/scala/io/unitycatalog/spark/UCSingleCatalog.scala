@@ -204,7 +204,9 @@ object UCSingleCatalog {
         FS_AZURE_ACCOUNT_AUTH_TYPE_PROPERTY_NAME -> "SAS",
         FS_AZURE_ACCOUNT_IS_HNS_ENABLED -> "true",
         FS_AZURE_SAS_TOKEN_PROVIDER_TYPE -> classOf[AbfsVendedTokenProvider].getName,
-        UCHadoopConf.AZURE_SAS_TOKEN -> azCredentials.getSasToken,
+        UCHadoopConf.AZURE_INIT_SAS_TOKEN -> azCredentials.getSasToken,
+        UCHadoopConf.AZURE_INIT_SAS_TOKEN_EXPIRED_TIME -> String.valueOf(
+          temporaryCredentials.getExpirationTime),
         "fs.abfs.impl.disable.cache" -> "true",
         "fs.abfss.impl.disable.cache" -> "true"
       )

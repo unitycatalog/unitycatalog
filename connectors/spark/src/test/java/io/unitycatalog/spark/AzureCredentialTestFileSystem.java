@@ -11,7 +11,7 @@ public class AzureCredentialTestFileSystem extends CredentialTestFileSystem {
     Configuration conf = getConf();
     String host = f.toUri().getHost();
     if (credentialCheckEnabled) {
-      String mockToken = conf.get(UCHadoopConf.AZURE_SAS_TOKEN);
+      String mockToken = conf.get(UCHadoopConf.AZURE_INIT_SAS_TOKEN);
       if ("test-bucket0".equals(host)) {
         assertThat(mockToken).isEqualTo("tenantId0/clientId0/clientSecret0");
       } else if ("test-bucket1".equals(host)) {

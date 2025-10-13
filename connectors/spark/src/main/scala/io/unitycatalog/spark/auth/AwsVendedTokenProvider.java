@@ -47,7 +47,7 @@ public class AwsVendedTokenProvider extends GenericCredentialProvider
         .temporaryCredentials()
         .getAwsTempCredentials();
     Preconditions.checkNotNull(awsTempCred,
-        "AWS temp credential of generic credential cannot be null");
+        "AWS temp credential of generic credentials cannot be null");
 
     return AwsSessionCredentials.builder()
         .accessKeyId(awsTempCred.getAccessKeyId())
