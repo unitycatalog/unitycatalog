@@ -20,10 +20,15 @@ public abstract class GenericCredentialProvider {
   private static final long DEFAULT_RENEWAL_LEAD_TIME_MILLIS = 30 * 1000;
 
   // The credential cache, for saving QPS to unity catalog server.
-  static final Cache<String, GenericCredential> CACHE = CacheBuilder
-      .newBuilder()
-      .maximumSize(1000)
-      .build();
+  static final Cache<String, GenericCredential> globalCache;
+  private static final String UC_CREDENTIAL_CACHE_MAX_SIZE =
+      "unitycatalog.credential.cache.max.size";
+  private static final long UC_CREDENTIAL_CACHE_MAX_SIZE_DEFAULT = 1024;
+
+  static {
+    long maxSize = Long.getLong(UC_CREDENTIAL_CACHE_MAX_SIZE, UC_CREDENTIAL_CACHE_MAX_SIZE_DEFAULT);
+    globalCache = CacheBuilder.newBuilder().maximumSize(maxSize).build();
+  }
 
   private final Configuration conf;
   private final URI ucUri;
@@ -99,15 +104,15 @@ public abstract class GenericCredentialProvider {
 
   private GenericCredential renewCredential() throws ApiException {
     if (credCacheEnabled) {
-      synchronized (CACHE) {
-        GenericCredential cached = CACHE.getIfPresent(credUid);
+      synchronized (globalCache) {
+        GenericCredential cached = globalCache.getIfPresent(credUid);
         // Use the cached one if existing and valid.
         if (cached != null && !cached.readyToRenew(renewalLeadTimeMillis)) {
           return cached;
         }
         // Renew the credential and update the cache.
         GenericCredential renewed = createGenericCredentials();
-        CACHE.put(credUid, renewed);
+        globalCache.put(credUid, renewed);
         return renewed;
       }
     } else {

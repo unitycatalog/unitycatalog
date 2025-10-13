@@ -32,12 +32,12 @@ public class AwsVendedTokenProviderTest {
 
   @BeforeEach
   public void before() {
-    GenericCredentialProvider.CACHE.invalidateAll();
+    GenericCredentialProvider.globalCache.invalidateAll();
   }
 
   @AfterEach
   public void after() {
-    GenericCredentialProvider.CACHE.invalidateAll();
+    GenericCredentialProvider.globalCache.invalidateAll();
   }
 
   @Test
@@ -362,9 +362,9 @@ public class AwsVendedTokenProviderTest {
 
   private static void assertGlobalCache(int expectedSize, TemporaryCredentials... creds) {
     assertThat(expectedSize).isEqualTo(creds.length);
-    assertThat(AwsVendedTokenProvider.CACHE.size()).isEqualTo(expectedSize);
+    assertThat(AwsVendedTokenProvider.globalCache.size()).isEqualTo(expectedSize);
     for (TemporaryCredentials cred : creds) {
-      assertThat(AwsVendedTokenProvider.CACHE.asMap().values())
+      assertThat(AwsVendedTokenProvider.globalCache.asMap().values())
           .contains(new GenericCredential(cred));
     }
   }
