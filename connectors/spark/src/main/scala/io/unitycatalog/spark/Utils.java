@@ -13,6 +13,7 @@ import io.unitycatalog.client.model.TemporaryCredentials;
 import io.unitycatalog.spark.auth.AwsVendedTokenProvider;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.UUID;
 import org.sparkproject.guava.collect.ImmutableMap;
 
 public class Utils {
@@ -36,6 +37,7 @@ public class Utils {
     // Set the unity catalog URI and token.
     map.put(UCHadoopConf.UC_URI_KEY, uri);
     map.put(UCHadoopConf.UC_TOKEN_KEY, token);
+    map.put(UCHadoopConf.UC_CREDENTIALS_UID_KEY, UUID.randomUUID().toString());
 
     // Set the temporary credentials requests to unity catalog.
     map.put(UCHadoopConf.UC_CREDENTIALS_TYPE_KEY, UCHadoopConf.UC_CREDENTIALS_TYPE_TABLE_VALUE);
@@ -68,6 +70,7 @@ public class Utils {
     // Set the unity catalog URI and token.
     map.put(UCHadoopConf.UC_URI_KEY, uri);
     map.put(UCHadoopConf.UC_TOKEN_KEY, token);
+    map.put(UCHadoopConf.UC_CREDENTIALS_UID_KEY, UUID.randomUUID().toString());
 
     // Set the temporary credentials requests to unity catalog.
     map.put(UCHadoopConf.UC_CREDENTIALS_TYPE_KEY, UCHadoopConf.UC_CREDENTIALS_TYPE_PATH_VALUE);
@@ -131,7 +134,7 @@ public class Utils {
       case "abfs":
         return abfsProps(tempCreds);
       default:
-        throw new IllegalArgumentException("Unsupported scheme " + scheme);
+        throw new IllegalArgumentException("Unsupported FileSystem scheme " + scheme);
     }
   }
 

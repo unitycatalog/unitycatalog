@@ -39,7 +39,8 @@ class UCSingleCatalog
 
   override def initialize(name: String, options: CaseInsensitiveStringMap): Unit = {
     val urlStr = options.get("uri")
-    Preconditions.checkArgument(urlStr != null, s"uri must be specified for Unity Catalog '$name'")
+    Preconditions.checkArgument(urlStr != null,
+      "uri must be specified for Unity Catalog '%s'", name)
     uri = new URI(urlStr)
     token = options.get("token")
 
@@ -184,7 +185,8 @@ private class UCProxy(
     this.name = name
 
     val urlStr = options.get("uri")
-    Preconditions.checkArgument(urlStr != null, s"uri must be specified for Unity Catalog '$name'")
+    Preconditions.checkArgument(urlStr != null,
+      "uri must be specified for Unity Catalog '%s'", name)
     uri = new URI(urlStr)
     token = options.get("token")
 
