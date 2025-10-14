@@ -46,7 +46,7 @@ class UCSingleCatalog
 
     apiClient = ApiClientFactory.createApiClient(uri, token)
     temporaryCredentialsApi = new TemporaryCredentialsApi(apiClient)
-    val proxy = new UCProxy(apiClient, temporaryCredentialsApi)
+    val proxy = new UCProxy(uri, token, apiClient, temporaryCredentialsApi)
     proxy.initialize(name, options)
     if (Utils.LOAD_DELTA_CATALOG.get()) {
       try {
@@ -173,22 +173,16 @@ class UCSingleCatalog
 
 // An internal proxy to talk to the UC client.
 private class UCProxy(
+    uri: URI,
+    token: String,
     apiClient: ApiClient,
     temporaryCredentialsApi: TemporaryCredentialsApi) extends TableCatalog with SupportsNamespaces {
   private[this] var name: String = null
-  private[this] var uri: URI = null
-  private[this] var token: String = null
   private[this] var tablesApi: TablesApi = null
   private[this] var schemasApi: SchemasApi = null
 
   override def initialize(name: String, options: CaseInsensitiveStringMap): Unit = {
     this.name = name
-
-    val urlStr = options.get("uri")
-    Preconditions.checkArgument(urlStr != null,
-      "uri must be specified for Unity Catalog '%s'", name)
-    uri = new URI(urlStr)
-    token = options.get("token")
 
     tablesApi = new TablesApi(apiClient)
     schemasApi = new SchemasApi(apiClient)

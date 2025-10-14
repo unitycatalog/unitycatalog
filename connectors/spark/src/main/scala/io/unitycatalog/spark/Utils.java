@@ -45,12 +45,20 @@ public class Utils {
     map.put(UCHadoopConf.UC_TABLE_OPERATION_KEY, tableOp.toString());
 
     // Set the initialized temporary credential.
-    AwsCredentials awsCred = new AwsCredentials();
+    AwsCredentials awsCred = tempCreds.getAwsTempCredentials();
     map.put(UCHadoopConf.S3A_INIT_ACCESS_KEY, awsCred.getAccessKeyId());
     map.put(UCHadoopConf.S3A_INIT_SECRET_KEY, awsCred.getSecretAccessKey());
     map.put(UCHadoopConf.S3A_INIT_SESSION_TOKEN, awsCred.getSessionToken());
     map.put(UCHadoopConf.S3A_INIT_CRED_EXPIRED_TIME,
         String.valueOf(tempCreds.getExpirationTime()));
+
+    map.put("fs.s3a.access.key", awsCred.getAccessKeyId());
+    map.put("fs.s3a.secret.key", awsCred.getSecretAccessKey());
+    map.put("fs.s3a.session.token", awsCred.getSessionToken());
+
+    map.put("fs.s3a.path.style.access", "true");
+    map.put("fs.s3.impl.disable.cache", "true");
+    map.put("fs.s3a.impl.disable.cache", "true");
 
     return ImmutableMap.copyOf(map);
   }
@@ -78,12 +86,20 @@ public class Utils {
     map.put(UCHadoopConf.UC_PATH_OPERATION_KEY, pathOp.toString());
 
     // Set the initialized temporary credential.
-    AwsCredentials awsCred = new AwsCredentials();
+    AwsCredentials awsCred = tempCreds.getAwsTempCredentials();
     map.put(UCHadoopConf.S3A_INIT_ACCESS_KEY, awsCred.getAccessKeyId());
     map.put(UCHadoopConf.S3A_INIT_SECRET_KEY, awsCred.getSecretAccessKey());
     map.put(UCHadoopConf.S3A_INIT_SESSION_TOKEN, awsCred.getSessionToken());
     map.put(UCHadoopConf.S3A_INIT_CRED_EXPIRED_TIME,
         String.valueOf(tempCreds.getExpirationTime()));
+
+    map.put("fs.s3a.access.key", awsCred.getAccessKeyId());
+    map.put("fs.s3a.secret.key", awsCred.getSecretAccessKey());
+    map.put("fs.s3a.session.token", awsCred.getSessionToken());
+
+    map.put("fs.s3a.path.style.access", "true");
+    map.put("fs.s3.impl.disable.cache", "true");
+    map.put("fs.s3a.impl.disable.cache", "true");
 
     return ImmutableMap.copyOf(map);
   }
