@@ -49,8 +49,11 @@ public class Utils {
     map.put(UCHadoopConf.S3A_INIT_ACCESS_KEY, awsCred.getAccessKeyId());
     map.put(UCHadoopConf.S3A_INIT_SECRET_KEY, awsCred.getSecretAccessKey());
     map.put(UCHadoopConf.S3A_INIT_SESSION_TOKEN, awsCred.getSessionToken());
-    map.put(UCHadoopConf.S3A_INIT_CRED_EXPIRED_TIME,
-        String.valueOf(tempCreds.getExpirationTime()));
+    // For the static credential case, it's totally possible for expiration time to be null.
+    if (tempCreds.getExpirationTime() != null) {
+      map.put(UCHadoopConf.S3A_INIT_CRED_EXPIRED_TIME,
+          String.valueOf(tempCreds.getExpirationTime()));
+    }
 
     map.put("fs.s3a.access.key", awsCred.getAccessKeyId());
     map.put("fs.s3a.secret.key", awsCred.getSecretAccessKey());
@@ -90,8 +93,11 @@ public class Utils {
     map.put(UCHadoopConf.S3A_INIT_ACCESS_KEY, awsCred.getAccessKeyId());
     map.put(UCHadoopConf.S3A_INIT_SECRET_KEY, awsCred.getSecretAccessKey());
     map.put(UCHadoopConf.S3A_INIT_SESSION_TOKEN, awsCred.getSessionToken());
-    map.put(UCHadoopConf.S3A_INIT_CRED_EXPIRED_TIME,
-        String.valueOf(tempCreds.getExpirationTime()));
+    // For the static credential case, it's totally possible for expiration time to be null.
+    if (tempCreds.getExpirationTime() != null) {
+      map.put(UCHadoopConf.S3A_INIT_CRED_EXPIRED_TIME,
+          String.valueOf(tempCreds.getExpirationTime()));
+    }
 
     map.put("fs.s3a.access.key", awsCred.getAccessKeyId());
     map.put("fs.s3a.secret.key", awsCred.getSecretAccessKey());
