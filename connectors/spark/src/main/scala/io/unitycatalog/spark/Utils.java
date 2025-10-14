@@ -32,7 +32,7 @@ public class Utils {
       TemporaryCredentials tempCreds) {
     Map<String, String> map = new HashMap<>();
     // Set to use the AwsVendedTokenProvider
-    map.put("fs.s3a.aws.credentials.provider", AwsVendedTokenProvider.class.getName());
+    map.put(UCHadoopConf.S3A_CREDENTIALS_PROVIDER, AwsVendedTokenProvider.class.getName());
 
     // Set the unity catalog URI and token.
     map.put(UCHadoopConf.UC_URI_KEY, uri);
@@ -65,7 +65,7 @@ public class Utils {
     Map<String, String> map = new HashMap<>();
 
     // Set to use the AwsVendedTokenProvider
-    map.put("fs.s3a.aws.credentials.provider", AwsVendedTokenProvider.class.getName());
+    map.put(UCHadoopConf.S3A_CREDENTIALS_PROVIDER, AwsVendedTokenProvider.class.getName());
 
     // Set the unity catalog URI and token.
     map.put(UCHadoopConf.UC_URI_KEY, uri);
@@ -115,7 +115,7 @@ public class Utils {
     map.put("fs.abfs.impl.disable.cache", "true");
     map.put("fs.abfss.impl.disable.cache", "true");
 
-    return new HashMap<>();
+    return ImmutableMap.copyOf(map);
   }
 
   public static Map<String, String> createTableCredProps(
@@ -126,7 +126,7 @@ public class Utils {
       TableOperation tableOp,
       TemporaryCredentials tempCreds) {
     switch (scheme) {
-      case "s3a":
+      case "s3":
         return s3TableCredProps(uri, token, tableId, tableOp, tempCreds);
       case "gs":
         return gsProps(tempCreds);
@@ -134,7 +134,7 @@ public class Utils {
       case "abfs":
         return abfsProps(tempCreds);
       default:
-        throw new IllegalArgumentException("Unsupported FileSystem scheme " + scheme);
+        return ImmutableMap.of();
     }
   }
 
@@ -146,7 +146,7 @@ public class Utils {
       PathOperation pathOp,
       TemporaryCredentials tempCreds) {
     switch (scheme) {
-      case "s3a":
+      case "s3":
         return s3PathCredProps(uri, token, path, pathOp, tempCreds);
       case "gs":
         return gsProps(tempCreds);
@@ -154,7 +154,7 @@ public class Utils {
       case "abfs":
         return abfsProps(tempCreds);
       default:
-        throw new IllegalArgumentException("Unsupported scheme " + scheme);
+        return ImmutableMap.of();
     }
   }
 }

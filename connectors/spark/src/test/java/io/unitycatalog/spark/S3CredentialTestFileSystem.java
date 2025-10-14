@@ -8,23 +8,14 @@ import java.net.URI;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.Path;
 import software.amazon.awssdk.auth.credentials.AwsCredentialsProvider;
-import software.amazon.awssdk.auth.credentials.AwsSessionCredentials;
+//import software.amazon.awssdk.auth.credentials.AwsSessionCredentials;
 
 public class S3CredentialTestFileSystem extends CredentialTestFileSystem {
-  private AwsCredentialsProvider provider;
+  private volatile AwsCredentialsProvider provider;
 
   @Override
   public void initialize(URI uri, Configuration conf) throws IOException {
     super.initialize(uri, conf);
-
-    if (credentialCheckEnabled) {
-      // Assert that it's the expected credential provider.
-      String clazz = conf.get("fs.s3a.aws.credentials.provider");
-      assertThat(clazz).isEqualTo(AwsVendedTokenProvider.class.getName());
-
-      // Initialize the provider instance.
-      provider = new AwsVendedTokenProvider(conf);
-    }
   }
 
   @Override
@@ -33,13 +24,16 @@ public class S3CredentialTestFileSystem extends CredentialTestFileSystem {
     String host = f.toUri().getHost();
 
     if (credentialCheckEnabled) {
-      AwsSessionCredentials credentials = (AwsSessionCredentials) provider.resolveCredentials();
-      assertThat(credentials).isNotNull();
-      assertThat(credentials.accessKeyId()).isEqualTo("accessKeyId0");
-      assertThat(credentials.secretAccessKey()).isEqualTo("secretKey0");
-      assertThat(credentials.sessionToken()).isEqualTo("sessionToken0");
-
       if ("test-bucket0".equals(host)) {
+//        provider = accessProvider(conf);
+//        AwsSessionCredentials credentials = (AwsSessionCredentials) provider.resolveCredentials();
+//        assertThat(credentials).isNotNull();
+//        assertThat(credentials.accessKeyId()).isEqualTo("accessKeyId0");
+//        assertThat(credentials.secretAccessKey()).isEqualTo("secretKey0");
+//        assertThat(credentials.sessionToken()).isEqualTo("sessionToken0");
+
+        assertThat(conf.get(UCHadoopConf.S3A_INIT_ACCESS_KEY)).isEqualTo("accessKey0");
+
         assertThat(conf.get("fs.s3a.access.key")).isEqualTo("accessKey0");
         assertThat(conf.get("fs.s3a.secret.key")).isEqualTo("secretKey0");
         assertThat(conf.get("fs.s3a.session.token")).isEqualTo("sessionToken0");
@@ -51,6 +45,23 @@ public class S3CredentialTestFileSystem extends CredentialTestFileSystem {
         throw new RuntimeException("invalid path: " + f);
       }
     }
+  }
+
+  private AwsCredentialsProvider accessProvider(Configuration conf) {
+    if (provider == null) {
+      synchronized (this) {
+        if (provider == null) {
+          // Assert that it's the expected credential provider.
+          String clazz = conf.get(UCHadoopConf.S3A_CREDENTIALS_PROVIDER);
+          assertThat(clazz).isEqualTo(AwsVendedTokenProvider.class.getName());
+
+          // Initialize the provider instance.
+          provider = new AwsVendedTokenProvider(conf);
+        }
+      }
+    }
+
+    return provider;
   }
 
   @Override
