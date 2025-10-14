@@ -187,100 +187,103 @@ public abstract class BaseTokenProviderTest<T extends GenericCredentialProvider>
 
   @Test
   public void testGlobalCredCache() throws Exception {
-    Configuration confA = newTableBasedConf("tableA");
-    Configuration confB = newTableBasedConf("tableB");
-    Configuration confC = newPathBasedConf("pathC");
-    Configuration confD = newPathBasedConf("pathD");
+    Configuration tableAconf = newTableBasedConf("tableA");
+    Configuration tableBconf = newTableBasedConf("tableB");
+    Configuration pathAconf = newPathBasedConf("pathA");
+    Configuration pathBconf = newPathBasedConf("pathB");
 
     TemporaryCredentialsApi tempCredApi = mock(TemporaryCredentialsApi.class);
+    // Mock the temporary table credential API.
     // For TableA's 1st renewal
-    TemporaryCredentials cred1 = newTempCred("1", System.currentTimeMillis() + 2000L);
+    TemporaryCredentials tableACred1 = newTempCred("table_A1", System.currentTimeMillis() + 2000L);
     // For TableB's 1st renewal
-    TemporaryCredentials cred2 = newTempCred("2", System.currentTimeMillis() + 2000L);
-    // For PathC's 1st renewal
-    TemporaryCredentials cred3 = newTempCred("3", System.currentTimeMillis() + 2000L);
-    // For PathD's 1st renewal
-    TemporaryCredentials cred4 = newTempCred("4", System.currentTimeMillis() + 2000L);
+    TemporaryCredentials tableBCred1 = newTempCred("table_B1", System.currentTimeMillis() + 2000L);
     // For TableA's 2nd renewal
-    TemporaryCredentials cred5 = newTempCred("5", System.currentTimeMillis() + 3000L);
+    TemporaryCredentials tableACred2 = newTempCred("table_A2", System.currentTimeMillis() + 3000L);
     // For TableB's 2nd renewal
-    TemporaryCredentials cred6 = newTempCred("6", System.currentTimeMillis() + 3000L);
-    // For PathC's 2nd renewal
-    TemporaryCredentials cred7 = newTempCred("7", System.currentTimeMillis() + 3000L);
-    // For PathD's 2nd renewal
-    TemporaryCredentials cred8 = newTempCred("8", System.currentTimeMillis() + 3000L);
+    TemporaryCredentials tableBCred2 = newTempCred("table_B2", System.currentTimeMillis() + 3000L);
     when(tempCredApi.generateTemporaryTableCredentials(any()))
-        .thenReturn(cred1)
-        .thenReturn(cred2)
-        .thenReturn(cred5)
-        .thenReturn(cred6);
+        .thenReturn(tableACred1)
+        .thenReturn(tableBCred1)
+        .thenReturn(tableACred2)
+        .thenReturn(tableBCred2);
+
+    // Mock the temporary path credential API.
+    // For PathA's 1st renewal
+    TemporaryCredentials pathACred1 = newTempCred("path_A1", System.currentTimeMillis() + 2000L);
+    // For PathB's 1st renewal
+    TemporaryCredentials pathBCred1 = newTempCred("path_B1", System.currentTimeMillis() + 2000L);
+    // For PathA's 2nd renewal
+    TemporaryCredentials pathACred2 = newTempCred("path_A2", System.currentTimeMillis() + 3000L);
+    // For PathB's 2nd renewal
+    TemporaryCredentials pathBCred2 = newTempCred("path_B2", System.currentTimeMillis() + 3000L);
     when(tempCredApi.generateTemporaryPathCredentials(any()))
-        .thenReturn(cred3)
-        .thenReturn(cred4)
-        .thenReturn(cred7)
-        .thenReturn(cred8);
+        .thenReturn(pathACred1)
+        .thenReturn(pathBCred1)
+        .thenReturn(pathACred2)
+        .thenReturn(pathBCred2);
 
-    T providerA = createTestProvider(confA, tempCredApi);
-    providerA.setRenewalLeadTimeMillis(1000L);
+    T providerTableA = createTestProvider(tableAconf, tempCredApi);
+    providerTableA.setRenewalLeadTimeMillis(1000L);
 
-    T providerB = createTestProvider(confB, tempCredApi);
-    providerB.setRenewalLeadTimeMillis(1000L);
+    T providerTableB = createTestProvider(tableBconf, tempCredApi);
+    providerTableB.setRenewalLeadTimeMillis(1000L);
 
-    T providerC = createTestProvider(confC, tempCredApi);
-    providerC.setRenewalLeadTimeMillis(1000L);
+    T providerPathA = createTestProvider(pathAconf, tempCredApi);
+    providerPathA.setRenewalLeadTimeMillis(1000L);
 
-    T providerD = createTestProvider(confD, tempCredApi);
-    providerD.setRenewalLeadTimeMillis(1000L);
+    T providerPathB = createTestProvider(pathBconf, tempCredApi);
+    providerPathB.setRenewalLeadTimeMillis(1000L);
 
     // TableA: 1st access.
-    assertCred(providerA, cred1);
-    assertGlobalCache(1, cred1);
+    assertCred(providerTableA, tableACred1);
+    assertGlobalCache(1, tableACred1);
 
     // TableB: 1st access.
-    assertCred(providerB, cred2);
-    assertGlobalCache(2, cred1, cred2);
+    assertCred(providerTableB, tableBCred1);
+    assertGlobalCache(2, tableACred1, tableBCred1);
 
-    // PathC: 1st access.
-    assertCred(providerC, cred3);
-    assertGlobalCache(3, cred1, cred2, cred3);
+    // PathA: 1st access.
+    assertCred(providerPathA, pathACred1);
+    assertGlobalCache(3, tableACred1, tableBCred1, pathACred1);
 
-    // PathD: 1st access.
-    assertCred(providerD, cred4);
-    assertGlobalCache(4, cred1, cred2, cred3, cred4);
+    // PathB: 1st access.
+    assertCred(providerPathB, pathBCred1);
+    assertGlobalCache(4, tableACred1, tableBCred1, pathACred1, pathBCred1);
 
     // TableA: 2nd access.
-    assertCred(providerA, cred1);
-    assertGlobalCache(4, cred1, cred2, cred3, cred4);
+    assertCred(providerTableA, tableACred1);
+    assertGlobalCache(4, tableACred1, tableBCred1, pathACred1, pathBCred1);
 
     // TableB: 2nd access.
-    assertCred(providerB, cred2);
-    assertGlobalCache(4, cred1, cred2, cred3, cred4);
+    assertCred(providerTableB, tableBCred1);
+    assertGlobalCache(4, tableACred1, tableBCred1, pathACred1, pathBCred1);
 
-    // PathC: 2nd access.
-    assertCred(providerC, cred3);
-    assertGlobalCache(4, cred1, cred2, cred3, cred4);
+    // PathA: 2nd access.
+    assertCred(providerPathA, pathACred1);
+    assertGlobalCache(4, tableACred1, tableBCred1, pathACred1, pathBCred1);
 
-    // PathD: 2nd access.
-    assertCred(providerC, cred3);
-    assertGlobalCache(4, cred1, cred2, cred3, cred4);
+    // PathB: 2nd access.
+    assertCred(providerPathA, pathACred1);
+    assertGlobalCache(4, tableACred1, tableBCred1, pathACred1, pathBCred1);
 
     Thread.sleep(1000L);
 
-    // TableA: 3rd access. renew cred1 to cred5.
-    assertCred(providerA, cred5);
-    assertGlobalCache(4, cred5, cred2, cred3, cred4);
+    // TableA: 3rd access. renew tableACred1 to tableACred2.
+    assertCred(providerTableA, tableACred2);
+    assertGlobalCache(4, tableACred2, tableBCred1, pathACred1, pathBCred1);
 
-    // TableB: 3rd access. renew cred2 to cred6.
-    assertCred(providerB, cred6);
-    assertGlobalCache(4, cred5, cred6, cred3, cred4);
+    // TableB: 3rd access. renew tableBCred1 to tableBCred2.
+    assertCred(providerTableB, tableBCred2);
+    assertGlobalCache(4, tableACred2, tableBCred2, pathACred1, pathBCred1);
 
-    // PathC: 3rd access. renew cred3 to cred7.
-    assertCred(providerC, cred7);
-    assertGlobalCache(4, cred5, cred6, cred7, cred4);
+    // PathA: 3rd access. renew pathACred1 to pathACred2.
+    assertCred(providerPathA, pathACred2);
+    assertGlobalCache(4, tableACred2, tableBCred2, pathACred2, pathBCred1);
 
-    // PathD: 3rd access. renew cred4 to cred8.
-    assertCred(providerD, cred8);
-    assertGlobalCache(4, cred5, cred6, cred7, cred8);
+    // PathB: 3rd access. renew pathBCred1 to pathBCred2.
+    assertCred(providerPathB, pathBCred2);
+    assertGlobalCache(4, tableACred2, tableBCred2, pathACred2, pathBCred2);
   }
 
   private static void assertGlobalCache(int expectedSize, TemporaryCredentials... creds) {
