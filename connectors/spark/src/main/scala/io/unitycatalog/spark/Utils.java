@@ -10,6 +10,7 @@ import io.unitycatalog.client.model.GcpOauthToken;
 import io.unitycatalog.client.model.PathOperation;
 import io.unitycatalog.client.model.TableOperation;
 import io.unitycatalog.client.model.TemporaryCredentials;
+import io.unitycatalog.spark.auth.AbfsVendedTokenProvider;
 import io.unitycatalog.spark.auth.AwsVendedTokenProvider;
 import java.util.HashMap;
 import java.util.Map;
