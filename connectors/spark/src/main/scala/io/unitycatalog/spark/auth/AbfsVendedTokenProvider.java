@@ -7,6 +7,7 @@ import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.shaded.com.google.common.base.Preconditions;
 
 public class AbfsVendedTokenProvider extends GenericCredentialProvider implements SASTokenProvider {
+  public static final String ACCESS_TOKEN_KEY = "fs.azure.sas.fixed.token";
 
   @Override
   public void initialize(Configuration conf, String accountName) {

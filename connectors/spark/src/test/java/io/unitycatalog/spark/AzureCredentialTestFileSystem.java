@@ -2,6 +2,7 @@ package io.unitycatalog.spark;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import io.unitycatalog.spark.auth.AbfsVendedTokenProvider;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.Path;
 
@@ -11,7 +12,7 @@ public class AzureCredentialTestFileSystem extends CredentialTestFileSystem {
     Configuration conf = getConf();
     String host = f.toUri().getHost();
     if (credentialCheckEnabled) {
-      String mockToken = conf.get(UCHadoopConf.AZURE_INIT_SAS_TOKEN);
+      String mockToken = conf.get(AbfsVendedTokenProvider.ACCESS_TOKEN_KEY);
       if ("test-bucket0".equals(host)) {
         assertThat(mockToken).isEqualTo("tenantId0/clientId0/clientSecret0");
       } else if ("test-bucket1".equals(host)) {
