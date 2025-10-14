@@ -22,7 +22,7 @@ public abstract class GenericCredentialProvider {
   // The credential cache, for saving QPS to unity catalog server.
   static final Cache<String, GenericCredential> globalCache;
   private static final String UC_CREDENTIAL_CACHE_MAX_SIZE =
-      "unitycatalog.credential.cache.max.size";
+      "unitycatalog.credential.cache.maxSize";
   private static final long UC_CREDENTIAL_CACHE_MAX_SIZE_DEFAULT = 1024;
 
   static {
