@@ -65,10 +65,10 @@ public abstract class BaseTokenProviderTest<T extends GenericCredentialProvider>
     // Use the cred1 for the 2nd access, since it's valid.
     assertCred(provider, cred1);
 
-    // Sleep to renew, cred2 will be valid.
+    // Advance the clock to trigger renewal, cred2 will be valid.
     clock.advance(Duration.ofMillis(1000));
 
-    // Use the cred2 for the 3rd access, since renew happened.
+    // Use the cred2 for the 3rd access, since renewal happened.
     assertCred(provider, cred2);
 
     // Use the cred2 for the 4th access.
