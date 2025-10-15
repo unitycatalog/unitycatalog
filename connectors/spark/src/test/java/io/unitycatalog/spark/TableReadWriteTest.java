@@ -15,6 +15,7 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
+import java.util.stream.Collectors;
 import org.apache.spark.network.util.JavaUtils;
 import org.apache.spark.sql.Dataset;
 import org.apache.spark.sql.Row;
@@ -155,7 +156,6 @@ public class TableReadWriteTest extends BaseSparkIntegrationTest {
 
   @ParameterizedTest
   @CsvSource({"s3, true", "s3, false", "gs, true", "abfs, true"})
-  // @CsvSource({"s3, false"})
   public void testCredentialParquet(String scheme, boolean fixedCredEnabled)
       throws ApiException, IOException {
     SparkSession session = createSparkSessionWithCatalogs(SPARK_CATALOG);
@@ -576,8 +576,7 @@ public class TableReadWriteTest extends BaseSparkIntegrationTest {
       String keyValues =
           tableProps.entrySet().stream()
               .map(e -> String.format("'%s'='%s'", e.getKey(), e.getValue()))
-              .reduce((a, b) -> a + ", " + b)
-              .get();
+              .collect(Collectors.joining(", "));
       tablePropsClause = String.format(" TBLPROPERTIES (%s)", keyValues);
     }
 
