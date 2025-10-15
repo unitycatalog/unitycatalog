@@ -14,6 +14,7 @@ import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
+import java.util.Map;
 import org.apache.spark.network.util.JavaUtils;
 import org.apache.spark.sql.Dataset;
 import org.apache.spark.sql.Row;
@@ -23,7 +24,8 @@ import org.apache.spark.sql.types.StructType;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
-import org.junit.jupiter.params.provider.ValueSource;
+import org.junit.jupiter.params.provider.CsvSource;
+import org.sparkproject.guava.collect.ImmutableMap;
 
 public class TableReadWriteTest extends BaseSparkIntegrationTest {
 
@@ -152,18 +154,28 @@ public class TableReadWriteTest extends BaseSparkIntegrationTest {
   }
 
   @ParameterizedTest
-  @ValueSource(strings = {"s3", "gs", "abfs"})
-  public void testCredentialParquet(String scheme) throws ApiException, IOException {
+  @CsvSource({"s3, true", "s3, false", "gs, true", "abfs, true"})
+  // @CsvSource({"s3, false"})
+  public void testCredentialParquet(String scheme, boolean fixedCredEnabled)
+      throws ApiException, IOException {
     SparkSession session = createSparkSessionWithCatalogs(SPARK_CATALOG);
 
     String loc1 = scheme + "://test-bucket0" + generateTableLocation(SPARK_CATALOG, PARQUET_TABLE);
-    setupExternalParquetTable(PARQUET_TABLE, loc1, new ArrayList<>(0));
+    setupExternalParquetTable(
+        PARQUET_TABLE,
+        loc1,
+        new ArrayList<>(0),
+        ImmutableMap.of(TableProps.FIXED_CREDENTIAL_ENABLED, String.valueOf(fixedCredEnabled)));
     String t1 = SPARK_CATALOG + "." + SCHEMA_NAME + "." + PARQUET_TABLE;
     testTableReadWrite(t1, session);
 
     String loc2 =
         scheme + "://test-bucket1" + generateTableLocation(SPARK_CATALOG, ANOTHER_PARQUET_TABLE);
-    setupExternalParquetTable(ANOTHER_PARQUET_TABLE, loc2, new ArrayList<>(0));
+    setupExternalParquetTable(
+        ANOTHER_PARQUET_TABLE,
+        loc2,
+        new ArrayList<>(0),
+        ImmutableMap.of(TableProps.FIXED_CREDENTIAL_ENABLED, String.valueOf(fixedCredEnabled)));
     String t2 = SPARK_CATALOG + "." + SCHEMA_NAME + "." + ANOTHER_PARQUET_TABLE;
     testTableReadWrite(t2, session);
 
@@ -178,17 +190,30 @@ public class TableReadWriteTest extends BaseSparkIntegrationTest {
   }
 
   @ParameterizedTest
-  @ValueSource(strings = {"s3", "gs", "abfs"})
-  public void testCredentialDelta(String scheme) throws ApiException, IOException {
+  @CsvSource({"s3, true", "s3, false", "gs, true", "abfs, true"})
+  public void testCredentialDelta(String scheme, boolean fixedCredEnabled)
+      throws ApiException, IOException {
     SparkSession session = createSparkSessionWithCatalogs(SPARK_CATALOG, CATALOG_NAME);
 
     String loc0 = scheme + "://test-bucket0" + generateTableLocation(SPARK_CATALOG, DELTA_TABLE);
-    setupExternalDeltaTable(SPARK_CATALOG, DELTA_TABLE, loc0, new ArrayList<>(0), session);
+    setupExternalDeltaTable(
+        SPARK_CATALOG,
+        DELTA_TABLE,
+        loc0,
+        new ArrayList<>(0),
+        session,
+        ImmutableMap.of(TableProps.FIXED_CREDENTIAL_ENABLED, String.valueOf(fixedCredEnabled)));
     String t1 = SPARK_CATALOG + "." + SCHEMA_NAME + "." + DELTA_TABLE;
     testTableReadWrite(t1, session);
 
     String loc1 = scheme + "://test-bucket1" + generateTableLocation(CATALOG_NAME, DELTA_TABLE);
-    setupExternalDeltaTable(CATALOG_NAME, DELTA_TABLE, loc1, new ArrayList<>(0), session);
+    setupExternalDeltaTable(
+        CATALOG_NAME,
+        DELTA_TABLE,
+        loc1,
+        new ArrayList<>(0),
+        session,
+        ImmutableMap.of(TableProps.FIXED_CREDENTIAL_ENABLED, String.valueOf(fixedCredEnabled)));
     String t2 = CATALOG_NAME + "." + SCHEMA_NAME + "." + DELTA_TABLE;
     testTableReadWrite(t2, session);
 
@@ -203,18 +228,27 @@ public class TableReadWriteTest extends BaseSparkIntegrationTest {
   }
 
   @ParameterizedTest
-  @ValueSource(strings = {"s3", "gs", "abfs"})
-  public void testCredentialCreateDeltaTable(String scheme) throws IOException {
+  @CsvSource({"s3, true", "s3, false", "gs, true", "abfs, true"})
+  public void testCredentialCreateDeltaTable(String scheme, boolean fixedCredEnabled)
+      throws IOException {
     SparkSession session = createSparkSessionWithCatalogs(SPARK_CATALOG, CATALOG_NAME);
 
     String loc1 = scheme + "://test-bucket0" + generateTableLocation(SPARK_CATALOG, DELTA_TABLE);
-    setupDeltaTableLocation(session, loc1, new ArrayList<>(0));
+    setupDeltaTableLocation(
+        session,
+        loc1,
+        new ArrayList<>(0),
+        ImmutableMap.of(TableProps.FIXED_CREDENTIAL_ENABLED, String.valueOf(fixedCredEnabled)));
     String t1 = SPARK_CATALOG + "." + SCHEMA_NAME + "." + DELTA_TABLE;
     session.sql(String.format("CREATE TABLE %s USING delta LOCATION '%s'", t1, loc1));
     testTableReadWrite(t1, session);
 
     String loc2 = scheme + "://test-bucket1" + generateTableLocation(CATALOG_NAME, DELTA_TABLE);
-    setupDeltaTableLocation(session, loc2, new ArrayList<>(0));
+    setupDeltaTableLocation(
+        session,
+        loc2,
+        new ArrayList<>(0),
+        ImmutableMap.of(TableProps.FIXED_CREDENTIAL_ENABLED, String.valueOf(fixedCredEnabled)));
     String t2 = CATALOG_NAME + "." + SCHEMA_NAME + "." + DELTA_TABLE;
     session.sql(String.format("CREATE TABLE %s USING delta LOCATION '%s'", t2, loc2));
     testTableReadWrite(t2, session);
@@ -238,12 +272,19 @@ public class TableReadWriteTest extends BaseSparkIntegrationTest {
   }
 
   @ParameterizedTest
-  @ValueSource(strings = {"s3", "gs", "abfs"})
-  public void testDeleteDeltaTable(String scheme) throws ApiException, IOException {
+  @CsvSource({"s3, true", "s3, false", "gs, true", "abfs, true"})
+  public void testDeleteDeltaTable(String scheme, boolean fixedCredEnabled)
+      throws ApiException, IOException {
     SparkSession session = createSparkSessionWithCatalogs(SPARK_CATALOG);
 
     String loc1 = scheme + "://test-bucket0" + generateTableLocation(SPARK_CATALOG, DELTA_TABLE);
-    setupExternalDeltaTable(SPARK_CATALOG, DELTA_TABLE, loc1, new ArrayList<>(0), session);
+    setupExternalDeltaTable(
+        SPARK_CATALOG,
+        DELTA_TABLE,
+        loc1,
+        new ArrayList<>(0),
+        session,
+        ImmutableMap.of(TableProps.FIXED_CREDENTIAL_ENABLED, String.valueOf(fixedCredEnabled)));
     String t1 = SPARK_CATALOG + "." + SCHEMA_NAME + "." + DELTA_TABLE;
     testTableReadWrite(t1, session);
 
@@ -255,18 +296,31 @@ public class TableReadWriteTest extends BaseSparkIntegrationTest {
   }
 
   @ParameterizedTest
-  @ValueSource(strings = {"s3", "gs", "abfs"})
-  public void testMergeDeltaTable(String scheme) throws ApiException, IOException {
+  @CsvSource({"s3, true", "s3, false", "gs, true", "abfs, true"})
+  public void testMergeDeltaTable(String scheme, boolean fixedCredEnabled)
+      throws ApiException, IOException {
     SparkSession session = createSparkSessionWithCatalogs(SPARK_CATALOG, CATALOG_NAME);
 
     String loc1 = scheme + "://test-bucket0" + generateTableLocation(SPARK_CATALOG, DELTA_TABLE);
-    setupExternalDeltaTable(SPARK_CATALOG, DELTA_TABLE, loc1, new ArrayList<>(0), session);
+    setupExternalDeltaTable(
+        SPARK_CATALOG,
+        DELTA_TABLE,
+        loc1,
+        new ArrayList<>(0),
+        session,
+        ImmutableMap.of(TableProps.FIXED_CREDENTIAL_ENABLED, String.valueOf(fixedCredEnabled)));
     String t1 = SPARK_CATALOG + "." + SCHEMA_NAME + "." + DELTA_TABLE;
     session.sql("INSERT INTO " + t1 + " SELECT 1, 'a'");
 
     String loc2 =
         scheme + "://test-bucket1" + generateTableLocation(CATALOG_NAME, ANOTHER_DELTA_TABLE);
-    setupExternalDeltaTable(CATALOG_NAME, ANOTHER_DELTA_TABLE, loc2, new ArrayList<>(0), session);
+    setupExternalDeltaTable(
+        CATALOG_NAME,
+        ANOTHER_DELTA_TABLE,
+        loc2,
+        new ArrayList<>(0),
+        session,
+        ImmutableMap.of(TableProps.FIXED_CREDENTIAL_ENABLED, String.valueOf(fixedCredEnabled)));
     String t2 = CATALOG_NAME + "." + SCHEMA_NAME + "." + ANOTHER_DELTA_TABLE;
     session.sql("INSERT INTO " + t2 + " SELECT 2, 'b'");
 
@@ -281,12 +335,19 @@ public class TableReadWriteTest extends BaseSparkIntegrationTest {
   }
 
   @ParameterizedTest
-  @ValueSource(strings = {"s3", "gs", "abfs"})
-  public void testUpdateDeltaTable(String scheme) throws ApiException, IOException {
+  @CsvSource({"s3, true", "s3, false", "gs, true", "abfs, true"})
+  public void testUpdateDeltaTable(String scheme, boolean fixedCredEnabled)
+      throws ApiException, IOException {
     SparkSession session = createSparkSessionWithCatalogs(SPARK_CATALOG);
 
     String loc1 = scheme + "://test-bucket0" + generateTableLocation(SPARK_CATALOG, DELTA_TABLE);
-    setupExternalDeltaTable(SPARK_CATALOG, DELTA_TABLE, loc1, new ArrayList<>(0), session);
+    setupExternalDeltaTable(
+        SPARK_CATALOG,
+        DELTA_TABLE,
+        loc1,
+        new ArrayList<>(0),
+        session,
+        ImmutableMap.of(TableProps.FIXED_CREDENTIAL_ENABLED, String.valueOf(fixedCredEnabled)));
     String t1 = SPARK_CATALOG + "." + SCHEMA_NAME + "." + DELTA_TABLE;
     session.sql("INSERT INTO " + t1 + " SELECT 1, 'a'");
 
@@ -331,21 +392,31 @@ public class TableReadWriteTest extends BaseSparkIntegrationTest {
   private void setupExternalParquetTable(String tableName, List<String> partitionColumns)
       throws IOException, ApiException {
     String location = generateTableLocation(SPARK_CATALOG, tableName);
-    setupExternalParquetTable(tableName, location, partitionColumns);
+    setupExternalParquetTable(tableName, location, partitionColumns, ImmutableMap.of());
   }
 
   private void setupExternalParquetTable(
-      String tableName, String location, List<String> partitionColumns)
+      String tableName,
+      String location,
+      List<String> partitionColumns,
+      Map<String, String> tableProps)
       throws IOException, ApiException {
     setupTables(
-        SPARK_CATALOG, tableName, DataSourceFormat.PARQUET, location, partitionColumns, false);
+        SPARK_CATALOG,
+        tableName,
+        DataSourceFormat.PARQUET,
+        location,
+        partitionColumns,
+        false,
+        tableProps);
   }
 
   private void setupExternalDeltaTable(
       String catalogName, String tableName, List<String> partitionColumns, SparkSession session)
       throws IOException, ApiException {
     String location = generateTableLocation(catalogName, tableName);
-    setupExternalDeltaTable(catalogName, tableName, location, partitionColumns, session);
+    setupExternalDeltaTable(
+        catalogName, tableName, location, partitionColumns, session, ImmutableMap.of());
   }
 
   @Test
@@ -487,7 +558,10 @@ public class TableReadWriteTest extends BaseSparkIntegrationTest {
   }
 
   private void setupDeltaTableLocation(
-      SparkSession session, String location, List<String> partitionColumns) {
+      SparkSession session,
+      String location,
+      List<String> partitionColumns,
+      Map<String, String> tableProps) {
     // The Delta path can't be empty, need to initialize before read.
     String partitionClause;
     if (partitionColumns.isEmpty()) {
@@ -495,12 +569,25 @@ public class TableReadWriteTest extends BaseSparkIntegrationTest {
     } else {
       partitionClause = String.format(" PARTITIONED BY (%s)", String.join(", ", partitionColumns));
     }
+
+    // Format the table properties clause.
+    String tablePropsClause = "";
+    if (!tableProps.isEmpty()) {
+      String keyValues =
+          tableProps.entrySet().stream()
+              .map(e -> String.format("'%s'='%s'", e.getKey(), e.getValue()))
+              .reduce((a, b) -> a + ", " + b)
+              .get();
+      tablePropsClause = String.format(" TBLPROPERTIES (%s)", keyValues);
+    }
+
     // Temporarily disable the credential check when setting up the external Delta location which
     // does not involve Unity Catalog at all.
     CredentialTestFileSystem.credentialCheckEnabled = false;
     session.sql(
         String.format(
-            "CREATE TABLE delta.`%s`(i INT, s STRING) USING delta %s", location, partitionClause));
+            "CREATE TABLE delta.`%s`(i INT, s STRING) USING delta %s %s",
+            location, partitionClause, tablePropsClause));
     CredentialTestFileSystem.credentialCheckEnabled = true;
   }
 
@@ -509,10 +596,18 @@ public class TableReadWriteTest extends BaseSparkIntegrationTest {
       String tableName,
       String location,
       List<String> partitionColumns,
-      SparkSession session)
+      SparkSession session,
+      Map<String, String> tableProps)
       throws IOException, ApiException {
-    setupDeltaTableLocation(session, location, partitionColumns);
-    setupTables(catalogName, tableName, DataSourceFormat.DELTA, location, partitionColumns, false);
+    setupDeltaTableLocation(session, location, partitionColumns, tableProps);
+    setupTables(
+        catalogName,
+        tableName,
+        DataSourceFormat.DELTA,
+        location,
+        partitionColumns,
+        false,
+        tableProps);
   }
 
   private void testTableReadWrite(String tableFullName, SparkSession session) {
@@ -529,7 +624,8 @@ public class TableReadWriteTest extends BaseSparkIntegrationTest {
       DataSourceFormat format,
       String location,
       List<String> partitionColumns,
-      boolean isManaged)
+      boolean isManaged,
+      Map<String, String> tableProps)
       throws IOException, ApiException {
     Integer partitionIndex1 = partitionColumns.indexOf("i");
     if (partitionIndex1 == -1) partitionIndex1 = null;
@@ -577,6 +673,11 @@ public class TableReadWriteTest extends BaseSparkIntegrationTest {
     if (!isManaged) {
       createTableRequest = createTableRequest.storageLocation(location);
     }
+
+    if (tableProps != null && !tableProps.isEmpty()) {
+      createTableRequest = createTableRequest.properties(tableProps);
+    }
+
     tableOperations.createTable(createTableRequest);
   }
 
