@@ -16,7 +16,7 @@ public interface Clock {
   void advance(Duration duration);
 
   static Clock systemClock() {
-    return new SystemClock();
+    return SystemClock.SINGLETON;
   }
 
   static Clock manualClock(Instant now) {
@@ -24,6 +24,8 @@ public interface Clock {
   }
 
   class SystemClock implements Clock {
+    private static final SystemClock SINGLETON = new SystemClock();
+
     @Override
     public Instant now() {
       return Instant.now();

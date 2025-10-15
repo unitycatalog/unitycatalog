@@ -10,6 +10,7 @@ import io.unitycatalog.client.api.TemporaryCredentialsApi;
 import io.unitycatalog.client.model.AzureUserDelegationSAS;
 import io.unitycatalog.client.model.TemporaryCredentials;
 import io.unitycatalog.spark.UCHadoopConf;
+import io.unitycatalog.spark.utils.Clock;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.azurebfs.AbfsConfiguration;
 import org.apache.hadoop.fs.azurebfs.extensions.SASTokenProvider;
@@ -18,14 +19,22 @@ import org.junit.jupiter.api.Test;
 public class AbfsVendedTokenProviderTest extends BaseTokenProviderTest<AbfsVendedTokenProvider> {
   @Override
   protected AbfsVendedTokenProvider createTestProvider(
-      Configuration conf, TemporaryCredentialsApi mockApi) {
-    return new TestAbfsVendedTokenProvider(conf, mockApi);
+      Clock clock,
+      long renewalLeadTimeMillis,
+      Configuration conf,
+      TemporaryCredentialsApi mockApi) {
+    return new TestAbfsVendedTokenProvider(clock, renewalLeadTimeMillis, conf, mockApi);
   }
 
   static class TestAbfsVendedTokenProvider extends AbfsVendedTokenProvider {
     private final TemporaryCredentialsApi mockApi;
 
-    TestAbfsVendedTokenProvider(Configuration conf, TemporaryCredentialsApi mockApi) {
+    TestAbfsVendedTokenProvider(
+        Clock clock,
+        long renewalLeadTimeMillis,
+        Configuration conf,
+        TemporaryCredentialsApi mockApi) {
+      super(clock, renewalLeadTimeMillis);
       initialize(conf);
       this.mockApi = mockApi;
     }

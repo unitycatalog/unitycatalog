@@ -31,18 +31,25 @@ public abstract class GenericCredentialProvider {
     globalCache = CacheBuilder.newBuilder().maximumSize(maxSize).build();
   }
 
+  private final Clock clock;
+  private final long renewalLeadTimeMillis;
+
   private Configuration conf;
   private URI ucUri;
   private String ucToken;
   private String credUid;
   private boolean credCacheEnabled;
-  private Clock clock;
 
-  private volatile long renewalLeadTimeMillis = DEFAULT_RENEWAL_LEAD_TIME_MILLIS;
   private volatile GenericCredential credential;
   private volatile TemporaryCredentialsApi tempCredApi;
 
   public GenericCredentialProvider() {
+    this(Clock.systemClock(), DEFAULT_RENEWAL_LEAD_TIME_MILLIS);
+  }
+
+  GenericCredentialProvider(Clock clock, long renewalLeadTimeMillis) {
+    this.clock = clock;
+    this.renewalLeadTimeMillis = renewalLeadTimeMillis;
   }
 
   protected void initialize(Configuration conf) {
@@ -66,7 +73,6 @@ public abstract class GenericCredentialProvider {
     this.credCacheEnabled = conf.getBoolean(
         UCHadoopConf.UC_CREDENTIAL_CACHE_ENABLED_KEY,
         UCHadoopConf.UC_CREDENTIAL_CACHE_ENABLED_DEFAULT_VALUE);
-    this.clock = Clock.systemClock();
 
     // The initialized credentials passing-through the hadoop configuration.
     this.credential = initGenericCredential(conf);
@@ -88,16 +94,6 @@ public abstract class GenericCredentialProvider {
     }
 
     return credential;
-  }
-
-  // For testing purpose only.
-  void setRenewalLeadTimeMillis(long renewalLeadTimeMillis) {
-    this.renewalLeadTimeMillis = renewalLeadTimeMillis;
-  }
-
-  // For testing purpose only.
-  void setClock(Clock clock) {
-    this.clock = clock;
   }
 
   protected TemporaryCredentialsApi temporaryCredentialsApi() {

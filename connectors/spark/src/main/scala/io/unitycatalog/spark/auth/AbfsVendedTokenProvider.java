@@ -2,12 +2,20 @@ package io.unitycatalog.spark.auth;
 
 import io.unitycatalog.client.model.AzureUserDelegationSAS;
 import io.unitycatalog.spark.UCHadoopConf;
+import io.unitycatalog.spark.utils.Clock;
 import org.apache.hadoop.fs.azurebfs.extensions.SASTokenProvider;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.shaded.com.google.common.base.Preconditions;
 
 public class AbfsVendedTokenProvider extends GenericCredentialProvider implements SASTokenProvider {
   public static final String ACCESS_TOKEN_KEY = "fs.azure.sas.fixed.token";
+
+  public AbfsVendedTokenProvider() {
+  }
+
+  AbfsVendedTokenProvider(Clock clock, long renewalLeadTimeMillis) {
+    super(clock, renewalLeadTimeMillis);
+  }
 
   @Override
   public void initialize(Configuration conf, String accountName) {
