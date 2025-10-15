@@ -279,35 +279,104 @@ bin/uc table get \
 
 ### Create a Table
 
-You can create a table using:
+You can create a table using either the CLI or Java API:
 
-```sh
-bin/uc table create \
-  --full_name <full_name> \ # (1)
-  --columns <columns> \ # (2)
-  --storage_location <storage_location> \ # (3)
-  [--format <format>] \ # (4)
-  [--properties <properties>] # (5)
-```
+=== "CLI"
+    ```sh
+    bin/uc table create \
+      --full_name <full_name> \ # (1)
+      --columns <columns> \ # (2)
+      --storage_location <storage_location> \ # (3)
+      [--format <format>] \ # (4)
+      [--properties <properties>] # (5)
+    ```
 
-1. `full_name`: The full name of the table, which is a concatenation of the catalog name,
+=== "Java API"
+    ```java
+    import io.unitycatalog.client.ApiClient;
+    import io.unitycatalog.client.api.TablesApi;
+    import io.unitycatalog.client.model.CreateTable;
+    import io.unitycatalog.client.model.ColumnInfo;
+    import io.unitycatalog.client.model.TableType;
+    import io.unitycatalog.client.model.DataSourceFormat;
+    import io.unitycatalog.client.model.ColumnTypeName;
+    import java.util.List;
+    import java.util.Map;
+
+    // Initialize the API client
+    ApiClient apiClient = new ApiClient();
+    apiClient.setBasePath("http://localhost:8080/api/2.1/unity-catalog");
+    TablesApi tablesApi = new TablesApi(apiClient);
+
+    // Create the table request
+    CreateTable createTableRequest = new CreateTable()
+        .name("<table_name>")                    // (1)
+        .catalogName("<catalog_name>")           // (1)
+        .schemaName("<schema_name>")             // (1)
+        .columns(List.of(                        // (2)
+            new ColumnInfo()
+                .name("column_name")
+                .typeText("column_data_type")
+                .typeName(ColumnTypeName.INT)    // Use appropriate type
+        ))
+        .storageLocation("<storage_location>")   // (3)
+        .dataSourceFormat(DataSourceFormat.DELTA) // (4) Optional, default is DELTA
+        .properties(Map.of("key1", "value1"));   // (5) Optional
+    ```
+
+**Parameters:**
+
+1. `full_name` / `name`, `catalogName`, `schemaName`: The full name of the table, which is a concatenation of the catalog name,
    schema name, and table name separated by dots (e.g., `catalog_name.schema_name.table_name`).
-2. `columns`: The columns of the table in SQL-like format `"column_name column_data_type"`.
+2. `columns`: The columns of the table in SQL-like format `"column_name column_data_type"` (CLI) or as `ColumnInfo` objects (Java).
    Supported data types include `BOOLEAN`, `BYTE`, `SHORT`, `INT`, `LONG`, `FLOAT`, `DOUBLE`, `DATE`, `TIMESTAMP`, `TIMESTAMP_NTZ`, `STRING`, `BINARY`, `DECIMAL`. Separate multiple columns with a comma
    (e.g., `"id INT, name STRING"`).
-3. `format`: _\[Optional\]_ The format of the data source. Supported values are `DELTA`, `PARQUET`, `ORC`, `JSON`,`CSV`, `AVRO`, and `TEXT`. If not specified the default format is `DELTA`.
-4. `storage_location`: The storage location associated with the table. It is a mandatory field for `EXTERNAL` tables.
-5. `properties`: _\[Optional\]_ The properties of the table in JSON format
+3. `storage_location` / `storageLocation`: The storage location associated with the table. It is a mandatory field for `EXTERNAL` tables.
+4. `format` / `dataSourceFormat`: _\[Optional\]_ The format of the data source. Supported values are `DELTA`, `PARQUET`, `ORC`, `JSON`,`CSV`, `AVRO`, and `TEXT`. If not specified the default format is `DELTA`.
+5. `properties`: _\[Optional\]_ The properties of the table in JSON format (CLI) or as a Map (Java)
    (e.g., `'{"key1": "value1", "key2": "value2"}'`). Make sure to either escape the double quotes(`\"`) inside the properties string or just use single quotes(`''`) around the same.
 
 Here's an example to create an external DELTA table with columns `id` and `name` in the schema `my_schema` of catalog `my_catalog` with storage location `/path/to/storage`:
 
-```sh
-bin/uc table create \
-  --full_name my_catalog.my_schema.my_table \
-  --columns "id INT, name STRING" \
-  --storage_location "/path/to/storage"
-```
+=== "CLI"
+    ```sh
+    bin/uc table create \
+      --full_name my_catalog.my_schema.my_table \
+      --columns "id INT, name STRING" \
+      --storage_location "/path/to/storage"
+    ```
+
+=== "Java API"
+    ```java
+    // Create column definitions
+    ColumnInfo idColumn = new ColumnInfo()
+        .name("id")
+        .typeText("INT")
+        .typeName(ColumnTypeName.INT)
+        .position(0)
+        .nullable(false);
+
+    ColumnInfo nameColumn = new ColumnInfo()
+        .name("name")
+        .typeText("STRING")
+        .typeName(ColumnTypeName.STRING)
+        .position(1)
+        .nullable(true);
+
+    // Create the table request
+    CreateTable createTableRequest = new CreateTable()
+        .name("my_table")
+        .catalogName("my_catalog")
+        .schemaName("my_schema")
+        .columns(List.of(idColumn, nameColumn))
+        .storageLocation("/path/to/storage")
+        .tableType(TableType.EXTERNAL)
+        .dataSourceFormat(DataSourceFormat.DELTA);
+
+    // Create the table
+    TableInfo tableInfo = tablesApi.createTable(createTableRequest);
+    System.out.println("Table created: " + tableInfo.getTableId());
+    ```
 
 When running against UC server, the storage location can be a local path(absolute path) or an S3 path.
 When S3 path is provided, the [server configuration](../server/configuration.md) will vend temporary credentials to access the S3 bucket and server properties must be set up accordingly.
