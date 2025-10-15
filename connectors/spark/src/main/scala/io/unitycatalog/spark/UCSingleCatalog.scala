@@ -3,7 +3,6 @@ package io.unitycatalog.spark
 import io.unitycatalog.client.{ApiClient, ApiException}
 import io.unitycatalog.client.api.{SchemasApi, TablesApi, TemporaryCredentialsApi}
 import io.unitycatalog.client.model.{ColumnInfo, ColumnTypeName, CreateSchema, CreateTable, DataSourceFormat, GenerateTemporaryPathCredential, GenerateTemporaryTableCredential, ListTablesResponse, PathOperation, SchemaInfo, TableOperation, TableType, TemporaryCredentials}
-import io.unitycatalog.spark.auth.AbfsVendedTokenProvider
 
 import java.net.URI
 import java.util
@@ -48,12 +47,12 @@ class UCSingleCatalog
     temporaryCredentialsApi = new TemporaryCredentialsApi(apiClient)
     val proxy = new UCProxy(uri, token, apiClient, temporaryCredentialsApi)
     proxy.initialize(name, options)
-    if (Utils.LOAD_DELTA_CATALOG.get()) {
+    if (CredPropsUtil.LOAD_DELTA_CATALOG.get()) {
       try {
         delegate = Class.forName("org.apache.spark.sql.delta.catalog.DeltaCatalog")
           .getDeclaredConstructor().newInstance().asInstanceOf[TableCatalog]
         delegate.asInstanceOf[DelegatingCatalogExtension].setDelegateCatalog(proxy)
-        Utils.DELTA_CATALOG_LOADED.set(true)
+        CredPropsUtil.DELTA_CATALOG_LOADED.set(true)
       } catch {
         case e: ClassNotFoundException =>
           logWarning("DeltaCatalog is not available in the classpath", e)
@@ -109,7 +108,12 @@ class UCSingleCatalog
       val newProps = new util.HashMap[String, String]
       newProps.putAll(properties)
 
-      val credentialProps = Utils.createPathCredProps(
+      val useFixedCred = TableProps.getBoolean(
+        properties,
+        TableProps.FIXED_CREDENTIAL_ENABLED,
+        TableProps.DEFAULT_FIXED_CREDENTIAL_ENABLED)
+      val credentialProps = CredPropsUtil.createPathCredProps(
+        useFixedCred,
         CatalogUtils.stringToURI(location).getScheme,
         uri.toString,
         token,
@@ -240,7 +244,12 @@ private class UCProxy(
       }
     }
 
-    val extraSerdeProps = Utils.createTableCredProps(
+    val useFixedCred = TableProps.getBoolean(
+      t.getProperties,
+      TableProps.FIXED_CREDENTIAL_ENABLED,
+      TableProps.DEFAULT_FIXED_CREDENTIAL_ENABLED)
+    val extraSerdeProps = CredPropsUtil.createTableCredProps(
+      useFixedCred,
       locationUri.getScheme,
       uri.toString,
       token,

@@ -4,9 +4,8 @@ public class UCHadoopConf {
   private UCHadoopConf() {
   }
 
-  // Key for the AWS S3 credential provider, same as
-  // org.apache.hadoop.fs.s3a.Constants#AWS_CREDENTIALS_PROVIDER, but defined here to avoid an
-  // extra hadoop-aws dependency.
+  // Key for the AWS S3 credential provider, same as org.apache.hadoop.fs.s3a.Constants
+  // #AWS_CREDENTIALS_PROVIDER, but defined here to avoid an extra hadoop-aws dependency.
   public static final String S3A_CREDENTIALS_PROVIDER = "fs.s3a.aws.credentials.provider";
 
   // Keys for the initialized aws s3 credentials.
