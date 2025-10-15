@@ -21,10 +21,6 @@ public class CredPropsUtil {
   private CredPropsUtil() {
   }
 
-  public static final ThreadLocal<Boolean> LOAD_DELTA_CATALOG = ThreadLocal.withInitial(() -> true);
-  public static final ThreadLocal<Boolean> DELTA_CATALOG_LOADED =
-      ThreadLocal.withInitial(() -> false);
-
   public abstract static class PropsBuilder<T extends PropsBuilder<T>> {
     private final ImmutableMap.Builder<String, String> builder = ImmutableMap.builder();
 
@@ -141,15 +137,11 @@ public class CredPropsUtil {
         .set(UCHadoopConf.S3A_INIT_SECRET_KEY, awsCred.getSecretAccessKey())
         .set(UCHadoopConf.S3A_INIT_SESSION_TOKEN, awsCred.getSessionToken());
 
-    // For the static credential case, null expiration time is possible.
+    // For the static credential case, nullable expiration time is possible.
     if (tempCreds.getExpirationTime() != null) {
       builder.set(UCHadoopConf.S3A_INIT_CRED_EXPIRED_TIME,
           String.valueOf(tempCreds.getExpirationTime()));
     }
-
-    builder.set("fs.s3a.access.key", awsCred.getAccessKeyId());
-    builder.set("fs.s3a.secret.key", awsCred.getSecretAccessKey());
-    builder.set("fs.s3a.session.token", awsCred.getSessionToken());
 
     return builder.build();
   }
@@ -180,10 +172,8 @@ public class CredPropsUtil {
           String.valueOf(tempCreds.getExpirationTime()));
     }
 
-
     return builder.build();
   }
-
 
   public static Map<String, String> gsProps(TemporaryCredentials tempCreds) {
     GcpOauthToken gcpOauthToken = tempCreds.getGcpOauthToken();
@@ -211,7 +201,7 @@ public class CredPropsUtil {
   }
 
   public static Map<String, String> createTableCredProps(
-      boolean useFixedCred,
+      boolean fixedCredEnabled,
       String scheme,
       String uri,
       String token,
@@ -220,7 +210,7 @@ public class CredPropsUtil {
       TemporaryCredentials tempCreds) {
     switch (scheme) {
       case "s3":
-        if (useFixedCred) {
+        if (fixedCredEnabled) {
           return s3FixedCredProps(tempCreds);
         } else {
           return s3TableTempCredProps(uri, token, tableId, tableOp, tempCreds);
@@ -236,7 +226,7 @@ public class CredPropsUtil {
   }
 
   public static Map<String, String> createPathCredProps(
-      boolean useFixedCred,
+      boolean fixedCredEnabled,
       String scheme,
       String uri,
       String token,
@@ -245,7 +235,7 @@ public class CredPropsUtil {
       TemporaryCredentials tempCreds) {
     switch (scheme) {
       case "s3":
-        if (useFixedCred) {
+        if (fixedCredEnabled) {
           return s3FixedCredProps(tempCreds);
         } else {
           return s3PathTempCredProps(uri, token, path, pathOp, tempCreds);
