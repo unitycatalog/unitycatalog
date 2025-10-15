@@ -9,6 +9,7 @@ import io.unitycatalog.client.model.TableOperation;
 import io.unitycatalog.client.model.TemporaryCredentials;
 import io.unitycatalog.spark.ApiClientFactory;
 import io.unitycatalog.spark.UCHadoopConf;
+import io.unitycatalog.spark.utils.Clock;
 import java.net.URI;
 import org.apache.hadoop.conf.Configuration;
 import org.sparkproject.guava.base.Preconditions;
@@ -35,6 +36,7 @@ public abstract class GenericCredentialProvider {
   private String ucToken;
   private String credUid;
   private boolean credCacheEnabled;
+  private Clock clock;
 
   private volatile long renewalLeadTimeMillis = DEFAULT_RENEWAL_LEAD_TIME_MILLIS;
   private volatile GenericCredential credential;
@@ -64,6 +66,7 @@ public abstract class GenericCredentialProvider {
     this.credCacheEnabled = conf.getBoolean(
         UCHadoopConf.UC_CREDENTIAL_CACHE_ENABLED_KEY,
         UCHadoopConf.UC_CREDENTIAL_CACHE_ENABLED_DEFAULT_VALUE);
+    this.clock = Clock.systemClock();
 
     // The initialized credentials passing-through the hadoop configuration.
     this.credential = initGenericCredential(conf);
@@ -72,9 +75,9 @@ public abstract class GenericCredentialProvider {
   public abstract GenericCredential initGenericCredential(Configuration conf);
 
   public GenericCredential accessCredentials() {
-    if (credential == null || credential.readyToRenew(renewalLeadTimeMillis)) {
+    if (credential == null || credential.readyToRenew(clock, renewalLeadTimeMillis)) {
       synchronized (this) {
-        if (credential == null || credential.readyToRenew(renewalLeadTimeMillis)) {
+        if (credential == null || credential.readyToRenew(clock, renewalLeadTimeMillis)) {
           try {
             credential = renewCredential();
           } catch (ApiException e) {
@@ -90,6 +93,11 @@ public abstract class GenericCredentialProvider {
   // For testing purpose only.
   void setRenewalLeadTimeMillis(long renewalLeadTimeMillis) {
     this.renewalLeadTimeMillis = renewalLeadTimeMillis;
+  }
+
+  // For testing purpose only.
+  void setClock(Clock clock) {
+    this.clock = clock;
   }
 
   protected TemporaryCredentialsApi temporaryCredentialsApi() {
@@ -110,7 +118,7 @@ public abstract class GenericCredentialProvider {
       synchronized (globalCache) {
         GenericCredential cached = globalCache.getIfPresent(credUid);
         // Use the cached one if existing and valid.
-        if (cached != null && !cached.readyToRenew(renewalLeadTimeMillis)) {
+        if (cached != null && !cached.readyToRenew(clock, renewalLeadTimeMillis)) {
           return cached;
         }
         // Renew the credential and update the cache.

@@ -15,6 +15,14 @@ public interface Clock {
    */
   void advance(Duration duration);
 
+  static Clock systemClock() {
+    return new SystemClock();
+  }
+
+  static Clock manualClock(Instant now) {
+    return new ManualClock(now);
+  }
+
   class SystemClock implements Clock {
     @Override
     public Instant now() {
@@ -28,20 +36,20 @@ public interface Clock {
   }
 
   class ManualClock implements Clock {
-    private final Instant now;
+    private volatile Instant now;
 
     ManualClock(Instant now) {
       this.now = now;
     }
 
     @Override
-    public Instant now() {
+    public synchronized Instant now() {
       return now;
     }
 
     @Override
-    public void advance(Duration duration) {
-      now.plus(duration);
+    public synchronized void advance(Duration duration) {
+      now = now.plus(duration);
     }
   }
 }
