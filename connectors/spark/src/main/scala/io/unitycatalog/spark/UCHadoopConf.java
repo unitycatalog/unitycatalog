@@ -21,6 +21,10 @@ public class UCHadoopConf {
       "fs.azure.init.sas.token.expired.time";
 
   // Keys for the UnityCatalog client.
+  // Note: Delta automatically filters out configuration keys without the "fs." prefix To ensure
+  // custom configuration keys (e.g., AWS, ABFS, or GCS credentials) propagate correctly into Hadoop
+  // FileSystems such as S3AFileSystem or AbfsFileSystem, the keys must include the "fs." prefix.
+  // See also: https://github.com/unitycatalog/unitycatalog/issues/1112.
   public static final String UC_URI_KEY = "fs.unitycatalog.uri";
   public static final String UC_TOKEN_KEY = "fs.unitycatalog.token";
 

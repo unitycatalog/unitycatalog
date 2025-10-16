@@ -2,12 +2,15 @@ package io.unitycatalog.spark;
 
 import java.util.Map;
 
-public class TableProps {
-  private TableProps() {
+public class OptionUtil {
+  private OptionUtil() {
   }
 
-  public static final String FIXED_CREDENTIAL_ENABLED = "fixedCredential.enabled";
-  public static final boolean DEFAULT_FIXED_CREDENTIAL_ENABLED = false;
+  public static final String URI = "uri";
+  public static final String TOKEN = "token";
+
+  public static final String RENEW_CREDENTIAL_ENABLED = "renewCredential.enabled";
+  public static final boolean DEFAULT_RENEW_CREDENTIAL_ENABLED = true;
 
   public static boolean getBoolean(
       Map<String, String> props, String property, boolean defaultValue) {

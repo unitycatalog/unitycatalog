@@ -32,6 +32,10 @@ public abstract class BaseSparkIntegrationTest extends BaseCRUDTest {
   }
 
   protected SparkSession createSparkSessionWithCatalogs(String... catalogs) {
+    return createSparkSessionWithCatalogs(false, catalogs);
+  }
+
+  protected SparkSession createSparkSessionWithCatalogs(boolean renewCred, String... catalogs) {
     SparkSession.Builder builder =
         SparkSession.builder()
             .appName("test")
@@ -45,7 +49,8 @@ public abstract class BaseSparkIntegrationTest extends BaseCRUDTest {
               .config(catalogConf, UCSingleCatalog.class.getName())
               .config(catalogConf + ".uri", serverConfig.getServerUrl())
               .config(catalogConf + ".token", serverConfig.getAuthToken())
-              .config(catalogConf + ".warehouse", catalog);
+              .config(catalogConf + ".warehouse", catalog)
+              .config(catalogConf + "." + OptionUtil.RENEW_CREDENTIAL_ENABLED, renewCred);
     }
     // Use fake file system for cloud storage so that we can test credentials.
     builder.config("fs.s3.impl", S3CredentialTestFileSystem.class.getName());

@@ -3,6 +3,7 @@ package io.unitycatalog.spark
 import io.unitycatalog.client.{ApiClient, ApiException}
 import io.unitycatalog.client.api.{SchemasApi, TablesApi, TemporaryCredentialsApi}
 import io.unitycatalog.client.model.{ColumnInfo, ColumnTypeName, CreateSchema, CreateTable, DataSourceFormat, GenerateTemporaryPathCredential, GenerateTemporaryTableCredential, ListTablesResponse, PathOperation, SchemaInfo, TableOperation, TableType, TemporaryCredentials}
+import io.unitycatalog.spark.auth.CredPropsUtil
 
 import java.net.URI
 import java.util
@@ -31,21 +32,25 @@ class UCSingleCatalog
 
   private[this] var uri: URI = null
   private[this] var token: String = null
+  private[this] var renewCredEnabled: Boolean = false
   private[this] var apiClient: ApiClient = null;
   private[this] var temporaryCredentialsApi: TemporaryCredentialsApi = null
 
   @volatile private var delegate: TableCatalog = null
 
   override def initialize(name: String, options: CaseInsensitiveStringMap): Unit = {
-    val urlStr = options.get("uri")
+    val urlStr = options.get(OptionUtil.URI)
     Preconditions.checkArgument(urlStr != null,
       "uri must be specified for Unity Catalog '%s'", name)
     uri = new URI(urlStr)
-    token = options.get("token")
+    token = options.get(OptionUtil.TOKEN)
+    renewCredEnabled = OptionUtil.getBoolean(options,
+      OptionUtil.RENEW_CREDENTIAL_ENABLED,
+      OptionUtil.DEFAULT_RENEW_CREDENTIAL_ENABLED)
 
     apiClient = ApiClientFactory.createApiClient(uri, token)
     temporaryCredentialsApi = new TemporaryCredentialsApi(apiClient)
-    val proxy = new UCProxy(uri, token, apiClient, temporaryCredentialsApi)
+    val proxy = new UCProxy(uri, token, renewCredEnabled, apiClient, temporaryCredentialsApi)
     proxy.initialize(name, options)
     if (UCSingleCatalog.LOAD_DELTA_CATALOG.get()) {
       try {
@@ -108,12 +113,8 @@ class UCSingleCatalog
       val newProps = new util.HashMap[String, String]
       newProps.putAll(properties)
 
-      val fixedCredEnabled = TableProps.getBoolean(
-        properties,
-        TableProps.FIXED_CREDENTIAL_ENABLED,
-        TableProps.DEFAULT_FIXED_CREDENTIAL_ENABLED)
       val credentialProps = CredPropsUtil.createPathCredProps(
-        fixedCredEnabled,
+        renewCredEnabled,
         CatalogUtils.stringToURI(location).getScheme,
         uri.toString,
         token,
@@ -184,6 +185,7 @@ object UCSingleCatalog {
 private class UCProxy(
     uri: URI,
     token: String,
+    renewCredEnabled: Boolean,
     apiClient: ApiClient,
     temporaryCredentialsApi: TemporaryCredentialsApi) extends TableCatalog with SupportsNamespaces {
   private[this] var name: String = null
@@ -230,6 +232,7 @@ private class UCProxy(
     }.toArray
     val locationUri = CatalogUtils.stringToURI(t.getStorageLocation)
     val tableId = t.getTableId
+    var tableOp = TableOperation.READ_WRITE
     val temporaryCredentials = {
       try {
         temporaryCredentialsApi
@@ -238,27 +241,25 @@ private class UCProxy(
             //       request READ_WRITE credentials as the server doesn't distinguish between READ and
             //       READ_WRITE credentials as of today. When loading a table, Spark should tell if it's
             //       for read or write, we can request the proper credential after fixing Spark.
-            new GenerateTemporaryTableCredential().tableId(tableId).operation(TableOperation.READ_WRITE)
+            new GenerateTemporaryTableCredential().tableId(tableId).operation(tableOp)
           )
       } catch {
-        case e: ApiException => temporaryCredentialsApi
-          .generateTemporaryTableCredentials(
-            new GenerateTemporaryTableCredential().tableId(tableId).operation(TableOperation.READ)
-          )
+        case _: ApiException =>
+          tableOp = TableOperation.READ
+          temporaryCredentialsApi
+            .generateTemporaryTableCredentials(
+              new GenerateTemporaryTableCredential().tableId(tableId).operation(tableOp)
+            )
       }
     }
 
-    val fixedCredEnabled = TableProps.getBoolean(
-      t.getProperties,
-      TableProps.FIXED_CREDENTIAL_ENABLED,
-      TableProps.DEFAULT_FIXED_CREDENTIAL_ENABLED)
     val extraSerdeProps = CredPropsUtil.createTableCredProps(
-      fixedCredEnabled,
+      renewCredEnabled,
       locationUri.getScheme,
       uri.toString,
       token,
       tableId,
-      TableOperation.READ_WRITE,
+      tableOp,
       temporaryCredentials,
     )
 
