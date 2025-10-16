@@ -51,9 +51,9 @@ public class TableReadWriteTest extends BaseSparkIntegrationTest {
     builder =
         builder
             .config(catalogConf, UCSingleCatalog.class.getName())
-            .config(catalogConf + ".uri", serverConfig.getServerUrl())
-            .config(catalogConf + ".token", serverConfig.getAuthToken())
-            .config(catalogConf + ".warehouse", CATALOG_NAME)
+            .config(catalogConf + "." + OptionUtil.URI, serverConfig.getServerUrl())
+            .config(catalogConf + "." + OptionUtil.TOKEN, serverConfig.getAuthToken())
+            .config(catalogConf + "." + OptionUtil.WAREHOUSE, CATALOG_NAME)
             .config(catalogConf + ".__TEST_NO_DELTA__", "true");
     SparkSession session = builder.getOrCreate();
     setupExternalParquetTable(PARQUET_TABLE, new ArrayList<>(0));
