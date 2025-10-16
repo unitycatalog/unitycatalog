@@ -42,4 +42,16 @@ public class UCHadoopConf {
   public static final String UC_CREDENTIAL_CACHE_ENABLED_KEY =
       "unitycatalog.credential.cache.enabled";
   public static final boolean UC_CREDENTIAL_CACHE_ENABLED_DEFAULT_VALUE = true;
+
+  // Keys for retry configuration.
+  public static final String RETRY_MAX_ATTEMPTS_KEY = "unitycatalog.retry.max.attempts";
+  public static final int RETRY_MAX_ATTEMPTS_DEFAULT = 4;
+
+  public static final String RETRY_INITIAL_DELAY_KEY = "unitycatalog.retry.initial.delay.ms";
+  public static final long RETRY_INITIAL_DELAY_DEFAULT = 500;
+
+  public static final String RETRY_MULTIPLIER_KEY = "unitycatalog.retry.multiplier";
+  public static final double RETRY_MULTIPLIER_DEFAULT = 1.5;
+
+  public static final double RETRY_JITTER_FACTOR = 0.5;
 }

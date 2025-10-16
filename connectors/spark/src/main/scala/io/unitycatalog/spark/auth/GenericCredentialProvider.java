@@ -11,6 +11,7 @@ import io.unitycatalog.spark.ApiClientFactory;
 import io.unitycatalog.spark.UCHadoopConf;
 import io.unitycatalog.spark.utils.Clock;
 import java.net.URI;
+import java.util.function.Supplier;
 import org.apache.hadoop.conf.Configuration;
 import org.sparkproject.guava.base.Preconditions;
 import org.sparkproject.guava.cache.Cache;
@@ -127,31 +128,82 @@ public abstract class GenericCredentialProvider {
     }
   }
 
+  private boolean isRecoverable(Throwable e) {
+    if (e instanceof ApiException apiEx) {
+      int code = apiEx.getCode();
+      // Retry on rate limit (429), service unavailable (503), and 5xx server errors
+      return code == 429 || code == 503 || (code >= 500 && code < 600);
+    }
+    // Network-level transient failures
+    return e instanceof java.net.SocketTimeoutException    // Timeout
+      || e instanceof java.net.SocketException           // Connection issues
+      || e instanceof java.net.UnknownHostException;     // DNS resolution issues
+  }
+
+  private TemporaryCredentials callWithRetry(Supplier<TemporaryCredentials> apiCall) throws ApiException {
+    int maxAttempts = conf.getInt(UCHadoopConf.RETRY_MAX_ATTEMPTS_KEY, UCHadoopConf.RETRY_MAX_ATTEMPTS_DEFAULT);
+    long initialDelay = conf.getLong(UCHadoopConf.RETRY_INITIAL_DELAY_KEY, UCHadoopConf.RETRY_INITIAL_DELAY_DEFAULT);
+    double multiplier = conf.getDouble(UCHadoopConf.RETRY_MULTIPLIER_KEY, UCHadoopConf.RETRY_MULTIPLIER_DEFAULT);
+
+    Exception lastException = null;
+
+    for (int attempt = 1; attempt <= maxAttempts; attempt++) {
+      try {
+        return apiCall.get();
+      } catch (Exception e) {
+        lastException = e;
+
+        if (!isRecoverable(e) || attempt == maxAttempts) {
+          break;
+        }
+
+        long baseDelay = (long) (initialDelay * Math.pow(multiplier, attempt - 1));
+        double jitter = (Math.random() - 0.5) * 2 * UCHadoopConf.RETRY_JITTER_FACTOR;
+        long delay = (long) (baseDelay * (1 + jitter));
+
+        try {
+          Thread.sleep(delay);
+        } catch (InterruptedException interrupted) {
+          Thread.currentThread().interrupt();
+          throw new RuntimeException("Retry interrupted", interrupted);
+        }
+      }
+    }
+
+    if (lastException instanceof ApiException apiEx) {
+      throw apiEx;
+    } else {
+      throw new RuntimeException("Failed to obtain temporary credentials after " + maxAttempts + " attempts", lastException);
+    }
+  }
+
   private GenericCredential createGenericCredentials() throws ApiException {
     TemporaryCredentialsApi tempCredApi = temporaryCredentialsApi();
 
     // Generate the temporary credential via requesting UnityCatalog.
     TemporaryCredentials tempCred;
     String type = conf.get(UCHadoopConf.UC_CREDENTIALS_TYPE_KEY);
-    // TODO We will need to retry the temporary credential request if any recoverable failure, for
-    // more robustness.
     if (UCHadoopConf.UC_CREDENTIALS_TYPE_PATH_VALUE.equals(type)) {
       String path = conf.get(UCHadoopConf.UC_PATH_KEY);
       String pathOperation = conf.get(UCHadoopConf.UC_PATH_OPERATION_KEY);
 
-      tempCred = tempCredApi.generateTemporaryPathCredentials(
+      tempCred = callWithRetry(() -> 
+        tempCredApi.generateTemporaryPathCredentials(
           new GenerateTemporaryPathCredential()
               .url(path)
               .operation(PathOperation.fromValue(pathOperation))
+        )
       );
     } else if (UCHadoopConf.UC_CREDENTIALS_TYPE_TABLE_VALUE.equals(type)) {
       String tableId = conf.get(UCHadoopConf.UC_TABLE_ID_KEY);
       String tableOperation = conf.get(UCHadoopConf.UC_TABLE_OPERATION_KEY);
 
-      tempCred = tempCredApi.generateTemporaryTableCredentials(
+      tempCred = callWithRetry(() -> 
+        tempCredApi.generateTemporaryTableCredentials(
           new GenerateTemporaryTableCredential()
               .tableId(tableId)
               .operation(TableOperation.fromValue(tableOperation))
+        )
       );
     } else {
       throw new IllegalArgumentException(String.format(
