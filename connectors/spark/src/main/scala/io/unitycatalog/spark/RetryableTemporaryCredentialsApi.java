@@ -1,5 +1,7 @@
 package io.unitycatalog.spark;
 
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import io.unitycatalog.client.ApiException;
 import io.unitycatalog.client.api.TemporaryCredentialsApi;
 import io.unitycatalog.client.model.GenerateTemporaryPathCredential;
@@ -10,6 +12,8 @@ import java.time.Duration;
 import org.apache.hadoop.conf.Configuration;
 
 public class RetryableTemporaryCredentialsApi {
+  private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
+  
   private final TemporaryCredentialsApi delegate;
   private final Clock clock;
   private final int maxAttempts;
@@ -91,14 +95,36 @@ public class RetryableTemporaryCredentialsApi {
 
   private boolean isRecoverable(Throwable e) {
     if (e instanceof ApiException) {
-      int code = ((ApiException) e).getCode();
-      // Retry on rate limit (429), service unavailable (503), and 5xx server errors
-      return code == 429 || code == 503 || (code >= 500 && code < 600);
+      ApiException apiEx = (ApiException) e;
+      int code = apiEx.getCode();
+      if (code == 429 || code == 503) {
+        return true;
+      }
+      
+      String errorCode = extractUcErrorCode(apiEx.getResponseBody());
+      if (errorCode != null) {
+        return errorCode.equals("TEMPORARILY_UNAVAILABLE")
+            || errorCode.equals("WORKSPACE_TEMPORARILY_UNAVAILABLE")
+            || errorCode.equals("SERVICE_UNDER_MAINTENANCE");
+      }
+      return false;
     }
-    // Network-level transient failures
-    return e instanceof java.net.SocketTimeoutException  // Timeout
-        || e instanceof java.net.SocketException           // Connection issues
-        || e instanceof java.net.UnknownHostException;     // DNS resolution issues
+    
+    return e instanceof java.net.SocketTimeoutException
+        || e instanceof java.net.SocketException
+        || e instanceof java.net.UnknownHostException;
+  }
+  
+  private static String extractUcErrorCode(String body) {
+    if (body == null || body.isEmpty()) {
+      return null;
+    }
+    try {
+      JsonNode node = OBJECT_MAPPER.readTree(body);
+      JsonNode codeNode = node.get("error_code");
+      return codeNode != null ? codeNode.asText() : null;
+    } catch (Exception ignore) {
+      return null;
+    }
   }
 }
-
