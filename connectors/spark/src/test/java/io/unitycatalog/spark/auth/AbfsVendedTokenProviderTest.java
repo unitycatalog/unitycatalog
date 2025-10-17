@@ -9,6 +9,7 @@ import static org.assertj.core.api.AssertionsForClassTypes.assertThatThrownBy;
 import io.unitycatalog.client.api.TemporaryCredentialsApi;
 import io.unitycatalog.client.model.AzureUserDelegationSAS;
 import io.unitycatalog.client.model.TemporaryCredentials;
+import io.unitycatalog.spark.RetryableTemporaryCredentialsApi;
 import io.unitycatalog.spark.UCHadoopConf;
 import io.unitycatalog.spark.utils.Clock;
 import org.apache.hadoop.conf.Configuration;
@@ -27,7 +28,7 @@ public class AbfsVendedTokenProviderTest extends BaseTokenProviderTest<AbfsVende
   }
 
   static class TestAbfsVendedTokenProvider extends AbfsVendedTokenProvider {
-    private final TemporaryCredentialsApi mockApi;
+    private final RetryableTemporaryCredentialsApi retryableApi;
 
     TestAbfsVendedTokenProvider(
         Clock clock,
@@ -36,12 +37,13 @@ public class AbfsVendedTokenProviderTest extends BaseTokenProviderTest<AbfsVende
         TemporaryCredentialsApi mockApi) {
       super(clock, renewalLeadTimeMillis);
       initialize(conf);
-      this.mockApi = mockApi;
+      // Wrap the mocked API in the retryable wrapper
+      this.retryableApi = new RetryableTemporaryCredentialsApi(mockApi, conf);
     }
 
     @Override
-    protected TemporaryCredentialsApi temporaryCredentialsApi() {
-      return mockApi;
+    protected RetryableTemporaryCredentialsApi temporaryCredentialsApi() {
+      return retryableApi;
     }
   }
 

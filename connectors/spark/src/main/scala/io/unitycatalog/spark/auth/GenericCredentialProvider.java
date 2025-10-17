@@ -8,10 +8,10 @@ import io.unitycatalog.client.model.PathOperation;
 import io.unitycatalog.client.model.TableOperation;
 import io.unitycatalog.client.model.TemporaryCredentials;
 import io.unitycatalog.spark.ApiClientFactory;
+import io.unitycatalog.spark.RetryableTemporaryCredentialsApi;
 import io.unitycatalog.spark.UCHadoopConf;
 import io.unitycatalog.spark.utils.Clock;
 import java.net.URI;
-import java.util.function.Supplier;
 import org.apache.hadoop.conf.Configuration;
 import org.sparkproject.guava.base.Preconditions;
 import org.sparkproject.guava.cache.Cache;
@@ -26,14 +26,6 @@ public abstract class GenericCredentialProvider {
   private static final String UC_CREDENTIAL_CACHE_MAX_SIZE =
       "unitycatalog.credential.cache.maxSize";
   private static final long UC_CREDENTIAL_CACHE_MAX_SIZE_DEFAULT = 1024;
-
-  /**
-   * Functional interface for API calls that may throw ApiException.
-   */
-  @FunctionalInterface
-  private interface ApiCallSupplier {
-    TemporaryCredentials get() throws ApiException;
-  }
 
   static {
     long maxSize = Long.getLong(UC_CREDENTIAL_CACHE_MAX_SIZE, UC_CREDENTIAL_CACHE_MAX_SIZE_DEFAULT);
@@ -50,7 +42,7 @@ public abstract class GenericCredentialProvider {
   private boolean credCacheEnabled;
 
   private volatile GenericCredential credential;
-  private volatile TemporaryCredentialsApi tempCredApi;
+  private volatile RetryableTemporaryCredentialsApi tempCredApi;
 
   public GenericCredentialProvider() {
     this(Clock.systemClock(), DEFAULT_RENEWAL_LEAD_TIME_MILLIS);
@@ -105,12 +97,18 @@ public abstract class GenericCredentialProvider {
     return credential;
   }
 
-  protected TemporaryCredentialsApi temporaryCredentialsApi() {
+  // For testing purpose only.
+  void setRenewalLeadTimeMillis(long renewalLeadTimeMillis) {
+    this.renewalLeadTimeMillis = renewalLeadTimeMillis;
+  }
+
+  protected RetryableTemporaryCredentialsApi temporaryCredentialsApi() {
     if (tempCredApi == null) {
       synchronized (this) {
         if (tempCredApi == null) {
-          tempCredApi = new TemporaryCredentialsApi(
+          TemporaryCredentialsApi baseApi = new TemporaryCredentialsApi(
               ApiClientFactory.createApiClient(ucUri, ucToken));
+          tempCredApi = new RetryableTemporaryCredentialsApi(baseApi, conf);
         }
       }
     }
@@ -136,57 +134,8 @@ public abstract class GenericCredentialProvider {
     }
   }
 
-  private boolean isRecoverable(Throwable e) {
-    if (e instanceof ApiException) {
-      int code = ((ApiException) e).getCode();
-      // Retry on rate limit (429), service unavailable (503), and 5xx server errors
-      return code == 429 || code == 503 || (code >= 500 && code < 600);
-    }
-    // Network-level transient failures
-    return e instanceof java.net.SocketTimeoutException  // Timeout
-      || e instanceof java.net.SocketException           // Connection issues
-      || e instanceof java.net.UnknownHostException;     // DNS resolution issues
-  }
-
-  private TemporaryCredentials callWithRetry(ApiCallSupplier apiCall) throws ApiException {
-    int maxAttempts = conf.getInt(UCHadoopConf.RETRY_MAX_ATTEMPTS_KEY, UCHadoopConf.RETRY_MAX_ATTEMPTS_DEFAULT);
-    long initialDelay = conf.getLong(UCHadoopConf.RETRY_INITIAL_DELAY_KEY, UCHadoopConf.RETRY_INITIAL_DELAY_DEFAULT);
-    double multiplier = conf.getDouble(UCHadoopConf.RETRY_MULTIPLIER_KEY, UCHadoopConf.RETRY_MULTIPLIER_DEFAULT);
-
-    Exception lastException = null;
-
-    for (int attempt = 1; attempt <= maxAttempts; attempt++) {
-      try {
-        return apiCall.get();
-      } catch (Exception e) {
-        lastException = e;
-
-        if (!isRecoverable(e) || attempt == maxAttempts) {
-          break;
-        }
-
-        long baseDelay = (long) (initialDelay * Math.pow(multiplier, attempt - 1));
-        double jitter = (Math.random() - 0.5) * 2 * UCHadoopConf.RETRY_JITTER_FACTOR;
-        long delay = (long) (baseDelay * (1 + jitter));
-
-        try {
-          Thread.sleep(delay);
-        } catch (InterruptedException interrupted) {
-          Thread.currentThread().interrupt();
-          throw new RuntimeException("Retry interrupted", interrupted);
-        }
-      }
-    }
-
-    if (lastException instanceof ApiException) {
-      throw (ApiException) lastException;
-    } else {
-      throw new RuntimeException("Failed to obtain temporary credentials after " + maxAttempts + " attempts", lastException);
-    }
-  }
-
   private GenericCredential createGenericCredentials() throws ApiException {
-    TemporaryCredentialsApi tempCredApi = temporaryCredentialsApi();
+    RetryableTemporaryCredentialsApi tempCredApi = temporaryCredentialsApi();
 
     // Generate the temporary credential via requesting UnityCatalog.
     TemporaryCredentials tempCred;
@@ -195,23 +144,19 @@ public abstract class GenericCredentialProvider {
       String path = conf.get(UCHadoopConf.UC_PATH_KEY);
       String pathOperation = conf.get(UCHadoopConf.UC_PATH_OPERATION_KEY);
 
-      tempCred = callWithRetry(() ->
-        tempCredApi.generateTemporaryPathCredentials(
+      tempCred = tempCredApi.generateTemporaryPathCredentials(
           new GenerateTemporaryPathCredential()
               .url(path)
               .operation(PathOperation.fromValue(pathOperation))
-        )
       );
     } else if (UCHadoopConf.UC_CREDENTIALS_TYPE_TABLE_VALUE.equals(type)) {
       String tableId = conf.get(UCHadoopConf.UC_TABLE_ID_KEY);
       String tableOperation = conf.get(UCHadoopConf.UC_TABLE_OPERATION_KEY);
 
-      tempCred = callWithRetry(() ->
-        tempCredApi.generateTemporaryTableCredentials(
+      tempCred = tempCredApi.generateTemporaryTableCredentials(
           new GenerateTemporaryTableCredential()
               .tableId(tableId)
               .operation(TableOperation.fromValue(tableOperation))
-        )
       );
     } else {
       throw new IllegalArgumentException(String.format(

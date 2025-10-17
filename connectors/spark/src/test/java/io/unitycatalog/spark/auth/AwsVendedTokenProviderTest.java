@@ -6,6 +6,7 @@ import static org.assertj.core.api.AssertionsForClassTypes.assertThatThrownBy;
 import io.unitycatalog.client.api.TemporaryCredentialsApi;
 import io.unitycatalog.client.model.AwsCredentials;
 import io.unitycatalog.client.model.TemporaryCredentials;
+import io.unitycatalog.spark.RetryableTemporaryCredentialsApi;
 import io.unitycatalog.spark.UCHadoopConf;
 import io.unitycatalog.spark.utils.Clock;
 import java.io.IOException;
@@ -33,7 +34,7 @@ public class AwsVendedTokenProviderTest extends BaseTokenProviderTest<AwsVendedT
   }
 
   static class TestAwsVendedTokenProvider extends AwsVendedTokenProvider {
-    private final TemporaryCredentialsApi tempCredApi;
+    private final RetryableTemporaryCredentialsApi retryableApi;
 
     TestAwsVendedTokenProvider(
         Clock clock,
@@ -41,12 +42,12 @@ public class AwsVendedTokenProviderTest extends BaseTokenProviderTest<AwsVendedT
         Configuration conf,
         TemporaryCredentialsApi tempCredApi) {
       super(conf, clock, renewalLeadTimeMillis);
-      this.tempCredApi = tempCredApi;
+      this.retryableApi = new RetryableTemporaryCredentialsApi(tempCredApi, conf);
     }
 
     @Override
-    protected TemporaryCredentialsApi temporaryCredentialsApi() {
-      return tempCredApi;
+    protected RetryableTemporaryCredentialsApi temporaryCredentialsApi() {
+      return retryableApi;
     }
   }
 
