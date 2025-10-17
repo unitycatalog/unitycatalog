@@ -40,11 +40,20 @@ class UCSingleCatalog
     if (urlStr == null) {
       throw new IllegalArgumentException(s"uri must be specified for Unity Catalog '$name'")
     }
+
     val url = new URI(urlStr)
-    apiClient = new ApiClient()
-      .setHost(url.getHost)
-      .setPort(url.getPort)
-      .setScheme(url.getScheme)
+    apiClient = {
+      val c = new ApiClient()
+        .setHost(url.getHost)
+        .setPort(url.getPort)
+        .setScheme(url.getScheme)
+      val p = url.getPath
+      if (p != null && p.nonEmpty && p != "/") {
+        c.setBasePath(p)
+      }
+      c
+    }
+
     val token = options.get("token")
     if (token != null && token.nonEmpty) {
       apiClient = apiClient.setRequestInterceptor { request =>
