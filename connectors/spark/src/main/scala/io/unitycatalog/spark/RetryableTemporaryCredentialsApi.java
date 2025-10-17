@@ -5,10 +5,13 @@ import io.unitycatalog.client.api.TemporaryCredentialsApi;
 import io.unitycatalog.client.model.GenerateTemporaryPathCredential;
 import io.unitycatalog.client.model.GenerateTemporaryTableCredential;
 import io.unitycatalog.client.model.TemporaryCredentials;
+import io.unitycatalog.spark.utils.Clock;
+import java.time.Duration;
 import org.apache.hadoop.conf.Configuration;
 
 public class RetryableTemporaryCredentialsApi {
   private final TemporaryCredentialsApi delegate;
+  private final Clock clock;
   private final int maxAttempts;
   private final long initialDelayMs;
   private final double multiplier;
@@ -19,7 +22,13 @@ public class RetryableTemporaryCredentialsApi {
   }
 
   public RetryableTemporaryCredentialsApi(TemporaryCredentialsApi delegate, Configuration conf) {
+    this(delegate, conf, Clock.systemClock());
+  }
+
+  RetryableTemporaryCredentialsApi(
+      TemporaryCredentialsApi delegate, Configuration conf, Clock clock) {
     this.delegate = delegate;
+    this.clock = clock;
     this.maxAttempts = conf.getInt(
         UCHadoopConf.RETRY_MAX_ATTEMPTS_KEY,
         UCHadoopConf.RETRY_MAX_ATTEMPTS_DEFAULT
@@ -62,7 +71,7 @@ public class RetryableTemporaryCredentialsApi {
         long delay = (long) (baseDelay * (1 + jitter));
 
         try {
-          Thread.sleep(delay);
+          clock.sleep(Duration.ofMillis(delay));
         } catch (InterruptedException interrupted) {
           Thread.currentThread().interrupt();
           throw new RuntimeException("Retry interrupted", interrupted);

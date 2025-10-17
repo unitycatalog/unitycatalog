@@ -15,6 +15,11 @@ public interface Clock {
    */
   void advance(Duration duration);
 
+  /**
+   * Sleeps for the specified duration.
+   */
+  void sleep(Duration duration) throws InterruptedException;
+
   static Clock systemClock() {
     return SystemClock.SINGLETON;
   }
@@ -35,6 +40,11 @@ public interface Clock {
     public void advance(Duration duration) {
       throw new UnsupportedOperationException("Cannot advance system clock.");
     }
+
+    @Override
+    public void sleep(Duration duration) throws InterruptedException {
+      Thread.sleep(duration.toMillis());
+    }
   }
 
   class ManualClock implements Clock {
@@ -52,6 +62,11 @@ public interface Clock {
     @Override
     public synchronized void advance(Duration duration) {
       now = now.plus(duration);
+    }
+
+    @Override
+    public void sleep(Duration duration) {
+      // No-op for manual clock - time is advanced explicitly via advance()
     }
   }
 }
