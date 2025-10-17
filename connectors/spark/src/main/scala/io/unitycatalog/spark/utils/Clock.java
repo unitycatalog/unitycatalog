@@ -17,6 +17,8 @@ public interface Clock {
 
   /**
    * Sleeps for the specified duration.
+   * In {@link SystemClock}, blocks via {@link Thread#sleep(long)}.
+   * In {@link ManualClock}, no-op—use {@link #advance(Duration)} to simulate time progression.
    */
   void sleep(Duration duration) throws InterruptedException;
 
