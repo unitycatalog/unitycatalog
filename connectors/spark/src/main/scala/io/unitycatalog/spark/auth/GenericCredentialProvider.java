@@ -27,6 +27,14 @@ public abstract class GenericCredentialProvider {
       "unitycatalog.credential.cache.maxSize";
   private static final long UC_CREDENTIAL_CACHE_MAX_SIZE_DEFAULT = 1024;
 
+  /**
+   * Functional interface for API calls that may throw ApiException.
+   */
+  @FunctionalInterface
+  private interface ApiCallSupplier {
+    TemporaryCredentials get() throws ApiException;
+  }
+
   static {
     long maxSize = Long.getLong(UC_CREDENTIAL_CACHE_MAX_SIZE, UC_CREDENTIAL_CACHE_MAX_SIZE_DEFAULT);
     globalCache = CacheBuilder.newBuilder().maximumSize(maxSize).build();
@@ -129,18 +137,18 @@ public abstract class GenericCredentialProvider {
   }
 
   private boolean isRecoverable(Throwable e) {
-    if (e instanceof ApiException apiEx) {
-      int code = apiEx.getCode();
+    if (e instanceof ApiException) {
+      int code = ((ApiException) e).getCode();
       // Retry on rate limit (429), service unavailable (503), and 5xx server errors
       return code == 429 || code == 503 || (code >= 500 && code < 600);
     }
     // Network-level transient failures
-    return e instanceof java.net.SocketTimeoutException    // Timeout
+    return e instanceof java.net.SocketTimeoutException  // Timeout
       || e instanceof java.net.SocketException           // Connection issues
       || e instanceof java.net.UnknownHostException;     // DNS resolution issues
   }
 
-  private TemporaryCredentials callWithRetry(Supplier<TemporaryCredentials> apiCall) throws ApiException {
+  private TemporaryCredentials callWithRetry(ApiCallSupplier apiCall) throws ApiException {
     int maxAttempts = conf.getInt(UCHadoopConf.RETRY_MAX_ATTEMPTS_KEY, UCHadoopConf.RETRY_MAX_ATTEMPTS_DEFAULT);
     long initialDelay = conf.getLong(UCHadoopConf.RETRY_INITIAL_DELAY_KEY, UCHadoopConf.RETRY_INITIAL_DELAY_DEFAULT);
     double multiplier = conf.getDouble(UCHadoopConf.RETRY_MULTIPLIER_KEY, UCHadoopConf.RETRY_MULTIPLIER_DEFAULT);
@@ -170,8 +178,8 @@ public abstract class GenericCredentialProvider {
       }
     }
 
-    if (lastException instanceof ApiException apiEx) {
-      throw apiEx;
+    if (lastException instanceof ApiException) {
+      throw (ApiException) lastException;
     } else {
       throw new RuntimeException("Failed to obtain temporary credentials after " + maxAttempts + " attempts", lastException);
     }
@@ -187,7 +195,7 @@ public abstract class GenericCredentialProvider {
       String path = conf.get(UCHadoopConf.UC_PATH_KEY);
       String pathOperation = conf.get(UCHadoopConf.UC_PATH_OPERATION_KEY);
 
-      tempCred = callWithRetry(() -> 
+      tempCred = callWithRetry(() ->
         tempCredApi.generateTemporaryPathCredentials(
           new GenerateTemporaryPathCredential()
               .url(path)
@@ -198,7 +206,7 @@ public abstract class GenericCredentialProvider {
       String tableId = conf.get(UCHadoopConf.UC_TABLE_ID_KEY);
       String tableOperation = conf.get(UCHadoopConf.UC_TABLE_OPERATION_KEY);
 
-      tempCred = callWithRetry(() -> 
+      tempCred = callWithRetry(() ->
         tempCredApi.generateTemporaryTableCredentials(
           new GenerateTemporaryTableCredential()
               .tableId(tableId)
