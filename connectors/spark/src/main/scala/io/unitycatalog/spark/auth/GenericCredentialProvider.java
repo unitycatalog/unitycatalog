@@ -33,7 +33,7 @@ public abstract class GenericCredentialProvider {
   }
 
   private final Clock clock;
-  private final long renewalLeadTimeMillis;
+  private long renewalLeadTimeMillis;
 
   private Configuration conf;
   private URI ucUri;
