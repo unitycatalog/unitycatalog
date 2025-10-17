@@ -10,6 +10,9 @@ import io.unitycatalog.client.model.PathOperation;
 import io.unitycatalog.client.model.TableOperation;
 import io.unitycatalog.client.model.TemporaryCredentials;
 import io.unitycatalog.spark.UCHadoopConf;
+import io.unitycatalog.spark.utils.Clock;
+import java.time.Duration;
+import java.time.Instant;
 import java.util.UUID;
 import org.apache.hadoop.conf.Configuration;
 import org.junit.jupiter.api.AfterEach;
@@ -19,7 +22,8 @@ import org.junit.jupiter.api.Test;
 public abstract class BaseTokenProviderTest<T extends GenericCredentialProvider> {
 
   /** Use the {@link Configuration} and the mocked api to create a new provider. */
-  protected abstract T createTestProvider(Configuration conf, TemporaryCredentialsApi mockApi);
+  protected abstract T createTestProvider(
+      Clock clock, long renewalLeadTimeMillis, Configuration conf, TemporaryCredentialsApi mockApi);
 
   /** New a testing temporary credentials, using the id and expiration time. */
   protected abstract TemporaryCredentials newTempCred(String id, long expirationMillis);
@@ -43,16 +47,16 @@ public abstract class BaseTokenProviderTest<T extends GenericCredentialProvider>
   @Test
   public void testTableTemporaryCredentialsRenew() throws Exception {
     Configuration conf = newTableBasedConf();
+    Clock clock = Clock.manualClock(Instant.now());
 
-    TemporaryCredentials cred1 = newTempCred("1", System.currentTimeMillis() + 2000L);
-    TemporaryCredentials cred2 = newTempCred("2", System.currentTimeMillis() + 3000L);
+    TemporaryCredentials cred1 = newTempCred("1", clock.now().toEpochMilli() + 2000L);
+    TemporaryCredentials cred2 = newTempCred("2", clock.now().toEpochMilli() + 3000L);
 
     // Mock the table-based temporary credentials' generation.
     TemporaryCredentialsApi tempCredApi = mock(TemporaryCredentialsApi.class);
     when(tempCredApi.generateTemporaryTableCredentials(any())).thenReturn(cred1).thenReturn(cred2);
 
-    T provider = createTestProvider(conf, tempCredApi);
-    provider.setRenewalLeadTimeMillis(1000L);
+    T provider = createTestProvider(clock, 1000L, conf, tempCredApi);
 
     // Use the cred1 for the 1st access.
     assertCred(provider, cred1);
@@ -60,34 +64,34 @@ public abstract class BaseTokenProviderTest<T extends GenericCredentialProvider>
     // Use the cred1 for the 2nd access, since it's valid.
     assertCred(provider, cred1);
 
-    // Sleep to renew, cred2 will be valid.
-    Thread.sleep(1000L);
+    // Advance the clock to trigger renewal, cred2 will be valid.
+    clock.advance(Duration.ofMillis(1000));
 
-    // Use the cred2 for the 3rd access, since cred1 it's expired.
+    // Use the cred2 for the 3rd access, since renewal happened.
     assertCred(provider, cred2);
 
-    // Use the cred3 for the 4th access, since cred2 is valid.
+    // Use the cred2 for the 4th access.
     assertCred(provider, cred2);
   }
 
   @Test
   public void testTableTemporaryCredentialsRenewWithInitialCredentials() throws Exception {
     Configuration conf = newTableBasedConf();
+    Clock clock = Clock.manualClock(Instant.now());
 
     // Use the generated credential to initialize the provider.
-    TemporaryCredentials cred0 = newTempCred("0", System.currentTimeMillis() + 2000L);
+    TemporaryCredentials cred0 = newTempCred("0", clock.now().toEpochMilli() + 2000L);
     setInitialCred(conf, cred0);
 
     // Mock the path-based temporary credentials' generation.
     TemporaryCredentialsApi tempCredApi = mock(TemporaryCredentialsApi.class);
-    TemporaryCredentials cred1 = newTempCred("1", System.currentTimeMillis() + 3000L);
-    TemporaryCredentials cred2 = newTempCred("2", System.currentTimeMillis() + 4000L);
+    TemporaryCredentials cred1 = newTempCred("1", clock.now().toEpochMilli() + 3000L);
+    TemporaryCredentials cred2 = newTempCred("2", clock.now().toEpochMilli() + 4000L);
 
     when(tempCredApi.generateTemporaryTableCredentials(any())).thenReturn(cred1).thenReturn(cred2);
 
     // Initialize the credential provider.
-    T provider = createTestProvider(conf, tempCredApi);
-    provider.setRenewalLeadTimeMillis(1000L);
+    T provider = createTestProvider(clock, 1000L, conf, tempCredApi);
 
     // cred0 is valid.
     assertCred(provider, cred0);
@@ -95,7 +99,7 @@ public abstract class BaseTokenProviderTest<T extends GenericCredentialProvider>
     // cred0 is still valid.
     assertCred(provider, cred0);
 
-    Thread.sleep(1000L);
+    clock.advance(Duration.ofMillis(1000));
 
     // cred0 is invalid while cred1 is valid.
     assertCred(provider, cred1);
@@ -103,7 +107,7 @@ public abstract class BaseTokenProviderTest<T extends GenericCredentialProvider>
     // cred1 is still valid.
     assertCred(provider, cred1);
 
-    Thread.sleep(1000L);
+    clock.advance(Duration.ofMillis(1000));
 
     // cred1 is expired, while cred2 is valid.
     assertCred(provider, cred2);
@@ -115,18 +119,16 @@ public abstract class BaseTokenProviderTest<T extends GenericCredentialProvider>
   @Test
   public void testPathTemporaryCredentialsRenew() throws Exception {
     Configuration conf = newPathBasedConf();
+    Clock clock = Clock.manualClock(Instant.now());
 
-    long expirationTime1 = System.currentTimeMillis() + 2000L;
-    long expirationTime2 = System.currentTimeMillis() + 3000L;
-    TemporaryCredentials cred1 = newTempCred("1", expirationTime1);
-    TemporaryCredentials cred2 = newTempCred("2", expirationTime2);
+    TemporaryCredentials cred1 = newTempCred("1", clock.now().toEpochMilli() + 2000L);
+    TemporaryCredentials cred2 = newTempCred("2", clock.now().toEpochMilli() + 3000L);
 
     // Mock the path-based temporary credentials' generation.
     TemporaryCredentialsApi tempCredApi = mock(TemporaryCredentialsApi.class);
     when(tempCredApi.generateTemporaryPathCredentials(any())).thenReturn(cred1).thenReturn(cred2);
 
-    T provider = createTestProvider(conf, tempCredApi);
-    provider.setRenewalLeadTimeMillis(1000L);
+    T provider = createTestProvider(clock, 1000L, conf, tempCredApi);
 
     // Use the cred1 for the 1st access.
     assertCred(provider, cred1);
@@ -134,33 +136,33 @@ public abstract class BaseTokenProviderTest<T extends GenericCredentialProvider>
     // Use the cred1 for the 2nd access, since it's valid.
     assertCred(provider, cred1);
 
-    // Sleep to renew.
-    Thread.sleep(1000L);
+    // Advance the clock to renew.
+    clock.advance(Duration.ofMillis(1000));
 
     // Use the cred2 for the 3rd access, since cred1 it's expired.
     assertCred(provider, cred2);
 
-    // Use the cred3 for the 4th access, since cred2 is valid.
+    // Use the cred2 for the 4th access.
     assertCred(provider, cred2);
   }
 
   @Test
   public void testPathTemporaryCredentialsRenewWithInitialCredentials() throws Exception {
     Configuration conf = newPathBasedConf();
+    Clock clock = Clock.manualClock(Instant.now());
 
     // Use the generated credential to initialize the provider.
-    TemporaryCredentials cred0 = newTempCred("0", System.currentTimeMillis() + 2000L);
+    TemporaryCredentials cred0 = newTempCred("0", clock.now().toEpochMilli() + 2000L);
     setInitialCred(conf, cred0);
 
     // Mock the path-based temporary credentials' generation.
     TemporaryCredentialsApi tempCredApi = mock(TemporaryCredentialsApi.class);
-    TemporaryCredentials cred1 = newTempCred("1", System.currentTimeMillis() + 3000L);
-    TemporaryCredentials cred2 = newTempCred("2", System.currentTimeMillis() + 4000L);
+    TemporaryCredentials cred1 = newTempCred("1", clock.now().toEpochMilli() + 3000L);
+    TemporaryCredentials cred2 = newTempCred("2", clock.now().toEpochMilli() + 4000L);
     when(tempCredApi.generateTemporaryPathCredentials(any())).thenReturn(cred1).thenReturn(cred2);
 
     // Initialize the credential provider.
-    T provider = createTestProvider(conf, tempCredApi);
-    provider.setRenewalLeadTimeMillis(1000L);
+    T provider = createTestProvider(clock, 1000L, conf, tempCredApi);
 
     // cred0 is valid.
     assertCred(provider, cred0);
@@ -168,7 +170,7 @@ public abstract class BaseTokenProviderTest<T extends GenericCredentialProvider>
     // cred0 is still valid.
     assertCred(provider, cred0);
 
-    Thread.sleep(1000L);
+    clock.advance(Duration.ofMillis(1000));
 
     // cred0 is invalid while cred1 is valid.
     assertCred(provider, cred1);
@@ -176,7 +178,7 @@ public abstract class BaseTokenProviderTest<T extends GenericCredentialProvider>
     // cred1 is still valid.
     assertCred(provider, cred1);
 
-    Thread.sleep(1000L);
+    clock.advance(Duration.ofMillis(1000));
 
     // cred1 is expired, while cred2 is valid.
     assertCred(provider, cred2);
@@ -187,6 +189,7 @@ public abstract class BaseTokenProviderTest<T extends GenericCredentialProvider>
 
   @Test
   public void testGlobalCredCache() throws Exception {
+    Clock clock = Clock.manualClock(Instant.now());
     Configuration tableAconf = newTableBasedConf("tableA");
     Configuration tableBconf = newTableBasedConf("tableB");
     Configuration pathAconf = newPathBasedConf("pathA");
@@ -195,13 +198,13 @@ public abstract class BaseTokenProviderTest<T extends GenericCredentialProvider>
     TemporaryCredentialsApi tempCredApi = mock(TemporaryCredentialsApi.class);
     // Mock the temporary table credential API.
     // For TableA's 1st renewal
-    TemporaryCredentials tableACred1 = newTempCred("table_A1", System.currentTimeMillis() + 2000L);
+    TemporaryCredentials tableACred1 = newTempCred("table_A1", clock.now().toEpochMilli() + 2000L);
     // For TableB's 1st renewal
-    TemporaryCredentials tableBCred1 = newTempCred("table_B1", System.currentTimeMillis() + 2000L);
+    TemporaryCredentials tableBCred1 = newTempCred("table_B1", clock.now().toEpochMilli() + 2000L);
     // For TableA's 2nd renewal
-    TemporaryCredentials tableACred2 = newTempCred("table_A2", System.currentTimeMillis() + 3000L);
+    TemporaryCredentials tableACred2 = newTempCred("table_A2", clock.now().toEpochMilli() + 3000L);
     // For TableB's 2nd renewal
-    TemporaryCredentials tableBCred2 = newTempCred("table_B2", System.currentTimeMillis() + 3000L);
+    TemporaryCredentials tableBCred2 = newTempCred("table_B2", clock.now().toEpochMilli() + 3000L);
     when(tempCredApi.generateTemporaryTableCredentials(any()))
         .thenReturn(tableACred1)
         .thenReturn(tableBCred1)
@@ -210,30 +213,26 @@ public abstract class BaseTokenProviderTest<T extends GenericCredentialProvider>
 
     // Mock the temporary path credential API.
     // For PathA's 1st renewal
-    TemporaryCredentials pathACred1 = newTempCred("path_A1", System.currentTimeMillis() + 2000L);
+    TemporaryCredentials pathACred1 = newTempCred("path_A1", clock.now().toEpochMilli() + 2000L);
     // For PathB's 1st renewal
-    TemporaryCredentials pathBCred1 = newTempCred("path_B1", System.currentTimeMillis() + 2000L);
+    TemporaryCredentials pathBCred1 = newTempCred("path_B1", clock.now().toEpochMilli() + 2000L);
     // For PathA's 2nd renewal
-    TemporaryCredentials pathACred2 = newTempCred("path_A2", System.currentTimeMillis() + 3000L);
+    TemporaryCredentials pathACred2 = newTempCred("path_A2", clock.now().toEpochMilli() + 3000L);
     // For PathB's 2nd renewal
-    TemporaryCredentials pathBCred2 = newTempCred("path_B2", System.currentTimeMillis() + 3000L);
+    TemporaryCredentials pathBCred2 = newTempCred("path_B2", clock.now().toEpochMilli() + 3000L);
     when(tempCredApi.generateTemporaryPathCredentials(any()))
         .thenReturn(pathACred1)
         .thenReturn(pathBCred1)
         .thenReturn(pathACred2)
         .thenReturn(pathBCred2);
 
-    T providerTableA = createTestProvider(tableAconf, tempCredApi);
-    providerTableA.setRenewalLeadTimeMillis(1000L);
+    T providerTableA = createTestProvider(clock, 1000L, tableAconf, tempCredApi);
 
-    T providerTableB = createTestProvider(tableBconf, tempCredApi);
-    providerTableB.setRenewalLeadTimeMillis(1000L);
+    T providerTableB = createTestProvider(clock, 1000L, tableBconf, tempCredApi);
 
-    T providerPathA = createTestProvider(pathAconf, tempCredApi);
-    providerPathA.setRenewalLeadTimeMillis(1000L);
+    T providerPathA = createTestProvider(clock, 1000L, pathAconf, tempCredApi);
 
-    T providerPathB = createTestProvider(pathBconf, tempCredApi);
-    providerPathB.setRenewalLeadTimeMillis(1000L);
+    T providerPathB = createTestProvider(clock, 1000L, pathBconf, tempCredApi);
 
     // TableA: 1st access.
     assertCred(providerTableA, tableACred1);
@@ -267,7 +266,7 @@ public abstract class BaseTokenProviderTest<T extends GenericCredentialProvider>
     assertCred(providerPathA, pathACred1);
     assertGlobalCache(4, tableACred1, tableBCred1, pathACred1, pathBCred1);
 
-    Thread.sleep(1000L);
+    clock.advance(Duration.ofMillis(1000));
 
     // TableA: 3rd access. renew tableACred1 to tableACred2.
     assertCred(providerTableA, tableACred2);
