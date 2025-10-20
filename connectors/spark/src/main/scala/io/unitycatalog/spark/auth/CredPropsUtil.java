@@ -48,7 +48,7 @@ public class CredPropsUtil {
       Preconditions.checkArgument(
           UCHadoopConf.UC_CREDENTIALS_TYPE_PATH_VALUE.equals(credType)
               || UCHadoopConf.UC_CREDENTIALS_TYPE_TABLE_VALUE.equals(credType),
-          "Credential type must be one of 'path' or 'table");
+          "Invalid credential type '%s', must be either 'path' or 'table'.", credType);
       builder.put(UCHadoopConf.UC_CREDENTIALS_TYPE_KEY, credType);
       return self();
     }
@@ -104,11 +104,9 @@ public class CredPropsUtil {
         .build();
   }
 
-  private static Map<String, String> s3TableTempCredProps(
+  private static S3PropsBuilder s3TempCredPropsBuilder(
       String uri,
       String token,
-      String tableId,
-      TableOperation tableOp,
       TemporaryCredentials tempCreds) {
     AwsCredentials awsCred = tempCreds.getAwsTempCredentials();
     S3PropsBuilder builder = new S3PropsBuilder()
@@ -117,8 +115,6 @@ public class CredPropsUtil {
         .token(token)
         .uid(UUID.randomUUID().toString())
         .credentialType(UCHadoopConf.UC_CREDENTIALS_TYPE_TABLE_VALUE)
-        .tableId(tableId)
-        .tableOperation(tableOp)
         .set(UCHadoopConf.S3A_INIT_ACCESS_KEY, awsCred.getAccessKeyId())
         .set(UCHadoopConf.S3A_INIT_SECRET_KEY, awsCred.getSecretAccessKey())
         .set(UCHadoopConf.S3A_INIT_SESSION_TOKEN, awsCred.getSessionToken());
@@ -129,7 +125,19 @@ public class CredPropsUtil {
           String.valueOf(tempCreds.getExpirationTime()));
     }
 
-    return builder.build();
+    return builder;
+  }
+
+  private static Map<String, String> s3TableTempCredProps(
+      String uri,
+      String token,
+      String tableId,
+      TableOperation tableOp,
+      TemporaryCredentials tempCreds) {
+    return s3TempCredPropsBuilder(uri, token, tempCreds)
+        .tableId(tableId)
+        .tableOperation(tableOp)
+        .build();
   }
 
   private static Map<String, String> s3PathTempCredProps(
@@ -137,28 +145,11 @@ public class CredPropsUtil {
       String token,
       String path,
       PathOperation pathOp,
-      TemporaryCredentials tempCreds
-  ) {
-    AwsCredentials awsCred = tempCreds.getAwsTempCredentials();
-    S3PropsBuilder builder = new S3PropsBuilder()
-        .set(UCHadoopConf.S3A_CREDENTIALS_PROVIDER, AwsVendedTokenProvider.class.getName())
-        .uri(uri)
-        .token(token)
-        .uid(UUID.randomUUID().toString())
-        .credentialType(UCHadoopConf.UC_CREDENTIALS_TYPE_PATH_VALUE)
+      TemporaryCredentials tempCreds) {
+    return s3TempCredPropsBuilder(uri, token, tempCreds)
         .path(path)
         .pathOperation(pathOp)
-        .set(UCHadoopConf.S3A_INIT_ACCESS_KEY, awsCred.getAccessKeyId())
-        .set(UCHadoopConf.S3A_INIT_SECRET_KEY, awsCred.getSecretAccessKey())
-        .set(UCHadoopConf.S3A_INIT_SESSION_TOKEN, awsCred.getSessionToken());
-
-    // For the static credential case, null expiration time is possible.
-    if (tempCreds.getExpirationTime() != null) {
-      builder.set(UCHadoopConf.S3A_INIT_CRED_EXPIRED_TIME,
-          String.valueOf(tempCreds.getExpirationTime()));
-    }
-
-    return builder.build();
+        .build();
   }
 
   private static Map<String, String> gsProps(TemporaryCredentials tempCreds) {
