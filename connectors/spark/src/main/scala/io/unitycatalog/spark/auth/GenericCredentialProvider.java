@@ -33,7 +33,7 @@ public abstract class GenericCredentialProvider {
   }
 
   private final Clock clock;
-  private long renewalLeadTimeMillis;
+  private final long renewalLeadTimeMillis;
 
   private Configuration conf;
   private URI ucUri;
@@ -95,11 +95,6 @@ public abstract class GenericCredentialProvider {
     }
 
     return credential;
-  }
-
-  // For testing purpose only.
-  void setRenewalLeadTimeMillis(long renewalLeadTimeMillis) {
-    this.renewalLeadTimeMillis = renewalLeadTimeMillis;
   }
 
   protected RetryableTemporaryCredentialsApi temporaryCredentialsApi() {
