@@ -19,6 +19,7 @@ lazy val javacRelease17 = Seq("--release", "17")
 
 lazy val scala213 = "2.13.16"
 
+// TODO #715: Update Delta version to the one including https://github.com/delta-io/delta/pull/4550
 lazy val deltaVersion = "4.0.0"
 lazy val sparkVersion = "4.0.0"
 
