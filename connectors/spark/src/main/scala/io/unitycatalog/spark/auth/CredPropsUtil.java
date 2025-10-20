@@ -114,7 +114,6 @@ public class CredPropsUtil {
         .uri(uri)
         .token(token)
         .uid(UUID.randomUUID().toString())
-        .credentialType(UCHadoopConf.UC_CREDENTIALS_TYPE_TABLE_VALUE)
         .set(UCHadoopConf.S3A_INIT_ACCESS_KEY, awsCred.getAccessKeyId())
         .set(UCHadoopConf.S3A_INIT_SECRET_KEY, awsCred.getSecretAccessKey())
         .set(UCHadoopConf.S3A_INIT_SESSION_TOKEN, awsCred.getSessionToken());
@@ -135,6 +134,7 @@ public class CredPropsUtil {
       TableOperation tableOp,
       TemporaryCredentials tempCreds) {
     return s3TempCredPropsBuilder(uri, token, tempCreds)
+        .credentialType(UCHadoopConf.UC_CREDENTIALS_TYPE_TABLE_VALUE)
         .tableId(tableId)
         .tableOperation(tableOp)
         .build();
@@ -147,6 +147,7 @@ public class CredPropsUtil {
       PathOperation pathOp,
       TemporaryCredentials tempCreds) {
     return s3TempCredPropsBuilder(uri, token, tempCreds)
+        .credentialType(UCHadoopConf.UC_CREDENTIALS_TYPE_PATH_VALUE)
         .path(path)
         .pathOperation(pathOp)
         .build();
