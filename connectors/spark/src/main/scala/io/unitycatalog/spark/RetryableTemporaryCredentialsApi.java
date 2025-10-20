@@ -29,7 +29,7 @@ public class RetryableTemporaryCredentialsApi {
     this(delegate, conf, Clock.systemClock());
   }
 
-  RetryableTemporaryCredentialsApi(
+  public RetryableTemporaryCredentialsApi(
       TemporaryCredentialsApi delegate, Configuration conf, Clock clock) {
     this.delegate = delegate;
     this.clock = clock;
@@ -110,6 +110,16 @@ public class RetryableTemporaryCredentialsApi {
       return false;
     }
     
+    if (isNetworkException(e)) {
+      return true;
+    }
+    
+    // Check if the cause is a network exception (common with wrapped exceptions)
+    Throwable cause = e.getCause();
+    return cause != null && isNetworkException(cause);
+  }
+  
+  private boolean isNetworkException(Throwable e) {
     return e instanceof java.net.SocketTimeoutException
         || e instanceof java.net.SocketException
         || e instanceof java.net.UnknownHostException;
