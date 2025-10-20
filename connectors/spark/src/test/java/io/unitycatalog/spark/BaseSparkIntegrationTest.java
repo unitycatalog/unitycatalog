@@ -11,6 +11,7 @@ import io.unitycatalog.server.base.schema.SchemaOperations;
 import io.unitycatalog.server.sdk.catalog.SdkCatalogOperations;
 import io.unitycatalog.server.sdk.schema.SdkSchemaOperations;
 import io.unitycatalog.server.utils.TestUtils;
+import io.unitycatalog.spark.utils.OptionsUtil;
 import java.util.*;
 import org.apache.spark.sql.SparkSession;
 import org.junit.jupiter.api.BeforeEach;
@@ -47,10 +48,10 @@ public abstract class BaseSparkIntegrationTest extends BaseCRUDTest {
       builder =
           builder
               .config(catalogConf, UCSingleCatalog.class.getName())
-              .config(catalogConf + "." + OptionUtil.URI, serverConfig.getServerUrl())
-              .config(catalogConf + "." + OptionUtil.TOKEN, serverConfig.getAuthToken())
-              .config(catalogConf + "." + OptionUtil.WAREHOUSE, catalog)
-              .config(catalogConf + "." + OptionUtil.RENEW_CREDENTIAL_ENABLED, renewCred);
+              .config(catalogConf + "." + OptionsUtil.URI, serverConfig.getServerUrl())
+              .config(catalogConf + "." + OptionsUtil.TOKEN, serverConfig.getAuthToken())
+              .config(catalogConf + "." + OptionsUtil.WAREHOUSE, catalog)
+              .config(catalogConf + "." + OptionsUtil.RENEW_CREDENTIAL_ENABLED, renewCred);
     }
     // Use fake file system for cloud storage so that we can test credentials.
     builder.config("fs.s3.impl", S3CredentialTestFileSystem.class.getName());

@@ -8,6 +8,7 @@ import io.unitycatalog.client.ApiException;
 import io.unitycatalog.client.model.*;
 import io.unitycatalog.server.base.table.TableOperations;
 import io.unitycatalog.server.sdk.tables.SdkTableOperations;
+import io.unitycatalog.spark.utils.OptionsUtil;
 import java.io.File;
 import java.io.IOException;
 import java.time.Instant;
@@ -51,9 +52,9 @@ public class TableReadWriteTest extends BaseSparkIntegrationTest {
     builder =
         builder
             .config(catalogConf, UCSingleCatalog.class.getName())
-            .config(catalogConf + "." + OptionUtil.URI, serverConfig.getServerUrl())
-            .config(catalogConf + "." + OptionUtil.TOKEN, serverConfig.getAuthToken())
-            .config(catalogConf + "." + OptionUtil.WAREHOUSE, CATALOG_NAME)
+            .config(catalogConf + "." + OptionsUtil.URI, serverConfig.getServerUrl())
+            .config(catalogConf + "." + OptionsUtil.TOKEN, serverConfig.getAuthToken())
+            .config(catalogConf + "." + OptionsUtil.WAREHOUSE, CATALOG_NAME)
             .config(catalogConf + ".__TEST_NO_DELTA__", "true");
     SparkSession session = builder.getOrCreate();
     setupExternalParquetTable(PARQUET_TABLE, new ArrayList<>(0));
@@ -504,7 +505,6 @@ public class TableReadWriteTest extends BaseSparkIntegrationTest {
     } else {
       partitionClause = String.format(" PARTITIONED BY (%s)", String.join(", ", partitionColumns));
     }
-
     // Temporarily disable the credential check when setting up the external Delta location which
     // does not involve Unity Catalog at all.
     CredentialTestFileSystem.credentialCheckEnabled = false;
@@ -587,7 +587,6 @@ public class TableReadWriteTest extends BaseSparkIntegrationTest {
     if (!isManaged) {
       createTableRequest = createTableRequest.storageLocation(location);
     }
-
     tableOperations.createTable(createTableRequest);
   }
 

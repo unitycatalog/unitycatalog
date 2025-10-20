@@ -4,6 +4,7 @@ import io.unitycatalog.client.{ApiClient, ApiException}
 import io.unitycatalog.client.api.{SchemasApi, TablesApi, TemporaryCredentialsApi}
 import io.unitycatalog.client.model.{ColumnInfo, ColumnTypeName, CreateSchema, CreateTable, DataSourceFormat, GenerateTemporaryPathCredential, GenerateTemporaryTableCredential, ListTablesResponse, PathOperation, SchemaInfo, TableOperation, TableType, TemporaryCredentials}
 import io.unitycatalog.spark.auth.CredPropsUtil
+import io.unitycatalog.spark.utils.OptionsUtil
 
 import java.net.URI
 import java.util
@@ -39,14 +40,14 @@ class UCSingleCatalog
   @volatile private var delegate: TableCatalog = null
 
   override def initialize(name: String, options: CaseInsensitiveStringMap): Unit = {
-    val urlStr = options.get(OptionUtil.URI)
+    val urlStr = options.get(OptionsUtil.URI)
     Preconditions.checkArgument(urlStr != null,
       "uri must be specified for Unity Catalog '%s'", name)
     uri = new URI(urlStr)
-    token = options.get(OptionUtil.TOKEN)
-    renewCredEnabled = OptionUtil.getBoolean(options,
-      OptionUtil.RENEW_CREDENTIAL_ENABLED,
-      OptionUtil.DEFAULT_RENEW_CREDENTIAL_ENABLED)
+    token = options.get(OptionsUtil.TOKEN)
+    renewCredEnabled = OptionsUtil.getBoolean(options,
+      OptionsUtil.RENEW_CREDENTIAL_ENABLED,
+      OptionsUtil.DEFAULT_RENEW_CREDENTIAL_ENABLED)
 
     apiClient = ApiClientFactory.createApiClient(uri, token)
     temporaryCredentialsApi = new TemporaryCredentialsApi(apiClient)
