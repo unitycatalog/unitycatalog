@@ -18,7 +18,8 @@ import org.sparkproject.guava.cache.CacheBuilder;
 
 public abstract class GenericCredentialProvider {
   // The remaining time before expiration, used to trigger renewal in advance.
-  private static final long DEFAULT_RENEWAL_LEAD_TIME_MILLIS = 30 * 1000;
+  // TODO: Can be removed.
+  private static final long DEFAULT_RENEWAL_LEAD_TIME_MILLIS = 30_000L;
 
   // The credential cache, for saving QPS to unity catalog server.
   static final Cache<String, GenericCredential> globalCache;
@@ -31,8 +32,8 @@ public abstract class GenericCredentialProvider {
     globalCache = CacheBuilder.newBuilder().maximumSize(maxSize).build();
   }
 
-  private final Clock clock;
-  private final long renewalLeadTimeMillis;
+  private Clock clock;
+  private long renewalLeadTimeMillis;
 
   private Configuration conf;
   private URI ucUri;
@@ -47,6 +48,7 @@ public abstract class GenericCredentialProvider {
     this(Clock.systemClock(), DEFAULT_RENEWAL_LEAD_TIME_MILLIS);
   }
 
+  // TODO: Remove this one.
   GenericCredentialProvider(Clock clock, long renewalLeadTimeMillis) {
     this.clock = clock;
     this.renewalLeadTimeMillis = renewalLeadTimeMillis;
@@ -54,6 +56,17 @@ public abstract class GenericCredentialProvider {
 
   protected void initialize(Configuration conf) {
     this.conf = conf;
+
+    this.renewalLeadTimeMillis = conf.getLong(
+        UCHadoopConf.UC_RENEWAL_LEAD_TIME_KEY,
+        UCHadoopConf.UC_RENEWAL_LEAD_TIME_DEFAULT_VALUE);
+
+    if (conf.get(UCHadoopConf.UC_MANUAL_CLOCK_NAME) != null) {
+      String name = conf.get(UCHadoopConf.UC_MANUAL_CLOCK_NAME);
+      this.clock = Clock.getManualClock(name);
+    } else {
+      this.clock = Clock.systemClock();
+    }
 
     String ucUriStr = conf.get(UCHadoopConf.UC_URI_KEY);
     Preconditions.checkNotNull(ucUriStr,

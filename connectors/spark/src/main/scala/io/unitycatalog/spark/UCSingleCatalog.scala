@@ -276,7 +276,7 @@ private class UCProxy(
         properties = t.getProperties.asScala.toMap ++ extraSerdeProps
       ),
       schema = StructType(fields),
-      provider = Some(t.getDataSourceFormat.getValue),
+      provider = Some(t.getDataSourceFormat.getValue.toLowerCase()),
       createTime = t.getCreatedAt,
       tracksPartitionsInCatalog = false,
       partitionColumnNames = partitionCols.sortBy(_._2).map(_._1).toSeq

@@ -27,8 +27,7 @@ public class AwsVendedTokenProvider extends GenericCredentialProvider
   public GenericCredential initGenericCredential(Configuration conf) {
     if (conf.get(UCHadoopConf.S3A_INIT_ACCESS_KEY) != null
         && conf.get(UCHadoopConf.S3A_INIT_SECRET_KEY) != null
-        && conf.get(UCHadoopConf.S3A_INIT_SESSION_TOKEN) != null
-        && conf.get(UCHadoopConf.S3A_INIT_CRED_EXPIRED_TIME) != null) {
+        && conf.get(UCHadoopConf.S3A_INIT_SESSION_TOKEN) != null) {
 
       String accessKey = conf.get(UCHadoopConf.S3A_INIT_ACCESS_KEY);
       String secretKey = conf.get(UCHadoopConf.S3A_INIT_SECRET_KEY);

@@ -28,6 +28,11 @@ public class UCHadoopConf {
   public static final String UC_URI_KEY = "fs.unitycatalog.uri";
   public static final String UC_TOKEN_KEY = "fs.unitycatalog.token";
 
+  public static final String UC_RENEWAL_LEAD_TIME_KEY = "fs.unitycatalog.renewal.leadTimeMillis";
+  public static final long UC_RENEWAL_LEAD_TIME_DEFAULT_VALUE = 30_000L;
+
+  public static final String UC_MANUAL_CLOCK_NAME = "fs.unitycatalog.manual.clock.name";
+
   // Key representing a unique credential ID. It identifies a job-level credential for a specific
   // table, meaning that the same job–table combination shares the same credential. Cached
   // credentials are indexed by this key and are not reused across different jobs.
