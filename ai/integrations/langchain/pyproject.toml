@@ -7,10 +7,10 @@ authors = [
 ]
 readme = "README.md"
 license = { text="Apache-2.0" }
-requires-python = ">=3.9"
+requires-python = ">=3.10"
 dependencies = [
-    "langchain>=0.2.0",
-    "langchain-community>=0.2.0",
+    "langchain>=1.0.0",
+    "langchain-community>=0.4.0",
     "unitycatalog-ai",
 ]
 
@@ -22,13 +22,13 @@ databricks = [
 databricks-dev = [
   "unitycatalog-ai[databricks-dev]",
   "langgraph",
-  "langchain_databricks",
+  "databricks-langchain",
 ]
 
 dev = [
   "unitycatalog-ai[dev]",
   "langgraph",
-  "langchain_databricks",
+  "databricks-langchain",
 ]
 
 [build-system]
