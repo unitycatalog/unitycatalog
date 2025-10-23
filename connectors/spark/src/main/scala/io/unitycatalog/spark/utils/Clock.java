@@ -25,11 +25,11 @@ public interface Clock {
     return new ManualClock(now);
   }
 
-  Map<String, ManualClock> globalManualClock = new ConcurrentHashMap<>();
+  Map<String, Clock> globalManualClock = new ConcurrentHashMap<>();
 
   static Clock getManualClock(String name) {
     return globalManualClock.compute(name, (clockName, clock) ->
-        clock == null ? new ManualClock(Instant.now()) : clock
+        clock == null ? manualClock(Instant.now()) : clock
     );
   }
 

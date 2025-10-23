@@ -12,7 +12,6 @@ import io.unitycatalog.client.model.TemporaryCredentials;
 import io.unitycatalog.spark.UCHadoopConf;
 import io.unitycatalog.spark.utils.Clock;
 import java.time.Duration;
-import java.time.Instant;
 import java.util.UUID;
 import org.apache.hadoop.conf.Configuration;
 import org.junit.jupiter.api.AfterEach;
@@ -20,10 +19,11 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
 public abstract class BaseTokenProviderTest<T extends GenericCredentialProvider> {
+  private String clockName;
+  private Clock clock;
 
   /** Use the {@link Configuration} and the mocked api to create a new provider. */
-  protected abstract T createTestProvider(
-      Clock clock, long renewalLeadTimeMillis, Configuration conf, TemporaryCredentialsApi mockApi);
+  protected abstract T createTestProvider(Configuration conf, TemporaryCredentialsApi mockApi);
 
   /** New a testing temporary credentials, using the id and expiration time. */
   protected abstract TemporaryCredentials newTempCred(String id, long expirationMillis);
@@ -36,18 +36,24 @@ public abstract class BaseTokenProviderTest<T extends GenericCredentialProvider>
 
   @BeforeEach
   public void before() {
+    clockName = UUID.randomUUID().toString();
+    clock = Clock.getManualClock(clockName);
     GenericCredentialProvider.globalCache.invalidateAll();
   }
 
   @AfterEach
   public void after() {
+    Clock.removeManualClock(clockName);
+    clock = null;
+    clockName = null;
     GenericCredentialProvider.globalCache.invalidateAll();
   }
 
   @Test
   public void testTableTemporaryCredentialsRenew() throws Exception {
     Configuration conf = newTableBasedConf();
-    Clock clock = Clock.manualClock(Instant.now());
+    conf.set(UCHadoopConf.UC_MANUAL_CLOCK_NAME, clockName);
+    conf.setLong(UCHadoopConf.UC_RENEWAL_LEAD_TIME_KEY, 1000L);
 
     TemporaryCredentials cred1 = newTempCred("1", clock.now().toEpochMilli() + 2000L);
     TemporaryCredentials cred2 = newTempCred("2", clock.now().toEpochMilli() + 3000L);
@@ -56,7 +62,7 @@ public abstract class BaseTokenProviderTest<T extends GenericCredentialProvider>
     TemporaryCredentialsApi tempCredApi = mock(TemporaryCredentialsApi.class);
     when(tempCredApi.generateTemporaryTableCredentials(any())).thenReturn(cred1).thenReturn(cred2);
 
-    T provider = createTestProvider(clock, 1000L, conf, tempCredApi);
+    T provider = createTestProvider(conf, tempCredApi);
 
     // Use the cred1 for the 1st access.
     assertCred(provider, cred1);
@@ -77,7 +83,8 @@ public abstract class BaseTokenProviderTest<T extends GenericCredentialProvider>
   @Test
   public void testTableTemporaryCredentialsRenewWithInitialCredentials() throws Exception {
     Configuration conf = newTableBasedConf();
-    Clock clock = Clock.manualClock(Instant.now());
+    conf.set(UCHadoopConf.UC_MANUAL_CLOCK_NAME, clockName);
+    conf.setLong(UCHadoopConf.UC_RENEWAL_LEAD_TIME_KEY, 1000L);
 
     // Use the generated credential to initialize the provider.
     TemporaryCredentials cred0 = newTempCred("0", clock.now().toEpochMilli() + 2000L);
@@ -91,7 +98,7 @@ public abstract class BaseTokenProviderTest<T extends GenericCredentialProvider>
     when(tempCredApi.generateTemporaryTableCredentials(any())).thenReturn(cred1).thenReturn(cred2);
 
     // Initialize the credential provider.
-    T provider = createTestProvider(clock, 1000L, conf, tempCredApi);
+    T provider = createTestProvider(conf, tempCredApi);
 
     // cred0 is valid.
     assertCred(provider, cred0);
@@ -119,7 +126,8 @@ public abstract class BaseTokenProviderTest<T extends GenericCredentialProvider>
   @Test
   public void testPathTemporaryCredentialsRenew() throws Exception {
     Configuration conf = newPathBasedConf();
-    Clock clock = Clock.manualClock(Instant.now());
+    conf.set(UCHadoopConf.UC_MANUAL_CLOCK_NAME, clockName);
+    conf.setLong(UCHadoopConf.UC_RENEWAL_LEAD_TIME_KEY, 1000L);
 
     TemporaryCredentials cred1 = newTempCred("1", clock.now().toEpochMilli() + 2000L);
     TemporaryCredentials cred2 = newTempCred("2", clock.now().toEpochMilli() + 3000L);
@@ -128,7 +136,7 @@ public abstract class BaseTokenProviderTest<T extends GenericCredentialProvider>
     TemporaryCredentialsApi tempCredApi = mock(TemporaryCredentialsApi.class);
     when(tempCredApi.generateTemporaryPathCredentials(any())).thenReturn(cred1).thenReturn(cred2);
 
-    T provider = createTestProvider(clock, 1000L, conf, tempCredApi);
+    T provider = createTestProvider(conf, tempCredApi);
 
     // Use the cred1 for the 1st access.
     assertCred(provider, cred1);
@@ -149,7 +157,8 @@ public abstract class BaseTokenProviderTest<T extends GenericCredentialProvider>
   @Test
   public void testPathTemporaryCredentialsRenewWithInitialCredentials() throws Exception {
     Configuration conf = newPathBasedConf();
-    Clock clock = Clock.manualClock(Instant.now());
+    conf.set(UCHadoopConf.UC_MANUAL_CLOCK_NAME, clockName);
+    conf.setLong(UCHadoopConf.UC_RENEWAL_LEAD_TIME_KEY, 1000L);
 
     // Use the generated credential to initialize the provider.
     TemporaryCredentials cred0 = newTempCred("0", clock.now().toEpochMilli() + 2000L);
@@ -162,7 +171,7 @@ public abstract class BaseTokenProviderTest<T extends GenericCredentialProvider>
     when(tempCredApi.generateTemporaryPathCredentials(any())).thenReturn(cred1).thenReturn(cred2);
 
     // Initialize the credential provider.
-    T provider = createTestProvider(clock, 1000L, conf, tempCredApi);
+    T provider = createTestProvider(conf, tempCredApi);
 
     // cred0 is valid.
     assertCred(provider, cred0);
@@ -189,11 +198,21 @@ public abstract class BaseTokenProviderTest<T extends GenericCredentialProvider>
 
   @Test
   public void testGlobalCredCache() throws Exception {
-    Clock clock = Clock.manualClock(Instant.now());
     Configuration tableAconf = newTableBasedConf("tableA");
+    tableAconf.set(UCHadoopConf.UC_MANUAL_CLOCK_NAME, clockName);
+    tableAconf.setLong(UCHadoopConf.UC_RENEWAL_LEAD_TIME_KEY, 1000L);
+
     Configuration tableBconf = newTableBasedConf("tableB");
+    tableBconf.set(UCHadoopConf.UC_MANUAL_CLOCK_NAME, clockName);
+    tableBconf.setLong(UCHadoopConf.UC_RENEWAL_LEAD_TIME_KEY, 1000L);
+
     Configuration pathAconf = newPathBasedConf("pathA");
+    pathAconf.set(UCHadoopConf.UC_MANUAL_CLOCK_NAME, clockName);
+    pathAconf.setLong(UCHadoopConf.UC_RENEWAL_LEAD_TIME_KEY, 1000L);
+
     Configuration pathBconf = newPathBasedConf("pathB");
+    pathBconf.set(UCHadoopConf.UC_MANUAL_CLOCK_NAME, clockName);
+    pathBconf.setLong(UCHadoopConf.UC_RENEWAL_LEAD_TIME_KEY, 1000L);
 
     TemporaryCredentialsApi tempCredApi = mock(TemporaryCredentialsApi.class);
     // Mock the temporary table credential API.
@@ -226,13 +245,13 @@ public abstract class BaseTokenProviderTest<T extends GenericCredentialProvider>
         .thenReturn(pathACred2)
         .thenReturn(pathBCred2);
 
-    T providerTableA = createTestProvider(clock, 1000L, tableAconf, tempCredApi);
+    T providerTableA = createTestProvider(tableAconf, tempCredApi);
 
-    T providerTableB = createTestProvider(clock, 1000L, tableBconf, tempCredApi);
+    T providerTableB = createTestProvider(tableBconf, tempCredApi);
 
-    T providerPathA = createTestProvider(clock, 1000L, pathAconf, tempCredApi);
+    T providerPathA = createTestProvider(pathAconf, tempCredApi);
 
-    T providerPathB = createTestProvider(clock, 1000L, pathBconf, tempCredApi);
+    T providerPathB = createTestProvider(pathBconf, tempCredApi);
 
     // TableA: 1st access.
     assertCred(providerTableA, tableACred1);
