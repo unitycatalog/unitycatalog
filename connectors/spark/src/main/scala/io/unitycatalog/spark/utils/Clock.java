@@ -25,16 +25,16 @@ public interface Clock {
     return new ManualClock(now);
   }
 
-  Map<String, Clock> globalManualClock = new ConcurrentHashMap<>();
+  Map<String, Clock> globalManualClocks = new ConcurrentHashMap<>();
 
   static Clock getManualClock(String name) {
-    return globalManualClock.compute(name, (clockName, clock) ->
+    return globalManualClocks.compute(name, (clockName, clock) ->
         clock == null ? manualClock(Instant.now()) : clock
     );
   }
 
   static void removeManualClock(String name) {
-    globalManualClock.remove(name);
+    globalManualClocks.remove(name);
   }
 
   class SystemClock implements Clock {
@@ -52,7 +52,6 @@ public interface Clock {
   }
 
   class ManualClock implements Clock {
-    private static final ManualClock SINGLETON = new ManualClock(Instant.now());
     private volatile Instant now;
 
     ManualClock(Instant now) {
