@@ -52,7 +52,7 @@ public abstract class BaseTokenProviderTest<T extends GenericCredentialProvider>
   @Test
   public void testTableTemporaryCredentialsRenew() throws Exception {
     Configuration conf = newTableBasedConf();
-    conf.set(UCHadoopConf.UC_MANUAL_CLOCK_NAME, clockName);
+    conf.set(UCHadoopConf.UC_TEST_CLOCK_NAME, clockName);
     conf.setLong(UCHadoopConf.UC_RENEWAL_LEAD_TIME_KEY, 1000L);
 
     TemporaryCredentials cred1 = newTempCred("1", clock.now().toEpochMilli() + 2000L);
@@ -83,7 +83,7 @@ public abstract class BaseTokenProviderTest<T extends GenericCredentialProvider>
   @Test
   public void testTableTemporaryCredentialsRenewWithInitialCredentials() throws Exception {
     Configuration conf = newTableBasedConf();
-    conf.set(UCHadoopConf.UC_MANUAL_CLOCK_NAME, clockName);
+    conf.set(UCHadoopConf.UC_TEST_CLOCK_NAME, clockName);
     conf.setLong(UCHadoopConf.UC_RENEWAL_LEAD_TIME_KEY, 1000L);
 
     // Use the generated credential to initialize the provider.
@@ -126,7 +126,7 @@ public abstract class BaseTokenProviderTest<T extends GenericCredentialProvider>
   @Test
   public void testPathTemporaryCredentialsRenew() throws Exception {
     Configuration conf = newPathBasedConf();
-    conf.set(UCHadoopConf.UC_MANUAL_CLOCK_NAME, clockName);
+    conf.set(UCHadoopConf.UC_TEST_CLOCK_NAME, clockName);
     conf.setLong(UCHadoopConf.UC_RENEWAL_LEAD_TIME_KEY, 1000L);
 
     TemporaryCredentials cred1 = newTempCred("1", clock.now().toEpochMilli() + 2000L);
@@ -157,7 +157,7 @@ public abstract class BaseTokenProviderTest<T extends GenericCredentialProvider>
   @Test
   public void testPathTemporaryCredentialsRenewWithInitialCredentials() throws Exception {
     Configuration conf = newPathBasedConf();
-    conf.set(UCHadoopConf.UC_MANUAL_CLOCK_NAME, clockName);
+    conf.set(UCHadoopConf.UC_TEST_CLOCK_NAME, clockName);
     conf.setLong(UCHadoopConf.UC_RENEWAL_LEAD_TIME_KEY, 1000L);
 
     // Use the generated credential to initialize the provider.
@@ -199,19 +199,19 @@ public abstract class BaseTokenProviderTest<T extends GenericCredentialProvider>
   @Test
   public void testGlobalCredCache() throws Exception {
     Configuration tableAconf = newTableBasedConf("tableA");
-    tableAconf.set(UCHadoopConf.UC_MANUAL_CLOCK_NAME, clockName);
+    tableAconf.set(UCHadoopConf.UC_TEST_CLOCK_NAME, clockName);
     tableAconf.setLong(UCHadoopConf.UC_RENEWAL_LEAD_TIME_KEY, 1000L);
 
     Configuration tableBconf = newTableBasedConf("tableB");
-    tableBconf.set(UCHadoopConf.UC_MANUAL_CLOCK_NAME, clockName);
+    tableBconf.set(UCHadoopConf.UC_TEST_CLOCK_NAME, clockName);
     tableBconf.setLong(UCHadoopConf.UC_RENEWAL_LEAD_TIME_KEY, 1000L);
 
     Configuration pathAconf = newPathBasedConf("pathA");
-    pathAconf.set(UCHadoopConf.UC_MANUAL_CLOCK_NAME, clockName);
+    pathAconf.set(UCHadoopConf.UC_TEST_CLOCK_NAME, clockName);
     pathAconf.setLong(UCHadoopConf.UC_RENEWAL_LEAD_TIME_KEY, 1000L);
 
     Configuration pathBconf = newPathBasedConf("pathB");
-    pathBconf.set(UCHadoopConf.UC_MANUAL_CLOCK_NAME, clockName);
+    pathBconf.set(UCHadoopConf.UC_TEST_CLOCK_NAME, clockName);
     pathBconf.setLong(UCHadoopConf.UC_RENEWAL_LEAD_TIME_KEY, 1000L);
 
     TemporaryCredentialsApi tempCredApi = mock(TemporaryCredentialsApi.class);

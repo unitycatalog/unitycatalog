@@ -27,19 +27,16 @@ import java.util.List;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
-import java.util.concurrent.atomic.AtomicInteger;
-import java.util.stream.Collectors;
-import java.util.stream.IntStream;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.FileSystem;
 import org.apache.hadoop.fs.Path;
 import org.apache.spark.api.java.JavaRDD;
-import org.apache.spark.sql.Dataset;
 import org.apache.spark.sql.Row;
+import org.apache.spark.sql.RowFactory;
 import org.apache.spark.sql.SparkSession;
 import org.apache.spark.sql.types.DataTypes;
+import org.apache.spark.sql.types.StructType;
 import org.apache.spark.util.SerializableConfiguration;
-import org.assertj.core.api.Assertions;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -51,14 +48,13 @@ import software.amazon.awssdk.services.sts.model.Credentials;
 public class AwsCredentialRenewalTest extends BaseCRUDTest {
   private static final String CLOCK_NAME = AwsCredentialRenewalTest.class.getSimpleName();
   private static final Clock CLOCK = Clock.getManualClock(CLOCK_NAME);
+  private static final String CREDENTIALS_GENERATOR = TimeBasedCredentialsGenerator.class.getName();
+  private static final String TABLE_NAME = "renewal.default.demo";
 
   private final File dataDir =
-      new File(
-          System.getProperty("java.io.tmpdir"), "aws_credential_renewal_test" + UUID.randomUUID());
-  private static final AtomicInteger renewedFsCounter = new AtomicInteger(0);
+      new File(System.getProperty("java.io.tmpdir"), UUID.randomUUID().toString());
 
   private static final long DEFAULT_INTERVAL_MILLIS = 30_0000L;
-  private static final AtomicInteger ADVANCE_TIMES = new AtomicInteger(0);
 
   @Override
   protected CatalogOperations createCatalogOperations(ServerConfig config) {
@@ -68,13 +64,11 @@ public class AwsCredentialRenewalTest extends BaseCRUDTest {
   @Override
   protected void setUpProperties() {
     super.setUpProperties();
-
     serverProperties.put("s3.bucketPath.0", "s3://test-bucket0");
     serverProperties.put("s3.accessKey.0", "accessKey0");
     serverProperties.put("s3.secretKey.0", "secretKey0");
     serverProperties.put("s3.sessionToken.0", "sessionToken0");
-    serverProperties.put(
-        "s3.credentialsGenerator.0", TimeBasedCredentialsGenerator.class.getName());
+    serverProperties.put("s3.credentialsGenerator.0", CREDENTIALS_GENERATOR);
   }
 
   private SparkSession createSparkSession() {
@@ -84,7 +78,7 @@ public class AwsCredentialRenewalTest extends BaseCRUDTest {
         .config("spark.sql.extensions", "io.delta.sql.DeltaSparkSessionExtension")
         .config(
             "spark.sql.catalog.spark_catalog", "org.apache.spark.sql.delta.catalog.DeltaCatalog")
-        .config("spark.hadoop." + UCHadoopConf.UC_MANUAL_CLOCK_NAME, CLOCK_NAME)
+        .config("spark.hadoop." + UCHadoopConf.UC_TEST_CLOCK_NAME, CLOCK_NAME)
         .config("spark.hadoop." + UCHadoopConf.UC_RENEWAL_LEAD_TIME_KEY, 0L)
         .config("spark.default.parallelism", "1")
         .config("spark.sql.shuffle.partitions", "1")
@@ -93,12 +87,11 @@ public class AwsCredentialRenewalTest extends BaseCRUDTest {
         .config("spark.sql.catalog.renewal.token", serverConfig.getAuthToken())
         .config("spark.sql.catalog.renewal.warehouse", "renewal")
         .config("spark.sql.catalog.renewal.renewCredential.enabled", "true")
-        .config("fs.s3.impl", S3CredRenewFileSystem.class.getName())
+        .config("fs.s3.impl", S3CredFileSystem.class.getName())
         .getOrCreate();
   }
 
   private SparkSession session;
-  private SdkSchemaOperations schemaOperations;
 
   @BeforeEach
   public void beforeEach() throws Exception {
@@ -107,7 +100,7 @@ public class AwsCredentialRenewalTest extends BaseCRUDTest {
     session = createSparkSession();
     catalogOperations.createCatalog(new CreateCatalog().name("renewal").comment("Spark catalog"));
 
-    schemaOperations = new SdkSchemaOperations(createApiClient(serverConfig));
+    SdkSchemaOperations schemaOperations = new SdkSchemaOperations(createApiClient(serverConfig));
     schemaOperations.createSchema(new CreateSchema().name("default").catalogName("renewal"));
   }
 
@@ -131,127 +124,73 @@ public class AwsCredentialRenewalTest extends BaseCRUDTest {
 
   @Test
   public void testRenewal() throws Exception {
-    String location =
-        "s3://test-bucket0" + (new File(dataDir, "renewal.default.demo").getCanonicalPath());
-    String table = "`renewal`.`default`.`demo`";
+    String location = "s3://test-bucket0" + (new File(dataDir, TABLE_NAME).getCanonicalPath());
+    Path locPath = new Path(location);
+    StructType structType =
+        DataTypes.createStructType(
+            ImmutableList.of(DataTypes.createStructField("id", DataTypes.IntegerType, true)));
 
     // Create the external delta path-based table.
-    S3CredRenewFileSystem.credentialCheckEnabled = false;
+    S3CredFileSystem.credentialCheckEnabled = false;
     sql("CREATE TABLE delta.`%s` (id INT) USING delta", location);
-    S3CredRenewFileSystem.credentialCheckEnabled = true;
+    S3CredFileSystem.credentialCheckEnabled = true;
 
     // Create the catalog table referring to external table.
-    sql("CREATE TABLE %s USING delta LOCATION '%s'", table, location);
+    sql("CREATE TABLE %s USING delta LOCATION '%s'", TABLE_NAME, location);
 
     // Insert the original row.
-    sql("INSERT INTO %s VALUES (1)", table);
+    sql("INSERT INTO %s VALUES (1)", TABLE_NAME);
 
-    SerializableConfiguration serializableConfiguration =
+    SerializableConfiguration serialConf =
         new SerializableConfiguration(
-            DeltaTable.forName(session, table).deltaLog().newDeltaHadoopConf());
+            DeltaTable.forName(session, TABLE_NAME).deltaLog().newDeltaHadoopConf());
 
-    JavaRDD<Row> rdd = session.read().format("delta").table(table).toJavaRDD();
-    for (int i = 0; i < 10; i += 1) {
-      rdd =
-          rdd.map(
-              row -> {
-                Configuration conf = serializableConfiguration.value();
-                FileSystem fs = FileSystem.get(new URI(location), conf);
+    JavaRDD<Row> rdd =
+        session
+            .read()
+            .format("delta")
+            .table(TABLE_NAME)
+            .toJavaRDD()
+            .map(
+                row -> {
+                  Configuration conf = serialConf.value();
+                  S3CredFileSystem fs = (S3CredFileSystem) FileSystem.get(new URI(location), conf);
 
-                fs.getFileStatus(new Path(location)).getLen();
+                  fs.getFileStatus(locPath);
+                  assertThat(fs.renewalCount()).isEqualTo(0);
 
-                CLOCK.advance(Duration.ofMillis(DEFAULT_INTERVAL_MILLIS));
-                ADVANCE_TIMES.incrementAndGet();
+                  // Advance the clock to trigger the 1st renewal.
+                  CLOCK.advance(Duration.ofMillis(DEFAULT_INTERVAL_MILLIS));
+                  fs.getFileStatus(locPath);
+                  assertThat(fs.renewalCount()).isEqualTo(1);
 
-                fs.getFileStatus(new Path(location)).getLen();
+                  // Advance the clock to trigger the 2nd renewal.
+                  CLOCK.advance(Duration.ofMillis(DEFAULT_INTERVAL_MILLIS));
+                  fs.getFileStatus(locPath);
+                  assertThat(fs.renewalCount()).isEqualTo(2);
 
-                CLOCK.advance(Duration.ofMillis(DEFAULT_INTERVAL_MILLIS));
-                ADVANCE_TIMES.incrementAndGet();
+                  // Advance the clock to trigger the 3rd renewal.
+                  CLOCK.advance(Duration.ofMillis(DEFAULT_INTERVAL_MILLIS));
+                  fs.getFileStatus(locPath);
+                  assertThat(fs.renewalCount()).isEqualTo(3);
 
-                fs.getFileStatus(new Path(location)).getLen();
+                  return RowFactory.create(3);
+                });
 
-                CLOCK.advance(Duration.ofMillis(DEFAULT_INTERVAL_MILLIS));
-                ADVANCE_TIMES.incrementAndGet();
+    session
+        .createDataFrame(rdd, structType)
+        .write()
+        .format("delta")
+        .mode("append")
+        .saveAsTable(TABLE_NAME);
 
-                return row;
-              });
-    }
-
-    Dataset<Row> resultDF =
-        session.createDataFrame(
-            rdd,
-            DataTypes.createStructType(
-                ImmutableList.of(DataTypes.createStructField("id", DataTypes.IntegerType, true))));
-
-    resultDF.write().format("delta").mode("append").saveAsTable(table);
-
-    assertEquals(
-        "Row should be matched",
-        IntStream.range(0, 2).mapToObj(i -> row(1)).collect(Collectors.toList()),
-        sql("SELECT * FROM %s ORDER BY id ASC", table));
-
-    assertThat(renewedFsCounter.get()).isGreaterThan(1);
+    List<Row> results = sql("SELECT * FROM %s ORDER BY id ASC", TABLE_NAME);
+    assertThat(results.size()).isEqualTo(2);
+    assertThat(results.stream().map(r -> r.getInt(0)).toList()).isEqualTo(ImmutableList.of(1, 3));
   }
 
-  private List<Object[]> sql(String statement, Object... args) {
-    List<Row> results = session.sql(String.format(statement, args)).collectAsList();
-    if (results.isEmpty()) {
-      return ImmutableList.of();
-    } else {
-      return rowsToJava(results);
-    }
-  }
-
-  private Object[] row(Object... args) {
-    return args;
-  }
-
-  protected List<Object[]> rowsToJava(List<Row> rows) {
-    return rows.stream()
-        .map(
-            row -> {
-              Object[] values = new Object[row.size()];
-              for (int i = 0; i < values.length; i++) {
-                values[i] = row.getAs(i);
-              }
-              return values;
-            })
-        .collect(Collectors.toList());
-  }
-
-  protected void assertEquals(
-      String context, List<Object[]> expectedRows, List<Object[]> actualRows) {
-    Assertions.assertThat(actualRows)
-        .as("%s: number of results should match", context)
-        .hasSameSizeAs(expectedRows);
-    for (int row = 0; row < expectedRows.size(); row += 1) {
-      Object[] expected = expectedRows.get(row);
-      Object[] actual = actualRows.get(row);
-      Assertions.assertThat(actual).as("Number of columns should match").hasSameSizeAs(expected);
-      assertEquals(context + ": row " + (row + 1), expected, actual);
-    }
-  }
-
-  protected void assertEquals(String context, Object[] expectedRow, Object[] actualRow) {
-    Assertions.assertThat(actualRow)
-        .as("Number of columns should match")
-        .hasSameSizeAs(expectedRow);
-    for (int col = 0; col < actualRow.length; col += 1) {
-      Object expectedValue = expectedRow[col];
-      Object actualValue = actualRow[col];
-      if (expectedValue != null && expectedValue.getClass().isArray()) {
-        String newContext = String.format("%s (nested col %d)", context, col + 1);
-        if (expectedValue instanceof byte[]) {
-          Assertions.assertThat(actualValue).as(newContext).isEqualTo(expectedValue);
-        } else {
-          assertEquals(newContext, (Object[]) expectedValue, (Object[]) actualValue);
-        }
-      } else {
-        Assertions.assertThat(actualValue)
-            .as("%s contents should match", context)
-            .isEqualTo(expectedValue);
-      }
-    }
+  private List<Row> sql(String statement, Object... args) {
+    return session.sql(String.format(statement, args)).collectAsList();
   }
 
   public static class TimeBasedCredentialsGenerator implements CredentialsGenerator {
@@ -270,7 +209,7 @@ public class AwsCredentialRenewalTest extends BaseCRUDTest {
     }
   }
 
-  public static class S3CredRenewFileSystem extends CredentialTestFileSystem {
+  public static class S3CredFileSystem extends CredentialTestFileSystem {
     private final Set<Long> verifiedTs = new HashSet<>();
     private volatile AwsCredentialsProvider lazyProvider;
 
@@ -294,10 +233,11 @@ public class AwsCredentialRenewalTest extends BaseCRUDTest {
         assertThat(cred.sessionToken()).isEqualTo("sessionToken" + ts);
 
         verifiedTs.add(ts);
-        if (verifiedTs.size() >= 2) {
-          renewedFsCounter.incrementAndGet();
-        }
       }
+    }
+
+    public int renewalCount() {
+      return verifiedTs.size() - 1;
     }
 
     @Override

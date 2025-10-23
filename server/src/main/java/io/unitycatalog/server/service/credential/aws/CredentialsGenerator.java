@@ -6,6 +6,7 @@ import java.util.UUID;
 import software.amazon.awssdk.auth.credentials.AwsBasicCredentials;
 import software.amazon.awssdk.auth.credentials.DefaultCredentialsProvider;
 import software.amazon.awssdk.auth.credentials.StaticCredentialsProvider;
+import software.amazon.awssdk.regions.Region;
 import software.amazon.awssdk.services.sts.StsClient;
 import software.amazon.awssdk.services.sts.model.Credentials;
 
@@ -37,9 +38,11 @@ public interface CredentialsGenerator {
     private final StsClient stsClient;
     private final String awsRoleArn;
 
-    public StsCredentialsGenerator(String accessKey, String secretKey, String awsRoleArn) {
+    public StsCredentialsGenerator(
+        String region, String accessKey, String secretKey, String awsRoleArn) {
       this.stsClient =
           StsClient.builder()
+              .region(Region.of(region))
               .credentialsProvider(
                   StaticCredentialsProvider.create(
                       AwsBasicCredentials.create(accessKey, secretKey)))
@@ -47,9 +50,12 @@ public interface CredentialsGenerator {
       this.awsRoleArn = awsRoleArn;
     }
 
-    public StsCredentialsGenerator(String awsRoleArn) {
+    public StsCredentialsGenerator(String region, String awsRoleArn) {
       this.stsClient =
-          StsClient.builder().credentialsProvider(DefaultCredentialsProvider.create()).build();
+          StsClient.builder()
+              .region(Region.of(region))
+              .credentialsProvider(DefaultCredentialsProvider.create())
+              .build();
       this.awsRoleArn = awsRoleArn;
     }
 

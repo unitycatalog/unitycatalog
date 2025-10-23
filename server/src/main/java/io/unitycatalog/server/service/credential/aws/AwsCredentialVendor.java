@@ -18,6 +18,7 @@ public class AwsCredentialVendor {
   }
 
   private CredentialsGenerator createCredentialsGenerator(S3StorageConfig config) {
+    // Dynamically load and initialize the generator if it's intentionally configured.
     if (config.getCredentialGenerator() != null) {
       try {
         return (CredentialsGenerator)
@@ -33,11 +34,12 @@ public class AwsCredentialVendor {
           config.getAccessKey(), config.getSecretKey(), config.getSessionToken());
     }
 
-    if (config.getSecretKey() != null && !config.getAccessKey().isEmpty()) {
+    if (config.getAccessKey() != null && !config.getAccessKey().isEmpty()) {
       return new CredentialsGenerator.StsCredentialsGenerator(
-          config.getAccessKey(), config.getSecretKey(), config.getAwsRoleArn());
+          config.getRegion(), config.getAccessKey(), config.getSecretKey(), config.getAwsRoleArn());
     } else {
-      return new CredentialsGenerator.StsCredentialsGenerator(config.getAwsRoleArn());
+      return new CredentialsGenerator.StsCredentialsGenerator(
+          config.getRegion(), config.getAwsRoleArn());
     }
   }
 
@@ -50,9 +52,8 @@ public class AwsCredentialVendor {
     CredentialsGenerator generator =
         credGenerators.compute(
             context.getStorageBase(),
-            (base, credGenerator) -> {
-              return credGenerator == null ? createCredentialsGenerator(config) : credGenerator;
-            });
+            (storageBase, credGenerator) ->
+                credGenerator == null ? createCredentialsGenerator(config) : credGenerator);
 
     return generator.generate(context);
   }

@@ -28,10 +28,9 @@ public abstract class GenericCredentialProvider {
     globalCache = CacheBuilder.newBuilder().maximumSize(maxSize).build();
   }
 
+  private Configuration conf;
   private Clock clock;
   private long renewalLeadTimeMillis;
-
-  private Configuration conf;
   private URI ucUri;
   private String ucToken;
   private String credUid;
@@ -43,16 +42,13 @@ public abstract class GenericCredentialProvider {
   protected void initialize(Configuration conf) {
     this.conf = conf;
 
+    // Use the test clock if one is intentionally configured for testing.
+    String clockName = conf.get(UCHadoopConf.UC_TEST_CLOCK_NAME);
+    this.clock = clockName != null ? Clock.getManualClock(clockName) : Clock.systemClock();
+
     this.renewalLeadTimeMillis = conf.getLong(
         UCHadoopConf.UC_RENEWAL_LEAD_TIME_KEY,
         UCHadoopConf.UC_RENEWAL_LEAD_TIME_DEFAULT_VALUE);
-
-    String manualClockName = conf.get(UCHadoopConf.UC_MANUAL_CLOCK_NAME);
-    if (manualClockName != null && !manualClockName.isEmpty()) {
-      this.clock = Clock.getManualClock(manualClockName);
-    } else {
-      this.clock = Clock.systemClock();
-    }
 
     String ucUriStr = conf.get(UCHadoopConf.UC_URI_KEY);
     Preconditions.checkNotNull(ucUriStr,
