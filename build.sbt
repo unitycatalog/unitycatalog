@@ -1,3 +1,5 @@
+import Checkstyle.javaCheckstyleSettings
+
 import java.nio.file.Files
 import java.io.File
 import Tarball.createTarballSettings
@@ -116,13 +118,6 @@ useCoursier := true
 resolvers ++= Seq(
   "Sonatype OSS Releases" at "https://oss.sonatype.org/content/repositories/releases/",
   "Maven Central" at "https://repo1.maven.org/maven2/",
-)
-
-def javaCheckstyleSettings(configLocation: File) = Seq(
-  checkstyleConfigLocation := CheckstyleConfigLocation.File(configLocation.toString),
-  checkstyleSeverityLevel := Some(CheckstyleSeverityLevel.Error),
-  // (Compile / compile) := ((Compile / compile) dependsOn (Compile / checkstyle)).value,
-  // (Test / test) := ((Test / test) dependsOn (Test / checkstyle)).value,
 )
 
 // enforce java code style
@@ -306,7 +301,7 @@ lazy val server = (project in file("server"))
     commonSettings,
     javaOnlyReleaseSettings,
     javafmtCheckSettings,
-    javaCheckstyleSettings(file("dev") / "checkstyle-config.xml"),
+    javaCheckstyleSettings("dev/checkstyle-config.xml"),
     Compile / compile / javacOptions ++= Seq(
       "-processor",
       "lombok.launch.AnnotationProcessorHider$AnnotationProcessor"
@@ -490,7 +485,7 @@ lazy val cli = (project in file("examples") / "cli")
     commonSettings,
     skipReleaseSettings,
     javafmtCheckSettings,
-    javaCheckstyleSettings(file("dev") / "checkstyle-config.xml"),
+    javaCheckstyleSettings("dev/checkstyle-config.xml"),
     Compile / compile / javacOptions ++= javacRelease17,
     libraryDependencies ++= Seq(
       "commons-cli" % "commons-cli" % "1.7.0",
@@ -558,7 +553,7 @@ lazy val spark = (project in file("connectors/spark"))
     javaOptions ++= Seq(
       "--add-opens=java.base/sun.nio.ch=ALL-UNNAMED",
     ),
-    javaCheckstyleSettings(file("dev/checkstyle-config.xml")),
+    javaCheckstyleSettings("dev/checkstyle-config.xml"),
     Compile / compile / javacOptions ++= javacRelease11,
     libraryDependencies ++= Seq(
       "org.apache.spark" %% "spark-sql" % sparkVersion % Provided,
