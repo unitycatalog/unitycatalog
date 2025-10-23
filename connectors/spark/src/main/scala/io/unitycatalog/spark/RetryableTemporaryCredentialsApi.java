@@ -59,6 +59,7 @@ public class RetryableTemporaryCredentialsApi {
 
   private TemporaryCredentials callWithRetry(ApiCallSupplier apiCall) throws ApiException {
     Exception lastException = null;
+    long startTime = System.currentTimeMillis();
 
     for (int attempt = 1; attempt <= maxAttempts; attempt++) {
       try {
@@ -83,11 +84,13 @@ public class RetryableTemporaryCredentialsApi {
       }
     }
 
+    long elapsedMs = System.currentTimeMillis() - startTime;
     if (lastException instanceof ApiException) {
       throw (ApiException) lastException;
     } else {
       throw new RuntimeException(
-          "Failed to obtain temporary credentials after " + maxAttempts + " attempts",
+          "Failed to obtain temporary credentials after " + maxAttempts + " attempts" +
+          " (elapsed time: " + elapsedMs + "ms)",
           lastException
       );
     }
