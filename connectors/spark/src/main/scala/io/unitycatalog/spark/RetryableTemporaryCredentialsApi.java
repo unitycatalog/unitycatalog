@@ -13,7 +13,7 @@ import org.apache.hadoop.conf.Configuration;
 
 public class RetryableTemporaryCredentialsApi {
   private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
-  
+
   private final TemporaryCredentialsApi delegate;
   private final Clock clock;
   private final int maxAttempts;
@@ -100,7 +100,7 @@ public class RetryableTemporaryCredentialsApi {
       if (code == 429 || code == 503) {
         return true;
       }
-      
+
       String errorCode = extractUcErrorCode(apiEx.getResponseBody());
       if (errorCode != null) {
         return errorCode.equals("TEMPORARILY_UNAVAILABLE")
@@ -109,22 +109,22 @@ public class RetryableTemporaryCredentialsApi {
       }
       return false;
     }
-    
+
     if (isNetworkException(e)) {
       return true;
     }
-    
+
     // Check if the cause is a network exception (common with wrapped exceptions)
     Throwable cause = e.getCause();
     return cause != null && isNetworkException(cause);
   }
-  
+
   private boolean isNetworkException(Throwable e) {
     return e instanceof java.net.SocketTimeoutException
         || e instanceof java.net.SocketException
         || e instanceof java.net.UnknownHostException;
   }
-  
+
   private static String extractUcErrorCode(String body) {
     if (body == null || body.isEmpty()) {
       return null;
