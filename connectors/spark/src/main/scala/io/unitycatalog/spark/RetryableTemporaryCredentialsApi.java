@@ -2,6 +2,7 @@ package io.unitycatalog.spark;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.google.common.base.Throwables;
 import io.unitycatalog.client.ApiException;
 import io.unitycatalog.client.api.TemporaryCredentialsApi;
 import io.unitycatalog.client.model.GenerateTemporaryPathCredential;
@@ -130,13 +131,9 @@ public class RetryableTemporaryCredentialsApi {
       return false;
     }
     
-    if (isNetworkException(e)) {
-      return true;
-    }
-    
-    // Check if the cause is a network exception (common with wrapped exceptions)
-    Throwable cause = e.getCause();
-    return cause != null && isNetworkException(cause);
+    // Check the entire exception cause chain for network exceptions
+    return Throwables.getCausalChain(e).stream()
+        .anyMatch(this::isNetworkException);
   }
 
   private boolean isNetworkException(Throwable e) {
