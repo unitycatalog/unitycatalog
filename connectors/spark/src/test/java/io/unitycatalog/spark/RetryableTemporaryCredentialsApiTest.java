@@ -15,15 +15,20 @@ import io.unitycatalog.client.model.TemporaryCredentials;
 import io.unitycatalog.spark.utils.Clock;
 import java.net.SocketException;
 import java.net.SocketTimeoutException;
+import java.net.UnknownHostException;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
+import java.util.stream.Stream;
 import org.apache.hadoop.conf.Configuration;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.Arguments;
+import org.junit.jupiter.params.provider.MethodSource;
 import org.mockito.Mockito;
 
 public class RetryableTemporaryCredentialsApiTest {
@@ -59,48 +64,15 @@ public class RetryableTemporaryCredentialsApiTest {
     assertThat(recordedSleeps).isEmpty();
   }
 
-  @Test
-  public void testRecoverableHttp503EventuallySucceeds() throws Exception {
+  // Parameterized test to cover all recoverable errors with mixed error types
+  @ParameterizedTest(name = "{0}")
+  @MethodSource("recoverableErrorProvider")
+  public void testRecoverableErrorEventuallySucceeds(String description, 
+      Exception firstError, Exception secondError) throws Exception {
     TemporaryCredentials expected = new TemporaryCredentials();
     when(delegate.generateTemporaryTableCredentials(any(GenerateTemporaryTableCredential.class)))
-        .thenThrow(apiException(503))
-        .thenThrow(apiException(503))
-        .thenReturn(expected);
-
-    TemporaryCredentials actual = retryableApi.generateTemporaryTableCredentials(
-        new GenerateTemporaryTableCredential().tableId("table").operation(null));
-
-    assertThat(actual).isSameAs(expected);
-    verify(delegate, times(3)).generateTemporaryTableCredentials(any());
-
-    assertBackoffWithinBounds(recordedSleeps,
-        UCHadoopConf.RETRY_INITIAL_DELAY_DEFAULT,
-        UCHadoopConf.RETRY_MULTIPLIER_DEFAULT,
-        UCHadoopConf.RETRY_JITTER_FACTOR,
-        2);
-  }
-
-  @Test
-  public void testRecoverableErrorCodeFromJson() throws Exception {
-    TemporaryCredentials expected = new TemporaryCredentials();
-    when(delegate.generateTemporaryPathCredentials(any(GenerateTemporaryPathCredential.class)))
-        .thenThrow(apiException(500, "{\"error_code\":\"TEMPORARILY_UNAVAILABLE\"}"))
-        .thenReturn(expected);
-
-    TemporaryCredentials actual = retryableApi.generateTemporaryPathCredentials(
-        new GenerateTemporaryPathCredential().url("/tmp").operation(null));
-
-    assertThat(actual).isSameAs(expected);
-    verify(delegate, times(2)).generateTemporaryPathCredentials(any());
-    assertThat(recordedSleeps).hasSize(1);
-  }
-
-  @Test
-  public void testNetworkExceptionRetries() throws Exception {
-    TemporaryCredentials expected = new TemporaryCredentials();
-    when(delegate.generateTemporaryTableCredentials(any(GenerateTemporaryTableCredential.class)))
-        .thenThrow(new RuntimeException(new SocketTimeoutException("timeout")))
-        .thenThrow(new RuntimeException(new SocketException("socket")))
+        .thenThrow(firstError)
+        .thenThrow(secondError)
         .thenReturn(expected);
 
     TemporaryCredentials actual = retryableApi.generateTemporaryTableCredentials(
@@ -109,6 +81,34 @@ public class RetryableTemporaryCredentialsApiTest {
     assertThat(actual).isSameAs(expected);
     verify(delegate, times(3)).generateTemporaryTableCredentials(any());
     assertThat(recordedSleeps).hasSize(2);
+  }
+
+  private static Stream<Arguments> recoverableErrorProvider() {
+    return Stream.of(
+        // Mix HTTP status codes with UC error codes
+        Arguments.of("HTTP 429 → HTTP 503",
+            apiException(429),
+            apiException(503)),
+        Arguments.of("HTTP 503 → UC TEMPORARILY_UNAVAILABLE",
+            apiException(503),
+            apiException(500, "{\"error_code\":\"TEMPORARILY_UNAVAILABLE\"}")),
+        
+        // Mix UC error codes with network exceptions
+        Arguments.of("UC WORKSPACE_TEMPORARILY_UNAVAILABLE → Network SocketTimeout",
+            apiException(500, "{\"error_code\":\"WORKSPACE_TEMPORARILY_UNAVAILABLE\"}"),
+            new RuntimeException(new SocketTimeoutException("timeout"))),
+        Arguments.of("UC SERVICE_UNDER_MAINTENANCE → Network SocketException",
+            apiException(500, "{\"error_code\":\"SERVICE_UNDER_MAINTENANCE\"}"),
+            new RuntimeException(new SocketException("connection reset"))),
+        
+        // Mix different network exceptions
+        Arguments.of("Network SocketTimeout → Network UnknownHost",
+            new RuntimeException(new SocketTimeoutException("timeout")),
+            new RuntimeException(new UnknownHostException("unknown host"))),
+        Arguments.of("Network SocketException → HTTP 429",
+            new RuntimeException(new SocketException("connection reset")),
+            apiException(429))
+    );
   }
 
   @Test
