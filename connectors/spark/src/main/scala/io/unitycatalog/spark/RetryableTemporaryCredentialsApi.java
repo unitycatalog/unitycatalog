@@ -9,6 +9,7 @@ import io.unitycatalog.client.model.GenerateTemporaryPathCredential;
 import io.unitycatalog.client.model.GenerateTemporaryTableCredential;
 import io.unitycatalog.client.model.TemporaryCredentials;
 import io.unitycatalog.spark.utils.Clock;
+import java.net.URI;
 import java.time.Duration;
 import java.util.Collections;
 import java.util.HashSet;
@@ -47,6 +48,10 @@ public class RetryableTemporaryCredentialsApi {
 
   public RetryableTemporaryCredentialsApi(TemporaryCredentialsApi delegate, Configuration conf) {
     this(delegate, conf, Clock.systemClock());
+  }
+
+  public RetryableTemporaryCredentialsApi(URI uri, String token, Configuration conf) {
+    this(new TemporaryCredentialsApi(ApiClientFactory.createApiClient(uri, token)), conf);
   }
 
   public RetryableTemporaryCredentialsApi(

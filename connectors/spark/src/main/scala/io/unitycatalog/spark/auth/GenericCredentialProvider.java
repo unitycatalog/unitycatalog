@@ -1,13 +1,11 @@
 package io.unitycatalog.spark.auth;
 
 import io.unitycatalog.client.ApiException;
-import io.unitycatalog.client.api.TemporaryCredentialsApi;
 import io.unitycatalog.client.model.GenerateTemporaryPathCredential;
 import io.unitycatalog.client.model.GenerateTemporaryTableCredential;
 import io.unitycatalog.client.model.PathOperation;
 import io.unitycatalog.client.model.TableOperation;
 import io.unitycatalog.client.model.TemporaryCredentials;
-import io.unitycatalog.spark.ApiClientFactory;
 import io.unitycatalog.spark.RetryableTemporaryCredentialsApi;
 import io.unitycatalog.spark.UCHadoopConf;
 import io.unitycatalog.spark.utils.Clock;
@@ -101,9 +99,7 @@ public abstract class GenericCredentialProvider {
     if (tempCredApi == null) {
       synchronized (this) {
         if (tempCredApi == null) {
-          TemporaryCredentialsApi baseApi = new TemporaryCredentialsApi(
-              ApiClientFactory.createApiClient(ucUri, ucToken));
-          tempCredApi = new RetryableTemporaryCredentialsApi(baseApi, conf);
+          tempCredApi = new RetryableTemporaryCredentialsApi(ucUri, ucToken, conf);
         }
       }
     }
