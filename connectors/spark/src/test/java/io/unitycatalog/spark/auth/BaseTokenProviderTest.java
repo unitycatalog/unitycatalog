@@ -304,14 +304,14 @@ public abstract class BaseTokenProviderTest<T extends GenericCredentialProvider>
     List<Duration> recordedSleeps = new ArrayList<>();
     Clock clockSpy = spy(manualClock);
     Mockito.doAnswer(invocation -> {
-          Duration duration = invocation.getArgument(0);
-          recordedSleeps.add(duration);
-          // Delegate to the real sleep() which now advances time in ManualClock
-          invocation.callRealMethod();
-          return null;
-        })
-        .when(clockSpy)
-        .sleep(Mockito.any(Duration.class));
+      Duration duration = invocation.getArgument(0);
+      recordedSleeps.add(duration);
+      // Delegate to the real sleep() which now advances time in ManualClock
+      invocation.callRealMethod();
+      return null;
+    })
+    .when(clockSpy)
+      .sleep(Mockito.any(Duration.class));
 
     Configuration conf = newTableBasedConf();
     TemporaryCredentialsApi tempCredApi = mock(TemporaryCredentialsApi.class);

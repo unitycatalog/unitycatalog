@@ -235,14 +235,14 @@ public class RetryableTemporaryCredentialsApiTest {
     recordedSleeps = new ArrayList<>();
     Clock clockSpy = Mockito.spy(manualClock);
     Mockito.doAnswer(invocation -> {
-          Duration duration = invocation.getArgument(0);
-          recordedSleeps.add(duration);
-          // Delegate to the real sleep() which now advances time in ManualClock
-          invocation.callRealMethod();
-          return null;
-        })
-        .when(clockSpy)
-        .sleep(Mockito.any(Duration.class));
+      Duration duration = invocation.getArgument(0);
+      recordedSleeps.add(duration);
+      // Delegate to the real sleep() which now advances time in ManualClock
+      invocation.callRealMethod();
+      return null;
+    })
+    .when(clockSpy)
+      .sleep(Mockito.any(Duration.class));
     retryableApi = new RetryableTemporaryCredentialsApi(delegate, conf, clockSpy);
   }
 }
