@@ -16,7 +16,7 @@ import java.util.*;
 import org.apache.spark.sql.SparkSession;
 import org.junit.jupiter.api.BeforeEach;
 
-public abstract class BaseSparkIntegrationTest extends BaseCRUDTest {
+public abstract class BaseSparkITTest extends BaseCRUDTest {
 
   protected static final String SPARK_CATALOG = "spark_catalog";
 
