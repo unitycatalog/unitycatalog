@@ -29,7 +29,8 @@ public class TableConfigService {
   private final CloudCredentialVendor cloudCredentialVendor;
   private final Map<String, S3StorageConfig> s3Configurations;
 
-  public TableConfigService(CloudCredentialVendor cloudCredentialVendor, ServerProperties serverProperties) {
+  public TableConfigService(CloudCredentialVendor cloudCredentialVendor,
+      ServerProperties serverProperties) {
     this.s3Configurations = serverProperties.getS3Configurations();
     this.cloudCredentialVendor = cloudCredentialVendor;
   }
@@ -50,28 +51,32 @@ public class TableConfigService {
 
   private Map<String, String> getADLSConfig(CredentialContext context) {
     ADLSLocationUtils.ADLSLocationParts locationParts =
-      ADLSLocationUtils.parseLocation(context.getStorageBase());
+        ADLSLocationUtils.parseLocation(context.getStorageBase());
 
     AzureCredential azureCredential = cloudCredentialVendor.vendAzureCredential(context);
 
-    return Map.of(AzureProperties.ADLS_SAS_TOKEN_PREFIX + locationParts.account(), azureCredential.getSasToken());
+    return Map.of(AzureProperties.ADLS_SAS_TOKEN_PREFIX + locationParts.account(),
+        azureCredential.getSasToken());
   }
 
   private Map<String, String> getGCSConfig(CredentialContext context) {
     AccessToken token = cloudCredentialVendor.vendGcpToken(context);
 
     return Map.of(
-      GCPProperties.GCS_OAUTH2_TOKEN, token.getTokenValue(),
-      GCPProperties.GCS_OAUTH2_TOKEN_EXPIRES_AT, Long.toString(token.getExpirationTime().getTime()));
+        GCPProperties.GCS_OAUTH2_TOKEN, token.getTokenValue(),
+        GCPProperties.GCS_OAUTH2_TOKEN_EXPIRES_AT,
+        Long.toString(token.getExpirationTime().getTime()));
   }
 
   private Map<String, String> getS3Config(CredentialContext context) {
     S3StorageConfig s3StorageConfig = s3Configurations.get(context.getStorageBase());
     Credentials awsCredential = cloudCredentialVendor.vendAwsCredential(context);
 
-    return Map.of(S3FileIOProperties.ACCESS_KEY_ID, awsCredential.accessKeyId(),
-      S3FileIOProperties.SECRET_ACCESS_KEY, awsCredential.secretAccessKey(),
-      S3FileIOProperties.SESSION_TOKEN, awsCredential.sessionToken(),
-      AwsClientProperties.CLIENT_REGION, s3StorageConfig.getRegion());
+    return Map.of(
+        S3FileIOProperties.ACCESS_KEY_ID, awsCredential.accessKeyId(),
+        S3FileIOProperties.SECRET_ACCESS_KEY, awsCredential.secretAccessKey(),
+        S3FileIOProperties.SESSION_TOKEN, awsCredential.sessionToken(),
+        AwsClientProperties.CLIENT_REGION, s3StorageConfig.getRegion());
   }
 }
+

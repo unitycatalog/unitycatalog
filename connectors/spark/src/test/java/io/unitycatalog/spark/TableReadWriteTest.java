@@ -8,6 +8,7 @@ import io.unitycatalog.client.ApiException;
 import io.unitycatalog.client.model.*;
 import io.unitycatalog.server.base.table.TableOperations;
 import io.unitycatalog.server.sdk.tables.SdkTableOperations;
+import io.unitycatalog.spark.utils.OptionsUtil;
 import java.io.File;
 import java.io.IOException;
 import java.time.Instant;
@@ -23,7 +24,7 @@ import org.apache.spark.sql.types.StructType;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
-import org.junit.jupiter.params.provider.ValueSource;
+import org.junit.jupiter.params.provider.CsvSource;
 
 public class TableReadWriteTest extends BaseSparkIntegrationTest {
 
@@ -51,9 +52,9 @@ public class TableReadWriteTest extends BaseSparkIntegrationTest {
     builder =
         builder
             .config(catalogConf, UCSingleCatalog.class.getName())
-            .config(catalogConf + ".uri", serverConfig.getServerUrl())
-            .config(catalogConf + ".token", serverConfig.getAuthToken())
-            .config(catalogConf + ".warehouse", CATALOG_NAME)
+            .config(catalogConf + "." + OptionsUtil.URI, serverConfig.getServerUrl())
+            .config(catalogConf + "." + OptionsUtil.TOKEN, serverConfig.getAuthToken())
+            .config(catalogConf + "." + OptionsUtil.WAREHOUSE, CATALOG_NAME)
             .config(catalogConf + ".__TEST_NO_DELTA__", "true");
     SparkSession session = builder.getOrCreate();
     setupExternalParquetTable(PARQUET_TABLE, new ArrayList<>(0));
@@ -152,9 +153,10 @@ public class TableReadWriteTest extends BaseSparkIntegrationTest {
   }
 
   @ParameterizedTest
-  @ValueSource(strings = {"s3", "gs", "abfs"})
-  public void testCredentialParquet(String scheme) throws ApiException, IOException {
-    SparkSession session = createSparkSessionWithCatalogs(SPARK_CATALOG);
+  @CsvSource({"s3, false", "s3, true", "gs, false", "abfs, false"})
+  public void testCredentialParquet(String scheme, boolean renewCredEnabled)
+      throws ApiException, IOException {
+    SparkSession session = createSparkSessionWithCatalogs(renewCredEnabled, SPARK_CATALOG);
 
     String loc1 = scheme + "://test-bucket0" + generateTableLocation(SPARK_CATALOG, PARQUET_TABLE);
     setupExternalParquetTable(PARQUET_TABLE, loc1, new ArrayList<>(0));
@@ -178,9 +180,11 @@ public class TableReadWriteTest extends BaseSparkIntegrationTest {
   }
 
   @ParameterizedTest
-  @ValueSource(strings = {"s3", "gs", "abfs"})
-  public void testCredentialDelta(String scheme) throws ApiException, IOException {
-    SparkSession session = createSparkSessionWithCatalogs(SPARK_CATALOG, CATALOG_NAME);
+  @CsvSource({"s3, false", "s3, true", "gs, false", "abfs, false"})
+  public void testCredentialDelta(String scheme, boolean renewCredEnabled)
+      throws ApiException, IOException {
+    SparkSession session =
+        createSparkSessionWithCatalogs(renewCredEnabled, SPARK_CATALOG, CATALOG_NAME);
 
     String loc0 = scheme + "://test-bucket0" + generateTableLocation(SPARK_CATALOG, DELTA_TABLE);
     setupExternalDeltaTable(SPARK_CATALOG, DELTA_TABLE, loc0, new ArrayList<>(0), session);
@@ -203,9 +207,11 @@ public class TableReadWriteTest extends BaseSparkIntegrationTest {
   }
 
   @ParameterizedTest
-  @ValueSource(strings = {"s3", "gs", "abfs"})
-  public void testCredentialCreateDeltaTable(String scheme) throws IOException {
-    SparkSession session = createSparkSessionWithCatalogs(SPARK_CATALOG, CATALOG_NAME);
+  @CsvSource({"s3, false", "s3, true", "gs, false", "abfs, false"})
+  public void testCredentialCreateDeltaTable(String scheme, boolean renewCredEnabled)
+      throws IOException {
+    SparkSession session =
+        createSparkSessionWithCatalogs(renewCredEnabled, SPARK_CATALOG, CATALOG_NAME);
 
     String loc1 = scheme + "://test-bucket0" + generateTableLocation(SPARK_CATALOG, DELTA_TABLE);
     setupDeltaTableLocation(session, loc1, new ArrayList<>(0));
@@ -238,9 +244,10 @@ public class TableReadWriteTest extends BaseSparkIntegrationTest {
   }
 
   @ParameterizedTest
-  @ValueSource(strings = {"s3", "gs", "abfs"})
-  public void testDeleteDeltaTable(String scheme) throws ApiException, IOException {
-    SparkSession session = createSparkSessionWithCatalogs(SPARK_CATALOG);
+  @CsvSource({"s3, false", "s3, true", "gs, false", "abfs, false"})
+  public void testDeleteDeltaTable(String scheme, boolean renewCredEnabled)
+      throws ApiException, IOException {
+    SparkSession session = createSparkSessionWithCatalogs(renewCredEnabled, SPARK_CATALOG);
 
     String loc1 = scheme + "://test-bucket0" + generateTableLocation(SPARK_CATALOG, DELTA_TABLE);
     setupExternalDeltaTable(SPARK_CATALOG, DELTA_TABLE, loc1, new ArrayList<>(0), session);
@@ -255,9 +262,11 @@ public class TableReadWriteTest extends BaseSparkIntegrationTest {
   }
 
   @ParameterizedTest
-  @ValueSource(strings = {"s3", "gs", "abfs"})
-  public void testMergeDeltaTable(String scheme) throws ApiException, IOException {
-    SparkSession session = createSparkSessionWithCatalogs(SPARK_CATALOG, CATALOG_NAME);
+  @CsvSource({"s3, false", "s3, true", "gs, false", "abfs, false"})
+  public void testMergeDeltaTable(String scheme, boolean renewCredEnabled)
+      throws ApiException, IOException {
+    SparkSession session =
+        createSparkSessionWithCatalogs(renewCredEnabled, SPARK_CATALOG, CATALOG_NAME);
 
     String loc1 = scheme + "://test-bucket0" + generateTableLocation(SPARK_CATALOG, DELTA_TABLE);
     setupExternalDeltaTable(SPARK_CATALOG, DELTA_TABLE, loc1, new ArrayList<>(0), session);
@@ -281,9 +290,10 @@ public class TableReadWriteTest extends BaseSparkIntegrationTest {
   }
 
   @ParameterizedTest
-  @ValueSource(strings = {"s3", "gs", "abfs"})
-  public void testUpdateDeltaTable(String scheme) throws ApiException, IOException {
-    SparkSession session = createSparkSessionWithCatalogs(SPARK_CATALOG);
+  @CsvSource({"s3, false", "s3, true", "gs, false", "abfs, false"})
+  public void testUpdateDeltaTable(String scheme, boolean renewCredEnabled)
+      throws ApiException, IOException {
+    SparkSession session = createSparkSessionWithCatalogs(renewCredEnabled, SPARK_CATALOG);
 
     String loc1 = scheme + "://test-bucket0" + generateTableLocation(SPARK_CATALOG, DELTA_TABLE);
     setupExternalDeltaTable(SPARK_CATALOG, DELTA_TABLE, loc1, new ArrayList<>(0), session);
@@ -349,7 +359,7 @@ public class TableReadWriteTest extends BaseSparkIntegrationTest {
   }
 
   @Test
-  public void testCreateExternalParquetTable() throws ApiException, IOException {
+  public void testCreateExternalParquetTable() throws IOException {
 
     SparkSession session = createSparkSessionWithCatalogs(SPARK_CATALOG, CATALOG_NAME);
     String[] names = {SPARK_CATALOG, CATALOG_NAME};
