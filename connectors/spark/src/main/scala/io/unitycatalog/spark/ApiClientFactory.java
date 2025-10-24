@@ -11,7 +11,8 @@ public class ApiClientFactory {
     ApiClient apiClient = new ApiClient()
         .setHost(url.getHost())
         .setPort(url.getPort())
-        .setScheme(url.getScheme());
+        .setScheme(url.getScheme())
+        .setBasePath(url.getPath());
 
     if (token != null && !token.isEmpty()) {
       apiClient = apiClient.setRequestInterceptor(
