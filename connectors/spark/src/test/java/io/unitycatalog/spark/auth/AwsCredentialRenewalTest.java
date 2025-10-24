@@ -151,10 +151,32 @@ public class AwsCredentialRenewalTest extends BaseCRUDTest {
     // Insert 1 row into the table.
     sql("INSERT INTO %s VALUES (1)", TABLE_NAME);
 
+    // Generate a table level hadoop configuration, with setting the delta table's all properties.
     SerializableConfiguration serialConf =
         new SerializableConfiguration(
             DeltaTable.forName(session, TABLE_NAME).deltaLog().newDeltaHadoopConf());
 
+    // This Spark job consists of three main steps:
+    // 1. Read data from a Delta table.
+    // 2. Simulate storage access using the table-level Hadoop configuration and verify that
+    //    filesystem credentials are renewed the expected number of times.
+    // 3. Write the credential renewal count back to the Delta table.
+    //
+    // The test validates two dimensions:
+    // - Dimension 1: Simulate a single Delta table operation within a Spark executor
+    //   to accurately track how many times credentials are renewed within a task.
+    // - Dimension 2: Verify the full job workflow across three stages:
+    //     (a) Read Delta Table
+    //     (b) Apply a Map function
+    //     (c) Write back to Delta Table
+    //
+    //   In the Read stage, the file writer is initialized with the filesystem instance,
+    //   which goes through the Map function. This triggers multiple rounds of
+    //   credential renewal. If credentials are not renewed correctly, the Write stage will fail.
+    //
+    // Note: Directly accessing a Spark task's internal filesystem instance to verify the
+    // accurate renewal times is not possible. The successful completion of the Write stage
+    // serves as an indirect verification that credential renewal occurred as expected.
     JavaRDD<Row> rdd =
         session
             .read()
@@ -199,6 +221,13 @@ public class AwsCredentialRenewalTest extends BaseCRUDTest {
     return session.sql(String.format(statement, args)).collectAsList();
   }
 
+  /**
+   * A customized {@link CredentialsGenerator} that generates credentials based on time intervals.
+   * The entire timeline is divided into consecutive 30-second windows, and all requests that fall
+   * within the same window will receive the same credential.
+   * This generator is dynamically loaded by the Unity Catalog server and serves credential
+   * generation requests from client REST API calls.
+   */
   public static class TimeBasedCredentialsGenerator implements CredentialsGenerator {
 
     @Override
@@ -215,6 +244,13 @@ public class AwsCredentialRenewalTest extends BaseCRUDTest {
     }
   }
 
+  /**
+   * A testing S3 filesystem used to verify credential renewal behavior. For each {@code
+   * checkCredentials()} call, the previous credentials should automatically renew as the
+   * 30-second time window advances. The test tracks how many distinct credentials this
+   * filesystem receives, which should match the expected number of credential renewals.
+   * We use this filesystem to accurately track how many renewal happened.
+   */
   public static class S3CredFileSystem extends CredentialTestFileSystem {
     private final Set<Long> verifiedTs = new HashSet<>();
     private volatile AwsCredentialsProvider lazyProvider;
@@ -253,6 +289,9 @@ public class AwsCredentialRenewalTest extends BaseCRUDTest {
 
       String clazz = getConf().get(UCHadoopConf.S3A_CREDENTIALS_PROVIDER);
       assertThat(clazz).isEqualTo(AwsVendedTokenProvider.class.getName());
+
+      // This will validate if the hadoop configuration is correct or not, since it will fail the
+      // provider constructor if given an incorrect setting here.
       lazyProvider = new AwsVendedTokenProvider(getConf());
 
       return lazyProvider;
