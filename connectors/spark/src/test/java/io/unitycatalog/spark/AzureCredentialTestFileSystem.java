@@ -8,7 +8,7 @@ import org.apache.hadoop.fs.Path;
 
 public class AzureCredentialTestFileSystem extends CredentialTestFileSystem {
   @Override
-  void checkCredentials(Path f) {
+  protected void checkCredentials(Path f) {
     Configuration conf = getConf();
     String host = f.toUri().getHost();
     if (credentialCheckEnabled) {
@@ -24,7 +24,7 @@ public class AzureCredentialTestFileSystem extends CredentialTestFileSystem {
   }
 
   @Override
-  String scheme() {
+  protected String scheme() {
     return "abfs:";
   }
 }

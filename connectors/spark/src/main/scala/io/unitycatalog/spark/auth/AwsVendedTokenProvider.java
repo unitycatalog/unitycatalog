@@ -1,7 +1,6 @@
 package io.unitycatalog.spark.auth;
 
 import io.unitycatalog.spark.UCHadoopConf;
-import io.unitycatalog.spark.utils.Clock;
 import org.apache.hadoop.conf.Configuration;
 import org.sparkproject.guava.base.Preconditions;
 import software.amazon.awssdk.auth.credentials.AwsCredentials;
@@ -18,17 +17,11 @@ public class AwsVendedTokenProvider extends GenericCredentialProvider
     initialize(conf);
   }
 
-  AwsVendedTokenProvider(Configuration conf, Clock clock, long renewalLeadTimeMillis) {
-    super(clock, renewalLeadTimeMillis);
-    initialize(conf);
-  }
-
   @Override
   public GenericCredential initGenericCredential(Configuration conf) {
     if (conf.get(UCHadoopConf.S3A_INIT_ACCESS_KEY) != null
         && conf.get(UCHadoopConf.S3A_INIT_SECRET_KEY) != null
-        && conf.get(UCHadoopConf.S3A_INIT_SESSION_TOKEN) != null
-        && conf.get(UCHadoopConf.S3A_INIT_CRED_EXPIRED_TIME) != null) {
+        && conf.get(UCHadoopConf.S3A_INIT_SESSION_TOKEN) != null) {
 
       String accessKey = conf.get(UCHadoopConf.S3A_INIT_ACCESS_KEY);
       String secretKey = conf.get(UCHadoopConf.S3A_INIT_SECRET_KEY);

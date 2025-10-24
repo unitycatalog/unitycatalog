@@ -4,74 +4,57 @@ import io.unitycatalog.server.exception.BaseException;
 import io.unitycatalog.server.exception.ErrorCode;
 import io.unitycatalog.server.service.credential.CredentialContext;
 import io.unitycatalog.server.utils.ServerProperties;
-import java.time.Duration;
 import java.util.Map;
-import java.util.UUID;
-import software.amazon.awssdk.auth.credentials.AwsBasicCredentials;
-import software.amazon.awssdk.auth.credentials.AwsCredentialsProvider;
-import software.amazon.awssdk.auth.credentials.DefaultCredentialsProvider;
-import software.amazon.awssdk.auth.credentials.StaticCredentialsProvider;
-import software.amazon.awssdk.regions.Region;
-import software.amazon.awssdk.services.sts.StsClient;
+import java.util.concurrent.ConcurrentHashMap;
 import software.amazon.awssdk.services.sts.model.Credentials;
 
 public class AwsCredentialVendor {
 
   private final Map<String, S3StorageConfig> s3Configurations;
+  private final Map<String, CredentialsGenerator> credGenerators = new ConcurrentHashMap<>();
 
   public AwsCredentialVendor(ServerProperties serverProperties) {
     this.s3Configurations = serverProperties.getS3Configurations();
   }
 
+  private CredentialsGenerator createCredentialsGenerator(S3StorageConfig config) {
+    // Dynamically load and initialize the generator if it's intentionally configured.
+    if (config.getCredentialGenerator() != null) {
+      try {
+        return (CredentialsGenerator)
+            Class.forName(config.getCredentialGenerator()).getDeclaredConstructor().newInstance();
+      } catch (Exception e) {
+        throw new RuntimeException(e);
+      }
+    }
+
+    if (config.getSessionToken() != null && !config.getSessionToken().isEmpty()) {
+      // if a session token was supplied, then we will just return static session credentials
+      return new CredentialsGenerator.StaticCredentialsGenerator(
+          config.getAccessKey(), config.getSecretKey(), config.getSessionToken());
+    }
+
+    if (config.getAccessKey() != null && !config.getAccessKey().isEmpty()) {
+      return new CredentialsGenerator.StsCredentialsGenerator(
+          config.getRegion(), config.getAccessKey(), config.getSecretKey(), config.getAwsRoleArn());
+    } else {
+      return new CredentialsGenerator.StsCredentialsGenerator(
+          config.getRegion(), config.getAwsRoleArn());
+    }
+  }
+
   public Credentials vendAwsCredentials(CredentialContext context) {
-    S3StorageConfig s3StorageConfig = s3Configurations.get(context.getStorageBase());
-    if (s3StorageConfig == null) {
+    S3StorageConfig config = s3Configurations.get(context.getStorageBase());
+    if (config == null) {
       throw new BaseException(ErrorCode.FAILED_PRECONDITION, "S3 bucket configuration not found.");
     }
 
-    if (s3StorageConfig.getSessionToken() != null && !s3StorageConfig.getSessionToken().isEmpty()) {
-      // if a session token was supplied, then we will just return static session credentials
-      return Credentials.builder()
-          .accessKeyId(s3StorageConfig.getAccessKey())
-          .secretAccessKey(s3StorageConfig.getSecretKey())
-          .sessionToken(s3StorageConfig.getSessionToken())
-          .build();
-    }
+    CredentialsGenerator generator =
+        credGenerators.compute(
+            context.getStorageBase(),
+            (storageBase, credGenerator) ->
+                credGenerator == null ? createCredentialsGenerator(config) : credGenerator);
 
-    // TODO: cache sts client
-    StsClient stsClient = getStsClientForStorageConfig(s3StorageConfig);
-
-    // TODO: Update this with relevant user/role type info once available
-    String roleSessionName = "uc-%s".formatted(UUID.randomUUID());
-    String awsPolicy =
-        AwsPolicyGenerator.generatePolicy(context.getPrivileges(), context.getLocations());
-
-    return stsClient
-        .assumeRole(
-            r ->
-                r.roleArn(s3StorageConfig.getAwsRoleArn())
-                    .policy(awsPolicy)
-                    .roleSessionName(roleSessionName)
-                    .durationSeconds((int) Duration.ofHours(1).toSeconds()))
-        .credentials();
-  }
-
-  private StsClient getStsClientForStorageConfig(S3StorageConfig s3StorageConfig) {
-    AwsCredentialsProvider credentialsProvider;
-    if (s3StorageConfig.getSecretKey() != null && !s3StorageConfig.getAccessKey().isEmpty()) {
-      credentialsProvider =
-          StaticCredentialsProvider.create(
-              AwsBasicCredentials.create(
-                  s3StorageConfig.getAccessKey(), s3StorageConfig.getSecretKey()));
-    } else {
-      credentialsProvider = DefaultCredentialsProvider.create();
-    }
-
-    // TODO: should we try and set the region to something configurable or specific to the server
-    // instead?
-    return StsClient.builder()
-        .credentialsProvider(credentialsProvider)
-        .region(Region.of(s3StorageConfig.getRegion()))
-        .build();
+    return generator.generate(context);
   }
 }

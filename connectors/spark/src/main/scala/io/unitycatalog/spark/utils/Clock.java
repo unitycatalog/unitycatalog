@@ -2,6 +2,8 @@ package io.unitycatalog.spark.utils;
 
 import java.time.Duration;
 import java.time.Instant;
+import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 
 public interface Clock {
   /**
@@ -23,6 +25,17 @@ public interface Clock {
     return new ManualClock(now);
   }
 
+
+  static Clock getManualClock(String name) {
+    return ManualClock.globalManualClock.compute(name, (clockName, clock) ->
+        clock == null ? manualClock(Instant.now()) : clock
+    );
+  }
+
+  static void removeManualClock(String name) {
+    ManualClock.globalManualClock.remove(name);
+  }
+
   class SystemClock implements Clock {
     private static final SystemClock SINGLETON = new SystemClock();
 
@@ -38,6 +51,8 @@ public interface Clock {
   }
 
   class ManualClock implements Clock {
+    private static final Map<String, Clock> globalManualClock = new ConcurrentHashMap<>();
+
     private volatile Instant now;
 
     ManualClock(Instant now) {
