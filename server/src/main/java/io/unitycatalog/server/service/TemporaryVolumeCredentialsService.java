@@ -39,7 +39,9 @@ public class TemporaryVolumeCredentialsService {
   private final KeyMapper keyMapper;
 
   @SneakyThrows
-  public TemporaryVolumeCredentialsService(UnityCatalogAuthorizer authorizer, CloudCredentialVendor cloudCredentialVendor, Repositories repositories) {
+  public TemporaryVolumeCredentialsService(UnityCatalogAuthorizer authorizer,
+                                           CloudCredentialVendor cloudCredentialVendor,
+                                           Repositories repositories) {
     this.evaluator = new UnityAccessEvaluator(authorizer);
     this.cloudCredentialVendor = cloudCredentialVendor;
     this.keyMapper = new KeyMapper(repositories);
@@ -48,7 +50,8 @@ public class TemporaryVolumeCredentialsService {
   }
 
   @Post("")
-  public HttpResponse generateTemporaryTableCredential(GenerateTemporaryVolumeCredential generateTemporaryVolumeCredential) {
+  public HttpResponse generateTemporaryTableCredential(
+      GenerateTemporaryVolumeCredential generateTemporaryVolumeCredential) {
     authorizeForOperation(generateTemporaryVolumeCredential);
 
     String volumeId = generateTemporaryVolumeCredential.getVolumeId();
@@ -57,12 +60,13 @@ public class TemporaryVolumeCredentialsService {
     }
     VolumeInfo volumeInfo = volumeRepository.getVolumeById(volumeId);
     return HttpResponse.ofJson(
-            cloudCredentialVendor.vendCredential(
-                    volumeInfo.getStorageLocation(),
-                    volumeOperationToPrivileges(generateTemporaryVolumeCredential.getOperation())));
+        cloudCredentialVendor.vendCredential(
+            volumeInfo.getStorageLocation(),
+            volumeOperationToPrivileges(generateTemporaryVolumeCredential.getOperation())));
   }
 
-  private Set<CredentialContext.Privilege> volumeOperationToPrivileges(VolumeOperation volumeOperation) {
+  private Set<CredentialContext.Privilege> volumeOperationToPrivileges(
+      VolumeOperation volumeOperation) {
     return switch (volumeOperation) {
       case READ_VOLUME -> Set.of(SELECT);
       case WRITE_VOLUME -> Set.of(SELECT, UPDATE);
@@ -70,29 +74,33 @@ public class TemporaryVolumeCredentialsService {
     };
   }
 
-  private void authorizeForOperation(GenerateTemporaryVolumeCredential generateTemporaryVolumeCredential) {
+  private void authorizeForOperation(
+      GenerateTemporaryVolumeCredential generateTemporaryVolumeCredential) {
 
-    // TODO: This is a short term solution to conditional expression evaluation based on additional request parameters.
+    // TODO: This is a short term solution to conditional expression evaluation based on additional
+    //  request parameters.
     // This should be replaced with more direct annotations and syntax in the future.
 
     String readExpression = """
-          #authorizeAny(#principal, #schema, OWNER, USE_SCHEMA) && #authorizeAny(#principal, #catalog, OWNER, USE_CATALOG) && #authorizeAny(#principal, #volume, OWNER, READ_VOLUME)
-          """;
+        #authorizeAny(#principal, #schema, OWNER, USE_SCHEMA) &&
+        #authorizeAny(#principal, #catalog, OWNER, USE_CATALOG) &&
+        #authorizeAny(#principal, #volume, OWNER, READ_VOLUME)
+        """;
 
     // TODO: add WRITE_VOLUME to the expression
     String writeExpression = """
-          #authorizeAny(#principal, #catalog, OWNER, USE_CATALOG) &&
-          #authorizeAny(#principal, #schema, OWNER, USE_SCHEMA) &&
-          #authorize(#principal, #volume, OWNER)
-          """;
+        #authorizeAny(#principal, #catalog, OWNER, USE_CATALOG) &&
+        #authorizeAny(#principal, #schema, OWNER, USE_SCHEMA) &&
+        #authorize(#principal, #volume, OWNER)
+        """;
 
     String authorizeExpression =
-            generateTemporaryVolumeCredential.getOperation() == VolumeOperation.READ_VOLUME ?
-                    readExpression : writeExpression;
+        generateTemporaryVolumeCredential.getOperation() == VolumeOperation.READ_VOLUME ?
+            readExpression : writeExpression;
 
     Map<SecurableType, Object> resourceKeys = keyMapper.mapResourceKeys(
-            Map.of(METASTORE, "metastore",
-                    VOLUME, generateTemporaryVolumeCredential.getVolumeId()));
+        Map.of(METASTORE, "metastore",
+            VOLUME, generateTemporaryVolumeCredential.getVolumeId()));
 
     if (!evaluator.evaluate(userRepository.findPrincipalId(), authorizeExpression, resourceKeys)) {
       throw new BaseException(ErrorCode.PERMISSION_DENIED, "Access denied.");

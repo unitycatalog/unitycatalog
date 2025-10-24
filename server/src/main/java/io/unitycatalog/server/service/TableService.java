@@ -49,33 +49,37 @@ public class TableService extends AuthorizedService {
 
   @Post("")
   @AuthorizeExpression("""
-          (#authorizeAny(#principal, #catalog, OWNER, USE_CATALOG) && #authorize(#principal, #schema, OWNER)) ||
-          (#authorizeAny(#principal, #catalog, OWNER, USE_CATALOG) && #authorizeAll(#principal, #schema, USE_SCHEMA, CREATE_TABLE))
+      (#authorizeAny(#principal, #catalog, OWNER, USE_CATALOG) &&
+          #authorize(#principal, #schema, OWNER)) ||
+      (#authorizeAny(#principal, #catalog, OWNER, USE_CATALOG) &&
+          #authorizeAll(#principal, #schema, USE_SCHEMA, CREATE_TABLE))
       """)
   @AuthorizeKey(METASTORE)
   public HttpResponse createTable(
-          @AuthorizeKeys({
-                  @AuthorizeKey(value = SCHEMA, key = "schema_name"),
-                  @AuthorizeKey(value = CATALOG, key = "catalog_name")
-          })
-          CreateTable createTable) {
+      @AuthorizeKeys({
+        @AuthorizeKey(value = SCHEMA, key = "schema_name"),
+        @AuthorizeKey(value = CATALOG, key = "catalog_name")
+      })
+      CreateTable createTable) {
     assert createTable != null;
     TableInfo tableInfo = tableRepository.createTable(createTable);
-    
+
     SchemaInfo schemaInfo =
         schemaRepository.getSchema(tableInfo.getCatalogName() + "." + tableInfo.getSchemaName());
     initializeHierarchicalAuthorization(tableInfo.getTableId(), schemaInfo.getSchemaId());
-    
+
     return HttpResponse.ofJson(tableInfo);
   }
 
   @Get("/{full_name}")
   @AuthorizeExpression("""
-          #authorize(#principal, #metastore, OWNER) ||
-          #authorize(#principal, #catalog, OWNER) ||
-          (#authorize(#principal, #schema, OWNER) && #authorize(#principal, #catalog, USE_CATALOG)) ||
-          (#authorize(#principal, #schema, USE_SCHEMA) && #authorize(#principal, #catalog, USE_CATALOG) && #authorizeAny(#principal, #table, OWNER, SELECT, MODIFY))
-          """)
+      #authorize(#principal, #metastore, OWNER) ||
+      #authorize(#principal, #catalog, OWNER) ||
+      (#authorize(#principal, #schema, OWNER) && #authorize(#principal, #catalog, USE_CATALOG)) ||
+      (#authorize(#principal, #schema, USE_SCHEMA) &&
+          #authorize(#principal, #catalog, USE_CATALOG) &&
+          #authorizeAny(#principal, #table, OWNER, SELECT, MODIFY))
+      """)
   @AuthorizeKey(METASTORE)
   public HttpResponse getTable(@Param("full_name") @AuthorizeKey(TABLE) String fullName) {
     assert fullName != null;
@@ -94,37 +98,41 @@ public class TableService extends AuthorizedService {
       @Param("omit_columns") Optional<Boolean> omitColumns) {
 
     ListTablesResponse listTablesResponse = tableRepository.listTables(
-            catalogName,
-            schemaName,
-            maxResults,
-            pageToken,
-            omitProperties.orElse(false),
-            omitColumns.orElse(false));
+        catalogName,
+        schemaName,
+        maxResults,
+        pageToken,
+        omitProperties.orElse(false),
+        omitColumns.orElse(false));
 
     filterTables("""
-          #authorize(#principal, #metastore, OWNER) ||
-          #authorize(#principal, #catalog, OWNER) ||
-          (#authorize(#principal, #schema, OWNER) && #authorize(#principal, #catalog, USE_CATALOG)) ||
-          (#authorize(#principal, #schema, USE_SCHEMA) && #authorize(#principal, #catalog, USE_CATALOG) && #authorizeAny(#principal, #table, OWNER, SELECT, MODIFY))
-          """, listTablesResponse.getTables());
+        #authorize(#principal, #metastore, OWNER) ||
+        #authorize(#principal, #catalog, OWNER) ||
+        (#authorize(#principal, #schema, OWNER) && #authorize(#principal, #catalog, USE_CATALOG)) ||
+        (#authorize(#principal, #schema, USE_SCHEMA) &&
+            #authorize(#principal, #catalog, USE_CATALOG) &&
+            #authorizeAny(#principal, #table, OWNER, SELECT, MODIFY))
+        """, listTablesResponse.getTables());
 
     return HttpResponse.ofJson(listTablesResponse);
   }
 
   @Delete("/{full_name}")
   @AuthorizeExpression("""
-          #authorize(#principal, #catalog, OWNER) ||
-          (#authorize(#principal, #schema, OWNER) && #authorize(#principal, #catalog, USE_CATALOG)) ||
-          (#authorize(#principal, #schema, USE_SCHEMA) && #authorize(#principal, #catalog, USE_CATALOG) && #authorize(#principal, #table, OWNER))
-          """)
+      #authorize(#principal, #catalog, OWNER) ||
+      (#authorize(#principal, #schema, OWNER) && #authorize(#principal, #catalog, USE_CATALOG)) ||
+      (#authorize(#principal, #schema, USE_SCHEMA) &&
+          #authorize(#principal, #catalog, USE_CATALOG) &&
+          #authorize(#principal, #table, OWNER))
+      """)
   public HttpResponse deleteTable(@Param("full_name") @AuthorizeKey(TABLE) String fullName) {
     TableInfo tableInfo = tableRepository.getTable(fullName);
     tableRepository.deleteTable(fullName);
-    
+
     SchemaInfo schemaInfo =
         schemaRepository.getSchema(tableInfo.getCatalogName() + "." + tableInfo.getSchemaName());
     removeHierarchicalAuthorizations(tableInfo.getTableId(), schemaInfo.getSchemaId());
-    
+
     return HttpResponse.of(HttpStatus.OK);
   }
 
@@ -133,22 +141,23 @@ public class TableService extends AuthorizedService {
     UUID principalId = userRepository.findPrincipalId();
 
     evaluator.filter(
-            principalId,
-            expression,
-            entries,
-            ti -> {
-              CatalogInfo catalogInfo = catalogRepository.getCatalog(ti.getCatalogName());
-              SchemaInfo schemaInfo =
-                      schemaRepository.getSchema(ti.getCatalogName() + "." + ti.getSchemaName());
-              return Map.of(
-                      METASTORE,
-                      metastoreRepository.getMetastoreId(),
-                      CATALOG,
-                      UUID.fromString(catalogInfo.getId()),
-                      SCHEMA,
-                      UUID.fromString(schemaInfo.getSchemaId()),
-                      TABLE,
-                      UUID.fromString(ti.getTableId()));
-            });
+        principalId,
+        expression,
+        entries,
+        ti -> {
+          CatalogInfo catalogInfo = catalogRepository.getCatalog(ti.getCatalogName());
+          SchemaInfo schemaInfo =
+              schemaRepository.getSchema(ti.getCatalogName() + "." + ti.getSchemaName());
+          return Map.of(
+              METASTORE,
+              metastoreRepository.getMetastoreId(),
+              CATALOG,
+              UUID.fromString(catalogInfo.getId()),
+              SCHEMA,
+              UUID.fromString(schemaInfo.getSchemaId()),
+              TABLE,
+              UUID.fromString(ti.getTableId()));
+        });
   }
 }
+
