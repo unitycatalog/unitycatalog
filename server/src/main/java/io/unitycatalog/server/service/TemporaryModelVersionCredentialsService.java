@@ -30,93 +30,106 @@ import static io.unitycatalog.server.service.credential.CredentialContext.Privil
 
 @ExceptionHandler(GlobalExceptionHandler.class)
 public class TemporaryModelVersionCredentialsService {
-    private final ModelRepository modelRepository;
-    private final UserRepository userRepository;
+  private final ModelRepository modelRepository;
+  private final UserRepository userRepository;
 
-    private final UnityAccessEvaluator evaluator;
-    private final CloudCredentialVendor cloudCredentialVendor;
-    private final KeyMapper keyMapper;
+  private final UnityAccessEvaluator evaluator;
+  private final CloudCredentialVendor cloudCredentialVendor;
+  private final KeyMapper keyMapper;
 
-    @SneakyThrows
-    public TemporaryModelVersionCredentialsService(UnityCatalogAuthorizer authorizer, CloudCredentialVendor cloudCredentialVendor, Repositories repositories) {
-        this.evaluator = new UnityAccessEvaluator(authorizer);
-        this.cloudCredentialVendor = cloudCredentialVendor;
-        this.keyMapper = new KeyMapper(repositories);
-        this.modelRepository = repositories.getModelRepository();
-        this.userRepository = repositories.getUserRepository();
+  @SneakyThrows
+  public TemporaryModelVersionCredentialsService(UnityCatalogAuthorizer authorizer,
+                                                 CloudCredentialVendor cloudCredentialVendor,
+                                                 Repositories repositories) {
+    this.evaluator = new UnityAccessEvaluator(authorizer);
+    this.cloudCredentialVendor = cloudCredentialVendor;
+    this.keyMapper = new KeyMapper(repositories);
+    this.modelRepository = repositories.getModelRepository();
+    this.userRepository = repositories.getUserRepository();
+  }
+
+  @Post("")
+  public HttpResponse generateTemporaryModelVersionCredentials(
+      GenerateTemporaryModelVersionCredential generateTemporaryModelVersionCredentials) {
+    authorizeForOperation(generateTemporaryModelVersionCredentials);
+
+    long modelVersion = generateTemporaryModelVersionCredentials.getVersion();
+    String catalogName = generateTemporaryModelVersionCredentials.getCatalogName();
+    String schemaName = generateTemporaryModelVersionCredentials.getSchemaName();
+    String modelName = generateTemporaryModelVersionCredentials.getModelName();
+    String fullName = RepositoryUtils.getAssetFullName(catalogName, schemaName, modelName);
+
+    ModelVersionInfo modelVersionInfo = modelRepository.getModelVersion(fullName, modelVersion);
+    String storageLocation = modelVersionInfo.getStorageLocation();
+    if (storageLocation.toLowerCase().startsWith("file")) {
+      String errorMsg = String.format(
+          "Cannot request credentials on a model version with a file based storage location: %s/%d",
+          fullName, modelVersion);
+      throw new BaseException(ErrorCode.INVALID_ARGUMENT, errorMsg);
     }
-
-    @Post("")
-    public HttpResponse generateTemporaryModelVersionCredentials(
-            GenerateTemporaryModelVersionCredential generateTemporaryModelVersionCredentials) {
-        authorizeForOperation(generateTemporaryModelVersionCredentials);
-
-        long modelVersion = generateTemporaryModelVersionCredentials.getVersion();
-        String catalogName = generateTemporaryModelVersionCredentials.getCatalogName();
-        String schemaName = generateTemporaryModelVersionCredentials.getSchemaName();
-        String modelName = generateTemporaryModelVersionCredentials.getModelName();
-        String fullName = RepositoryUtils.getAssetFullName(catalogName, schemaName, modelName);
-
-        ModelVersionInfo modelVersionInfo = modelRepository.getModelVersion(fullName, modelVersion);
-        String storageLocation = modelVersionInfo.getStorageLocation();
-        if (storageLocation.toLowerCase().startsWith("file")) {
-            throw new BaseException(ErrorCode.INVALID_ARGUMENT, "Cannot request credentials on a model version with a file based storage location: " + fullName + "/" + modelVersion);
-        }
-        ModelVersionOperation requestedOperation = generateTemporaryModelVersionCredentials.getOperation();
-        // Must enforce that the status of the model version matches the requested credential type.
-        if (modelVersionInfo.getStatus() == ModelVersionStatus.FAILED_REGISTRATION || modelVersionInfo.getStatus() == ModelVersionStatus.MODEL_VERSION_STATUS_UNKNOWN) {
-            throw new BaseException(ErrorCode.INVALID_ARGUMENT, "Cannot request credentials on a model version with status " + modelVersionInfo.getStatus().getValue() + ": " + fullName + "/" + modelVersion);
-        }
-        if ((modelVersionInfo.getStatus() != ModelVersionStatus.PENDING_REGISTRATION &&
-                requestedOperation == ModelVersionOperation.READ_WRITE_MODEL_VERSION)) {
-            throw new BaseException(ErrorCode.INVALID_ARGUMENT, "Cannot request read/write credentials on a model version that has been finalized: " + fullName + "/" + modelVersion);
-        }
-        return HttpResponse.ofJson(
-                cloudCredentialVendor.vendCredential(
-                        modelVersionInfo.getStorageLocation(),
-                        modelVersionOperationToPrivileges(requestedOperation)));
+    ModelVersionOperation requestedOperation =
+        generateTemporaryModelVersionCredentials.getOperation();
+    // Must enforce that the status of the model version matches the requested credential type.
+    if (modelVersionInfo.getStatus() == ModelVersionStatus.FAILED_REGISTRATION
+        || modelVersionInfo.getStatus() == ModelVersionStatus.MODEL_VERSION_STATUS_UNKNOWN) {
+      String errorMsg = String.format(
+          "Cannot request credentials on a model version with status %s: %s/%d",
+          modelVersionInfo.getStatus().getValue(), fullName, modelVersion);
+      throw new BaseException(ErrorCode.INVALID_ARGUMENT, errorMsg);
     }
-
-    private Set<CredentialContext.Privilege> modelVersionOperationToPrivileges(
-            ModelVersionOperation modelVersionOperation) {
-        return switch (modelVersionOperation) {
-            case READ_MODEL_VERSION -> Set.of(SELECT);
-            case READ_WRITE_MODEL_VERSION -> Set.of(SELECT, UPDATE);
-            case UNKNOWN_MODEL_VERSION_OPERATION ->
-                    throw new BaseException(ErrorCode.INVALID_ARGUMENT, "Unknown operation in the request: " + ModelVersionOperation.UNKNOWN_MODEL_VERSION_OPERATION);
-        };
+    if ((modelVersionInfo.getStatus() != ModelVersionStatus.PENDING_REGISTRATION
+        && requestedOperation == ModelVersionOperation.READ_WRITE_MODEL_VERSION)) {
+      String errorMsg = String.format(
+          "Cannot request read/write credentials on a model version that has been finalized: %s/%d",
+          fullName, modelVersion);
+      throw new BaseException(ErrorCode.INVALID_ARGUMENT, errorMsg);
     }
+    return HttpResponse.ofJson(
+        cloudCredentialVendor.vendCredential(
+            modelVersionInfo.getStorageLocation(),
+            modelVersionOperationToPrivileges(requestedOperation)));
+  }
 
-    private void authorizeForOperation(
-            GenerateTemporaryModelVersionCredential generateTemporaryModelVersionCredentials) {
+  private Set<CredentialContext.Privilege> modelVersionOperationToPrivileges(
+      ModelVersionOperation modelVersionOperation) {
+    return switch (modelVersionOperation) {
+      case READ_MODEL_VERSION -> Set.of(SELECT);
+      case READ_WRITE_MODEL_VERSION -> Set.of(SELECT, UPDATE);
+      case UNKNOWN_MODEL_VERSION_OPERATION -> throw new BaseException(ErrorCode.INVALID_ARGUMENT,
+          "Unknown operation in the request: " + ModelVersionOperation.UNKNOWN_MODEL_VERSION_OPERATION);
+    };
+  }
 
-        // TODO: This is a short term solution to conditional expression evaluation based on additional request parameters.
-        // This should be replaced with more direct annotations and syntax in the future.
+  private void authorizeForOperation(
+      GenerateTemporaryModelVersionCredential generateTemporaryModelVersionCredentials) {
+    // TODO: This is a short term solution to conditional expression evaluation based on additional
+    // request parameters. This should be replaced with more direct annotations and syntax in the
+    // future.
 
-        String readExpression = """
-          #authorizeAny(#principal, #registered_model, OWNER, EXECUTE) &&
-          #authorizeAny(#principal, #schema, OWNER, USE_SCHEMA) &&
-          #authorizeAny(#principal, #catalog, OWNER, USE_CATALOG)
-          """;
+    String readExpression = """
+        #authorizeAny(#principal, #registered_model, OWNER, EXECUTE) &&
+        #authorizeAny(#principal, #schema, OWNER, USE_SCHEMA) &&
+        #authorizeAny(#principal, #catalog, OWNER, USE_CATALOG)
+        """;
 
-        String writeExpression = """
-          #authorize(#principal, #registered_model, OWNER) &&
-          #authorizeAny(#principal, #schema, OWNER, USE_SCHEMA) &&
-          #authorizeAny(#principal, #catalog, OWNER, USE_CATALOG)
-          """;
+    String writeExpression = """
+        #authorize(#principal, #registered_model, OWNER) &&
+        #authorizeAny(#principal, #schema, OWNER, USE_SCHEMA) &&
+        #authorizeAny(#principal, #catalog, OWNER, USE_CATALOG)
+        """;
 
-        String authorizeExpression =
-                generateTemporaryModelVersionCredentials.getOperation() == ModelVersionOperation.READ_MODEL_VERSION ?
-                        readExpression : writeExpression;
+    String authorizeExpression =
+        generateTemporaryModelVersionCredentials.getOperation() ==
+            ModelVersionOperation.READ_MODEL_VERSION ? readExpression : writeExpression;
 
-        Map<SecurableType, Object> resourceKeys = keyMapper.mapResourceKeys(
-                Map.of(METASTORE, "metastore",
-                        CATALOG, generateTemporaryModelVersionCredentials.getCatalogName(),
-                        SCHEMA, generateTemporaryModelVersionCredentials.getSchemaName(),
-                        REGISTERED_MODEL, generateTemporaryModelVersionCredentials.getModelName()));
+    Map<SecurableType, Object> resourceKeys = keyMapper.mapResourceKeys(
+        Map.of(METASTORE, "metastore",
+            CATALOG, generateTemporaryModelVersionCredentials.getCatalogName(),
+            SCHEMA, generateTemporaryModelVersionCredentials.getSchemaName(),
+            REGISTERED_MODEL, generateTemporaryModelVersionCredentials.getModelName()));
 
-        if (!evaluator.evaluate(userRepository.findPrincipalId(), authorizeExpression, resourceKeys)) {
-            throw new BaseException(ErrorCode.PERMISSION_DENIED, "Access denied.");
-        }
+    if (!evaluator.evaluate(userRepository.findPrincipalId(), authorizeExpression, resourceKeys)) {
+      throw new BaseException(ErrorCode.PERMISSION_DENIED, "Access denied.");
     }
+  }
 }

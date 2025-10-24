@@ -52,10 +52,10 @@ public class SchemaService extends AuthorizedService {
   public HttpResponse createSchema(
       @AuthorizeKey(value = CATALOG, key = "catalog_name") CreateSchema createSchema) {
     SchemaInfo schemaInfo = schemaRepository.createSchema(createSchema);
-    
+
     CatalogInfo catalogInfo = catalogRepository.getCatalog(schemaInfo.getCatalogName());
     initializeHierarchicalAuthorization(schemaInfo.getSchemaId(), catalogInfo.getId());
-    
+
     return HttpResponse.ofJson(schemaInfo);
   }
 
@@ -70,7 +70,8 @@ public class SchemaService extends AuthorizedService {
     filterSchemas("""
         #authorize(#principal, #metastore, OWNER) ||
         #authorize(#principal, #catalog, OWNER) ||
-        (#authorize(#principal, #schema, USE_SCHEMA) && #authorizeAny(#principal, #catalog, OWNER, USE_CATALOG))
+        (#authorize(#principal, #schema, USE_SCHEMA) &&
+            #authorizeAny(#principal, #catalog, OWNER, USE_CATALOG))
         """,
         listSchemasResponse.getSchemas());
     return HttpResponse.ofJson(listSchemasResponse);
@@ -80,7 +81,8 @@ public class SchemaService extends AuthorizedService {
   @AuthorizeExpression("""
       #authorize(#principal, #metastore, OWNER) ||
       #authorize(#principal, #catalog, OWNER) ||
-      (#authorizeAny(#principal, #schema, OWNER, USE_SCHEMA) && #authorizeAny(#principal, #catalog, USE_CATALOG))
+      (#authorizeAny(#principal, #schema, OWNER, USE_SCHEMA) &&
+          #authorizeAny(#principal, #catalog, USE_CATALOG))
       """)
   @AuthorizeKey(METASTORE)
   public HttpResponse getSchema(@Param("full_name") @AuthorizeKey(SCHEMA) String fullName) {
@@ -92,11 +94,13 @@ public class SchemaService extends AuthorizedService {
       #authorize(#principal, #metastore, OWNER) ||
       #authorize(#principal, #schema, OWNER) ||
       #authorizeAll(#principal, #catalog, USE_CATALOG, USE_SCHEMA) ||
-      (#authorize(#principal, #schema, USE_SCHEMA) && #authorize(#principal, #catalog, USE_CATALOG))
+      (#authorize(#principal, #schema, USE_SCHEMA) &&
+          #authorize(#principal, #catalog, USE_CATALOG))
       """)
   @AuthorizeKey(METASTORE)
   public HttpResponse updateSchema(
-      @Param("full_name") @AuthorizeKey(SCHEMA) String fullName, UpdateSchema updateSchema) {
+      @Param("full_name") @AuthorizeKey(SCHEMA) String fullName,
+      UpdateSchema updateSchema) {
     // TODO: This method does not adhere to the complete access control rules of the Databricks
     // Unity Catalog
     return HttpResponse.ofJson(schemaRepository.updateSchema(fullName, updateSchema));
@@ -106,7 +110,8 @@ public class SchemaService extends AuthorizedService {
   @AuthorizeExpression("""
       #authorize(#principal, #metastore, OWNER) ||
       #authorize(#principal, #catalog, OWNER) ||
-      (#authorize(#principal, #schema, OWNER) && #authorizeAny(#principal, #catalog, USE_CATALOG))
+      (#authorize(#principal, #schema, OWNER) &&
+          #authorizeAny(#principal, #catalog, USE_CATALOG))
       """)
   @AuthorizeKey(METASTORE)
   public HttpResponse deleteSchema(
@@ -114,14 +119,14 @@ public class SchemaService extends AuthorizedService {
       @Param("force") Optional<Boolean> force) {
     SchemaInfo schemaInfo = schemaRepository.getSchema(fullName);
     schemaRepository.deleteSchema(fullName, force.orElse(false));
-    
+
     CatalogInfo catalogInfo = catalogRepository.getCatalog(schemaInfo.getCatalogName());
-    
+
     // First remove any child table links
     authorizer.removeHierarchyChildren(UUID.fromString(schemaInfo.getSchemaId()));
     // Then remove schema from catalog and clear authorizations
     removeHierarchicalAuthorizations(schemaInfo.getSchemaId(), catalogInfo.getId());
-    
+
     return HttpResponse.of(HttpStatus.OK);
   }
 
@@ -145,3 +150,4 @@ public class SchemaService extends AuthorizedService {
         });
   }
 }
+
