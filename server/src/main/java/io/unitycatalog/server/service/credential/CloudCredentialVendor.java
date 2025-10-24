@@ -35,7 +35,8 @@ public class CloudCredentialVendor {
   }
 
   public TemporaryCredentials vendCredential(
-      String path, Set<CredentialContext.Privilege> privileges) {
+      String path,
+      Set<CredentialContext.Privilege> privileges) {
     if (path == null || path.isEmpty()) {
       throw new BaseException(ErrorCode.FAILED_PRECONDITION, "Storage location is null or empty.");
     }
@@ -55,14 +56,14 @@ public class CloudCredentialVendor {
     switch (storageScheme) {
       case URI_SCHEME_ABFS, URI_SCHEME_ABFSS -> {
         AzureCredential azureCredential = vendAzureCredential(context);
-        temporaryCredentials.azureUserDelegationSas(
-                new AzureUserDelegationSAS().sasToken(azureCredential.getSasToken()))
+        temporaryCredentials.azureUserDelegationSas(new AzureUserDelegationSAS()
+                .sasToken(azureCredential.getSasToken()))
             .expirationTime(azureCredential.getExpirationTimeInEpochMillis());
       }
       case URI_SCHEME_GS -> {
         AccessToken gcpToken = vendGcpToken(context);
-        temporaryCredentials.gcpOauthToken(
-                new GcpOauthToken().oauthToken(gcpToken.getTokenValue()))
+        temporaryCredentials.gcpOauthToken(new GcpOauthToken()
+                .oauthToken(gcpToken.getTokenValue()))
             .expirationTime(gcpToken.getExpirationTime().getTime());
       }
       case URI_SCHEME_S3 -> {
