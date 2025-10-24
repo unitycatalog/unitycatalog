@@ -2,7 +2,8 @@ package io.unitycatalog.spark;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.google.common.base.Throwables;
+import org.sparkproject.guava.base.Preconditions;
+import org.sparkproject.guava.base.Throwables;
 import io.unitycatalog.client.ApiException;
 import io.unitycatalog.client.api.TemporaryCredentialsApi;
 import io.unitycatalog.client.model.GenerateTemporaryPathCredential;
@@ -11,34 +12,29 @@ import io.unitycatalog.client.model.TemporaryCredentials;
 import io.unitycatalog.spark.utils.Clock;
 import java.net.URI;
 import java.time.Duration;
-import java.util.Collections;
-import java.util.HashSet;
-import java.util.List;
+import java.time.Instant;
 import java.util.Set;
 import org.apache.hadoop.conf.Configuration;
 
 public class RetryableTemporaryCredentialsApi {
   private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
 
-  private static final Set<Integer> RECOVERABLE_HTTP_CODES =
-      Collections.unmodifiableSet(new HashSet<>(List.of(
-          429,  // Too Many Requests
-          503   // Service Unavailable
-      )));
+  private static final Set<Integer> RECOVERABLE_HTTP_CODES = Set.of(
+      429,  // Too Many Requests
+      503   // Service Unavailable
+  );
 
-  private static final Set<String> RECOVERABLE_ERROR_CODES =
-      Collections.unmodifiableSet(new HashSet<>(List.of(
-          "TEMPORARILY_UNAVAILABLE",
-          "WORKSPACE_TEMPORARILY_UNAVAILABLE",
-          "SERVICE_UNDER_MAINTENANCE"
-      )));
+  private static final Set<String> RECOVERABLE_ERROR_CODES = Set.of(
+      "TEMPORARILY_UNAVAILABLE",
+      "WORKSPACE_TEMPORARILY_UNAVAILABLE",
+      "SERVICE_UNDER_MAINTENANCE"
+  );
 
-  private static final Set<Class<? extends Throwable>> RECOVERABLE_NETWORK_EXCEPTIONS =
-      Collections.unmodifiableSet(new HashSet<>(List.of(
-          java.net.SocketTimeoutException.class,
-          java.net.SocketException.class,
-          java.net.UnknownHostException.class
-      )));
+  private static final Set<Class<? extends Throwable>> RECOVERABLE_NETWORK_EXCEPTIONS = Set.of(
+      java.net.SocketTimeoutException.class,
+      java.net.SocketException.class,
+      java.net.UnknownHostException.class
+  );
 
   private final TemporaryCredentialsApi delegate;
   private final Clock clock;
@@ -76,21 +72,15 @@ public class RetryableTemporaryCredentialsApi {
         UCHadoopConf.RETRY_MULTIPLIER_DEFAULT
     );
 
-    if (this.maxAttempts < 1) {
-      throw new IllegalArgumentException(
-          String.format("Retry max attempts must be at least 1, got: %d (%s=%d)",
-              this.maxAttempts, UCHadoopConf.RETRY_MAX_ATTEMPTS_KEY, this.maxAttempts));
-    }
-    if (this.initialDelayMs < 0) {
-      throw new IllegalArgumentException(
-          String.format("Retry initial delay must be non-negative, got: %d ms (%s=%d)",
-              this.initialDelayMs, UCHadoopConf.RETRY_INITIAL_DELAY_KEY, this.initialDelayMs));
-    }
-    if (this.multiplier <= 0) {
-      throw new IllegalArgumentException(
-          String.format("Retry multiplier must be positive, got: %.2f (%s=%.2f)",
-              this.multiplier, UCHadoopConf.RETRY_MULTIPLIER_KEY, this.multiplier));
-    }
+    Preconditions.checkArgument(this.maxAttempts >= 1,
+        String.format("Retry max attempts must be at least 1, got: %d (%s)",
+            this.maxAttempts, UCHadoopConf.RETRY_MAX_ATTEMPTS_KEY));
+    Preconditions.checkArgument(this.initialDelayMs > 0,
+        String.format("Retry initial delay must be positive, got: %d ms (%s)",
+            this.initialDelayMs, UCHadoopConf.RETRY_INITIAL_DELAY_KEY));
+    Preconditions.checkArgument(this.multiplier > 0,
+        String.format("Retry multiplier must be positive, got: %.2f (%s)",
+            this.multiplier, UCHadoopConf.RETRY_MULTIPLIER_KEY));
   }
 
   public TemporaryCredentials generateTemporaryPathCredentials(
@@ -105,7 +95,7 @@ public class RetryableTemporaryCredentialsApi {
 
   private TemporaryCredentials callWithRetry(ApiCallSupplier apiCall) throws ApiException {
     Exception lastException = null;
-    long startTime = System.currentTimeMillis();
+    Instant startTime = clock.now();
 
     for (int attempt = 1; attempt <= maxAttempts; attempt++) {
       try {
@@ -130,7 +120,7 @@ public class RetryableTemporaryCredentialsApi {
       }
     }
 
-    long elapsedMs = System.currentTimeMillis() - startTime;
+    long elapsedMs = Duration.between(startTime, clock.now()).toMillis();
     if (lastException instanceof ApiException) {
       throw (ApiException) lastException;
     } else {

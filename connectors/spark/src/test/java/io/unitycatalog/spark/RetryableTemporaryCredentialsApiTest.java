@@ -64,7 +64,6 @@ public class RetryableTemporaryCredentialsApiTest {
     assertThat(recordedSleeps).isEmpty();
   }
 
-  // Parameterized test to cover all recoverable errors with mixed error types
   @ParameterizedTest(name = "{0}")
   @MethodSource("recoverableErrorProvider")
   public void testRecoverableErrorEventuallySucceeds(String description,
@@ -224,7 +223,7 @@ public class RetryableTemporaryCredentialsApiTest {
 
     assertThatThrownBy(() -> new RetryableTemporaryCredentialsApi(delegate, conf))
         .isInstanceOf(IllegalArgumentException.class)
-        .hasMessageContaining("Retry initial delay must be non-negative")
+        .hasMessageContaining("Retry initial delay must be positive")
         .hasMessageContaining("got: -1000");
   }
 
@@ -249,19 +248,13 @@ public class RetryableTemporaryCredentialsApiTest {
   }
 
   @Test
-  public void testZeroInitialDelayIsValid() throws Exception {
+  public void testZeroInitialDelayThrowsException() {
     conf.setLong(UCHadoopConf.RETRY_INITIAL_DELAY_KEY, 0L);
-    initRetryableApi();
 
-    TemporaryCredentials expected = new TemporaryCredentials();
-    when(delegate.generateTemporaryPathCredentials(any(GenerateTemporaryPathCredential.class)))
-        .thenReturn(expected);
-
-    TemporaryCredentials actual = retryableApi.generateTemporaryPathCredentials(
-        new GenerateTemporaryPathCredential().url("/test").operation(null));
-
-    assertThat(actual).isSameAs(expected);
-    // With 0 initial delay, retries should still work (with 0 delay)
+    assertThatThrownBy(() -> new RetryableTemporaryCredentialsApi(delegate, conf))
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageContaining("Retry initial delay must be positive")
+        .hasMessageContaining("got: 0");
   }
 
   private static ApiException apiException(int status) {
@@ -303,7 +296,6 @@ public class RetryableTemporaryCredentialsApiTest {
     Mockito.doAnswer(invocation -> {
       Duration duration = invocation.getArgument(0);
       recordedSleeps.add(duration);
-      // Delegate to the real sleep() which now advances time in ManualClock
       invocation.callRealMethod();
       return null;
     })
