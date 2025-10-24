@@ -33,7 +33,6 @@ public class RetryableTemporaryCredentialsApi {
           "SERVICE_UNDER_MAINTENANCE"
       )));
 
-  // Recoverable network exception types that should trigger a retry
   private static final Set<Class<? extends Throwable>> RECOVERABLE_NETWORK_EXCEPTIONS =
       Collections.unmodifiableSet(new HashSet<>(List.of(
           java.net.SocketTimeoutException.class,
@@ -76,6 +75,22 @@ public class RetryableTemporaryCredentialsApi {
         UCHadoopConf.RETRY_MULTIPLIER_KEY,
         UCHadoopConf.RETRY_MULTIPLIER_DEFAULT
     );
+
+    if (this.maxAttempts < 1) {
+      throw new IllegalArgumentException(
+          String.format("Retry max attempts must be at least 1, got: %d (%s=%d)",
+              this.maxAttempts, UCHadoopConf.RETRY_MAX_ATTEMPTS_KEY, this.maxAttempts));
+    }
+    if (this.initialDelayMs < 0) {
+      throw new IllegalArgumentException(
+          String.format("Retry initial delay must be non-negative, got: %d ms (%s=%d)",
+              this.initialDelayMs, UCHadoopConf.RETRY_INITIAL_DELAY_KEY, this.initialDelayMs));
+    }
+    if (this.multiplier <= 0) {
+      throw new IllegalArgumentException(
+          String.format("Retry multiplier must be positive, got: %.2f (%s=%.2f)",
+              this.multiplier, UCHadoopConf.RETRY_MULTIPLIER_KEY, this.multiplier));
+    }
   }
 
   public TemporaryCredentials generateTemporaryPathCredentials(

@@ -198,6 +198,72 @@ public class RetryableTemporaryCredentialsApiTest {
     assertThat(recordedSleeps).isEmpty();
   }
 
+  @Test
+  public void testInvalidMaxAttemptsThrowsException() {
+    conf.setInt(UCHadoopConf.RETRY_MAX_ATTEMPTS_KEY, 0);
+
+    assertThatThrownBy(() -> new RetryableTemporaryCredentialsApi(delegate, conf))
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageContaining("Retry max attempts must be at least 1")
+        .hasMessageContaining("got: 0");
+  }
+
+  @Test
+  public void testNegativeMaxAttemptsThrowsException() {
+    conf.setInt(UCHadoopConf.RETRY_MAX_ATTEMPTS_KEY, -5);
+
+    assertThatThrownBy(() -> new RetryableTemporaryCredentialsApi(delegate, conf))
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageContaining("Retry max attempts must be at least 1")
+        .hasMessageContaining("got: -5");
+  }
+
+  @Test
+  public void testNegativeInitialDelayThrowsException() {
+    conf.setLong(UCHadoopConf.RETRY_INITIAL_DELAY_KEY, -1000L);
+
+    assertThatThrownBy(() -> new RetryableTemporaryCredentialsApi(delegate, conf))
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageContaining("Retry initial delay must be non-negative")
+        .hasMessageContaining("got: -1000");
+  }
+
+  @Test
+  public void testZeroMultiplierThrowsException() {
+    conf.setDouble(UCHadoopConf.RETRY_MULTIPLIER_KEY, 0.0);
+
+    assertThatThrownBy(() -> new RetryableTemporaryCredentialsApi(delegate, conf))
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageContaining("Retry multiplier must be positive")
+        .hasMessageContaining("got: 0.0");
+  }
+
+  @Test
+  public void testNegativeMultiplierThrowsException() {
+    conf.setDouble(UCHadoopConf.RETRY_MULTIPLIER_KEY, -1.5);
+
+    assertThatThrownBy(() -> new RetryableTemporaryCredentialsApi(delegate, conf))
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageContaining("Retry multiplier must be positive")
+        .hasMessageContaining("got: -1.5");
+  }
+
+  @Test
+  public void testZeroInitialDelayIsValid() throws Exception {
+    conf.setLong(UCHadoopConf.RETRY_INITIAL_DELAY_KEY, 0L);
+    initRetryableApi();
+
+    TemporaryCredentials expected = new TemporaryCredentials();
+    when(delegate.generateTemporaryPathCredentials(any(GenerateTemporaryPathCredential.class)))
+        .thenReturn(expected);
+
+    TemporaryCredentials actual = retryableApi.generateTemporaryPathCredentials(
+        new GenerateTemporaryPathCredential().url("/test").operation(null));
+
+    assertThat(actual).isSameAs(expected);
+    // With 0 initial delay, retries should still work (with 0 delay)
+  }
+
   private static ApiException apiException(int status) {
     return new ApiException(status, "status" + status);
   }
