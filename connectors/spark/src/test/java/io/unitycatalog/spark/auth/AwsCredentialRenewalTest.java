@@ -56,11 +56,12 @@ public class AwsCredentialRenewalTest extends BaseCRUDTest {
   private static final String TABLE_NAME = String.format("%s.%s.demo", CATALOG_NAME, SCHEMA_NAME);
   private static final String BUCKET_NAME = "test-bucket";
   private static final String S3_SCHEME = "s3:";
+  private static final long DEFAULT_INTERVAL_MILLIS = 30_0000L;
 
   @TempDir
   private File dataDir;
-
-  private static final long DEFAULT_INTERVAL_MILLIS = 30_0000L;
+  private SparkSession session;
+  private SdkSchemaOperations schemaOperations;
 
   @Override
   protected CatalogOperations createCatalogOperations(ServerConfig config) {
@@ -97,33 +98,45 @@ public class AwsCredentialRenewalTest extends BaseCRUDTest {
         .getOrCreate();
   }
 
-  private SparkSession session;
+  private interface Callable {
+    void call() throws Exception;
+  }
+
+  private void callQuietly(Callable call) {
+    try {
+      call.call();
+    } catch (Exception e) {
+      // ignored.
+    }
+  }
 
   @BeforeEach
   public void beforeEach() throws Exception {
     super.setUp();
-
     session = createSparkSession();
+
+    // Initialize the catalog in unity catalog server.
     catalogOperations.createCatalog(
         new CreateCatalog()
             .name(CATALOG_NAME)
             .comment("Spark catalog"));
 
-    SdkSchemaOperations schemaOperations = new SdkSchemaOperations(createApiClient(serverConfig));
+    // Initialize the schema in unity catalog server.
+    schemaOperations = new SdkSchemaOperations(createApiClient(serverConfig));
     schemaOperations.createSchema(new CreateSchema().name(SCHEMA_NAME).catalogName(CATALOG_NAME));
   }
 
   @AfterEach
   public void afterEach() {
-    if (session != null) {
-      session.stop();
-      session = null;
-    }
-    try {
-      catalogOperations.deleteCatalog(CATALOG_NAME, Optional.of(true));
-    } catch (Exception e) {
-      // Ignore
-    }
+    // Delete the scheme.
+    callQuietly(() -> schemaOperations.deleteSchema(SCHEMA_NAME, Optional.of(true)));
+
+    // Delete the catalog.
+    callQuietly(() -> catalogOperations.deleteCatalog(CATALOG_NAME, Optional.of(true)));
+
+    // Close the session.
+    callQuietly(() -> session.close());
+
     super.cleanUp();
   }
 
