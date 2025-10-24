@@ -64,7 +64,6 @@ public class RetryableTemporaryCredentialsApiTest {
     assertThat(recordedSleeps).isEmpty();
   }
 
-  // Parameterized test to cover all recoverable errors with mixed error types
   @ParameterizedTest(name = "{0}")
   @MethodSource("recoverableErrorProvider")
   public void testRecoverableErrorEventuallySucceeds(String description,
@@ -261,7 +260,6 @@ public class RetryableTemporaryCredentialsApiTest {
         new GenerateTemporaryPathCredential().url("/test").operation(null));
 
     assertThat(actual).isSameAs(expected);
-    // With 0 initial delay, retries should still work (with 0 delay)
   }
 
   private static ApiException apiException(int status) {
@@ -303,7 +301,6 @@ public class RetryableTemporaryCredentialsApiTest {
     Mockito.doAnswer(invocation -> {
       Duration duration = invocation.getArgument(0);
       recordedSleeps.add(duration);
-      // Delegate to the real sleep() which now advances time in ManualClock
       invocation.callRealMethod();
       return null;
     })
