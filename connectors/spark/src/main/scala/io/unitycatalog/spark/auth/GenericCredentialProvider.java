@@ -1,13 +1,12 @@
 package io.unitycatalog.spark.auth;
 
 import io.unitycatalog.client.ApiException;
-import io.unitycatalog.client.api.TemporaryCredentialsApi;
 import io.unitycatalog.client.model.GenerateTemporaryPathCredential;
 import io.unitycatalog.client.model.GenerateTemporaryTableCredential;
 import io.unitycatalog.client.model.PathOperation;
 import io.unitycatalog.client.model.TableOperation;
 import io.unitycatalog.client.model.TemporaryCredentials;
-import io.unitycatalog.spark.ApiClientFactory;
+import io.unitycatalog.spark.RetryableTemporaryCredentialsApi;
 import io.unitycatalog.spark.UCHadoopConf;
 import io.unitycatalog.spark.utils.Clock;
 import java.net.URI;
@@ -41,7 +40,7 @@ public abstract class GenericCredentialProvider {
   private boolean credCacheEnabled;
 
   private volatile GenericCredential credential;
-  private volatile TemporaryCredentialsApi tempCredApi;
+  private volatile RetryableTemporaryCredentialsApi tempCredApi;
 
   public GenericCredentialProvider() {
     this(Clock.systemClock(), DEFAULT_RENEWAL_LEAD_TIME_MILLIS);
@@ -96,12 +95,11 @@ public abstract class GenericCredentialProvider {
     return credential;
   }
 
-  protected TemporaryCredentialsApi temporaryCredentialsApi() {
+  protected RetryableTemporaryCredentialsApi temporaryCredentialsApi() {
     if (tempCredApi == null) {
       synchronized (this) {
         if (tempCredApi == null) {
-          tempCredApi = new TemporaryCredentialsApi(
-              ApiClientFactory.createApiClient(ucUri, ucToken));
+          tempCredApi = new RetryableTemporaryCredentialsApi(ucUri, ucToken, conf);
         }
       }
     }
@@ -128,13 +126,11 @@ public abstract class GenericCredentialProvider {
   }
 
   private GenericCredential createGenericCredentials() throws ApiException {
-    TemporaryCredentialsApi tempCredApi = temporaryCredentialsApi();
+    RetryableTemporaryCredentialsApi tempCredApi = temporaryCredentialsApi();
 
     // Generate the temporary credential via requesting UnityCatalog.
     TemporaryCredentials tempCred;
     String type = conf.get(UCHadoopConf.UC_CREDENTIALS_TYPE_KEY);
-    // TODO We will need to retry the temporary credential request if any recoverable failure, for
-    // more robustness.
     if (UCHadoopConf.UC_CREDENTIALS_TYPE_PATH_VALUE.equals(type)) {
       String path = conf.get(UCHadoopConf.UC_PATH_KEY);
       String pathOperation = conf.get(UCHadoopConf.UC_PATH_OPERATION_KEY);
