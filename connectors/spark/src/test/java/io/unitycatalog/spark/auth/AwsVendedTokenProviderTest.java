@@ -2,12 +2,7 @@ package io.unitycatalog.spark.auth;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.AssertionsForClassTypes.assertThatThrownBy;
-import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.spy;
-import static org.mockito.Mockito.when;
 
-import io.unitycatalog.client.ApiException;
 import io.unitycatalog.client.api.TemporaryCredentialsApi;
 import io.unitycatalog.client.model.AwsCredentials;
 import io.unitycatalog.client.model.TemporaryCredentials;
@@ -16,8 +11,6 @@ import io.unitycatalog.spark.UCHadoopConf;
 import io.unitycatalog.spark.utils.Clock;
 import java.io.IOException;
 import java.net.URI;
-import java.time.Duration;
-import java.time.Instant;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
@@ -26,7 +19,6 @@ import org.apache.hadoop.fs.s3a.AWSCredentialProviderList;
 import org.apache.hadoop.fs.s3a.Constants;
 import org.apache.hadoop.fs.s3a.auth.CredentialProviderListFactory;
 import org.junit.jupiter.api.Test;
-import org.mockito.Mockito;
 import software.amazon.awssdk.auth.credentials.AwsCredentialsProvider;
 import software.amazon.awssdk.auth.credentials.AwsSessionCredentials;
 
@@ -136,35 +128,5 @@ public class AwsVendedTokenProviderTest extends BaseTokenProviderTest<AwsVendedT
     List<AwsCredentialsProvider> providers = list.getProviders();
     assertThat(providers).hasSize(1);
     assertThat(providers.get(0)).isInstanceOf(AwsVendedTokenProvider.class);
-  }
-
-  @Test
-  public void testRetryRecoversForTableCredentials() throws Exception {
-    Clock.ManualClock manualClock = (Clock.ManualClock) Clock.manualClock(Instant.now());
-    List<Duration> recordedSleeps = new ArrayList<>();
-    Clock manualSpy = spy(manualClock);
-    Mockito.doAnswer(invocation -> {
-          Duration duration = invocation.getArgument(0);
-          recordedSleeps.add(duration);
-          manualClock.advance(duration);
-          return null;
-        })
-        .when(manualSpy)
-        .sleep(Mockito.any(Duration.class));
-
-    Configuration conf = newTableBasedConf();
-    TemporaryCredentialsApi tempCredApi = mock(TemporaryCredentialsApi.class);
-    TemporaryCredentials succeeded = newTempCred("success", manualClock.now().toEpochMilli() + 4000L);
-
-    when(tempCredApi.generateTemporaryTableCredentials(any()))
-        .thenThrow(new ApiException(503, "unavailable"))
-        .thenThrow(new ApiException(503, "unavailable"))
-        .thenReturn(succeeded);
-
-    AwsVendedTokenProvider provider =
-        new TestAwsVendedTokenProvider(manualSpy, 1000L, conf, tempCredApi);
-
-    assertCred(provider, succeeded);
-    assertThat(recordedSleeps).hasSize(2);
   }
 }

@@ -232,16 +232,17 @@ public class RetryableTemporaryCredentialsApiTest {
   private void initRetryableApi() throws InterruptedException {
     manualClock = (Clock.ManualClock) Clock.manualClock(Instant.now());
     recordedSleeps = new ArrayList<>();
-    Clock manualSpy = Mockito.spy(manualClock);
+    Clock clockSpy = Mockito.spy(manualClock);
     Mockito.doAnswer(invocation -> {
           Duration duration = invocation.getArgument(0);
           recordedSleeps.add(duration);
-          manualClock.advance(duration);
+          // Delegate to the real sleep() which now advances time in ManualClock
+          invocation.callRealMethod();
           return null;
         })
-        .when(manualSpy)
+        .when(clockSpy)
         .sleep(Mockito.any(Duration.class));
-    retryableApi = new RetryableTemporaryCredentialsApi(delegate, conf, manualSpy);
+    retryableApi = new RetryableTemporaryCredentialsApi(delegate, conf, clockSpy);
   }
 }
 

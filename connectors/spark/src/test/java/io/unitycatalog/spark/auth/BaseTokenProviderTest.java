@@ -3,8 +3,10 @@ package io.unitycatalog.spark.auth;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.spy;
 import static org.mockito.Mockito.when;
 
+import io.unitycatalog.client.ApiException;
 import io.unitycatalog.client.api.TemporaryCredentialsApi;
 import io.unitycatalog.client.model.PathOperation;
 import io.unitycatalog.client.model.TableOperation;
@@ -13,11 +15,14 @@ import io.unitycatalog.spark.UCHadoopConf;
 import io.unitycatalog.spark.utils.Clock;
 import java.time.Duration;
 import java.time.Instant;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.UUID;
 import org.apache.hadoop.conf.Configuration;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.mockito.Mockito;
 
 public abstract class BaseTokenProviderTest<T extends GenericCredentialProvider> {
 
@@ -65,7 +70,7 @@ public abstract class BaseTokenProviderTest<T extends GenericCredentialProvider>
     assertCred(provider, cred1);
 
     // Advance the clock to trigger renewal, cred2 will be valid.
-    clock.advance(Duration.ofMillis(1000));
+    clock.sleep(Duration.ofMillis(1000));
 
     // Use the cred2 for the 3rd access, since renewal happened.
     assertCred(provider, cred2);
@@ -99,7 +104,7 @@ public abstract class BaseTokenProviderTest<T extends GenericCredentialProvider>
     // cred0 is still valid.
     assertCred(provider, cred0);
 
-    clock.advance(Duration.ofMillis(1000));
+    clock.sleep(Duration.ofMillis(1000));
 
     // cred0 is invalid while cred1 is valid.
     assertCred(provider, cred1);
@@ -107,7 +112,7 @@ public abstract class BaseTokenProviderTest<T extends GenericCredentialProvider>
     // cred1 is still valid.
     assertCred(provider, cred1);
 
-    clock.advance(Duration.ofMillis(1000));
+    clock.sleep(Duration.ofMillis(1000));
 
     // cred1 is expired, while cred2 is valid.
     assertCred(provider, cred2);
@@ -137,7 +142,7 @@ public abstract class BaseTokenProviderTest<T extends GenericCredentialProvider>
     assertCred(provider, cred1);
 
     // Advance the clock to renew.
-    clock.advance(Duration.ofMillis(1000));
+    clock.sleep(Duration.ofMillis(1000));
 
     // Use the cred2 for the 3rd access, since cred1 it's expired.
     assertCred(provider, cred2);
@@ -170,7 +175,7 @@ public abstract class BaseTokenProviderTest<T extends GenericCredentialProvider>
     // cred0 is still valid.
     assertCred(provider, cred0);
 
-    clock.advance(Duration.ofMillis(1000));
+    clock.sleep(Duration.ofMillis(1000));
 
     // cred0 is invalid while cred1 is valid.
     assertCred(provider, cred1);
@@ -178,7 +183,7 @@ public abstract class BaseTokenProviderTest<T extends GenericCredentialProvider>
     // cred1 is still valid.
     assertCred(provider, cred1);
 
-    clock.advance(Duration.ofMillis(1000));
+    clock.sleep(Duration.ofMillis(1000));
 
     // cred1 is expired, while cred2 is valid.
     assertCred(provider, cred2);
@@ -266,7 +271,7 @@ public abstract class BaseTokenProviderTest<T extends GenericCredentialProvider>
     assertCred(providerPathA, pathACred1);
     assertGlobalCache(4, tableACred1, tableBCred1, pathACred1, pathBCred1);
 
-    clock.advance(Duration.ofMillis(1000));
+    clock.sleep(Duration.ofMillis(1000));
 
     // TableA: 3rd access. renew tableACred1 to tableACred2.
     assertCred(providerTableA, tableACred2);
@@ -283,6 +288,36 @@ public abstract class BaseTokenProviderTest<T extends GenericCredentialProvider>
     // PathB: 3rd access. renew pathBCred1 to pathBCred2.
     assertCred(providerPathB, pathBCred2);
     assertGlobalCache(4, tableACred2, tableBCred2, pathACred2, pathBCred2);
+  }
+
+  @Test
+  public void testRetryRecoversForTableCredentials() throws Exception {
+    Clock.ManualClock manualClock = (Clock.ManualClock) Clock.manualClock(Instant.now());
+    List<Duration> recordedSleeps = new ArrayList<>();
+    Clock clockSpy = spy(manualClock);
+    Mockito.doAnswer(invocation -> {
+          Duration duration = invocation.getArgument(0);
+          recordedSleeps.add(duration);
+          // Delegate to the real sleep() which now advances time in ManualClock
+          invocation.callRealMethod();
+          return null;
+        })
+        .when(clockSpy)
+        .sleep(Mockito.any(Duration.class));
+
+    Configuration conf = newTableBasedConf();
+    TemporaryCredentialsApi tempCredApi = mock(TemporaryCredentialsApi.class);
+    TemporaryCredentials succeeded = newTempCred("success", manualClock.now().toEpochMilli() + 4000L);
+
+    when(tempCredApi.generateTemporaryTableCredentials(any()))
+        .thenThrow(new ApiException(503, "unavailable"))
+        .thenThrow(new ApiException(503, "unavailable"))
+        .thenReturn(succeeded);
+
+    T provider = createTestProvider(clockSpy, 1000L, conf, tempCredApi);
+
+    assertCred(provider, succeeded);
+    assertThat(recordedSleeps).hasSize(2);
   }
 
   private static void assertGlobalCache(int expectedSize, TemporaryCredentials... creds) {
