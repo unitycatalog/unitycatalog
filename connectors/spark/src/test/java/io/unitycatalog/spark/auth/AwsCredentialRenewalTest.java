@@ -18,7 +18,6 @@ import io.unitycatalog.spark.UCHadoopConf;
 import io.unitycatalog.spark.UCSingleCatalog;
 import io.unitycatalog.spark.utils.Clock;
 import java.io.File;
-import java.io.IOException;
 import java.net.URI;
 import java.time.Duration;
 import java.time.Instant;
@@ -26,7 +25,6 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Optional;
 import java.util.Set;
-import java.util.UUID;
 import java.util.stream.Collectors;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.FileSystem;
@@ -38,9 +36,11 @@ import org.apache.spark.sql.SparkSession;
 import org.apache.spark.sql.types.DataTypes;
 import org.apache.spark.sql.types.StructType;
 import org.apache.spark.util.SerializableConfiguration;
+import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
 import org.sparkproject.guava.collect.ImmutableList;
 import software.amazon.awssdk.auth.credentials.AwsCredentialsProvider;
 import software.amazon.awssdk.auth.credentials.AwsSessionCredentials;
@@ -50,10 +50,15 @@ public class AwsCredentialRenewalTest extends BaseCRUDTest {
   private static final String CLOCK_NAME = AwsCredentialRenewalTest.class.getSimpleName();
   private static final Clock CLOCK = Clock.getManualClock(CLOCK_NAME);
   private static final String CREDENTIALS_GENERATOR = TimeBasedCredentialsGenerator.class.getName();
-  private static final String TABLE_NAME = "renewal.default.demo";
 
-  private final File dataDir =
-      new File(System.getProperty("java.io.tmpdir"), UUID.randomUUID().toString());
+  private static final String CATALOG_NAME = "CredRenewalCatalog";
+  private static final String SCHEMA_NAME = "Default";
+  private static final String TABLE_NAME = String.format("%s.%s.demo", CATALOG_NAME, SCHEMA_NAME);
+  private static final String BUCKET_NAME = "test-bucket";
+  private static final String S3_SCHEME = "s3:";
+
+  @TempDir
+  private File dataDir;
 
   private static final long DEFAULT_INTERVAL_MILLIS = 30_0000L;
 
@@ -65,7 +70,7 @@ public class AwsCredentialRenewalTest extends BaseCRUDTest {
   @Override
   protected void setUpProperties() {
     super.setUpProperties();
-    serverProperties.put("s3.bucketPath.0", "s3://test-bucket0");
+    serverProperties.put("s3.bucketPath.0", "s3://" + BUCKET_NAME);
     serverProperties.put("s3.accessKey.0", "accessKey0");
     serverProperties.put("s3.secretKey.0", "secretKey0");
     serverProperties.put("s3.sessionToken.0", "sessionToken0");
@@ -73,21 +78,21 @@ public class AwsCredentialRenewalTest extends BaseCRUDTest {
   }
 
   private SparkSession createSparkSession() {
+    String testCatalogKey = String.format("spark.sql.catalog.%s", CATALOG_NAME);
     return SparkSession.builder()
         .appName("test-credential-renewal")
-        .master("local[*]")
+        .master("local[1]") // Make it single-threaded explicitly.
         .config("spark.sql.extensions", "io.delta.sql.DeltaSparkSessionExtension")
-        .config(
-            "spark.sql.catalog.spark_catalog", "org.apache.spark.sql.delta.catalog.DeltaCatalog")
+        .config("spark.sql.catalog.spark_catalog",
+            "org.apache.spark.sql.delta.catalog.DeltaCatalog")
         .config("spark.hadoop." + UCHadoopConf.UC_TEST_CLOCK_NAME, CLOCK_NAME)
         .config("spark.hadoop." + UCHadoopConf.UC_RENEWAL_LEAD_TIME_KEY, 0L)
-        .config("spark.default.parallelism", "1")
         .config("spark.sql.shuffle.partitions", "1")
-        .config("spark.sql.catalog.renewal", UCSingleCatalog.class.getName())
-        .config("spark.sql.catalog.renewal.uri", serverConfig.getServerUrl())
-        .config("spark.sql.catalog.renewal.token", serverConfig.getAuthToken())
-        .config("spark.sql.catalog.renewal.warehouse", "renewal")
-        .config("spark.sql.catalog.renewal.renewCredential.enabled", "true")
+        .config(testCatalogKey, UCSingleCatalog.class.getName())
+        .config(testCatalogKey + ".uri", serverConfig.getServerUrl())
+        .config(testCatalogKey + ".token", serverConfig.getAuthToken())
+        .config(testCatalogKey + ".warehouse", CATALOG_NAME)
+        .config(testCatalogKey + ".renewCredential.enabled", "true")
         .config("fs.s3.impl", S3CredFileSystem.class.getName())
         .getOrCreate();
   }
@@ -99,10 +104,13 @@ public class AwsCredentialRenewalTest extends BaseCRUDTest {
     super.setUp();
 
     session = createSparkSession();
-    catalogOperations.createCatalog(new CreateCatalog().name("renewal").comment("Spark catalog"));
+    catalogOperations.createCatalog(
+        new CreateCatalog()
+            .name(CATALOG_NAME)
+            .comment("Spark catalog"));
 
     SdkSchemaOperations schemaOperations = new SdkSchemaOperations(createApiClient(serverConfig));
-    schemaOperations.createSchema(new CreateSchema().name("default").catalogName("renewal"));
+    schemaOperations.createSchema(new CreateSchema().name(SCHEMA_NAME).catalogName(CATALOG_NAME));
   }
 
   @AfterEach
@@ -111,21 +119,22 @@ public class AwsCredentialRenewalTest extends BaseCRUDTest {
       session.stop();
       session = null;
     }
-
-    // Clear the manual clock.
-    Clock.removeManualClock(CLOCK_NAME);
-
     try {
-      catalogOperations.deleteCatalog("renewal", Optional.of(true));
+      catalogOperations.deleteCatalog(CATALOG_NAME, Optional.of(true));
     } catch (Exception e) {
       // Ignore
     }
     super.cleanUp();
   }
 
+  @AfterAll
+  public static void afterAll() {
+    Clock.removeManualClock(CLOCK_NAME);
+  }
+
   @Test
   public void testRenewal() throws Exception {
-    String location = "s3://test-bucket0" + (new File(dataDir, TABLE_NAME).getCanonicalPath());
+    String location = String.format("s3://%s%s", BUCKET_NAME, dataDir.getCanonicalPath());
     Path locPath = new Path(location);
     StructType structType =
         DataTypes.createStructType(
@@ -139,7 +148,7 @@ public class AwsCredentialRenewalTest extends BaseCRUDTest {
     // Create the catalog table referring to external table.
     sql("CREATE TABLE %s USING delta LOCATION '%s'", TABLE_NAME, location);
 
-    // Insert the original row.
+    // Insert 1 row into the table.
     sql("INSERT INTO %s VALUES (1)", TABLE_NAME);
 
     SerializableConfiguration serialConf =
@@ -157,25 +166,20 @@ public class AwsCredentialRenewalTest extends BaseCRUDTest {
                   Configuration conf = serialConf.value();
                   S3CredFileSystem fs = (S3CredFileSystem) FileSystem.get(new URI(location), conf);
 
-                  fs.getFileStatus(locPath);
-                  assertThat(fs.renewalCount()).isEqualTo(0);
+                  for (int refreshIndex = 0; refreshIndex < 10; refreshIndex += 1) {
+                    // Pre-check before the credential renewal.
+                    fs.getFileStatus(locPath);
+                    assertThat(fs.renewalCount()).isEqualTo(refreshIndex);
 
-                  // Advance the clock to trigger the 1st renewal.
-                  CLOCK.advance(Duration.ofMillis(DEFAULT_INTERVAL_MILLIS));
-                  fs.getFileStatus(locPath);
-                  assertThat(fs.renewalCount()).isEqualTo(1);
+                    // Advance the clock to trigger the renewal.
+                    CLOCK.advance(Duration.ofMillis(DEFAULT_INTERVAL_MILLIS));
 
-                  // Advance the clock to trigger the 2nd renewal.
-                  CLOCK.advance(Duration.ofMillis(DEFAULT_INTERVAL_MILLIS));
-                  fs.getFileStatus(locPath);
-                  assertThat(fs.renewalCount()).isEqualTo(2);
+                    // Post-check after the credential renewal.
+                    fs.getFileStatus(locPath);
+                    assertThat(fs.renewalCount()).isEqualTo(refreshIndex + 1);
+                  }
 
-                  // Advance the clock to trigger the 3rd renewal.
-                  CLOCK.advance(Duration.ofMillis(DEFAULT_INTERVAL_MILLIS));
-                  fs.getFileStatus(locPath);
-                  assertThat(fs.renewalCount()).isEqualTo(3);
-
-                  return RowFactory.create(3);
+                  return RowFactory.create(10);
                 });
 
     session
@@ -188,7 +192,7 @@ public class AwsCredentialRenewalTest extends BaseCRUDTest {
     List<Row> results = sql("SELECT * FROM %s ORDER BY id ASC", TABLE_NAME);
     assertThat(results.size()).isEqualTo(2);
     assertThat(results.stream().map(r -> r.getInt(0)).collect(Collectors.toList()))
-        .isEqualTo(ImmutableList.of(1, 3));
+        .isEqualTo(ImmutableList.of(1, 10));
   }
 
   private List<Row> sql(String statement, Object... args) {
@@ -216,15 +220,10 @@ public class AwsCredentialRenewalTest extends BaseCRUDTest {
     private volatile AwsCredentialsProvider lazyProvider;
 
     @Override
-    public void initialize(URI uri, Configuration conf) throws IOException {
-      super.initialize(uri, conf);
-    }
-
-    @Override
     protected void checkCredentials(Path f) {
       String host = f.toUri().getHost();
 
-      if (credentialCheckEnabled && "test-bucket0".equals(host)) {
+      if (credentialCheckEnabled && BUCKET_NAME.equals(host)) {
         AwsCredentialsProvider provider = accessProvider();
         assertThat(provider).isNotNull();
 
@@ -244,7 +243,7 @@ public class AwsCredentialRenewalTest extends BaseCRUDTest {
 
     @Override
     protected String scheme() {
-      return "s3:";
+      return S3_SCHEME;
     }
 
     private synchronized AwsCredentialsProvider accessProvider() {
