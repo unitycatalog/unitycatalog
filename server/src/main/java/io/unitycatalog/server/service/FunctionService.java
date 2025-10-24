@@ -50,20 +50,23 @@ public class FunctionService extends AuthorizedService {
   @Post("")
   // TODO: for now, we are not supporting CREATE FUNCTION privilege
   @AuthorizeExpression("""
-          #authorizeAny(#principal, #catalog, OWNER, USE_CATALOG) && #authorizeAny(#principal, #schema, OWNER, USE_SCHEMA)
-          """)
+      #authorizeAny(#principal, #catalog, OWNER, USE_CATALOG) &&
+          #authorizeAny(#principal, #schema, OWNER, USE_SCHEMA)
+      """)
   @AuthorizeKey(METASTORE)
-  public HttpResponse createFunction(@AuthorizeKeys({
-                                        @AuthorizeKey(value = CATALOG, key = "function_info.catalog_name"),
-                                        @AuthorizeKey(value = SCHEMA, key = "function_info.schema_name")
-                                      })
-                                      CreateFunctionRequest createFunctionRequest) {
+  public HttpResponse createFunction(
+      @AuthorizeKeys({
+        @AuthorizeKey(value = CATALOG, key = "function_info.catalog_name"),
+        @AuthorizeKey(value = SCHEMA, key = "function_info.schema_name")
+      })
+      CreateFunctionRequest createFunctionRequest) {
     FunctionInfo functionInfo = functionRepository.createFunction(createFunctionRequest);
-    
-    SchemaInfo schemaInfo =
-            schemaRepository.getSchema(functionInfo.getCatalogName() + "." + functionInfo.getSchemaName());
+
+    String catalogName = functionInfo.getCatalogName();
+    String schemaName = functionInfo.getSchemaName();
+    SchemaInfo schemaInfo = schemaRepository.getSchema(catalogName + "." + schemaName);
     initializeHierarchicalAuthorization(functionInfo.getFunctionId(), schemaInfo.getSchemaId());
-    
+
     return HttpResponse.ofJson(functionInfo);
   }
 
@@ -75,24 +78,31 @@ public class FunctionService extends AuthorizedService {
       @Param("max_results") Optional<Integer> maxResults,
       @Param("page_token") Optional<String> pageToken) {
 
-    ListFunctionsResponse listFunctionsResponse = functionRepository.listFunctions(catalogName, schemaName, maxResults, pageToken);
+    ListFunctionsResponse listFunctionsResponse =
+        functionRepository.listFunctions(catalogName, schemaName, maxResults, pageToken);
     filterFunctions("""
-            #authorize(#principal, #metastore, OWNER) ||
-            #authorize(#principal, #catalog, OWNER) ||
-            (#authorize(#principal, #schema, OWNER) && #authorize(#principal, #catalog, USE_CATALOG)) ||
-            (#authorize(#principal, #schema, USE_SCHEMA) && #authorizeAny(#principal, #catalog, USE_CATALOG) && #authorizeAny(#principal, #function, OWNER, EXECUTE))
-            """, listFunctionsResponse.getFunctions());
+        #authorize(#principal, #metastore, OWNER) ||
+        #authorize(#principal, #catalog, OWNER) ||
+        (#authorize(#principal, #schema, OWNER) &&
+            #authorize(#principal, #catalog, USE_CATALOG)) ||
+        (#authorize(#principal, #schema, USE_SCHEMA) &&
+            #authorizeAny(#principal, #catalog, USE_CATALOG) &&
+            #authorizeAny(#principal, #function, OWNER, EXECUTE))
+        """, listFunctionsResponse.getFunctions());
     return HttpResponse.ofJson(listFunctionsResponse);
   }
 
   @Get("/{name}")
   @AuthorizeKey(METASTORE)
   @AuthorizeExpression("""
-          #authorize(#principal, #metastore, OWNER) ||
-          #authorize(#principal, #catalog, OWNER) ||
-          (#authorize(#principal, #schema, OWNER) && #authorizeAny(#principal, #catalog, USE_CATALOG)) ||
-          (#authorize(#principal, #catalog, USE_CATALOG) && #authorize(#principal, #schema, USE_SCHEMA) && #authorizeAny(#principal, #function, OWNER, EXECUTE))
-          """)
+      #authorize(#principal, #metastore, OWNER) ||
+      #authorize(#principal, #catalog, OWNER) ||
+      (#authorize(#principal, #schema, OWNER) &&
+          #authorizeAny(#principal, #catalog, USE_CATALOG)) ||
+      (#authorize(#principal, #catalog, USE_CATALOG) &&
+          #authorize(#principal, #schema, USE_SCHEMA) &&
+          #authorizeAny(#principal, #function, OWNER, EXECUTE))
+      """)
   public HttpResponse getFunction(@Param("name") @AuthorizeKey(FUNCTION) String name) {
     return HttpResponse.ofJson(functionRepository.getFunction(name));
   }
@@ -100,18 +110,22 @@ public class FunctionService extends AuthorizedService {
   @Delete("/{name}")
   @AuthorizeKey(METASTORE)
   @AuthorizeExpression("""
-          #authorize(#principal, #metastore, OWNER) ||
-          (#authorize(#principal, #function, OWNER) && #authorizeAny(#principal, #schema, OWNER, USE_SCHEMA) && #authorizeAny(#principal, #catalog, OWNER, USE_CATALOG))
-          """)
+      #authorize(#principal, #metastore, OWNER) ||
+      (#authorize(#principal, #function, OWNER) &&
+          #authorizeAny(#principal, #schema, OWNER, USE_SCHEMA) &&
+          #authorizeAny(#principal, #catalog, OWNER, USE_CATALOG))
+      """)
   public HttpResponse deleteFunction(
-      @Param("name") @AuthorizeKey(FUNCTION) String name, @Param("force") Optional<Boolean> force) {
+      @Param("name") @AuthorizeKey(FUNCTION) String name,
+      @Param("force") Optional<Boolean> force) {
     FunctionInfo functionInfo = functionRepository.getFunction(name);
     functionRepository.deleteFunction(name, force.orElse(false));
-    
-    SchemaInfo schemaInfo =
-            schemaRepository.getSchema(functionInfo.getCatalogName() + "." + functionInfo.getSchemaName());
+
+    String catalogName = functionInfo.getCatalogName();
+    String schemaName = functionInfo.getSchemaName();
+    SchemaInfo schemaInfo = schemaRepository.getSchema(catalogName + "." + schemaName);
     removeHierarchicalAuthorizations(functionInfo.getFunctionId(), schemaInfo.getSchemaId());
-    
+
     return HttpResponse.of(HttpStatus.OK);
   }
 
@@ -120,22 +134,23 @@ public class FunctionService extends AuthorizedService {
     UUID principalId = userRepository.findPrincipalId();
 
     evaluator.filter(
-            principalId,
-            expression,
-            entries,
-            fi -> {
-              CatalogInfo catalogInfo = catalogRepository.getCatalog(fi.getCatalogName());
-              SchemaInfo schemaInfo =
-                      schemaRepository.getSchema(fi.getCatalogName() + "." + fi.getSchemaName());
-              return Map.of(
-                      METASTORE,
-                      metastoreRepository.getMetastoreId(),
-                      CATALOG,
-                      UUID.fromString(catalogInfo.getId()),
-                      SCHEMA,
-                      UUID.fromString(schemaInfo.getSchemaId()),
-                      FUNCTION,
-                      UUID.fromString(fi.getFunctionId()));
-            });
+        principalId,
+        expression,
+        entries,
+        fi -> {
+          CatalogInfo catalogInfo = catalogRepository.getCatalog(fi.getCatalogName());
+          SchemaInfo schemaInfo =
+              schemaRepository.getSchema(fi.getCatalogName() + "." + fi.getSchemaName());
+          return Map.of(
+              METASTORE,
+              metastoreRepository.getMetastoreId(),
+              CATALOG,
+              UUID.fromString(catalogInfo.getId()),
+              SCHEMA,
+              UUID.fromString(schemaInfo.getSchemaId()),
+              FUNCTION,
+              UUID.fromString(fi.getFunctionId()));
+        });
   }
 }
+

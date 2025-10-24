@@ -131,7 +131,6 @@ public class IcebergRestCatalogService {
   public GetNamespaceResponse getNamespace(
       @Param("catalog") String catalog, @Param("namespace") String namespace)
       throws JsonProcessingException {
-
     String schemaFullName = String.join(".", catalog, namespace);
     String resp = schemaService.getSchema(schemaFullName).aggregate().join().contentUtf8();
     return GetNamespaceResponse.builder()

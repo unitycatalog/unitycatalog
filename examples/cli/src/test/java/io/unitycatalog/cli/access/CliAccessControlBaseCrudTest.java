@@ -26,123 +26,118 @@ import java.util.UUID;
 
 public class CliAccessControlBaseCrudTest extends BaseAccessControlCRUDTest {
 
-  protected List<Step> commonUserSteps =
-          new ArrayList<>() {
-            {
-              add(Step.TokenStep.of(SUCCEED, "admin"));
-              add(
-                      Step.CommandStep.of(
-                              SUCCEED,
-                              "user",
-                              "create",
-                              "--name",
-                              "Principal 1",
-                              "--email",
-                              "principal-1@localhost"));
-              add(
-                      Step.CommandStep.of(
-                              SUCCEED,
-                              "user",
-                              "create",
-                              "--name",
-                              "Principal 2",
-                              "--email",
-                              "principal-2@localhost"));
-              add(
-                      Step.CommandStep.of(
-                              SUCCEED,
-                              "user",
-                              "create",
-                              "--name",
-                              "Regular 1",
-                              "--email",
-                              "regular-1@localhost"));
-              add(
-                      Step.CommandStep.of(
-                              SUCCEED,
-                              "user",
-                              "create",
-                              "--name",
-                              "Regular 2",
-                              "--email",
-                              "regular-2@localhost"));
-            }
-          };
+  protected List<Step> commonUserSteps = new ArrayList<>() {
+    {
+      add(Step.TokenStep.of(SUCCEED, "admin"));
+      add(Step.CommandStep.of(
+          SUCCEED,
+          "user",
+          "create",
+          "--name",
+          "Principal 1",
+          "--email",
+          "principal-1@localhost"));
+      add(Step.CommandStep.of(
+          SUCCEED,
+          "user",
+          "create",
+          "--name",
+          "Principal 2",
+          "--email",
+          "principal-2@localhost"));
+      add(Step.CommandStep.of(
+          SUCCEED,
+          "user",
+          "create",
+          "--name",
+          "Regular 1",
+          "--email",
+          "regular-1@localhost"));
+      add(Step.CommandStep.of(
+          SUCCEED,
+          "user",
+          "create",
+          "--name",
+          "Regular 2",
+          "--email",
+          "regular-2@localhost"));
+    }
+  };
 
-  protected List<Step> commonSecurableSteps =
-          new ArrayList<>() {
-            {
-              // give user CREATE CATALOG
-              add(Step.TokenStep.of(SUCCEED, "admin"));
-              add(
-                      Step.CommandStep.of(
-                              SUCCEED,
-                              1,
-                              "permission",
-                              "create",
-                              "--securable_type",
-                              "metastore",
-                              "--name",
-                              "metastore",
-                              "--principal",
-                              "principal-1@localhost",
-                              "--privilege",
-                              "CREATE CATALOG"));
+  protected List<Step> commonSecurableSteps = new ArrayList<>() {
+    {
+      // give user CREATE CATALOG
+      add(Step.TokenStep.of(SUCCEED, "admin"));
+      add(Step.CommandStep.of(
+          SUCCEED,
+          1,
+          "permission",
+          "create",
+          "--securable_type",
+          "metastore",
+          "--name",
+          "metastore",
+          "--principal",
+          "principal-1@localhost",
+          "--privilege",
+          "CREATE CATALOG"));
 
-              // create a catalog -> CREATE CATALOG -> allowed
-              add(Step.TokenStep.of(SUCCEED, "principal-1@localhost"));
-              add(
-                      Step.CommandStep.of(
-                              SUCCEED,
-                              "catalog",
-                              "create",
-                              "--name",
-                              "cat_pr1",
-                              "--comment",
-                              "(created from scratch)"));
+      // create a catalog -> CREATE CATALOG -> allowed
+      add(Step.TokenStep.of(SUCCEED, "principal-1@localhost"));
+      add(Step.CommandStep.of(
+          SUCCEED,
+          "catalog",
+          "create",
+          "--name",
+          "cat_pr1",
+          "--comment",
+          "(created from scratch)"));
 
-              // give user CREATE SCHEMA on cat_pr1
-              add(
-                      Step.CommandStep.of(
-                              SUCCEED,
-                              1,
-                              "permission",
-                              "create",
-                              "--securable_type",
-                              "catalog",
-                              "--name",
-                              "cat_pr1",
-                              "--principal",
-                              "principal-1@localhost",
-                              "--privilege",
-                              "CREATE SCHEMA"));
-              add(
-                      Step.CommandStep.of(
-                              SUCCEED,
-                              1,
-                              "permission",
-                              "create",
-                              "--securable_type",
-                              "catalog",
-                              "--name",
-                              "cat_pr1",
-                              "--principal",
-                              "principal-1@localhost",
-                              "--privilege",
-                              "USE CATALOG"));
+      // give user CREATE SCHEMA on cat_pr1
+      add(Step.CommandStep.of(
+          SUCCEED,
+          1,
+          "permission",
+          "create",
+          "--securable_type",
+          "catalog",
+          "--name",
+          "cat_pr1",
+          "--principal",
+          "principal-1@localhost",
+          "--privilege",
+          "CREATE SCHEMA"));
+      add(Step.CommandStep.of(
+          SUCCEED,
+          1,
+          "permission",
+          "create",
+          "--securable_type",
+          "catalog",
+          "--name",
+          "cat_pr1",
+          "--principal",
+          "principal-1@localhost",
+          "--privilege",
+          "USE CATALOG"));
 
-              add(Step.TokenStep.of(SUCCEED, "principal-1@localhost"));
-              add(
-                      Step.CommandStep.of(
-                              SUCCEED, "schema", "create", "--name", "sch_pr1", "--catalog", "cat_pr1"));
-
-            }
-          };
+      add(Step.TokenStep.of(SUCCEED, "principal-1@localhost"));
+      add(Step.CommandStep.of(
+          SUCCEED,
+          "schema",
+          "create",
+          "--name",
+          "sch_pr1",
+          "--catalog",
+          "cat_pr1"));
+    }
+  };
 
 
 
 
-  public void testSteps(List<Step> steps) throws IOException, NoSuchAlgorithmException, InvalidKeySpecException {
+  public void testSteps(List<Step> steps)
+      throws IOException, NoSuchAlgorithmException, InvalidKeySpecException {
     Path path = Path.of("etc", "conf", "token.txt");
     String adminToken = Files.readString(path);
     String token = adminToken;
@@ -162,13 +157,15 @@ public class CliAccessControlBaseCrudTest extends BaseAccessControlCRUDTest {
                         .withClaim(JwtClaim.SUBJECT.key(), tokenStep.getEmail())
                         .sign(securityConfiguration.algorithmRSA());
 
-        System.err.format("%3d Expect: %s set principal to %s\n", stepNumber, tokenStep.getExpectedResult(), tokenStep.getEmail());
+        System.err.format("%3d Expect: %s set principal to %s\n",
+            stepNumber, tokenStep.getExpectedResult(), tokenStep.getEmail());
 
       } else if (step instanceof Step.CommandStep commandStep) {
         serverConfig.setAuthToken(token);
         String[] args = addServerAndAuthParams(commandStep.getArgs(), serverConfig);
 
-        System.err.format("%3d Expect: %s executing %s\n", stepNumber, commandStep.getExpectedResult(), commandStep.getArgs());
+        System.err.format("%3d Expect: %s executing %s\n",
+            stepNumber, commandStep.getExpectedResult(), commandStep.getArgs());
 
         if (commandStep.getExpectedResult() == FAIL) {
           assertThatThrownBy(() -> executeCLICommand(args)).isInstanceOf(RuntimeException.class);

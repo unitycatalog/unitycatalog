@@ -74,7 +74,8 @@ public class Scim2UserService {
       @Param("filter") Optional<String> filter,
       @Param("startIndex") Optional<Integer> startIndex,
       @Param("count") Optional<Integer> count) {
-    final Filter userFilter = filter.filter(f -> !f.isEmpty()).map(this::parseFilter).orElse(null);
+    final Filter userFilter =
+        filter.filter(f -> !f.isEmpty()).<Filter>map(this::parseFilter).orElse(null);
     FilterEvaluator filterEvaluator = new FilterEvaluator();
 
     List<UserResource> userResourcesList =
@@ -186,7 +187,6 @@ public class Scim2UserService {
 
   @Patch("/{id}")
   public HttpResponse patchUser(@Param("id") String id, PatchRequest patchRequest) {
-
     return patchRequest.getOperations().stream()
         .filter(
             op ->
