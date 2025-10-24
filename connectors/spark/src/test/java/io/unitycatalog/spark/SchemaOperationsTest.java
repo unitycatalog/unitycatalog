@@ -11,7 +11,7 @@ import org.apache.spark.sql.SparkSession;
 import org.apache.spark.sql.catalyst.analysis.NoSuchNamespaceException;
 import org.junit.jupiter.api.Test;
 
-public class SchemaOperationsTest extends BaseSparkIntegrationTest {
+public class SchemaOperationsTest extends BaseSparkITTest {
   @Test
   public void testCreateSchema() {
     SparkSession session = createSparkSessionWithCatalogs(CATALOG_NAME, SPARK_CATALOG);
