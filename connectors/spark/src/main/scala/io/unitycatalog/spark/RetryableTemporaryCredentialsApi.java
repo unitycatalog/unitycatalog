@@ -20,19 +20,25 @@ import org.apache.hadoop.conf.Configuration;
 public class RetryableTemporaryCredentialsApi {
   private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
 
-  // Recoverable HTTP status codes that should trigger a retry
   private static final Set<Integer> RECOVERABLE_HTTP_CODES =
       Collections.unmodifiableSet(new HashSet<>(List.of(
           429,  // Too Many Requests
           503   // Service Unavailable
       )));
 
-  // Recoverable Unity Catalog error codes that should trigger a retry
   private static final Set<String> RECOVERABLE_ERROR_CODES =
       Collections.unmodifiableSet(new HashSet<>(List.of(
           "TEMPORARILY_UNAVAILABLE",
           "WORKSPACE_TEMPORARILY_UNAVAILABLE",
           "SERVICE_UNDER_MAINTENANCE"
+      )));
+
+  // Recoverable network exception types that should trigger a retry
+  private static final Set<Class<? extends Throwable>> RECOVERABLE_NETWORK_EXCEPTIONS =
+      Collections.unmodifiableSet(new HashSet<>(List.of(
+          java.net.SocketTimeoutException.class,
+          java.net.SocketException.class,
+          java.net.UnknownHostException.class
       )));
 
   private final TemporaryCredentialsApi delegate;
@@ -138,13 +144,8 @@ public class RetryableTemporaryCredentialsApi {
 
     // Check the entire exception cause chain for network exceptions
     return Throwables.getCausalChain(e).stream()
-        .anyMatch(this::isNetworkException);
-  }
-
-  private boolean isNetworkException(Throwable e) {
-    return e instanceof java.net.SocketTimeoutException
-        || e instanceof java.net.SocketException
-        || e instanceof java.net.UnknownHostException;
+        .anyMatch(cause -> RECOVERABLE_NETWORK_EXCEPTIONS.stream()
+            .anyMatch(exceptionClass -> exceptionClass.isInstance(cause)));
   }
 
   private static String extractUcErrorCode(String body) {
