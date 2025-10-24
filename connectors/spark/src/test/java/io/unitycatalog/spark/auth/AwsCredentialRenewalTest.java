@@ -27,6 +27,7 @@ import java.util.List;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
+import java.util.stream.Collectors;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.FileSystem;
 import org.apache.hadoop.fs.Path;
@@ -186,7 +187,8 @@ public class AwsCredentialRenewalTest extends BaseCRUDTest {
 
     List<Row> results = sql("SELECT * FROM %s ORDER BY id ASC", TABLE_NAME);
     assertThat(results.size()).isEqualTo(2);
-    assertThat(results.stream().map(r -> r.getInt(0)).toList()).isEqualTo(ImmutableList.of(1, 3));
+    assertThat(results.stream().map(r -> r.getInt(0)).collect(Collectors.toList()))
+        .isEqualTo(ImmutableList.of(1, 3));
   }
 
   private List<Row> sql(String statement, Object... args) {
