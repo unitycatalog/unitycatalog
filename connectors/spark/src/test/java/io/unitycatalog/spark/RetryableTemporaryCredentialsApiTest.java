@@ -67,8 +67,9 @@ public class RetryableTemporaryCredentialsApiTest {
   // Parameterized test to cover all recoverable errors with mixed error types
   @ParameterizedTest(name = "{0}")
   @MethodSource("recoverableErrorProvider")
-  public void testRecoverableErrorEventuallySucceeds(String description, 
-      Exception firstError, Exception secondError) throws Exception {
+  public void testRecoverableErrorEventuallySucceeds(String description,
+                                                     Exception firstError,
+                                                     Exception secondError) throws Exception {
     TemporaryCredentials expected = new TemporaryCredentials();
     when(delegate.generateTemporaryTableCredentials(any(GenerateTemporaryTableCredential.class)))
         .thenThrow(firstError)
@@ -92,7 +93,7 @@ public class RetryableTemporaryCredentialsApiTest {
         Arguments.of("HTTP 503 → UC TEMPORARILY_UNAVAILABLE",
             apiException(503),
             apiException(500, "{\"error_code\":\"TEMPORARILY_UNAVAILABLE\"}")),
-        
+
         // Mix UC error codes with network exceptions
         Arguments.of("UC WORKSPACE_TEMPORARILY_UNAVAILABLE → Network SocketTimeout",
             apiException(500, "{\"error_code\":\"WORKSPACE_TEMPORARILY_UNAVAILABLE\"}"),
@@ -100,7 +101,7 @@ public class RetryableTemporaryCredentialsApiTest {
         Arguments.of("UC SERVICE_UNDER_MAINTENANCE → Network SocketException",
             apiException(500, "{\"error_code\":\"SERVICE_UNDER_MAINTENANCE\"}"),
             new RuntimeException(new SocketException("connection reset"))),
-        
+
         // Mix different network exceptions
         Arguments.of("Network SocketTimeout → Network UnknownHost",
             new RuntimeException(new SocketTimeoutException("timeout")),
@@ -206,10 +207,10 @@ public class RetryableTemporaryCredentialsApiTest {
   }
 
   private static void assertBackoffWithinBounds(List<Duration> sleeps,
-      long initialDelay,
-      double multiplier,
-      double jitterFactor,
-      int expectedSize) {
+                                                long initialDelay,
+                                                double multiplier,
+                                                double jitterFactor,
+                                                int expectedSize) {
     assertThat(sleeps).hasSize(expectedSize);
 
     List<Integer> attemptNumbers = IntStream.rangeClosed(2, expectedSize + 1)
@@ -245,4 +246,3 @@ public class RetryableTemporaryCredentialsApiTest {
     retryableApi = new RetryableTemporaryCredentialsApi(delegate, conf, clockSpy);
   }
 }
-

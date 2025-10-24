@@ -19,22 +19,22 @@ import org.apache.hadoop.conf.Configuration;
 
 public class RetryableTemporaryCredentialsApi {
   private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
-  
+
   // Recoverable HTTP status codes that should trigger a retry
-  private static final Set<Integer> RECOVERABLE_HTTP_CODES = 
+  private static final Set<Integer> RECOVERABLE_HTTP_CODES =
       Collections.unmodifiableSet(new HashSet<>(List.of(
           429,  // Too Many Requests
           503   // Service Unavailable
       )));
-  
+
   // Recoverable Unity Catalog error codes that should trigger a retry
-  private static final Set<String> RECOVERABLE_ERROR_CODES = 
+  private static final Set<String> RECOVERABLE_ERROR_CODES =
       Collections.unmodifiableSet(new HashSet<>(List.of(
           "TEMPORARILY_UNAVAILABLE",
           "WORKSPACE_TEMPORARILY_UNAVAILABLE",
           "SERVICE_UNDER_MAINTENANCE"
       )));
-  
+
   private final TemporaryCredentialsApi delegate;
   private final Clock clock;
   private final int maxAttempts;
@@ -115,7 +115,7 @@ public class RetryableTemporaryCredentialsApi {
     } else {
       throw new RuntimeException(
           "Failed to obtain temporary credentials after " + maxAttempts + " attempts" +
-          " (elapsed time: " + elapsedMs + "ms)",
+              " (elapsed time: " + elapsedMs + "ms)",
           lastException
       );
     }
@@ -128,14 +128,14 @@ public class RetryableTemporaryCredentialsApi {
       if (RECOVERABLE_HTTP_CODES.contains(code)) {
         return true;
       }
-      
+
       String errorCode = extractUcErrorCode(apiEx.getResponseBody());
       if (errorCode != null && RECOVERABLE_ERROR_CODES.contains(errorCode)) {
         return true;
       }
       return false;
     }
-    
+
     // Check the entire exception cause chain for network exceptions
     return Throwables.getCausalChain(e).stream()
         .anyMatch(this::isNetworkException);

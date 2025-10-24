@@ -26,17 +26,25 @@ import org.mockito.Mockito;
 
 public abstract class BaseTokenProviderTest<T extends GenericCredentialProvider> {
 
-  /** Use the {@link Configuration} and the mocked api to create a new provider. */
+  /**
+   * Use the {@link Configuration} and the mocked api to create a new provider.
+   */
   protected abstract T createTestProvider(
       Clock clock, long renewalLeadTimeMillis, Configuration conf, TemporaryCredentialsApi mockApi);
 
-  /** New a testing temporary credentials, using the id and expiration time. */
+  /**
+   * New a testing temporary credentials, using the id and expiration time.
+   */
   protected abstract TemporaryCredentials newTempCred(String id, long expirationMillis);
 
-  /** Set the credentials into the hadoop conf, as the initialized credential. */
+  /**
+   * Set the credentials into the hadoop conf, as the initialized credential.
+   */
   protected abstract void setInitialCred(Configuration conf, TemporaryCredentials cred);
 
-  /** Use the provider to resolve the last credential, and assert it's the expected one. */
+  /**
+   * Use the provider to resolve the last credential, and assert it's the expected one.
+   */
   protected abstract void assertCred(T provider, TemporaryCredentials expected);
 
   @BeforeEach
@@ -307,7 +315,8 @@ public abstract class BaseTokenProviderTest<T extends GenericCredentialProvider>
 
     Configuration conf = newTableBasedConf();
     TemporaryCredentialsApi tempCredApi = mock(TemporaryCredentialsApi.class);
-    TemporaryCredentials succeeded = newTempCred("success", manualClock.now().toEpochMilli() + 4000L);
+    TemporaryCredentials succeeded = newTempCred("success",
+        manualClock.now().toEpochMilli() + 4000L);
 
     when(tempCredApi.generateTemporaryTableCredentials(any()))
         .thenThrow(new ApiException(503, "unavailable"))
