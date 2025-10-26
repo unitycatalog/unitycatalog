@@ -52,7 +52,9 @@ lazy val commonSettings = Seq(
     "org.slf4j" % "slf4j-api" % "2.0.13",
     "org.slf4j" % "slf4j-log4j12" % "2.0.13" % Test,
     "org.apache.logging.log4j" % "log4j-slf4j2-impl" % log4jVersion,
-    "org.apache.logging.log4j" % "log4j-api" % log4jVersion
+    "org.apache.logging.log4j" % "log4j-api" % log4jVersion,
+    "ch.qos.logback" % "logback-classic" % "1.2.11",
+    "org.postgresql" % "postgresql" % "42.7.6"
   ),
   excludeDependencies ++= Seq(
     ExclusionRule("org.slf4j", "slf4j-reload4j")
@@ -311,6 +313,7 @@ lazy val server = (project in file("server"))
     ) ++ javacRelease17,
     libraryDependencies ++= Seq(
       "com.linecorp.armeria" %  "armeria" % "1.28.4",
+      "org.json" % "json" % "20240303",
       // Netty dependencies
       "io.netty" % "netty-all" % "4.1.111.Final",
       "jakarta.annotation" % "jakarta.annotation-api" % "3.0.0" % Provided,
