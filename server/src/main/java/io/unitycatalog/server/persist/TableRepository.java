@@ -3,9 +3,8 @@ package io.unitycatalog.server.persist;
 import io.unitycatalog.server.exception.BaseException;
 import io.unitycatalog.server.exception.ErrorCode;
 import io.unitycatalog.server.model.*;
-import io.unitycatalog.server.persist.dao.CatalogInfoDAO;
 import io.unitycatalog.server.persist.dao.PropertyDAO;
-import io.unitycatalog.server.persist.dao.SchemaInfoDAO;
+import io.unitycatalog.server.persist.dao.StagingTableDAO;
 import io.unitycatalog.server.persist.dao.TableInfoDAO;
 import io.unitycatalog.server.persist.utils.FileOperations;
 import io.unitycatalog.server.persist.utils.PagedListingHelper;
@@ -13,9 +12,11 @@ import io.unitycatalog.server.persist.utils.RepositoryUtils;
 import io.unitycatalog.server.persist.utils.TransactionManager;
 import io.unitycatalog.server.utils.Constants;
 import io.unitycatalog.server.utils.IdentityUtils;
+import io.unitycatalog.server.utils.ServerProperties;
 import io.unitycatalog.server.utils.ValidationUtils;
 import java.util.*;
 import java.util.stream.Collectors;
+import org.apache.commons.lang3.tuple.Pair;
 import org.hibernate.Session;
 import org.hibernate.SessionFactory;
 import org.hibernate.query.Query;
@@ -27,13 +28,38 @@ public class TableRepository {
   private final SessionFactory sessionFactory;
   private final Repositories repositories;
   private final FileOperations fileOperations;
+  private final ServerProperties serverProperties;
   private static final PagedListingHelper<TableInfoDAO> LISTING_HELPER =
       new PagedListingHelper<>(TableInfoDAO.class);
 
-  public TableRepository(Repositories repositories, SessionFactory sessionFactory) {
+  public TableRepository(
+      Repositories repositories, SessionFactory sessionFactory, ServerProperties serverProperties) {
     this.repositories = repositories;
     this.sessionFactory = sessionFactory;
     this.fileOperations = repositories.getFileOperations();
+    this.serverProperties = serverProperties;
+  }
+
+  public String getStorageLocationForTableOrStagingTable(String tableId) {
+    return TransactionManager.executeWithTransaction(
+        sessionFactory,
+        session -> {
+          LOGGER.debug("Getting storage location of table by id: {}", tableId);
+          UUID tableUUID = UUID.fromString(tableId);
+          TableInfoDAO tableInfoDAO = session.get(TableInfoDAO.class, tableUUID);
+          if (tableInfoDAO != null) {
+            return tableInfoDAO.getUrl();
+          }
+          LOGGER.debug("Getting storage location of staging table by id: {}", tableId);
+          StagingTableDAO stagingTableDAO = session.get(StagingTableDAO.class, tableUUID);
+          if (stagingTableDAO != null) {
+            return stagingTableDAO.getStagingLocation();
+          }
+          throw new BaseException(
+              ErrorCode.NOT_FOUND, "Neither table nor staging table found with id: " + tableId);
+        },
+        "Failed to get storage location of table or staging table",
+        /* readOnly = */ true);
   }
 
   public TableInfo getTableById(String tableId) {
@@ -45,22 +71,10 @@ public class TableRepository {
           if (tableInfoDAO == null) {
             throw new BaseException(ErrorCode.NOT_FOUND, "Table not found: " + tableId);
           }
-          SchemaInfoDAO schemaInfoDAO =
-              session.get(SchemaInfoDAO.class, tableInfoDAO.getSchemaId());
-          if (schemaInfoDAO == null) {
-            throw new BaseException(
-                ErrorCode.NOT_FOUND, "Schema not found: " + tableInfoDAO.getSchemaId());
-          }
-          CatalogInfoDAO catalogInfoDAO =
-              session.get(CatalogInfoDAO.class, schemaInfoDAO.getCatalogId());
-          if (catalogInfoDAO == null) {
-            throw new BaseException(
-                ErrorCode.NOT_FOUND, "Catalog not found: " + schemaInfoDAO.getCatalogId());
-          }
-          TableInfo tableInfo = tableInfoDAO.toTableInfo(true);
-          tableInfo.setSchemaName(schemaInfoDAO.getName());
-          tableInfo.setCatalogName(catalogInfoDAO.getName());
-          return tableInfo;
+          Pair<String, String> catalogAndSchemaNames =
+              RepositoryUtils.getCatalogAndSchemaNames(session, tableInfoDAO.getSchemaId());
+          return tableInfoDAO.toTableInfo(
+              true, catalogAndSchemaNames.getLeft(), catalogAndSchemaNames.getRight());
         },
         "Failed to get table by ID",
         /* readOnly = */ true);
@@ -82,9 +96,7 @@ public class TableRepository {
           if (tableInfoDAO == null) {
             throw new BaseException(ErrorCode.NOT_FOUND, "Table not found: " + fullName);
           }
-          TableInfo tableInfo = tableInfoDAO.toTableInfo(true);
-          tableInfo.setCatalogName(catalogName);
-          tableInfo.setSchemaName(schemaName);
+          TableInfo tableInfo = tableInfoDAO.toTableInfo(true, catalogName, schemaName);
           RepositoryUtils.attachProperties(
               tableInfo, tableInfo.getTableId(), Constants.TABLE, session);
           return tableInfo;
@@ -101,7 +113,8 @@ public class TableRepository {
 
   private TableInfoDAO findTable(
       Session session, String catalogName, String schemaName, String tableName) {
-    UUID schemaId = getSchemaId(session, catalogName, schemaName);
+    UUID schemaId =
+        repositories.getSchemaRepository().getSchemaId(session, catalogName, schemaName);
     return findBySchemaIdAndName(session, schemaId, tableName);
   }
 
@@ -113,51 +126,79 @@ public class TableRepository {
             .map(c -> c.typeText(c.getTypeText().toLowerCase(Locale.ROOT)))
             .collect(Collectors.toList());
     Long createTime = System.currentTimeMillis();
-    TableInfo tableInfo =
-        new TableInfo()
-            .tableId(UUID.randomUUID().toString())
-            .name(createTable.getName())
-            .catalogName(createTable.getCatalogName())
-            .schemaName(createTable.getSchemaName())
-            .tableType(createTable.getTableType())
-            .dataSourceFormat(createTable.getDataSourceFormat())
-            .columns(columnInfos)
-            .storageLocation(
-                FileOperations.convertRelativePathToURI(createTable.getStorageLocation()))
-            .comment(createTable.getComment())
-            .properties(createTable.getProperties())
-            .owner(callerId)
-            .createdAt(createTime)
-            .createdBy(callerId)
-            .updatedAt(createTime)
-            .updatedBy(callerId);
-    String fullName = getTableFullName(tableInfo);
+    String fullName = getTableFullName(createTable);
     LOGGER.debug("Creating table: {}", fullName);
 
     return TransactionManager.executeWithTransaction(
         sessionFactory,
         session -> {
-          String catalogName = tableInfo.getCatalogName();
-          String schemaName = tableInfo.getSchemaName();
-          UUID schemaId = getSchemaId(session, catalogName, schemaName);
+          String catalogName = createTable.getCatalogName();
+          String schemaName = createTable.getSchemaName();
+          UUID schemaId =
+              repositories.getSchemaRepository().getSchemaId(session, catalogName, schemaName);
 
           // Check if table already exists
           TableInfoDAO existingTable =
-              findBySchemaIdAndName(session, schemaId, tableInfo.getName());
+              findBySchemaIdAndName(session, schemaId, createTable.getName());
           if (existingTable != null) {
             throw new BaseException(ErrorCode.ALREADY_EXISTS, "Table already exists: " + fullName);
           }
-          if (TableType.MANAGED.equals(tableInfo.getTableType())) {
+          TableType tableType = Objects.requireNonNull(createTable.getTableType());
+          // The table ID will either be a new random one or the id of staging table, depending
+          // on the type of table to create and whether a staged location is set.
+          String tableID;
+          String storageLocation;
+          if (tableType == TableType.EXTERNAL) {
+            if (createTable.getStorageLocation() == null) {
+              throw new BaseException(
+                  ErrorCode.INVALID_ARGUMENT, "Storage location is required for external table");
+            }
+            tableID = UUID.randomUUID().toString();
+            storageLocation =
+                FileOperations.toStandardizedURIString(createTable.getStorageLocation());
+          } else if (tableType == TableType.MANAGED) {
+            serverProperties.checkManagedTableEnabled();
+            if (createTable.getDataSourceFormat() != DataSourceFormat.DELTA) {
+              throw new BaseException(
+                  ErrorCode.INVALID_ARGUMENT,
+                  "MANAGED table creation is only supported for delta tables.");
+            }
+            if (createTable.getStorageLocation() == null) {
+              tableID = UUID.randomUUID().toString();
+              storageLocation = repositories.getFileOperations().createTableDirectory(tableID);
+            } else {
+              // Find and commit staging table with the same staging location
+              StagingTableDAO stagingTableDAO =
+                  repositories
+                      .getStagingTableRepository()
+                      .commitStagingTable(session, callerId, createTable.getStorageLocation());
+              tableID = stagingTableDAO.getId().toString();
+              storageLocation = stagingTableDAO.getStagingLocation();
+            }
+          } else {
             throw new BaseException(
-                ErrorCode.INVALID_ARGUMENT, "MANAGED table creation is not supported yet.");
+                ErrorCode.INVALID_ARGUMENT,
+                "Unrecognized table type " + createTable.getTableType());
           }
-          // only external table creation is supported at this time
-          if (tableInfo.getStorageLocation() == null) {
-            throw new BaseException(
-                ErrorCode.INVALID_ARGUMENT, "Storage location is required for external table");
-          }
-          TableInfoDAO tableInfoDAO = TableInfoDAO.from(tableInfo);
-          tableInfoDAO.setSchemaId(schemaId);
+          TableInfo tableInfo =
+              new TableInfo()
+                  .name(createTable.getName())
+                  .catalogName(createTable.getCatalogName())
+                  .schemaName(createTable.getSchemaName())
+                  .tableType(createTable.getTableType())
+                  .dataSourceFormat(createTable.getDataSourceFormat())
+                  .columns(columnInfos)
+                  .comment(createTable.getComment())
+                  .properties(createTable.getProperties())
+                  .owner(callerId)
+                  .createdAt(createTime)
+                  .createdBy(callerId)
+                  .updatedAt(createTime)
+                  .updatedBy(callerId)
+                  .tableId(tableID)
+                  .storageLocation(storageLocation);
+
+          TableInfoDAO tableInfoDAO = TableInfoDAO.from(tableInfo, schemaId);
           // create columns
           tableInfoDAO
               .getColumns()
@@ -185,17 +226,12 @@ public class TableRepository {
     return query.uniqueResult(); // Returns null if no result is found
   }
 
-  private String getTableFullName(TableInfo tableInfo) {
-    return tableInfo.getCatalogName() + "." + tableInfo.getSchemaName() + "." + tableInfo.getName();
-  }
-
-  public UUID getSchemaId(Session session, String catalogName, String schemaName) {
-    SchemaInfoDAO schemaInfo =
-        repositories.getSchemaRepository().getSchemaDAO(session, catalogName, schemaName);
-    if (schemaInfo == null) {
-      throw new BaseException(ErrorCode.NOT_FOUND, "Schema not found: " + schemaName);
-    }
-    return schemaInfo.getId();
+  private String getTableFullName(CreateTable createTable) {
+    return createTable.getCatalogName()
+        + "."
+        + createTable.getSchemaName()
+        + "."
+        + createTable.getName();
   }
 
   /**
@@ -219,7 +255,8 @@ public class TableRepository {
     return TransactionManager.executeWithTransaction(
         sessionFactory,
         session -> {
-          UUID schemaId = getSchemaId(session, catalogName, schemaName);
+          UUID schemaId =
+              repositories.getSchemaRepository().getSchemaId(session, catalogName, schemaName);
           return listTables(
               session,
               schemaId,
@@ -248,13 +285,11 @@ public class TableRepository {
     String nextPageToken = LISTING_HELPER.getNextPageToken(tableInfoDAOList, maxResults);
     List<TableInfo> result = new ArrayList<>();
     for (TableInfoDAO tableInfoDAO : tableInfoDAOList) {
-      TableInfo tableInfo = tableInfoDAO.toTableInfo(!omitColumns);
+      TableInfo tableInfo = tableInfoDAO.toTableInfo(!omitColumns, catalogName, schemaName);
       if (!omitProperties) {
         RepositoryUtils.attachProperties(
             tableInfo, tableInfo.getTableId(), Constants.TABLE, session);
       }
-      tableInfo.setCatalogName(catalogName);
-      tableInfo.setSchemaName(schemaName);
       result.add(tableInfo);
     }
     return new ListTablesResponse().tables(result).nextPageToken(nextPageToken);
@@ -271,7 +306,8 @@ public class TableRepository {
           String catalogName = parts[0];
           String schemaName = parts[1];
           String tableName = parts[2];
-          UUID schemaId = getSchemaId(session, catalogName, schemaName);
+          UUID schemaId =
+              repositories.getSchemaRepository().getSchemaId(session, catalogName, schemaName);
           deleteTable(session, schemaId, tableName);
           return null;
         },
