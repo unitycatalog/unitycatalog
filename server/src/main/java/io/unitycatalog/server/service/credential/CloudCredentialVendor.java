@@ -72,6 +72,11 @@ public class CloudCredentialVendor {
             .accessKeyId(awsSessionCredentials.accessKeyId())
             .secretAccessKey(awsSessionCredentials.secretAccessKey())
             .sessionToken(awsSessionCredentials.sessionToken()));
+
+        // Set the expiration time.
+        if (awsSessionCredentials.expiration() != null) {
+          temporaryCredentials.expirationTime(awsSessionCredentials.expiration().toEpochMilli());
+        }
       }
     }
 

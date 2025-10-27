@@ -26,14 +26,18 @@ import java.util.List;
 import java.util.Optional;
 import java.util.Set;
 import java.util.stream.Collectors;
+import java.util.stream.IntStream;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.FileSystem;
 import org.apache.hadoop.fs.Path;
-import org.apache.spark.api.java.JavaRDD;
+import org.apache.spark.api.java.function.MapPartitionsFunction;
+import org.apache.spark.sql.Encoders;
 import org.apache.spark.sql.Row;
 import org.apache.spark.sql.RowFactory;
 import org.apache.spark.sql.SparkSession;
 import org.apache.spark.sql.types.DataTypes;
+import org.apache.spark.sql.types.Metadata;
+import org.apache.spark.sql.types.StructField;
 import org.apache.spark.sql.types.StructType;
 import org.apache.spark.util.SerializableConfiguration;
 import org.junit.jupiter.api.AfterAll;
@@ -47,8 +51,8 @@ import software.amazon.awssdk.auth.credentials.AwsSessionCredentials;
 import software.amazon.awssdk.services.sts.model.Credentials;
 
 public class AwsCredentialRenewalTest extends BaseCRUDTest {
+
   private static final String CLOCK_NAME = AwsCredentialRenewalTest.class.getSimpleName();
-  private static final Clock CLOCK = Clock.getManualClock(CLOCK_NAME);
   private static final String CREDENTIALS_GENERATOR = TimeBasedCredentialsGenerator.class.getName();
 
   private static final String CATALOG_NAME = "CredRenewalCatalog";
@@ -56,10 +60,9 @@ public class AwsCredentialRenewalTest extends BaseCRUDTest {
   private static final String TABLE_NAME = String.format("%s.%s.demo", CATALOG_NAME, SCHEMA_NAME);
   private static final String BUCKET_NAME = "test-bucket";
   private static final String S3_SCHEME = "s3:";
-  private static final long DEFAULT_INTERVAL_MILLIS = 30_0000L;
+  private static final long DEFAULT_INTERVAL_MILLIS = 30_000L;
 
-  @TempDir
-  private File dataDir;
+  @TempDir private File dataDir;
   private SparkSession session;
   private SdkSchemaOperations schemaOperations;
 
@@ -84,8 +87,8 @@ public class AwsCredentialRenewalTest extends BaseCRUDTest {
         .appName("test-credential-renewal")
         .master("local[1]") // Make it single-threaded explicitly.
         .config("spark.sql.extensions", "io.delta.sql.DeltaSparkSessionExtension")
-        .config("spark.sql.catalog.spark_catalog",
-            "org.apache.spark.sql.delta.catalog.DeltaCatalog")
+        .config(
+            "spark.sql.catalog.spark_catalog", "org.apache.spark.sql.delta.catalog.DeltaCatalog")
         .config("spark.hadoop." + UCHadoopConf.UC_TEST_CLOCK_NAME, CLOCK_NAME)
         .config("spark.hadoop." + UCHadoopConf.UC_RENEWAL_LEAD_TIME_KEY, 0L)
         .config("spark.sql.shuffle.partitions", "1")
@@ -99,6 +102,7 @@ public class AwsCredentialRenewalTest extends BaseCRUDTest {
   }
 
   private interface Callable {
+
     void call() throws Exception;
   }
 
@@ -117,9 +121,7 @@ public class AwsCredentialRenewalTest extends BaseCRUDTest {
 
     // Initialize the catalog in unity catalog server.
     catalogOperations.createCatalog(
-        new CreateCatalog()
-            .name(CATALOG_NAME)
-            .comment("Spark catalog"));
+        new CreateCatalog().name(CATALOG_NAME).comment("Spark catalog"));
 
     // Initialize the schema in unity catalog server.
     schemaOperations = new SdkSchemaOperations(createApiClient(serverConfig));
@@ -128,6 +130,9 @@ public class AwsCredentialRenewalTest extends BaseCRUDTest {
 
   @AfterEach
   public void afterEach() {
+    // Drop the table.
+    sql("DROP TABLE IF EXISTS %s", TABLE_NAME);
+
     // Delete the scheme.
     callQuietly(() -> schemaOperations.deleteSchema(SCHEMA_NAME, Optional.of(true)));
 
@@ -145,13 +150,14 @@ public class AwsCredentialRenewalTest extends BaseCRUDTest {
     Clock.removeManualClock(CLOCK_NAME);
   }
 
+  public static Clock testClock() {
+    return Clock.getManualClock(CLOCK_NAME);
+  }
+
   @Test
-  public void testRenewal() throws Exception {
-    String location = String.format("s3://%s%s", BUCKET_NAME, dataDir.getCanonicalPath());
+  public void testFileSystemRenewal() throws Exception {
+    String location = String.format("s3://%s%s/fs", BUCKET_NAME, dataDir.getCanonicalPath());
     Path locPath = new Path(location);
-    StructType structType =
-        DataTypes.createStructType(
-            ImmutableList.of(DataTypes.createStructField("id", DataTypes.IntegerType, true)));
 
     // Create the external delta path-based table.
     S3CredFileSystem.credentialCheckEnabled = false;
@@ -170,18 +176,13 @@ public class AwsCredentialRenewalTest extends BaseCRUDTest {
             DeltaTable.forName(session, TABLE_NAME).deltaLog().newDeltaHadoopConf());
 
     // This Spark job consists of three main steps:
-    // 1. Read data from a Delta table.
+    // 1. Read Delta table and spawn task.
     // 2. Simulate storage access using the table-level Hadoop configuration and verify that
     //    filesystem credentials are renewed the expected number of times.
-    // 3. Write the credential renewal count back to the Delta table.
+    // 3. Collect the credential renewal count.
     //
-    // The test validates two dimensions:
-    // - Dimension 1: Simulate a single Delta table operation within a Spark executor
+    //  Simulate a single Delta table operation within a Spark executor
     //   to accurately track how many times credentials are renewed within a task.
-    // - Dimension 2: Verify the full job workflow across three stages:
-    //     (a) Read Delta Table
-    //     (b) Apply a Map function
-    //     (c) Write back to Delta Table
     //
     //   In the Read stage, the file writer is initialized with the filesystem instance,
     //   which goes through the Map function. This triggers multiple rounds of
@@ -190,7 +191,7 @@ public class AwsCredentialRenewalTest extends BaseCRUDTest {
     // Note: Directly accessing a Spark task's internal filesystem instance to verify the
     // accurate renewal times is not possible. The successful completion of the Write stage
     // serves as an indirect verification that credential renewal occurred as expected.
-    JavaRDD<Row> rdd =
+    List<Row> rows =
         session
             .read()
             .format("delta")
@@ -207,7 +208,7 @@ public class AwsCredentialRenewalTest extends BaseCRUDTest {
                     assertThat(fs.renewalCount()).isEqualTo(refreshIndex);
 
                     // Advance the clock to trigger the renewal.
-                    CLOCK.advance(Duration.ofMillis(DEFAULT_INTERVAL_MILLIS));
+                    testClock().advance(Duration.ofMillis(DEFAULT_INTERVAL_MILLIS));
 
                     // Post-check after the credential renewal.
                     fs.getFileStatus(locPath);
@@ -215,19 +216,67 @@ public class AwsCredentialRenewalTest extends BaseCRUDTest {
                   }
 
                   return RowFactory.create(10);
-                });
+                })
+            .collect();
 
+    assertThat(rows.stream().map(r -> r.getInt(0)).collect(Collectors.toList()))
+        .isEqualTo(ImmutableList.of(10));
+  }
+
+  @Test
+  public void testDeltaReadWriteRenewal() throws Exception {
+    String location = String.format("s3://%s%s/delta", BUCKET_NAME, dataDir.getCanonicalPath());
+    StructType schema =
+        new StructType(
+            new StructField[] {
+              new StructField("id", DataTypes.IntegerType, false, Metadata.empty()),
+              new StructField("partition", DataTypes.IntegerType, false, Metadata.empty()),
+            });
+
+    // Create the external delta path-based table.
+    S3CredFileSystem.credentialCheckEnabled = false;
+    sql("CREATE TABLE delta.`%s` (id INT) USING delta PARTITIONED BY (partition INT)", location);
+    S3CredFileSystem.credentialCheckEnabled = true;
+
+    // Create the catalog table referring to external table.
+    sql("CREATE TABLE %s USING delta LOCATION '%s'", TABLE_NAME, location);
+
+    // Insert 4 rows into each partition where (id % 3) equals the partition key.
+    sql("INSERT INTO %s PARTITION (partition=1) VALUES (1), (4), (7), (10)", TABLE_NAME, 1);
+    sql("INSERT INTO %s PARTITION (partition=2) VALUES (2), (5), (8), (11)", TABLE_NAME, 2);
+    sql("INSERT INTO %s PARTITION (partition=3) VALUES (3), (6), (9), (12)", TABLE_NAME, 3);
+
+    // Read from the Delta table, mapping each partition to a separate task.
+    // With parallelism set to 1, tasks for each partition execute sequentially.
+    // The accumulated 30-second delay advances the clock sufficiently to trigger a
+    // renewal of filesystem credentials.
+
+    // The spark job should be success because we've enabled the credential renewal.
     session
-        .createDataFrame(rdd, structType)
+        .read()
+        .format("delta")
+        .table(TABLE_NAME)
+        .mapPartitions(
+            (MapPartitionsFunction<Row, Row>)
+                input -> {
+                  // Advance the clock to trigger the credential renewal.
+                  testClock().advance(Duration.ofMillis(DEFAULT_INTERVAL_MILLIS));
+                  return input;
+                },
+            Encoders.row(schema))
         .write()
         .format("delta")
         .mode("append")
         .saveAsTable(TABLE_NAME);
 
-    List<Row> results = sql("SELECT * FROM %s ORDER BY id ASC", TABLE_NAME);
-    assertThat(results.size()).isEqualTo(2);
-    assertThat(results.stream().map(r -> r.getInt(0)).collect(Collectors.toList()))
-        .isEqualTo(ImmutableList.of(1, 10));
+    List<Row> rows = sql("SELECT * FROM %s ORDER BY id ASC", TABLE_NAME);
+    assertThat(rows.size()).isEqualTo(24);
+    assertThat(rows.stream().map(r -> r.getInt(0)).collect(Collectors.toList()))
+        .isEqualTo(
+            IntStream.concat(IntStream.rangeClosed(1, 12), IntStream.rangeClosed(1, 12))
+                .boxed()
+                .sorted()
+                .collect(Collectors.toList()));
   }
 
   private List<Row> sql(String statement, Object... args) {
@@ -237,15 +286,15 @@ public class AwsCredentialRenewalTest extends BaseCRUDTest {
   /**
    * A customized {@link CredentialsGenerator} that generates credentials based on time intervals.
    * The entire timeline is divided into consecutive 30-second windows, and all requests that fall
-   * within the same window will receive the same credential.
-   * This generator is dynamically loaded by the Unity Catalog server and serves credential
-   * generation requests from client REST API calls.
+   * within the same window will receive the same credential. This generator is dynamically loaded
+   * by the Unity Catalog server and serves credential generation requests from client REST API
+   * calls.
    */
   public static class TimeBasedCredentialsGenerator implements CredentialsGenerator {
 
     @Override
     public Credentials generate(CredentialContext credentialContext) {
-      long curTsMillis = CLOCK.now().toEpochMilli();
+      long curTsMillis = testClock().now().toEpochMilli();
       // Align it into the window [starTs, starTs + DEFAULT_INTERVAL_MILLIS].
       long startTsMillis = curTsMillis / DEFAULT_INTERVAL_MILLIS * DEFAULT_INTERVAL_MILLIS;
       return Credentials.builder()
@@ -259,12 +308,13 @@ public class AwsCredentialRenewalTest extends BaseCRUDTest {
 
   /**
    * A testing S3 filesystem used to verify credential renewal behavior. For each {@code
-   * checkCredentials()} call, the previous credentials should automatically renew as the
-   * 30-second time window advances. The test tracks how many distinct credentials this
-   * filesystem receives, which should match the expected number of credential renewals.
-   * We use this filesystem to accurately track how many renewal happened.
+   * checkCredentials()} call, the previous credentials should automatically renew as the 30-second
+   * time window advances. The test tracks how many distinct credentials this filesystem receives,
+   * which should match the expected number of credential renewals. We use this filesystem to
+   * accurately track how many renewal happened.
    */
   public static class S3CredFileSystem extends CredentialTestFileSystem {
+
     private final Set<Long> verifiedTs = new HashSet<>();
     private volatile AwsCredentialsProvider lazyProvider;
 
@@ -276,8 +326,9 @@ public class AwsCredentialRenewalTest extends BaseCRUDTest {
         AwsCredentialsProvider provider = accessProvider();
         assertThat(provider).isNotNull();
 
-        long ts = CLOCK.now().toEpochMilli() / DEFAULT_INTERVAL_MILLIS * DEFAULT_INTERVAL_MILLIS;
         AwsSessionCredentials cred = (AwsSessionCredentials) provider.resolveCredentials();
+        long ts =
+            testClock().now().toEpochMilli() / DEFAULT_INTERVAL_MILLIS * DEFAULT_INTERVAL_MILLIS;
         assertThat(cred.accessKeyId()).isEqualTo("accessKeyId" + ts);
         assertThat(cred.secretAccessKey()).isEqualTo("secretAccessKey" + ts);
         assertThat(cred.sessionToken()).isEqualTo("sessionToken" + ts);
