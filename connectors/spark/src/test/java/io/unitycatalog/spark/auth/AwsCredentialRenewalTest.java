@@ -176,21 +176,19 @@ public class AwsCredentialRenewalTest extends BaseCRUDTest {
             DeltaTable.forName(session, TABLE_NAME).deltaLog().newDeltaHadoopConf());
 
     // This Spark job consists of three main steps:
-    // 1. Read Delta table and spawn task.
-    // 2. Simulate storage access using the table-level Hadoop configuration and verify that
+    // 1. Read RDD to spawn Spark tasks.
+    // 2. Simulate filesystem access using the table-level Hadoop configuration to verify that
     //    filesystem credentials are renewed the expected number of times.
     // 3. Collect the credential renewal count.
     //
-    //  Simulate a single Delta table operation within a Spark executor
-    //   to accurately track how many times credentials are renewed within a task.
+    // The core logic resides in the mapFunction. We use the Delta table’s Hadoop configuration
+    // to initialize the filesystem, simulating Delta table operations within a Spark executor.
+    // This allows us to accurately track how many times credentials are renewed within a task.
     //
-    //   In the Read stage, the file writer is initialized with the filesystem instance,
-    //   which goes through the Map function. This triggers multiple rounds of
-    //   credential renewal. If credentials are not renewed correctly, the Write stage will fail.
-    //
-    // Note: Directly accessing a Spark task's internal filesystem instance to verify the
-    // accurate renewal times is not possible. The successful completion of the Write stage
-    // serves as an indirect verification that credential renewal occurred as expected.
+    // It is possible for a Spark job to create multiple independent filesystem instances,
+    // which may misleadingly appear to renew credentials correctly even when they do not.
+    // We adopt this simulation approach because directly accessing a Spark task’s internal
+    // filesystem instance to measure credential renewals is not feasible.
     List<Row> rows =
         session
             .read()
