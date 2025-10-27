@@ -153,7 +153,7 @@ public class TableReadWriteTest extends BaseSparkIntegrationTest {
   }
 
   @ParameterizedTest
-  @CsvSource({"s3, false", "s3, true", "gs, false", "abfs, false"})
+  @CsvSource({"s3, false", "s3, true", "gs, false", "gs, true", "abfs, false"})
   public void testCredentialParquet(String scheme, boolean renewCredEnabled)
       throws ApiException, IOException {
     SparkSession session = createSparkSessionWithCatalogs(renewCredEnabled, SPARK_CATALOG);
@@ -180,7 +180,7 @@ public class TableReadWriteTest extends BaseSparkIntegrationTest {
   }
 
   @ParameterizedTest
-  @CsvSource({"s3, false", "s3, true", "gs, false", "abfs, false"})
+  @CsvSource({"s3, false", "s3, true", "gs, false", "gs, true", "abfs, false"})
   public void testCredentialDelta(String scheme, boolean renewCredEnabled)
       throws ApiException, IOException {
     SparkSession session =
@@ -207,7 +207,7 @@ public class TableReadWriteTest extends BaseSparkIntegrationTest {
   }
 
   @ParameterizedTest
-  @CsvSource({"s3, false", "s3, true", "gs, false", "abfs, false"})
+  @CsvSource({"s3, false", "s3, true", "gs, false", "gs, true", "abfs, false"})
   public void testCredentialCreateDeltaTable(String scheme, boolean renewCredEnabled)
       throws IOException {
     SparkSession session =
@@ -244,7 +244,7 @@ public class TableReadWriteTest extends BaseSparkIntegrationTest {
   }
 
   @ParameterizedTest
-  @CsvSource({"s3, false", "s3, true", "gs, false", "abfs, false"})
+  @CsvSource({"s3, false", "s3, true", "gs, false", "gs, true", "abfs, false"})
   public void testDeleteDeltaTable(String scheme, boolean renewCredEnabled)
       throws ApiException, IOException {
     SparkSession session = createSparkSessionWithCatalogs(renewCredEnabled, SPARK_CATALOG);
@@ -262,7 +262,7 @@ public class TableReadWriteTest extends BaseSparkIntegrationTest {
   }
 
   @ParameterizedTest
-  @CsvSource({"s3, false", "s3, true", "gs, false", "abfs, false"})
+  @CsvSource({"s3, false", "s3, true", "gs, false", "gs, true", "abfs, false"})
   public void testMergeDeltaTable(String scheme, boolean renewCredEnabled)
       throws ApiException, IOException {
     SparkSession session =
@@ -290,7 +290,7 @@ public class TableReadWriteTest extends BaseSparkIntegrationTest {
   }
 
   @ParameterizedTest
-  @CsvSource({"s3, false", "s3, true", "gs, false", "abfs, false"})
+  @CsvSource({"s3, false", "s3, true", "gs, false", "gs, true", "abfs, false"})
   public void testUpdateDeltaTable(String scheme, boolean renewCredEnabled)
       throws ApiException, IOException {
     SparkSession session = createSparkSessionWithCatalogs(renewCredEnabled, SPARK_CATALOG);

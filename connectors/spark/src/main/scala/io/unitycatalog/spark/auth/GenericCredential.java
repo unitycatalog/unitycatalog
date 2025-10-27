@@ -2,6 +2,7 @@ package io.unitycatalog.spark.auth;
 
 import io.unitycatalog.client.model.AwsCredentials;
 import io.unitycatalog.client.model.AzureUserDelegationSAS;
+import io.unitycatalog.client.model.GcpOauthToken;
 import io.unitycatalog.client.model.TemporaryCredentials;
 import io.unitycatalog.spark.utils.Clock;
 import java.util.Objects;
@@ -38,6 +39,17 @@ public class GenericCredential {
 
     TemporaryCredentials tempCred = new TemporaryCredentials();
     tempCred.setAzureUserDelegationSas(azureSAS);
+    tempCred.setExpirationTime(expiredTimeMillis);
+
+    return new GenericCredential(tempCred);
+  }
+
+  public static GenericCredential forGcs(String oauthToken, long expiredTimeMillis) {
+    GcpOauthToken gcpOauthToken = new GcpOauthToken();
+    gcpOauthToken.setOauthToken(oauthToken);
+
+    TemporaryCredentials tempCred = new TemporaryCredentials();
+    tempCred.setGcpOauthToken(gcpOauthToken);
     tempCred.setExpirationTime(expiredTimeMillis);
 
     return new GenericCredential(tempCred);
