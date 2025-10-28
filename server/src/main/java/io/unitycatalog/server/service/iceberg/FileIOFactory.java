@@ -3,6 +3,7 @@ package io.unitycatalog.server.service.iceberg;
 import com.google.auth.oauth2.AccessToken;
 import io.unitycatalog.server.exception.BaseException;
 import io.unitycatalog.server.service.credential.CloudCredentialVendor;
+import io.unitycatalog.server.utils.AwsUtils;
 import io.unitycatalog.server.utils.ServerProperties;
 import io.unitycatalog.server.service.credential.CredentialContext;
 import io.unitycatalog.server.service.credential.aws.S3StorageConfig;
@@ -16,11 +17,7 @@ import org.apache.iceberg.gcp.GCPProperties;
 import org.apache.iceberg.gcp.gcs.GCSFileIO;
 import org.apache.iceberg.io.FileIO;
 import software.amazon.awssdk.auth.credentials.AwsCredentialsProvider;
-import software.amazon.awssdk.auth.credentials.AwsSessionCredentials;
 import software.amazon.awssdk.auth.credentials.DefaultCredentialsProvider;
-import software.amazon.awssdk.auth.credentials.StaticCredentialsProvider;
-import software.amazon.awssdk.regions.Region;
-import software.amazon.awssdk.services.s3.S3Client;
 import software.amazon.awssdk.services.sts.model.Credentials;
 
 import java.net.URI;
@@ -89,30 +86,18 @@ public class FileIOFactory {
     S3StorageConfig s3StorageConfig = s3Configurations.get(context.getStorageBase());
 
     S3FileIO s3FileIO =
-        new S3FileIO(() -> getS3Client(getAwsCredentialsProvider(context),
-            s3StorageConfig.getRegion()));
+        new S3FileIO(() -> AwsUtils.getS3Client(getAwsCredentialsProvider(context),
+                s3StorageConfig.getRegion(), s3StorageConfig.getEndpointUrl()));
 
     s3FileIO.initialize(Map.of());
 
     return s3FileIO;
   }
 
-  protected S3Client getS3Client(AwsCredentialsProvider awsCredentialsProvider, String region) {
-    return S3Client.builder()
-        .region(Region.of(region))
-        .credentialsProvider(awsCredentialsProvider)
-        .forcePathStyle(false)
-        .build();
-  }
-
   private AwsCredentialsProvider getAwsCredentialsProvider(CredentialContext context) {
     try {
       Credentials awsSessionCredentials = cloudCredentialVendor.vendAwsCredential(context);
-      return StaticCredentialsProvider.create(
-          AwsSessionCredentials.create(
-              awsSessionCredentials.accessKeyId(),
-              awsSessionCredentials.secretAccessKey(),
-              awsSessionCredentials.sessionToken()));
+      return AwsUtils.getAwsCredentialsProvider(awsSessionCredentials);
     } catch (BaseException e) {
       return DefaultCredentialsProvider.create();
     }

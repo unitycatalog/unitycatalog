@@ -1,19 +1,11 @@
 package io.unitycatalog.server.persist.utils;
 
-import com.amazonaws.auth.AWSStaticCredentialsProvider;
-import com.amazonaws.auth.BasicSessionCredentials;
-import com.amazonaws.services.s3.AmazonS3;
-import com.amazonaws.services.s3.AmazonS3ClientBuilder;
-import com.amazonaws.services.s3.model.ListObjectsRequest;
-import com.amazonaws.services.s3.model.ObjectListing;
-import com.amazonaws.services.s3.model.ObjectMetadata;
-import com.amazonaws.services.s3.model.PutObjectRequest;
 import io.unitycatalog.server.exception.BaseException;
 import io.unitycatalog.server.exception.ErrorCode;
+import io.unitycatalog.server.utils.AwsUtils;
 import io.unitycatalog.server.utils.Constants;
 import io.unitycatalog.server.utils.ServerProperties;
 import io.unitycatalog.server.utils.ServerProperties.Property;
-import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.net.URI;
 import java.net.URISyntaxException;
@@ -25,6 +17,10 @@ import java.util.Comparator;
 import java.util.stream.Stream;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import software.amazon.awssdk.auth.credentials.AwsCredentialsProvider;
+import software.amazon.awssdk.core.sync.RequestBody;
+import software.amazon.awssdk.services.s3.S3Client;
+import software.amazon.awssdk.services.s3.model.*;
 
 public class FileOperations {
   private static final Logger LOGGER = LoggerFactory.getLogger(FileOperations.class);
@@ -140,50 +136,41 @@ public class FileOperations {
     String secretKey = serverProperties.get(Property.AWS_S3_SECRET_KEY);
     String sessionToken = serverProperties.get(Property.AWS_S3_SESSION_TOKEN);
     String region = serverProperties.get(Property.AWS_REGION);
+    String endpointUrl = serverProperties.get(Property.AWS_S3_ENDPOINT_URL);
 
-    BasicSessionCredentials sessionCredentials =
-        new BasicSessionCredentials(accessKey, secretKey, sessionToken);
-    AmazonS3 s3Client =
-        AmazonS3ClientBuilder.standard()
-            .withCredentials(new AWSStaticCredentialsProvider(sessionCredentials))
-            .withRegion(region)
-            .build();
+    AwsCredentialsProvider awsCredentialsProvider =
+        AwsUtils.getAwsCredentialsProvider(accessKey, secretKey, sessionToken);
+    S3Client s3Client = AwsUtils.getS3Client(awsCredentialsProvider, region, endpointUrl);
 
     if (createOrDelete) {
 
       if (!path.endsWith("/")) {
         path += "/";
       }
-      if (s3Client.doesObjectExist(bucketName, path)) {
+      if (AwsUtils.doesObjectExist(s3Client, bucketName, path)) {
         throw new BaseException(ErrorCode.ALREADY_EXISTS, "Directory already exists: " + path);
       }
       try {
-        // Create empty content
-        byte[] emptyContent = new byte[0];
-        ByteArrayInputStream emptyContentStream = new ByteArrayInputStream(emptyContent);
-
-        // Set metadata for the empty content
-        ObjectMetadata metadata = new ObjectMetadata();
-        metadata.setContentLength(0);
-        s3Client.putObject(new PutObjectRequest(bucketName, path, emptyContentStream, metadata));
+        // Create a zero-byte object to represent the directory
+        s3Client.putObject(
+            PutObjectRequest.builder().bucket(bucketName).key(path).build(), RequestBody.empty());
         LOGGER.debug("Directory created successfully: {}", path);
         return URI.create(String.format("s3://%s/%s", bucketName, path));
       } catch (Exception e) {
         throw new BaseException(ErrorCode.INTERNAL, "Failed to create directory: " + path, e);
       }
     } else {
-      ObjectListing listing;
-      ListObjectsRequest req = new ListObjectsRequest().withBucketName(bucketName).withPrefix(path);
-      do {
-        listing = s3Client.listObjects(req);
-        listing
-            .getObjectSummaries()
-            .forEach(
-                object -> {
-                  s3Client.deleteObject(bucketName, object.getKey());
-                });
-        req.setMarker(listing.getNextMarker());
-      } while (listing.isTruncated());
+      ListObjectsV2Request req =
+          ListObjectsV2Request.builder().bucket(bucketName).prefix(path).build();
+      s3Client.listObjectsV2Paginator(req).stream()
+          .flatMap(r -> r.contents().stream())
+          .forEach(
+              object -> {
+                DeleteObjectRequest deleteRequest =
+                    DeleteObjectRequest.builder().bucket(bucketName).key(object.key()).build();
+                s3Client.deleteObject(deleteRequest);
+              });
+
       return URI.create(String.format("s3://%s/%s", bucketName, path));
     }
   }
