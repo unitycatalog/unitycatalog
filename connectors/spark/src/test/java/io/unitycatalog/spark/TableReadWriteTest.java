@@ -342,7 +342,7 @@ public class TableReadWriteTest extends BaseSparkIntegrationTest {
     assertThat(session.catalog().tableExists(fullName)).isFalse();
     assertThatThrownBy(() -> session.sql("DROP TABLE a.b.c.d").collect())
         .isInstanceOf(ApiException.class)
-        .hasMessageContaining("Invalid table name");
+        .hasMessageContaining("Nested namespaces are not supported");
     session.stop();
   }
 
