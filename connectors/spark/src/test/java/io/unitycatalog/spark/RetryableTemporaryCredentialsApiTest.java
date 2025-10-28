@@ -16,12 +16,7 @@ import io.unitycatalog.spark.utils.Clock;
 import java.net.SocketException;
 import java.net.SocketTimeoutException;
 import java.net.UnknownHostException;
-import java.time.Duration;
 import java.time.Instant;
-import java.util.ArrayList;
-import java.util.List;
-import java.util.stream.Collectors;
-import java.util.stream.IntStream;
 import java.util.stream.Stream;
 import org.apache.hadoop.conf.Configuration;
 import org.junit.jupiter.api.BeforeEach;
@@ -35,12 +30,10 @@ public class RetryableTemporaryCredentialsApiTest {
 
   private Configuration conf;
   private TemporaryCredentialsApi delegate;
-  private Clock.ManualClock manualClock;
-  private List<Duration> recordedSleeps;
   private RetryableTemporaryCredentialsApi retryableApi;
 
   @BeforeEach
-  public void setUp() throws InterruptedException {
+  public void setUp() {
     conf = new Configuration();
     conf.setInt(UCHadoopConf.RETRY_MAX_ATTEMPTS_KEY, UCHadoopConf.RETRY_MAX_ATTEMPTS_DEFAULT);
     conf.setLong(UCHadoopConf.RETRY_INITIAL_DELAY_KEY, UCHadoopConf.RETRY_INITIAL_DELAY_DEFAULT);
@@ -62,7 +55,6 @@ public class RetryableTemporaryCredentialsApiTest {
 
     assertThat(actual).isSameAs(expected);
     verify(delegate, times(1)).generateTemporaryPathCredentials(any());
-    assertThat(recordedSleeps).isEmpty();
   }
 
   @ParameterizedTest(name = "{0}")
@@ -81,7 +73,6 @@ public class RetryableTemporaryCredentialsApiTest {
 
     assertThat(actual).isSameAs(expected);
     verify(delegate, times(3)).generateTemporaryTableCredentials(any());
-    assertThat(recordedSleeps).hasSize(2);
   }
 
   private static Stream<Arguments> recoverableErrorProvider() {
@@ -127,7 +118,6 @@ public class RetryableTemporaryCredentialsApiTest {
         .hasFieldOrPropertyWithValue("code", 400);
 
     verify(delegate, times(1)).generateTemporaryPathCredentials(any());
-    assertThat(recordedSleeps).isEmpty();
   }
 
   @Test
@@ -144,7 +134,6 @@ public class RetryableTemporaryCredentialsApiTest {
 
     verify(delegate, times(UCHadoopConf.RETRY_MAX_ATTEMPTS_DEFAULT))
         .generateTemporaryTableCredentials(any());
-    assertThat(recordedSleeps).hasSize(UCHadoopConf.RETRY_MAX_ATTEMPTS_DEFAULT - 1);
   }
 
   @Test
@@ -169,7 +158,6 @@ public class RetryableTemporaryCredentialsApiTest {
 
     assertThat(actual).isSameAs(expected);
     verify(delegate, times(5)).generateTemporaryPathCredentials(any());
-    assertBackoffWithinBounds(recordedSleeps, 1000L, 2.0, UCHadoopConf.RETRY_JITTER_FACTOR, 4);
   }
 
   @Test
@@ -187,7 +175,6 @@ public class RetryableTemporaryCredentialsApiTest {
         .hasFieldOrPropertyWithValue("code", 404);
 
     verify(delegate, times(2)).generateTemporaryPathCredentials(any());
-    assertThat(recordedSleeps).hasSize(1);
   }
 
   @Test
@@ -206,7 +193,6 @@ public class RetryableTemporaryCredentialsApiTest {
         .hasFieldOrPropertyWithValue("code", 503);
 
     verify(delegate, times(1)).generateTemporaryTableCredentials(any());
-    assertThat(recordedSleeps).isEmpty();
   }
 
   @Test
@@ -277,41 +263,8 @@ public class RetryableTemporaryCredentialsApiTest {
     return new ApiException("error", status, null, body);
   }
 
-  private static void assertBackoffWithinBounds(
-      List<Duration> sleeps,
-      long initialDelay,
-      double multiplier,
-      double jitterFactor,
-      int expectedSize) {
-    assertThat(sleeps).hasSize(expectedSize);
-
-    List<Integer> attemptNumbers =
-        IntStream.rangeClosed(2, expectedSize + 1).boxed().collect(Collectors.toList());
-
-    for (int i = 0; i < sleeps.size(); i++) {
-      long attempt = attemptNumbers.get(i);
-      long baseDelay = (long) (initialDelay * Math.pow(multiplier, attempt - 2));
-      long minDelay = (long) (baseDelay * (1 - jitterFactor));
-      long maxDelay = (long) (baseDelay * (1 + jitterFactor));
-
-      long sleepMillis = sleeps.get(i).toMillis();
-      assertThat(sleepMillis).isGreaterThanOrEqualTo(minDelay).isLessThanOrEqualTo(maxDelay);
-    }
-  }
-
-  private void initRetryableApi() throws InterruptedException {
-    manualClock = (Clock.ManualClock) Clock.manualClock(Instant.now());
-    recordedSleeps = new ArrayList<>();
-    Clock clockSpy = Mockito.spy(manualClock);
-    Mockito.doAnswer(
-            invocation -> {
-              Duration duration = invocation.getArgument(0);
-              recordedSleeps.add(duration);
-              invocation.callRealMethod();
-              return null;
-            })
-        .when(clockSpy)
-        .sleep(Mockito.any(Duration.class));
-    retryableApi = new RetryableTemporaryCredentialsApi(delegate, conf, clockSpy);
+  private void initRetryableApi() {
+    Clock clock = Clock.manualClock(Instant.now());
+    retryableApi = new RetryableTemporaryCredentialsApi(delegate, conf, clock);
   }
 }

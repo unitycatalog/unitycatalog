@@ -298,7 +298,28 @@ public abstract class BaseTokenProviderTest<T extends GenericCredentialProvider>
 
     when(tempCredApi.generateTemporaryTableCredentials(any()))
         .thenThrow(new ApiException(503, "unavailable"))
+        .thenThrow(new ApiException(429, "too many requests"))
+        .thenThrow(new ApiException("error", 500, null, "{\"error_code\":\"TEMPORARILY_UNAVAILABLE\"}"))
+        .thenReturn(succeeded);
+
+    T provider = createTestProvider(clock, 1000L, conf, tempCredApi);
+
+    assertCred(provider, succeeded);
+  }
+
+  @Test
+  public void testRetryRecoversForPathCredentials() throws Exception {
+    Clock clock = Clock.manualClock(Instant.now());
+
+    Configuration conf = newPathBasedConf();
+    TemporaryCredentialsApi tempCredApi = mock(TemporaryCredentialsApi.class);
+    TemporaryCredentials succeeded =
+        newTempCred("success", clock.now().toEpochMilli() + 4000L);
+
+    when(tempCredApi.generateTemporaryPathCredentials(any()))
         .thenThrow(new ApiException(503, "unavailable"))
+        .thenThrow(new ApiException(429, "too many requests"))
+        .thenThrow(new ApiException("error", 500, null, "{\"error_code\":\"TEMPORARILY_UNAVAILABLE\"}"))
         .thenReturn(succeeded);
 
     T provider = createTestProvider(clock, 1000L, conf, tempCredApi);
