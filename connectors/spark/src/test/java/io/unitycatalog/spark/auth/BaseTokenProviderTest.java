@@ -3,7 +3,6 @@ package io.unitycatalog.spark.auth;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.spy;
 import static org.mockito.Mockito.when;
 
 import io.unitycatalog.client.ApiException;
@@ -15,8 +14,6 @@ import io.unitycatalog.spark.UCHadoopConf;
 import io.unitycatalog.spark.utils.Clock;
 import java.time.Duration;
 import java.time.Instant;
-import java.util.ArrayList;
-import java.util.List;
 import java.util.UUID;
 import org.apache.hadoop.conf.Configuration;
 import org.junit.jupiter.api.AfterEach;
@@ -26,25 +23,17 @@ import org.mockito.Mockito;
 
 public abstract class BaseTokenProviderTest<T extends GenericCredentialProvider> {
 
-  /**
-   * Use the {@link Configuration} and the mocked api to create a new provider.
-   */
+  /** Use the {@link Configuration} and the mocked api to create a new provider. */
   protected abstract T createTestProvider(
       Clock clock, long renewalLeadTimeMillis, Configuration conf, TemporaryCredentialsApi mockApi);
 
-  /**
-   * New a testing temporary credentials, using the id and expiration time.
-   */
+  /** New a testing temporary credentials, using the id and expiration time. */
   protected abstract TemporaryCredentials newTempCred(String id, long expirationMillis);
 
-  /**
-   * Set the credentials into the hadoop conf, as the initialized credential.
-   */
+  /** Set the credentials into the hadoop conf, as the initialized credential. */
   protected abstract void setInitialCred(Configuration conf, TemporaryCredentials cred);
 
-  /**
-   * Use the provider to resolve the last credential, and assert it's the expected one.
-   */
+  /** Use the provider to resolve the last credential, and assert it's the expected one. */
   protected abstract void assertCred(T provider, TemporaryCredentials expected);
 
   @BeforeEach
@@ -300,33 +289,21 @@ public abstract class BaseTokenProviderTest<T extends GenericCredentialProvider>
 
   @Test
   public void testRetryRecoversForTableCredentials() throws Exception {
-    Clock.ManualClock manualClock = (Clock.ManualClock) Clock.manualClock(Instant.now());
-    List<Duration> recordedSleeps = new ArrayList<>();
-    Clock clockSpy = spy(manualClock);
-    Mockito.doAnswer(invocation -> {
-      Duration duration = invocation.getArgument(0);
-      recordedSleeps.add(duration);
-      // Delegate to the real sleep() which now advances time in ManualClock
-      invocation.callRealMethod();
-      return null;
-    })
-    .when(clockSpy)
-      .sleep(Mockito.any(Duration.class));
+    Clock clock = Clock.manualClock(Instant.now());
 
     Configuration conf = newTableBasedConf();
     TemporaryCredentialsApi tempCredApi = mock(TemporaryCredentialsApi.class);
-    TemporaryCredentials succeeded = newTempCred("success",
-        manualClock.now().toEpochMilli() + 4000L);
+    TemporaryCredentials succeeded =
+        newTempCred("success", clock.now().toEpochMilli() + 4000L);
 
     when(tempCredApi.generateTemporaryTableCredentials(any()))
         .thenThrow(new ApiException(503, "unavailable"))
         .thenThrow(new ApiException(503, "unavailable"))
         .thenReturn(succeeded);
 
-    T provider = createTestProvider(clockSpy, 1000L, conf, tempCredApi);
+    T provider = createTestProvider(clock, 1000L, conf, tempCredApi);
 
     assertCred(provider, succeeded);
-    assertThat(recordedSleeps).hasSize(2);
   }
 
   private static void assertGlobalCache(int expectedSize, TemporaryCredentials... creds) {

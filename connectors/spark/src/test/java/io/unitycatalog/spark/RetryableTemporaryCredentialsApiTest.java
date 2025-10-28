@@ -56,8 +56,9 @@ public class RetryableTemporaryCredentialsApiTest {
     when(delegate.generateTemporaryPathCredentials(any(GenerateTemporaryPathCredential.class)))
         .thenReturn(expected);
 
-    TemporaryCredentials actual = retryableApi.generateTemporaryPathCredentials(
-        new GenerateTemporaryPathCredential().url("/test").operation(null));
+    TemporaryCredentials actual =
+        retryableApi.generateTemporaryPathCredentials(
+            new GenerateTemporaryPathCredential().url("/test").operation(null));
 
     assertThat(actual).isSameAs(expected);
     verify(delegate, times(1)).generateTemporaryPathCredentials(any());
@@ -66,17 +67,17 @@ public class RetryableTemporaryCredentialsApiTest {
 
   @ParameterizedTest(name = "{0}")
   @MethodSource("recoverableErrorProvider")
-  public void testRecoverableErrorEventuallySucceeds(String description,
-                                                     Exception firstError,
-                                                     Exception secondError) throws Exception {
+  public void testRecoverableErrorEventuallySucceeds(
+      String description, Exception firstError, Exception secondError) throws Exception {
     TemporaryCredentials expected = new TemporaryCredentials();
     when(delegate.generateTemporaryTableCredentials(any(GenerateTemporaryTableCredential.class)))
         .thenThrow(firstError)
         .thenThrow(secondError)
         .thenReturn(expected);
 
-    TemporaryCredentials actual = retryableApi.generateTemporaryTableCredentials(
-        new GenerateTemporaryTableCredential().tableId("table").operation(null));
+    TemporaryCredentials actual =
+        retryableApi.generateTemporaryTableCredentials(
+            new GenerateTemporaryTableCredential().tableId("table").operation(null));
 
     assertThat(actual).isSameAs(expected);
     verify(delegate, times(3)).generateTemporaryTableCredentials(any());
@@ -86,29 +87,31 @@ public class RetryableTemporaryCredentialsApiTest {
   private static Stream<Arguments> recoverableErrorProvider() {
     return Stream.of(
         // Mix HTTP status codes with UC error codes
-        Arguments.of("HTTP 429 → HTTP 503",
-            apiException(429),
-            apiException(503)),
-        Arguments.of("HTTP 503 → UC TEMPORARILY_UNAVAILABLE",
+        Arguments.of("HTTP 429 → HTTP 503", apiException(429), apiException(503)),
+        Arguments.of(
+            "HTTP 503 → UC TEMPORARILY_UNAVAILABLE",
             apiException(503),
             apiException(500, "{\"error_code\":\"TEMPORARILY_UNAVAILABLE\"}")),
 
         // Mix UC error codes with network exceptions
-        Arguments.of("UC WORKSPACE_TEMPORARILY_UNAVAILABLE → Network SocketTimeout",
+        Arguments.of(
+            "UC WORKSPACE_TEMPORARILY_UNAVAILABLE → Network SocketTimeout",
             apiException(500, "{\"error_code\":\"WORKSPACE_TEMPORARILY_UNAVAILABLE\"}"),
             new RuntimeException(new SocketTimeoutException("timeout"))),
-        Arguments.of("UC SERVICE_UNDER_MAINTENANCE → Network SocketException",
+        Arguments.of(
+            "UC SERVICE_UNDER_MAINTENANCE → Network SocketException",
             apiException(500, "{\"error_code\":\"SERVICE_UNDER_MAINTENANCE\"}"),
             new RuntimeException(new SocketException("connection reset"))),
 
         // Mix different network exceptions
-        Arguments.of("Network SocketTimeout → Network UnknownHost",
+        Arguments.of(
+            "Network SocketTimeout → Network UnknownHost",
             new RuntimeException(new SocketTimeoutException("timeout")),
             new RuntimeException(new UnknownHostException("unknown host"))),
-        Arguments.of("Network SocketException → HTTP 429",
+        Arguments.of(
+            "Network SocketException → HTTP 429",
             new RuntimeException(new SocketException("connection reset")),
-            apiException(429))
-    );
+            apiException(429)));
   }
 
   @Test
@@ -116,8 +119,10 @@ public class RetryableTemporaryCredentialsApiTest {
     when(delegate.generateTemporaryPathCredentials(any(GenerateTemporaryPathCredential.class)))
         .thenThrow(apiException(400));
 
-    assertThatThrownBy(() -> retryableApi.generateTemporaryPathCredentials(
-        new GenerateTemporaryPathCredential().url("/test").operation(null)))
+    assertThatThrownBy(
+            () ->
+                retryableApi.generateTemporaryPathCredentials(
+                    new GenerateTemporaryPathCredential().url("/test").operation(null)))
         .isInstanceOf(ApiException.class)
         .hasFieldOrPropertyWithValue("code", 400);
 
@@ -130,8 +135,10 @@ public class RetryableTemporaryCredentialsApiTest {
     when(delegate.generateTemporaryTableCredentials(any(GenerateTemporaryTableCredential.class)))
         .thenThrow(apiException(503));
 
-    assertThatThrownBy(() -> retryableApi.generateTemporaryTableCredentials(
-        new GenerateTemporaryTableCredential().tableId("table").operation(null)))
+    assertThatThrownBy(
+            () ->
+                retryableApi.generateTemporaryTableCredentials(
+                    new GenerateTemporaryTableCredential().tableId("table").operation(null)))
         .isInstanceOf(ApiException.class)
         .hasFieldOrPropertyWithValue("code", 503);
 
@@ -156,8 +163,9 @@ public class RetryableTemporaryCredentialsApiTest {
         .thenThrow(apiException(503))
         .thenReturn(expected);
 
-    TemporaryCredentials actual = retryableApi.generateTemporaryPathCredentials(
-        new GenerateTemporaryPathCredential().url("/tmp").operation(null));
+    TemporaryCredentials actual =
+        retryableApi.generateTemporaryPathCredentials(
+            new GenerateTemporaryPathCredential().url("/tmp").operation(null));
 
     assertThat(actual).isSameAs(expected);
     verify(delegate, times(5)).generateTemporaryPathCredentials(any());
@@ -171,8 +179,10 @@ public class RetryableTemporaryCredentialsApiTest {
         .thenThrow(apiException(404))
         .thenReturn(new TemporaryCredentials());
 
-    assertThatThrownBy(() -> retryableApi.generateTemporaryPathCredentials(
-        new GenerateTemporaryPathCredential().url("/tmp").operation(null)))
+    assertThatThrownBy(
+            () ->
+                retryableApi.generateTemporaryPathCredentials(
+                    new GenerateTemporaryPathCredential().url("/tmp").operation(null)))
         .isInstanceOf(ApiException.class)
         .hasFieldOrPropertyWithValue("code", 404);
 
@@ -188,8 +198,10 @@ public class RetryableTemporaryCredentialsApiTest {
     when(delegate.generateTemporaryTableCredentials(any(GenerateTemporaryTableCredential.class)))
         .thenThrow(apiException(503));
 
-    assertThatThrownBy(() -> retryableApi.generateTemporaryTableCredentials(
-        new GenerateTemporaryTableCredential().tableId("table").operation(null)))
+    assertThatThrownBy(
+            () ->
+                retryableApi.generateTemporaryTableCredentials(
+                    new GenerateTemporaryTableCredential().tableId("table").operation(null)))
         .isInstanceOf(ApiException.class)
         .hasFieldOrPropertyWithValue("code", 503);
 
@@ -265,16 +277,16 @@ public class RetryableTemporaryCredentialsApiTest {
     return new ApiException("error", status, null, body);
   }
 
-  private static void assertBackoffWithinBounds(List<Duration> sleeps,
-                                                long initialDelay,
-                                                double multiplier,
-                                                double jitterFactor,
-                                                int expectedSize) {
+  private static void assertBackoffWithinBounds(
+      List<Duration> sleeps,
+      long initialDelay,
+      double multiplier,
+      double jitterFactor,
+      int expectedSize) {
     assertThat(sleeps).hasSize(expectedSize);
 
-    List<Integer> attemptNumbers = IntStream.rangeClosed(2, expectedSize + 1)
-        .boxed()
-        .collect(Collectors.toList());
+    List<Integer> attemptNumbers =
+        IntStream.rangeClosed(2, expectedSize + 1).boxed().collect(Collectors.toList());
 
     for (int i = 0; i < sleeps.size(); i++) {
       long attempt = attemptNumbers.get(i);
@@ -283,9 +295,7 @@ public class RetryableTemporaryCredentialsApiTest {
       long maxDelay = (long) (baseDelay * (1 + jitterFactor));
 
       long sleepMillis = sleeps.get(i).toMillis();
-      assertThat(sleepMillis)
-          .isGreaterThanOrEqualTo(minDelay)
-          .isLessThanOrEqualTo(maxDelay);
+      assertThat(sleepMillis).isGreaterThanOrEqualTo(minDelay).isLessThanOrEqualTo(maxDelay);
     }
   }
 
@@ -293,14 +303,15 @@ public class RetryableTemporaryCredentialsApiTest {
     manualClock = (Clock.ManualClock) Clock.manualClock(Instant.now());
     recordedSleeps = new ArrayList<>();
     Clock clockSpy = Mockito.spy(manualClock);
-    Mockito.doAnswer(invocation -> {
-      Duration duration = invocation.getArgument(0);
-      recordedSleeps.add(duration);
-      invocation.callRealMethod();
-      return null;
-    })
-    .when(clockSpy)
-      .sleep(Mockito.any(Duration.class));
+    Mockito.doAnswer(
+            invocation -> {
+              Duration duration = invocation.getArgument(0);
+              recordedSleeps.add(duration);
+              invocation.callRealMethod();
+              return null;
+            })
+        .when(clockSpy)
+        .sleep(Mockito.any(Duration.class));
     retryableApi = new RetryableTemporaryCredentialsApi(delegate, conf, clockSpy);
   }
 }
