@@ -32,6 +32,11 @@ public class RetryableTemporaryCredentialsApiTest {
   private TemporaryCredentialsApi delegate;
   private RetryableTemporaryCredentialsApi retryableApi;
 
+  private void initRetryableApi() {
+    Clock clock = Clock.manualClock(Instant.now());
+    retryableApi = new RetryableTemporaryCredentialsApi(delegate, conf, clock);
+  }
+
   @BeforeEach
   public void setUp() {
     conf = new Configuration();
@@ -41,6 +46,20 @@ public class RetryableTemporaryCredentialsApiTest {
 
     delegate = Mockito.mock(TemporaryCredentialsApi.class);
     initRetryableApi();
+  }
+
+  @Test
+  public void testSuccessNoRetryNeededForTable() throws Exception {
+    TemporaryCredentials expected = new TemporaryCredentials();
+    when(delegate.generateTemporaryTableCredentials(any(GenerateTemporaryTableCredential.class)))
+        .thenReturn(expected);
+
+    TemporaryCredentials actual =
+        retryableApi.generateTemporaryTableCredentials(
+            new GenerateTemporaryTableCredential().tableId("table").operation(null));
+
+    assertThat(actual).isSameAs(expected);
+    verify(delegate, times(1)).generateTemporaryTableCredentials(any());
   }
 
   @Test
@@ -59,7 +78,7 @@ public class RetryableTemporaryCredentialsApiTest {
 
   @ParameterizedTest(name = "{0}")
   @MethodSource("recoverableErrorProvider")
-  public void testRecoverableErrorEventuallySucceeds(
+  public void testRecoverableErrorEventuallySucceedsForTable(
       String description, Exception firstError, Exception secondError) throws Exception {
     TemporaryCredentials expected = new TemporaryCredentials();
     when(delegate.generateTemporaryTableCredentials(any(GenerateTemporaryTableCredential.class)))
@@ -73,6 +92,24 @@ public class RetryableTemporaryCredentialsApiTest {
 
     assertThat(actual).isSameAs(expected);
     verify(delegate, times(3)).generateTemporaryTableCredentials(any());
+  }
+
+  @ParameterizedTest(name = "{0}")
+  @MethodSource("recoverableErrorProvider")
+  public void testRecoverableErrorEventuallySucceedsForPath(
+      String description, Exception firstError, Exception secondError) throws Exception {
+    TemporaryCredentials expected = new TemporaryCredentials();
+    when(delegate.generateTemporaryPathCredentials(any(GenerateTemporaryPathCredential.class)))
+        .thenThrow(firstError)
+        .thenThrow(secondError)
+        .thenReturn(expected);
+
+    TemporaryCredentials actual =
+        retryableApi.generateTemporaryPathCredentials(
+            new GenerateTemporaryPathCredential().url("/test").operation(null));
+
+    assertThat(actual).isSameAs(expected);
+    verify(delegate, times(3)).generateTemporaryPathCredentials(any());
   }
 
   private static Stream<Arguments> recoverableErrorProvider() {
@@ -178,7 +215,7 @@ public class RetryableTemporaryCredentialsApiTest {
   }
 
   @Test
-  public void testZeroMaxAttemptsDisablesRetry() throws Exception {
+  public void testOneMaxAttemptMeansNoRetry() throws Exception {
     conf.setInt(UCHadoopConf.RETRY_MAX_ATTEMPTS_KEY, 1);
     initRetryableApi();
 
@@ -261,10 +298,5 @@ public class RetryableTemporaryCredentialsApiTest {
 
   private static ApiException apiException(int status, String body) {
     return new ApiException("error", status, null, body);
-  }
-
-  private void initRetryableApi() {
-    Clock clock = Clock.manualClock(Instant.now());
-    retryableApi = new RetryableTemporaryCredentialsApi(delegate, conf, clock);
   }
 }
