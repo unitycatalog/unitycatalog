@@ -216,6 +216,7 @@ private class UCProxy(
   }
 
   override def loadTable(ident: Identifier): Table = {
+    checkUnsupportedNestedNamespace(ident.namespace())
     val t = try {
       tablesApi.getTable(name + "." + ident.namespace().head + "." + ident.name())
     } catch {
