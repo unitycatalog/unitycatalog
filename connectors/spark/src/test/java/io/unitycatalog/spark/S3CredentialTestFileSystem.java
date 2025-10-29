@@ -20,7 +20,7 @@ public class S3CredentialTestFileSystem extends CredentialTestFileSystem {
   }
 
   @Override
-  void checkCredentials(Path f) {
+  protected void checkCredentials(Path f) {
     Configuration conf = getConf();
     String host = f.toUri().getHost();
 
@@ -72,7 +72,7 @@ public class S3CredentialTestFileSystem extends CredentialTestFileSystem {
   }
 
   @Override
-  String scheme() {
+  protected String scheme() {
     return "s3:";
   }
 }

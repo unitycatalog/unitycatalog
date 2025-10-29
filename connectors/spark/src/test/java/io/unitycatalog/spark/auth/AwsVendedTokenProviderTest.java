@@ -8,7 +8,6 @@ import io.unitycatalog.client.model.AwsCredentials;
 import io.unitycatalog.client.model.TemporaryCredentials;
 import io.unitycatalog.spark.RetryableTemporaryCredentialsApi;
 import io.unitycatalog.spark.UCHadoopConf;
-import io.unitycatalog.spark.utils.Clock;
 import java.io.IOException;
 import java.net.URI;
 import java.util.ArrayList;
@@ -26,22 +25,15 @@ public class AwsVendedTokenProviderTest extends BaseTokenProviderTest<AwsVendedT
 
   @Override
   protected AwsVendedTokenProvider createTestProvider(
-      Clock clock,
-      long renewalLeadTimeMillis,
-      Configuration conf,
-      TemporaryCredentialsApi mockApi) {
-    return new TestAwsVendedTokenProvider(clock, renewalLeadTimeMillis, conf, mockApi);
+      Configuration conf, TemporaryCredentialsApi mockApi) {
+    return new TestAwsVendedTokenProvider(conf, mockApi);
   }
 
   static class TestAwsVendedTokenProvider extends AwsVendedTokenProvider {
     private final RetryableTemporaryCredentialsApi retryableApi;
 
-    TestAwsVendedTokenProvider(
-        Clock clock,
-        long renewalLeadTimeMillis,
-        Configuration conf,
-        TemporaryCredentialsApi tempCredApi) {
-      super(conf, clock, renewalLeadTimeMillis);
+    TestAwsVendedTokenProvider(Configuration conf, TemporaryCredentialsApi tempCredApi) {
+      super(conf);
       this.retryableApi = new RetryableTemporaryCredentialsApi(tempCredApi, conf, clock);
     }
 
