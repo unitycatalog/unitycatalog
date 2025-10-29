@@ -13,6 +13,7 @@ import io.unitycatalog.client.model.TemporaryCredentials;
 import io.unitycatalog.spark.UCHadoopConf;
 import io.unitycatalog.spark.utils.Clock;
 import java.time.Duration;
+import java.time.Instant;
 import java.util.UUID;
 import org.apache.hadoop.conf.Configuration;
 import org.junit.jupiter.api.AfterEach;
@@ -21,7 +22,7 @@ import org.junit.jupiter.api.Test;
 
 public abstract class BaseTokenProviderTest<T extends GenericCredentialProvider> {
   private String clockName;
-  private Clock clock;
+  protected Clock clock;
 
   /** Use the {@link Configuration} and the mocked api to create a new provider. */
   protected abstract T createTestProvider(Configuration conf, TemporaryCredentialsApi mockApi);
@@ -307,8 +308,6 @@ public abstract class BaseTokenProviderTest<T extends GenericCredentialProvider>
 
   @Test
   public void testRetryRecoversForTableCredentials() throws Exception {
-    Clock clock = Clock.manualClock(Instant.now());
-
     Configuration conf = newTableBasedConf();
     TemporaryCredentialsApi tempCredApi = mock(TemporaryCredentialsApi.class);
     TemporaryCredentials succeeded = newTempCred("success", clock.now().toEpochMilli() + 4000L);
@@ -320,15 +319,13 @@ public abstract class BaseTokenProviderTest<T extends GenericCredentialProvider>
             new ApiException("error", 500, null, "{\"error_code\":\"TEMPORARILY_UNAVAILABLE\"}"))
         .thenReturn(succeeded);
 
-    T provider = createTestProvider(clock, 1000L, conf, tempCredApi);
+    T provider = createTestProvider(conf, tempCredApi);
 
     assertCred(provider, succeeded);
   }
 
   @Test
   public void testRetryRecoversForPathCredentials() throws Exception {
-    Clock clock = Clock.manualClock(Instant.now());
-
     Configuration conf = newPathBasedConf();
     TemporaryCredentialsApi tempCredApi = mock(TemporaryCredentialsApi.class);
     TemporaryCredentials succeeded = newTempCred("success", clock.now().toEpochMilli() + 4000L);
@@ -340,7 +337,7 @@ public abstract class BaseTokenProviderTest<T extends GenericCredentialProvider>
             new ApiException("error", 500, null, "{\"error_code\":\"TEMPORARILY_UNAVAILABLE\"}"))
         .thenReturn(succeeded);
 
-    T provider = createTestProvider(clock, 1000L, conf, tempCredApi);
+    T provider = createTestProvider(conf, tempCredApi);
 
     assertCred(provider, succeeded);
   }
