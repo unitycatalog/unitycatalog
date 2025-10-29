@@ -560,20 +560,13 @@ lazy val spark = (project in file("connectors/spark"))
     ),
     javaCheckstyleSettings("dev/checkstyle-config.xml"),
     Compile / compile / javacOptions ++= javacRelease11,
-    excludeDependencies ++= Seq(
-      ExclusionRule("com.fasterxml.jackson.core"),
-      ExclusionRule("com.fasterxml.jackson.datatype"),
-      ExclusionRule("com.fasterxml.jackson.dataformat"),
-      ExclusionRule("com.fasterxml.jackson.module"),
-      ExclusionRule("org.openapitools", "jackson-databind-nullable")
-    ),
     libraryDependencies ++= Seq(
       "org.apache.spark" %% "spark-sql" % sparkVersion % Provided,
-      "com.fasterxml.jackson.core" % "jackson-databind" % "2.15.0" % Provided,
-      "com.fasterxml.jackson.module" %% "jackson-module-scala" % "2.15.0" % Provided,
-      "com.fasterxml.jackson.core" % "jackson-annotations" % "2.15.0" % Provided,
-      "com.fasterxml.jackson.core" % "jackson-core" % "2.15.0" % Provided,
-      "com.fasterxml.jackson.dataformat" % "jackson-dataformat-xml" % "2.15.0" % Provided,
+      "com.fasterxml.jackson.core" % "jackson-databind" % "2.15.0",
+      "com.fasterxml.jackson.module" %% "jackson-module-scala" % "2.15.0",
+      "com.fasterxml.jackson.core" % "jackson-annotations" % "2.15.0",
+      "com.fasterxml.jackson.core" % "jackson-core" % "2.15.0",
+      "com.fasterxml.jackson.dataformat" % "jackson-dataformat-xml" % "2.15.0",
       "org.antlr" % "antlr4-runtime" % "4.13.1",
       "org.antlr" % "antlr4" % "4.13.1",
       "com.google.cloud.bigdataoss" % "util-hadoop" % "3.0.2" % Provided,
@@ -591,11 +584,6 @@ lazy val spark = (project in file("connectors/spark"))
       "org.apache.hadoop" % "hadoop-client-runtime" % "3.4.0",
       "org.apache.hadoop" % "hadoop-aws" % "3.4.0" % Test,
       "io.delta" %% "delta-spark" % deltaVersion % Test,
-      // Add Jackson back for tests (excluded for compile, but tests need it)
-      "com.fasterxml.jackson.core" % "jackson-databind" % "2.15.0" % Test,
-      "com.fasterxml.jackson.core" % "jackson-core" % "2.15.0" % Test,
-      "com.fasterxml.jackson.core" % "jackson-annotations" % "2.15.0" % Test,
-      "com.fasterxml.jackson.datatype" % "jackson-datatype-jsr310" % "2.15.0" % Test,
     ),
     dependencyOverrides ++= Seq(
       "com.fasterxml.jackson.core" % "jackson-databind" % "2.15.0",
