@@ -26,7 +26,6 @@ import java.util.List;
 import java.util.Optional;
 import java.util.Set;
 import java.util.stream.Collectors;
-import java.util.stream.IntStream;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.FileSystem;
 import org.apache.hadoop.fs.Path;
@@ -35,10 +34,6 @@ import org.apache.spark.sql.Encoders;
 import org.apache.spark.sql.Row;
 import org.apache.spark.sql.RowFactory;
 import org.apache.spark.sql.SparkSession;
-import org.apache.spark.sql.types.DataTypes;
-import org.apache.spark.sql.types.Metadata;
-import org.apache.spark.sql.types.StructField;
-import org.apache.spark.sql.types.StructType;
 import org.apache.spark.util.SerializableConfiguration;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.AfterEach;
@@ -46,10 +41,23 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import org.sparkproject.guava.collect.ImmutableList;
+import org.sparkproject.guava.collect.Iterators;
 import software.amazon.awssdk.auth.credentials.AwsCredentialsProvider;
 import software.amazon.awssdk.auth.credentials.AwsSessionCredentials;
 import software.amazon.awssdk.services.sts.model.Credentials;
 
+/**
+ * Integration test to verify that AWS credential renewal works as expected.
+ *
+ * <p>This test sets up the Unity Catalog server and a local Spark cluster, then runs a custom Spark
+ * job to validate credential renewal.
+ *
+ * <p>The approach is as follows: a testing {@link AwsCredentialsProvider} is injected into the
+ * local Unity Catalog server, issuing a new credential every 30-second interval. The Spark job uses
+ * {@link S3CredFileSystem} to check that the credential matches the current time window for each
+ * filesystem access. {@link S3CredFileSystem} also tracks the number of renewals, allowing
+ * verification that credential renewal occurs as expected.
+ */
 public class AwsCredentialRenewalTest extends BaseCRUDTest {
 
   private static final String CLOCK_NAME = AwsCredentialRenewalTest.class.getSimpleName();
@@ -78,6 +86,9 @@ public class AwsCredentialRenewalTest extends BaseCRUDTest {
     serverProperties.put("s3.accessKey.0", "accessKey0");
     serverProperties.put("s3.secretKey.0", "secretKey0");
     serverProperties.put("s3.sessionToken.0", "sessionToken0");
+    // Customize the test credential generator to issue a new credential every 30-second interval.
+    // This allows us to verify whether credential renewal is functioning correctly by checking
+    // if the current credential matches the expected time window.
     serverProperties.put("s3.credentialsGenerator.0", CREDENTIALS_GENERATOR);
   }
 
@@ -159,13 +170,8 @@ public class AwsCredentialRenewalTest extends BaseCRUDTest {
     String location = String.format("s3://%s%s/fs", BUCKET_NAME, dataDir.getCanonicalPath());
     Path locPath = new Path(location);
 
-    // Create the external delta path-based table.
-    S3CredFileSystem.credentialCheckEnabled = false;
-    sql("CREATE TABLE delta.`%s` (id INT) USING delta", location);
-    S3CredFileSystem.credentialCheckEnabled = true;
-
-    // Create the catalog table referring to external table.
-    sql("CREATE TABLE %s USING delta LOCATION '%s'", TABLE_NAME, location);
+    // Create the external delta table in catalog.
+    sql("CREATE TABLE %s (id INT) USING delta LOCATION '%s'", TABLE_NAME, location);
 
     // Insert 1 row into the table.
     sql("INSERT INTO %s VALUES (1)", TABLE_NAME);
@@ -223,26 +229,19 @@ public class AwsCredentialRenewalTest extends BaseCRUDTest {
 
   @Test
   public void testDeltaReadWriteRenewal() throws Exception {
-    String location = String.format("s3://%s%s/delta", BUCKET_NAME, dataDir.getCanonicalPath());
-    StructType schema =
-        new StructType(
-            new StructField[] {
-              new StructField("id", DataTypes.IntegerType, false, Metadata.empty()),
-              new StructField("partition", DataTypes.IntegerType, false, Metadata.empty()),
-            });
+    String srcLoc = String.format("s3://%s%s/src", BUCKET_NAME, dataDir.getCanonicalPath());
+    String dstLoc = String.format("s3://%s%s/dst", BUCKET_NAME, dataDir.getCanonicalPath());
+    String srcTable = String.format("%s.%s.src", CATALOG_NAME, SCHEMA_NAME);
+    String dstTable = String.format("%s.%s.dst", CATALOG_NAME, SCHEMA_NAME);
 
-    // Create the external delta path-based table.
-    S3CredFileSystem.credentialCheckEnabled = false;
-    sql("CREATE TABLE delta.`%s` (id INT) USING delta PARTITIONED BY (partition INT)", location);
-    S3CredFileSystem.credentialCheckEnabled = true;
+    // Create the source table referring to external table.
+    sql(
+        "CREATE TABLE %s (id INT) USING delta LOCATION '%s' PARTITIONED BY (partition INT)",
+        srcTable, srcLoc);
+    sql("CREATE TABLE %s (id INT) USING delta LOCATION '%s'", dstTable, dstLoc);
 
-    // Create the catalog table referring to external table.
-    sql("CREATE TABLE %s USING delta LOCATION '%s'", TABLE_NAME, location);
-
-    // Insert 4 rows into each partition where (id % 3) equals the partition key.
-    sql("INSERT INTO %s PARTITION (partition=1) VALUES (1), (4), (7), (10)", TABLE_NAME, 1);
-    sql("INSERT INTO %s PARTITION (partition=2) VALUES (2), (5), (8), (11)", TABLE_NAME, 2);
-    sql("INSERT INTO %s PARTITION (partition=3) VALUES (3), (6), (9), (12)", TABLE_NAME, 3);
+    // Insert 1 row into each partition where id equals the partition key.
+    sql("INSERT INTO %s VALUES (1, 1), (2, 2), (3, 3)", srcTable);
 
     // Read from the Delta table, mapping each partition to a separate task.
     // With parallelism set to 1, tasks for each partition execute sequentially.
@@ -253,28 +252,25 @@ public class AwsCredentialRenewalTest extends BaseCRUDTest {
     session
         .read()
         .format("delta")
-        .table(TABLE_NAME)
+        .table(srcTable)
         .mapPartitions(
-            (MapPartitionsFunction<Row, Row>)
+            (MapPartitionsFunction<Row, Integer>)
                 input -> {
                   // Advance the clock to trigger the credential renewal.
                   testClock().advance(Duration.ofMillis(DEFAULT_INTERVAL_MILLIS));
-                  return input;
+                  return Iterators.transform(input, row -> row.getInt(0));
                 },
-            Encoders.row(schema))
+            Encoders.INT())
+        .withColumnRenamed("value", "id")
         .write()
         .format("delta")
         .mode("append")
-        .saveAsTable(TABLE_NAME);
+        .saveAsTable(dstTable);
 
-    List<Row> rows = sql("SELECT * FROM %s ORDER BY id ASC", TABLE_NAME);
-    assertThat(rows.size()).isEqualTo(24);
+    List<Row> rows = sql("SELECT * FROM %s ORDER BY id ASC", dstTable);
+    assertThat(rows.size()).isEqualTo(3);
     assertThat(rows.stream().map(r -> r.getInt(0)).collect(Collectors.toList()))
-        .isEqualTo(
-            IntStream.concat(IntStream.rangeClosed(1, 12), IntStream.rangeClosed(1, 12))
-                .boxed()
-                .sorted()
-                .collect(Collectors.toList()));
+        .isEqualTo(ImmutableList.of(1, 2, 3));
   }
 
   private List<Row> sql(String statement, Object... args) {

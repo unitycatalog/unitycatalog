@@ -10,6 +10,19 @@ import software.amazon.awssdk.regions.Region;
 import software.amazon.awssdk.services.sts.StsClient;
 import software.amazon.awssdk.services.sts.model.Credentials;
 
+/**
+ * Generates credentials based on the provided {@link CredentialContext}.
+ *
+ * <p>Currently supported implementations include:
+ *
+ * <ul>
+ *   <li>{@link StaticCredentialsGenerator}: returns fixed credentials defined in configuration.
+ *   <li>{@link StsCredentialsGenerator}: retrieves temporary, expiring credentials from AWS STS.
+ * </ul>
+ *
+ * <p>Test scenarios can provide custom {@link CredentialsGenerator} implementations. For example, a
+ * time-based generator can be used in end-to-end tests to validate credential renewal behavior.
+ */
 public interface CredentialsGenerator {
   Credentials generate(CredentialContext ctx);
 
