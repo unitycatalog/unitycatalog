@@ -31,6 +31,7 @@ import io.unitycatalog.server.security.JwtClaim;
 import io.unitycatalog.server.security.SecurityContext;
 import io.unitycatalog.server.utils.JwksOperations;
 import io.unitycatalog.server.utils.ServerProperties;
+import io.unitycatalog.server.utils.ServerProperties.Property;
 import java.lang.reflect.ParameterizedType;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
@@ -153,8 +154,7 @@ public class AuthService {
         e -> {
           if (e.equals(TokenEndpointExtensionType.COOKIE)) {
             // Set cookie timeout to 5 days by default if not present in server.properties
-            String cookieTimeout =
-                this.serverProperties.getProperty("server.cookie-timeout", "P5D");
+            String cookieTimeout = this.serverProperties.get(Property.COOKIE_TIMEOUT);
             Cookie cookie =
                 createCookie(AuthDecorator.UC_TOKEN_KEY, accessToken, "/", cookieTimeout);
             responseHeaders.add(HttpHeaderNames.SET_COOKIE, cookie.toSetCookieHeader());
