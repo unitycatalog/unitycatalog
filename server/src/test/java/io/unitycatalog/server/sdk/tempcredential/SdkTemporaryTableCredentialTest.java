@@ -66,7 +66,8 @@ public class SdkTemporaryTableCredentialTest extends BaseCRUDTestWithMockCredent
     URI uri = URI.create(url);
     String tableName = "testtable-" + uri.getScheme();
     TableInfo tableInfo =
-        BaseTableCRUDTest.createTestingTable(tableName, url + "/" + tableName, tableOperations);
+        BaseTableCRUDTest.createTestingTable(
+            tableName, TableType.EXTERNAL, url + "/" + tableName, tableOperations);
 
     GenerateTemporaryTableCredential generateTemporaryTableCredential =
         new GenerateTemporaryTableCredential()

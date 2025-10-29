@@ -166,6 +166,8 @@ public class UnityCatalogServer {
     CredentialService credentialService = new CredentialService(authorizer, repositories);
     ExternalLocationService externalLocationService =
         new ExternalLocationService(authorizer, repositories);
+    CoordinatedCommitsService coordinatedCommitsService =
+        new CoordinatedCommitsService(authorizer, repositories);
     MetastoreService metastoreService = new MetastoreService(repositories);
     // TODO: combine these into a single service in a follow-up PR
     TemporaryTableCredentialsService temporaryTableCredentialsService =
@@ -230,7 +232,11 @@ public class UnityCatalogServer {
             requestConverterFunction)
         .annotatedService(BASE_PATH + "credentials", credentialService, requestConverterFunction)
         .annotatedService(
-            BASE_PATH + "external-locations", externalLocationService, requestConverterFunction);
+            BASE_PATH + "external-locations", externalLocationService, requestConverterFunction)
+        .annotatedService(
+            BASE_PATH + "delta/preview/commits",
+            coordinatedCommitsService,
+            requestConverterFunction);
     addIcebergApiServices(
         armeriaServerBuilder,
         unityCatalogServerBuilder.serverProperties,

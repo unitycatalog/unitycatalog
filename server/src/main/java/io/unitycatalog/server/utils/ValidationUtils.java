@@ -24,4 +24,36 @@ public class ValidationUtils {
           "Name cannot contain a period, space, forward-slash, or control characters");
     }
   }
+
+  public static void validateNonEmpty(String value, String hintName) {
+    if (value == null || value.isEmpty()) {
+      throw new BaseException(ErrorCode.INVALID_ARGUMENT, "Field can not be empty: " + hintName);
+    }
+  }
+
+  public static void validateNonNull(Object value, String hintName) {
+    if (value == null) {
+      throw new BaseException(ErrorCode.INVALID_ARGUMENT, "Field can not be null: " + hintName);
+    }
+  }
+
+  public static void validateLongFieldPositive(Long value, String hintName) {
+    if (value == null || value <= 0) {
+      throw new BaseException(
+          ErrorCode.INVALID_ARGUMENT, String.format("Field must be positive: %s", hintName));
+    }
+  }
+
+  public static void validateLongFieldNonNegative(Long value, String hintName) {
+    if (value == null || value < 0) {
+      throw new BaseException(
+          ErrorCode.INVALID_ARGUMENT, String.format("Field must be >=0: %s", hintName));
+    }
+  }
+
+  public static void validateEquals(Object actual, Object expect, String message) {
+    if (actual == null || !actual.equals(expect)) {
+      throw new BaseException(ErrorCode.INVALID_ARGUMENT, message);
+    }
+  }
 }
