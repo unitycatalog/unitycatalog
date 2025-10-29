@@ -42,7 +42,7 @@ public abstract class BaseTableCRUDTest extends BaseTableCRUDTestEnv {
         .isInstanceOf(Exception.class);
 
     // Create and verify a table
-    TableInfo createdTable = createAndVerifyTable();
+    TableInfo createdTable = createAndVerifyExternalTable();
 
     // Get table and verify columns
     TableInfo retrievedTable = tableOperations.getTable(TestUtils.TABLE_FULL_NAME);
@@ -224,7 +224,9 @@ public abstract class BaseTableCRUDTest extends BaseTableCRUDTestEnv {
     for (int i = numberOfTables; i > 0; i--) {
       String tableName = TestUtils.TABLE_NAME + "_" + i;
       String storageLocation = TestUtils.STORAGE_LOCATION + "/" + tableName;
-      createdTables.add(createTestingTable(tableName, storageLocation, tableOperations));
+      createdTables.add(
+          createTestingTable(
+              tableName, TableType.EXTERNAL, Optional.of(storageLocation), tableOperations));
     }
     return createdTables;
   }

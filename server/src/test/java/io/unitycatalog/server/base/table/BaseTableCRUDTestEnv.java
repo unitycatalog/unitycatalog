@@ -18,6 +18,8 @@ import io.unitycatalog.server.base.schema.SchemaOperations;
 import io.unitycatalog.server.utils.TestUtils;
 import java.io.IOException;
 import java.util.List;
+import java.util.Optional;
+import lombok.SneakyThrows;
 import org.junit.jupiter.api.BeforeEach;
 
 /**
@@ -59,19 +61,32 @@ public abstract class BaseTableCRUDTestEnv extends BaseCRUDTest {
     }
   }
 
-  protected TableInfo createAndVerifyTable() throws IOException, ApiException {
+  protected TableInfo createAndVerifyExternalTable() throws IOException, ApiException {
     TableInfo tableInfo =
-        createTestingTable(TestUtils.TABLE_NAME, TestUtils.STORAGE_LOCATION, tableOperations);
+        createTestingTable(
+            TestUtils.TABLE_NAME,
+            TableType.EXTERNAL,
+            Optional.of(TestUtils.STORAGE_LOCATION),
+            tableOperations);
     assertThat(tableInfo.getName()).isEqualTo(TestUtils.TABLE_NAME);
     assertThat(tableInfo.getCatalogName()).isEqualTo(TestUtils.CATALOG_NAME);
     assertThat(tableInfo.getSchemaName()).isEqualTo(TestUtils.SCHEMA_NAME);
     assertThat(tableInfo.getTableId()).isNotNull();
+    assertThat(tableInfo.getTableType()).isEqualTo(TableType.EXTERNAL);
     return tableInfo;
   }
 
+  @SneakyThrows
   public static TableInfo createTestingTable(
-      String tableName, String storageLocation, TableOperations tableOperations)
-      throws IOException, ApiException {
+      String tableName,
+      TableType tableType,
+      Optional<String> storageLocation,
+      TableOperations tableOperations) {
+    if (tableType == TableType.MANAGED) {
+      assert storageLocation.isEmpty();
+    } else {
+      assert storageLocation.isPresent();
+    }
     ColumnInfo columnInfo1 =
         new ColumnInfo()
             .name("as_int")
@@ -100,8 +115,8 @@ public abstract class BaseTableCRUDTestEnv extends BaseCRUDTest {
             .columns(List.of(columnInfo1, columnInfo2))
             .properties(TestUtils.PROPERTIES)
             .comment(TestUtils.COMMENT)
-            .storageLocation(storageLocation)
-            .tableType(TableType.EXTERNAL)
+            .storageLocation(storageLocation.orElse(null))
+            .tableType(tableType)
             .dataSourceFormat(DataSourceFormat.DELTA);
 
     return tableOperations.createTable(createTableRequest);

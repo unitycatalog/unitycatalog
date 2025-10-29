@@ -25,6 +25,7 @@ import io.unitycatalog.server.sdk.catalog.SdkCatalogOperations;
 import io.unitycatalog.server.sdk.schema.SdkSchemaOperations;
 import io.unitycatalog.server.utils.TestUtils;
 import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 import org.hibernate.Session;
 import org.junit.jupiter.api.Test;
@@ -74,7 +75,11 @@ public class SdkTableCRUDTest extends BaseTableCRUDTest {
   @Test
   public void testListTablesWithNoNextPageTokenShouldReturnNull() throws Exception {
     TableInfo testingTable =
-        createTestingTable(TestUtils.TABLE_NAME, TestUtils.STORAGE_LOCATION, tableOperations);
+        createTestingTable(
+            TestUtils.TABLE_NAME,
+            TableType.EXTERNAL,
+            Optional.of(TestUtils.STORAGE_LOCATION),
+            tableOperations);
     ListTablesResponse resp =
         localTablesApi.listTables(
             testingTable.getCatalogName(), testingTable.getSchemaName(), 100, null);

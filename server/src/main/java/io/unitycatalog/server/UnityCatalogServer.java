@@ -29,6 +29,7 @@ import io.unitycatalog.server.security.SecurityContext;
 import io.unitycatalog.server.service.AuthDecorator;
 import io.unitycatalog.server.service.AuthService;
 import io.unitycatalog.server.service.CatalogService;
+import io.unitycatalog.server.service.CoordinatedCommitsService;
 import io.unitycatalog.server.service.CredentialService;
 import io.unitycatalog.server.service.ExternalLocationService;
 import io.unitycatalog.server.service.FunctionService;
@@ -185,6 +186,8 @@ public class UnityCatalogServer {
     CredentialService credentialService = new CredentialService(authorizer, repositories);
     ExternalLocationService externalLocationService =
         new ExternalLocationService(authorizer, repositories);
+    CoordinatedCommitsService coordinatedCommitsService =
+        new CoordinatedCommitsService(authorizer, repositories);
     MetastoreService metastoreService = new MetastoreService(repositories);
     // TODO: combine these into a single service in a follow-up PR
     TemporaryTableCredentialsService temporaryTableCredentialsService =
@@ -248,6 +251,10 @@ public class UnityCatalogServer {
             temporaryPathCredentialsService,
             requestConverterFunction)
         .annotatedService(BASE_PATH + "credentials", credentialService, requestConverterFunction)
+        .annotatedService(
+            BASE_PATH + "delta/preview/commits",
+            coordinatedCommitsService,
+            requestConverterFunction)
         .annotatedService(
             BASE_PATH + "external-locations", externalLocationService, requestConverterFunction);
     addIcebergApiServices(
