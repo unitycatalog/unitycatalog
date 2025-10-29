@@ -276,6 +276,39 @@ paths:
           content:
             application/json:
               schema: {}
+  /staging-tables:
+    post:
+      operationId: createStagingTable
+      summary: Create a staging table
+      tags:
+        - Tables
+      description: |
+        Creates a new staging table instance. Staging tables are used during managed table creation. Creating a managed
+        table requires performing two actions – initializing the table data in cloud storage and creating the named
+        table entry in the catalog – and these should appear as an atomic operation to other operations on catalog
+        tables. A staging table is used to allocate storage for the managed table, and the catalog_name.schema_name.name
+        parameters provided in this request are used to initialize any required storage properties and determine the
+        storage URL that should be used for the data contained by this table.
+
+        Temporary credentials can be obtained as though the staging table were a regular table to get access to the
+        staging table’s storage. After the table’s data is initialized, the staging table is “promoted” to a managed
+        table by creating a managed table with the same location as the staging table. This allows for the atomic
+        creation of a managed table that already has full data written to its storage location. Note: the name provided
+        must match the name used to initialize the staging table originally.
+
+        WARNING: This API is experimental and will change in future versions.
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateStagingTable'
+      responses:
+        '200':
+          description: The new staging table was successfully created.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StagingTableInfo'
   /tables:
     post:
       operationId: createTable
@@ -1642,6 +1675,40 @@ components:
         - data_source_format
         - columns
         - storage_location
+    StagingTableInfo:
+      type: object
+      properties:
+        name:
+          description: Name of table, relative to parent schema.
+          type: string
+        catalog_name:
+          description: Name of parent catalog.
+          type: string
+        schema_name:
+          description: Name of parent schema relative to its parent catalog.
+          type: string
+        id:
+          description: Unique identifier for the table.
+          type: string
+        staging_location:
+          description: URI generated for the staging table
+          type: string
+    CreateStagingTable:
+      type: object
+      properties:
+        name:
+          description: Name of table, relative to parent schema.
+          type: string
+        catalog_name:
+          description: Name of parent catalog.
+          type: string
+        schema_name:
+          description: Name of parent schema relative to its parent catalog.
+          type: string
+      required:
+        - name
+        - catalog_name
+        - schema_name
     ListTablesResponse:
       type: object
       properties:
