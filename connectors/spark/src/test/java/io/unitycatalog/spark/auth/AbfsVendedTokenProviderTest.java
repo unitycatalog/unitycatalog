@@ -28,7 +28,7 @@ public class AbfsVendedTokenProviderTest extends BaseTokenProviderTest<AbfsVende
 
     TestAbfsVendedTokenProvider(Configuration conf, TemporaryCredentialsApi mockApi) {
       initialize(conf);
-      this.retryableApi = new RetryableTemporaryCredentialsApi(mockApi, conf, clock);
+      this.retryableApi = new RetryableTemporaryCredentialsApi(mockApi, conf);
     }
 
     @Override

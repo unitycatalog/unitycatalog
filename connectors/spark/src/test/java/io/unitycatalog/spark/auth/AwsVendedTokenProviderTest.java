@@ -34,7 +34,7 @@ public class AwsVendedTokenProviderTest extends BaseTokenProviderTest<AwsVendedT
 
     TestAwsVendedTokenProvider(Configuration conf, TemporaryCredentialsApi tempCredApi) {
       super(conf);
-      this.retryableApi = new RetryableTemporaryCredentialsApi(tempCredApi, conf, clock);
+      this.retryableApi = new RetryableTemporaryCredentialsApi(tempCredApi, conf);
     }
 
     @Override
