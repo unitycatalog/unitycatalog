@@ -58,4 +58,20 @@ public class UCHadoopConf {
   public static final String UC_CREDENTIAL_CACHE_ENABLED_KEY =
       "fs.unitycatalog.credential.cache.enabled";
   public static final boolean UC_CREDENTIAL_CACHE_ENABLED_DEFAULT_VALUE = true;
+
+  // Keys for HTTP client retry configuration
+  public static final String RETRY_ENABLED_KEY = "fs.unitycatalog.retry.enabled";
+  public static final boolean RETRY_ENABLED_DEFAULT = false;
+
+  public static final String RETRY_MAX_ATTEMPTS_KEY = "fs.unitycatalog.retry.maxAttempts";
+  public static final int RETRY_MAX_ATTEMPTS_DEFAULT = 3;
+
+  public static final String RETRY_INITIAL_DELAY_KEY = "fs.unitycatalog.retry.initialDelayMs";
+  public static final long RETRY_INITIAL_DELAY_DEFAULT = 500L;
+
+  public static final String RETRY_MULTIPLIER_KEY = "fs.unitycatalog.retry.multiplier";
+  public static final double RETRY_MULTIPLIER_DEFAULT = 2.0;
+
+  public static final String RETRY_JITTER_FACTOR_KEY = "fs.unitycatalog.retry.jitterFactor";
+  public static final double RETRY_JITTER_FACTOR_DEFAULT = 0.5;
 }
