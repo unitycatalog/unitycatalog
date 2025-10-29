@@ -19,6 +19,7 @@ import io.unitycatalog.server.utils.TestUtils;
 import java.io.IOException;
 import java.util.List;
 import java.util.Optional;
+import lombok.SneakyThrows;
 import org.junit.jupiter.api.BeforeEach;
 
 /**
@@ -94,7 +95,8 @@ public abstract class BaseTableCRUDTestEnv extends BaseCRUDTest {
     return tableInfo;
   }
 
-  protected TableInfo createAndVerifyManagedTable() throws ApiException, IOException {
+  @SneakyThrows
+  public static TableInfo createAndVerifyManagedTable() throws ApiException, IOException {
     TableInfo managedTable =
         createTestingTable(
             TestUtils.TABLE_NAME, TableType.MANAGED, Optional.empty(), tableOperations);
@@ -110,12 +112,12 @@ public abstract class BaseTableCRUDTestEnv extends BaseCRUDTest {
     return managedTable;
   }
 
+  @SneakyThrows
   public static TableInfo createTestingTable(
       String tableName,
       TableType tableType,
       Optional<String> storageLocation,
-      TableOperations tableOperations)
-      throws IOException, ApiException {
+      TableOperations tableOperations) {
     if (tableType == TableType.MANAGED) {
       assert storageLocation.isEmpty();
     } else {
