@@ -1,8 +1,5 @@
 package io.unitycatalog.cli;
 
-import com.fasterxml.jackson.core.JsonProcessingException;
-import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.databind.ObjectWriter;
 import io.unitycatalog.cli.delta.DeltaKernelUtils;
 import io.unitycatalog.cli.utils.CliException;
 import io.unitycatalog.cli.utils.CliParams;
@@ -11,10 +8,24 @@ import io.unitycatalog.client.ApiClient;
 import io.unitycatalog.client.ApiException;
 import io.unitycatalog.client.api.TemporaryCredentialsApi;
 import io.unitycatalog.client.api.VolumesApi;
-import io.unitycatalog.client.model.*;
-import java.io.*;
+import io.unitycatalog.client.model.CreateVolumeRequestContent;
+import io.unitycatalog.client.model.GenerateTemporaryVolumeCredential;
+import io.unitycatalog.client.model.UpdateVolumeRequestContent;
+import io.unitycatalog.client.model.VolumeInfo;
+import io.unitycatalog.client.model.VolumeOperation;
+import io.unitycatalog.client.model.VolumeType;
+import java.io.BufferedWriter;
+import java.io.ByteArrayOutputStream;
+import java.io.IOException;
+import java.io.InputStream;
+import java.io.OutputStreamWriter;
 import java.net.URI;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.UUID;
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.ObjectWriter;
 import org.apache.commons.cli.CommandLine;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.FileStatus;
@@ -132,7 +143,7 @@ public class VolumeCli {
 
       // Write data to the file
       try (BufferedWriter writer =
-          new BufferedWriter(new OutputStreamWriter(fs.create(filePath, true)))) {
+               new BufferedWriter(new OutputStreamWriter(fs.create(filePath, true)))) {
         writer.write("This is a test file with random content.");
       }
 
@@ -198,7 +209,7 @@ public class VolumeCli {
       } else if (fileStatus.isFile()) {
         // Read the file contents
         try (InputStream inputStream = fs.open(path);
-            ByteArrayOutputStream outputStream = new ByteArrayOutputStream()) {
+             ByteArrayOutputStream outputStream = new ByteArrayOutputStream()) {
           IOUtils.copyBytes(inputStream, outputStream, conf, false);
           return outputStream.toString();
         }
