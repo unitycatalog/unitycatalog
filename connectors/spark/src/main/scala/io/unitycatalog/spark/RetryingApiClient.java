@@ -30,13 +30,6 @@ public class RetryingApiClient extends ApiClient {
   public RetryingApiClient(Configuration conf, Clock clock, HttpRetryHandler retryHandler) {
     super();
 
-    // Allow custom retry handler even if retry is disabled in config
-    if (retryHandler == null) {
-      Preconditions.checkArgument(
-          conf.getBoolean(UCHadoopConf.RETRY_ENABLED_KEY, UCHadoopConf.RETRY_ENABLED_DEFAULT),
-          "Retries are disabled; use %s=true", UCHadoopConf.RETRY_ENABLED_KEY);
-    }
-
     this.clock = clock;
     this.maxAttempts = conf.getInt(
         UCHadoopConf.RETRY_MAX_ATTEMPTS_KEY,
@@ -54,8 +47,8 @@ public class RetryingApiClient extends ApiClient {
     validateConfiguration();
 
     if (retryHandler == null) {
-      // Use default handler with max attempts from config
-      this.retryHandler = new DefaultHttpRetryHandler(this.maxAttempts);
+      // Use default handler
+      this.retryHandler = new DefaultHttpRetryHandler();
     } else {
       this.retryHandler = retryHandler;
     }
@@ -104,6 +97,7 @@ public class RetryingApiClient extends ApiClient {
     return new RetryingHttpClient(
         baseClient,
         retryHandler,
+        maxAttempts,
         initialDelayMs,
         multiplier,
         jitterFactor,

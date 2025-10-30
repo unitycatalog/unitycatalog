@@ -23,6 +23,7 @@ import javax.net.ssl.SSLParameters;
 public class RetryingHttpClient extends HttpClient {
   private final HttpClient delegate;
   private final HttpRetryHandler retryHandler;
+  private final int maxAttempts;
   private final long initialDelayMs;
   private final double multiplier;
   private final double jitterFactor;
@@ -32,6 +33,7 @@ public class RetryingHttpClient extends HttpClient {
   public RetryingHttpClient(
       HttpClient delegate,
       HttpRetryHandler retryHandler,
+      int maxAttempts,
       long initialDelayMs,
       double multiplier,
       double jitterFactor,
@@ -39,6 +41,7 @@ public class RetryingHttpClient extends HttpClient {
       Logger logger) {
     this.delegate = delegate;
     this.retryHandler = retryHandler;
+    this.maxAttempts = maxAttempts;
     this.initialDelayMs = initialDelayMs;
     this.multiplier = multiplier;
     this.jitterFactor = jitterFactor;
@@ -103,8 +106,8 @@ public class RetryingHttpClient extends HttpClient {
         HttpResponse<T> response = delegate.send(request, handler);
         String responseBody = readResponseBodyAsString(response);
 
-        // Check if the response should be retried
-        if (retryHandler.shouldRetryOnResponse(request, response, responseBody, attempt)) {
+        // Check if we've exceeded max attempts or if the response should be retried
+        if (attempt < maxAttempts && retryHandler.shouldRetryOnResponse(request, response, responseBody)) {
           lastException = new IOException(
               "Recoverable response: status=" + response.statusCode() + ", body=" + responseBody);
           closeResponse(response);
@@ -120,8 +123,8 @@ public class RetryingHttpClient extends HttpClient {
       } catch (Exception e) {
         lastException = e;
         
-        // Check if the exception should be retried
-        if (!retryHandler.shouldRetryOnException(request, e, attempt)) {
+        // Check if we've exceeded max attempts or if the exception should be retried
+        if (attempt >= maxAttempts || !retryHandler.shouldRetryOnException(request, e)) {
           // If shouldn't retry, throw the exception
           throw e;
         }

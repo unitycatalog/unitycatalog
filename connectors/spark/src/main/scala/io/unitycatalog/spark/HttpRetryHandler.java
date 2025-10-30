@@ -15,10 +15,9 @@ public interface HttpRetryHandler {
    *
    * @param request The HTTP request that failed
    * @param exception The exception that was thrown
-   * @param attemptCount The number of attempts made so far (1-based)
    * @return true if the request should be retried, false otherwise
    */
-  boolean shouldRetryOnException(HttpRequest request, Exception exception, int attemptCount);
+  boolean shouldRetryOnException(HttpRequest request, Exception exception);
 
   /**
    * Determines if a request should be retried based on the HTTP response received.
@@ -26,13 +25,11 @@ public interface HttpRetryHandler {
    * @param request The HTTP request that was sent
    * @param response The HTTP response received
    * @param responseBody The response body as a string (may be null if body couldn't be read)
-   * @param attemptCount The number of attempts made so far (1-based)
    * @return true if the request should be retried, false otherwise
    */
   boolean shouldRetryOnResponse(
       HttpRequest request,
       HttpResponse<?> response,
-      String responseBody,
-      int attemptCount);
+      String responseBody);
 }
 
