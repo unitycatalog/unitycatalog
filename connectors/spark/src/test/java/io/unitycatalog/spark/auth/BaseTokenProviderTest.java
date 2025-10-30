@@ -202,7 +202,7 @@ public abstract class BaseTokenProviderTest<T extends GenericCredentialProvider>
     Configuration conf = newTableBasedConf();
     conf.setBoolean(UCHadoopConf.RETRY_ENABLED_KEY, true);
     conf.setInt(UCHadoopConf.RETRY_MAX_ATTEMPTS_KEY, 5);
-    
+
     TemporaryCredentialsApi tempCredApi = mock(TemporaryCredentialsApi.class);
     TemporaryCredentials succeeded = newTempCred("success", clock.now().toEpochMilli() + 4000L);
 
@@ -223,7 +223,7 @@ public abstract class BaseTokenProviderTest<T extends GenericCredentialProvider>
     Configuration conf = newPathBasedConf();
     conf.setBoolean(UCHadoopConf.RETRY_ENABLED_KEY, true);
     conf.setInt(UCHadoopConf.RETRY_MAX_ATTEMPTS_KEY, 5);
-    
+
     TemporaryCredentialsApi tempCredApi = mock(TemporaryCredentialsApi.class);
     TemporaryCredentials succeeded = newTempCred("success", clock.now().toEpochMilli() + 4000L);
 
