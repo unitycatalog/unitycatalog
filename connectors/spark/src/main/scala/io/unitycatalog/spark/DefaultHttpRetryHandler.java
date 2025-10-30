@@ -41,7 +41,7 @@ public class DefaultHttpRetryHandler implements HttpRetryHandler {
       HttpResponse<?> response,
       String responseBody) {
     int status = response.statusCode();
-    
+
     if (RECOVERABLE_STATUS_CODES.contains(status)) {
       return true;
     }

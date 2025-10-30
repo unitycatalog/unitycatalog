@@ -5,7 +5,7 @@ import java.net.http.HttpResponse;
 
 /**
  * Interface for determining whether an HTTP request should be retried.
- * 
+ *
  * <p>This interface allows users to implement custom retry logic for both
  * exceptions and HTTP responses. Implementations should be stateless and thread-safe.
  */
