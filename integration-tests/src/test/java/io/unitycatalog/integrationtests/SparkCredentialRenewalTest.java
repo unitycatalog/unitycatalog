@@ -46,7 +46,7 @@ public class SparkCredentialRenewalTest {
         .getOrCreate();
 
     fullTable = String.format("%s.%s.%s", CatalogName, SchemaName, TableName);
-    sql("CREATE TABLE %s (id INT, val STRING) USING delta LOCATION '%s/%s'",
+    sql("CREATE TABLE %s (id BIGINT, val STRING) USING delta LOCATION '%s/%s'",
         fullTable, S3BaseLocation, UUID.randomUUID());
   }
 
