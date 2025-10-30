@@ -52,7 +52,7 @@ public class SparkCredentialRenewalTest {
 
   @AfterAll
   public static void afterAll() {
-    sql("DROP TABLE %s IF EXISTS", TableName);
+    sql("DROP TABLE IF EXISTS %s", fullTable);
     spark.stop();
   }
 
@@ -63,7 +63,7 @@ public class SparkCredentialRenewalTest {
 
     List<Row> results = sql("SELECT COUNT(*) FROM %s", fullTable);
     assertThat(results.size()).isEqualTo(1);
-    assertThat(results.get(0).getInt(0)).isEqualTo(RowCount);
+    assertThat(results.get(0).getLong(0)).isEqualTo(Long.parseLong(RowCount));
   }
 
   private static List<Row> sql(String statement, Object... args) {
