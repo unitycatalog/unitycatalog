@@ -97,7 +97,7 @@ public class RetryingHttpClient extends HttpClient {
 
   @Override
   public <T> HttpResponse<T> send(HttpRequest request, HttpResponse.BodyHandler<T> handler)
-      throws IOException, InterruptedException {
+      throws IOException, InterruptedException, ApiException {
     Exception lastException = null;
     var startTime = clock.now();
 
@@ -146,6 +146,9 @@ public class RetryingHttpClient extends HttpClient {
     }
     if (lastException instanceof InterruptedException) {
       throw (InterruptedException) lastException;
+    }
+    if (lastException instanceof ApiException) {
+      throw (ApiException) lastException;
     }
     throw new RuntimeException(
         "Retry loop ended unexpectedly after " + elapsedMs + "ms", lastException);
