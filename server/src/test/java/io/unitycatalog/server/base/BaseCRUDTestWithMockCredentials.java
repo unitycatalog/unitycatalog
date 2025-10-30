@@ -1,17 +1,17 @@
 package io.unitycatalog.server.base;
 
-import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Fail.fail;
+import static org.assertj.core.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.mock;
 
+import com.google.auth.oauth2.AccessToken;
 import io.unitycatalog.client.model.AwsCredentials;
 import io.unitycatalog.client.model.AzureUserDelegationSAS;
 import io.unitycatalog.client.model.GcpOauthToken;
 import io.unitycatalog.client.model.TemporaryCredentials;
-import io.unitycatalog.server.service.credential.CloudCredentialVendor;
 import io.unitycatalog.server.service.credential.CredentialContext;
+import io.unitycatalog.server.service.credential.CloudCredentialVendor;
 import io.unitycatalog.server.service.credential.aws.AwsCredentialVendor;
 import io.unitycatalog.server.service.credential.azure.AzureCredential;
 import io.unitycatalog.server.service.credential.azure.AzureCredentialVendor;
@@ -20,19 +20,16 @@ import java.time.Instant;
 import java.util.Date;
 import java.util.List;
 import java.util.stream.Stream;
-import com.google.auth.oauth2.AccessToken;
+
 import org.junit.jupiter.params.provider.Arguments;
 import org.mockito.ArgumentMatcher;
 import org.mockito.Mock;
 import software.amazon.awssdk.services.sts.model.Credentials;
 
 public abstract class BaseCRUDTestWithMockCredentials extends BaseCRUDTest {
-  @Mock
-  AwsCredentialVendor awsCredentialVendor;
-  @Mock
-  AzureCredentialVendor azureCredentialVendor;
-  @Mock
-  GcpCredentialVendor gcpCredentialVendor;
+  @Mock AwsCredentialVendor awsCredentialVendor;
+  @Mock AzureCredentialVendor azureCredentialVendor;
+  @Mock GcpCredentialVendor gcpCredentialVendor;
 
   @Override
   protected void setUpProperties() {
@@ -58,56 +55,56 @@ public abstract class BaseCRUDTestWithMockCredentials extends BaseCRUDTest {
     setupGcpCredentials();
 
     cloudCredentialVendor = new CloudCredentialVendor(
-        awsCredentialVendor,
-        azureCredentialVendor,
-        gcpCredentialVendor
+            awsCredentialVendor,
+            azureCredentialVendor,
+            gcpCredentialVendor
     );
   }
 
   private void setupAwsCredentials() {
     awsCredentialVendor = mock(AwsCredentialVendor.class);
     Credentials awsCredential = Credentials.builder()
-        .accessKeyId("test-access-key-id")
-        .secretAccessKey("test-secret-access-key")
-        .sessionToken("test-session-token")
-        .build();
+            .accessKeyId("test-access-key-id")
+            .secretAccessKey("test-secret-access-key")
+            .sessionToken("test-session-token")
+            .build();
     serverProperties.entrySet().stream()
-        .filter(e -> e.getKey().toString().startsWith("s3.bucketPath"))
-        .map(e -> e.getValue().toString())
-        .forEach(path -> doReturn(awsCredential)
-            .when(awsCredentialVendor)
-            .vendAwsCredentials(
-                argThat(isCredentialContextForCloudPath("s3", path))));
+            .filter(e -> e.getKey().toString().startsWith("s3.bucketPath"))
+            .map(e -> e.getValue().toString())
+            .forEach(path -> doReturn(awsCredential)
+                    .when(awsCredentialVendor)
+                    .vendAwsCredentials(
+                            argThat(isCredentialContextForCloudPath("s3", path))));
   }
 
   private void setupAzureCredentials() {
     azureCredentialVendor = mock(AzureCredentialVendor.class);
     AzureCredential azureCredential = AzureCredential.builder()
-        .sasToken("test-sas-token")
-        .expirationTimeInEpochMillis(System.currentTimeMillis() + 6000)
-        .build();
+            .sasToken("test-sas-token")
+            .expirationTimeInEpochMillis(System.currentTimeMillis() + 6000)
+            .build();
     serverProperties.entrySet().stream()
-        .filter(e -> e.getKey().toString().startsWith("adls.storageAccountName"))
-        .map(e -> e.getValue().toString())
-        .forEach(path -> doReturn(azureCredential)
-            .when(azureCredentialVendor)
-            .vendAzureCredential(
-                argThat(isCredentialContextForCloudPath("abfs", path))));
+            .filter(e -> e.getKey().toString().startsWith("adls.storageAccountName"))
+            .map(e -> e.getValue().toString())
+            .forEach(path -> doReturn(azureCredential)
+                    .when(azureCredentialVendor)
+                    .vendAzureCredential(
+                            argThat(isCredentialContextForCloudPath("abfs", path))));
   }
 
   private void setupGcpCredentials() {
     gcpCredentialVendor = mock(GcpCredentialVendor.class);
     AccessToken gcpCredential = new AccessToken(
-        "test-token",
-        Date.from(Instant.now().plusSeconds(10 * 60))
+            "test-token",
+            Date.from(Instant.now().plusSeconds(10 * 60))
     );
     serverProperties.entrySet().stream()
-        .filter(e -> e.getKey().toString().startsWith("gcs.bucketPath"))
-        .map(e -> e.getValue().toString())
-        .forEach(path -> doReturn(gcpCredential)
-            .when(gcpCredentialVendor)
-            .vendGcpToken(
-                argThat(isCredentialContextForCloudPath("gs", path))));
+            .filter(e -> e.getKey().toString().startsWith("gcs.bucketPath"))
+            .map(e -> e.getValue().toString())
+            .forEach(path -> doReturn(gcpCredential)
+                    .when(gcpCredentialVendor)
+                    .vendGcpToken(
+                            argThat(isCredentialContextForCloudPath("gs", path))));
   }
 
   private ArgumentMatcher<CredentialContext> isCredentialContextForCloudPath(
@@ -117,7 +114,7 @@ public abstract class BaseCRUDTestWithMockCredentials extends BaseCRUDTest {
   }
 
   /**
-   * @param scheme           s3, abfs, gs
+   * @param scheme s3, abfs, gs
    * @param isConfiguredPath true if the path is configured in the server properties
    * @return Cloud path for testing
    */
@@ -170,7 +167,7 @@ public abstract class BaseCRUDTestWithMockCredentials extends BaseCRUDTest {
 
     // Cartesian product of clouds and isConfiguredPathFlags
     return clouds.stream()
-        .flatMap(cloud -> isConfiguredPathFlags.stream()
-            .map(isConfiguredPath -> Arguments.of(cloud, isConfiguredPath)));
+            .flatMap(cloud -> isConfiguredPathFlags.stream()
+                    .map(isConfiguredPath -> Arguments.of(cloud, isConfiguredPath)));
   }
 }
