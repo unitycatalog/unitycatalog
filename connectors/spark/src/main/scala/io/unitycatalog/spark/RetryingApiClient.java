@@ -17,17 +17,25 @@ public class RetryingApiClient extends ApiClient {
   private final double multiplier;
   private final double jitterFactor;
   private final Clock clock;
+  private HttpRetryHandler retryHandler;
 
   public RetryingApiClient(Configuration conf) {
-    this(conf, Clock.systemClock());
+    this(conf, Clock.systemClock(), null);
   }
 
   public RetryingApiClient(Configuration conf, Clock clock) {
+    this(conf, clock, null);
+  }
+
+  public RetryingApiClient(Configuration conf, Clock clock, HttpRetryHandler retryHandler) {
     super();
 
-    Preconditions.checkArgument(
-        conf.getBoolean(UCHadoopConf.RETRY_ENABLED_KEY, UCHadoopConf.RETRY_ENABLED_DEFAULT),
-        "Retries are disabled; use %s=true", UCHadoopConf.RETRY_ENABLED_KEY);
+    // Allow custom retry handler even if retry is disabled in config
+    if (retryHandler == null) {
+      Preconditions.checkArgument(
+          conf.getBoolean(UCHadoopConf.RETRY_ENABLED_KEY, UCHadoopConf.RETRY_ENABLED_DEFAULT),
+          "Retries are disabled; use %s=true", UCHadoopConf.RETRY_ENABLED_KEY);
+    }
 
     this.clock = clock;
     this.maxAttempts = conf.getInt(
@@ -44,6 +52,13 @@ public class RetryingApiClient extends ApiClient {
         UCHadoopConf.RETRY_JITTER_FACTOR_DEFAULT);
 
     validateConfiguration();
+
+    if (retryHandler == null) {
+      // Use default handler with max attempts from config
+      this.retryHandler = new DefaultHttpRetryHandler(this.maxAttempts);
+    } else {
+      this.retryHandler = retryHandler;
+    }
   }
 
   private void validateConfiguration() {
@@ -72,12 +87,23 @@ public class RetryingApiClient extends ApiClient {
         UCHadoopConf.RETRY_JITTER_FACTOR_KEY);
   }
 
+  /**
+   * Sets a custom retry handler for this API client.
+   *
+   * @param handler The retry handler to use
+   * @return This object for method chaining
+   */
+  public RetryingApiClient setRetryHandler(HttpRetryHandler handler) {
+    this.retryHandler = handler;
+    return this;
+  }
+
   @Override
   public HttpClient getHttpClient() {
     HttpClient baseClient = super.getHttpClient();
     return new RetryingHttpClient(
         baseClient,
-        maxAttempts,
+        retryHandler,
         initialDelayMs,
         multiplier,
         jitterFactor,

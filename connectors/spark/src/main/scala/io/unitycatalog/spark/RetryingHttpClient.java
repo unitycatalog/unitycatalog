@@ -1,9 +1,6 @@
 package io.unitycatalog.spark;
 
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import io.unitycatalog.spark.utils.Clock;
-import org.sparkproject.guava.base.Throwables;
 
 import java.io.IOException;
 import java.io.InputStream;
@@ -16,7 +13,6 @@ import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.time.Duration;
 import java.util.Optional;
-import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.Executor;
 import java.util.logging.Level;
@@ -25,24 +21,8 @@ import javax.net.ssl.SSLContext;
 import javax.net.ssl.SSLParameters;
 
 public class RetryingHttpClient extends HttpClient {
-  private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
-
-  private static final Set<Integer> RECOVERABLE_HTTP_CODES = Set.of(429, 503);
-
-  private static final Set<String> RECOVERABLE_ERROR_CODES = Set.of(
-      "TEMPORARILY_UNAVAILABLE",
-      "WORKSPACE_TEMPORARILY_UNAVAILABLE",
-      "SERVICE_UNDER_MAINTENANCE"
-  );
-
-  private static final Set<Class<? extends Throwable>> RECOVERABLE_NETWORK_EXCEPTIONS = Set.of(
-      java.net.SocketTimeoutException.class,
-      java.net.SocketException.class,
-      java.net.UnknownHostException.class
-  );
-
   private final HttpClient delegate;
-  private final int maxAttempts;
+  private final HttpRetryHandler retryHandler;
   private final long initialDelayMs;
   private final double multiplier;
   private final double jitterFactor;
@@ -51,14 +31,14 @@ public class RetryingHttpClient extends HttpClient {
 
   public RetryingHttpClient(
       HttpClient delegate,
-      int maxAttempts,
+      HttpRetryHandler retryHandler,
       long initialDelayMs,
       double multiplier,
       double jitterFactor,
       Clock clock,
       Logger logger) {
     this.delegate = delegate;
-    this.maxAttempts = maxAttempts;
+    this.retryHandler = retryHandler;
     this.initialDelayMs = initialDelayMs;
     this.multiplier = multiplier;
     this.jitterFactor = jitterFactor;
@@ -116,58 +96,42 @@ public class RetryingHttpClient extends HttpClient {
       throws IOException, InterruptedException {
     Exception lastException = null;
     var startTime = clock.now();
+    int attempt = 1;
 
-    for (int attempt = 1; attempt <= maxAttempts; attempt++) {
+    while (true) {
       try {
         HttpResponse<T> response = delegate.send(request, handler);
-        int status = response.statusCode();
+        String responseBody = readResponseBodyAsString(response);
 
-        // For retryable status codes, we need to read the body to check UC error codes
-        if (isRecoverableStatus(status)) {
-          String responseBody = readResponseBodyAsString(response);
-          if (isRecoverable(status, responseBody)) {
-            lastException = new IOException(
-                "Recoverable response: status=" + status + ", body=" + responseBody);
-            if (attempt == maxAttempts) {
-              long elapsedMs = Duration.between(startTime, clock.now()).toMillis();
-              throw new RuntimeException(
-                  "HTTP request failed after " + maxAttempts + " attempts (elapsed: "
-                      + elapsedMs + "ms)",
-                  lastException);
-            }
-            closeResponse(response);
-            long delay = calculateDelay(attempt);
-            logRetry(attempt, "status=" + status, delay);
-            clock.sleep(Duration.ofMillis(delay));
-            continue;
-          }
+        // Check if the response should be retried
+        if (retryHandler.shouldRetryOnResponse(request, response, responseBody, attempt)) {
+          lastException = new IOException(
+              "Recoverable response: status=" + response.statusCode() + ", body=" + responseBody);
+          closeResponse(response);
+          long delay = calculateDelay(attempt);
+          logRetry(attempt, "status=" + response.statusCode(), delay);
+          clock.sleep(Duration.ofMillis(delay));
+          attempt++;
+          continue;
         }
 
         // Non-retryable: Return as-is (API layer handles ApiException)
         return response;
       } catch (Exception e) {
         lastException = e;
-        if (!isRecoverableException(e)) {
+        
+        // Check if the exception should be retried
+        if (!retryHandler.shouldRetryOnException(request, e, attempt)) {
+          // If shouldn't retry, throw the exception
           throw e;
         }
-        if (attempt == maxAttempts) {
-          long elapsedMs = Duration.between(startTime, clock.now()).toMillis();
-          throw new RuntimeException(
-              "HTTP request failed after " + maxAttempts + " attempts (elapsed: "
-                  + elapsedMs + "ms)",
-              lastException);
-        }
+        
         long delay = calculateDelay(attempt);
         logRetry(attempt, e.getClass().getSimpleName() + ": " + e.getMessage(), delay);
         clock.sleep(Duration.ofMillis(delay));
+        attempt++;
       }
     }
-
-    // Should never reach here, but just in case
-    long elapsedMs = Duration.between(startTime, clock.now()).toMillis();
-    throw new RuntimeException(
-        "HTTP request failed after " + maxAttempts + " attempts (elapsed: " + elapsedMs + "ms)",
-        lastException);
   }
 
   @Override
@@ -188,28 +152,6 @@ public class RetryingHttpClient extends HttpClient {
     return delegate.sendAsync(request, handler, pushPromiseHandler);
   }
 
-  private boolean isRecoverableStatus(int status) {
-    return RECOVERABLE_HTTP_CODES.contains(status) || (status >= 500 && status < 600);
-  }
-
-  private boolean isRecoverable(int status, String body) {
-    if (RECOVERABLE_HTTP_CODES.contains(status)) {
-      return true;
-    }
-    if (status >= 500 && status < 600) {
-      // Check for Unity Catalog specific error codes in 5xx responses
-      String errorCode = extractUcErrorCode(body);
-      return errorCode != null && RECOVERABLE_ERROR_CODES.contains(errorCode);
-    }
-    return false;
-  }
-
-  private boolean isRecoverableException(Exception e) {
-    return Throwables.getCausalChain(e).stream()
-        .anyMatch(cause -> RECOVERABLE_NETWORK_EXCEPTIONS.stream()
-            .anyMatch(exceptionClass -> exceptionClass.isInstance(cause)));
-  }
-
   private long calculateDelay(int attempt) {
     long baseDelay = (long) (initialDelayMs * Math.pow(multiplier, attempt - 1));
     double jitter = (Math.random() - 0.5) * 2 * jitterFactor;
@@ -219,8 +161,8 @@ public class RetryingHttpClient extends HttpClient {
   private void logRetry(int attempt, Object reason, long delay) {
     logger.log(
         Level.WARNING,
-        "HTTP request failed (attempt {0}/{1}): {2}. Retrying after {3}ms",
-        new Object[]{attempt, maxAttempts, reason, delay});
+        "HTTP request failed (attempt {0}): {1}. Retrying after {2}ms",
+        new Object[]{attempt, reason, delay});
   }
 
   private String readResponseBodyAsString(HttpResponse<?> response) {
@@ -249,19 +191,6 @@ public class RetryingHttpClient extends HttpClient {
       } catch (Exception ignored) {
         // Ignore close failures
       }
-    }
-  }
-
-  private static String extractUcErrorCode(String body) {
-    if (body == null || body.isEmpty()) {
-      return null;
-    }
-    try {
-      JsonNode node = OBJECT_MAPPER.readTree(body);
-      JsonNode codeNode = node.get("error_code");
-      return codeNode != null ? codeNode.asText() : null;
-    } catch (Exception ignore) {
-      return null;
     }
   }
 }
