@@ -48,7 +48,7 @@ public class ModelRepository {
     this.fileOperations = repositories.getFileOperations();
   }
 
-  /** *************** DAO retrieval methods ***************** */
+  /** **************** DAO retrieval methods ***************** */
   public RegisteredModelInfoDAO getRegisteredModelDao(Session session, UUID schemaId, String name) {
     String hql = "FROM RegisteredModelInfoDAO t WHERE t.schemaId = :schemaId AND t.name = :name";
     Query<RegisteredModelInfoDAO> query = session.createQuery(hql, RegisteredModelInfoDAO.class);
@@ -124,7 +124,7 @@ public class ModelRepository {
     return query.getResultList(); // Returns null if no result is found
   }
 
-  /** *************** ModelRepository convenience methods ***************** */
+  /** **************** ModelRepository convenience methods ***************** */
   private String getRegisteredModelFullName(RegisteredModelInfo registeredModelInfo) {
     return getRegisteredModelFullName(
         registeredModelInfo.getCatalogName(),
@@ -147,7 +147,7 @@ public class ModelRepository {
     return entities.get(entities.size() - 1).getVersion().toString();
   }
 
-  /** *************** Registered Model handlers ***************** */
+  /** **************** Registered Model handlers ***************** */
   public RegisteredModelInfo getRegisteredModel(String fullName) {
     LOGGER.info("Getting registered model: {}", fullName);
     RegisteredModelInfo registeredModelInfo = null;
@@ -471,7 +471,7 @@ public class ModelRepository {
     session.remove(registeredModelInfoDAO);
   }
 
-  /** *************** Model version handlers ***************** */
+  /** **************** Model version handlers ***************** */
   public ModelVersionInfo getModelVersion(String fullName, long version) {
     LOGGER.info("Getting model version: {}/{}", fullName, version);
     ModelVersionInfo modelVersionInfo = null;

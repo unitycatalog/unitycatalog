@@ -133,7 +133,7 @@ public class PermissionService {
             || authorizer.authorize(principalId, resourceId, Privileges.OWNER)
             || (parentId != null && authorizer.authorize(principalId, parentId, Privileges.OWNER))
             || (grandparentId != null
-            && authorizer.authorize(principalId, grandparentId, Privileges.OWNER));
+                && authorizer.authorize(principalId, grandparentId, Privileges.OWNER));
 
     Map<UUID, List<Privileges>> authorizations =
         isOwner

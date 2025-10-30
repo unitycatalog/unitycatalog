@@ -70,11 +70,11 @@ public class SchemaService extends AuthorizedService {
     ListSchemasResponse listSchemasResponse =
         schemaRepository.listSchemas(catalogName, maxResults, pageToken);
     filterSchemas("""
-            #authorize(#principal, #metastore, OWNER) ||
-            #authorize(#principal, #catalog, OWNER) ||
-            (#authorize(#principal, #schema, USE_SCHEMA) &&
-                #authorizeAny(#principal, #catalog, OWNER, USE_CATALOG))
-            """,
+        #authorize(#principal, #metastore, OWNER) ||
+        #authorize(#principal, #catalog, OWNER) ||
+        (#authorize(#principal, #schema, USE_SCHEMA) &&
+            #authorizeAny(#principal, #catalog, OWNER, USE_CATALOG))
+        """,
         listSchemasResponse.getSchemas());
     return HttpResponse.ofJson(listSchemasResponse);
   }
