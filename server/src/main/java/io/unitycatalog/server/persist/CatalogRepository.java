@@ -2,7 +2,12 @@ package io.unitycatalog.server.persist;
 
 import io.unitycatalog.server.exception.BaseException;
 import io.unitycatalog.server.exception.ErrorCode;
-import io.unitycatalog.server.model.*;
+import io.unitycatalog.server.model.CatalogInfo;
+import io.unitycatalog.server.model.CreateCatalog;
+import io.unitycatalog.server.model.ListCatalogsResponse;
+import io.unitycatalog.server.model.ListSchemasResponse;
+import io.unitycatalog.server.model.SchemaInfo;
+import io.unitycatalog.server.model.UpdateCatalog;
 import io.unitycatalog.server.persist.dao.CatalogInfoDAO;
 import io.unitycatalog.server.persist.dao.PropertyDAO;
 import io.unitycatalog.server.persist.utils.PagedListingHelper;

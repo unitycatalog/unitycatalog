@@ -1,5 +1,8 @@
 package io.unitycatalog.cli;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.ObjectWriter;
 import io.unitycatalog.cli.delta.DeltaKernelUtils;
 import io.unitycatalog.cli.utils.CliException;
 import io.unitycatalog.cli.utils.CliParams;
@@ -23,9 +26,6 @@ import java.net.URI;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
-import com.fasterxml.jackson.core.JsonProcessingException;
-import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.databind.ObjectWriter;
 import org.apache.commons.cli.CommandLine;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.FileStatus;
@@ -143,7 +143,7 @@ public class VolumeCli {
 
       // Write data to the file
       try (BufferedWriter writer =
-               new BufferedWriter(new OutputStreamWriter(fs.create(filePath, true)))) {
+          new BufferedWriter(new OutputStreamWriter(fs.create(filePath, true)))) {
         writer.write("This is a test file with random content.");
       }
 
@@ -209,7 +209,7 @@ public class VolumeCli {
       } else if (fileStatus.isFile()) {
         // Read the file contents
         try (InputStream inputStream = fs.open(path);
-             ByteArrayOutputStream outputStream = new ByteArrayOutputStream()) {
+            ByteArrayOutputStream outputStream = new ByteArrayOutputStream()) {
           IOUtils.copyBytes(inputStream, outputStream, conf, false);
           return outputStream.toString();
         }

@@ -2,7 +2,16 @@ package io.unitycatalog.server.persist;
 
 import io.unitycatalog.server.exception.BaseException;
 import io.unitycatalog.server.exception.ErrorCode;
-import io.unitycatalog.server.model.*;
+import io.unitycatalog.server.model.CreateModelVersion;
+import io.unitycatalog.server.model.CreateRegisteredModel;
+import io.unitycatalog.server.model.FinalizeModelVersion;
+import io.unitycatalog.server.model.ListModelVersionsResponse;
+import io.unitycatalog.server.model.ListRegisteredModelsResponse;
+import io.unitycatalog.server.model.ModelVersionInfo;
+import io.unitycatalog.server.model.ModelVersionStatus;
+import io.unitycatalog.server.model.RegisteredModelInfo;
+import io.unitycatalog.server.model.UpdateModelVersion;
+import io.unitycatalog.server.model.UpdateRegisteredModel;
 import io.unitycatalog.server.persist.dao.CatalogInfoDAO;
 import io.unitycatalog.server.persist.dao.ModelVersionInfoDAO;
 import io.unitycatalog.server.persist.dao.RegisteredModelInfoDAO;
@@ -13,7 +22,11 @@ import io.unitycatalog.server.persist.utils.RepositoryUtils;
 import io.unitycatalog.server.persist.utils.UriUtils;
 import io.unitycatalog.server.utils.IdentityUtils;
 import io.unitycatalog.server.utils.ValidationUtils;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.Date;
+import java.util.List;
+import java.util.Optional;
+import java.util.UUID;
 import org.hibernate.Session;
 import org.hibernate.SessionFactory;
 import org.hibernate.Transaction;
@@ -35,7 +48,7 @@ public class ModelRepository {
     this.fileOperations = repositories.getFileOperations();
   }
 
-  /** **************** DAO retrieval methods ***************** */
+  /** *************** DAO retrieval methods ***************** */
   public RegisteredModelInfoDAO getRegisteredModelDao(Session session, UUID schemaId, String name) {
     String hql = "FROM RegisteredModelInfoDAO t WHERE t.schemaId = :schemaId AND t.name = :name";
     Query<RegisteredModelInfoDAO> query = session.createQuery(hql, RegisteredModelInfoDAO.class);
@@ -111,7 +124,7 @@ public class ModelRepository {
     return query.getResultList(); // Returns null if no result is found
   }
 
-  /** **************** ModelRepository convenience methods ***************** */
+  /** *************** ModelRepository convenience methods ***************** */
   private String getRegisteredModelFullName(RegisteredModelInfo registeredModelInfo) {
     return getRegisteredModelFullName(
         registeredModelInfo.getCatalogName(),
@@ -134,7 +147,7 @@ public class ModelRepository {
     return entities.get(entities.size() - 1).getVersion().toString();
   }
 
-  /** **************** Registered Model handlers ***************** */
+  /** *************** Registered Model handlers ***************** */
   public RegisteredModelInfo getRegisteredModel(String fullName) {
     LOGGER.info("Getting registered model: {}", fullName);
     RegisteredModelInfo registeredModelInfo = null;
@@ -458,7 +471,7 @@ public class ModelRepository {
     session.remove(registeredModelInfoDAO);
   }
 
-  /** **************** Model version handlers ***************** */
+  /** *************** Model version handlers ***************** */
   public ModelVersionInfo getModelVersion(String fullName, long version) {
     LOGGER.info("Getting model version: {}/{}", fullName, version);
     ModelVersionInfo modelVersionInfo = null;

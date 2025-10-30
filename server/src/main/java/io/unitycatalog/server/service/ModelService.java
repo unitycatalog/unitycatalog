@@ -1,28 +1,44 @@
 package io.unitycatalog.server.service;
 
-import com.linecorp.armeria.common.HttpResponse;
-import com.linecorp.armeria.common.HttpStatus;
-import com.linecorp.armeria.server.annotation.*;
+import static io.unitycatalog.server.model.SecurableType.CATALOG;
+import static io.unitycatalog.server.model.SecurableType.METASTORE;
+import static io.unitycatalog.server.model.SecurableType.REGISTERED_MODEL;
+import static io.unitycatalog.server.model.SecurableType.SCHEMA;
+
 import io.unitycatalog.server.auth.UnityCatalogAuthorizer;
 import io.unitycatalog.server.auth.annotation.AuthorizeExpression;
 import io.unitycatalog.server.auth.annotation.AuthorizeKey;
 import io.unitycatalog.server.auth.annotation.AuthorizeKeys;
 import io.unitycatalog.server.auth.decorator.UnityAccessEvaluator;
 import io.unitycatalog.server.exception.GlobalExceptionHandler;
-import io.unitycatalog.server.model.*;
-import io.unitycatalog.server.persist.*;
-
+import io.unitycatalog.server.model.CatalogInfo;
+import io.unitycatalog.server.model.CreateModelVersion;
+import io.unitycatalog.server.model.CreateRegisteredModel;
+import io.unitycatalog.server.model.FinalizeModelVersion;
+import io.unitycatalog.server.model.ListRegisteredModelsResponse;
+import io.unitycatalog.server.model.ModelVersionInfo;
+import io.unitycatalog.server.model.RegisteredModelInfo;
+import io.unitycatalog.server.model.SchemaInfo;
+import io.unitycatalog.server.model.UpdateModelVersion;
+import io.unitycatalog.server.model.UpdateRegisteredModel;
+import io.unitycatalog.server.persist.CatalogRepository;
+import io.unitycatalog.server.persist.MetastoreRepository;
+import io.unitycatalog.server.persist.ModelRepository;
+import io.unitycatalog.server.persist.Repositories;
+import io.unitycatalog.server.persist.SchemaRepository;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
-
+import com.linecorp.armeria.common.HttpResponse;
+import com.linecorp.armeria.common.HttpStatus;
+import com.linecorp.armeria.server.annotation.Delete;
+import com.linecorp.armeria.server.annotation.ExceptionHandler;
+import com.linecorp.armeria.server.annotation.Get;
+import com.linecorp.armeria.server.annotation.Param;
+import com.linecorp.armeria.server.annotation.Patch;
+import com.linecorp.armeria.server.annotation.Post;
 import lombok.SneakyThrows;
-
-import static io.unitycatalog.server.model.SecurableType.CATALOG;
-import static io.unitycatalog.server.model.SecurableType.METASTORE;
-import static io.unitycatalog.server.model.SecurableType.REGISTERED_MODEL;
-import static io.unitycatalog.server.model.SecurableType.SCHEMA;
 
 @ExceptionHandler(GlobalExceptionHandler.class)
 public class ModelService extends AuthorizedService {
