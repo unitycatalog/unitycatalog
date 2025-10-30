@@ -5,6 +5,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
+import io.unitycatalog.client.ApiException;
 import io.unitycatalog.client.api.TemporaryCredentialsApi;
 import io.unitycatalog.client.model.PathOperation;
 import io.unitycatalog.client.model.TableOperation;
@@ -194,6 +195,48 @@ public abstract class BaseTokenProviderTest<T extends GenericCredentialProvider>
 
     // cred2 is still valid.
     assertCred(provider, cred2);
+  }
+
+  @Test
+  public void testRetryRecoversForTableCredentials() throws Exception {
+    Configuration conf = newTableBasedConf();
+    conf.setBoolean(UCHadoopConf.RETRY_ENABLED_KEY, true);
+    conf.setInt(UCHadoopConf.RETRY_MAX_ATTEMPTS_KEY, 5);
+    
+    TemporaryCredentialsApi tempCredApi = mock(TemporaryCredentialsApi.class);
+    TemporaryCredentials succeeded = newTempCred("success", clock.now().toEpochMilli() + 4000L);
+
+    when(tempCredApi.generateTemporaryTableCredentials(any()))
+        .thenThrow(new ApiException(503, "unavailable"))
+        .thenThrow(new ApiException(429, "too many requests"))
+        .thenThrow(
+            new ApiException("error", 500, null, "{\"error_code\":\"TEMPORARILY_UNAVAILABLE\"}"))
+        .thenReturn(succeeded);
+
+    T provider = createTestProvider(conf, tempCredApi);
+
+    assertCred(provider, succeeded);
+  }
+
+  @Test
+  public void testRetryRecoversForPathCredentials() throws Exception {
+    Configuration conf = newPathBasedConf();
+    conf.setBoolean(UCHadoopConf.RETRY_ENABLED_KEY, true);
+    conf.setInt(UCHadoopConf.RETRY_MAX_ATTEMPTS_KEY, 5);
+    
+    TemporaryCredentialsApi tempCredApi = mock(TemporaryCredentialsApi.class);
+    TemporaryCredentials succeeded = newTempCred("success", clock.now().toEpochMilli() + 4000L);
+
+    when(tempCredApi.generateTemporaryPathCredentials(any()))
+        .thenThrow(new ApiException(503, "unavailable"))
+        .thenThrow(new ApiException(429, "too many requests"))
+        .thenThrow(
+            new ApiException("error", 500, null, "{\"error_code\":\"TEMPORARILY_UNAVAILABLE\"}"))
+        .thenReturn(succeeded);
+
+    T provider = createTestProvider(conf, tempCredApi);
+
+    assertCred(provider, succeeded);
   }
 
   @Test
