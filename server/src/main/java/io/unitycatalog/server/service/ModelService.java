@@ -1,10 +1,13 @@
 package io.unitycatalog.server.service;
 
-import static io.unitycatalog.server.model.SecurableType.CATALOG;
-import static io.unitycatalog.server.model.SecurableType.METASTORE;
-import static io.unitycatalog.server.model.SecurableType.REGISTERED_MODEL;
-import static io.unitycatalog.server.model.SecurableType.SCHEMA;
-
+import com.linecorp.armeria.common.HttpResponse;
+import com.linecorp.armeria.common.HttpStatus;
+import com.linecorp.armeria.server.annotation.Delete;
+import com.linecorp.armeria.server.annotation.ExceptionHandler;
+import com.linecorp.armeria.server.annotation.Get;
+import com.linecorp.armeria.server.annotation.Param;
+import com.linecorp.armeria.server.annotation.Patch;
+import com.linecorp.armeria.server.annotation.Post;
 import io.unitycatalog.server.auth.UnityCatalogAuthorizer;
 import io.unitycatalog.server.auth.annotation.AuthorizeExpression;
 import io.unitycatalog.server.auth.annotation.AuthorizeKey;
@@ -26,19 +29,18 @@ import io.unitycatalog.server.persist.MetastoreRepository;
 import io.unitycatalog.server.persist.ModelRepository;
 import io.unitycatalog.server.persist.Repositories;
 import io.unitycatalog.server.persist.SchemaRepository;
+
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
-import com.linecorp.armeria.common.HttpResponse;
-import com.linecorp.armeria.common.HttpStatus;
-import com.linecorp.armeria.server.annotation.Delete;
-import com.linecorp.armeria.server.annotation.ExceptionHandler;
-import com.linecorp.armeria.server.annotation.Get;
-import com.linecorp.armeria.server.annotation.Param;
-import com.linecorp.armeria.server.annotation.Patch;
-import com.linecorp.armeria.server.annotation.Post;
+
 import lombok.SneakyThrows;
+
+import static io.unitycatalog.server.model.SecurableType.CATALOG;
+import static io.unitycatalog.server.model.SecurableType.METASTORE;
+import static io.unitycatalog.server.model.SecurableType.REGISTERED_MODEL;
+import static io.unitycatalog.server.model.SecurableType.SCHEMA;
 
 @ExceptionHandler(GlobalExceptionHandler.class)
 public class ModelService extends AuthorizedService {
