@@ -1,6 +1,5 @@
 package io.unitycatalog.spark;
 
-import io.unitycatalog.client.ApiException;
 import io.unitycatalog.spark.utils.Clock;
 
 import java.io.IOException;
