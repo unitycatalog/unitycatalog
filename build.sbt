@@ -622,6 +622,7 @@ lazy val spark = (project in file("connectors/spark"))
 
 lazy val integrationTests = (project in file("integration-tests"))
   .enablePlugins(CheckstylePlugin)
+  .dependsOn(spark)
   .settings(
     name := s"$artifactNamePrefix-integration-tests",
     commonSettings,
@@ -642,7 +643,6 @@ lazy val integrationTests = (project in file("integration-tests"))
       "org.apache.hadoop" % "hadoop-aws" % "3.4.0" % Test,
       "org.apache.hadoop" % "hadoop-azure" % "3.4.0" % Test,
       "com.google.cloud.bigdataoss" % "gcs-connector" % "3.0.2" % Test classifier "shaded",
-      "io.unitycatalog" %% "unitycatalog-spark" % "0.3.0-SNAPSHOT" % Test,
     ),
     dependencyOverrides ++= Seq(
       "com.fasterxml.jackson.core" % "jackson-databind" % "2.15.0",
