@@ -7,17 +7,15 @@ import java.util.List;
 import java.util.Objects;
 import lombok.Getter;
 import lombok.SneakyThrows;
+import org.apache.spark.sql.Row;
 import org.apache.spark.sql.SparkSession;
 import org.junit.jupiter.api.BeforeAll;
 
 public class BaseSparkTest {
   // todo: parameterize such that catalogs can be specified per cloud provider if desired
-  private static final String ServerUrl =
-      System.getenv().getOrDefault("CATALOG_URI", "http://localhost:8080");
-  private static final String AuthToken =
-      System.getenv().getOrDefault("CATALOG_AUTH_TOKEN", "");
-  private static final String CatalogName =
-      System.getenv().getOrDefault("CATALOG_NAME", "unity");
+  private static final String ServerUrl = System.getenv().getOrDefault("CATALOG_URI", "http://localhost:8080");
+  private static final String AuthToken = System.getenv().getOrDefault("CATALOG_AUTH_TOKEN", "");
+  private static final String CatalogName = System.getenv().getOrDefault("CATALOG_NAME", "unity");
   protected static SparkSession spark;
 
   @BeforeAll
@@ -83,6 +81,10 @@ public class BaseSparkTest {
     public boolean isEnabled() {
       return this.baseLocation != null;
     }
+  }
+
+  protected static List<Row> sql(String statement, Object... args) {
+    return spark.sql(String.format(statement, args)).collectAsList();
   }
 
   static List<LocationType> locationTypes() {

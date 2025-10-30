@@ -129,7 +129,6 @@ public class SparkDeltaTableCRUDTest extends BaseSparkTest {
     String table = getTableName(locationType);
     spark.sql(format(
         "UPDATE %s SET as_double = as_int * 1.5 WHERE as_int = 42", table));
-
     assertThat(getData(table))
         .as("Data after UPDATE")
         .isEqualTo(List.of(

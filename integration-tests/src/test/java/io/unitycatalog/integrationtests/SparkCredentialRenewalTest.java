@@ -9,11 +9,8 @@ import org.apache.spark.sql.Row;
 import org.apache.spark.sql.SparkSession;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
-import org.junit.jupiter.api.MethodOrderer;
 import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.TestMethodOrder;
 
-@TestMethodOrder(MethodOrderer.OrderAnnotation.class)
 public class SparkCredentialRenewalTest {
   private static final String ServerUri = System.getenv().getOrDefault("CATALOG_URI", "http://localhost:8080");
   private static final String AuthToken = System.getenv().getOrDefault("CATALOG_AUTH_TOKEN", "");
