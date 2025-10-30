@@ -4,8 +4,10 @@ import static org.assertj.core.api.AssertionsForClassTypes.assertThat;
 
 import io.unitycatalog.spark.UCSingleCatalog;
 import java.util.List;
+import java.util.UUID;
 import org.apache.spark.sql.Row;
 import org.apache.spark.sql.SparkSession;
+import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.MethodOrderer;
 import org.junit.jupiter.api.Test;
@@ -23,6 +25,7 @@ public class SparkCredentialRenewalTest {
   private static final String RowCount = System.getenv().getOrDefault("ROW_COUNT", "10000000");
 
   public static SparkSession spark;
+  public static String fullTable;
 
   @BeforeAll
   public static void beforeAll() {
@@ -30,6 +33,7 @@ public class SparkCredentialRenewalTest {
     spark = SparkSession.builder()
         .appName("test-credential-renewal")
         .master("local[1]") // Make it single-threaded explicitly.
+        .config("spark.hadoop.fs.s3.impl", "org.apache.hadoop.fs.s3a.S3AFileSystem")
         .config("spark.sql.extensions", "io.delta.sql.DeltaSparkSessionExtension")
         .config(
             "spark.sql.catalog.spark_catalog", "org.apache.spark.sql.delta.catalog.DeltaCatalog")
@@ -40,14 +44,20 @@ public class SparkCredentialRenewalTest {
         .config(testCatalogKey + ".warehouse", CatalogName)
         .config(testCatalogKey + ".renewCredential.enabled", "true")
         .getOrCreate();
+
+    fullTable = String.format("%s.%s.%s", CatalogName, SchemaName, TableName);
+    sql("CREATE TABLE %s (id INT, val STRING) USING delta LOCATION '%s/%s'",
+        fullTable, S3BaseLocation, UUID.randomUUID());
+  }
+
+  @AfterAll
+  public static void afterAll() {
+    sql("DROP TABLE %s IF EXISTS", TableName);
+    spark.stop();
   }
 
   @Test
   public void test() {
-    String fullTable = String.format("%s.%s.%s", CatalogName, SchemaName, TableName);
-    sql("CREATE TABLE %s (id INT, val STRING) USING delta LOCATION '%s/renewal'",
-        fullTable, S3BaseLocation);
-
     sql("INSERT INTO %s SELECT id, CONCAT('val_', id) AS val FROM range(0, %s)",
         fullTable, RowCount);
 
@@ -56,7 +66,7 @@ public class SparkCredentialRenewalTest {
     assertThat(results.get(0).getInt(0)).isEqualTo(RowCount);
   }
 
-  private List<Row> sql(String statement, Object... args) {
+  private static List<Row> sql(String statement, Object... args) {
     return spark.sql(String.format(statement, args)).collectAsList();
   }
 }
