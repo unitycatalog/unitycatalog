@@ -7,7 +7,6 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import java.util.List;
 import java.util.UUID;
 import lombok.SneakyThrows;
-import org.apache.commons.lang3.RandomStringUtils;
 import org.apache.spark.SparkUnsupportedOperationException;
 import org.apache.spark.sql.AnalysisException;
 import org.junit.jupiter.api.AfterAll;
@@ -22,7 +21,7 @@ import org.junit.jupiter.params.provider.MethodSource;
 public class SparkParquetTableCRUDTest extends BaseSparkTest {
   private static final String BASE_TABLE_NAME = "numbers";
   private final String RUN_ID = UUID.randomUUID().toString();
-  private static final String SCHEMA = RandomStringUtils.randomAlphabetic(8);
+  private static final String SCHEMA = TestUtils.randomName();
 
   static String getTableName(LocationType locationType) {
     return format("%s_%s", BASE_TABLE_NAME, locationType.name());
