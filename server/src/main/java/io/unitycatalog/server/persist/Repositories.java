@@ -32,7 +32,7 @@ public class Repositories {
 
     this.catalogRepository = new CatalogRepository(this, sessionFactory);
     this.schemaRepository = new SchemaRepository(this, sessionFactory);
-    this.tableRepository = new TableRepository(this, sessionFactory, serverProperties);
+    this.tableRepository = new TableRepository(this, sessionFactory);
     this.stagingTableRepository =
         new StagingTableRepository(this, sessionFactory, serverProperties);
     this.volumeRepository = new VolumeRepository(this, sessionFactory);

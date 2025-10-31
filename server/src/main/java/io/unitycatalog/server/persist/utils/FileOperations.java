@@ -241,22 +241,23 @@ public class FileOperations {
    * </pre>
    */
   public static String toStandardizedURIString(String inputPath) {
+    // Check if the path is already a URI with a valid scheme
+    URI uri;
     try {
-      // Check if the path is already a URI with a valid scheme
-      URI uri = new URI(inputPath);
-      // If it's a file URI, standardize it
-      if (uri.getScheme() != null) {
-        if (uri.getScheme().equals(Constants.URI_SCHEME_FILE)) {
-          return adjustLocalFileURI(uri).toString();
-        } else if (Constants.SUPPORTED_CLOUD_SCHEMES.contains(uri.getScheme())) {
-          return uri.toString();
-        } else {
-          throw new BaseException(
-              ErrorCode.INVALID_ARGUMENT, "Unsupported URI scheme: " + uri.getScheme());
-        }
-      }
+      uri = new URI(inputPath);
     } catch (URISyntaxException e) {
-      // Not a valid URI, treat it as a file path
+      throw new BaseException(ErrorCode.INVALID_ARGUMENT, "Unsupported path: " + inputPath);
+    }
+    // If it's a file URI, standardize it
+    if (uri.getScheme() != null) {
+      if (uri.getScheme().equals(Constants.URI_SCHEME_FILE)) {
+        return adjustLocalFileURI(uri).toString();
+      } else if (Constants.SUPPORTED_CLOUD_SCHEMES.contains(uri.getScheme())) {
+        return uri.toString();
+      } else {
+        throw new BaseException(
+            ErrorCode.INVALID_ARGUMENT, "Unsupported URI scheme: " + uri.getScheme());
+      }
     }
     String localUri = Paths.get(inputPath).toUri().toString();
     if (!inputPath.endsWith("/") && localUri.endsWith("/")) {
