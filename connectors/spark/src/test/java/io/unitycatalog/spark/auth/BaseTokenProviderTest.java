@@ -5,7 +5,6 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
-import io.unitycatalog.client.ApiException;
 import io.unitycatalog.client.api.TemporaryCredentialsApi;
 import io.unitycatalog.client.model.PathOperation;
 import io.unitycatalog.client.model.TableOperation;
@@ -203,10 +202,10 @@ public abstract class BaseTokenProviderTest<T extends GenericCredentialProvider>
     conf.set(UCHadoopConf.UC_TEST_CLOCK_NAME, clockName);
     conf.setBoolean(UCHadoopConf.RETRY_ENABLED_KEY, true);
     conf.setInt(UCHadoopConf.RETRY_MAX_ATTEMPTS_KEY, 5);
-    conf.setDouble(UCHadoopConf.RETRY_JITTER_FACTOR_KEY, 0.0); // No jitter for predictable test timing
+    conf.setDouble(UCHadoopConf.RETRY_JITTER_FACTOR_KEY, 0.0);
 
     TemporaryCredentials succeeded = newTempCred("success", clock.now().toEpochMilli() + 4000L);
-    
+
     TemporaryCredentialsApi tempCredApi = createRetryingCredentialsApi(conf, succeeded);
 
     T provider = createTestProvider(conf, tempCredApi);
@@ -220,10 +219,10 @@ public abstract class BaseTokenProviderTest<T extends GenericCredentialProvider>
     conf.set(UCHadoopConf.UC_TEST_CLOCK_NAME, clockName);
     conf.setBoolean(UCHadoopConf.RETRY_ENABLED_KEY, true);
     conf.setInt(UCHadoopConf.RETRY_MAX_ATTEMPTS_KEY, 5);
-    conf.setDouble(UCHadoopConf.RETRY_JITTER_FACTOR_KEY, 0.0); // No jitter for predictable test timing
+    conf.setDouble(UCHadoopConf.RETRY_JITTER_FACTOR_KEY, 0.0);
 
     TemporaryCredentials succeeded = newTempCred("success", clock.now().toEpochMilli() + 4000L);
-    
+
     TemporaryCredentialsApi tempCredApi = createRetryingCredentialsApi(conf, succeeded);
 
     T provider = createTestProvider(conf, tempCredApi);
@@ -391,27 +390,27 @@ public abstract class BaseTokenProviderTest<T extends GenericCredentialProvider>
   @SuppressWarnings("unchecked")
   private TemporaryCredentialsApi createRetryingCredentialsApi(
       Configuration conf, TemporaryCredentials successCred) throws Exception {
-    
+
     // Serialize the success credential to JSON
     String successJson = new io.unitycatalog.client.ApiClient()
         .getObjectMapper().writeValueAsString(successCred);
 
     // Mock the delegate HttpClient to return error responses then success
     java.net.http.HttpClient mockDelegate = mock(java.net.http.HttpClient.class);
-    
+
     // Create mock responses
-    java.net.http.HttpResponse<java.io.InputStream> response503 = 
+    java.net.http.HttpResponse<java.io.InputStream> response503 =
         createMockHttpResponse(503, "{\"error_code\":\"UNAVAILABLE\"}");
-    java.net.http.HttpResponse<java.io.InputStream> response429 = 
+    java.net.http.HttpResponse<java.io.InputStream> response429 =
         createMockHttpResponse(429, "{\"error_code\":\"RESOURCE_EXHAUSTED\"}");
-    java.net.http.HttpResponse<java.io.InputStream> response500 = 
+    java.net.http.HttpResponse<java.io.InputStream> response500 =
         createMockHttpResponse(500, "{\"error_code\":\"TEMPORARILY_UNAVAILABLE\"}");
-    java.net.http.HttpResponse<java.io.InputStream> response200 = 
+    java.net.http.HttpResponse<java.io.InputStream> response200 =
         createMockHttpResponse(200, successJson);
 
     // Configure mock to return errors then success
     when(mockDelegate.<java.io.InputStream>send(
-        any(java.net.http.HttpRequest.class), 
+        any(java.net.http.HttpRequest.class),
         any(java.net.http.HttpResponse.BodyHandler.class)))
         .thenReturn(response503)
         .thenReturn(response429)
@@ -430,7 +429,7 @@ public abstract class BaseTokenProviderTest<T extends GenericCredentialProvider>
         java.util.logging.Logger.getLogger("RetryTest"));
 
     // Create ApiClient that uses the retrying client
-    io.unitycatalog.client.ApiClient apiClient = 
+    io.unitycatalog.client.ApiClient apiClient =
         new io.unitycatalog.client.ApiClient(
             java.net.http.HttpClient.newBuilder(),
             new io.unitycatalog.client.ApiClient().getObjectMapper(),
@@ -450,15 +449,15 @@ public abstract class BaseTokenProviderTest<T extends GenericCredentialProvider>
   @SuppressWarnings("unchecked")
   private java.net.http.HttpResponse<java.io.InputStream> createMockHttpResponse(
       int statusCode, String body) {
-    
-    java.net.http.HttpResponse<java.io.InputStream> response = 
+
+    java.net.http.HttpResponse<java.io.InputStream> response =
         mock(java.net.http.HttpResponse.class);
-    
+
     when(response.statusCode()).thenReturn(statusCode);
     when(response.body()).thenReturn(new java.io.ByteArrayInputStream(body.getBytes()));
     when(response.headers()).thenReturn(
         java.net.http.HttpHeaders.of(new java.util.HashMap<>(), (a, b) -> true));
-    
+
     return response;
   }
 }
