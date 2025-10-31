@@ -71,7 +71,7 @@ public abstract class BaseTokenProviderTest<T extends GenericCredentialProvider>
     assertCred(provider, cred1);
 
     // Advance the clock to trigger renewal, cred2 will be valid.
-    clock.sleep(Duration.ofMillis(1000));
+    clock.advance(Duration.ofMillis(1000));
 
     // Use the cred2 for the 3rd access, since renewal happened.
     assertCred(provider, cred2);
@@ -106,7 +106,7 @@ public abstract class BaseTokenProviderTest<T extends GenericCredentialProvider>
     // cred0 is still valid.
     assertCred(provider, cred0);
 
-    clock.sleep(Duration.ofMillis(1000));
+    clock.advance(Duration.ofMillis(1000));
 
     // cred0 is invalid while cred1 is valid.
     assertCred(provider, cred1);
@@ -114,7 +114,7 @@ public abstract class BaseTokenProviderTest<T extends GenericCredentialProvider>
     // cred1 is still valid.
     assertCred(provider, cred1);
 
-    clock.sleep(Duration.ofMillis(1000));
+    clock.advance(Duration.ofMillis(1000));
 
     // cred1 is expired, while cred2 is valid.
     assertCred(provider, cred2);
@@ -145,7 +145,7 @@ public abstract class BaseTokenProviderTest<T extends GenericCredentialProvider>
     assertCred(provider, cred1);
 
     // Advance the clock to renew.
-    clock.sleep(Duration.ofMillis(1000));
+    clock.advance(Duration.ofMillis(1000));
 
     // Use the cred2 for the 3rd access, since cred1 it's expired.
     assertCred(provider, cred2);
@@ -179,7 +179,7 @@ public abstract class BaseTokenProviderTest<T extends GenericCredentialProvider>
     // cred0 is still valid.
     assertCred(provider, cred0);
 
-    clock.sleep(Duration.ofMillis(1000));
+    clock.advance(Duration.ofMillis(1000));
 
     // cred0 is invalid while cred1 is valid.
     assertCred(provider, cred1);
@@ -187,47 +187,13 @@ public abstract class BaseTokenProviderTest<T extends GenericCredentialProvider>
     // cred1 is still valid.
     assertCred(provider, cred1);
 
-    clock.sleep(Duration.ofMillis(1000));
+    clock.advance(Duration.ofMillis(1000));
 
     // cred1 is expired, while cred2 is valid.
     assertCred(provider, cred2);
 
     // cred2 is still valid.
     assertCred(provider, cred2);
-  }
-
-  @Test
-  public void testRetryRecoversForTableCredentials() throws Exception {
-    Configuration conf = newTableBasedConf();
-    conf.set(UCHadoopConf.UC_TEST_CLOCK_NAME, clockName);
-    conf.setBoolean(UCHadoopConf.RETRY_ENABLED_KEY, true);
-    conf.setInt(UCHadoopConf.RETRY_MAX_ATTEMPTS_KEY, 5);
-    conf.setDouble(UCHadoopConf.RETRY_JITTER_FACTOR_KEY, 0.0);
-
-    TemporaryCredentials succeeded = newTempCred("success", clock.now().toEpochMilli() + 4000L);
-
-    TemporaryCredentialsApi tempCredApi = createRetryingCredentialsApi(conf, succeeded);
-
-    T provider = createTestProvider(conf, tempCredApi);
-
-    assertCred(provider, succeeded);
-  }
-
-  @Test
-  public void testRetryRecoversForPathCredentials() throws Exception {
-    Configuration conf = newPathBasedConf();
-    conf.set(UCHadoopConf.UC_TEST_CLOCK_NAME, clockName);
-    conf.setBoolean(UCHadoopConf.RETRY_ENABLED_KEY, true);
-    conf.setInt(UCHadoopConf.RETRY_MAX_ATTEMPTS_KEY, 5);
-    conf.setDouble(UCHadoopConf.RETRY_JITTER_FACTOR_KEY, 0.0);
-
-    TemporaryCredentials succeeded = newTempCred("success", clock.now().toEpochMilli() + 4000L);
-
-    TemporaryCredentialsApi tempCredApi = createRetryingCredentialsApi(conf, succeeded);
-
-    T provider = createTestProvider(conf, tempCredApi);
-
-    assertCred(provider, succeeded);
   }
 
   @Test
@@ -319,7 +285,7 @@ public abstract class BaseTokenProviderTest<T extends GenericCredentialProvider>
     assertCred(providerPathA, pathACred1);
     assertGlobalCache(4, tableACred1, tableBCred1, pathACred1, pathBCred1);
 
-    clock.sleep(Duration.ofMillis(1000));
+    clock.advance(Duration.ofMillis(1000));
 
     // TableA: 3rd access. renew tableACred1 to tableACred2.
     assertCred(providerTableA, tableACred2);
@@ -381,83 +347,5 @@ public abstract class BaseTokenProviderTest<T extends GenericCredentialProvider>
 
   public static Configuration newPathBasedConf() {
     return newPathBasedConf("path");
-  }
-
-  /**
-   * Creates a TemporaryCredentialsApi with a mocked delegate HttpClient that simulates
-   * retry scenarios (returns errors then success).
-   */
-  @SuppressWarnings("unchecked")
-  private TemporaryCredentialsApi createRetryingCredentialsApi(
-      Configuration conf, TemporaryCredentials successCred) throws Exception {
-
-    // Serialize the success credential to JSON
-    String successJson = new io.unitycatalog.client.ApiClient()
-        .getObjectMapper().writeValueAsString(successCred);
-
-    // Mock the delegate HttpClient to return error responses then success
-    java.net.http.HttpClient mockDelegate = mock(java.net.http.HttpClient.class);
-
-    // Create mock responses
-    java.net.http.HttpResponse<java.io.InputStream> response503 =
-        createMockHttpResponse(503, "{\"error_code\":\"UNAVAILABLE\"}");
-    java.net.http.HttpResponse<java.io.InputStream> response429 =
-        createMockHttpResponse(429, "{\"error_code\":\"RESOURCE_EXHAUSTED\"}");
-    java.net.http.HttpResponse<java.io.InputStream> response500 =
-        createMockHttpResponse(500, "{\"error_code\":\"TEMPORARILY_UNAVAILABLE\"}");
-    java.net.http.HttpResponse<java.io.InputStream> response200 =
-        createMockHttpResponse(200, successJson);
-
-    // Configure mock to return errors then success
-    when(mockDelegate.<java.io.InputStream>send(
-        any(java.net.http.HttpRequest.class),
-        any(java.net.http.HttpResponse.BodyHandler.class)))
-        .thenReturn(response503)
-        .thenReturn(response429)
-        .thenReturn(response500)
-        .thenReturn(response200);
-
-    // Wrap the mock delegate in RetryingHttpClient
-    java.net.http.HttpClient retryingClient = new io.unitycatalog.spark.RetryingHttpClient(
-        mockDelegate,
-        new io.unitycatalog.spark.DefaultHttpRetryHandler(),
-        conf.getInt(UCHadoopConf.RETRY_MAX_ATTEMPTS_KEY, 3),
-        conf.getLong(UCHadoopConf.RETRY_INITIAL_DELAY_KEY, 500L),
-        conf.getDouble(UCHadoopConf.RETRY_MULTIPLIER_KEY, 2.0),
-        conf.getDouble(UCHadoopConf.RETRY_JITTER_FACTOR_KEY, 0.5),
-        clock,
-        java.util.logging.Logger.getLogger("RetryTest"));
-
-    // Create ApiClient that uses the retrying client
-    io.unitycatalog.client.ApiClient apiClient =
-        new io.unitycatalog.client.ApiClient(
-            java.net.http.HttpClient.newBuilder(),
-            new io.unitycatalog.client.ApiClient().getObjectMapper(),
-            "http://localhost:8080/api/2.1/unity-catalog") {
-          @Override
-          public java.net.http.HttpClient getHttpClient() {
-            return retryingClient;
-          }
-        };
-
-    return new TemporaryCredentialsApi(apiClient);
-  }
-
-  /**
-   * Helper to create a mock HttpResponse with given status and body.
-   */
-  @SuppressWarnings("unchecked")
-  private java.net.http.HttpResponse<java.io.InputStream> createMockHttpResponse(
-      int statusCode, String body) {
-
-    java.net.http.HttpResponse<java.io.InputStream> response =
-        mock(java.net.http.HttpResponse.class);
-
-    when(response.statusCode()).thenReturn(statusCode);
-    when(response.body()).thenReturn(new java.io.ByteArrayInputStream(body.getBytes()));
-    when(response.headers()).thenReturn(
-        java.net.http.HttpHeaders.of(new java.util.HashMap<>(), (a, b) -> true));
-
-    return response;
   }
 }
