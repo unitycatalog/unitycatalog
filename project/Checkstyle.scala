@@ -25,8 +25,8 @@ object Checkstyle {
    ****************************
    */
 
-  private lazy val compileJavastyle = taskKey[Unit]("compileJavastyle")
-  private lazy val testJavastyle = taskKey[Unit]("testJavastyle")
+  lazy val compileJavastyle = taskKey[Unit]("compileJavastyle")
+  lazy val testJavastyle = taskKey[Unit]("testJavastyle")
 
   def javaCheckstyleSettings(checkstyleFile: String): Def.SettingsDefinition = {
     // Can be run explicitly via: build/sbt $module/checkstyle
@@ -50,8 +50,6 @@ object Checkstyle {
         (Test / checkstyle).value
         javaCheckstyle(streams.value.log, (Compile / target).value / "checkstyle-test-report.xml")
       },
-      (Test / compile) := ((Test / compile) dependsOn testJavastyle).value,
-      (Test / test) := ((Test / test) dependsOn testJavastyle).value
     )
   }
 

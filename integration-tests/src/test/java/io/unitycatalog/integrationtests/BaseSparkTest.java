@@ -1,15 +1,14 @@
 package io.unitycatalog.integrationtests;
 
-import lombok.Getter;
-import lombok.SneakyThrows;
-import org.apache.spark.sql.SparkSession;
-import org.junit.jupiter.api.BeforeAll;
-
 import java.io.IOException;
 import java.nio.file.Files;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Objects;
+import lombok.Getter;
+import lombok.SneakyThrows;
+import org.apache.spark.sql.SparkSession;
+import org.junit.jupiter.api.BeforeAll;
 
 public class BaseSparkTest {
   // todo: parameterize such that catalogs can be specified per cloud provider if desired

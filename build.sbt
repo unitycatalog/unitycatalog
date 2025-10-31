@@ -631,6 +631,8 @@ lazy val integrationTests = (project in file("integration-tests"))
     ),
     javafmtCheckSettings,
     javaCheckstyleSettings("dev/checkstyle-config.xml"),
+    // Since integrationTests don't have main sources, so checking the test code when compiling.
+    (Compile / compile) := ((Test / compile) dependsOn testJavastyle).value,
     skipReleaseSettings,
     libraryDependencies ++= Seq(
       "org.junit.jupiter" % "junit-jupiter" % "5.10.3" % Test,

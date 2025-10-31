@@ -25,7 +25,11 @@ jobs:
         java-version: '17'
         distribution: 'temurin'
 
+    - name: Compile integration tests to verify compilation and checkstyle issues.
+      run: build/sbt integrationTests/compile
+
     - name: Run tests with coverage
       run: build/sbt -J-Xmx2G +jacoco
+
     - name: Run license check
       run: build/sbt licenseCheck
