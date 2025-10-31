@@ -3,7 +3,6 @@ package io.unitycatalog.spark;
 import io.unitycatalog.client.ApiClient;
 import io.unitycatalog.spark.utils.Clock;
 import org.apache.hadoop.conf.Configuration;
-import org.sparkproject.guava.base.Preconditions;
 
 import java.net.URI;
 import java.net.http.HttpClient;
@@ -28,53 +27,12 @@ public class RetryingApiClient extends ApiClient {
     this.conf = conf;
     this.clock = clock;
 
-    validateConfiguration();
-
     if (retryHandler == null) {
-      // Use default handler with configuration
+      // Use default handler with configuration (validation happens in constructor)
       this.retryHandler = new DefaultHttpRetryHandler(conf, clock);
     } else {
       this.retryHandler = retryHandler;
     }
-  }
-
-  private void validateConfiguration() {
-    int maxAttempts = conf.getInt(
-        UCHadoopConf.RETRY_MAX_ATTEMPTS_KEY,
-        UCHadoopConf.RETRY_MAX_ATTEMPTS_DEFAULT);
-    long initialDelayMs = conf.getLong(
-        UCHadoopConf.RETRY_INITIAL_DELAY_KEY,
-        UCHadoopConf.RETRY_INITIAL_DELAY_DEFAULT);
-    double multiplier = conf.getDouble(
-        UCHadoopConf.RETRY_MULTIPLIER_KEY,
-        UCHadoopConf.RETRY_MULTIPLIER_DEFAULT);
-    double jitterFactor = conf.getDouble(
-        UCHadoopConf.RETRY_JITTER_FACTOR_KEY,
-        UCHadoopConf.RETRY_JITTER_FACTOR_DEFAULT);
-
-    Preconditions.checkArgument(
-        maxAttempts >= 1,
-        "Retry max attempts must be at least 1, got: %d (%s)",
-        maxAttempts,
-        UCHadoopConf.RETRY_MAX_ATTEMPTS_KEY);
-
-    Preconditions.checkArgument(
-        initialDelayMs > 0,
-        "Retry initial delay must be positive, got: %d ms (%s)",
-        initialDelayMs,
-        UCHadoopConf.RETRY_INITIAL_DELAY_KEY);
-
-    Preconditions.checkArgument(
-        multiplier > 0,
-        "Retry multiplier must be positive, got: %.2f (%s)",
-        multiplier,
-        UCHadoopConf.RETRY_MULTIPLIER_KEY);
-
-    Preconditions.checkArgument(
-        jitterFactor >= 0 && jitterFactor <= 1,
-        "Retry jitter factor must be between 0 and 1, got: %.2f (%s)",
-        jitterFactor,
-        UCHadoopConf.RETRY_JITTER_FACTOR_KEY);
   }
 
   /**

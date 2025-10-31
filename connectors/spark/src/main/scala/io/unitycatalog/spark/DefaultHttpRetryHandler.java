@@ -8,7 +8,6 @@ import org.sparkproject.guava.base.Preconditions;
 import org.sparkproject.guava.base.Throwables;
 
 import java.io.IOException;
-import java.io.InputStream;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
@@ -143,30 +142,11 @@ public class DefaultHttpRetryHandler implements HttpRetryHandler {
     }
 
     if (statusCode >= 500 && statusCode < 600) {
-      String responseBody = readResponseBodyAsString(response);
-      String errorCode = extractErrorCode(responseBody);
+      String errorCode = extractErrorCode(response);
       return errorCode != null && RECOVERABLE_ERROR_CODES.contains(errorCode);
     }
 
     return false;
-  }
-
-  private String readResponseBodyAsString(HttpResponse<?> response) {
-    Object body = response.body();
-    if (body == null) {
-      return "";
-    }
-    if (body instanceof String) {
-      return (String) body;
-    }
-    if (body instanceof InputStream) {
-      try (InputStream is = (InputStream) body) {
-        return new String(is.readAllBytes());
-      } catch (IOException e) {
-        return "";
-      }
-    }
-    return body.toString();
   }
 
   private boolean isRecoverableException(Throwable e) {
@@ -176,12 +156,14 @@ public class DefaultHttpRetryHandler implements HttpRetryHandler {
             .anyMatch(exceptionClass -> exceptionClass.isInstance(cause)));
   }
 
-  private String extractErrorCode(String body) {
-    if (body == null || body.isEmpty()) {
+  private String extractErrorCode(HttpResponse<?> response) {
+    Object body = response.body();
+    if (body == null || !(body instanceof String) || ((String) body).isEmpty()) {
       return null;
     }
+    
     try {
-      JsonNode node = OBJECT_MAPPER.readTree(body);
+      JsonNode node = OBJECT_MAPPER.readTree((String) body);
       JsonNode codeNode = node.get("error_code");
       return codeNode != null ? codeNode.asText() : null;
     } catch (Exception ignore) {
