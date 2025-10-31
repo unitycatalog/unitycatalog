@@ -12,7 +12,6 @@ import org.apache.spark.sql.SparkSession;
 import org.junit.jupiter.api.BeforeAll;
 
 public class BaseSparkTest {
-  // todo: parameterize such that catalogs can be specified per cloud provider if desired
   protected static SparkSession spark;
 
   @BeforeAll
