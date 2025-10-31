@@ -7,15 +7,10 @@ import org.sparkproject.guava.base.Preconditions;
 
 import java.net.URI;
 import java.net.http.HttpClient;
-import java.util.logging.Logger;
 
 public class RetryingApiClient extends ApiClient {
-  private static final Logger LOGGER = Logger.getLogger(RetryingApiClient.class.getName());
 
-  private final int maxAttempts;
-  private final long initialDelayMs;
-  private final double multiplier;
-  private final double jitterFactor;
+  private final Configuration conf;
   private final Clock clock;
   private HttpRetryHandler retryHandler;
 
@@ -30,53 +25,55 @@ public class RetryingApiClient extends ApiClient {
   public RetryingApiClient(Configuration conf, Clock clock, HttpRetryHandler retryHandler) {
     super();
 
+    this.conf = conf;
     this.clock = clock;
-    this.maxAttempts = conf.getInt(
-        UCHadoopConf.RETRY_MAX_ATTEMPTS_KEY,
-        UCHadoopConf.RETRY_MAX_ATTEMPTS_DEFAULT);
-    this.initialDelayMs = conf.getLong(
-        UCHadoopConf.RETRY_INITIAL_DELAY_KEY,
-        UCHadoopConf.RETRY_INITIAL_DELAY_DEFAULT);
-    this.multiplier = conf.getDouble(
-        UCHadoopConf.RETRY_MULTIPLIER_KEY,
-        UCHadoopConf.RETRY_MULTIPLIER_DEFAULT);
-    this.jitterFactor = conf.getDouble(
-        UCHadoopConf.RETRY_JITTER_FACTOR_KEY,
-        UCHadoopConf.RETRY_JITTER_FACTOR_DEFAULT);
 
     validateConfiguration();
 
     if (retryHandler == null) {
-      // Use default handler
-      this.retryHandler = new DefaultHttpRetryHandler();
+      // Use default handler with configuration
+      this.retryHandler = new DefaultHttpRetryHandler(conf, clock);
     } else {
       this.retryHandler = retryHandler;
     }
   }
 
   private void validateConfiguration() {
+    int maxAttempts = conf.getInt(
+        UCHadoopConf.RETRY_MAX_ATTEMPTS_KEY,
+        UCHadoopConf.RETRY_MAX_ATTEMPTS_DEFAULT);
+    long initialDelayMs = conf.getLong(
+        UCHadoopConf.RETRY_INITIAL_DELAY_KEY,
+        UCHadoopConf.RETRY_INITIAL_DELAY_DEFAULT);
+    double multiplier = conf.getDouble(
+        UCHadoopConf.RETRY_MULTIPLIER_KEY,
+        UCHadoopConf.RETRY_MULTIPLIER_DEFAULT);
+    double jitterFactor = conf.getDouble(
+        UCHadoopConf.RETRY_JITTER_FACTOR_KEY,
+        UCHadoopConf.RETRY_JITTER_FACTOR_DEFAULT);
+
     Preconditions.checkArgument(
-        this.maxAttempts >= 1,
+        maxAttempts >= 1,
         "Retry max attempts must be at least 1, got: %d (%s)",
-        this.maxAttempts,
+        maxAttempts,
         UCHadoopConf.RETRY_MAX_ATTEMPTS_KEY);
 
     Preconditions.checkArgument(
-        this.initialDelayMs > 0,
+        initialDelayMs > 0,
         "Retry initial delay must be positive, got: %d ms (%s)",
-        this.initialDelayMs,
+        initialDelayMs,
         UCHadoopConf.RETRY_INITIAL_DELAY_KEY);
 
     Preconditions.checkArgument(
-        this.multiplier > 0,
+        multiplier > 0,
         "Retry multiplier must be positive, got: %.2f (%s)",
-        this.multiplier,
+        multiplier,
         UCHadoopConf.RETRY_MULTIPLIER_KEY);
 
     Preconditions.checkArgument(
-        this.jitterFactor >= 0 && this.jitterFactor <= 1,
+        jitterFactor >= 0 && jitterFactor <= 1,
         "Retry jitter factor must be between 0 and 1, got: %.2f (%s)",
-        this.jitterFactor,
+        jitterFactor,
         UCHadoopConf.RETRY_JITTER_FACTOR_KEY);
   }
 
@@ -94,15 +91,7 @@ public class RetryingApiClient extends ApiClient {
   @Override
   public HttpClient getHttpClient() {
     HttpClient baseClient = super.getHttpClient();
-    return new RetryingHttpClient(
-        baseClient,
-        retryHandler,
-        maxAttempts,
-        initialDelayMs,
-        multiplier,
-        jitterFactor,
-        clock,
-        LOGGER);
+    return new RetryingHttpClient(baseClient, retryHandler);
   }
 
   public static RetryingApiClient create(Configuration conf, URI uri, String token) {

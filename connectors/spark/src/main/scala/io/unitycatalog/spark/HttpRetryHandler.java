@@ -1,5 +1,7 @@
 package io.unitycatalog.spark;
 
+import java.io.IOException;
+import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 
@@ -10,26 +12,10 @@ import java.net.http.HttpResponse;
  * exceptions and HTTP responses. Implementations should be stateless and thread-safe.
  */
 public interface HttpRetryHandler {
-  /**
-   * Determines if a request should be retried based on an exception that occurred.
-   *
-   * @param request The HTTP request that failed
-   * @param exception The exception that was thrown
-   * @return true if the request should be retried, false otherwise
-   */
-  boolean shouldRetryOnException(HttpRequest request, Exception exception);
 
-  /**
-   * Determines if a request should be retried based on the HTTP response received.
-   *
-   * @param request The HTTP request that was sent
-   * @param response The HTTP response received
-   * @param responseBody The response body as a string (may be null if body couldn't be read)
-   * @return true if the request should be retried, false otherwise
-   */
-  boolean shouldRetryOnResponse(
+  <T> HttpResponse<T> call(
+      HttpClient delegate,
       HttpRequest request,
-      HttpResponse<?> response,
-      String responseBody);
+      HttpResponse.BodyHandler<T> responseBodyHandler) throws IOException, InterruptedException;
 }
 
