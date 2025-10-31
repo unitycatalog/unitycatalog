@@ -629,6 +629,7 @@ lazy val integrationTests = (project in file("integration-tests"))
     javaOptions ++= Seq(
       "--add-exports=java.base/sun.nio.ch=ALL-UNNAMED",
     ),
+    javafmtCheckSettings,
     javaCheckstyleSettings("dev/checkstyle-config.xml"),
     skipReleaseSettings,
     libraryDependencies ++= Seq(
