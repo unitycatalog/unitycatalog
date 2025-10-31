@@ -161,7 +161,7 @@ public class DefaultHttpRetryHandler implements HttpRetryHandler {
     if (body == null || !(body instanceof String) || ((String) body).isEmpty()) {
       return null;
     }
-    
+
     try {
       JsonNode node = OBJECT_MAPPER.readTree((String) body);
       JsonNode codeNode = node.get("error_code");
