@@ -26,17 +26,17 @@ jobs:
         with:
           # Use custom token for backport operations
           github_token: ${{ secrets.BACKPORT_ACTION_TOKEN }}
-          
+
           # Match labels like "backport branch-0.3"
           # The branch name is extracted from the capture group
           label_pattern: '^backport ([^ ]+)$'
-          
+
           # Copy the reviewers from the original PR
           copy_requested_reviewers: true
-          
+
           # Customize the title of the backport PR
           pull_title: '[Backport ${target_branch}] ${pull_title}'
-          
+
           # Customize the description
           pull_description: |
             Backport of #${pull_number} to `${target_branch}`.
@@ -44,7 +44,7 @@ jobs:
             ---
 
             ${pull_description}
-          
+
           add_author_as_assignee: true
           experimental: >
             {
