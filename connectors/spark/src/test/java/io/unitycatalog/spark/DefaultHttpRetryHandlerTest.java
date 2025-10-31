@@ -37,21 +37,18 @@ public class DefaultHttpRetryHandlerTest {
   @Test
   @SuppressWarnings("unchecked")
   public void testRetrySucceedsAfterTwoFailures() throws IOException, InterruptedException {
-    // Configure retry settings
     Configuration conf = new Configuration();
     conf.setInt(UCHadoopConf.RETRY_MAX_ATTEMPTS_KEY, 5);
     conf.setLong(UCHadoopConf.RETRY_INITIAL_DELAY_KEY, 100L);
     conf.setDouble(UCHadoopConf.RETRY_MULTIPLIER_KEY, 2.0);
     conf.setDouble(UCHadoopConf.RETRY_JITTER_FACTOR_KEY, 0.0); // Disable jitter
 
-    // Create mock HTTP components
     HttpClient mockClient = mock(HttpClient.class);
     HttpRequest mockRequest = HttpRequest.newBuilder()
         .uri(URI.create("http://localhost:8080/api/test"))
         .build();
     HttpResponse.BodyHandler<String> bodyHandler = HttpResponse.BodyHandlers.ofString();
 
-    // Create mock responses
     HttpResponse<String> response503 = createMockResponse(503, "Service Unavailable");
     HttpResponse<String> response429 = createMockResponse(429, "Too Many Requests");
     HttpResponse<String> response200 = createMockResponse(200, "Success");
@@ -63,16 +60,13 @@ public class DefaultHttpRetryHandlerTest {
         .thenReturn(response429)
         .thenReturn(response200);
 
-    // Create handler and execute
     Instant start = clock.now();
     DefaultHttpRetryHandler handler = new DefaultHttpRetryHandler(conf, clock);
     HttpResponse<String> result = handler.call(mockClient, mockRequest, bodyHandler);
 
-    // Verify the request was attempted 3 times
     verify(mockClient, times(3))
         .send(any(HttpRequest.class), ArgumentMatchers.<HttpResponse.BodyHandler<String>>any());
 
-    // Verify we got the successful response
     assertThat(result.statusCode()).isEqualTo(200);
     assertThat(result.body()).isEqualTo("Success");
 
