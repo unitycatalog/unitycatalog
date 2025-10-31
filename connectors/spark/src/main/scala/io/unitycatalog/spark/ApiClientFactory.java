@@ -45,8 +45,7 @@ public class ApiClientFactory {
 
       client.setHost(url.getHost())
           .setScheme(url.getScheme())
-          .setPort(url.getPort())
-          .setBasePath(url.getPath());
+          .setPort(url.getPort());
 
       if (token != null && !token.isEmpty()) {
         client.setRequestInterceptor(
