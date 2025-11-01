@@ -6,11 +6,15 @@ import io.unitycatalog.server.model.CreateStagingTable;
 import io.unitycatalog.server.model.StagingTableInfo;
 import io.unitycatalog.server.persist.dao.StagingTableDAO;
 import io.unitycatalog.server.persist.dao.TableInfoDAO;
+import io.unitycatalog.server.persist.utils.RepositoryUtils;
 import io.unitycatalog.server.persist.utils.TransactionManager;
 import io.unitycatalog.server.utils.IdentityUtils;
 import io.unitycatalog.server.utils.ServerProperties;
 import io.unitycatalog.server.utils.ValidationUtils;
+import java.util.Date;
+import java.util.Objects;
 import java.util.UUID;
+import org.apache.commons.lang3.tuple.Pair;
 import org.hibernate.Session;
 import org.hibernate.SessionFactory;
 import org.hibernate.query.Query;
@@ -28,6 +32,33 @@ public class StagingTableRepository {
     this.repositories = repositories;
     this.sessionFactory = sessionFactory;
     this.serverProperties = serverProperties;
+  }
+
+  /**
+   * Retrieves a staging table by its unique identifier.
+   *
+   * @param stagingTableId the UUID of the staging table to retrieve
+   * @return StagingTableInfo containing the staging table details
+   * @throws BaseException with ErrorCode.NOT_FOUND if the staging table does not exist
+   */
+  public StagingTableInfo getStagingTableById(String stagingTableId) {
+    LOGGER.debug("Getting staging table by id: {}", stagingTableId);
+    return TransactionManager.executeWithTransaction(
+        sessionFactory,
+        session -> {
+          StagingTableDAO stagingTableDAO =
+              session.get(StagingTableDAO.class, UUID.fromString(stagingTableId));
+          if (stagingTableDAO == null) {
+            throw new BaseException(
+                ErrorCode.NOT_FOUND, "Staging table not found: " + stagingTableId);
+          }
+          Pair<String, String> catalogAndSchemaNames =
+              RepositoryUtils.getCatalogAndSchemaNames(session, stagingTableDAO.getSchemaId());
+          return stagingTableDAO.toStagingTableInfo(
+              catalogAndSchemaNames.getLeft(), catalogAndSchemaNames.getRight());
+        },
+        "Failed to get staging table by ID",
+        /* readOnly = */ true);
   }
 
   private StagingTableDAO findBySchemaIdAndName(Session session, UUID schemaId, String name) {
@@ -124,5 +155,50 @@ public class StagingTableRepository {
         },
         "Error creating table: " + getTableFullName(createStagingTable),
         /* readOnly = */ false);
+  }
+
+  /**
+   * Commits a staging table by marking it as finalized and associating it with a permanent table.
+   *
+   * <p>This method is called by TableRepository.createTable when a table is created using a staging
+   * table location. It validates that the caller is the owner of the staging table and that the
+   * staging table has not been previously committed.
+   *
+   * @param session the Hibernate session for database operations
+   * @param callerId the identifier of the user attempting to commit the staging table
+   * @param storageLocation the storage location URI of the staging table to commit
+   * @return StagingTableDAO the committed staging table data access object
+   * @throws BaseException with ErrorCode.NOT_FOUND if no staging table exists at the specified
+   *     location
+   * @throws BaseException with ErrorCode.PERMISSION_DENIED if the caller is not the owner of the
+   *     staging table
+   * @throws BaseException with ErrorCode.FAILED_PRECONDITION if the staging table has already been
+   *     committed
+   */
+  public StagingTableDAO commitStagingTable(
+      Session session, String callerId, String storageLocation) {
+    serverProperties.checkManagedTableEnabled();
+    StagingTableDAO stagingTableDAO = findByStagingLocation(session, storageLocation);
+    if (stagingTableDAO == null) {
+      throw new BaseException(ErrorCode.NOT_FOUND, "Staging table not found: " + storageLocation);
+    }
+    if (!Objects.equals(stagingTableDAO.getCreatedBy(), callerId)) {
+      throw new BaseException(
+          ErrorCode.PERMISSION_DENIED,
+          "User attempts to create table on a staging location without ownership: "
+              + storageLocation);
+    }
+    if (stagingTableDAO.isStageCommitted()) {
+      throw new BaseException(
+          ErrorCode.FAILED_PRECONDITION, "Staging table already committed: " + storageLocation);
+    }
+
+    // Commit the staging table
+    Date now = new Date();
+    stagingTableDAO.setStageCommitted(true);
+    stagingTableDAO.setStageCommittedAt(now);
+    stagingTableDAO.setAccessedAt(now);
+    session.merge(stagingTableDAO);
+    return stagingTableDAO;
   }
 }
