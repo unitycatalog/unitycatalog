@@ -20,6 +20,7 @@ import io.unitycatalog.client.model.CreateCatalog;
 import io.unitycatalog.client.model.CreateSchema;
 import io.unitycatalog.client.model.CreateTable;
 import io.unitycatalog.client.model.TableInfo;
+import io.unitycatalog.client.model.TableType;
 import io.unitycatalog.server.base.BaseServerTest;
 import io.unitycatalog.server.base.catalog.CatalogOperations;
 import io.unitycatalog.server.base.schema.SchemaOperations;
@@ -35,7 +36,7 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
-public class CliExternalTableCreationTest extends BaseServerTest {
+public class CliTableCreationTest extends BaseServerTest {
 
   private CatalogOperations catalogOperations;
   private SchemaOperations schemaOperations;
@@ -75,7 +76,7 @@ public class CliExternalTableCreationTest extends BaseServerTest {
   @Test
   public void testCreateTableLocalDirectoryDoesNotExist() throws IOException, ApiException {
     String tablePath = "/tmp/" + UUID.randomUUID();
-    createTableAndAssertReadTableSucceeds(tablePath, columns);
+    createTableAndAssertReadTableSucceeds(TableType.EXTERNAL, Optional.of(tablePath), columns);
   }
 
   @Test
@@ -84,7 +85,7 @@ public class CliExternalTableCreationTest extends BaseServerTest {
     String tablePath = "/tmp/" + UUID.randomUUID();
     Path dir = Paths.get(tablePath);
     Files.createDirectory(dir);
-    createTableAndAssertReadTableSucceeds(tablePath, columns);
+    createTableAndAssertReadTableSucceeds(TableType.EXTERNAL, Optional.of(tablePath), columns);
   }
 
   @Test
@@ -97,10 +98,30 @@ public class CliExternalTableCreationTest extends BaseServerTest {
                     Paths.get(tablePath).toUri().toString(), columns, null))
         .doesNotThrowAnyException();
     assertThat(Paths.get(tablePath + "/_delta_log")).isDirectory();
-    createTableAndAssertReadTableSucceeds(tablePath, columns);
+    createTableAndAssertReadTableSucceeds(TableType.EXTERNAL, Optional.of(tablePath), columns);
   }
 
-  private void createTableAndAssertReadTableSucceeds(String tablePath, List<ColumnInfo> columns)
+  @Test
+  public void testCreateManagedTable() throws IOException, ApiException {
+    createTableAndAssertReadTableSucceeds(TableType.MANAGED, Optional.empty(), columns);
+  }
+
+  @Test
+  public void testCreateManagedTableWithLocationAndFail() throws IOException, ApiException {
+    assertThat(
+            tableOperations.createTable(
+                new CreateTable()
+                    .catalogName(CATALOG_NAME)
+                    .schemaName(SCHEMA_NAME)
+                    .name(TABLE_NAME)
+                    .tableType(TableType.MANAGED)
+                    .storageLocation("/tmp/some_path")
+                    .columns(columns)))
+        .isNull();
+  }
+
+  private void createTableAndAssertReadTableSucceeds(
+      TableType tableType, Optional<String> tablePath, List<ColumnInfo> columns)
       throws IOException, ApiException {
     TableInfo tableInfo =
         tableOperations.createTable(
@@ -108,10 +129,20 @@ public class CliExternalTableCreationTest extends BaseServerTest {
                 .catalogName(CATALOG_NAME)
                 .schemaName(SCHEMA_NAME)
                 .name(TABLE_NAME)
-                .storageLocation(tablePath)
+                .tableType(tableType)
+                .storageLocation(tablePath.orElse(null))
                 .columns(columns));
     assertThat(tableInfo).isNotNull();
     assertThat(tableInfo.getTableId()).isNotNull();
+    if (tableType == TableType.EXTERNAL) {
+      assertThat(tableInfo.getStorageLocation()).isEqualTo("file://" + tablePath.get());
+      assertThat(tableInfo.getTableType()).isEqualTo(TableType.EXTERNAL);
+    } else {
+      assert tableType == TableType.MANAGED;
+      assertThat(tableInfo.getStorageLocation())
+          .isEqualTo("file:///tmp/ucroot/tables/" + tableInfo.getTableId());
+      assertThat(tableInfo.getTableType()).isEqualTo(TableType.MANAGED);
+    }
     assertThat(tableOperations.getTable(TABLE_FULL_NAME).getTableId())
         .isEqualTo(tableInfo.getTableId());
     assertThatCode(
@@ -119,7 +150,10 @@ public class CliExternalTableCreationTest extends BaseServerTest {
                 DeltaKernelUtils.readDeltaTable(
                     tableOperations.getTable(TABLE_FULL_NAME).getStorageLocation(), null, 100))
         .doesNotThrowAnyException();
-    assertThatCode(() -> deleteDirectory(Paths.get(tablePath).toFile())).doesNotThrowAnyException();
     assertThatCode(() -> tableOperations.deleteTable(TABLE_FULL_NAME)).doesNotThrowAnyException();
+    // Managed table deletion does not delete the directory yet. So the test would delete the
+    // directory anyway
+    assertThatCode(() -> deleteDirectory(Paths.get(tableInfo.getStorageLocation()).toFile()))
+        .doesNotThrowAnyException();
   }
 }
