@@ -231,7 +231,7 @@ public class SdkTableCRUDTest extends BaseTableCRUDTest {
 
   /** Test that staging table creation fails when the catalog doesn't exist. */
   @Test
-  public void testStagingTableCreationWithNonExistentCatalogShouldFail() throws Exception {
+  public void testStagingTableCreationWithNonExistentCatalogShouldFail() {
     CreateStagingTable createStagingTableRequest =
         new CreateStagingTable()
             .catalogName("nonexistent_catalog")

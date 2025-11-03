@@ -13,7 +13,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import java.util.HashMap;
-import org.apache.commons.lang3.tuple.Pair;
 import org.hibernate.Session;
 
 public class RepositoryUtils {
@@ -79,21 +78,5 @@ public class RepositoryUtils {
       throw new BaseException(ErrorCode.NOT_FOUND, "Catalog id not found: " + catalogId);
     }
     return catalogInfoDAO;
-  }
-
-  public static Pair<String, String> getCatalogAndSchemaNames(Session session, UUID schemaId) {
-    SchemaInfoDAO schemaInfoDAO =
-            session.get(SchemaInfoDAO.class, schemaId);
-    if (schemaInfoDAO == null) {
-      throw new BaseException(
-              ErrorCode.NOT_FOUND, "Schema not found: " + schemaId);
-    }
-    CatalogInfoDAO catalogInfoDAO =
-            session.get(CatalogInfoDAO.class, schemaInfoDAO.getCatalogId());
-    if (catalogInfoDAO == null) {
-      throw new BaseException(
-              ErrorCode.NOT_FOUND, "Catalog not found: " + schemaInfoDAO.getCatalogId());
-    }
-    return Pair.of(catalogInfoDAO.getName(), schemaInfoDAO.getName());
   }
 }
