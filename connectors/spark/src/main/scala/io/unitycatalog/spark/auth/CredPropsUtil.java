@@ -10,7 +10,6 @@ import io.unitycatalog.client.model.GcpOauthToken;
 import io.unitycatalog.client.model.PathOperation;
 import io.unitycatalog.client.model.TableOperation;
 import io.unitycatalog.client.model.TemporaryCredentials;
-import io.unitycatalog.spark.auth.GcsVendedTokenProvider;
 import io.unitycatalog.spark.UCHadoopConf;
 import java.util.Map;
 import java.util.UUID;
