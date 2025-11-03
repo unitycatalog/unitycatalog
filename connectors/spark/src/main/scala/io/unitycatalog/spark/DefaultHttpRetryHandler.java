@@ -14,14 +14,12 @@ import java.net.http.HttpResponse;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.Set;
-import java.util.logging.Logger;
 
 /**
  * Default implementation of {@link HttpRetryHandler} that retries on common
  * recoverable HTTP errors and network exceptions.
  */
 public class DefaultHttpRetryHandler implements HttpRetryHandler {
-  private static final Logger LOGGER = Logger.getLogger(DefaultHttpRetryHandler.class.getName());
   private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
 
   private static final Set<Integer> RECOVERABLE_STATUS_CODES = Set.of(
@@ -62,22 +60,18 @@ public class DefaultHttpRetryHandler implements HttpRetryHandler {
         UCHadoopConf.RETRY_JITTER_FACTOR_KEY,
         UCHadoopConf.RETRY_JITTER_FACTOR_DEFAULT);
 
-    Preconditions.checkArgument(this.maxAttempts >= 1,
-        String.format("Retry max attempts must be at least 1, got: %d (%s)",
-            this.maxAttempts, UCHadoopConf.RETRY_MAX_ATTEMPTS_KEY));
-    Preconditions.checkArgument(this.initialDelayMs > 0,
-        String.format("Retry initial delay must be positive, got: %d ms (%s)",
-            this.initialDelayMs, UCHadoopConf.RETRY_INITIAL_DELAY_KEY));
-    Preconditions.checkArgument(this.multiplier > 0,
-        String.format("Retry multiplier must be positive, got: %.2f (%s)",
-            this.multiplier, UCHadoopConf.RETRY_MULTIPLIER_KEY));
-    Preconditions.checkArgument(this.jitterFactor >= 0 && this.jitterFactor < 1,
-        String.format("Retry jitter factor must be between 0 and 1 (exclusive), got: %.2f (%s)",
-            this.jitterFactor, UCHadoopConf.RETRY_JITTER_FACTOR_KEY));
-  }
-
-  public DefaultHttpRetryHandler(Configuration conf) {
-    this(conf, Clock.systemClock());
+    Preconditions.checkArgument(maxAttempts >= 1,
+        "Retry max attempts must be at least 1, but got '%s'=%s",
+        UCHadoopConf.RETRY_MAX_ATTEMPTS_KEY, maxAttempts);
+    Preconditions.checkArgument(initialDelayMs > 0,
+        "Retry initial delay must be positive, but got '%s'=%s",
+        UCHadoopConf.RETRY_INITIAL_DELAY_KEY, initialDelayMs);
+    Preconditions.checkArgument(multiplier > 0,
+        "Retry multiplier must be positive, but got '%s'=%s",
+        UCHadoopConf.RETRY_MULTIPLIER_KEY, multiplier);
+    Preconditions.checkArgument(jitterFactor >= 0 && jitterFactor < 1,
+        "Retry jitter factor must be between 0 and 1 (exclusive), but got '%s'=%s",
+        UCHadoopConf.RETRY_JITTER_FACTOR_KEY, jitterFactor);
   }
 
   @Override
@@ -140,7 +134,7 @@ public class DefaultHttpRetryHandler implements HttpRetryHandler {
     if (RECOVERABLE_STATUS_CODES.contains(statusCode)) {
       return true;
     }
-
+    // Only inspect error payloads for server-side failures (5xx)
     if (statusCode >= 500 && statusCode < 600) {
       String errorCode = extractErrorCode(response);
       return errorCode != null && RECOVERABLE_ERROR_CODES.contains(errorCode);

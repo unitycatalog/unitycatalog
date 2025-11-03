@@ -9,19 +9,22 @@ import java.net.URI;
 public class ApiClientFactory {
   private ApiClientFactory() {}
 
-  public static ApiClient createApiClient(URI url, String token) {
-    ApiClient apiClient = new ApiClient()
-        .setHost(url.getHost())
+  static <T extends ApiClient> T configureClient(T client, URI url, String token) {
+    client.setHost(url.getHost())
         .setPort(url.getPort())
         .setScheme(url.getScheme());
 
     if (token != null && !token.isEmpty()) {
-      apiClient = apiClient.setRequestInterceptor(
+      client.setRequestInterceptor(
           request -> request.header("Authorization", "Bearer " + token)
       );
     }
 
-    return apiClient;
+    return client;
+  }
+
+  public static ApiClient createApiClient(URI url, String token) {
+    return configureClient(new ApiClient(), url, token);
   }
 
   public static ApiClient createApiClient(Configuration conf, URI url, String token) {
@@ -42,17 +45,7 @@ public class ApiClientFactory {
       RetryingApiClient client = retryHandler != null
           ? new RetryingApiClient(conf, Clock.systemClock(), retryHandler)
           : new RetryingApiClient(conf);
-
-      client.setHost(url.getHost())
-          .setScheme(url.getScheme())
-          .setPort(url.getPort());
-
-      if (token != null && !token.isEmpty()) {
-        client.setRequestInterceptor(
-            request -> request.header("Authorization", "Bearer " + token));
-      }
-
-      return client;
+      return configureClient(client, url, token);
     } else {
       return createApiClient(url, token);
     }

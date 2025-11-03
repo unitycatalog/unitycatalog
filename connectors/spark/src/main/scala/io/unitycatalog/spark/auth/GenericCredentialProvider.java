@@ -92,6 +92,7 @@ public abstract class GenericCredentialProvider {
   }
 
   protected TemporaryCredentialsApi temporaryCredentialsApi() {
+    // Retry is automatically handled by RetryingHttpClient when fs.unitycatalog.retry.enabled=true
     if (tempCredApi == null) {
       synchronized (this) {
         if (tempCredApi == null) {
@@ -126,7 +127,6 @@ public abstract class GenericCredentialProvider {
     TemporaryCredentialsApi tempCredApi = temporaryCredentialsApi();
 
     // Generate the temporary credential via requesting UnityCatalog.
-    // Retry is automatically handled by RetryingHttpClient when fs.unitycatalog.retry.enabled=true
     TemporaryCredentials tempCred;
     String type = conf.get(UCHadoopConf.UC_CREDENTIALS_TYPE_KEY);
     if (UCHadoopConf.UC_CREDENTIALS_TYPE_PATH_VALUE.equals(type)) {
