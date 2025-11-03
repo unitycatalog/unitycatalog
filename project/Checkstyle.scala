@@ -50,6 +50,7 @@ object Checkstyle {
         (Test / checkstyle).value
         javaCheckstyle(streams.value.log, (Compile / target).value / "checkstyle-test-report.xml")
       },
+      (Test / test) := ((Test / test) dependsOn (Test / testJavastyle)).value
     )
   }
 
