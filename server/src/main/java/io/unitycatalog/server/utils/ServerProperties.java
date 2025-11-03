@@ -63,12 +63,13 @@ public class ServerProperties {
     Map<String, S3StorageConfig> s3BucketConfigMap = new HashMap<>();
     int i = 0;
     while (true) {
-      String bucketPath = properties.getProperty("s3.bucketPath." + i);
-      String region = properties.getProperty("s3.region." + i);
-      String awsRoleArn = properties.getProperty("s3.awsRoleArn." + i);
-      String accessKey = properties.getProperty("s3.accessKey." + i);
-      String secretKey = properties.getProperty("s3.secretKey." + i);
-      String sessionToken = properties.getProperty("s3.sessionToken." + i);
+      String bucketPath = getProperty("s3.bucketPath." + i);
+      String region = getProperty("s3.region." + i);
+      String awsRoleArn = getProperty("s3.awsRoleArn." + i);
+      String accessKey = getProperty("s3.accessKey." + i);
+      String secretKey = getProperty("s3.secretKey." + i);
+      String sessionToken = getProperty("s3.sessionToken." + i);
+      String credentialsGenerator = getProperty("s3.credentialsGenerator." + i);
       if ((bucketPath == null || region == null || awsRoleArn == null)
           && (accessKey == null || secretKey == null || sessionToken == null)) {
         break;
@@ -81,6 +82,7 @@ public class ServerProperties {
               .accessKey(accessKey)
               .secretKey(secretKey)
               .sessionToken(sessionToken)
+              .credentialGenerator(credentialsGenerator)
               .build();
       s3BucketConfigMap.put(bucketPath, s3StorageConfig);
       i++;
@@ -93,8 +95,8 @@ public class ServerProperties {
     Map<String, String> gcsConfigMap = new HashMap<>();
     int i = 0;
     while (true) {
-      String bucketPath = properties.getProperty("gcs.bucketPath." + i);
-      String jsonKeyFilePath = properties.getProperty("gcs.jsonKeyFilePath." + i);
+      String bucketPath = getProperty("gcs.bucketPath." + i);
+      String jsonKeyFilePath = getProperty("gcs.jsonKeyFilePath." + i);
       if (bucketPath == null || jsonKeyFilePath == null) {
         break;
       }
@@ -110,11 +112,11 @@ public class ServerProperties {
 
     int i = 0;
     while (true) {
-      String storageAccountName = properties.getProperty("adls.storageAccountName." + i);
-      String tenantId = properties.getProperty("adls.tenantId." + i);
-      String clientId = properties.getProperty("adls.clientId." + i);
-      String clientSecret = properties.getProperty("adls.clientSecret." + i);
-      String testMode = properties.getProperty("adls.testMode." + i);
+      String storageAccountName = getProperty("adls.storageAccountName." + i);
+      String tenantId = getProperty("adls.tenantId." + i);
+      String clientId = getProperty("adls.clientId." + i);
+      String clientSecret = getProperty("adls.clientSecret." + i);
+      String testMode = getProperty("adls.testMode." + i);
       if (storageAccountName == null
           || tenantId == null
           || clientId == null
