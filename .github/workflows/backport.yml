@@ -22,6 +22,7 @@ jobs:
           token: ${{ secrets.BACKPORT_ACTION_TOKEN }}
 
       - name: Create backport PRs
+        id: backport
         uses: korthout/backport-action@v3
         with:
           # Use custom token for backport operations
@@ -50,3 +51,37 @@ jobs:
             {
               "conflict_resolution": "draft_commit_conflicts"
             }
+
+      - name: Sign-off and force push backport branches
+        if: steps.backport.outputs.created_pull_numbers != ''
+        run: |
+          # Get the PR number
+          pr_number="${{ github.event.pull_request.number }}"
+
+          # Find all backport branches for this PR from the local repo
+          # The backport action creates branches named backport-{pr-number}-to-{target-branch}
+          # See https://github.com/korthout/backport-action?tab=readme-ov-file#branch_name
+          backport_branches=$(git branch -r | grep "origin/backport-${pr_number}-to-" | sed 's/origin\///' | sed 's/^[[:space:]]*//' | xargs)
+
+          if [ -n "$backport_branches" ]; then
+            for branch in $backport_branches; do
+              echo "Processing branch: $branch"
+              git checkout "$branch"
+
+              # Get the author name and email from the last commit
+              author_name=$(git log -1 --format='%an')
+              author_email=$(git log -1 --format='%ae')
+
+              echo "Using author: $author_name <$author_email>"
+
+              # Configure git with the original commit author's information
+              git config user.name "$author_name"
+              git config user.email "$author_email"
+
+              # Amend with signoff and force push
+              git commit --amend --no-edit --signoff
+              git push --force origin "$branch"
+            done
+          else
+            echo "No backport branches found for PR #${pr_number}"
+          fi
