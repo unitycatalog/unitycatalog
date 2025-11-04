@@ -5,7 +5,6 @@ import org.apache.hadoop.conf.Configuration;
 import org.sparkproject.guava.base.Preconditions;
 import io.unitycatalog.client.model.GcpOauthToken;
 import com.google.cloud.hadoop.util.AccessTokenProvider;
-import com.google.cloud.hadoop.util.AccessTokenProvider.AccessToken;
 
 import java.io.IOException;
 import java.time.Instant;
@@ -15,14 +14,9 @@ public class GcsVendedTokenProvider extends GenericCredentialProvider
 
   public static final String ACCESS_TOKEN_KEY = "fs.gs.auth.access.token.credential";
   public static final String ACCESS_TOKEN_EXPIRATION_KEY = "fs.gs.auth.access.token.expiration";
-
   private Configuration conf;
 
   public GcsVendedTokenProvider() {
-  }
-
-  public GcsVendedTokenProvider(Configuration conf) {
-    setConf(conf);
   }
 
   @Override

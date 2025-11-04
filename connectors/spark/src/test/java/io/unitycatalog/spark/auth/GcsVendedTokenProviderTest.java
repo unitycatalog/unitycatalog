@@ -108,4 +108,3 @@ public class GcsVendedTokenProviderTest extends BaseTokenProviderTest<GcsVendedT
     assertThat(provider).isInstanceOf(GcsVendedTokenProvider.class);
   }
 }
-

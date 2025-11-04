@@ -172,8 +172,6 @@ public class CredPropsUtil {
     GcpOauthToken gcpOauthToken = tempCreds.getGcpOauthToken();
     return new GcsPropsBuilder()
         .set(GcsVendedTokenProvider.ACCESS_TOKEN_KEY, gcpOauthToken.getOauthToken())
-        .set(GcsVendedTokenProvider.ACCESS_TOKEN_EXPIRATION_KEY,
-            String.valueOf(tempCreds.getExpirationTime()))
         .build();
   }
 
