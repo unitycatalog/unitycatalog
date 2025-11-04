@@ -580,7 +580,7 @@ def test_toolkit_creation_without_properties_argument_mocked():
         tool = tools[0]
         input_args = {"x": "some_string"}
         result = json.loads(tool.func(**input_args))["value"]
-        
+
         assert len(tools) == 1
         assert tool.name == "catalog__schema__test_function"
         assert tool.desc == "A test function without properties argument"
