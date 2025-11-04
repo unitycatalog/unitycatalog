@@ -26,7 +26,7 @@ jobs:
         distribution: 'temurin'
 
     - name: Compile integration tests to verify compilation and checkstyle issues.
-      run: build/sbt integrationTests/compile
+      run: build/sbt integrationTests/test:compile
 
     - name: Run tests with coverage
       run: build/sbt -J-Xmx2G +jacoco

@@ -57,7 +57,8 @@ object Checkstyle {
         (Test / checkstyle).value
         javaCheckstyle(streams.value.log, (Compile / target).value / "checkstyle-test-report.xml")
       },
-      // Make test task depend on testJavastyle so style is checked automatically.
+      // Make test and compile task depend on testJavastyle so style is checked automatically.
+      (Test / compile) := ((Test / compile) dependsOn (Test / testJavastyle)).value,
       (Test / test) := ((Test / test) dependsOn (Test / testJavastyle)).value
     )
   }
