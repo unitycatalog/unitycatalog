@@ -98,9 +98,7 @@ public class CredPropsUtil {
 
     GcsPropsBuilder() {
       // Common properties for GCS.
-      set("fs.gs.create.items.conflict.check.enable", "false");
-      set("fs.gs.auth.type", "ACCESS_TOKEN_PROVIDER");
-      set("fs.gs.auth.access.token.provider", GcsVendedTokenProvider.class.getName());
+      set("fs.gs.create.items.conflict.check.enable", "true");
       set("fs.gs.impl.disable.cache", "true");
     }
 
@@ -181,6 +179,9 @@ public class CredPropsUtil {
       TemporaryCredentials tempCreds) {
     GcpOauthToken gcpToken = tempCreds.getGcpOauthToken();
     GcsPropsBuilder builder = new GcsPropsBuilder()
+        .set("fs.gs.auth.type", "ACCESS_TOKEN_PROVIDER")
+        .set("fs.gs.auth.access.token.provider", GcsVendedTokenProvider.class.getName())
+        .set("fs.gs.auth.access.token.provider.impl", GcsVendedTokenProvider.class.getName())
         .uri(uri)
         .token(token)
         .uid(UUID.randomUUID().toString())
