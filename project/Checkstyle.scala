@@ -26,10 +26,10 @@ object Checkstyle {
    */
 
   // Define a custom SBT task key for compiling Java code style checks
-  lazy val compileJavastyle = taskKey[Unit]("compileJavastyle")
+  private lazy val compileJavastyle = taskKey[Unit]("compileJavastyle")
 
   // Define a custom SBT task key for testing Java code style checks
-  lazy val testJavastyle = taskKey[Unit]("testJavastyle")
+  private lazy val testJavastyle = taskKey[Unit]("testJavastyle")
 
   /**
    * Returns a sequence of SBT settings to enable Java Checkstyle for a module.
@@ -57,7 +57,7 @@ object Checkstyle {
         (Test / checkstyle).value
         javaCheckstyle(streams.value.log, (Compile / target).value / "checkstyle-test-report.xml")
       },
-      // Make test and compile task depend on testJavastyle so style is checked automatically.
+      // Make test and compile tasks depend on testJavastyle so style is checked automatically.
       (Test / compile) := ((Test / compile) dependsOn (Test / testJavastyle)).value,
       (Test / test) := ((Test / test) dependsOn (Test / testJavastyle)).value
     )
