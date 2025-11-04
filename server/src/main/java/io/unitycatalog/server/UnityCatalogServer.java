@@ -160,6 +160,7 @@ public class UnityCatalogServer {
     SchemaService schemaService = new SchemaService(authorizer, repositories);
     VolumeService volumeService = new VolumeService(authorizer, repositories);
     TableService tableService = new TableService(authorizer, repositories);
+    StagingTableService stagingTableService = new StagingTableService(authorizer, repositories);
     FunctionService functionService = new FunctionService(authorizer, repositories);
     ModelService modelService = new ModelService(authorizer, repositories);
     CredentialService credentialService = new CredentialService(authorizer, repositories);
@@ -206,6 +207,8 @@ public class UnityCatalogServer {
         .annotatedService(BASE_PATH + "schemas", schemaService, requestConverterFunction)
         .annotatedService(BASE_PATH + "volumes", volumeService, requestConverterFunction)
         .annotatedService(BASE_PATH + "tables", tableService, requestConverterFunction)
+        .annotatedService(
+            BASE_PATH + "staging-tables", stagingTableService, requestConverterFunction)
         .annotatedService(BASE_PATH + "functions", functionService, requestConverterFunction)
         .annotatedService(BASE_PATH + "models", modelService, requestConverterFunction)
         .annotatedService(BASE_PATH, metastoreService, requestConverterFunction)
