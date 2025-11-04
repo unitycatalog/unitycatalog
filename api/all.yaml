@@ -296,7 +296,7 @@ paths:
         creation of a managed table that already has full data written to its storage location. Note: the name provided
         must match the name used to initialize the staging table originally.
 
-        WARNING: This API is experimental and will change in future versions.
+        WARNING: This API is experimental and may change in future versions.
       requestBody:
         content:
           application/json:
