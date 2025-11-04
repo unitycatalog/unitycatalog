@@ -11,7 +11,6 @@ import io.unitycatalog.server.base.ServerConfig;
 import io.unitycatalog.server.base.schema.SchemaOperations;
 import io.unitycatalog.server.persist.dao.ColumnInfoDAO;
 import io.unitycatalog.server.persist.dao.TableInfoDAO;
-import io.unitycatalog.server.persist.utils.FileOperations;
 import io.unitycatalog.server.utils.TestUtils;
 import java.io.IOException;
 import java.util.ArrayList;
@@ -163,8 +162,7 @@ public abstract class BaseTableCRUDTest extends BaseCRUDTest {
     assertThat(managedTable.getName()).isEqualTo(TestUtils.TABLE_NAME);
     assertThat(managedTable.getCatalogName()).isEqualTo(TestUtils.CATALOG_NAME);
     assertThat(managedTable.getSchemaName()).isEqualTo(TestUtils.SCHEMA_NAME);
-    assertThat(managedTable.getStorageLocation())
-        .isEqualTo(FileOperations.convertRelativePathToURI("/tmp/managedStagingLocation"));
+    assertThat(managedTable.getStorageLocation()).isEqualTo("file:///tmp/managedStagingLocation");
     assertThat(managedTable.getTableType()).isEqualTo(TableType.MANAGED);
     assertThat(managedTable.getDataSourceFormat()).isEqualTo(DataSourceFormat.DELTA);
     assertThat(managedTable.getCreatedAt()).isNotNull();

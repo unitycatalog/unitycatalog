@@ -14,21 +14,22 @@ public class AwsVendedTokenProvider extends GenericCredentialProvider
    * Constructor for the hadoop's CredentialProviderListFactory#buildAWSProviderList to initialize.
    */
   public AwsVendedTokenProvider(Configuration conf) {
-    super(conf);
+    initialize(conf);
   }
 
   @Override
   public GenericCredential initGenericCredential(Configuration conf) {
     if (conf.get(UCHadoopConf.S3A_INIT_ACCESS_KEY) != null
         && conf.get(UCHadoopConf.S3A_INIT_SECRET_KEY) != null
-        && conf.get(UCHadoopConf.S3A_INIT_SESSION_TOKEN) != null
-        && conf.get(UCHadoopConf.S3A_INIT_CRED_EXPIRED_TIME) != null) {
+        && conf.get(UCHadoopConf.S3A_INIT_SESSION_TOKEN) != null) {
 
       String accessKey = conf.get(UCHadoopConf.S3A_INIT_ACCESS_KEY);
       String secretKey = conf.get(UCHadoopConf.S3A_INIT_SECRET_KEY);
       String sessionToken = conf.get(UCHadoopConf.S3A_INIT_SESSION_TOKEN);
 
-      long expiredTimeMillis = conf.getLong(UCHadoopConf.S3A_INIT_CRED_EXPIRED_TIME, 0L);
+      long expiredTimeMillis = conf.getLong(
+          UCHadoopConf.S3A_INIT_CRED_EXPIRED_TIME,
+          Long.MAX_VALUE);
       Preconditions.checkState(expiredTimeMillis > 0, "Expired time %s must be greater than 0, " +
           "please check configure key '%s'", expiredTimeMillis, UCHadoopConf.S3A_INIT_CRED_EXPIRED_TIME);
 

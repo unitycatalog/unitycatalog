@@ -46,13 +46,13 @@ import static io.unitycatalog.server.auth.decorator.KeyLocator.Source.SYSTEM;
  * control rules. This decorator is used in conjunction with two annotations, @AuthorizeExpression
  * and @AuthorizeKey to define authorization rules and identify requests parameters for objects
  * to authorize with.
- *
- * {@code @AuthorizeExpression} - This defines a Spring Expression Language expression to evaluate to make
- * an authorization decision.
- * {@code @AuthorizeKey} - This annotation is used to define request and payload parameters for the authorization
- * context. These are typically things like catalog, schema and table names. This annotation may be used
- * at both the method and method parameter context. It may be specified more than once per method to
- * map parameters to object keys.
+ * <p>
+ * {@code @AuthorizeExpression} - This defines a Spring Expression Language expression to evaluate
+ * to make an authorization decision.
+ * {@code @AuthorizeKey} - This annotation is used to define request and payload parameters for the
+ * authorization context. These are typically things like catalog, schema and table names. This
+ * annotation may be used at both the method and method parameter context. It may be specified
+ * more than once per method to map parameters to object keys.
  */
 public class UnityAccessDecorator implements DecoratingHttpServiceFunction {
 
@@ -63,7 +63,8 @@ public class UnityAccessDecorator implements DecoratingHttpServiceFunction {
 
   private final UnityAccessEvaluator evaluator;
 
-  public UnityAccessDecorator(UnityCatalogAuthorizer authorizer, Repositories repositories) throws BaseException {
+  public UnityAccessDecorator(UnityCatalogAuthorizer authorizer, Repositories repositories)
+      throws BaseException {
     try {
       evaluator = new UnityAccessEvaluator(authorizer);
     } catch (NoSuchMethodException | IllegalAccessException e) {
@@ -75,7 +76,7 @@ public class UnityAccessDecorator implements DecoratingHttpServiceFunction {
 
   @Override
   public HttpResponse serve(HttpService delegate, ServiceRequestContext ctx, HttpRequest req)
-          throws Exception {
+      throws Exception {
     LOGGER.debug("AccessDecorator checking {}", req.path());
 
     Method method = findServiceMethod(ctx.config().service());
@@ -104,9 +105,13 @@ public class UnityAccessDecorator implements DecoratingHttpServiceFunction {
     return delegate.serve(ctx, req);
   }
 
-  private HttpResponse authorizeByRequest(HttpService delegate, ServiceRequestContext ctx,
-                                          HttpRequest req, UUID principal, List<KeyLocator> locators,
-                                          String expression) throws Exception {
+  private HttpResponse authorizeByRequest(
+      HttpService delegate,
+      ServiceRequestContext ctx,
+      HttpRequest req,
+      UUID principal,
+      List<KeyLocator> locators,
+      String expression) throws Exception {
     //
     // Based on the query and payload parameters defined on the service method (that
     // have been gathered as Locators), we'll attempt to find the entity/resource that
@@ -117,22 +122,30 @@ public class UnityAccessDecorator implements DecoratingHttpServiceFunction {
     // Split up the locators by type, because we have to extract the value from the request
     // different ways for different types
 
-    List<KeyLocator> systemLocators = locators.stream().filter(l -> l.getSource().equals(SYSTEM)).toList();
-    List<KeyLocator> paramLocators = locators.stream().filter(l -> l.getSource().equals(PARAM)).toList();
-    List<KeyLocator> payloadLocators = locators.stream().filter(l -> l.getSource().equals(PAYLOAD)).toList();
+    List<KeyLocator> systemLocators = locators.stream()
+        .filter(l -> l.getSource().equals(SYSTEM))
+        .toList();
+    List<KeyLocator> paramLocators = locators.stream()
+        .filter(l -> l.getSource().equals(PARAM))
+        .toList();
+    List<KeyLocator> payloadLocators = locators.stream()
+        .filter(l -> l.getSource().equals(PAYLOAD))
+        .toList();
 
     // Add system-type keys, just metastore for now.
     systemLocators.forEach(l -> resourceKeys.put(l.getType(), "metastore"));
 
     // Extract the query/path parameter values just by grabbing them from the request
     paramLocators.forEach(l -> {
-      String value = ctx.pathParam(l.getKey()) != null ? ctx.pathParam(l.getKey()) : ctx.queryParam(l.getKey());
+      String value = ctx.pathParam(l.getKey()) != null
+          ? ctx.pathParam(l.getKey())
+          : ctx.queryParam(l.getKey());
       resourceKeys.put(l.getType(), value);
     });
 
     if (payloadLocators.isEmpty()) {
-      // If we don't have any PAYLOAD locators, we're ready to evaluate the authorization and allow or deny
-      // the request.
+      // If we don't have any PAYLOAD locators, we're ready to evaluate the authorization and allow
+      // or deny the request.
       LOGGER.debug("Checking authorization before method.");
       checkAuthorization(principal, expression, resourceKeys);
 
@@ -142,9 +155,12 @@ public class UnityAccessDecorator implements DecoratingHttpServiceFunction {
       // is being evaluated, via peekData()
       LOGGER.debug("Checking authorization before in peekData.");
 
-      PeekDataHandler peekDataHandler = new PeekDataHandler(req.contentType(), payloadLocators, resourceKeys);
+      PeekDataHandler peekDataHandler = new PeekDataHandler(
+          req.contentType(),
+          payloadLocators,
+          resourceKeys);
 
-      // Note that peekData only gets called for requests that actually have data (like PUT and POST)
+      // Note that peekData only gets called for requests that actually have data (like PUT&POST)
 
       var peekReq = req.peekData(data -> {
         LOGGER.debug("Authorization peekData invoked.");
@@ -174,7 +190,10 @@ public class UnityAccessDecorator implements DecoratingHttpServiceFunction {
     }
   }
 
-  private void checkAuthorization(UUID principal, String expression, Map<SecurableType, Object> resourceKeys) {
+  private void checkAuthorization(
+      UUID principal,
+      String expression,
+      Map<SecurableType, Object> resourceKeys) {
     LOGGER.debug("resourceKeys = {}", resourceKeys);
 
     Map<SecurableType, Object> resourceIds = keyMapper.mapResourceKeys(resourceKeys);
@@ -235,12 +254,20 @@ public class UnityAccessDecorator implements DecoratingHttpServiceFunction {
       for (AuthorizeKey key : allKeys) {
         if (!key.key().isEmpty()) {
           // Explicitly declaring a key, so it's the source is from the payload data
-          locators.add(KeyLocator.builder().source(PAYLOAD).type(key.value()).key(key.key()).build());
+          locators.add(KeyLocator.builder()
+              .source(PAYLOAD)
+              .type(key.value())
+              .key(key.key())
+              .build());
         } else {
           // No key defined so implicitly referencing an (annotated) (query) parameter
           Param param = parameter.getAnnotation(Param.class);
           if (param != null) {
-            locators.add(KeyLocator.builder().source(PARAM).type(key.value()).key(param.value()).build());
+            locators.add(KeyLocator.builder()
+                .source(PARAM)
+                .type(key.value())
+                .key(param.value())
+                .build());
           } else {
             LOGGER.warn("Couldn't find param key for authorization key");
           }
@@ -251,10 +278,12 @@ public class UnityAccessDecorator implements DecoratingHttpServiceFunction {
   }
 
   private static Method findServiceMethod(HttpService httpService) throws ClassNotFoundException {
-    if (httpService.unwrap() instanceof SimpleDecoratingHttpService decoratingService &&
-            decoratingService.unwrap() instanceof AnnotatedService service) {
+    if (httpService.unwrap() instanceof SimpleDecoratingHttpService decoratingService
+        && decoratingService.unwrap() instanceof AnnotatedService service) {
 
-      LOGGER.debug("serviceName = {}, methodName = {}", service.serviceName(), service.methodName());
+      LOGGER.debug("serviceName = {}, methodName = {}",
+          service.serviceName(),
+          service.methodName());
 
       Class<?> clazz = Class.forName(service.serviceName());
       List<Method> methods = findMethodsByName(clazz, service.methodName());
@@ -289,7 +318,10 @@ public class UnityAccessDecorator implements DecoratingHttpServiceFunction {
     private final Map<SecurableType, Object> resourceKeys;
     private final ByteArrayOutputStream dataStream = new ByteArrayOutputStream();
 
-    private PeekDataHandler(MediaType contentType, List<KeyLocator> payloadLocators, Map<SecurableType, Object> resourceKeys) {
+    private PeekDataHandler(
+        MediaType contentType,
+        List<KeyLocator> payloadLocators,
+        Map<SecurableType, Object> resourceKeys) {
       this.contentType = contentType;
       this.payloadLocators = payloadLocators;
       this.resourceKeys = resourceKeys;
@@ -311,10 +343,14 @@ public class UnityAccessDecorator implements DecoratingHttpServiceFunction {
         // TODO: try to optimize this using Jackson streaming or something else.
         if (data.array()[data.array().length - 1] == '}') {
           try {
-            Map<String, Object> payload = MAPPER.readValue(dataStream.toByteArray(), new TypeReference<>() {
-            });
+            Map<String, Object> payload = MAPPER.readValue(
+                dataStream.toByteArray(),
+                new TypeReference<>() {
+                });
 
-            payloadLocators.forEach(l -> resourceKeys.put(l.getType(), findPayloadValue(l.getKey(), payload)));
+            payloadLocators.forEach(l -> resourceKeys.put(
+                l.getType(),
+                findPayloadValue(l.getKey(), payload)));
             return true;
           } catch (IOException e) {
             // This is probably because we read partial data.
@@ -328,6 +364,5 @@ public class UnityAccessDecorator implements DecoratingHttpServiceFunction {
 
       return false;
     }
-
   }
 }

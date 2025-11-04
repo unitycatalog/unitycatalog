@@ -1,3 +1,5 @@
+import Checkstyle._
+
 import java.nio.file.Files
 import java.io.File
 import Tarball.createTarballSettings
@@ -118,13 +120,6 @@ resolvers ++= Seq(
   "Maven Central" at "https://repo1.maven.org/maven2/",
 )
 
-def javaCheckstyleSettings(configLocation: File) = Seq(
-  checkstyleConfigLocation := CheckstyleConfigLocation.File(configLocation.toString),
-  checkstyleSeverityLevel := Some(CheckstyleSeverityLevel.Error),
-  // (Compile / compile) := ((Compile / compile) dependsOn (Compile / checkstyle)).value,
-  // (Test / test) := ((Test / test) dependsOn (Test / checkstyle)).value,
-)
-
 // enforce java code style
 def javafmtCheckSettings() = Seq(
   (Compile / compile) := ((Compile / compile) dependsOn (Compile / javafmtAll)).value
@@ -132,7 +127,7 @@ def javafmtCheckSettings() = Seq(
 
 lazy val controlApi = (project in file("target/control/java"))
   .enablePlugins(OpenApiGeneratorPlugin)
-  .disablePlugins(JavaFormatterPlugin)
+  .disablePlugins(JavaFormatterPlugin, CheckstylePlugin)
   .settings(
     name := s"$artifactNamePrefix-controlapi",
     commonSettings,
@@ -176,7 +171,7 @@ lazy val controlApi = (project in file("target/control/java"))
 
 lazy val client = (project in file("target/clients/java"))
   .enablePlugins(OpenApiGeneratorPlugin)
-  .disablePlugins(JavaFormatterPlugin)
+  .disablePlugins(JavaFormatterPlugin, CheckstylePlugin)
   .settings(
     name := s"$artifactNamePrefix-client",
     commonSettings,
@@ -241,6 +236,7 @@ lazy val prepareGeneration = taskKey[Unit]("Prepare the environment for OpenAPI 
 
 lazy val pythonClient = (project in file("clients/python"))
   .enablePlugins(OpenApiGeneratorPlugin)
+  .disablePlugins(CheckstylePlugin)
   .settings(
     name := s"$artifactNamePrefix-python-client",
     commonSettings,
@@ -279,6 +275,7 @@ lazy val pythonClient = (project in file("clients/python"))
 
 lazy val apiDocs = (project in file("api"))
   .enablePlugins(OpenApiGeneratorPlugin)
+  .disablePlugins(CheckstylePlugin)
   .settings(
     name := s"$artifactNamePrefix-docs",
     skipReleaseSettings,
@@ -300,19 +297,22 @@ lazy val server = (project in file("server"))
   // Server and control models are added as provided to avoid them being added as maven dependencies
   // This is because the server and control models are included in the server jar
   .dependsOn(serverModels % "provided", controlModels % "provided")
+  .enablePlugins(CheckstylePlugin)
   .settings (
     name := s"$artifactNamePrefix-server",
     mainClass := Some(orgName + ".server.UnityCatalogServer"),
     commonSettings,
     javaOnlyReleaseSettings,
     javafmtCheckSettings,
-    javaCheckstyleSettings(file("dev") / "checkstyle-config.xml"),
+    javaCheckstyleSettings("dev/checkstyle-config.xml"),
     Compile / compile / javacOptions ++= Seq(
       "-processor",
       "lombok.launch.AnnotationProcessorHider$AnnotationProcessor"
     ) ++ javacRelease17,
     libraryDependencies ++= Seq(
       "com.linecorp.armeria" %  "armeria" % "1.28.4",
+      "org.apache.commons" % "commons-lang3" % "3.19.0",
+
       // Netty dependencies
       "io.netty" % "netty-all" % "4.1.111.Final",
       "jakarta.annotation" % "jakarta.annotation-api" % "3.0.0" % Provided,
@@ -409,7 +409,7 @@ lazy val server = (project in file("server"))
 
 lazy val serverModels = (project in file("server") / "target" / "models")
   .enablePlugins(OpenApiGeneratorPlugin)
-  .disablePlugins(JavaFormatterPlugin)
+  .disablePlugins(JavaFormatterPlugin, CheckstylePlugin)
   .settings(
     name := s"$artifactNamePrefix-servermodels",
     commonSettings,
@@ -445,7 +445,7 @@ lazy val serverModels = (project in file("server") / "target" / "models")
 
 lazy val controlModels = (project in file("server") / "target" / "controlmodels")
   .enablePlugins(OpenApiGeneratorPlugin)
-  .disablePlugins(JavaFormatterPlugin)
+  .disablePlugins(JavaFormatterPlugin, CheckstylePlugin)
   .settings(
     name := s"$artifactNamePrefix-controlmodels",
     commonSettings,
@@ -484,13 +484,14 @@ lazy val cli = (project in file("examples") / "cli")
   .dependsOn(serverModels)
   .dependsOn(client % "compile->compile;test->test")
   .dependsOn(controlApi % "compile->compile")
+  .enablePlugins(CheckstylePlugin)
   .settings(
     name := s"$artifactNamePrefix-cli",
     mainClass := Some(orgName + ".cli.UnityCatalogCli"),
     commonSettings,
     skipReleaseSettings,
     javafmtCheckSettings,
-    javaCheckstyleSettings(file("dev") / "checkstyle-config.xml"),
+    javaCheckstyleSettings("dev/checkstyle-config.xml"),
     Compile / compile / javacOptions ++= javacRelease17,
     libraryDependencies ++= Seq(
       "commons-cli" % "commons-cli" % "1.7.0",
@@ -549,6 +550,7 @@ lazy val serverShaded = (project in file("server-shaded"))
 
 lazy val spark = (project in file("connectors/spark"))
   .dependsOn(client)
+  .enablePlugins(CheckstylePlugin)
   .settings(
     name := s"$artifactNamePrefix-spark",
     scalaVersion := scala213,
@@ -558,7 +560,7 @@ lazy val spark = (project in file("connectors/spark"))
     javaOptions ++= Seq(
       "--add-opens=java.base/sun.nio.ch=ALL-UNNAMED",
     ),
-    javaCheckstyleSettings(file("dev/checkstyle-config.xml")),
+    javaCheckstyleSettings("dev/checkstyle-config.xml"),
     Compile / compile / javacOptions ++= javacRelease11,
     libraryDependencies ++= Seq(
       "org.apache.spark" %% "spark-sql" % sparkVersion % Provided,
@@ -619,6 +621,7 @@ lazy val spark = (project in file("connectors/spark"))
   )
 
 lazy val integrationTests = (project in file("integration-tests"))
+  .enablePlugins(CheckstylePlugin)
   .settings(
     name := s"$artifactNamePrefix-integration-tests",
     commonSettings,
@@ -626,6 +629,7 @@ lazy val integrationTests = (project in file("integration-tests"))
     javaOptions ++= Seq(
       "--add-exports=java.base/sun.nio.ch=ALL-UNNAMED",
     ),
+    javaCheckstyleSettings("dev/checkstyle-config.xml"),
     skipReleaseSettings,
     libraryDependencies ++= Seq(
       "org.junit.jupiter" % "junit-jupiter" % "5.10.3" % Test,

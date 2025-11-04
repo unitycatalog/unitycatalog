@@ -93,6 +93,14 @@ public class SchemaRepository {
     return query.uniqueResult();
   }
 
+  public UUID getSchemaId(Session session, String catalogName, String schemaName) {
+    SchemaInfoDAO schemaInfo = getSchemaDAO(session, catalogName, schemaName);
+    if (schemaInfo == null) {
+      throw new BaseException(ErrorCode.NOT_FOUND, "Schema not found: " + schemaName);
+    }
+    return schemaInfo.getId();
+  }
+
   public SchemaInfoDAO getSchemaDAO(Session session, String catalogName, String schemaName) {
     CatalogInfoDAO catalog =
         repositories.getCatalogRepository().getCatalogDAO(session, catalogName);
@@ -105,15 +113,6 @@ public class SchemaRepository {
   public SchemaInfoDAO getSchemaDAO(Session session, String fullName) {
     String[] namespace = fullName.split("\\.");
     return getSchemaDAO(session, namespace[0], namespace[1]);
-  }
-
-  public UUID getCatalogId(Session session, String catalogName) {
-    CatalogInfoDAO catalogInfo =
-        repositories.getCatalogRepository().getCatalogDAO(session, catalogName);
-    if (catalogInfo == null) {
-      throw new BaseException(ErrorCode.NOT_FOUND, "Catalog not found: " + catalogName);
-    }
-    return catalogInfo.getId();
   }
 
   /**
@@ -129,7 +128,7 @@ public class SchemaRepository {
     return TransactionManager.executeWithTransaction(
         sessionFactory,
         session -> {
-          UUID catalogId = getCatalogId(session, catalogName);
+          UUID catalogId = repositories.getCatalogRepository().getCatalogId(session, catalogName);
           return listSchemas(session, catalogId, catalogName, maxResults, pageToken);
         },
         "Failed to list schemas",

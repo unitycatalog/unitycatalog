@@ -8,7 +8,7 @@ import org.apache.hadoop.util.Progressable;
 public abstract class CredentialTestFileSystem extends RawLocalFileSystem {
   public static boolean credentialCheckEnabled = true;
 
-  abstract String scheme();
+  protected abstract String scheme();
 
   @Override
   protected void checkPath(Path path) {
@@ -75,5 +75,5 @@ public abstract class CredentialTestFileSystem extends RawLocalFileSystem {
     return new Path(f.toString().replaceAll(scheme() + "//.*?/", "file:///"));
   }
 
-  abstract void checkCredentials(Path f);
+  protected abstract void checkCredentials(Path f);
 }

@@ -9,17 +9,20 @@ from databricks.sdk.service.catalog import (
     FunctionParameterInfo,
     FunctionParameterInfos,
 )
+from databricks_langchain.chat_models import ChatDatabricks, ChatGeneration
 from langchain_core.messages import BaseMessage
 from langchain_core.outputs import ChatGeneration, ChatResult
 from langchain_core.runnables import RunnableGenerator
-from langchain_databricks.chat_models import ChatDatabricks, ChatGeneration
 from langgraph.prebuilt import create_react_agent
+from pydantic import ValidationError
 
+from tests.helper_functions import wrap_output
 from unitycatalog.ai.core.base import (
     FunctionExecutionResult,
 )
 from unitycatalog.ai.core.utils.execution_utils import ExecutionModeDatabricks
 from unitycatalog.ai.core.utils.function_processing_utils import get_tool_name
+from unitycatalog.ai.langchain.toolkit import UCFunctionToolkit
 from unitycatalog.ai.test_utils.client_utils import (
     TEST_IN_DATABRICKS,
     client,  # noqa: F401
@@ -36,16 +39,6 @@ from unitycatalog.ai.test_utils.function_utils import (
     create_function_and_cleanup,
     create_python_function_and_cleanup,
 )
-
-try:
-    # v2
-    from pydantic.v1.error_wrappers import ValidationError
-except ImportError:
-    # v1
-    from pydantic.error_wrappers import ValidationError
-
-from tests.helper_functions import wrap_output
-from unitycatalog.ai.langchain.toolkit import UCFunctionToolkit
 
 SCHEMA = os.environ.get("SCHEMA", "ucai_langchain_test")
 
@@ -143,7 +136,7 @@ def test_multiple_toolkits(execution_mode):
 
 
 def test_toolkit_creation_errors():
-    with pytest.raises(ValueError, match=r"instance of BaseFunctionClient expected"):
+    with pytest.raises(ValidationError, match=r"Input should be an instance of BaseFunctionClient"):
         UCFunctionToolkit(function_names=[], client="client")
 
 
@@ -343,11 +336,11 @@ def test_toolkit_fields_validation(client):
     def test_tool():
         return "abc"
 
-    with pytest.raises(ValidationError, match=r"str type expected"):
+    with pytest.raises(ValidationError, match=r"Input should be a valid string"):
         UCFunctionToolkit(client=client, function_names=[test_tool])
 
     with pytest.raises(ValidationError, match=r"Invalid function name"):
         UCFunctionToolkit(client=client, function_names=["test_tool"])
 
-    with pytest.raises(ValidationError, match=r"instance of BaseFunctionClient expected"):
+    with pytest.raises(ValidationError, match=r"Input should be an instance of BaseFunctionClient"):
         UCFunctionToolkit(client=test_tool, function_names=[])

@@ -1,7 +1,9 @@
 package io.unitycatalog.spark.auth;
 
 import io.unitycatalog.client.model.AwsCredentials;
+import io.unitycatalog.client.model.AzureUserDelegationSAS;
 import io.unitycatalog.client.model.TemporaryCredentials;
+import io.unitycatalog.spark.utils.Clock;
 import java.util.Objects;
 
 public class GenericCredential {
@@ -30,6 +32,17 @@ public class GenericCredential {
     return new GenericCredential(tempCred);
   }
 
+  public static GenericCredential forAzure(String sasToken, long expiredTimeMillis) {
+    AzureUserDelegationSAS azureSAS = new AzureUserDelegationSAS();
+    azureSAS.setSasToken(sasToken);
+
+    TemporaryCredentials tempCred = new TemporaryCredentials();
+    tempCred.setAzureUserDelegationSas(azureSAS);
+    tempCred.setExpirationTime(expiredTimeMillis);
+
+    return new GenericCredential(tempCred);
+  }
+
   public TemporaryCredentials temporaryCredentials() {
     return tempCred;
   }
@@ -37,13 +50,14 @@ public class GenericCredential {
   /**
    * Decide whether it's time to renew the credential/token in advance.
    *
+   * @param clock                 to get the latest timestamp.
    * @param renewalLeadTimeMillis The amount of time before something expires when the renewal
    *                              process should start.
    * @return true if it's ready to renew.
    */
-  public boolean readyToRenew(long renewalLeadTimeMillis) {
+  public boolean readyToRenew(Clock clock, long renewalLeadTimeMillis) {
     return tempCred.getExpirationTime() != null &&
-        tempCred.getExpirationTime() <= System.currentTimeMillis() + renewalLeadTimeMillis;
+        tempCred.getExpirationTime() <= clock.now().toEpochMilli() + renewalLeadTimeMillis;
   }
 
   @Override
