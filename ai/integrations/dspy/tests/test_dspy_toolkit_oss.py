@@ -100,7 +100,6 @@ def sample_dspy_tool():
 
 
 def test_dspy_tool_wrapper_to_dict(sample_dspy_tool):
-    """Test the `to_dict` method of UnityCatalogDSPyToolWrapper."""
     expected_output = {
         "uc_function_name": "test.test.test",
         "client_config": {"profile": None},
@@ -250,9 +249,6 @@ def generate_function_info(
 
 
 def test_convert_to_dspy_schema_with_valid_function_info():
-    """
-    Test convert_to_dspy_schema with valid FunctionInfo input.
-    """
     # Generate mock FunctionInfo using the provided generate_function_info
     function_info = generate_function_info()
 
@@ -305,7 +301,6 @@ async def test_uc_function_to_dspy_tool(uc_client):
 
 @pytest.mark.asyncio
 async def test_toolkit_with_invalid_function_input(uc_client):
-    """Test toolkit with invalid input parameters for function conversion."""
     mock_function_info = generate_function_info()
 
     with (
@@ -325,9 +320,6 @@ async def test_toolkit_with_invalid_function_input(uc_client):
 
 
 def test_generate_dspy_tool_list(uc_client):
-    """
-    Test the generate_dspy_tool_list method of UCFunctionToolkit.
-    """
     # Mock UCFunctionToolkit instance with a DSPy tool
     mock_function_info = generate_function_info()
     with (
@@ -367,7 +359,6 @@ def test_generate_dspy_tool_list(uc_client):
 
 
 def test_toolkit_convert_to_dspy_schema_no_parameters():
-    """Test schema conversion with no parameters."""
     mock_function_info = generate_function_info()
     mock_function_info.input_params.parameters = []
 
@@ -379,7 +370,6 @@ def test_toolkit_convert_to_dspy_schema_no_parameters():
 
 
 def test_toolkit_convert_to_dspy_schema_none_parameters():
-    """Test schema conversion with None parameters raises error."""
     mock_function_info = generate_function_info()
     mock_function_info.input_params.parameters = None
 
@@ -388,7 +378,6 @@ def test_toolkit_convert_to_dspy_schema_none_parameters():
 
 
 def test_toolkit_get_tool_methods(uc_client):
-    """Test the get_tool and get_tool_wrapper methods."""
     mock_function_info = generate_function_info()
     with (
         mock.patch(
@@ -413,7 +402,6 @@ def test_toolkit_get_tool_methods(uc_client):
 
 
 def test_toolkit_with_wildcard_function_names(uc_client):
-    """Test toolkit with wildcard function names."""
     with create_function_and_cleanup_oss(uc_client, schema=SCHEMA) as func_obj:
         toolkit = UCFunctionToolkit(function_names=[f"{CATALOG}.{SCHEMA}.*"], client=uc_client)
 
@@ -423,7 +411,6 @@ def test_toolkit_with_wildcard_function_names(uc_client):
 
 
 def test_toolkit_error_handling(uc_client):
-    """Test toolkit error handling for invalid function names."""
     # Test with incorrect function names
     with pytest.raises(
         ValueError,
@@ -433,7 +420,6 @@ def test_toolkit_error_handling(uc_client):
 
 
 def test_toolkit_validation_error_handling():
-    """Test that toolkit properly handles validation errors."""
     # Test with empty function names
     with pytest.raises(ValueError, match="1 validation error for UCFunctionToolkit"):
         UCFunctionToolkit(function_names=[])
@@ -446,7 +432,6 @@ def test_toolkit_validation_error_handling():
 
 
 def test_toolkit_to_dict_serialization(uc_client):
-    """Test that toolkit can be properly serialized."""
     with create_function_and_cleanup_oss(uc_client, schema=SCHEMA) as func_obj:
         toolkit = UCFunctionToolkit(function_names=[func_obj.full_function_name], client=uc_client)
 
@@ -463,7 +448,6 @@ def test_toolkit_to_dict_serialization(uc_client):
 
 
 def test_toolkit_filter_accessible_functions(uc_client):
-    """Test toolkit with accessible function filtering."""
     with create_function_and_cleanup_oss(uc_client, schema=SCHEMA) as func_obj:
         toolkit = UCFunctionToolkit(
             function_names=[func_obj.full_function_name],
@@ -477,7 +461,6 @@ def test_toolkit_filter_accessible_functions(uc_client):
 
 
 def test_toolkit_convert_to_dspy_schema_strict_mode():
-    """Test schema conversion with strict mode enabled."""
     mock_function_info = generate_function_info()
 
     schema = UCFunctionToolkit.convert_to_dspy_schema(mock_function_info, strict=True)
@@ -493,7 +476,6 @@ def test_toolkit_convert_to_dspy_schema_strict_mode():
 
 
 def test_toolkit_convert_to_dspy_schema_non_strict_mode():
-    """Test schema conversion with strict mode disabled."""
     mock_function_info = generate_function_info()
 
     schema = UCFunctionToolkit.convert_to_dspy_schema(mock_function_info, strict=False)

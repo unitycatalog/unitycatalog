@@ -166,7 +166,6 @@ class UCFunctionToolkit(BaseModel):
         schema_data = UCFunctionToolkit.convert_to_dspy_schema(function_info, strict=True)
 
         def func(**kwargs: Any) -> str:
-            """Execute the Unity Catalog function with the given parameters."""
             args_json = json.loads(json.dumps(kwargs, default=str))
             result = client.execute_function(
                 function_name=function_name,

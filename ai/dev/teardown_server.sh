@@ -39,6 +39,5 @@ else
     else
         echo "No UC server process found (may already be stopped)"
     fi
+    echo "Teardown complete"
 fi
-
-echo "Teardown complete"

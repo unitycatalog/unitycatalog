@@ -276,8 +276,6 @@ See the `dspy_databricks_example.ipynb` notebook for complete working examples:
 - Basic function execution
 - DSPy program integration
 - ReAct agent reasoning
-- Error handling patterns
-- Advanced tool chaining
 
 ## Development
 
