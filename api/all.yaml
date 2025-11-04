@@ -1674,6 +1674,7 @@ components:
         - table_type
         - data_source_format
         - columns
+        - storage_location
     StagingTableInfo:
       type: object
       properties:

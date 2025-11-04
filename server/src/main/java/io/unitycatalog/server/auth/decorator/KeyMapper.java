@@ -79,24 +79,28 @@ public class KeyMapper {
       String catalogName;
       String schemaName;
       String tableId;
-      try {
-        TableInfo table =
-            isTableName
-                ? tableRepository.getTable(fullName)
-                : tableRepository.getTableById(fullName);
+      if (isTableName) {
+        TableInfo table = tableRepository.getTable(fullName);
         catalogName = table.getCatalogName();
         schemaName = table.getSchemaName();
         tableId = table.getTableId();
-      } catch (BaseException e) {
-        if (!isTableName && e.getErrorCode() == ErrorCode.NOT_FOUND) {
-          // Check if this is actually a request for staging table. Staging tables are only
-          // addressed via their IDs.
-          StagingTableInfo stagingTable = stagingTableRepository.getStagingTableById(fullName);
-          catalogName = stagingTable.getCatalogName();
-          schemaName = stagingTable.getSchemaName();
-          tableId = stagingTable.getId();
-        } else {
-          throw e;
+      } else {
+        // A table ID can either refer to a table or a staging table. Try to get a table first.
+        try {
+          TableInfo table = tableRepository.getTableById(fullName);
+          catalogName = table.getCatalogName();
+          schemaName = table.getSchemaName();
+          tableId = table.getTableId();
+        } catch (BaseException e) {
+          if (e.getErrorCode() == ErrorCode.NOT_FOUND) {
+            // If there isn't such a table, it may be a staging table instead.
+            StagingTableInfo stagingTable = stagingTableRepository.getStagingTableById(fullName);
+            catalogName = stagingTable.getCatalogName();
+            schemaName = stagingTable.getSchemaName();
+            tableId = stagingTable.getId();
+          } else {
+            throw e;
+          }
         }
       }
 

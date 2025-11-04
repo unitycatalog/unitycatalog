@@ -60,6 +60,7 @@ public class TableRepository {
           if (tableInfoDAO != null) {
             return FileOperations.toStandardizedURIString(tableInfoDAO.getUrl());
           }
+
           LOGGER.debug("Getting storage location of staging table by id: {}", tableId);
           StagingTableDAO stagingTableDAO = session.get(StagingTableDAO.class, tableUUID);
           if (stagingTableDAO != null) {
@@ -155,16 +156,10 @@ public class TableRepository {
           }
           TableType tableType = Objects.requireNonNull(createTable.getTableType());
           // The table ID will either be a new random one or the id of staging table, depending
-          // on the type of table to create and whether a staged location is set.
+          // on the type of table to create.
           String tableID;
-          String storageLocation;
           if (tableType == TableType.EXTERNAL) {
-            if (createTable.getStorageLocation() == null) {
-              throw new BaseException(
-                  ErrorCode.INVALID_ARGUMENT, "Storage location is required for external table");
-            }
             tableID = UUID.randomUUID().toString();
-            storageLocation = createTable.getStorageLocation();
           } else if (tableType == TableType.MANAGED) {
             serverProperties.checkManagedTableEnabled();
             if (createTable.getDataSourceFormat() != DataSourceFormat.DELTA) {
@@ -172,18 +167,12 @@ public class TableRepository {
                   ErrorCode.INVALID_ARGUMENT,
                   "MANAGED table creation is only supported for delta tables.");
             }
-            if (createTable.getStorageLocation() == null) {
-              tableID = UUID.randomUUID().toString();
-              storageLocation = repositories.getFileOperations().createTableDirectory(tableID);
-            } else {
-              // Find and commit staging table with the same staging location
-              StagingTableDAO stagingTableDAO =
-                  repositories
-                      .getStagingTableRepository()
-                      .commitStagingTable(session, callerId, createTable.getStorageLocation());
-              tableID = stagingTableDAO.getId().toString();
-              storageLocation = stagingTableDAO.getStagingLocation();
-            }
+            // Find and commit staging table with the same staging location
+            StagingTableDAO stagingTableDAO =
+                repositories
+                    .getStagingTableRepository()
+                    .commitStagingTable(session, callerId, createTable.getStorageLocation());
+            tableID = stagingTableDAO.getId().toString();
           } else {
             throw new BaseException(
                 ErrorCode.INVALID_ARGUMENT,
@@ -204,8 +193,9 @@ public class TableRepository {
                   .createdBy(callerId)
                   .updatedAt(createTime)
                   .updatedBy(callerId)
-                  .tableId(tableID)
-                  .storageLocation(FileOperations.toStandardizedURIString(storageLocation));
+                  .storageLocation(
+                      FileOperations.toStandardizedURIString(createTable.getStorageLocation()))
+                  .tableId(tableID);
 
           TableInfoDAO tableInfoDAO = TableInfoDAO.from(tableInfo, schemaId);
           // create columns

@@ -82,14 +82,12 @@ public class RepositoryUtils {
   }
 
   public static Pair<String, String> getCatalogAndSchemaNames(Session session, UUID schemaId) {
-    SchemaInfoDAO schemaInfoDAO =
-            session.get(SchemaInfoDAO.class, schemaId);
+    SchemaInfoDAO schemaInfoDAO = session.get(SchemaInfoDAO.class, schemaId);
     if (schemaInfoDAO == null) {
       throw new BaseException(
               ErrorCode.NOT_FOUND, "Schema not found: " + schemaId);
     }
-    CatalogInfoDAO catalogInfoDAO =
-            session.get(CatalogInfoDAO.class, schemaInfoDAO.getCatalogId());
+    CatalogInfoDAO catalogInfoDAO = session.get(CatalogInfoDAO.class, schemaInfoDAO.getCatalogId());
     if (catalogInfoDAO == null) {
       throw new BaseException(
               ErrorCode.NOT_FOUND, "Catalog not found: " + schemaInfoDAO.getCatalogId());
