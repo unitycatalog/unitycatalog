@@ -81,6 +81,18 @@ public class RepositoryUtils {
     return catalogInfoDAO;
   }
 
+  /**
+   * Retrieves the catalog and schema names for a given schema ID.
+   *
+   * <p>This method performs a lookup to find the schema by its UUID, then retrieves
+   * the associated catalog information. It returns both the catalog and schema names
+   * as a pair.
+   *
+   * @param session the Hibernate session used to query the database
+   * @param schemaId the unique identifier of the schema
+   * @return a Pair containing the catalog name (left) and schema name (right)
+   * @throws BaseException with ErrorCode.NOT_FOUND if the schema or its parent catalog is not found
+   */
   public static Pair<String, String> getCatalogAndSchemaNames(Session session, UUID schemaId) {
     SchemaInfoDAO schemaInfoDAO = session.get(SchemaInfoDAO.class, schemaId);
     if (schemaInfoDAO == null) {
