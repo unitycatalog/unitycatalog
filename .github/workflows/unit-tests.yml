@@ -31,7 +31,7 @@ jobs:
       run: build/sbt integrationTests/test:compile
 
     - name: Run tests with coverage
-      run: build/sbt -J-Xmx2G test
+      run: build/sbt -J-Xmx2G +jacoco
 
     - name: Run license check
       run: build/sbt licenseCheck
