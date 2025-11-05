@@ -52,7 +52,7 @@ public class GcsVendedTokenProviderTest extends BaseTokenProviderTest<GcsVendedT
     assertThat(cred.getGcpOauthToken()).isNotNull();
     conf.set(UCHadoopConf.GCS_INIT_OAUTH_TOKEN, cred.getGcpOauthToken().getOauthToken());
     if (cred.getExpirationTime() != null) {
-      conf.setLong(UCHadoopConf.GCS_INIT_OAUTH_TOKEN_EXPIRED_TIME, cred.getExpirationTime());
+      conf.setLong(UCHadoopConf.GCS_INIT_OAUTH_TOKEN_EXPIRATION_TIME, cred.getExpirationTime());
     }
   }
 

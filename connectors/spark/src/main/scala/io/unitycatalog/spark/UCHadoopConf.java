@@ -22,8 +22,8 @@ public class UCHadoopConf {
 
   // Keys for the initialized Google Cloud Storage OAuth token.
   public static final String GCS_INIT_OAUTH_TOKEN = "fs.gs.init.oauth.token";
-  public static final String GCS_INIT_OAUTH_TOKEN_EXPIRED_TIME =
-      "fs.gs.init.oauth.token.expired.time";
+  public static final String GCS_INIT_OAUTH_TOKEN_EXPIRATION_TIME =
+      "fs.gs.init.oauth.token.expiration.time";
 
   // Keys for the UnityCatalog client.
   // Note: Delta automatically filters out configuration keys without the "fs." prefix To ensure

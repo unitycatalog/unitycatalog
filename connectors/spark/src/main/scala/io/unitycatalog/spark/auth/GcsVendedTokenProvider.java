@@ -27,10 +27,10 @@ public class GcsVendedTokenProvider extends GenericCredentialProvider
           + "configuration", UCHadoopConf.GCS_INIT_OAUTH_TOKEN);
 
       long expiredTimeMillis = conf.getLong(
-            UCHadoopConf.GCS_INIT_OAUTH_TOKEN_EXPIRED_TIME,
+            UCHadoopConf.GCS_INIT_OAUTH_TOKEN_EXPIRATION_TIME,
             Long.MAX_VALUE);
       Preconditions.checkState(expiredTimeMillis > 0, "Expired time %s must be greater than 0, " +
-          "please check configure key '%s'", expiredTimeMillis, UCHadoopConf.GCS_INIT_OAUTH_TOKEN_EXPIRED_TIME);
+          "please check configure key '%s'", expiredTimeMillis, UCHadoopConf.GCS_INIT_OAUTH_TOKEN_EXPIRATION_TIME);
 
       return GenericCredential.forGcs(oauthToken, expiredTimeMillis);
     } else {

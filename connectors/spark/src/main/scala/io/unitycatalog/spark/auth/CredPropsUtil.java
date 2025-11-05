@@ -191,7 +191,7 @@ public class CredPropsUtil {
 
     // For the static credential case, nullable expiration time is possible.
     if (tempCreds.getExpirationTime() != null) {
-      builder.set(UCHadoopConf.GCS_INIT_OAUTH_TOKEN_EXPIRED_TIME,
+      builder.set(UCHadoopConf.GCS_INIT_OAUTH_TOKEN_EXPIRATION_TIME,
           String.valueOf(tempCreds.getExpirationTime()));
     }
 
