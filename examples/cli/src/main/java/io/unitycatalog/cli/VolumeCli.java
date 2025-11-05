@@ -11,21 +11,10 @@ import io.unitycatalog.client.ApiClient;
 import io.unitycatalog.client.ApiException;
 import io.unitycatalog.client.api.TemporaryCredentialsApi;
 import io.unitycatalog.client.api.VolumesApi;
-import io.unitycatalog.client.model.CreateVolumeRequestContent;
-import io.unitycatalog.client.model.GenerateTemporaryVolumeCredential;
-import io.unitycatalog.client.model.UpdateVolumeRequestContent;
-import io.unitycatalog.client.model.VolumeInfo;
-import io.unitycatalog.client.model.VolumeOperation;
-import io.unitycatalog.client.model.VolumeType;
-import java.io.BufferedWriter;
-import java.io.ByteArrayOutputStream;
-import java.io.IOException;
-import java.io.InputStream;
-import java.io.OutputStreamWriter;
+import io.unitycatalog.client.model.*;
+import java.io.*;
 import java.net.URI;
-import java.util.ArrayList;
-import java.util.List;
-import java.util.UUID;
+import java.util.*;
 import org.apache.commons.cli.CommandLine;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.FileStatus;
@@ -175,7 +164,7 @@ public class VolumeCli {
     URI relativeURI = resolveURI(baseURI, relativePath);
     Configuration conf =
         DeltaKernelUtils.getHDFSConfiguration(
-            relativeURI,
+            baseURI,
             tempCredApi.generateTemporaryVolumeCredentials(
                 new GenerateTemporaryVolumeCredential()
                     .volumeId(volumeInfo.getVolumeId())

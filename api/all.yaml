@@ -2605,6 +2605,13 @@ components:
             The API client is advised to cache the credential given this expiration time.
           type: integer
           format: int64
+        service_endpoint:
+          description: |
+            Optional S3-compatible service endpoint URL (e.g., https://minio.example.com:9000).
+            When present, clients should configure their S3 client to use this endpoint instead of AWS S3.
+            When null or absent, clients should use the default AWS S3 endpoint.
+            This field is only populated for S3-compatible storage backends (MinIO, Wasabi, etc.).
+          type: string
     PathOperation:
       enum:
         - UNKNOWN_PATH_OPERATION
