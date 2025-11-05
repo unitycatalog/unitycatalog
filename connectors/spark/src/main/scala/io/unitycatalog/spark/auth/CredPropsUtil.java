@@ -186,7 +186,6 @@ public class CredPropsUtil {
     GcsPropsBuilder builder = new GcsPropsBuilder()
         .set("fs.gs.auth.type", "ACCESS_TOKEN_PROVIDER")
         .set("fs.gs.auth.access.token.provider", GcsVendedTokenProvider.class.getName())
-        .set("fs.gs.auth.access.token.provider.impl", GcsVendedTokenProvider.class.getName())
         .uri(uri)
         .token(token)
         .uid(UUID.randomUUID().toString())

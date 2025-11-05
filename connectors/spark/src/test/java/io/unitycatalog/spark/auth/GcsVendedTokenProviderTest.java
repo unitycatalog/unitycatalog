@@ -108,7 +108,6 @@ public class GcsVendedTokenProviderTest extends BaseTokenProviderTest<GcsVendedT
     conf.set("fs.gs.project.id", "test-project");
     conf.set("fs.gs.auth.type", "ACCESS_TOKEN_PROVIDER");
     conf.set("fs.gs.auth.access.token.provider", GcsVendedTokenProvider.class.getName());
-    conf.set("fs.gs.auth.access.token.provider.impl", GcsVendedTokenProvider.class.getName());
 
     FileSystem fs = FileSystem.newInstance(new URI("gs://test-bucket0"), conf);
     try {
