@@ -3,14 +3,18 @@ package io.unitycatalog.spark.auth;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.AssertionsForClassTypes.assertThatThrownBy;
 
+import com.google.auth.oauth2.GoogleCredentials;
 import com.google.cloud.hadoop.util.AccessTokenProvider;
 import com.google.cloud.hadoop.util.AccessTokenProvider.AccessToken;
+import com.google.cloud.hadoop.util.HadoopCredentialsConfiguration;
+import com.google.cloud.hadoop.util.HadoopCredentialsConfiguration.AccessTokenProviderCredentials;
 import io.unitycatalog.client.api.TemporaryCredentialsApi;
 import io.unitycatalog.client.model.GcpOauthToken;
 import io.unitycatalog.client.model.TemporaryCredentials;
 import io.unitycatalog.spark.UCHadoopConf;
+import java.net.URI;
 import org.apache.hadoop.conf.Configuration;
-import org.apache.hadoop.util.ReflectionUtils;
+import org.apache.hadoop.fs.FileSystem;
 import org.junit.jupiter.api.Test;
 
 public class GcsVendedTokenProviderTest extends BaseTokenProviderTest<GcsVendedTokenProvider> {
@@ -98,13 +102,30 @@ public class GcsVendedTokenProviderTest extends BaseTokenProviderTest<GcsVendedT
   @Test
   public void testLoadProvider() throws Exception {
     Configuration conf = newTableBasedConf();
+    String ghfsClassName = "com.google.cloud.hadoop.fs.gcs.GoogleHadoopFileSystem";
+    conf.set("fs.gs.impl", ghfsClassName);
+    conf.setBoolean("fs.gs.impl.disable.cache", true);
+    conf.set("fs.gs.project.id", "test-project");
     conf.set("fs.gs.auth.type", "ACCESS_TOKEN_PROVIDER");
+    conf.set("fs.gs.auth.access.token.provider", GcsVendedTokenProvider.class.getName());
     conf.set("fs.gs.auth.access.token.provider.impl", GcsVendedTokenProvider.class.getName());
 
-    Class<?> providerClazz = conf.getClassByName(conf.get("fs.gs.auth.access.token.provider.impl"));
-    AccessTokenProvider provider =
-        (AccessTokenProvider) ReflectionUtils.newInstance(providerClazz, conf);
+    FileSystem fs = FileSystem.newInstance(new URI("gs://test-bucket0"), conf);
+    try {
+      assertThat(fs.getClass().getName()).isEqualTo(ghfsClassName);
 
-    assertThat(provider).isInstanceOf(GcsVendedTokenProvider.class);
+      GoogleCredentials credentials =
+          HadoopCredentialsConfiguration.getCredentials(
+              fs.getConf(), "fs.gs");
+
+      assertThat(credentials).isInstanceOf(AccessTokenProviderCredentials.class);
+
+      AccessTokenProvider provider =
+          ((AccessTokenProviderCredentials) credentials).getAccessTokenProvider();
+
+      assertThat(provider).isInstanceOf(GcsVendedTokenProvider.class);
+    } finally {
+      fs.close();
+    }
   }
 }

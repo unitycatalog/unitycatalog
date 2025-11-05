@@ -168,10 +168,13 @@ public class CredPropsUtil {
 
   private static Map<String, String> gsFixedCredProps(TemporaryCredentials tempCreds) {
     GcpOauthToken gcpOauthToken = tempCreds.getGcpOauthToken();
+    Long expirationTime = tempCreds.getExpirationTime() == null
+        ? Long.MAX_VALUE
+        : tempCreds.getExpirationTime();
     return new GcsPropsBuilder()
         .set(GcsVendedTokenProvider.ACCESS_TOKEN_KEY, gcpOauthToken.getOauthToken())
         .set(GcsVendedTokenProvider.ACCESS_TOKEN_EXPIRATION_KEY,
-            String.valueOf(tempCreds.getExpirationTime()))
+            String.valueOf(expirationTime))
         .build();
   }
 
