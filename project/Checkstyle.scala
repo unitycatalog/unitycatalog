@@ -25,9 +25,15 @@ object Checkstyle {
    ****************************
    */
 
+  // Define a custom SBT task key for compiling Java code style checks
   private lazy val compileJavastyle = taskKey[Unit]("compileJavastyle")
+
+  // Define a custom SBT task key for testing Java code style checks
   private lazy val testJavastyle = taskKey[Unit]("testJavastyle")
 
+  /**
+   * Returns a sequence of SBT settings to enable Java Checkstyle for a module.
+   */
   def javaCheckstyleSettings(checkstyleFile: String): Def.SettingsDefinition = {
     // Can be run explicitly via: build/sbt $module/checkstyle
     // Will automatically be run during compilation (e.g. build/sbt compile)
@@ -44,16 +50,23 @@ object Checkstyle {
         (Compile / checkstyle).value
         javaCheckstyle(streams.value.log, checkstyleOutputFile.value)
       },
+      // Make compile task depend on compileJavastyle so style is checked automatically.
       (Compile / compile) := ((Compile / compile) dependsOn compileJavastyle).value,
 
       testJavastyle := {
         (Test / checkstyle).value
         javaCheckstyle(streams.value.log, (Compile / target).value / "checkstyle-test-report.xml")
       },
+      // Make test and compile tasks depend on testJavastyle so style is checked automatically.
+      (Test / compile) := ((Test / compile) dependsOn (Test / testJavastyle)).value,
       (Test / test) := ((Test / test) dependsOn (Test / testJavastyle)).value
     )
   }
 
+  /**
+   * Parse the checkstyle XML report and log errors. Fail the SBT task if there are any checkstyle
+   * violations.
+   */
   private def javaCheckstyle(log: Logger, reportFile: File): Unit = {
     val report = scala.xml.XML.loadFile(reportFile)
 
@@ -76,5 +89,4 @@ object Checkstyle {
       sys.error(errorMsg + "\n")
     }
   }
-
 }
