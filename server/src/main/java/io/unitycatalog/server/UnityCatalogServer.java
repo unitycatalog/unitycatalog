@@ -39,6 +39,7 @@ import io.unitycatalog.server.service.PermissionService;
 import io.unitycatalog.server.service.SchemaService;
 import io.unitycatalog.server.service.Scim2SelfService;
 import io.unitycatalog.server.service.Scim2UserService;
+import io.unitycatalog.server.service.StagingTableService;
 import io.unitycatalog.server.service.TableService;
 import io.unitycatalog.server.service.TemporaryModelVersionCredentialsService;
 import io.unitycatalog.server.service.TemporaryPathCredentialsService;
