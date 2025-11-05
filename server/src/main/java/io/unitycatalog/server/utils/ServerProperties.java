@@ -20,7 +20,7 @@ import org.slf4j.LoggerFactory;
 public class ServerProperties {
 
   private static final Logger LOGGER = LoggerFactory.getLogger(ServerProperties.class);
-  private final Properties properties;
+  private final Properties properties = new Properties(generateDefaults());
 
   @Getter
   public enum Property {
@@ -56,17 +56,13 @@ public class ServerProperties {
     }
   }
 
-  public ServerProperties() {
-    this.properties = new Properties(generateDefaults());
-  }
+  public ServerProperties() {}
 
   public ServerProperties(String propertiesFile) {
-    this();
     readPropertiesFromFile(propertiesFile);
   }
 
   public ServerProperties(Properties inputProperties) {
-    this();
     properties.putAll(inputProperties);
   }
 
