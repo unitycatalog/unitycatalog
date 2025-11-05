@@ -22,6 +22,7 @@ import lombok.SneakyThrows;
 import java.util.Collections;
 import java.util.Map;
 import java.util.Set;
+import java.util.UUID;
 
 import static io.unitycatalog.server.model.SecurableType.METASTORE;
 import static io.unitycatalog.server.model.SecurableType.TABLE;
@@ -54,7 +55,8 @@ public class TemporaryTableCredentialsService {
     authorizeForOperation(generateTemporaryTableCredential);
 
     String tableId = generateTemporaryTableCredential.getTableId();
-    String storageLocation = tableRepository.getStorageLocationForTableOrStagingTable(tableId);
+    String storageLocation = tableRepository.getStorageLocationForTableOrStagingTable(
+        UUID.fromString(tableId));
     return HttpResponse.ofJson(cloudCredentialVendor.vendCredential(storageLocation,
             tableOperationToPrivileges(generateTemporaryTableCredential.getOperation())));
   }

@@ -8,14 +8,11 @@ import static io.unitycatalog.server.model.SecurableType.SCHEMA;
 import static io.unitycatalog.server.model.SecurableType.TABLE;
 import static io.unitycatalog.server.model.SecurableType.VOLUME;
 
-import io.unitycatalog.server.exception.BaseException;
-import io.unitycatalog.server.exception.ErrorCode;
 import io.unitycatalog.server.model.CatalogInfo;
 import io.unitycatalog.server.model.FunctionInfo;
 import io.unitycatalog.server.model.RegisteredModelInfo;
 import io.unitycatalog.server.model.SchemaInfo;
 import io.unitycatalog.server.model.SecurableType;
-import io.unitycatalog.server.model.StagingTableInfo;
 import io.unitycatalog.server.model.TableInfo;
 import io.unitycatalog.server.model.VolumeInfo;
 import io.unitycatalog.server.persist.CatalogRepository;
@@ -24,18 +21,17 @@ import io.unitycatalog.server.persist.MetastoreRepository;
 import io.unitycatalog.server.persist.ModelRepository;
 import io.unitycatalog.server.persist.Repositories;
 import io.unitycatalog.server.persist.SchemaRepository;
-import io.unitycatalog.server.persist.StagingTableRepository;
 import io.unitycatalog.server.persist.TableRepository;
 import io.unitycatalog.server.persist.VolumeRepository;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.UUID;
+import org.apache.commons.lang3.tuple.Pair;
 
 public class KeyMapper {
   private final CatalogRepository catalogRepository;
   private final SchemaRepository schemaRepository;
   private final TableRepository tableRepository;
-  private final StagingTableRepository stagingTableRepository;
   private final VolumeRepository volumeRepository;
   private final FunctionRepository functionRepository;
   private final ModelRepository modelRepository;
@@ -45,7 +41,6 @@ public class KeyMapper {
     this.catalogRepository = repositories.getCatalogRepository();
     this.schemaRepository = repositories.getSchemaRepository();
     this.tableRepository = repositories.getTableRepository();
-    this.stagingTableRepository = repositories.getStagingTableRepository();
     this.volumeRepository = repositories.getVolumeRepository();
     this.functionRepository = repositories.getFunctionRepository();
     this.modelRepository = repositories.getModelRepository();
@@ -76,40 +71,30 @@ public class KeyMapper {
       String fullName = (String) resourceKeys.get(TABLE);
       // If the full name contains a dot, we assume it's a full name, otherwise we assume it's an id
       boolean isTableName = fullName.contains(".");
-      String catalogName;
-      String schemaName;
-      String tableId;
+
+      UUID catalogId;
+      UUID schemaId;
+      UUID tableId;
       if (isTableName) {
         TableInfo table = tableRepository.getTable(fullName);
-        catalogName = table.getCatalogName();
-        schemaName = table.getSchemaName();
-        tableId = table.getTableId();
+        String fullSchemaName = table.getCatalogName() + "." + table.getSchemaName();
+        SchemaInfo schema = schemaRepository.getSchema(fullSchemaName);
+        CatalogInfo catalog = catalogRepository.getCatalog(table.getCatalogName());
+        catalogId = UUID.fromString(catalog.getId());
+        schemaId = UUID.fromString(schema.getSchemaId());
+        tableId = UUID.fromString(table.getTableId());
       } else {
-        // A table ID can either refer to a table or a staging table. Try to get a table first.
-        try {
-          TableInfo table = tableRepository.getTableById(fullName);
-          catalogName = table.getCatalogName();
-          schemaName = table.getSchemaName();
-          tableId = table.getTableId();
-        } catch (BaseException e) {
-          if (e.getErrorCode() == ErrorCode.NOT_FOUND) {
-            // If there isn't such a table, it may be a staging table instead.
-            StagingTableInfo stagingTable = stagingTableRepository.getStagingTableById(fullName);
-            catalogName = stagingTable.getCatalogName();
-            schemaName = stagingTable.getSchemaName();
-            tableId = stagingTable.getId();
-          } else {
-            throw e;
-          }
-        }
+        // It may be the ID of either a table or staging table.
+        tableId = UUID.fromString(fullName);
+        Pair<UUID, UUID> catalogAndSchemaIds =
+            tableRepository.getCatalogSchemaIdsByTableOrStagingTableId(tableId);
+        catalogId = catalogAndSchemaIds.getLeft();
+        schemaId = catalogAndSchemaIds.getRight();
       }
 
-      String fullSchemaName = catalogName + "." + schemaName;
-      SchemaInfo schema = schemaRepository.getSchema(fullSchemaName);
-      CatalogInfo catalog = catalogRepository.getCatalog(catalogName);
-      resourceIds.put(TABLE, UUID.fromString(tableId));
-      resourceIds.put(SCHEMA, UUID.fromString(schema.getSchemaId()));
-      resourceIds.put(CATALOG, UUID.fromString(catalog.getId()));
+      resourceIds.put(TABLE, tableId);
+      resourceIds.put(SCHEMA, schemaId);
+      resourceIds.put(CATALOG, catalogId);
     }
 
     if (resourceKeys.containsKey(CATALOG)

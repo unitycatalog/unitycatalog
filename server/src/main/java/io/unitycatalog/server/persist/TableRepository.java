@@ -9,6 +9,7 @@ import io.unitycatalog.server.model.ListTablesResponse;
 import io.unitycatalog.server.model.TableInfo;
 import io.unitycatalog.server.model.TableType;
 import io.unitycatalog.server.persist.dao.PropertyDAO;
+import io.unitycatalog.server.persist.dao.SchemaInfoDAO;
 import io.unitycatalog.server.persist.dao.StagingTableDAO;
 import io.unitycatalog.server.persist.dao.TableInfoDAO;
 import io.unitycatalog.server.persist.utils.FileOperations;
@@ -50,19 +51,31 @@ public class TableRepository {
     this.serverProperties = serverProperties;
   }
 
-  public String getStorageLocationForTableOrStagingTable(String tableId) {
+  /**
+   * Retrieves the storage location for a table or staging table by its ID. First attempts to find a
+   * regular table with the given ID, then falls back to searching for a staging table if no regular
+   * table is found. NOTE: This function is specially needed by generateTemporaryTableCredential
+   * during the short window when a staging table is just created and the initial data is being
+   * written but before the actual table is already created. Reading of a staging table is not a
+   * common supplemental of an actual table but only a special case.
+   *
+   * @param tableId the ID of the table or staging table
+   * @return the standardized URI string of the storage location
+   * @throws BaseException with ErrorCode.NOT_FOUND if neither a table nor staging table is found
+   *     with the given ID
+   */
+  public String getStorageLocationForTableOrStagingTable(UUID tableId) {
     return TransactionManager.executeWithTransaction(
         sessionFactory,
         session -> {
           LOGGER.debug("Getting storage location of table by id: {}", tableId);
-          UUID tableUUID = UUID.fromString(tableId);
-          TableInfoDAO tableInfoDAO = session.get(TableInfoDAO.class, tableUUID);
+          TableInfoDAO tableInfoDAO = session.get(TableInfoDAO.class, tableId);
           if (tableInfoDAO != null) {
             return FileOperations.toStandardizedURIString(tableInfoDAO.getUrl());
           }
 
           LOGGER.debug("Getting storage location of staging table by id: {}", tableId);
-          StagingTableDAO stagingTableDAO = session.get(StagingTableDAO.class, tableUUID);
+          StagingTableDAO stagingTableDAO = session.get(StagingTableDAO.class, tableId);
           if (stagingTableDAO != null) {
             return FileOperations.toStandardizedURIString(stagingTableDAO.getStagingLocation());
           }
@@ -73,21 +86,47 @@ public class TableRepository {
         /* readOnly = */ true);
   }
 
-  public TableInfo getTableById(String tableId) {
-    LOGGER.debug("Getting table by id: {}", tableId);
+  /**
+   * Retrieves the schema ID and catalog ID for a table or staging table by its ID. First attempts
+   * to IDs associated with a regular table with the given ID, then falls back to searching for a
+   * staging table if no regular table is found. NOTE: Similar to
+   * getStorageLocationForTableOrStagingTable, this function is specially needed by KeyMapper during
+   * authorization of generateTemporaryTableCredential. Reading of a staging table is not a common
+   * supplemental of an actual table but only a special case.
+   *
+   * @param tableId the UUID of the table or staging table
+   * @return a Pair containing the catalog ID (left) and schema ID (right)
+   * @throws BaseException with ErrorCode.NOT_FOUND if neither a table nor staging table is found
+   *     with the given ID, or if the associated schema is not found
+   */
+  public Pair<UUID, UUID> getCatalogSchemaIdsByTableOrStagingTableId(UUID tableId) {
+    LOGGER.debug("Getting catalog&schema id by table or staging table id: {}", tableId);
     return TransactionManager.executeWithTransaction(
         sessionFactory,
         session -> {
-          TableInfoDAO tableInfoDAO = session.get(TableInfoDAO.class, UUID.fromString(tableId));
-          if (tableInfoDAO == null) {
-            throw new BaseException(ErrorCode.NOT_FOUND, "Table not found: " + tableId);
+          TableInfoDAO tableInfoDAO = session.get(TableInfoDAO.class, tableId);
+
+          UUID schemaId;
+          if (tableInfoDAO != null) {
+            schemaId = tableInfoDAO.getSchemaId();
+          } else {
+            // Table not found, try to find a staging table instead
+            StagingTableDAO stagingTableDAO = session.get(StagingTableDAO.class, tableId);
+            if (stagingTableDAO == null) {
+              throw new BaseException(
+                  ErrorCode.NOT_FOUND, "Neither table nor staging table found with id: " + tableId);
+            }
+            schemaId = stagingTableDAO.getSchemaId();
           }
-          Pair<String, String> catalogAndSchemaNames =
-              RepositoryUtils.getCatalogAndSchemaNames(session, tableInfoDAO.getSchemaId());
-          return tableInfoDAO.toTableInfo(
-              true, catalogAndSchemaNames.getLeft(), catalogAndSchemaNames.getRight());
+
+          SchemaInfoDAO schemaInfoDAO = session.get(SchemaInfoDAO.class, schemaId);
+          if (schemaInfoDAO == null) {
+            throw new BaseException(ErrorCode.NOT_FOUND, "Schema not found with id: " + schemaId);
+          }
+
+          return Pair.of(schemaInfoDAO.getCatalogId(), schemaId);
         },
-        "Failed to get table by ID",
+        "Failed to get table or staging table by ID",
         /* readOnly = */ true);
   }
 
