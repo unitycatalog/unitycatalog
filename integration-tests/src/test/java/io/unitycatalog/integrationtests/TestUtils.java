@@ -9,8 +9,8 @@ public class TestUtils {
   public static final String SCHEMA_NAME = envAsString("SCHEMA_NAME", randomName());
   public static final String S3_BASE_LOCATION = envAsString("S3_BASE_LOCATION", "s3://bucket/key");
   public static final String GS_BASE_LOCATION = envAsString("GS_BASE_LOCATION", "gs://bucket/key");
-  public static final String ABFSS_BASE_LOCATION = envAsString("ABFSS_BASE_LOCATION",
-      "abfss://bucket/key");
+  public static final String ABFSS_BASE_LOCATION =
+      envAsString("ABFSS_BASE_LOCATION", "abfss://bucket/key");
 
   public static String envAsString(String key, String defaultValue) {
     return System.getenv().getOrDefault(key, defaultValue);

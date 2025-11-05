@@ -20,14 +20,17 @@ import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 
 /**
- * Typically, cloud vendor credentials (used to access cloud storage) issued by the UC server
- * expire after one hour. This integration test launches a long-running write job whose duration
- * (controlled by the {@link SparkCredentialRenewalTest#ROW_COUNT} environment variable) exceeds
- * the credential’s expiration time. If the job completes successfully, it verifies that the
- * credential renewal mechanism works as expected, seamlessly refreshing credentials without
- * interrupting the ongoing job.
+ * Typically, cloud vendor credentials (used to access cloud storage) issued by the UC server expire
+ * after one hour. This integration test launches a long-running write job whose duration
+ * (controlled by the {@link SparkCredentialRenewalTest#ROW_COUNT} environment variable) exceeds the
+ * credential’s expiration time. If the job completes successfully, it verifies that the credential
+ * renewal mechanism works as expected, seamlessly refreshing credentials without interrupting the
+ * ongoing job.
+ *
  * <p>
- * <p><b>To run this tests: </b></p>
+ *
+ * <p><b>To run this tests: </b>
+ *
  * <pre>
  * export CATALOG_URI=...
  * export CATALOG_AUTH_TOKEN=...
@@ -51,30 +54,33 @@ public class SparkCredentialRenewalTest {
   private static final long ROW_COUNT = envAsLong(PREFIX + "ROW_COUNT", 10_000_000_000L);
 
   // Define the table name.
-  private static final String TABLE_NAME = String.format("%s.%s.%s",
-      CATALOG_NAME, SCHEMA_NAME, randomName());
+  private static final String TABLE_NAME =
+      String.format("%s.%s.%s", CATALOG_NAME, SCHEMA_NAME, randomName());
 
   private static SparkSession spark;
 
   @BeforeAll
   public static void beforeAll() {
     String testCatalogKey = String.format("spark.sql.catalog.%s", CATALOG_NAME);
-    spark = SparkSession.builder()
-        .appName("test-credential-renewal-in-long-running-job")
-        .master("local[1]") // Make it single-threaded explicitly.
-        .config("spark.hadoop.fs.s3.impl", "org.apache.hadoop.fs.s3a.S3AFileSystem")
-        .config("spark.sql.extensions", "io.delta.sql.DeltaSparkSessionExtension")
-        .config("spark.sql.catalog.spark_catalog",
-            "org.apache.spark.sql.delta.catalog.DeltaCatalog")
-        .config(testCatalogKey, UCSingleCatalog.class.getName())
-        .config(testCatalogKey + ".uri", SERVER_URL)
-        .config(testCatalogKey + ".token", AUTH_TOKEN)
-        .config(testCatalogKey + ".warehouse", CATALOG_NAME)
-        .config(testCatalogKey + ".renewCredential.enabled", String.valueOf(RENEW_CRED_ENABLED))
-        .getOrCreate();
+    spark =
+        SparkSession.builder()
+            .appName("test-credential-renewal-in-long-running-job")
+            .master("local[1]") // Make it single-threaded explicitly.
+            .config("spark.hadoop.fs.s3.impl", "org.apache.hadoop.fs.s3a.S3AFileSystem")
+            .config("spark.sql.extensions", "io.delta.sql.DeltaSparkSessionExtension")
+            .config(
+                "spark.sql.catalog.spark_catalog",
+                "org.apache.spark.sql.delta.catalog.DeltaCatalog")
+            .config(testCatalogKey, UCSingleCatalog.class.getName())
+            .config(testCatalogKey + ".uri", SERVER_URL)
+            .config(testCatalogKey + ".token", AUTH_TOKEN)
+            .config(testCatalogKey + ".warehouse", CATALOG_NAME)
+            .config(testCatalogKey + ".renewCredential.enabled", String.valueOf(RENEW_CRED_ENABLED))
+            .getOrCreate();
 
     sql("CREATE SCHEMA %s", SCHEMA_NAME);
-    sql("CREATE TABLE %s (id BIGINT, val STRING) USING delta LOCATION '%s/%s'",
+    sql(
+        "CREATE TABLE %s (id BIGINT, val STRING) USING delta LOCATION '%s/%s'",
         TABLE_NAME, S3_BASE_LOCATION, UUID.randomUUID());
   }
 
@@ -88,7 +94,8 @@ public class SparkCredentialRenewalTest {
   @Test
   public void testLongRunningJob() {
     // Prepare the data set.
-    sql("INSERT INTO %s SELECT id, CONCAT('val_', id) AS val FROM range(0, %s)",
+    sql(
+        "INSERT INTO %s SELECT id, CONCAT('val_', id) AS val FROM range(0, %s)",
         TABLE_NAME, ROW_COUNT);
 
     // Read and append the rows to the same table.
