@@ -25,7 +25,13 @@ jobs:
         java-version: '17'
         distribution: 'temurin'
 
+      # 'integrationTests' is not in root project, since we avoid running it via `./build/sbt test`,
+      # Here, we explicitly compile `integrationTests` to catch compilation issues early.
+    - name: Compile integration tests to verify compilation and checkstyle issues.
+      run: build/sbt integrationTests/test:compile
+
     - name: Run tests with coverage
       run: build/sbt -J-Xmx2G +jacoco
+
     - name: Run license check
       run: build/sbt licenseCheck
