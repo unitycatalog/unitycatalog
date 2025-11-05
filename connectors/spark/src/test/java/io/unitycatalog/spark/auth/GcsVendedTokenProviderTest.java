@@ -116,8 +116,7 @@ public class GcsVendedTokenProviderTest extends BaseTokenProviderTest<GcsVendedT
       assertThat(fs.getClass().getName()).isEqualTo(ghfsClassName);
 
       GoogleCredentials credentials =
-          HadoopCredentialsConfiguration.getCredentials(
-              fs.getConf(), "fs.gs");
+          HadoopCredentialsConfiguration.getCredentials(fs.getConf(), "fs.gs");
 
       assertThat(credentials).isInstanceOf(AccessTokenProviderCredentials.class);
 
