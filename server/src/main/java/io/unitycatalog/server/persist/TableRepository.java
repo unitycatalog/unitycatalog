@@ -57,7 +57,8 @@ public class TableRepository {
             throw new BaseException(
                 ErrorCode.NOT_FOUND, "Catalog not found: " + schemaInfoDAO.getCatalogId());
           }
-          TableInfo tableInfo = tableInfoDAO.toTableInfo(true);
+          TableInfo tableInfo =
+              tableInfoDAO.toTableInfo(true, catalogInfoDAO.getName(), schemaInfoDAO.getName());
           tableInfo.setSchemaName(schemaInfoDAO.getName());
           tableInfo.setCatalogName(catalogInfoDAO.getName());
           return tableInfo;
@@ -82,9 +83,7 @@ public class TableRepository {
           if (tableInfoDAO == null) {
             throw new BaseException(ErrorCode.NOT_FOUND, "Table not found: " + fullName);
           }
-          TableInfo tableInfo = tableInfoDAO.toTableInfo(true);
-          tableInfo.setCatalogName(catalogName);
-          tableInfo.setSchemaName(schemaName);
+          TableInfo tableInfo = tableInfoDAO.toTableInfo(true, catalogName, schemaName);
           RepositoryUtils.attachProperties(
               tableInfo, tableInfo.getTableId(), Constants.TABLE, session);
           return tableInfo;
@@ -123,7 +122,7 @@ public class TableRepository {
             .dataSourceFormat(createTable.getDataSourceFormat())
             .columns(columnInfos)
             .storageLocation(
-                FileOperations.convertRelativePathToURI(createTable.getStorageLocation()))
+                FileOperations.toStandardizedURIString(createTable.getStorageLocation()))
             .comment(createTable.getComment())
             .properties(createTable.getProperties())
             .owner(callerId)
@@ -156,8 +155,7 @@ public class TableRepository {
             throw new BaseException(
                 ErrorCode.INVALID_ARGUMENT, "Storage location is required for external table");
           }
-          TableInfoDAO tableInfoDAO = TableInfoDAO.from(tableInfo);
-          tableInfoDAO.setSchemaId(schemaId);
+          TableInfoDAO tableInfoDAO = TableInfoDAO.from(tableInfo, schemaId);
           // create columns
           tableInfoDAO
               .getColumns()
@@ -248,13 +246,11 @@ public class TableRepository {
     String nextPageToken = LISTING_HELPER.getNextPageToken(tableInfoDAOList, maxResults);
     List<TableInfo> result = new ArrayList<>();
     for (TableInfoDAO tableInfoDAO : tableInfoDAOList) {
-      TableInfo tableInfo = tableInfoDAO.toTableInfo(!omitColumns);
+      TableInfo tableInfo = tableInfoDAO.toTableInfo(!omitColumns, catalogName, schemaName);
       if (!omitProperties) {
         RepositoryUtils.attachProperties(
             tableInfo, tableInfo.getTableId(), Constants.TABLE, session);
       }
-      tableInfo.setCatalogName(catalogName);
-      tableInfo.setSchemaName(schemaName);
       result.add(tableInfo);
     }
     return new ListTablesResponse().tables(result).nextPageToken(nextPageToken);

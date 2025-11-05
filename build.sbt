@@ -23,6 +23,7 @@ lazy val scala213 = "2.13.16"
 
 lazy val deltaVersion = "4.0.0"
 lazy val sparkVersion = "4.0.0"
+lazy val hadoopVersion = "3.4.0"
 
 // Library versions
 lazy val jacksonVersion = "2.17.0"
@@ -311,6 +312,8 @@ lazy val server = (project in file("server"))
     ) ++ javacRelease17,
     libraryDependencies ++= Seq(
       "com.linecorp.armeria" %  "armeria" % "1.28.4",
+      "org.apache.commons" % "commons-lang3" % "3.19.0",
+
       // Netty dependencies
       "io.netty" % "netty-all" % "4.1.111.Final",
       "jakarta.annotation" % "jakarta.annotation-api" % "3.0.0" % Provided,
@@ -501,14 +504,14 @@ lazy val cli = (project in file("examples") / "cli")
       "io.delta" % "delta-kernel-api" % deltaVersion,
       "io.delta" % "delta-kernel-defaults" % deltaVersion,
       "io.delta" % "delta-storage" % deltaVersion,
-      "org.apache.hadoop" % "hadoop-client-api" % "3.4.0",
-      "org.apache.hadoop" % "hadoop-client-runtime" % "3.4.0",
+      "org.apache.hadoop" % "hadoop-client-api" % hadoopVersion,
+      "org.apache.hadoop" % "hadoop-client-runtime" % hadoopVersion,
       "de.vandermeer" % "asciitable" % "0.3.2",
       // for s3 access
       "org.fusesource.jansi" % "jansi" % "2.4.1",
       "com.amazonaws" % "aws-java-sdk-core" % "1.12.728",
-      "org.apache.hadoop" % "hadoop-aws" % "3.4.0",
-      "org.apache.hadoop" % "hadoop-azure" % "3.4.0",
+      "org.apache.hadoop" % "hadoop-aws" % hadoopVersion,
+      "org.apache.hadoop" % "hadoop-azure" % hadoopVersion,
       "com.google.guava" % "guava" % "31.0.1-jre",
       // Test dependencies
       "org.junit.jupiter" % "junit-jupiter" % "5.10.3" % Test,
@@ -570,7 +573,7 @@ lazy val spark = (project in file("connectors/spark"))
       "org.antlr" % "antlr4-runtime" % "4.13.1",
       "org.antlr" % "antlr4" % "4.13.1",
       "com.google.cloud.bigdataoss" % "util-hadoop" % "3.0.2" % Provided,
-      "org.apache.hadoop" % "hadoop-azure" % "3.4.0" % Provided,
+      "org.apache.hadoop" % "hadoop-azure" % hadoopVersion % Provided,
       "software.amazon.awssdk" % "auth" % "2.25.37" % Provided,
     ),
     libraryDependencies ++= Seq(
@@ -581,8 +584,8 @@ lazy val spark = (project in file("connectors/spark"))
       "org.mockito" % "mockito-inline" % "5.2.0" % Test,
       "org.mockito" % "mockito-junit-jupiter" % "5.12.0" % Test,
       "net.aichler" % "jupiter-interface" % JupiterKeys.jupiterVersion.value % Test,
-      "org.apache.hadoop" % "hadoop-client-runtime" % "3.4.0",
-      "org.apache.hadoop" % "hadoop-aws" % "3.4.0" % Test,
+      "org.apache.hadoop" % "hadoop-client-runtime" % hadoopVersion,
+      "org.apache.hadoop" % "hadoop-aws" % hadoopVersion % Test,
       "io.delta" %% "delta-spark" % deltaVersion % Test,
     ),
     dependencyOverrides ++= Seq(
@@ -620,6 +623,7 @@ lazy val spark = (project in file("connectors/spark"))
 
 lazy val integrationTests = (project in file("integration-tests"))
   .enablePlugins(CheckstylePlugin)
+  .dependsOn(spark)
   .settings(
     name := s"$artifactNamePrefix-integration-tests",
     commonSettings,
@@ -627,6 +631,7 @@ lazy val integrationTests = (project in file("integration-tests"))
     javaOptions ++= Seq(
       "--add-exports=java.base/sun.nio.ch=ALL-UNNAMED",
     ),
+    javafmtCheckSettings,
     javaCheckstyleSettings("dev/checkstyle-config.xml"),
     skipReleaseSettings,
     libraryDependencies ++= Seq(
@@ -636,10 +641,9 @@ lazy val integrationTests = (project in file("integration-tests"))
       "org.projectlombok" % "lombok" % "1.18.32" % Provided,
       "org.apache.spark" %% "spark-sql" % sparkVersion % Test,
       "io.delta" %% "delta-spark" % deltaVersion % Test,
-      "org.apache.hadoop" % "hadoop-aws" % "3.3.6" % Test,
-      "org.apache.hadoop" % "hadoop-azure" % "3.3.6" % Test,
+      "org.apache.hadoop" % "hadoop-aws" % hadoopVersion % Test,
+      "org.apache.hadoop" % "hadoop-azure" % hadoopVersion % Test,
       "com.google.cloud.bigdataoss" % "gcs-connector" % "3.0.2" % Test classifier "shaded",
-      "io.unitycatalog" %% "unitycatalog-spark" % "0.2.0" % Test,
     ),
     dependencyOverrides ++= Seq(
       "com.fasterxml.jackson.core" % "jackson-databind" % "2.15.0",
@@ -649,7 +653,7 @@ lazy val integrationTests = (project in file("integration-tests"))
       "com.fasterxml.jackson.dataformat" % "jackson-dataformat-xml" % "2.15.0",
       "org.antlr" % "antlr4-runtime" % "4.13.1",
       "org.antlr" % "antlr4" % "4.13.1",
-      "org.apache.hadoop" % "hadoop-client-api" % "3.3.6",
+      "org.apache.hadoop" % "hadoop-client-api" % hadoopVersion,
     ),
     Test / javaOptions += s"-Duser.dir=${((ThisBuild / baseDirectory).value / "integration-tests").getAbsolutePath}",
   )

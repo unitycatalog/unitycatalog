@@ -127,7 +127,7 @@ public class UriUtils {
     return parsedUri;
   }
 
-  private static void validateURI(URI uri) {
+  public static void validateURI(URI uri) {
     if (uri.getScheme() == null) {
       throw new BaseException(ErrorCode.INVALID_ARGUMENT, "Invalid path: " + uri.getPath());
     }
