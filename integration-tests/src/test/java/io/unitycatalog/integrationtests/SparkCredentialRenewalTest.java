@@ -5,8 +5,8 @@ import static io.unitycatalog.integrationtests.TestUtils.CATALOG_NAME;
 import static io.unitycatalog.integrationtests.TestUtils.S3_BASE_LOCATION;
 import static io.unitycatalog.integrationtests.TestUtils.SCHEMA_NAME;
 import static io.unitycatalog.integrationtests.TestUtils.SERVER_URL;
-import static io.unitycatalog.integrationtests.TestUtils.envBoolean;
-import static io.unitycatalog.integrationtests.TestUtils.envLong;
+import static io.unitycatalog.integrationtests.TestUtils.envAsBoolean;
+import static io.unitycatalog.integrationtests.TestUtils.envAsLong;
 import static io.unitycatalog.integrationtests.TestUtils.randomName;
 import static org.assertj.core.api.AssertionsForClassTypes.assertThat;
 
@@ -26,15 +26,29 @@ import org.junit.jupiter.api.Test;
  * the credential’s expiration time. If the job completes successfully, it verifies that the
  * credential renewal mechanism works as expected, seamlessly refreshing credentials without
  * interrupting the ongoing job.
+ * <p>
+ * <p><b>To run this tests: </b></p>
+ * <pre>
+ * export CATALOG_URI=...
+ * export CATALOG_AUTH_TOKEN=...
+ * export CATALOG_NAME=...
+ * export SCHEMA_NAME=...
+ * export S3_BASE_LOCATION=...
+ * SBT_OPTS="-Xmx8G -XX:+UseG1GC" \
+ * ./build/sbt \
+ * "integrationTests/testOnly io.unitycatalog.integrationtests.SparkCredentialRenewalTest"
+ * </pre>
  */
 public class SparkCredentialRenewalTest {
   private static final String PREFIX = "CREDENTIAL_RENEWAL_TEST_";
 
   // Define the CREDENTIAL_RENEWAL_TEST_RENEWAL_ENABLED environment variable.
-  private static final boolean RENEW_CRED_ENABLED = envBoolean(PREFIX + "RENEWAL_ENABLED", true);
+  private static final boolean RENEW_CRED_ENABLED = envAsBoolean(PREFIX + "RENEWAL_ENABLED", true);
 
-  // Define the CREDENTIAL_RENEWAL_TEST_ROW_COUNT environment variable.
-  private static final long ROW_COUNT = envLong(PREFIX + "ROW_COUNT", 10_000_000_000L);
+  // Define the CREDENTIAL_RENEWAL_TEST_ROW_COUNT environment variable. Usually it will take
+  // about 2 hour to process 10^10 rows, which will exceeds the credential's expiration time
+  // (1hour). And finally trigger the credential renewal.
+  private static final long ROW_COUNT = envAsLong(PREFIX + "ROW_COUNT", 10_000_000_000L);
 
   // Define the table name.
   private static final String TABLE_NAME = String.format("%s.%s.%s",
@@ -73,12 +87,16 @@ public class SparkCredentialRenewalTest {
 
   @Test
   public void testLongRunningJob() {
+    // Prepare the data set.
     sql("INSERT INTO %s SELECT id, CONCAT('val_', id) AS val FROM range(0, %s)",
         TABLE_NAME, ROW_COUNT);
 
+    // Read and append the rows to the same table.
+    sql("INSERT INTO %s SELECT * FROM %s", TABLE_NAME, TABLE_NAME);
+
     List<Row> results = sql("SELECT COUNT(*) FROM %s", TABLE_NAME);
     assertThat(results.size()).isEqualTo(1);
-    assertThat(results.get(0).getLong(0)).isEqualTo(ROW_COUNT);
+    assertThat(results.get(0).getLong(0)).isEqualTo(2 * ROW_COUNT);
   }
 
   private static List<Row> sql(String statement, Object... args) {

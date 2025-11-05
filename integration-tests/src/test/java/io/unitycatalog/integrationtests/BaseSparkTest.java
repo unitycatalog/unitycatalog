@@ -7,7 +7,6 @@ import java.util.List;
 import java.util.Objects;
 import lombok.Getter;
 import lombok.SneakyThrows;
-import org.apache.spark.sql.Row;
 import org.apache.spark.sql.SparkSession;
 import org.junit.jupiter.api.BeforeAll;
 
@@ -77,10 +76,6 @@ public class BaseSparkTest {
     public boolean isEnabled() {
       return this.baseLocation != null;
     }
-  }
-
-  protected static List<Row> sql(String statement, Object... args) {
-    return spark.sql(String.format(statement, args)).collectAsList();
   }
 
   static List<LocationType> locationTypes() {
