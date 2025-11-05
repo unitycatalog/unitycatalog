@@ -124,12 +124,12 @@ RETURNS STRING
 LANGUAGE PYTHON
 COMMENT 'Retrieve mock weather information for a given city.'
 AS $$
-    mock_data = {
+    mock_data = {{
         "New York": "Sunny, 25°C",
         "Los Angeles": "Cloudy, 20°C",
         "Chicago": "Rainy, 15°C",
         "Houston": "Thunderstorms, 30°C",
-        "Phoenix": "Sunny, 35°C"}
+        "Phoenix": "Sunny, 35°C"}}
     return mock_data.get(city, "Weather data not available")
 $$
 """
@@ -163,7 +163,7 @@ If you would like to validate that your tool is functional prior to proceeding t
 my_tool = toolkit.get_tool(func_name)
 if my_tool:
     # Call the tool directly
-    result = my_tool.func({"city": "New York"})
+    result = my_tool.func(city="New York")
     print(result)
 else:
     print("Tool not found")
@@ -177,6 +177,8 @@ Below, we are going to create a ReAct agent and verify that it properly calls ou
 ```python
 import dspy
 
+dspy.settings.configure(lm=dspy.LM('openai/gpt-4.1'))
+
 # Create a ReAct agent with our weather tool
 react_agent = dspy.ReAct(
     signature="question -> answer",
@@ -184,7 +186,7 @@ react_agent = dspy.ReAct(
     max_iters=5)
 
 # Example: Ask the agent to reason about weather
-result = react_agent(question="What's the weather like in Tokyo?")
+result = react_agent(question="What's the weather like in New York?")
 print(result.answer)
 print("Tool calls made:", result.trajectory)
 ```
