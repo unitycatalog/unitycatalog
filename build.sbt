@@ -586,6 +586,7 @@ lazy val spark = (project in file("connectors/spark"))
       "net.aichler" % "jupiter-interface" % JupiterKeys.jupiterVersion.value % Test,
       "org.apache.hadoop" % "hadoop-client-runtime" % hadoopVersion,
       "org.apache.hadoop" % "hadoop-aws" % hadoopVersion % Test,
+      "com.google.cloud.bigdataoss" % "gcs-connector" % "3.0.2" % Test classifier "shaded",
       "io.delta" %% "delta-spark" % deltaVersion % Test,
     ),
     dependencyOverrides ++= Seq(
