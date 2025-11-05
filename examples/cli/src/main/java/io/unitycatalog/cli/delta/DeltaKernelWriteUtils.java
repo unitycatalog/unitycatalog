@@ -14,8 +14,8 @@ import io.delta.kernel.utils.CloseableIterable;
 import io.delta.kernel.utils.CloseableIterator;
 import io.delta.kernel.utils.DataFileStatus;
 import io.unitycatalog.cli.UnityCatalogCli;
-import io.unitycatalog.client.model.AwsCredentials;
 import io.unitycatalog.client.model.ColumnInfo;
+import io.unitycatalog.client.model.TemporaryCredentials;
 import java.io.File;
 import java.io.IOException;
 import java.net.URI;
@@ -36,11 +36,11 @@ public class DeltaKernelWriteUtils {
   private static final Random random = new Random();
 
   public static String writeSampleDataToDeltaTable(
-      String tablePath, List<ColumnInfo> columns, AwsCredentials tempCredentialResponse) {
+      String tablePath, List<ColumnInfo> columns, TemporaryCredentials tempCredentials) {
     try {
       StructType schema = DeltaKernelUtils.getSchema(columns);
       URI tablePathUri = URI.create(tablePath);
-      Engine engine = DeltaKernelUtils.getEngine(tablePathUri, tempCredentialResponse);
+      Engine engine = DeltaKernelUtils.getEngine(tablePathUri, tempCredentials);
       boolean createVsUpdate = true;
       if (tablePathUri.getScheme().equals("file")) {
         createVsUpdate = !(new File(tablePathUri).isDirectory());
