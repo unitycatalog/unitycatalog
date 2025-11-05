@@ -12,7 +12,7 @@ All URIs are relative to *http://localhost:8080/api/2.1/unity-catalog*
 *CatalogsApi* | [**getCatalog**](Apis/CatalogsApi.md#getcatalog) | **GET** /catalogs/{name} | Get a catalog |
 *CatalogsApi* | [**listCatalogs**](Apis/CatalogsApi.md#listcatalogs) | **GET** /catalogs | List catalogs |
 *CatalogsApi* | [**updateCatalog**](Apis/CatalogsApi.md#updatecatalog) | **PATCH** /catalogs/{name} | Update a catalog |
-| *CoordinatedCommitsApi* | [**commit**](Apis/CoordinatedCommitsApi.md#commit) | **POST** /delta/preview/commits | Commit changes to a specified table WARNING: This API is experimental and may change in future versions.  |
+| *CoordinatedCommitsApi* | [**commit**](Apis/CoordinatedCommitsApi.md#commit) | **POST** /delta/preview/commits | Commit changes to a specified table. The server has a limit defined in config on how many unbackfilled commits it can hold. Clients are expected to do active backfill of the commit after committing to UC. So in most cases the number of unbackfilled commits should be close to zero or one. But if clients misbehave and unbackfilled commits accumulate beyond the limit, server will reject further commits until more backfill is done. WARNING: This API is experimental and may change in future versions.  |
 *CoordinatedCommitsApi* | [**getCommits**](Apis/CoordinatedCommitsApi.md#getcommits) | **GET** /delta/preview/commits | List unbackfilled Delta table commits. WARNING: This API is experimental and may change in future versions.  |
 | *CredentialsApi* | [**createCredential**](Apis/CredentialsApi.md#createcredential) | **POST** /credentials | Create a credential |
 *CredentialsApi* | [**deleteCredential**](Apis/CredentialsApi.md#deletecredential) | **DELETE** /credentials/{name} | Delete a credential |
