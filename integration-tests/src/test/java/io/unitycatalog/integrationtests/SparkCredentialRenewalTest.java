@@ -3,7 +3,6 @@ package io.unitycatalog.integrationtests;
 import static io.unitycatalog.integrationtests.TestUtils.AUTH_TOKEN;
 import static io.unitycatalog.integrationtests.TestUtils.CATALOG_NAME;
 import static io.unitycatalog.integrationtests.TestUtils.S3_BASE_LOCATION;
-import static io.unitycatalog.integrationtests.TestUtils.SCHEMA_NAME;
 import static io.unitycatalog.integrationtests.TestUtils.SERVER_URL;
 import static io.unitycatalog.integrationtests.TestUtils.envAsBoolean;
 import static io.unitycatalog.integrationtests.TestUtils.envAsLong;
@@ -13,16 +12,19 @@ import static org.assertj.core.api.AssertionsForClassTypes.assertThat;
 import io.unitycatalog.spark.UCSingleCatalog;
 import java.util.List;
 import java.util.UUID;
+import org.apache.spark.api.java.function.MapPartitionsFunction;
+import org.apache.spark.sql.Encoders;
 import org.apache.spark.sql.Row;
 import org.apache.spark.sql.SparkSession;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
+import org.sparkproject.guava.collect.Iterators;
 
 /**
  * Typically, cloud vendor credentials (used to access cloud storage) issued by the UC server expire
- * after one hour. This integration test launches a long-running write job whose duration
- * (controlled by the {@link SparkCredentialRenewalTest#ROW_COUNT} environment variable) exceeds the
+ * after one hour. This integration test launches a long-running read-write job whose duration
+ * (controlled by the 'CREDENTIAL_RENEWAL_TEST_DURATION_SECONDS' environment variable) exceeds the
  * credential’s expiration time. If the job completes successfully, it verifies that the credential
  * renewal mechanism works as expected, seamlessly refreshing credentials without interrupting the
  * ongoing job.
@@ -35,7 +37,6 @@ import org.junit.jupiter.api.Test;
  * export CATALOG_URI=...
  * export CATALOG_AUTH_TOKEN=...
  * export CATALOG_NAME=...
- * export SCHEMA_NAME=...
  * export S3_BASE_LOCATION=...
  * SBT_OPTS="-Xmx8G -XX:+UseG1GC" \
  * ./build/sbt \
@@ -48,14 +49,16 @@ public class SparkCredentialRenewalTest {
   // Define the CREDENTIAL_RENEWAL_TEST_RENEWAL_ENABLED environment variable.
   private static final boolean RENEW_CRED_ENABLED = envAsBoolean(PREFIX + "RENEWAL_ENABLED", true);
 
-  // Define the CREDENTIAL_RENEWAL_TEST_ROW_COUNT environment variable. Usually it will take
-  // about 2 hour to process 10^10 rows, which will exceeds the credential's expiration time
-  // (1hour). And finally trigger the credential renewal.
-  private static final long ROW_COUNT = envAsLong(PREFIX + "ROW_COUNT", 10_000_000_000L);
+  // Define the CREDENTIAL_RENEWAL_TEST_DURATION_SECONDS environment variable, which control how
+  // long will the test run. 90 minutes by default.
+  private static final long DURATION_SECONDS = envAsLong(PREFIX + "DURATION_SECONDS", 5600L);
 
-  // Define the table name.
-  private static final String TABLE_NAME =
-      String.format("%s.%s.%s", CATALOG_NAME, SCHEMA_NAME, randomName());
+  // Define the schema name and table name.
+  private static final String SCHEMA_NAME = randomName();
+  private static final String SRC_TABLE =
+      String.format("%s.%s.src_%s", CATALOG_NAME, SCHEMA_NAME, randomName());
+  private static final String DST_TABLE =
+      String.format("%s.%s.dst_%s", CATALOG_NAME, SCHEMA_NAME, randomName());
 
   private static SparkSession spark;
 
@@ -78,32 +81,57 @@ public class SparkCredentialRenewalTest {
             .config(testCatalogKey + ".renewCredential.enabled", String.valueOf(RENEW_CRED_ENABLED))
             .getOrCreate();
 
-    sql("CREATE SCHEMA %s", SCHEMA_NAME);
+    sql("CREATE SCHEMA %s.%s", CATALOG_NAME, SCHEMA_NAME);
     sql(
-        "CREATE TABLE %s (id BIGINT, val STRING) USING delta LOCATION '%s/%s'",
-        TABLE_NAME, S3_BASE_LOCATION, UUID.randomUUID());
+        "CREATE TABLE %s (id INT) USING delta LOCATION '%s/%s' PARTITIONED BY (partition INT)",
+        SRC_TABLE, S3_BASE_LOCATION, UUID.randomUUID());
+    sql(
+        "CREATE TABLE %s (id INT) USING delta LOCATION '%s/%s'",
+        DST_TABLE, S3_BASE_LOCATION, UUID.randomUUID());
   }
 
   @AfterAll
   public static void afterAll() {
-    sql("DROP TABLE IF EXISTS %s", TABLE_NAME);
-    sql("DROP SCHEMA IF EXISTS %s", SCHEMA_NAME);
+    sql("DROP TABLE IF EXISTS %s", SRC_TABLE);
+    sql("DROP TABLE IF EXISTS %s", DST_TABLE);
+    sql("DROP SCHEMA IF EXISTS %s.%s", CATALOG_NAME, SCHEMA_NAME);
     spark.stop();
   }
 
   @Test
   public void testLongRunningJob() {
-    // Prepare the data set.
-    sql(
-        "INSERT INTO %s SELECT id, CONCAT('val_', id) AS val FROM range(0, %s)",
-        TABLE_NAME, ROW_COUNT);
+    // Every 100 seconds produce a row, because we don't want to produce massive small files.
+    long rowCount = DURATION_SECONDS / 100 + (DURATION_SECONDS % 100 == 0 ? 0 : 1);
 
-    // Read and append the rows to the same table.
-    sql("INSERT INTO %s SELECT * FROM %s", TABLE_NAME, TABLE_NAME);
+    // Generate data for the delta source table.
+    sql("INSERT INTO %s SELECT id, id FROM range(0, %s)", SRC_TABLE, rowCount);
 
-    List<Row> results = sql("SELECT COUNT(*) FROM %s", TABLE_NAME);
+    // Read from the Delta source table, mapping each partition to a separate task, and finally
+    // write back to the destination table. With parallelism set to 1, tasks for each partition
+    // execute sequentially. Every partition task will sleep 100 seconds, and the accumulated
+    // elapsed time will finally trigger the renewal of credentials.
+
+    // The spark job should be success because we've enabled the credential renewal.
+    spark
+        .read()
+        .format("delta")
+        .table(SRC_TABLE)
+        .mapPartitions(
+            (MapPartitionsFunction<Row, Integer>)
+                input -> {
+                  Thread.sleep(100 * 1000L);
+                  return Iterators.transform(input, row -> row.getInt(0));
+                },
+            Encoders.INT())
+        .withColumnRenamed("value", "id")
+        .write()
+        .format("delta")
+        .mode("append")
+        .saveAsTable(DST_TABLE);
+
+    List<Row> results = sql("SELECT COUNT(*) FROM %s", DST_TABLE);
     assertThat(results.size()).isEqualTo(1);
-    assertThat(results.get(0).getLong(0)).isEqualTo(2 * ROW_COUNT);
+    assertThat(results.get(0).getLong(0)).isEqualTo(rowCount);
   }
 
   private static List<Row> sql(String statement, Object... args) {
