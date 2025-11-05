@@ -216,7 +216,7 @@ public class FileOperations {
    * the input as a local file path and converts it to a "file://" URI.
    *
    * @param inputPath the input path or URI to be standardized.
-   * @return the standardized URI string.
+   * @return the standardized URI string, or null if inputPath is null.
    * @throws BaseException if the input path has an unsupported URI scheme.
    *     <p>Examples of input and output:
    *     <pre>
@@ -241,6 +241,9 @@ public class FileOperations {
    * </pre>
    */
   public static String toStandardizedURIString(String inputPath) {
+    if (inputPath == null) {
+      return null;
+    }
     // Check if the path is already a URI with a valid scheme
     URI uri;
     try {
