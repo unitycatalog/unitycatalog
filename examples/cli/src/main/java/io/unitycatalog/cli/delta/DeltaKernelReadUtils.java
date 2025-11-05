@@ -73,6 +73,16 @@ public class DeltaKernelReadUtils {
               (int) (1000 * microSecsSinceEpochUTC % 1_000_000) /* nanoOfSecond */,
               ZoneOffset.UTC);
       return dateTime.toString();
+    } else if (dataType instanceof TimestampNTZType) {
+      // TimestampNTZType (timestamp without timezone) data is stored internally as the number of
+      // microseconds since epoch, but interpreted as local time without timezone conversion
+      long microSecsSinceEpoch = row.getLong(columnOrdinal);
+      LocalDateTime dateTime =
+          LocalDateTime.ofEpochSecond(
+              microSecsSinceEpoch / 1_000_000 /* epochSecond */,
+              (int) (1000 * microSecsSinceEpoch % 1_000_000) /* nanoOfSecond */,
+              ZoneOffset.UTC);
+      return dateTime.toString();
     } else if (dataType instanceof FloatType) {
       return Float.toString(row.getFloat(columnOrdinal));
     } else if (dataType instanceof DoubleType) {

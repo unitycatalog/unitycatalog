@@ -19,11 +19,17 @@ storage:
     #   region: us-east-1
     #   awsRoleArn: arn:aws:iam::123456789012:role/my-role
     #   credentialsSecretName: my-bucket-secret
+    #   # serviceEndpoint: https://minio.example.com:9000  # Optional: For MinIO/S3-compatible storage
     # ```
     #
     # Credential secret must contain the following keys:
     # - `accessKey`: AWS access key
     # - `secretKey`: AWS secret key
+    #
+    # Optional serviceEndpoint field:
+    # - Use for S3-compatible storage services (MinIO, Wasabi, DigitalOcean Spaces, etc.)
+    # - Must be a valid HTTP/HTTPS URL (e.g., https://minio.example.com:9000)
+    # - Omit for standard AWS S3 (uses default AWS endpoints)
     #
     s3:
 

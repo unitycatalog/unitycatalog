@@ -11,6 +11,7 @@ import io.delta.kernel.types.*;
 import io.delta.kernel.utils.CloseableIterable;
 import io.unitycatalog.client.model.AwsCredentials;
 import io.unitycatalog.client.model.ColumnInfo;
+import io.unitycatalog.client.model.TemporaryCredentials;
 import java.net.URI;
 import java.util.*;
 import java.util.stream.IntStream;
@@ -28,10 +29,10 @@ import org.apache.hadoop.fs.FileSystem;
 public class DeltaKernelUtils {
 
   public static String createDeltaTable(
-      String tablePath, List<ColumnInfo> columns, AwsCredentials awsTempCredentials) {
+      String tablePath, List<ColumnInfo> columns, TemporaryCredentials tempCredentials) {
     try {
       URI tablePathUri = URI.create(tablePath);
-      Engine engine = getEngine(tablePathUri, awsTempCredentials);
+      Engine engine = getEngine(tablePathUri, tempCredentials);
       Table table = Table.forPath(engine, substituteSchemeForS3(tablePath));
       // construct the schema
       StructType tableSchema = getSchema(columns);
@@ -54,12 +55,21 @@ public class DeltaKernelUtils {
     return EMPTY;
   }
 
+  // Backward compatible overload for existing code
+  public static String createDeltaTable(
+      String tablePath, List<ColumnInfo> columns, AwsCredentials awsTempCredentials) {
+    // Wrap AwsCredentials in TemporaryCredentials for backward compatibility
+    TemporaryCredentials tempCreds = new TemporaryCredentials();
+    tempCreds.setAwsTempCredentials(awsTempCredentials);
+    return createDeltaTable(tablePath, columns, tempCreds);
+  }
+
   public static String substituteSchemeForS3(String tablePath) {
     return tablePath.replace("s3://", "s3a://");
   }
 
-  public static Engine getEngine(URI tablePathUri, AwsCredentials awsTempCredentials) {
-    return DefaultEngine.create(getHDFSConfiguration(tablePathUri, awsTempCredentials));
+  public static Engine getEngine(URI tablePathUri, TemporaryCredentials tempCredentials) {
+    return DefaultEngine.create(getHDFSConfiguration(tablePathUri, tempCredentials));
   }
 
   public static FileSystem getFileSystem(URI tablePathURI, Configuration conf) {
@@ -71,19 +81,25 @@ public class DeltaKernelUtils {
   }
 
   public static Configuration getHDFSConfiguration(
-      URI tablePathUri, AwsCredentials awsTempCredentials) {
+      URI tablePathUri, TemporaryCredentials tempCredentials) {
     Configuration conf = new Configuration();
-    if (tablePathUri.getScheme() != null
-        && tablePathUri.getScheme().equals("s3")
-        && awsTempCredentials == null) {
-      throw new IllegalArgumentException("AWS temporary credentials are missing");
-    }
-    if (tablePathUri.getScheme().equals("s3")) {
-      conf.set("fs.s3a.access.key", awsTempCredentials.getAccessKeyId());
-      conf.set("fs.s3a.secret.key", awsTempCredentials.getSecretAccessKey());
-      conf.set("fs.s3a.session.token", awsTempCredentials.getSessionToken());
+    if (tablePathUri.getScheme() != null && tablePathUri.getScheme().equals("s3")) {
+      if (tempCredentials == null || tempCredentials.getAwsTempCredentials() == null) {
+        throw new IllegalArgumentException("AWS temporary credentials are missing");
+      }
+      AwsCredentials awsCreds = tempCredentials.getAwsTempCredentials();
+      conf.set("fs.s3a.access.key", awsCreds.getAccessKeyId());
+      conf.set("fs.s3a.secret.key", awsCreds.getSecretAccessKey());
+      conf.set("fs.s3a.session.token", awsCreds.getSessionToken());
       conf.set("fs.s3a.impl", "org.apache.hadoop.fs.s3a.S3AFileSystem");
       conf.set("fs.s3a.path.style.access", "true");
+
+      // Set the service endpoint if provided (for S3-compatible storage like MinIO)
+      if (tempCredentials.getServiceEndpoint() != null
+          && !tempCredentials.getServiceEndpoint().isEmpty()) {
+        conf.set("fs.s3a.endpoint", tempCredentials.getServiceEndpoint());
+        System.out.println("Using S3-compatible endpoint: " + tempCredentials.getServiceEndpoint());
+      }
     } else if (tablePathUri.getScheme().equals("file")) {
       conf.set("fs.file.impl", "org.apache.hadoop.fs.LocalFileSystem");
     } else {
@@ -93,8 +109,8 @@ public class DeltaKernelUtils {
   }
 
   public static String readDeltaTable(
-      String tablePath, AwsCredentials awsCredentials, int maxResults) {
-    Engine engine = getEngine(URI.create(tablePath), awsCredentials);
+      String tablePath, TemporaryCredentials tempCredentials, int maxResults) {
+    Engine engine = getEngine(URI.create(tablePath), tempCredentials);
     try {
       Table table = Table.forPath(engine, substituteSchemeForS3(tablePath));
       Snapshot snapshot = table.getLatestSnapshot(engine);
@@ -104,6 +120,8 @@ public class DeltaKernelUtils {
               .map(x -> x.getName() + "(" + x.getDataType().toString() + ")")
               .toArray(String[]::new);
       AsciiTable at = new AsciiTable();
+      // Set a wider width to accommodate many columns
+      at.getContext().setWidth(200);
       at.addRule();
       at.addRow(schema);
       at.addRule();
@@ -123,6 +141,15 @@ public class DeltaKernelUtils {
     } catch (Exception e) {
       throw new IllegalArgumentException("Failed to read delta table", e);
     }
+  }
+
+  // Backward compatible overload for existing code
+  public static String readDeltaTable(
+      String tablePath, AwsCredentials awsCredentials, int maxResults) {
+    // Wrap AwsCredentials in TemporaryCredentials for backward compatibility
+    TemporaryCredentials tempCreds = new TemporaryCredentials();
+    tempCreds.setAwsTempCredentials(awsCredentials);
+    return readDeltaTable(tablePath, tempCreds, maxResults);
   }
 
   // TODO : INTERVAL, CHAR and NULL, ARRAY, MAP, STRUCT

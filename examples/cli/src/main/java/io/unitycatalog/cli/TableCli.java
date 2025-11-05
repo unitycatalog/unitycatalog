@@ -119,7 +119,8 @@ public class TableCli {
       Path path = getLocalPath(storageLocation);
       // try and initialize the directory and initiate delta log at the location
       try {
-        DeltaKernelUtils.createDeltaTable(path.toUri().toString(), columnInfos, null);
+        DeltaKernelUtils.createDeltaTable(
+            path.toUri().toString(), columnInfos, (AwsCredentials) null);
       } catch (Exception e) {
         if (e.getCause() instanceof TableAlreadyExistsException) {
           // TODO confirm the schema of the existing table matches the schema of the new table
@@ -175,6 +176,8 @@ public class TableCli {
           getTemporaryTableCredentials(temporaryCredentialsApi, tableId, TableOperation.READ),
           maxResults);
     } catch (Exception e) {
+      System.err.println("Full exception stack trace:");
+      e.printStackTrace();
       throw new CliException("Failed to read delta table " + info.getStorageLocation(), e);
     }
   }
@@ -206,12 +209,10 @@ public class TableCli {
     return EMPTY;
   }
 
-  public static AwsCredentials getTemporaryTableCredentials(
+  public static TemporaryCredentials getTemporaryTableCredentials(
       TemporaryCredentialsApi apiClient, String tableId, TableOperation operation)
       throws ApiException {
-    TemporaryCredentials temporaryTableCredentials =
-        apiClient.generateTemporaryTableCredentials(
-            new GenerateTemporaryTableCredential().tableId(tableId).operation(operation));
-    return temporaryTableCredentials.getAwsTempCredentials();
+    return apiClient.generateTemporaryTableCredentials(
+        new GenerateTemporaryTableCredential().tableId(tableId).operation(operation));
   }
 }

@@ -78,6 +78,12 @@ public class CloudCredentialVendor {
         if (awsSessionCredentials.expiration() != null) {
           temporaryCredentials.expirationTime(awsSessionCredentials.expiration().toEpochMilli());
         }
+
+        // Set service endpoint for S3-compatible storage (e.g., MinIO)
+        String serviceEndpoint = awsCredentialVendor.getServiceEndpoint(context);
+        if (serviceEndpoint != null && !serviceEndpoint.isEmpty()) {
+          temporaryCredentials.serviceEndpoint(serviceEndpoint);
+        }
       }
     }
 

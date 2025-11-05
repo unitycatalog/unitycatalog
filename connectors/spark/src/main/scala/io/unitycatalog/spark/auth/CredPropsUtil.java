@@ -124,6 +124,11 @@ public class CredPropsUtil {
           String.valueOf(tempCreds.getExpirationTime()));
     }
 
+    // Set fs.s3a.endpoint for S3-compatible storage (e.g., MinIO)
+    if (tempCreds.getServiceEndpoint() != null && !tempCreds.getServiceEndpoint().isEmpty()) {
+      builder.set("fs.s3a.endpoint", tempCreds.getServiceEndpoint());
+    }
+
     return builder;
   }
 
