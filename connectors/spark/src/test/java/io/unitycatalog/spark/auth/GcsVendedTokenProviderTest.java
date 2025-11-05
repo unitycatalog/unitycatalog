@@ -108,9 +108,11 @@ public class GcsVendedTokenProviderTest extends BaseTokenProviderTest<GcsVendedT
     conf.set("fs.gs.project.id", "test-project");
     conf.set("fs.gs.auth.type", "ACCESS_TOKEN_PROVIDER");
     conf.set("fs.gs.auth.access.token.provider", GcsVendedTokenProvider.class.getName());
+    conf.set(UCHadoopConf.GCS_INIT_OAUTH_TOKEN, "dummy-token");
+    conf.setLong(
+        UCHadoopConf.GCS_INIT_OAUTH_TOKEN_EXPIRATION_TIME, System.currentTimeMillis() + 60_000);
 
-    FileSystem fs = FileSystem.newInstance(new URI("gs://test-bucket0"), conf);
-    try {
+    try (FileSystem fs = FileSystem.newInstance(new URI("gs://test-bucket0"), conf)) {
       assertThat(fs.getClass().getName()).isEqualTo(ghfsClassName);
 
       GoogleCredentials credentials =
@@ -123,8 +125,6 @@ public class GcsVendedTokenProviderTest extends BaseTokenProviderTest<GcsVendedT
           ((AccessTokenProviderCredentials) credentials).getAccessTokenProvider();
 
       assertThat(provider).isInstanceOf(GcsVendedTokenProvider.class);
-    } finally {
-      fs.close();
     }
   }
 }
