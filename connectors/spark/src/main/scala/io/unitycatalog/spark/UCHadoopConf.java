@@ -20,6 +20,11 @@ public class UCHadoopConf {
   public static final String AZURE_INIT_SAS_TOKEN_EXPIRED_TIME =
       "fs.azure.init.sas.token.expired.time";
 
+  // Keys for the initialized Google Cloud Storage OAuth token.
+  public static final String GCS_INIT_OAUTH_TOKEN = "fs.gs.init.oauth.token";
+  public static final String GCS_INIT_OAUTH_TOKEN_EXPIRATION_TIME =
+      "fs.gs.init.oauth.token.expiration.time";
+
   // Keys for the UnityCatalog client.
   // Note: Delta automatically filters out configuration keys without the "fs." prefix To ensure
   // custom configuration keys (e.g., AWS, ABFS, or GCS credentials) propagate correctly into Hadoop
