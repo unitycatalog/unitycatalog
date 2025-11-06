@@ -4,6 +4,7 @@ import io.unitycatalog.server.UnityCatalogServer;
 import io.unitycatalog.server.persist.utils.HibernateConfigurator;
 import io.unitycatalog.server.service.credential.CloudCredentialVendor;
 import io.unitycatalog.server.utils.ServerProperties;
+import io.unitycatalog.server.utils.ServerProperties.Property;
 import io.unitycatalog.server.utils.TestUtils;
 import java.util.Properties;
 import org.hibernate.Session;
@@ -22,10 +23,9 @@ public abstract class BaseServerTest {
 
   protected void setUpProperties() {
     serverProperties = new Properties();
-    serverProperties.setProperty("server.env", "test");
-    serverProperties.setProperty("storageRoot", "file:///tmp");
+    serverProperties.setProperty(Property.SERVER_ENV.getKey(), "test");
     // Enable managed table creation for tests
-    serverProperties.setProperty("server.managed-table.enabled", "true");
+    serverProperties.setProperty(Property.MANAGED_TABLE_ENABLED.getKey(), "true");
   }
 
   protected void setUpCredentialOperations() {}

@@ -13,6 +13,7 @@ import io.unitycatalog.server.persist.dao.PropertyDAO;
 import io.unitycatalog.server.persist.dao.TableInfoDAO;
 import io.unitycatalog.server.persist.dao.VolumeInfoDAO;
 import io.unitycatalog.server.persist.utils.HibernateConfigurator;
+import io.unitycatalog.server.utils.ServerProperties.Property;
 import java.util.Date;
 import java.util.List;
 import java.util.Properties;
@@ -36,7 +37,7 @@ public class PopulateTestDatabase {
     System.out.println("Populating test database...");
 
     Properties properties = new Properties();
-    properties.setProperty("server.env", "dev");
+    properties.setProperty(Property.SERVER_ENV.getKey(), "dev");
     ServerProperties serverProperties = new ServerProperties(properties);
     HibernateConfigurator hibernateConfigurator = new HibernateConfigurator(serverProperties);
     Repositories repositories =
