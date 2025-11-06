@@ -1,9 +1,23 @@
 package io.unitycatalog.server.utils;
 
-import static io.unitycatalog.server.utils.ColumnUtils.*;
+import static io.unitycatalog.server.utils.ColumnUtils.addTypeTextAndJsonText;
+import static io.unitycatalog.server.utils.ColumnUtils.getTypeJson;
+import static io.unitycatalog.server.utils.ColumnUtils.getTypeText;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
-import io.unitycatalog.server.model.*;
+import io.unitycatalog.server.model.ColumnTypeName;
+import io.unitycatalog.server.model.CreateCatalog;
+import io.unitycatalog.server.model.CreateFunction;
+import io.unitycatalog.server.model.CreateFunctionRequest;
+import io.unitycatalog.server.model.CreateSchema;
+import io.unitycatalog.server.model.DataSourceFormat;
+import io.unitycatalog.server.model.FunctionParameterInfo;
+import io.unitycatalog.server.model.FunctionParameterInfos;
+import io.unitycatalog.server.model.FunctionParameterMode;
+import io.unitycatalog.server.model.FunctionParameterType;
+import io.unitycatalog.server.model.SchemaInfo;
+import io.unitycatalog.server.model.TableType;
+import io.unitycatalog.server.model.VolumeType;
 import io.unitycatalog.server.persist.CatalogRepository;
 import io.unitycatalog.server.persist.FunctionRepository;
 import io.unitycatalog.server.persist.Repositories;
@@ -13,6 +27,7 @@ import io.unitycatalog.server.persist.dao.PropertyDAO;
 import io.unitycatalog.server.persist.dao.TableInfoDAO;
 import io.unitycatalog.server.persist.dao.VolumeInfoDAO;
 import io.unitycatalog.server.persist.utils.HibernateConfigurator;
+import io.unitycatalog.server.utils.ServerProperties.Property;
 import java.util.Date;
 import java.util.List;
 import java.util.Properties;
@@ -36,7 +51,7 @@ public class PopulateTestDatabase {
     System.out.println("Populating test database...");
 
     Properties properties = new Properties();
-    properties.setProperty("server.env", "dev");
+    properties.setProperty(Property.SERVER_ENV.getKey(), "dev");
     ServerProperties serverProperties = new ServerProperties(properties);
     HibernateConfigurator hibernateConfigurator = new HibernateConfigurator(serverProperties);
     Repositories repositories =

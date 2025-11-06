@@ -15,10 +15,18 @@ import io.unitycatalog.server.model.SchemaInfo;
 import io.unitycatalog.server.model.SecurableType;
 import io.unitycatalog.server.model.TableInfo;
 import io.unitycatalog.server.model.VolumeInfo;
-import io.unitycatalog.server.persist.*;
+import io.unitycatalog.server.persist.CatalogRepository;
+import io.unitycatalog.server.persist.FunctionRepository;
+import io.unitycatalog.server.persist.MetastoreRepository;
+import io.unitycatalog.server.persist.ModelRepository;
+import io.unitycatalog.server.persist.Repositories;
+import io.unitycatalog.server.persist.SchemaRepository;
+import io.unitycatalog.server.persist.TableRepository;
+import io.unitycatalog.server.persist.VolumeRepository;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.UUID;
+import org.apache.commons.lang3.tuple.Pair;
 
 public class KeyMapper {
   private final CatalogRepository catalogRepository;
@@ -56,22 +64,37 @@ public class KeyMapper {
     }
 
     // If only TABLE is specified, assuming its value is a full table name (including catalog and
-    // schema)
+    // schema) or a table UUID.
     if (!resourceKeys.containsKey(CATALOG)
         && !resourceKeys.containsKey(SCHEMA)
         && resourceKeys.containsKey(TABLE)) {
       String fullName = (String) resourceKeys.get(TABLE);
       // If the full name contains a dot, we assume it's a full name, otherwise we assume it's an id
-      TableInfo table =
-          fullName.contains(".")
-              ? tableRepository.getTable(fullName)
-              : tableRepository.getTableById(fullName);
-      String fullSchemaName = table.getCatalogName() + "." + table.getSchemaName();
-      SchemaInfo schema = schemaRepository.getSchema(fullSchemaName);
-      CatalogInfo catalog = catalogRepository.getCatalog(table.getCatalogName());
-      resourceIds.put(TABLE, UUID.fromString(table.getTableId()));
-      resourceIds.put(SCHEMA, UUID.fromString(schema.getSchemaId()));
-      resourceIds.put(CATALOG, UUID.fromString(catalog.getId()));
+      boolean isTableName = fullName.contains(".");
+
+      UUID catalogId;
+      UUID schemaId;
+      UUID tableId;
+      if (isTableName) {
+        TableInfo table = tableRepository.getTable(fullName);
+        String fullSchemaName = table.getCatalogName() + "." + table.getSchemaName();
+        SchemaInfo schema = schemaRepository.getSchema(fullSchemaName);
+        CatalogInfo catalog = catalogRepository.getCatalog(table.getCatalogName());
+        catalogId = UUID.fromString(catalog.getId());
+        schemaId = UUID.fromString(schema.getSchemaId());
+        tableId = UUID.fromString(table.getTableId());
+      } else {
+        // It may be the ID of either a table or staging table.
+        tableId = UUID.fromString(fullName);
+        Pair<UUID, UUID> catalogAndSchemaIds =
+            tableRepository.getCatalogSchemaIdsByTableOrStagingTableId(tableId);
+        catalogId = catalogAndSchemaIds.getLeft();
+        schemaId = catalogAndSchemaIds.getRight();
+      }
+
+      resourceIds.put(TABLE, tableId);
+      resourceIds.put(SCHEMA, schemaId);
+      resourceIds.put(CATALOG, catalogId);
     }
 
     if (resourceKeys.containsKey(CATALOG)

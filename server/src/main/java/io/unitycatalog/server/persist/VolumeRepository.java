@@ -2,7 +2,11 @@ package io.unitycatalog.server.persist;
 
 import io.unitycatalog.server.exception.BaseException;
 import io.unitycatalog.server.exception.ErrorCode;
-import io.unitycatalog.server.model.*;
+import io.unitycatalog.server.model.CreateVolumeRequestContent;
+import io.unitycatalog.server.model.ListVolumesResponseContent;
+import io.unitycatalog.server.model.UpdateVolumeRequestContent;
+import io.unitycatalog.server.model.VolumeInfo;
+import io.unitycatalog.server.model.VolumeType;
 import io.unitycatalog.server.persist.dao.CatalogInfoDAO;
 import io.unitycatalog.server.persist.dao.SchemaInfoDAO;
 import io.unitycatalog.server.persist.dao.VolumeInfoDAO;
@@ -11,7 +15,11 @@ import io.unitycatalog.server.persist.utils.PagedListingHelper;
 import io.unitycatalog.server.persist.utils.TransactionManager;
 import io.unitycatalog.server.utils.IdentityUtils;
 import io.unitycatalog.server.utils.ValidationUtils;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.Date;
+import java.util.List;
+import java.util.Optional;
+import java.util.UUID;
 import org.hibernate.Session;
 import org.hibernate.SessionFactory;
 import org.hibernate.query.Query;
@@ -179,15 +187,6 @@ public class VolumeRepository {
     volumeInfo.setFullName(catalogName + "." + schemaName + "." + volumeInfo.getName());
   }
 
-  public UUID getSchemaId(Session session, String catalogName, String schemaName) {
-    SchemaInfoDAO schemaInfo =
-        repositories.getSchemaRepository().getSchemaDAO(session, catalogName, schemaName);
-    if (schemaInfo == null) {
-      throw new BaseException(ErrorCode.NOT_FOUND, "Schema not found: " + schemaName);
-    }
-    return schemaInfo.getId();
-  }
-
   /**
    * Return the list of volumes in ascending order of volume name.
    *
@@ -207,7 +206,8 @@ public class VolumeRepository {
     return TransactionManager.executeWithTransaction(
         sessionFactory,
         session -> {
-          UUID schemaId = getSchemaId(session, catalogName, schemaName);
+          UUID schemaId =
+              repositories.getSchemaRepository().getSchemaId(session, catalogName, schemaName);
           return listVolumes(session, schemaId, catalogName, schemaName, maxResults, pageToken);
         },
         "Failed to list volumes",

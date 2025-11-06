@@ -1,23 +1,25 @@
 package io.unitycatalog.server.service.credential;
 
-import com.google.auth.oauth2.AccessToken;
+import static io.unitycatalog.server.utils.Constants.URI_SCHEME_ABFS;
+import static io.unitycatalog.server.utils.Constants.URI_SCHEME_ABFSS;
+import static io.unitycatalog.server.utils.Constants.URI_SCHEME_GS;
+import static io.unitycatalog.server.utils.Constants.URI_SCHEME_S3;
+
 import io.unitycatalog.server.exception.BaseException;
 import io.unitycatalog.server.exception.ErrorCode;
-import io.unitycatalog.server.model.*;
+import io.unitycatalog.server.model.AwsCredentials;
+import io.unitycatalog.server.model.AzureUserDelegationSAS;
+import io.unitycatalog.server.model.GcpOauthToken;
+import io.unitycatalog.server.model.TemporaryCredentials;
 import io.unitycatalog.server.persist.utils.FileOperations;
 import io.unitycatalog.server.service.credential.aws.AwsCredentialVendor;
 import io.unitycatalog.server.service.credential.azure.AzureCredential;
 import io.unitycatalog.server.service.credential.azure.AzureCredentialVendor;
 import io.unitycatalog.server.service.credential.gcp.GcpCredentialVendor;
-import software.amazon.awssdk.services.sts.model.Credentials;
-
 import java.net.URI;
 import java.util.Set;
-
-import static io.unitycatalog.server.utils.Constants.URI_SCHEME_ABFS;
-import static io.unitycatalog.server.utils.Constants.URI_SCHEME_ABFSS;
-import static io.unitycatalog.server.utils.Constants.URI_SCHEME_GS;
-import static io.unitycatalog.server.utils.Constants.URI_SCHEME_S3;
+import com.google.auth.oauth2.AccessToken;
+import software.amazon.awssdk.services.sts.model.Credentials;
 
 public class CloudCredentialVendor {
 
@@ -53,34 +55,36 @@ public class CloudCredentialVendor {
     String storageScheme = context.getStorageScheme();
     TemporaryCredentials temporaryCredentials = new TemporaryCredentials();
 
-    switch (storageScheme) {
-      case URI_SCHEME_ABFS, URI_SCHEME_ABFSS -> {
-        AzureCredential azureCredential = vendAzureCredential(context);
-        temporaryCredentials.azureUserDelegationSas(new AzureUserDelegationSAS()
-                .sasToken(azureCredential.getSasToken()))
-            .expirationTime(azureCredential.getExpirationTimeInEpochMillis());
-      }
-      case URI_SCHEME_GS -> {
-        AccessToken gcpToken = vendGcpToken(context);
-        temporaryCredentials.gcpOauthToken(new GcpOauthToken()
-                .oauthToken(gcpToken.getTokenValue()))
-            .expirationTime(gcpToken.getExpirationTime().getTime());
-      }
-      case URI_SCHEME_S3 -> {
-        Credentials awsSessionCredentials = vendAwsCredential(context);
-        temporaryCredentials.awsTempCredentials(new AwsCredentials()
-            .accessKeyId(awsSessionCredentials.accessKeyId())
-            .secretAccessKey(awsSessionCredentials.secretAccessKey())
-            .sessionToken(awsSessionCredentials.sessionToken()));
+    if (storageScheme != null) {
+      switch (storageScheme) {
+        case URI_SCHEME_ABFS, URI_SCHEME_ABFSS -> {
+          AzureCredential azureCredential = vendAzureCredential(context);
+          temporaryCredentials.azureUserDelegationSas(new AzureUserDelegationSAS()
+                  .sasToken(azureCredential.getSasToken()))
+              .expirationTime(azureCredential.getExpirationTimeInEpochMillis());
+        }
+        case URI_SCHEME_GS -> {
+          AccessToken gcpToken = vendGcpToken(context);
+          temporaryCredentials.gcpOauthToken(new GcpOauthToken()
+                  .oauthToken(gcpToken.getTokenValue()))
+              .expirationTime(gcpToken.getExpirationTime().getTime());
+        }
+        case URI_SCHEME_S3 -> {
+          Credentials awsSessionCredentials = vendAwsCredential(context);
+          temporaryCredentials.awsTempCredentials(new AwsCredentials()
+              .accessKeyId(awsSessionCredentials.accessKeyId())
+              .secretAccessKey(awsSessionCredentials.secretAccessKey())
+              .sessionToken(awsSessionCredentials.sessionToken()));
 
-        // Explicitly set the expiration time for the temporary credentials if it's a non-static
-        // credential. For static credential, the expiration time can be nullable.
-        if (awsSessionCredentials.expiration() != null) {
-          temporaryCredentials.expirationTime(awsSessionCredentials.expiration().toEpochMilli());
+          // Explicitly set the expiration time for the temporary credentials if it's a non-static
+          // credential. For static credential, the expiration time can be nullable.
+          if (awsSessionCredentials.expiration() != null) {
+            temporaryCredentials.expirationTime(awsSessionCredentials.expiration().toEpochMilli());
+          }
         }
       }
     }
-
+    // For local file system, we return empty credentials
     return temporaryCredentials;
   }
 
