@@ -46,7 +46,7 @@ All URIs are relative to *http://localhost:8080/api/2.1/unity-catalog*
 *SchemasApi* | [**listSchemas**](Apis/SchemasApi.md#listschemas) | **GET** /schemas | List schemas |
 *SchemasApi* | [**updateSchema**](Apis/SchemasApi.md#updateschema) | **PATCH** /schemas/{full_name} | Update a schema |
 | *TablesApi* | [**createStagingTable**](Apis/TablesApi.md#createstagingtable) | **POST** /staging-tables | Create a staging table |
-*TablesApi* | [**createTable**](Apis/TablesApi.md#createtable) | **POST** /tables | Create a table. Only external table creation is supported. WARNING: This API is experimental and will change in future versions.  |
+*TablesApi* | [**createTable**](Apis/TablesApi.md#createtable) | **POST** /tables | Create a table. WARNING: This API is experimental and will change in future versions.  |
 *TablesApi* | [**deleteTable**](Apis/TablesApi.md#deletetable) | **DELETE** /tables/{full_name} | Delete a table |
 *TablesApi* | [**getTable**](Apis/TablesApi.md#gettable) | **GET** /tables/{full_name} | Get a table |
 *TablesApi* | [**listTables**](Apis/TablesApi.md#listtables) | **GET** /tables | List tables |

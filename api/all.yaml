@@ -313,12 +313,12 @@ paths:
     post:
       operationId: createTable
       summary: |
-        Create a table. Only external table creation is supported.
+        Create a table.
         WARNING: This API is experimental and will change in future versions.
       tags:
         - Tables
       description: |
-        Creates a new external table instance.
+        Creates a new table instance.
         WARNING: This API is experimental and will change in future versions.
       requestBody:
         content:
@@ -327,7 +327,7 @@ paths:
               $ref: '#/components/schemas/CreateTable'
       responses:
         '200':
-          description: The new external table was successfully created.
+          description: The new table was successfully created.
           content:
             application/json:
               schema:
@@ -1660,7 +1660,7 @@ components:
           items:
             $ref: '#/components/schemas/ColumnInfo'
         storage_location:
-          description: Storage root URL for external table
+          description: Storage root URL for table
           type: string
         comment:
           description: User-provided free-form text description.
