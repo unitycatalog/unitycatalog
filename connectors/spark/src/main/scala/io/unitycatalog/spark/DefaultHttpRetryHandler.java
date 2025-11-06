@@ -7,13 +7,20 @@ import org.apache.hadoop.conf.Configuration;
 import org.sparkproject.guava.base.Preconditions;
 import org.sparkproject.guava.base.Throwables;
 
+import java.io.ByteArrayInputStream;
 import java.io.IOException;
+import java.io.InputStream;
+import java.net.URI;
 import java.net.http.HttpClient;
+import java.net.http.HttpHeaders;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
+import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.time.Instant;
+import java.util.Optional;
 import java.util.Set;
+import javax.net.ssl.SSLSession;
 
 /**
  * Default implementation of {@link HttpRetryHandler} that retries on common
@@ -83,35 +90,51 @@ public class DefaultHttpRetryHandler implements HttpRetryHandler {
     Instant startTime = clock.now();
 
     for (int attempt = 1; attempt <= maxAttempts; attempt++) {
+      HttpResponse<T> response;
       try {
-        HttpResponse<T> response = delegate.send(request, responseBodyHandler);
-        if (!isRecoverableResponse(response)) {
-          return response;
-        }
-
-        lastException = new IOException("HTTP " + response.statusCode());
-
-        if (attempt == maxAttempts) {
-          break;
-        }
+        response = delegate.send(request, responseBodyHandler);
       } catch (Exception e) {
         lastException = e;
 
         if (!isRecoverableException(e) || attempt == maxAttempts) {
           break;
         }
+
+        sleepWithBackoff(attempt);
+        continue;
       }
 
-      long baseDelay = (long) (initialDelayMs * Math.pow(multiplier, attempt - 1));
-      double jitter = (Math.random() - 0.5) * 2 * jitterFactor;
-      long delay = (long) (baseDelay * (1 + jitter));
+      boolean shouldRetry = false;
+      IOException retryReason = null;
+      int statusCode = response.statusCode();
 
-      try {
-        clock.sleep(Duration.ofMillis(delay));
-      } catch (InterruptedException interrupted) {
-        Thread.currentThread().interrupt();
-        throw interrupted;
+      if (RECOVERABLE_STATUS_CODES.contains(statusCode)) {
+        shouldRetry = true;
+        retryReason = new IOException("HTTP " + statusCode);
+      } else if (statusCode >= 500 && statusCode < 600) {
+        ServerErrorEvaluation<T> evaluation = evaluateServerError(response);
+        if (evaluation.shouldRetry) {
+          shouldRetry = true;
+          retryReason = evaluation.retryCause;
+        } else {
+          response = evaluation.response;
+        }
       }
+
+      if (!shouldRetry) {
+        return response;
+      }
+
+      lastException = retryReason;
+      if (attempt == maxAttempts) {
+        break;
+      }
+
+      sleepWithBackoff(attempt);
+    }
+
+    if (lastException == null) {
+      throw new IOException("HTTP request failed without an associated exception");
     }
 
     long elapsedMs = Duration.between(startTime, clock.now()).toMillis();
@@ -119,28 +142,28 @@ public class DefaultHttpRetryHandler implements HttpRetryHandler {
       throw (IOException) lastException;
     } else if (lastException instanceof InterruptedException) {
       throw (InterruptedException) lastException;
-    } else {
-      throw new RuntimeException(
-          "Failed HTTP request after " + maxAttempts + " attempts" +
-              " (elapsed time: " + elapsedMs + "ms)",
-          lastException
-      );
     }
+    throw new RuntimeException(
+        "Failed HTTP request after " + maxAttempts + " attempts" +
+            " (elapsed time: " + elapsedMs + "ms)",
+        lastException
+    );
   }
 
-  private boolean isRecoverableResponse(HttpResponse<?> response) {
-    int statusCode = response.statusCode();
-
-    if (RECOVERABLE_STATUS_CODES.contains(statusCode)) {
-      return true;
-    }
-    // Only inspect error payloads for server-side failures (5xx)
-    if (statusCode >= 500 && statusCode < 600) {
-      String errorCode = extractErrorCode(response);
-      return errorCode != null && RECOVERABLE_ERROR_CODES.contains(errorCode);
+  private void sleepWithBackoff(int attempt) throws InterruptedException {
+    long baseDelay = (long) (initialDelayMs * Math.pow(multiplier, attempt - 1));
+    double jitter = jitterFactor == 0 ? 0 : (Math.random() - 0.5) * 2 * jitterFactor;
+    long delay = (long) (baseDelay * (1 + jitter));
+    if (delay <= 0) {
+      return;
     }
 
-    return false;
+    try {
+      clock.sleep(Duration.ofMillis(delay));
+    } catch (InterruptedException interrupted) {
+      Thread.currentThread().interrupt();
+      throw interrupted;
+    }
   }
 
   private boolean isRecoverableException(Throwable e) {
@@ -150,18 +173,121 @@ public class DefaultHttpRetryHandler implements HttpRetryHandler {
             .anyMatch(exceptionClass -> exceptionClass.isInstance(cause)));
   }
 
-  private String extractErrorCode(HttpResponse<?> response) {
-    Object body = response.body();
-    if (!(body instanceof String) || ((String) body).isEmpty()) {
-      return null;
+  private <T> ServerErrorEvaluation<T> evaluateServerError(HttpResponse<T> response) {
+    Object bodyObj = response.body();
+    if (!(bodyObj instanceof InputStream)) {
+      return ServerErrorEvaluation.noRetry(response);
     }
 
+    byte[] bodyBytes;
+    try (InputStream stream = (InputStream) bodyObj) {
+      bodyBytes = stream.readAllBytes();
+    } catch (IOException e) {
+      return ServerErrorEvaluation.noRetry(response);
+    }
+
+    String bodyString = new String(bodyBytes, StandardCharsets.UTF_8);
+    String errorCode = extractErrorCode(bodyString);
+    if (errorCode != null && RECOVERABLE_ERROR_CODES.contains(errorCode)) {
+      return ServerErrorEvaluation.retry(
+          new IOException(
+              "HTTP " + response.statusCode() + " with error_code: " + errorCode));
+    }
+
+    @SuppressWarnings("unchecked")
+    HttpResponse<T> replayableResponse = (HttpResponse<T>) new ReplayableInputStreamHttpResponse(
+        response, bodyBytes);
+    return ServerErrorEvaluation.noRetry(replayableResponse);
+  }
+
+  private String extractErrorCode(String body) {
+    if (body == null || body.isEmpty()) {
+      return null;
+    }
     try {
-      JsonNode node = OBJECT_MAPPER.readTree((String) body);
+      JsonNode node = OBJECT_MAPPER.readTree(body);
       JsonNode codeNode = node.get("error_code");
       return codeNode != null ? codeNode.asText() : null;
     } catch (Exception ignore) {
       return null;
     }
   }
+
+  private static final class ServerErrorEvaluation<T> {
+    final boolean shouldRetry;
+    final IOException retryCause;
+    final HttpResponse<T> response;
+
+    private ServerErrorEvaluation(
+        boolean shouldRetry,
+        IOException retryCause,
+        HttpResponse<T> response) {
+      this.shouldRetry = shouldRetry;
+      this.retryCause = retryCause;
+      this.response = response;
+    }
+
+    static <T> ServerErrorEvaluation<T> retry(IOException cause) {
+      return new ServerErrorEvaluation<>(true, cause, null);
+    }
+
+    static <T> ServerErrorEvaluation<T> noRetry(HttpResponse<T> response) {
+      return new ServerErrorEvaluation<>(false, null, response);
+    }
+  }
+
+  private static final class ReplayableInputStreamHttpResponse
+      implements HttpResponse<InputStream> {
+    private final HttpResponse<?> delegate;
+    private final byte[] bodyBytes;
+
+    ReplayableInputStreamHttpResponse(HttpResponse<?> delegate, byte[] bodyBytes) {
+      this.delegate = delegate;
+      this.bodyBytes = bodyBytes;
+    }
+
+    @Override
+    public HttpRequest request() {
+      return delegate.request();
+    }
+
+    @Override
+    public Optional<HttpResponse<InputStream>> previousResponse() {
+      @SuppressWarnings("unchecked")
+      Optional<HttpResponse<InputStream>> previous =
+          (Optional<HttpResponse<InputStream>>) (Optional<?>) delegate.previousResponse();
+      return previous;
+    }
+
+    @Override
+    public HttpHeaders headers() {
+      return delegate.headers();
+    }
+
+    @Override
+    public InputStream body() {
+      return new ByteArrayInputStream(bodyBytes);
+    }
+
+    @Override
+    public Optional<SSLSession> sslSession() {
+      return delegate.sslSession();
+    }
+
+    @Override
+    public URI uri() {
+      return delegate.uri();
+    }
+
+    @Override
+    public HttpClient.Version version() {
+      return delegate.version();
+    }
+
+    @Override
+    public int statusCode() {
+      return delegate.statusCode();
+    }
+  }
 }
+
