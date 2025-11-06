@@ -6,7 +6,6 @@ import io.unitycatalog.server.model.CreateStagingTable;
 import io.unitycatalog.server.model.StagingTableInfo;
 import io.unitycatalog.server.persist.dao.StagingTableDAO;
 import io.unitycatalog.server.persist.dao.TableInfoDAO;
-import io.unitycatalog.server.persist.utils.RepositoryUtils;
 import io.unitycatalog.server.persist.utils.TransactionManager;
 import io.unitycatalog.server.utils.IdentityUtils;
 import io.unitycatalog.server.utils.ServerProperties;
@@ -14,7 +13,6 @@ import io.unitycatalog.server.utils.ValidationUtils;
 import java.util.Date;
 import java.util.Objects;
 import java.util.UUID;
-import org.apache.commons.lang3.tuple.Pair;
 import org.hibernate.Session;
 import org.hibernate.SessionFactory;
 import org.hibernate.query.Query;
@@ -32,33 +30,6 @@ public class StagingTableRepository {
     this.repositories = repositories;
     this.sessionFactory = sessionFactory;
     this.serverProperties = serverProperties;
-  }
-
-  /**
-   * Retrieves a staging table by its unique identifier.
-   *
-   * @param stagingTableId the UUID of the staging table to retrieve
-   * @return StagingTableInfo containing the staging table details
-   * @throws BaseException with ErrorCode.NOT_FOUND if the staging table does not exist
-   */
-  public StagingTableInfo getStagingTableById(String stagingTableId) {
-    LOGGER.debug("Getting staging table by id: {}", stagingTableId);
-    return TransactionManager.executeWithTransaction(
-        sessionFactory,
-        session -> {
-          StagingTableDAO stagingTableDAO =
-              session.get(StagingTableDAO.class, UUID.fromString(stagingTableId));
-          if (stagingTableDAO == null) {
-            throw new BaseException(
-                ErrorCode.NOT_FOUND, "Staging table not found: " + stagingTableId);
-          }
-          Pair<String, String> catalogAndSchemaNames =
-              RepositoryUtils.getCatalogAndSchemaNames(session, stagingTableDAO.getSchemaId());
-          return stagingTableDAO.toStagingTableInfo(
-              catalogAndSchemaNames.getLeft(), catalogAndSchemaNames.getRight());
-        },
-        "Failed to get staging table by ID",
-        /* readOnly = */ true);
   }
 
   private StagingTableDAO findBySchemaIdAndName(Session session, UUID schemaId, String name) {
