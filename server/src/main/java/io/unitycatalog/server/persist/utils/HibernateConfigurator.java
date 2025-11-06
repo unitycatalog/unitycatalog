@@ -2,6 +2,7 @@ package io.unitycatalog.server.persist.utils;
 
 import io.unitycatalog.server.persist.dao.*;
 import io.unitycatalog.server.utils.ServerProperties;
+import io.unitycatalog.server.utils.ServerProperties.Property;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.file.Files;
@@ -84,7 +85,7 @@ public class HibernateConfigurator {
     }
 
     // TODO: use dependency injection for test hibernate properties
-    if ("test".equals(serverProperties.getProperty("server.env"))) {
+    if ("test".equals(serverProperties.get(Property.SERVER_ENV))) {
       hibernateProperties.setProperty("hibernate.connection.driver_class", "org.h2.Driver");
       hibernateProperties.setProperty(
           "hibernate.connection.url", "jdbc:h2:mem:testdb;DB_CLOSE_DELAY=-1");
