@@ -1,43 +1,26 @@
 package io.unitycatalog.spark;
 
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import io.unitycatalog.spark.utils.Clock;
 import org.apache.hadoop.conf.Configuration;
 import org.sparkproject.guava.base.Preconditions;
 import org.sparkproject.guava.base.Throwables;
 
-import java.io.ByteArrayInputStream;
 import java.io.IOException;
-import java.io.InputStream;
-import java.net.URI;
 import java.net.http.HttpClient;
-import java.net.http.HttpHeaders;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
-import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.time.Instant;
-import java.util.Optional;
 import java.util.Set;
-import javax.net.ssl.SSLSession;
 
 /**
  * Default implementation of {@link HttpRetryHandler} that retries on common
  * recoverable HTTP errors and network exceptions.
  */
 public class DefaultHttpRetryHandler implements HttpRetryHandler {
-  private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
-
+  // Non-5xx server errors are not retried.
   private static final Set<Integer> RECOVERABLE_STATUS_CODES = Set.of(
-      429,  // Too Many Requests
-      503   // Service Unavailable
-  );
-
-  private static final Set<String> RECOVERABLE_ERROR_CODES = Set.of(
-      "TEMPORARILY_UNAVAILABLE",
-      "WORKSPACE_TEMPORARILY_UNAVAILABLE",
-      "SERVICE_UNDER_MAINTENANCE"
+      429  // Too Many Requests
   );
 
   private static final Set<Class<? extends Throwable>> RECOVERABLE_EXCEPTIONS = Set.of(
@@ -95,44 +78,27 @@ public class DefaultHttpRetryHandler implements HttpRetryHandler {
         response = delegate.send(request, responseBodyHandler);
       } catch (Exception e) {
         lastException = e;
-
         if (!isRecoverableException(e) || attempt == maxAttempts) {
           break;
         }
-
         sleepWithBackoff(attempt);
         continue;
       }
 
-      boolean shouldRetry = false;
-      IOException retryReason = null;
       int statusCode = response.statusCode();
-
-      if (RECOVERABLE_STATUS_CODES.contains(statusCode)) {
-        shouldRetry = true;
-        retryReason = new IOException("HTTP " + statusCode);
-      } else if (statusCode >= 500 && statusCode < 600) {
-        ServerErrorEvaluation<T> evaluation = evaluateServerError(response);
-        if (evaluation.shouldRetry) {
-          shouldRetry = true;
-          retryReason = evaluation.retryCause;
-        } else {
-          response = evaluation.response;
-        }
-      }
-
-      if (!shouldRetry) {
+      if (!(RECOVERABLE_STATUS_CODES.contains(statusCode) ||
+          (statusCode >= 500 && statusCode < 600))) {
         return response;
       }
 
-      lastException = retryReason;
+      lastException = new IOException("HTTP " + statusCode);
       if (attempt == maxAttempts) {
         break;
       }
-
       sleepWithBackoff(attempt);
     }
 
+    // Exhaust all attempts, send the last exception to the caller.
     if (lastException == null) {
       throw new IOException("HTTP request failed without an associated exception");
     }
@@ -171,123 +137,6 @@ public class DefaultHttpRetryHandler implements HttpRetryHandler {
     return Throwables.getCausalChain(e).stream()
         .anyMatch(cause -> RECOVERABLE_EXCEPTIONS.stream()
             .anyMatch(exceptionClass -> exceptionClass.isInstance(cause)));
-  }
-
-  private <T> ServerErrorEvaluation<T> evaluateServerError(HttpResponse<T> response) {
-    Object bodyObj = response.body();
-    if (!(bodyObj instanceof InputStream)) {
-      return ServerErrorEvaluation.noRetry(response);
-    }
-
-    byte[] bodyBytes;
-    try (InputStream stream = (InputStream) bodyObj) {
-      bodyBytes = stream.readAllBytes();
-    } catch (IOException e) {
-      return ServerErrorEvaluation.noRetry(response);
-    }
-
-    String bodyString = new String(bodyBytes, StandardCharsets.UTF_8);
-    String errorCode = extractErrorCode(bodyString);
-    if (errorCode != null && RECOVERABLE_ERROR_CODES.contains(errorCode)) {
-      return ServerErrorEvaluation.retry(
-          new IOException(
-              "HTTP " + response.statusCode() + " with error_code: " + errorCode));
-    }
-
-    @SuppressWarnings("unchecked")
-    HttpResponse<T> replayableResponse = (HttpResponse<T>) new ReplayableInputStreamHttpResponse(
-        response, bodyBytes);
-    return ServerErrorEvaluation.noRetry(replayableResponse);
-  }
-
-  private String extractErrorCode(String body) {
-    if (body == null || body.isEmpty()) {
-      return null;
-    }
-    try {
-      JsonNode node = OBJECT_MAPPER.readTree(body);
-      JsonNode codeNode = node.get("error_code");
-      return codeNode != null ? codeNode.asText() : null;
-    } catch (Exception ignore) {
-      return null;
-    }
-  }
-
-  private static final class ServerErrorEvaluation<T> {
-    final boolean shouldRetry;
-    final IOException retryCause;
-    final HttpResponse<T> response;
-
-    private ServerErrorEvaluation(
-        boolean shouldRetry,
-        IOException retryCause,
-        HttpResponse<T> response) {
-      this.shouldRetry = shouldRetry;
-      this.retryCause = retryCause;
-      this.response = response;
-    }
-
-    static <T> ServerErrorEvaluation<T> retry(IOException cause) {
-      return new ServerErrorEvaluation<>(true, cause, null);
-    }
-
-    static <T> ServerErrorEvaluation<T> noRetry(HttpResponse<T> response) {
-      return new ServerErrorEvaluation<>(false, null, response);
-    }
-  }
-
-  private static final class ReplayableInputStreamHttpResponse
-      implements HttpResponse<InputStream> {
-    private final HttpResponse<?> delegate;
-    private final byte[] bodyBytes;
-
-    ReplayableInputStreamHttpResponse(HttpResponse<?> delegate, byte[] bodyBytes) {
-      this.delegate = delegate;
-      this.bodyBytes = bodyBytes;
-    }
-
-    @Override
-    public HttpRequest request() {
-      return delegate.request();
-    }
-
-    @Override
-    public Optional<HttpResponse<InputStream>> previousResponse() {
-      @SuppressWarnings("unchecked")
-      Optional<HttpResponse<InputStream>> previous =
-          (Optional<HttpResponse<InputStream>>) (Optional<?>) delegate.previousResponse();
-      return previous;
-    }
-
-    @Override
-    public HttpHeaders headers() {
-      return delegate.headers();
-    }
-
-    @Override
-    public InputStream body() {
-      return new ByteArrayInputStream(bodyBytes);
-    }
-
-    @Override
-    public Optional<SSLSession> sslSession() {
-      return delegate.sslSession();
-    }
-
-    @Override
-    public URI uri() {
-      return delegate.uri();
-    }
-
-    @Override
-    public HttpClient.Version version() {
-      return delegate.version();
-    }
-
-    @Override
-    public int statusCode() {
-      return delegate.statusCode();
-    }
   }
 }
 

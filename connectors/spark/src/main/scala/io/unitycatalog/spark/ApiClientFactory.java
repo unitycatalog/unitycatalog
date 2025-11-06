@@ -23,10 +23,6 @@ public class ApiClientFactory {
     return client;
   }
 
-  public static ApiClient createApiClient(URI url, String token) {
-    return configureClient(new ApiClient(), url, token);
-  }
-
   public static ApiClient createApiClient(Configuration conf, URI url, String token) {
     return createApiClient(conf, url, token, null);
   }
@@ -36,18 +32,9 @@ public class ApiClientFactory {
       URI url,
       String token,
       HttpRetryHandler retryHandler) {
-    boolean retryEnabled = conf.getBoolean(
-        UCHadoopConf.RETRY_ENABLED_KEY,
-        UCHadoopConf.RETRY_ENABLED_DEFAULT);
-
-    // If a custom retry handler is provided, enable retrying even if retry is disabled in config
-    if (retryEnabled || retryHandler != null) {
-      RetryingApiClient client = retryHandler != null
-          ? new RetryingApiClient(conf, Clock.systemClock(), retryHandler)
-          : new RetryingApiClient(conf);
-      return configureClient(client, url, token);
-    } else {
-      return createApiClient(url, token);
-    }
+    RetryingApiClient client = retryHandler != null
+        ? new RetryingApiClient(conf, Clock.systemClock(), retryHandler)
+        : new RetryingApiClient(conf);
+    return configureClient(client, url, token);
   }
 }

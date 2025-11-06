@@ -65,9 +65,6 @@ public class UCHadoopConf {
   public static final boolean UC_CREDENTIAL_CACHE_ENABLED_DEFAULT_VALUE = true;
 
   // Keys for HTTP client retry configuration
-  public static final String RETRY_ENABLED_KEY = "fs.unitycatalog.retry.enabled";
-  public static final boolean RETRY_ENABLED_DEFAULT = false;
-
   public static final String RETRY_MAX_ATTEMPTS_KEY = "fs.unitycatalog.retry.maxAttempts";
   public static final int RETRY_MAX_ATTEMPTS_DEFAULT = 3;
 
