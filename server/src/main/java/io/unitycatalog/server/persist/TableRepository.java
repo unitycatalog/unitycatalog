@@ -204,7 +204,7 @@ public class TableRepository {
             if (createTable.getDataSourceFormat() != DataSourceFormat.DELTA) {
               throw new BaseException(
                   ErrorCode.INVALID_ARGUMENT,
-                  "MANAGED table creation is only supported for delta tables.");
+                  "Managed table creation is only supported for Delta format.");
             }
             // Find and commit staging table with the same staging location
             StagingTableDAO stagingTableDAO =
