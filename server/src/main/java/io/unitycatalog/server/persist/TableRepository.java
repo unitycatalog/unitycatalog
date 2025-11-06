@@ -3,6 +3,7 @@ package io.unitycatalog.server.persist;
 import io.unitycatalog.server.exception.BaseException;
 import io.unitycatalog.server.exception.ErrorCode;
 import io.unitycatalog.server.model.*;
+import io.unitycatalog.server.model.ColumnTypeName;
 import io.unitycatalog.server.persist.dao.CatalogInfoDAO;
 import io.unitycatalog.server.persist.dao.PropertyDAO;
 import io.unitycatalog.server.persist.dao.SchemaInfoDAO;
@@ -109,7 +110,27 @@ public class TableRepository {
     String callerId = IdentityUtils.findPrincipalEmailAddress();
     List<ColumnInfo> columnInfos =
         createTable.getColumns().stream()
-            .map(c -> c.typeText(c.getTypeText().toLowerCase(Locale.ROOT)))
+            .map(
+                c -> {
+                  // 1) Normalise type_text for predictable mapping
+                  c.typeText(c.getTypeText().toLowerCase(Locale.ROOT));
+
+                  // 2) Derive typeName if caller omitted it
+                  if (c.getTypeName() == null && c.getTypeText() != null) {
+                    try {
+                      c.typeName(ColumnTypeName.valueOf(c.getTypeText().toUpperCase(Locale.ROOT)));
+                    } catch (IllegalArgumentException ex) {
+                      // default to STRING for unknown primitives
+                      c.typeName(ColumnTypeName.STRING);
+                    }
+                  }
+
+                  // 3) Default nullable → TRUE when unspecified
+                  if (c.getNullable() == null) {
+                    c.nullable(true);
+                  }
+                  return c;
+                })
             .collect(Collectors.toList());
     Long createTime = System.currentTimeMillis();
     TableInfo tableInfo =
