@@ -55,3 +55,9 @@ Pipfile
 # Local configuration files with secrets
 *.local
 etc/conf/server.properties.local
+
+# Development tooling (Speckit, GitHub Copilot Agent)
+.github/copilot-instructions.md
+.github/prompts/speckit.*.prompt.md
+.specify/
+specs/
