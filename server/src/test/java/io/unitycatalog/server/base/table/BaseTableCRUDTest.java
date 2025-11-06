@@ -5,10 +5,19 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.assertj.core.api.Assertions.fail;
 
 import io.unitycatalog.client.ApiException;
+<<<<<<< HEAD
 import io.unitycatalog.client.model.*;
 import io.unitycatalog.server.base.BaseCRUDTest;
 import io.unitycatalog.server.base.ServerConfig;
 import io.unitycatalog.server.base.schema.SchemaOperations;
+=======
+import io.unitycatalog.client.model.ColumnInfo;
+import io.unitycatalog.client.model.ColumnTypeName;
+import io.unitycatalog.client.model.DataSourceFormat;
+import io.unitycatalog.client.model.TableInfo;
+import io.unitycatalog.client.model.TableType;
+import io.unitycatalog.client.model.UpdateSchema;
+>>>>>>> fc76ab52 (Refactor BaseTableCRUDTest to split the testing table preparation into a new base class (#1153))
 import io.unitycatalog.server.persist.dao.ColumnInfoDAO;
 import io.unitycatalog.server.persist.dao.TableInfoDAO;
 import io.unitycatalog.server.utils.TestUtils;
@@ -22,43 +31,22 @@ import java.util.Optional;
 import java.util.UUID;
 import org.hibernate.Session;
 import org.hibernate.Transaction;
-import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
-public abstract class BaseTableCRUDTest extends BaseCRUDTest {
-
-  protected SchemaOperations schemaOperations;
-  protected TableOperations tableOperations;
-  private String schemaId;
-
-  protected abstract SchemaOperations createSchemaOperations(ServerConfig serverConfig);
-
-  protected abstract TableOperations createTableOperations(ServerConfig serverConfig);
-
-  @BeforeEach
-  @Override
-  public void setUp() {
-    super.setUp();
-    schemaOperations = createSchemaOperations(serverConfig);
-    tableOperations = createTableOperations(serverConfig);
-  }
-
-  protected void createCommonResources() throws ApiException {
-    CreateCatalog createCatalog =
-        new CreateCatalog().name(TestUtils.CATALOG_NAME).comment(TestUtils.COMMENT);
-    catalogOperations.createCatalog(createCatalog);
-
-    SchemaInfo schemaInfo =
-        schemaOperations.createSchema(
-            new CreateSchema().name(TestUtils.SCHEMA_NAME).catalogName(TestUtils.CATALOG_NAME));
-    schemaId = schemaInfo.getSchemaId();
-  }
+/**
+ * Abstract base class that provides some test cases for table CRUD operations in Unity Catalog.
+ *
+ * <p>This class extends {@link BaseTableCRUDTestEnv} and implements test suite that verifies the
+ * correct behavior of table operations including creation, retrieval, update, and deletion. It is
+ * derived by both CliTableCRUDTest and SdkTableCRUDTest which would exercise CLI and SDK with the
+ * test cases defined in this base class.
+ */
+public abstract class BaseTableCRUDTest extends BaseTableCRUDTestEnv {
 
   @Test
   public void testTableCRUD() throws IOException, ApiException {
     assertThatThrownBy(() -> tableOperations.getTable(TestUtils.TABLE_FULL_NAME))
         .isInstanceOf(Exception.class);
-    createCommonResources();
 
     // Create and verify a table
     TableInfo createdTable = createAndVerifyTable();
@@ -83,16 +71,6 @@ public abstract class BaseTableCRUDTest extends BaseCRUDTest {
 
     // Test schema update and deletion scenarios
     testTableAfterSchemaUpdateAndDeletion();
-  }
-
-  private TableInfo createAndVerifyTable() throws IOException, ApiException {
-    TableInfo tableInfo =
-        createTestingTable(TestUtils.TABLE_NAME, TestUtils.STORAGE_LOCATION, tableOperations);
-    assertThat(tableInfo.getName()).isEqualTo(TestUtils.TABLE_NAME);
-    assertThat(tableInfo.getCatalogName()).isEqualTo(TestUtils.CATALOG_NAME);
-    assertThat(tableInfo.getSchemaName()).isEqualTo(TestUtils.SCHEMA_NAME);
-    assertThat(tableInfo.getTableId()).isNotNull();
-    return tableInfo;
   }
 
   private void verifyTableInfo(TableInfo retrievedTable, TableInfo expectedTable) {
@@ -245,46 +223,6 @@ public abstract class BaseTableCRUDTest extends BaseCRUDTest {
                 schemaOperations.getSchema(
                     TestUtils.CATALOG_NAME + "." + TestUtils.SCHEMA_NEW_NAME))
         .isInstanceOf(Exception.class);
-  }
-
-  public static TableInfo createTestingTable(
-      String tableName, String storageLocation, TableOperations tableOperations)
-      throws IOException, ApiException {
-    ColumnInfo columnInfo1 =
-        new ColumnInfo()
-            .name("as_int")
-            .typeText("INTEGER")
-            .typeJson("{\"type\": \"integer\"}")
-            .typeName(ColumnTypeName.INT)
-            .typePrecision(10)
-            .typeScale(0)
-            .position(0)
-            .comment("Integer column")
-            .nullable(true);
-
-    ColumnInfo columnInfo2 =
-        new ColumnInfo()
-            .name("as_string")
-            .typeText("VARCHAR(255)")
-            .typeJson("{\"type\": \"string\", \"length\": \"255\"}")
-            .typeName(ColumnTypeName.STRING)
-            .position(1)
-            .comment("String column")
-            .nullable(true);
-
-    CreateTable createTableRequest =
-        new CreateTable()
-            .name(tableName)
-            .catalogName(TestUtils.CATALOG_NAME)
-            .schemaName(TestUtils.SCHEMA_NAME)
-            .columns(List.of(columnInfo1, columnInfo2))
-            .properties(TestUtils.PROPERTIES)
-            .comment(TestUtils.COMMENT)
-            .storageLocation(storageLocation)
-            .tableType(TableType.EXTERNAL)
-            .dataSourceFormat(DataSourceFormat.DELTA);
-
-    return tableOperations.createTable(createTableRequest);
   }
 
   protected List<TableInfo> createMultipleTestingTables(int numberOfTables)

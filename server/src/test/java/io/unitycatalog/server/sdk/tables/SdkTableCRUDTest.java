@@ -64,7 +64,6 @@ public class SdkTableCRUDTest extends BaseTableCRUDTest {
 
   @Test
   public void testListTablesWithNoNextPageTokenShouldReturnNull() throws Exception {
-    createCommonResources();
     TableInfo testingTable =
         createTestingTable(TestUtils.TABLE_NAME, TestUtils.STORAGE_LOCATION, tableOperations);
     ListTablesResponse resp =
@@ -81,7 +80,6 @@ public class SdkTableCRUDTest extends BaseTableCRUDTest {
 
   @Test
   public void testListTablesWithNextPageTokenShouldReturnNextPageToken() throws Exception {
-    createCommonResources();
     List<TableInfo> testingTables = createMultipleTestingTables(11);
     ListTablesResponse resp =
         localTablesApi.listTables(
@@ -105,7 +103,6 @@ public class SdkTableCRUDTest extends BaseTableCRUDTest {
    */
   @Test
   public void testStagingTableCreationAndManagedTableFromStagingLocation() throws Exception {
-    createCommonResources();
     String stagingTableName = "staging_test_table";
 
     // Step 1: Create a staging table
@@ -191,8 +188,6 @@ public class SdkTableCRUDTest extends BaseTableCRUDTest {
    */
   @Test
   public void testManagedTableCreationFromNonExistentStagingLocationShouldFail() throws Exception {
-    createCommonResources();
-
     // Use a fake staging location that doesn't exist
     String fakeLocationUuid = "00000000-0000-0000-0000-000000000000";
     String fakeStagingLocation = "file:///tmp/ucroot/tables/" + fakeLocationUuid;
@@ -219,8 +214,6 @@ public class SdkTableCRUDTest extends BaseTableCRUDTest {
   /** Test that attempting to create a duplicate staging table fails with ALREADY_EXISTS error. */
   @Test
   public void testDuplicateStagingTableCreationShouldFail() throws Exception {
-    createCommonResources();
-
     // Create an external table
     String externalTableName = "duplicate_table";
     CreateTable createTableRequest =
@@ -277,8 +270,6 @@ public class SdkTableCRUDTest extends BaseTableCRUDTest {
    */
   @Test
   public void testMultipleStagingTableCreation() throws Exception {
-    createCommonResources();
-
     String stagingTable1 = "staging_table_1";
     String stagingTable2 = "staging_table_2";
 
@@ -306,8 +297,6 @@ public class SdkTableCRUDTest extends BaseTableCRUDTest {
   /** Test that staging table creation fails when the schema doesn't exist. */
   @Test
   public void testStagingTableCreationWithNonExistentSchemaShouldFail() throws Exception {
-    createCommonResources();
-
     CreateStagingTable createStagingTableRequest =
         new CreateStagingTable()
             .catalogName(TestUtils.CATALOG_NAME)
