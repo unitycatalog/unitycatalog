@@ -4,7 +4,6 @@ import io.unitycatalog.client.ApiClient;
 import io.unitycatalog.spark.utils.Clock;
 import org.apache.hadoop.conf.Configuration;
 
-import java.net.URI;
 import java.net.http.HttpClient;
 
 public class RetryingApiClient extends ApiClient {
@@ -28,10 +27,6 @@ public class RetryingApiClient extends ApiClient {
   public HttpClient getHttpClient() {
     HttpClient baseClient = super.getHttpClient();
     return new RetryingHttpClient(baseClient, retryHandler);
-  }
-
-  public static RetryingApiClient create(Configuration conf, URI uri, String token) {
-    return ApiClientFactory.configureClient(new RetryingApiClient(conf), uri, token);
   }
 }
 

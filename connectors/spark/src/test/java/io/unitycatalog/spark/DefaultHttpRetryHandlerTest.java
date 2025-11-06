@@ -47,9 +47,8 @@ public class DefaultHttpRetryHandlerTest {
     conf.setDouble(UCHadoopConf.RETRY_JITTER_FACTOR_KEY, 0.0); // Disable jitter
 
     HttpClient mockClient = mock(HttpClient.class);
-    HttpRequest mockRequest = HttpRequest.newBuilder()
-        .uri(URI.create("http://localhost:8080/api/test"))
-        .build();
+    HttpRequest mockRequest =
+        HttpRequest.newBuilder().uri(URI.create("http://localhost:8080/api/test")).build();
     HttpResponse.BodyHandler<String> bodyHandler = HttpResponse.BodyHandlers.ofString();
 
     HttpResponse<String> response503 = createMockResponse(503, "Service Unavailable");
@@ -92,14 +91,12 @@ public class DefaultHttpRetryHandlerTest {
     conf.setDouble(UCHadoopConf.RETRY_JITTER_FACTOR_KEY, 0.0);
 
     HttpClient mockClient = mock(HttpClient.class);
-    HttpRequest request = HttpRequest.newBuilder()
-        .uri(URI.create("http://localhost:8080/api/test"))
-        .build();
-    HttpResponse.BodyHandler<InputStream> bodyHandler =
-        HttpResponse.BodyHandlers.ofInputStream();
+    HttpRequest request =
+        HttpRequest.newBuilder().uri(URI.create("http://localhost:8080/api/test")).build();
+    HttpResponse.BodyHandler<InputStream> bodyHandler = HttpResponse.BodyHandlers.ofInputStream();
 
-    byte[] retryBody = "{\"error_code\":\"SERVICE_UNDER_MAINTENANCE\"}"
-        .getBytes(StandardCharsets.UTF_8);
+    byte[] retryBody =
+        "{\"error_code\":\"SERVICE_UNDER_MAINTENANCE\"}".getBytes(StandardCharsets.UTF_8);
     HttpResponse<InputStream> response503 = mock(HttpResponse.class);
     when(response503.statusCode()).thenReturn(503);
     when(response503.body()).thenAnswer(inv -> new ByteArrayInputStream(retryBody));
@@ -109,8 +106,8 @@ public class DefaultHttpRetryHandlerTest {
     when(response200.statusCode()).thenReturn(200);
     when(response200.body()).thenAnswer(inv -> new ByteArrayInputStream(successBody));
 
-    when(mockClient.send(any(HttpRequest.class),
-            ArgumentMatchers.<HttpResponse.BodyHandler<InputStream>>any()))
+    when(mockClient.send(
+            any(HttpRequest.class), ArgumentMatchers.<HttpResponse.BodyHandler<InputStream>>any()))
         .thenReturn(response503)
         .thenReturn(response200);
 
@@ -118,20 +115,18 @@ public class DefaultHttpRetryHandlerTest {
     HttpResponse<InputStream> result = handler.call(mockClient, request, bodyHandler);
 
     verify(mockClient, times(2))
-        .send(any(HttpRequest.class),
-            ArgumentMatchers.<HttpResponse.BodyHandler<InputStream>>any());
+        .send(
+            any(HttpRequest.class), ArgumentMatchers.<HttpResponse.BodyHandler<InputStream>>any());
     assertThat(result.statusCode()).isEqualTo(200);
-    assertThat(new String(result.body().readAllBytes(), StandardCharsets.UTF_8))
-        .isEqualTo("{}");
+    assertThat(new String(result.body().readAllBytes(), StandardCharsets.UTF_8)).isEqualTo("{}");
   }
 
   @Test
   @SuppressWarnings("unchecked")
   public void testSimpleRetryHandlerRetriesOnce() throws IOException, InterruptedException {
     HttpClient mockClient = mock(HttpClient.class);
-    HttpRequest mockRequest = HttpRequest.newBuilder()
-        .uri(URI.create("http://localhost:8080/api/simple"))
-        .build();
+    HttpRequest mockRequest =
+        HttpRequest.newBuilder().uri(URI.create("http://localhost:8080/api/simple")).build();
     HttpResponse.BodyHandler<String> bodyHandler = HttpResponse.BodyHandlers.ofString();
 
     HttpResponse<String> response200 = createMockResponse(200, "Success");
@@ -164,9 +159,7 @@ public class DefaultHttpRetryHandlerTest {
 
     @Override
     public <T> HttpResponse<T> call(
-        HttpClient delegate,
-        HttpRequest request,
-        HttpResponse.BodyHandler<T> responseBodyHandler)
+        HttpClient delegate, HttpRequest request, HttpResponse.BodyHandler<T> responseBodyHandler)
         throws IOException, InterruptedException {
       IOException lastException = null;
 
@@ -194,4 +187,3 @@ public class DefaultHttpRetryHandlerTest {
     return response;
   }
 }
-
