@@ -223,10 +223,7 @@ public class FileOperations {
   }
 
   public static void assertValidLocation(String location) {
-<<<<<<< HEAD
     validateURI(URI.create(location));
-=======
-    UriUtils.validateURI(URI.create(location));
   }
 
   /**
@@ -302,6 +299,5 @@ public class FileOperations {
   public String createTableDirectory(String tableId) {
     String directoryUriString = getManagedTablesStorageRoot() + "/tables/" + tableId;
     return toStandardizedURIString(directoryUriString);
->>>>>>> 609e1dc (List all server properties in ServerProperties.Property as enums with their default value if any. (#1144))
   }
 }
