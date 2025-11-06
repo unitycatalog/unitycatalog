@@ -5,11 +5,20 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import io.unitycatalog.server.model.AwsIamRoleResponse;
 import io.unitycatalog.server.model.CredentialInfo;
 import io.unitycatalog.server.model.CredentialPurpose;
-import jakarta.persistence.*;
+import jakarta.persistence.Column;
+import jakarta.persistence.Entity;
+import jakarta.persistence.EnumType;
+import jakarta.persistence.Enumerated;
+import jakarta.persistence.Lob;
+import jakarta.persistence.Table;
 import java.time.Instant;
 import java.util.Date;
 import java.util.UUID;
-import lombok.*;
+import lombok.AllArgsConstructor;
+import lombok.EqualsAndHashCode;
+import lombok.Getter;
+import lombok.NoArgsConstructor;
+import lombok.Setter;
 import lombok.experimental.SuperBuilder;
 
 @Entity

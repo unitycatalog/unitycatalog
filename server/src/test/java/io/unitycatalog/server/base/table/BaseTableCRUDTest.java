@@ -5,7 +5,16 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.assertj.core.api.Assertions.fail;
 
 import io.unitycatalog.client.ApiException;
-import io.unitycatalog.client.model.*;
+import io.unitycatalog.client.model.ColumnInfo;
+import io.unitycatalog.client.model.ColumnTypeName;
+import io.unitycatalog.client.model.CreateCatalog;
+import io.unitycatalog.client.model.CreateSchema;
+import io.unitycatalog.client.model.CreateTable;
+import io.unitycatalog.client.model.DataSourceFormat;
+import io.unitycatalog.client.model.SchemaInfo;
+import io.unitycatalog.client.model.TableInfo;
+import io.unitycatalog.client.model.TableType;
+import io.unitycatalog.client.model.UpdateSchema;
 import io.unitycatalog.server.base.BaseCRUDTest;
 import io.unitycatalog.server.base.ServerConfig;
 import io.unitycatalog.server.base.schema.SchemaOperations;

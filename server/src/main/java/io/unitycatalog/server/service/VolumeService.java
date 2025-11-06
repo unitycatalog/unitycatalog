@@ -1,13 +1,10 @@
 package io.unitycatalog.server.service;
 
-import com.linecorp.armeria.common.HttpResponse;
-import com.linecorp.armeria.common.HttpStatus;
-import com.linecorp.armeria.server.annotation.Delete;
-import com.linecorp.armeria.server.annotation.ExceptionHandler;
-import com.linecorp.armeria.server.annotation.Get;
-import com.linecorp.armeria.server.annotation.Param;
-import com.linecorp.armeria.server.annotation.Patch;
-import com.linecorp.armeria.server.annotation.Post;
+import static io.unitycatalog.server.model.SecurableType.CATALOG;
+import static io.unitycatalog.server.model.SecurableType.METASTORE;
+import static io.unitycatalog.server.model.SecurableType.SCHEMA;
+import static io.unitycatalog.server.model.SecurableType.VOLUME;
+
 import io.unitycatalog.server.auth.UnityCatalogAuthorizer;
 import io.unitycatalog.server.auth.annotation.AuthorizeExpression;
 import io.unitycatalog.server.auth.annotation.AuthorizeKey;
@@ -20,18 +17,24 @@ import io.unitycatalog.server.model.ListVolumesResponseContent;
 import io.unitycatalog.server.model.SchemaInfo;
 import io.unitycatalog.server.model.UpdateVolumeRequestContent;
 import io.unitycatalog.server.model.VolumeInfo;
-import io.unitycatalog.server.persist.*;
-import lombok.SneakyThrows;
-
+import io.unitycatalog.server.persist.CatalogRepository;
+import io.unitycatalog.server.persist.MetastoreRepository;
+import io.unitycatalog.server.persist.Repositories;
+import io.unitycatalog.server.persist.SchemaRepository;
+import io.unitycatalog.server.persist.VolumeRepository;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
-
-import static io.unitycatalog.server.model.SecurableType.CATALOG;
-import static io.unitycatalog.server.model.SecurableType.METASTORE;
-import static io.unitycatalog.server.model.SecurableType.SCHEMA;
-import static io.unitycatalog.server.model.SecurableType.VOLUME;
+import com.linecorp.armeria.common.HttpResponse;
+import com.linecorp.armeria.common.HttpStatus;
+import com.linecorp.armeria.server.annotation.Delete;
+import com.linecorp.armeria.server.annotation.ExceptionHandler;
+import com.linecorp.armeria.server.annotation.Get;
+import com.linecorp.armeria.server.annotation.Param;
+import com.linecorp.armeria.server.annotation.Patch;
+import com.linecorp.armeria.server.annotation.Post;
+import lombok.SneakyThrows;
 
 @ExceptionHandler(GlobalExceptionHandler.class)
 public class VolumeService extends AuthorizedService {
