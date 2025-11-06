@@ -4,11 +4,11 @@ import static io.unitycatalog.server.utils.TestUtils.CATALOG_NAME;
 import static io.unitycatalog.server.utils.TestUtils.CATALOG_NEW_NAME;
 import static io.unitycatalog.server.utils.TestUtils.COMMON_ENTITY_NAME;
 import static io.unitycatalog.server.utils.TestUtils.FUNCTION_FULL_NAME;
+import static io.unitycatalog.server.utils.TestUtils.FUNCTION_NAME;
 import static io.unitycatalog.server.utils.TestUtils.SCHEMA_NAME;
 import static org.apache.iceberg.view.ViewProperties.COMMENT;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
-import static org.hibernate.dialect.function.ListaggGroupConcatEmulation.FUNCTION_NAME;
 
 import io.unitycatalog.client.ApiException;
 import io.unitycatalog.client.model.ColumnTypeName;
