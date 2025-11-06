@@ -87,6 +87,7 @@
             <property name="onCommentFormat" value="checkstyle\.on\: ([\w\|]+)"/>
             <property name="checkFormat" value="$1"/>
         </module>
+        <module name="AvoidStarImport"/>
         <module name="OuterTypeFilename"/>
         <module name="IllegalTokenText">
             <property name="tokens" value="STRING_LITERAL, CHAR_LITERAL"/>

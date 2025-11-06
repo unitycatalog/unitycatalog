@@ -8,7 +8,11 @@ import jakarta.persistence.Entity;
 import jakarta.persistence.Table;
 import java.util.Date;
 import java.util.UUID;
-import lombok.*;
+import lombok.AllArgsConstructor;
+import lombok.EqualsAndHashCode;
+import lombok.Getter;
+import lombok.NoArgsConstructor;
+import lombok.Setter;
 import lombok.experimental.SuperBuilder;
 
 @Entity

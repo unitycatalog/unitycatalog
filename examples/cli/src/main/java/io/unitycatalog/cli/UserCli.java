@@ -1,6 +1,14 @@
 package io.unitycatalog.cli;
 
-import static io.unitycatalog.cli.utils.CliUtils.*;
+import static io.unitycatalog.cli.utils.CliUtils.CREATE;
+import static io.unitycatalog.cli.utils.CliUtils.DELETE;
+import static io.unitycatalog.cli.utils.CliUtils.EMPTY;
+import static io.unitycatalog.cli.utils.CliUtils.GET;
+import static io.unitycatalog.cli.utils.CliUtils.LIST;
+import static io.unitycatalog.cli.utils.CliUtils.UPDATE;
+import static io.unitycatalog.cli.utils.CliUtils.USER;
+import static io.unitycatalog.cli.utils.CliUtils.postProcessAndPrintOutput;
+import static io.unitycatalog.cli.utils.CliUtils.printEntityHelp;
 import static io.unitycatalog.control.model.User.StateEnum.DISABLED;
 import static io.unitycatalog.control.model.User.StateEnum.ENABLED;
 

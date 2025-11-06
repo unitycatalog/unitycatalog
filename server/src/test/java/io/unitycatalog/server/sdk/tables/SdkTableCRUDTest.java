@@ -1,10 +1,26 @@
 package io.unitycatalog.server.sdk.tables;
 
 import static org.assertj.core.api.Assertions.assertThat;
+<<<<<<< HEAD
+=======
+import static org.assertj.core.api.Assertions.assertThatExceptionOfType;
+>>>>>>> ea4624b (Add AvoidStarImport in checkstyles. (#1147))
 
 import io.unitycatalog.client.api.TablesApi;
+<<<<<<< HEAD
 import io.unitycatalog.client.model.ListTablesResponse;
 import io.unitycatalog.client.model.TableInfo;
+=======
+import io.unitycatalog.client.model.ColumnInfo;
+import io.unitycatalog.client.model.ColumnTypeName;
+import io.unitycatalog.client.model.CreateStagingTable;
+import io.unitycatalog.client.model.CreateTable;
+import io.unitycatalog.client.model.DataSourceFormat;
+import io.unitycatalog.client.model.ListTablesResponse;
+import io.unitycatalog.client.model.StagingTableInfo;
+import io.unitycatalog.client.model.TableInfo;
+import io.unitycatalog.client.model.TableType;
+>>>>>>> ea4624b (Add AvoidStarImport in checkstyles. (#1147))
 import io.unitycatalog.server.base.ServerConfig;
 import io.unitycatalog.server.base.catalog.CatalogOperations;
 import io.unitycatalog.server.base.schema.SchemaOperations;

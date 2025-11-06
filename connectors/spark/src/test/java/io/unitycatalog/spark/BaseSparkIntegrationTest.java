@@ -1,9 +1,12 @@
 package io.unitycatalog.spark;
 
-import static io.unitycatalog.server.utils.TestUtils.*;
+import static io.unitycatalog.server.utils.TestUtils.CATALOG_NAME;
+import static io.unitycatalog.server.utils.TestUtils.SCHEMA_NAME;
+import static io.unitycatalog.server.utils.TestUtils.createApiClient;
 
 import io.unitycatalog.client.ApiException;
-import io.unitycatalog.client.model.*;
+import io.unitycatalog.client.model.CreateCatalog;
+import io.unitycatalog.client.model.CreateSchema;
 import io.unitycatalog.server.base.BaseCRUDTest;
 import io.unitycatalog.server.base.ServerConfig;
 import io.unitycatalog.server.base.catalog.CatalogOperations;
@@ -11,7 +14,12 @@ import io.unitycatalog.server.base.schema.SchemaOperations;
 import io.unitycatalog.server.sdk.catalog.SdkCatalogOperations;
 import io.unitycatalog.server.sdk.schema.SdkSchemaOperations;
 import io.unitycatalog.server.utils.TestUtils;
+<<<<<<< HEAD
 import java.util.*;
+=======
+import io.unitycatalog.spark.utils.OptionsUtil;
+import java.util.Optional;
+>>>>>>> ea4624b (Add AvoidStarImport in checkstyles. (#1147))
 import org.apache.spark.sql.SparkSession;
 import org.junit.jupiter.api.BeforeEach;
 
@@ -24,7 +32,7 @@ public abstract class BaseSparkIntegrationTest extends BaseCRUDTest {
   private void createCommonResources() throws ApiException {
     // Common setup operations such as creating a catalog and schema
     catalogOperations.createCatalog(
-        new CreateCatalog().name(TestUtils.CATALOG_NAME).comment(TestUtils.COMMENT));
+        new CreateCatalog().name(CATALOG_NAME).comment(TestUtils.COMMENT));
     schemaOperations.createSchema(new CreateSchema().name(SCHEMA_NAME).catalogName(CATALOG_NAME));
     catalogOperations.createCatalog(
         new CreateCatalog().name(SPARK_CATALOG).comment("Spark catalog"));
