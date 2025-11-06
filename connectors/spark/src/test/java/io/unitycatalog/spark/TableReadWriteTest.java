@@ -123,7 +123,7 @@ public class TableReadWriteTest extends BaseSparkIntegrationTest {
 
     session.stop();
   }
-
+  
   private void validateTimeTravelDeltaTable(Dataset<Row> df) {
     List<Row> rows = df.collectAsList();
     assertThat(rows).hasSize(1);
@@ -148,7 +148,21 @@ public class TableReadWriteTest extends BaseSparkIntegrationTest {
         session.sql("SELECT * FROM " + t1 + " TIMESTAMP AS OF '" + timestamp + "'"));
     validateTimeTravelDeltaTable(session.read().option("versionAsOf", 1).table(t1));
     validateTimeTravelDeltaTable(session.read().option("timestampAsOf", timestamp).table(t1));
+  }
 
+  @Test
+  public void testDeltaReplaceTable() throws IOException, ApiException {
+    SparkSession session = createSparkSessionWithCatalogs(SPARK_CATALOG, CATALOG_NAME);
+    setupExternalDeltaTable(SPARK_CATALOG, DELTA_TABLE, new ArrayList<>(0), session);
+    String fullTableName = SPARK_CATALOG + "." + SCHEMA_NAME + "." + DELTA_TABLE;
+    assertThat(session.sql("SELECT * FROM " + fullTableName).collectAsList()).isEmpty();
+    session.sql("INSERT INTO " + fullTableName + " SELECT 1, 'a'");
+
+    Dataset<Row> df = session.sql("SELECT * FROM VALUES (2, 'b') AS t(i, s);");
+    df.write().format("delta").mode("overwrite").saveAsTable(fullTableName);
+    Row row2 = session.sql("SELECT * FROM " + fullTableName).collectAsList().get(0);
+    assertThat(row2.getInt(0)).isEqualTo(2);
+    assertThat(row2.getString(1)).isEqualTo("b");
     session.stop();
   }
 
