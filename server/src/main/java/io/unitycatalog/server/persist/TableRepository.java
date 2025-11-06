@@ -88,7 +88,7 @@ public class TableRepository {
 
   /**
    * Retrieves the schema ID and catalog ID for a table or staging table by its ID. First attempts
-   * to IDs associated with a regular table with the given ID, then falls back to searching for a
+   * to get IDs associated with a regular table with the given ID, then falls back to searching for a
    * staging table if no regular table is found. NOTE: Similar to
    * getStorageLocationForTableOrStagingTable, this function is specially needed by KeyMapper during
    * authorization of generateTemporaryTableCredential. Reading of a staging table is not a common
