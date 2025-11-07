@@ -18,17 +18,18 @@ public class ApiClientFactory {
       URI url,
       String token,
       HttpRetryHandler retryHandler) {
-    RetryingApiClient client = retryHandler != null
+    RetryingApiClient apiClient = retryHandler != null
         ? new RetryingApiClient(conf, Clock.systemClock(), retryHandler)
         : new RetryingApiClient(conf);
-    client.setHost(url.getHost())
+    apiClient.setHost(url.getHost())
         .setPort(url.getPort())
         .setScheme(url.getScheme());
+
     if (token != null && !token.isEmpty()) {
-      client.setRequestInterceptor(
+      apiClient.setRequestInterceptor(
           request -> request.header("Authorization", "Bearer " + token)
       );
     }
-    return client;
+    return apiClient;
   }
 }
