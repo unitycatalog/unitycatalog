@@ -3025,6 +3025,9 @@ components:
             then UC cannot determine the latest version and returns -1. Use this field to manage pagination — 
             if the returned commits don't cover the range up to latest_table_version or end_version (whichever is smaller), 
             it indicates that more unbackfilled commits may be available.
+      required:
+        - commits
+        - latest_table_version
 info:
   title: Unity Catalog API
   version: '0.1'

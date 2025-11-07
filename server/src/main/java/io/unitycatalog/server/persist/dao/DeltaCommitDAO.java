@@ -54,6 +54,15 @@ public class DeltaCommitDAO {
   @Column(name = "is_backfilled_latest_commit", nullable = false)
   private boolean isBackfilledLatestCommit;
 
+  public DeltaCommitInfo toCommitInfo() {
+    return new DeltaCommitInfo()
+        .version(commitVersion)
+        .fileName(commitFilename)
+        .fileSize(commitFilesize)
+        .fileModificationTimestamp(commitFileModificationTimestamp.getTime())
+        .timestamp(commitTimestamp.getTime());
+  }
+
   public static DeltaCommitDAO from(UUID tableId, DeltaCommitInfo commitInfo) {
     return DeltaCommitDAO.builder()
         .tableId(tableId)
