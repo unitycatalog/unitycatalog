@@ -151,8 +151,14 @@ public class TableCli {
       DeltaKernelUtils.createDeltaTable(
           createTable.getStorageLocation(), columnInfoList, temporaryCredentials);
     } catch (Exception e) {
-      if (e instanceof TableAlreadyExistsException
-          || e.getCause() instanceof TableAlreadyExistsException) {
+      if ((e instanceof TableAlreadyExistsException
+              || e.getCause() instanceof TableAlreadyExistsException)
+          && createTable.getTableType() == TableType.EXTERNAL) {
+        // A common pattern is that many tests would test the failure cases of table creation. But
+        // they often leave the delta table on disk after failing to register a table in UC. Then
+        // they retry the table creation on the same location. This would allow those tests to
+        // continue. This will only happen to external tables as managed tables would have a unique
+        // new location allocated by UC.
         // TODO confirm the schema of the existing table matches the schema of the new table
       } else {
         throw new CliException(

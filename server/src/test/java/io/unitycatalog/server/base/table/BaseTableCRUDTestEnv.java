@@ -37,6 +37,25 @@ public abstract class BaseTableCRUDTestEnv extends BaseCRUDTest {
 
   protected abstract TableOperations createTableOperations(ServerConfig serverConfig);
 
+  protected static final List<ColumnInfo> COLUMNS =
+      List.of(
+          new ColumnInfo()
+              .name("as_int")
+              .typeText("INTEGER")
+              .typeJson("{\"type\": \"integer\"}")
+              .typeName(ColumnTypeName.INT)
+              .position(0)
+              .comment("Integer column")
+              .nullable(true),
+          new ColumnInfo()
+              .name("as_string")
+              .typeText("VARCHAR(255)")
+              .typeJson("{\"type\": \"string\", \"length\": \"255\"}")
+              .typeName(ColumnTypeName.STRING)
+              .position(1)
+              .comment("String column")
+              .nullable(true));
+
   @BeforeEach
   @Override
   public void setUp() {
@@ -102,32 +121,13 @@ public abstract class BaseTableCRUDTestEnv extends BaseCRUDTest {
     } else {
       assert storageLocation.isPresent();
     }
-    ColumnInfo columnInfo1 =
-        new ColumnInfo()
-            .name("as_int")
-            .typeText("INTEGER")
-            .typeJson("{\"type\": \"integer\"}")
-            .typeName(ColumnTypeName.INT)
-            .position(0)
-            .comment("Integer column")
-            .nullable(true);
-
-    ColumnInfo columnInfo2 =
-        new ColumnInfo()
-            .name("as_string")
-            .typeText("VARCHAR(255)")
-            .typeJson("{\"type\": \"string\", \"length\": \"255\"}")
-            .typeName(ColumnTypeName.STRING)
-            .position(1)
-            .comment("String column")
-            .nullable(true);
 
     CreateTable createTableRequest =
         new CreateTable()
             .name(tableName)
             .catalogName(TestUtils.CATALOG_NAME)
             .schemaName(TestUtils.SCHEMA_NAME)
-            .columns(List.of(columnInfo1, columnInfo2))
+            .columns(COLUMNS)
             .properties(TestUtils.PROPERTIES)
             .comment(TestUtils.COMMENT)
             .storageLocation(storageLocation.orElse(null))

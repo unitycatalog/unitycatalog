@@ -62,9 +62,7 @@ public class DeltaKernelUtils {
         throw new RuntimeException("Table creation failed");
       }
     } catch (Exception e) {
-      String errorMsg =
-          String.format("Failed to create Delta table at '%s': %s", tablePath, e.getMessage());
-      LOGGER.error(errorMsg, e);
+      String errorMsg = String.format("Failed to create Delta table at '%s'", tablePath);
       throw new IllegalArgumentException(errorMsg, e);
     }
   }
