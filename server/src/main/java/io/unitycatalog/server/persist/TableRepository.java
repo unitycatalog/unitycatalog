@@ -214,12 +214,10 @@ public class TableRepository {
             tableID = stagingTableDAO.getId().toString();
           } else if (tableType == TableType.STREAMING_TABLE) {
             throw new BaseException(
-                ErrorCode.INVALID_ARGUMENT,
-                "STREAMING TABLE creation is not supported yet.");
+                ErrorCode.INVALID_ARGUMENT, "STREAMING TABLE creation is not supported yet.");
           } else if (tableType == TableType.MATERIALIZED_VIEW) {
             throw new BaseException(
-                ErrorCode.INVALID_ARGUMENT,
-                "MATERIALIZED VIEW creation is not supported yet.");
+                ErrorCode.INVALID_ARGUMENT, "MATERIALIZED VIEW creation is not supported yet.");
           } else {
             throw new BaseException(
                 ErrorCode.INVALID_ARGUMENT,
