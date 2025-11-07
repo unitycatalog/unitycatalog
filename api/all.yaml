@@ -38,6 +38,9 @@ tags:
   - name: Metastores
     description: |
       A metastore is the top-level container of objects in Unity Catalog that stores all UC assets.
+  - name: CoordinatedCommits
+    description: |
+      "Coordinated commits" is a Delta tables feature that allows Delta tables to designate a coordinator to coordinate commits. This is Unity Catalog's API to allow Unity Catalog be the commit coordinator for managed tables. (See https://github.com/delta-io/delta/blob/master/protocol_rfcs/catalog-managed.md for more details)
 paths:
   /catalogs:
     post:
@@ -1398,7 +1401,119 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ExternalLocationInfo"
-
+  /delta/preview/commits:
+    get:
+      operationId: getCommits
+      tags:
+        - CoordinatedCommits
+      summary: |
+        List unbackfilled Delta table commits.
+        WARNING: This API is experimental and may change in future versions.
+      description: |
+        List all the unbackfilled delta commits that are currently being tracked by the UC coordinator. 
+        If no commits are being tracked in the specific version range (from start_version to an optional end_version), 
+        it will return an empty list.
+        WARNING: This API is experimental and may change in future versions.
+      parameters:
+        - name: table_id
+          in: query
+          description: The ID of the table to get the commits for. This ID uniquely identifies a table.
+          required: true
+          schema:
+            type: string
+        - name: table_uri
+          in: query
+          description: |
+            The URI of the storage location of the table. If the table_id exists but the table_uri is 
+            different from the one previously registered (e.g., if the client moved the table), the request will fail.
+            Example: s3://bucket-name/tables/some-table-id
+          required: true
+          schema:
+            type: string
+        - name: start_version
+          in: query
+          description: |
+            The start version from which to retrieve commits (inclusive). This along with the
+            optional end_version specifies the range of commit versions that this request wants.
+          required: true
+          schema:
+            type: integer
+            format: int64
+        - name: end_version
+          in: query
+          description: |
+            The end version upto which to retrieve commits (inclusive).
+            If not set, the latest version will be used as the end version. This does not affect the
+            latest_table_version in the response.
+            If num of commits that meet this criteria is larger than a limit set by server config,
+            the response will be limited to the first X commits. Call can send request again with a
+            larger start_version according to the response to get the remaining commits.
+          required: false
+          schema:
+            type: integer
+            format: int64
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GetCommitsResponse'
+        '400':
+          description: |
+            Bad request or Invalid Argument. Example: table_uri in the request doesn't match the existing table_uri for the table.
+        '401':
+          description: Unauthorized. Authentication credentials are missing or incorrect.
+        '403':
+          description: Forbidden. The user does not have the necessary permissions to perform this action.
+        '404':
+          description: Not Found. The specified table does not exist.
+        '500':
+          description: Internal Server Error. An unexpected error occurred on the server.
+    post:
+      tags:
+        - CoordinatedCommits
+      summary: |
+        Commit changes to a specified table.
+        The server has a limit defined in config on how many unbackfilled commits it can hold.
+        Clients are expected to do active backfill of the commit after committing to UC. So in
+        most cases the number of unbackfilled commits should be close to zero or one. But if
+        clients misbehave and unbackfilled commits accumulate beyond the limit, server will
+        reject further commits until more backfill is done.
+        WARNING: This API is experimental and may change in future versions.
+      operationId: commit
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Commit'
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CommitResponse'
+        '400':
+          description: |
+            Bad request or Invalid Argument. Example: Commit version is not expected (e.g., latest_table_version +1) 
+            or Latest backfilled version exceeds the last commit version or table_uri in the request doesn't match the 
+            existing table_uri for the table.
+        '401':
+          description: Unauthorized. Authentication credentials are missing or incorrect.
+        '403':
+          description: Forbidden. The user does not have the necessary permissions to perform this action.
+        '404':
+          description: Not Found. The specified table does not exist.
+        '409':
+          description: Conflict. Indicates that a commit with the same version already exists.
+        '429':
+          description: The maximum number of unbackfilled commits per table has been reached. Please backfill some commits before retrying.
+        '500':
+          description: Internal Server Error. An unexpected error occurred on the server.
+        '501':
+          description: Not Implemented. The requested functionality is not supported.
 components:
   schemas:
     SecurablePropertiesMap:
@@ -2792,6 +2907,106 @@ components:
         next_page_token:
           type: string
           description: Opaque token to retrieve the next page of results. Absent if there are no more pages. __page_token__ should be set to this value for the next request (for the next page of results).
+    Commit:
+      type: object
+      description: Request body for committing changes to a specified table. At least one of commit_info and latest_backfilled_version must be present.
+      properties:
+        table_id:
+          type: string
+          description: The ID of the table to commit to. This ID uniquely identifies a table.
+        table_uri:
+          type: string
+          description: |
+            The URI of the storage location of the table. If the table_id exists but the table_uri is 
+            different from the one previously registered (e.g., if the client moved the table), the request will fail.
+            Example: s3://bucket-name/tables/some-table-id
+        commit_info:
+          $ref: '#/components/schemas/CommitInfo'
+        latest_backfilled_version:
+          type: integer
+          format: int64
+          description: |
+            The highest version of the commits that have been backfilled for this table; meaning UC no longer 
+            needs to keep track of commits of versions <= this version.
+        metadata:
+          $ref: '#/components/schemas/Metadata'
+      required:
+        - table_id
+        - table_uri
+    Metadata:
+      description: Represents a Delta metadata action (see https://github.com/delta-io/delta/blob/master/PROTOCOL.md#change-metadata for more information).
+      properties:
+        description:
+          type: string
+          description: The table comment.
+        schema:
+          $ref: '#/components/schemas/ColumnInfos'
+        properties:
+          $ref: '#/components/schemas/CommitMetadataProperties'
+    CommitMetadataProperties:
+      description: The properties of the table. Updated by UC if set.
+      type: object
+      properties:
+        properties:
+          $ref: '#/components/schemas/SecurablePropertiesMap'
+    ColumnInfos:
+      type: object
+      description: The schema of the table.
+      properties:
+        columns:
+          type: array
+          items:
+            $ref: '#/components/schemas/ColumnInfo'
+          maxItems: 32768
+          description: The array of column descriptions.
+    CommitInfo:
+      type: object
+      description: Represents a coordinated commit version.
+      properties:
+        version:
+          type: integer
+          format: int64
+          description: The version of this commit.
+        timestamp:
+          type: integer
+          format: int64
+          description: The timestamp for when the commit was made. This is the in-commit timestamp as produced by the Delta client writing to the table.
+        file_name:
+          type: string
+          description: The filename of the UUID-based commit file.
+        file_size:
+          type: integer
+          format: int64
+          description: The size of the commit file in bytes.
+        file_modification_timestamp:
+          type: integer
+          format: int64
+          description: The modification time of the commit file. This is the mod time of the file as written to the file system.
+      required:
+        - version
+        - timestamp
+        - file_name
+        - file_size
+        - file_modification_timestamp
+    CommitResponse:
+      type: object
+      description: The response for the commit action
+    GetCommitsResponse:
+      type: object
+      properties:
+        commits:
+          type: array
+          description: The list of unbackfilled Delta table commits. Can be in arbitrary order.
+          items:
+            $ref: '#/components/schemas/CommitInfo'
+        latest_table_version:
+          type: integer
+          format: int64
+          description: |
+            Represents the latest version of the table tracked by UC. If no commits have occurred via UC yet, 
+            then UC cannot determine the latest version and returns -1. Use this field to manage pagination — 
+            if the returned commits don't cover the range up to latest_table_version or end_version (whichever is smaller), 
+            it indicates that more unbackfilled commits may be available.
 info:
   title: Unity Catalog API
   version: '0.1'
