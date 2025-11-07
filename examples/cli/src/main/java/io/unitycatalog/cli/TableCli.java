@@ -107,9 +107,9 @@ public class TableCli {
           FileOperations.toStandardizedURIString(
               json.getString(CliParams.STORAGE_LOCATION.getServerParam()));
       createTable.setStorageLocation(storageLocation);
-      // Currently generateTemporaryPathCredentials doesn't quite work yet. So this step has to
-      // be skipped and only local dir can work:
-      // https://github.com/unitycatalog/unitycatalog/issues/1160
+      // Currently generateTemporaryPathCredentials doesn't quite work yet due to lack of proper
+      // authorization in its implementation. So this step has to be skipped and only local dir can
+      // work. For details please check https://github.com/unitycatalog/unitycatalog/issues/1160
       temporaryCredentials = null;
       // temporaryCredentials =
       //     temporaryCredentialsApi.generateTemporaryPathCredentials(
@@ -143,7 +143,7 @@ public class TableCli {
                   .tableId(stagingTableId)
                   .operation(TableOperation.READ_WRITE));
     } else {
-      throw new CliException("Unknown table type");
+      throw new CliException("Unknown table type: " + createTable.getTableType());
     }
 
     // try and initialize the directory and initiate delta log at the location
