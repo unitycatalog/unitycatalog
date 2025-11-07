@@ -69,51 +69,41 @@ public class DefaultHttpRetryHandler implements HttpRetryHandler {
       HttpClient delegate,
       HttpRequest request,
       HttpResponse.BodyHandler<T> responseBodyHandler) throws IOException, InterruptedException {
-    Exception lastException = null;
+    IOException lastException = null;
     Instant startTime = clock.now();
 
     for (int attempt = 1; attempt <= maxAttempts; attempt++) {
       HttpResponse<T> response;
+      boolean shouldRetry = true;
       try {
         response = delegate.send(request, responseBodyHandler);
-      } catch (Exception e) {
-        lastException = e;
-        if (!isRecoverableException(e) || attempt == maxAttempts) {
-          break;
+        if(!isRetryable(response.statusCode())){
+          return response;
         }
+      } catch (IOException e) {
+        lastException = e;
+        shouldRetry = isRecoverableException(e);
+      }
+
+      if(shouldRetry && attempt < maxAttempts){
         sleepWithBackoff(attempt);
-        continue;
-      }
-
-      int statusCode = response.statusCode();
-      if (!(RECOVERABLE_STATUS_CODES.contains(statusCode) ||
-          (statusCode >= 500 && statusCode < 600))) {
-        return response;
-      }
-
-      lastException = new IOException("HTTP " + statusCode);
-      if (attempt == maxAttempts) {
+      } else {
         break;
       }
-      sleepWithBackoff(attempt);
     }
 
-    // Exhaust all attempts, send the last exception to the caller.
-    if (lastException == null) {
-      throw new IOException("HTTP request failed without an associated exception");
+    if(lastException != null) {
+      throw lastException;
+    } else {
+      long elapsedMs = Duration.between(startTime, clock.now()).toMillis();
+      throw new IOException(String.format( "Failed HTTP request after %s attempts" +
+          " with elapsed time %s ms", maxAttempts, elapsedMs));
     }
+  }
 
-    long elapsedMs = Duration.between(startTime, clock.now()).toMillis();
-    if (lastException instanceof IOException) {
-      throw (IOException) lastException;
-    } else if (lastException instanceof InterruptedException) {
-      throw (InterruptedException) lastException;
-    }
-    throw new RuntimeException(
-        "Failed HTTP request after " + maxAttempts + " attempts" +
-            " (elapsed time: " + elapsedMs + "ms)",
-        lastException
-    );
+  private static boolean isRetryable(int statusCode) {
+    return RECOVERABLE_STATUS_CODES.contains(statusCode) ||
+        (statusCode >= 500 && statusCode < 600);
   }
 
   private void sleepWithBackoff(int attempt) throws InterruptedException {
