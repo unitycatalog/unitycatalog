@@ -55,3 +55,8 @@ Pipfile
 # Local configuration files with secrets
 *.local
 etc/conf/server.properties.local
+
+# Speckit development tooling (keep local, don't commit)
+.specify/
+specs/
+.github/copilot-instructions.md
