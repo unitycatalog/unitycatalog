@@ -19,6 +19,7 @@ import io.unitycatalog.client.model.ColumnTypeName;
 import io.unitycatalog.client.model.CreateCatalog;
 import io.unitycatalog.client.model.CreateSchema;
 import io.unitycatalog.client.model.CreateTable;
+import io.unitycatalog.client.model.DataSourceFormat;
 import io.unitycatalog.client.model.TableInfo;
 import io.unitycatalog.client.model.TableType;
 import io.unitycatalog.server.base.BaseServerTest;
@@ -42,7 +43,7 @@ public class CliTableCreationTest extends BaseServerTest {
   private SchemaOperations schemaOperations;
   private TableOperations tableOperations;
 
-  private static final List<ColumnInfo> columns =
+  private static final List<ColumnInfo> COLUMNS =
       List.of(
           new ColumnInfo().name("id").typeName(ColumnTypeName.INT).comment("id"),
           new ColumnInfo().name("name").typeName(ColumnTypeName.STRING).comment("name"));
@@ -76,7 +77,7 @@ public class CliTableCreationTest extends BaseServerTest {
   @Test
   public void testCreateTableLocalDirectoryDoesNotExist() throws IOException, ApiException {
     String tablePath = "/tmp/" + UUID.randomUUID();
-    createTableAndAssertReadTableSucceeds(TableType.EXTERNAL, Optional.of(tablePath), columns);
+    createTableAndAssertReadTableSucceeds(TableType.EXTERNAL, Optional.of(tablePath), COLUMNS);
   }
 
   @Test
@@ -85,7 +86,7 @@ public class CliTableCreationTest extends BaseServerTest {
     String tablePath = "/tmp/" + UUID.randomUUID();
     Path dir = Paths.get(tablePath);
     Files.createDirectory(dir);
-    createTableAndAssertReadTableSucceeds(TableType.EXTERNAL, Optional.of(tablePath), columns);
+    createTableAndAssertReadTableSucceeds(TableType.EXTERNAL, Optional.of(tablePath), COLUMNS);
   }
 
   @Test
@@ -95,28 +96,40 @@ public class CliTableCreationTest extends BaseServerTest {
     assertThatCode(
             () ->
                 DeltaKernelUtils.createDeltaTable(
-                    Paths.get(tablePath).toUri().toString(), columns, null))
+                    Paths.get(tablePath).toUri().toString(), COLUMNS, null))
         .doesNotThrowAnyException();
     assertThat(Paths.get(tablePath + "/_delta_log")).isDirectory();
-    createTableAndAssertReadTableSucceeds(TableType.EXTERNAL, Optional.of(tablePath), columns);
+    createTableAndAssertReadTableSucceeds(TableType.EXTERNAL, Optional.of(tablePath), COLUMNS);
   }
 
   @Test
   public void testCreateManagedTable() throws IOException, ApiException {
-    createTableAndAssertReadTableSucceeds(TableType.MANAGED, Optional.empty(), columns);
+    createTableAndAssertReadTableSucceeds(TableType.MANAGED, Optional.empty(), COLUMNS);
   }
 
   @Test
-  public void testCreateManagedTableWithLocationAndFail() throws IOException, ApiException {
+  public void testCreateManagedTableAndFail() throws IOException, ApiException {
+    // This fails due to setting a storage location for managed table.
     assertThat(
             tableOperations.createTable(
                 new CreateTable()
                     .catalogName(CATALOG_NAME)
                     .schemaName(SCHEMA_NAME)
-                    .name(TABLE_NAME)
+                    .name(TABLE_NAME + "_1")
                     .tableType(TableType.MANAGED)
                     .storageLocation("/tmp/some_path")
-                    .columns(columns)))
+                    .columns(COLUMNS)))
+        .isNull();
+    // This fails due to setting PARQUET. Only DELTA is supported for managed table right now.
+    assertThat(
+            tableOperations.createTable(
+                new CreateTable()
+                    .catalogName(CATALOG_NAME)
+                    .schemaName(SCHEMA_NAME)
+                    .name(TABLE_NAME + "_2")
+                    .tableType(TableType.MANAGED)
+                    .dataSourceFormat(DataSourceFormat.PARQUET)
+                    .columns(COLUMNS)))
         .isNull();
   }
 
