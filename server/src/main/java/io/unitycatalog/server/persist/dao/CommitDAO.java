@@ -52,6 +52,15 @@ public class CommitDAO {
   @Column(name = "is_backfilled_latest_commit", nullable = false)
   private Boolean isBackfilledLatestCommit;
 
+  public CommitInfo toCommitInfo() {
+    return new CommitInfo()
+        .version(commitVersion)
+        .fileName(commitFilename)
+        .fileSize(commitFilesize)
+        .fileModificationTimestamp(commitFileModificationTimestamp.getTime())
+        .timestamp(commitTimestamp.getTime());
+  }
+
   public static CommitDAO from(UUID tableId, CommitInfo commitInfo) {
     return CommitDAO.builder()
         .tableId(tableId)

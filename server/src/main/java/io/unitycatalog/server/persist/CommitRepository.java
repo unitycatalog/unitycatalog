@@ -7,6 +7,7 @@ import io.unitycatalog.server.model.Commit;
 import io.unitycatalog.server.model.CommitInfo;
 import io.unitycatalog.server.model.CommitMetadataProperties;
 import io.unitycatalog.server.model.DataSourceFormat;
+import io.unitycatalog.server.model.GetCommitsResponse;
 import io.unitycatalog.server.model.Metadata;
 import io.unitycatalog.server.model.TableType;
 import io.unitycatalog.server.persist.dao.ColumnInfoDAO;
@@ -26,6 +27,7 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.UUID;
+import java.util.stream.Collectors;
 import org.hibernate.Session;
 import org.hibernate.SessionFactory;
 import org.hibernate.query.NativeQuery;
@@ -57,6 +59,107 @@ public class CommitRepository {
   public CommitRepository(SessionFactory sessionFactory, ServerProperties serverProperties) {
     this.sessionFactory = sessionFactory;
     this.serverProperties = serverProperties;
+  }
+
+  /**
+   * Retrieves all commits for a table in descending order by version up to NUM_COMMITS_PER_BATCH.
+   */
+  private List<CommitDAO> getAllCommitsDesc(UUID tableId) {
+    LOGGER.debug("Getting all commits of table id: {}", tableId);
+    return TransactionManager.executeWithTransaction(
+        sessionFactory,
+        session -> {
+          TableInfoDAO tableInfoDAO = session.get(TableInfoDAO.class, tableId);
+          if (tableInfoDAO == null) {
+            throw new BaseException(ErrorCode.NOT_FOUND, "Table not found: " + tableId);
+          }
+          validateTable(tableInfoDAO);
+
+          Query<CommitDAO> query =
+              session.createQuery(
+                  "FROM CommitDAO WHERE tableId = :tableId ORDER BY commitVersion DESC",
+                  CommitDAO.class);
+          query.setParameter("tableId", tableId);
+          query.setMaxResults(NUM_COMMITS_PER_BATCH);
+          return query.list();
+        },
+        "Failed to get latest commits",
+        /* readOnly = */ true);
+  }
+
+  /**
+   * Retrieves commits for a managed Delta table within a specified version range.
+   *
+   * <p>This method returns commits that fall within the requested version range [startVersion,
+   * endVersion]. The response includes both the list of commits and the latest table version.
+   *
+   * <p><b>Pagination:</b> Results are always limited to MAX_NUM_COMMITS_PER_TABLE (50) commits per
+   * request. If no endVersion is specified, the response will include commits from startVersion up
+   * to either the latest version or the pagination limit, whichever is lower.
+   *
+   * <p><b>Backfilled commits:</b> When commits are backfilled (persisted to file storage), they are
+   * removed from the database. If the latest commit is marked as backfilled, this method returns an
+   * empty commit list but still returns the correct latestTableVersion.
+   *
+   * <p><b>Empty table behavior:</b> If the table has no commits yet, returns latestTableVersion=-1
+   * with an empty commit list.
+   *
+   * <p>The returned commits are ordered by version in descending order (newest first).
+   */
+  public GetCommitsResponse getCommits(UUID tableId, long startVersion, Optional<Long> endVersion) {
+    serverProperties.checkManagedTableEnabled();
+    ValidationUtils.checkArgument(tableId != null, "Field can not be null: table_id");
+    ValidationUtils.checkArgument(startVersion >= 0, "Field must be >=0: start_version");
+    ValidationUtils.checkArgument(
+        endVersion.filter(x -> x < startVersion).isEmpty(),
+        "end_version must be >=start_version if set");
+
+    List<CommitDAO> allCommitsDesc = getAllCommitsDesc(tableId);
+    int commitCount = allCommitsDesc.size();
+    if (commitCount > MAX_NUM_COMMITS_PER_TABLE) {
+      // This should never occur. But this is recoverable and not fatal.
+      LOGGER.error(
+          "Table {} has {} commits, which exceeds the limit of {}.",
+          tableId,
+          commitCount,
+          MAX_NUM_COMMITS_PER_TABLE);
+    }
+    if (commitCount == 0) {
+      // No commit exist yet. Not even any backfilled one.
+      return new GetCommitsResponse().latestTableVersion(-1L);
+    }
+
+    CommitDAO firstCommit = allCommitsDesc.get(allCommitsDesc.size() - 1);
+    CommitDAO lastCommit = allCommitsDesc.get(0);
+    assert firstCommit.getCommitVersion() <= lastCommit.getCommitVersion();
+    if (lastCommit.getIsBackfilledLatestCommit()) {
+      // The last commit is already backfilled. Just return an empty list. No need to return any
+      // actual commits.
+      return new GetCommitsResponse().latestTableVersion(lastCommit.getCommitVersion());
+    }
+
+    // The last version to return if endVersion is not set. It's limited by pagination limit.
+    // In normal cases the pagination limitation should not happen at all since the limit is the
+    // same limit that a table can have as many unbackfilled commits as possible. But this is
+    // implemented this way just in case.
+    long paginatedEndVersionInclusive =
+        Math.max(startVersion, firstCommit.getCommitVersion()) + MAX_NUM_COMMITS_PER_TABLE - 1;
+    // The actual last version to return
+    long effectiveEndVersionInclusive =
+        Math.min(endVersion.orElse(Long.MAX_VALUE), paginatedEndVersionInclusive);
+
+    // Filter result and return
+    List<CommitInfo> commits =
+        allCommitsDesc.stream()
+            .filter(
+                c ->
+                    c.getCommitVersion() >= startVersion
+                        && c.getCommitVersion() <= effectiveEndVersionInclusive)
+            .map(CommitDAO::toCommitInfo)
+            .collect(Collectors.toList());
+    return new GetCommitsResponse()
+        .commits(commits)
+        .latestTableVersion(lastCommit.getCommitVersion());
   }
 
   /** Commits a new version to a managed Delta table with coordinated commit semantics. */

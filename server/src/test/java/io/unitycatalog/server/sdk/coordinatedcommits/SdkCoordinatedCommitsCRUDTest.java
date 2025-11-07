@@ -5,6 +5,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import io.unitycatalog.client.ApiException;
 import io.unitycatalog.client.api.CoordinatedCommitsApi;
@@ -14,6 +15,7 @@ import io.unitycatalog.client.model.ColumnTypeName;
 import io.unitycatalog.client.model.Commit;
 import io.unitycatalog.client.model.CommitInfo;
 import io.unitycatalog.client.model.CommitMetadataProperties;
+import io.unitycatalog.client.model.GetCommitsResponse;
 import io.unitycatalog.client.model.Metadata;
 import io.unitycatalog.client.model.TableInfo;
 import io.unitycatalog.client.model.TableType;
@@ -28,7 +30,6 @@ import io.unitycatalog.server.sdk.catalog.SdkCatalogOperations;
 import io.unitycatalog.server.sdk.schema.SdkSchemaOperations;
 import io.unitycatalog.server.sdk.tables.SdkTableOperations;
 import io.unitycatalog.server.utils.TestUtils;
-import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -105,21 +106,14 @@ public class SdkCoordinatedCommitsCRUDTest extends BaseTableCRUDTestEnv {
     }
   }
 
-  private void checkCommitDAO(CommitDAO dao, Commit commit) {
-    CommitInfo commitInfo = commit.getCommitInfo();
-    assertThat(commitInfo).isNotNull();
-    assertThat(dao).isNotNull();
-    assertThat(dao.getCommitVersion()).isEqualTo(commitInfo.getVersion());
-    assertThat(dao.getCommitFilename()).isEqualTo(commitInfo.getFileName());
-    assertThat(dao.getCommitFilesize()).isEqualTo(commitInfo.getFileSize());
-    assertThat(dao.getCommitFileModificationTimestamp().getTime())
-        .isEqualTo(commitInfo.getFileModificationTimestamp());
-  }
-
   @Test
   public void testBasicCoordinatedCommitsCRUD() throws ApiException {
-    // It is a table with no commits
-    assertThat(getCommitDAOs(UUID.fromString(tableInfo.getTableId())).size()).isEqualTo(0);
+    // Get commits on a table with no commits
+    GetCommitsResponse response =
+        coordinatedCommitsApi.getCommits(
+            tableInfo.getTableId(), tableInfo.getStorageLocation(), 0L, null);
+    assertEquals(-1, response.getLatestTableVersion());
+    assertTrue(response.getCommits() == null || response.getCommits().isEmpty());
 
     Commit commit1 = createCommitObject(tableInfo.getTableId(), 1L, tableInfo.getStorageLocation());
     coordinatedCommitsApi.commit(commit1);
@@ -156,47 +150,78 @@ public class SdkCoordinatedCommitsCRUDTest extends BaseTableCRUDTestEnv {
     assertThat(ex.getCode()).isEqualTo(ErrorCode.ALREADY_EXISTS.getHttpStatus().code());
     assertThat(ex.getMessage()).contains("Commit version already accepted.");
 
-    List<CommitDAO> commitDAOs = getCommitDAOs(UUID.fromString(tableInfo.getTableId()));
-    assertThat(commitDAOs.size()).isEqualTo(3);
-    checkCommitDAO(commitDAOs.get(0), commit3);
-    checkCommitDAO(commitDAOs.get(1), commit2);
-    checkCommitDAO(commitDAOs.get(2), commit1);
+    // Try get the commits with different start and end version range
+    response =
+        coordinatedCommitsApi.getCommits(
+            tableInfo.getTableId(), tableInfo.getStorageLocation(), 0L, null);
+    assertEquals(3, response.getCommits().size());
+    assertEquals(3, response.getLatestTableVersion());
+    assertTrue(response.getCommits().contains(commit1.getCommitInfo()));
+    assertTrue(response.getCommits().contains(commit2.getCommitInfo()));
+    assertTrue(response.getCommits().contains(commit3.getCommitInfo()));
+
+    response =
+        coordinatedCommitsApi.getCommits(
+            tableInfo.getTableId(), tableInfo.getStorageLocation(), 2L, null);
+    assertEquals(2, response.getCommits().size());
+    assertEquals(3, response.getLatestTableVersion());
+    assertFalse(response.getCommits().contains(commit1.getCommitInfo()));
+    assertTrue(response.getCommits().contains(commit2.getCommitInfo()));
+    assertTrue(response.getCommits().contains(commit3.getCommitInfo()));
+
+    response =
+        coordinatedCommitsApi.getCommits(
+            tableInfo.getTableId(), tableInfo.getStorageLocation(), 2L, 2L);
+    assertEquals(1, response.getCommits().size());
+    assertEquals(3, response.getLatestTableVersion());
+    assertFalse(response.getCommits().contains(commit1.getCommitInfo()));
+    assertTrue(response.getCommits().contains(commit2.getCommitInfo()));
+    assertFalse(response.getCommits().contains(commit3.getCommitInfo()));
 
     // Add a new commit (version 4) and backfill up to version 1 in the same request
     Commit commit4 = createCommitObject(tableInfo.getTableId(), 4L, tableInfo.getStorageLocation());
     commit4.setLatestBackfilledVersion(1L);
     coordinatedCommitsApi.commit(commit4);
     // Verify we now have 3 commits (versions 2, 3, 4)
-    commitDAOs = getCommitDAOs(UUID.fromString(tableInfo.getTableId()));
-    assertThat(commitDAOs.size()).isEqualTo(3);
-    checkCommitDAO(commitDAOs.get(0), commit4);
-    checkCommitDAO(commitDAOs.get(1), commit3);
-    checkCommitDAO(commitDAOs.get(2), commit2);
+    response =
+        coordinatedCommitsApi.getCommits(
+            tableInfo.getTableId(), tableInfo.getStorageLocation(), 0L, null);
+    assertEquals(3, response.getCommits().size());
+    assertEquals(4L, response.getLatestTableVersion());
+    assertEquals(4L, response.getCommits().get(0).getVersion());
+    assertEquals(3L, response.getCommits().get(1).getVersion());
+    assertEquals(2L, response.getCommits().get(2).getVersion());
 
     // It's OK to backfill again and nothing changes
     Commit backfillOnlyCommit1 =
         createBackfillOnlyCommitObject(tableInfo.getTableId(), 1L, tableInfo.getStorageLocation());
     coordinatedCommitsApi.commit(backfillOnlyCommit1);
-    commitDAOs = getCommitDAOs(UUID.fromString(tableInfo.getTableId()));
-    assertThat(commitDAOs.size()).isEqualTo(3);
+    response =
+        coordinatedCommitsApi.getCommits(
+            tableInfo.getTableId(), tableInfo.getStorageLocation(), 0L, null);
+    assertEquals(3, response.getCommits().size());
+    assertEquals(4L, response.getLatestTableVersion());
 
     Commit backfillOnlyCommit2 =
         createBackfillOnlyCommitObject(tableInfo.getTableId(), 4L, tableInfo.getStorageLocation());
     coordinatedCommitsApi.commit(backfillOnlyCommit2);
-    commitDAOs = getCommitDAOs(UUID.fromString(tableInfo.getTableId()));
-    assertThat(commitDAOs.size()).isEqualTo(1);
-    checkCommitDAO(commitDAOs.get(0), commit4);
-    assertThat(commitDAOs.get(0).getIsBackfilledLatestCommit()).isTrue();
+    response =
+        coordinatedCommitsApi.getCommits(
+            tableInfo.getTableId(), tableInfo.getStorageLocation(), 0L, null);
+    assertEquals(0, response.getCommits().size());
+    assertEquals(4L, response.getLatestTableVersion());
 
     // Verify commits are cleaned up upon table deletion
     Commit commit5 = createCommitObject(tableInfo.getTableId(), 5L, tableInfo.getStorageLocation());
     coordinatedCommitsApi.commit(commit5);
-    commitDAOs = getCommitDAOs(UUID.fromString(tableInfo.getTableId()));
-    assertThat(commitDAOs.size()).isEqualTo(2);
+    response =
+        coordinatedCommitsApi.getCommits(
+            tableInfo.getTableId(), tableInfo.getStorageLocation(), 0L, null);
+    assertEquals(2, response.getCommits().size());
     // Delete the table
     tableOperations.deleteTable(TestUtils.TABLE_FULL_NAME);
     // Verify the uc_commits table is cleaned up
-    commitDAOs = getCommitDAOs(UUID.fromString(tableInfo.getTableId()));
+    List<CommitDAO> commitDAOs = getCommitDAOs(UUID.fromString(tableInfo.getTableId()));
     assertThat(commitDAOs.size()).isEqualTo(0);
   }
 
@@ -207,6 +232,20 @@ public class SdkCoordinatedCommitsCRUDTest extends BaseTableCRUDTestEnv {
     modify.accept(commit);
     ApiException ex = assertThrows(ApiException.class, () -> coordinatedCommitsApi.commit(commit));
     assertThat(ex.getCode()).isEqualTo(ErrorCode.INVALID_ARGUMENT.getHttpStatus().code());
+    assertThat(ex.getMessage()).contains(containsErrorMessage);
+  }
+
+  private void checkGetCommitInvalidParameter(
+      long startVersion, Long endVersion, String containsErrorMessage) {
+    ApiException ex =
+        assertThrows(
+            ApiException.class,
+            () ->
+                coordinatedCommitsApi.getCommits(
+                    tableInfo.getTableId(),
+                    tableInfo.getStorageLocation(),
+                    startVersion,
+                    endVersion));
     assertThat(ex.getMessage()).contains(containsErrorMessage);
   }
 
@@ -262,6 +301,9 @@ public class SdkCoordinatedCommitsCRUDTest extends BaseTableCRUDTestEnv {
     assertThat(commit2.getTableUri()).contains("file:///");
     commit2.setTableUri(commit2.getTableUri().replace("file:///", "file:/"));
     coordinatedCommitsApi.commit(commit2);
+
+    checkGetCommitInvalidParameter(-1L, null, "start_version");
+    checkGetCommitInvalidParameter(5L, 3L, "end_version must be >=start_version if set");
   }
 
   @Test
@@ -271,27 +313,32 @@ public class SdkCoordinatedCommitsCRUDTest extends BaseTableCRUDTestEnv {
             "test_backfill_versions", TableType.MANAGED, Optional.empty(), tableOperations);
 
     // Create 5 commits
-    ArrayList<Commit> commits = new ArrayList<>();
     for (long i = 1; i <= 5; i++) {
       Commit commit = createCommitObject(tableInfo.getTableId(), i, tableInfo.getStorageLocation());
-      commits.add(commit);
       coordinatedCommitsApi.commit(commit);
     }
 
     // Verify all 5 commits exist
-    List<CommitDAO> commitDAOs = getCommitDAOs(UUID.fromString(tableInfo.getTableId()));
-    assertThat(commitDAOs.size()).isEqualTo(5);
+    GetCommitsResponse response =
+        coordinatedCommitsApi.getCommits(
+            tableInfo.getTableId(), tableInfo.getStorageLocation(), 0L, null);
+    assertEquals(5, response.getCommits().size());
+    assertEquals(5, response.getLatestTableVersion());
 
     // Backfill up to version 2 (should keep versions 3, 4, 5)
     Commit backfillCommit =
         createBackfillOnlyCommitObject(tableInfo.getTableId(), 2L, tableInfo.getStorageLocation());
     coordinatedCommitsApi.commit(backfillCommit);
 
-    commitDAOs = getCommitDAOs(UUID.fromString(tableInfo.getTableId()));
-    assertThat(commitDAOs.size()).isEqualTo(3);
-    checkCommitDAO(commitDAOs.get(0), commits.get(4));
-    checkCommitDAO(commitDAOs.get(1), commits.get(3));
-    checkCommitDAO(commitDAOs.get(2), commits.get(2));
+    response =
+        coordinatedCommitsApi.getCommits(
+            tableInfo.getTableId(), tableInfo.getStorageLocation(), 0L, null);
+    assertEquals(3, response.getCommits().size());
+    assertEquals(5, response.getLatestTableVersion());
+    // Verify versions 3, 4, 5 are present
+    assertThat(response.getCommits().get(0).getVersion()).isEqualTo(5L);
+    assertThat(response.getCommits().get(1).getVersion()).isEqualTo(4L);
+    assertThat(response.getCommits().get(2).getVersion()).isEqualTo(3L);
 
     // Try to backfill beyond the latest version
     Commit backfillCommit2 =
@@ -306,19 +353,25 @@ public class SdkCoordinatedCommitsCRUDTest extends BaseTableCRUDTestEnv {
         createBackfillOnlyCommitObject(tableInfo.getTableId(), 4L, tableInfo.getStorageLocation());
     coordinatedCommitsApi.commit(backfillCommit);
 
-    commitDAOs = getCommitDAOs(UUID.fromString(tableInfo.getTableId()));
-    assertThat(commitDAOs.size()).isEqualTo(1);
-    checkCommitDAO(commitDAOs.get(0), commits.get(4));
+    response =
+        coordinatedCommitsApi.getCommits(
+            tableInfo.getTableId(), tableInfo.getStorageLocation(), 0L, null);
+    assertEquals(1, response.getCommits().size());
+    assertEquals(5, response.getLatestTableVersion());
+    assertEquals(5, response.getCommits().get(0).getVersion());
 
     // Backfill up to version 5 (the latest)
     backfillCommit =
         createBackfillOnlyCommitObject(tableInfo.getTableId(), 5L, tableInfo.getStorageLocation());
     coordinatedCommitsApi.commit(backfillCommit);
 
-    commitDAOs = getCommitDAOs(UUID.fromString(tableInfo.getTableId()));
-    assertThat(commitDAOs.size()).isEqualTo(1);
-    checkCommitDAO(commitDAOs.get(0), commits.get(4));
-    assertThat(commitDAOs.get(0).getIsBackfilledLatestCommit()).isTrue();
+    response =
+        coordinatedCommitsApi.getCommits(
+            tableInfo.getTableId(), tableInfo.getStorageLocation(), 0L, null);
+    // When the latest commit is backfilled, it should be marked as such but still returned
+    assertEquals(5, response.getLatestTableVersion());
+    // The commit should be marked as backfilled, so no commits should be returned
+    assertTrue(response.getCommits() == null || response.getCommits().isEmpty());
   }
 
   @Test
@@ -348,8 +401,12 @@ public class SdkCoordinatedCommitsCRUDTest extends BaseTableCRUDTestEnv {
     coordinatedCommitsApi.commit(backfillCommit);
 
     // Verify we now have 20 commits (31-50)
-    List<CommitDAO> commitDAOs = getCommitDAOs(UUID.fromString(tableInfo.getTableId()));
-    assertThat(commitDAOs.size()).isEqualTo(20);
+    GetCommitsResponse response =
+        coordinatedCommitsApi.getCommits(
+            tableInfo.getTableId(), tableInfo.getStorageLocation(), 0L, null);
+    assertEquals(20, response.getCommits().size());
+    assertEquals(50, response.getCommits().get(0).getVersion());
+    assertEquals(31, response.getCommits().get(response.getCommits().size() - 1).getVersion());
 
     // Now we should be able to add more commits
     for (long i = 51; i <= 60; i++) {
@@ -358,8 +415,62 @@ public class SdkCoordinatedCommitsCRUDTest extends BaseTableCRUDTestEnv {
     }
 
     // Verify we now have 30 commits (31-60)
-    commitDAOs = getCommitDAOs(UUID.fromString(tableInfo.getTableId()));
-    assertThat(commitDAOs.size()).isEqualTo(30);
+    response =
+        coordinatedCommitsApi.getCommits(
+            tableInfo.getTableId(), tableInfo.getStorageLocation(), 0L, null);
+    assertEquals(30, response.getCommits().size());
+    assertEquals(60, response.getLatestTableVersion());
+  }
+
+  @Test
+  public void testPagination() throws ApiException {
+    TableInfo tableInfo =
+        createTestingTable("test_pagination", TableType.MANAGED, Optional.empty(), tableOperations);
+
+    // Create 10 commits
+    for (long i = 1; i <= 10; i++) {
+      Commit commit = createCommitObject(tableInfo.getTableId(), i, tableInfo.getStorageLocation());
+      coordinatedCommitsApi.commit(commit);
+    }
+
+    // Get commits with pagination: start_version=0, end_version=3
+    GetCommitsResponse response =
+        coordinatedCommitsApi.getCommits(
+            tableInfo.getTableId(), tableInfo.getStorageLocation(), 0L, 3L);
+    assertEquals(
+        3,
+        response
+            .getCommits()
+            .size()); // versions 0, 1, 2, 3 (but version 0 doesn't exist, so 1, 2, 3)
+    assertEquals(10, response.getLatestTableVersion());
+
+    // Get next page: start_version=4, end_version=7
+    response =
+        coordinatedCommitsApi.getCommits(
+            tableInfo.getTableId(), tableInfo.getStorageLocation(), 4L, 7L);
+    assertEquals(4, response.getCommits().size());
+    assertEquals(10, response.getLatestTableVersion());
+
+    // Get last page: start_version=8, end_version=null
+    response =
+        coordinatedCommitsApi.getCommits(
+            tableInfo.getTableId(), tableInfo.getStorageLocation(), 8L, null);
+    assertEquals(3, response.getCommits().size()); // versions 8, 9, 10
+    assertEquals(10, response.getLatestTableVersion());
+
+    // Get commits starting from a version that doesn't exist yet
+    response =
+        coordinatedCommitsApi.getCommits(
+            tableInfo.getTableId(), tableInfo.getStorageLocation(), 11L, null);
+    assertTrue(response.getCommits() == null || response.getCommits().isEmpty());
+    assertEquals(10, response.getLatestTableVersion());
+
+    // Get commits with start_version = end_version
+    response =
+        coordinatedCommitsApi.getCommits(
+            tableInfo.getTableId(), tableInfo.getStorageLocation(), 3L, 3L);
+    assertEquals(1, response.getCommits().size());
+    assertEquals(3, response.getCommits().get(0).getVersion());
   }
 
   @Test
