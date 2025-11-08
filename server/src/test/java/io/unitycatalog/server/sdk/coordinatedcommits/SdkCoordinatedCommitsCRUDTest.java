@@ -2,7 +2,6 @@ package io.unitycatalog.server.sdk.coordinatedcommits;
 
 import static org.assertj.core.api.AssertionsForClassTypes.assertThat;
 import static org.junit.jupiter.api.Assertions.assertThrows;
-import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import io.unitycatalog.client.ApiException;
 import io.unitycatalog.client.api.CoordinatedCommitsApi;
@@ -27,6 +26,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
+import java.util.function.Consumer;
 import org.hibernate.Session;
 import org.hibernate.query.Query;
 import org.junit.jupiter.api.BeforeEach;
@@ -147,110 +147,60 @@ public class SdkCoordinatedCommitsCRUDTest extends BaseTableCRUDTestEnv {
     checkCommitDAO(commitDAOs.get(2), commit1);
   }
 
+  private void checkCommitInvalidParameter(
+      long version, Consumer<Commit> modify, String containsErrorMessage) {
+    Commit commit =
+        createCommitObject(tableInfo.getTableId(), version, tableInfo.getStorageLocation());
+    modify.accept(commit);
+    ApiException ex = assertThrows(ApiException.class, () -> coordinatedCommitsApi.commit(commit));
+    assertThat(ex.getCode()).isEqualTo(ErrorCode.INVALID_ARGUMENT.getHttpStatus().code());
+    assertThat(ex.getMessage()).contains(containsErrorMessage);
+  }
+
   @Test
   public void testInvalidParameters() throws ApiException {
-    int INVALID_ARGUMENT = ErrorCode.INVALID_ARGUMENT.getHttpStatus().code();
-
-    Commit commit1 =
-        createCommitObject(tableInfo.getTableId(), 1L, tableInfo.getStorageLocation())
-            .tableId(null);
-    ApiException ex = assertThrows(ApiException.class, () -> coordinatedCommitsApi.commit(commit1));
-    assertThat(ex.getCode()).isEqualTo(INVALID_ARGUMENT);
-    assertThat(ex.getMessage()).contains("table_id");
-
-    Commit commit2 =
-        createCommitObject(tableInfo.getTableId(), 1L, tableInfo.getStorageLocation()).tableId("");
-    ex = assertThrows(ApiException.class, () -> coordinatedCommitsApi.commit(commit2));
-    assertThat(ex.getCode()).isEqualTo(INVALID_ARGUMENT);
-    assertThat(ex.getMessage()).contains("table_id");
-
-    Commit commit3 = createCommitObject(tableInfo.getTableId(), 1L, null);
-    ex = assertThrows(ApiException.class, () -> coordinatedCommitsApi.commit(commit3));
-    assertThat(ex.getCode()).isEqualTo(INVALID_ARGUMENT);
-    assertThat(ex.getMessage()).contains("table_uri");
-
-    Commit commit4 = createCommitObject(tableInfo.getTableId(), 1L, "");
-    ex = assertThrows(ApiException.class, () -> coordinatedCommitsApi.commit(commit4));
-    assertThat(ex.getCode()).isEqualTo(INVALID_ARGUMENT);
-    assertThat(ex.getMessage()).contains("table_uri");
-
-    Commit commit5 =
-        createCommitObject(tableInfo.getTableId(), -1L, tableInfo.getStorageLocation());
-    ex = assertThrows(ApiException.class, () -> coordinatedCommitsApi.commit(commit5));
-    assertThat(ex.getCode()).isEqualTo(INVALID_ARGUMENT);
-    assertThat(ex.getMessage()).contains("version");
-
-    Commit commit6 = createCommitObject(tableInfo.getTableId(), 0L, tableInfo.getStorageLocation());
-    ex = assertThrows(ApiException.class, () -> coordinatedCommitsApi.commit(commit6));
-    assertThat(ex.getCode()).isEqualTo(INVALID_ARGUMENT);
-    assertThat(ex.getMessage()).contains("version");
-
-    Commit commit7 = createCommitObject(tableInfo.getTableId(), 1L, tableInfo.getStorageLocation());
-    coordinatedCommitsApi.commit(commit7);
-
-    // Try to commit version 3 when version 2 hasn't been committed yet
-    Commit commit8 = createCommitObject(tableInfo.getTableId(), 3L, tableInfo.getStorageLocation());
-    ex = assertThrows(ApiException.class, () -> coordinatedCommitsApi.commit(commit8));
-    assertThat(ex.getCode()).isEqualTo(INVALID_ARGUMENT);
-    assertTrue(
-        ex.getMessage()
-            .contains(
-                "Commit version must be the next version after the latest commit 1, but got 3"));
-
-    Commit commit9 = createCommitObject(tableInfo.getTableId(), 2L, "s3://wrong-bucket/wrong-path");
-    ex = assertThrows(ApiException.class, () -> coordinatedCommitsApi.commit(commit9));
-    assertThat(ex.getCode()).isEqualTo(INVALID_ARGUMENT);
-    assertThat(ex.getMessage()).contains("Table URI in commit does not match the table path");
-
-    Commit commit11 =
-        new Commit().tableId(tableInfo.getTableId()).tableUri(tableInfo.getStorageLocation());
-    ex = assertThrows(ApiException.class, () -> coordinatedCommitsApi.commit(commit11));
-    assertThat(ex.getMessage())
-        .contains("Either commit_info or latest_backfilled_version must be defined");
+    checkCommitInvalidParameter(1L, c -> c.setTableId(null), "table_id");
+    checkCommitInvalidParameter(1L, c -> c.setTableId(""), "table_id");
+    checkCommitInvalidParameter(1L, c -> c.setTableUri(null), "table_uri");
+    checkCommitInvalidParameter(1L, c -> c.setTableUri(""), "table_uri");
+    checkCommitInvalidParameter(-1L, c -> {}, "version");
+    checkCommitInvalidParameter(0L, c -> {}, "version");
+    checkCommitInvalidParameter(1L, c -> c.setTableUri(""), "table_uri");
+    checkCommitInvalidParameter(
+        1L,
+        c -> c.setTableUri("s3://wrong-bucket/wrong-path"),
+        "Table URI in commit does not match the table path");
+    checkCommitInvalidParameter(
+        1L,
+        c -> c.commitInfo(null).latestBackfilledVersion(null),
+        "Either commit_info or latest_backfilled_version must be defined");
+    checkCommitInvalidParameter(1L, c -> c.getCommitInfo().setFileName(null), "file_name");
+    checkCommitInvalidParameter(1L, c -> c.getCommitInfo().setFileName(""), "file_name");
+    checkCommitInvalidParameter(1L, c -> c.getCommitInfo().setFileSize(-100L), "file_size");
+    checkCommitInvalidParameter(1L, c -> c.getCommitInfo().setFileSize(0L), "file_size");
+    checkCommitInvalidParameter(1L, c -> c.getCommitInfo().setTimestamp(-1L), "timestamp");
+    checkCommitInvalidParameter(1L, c -> c.getCommitInfo().setTimestamp(0L), "timestamp");
 
     // Create a commit with metadata but without ucTableId in properties
-    Map<String, String> properties = Map.of("customProperty", "customValue");
-    Metadata metadata =
-        new Metadata().properties(new CommitMetadataProperties().properties(properties));
-    Commit commit12 =
-        createCommitObject(tableInfo.getTableId(), 2L, tableInfo.getStorageLocation())
-            .metadata(metadata);
-    ex = assertThrows(ApiException.class, () -> coordinatedCommitsApi.commit(commit12));
-    assertThat(ex.getCode()).isEqualTo(INVALID_ARGUMENT);
-    assertThat(ex.getMessage()).contains("ucTableId");
-
+    Map<String, String> properties1 = Map.of("customProperty", "customValue");
+    Metadata metadata1 =
+        new Metadata().properties(new CommitMetadataProperties().properties(properties1));
+    checkCommitInvalidParameter(1L, c -> c.setMetadata(metadata1), "ucTableId");
     // Create a commit with metadata but with wrong ucTableId
-    properties = Map.of("ucTableId", "00000000-0000-0000-0000-000000000000");
-    metadata = new Metadata().properties(new CommitMetadataProperties().properties(properties));
-    Commit commit13 =
-        createCommitObject(tableInfo.getTableId(), 2L, tableInfo.getStorageLocation())
-            .metadata(metadata);
-    ex = assertThrows(ApiException.class, () -> coordinatedCommitsApi.commit(commit13));
-    assertThat(ex.getCode()).isEqualTo(INVALID_ARGUMENT);
-    assertThat(ex.getMessage()).contains("does not match the properties ucTableId");
+    Map<String, String> properties2 = Map.of("ucTableId", "00000000-0000-0000-0000-000000000000");
+    Metadata metadata2 =
+        new Metadata().properties(new CommitMetadataProperties().properties(properties2));
+    checkCommitInvalidParameter(
+        1L, c -> c.setMetadata(metadata2), "does not match the properties ucTableId");
 
-    // Invalid empty filename
-    Commit commit14 =
-        createCommitObject(tableInfo.getTableId(), 2L, tableInfo.getStorageLocation());
-    commit14.getCommitInfo().setFileName("");
-    ex = assertThrows(ApiException.class, () -> coordinatedCommitsApi.commit(commit14));
-    assertThat(ex.getCode()).isEqualTo(INVALID_ARGUMENT);
-    assertThat(ex.getMessage()).contains("file_name");
+    // Commit version 1 successfully
+    Commit commit1 = createCommitObject(tableInfo.getTableId(), 1L, tableInfo.getStorageLocation());
+    coordinatedCommitsApi.commit(commit1);
 
-    // Invalid negative file size
-    Commit commit15 =
-        createCommitObject(tableInfo.getTableId(), 2L, tableInfo.getStorageLocation());
-    commit15.getCommitInfo().setFileSize(-100L);
-    ex = assertThrows(ApiException.class, () -> coordinatedCommitsApi.commit(commit15));
-    assertThat(ex.getCode()).isEqualTo(INVALID_ARGUMENT);
-    assertThat(ex.getMessage()).contains("file_size");
-
-    // Invalid negative timestamp
-    Commit commit16 =
-        createCommitObject(tableInfo.getTableId(), 2L, tableInfo.getStorageLocation());
-    commit16.getCommitInfo().setTimestamp(-1L);
-    ex = assertThrows(ApiException.class, () -> coordinatedCommitsApi.commit(commit16));
-    assertThat(ex.getCode()).isEqualTo(INVALID_ARGUMENT);
-    assertThat(ex.getMessage()).contains("timestamp");
+    // Try to commit version 3 when version 2 hasn't been committed yet
+    checkCommitInvalidParameter(
+        3L,
+        c -> {},
+        "Commit version must be the next version after the latest commit 1, but got 3");
   }
 }
