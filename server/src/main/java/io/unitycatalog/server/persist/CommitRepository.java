@@ -72,8 +72,10 @@ public class CommitRepository {
   private static void handleOnboardingCommit(
       Session session, UUID tableId, TableInfoDAO tableInfoDAO, Commit commit) {
     CommitInfo commitInfo = commit.getCommitInfo();
-    ValidationUtils.validateNonNull(
-        commitInfo, Commit.JSON_PROPERTY_COMMIT_INFO + " in onboarding commit");
+    ValidationUtils.checkArgument(
+        commitInfo != null,
+        "Field can not be null: %s in onboarding commit",
+        Commit.JSON_PROPERTY_COMMIT_INFO);
     saveCommit(session, tableId, commitInfo);
     // TODO: update table metadata
   }
@@ -123,22 +125,38 @@ public class CommitRepository {
 
   private static void validateCommit(Commit commit) {
     // Validate the commit object
-    ValidationUtils.validateNonEmpty(commit.getTableId(), Commit.JSON_PROPERTY_TABLE_ID);
-    ValidationUtils.validateNonEmpty(commit.getTableUri(), Commit.JSON_PROPERTY_TABLE_URI);
+    ValidationUtils.checkArgument(
+        commit.getTableId() != null && !commit.getTableId().isEmpty(),
+        "Field can not be empty: %s",
+        Commit.JSON_PROPERTY_TABLE_ID);
+    ValidationUtils.checkArgument(
+        commit.getTableUri() != null && !commit.getTableUri().isEmpty(),
+        "Field can not be empty: %s",
+        Commit.JSON_PROPERTY_TABLE_URI);
 
     // Validate the commit info object
     if (commit.getCommitInfo() != null) {
       CommitInfo commitInfo = commit.getCommitInfo();
-      ValidationUtils.validateLongFieldPositive(
-          commitInfo.getVersion(), CommitInfo.JSON_PROPERTY_VERSION);
-      ValidationUtils.validateLongFieldPositive(
-          commitInfo.getTimestamp(), CommitInfo.JSON_PROPERTY_TIMESTAMP);
-      ValidationUtils.validateNonEmpty(
-          commitInfo.getFileName(), CommitInfo.JSON_PROPERTY_FILE_NAME);
-      ValidationUtils.validateLongFieldPositive(
-          commitInfo.getFileSize(), CommitInfo.JSON_PROPERTY_FILE_SIZE);
-      ValidationUtils.validateLongFieldPositive(
-          commitInfo.getFileModificationTimestamp(),
+      ValidationUtils.checkArgument(
+          commitInfo.getVersion() != null && commitInfo.getVersion() > 0,
+          "Field must be positive: %s",
+          CommitInfo.JSON_PROPERTY_VERSION);
+      ValidationUtils.checkArgument(
+          commitInfo.getTimestamp() != null && commitInfo.getTimestamp() > 0,
+          "Field must be positive: %s",
+          CommitInfo.JSON_PROPERTY_TIMESTAMP);
+      ValidationUtils.checkArgument(
+          commitInfo.getFileName() != null && !commitInfo.getFileName().isEmpty(),
+          "Field can not be empty: %s",
+          CommitInfo.JSON_PROPERTY_FILE_NAME);
+      ValidationUtils.checkArgument(
+          commitInfo.getFileSize() != null && commitInfo.getFileSize() > 0,
+          "Field must be positive: %s",
+          CommitInfo.JSON_PROPERTY_FILE_SIZE);
+      ValidationUtils.checkArgument(
+          commitInfo.getFileModificationTimestamp() != null
+              && commitInfo.getFileModificationTimestamp() > 0,
+          "Field must be positive: %s",
           CommitInfo.JSON_PROPERTY_FILE_MODIFICATION_TIMESTAMP);
       if (commit.getMetadata() != null) {
         Metadata metadata = commit.getMetadata();
@@ -185,13 +203,13 @@ public class CommitRepository {
   }
 
   private static void validateTable(TableInfoDAO tableInfoDAO) {
-    ValidationUtils.validateEquals(
-        tableInfoDAO.getType(),
-        TableType.MANAGED.toString(),
+    ValidationUtils.checkArgument(
+        tableInfoDAO.getType() != null
+            && tableInfoDAO.getType().equals(TableType.MANAGED.toString()),
         "Only managed tables are supported for coordinated commits");
-    ValidationUtils.validateEquals(
-        tableInfoDAO.getDataSourceFormat(),
-        DataSourceFormat.DELTA.toString(),
+    ValidationUtils.checkArgument(
+        tableInfoDAO.getDataSourceFormat() != null
+            && tableInfoDAO.getDataSourceFormat().equals(DataSourceFormat.DELTA.toString()),
         "Only delta tables are supported for coordinated commits");
     if (tableInfoDAO.getUrl() == null) {
       throw new BaseException(
@@ -201,9 +219,8 @@ public class CommitRepository {
 
   private static void validateTableForCommit(Commit commit, TableInfoDAO tableInfoDAO) {
     validateTable(tableInfoDAO);
-    ValidationUtils.validateEquals(
-        commit.getTableUri(),
-        tableInfoDAO.getUrl(),
+    ValidationUtils.checkArgument(
+        commit.getTableUri() != null && commit.getTableUri().equals(tableInfoDAO.getUrl()),
         "Table URI in commit does not match the table path");
   }
 }
