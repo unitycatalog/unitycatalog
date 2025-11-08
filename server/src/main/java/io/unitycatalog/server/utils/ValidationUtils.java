@@ -25,28 +25,37 @@ public class ValidationUtils {
     }
   }
 
-  public static void validateNonEmpty(String value, String hintName) {
-    if (value == null || value.isEmpty()) {
-      throw new BaseException(ErrorCode.INVALID_ARGUMENT, "Field can not be empty: " + hintName);
-    }
-  }
-
-  public static void validateNonNull(Object value, String hintName) {
-    if (value == null) {
-      throw new BaseException(ErrorCode.INVALID_ARGUMENT, "Field can not be null: " + hintName);
-    }
-  }
-
-  public static void validateLongFieldPositive(Long value, String hintName) {
-    if (value == null || value <= 0) {
-      throw new BaseException(
-          ErrorCode.INVALID_ARGUMENT, String.format("Field must be positive: %s", hintName));
-    }
-  }
-
-  public static void validateEquals(Object actual, Object expect, String message) {
-    if (actual == null || !actual.equals(expect)) {
+  /**
+   * Checks that the specified condition is true. If not, throws a BaseException with
+   * INVALID_ARGUMENT error code and the specified message.
+   *
+   * <p>This method is similar to Guava's Preconditions.checkArgument but throws BaseException
+   * instead of IllegalArgumentException.
+   *
+   * @param condition the condition to check
+   * @param message the exception message to use if the check fails
+   * @throws BaseException with INVALID_ARGUMENT if condition is false
+   */
+  public static void checkArgument(boolean condition, String message) {
+    if (!condition) {
       throw new BaseException(ErrorCode.INVALID_ARGUMENT, message);
+    }
+  }
+
+  /**
+   * Checks that the specified condition is true. If not, throws a BaseException with
+   * INVALID_ARGUMENT error code and a formatted message.
+   *
+   * @param condition the condition to check
+   * @param messageTemplate the template for the exception message with %s placeholders
+   * @param messageArgs the arguments to be substituted into the message template
+   * @throws BaseException with INVALID_ARGUMENT if condition is false
+   */
+  public static void checkArgument(
+      boolean condition, String messageTemplate, Object... messageArgs) {
+    if (!condition) {
+      throw new BaseException(
+          ErrorCode.INVALID_ARGUMENT, String.format(messageTemplate, messageArgs));
     }
   }
 }
