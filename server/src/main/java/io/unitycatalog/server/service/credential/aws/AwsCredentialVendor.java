@@ -19,6 +19,7 @@ public class AwsCredentialVendor {
 
   private CredentialsGenerator createCredentialsGenerator(S3StorageConfig config) {
     // Dynamically load and initialize the generator if it's intentionally configured.
+    String endpointUrl = config.getEndpointUrl();
     if (config.getCredentialGenerator() != null) {
       try {
         return (CredentialsGenerator)
@@ -31,15 +32,19 @@ public class AwsCredentialVendor {
     if (config.getSessionToken() != null && !config.getSessionToken().isEmpty()) {
       // if a session token was supplied, then we will just return static session credentials
       return new CredentialsGenerator.StaticCredentialsGenerator(
-          config.getAccessKey(), config.getSecretKey(), config.getSessionToken());
+          config.getAccessKey(), config.getSecretKey(), config.getSessionToken(), endpointUrl);
     }
 
     if (config.getAccessKey() != null && !config.getAccessKey().isEmpty()) {
       return new CredentialsGenerator.StsCredentialsGenerator(
-          config.getRegion(), config.getAccessKey(), config.getSecretKey(), config.getAwsRoleArn());
+          config.getRegion(),
+          config.getAccessKey(),
+          config.getSecretKey(),
+          config.getAwsRoleArn(),
+          endpointUrl);
     } else {
       return new CredentialsGenerator.StsCredentialsGenerator(
-          config.getRegion(), config.getAwsRoleArn());
+          config.getRegion(), config.getAwsRoleArn(), endpointUrl);
     }
   }
 
