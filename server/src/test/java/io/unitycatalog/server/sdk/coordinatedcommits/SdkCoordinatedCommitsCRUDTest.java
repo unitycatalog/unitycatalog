@@ -15,6 +15,7 @@ import io.unitycatalog.client.model.ColumnTypeName;
 import io.unitycatalog.client.model.Commit;
 import io.unitycatalog.client.model.CommitInfo;
 import io.unitycatalog.client.model.CommitMetadataProperties;
+import io.unitycatalog.client.model.GetCommits;
 import io.unitycatalog.client.model.GetCommitsResponse;
 import io.unitycatalog.client.model.Metadata;
 import io.unitycatalog.client.model.TableInfo;
@@ -106,12 +107,22 @@ public class SdkCoordinatedCommitsCRUDTest extends BaseTableCRUDTestEnv {
     }
   }
 
+  private GetCommitsResponse getCommits(
+      String tableId, String tableUri, Long startVersion, Optional<Long> endVersion)
+      throws ApiException {
+    return coordinatedCommitsApi.getCommits(
+        new GetCommits()
+            .tableId(tableId)
+            .tableUri(tableUri)
+            .startVersion(startVersion)
+            .endVersion(endVersion.orElse(null)));
+  }
+
   @Test
   public void testBasicCoordinatedCommitsCRUD() throws ApiException {
     // Get commits on a table with no commits
     GetCommitsResponse response =
-        coordinatedCommitsApi.getCommits(
-            tableInfo.getTableId(), tableInfo.getStorageLocation(), 0L, null);
+        getCommits(tableInfo.getTableId(), tableInfo.getStorageLocation(), 0L, Optional.empty());
     assertEquals(-1, response.getLatestTableVersion());
     assertTrue(response.getCommits() == null || response.getCommits().isEmpty());
 
@@ -152,8 +163,7 @@ public class SdkCoordinatedCommitsCRUDTest extends BaseTableCRUDTestEnv {
 
     // Try get the commits with different start and end version range
     response =
-        coordinatedCommitsApi.getCommits(
-            tableInfo.getTableId(), tableInfo.getStorageLocation(), 0L, null);
+        getCommits(tableInfo.getTableId(), tableInfo.getStorageLocation(), 0L, Optional.empty());
     assertEquals(3, response.getCommits().size());
     assertEquals(3, response.getLatestTableVersion());
     assertTrue(response.getCommits().contains(commit1.getCommitInfo()));
@@ -161,8 +171,7 @@ public class SdkCoordinatedCommitsCRUDTest extends BaseTableCRUDTestEnv {
     assertTrue(response.getCommits().contains(commit3.getCommitInfo()));
 
     response =
-        coordinatedCommitsApi.getCommits(
-            tableInfo.getTableId(), tableInfo.getStorageLocation(), 2L, null);
+        getCommits(tableInfo.getTableId(), tableInfo.getStorageLocation(), 2L, Optional.empty());
     assertEquals(2, response.getCommits().size());
     assertEquals(3, response.getLatestTableVersion());
     assertFalse(response.getCommits().contains(commit1.getCommitInfo()));
@@ -170,8 +179,7 @@ public class SdkCoordinatedCommitsCRUDTest extends BaseTableCRUDTestEnv {
     assertTrue(response.getCommits().contains(commit3.getCommitInfo()));
 
     response =
-        coordinatedCommitsApi.getCommits(
-            tableInfo.getTableId(), tableInfo.getStorageLocation(), 2L, 2L);
+        getCommits(tableInfo.getTableId(), tableInfo.getStorageLocation(), 2L, Optional.of(2L));
     assertEquals(1, response.getCommits().size());
     assertEquals(3, response.getLatestTableVersion());
     assertFalse(response.getCommits().contains(commit1.getCommitInfo()));
@@ -184,8 +192,7 @@ public class SdkCoordinatedCommitsCRUDTest extends BaseTableCRUDTestEnv {
     coordinatedCommitsApi.commit(commit4);
     // Verify we now have 3 commits (versions 2, 3, 4)
     response =
-        coordinatedCommitsApi.getCommits(
-            tableInfo.getTableId(), tableInfo.getStorageLocation(), 0L, null);
+        getCommits(tableInfo.getTableId(), tableInfo.getStorageLocation(), 0L, Optional.empty());
     assertEquals(3, response.getCommits().size());
     assertEquals(4L, response.getLatestTableVersion());
     assertEquals(4L, response.getCommits().get(0).getVersion());
@@ -197,8 +204,7 @@ public class SdkCoordinatedCommitsCRUDTest extends BaseTableCRUDTestEnv {
         createBackfillOnlyCommitObject(tableInfo.getTableId(), 1L, tableInfo.getStorageLocation());
     coordinatedCommitsApi.commit(backfillOnlyCommit1);
     response =
-        coordinatedCommitsApi.getCommits(
-            tableInfo.getTableId(), tableInfo.getStorageLocation(), 0L, null);
+        getCommits(tableInfo.getTableId(), tableInfo.getStorageLocation(), 0L, Optional.empty());
     assertEquals(3, response.getCommits().size());
     assertEquals(4L, response.getLatestTableVersion());
 
@@ -206,8 +212,7 @@ public class SdkCoordinatedCommitsCRUDTest extends BaseTableCRUDTestEnv {
         createBackfillOnlyCommitObject(tableInfo.getTableId(), 4L, tableInfo.getStorageLocation());
     coordinatedCommitsApi.commit(backfillOnlyCommit2);
     response =
-        coordinatedCommitsApi.getCommits(
-            tableInfo.getTableId(), tableInfo.getStorageLocation(), 0L, null);
+        getCommits(tableInfo.getTableId(), tableInfo.getStorageLocation(), 0L, Optional.empty());
     assertEquals(0, response.getCommits().size());
     assertEquals(4L, response.getLatestTableVersion());
 
@@ -215,8 +220,7 @@ public class SdkCoordinatedCommitsCRUDTest extends BaseTableCRUDTestEnv {
     Commit commit5 = createCommitObject(tableInfo.getTableId(), 5L, tableInfo.getStorageLocation());
     coordinatedCommitsApi.commit(commit5);
     response =
-        coordinatedCommitsApi.getCommits(
-            tableInfo.getTableId(), tableInfo.getStorageLocation(), 0L, null);
+        getCommits(tableInfo.getTableId(), tableInfo.getStorageLocation(), 0L, Optional.empty());
     assertEquals(2, response.getCommits().size());
     // Delete the table
     tableOperations.deleteTable(TestUtils.TABLE_FULL_NAME);
@@ -236,12 +240,12 @@ public class SdkCoordinatedCommitsCRUDTest extends BaseTableCRUDTestEnv {
   }
 
   private void checkGetCommitInvalidParameter(
-      long startVersion, Long endVersion, String containsErrorMessage) {
+      long startVersion, Optional<Long> endVersion, String containsErrorMessage) {
     ApiException ex =
         assertThrows(
             ApiException.class,
             () ->
-                coordinatedCommitsApi.getCommits(
+                getCommits(
                     tableInfo.getTableId(),
                     tableInfo.getStorageLocation(),
                     startVersion,
@@ -302,8 +306,9 @@ public class SdkCoordinatedCommitsCRUDTest extends BaseTableCRUDTestEnv {
     commit2.setTableUri(commit2.getTableUri().replace("file:///", "file:/"));
     coordinatedCommitsApi.commit(commit2);
 
-    checkGetCommitInvalidParameter(-1L, null, "start_version");
-    checkGetCommitInvalidParameter(5L, 3L, "end_version must be >=start_version if set");
+    checkGetCommitInvalidParameter(-1L, Optional.empty(), "start_version");
+    checkGetCommitInvalidParameter(
+        5L, Optional.of(3L), "end_version must be >=start_version if set");
   }
 
   @Test
@@ -320,8 +325,7 @@ public class SdkCoordinatedCommitsCRUDTest extends BaseTableCRUDTestEnv {
 
     // Verify all 5 commits exist
     GetCommitsResponse response =
-        coordinatedCommitsApi.getCommits(
-            tableInfo.getTableId(), tableInfo.getStorageLocation(), 0L, null);
+        getCommits(tableInfo.getTableId(), tableInfo.getStorageLocation(), 0L, Optional.empty());
     assertEquals(5, response.getCommits().size());
     assertEquals(5, response.getLatestTableVersion());
 
@@ -331,8 +335,7 @@ public class SdkCoordinatedCommitsCRUDTest extends BaseTableCRUDTestEnv {
     coordinatedCommitsApi.commit(backfillCommit);
 
     response =
-        coordinatedCommitsApi.getCommits(
-            tableInfo.getTableId(), tableInfo.getStorageLocation(), 0L, null);
+        getCommits(tableInfo.getTableId(), tableInfo.getStorageLocation(), 0L, Optional.empty());
     assertEquals(3, response.getCommits().size());
     assertEquals(5, response.getLatestTableVersion());
     // Verify versions 3, 4, 5 are present
@@ -354,8 +357,7 @@ public class SdkCoordinatedCommitsCRUDTest extends BaseTableCRUDTestEnv {
     coordinatedCommitsApi.commit(backfillCommit);
 
     response =
-        coordinatedCommitsApi.getCommits(
-            tableInfo.getTableId(), tableInfo.getStorageLocation(), 0L, null);
+        getCommits(tableInfo.getTableId(), tableInfo.getStorageLocation(), 0L, Optional.empty());
     assertEquals(1, response.getCommits().size());
     assertEquals(5, response.getLatestTableVersion());
     assertEquals(5, response.getCommits().get(0).getVersion());
@@ -366,8 +368,7 @@ public class SdkCoordinatedCommitsCRUDTest extends BaseTableCRUDTestEnv {
     coordinatedCommitsApi.commit(backfillCommit);
 
     response =
-        coordinatedCommitsApi.getCommits(
-            tableInfo.getTableId(), tableInfo.getStorageLocation(), 0L, null);
+        getCommits(tableInfo.getTableId(), tableInfo.getStorageLocation(), 0L, Optional.empty());
     // When the latest commit is backfilled, it should be marked as such but still returned
     assertEquals(5, response.getLatestTableVersion());
     // The commit should be marked as backfilled, so no commits should be returned
@@ -402,8 +403,7 @@ public class SdkCoordinatedCommitsCRUDTest extends BaseTableCRUDTestEnv {
 
     // Verify we now have 20 commits (31-50)
     GetCommitsResponse response =
-        coordinatedCommitsApi.getCommits(
-            tableInfo.getTableId(), tableInfo.getStorageLocation(), 0L, null);
+        getCommits(tableInfo.getTableId(), tableInfo.getStorageLocation(), 0L, Optional.empty());
     assertEquals(20, response.getCommits().size());
     assertEquals(50, response.getCommits().get(0).getVersion());
     assertEquals(31, response.getCommits().get(response.getCommits().size() - 1).getVersion());
@@ -416,8 +416,7 @@ public class SdkCoordinatedCommitsCRUDTest extends BaseTableCRUDTestEnv {
 
     // Verify we now have 30 commits (31-60)
     response =
-        coordinatedCommitsApi.getCommits(
-            tableInfo.getTableId(), tableInfo.getStorageLocation(), 0L, null);
+        getCommits(tableInfo.getTableId(), tableInfo.getStorageLocation(), 0L, Optional.empty());
     assertEquals(30, response.getCommits().size());
     assertEquals(60, response.getLatestTableVersion());
   }
@@ -435,8 +434,7 @@ public class SdkCoordinatedCommitsCRUDTest extends BaseTableCRUDTestEnv {
 
     // Get commits with pagination: start_version=0, end_version=3
     GetCommitsResponse response =
-        coordinatedCommitsApi.getCommits(
-            tableInfo.getTableId(), tableInfo.getStorageLocation(), 0L, 3L);
+        getCommits(tableInfo.getTableId(), tableInfo.getStorageLocation(), 0L, Optional.of(3L));
     assertEquals(
         3,
         response
@@ -446,29 +444,25 @@ public class SdkCoordinatedCommitsCRUDTest extends BaseTableCRUDTestEnv {
 
     // Get next page: start_version=4, end_version=7
     response =
-        coordinatedCommitsApi.getCommits(
-            tableInfo.getTableId(), tableInfo.getStorageLocation(), 4L, 7L);
+        getCommits(tableInfo.getTableId(), tableInfo.getStorageLocation(), 4L, Optional.of(7L));
     assertEquals(4, response.getCommits().size());
     assertEquals(10, response.getLatestTableVersion());
 
     // Get last page: start_version=8, end_version=null
     response =
-        coordinatedCommitsApi.getCommits(
-            tableInfo.getTableId(), tableInfo.getStorageLocation(), 8L, null);
+        getCommits(tableInfo.getTableId(), tableInfo.getStorageLocation(), 8L, Optional.empty());
     assertEquals(3, response.getCommits().size()); // versions 8, 9, 10
     assertEquals(10, response.getLatestTableVersion());
 
     // Get commits starting from a version that doesn't exist yet
     response =
-        coordinatedCommitsApi.getCommits(
-            tableInfo.getTableId(), tableInfo.getStorageLocation(), 11L, null);
+        getCommits(tableInfo.getTableId(), tableInfo.getStorageLocation(), 11L, Optional.empty());
     assertTrue(response.getCommits() == null || response.getCommits().isEmpty());
     assertEquals(10, response.getLatestTableVersion());
 
     // Get commits with start_version = end_version
     response =
-        coordinatedCommitsApi.getCommits(
-            tableInfo.getTableId(), tableInfo.getStorageLocation(), 3L, 3L);
+        getCommits(tableInfo.getTableId(), tableInfo.getStorageLocation(), 3L, Optional.of(3L));
     assertEquals(1, response.getCommits().size());
     assertEquals(3, response.getCommits().get(0).getVersion());
   }

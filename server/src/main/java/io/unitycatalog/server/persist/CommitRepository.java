@@ -7,6 +7,7 @@ import io.unitycatalog.server.model.Commit;
 import io.unitycatalog.server.model.CommitInfo;
 import io.unitycatalog.server.model.CommitMetadataProperties;
 import io.unitycatalog.server.model.DataSourceFormat;
+import io.unitycatalog.server.model.GetCommits;
 import io.unitycatalog.server.model.GetCommitsResponse;
 import io.unitycatalog.server.model.Metadata;
 import io.unitycatalog.server.model.TableType;
@@ -106,7 +107,11 @@ public class CommitRepository {
    *
    * <p>The returned commits are ordered by version in descending order (newest first).
    */
-  public GetCommitsResponse getCommits(UUID tableId, long startVersion, Optional<Long> endVersion) {
+  public GetCommitsResponse getCommits(GetCommits rpc) {
+    UUID tableId = UUID.fromString(rpc.getTableId());
+    long startVersion = rpc.getStartVersion();
+    Optional<Long> endVersion = Optional.ofNullable(rpc.getEndVersion());
+
     serverProperties.checkManagedTableEnabled();
     ValidationUtils.checkArgument(tableId != null, "Field can not be null: table_id");
     ValidationUtils.checkArgument(startVersion >= 0, "Field must be >=0: start_version");
