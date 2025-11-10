@@ -94,7 +94,7 @@ No authorization required
 
 <a name="getTable"></a>
 # **getTable**
-> TableInfo getTable(full\_name)
+> TableInfo getTable(full\_name, read\_streaming\_table\_as\_managed, read\_materialized\_view\_as\_managed)
 
 Get a table
 
@@ -105,6 +105,8 @@ Get a table
 |Name | Type | Description  | Notes |
 |------------- | ------------- | ------------- | -------------|
 | **full\_name** | **String**| Full name of the table. | [default to null] |
+| **read\_streaming\_table\_as\_managed** | **Boolean**| Whether to read Streaming Tables as Managed tables.  | [optional] [default to true] |
+| **read\_materialized\_view\_as\_managed** | **Boolean**| Whether to read Materialized Views as Managed tables.  | [optional] [default to true] |
 
 ### Return type
 
