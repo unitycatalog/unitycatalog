@@ -1,7 +1,6 @@
 package io.unitycatalog.spark;
 
 import io.unitycatalog.client.ApiClient;
-import org.apache.spark.SparkContext;
 
 import java.net.URI;
 
@@ -18,7 +17,7 @@ public class ApiClientFactory {
     try {
       String sparkVersion = getSparkVersion();
       String deltaVersion = getDeltaVersion();
-      
+
       if (deltaVersion != null) {
         apiClient.setClientVersion("Spark", sparkVersion, "Delta", deltaVersion);
       } else {
@@ -40,7 +39,7 @@ public class ApiClientFactory {
 
   private static String getSparkVersion() {
     try {
-      return SparkContext.version();
+      return org.apache.spark.package$.MODULE$.SPARK_VERSION();
     } catch (Exception e) {
       return null;
     }
@@ -56,7 +55,8 @@ public class ApiClientFactory {
       // Fall back to io.delta.VERSION constant (older versions)
       try {
         Class<?> packageClass = Class.forName("io.delta.package$");
-        Object versionObj = packageClass.getMethod("VERSION").invoke(packageClass.getField("MODULE$").get(null));
+        Object versionObj = packageClass.getMethod("VERSION").invoke(
+            packageClass.getField("MODULE$").get(null));
         return versionObj != null ? versionObj.toString() : null;
       } catch (Exception e2) {
         // Delta not available or version not accessible
