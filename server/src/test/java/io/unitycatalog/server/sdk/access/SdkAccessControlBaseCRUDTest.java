@@ -19,11 +19,9 @@ import io.unitycatalog.server.base.ServerConfig;
 import io.unitycatalog.server.base.access.BaseAccessControlCRUDTest;
 import io.unitycatalog.server.base.catalog.CatalogOperations;
 import io.unitycatalog.server.base.schema.SchemaOperations;
-import io.unitycatalog.server.base.table.TableOperations;
 import io.unitycatalog.server.persist.model.Privileges;
 import io.unitycatalog.server.sdk.catalog.SdkCatalogOperations;
 import io.unitycatalog.server.sdk.schema.SdkSchemaOperations;
-import io.unitycatalog.server.sdk.tables.SdkTableOperations;
 import io.unitycatalog.server.utils.TestUtils;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -84,16 +82,6 @@ public abstract class SdkAccessControlBaseCRUDTest extends BaseAccessControlCRUD
    */
   protected SchemaOperations createSchemaOperations(ServerConfig config) {
     return new SdkSchemaOperations(TestUtils.createApiClient(config));
-  }
-
-  /**
-   * Creates table operations for the given server configuration.
-   *
-   * @param config Server configuration including URL and auth token
-   * @return A TableOperations instance
-   */
-  protected TableOperations createTableOperations(ServerConfig config) {
-    return new SdkTableOperations(TestUtils.createApiClient(config));
   }
 
   @BeforeEach

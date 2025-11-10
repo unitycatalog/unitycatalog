@@ -32,7 +32,7 @@ import org.junit.jupiter.api.Test;
  * functionality for SDK-based access control tests, including user management, permission
  * management, and resource setup.
  */
-public class SdkStagingTableAccessControlCRUDTest extends SdkAccessControlBaseCRUDTest {
+public class SdkStagingTableAccessControlTest extends SdkAccessControlBaseCRUDTest {
 
   private final List<ColumnInfo> columns =
       List.of(
