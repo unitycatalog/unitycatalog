@@ -147,7 +147,36 @@ public class TableRepository {
           if (existingTable != null) {
             throw new BaseException(ErrorCode.ALREADY_EXISTS, "Table already exists: " + fullName);
           }
+<<<<<<< HEAD
           if (TableType.MANAGED.equals(tableInfo.getTableType())) {
+=======
+          TableType tableType = Objects.requireNonNull(createTable.getTableType());
+          // The table ID will either be a new random one or the id of staging table, depending
+          // on the type of table to create.
+          String tableID;
+          if (tableType == TableType.EXTERNAL) {
+            tableID = UUID.randomUUID().toString();
+          } else if (tableType == TableType.MANAGED) {
+            serverProperties.checkManagedTableEnabled();
+            if (createTable.getDataSourceFormat() != DataSourceFormat.DELTA) {
+              throw new BaseException(
+                  ErrorCode.INVALID_ARGUMENT,
+                  "Managed table creation is only supported for Delta format.");
+            }
+            // Find and commit staging table with the same staging location
+            StagingTableDAO stagingTableDAO =
+                repositories
+                    .getStagingTableRepository()
+                    .commitStagingTable(session, callerId, createTable.getStorageLocation());
+            tableID = stagingTableDAO.getId().toString();
+          } else if (tableType == TableType.STREAMING_TABLE) {
+            throw new BaseException(
+                ErrorCode.INVALID_ARGUMENT, "STREAMING TABLE creation is not supported yet.");
+          } else if (tableType == TableType.MATERIALIZED_VIEW) {
+            throw new BaseException(
+                ErrorCode.INVALID_ARGUMENT, "MATERIALIZED VIEW creation is not supported yet.");
+          } else {
+>>>>>>> ee802f8 (Introduce the readability of Streaming Tables and Materialized Views (#1017))
             throw new BaseException(
                 ErrorCode.INVALID_ARGUMENT, "MANAGED table creation is not supported yet.");
           }
