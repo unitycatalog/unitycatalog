@@ -165,11 +165,6 @@ public class SdkCoordinatedCommitsCRUDTest extends BaseTableCRUDTestEnv {
     checkCommitInvalidParameter(1L, c -> c.setTableUri(""), "table_uri");
     checkCommitInvalidParameter(-1L, c -> {}, "version");
     checkCommitInvalidParameter(0L, c -> {}, "version");
-    checkCommitInvalidParameter(1L, c -> c.setTableUri(""), "table_uri");
-    checkCommitInvalidParameter(
-        1L,
-        c -> c.setTableUri("s3://wrong-bucket/wrong-path"),
-        "Table URI in commit does not match the table path");
     checkCommitInvalidParameter(
         1L,
         c -> c.commitInfo(null).latestBackfilledVersion(null),
@@ -202,5 +197,17 @@ public class SdkCoordinatedCommitsCRUDTest extends BaseTableCRUDTestEnv {
         3L,
         c -> {},
         "Commit version must be the next version after the latest commit 1, but got 3");
+
+    checkCommitInvalidParameter(2L, c -> c.setTableUri(""), "table_uri");
+    checkCommitInvalidParameter(
+        2L,
+        c -> c.setTableUri("s3://wrong-bucket/wrong-path"),
+        "Table URI in commit s3://wrong-bucket/wrong-path does not match the table path");
+
+    // Commit version 2 successfully even when the table URI isn't perfect standard
+    Commit commit2 = createCommitObject(tableInfo.getTableId(), 2L, tableInfo.getStorageLocation());
+    assertThat(commit2.getTableUri()).contains("file:///");
+    commit2.setTableUri(commit2.getTableUri().replace("file:///", "file:/"));
+    coordinatedCommitsApi.commit(commit2);
   }
 }
