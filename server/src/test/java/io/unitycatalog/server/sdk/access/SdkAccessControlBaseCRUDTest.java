@@ -56,8 +56,6 @@ public abstract class SdkAccessControlBaseCRUDTest extends BaseAccessControlCRUD
 
   public static final String METASTORE_NAME = "metastore"; // The name of metastore is this
 
-  protected SchemaOperations schemaOperations;
-  protected TableOperations tableOperations;
   protected ServerConfig adminConfig;
   protected UsersApi usersApi;
   protected GrantsApi grantsApi;
@@ -102,8 +100,6 @@ public abstract class SdkAccessControlBaseCRUDTest extends BaseAccessControlCRUD
   @Override
   public void setUp() {
     super.setUp();
-    schemaOperations = createSchemaOperations(serverConfig);
-    tableOperations = createTableOperations(serverConfig);
     // Use admin token for creating shared resources
     String adminToken = securityContext.createServiceToken();
     adminConfig = new ServerConfig(serverConfig.getServerUrl(), adminToken);
