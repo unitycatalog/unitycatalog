@@ -210,15 +210,26 @@ lazy val client = (project in file("target/clients/java"))
     openApiGenerateApiDocumentation := SettingDisabled,
     openApiGenerateModelDocumentation := SettingDisabled,
     // Define the simple generate command to generate full client codes
-    generate := {
-      val _ = openApiGenerate.value
+    generate := Def.sequential(
+      openApiGenerate,
+      Def.task {
+        val log = streams.value.log
 
-      // Delete the generated build.sbt file so that it is not used for our sbt config
-      val buildSbtFile = file(openApiOutputDir.value) / "build.sbt"
-      if (buildSbtFile.exists()) {
-        buildSbtFile.delete()
+        // Delete the generated build.sbt file so that it is not used for our sbt config
+        val buildSbtFile = file(openApiOutputDir.value) / "build.sbt"
+        if (buildSbtFile.exists()) {
+          buildSbtFile.delete()
+        }
+
+        // Process the generated files to add user-agent support
+        JavaClientPostBuild.processGeneratedFiles(
+          log,
+          openApiOutputDir.value,
+          version.value
+        )
+        log.info("OpenAPI Java client generation completed with user-agent support.")
       }
-    },
+    ).value,
     // Add VersionInfo in the same way like in server
     Compile / sourceGenerators += Def.task {
       val file = (Compile / sourceManaged).value / "io" / "unitycatalog" / "cli" / "utils" / "VersionUtils.java"
