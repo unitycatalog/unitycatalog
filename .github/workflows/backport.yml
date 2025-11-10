@@ -46,6 +46,7 @@ jobs:
     # https://github.com/backport-action bot user (user id: 97796249). Note that if you use your
     # own PAT as `github_token`, that you should replace this id with yours.
     # https://github.com/korthout/backport-action for more details.
+    if: >
       (
         github.event_name == 'pull_request_target' &&
         github.event.pull_request.merged
