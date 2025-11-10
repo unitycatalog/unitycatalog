@@ -2,6 +2,7 @@ package io.unitycatalog.spark.auth;
 
 import io.unitycatalog.client.model.AwsCredentials;
 import io.unitycatalog.client.model.TemporaryCredentials;
+import java.util.Objects;
 
 public class GenericCredential {
   private final TemporaryCredentials tempCred;
@@ -43,5 +44,24 @@ public class GenericCredential {
   public boolean readyToRenew(long renewalLeadTimeMillis) {
     return tempCred.getExpirationTime() != null &&
         tempCred.getExpirationTime() <= System.currentTimeMillis() + renewalLeadTimeMillis;
+  }
+
+  @Override
+  public int hashCode() {
+    return Objects.hashCode(tempCred);
+  }
+
+  @Override
+  public boolean equals(Object o) {
+    if (this == o) {
+      return true;
+    }
+
+    if (o == null || getClass() != o.getClass()) {
+      return false;
+    }
+
+    GenericCredential that = (GenericCredential) o;
+    return Objects.equals(tempCred, that.tempCred);
   }
 }
