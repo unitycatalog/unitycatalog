@@ -41,7 +41,8 @@ public class EnumDeserializationTest {
             VolumeType volumeType = objectMapper.readValue(unknownVolumeType, VolumeType.class);
             assertThat(volumeType).isNotNull();
             // The UNKNOWN value should be present after code generation with enumUnknownDefaultCase
-            assertThat(volumeType.toString()).isEqualTo("UNKNOWN");
+            assertThat(volumeType).isEqualTo(VolumeType.UNKNOWN_DEFAULT_OPEN_API);
+            assertThat(volumeType.toString()).isEqualTo("unknown_default_open_api");
         }).doesNotThrowAnyException();
     }
 
@@ -54,35 +55,38 @@ public class EnumDeserializationTest {
         assertThatCode(() -> {
             DataSourceFormat format = objectMapper.readValue(unknownFormat, DataSourceFormat.class);
             assertThat(format).isNotNull();
-            assertThat(format.toString()).isEqualTo("UNKNOWN");
+            assertThat(format).isEqualTo(DataSourceFormat.UNKNOWN_DEFAULT_OPEN_API);
+            assertThat(format.toString()).isEqualTo("unknown_default_open_api");
         }).doesNotThrowAnyException();
     }
 
     @Test
     public void testTableOperationUnknownValueDeserialization() throws IOException {
-        // Test that an unknown TableOperation value deserializes to the existing UNKNOWN_TABLE_OPERATION
-        // The API spec already defines UNKNOWN_TABLE_OPERATION, so it will be used as the default
+        // Test that an unknown TableOperation value deserializes gracefully
+        // The generator adds UNKNOWN_DEFAULT_OPEN_API even though the spec has UNKNOWN_TABLE_OPERATION
         String unknownOperation = "\"DELETE\"";
         
         assertThatCode(() -> {
             TableOperation operation = objectMapper.readValue(unknownOperation, TableOperation.class);
             assertThat(operation).isNotNull();
-            // This enum already has UNKNOWN_TABLE_OPERATION in the spec
-            assertThat(operation.toString()).isEqualTo("UNKNOWN_TABLE_OPERATION");
+            // The generator adds UNKNOWN_DEFAULT_OPEN_API as the default for all enums
+            assertThat(operation).isEqualTo(TableOperation.UNKNOWN_DEFAULT_OPEN_API);
+            assertThat(operation.toString()).isEqualTo("unknown_default_open_api");
         }).doesNotThrowAnyException();
     }
 
     @Test
     public void testModelVersionStatusUnknownValueDeserialization() throws IOException {
-        // Test that an unknown ModelVersionStatus value deserializes to the existing MODEL_VERSION_STATUS_UNKNOWN
-        // The API spec already defines MODEL_VERSION_STATUS_UNKNOWN, so it will be used as the default
+        // Test that an unknown ModelVersionStatus value deserializes gracefully
+        // The generator adds UNKNOWN_DEFAULT_OPEN_API even though the spec has MODEL_VERSION_STATUS_UNKNOWN
         String unknownStatus = "\"ARCHIVED\"";
         
         assertThatCode(() -> {
             ModelVersionStatus status = objectMapper.readValue(unknownStatus, ModelVersionStatus.class);
             assertThat(status).isNotNull();
-            // This enum already has MODEL_VERSION_STATUS_UNKNOWN in the spec
-            assertThat(status.toString()).isEqualTo("MODEL_VERSION_STATUS_UNKNOWN");
+            // The generator adds UNKNOWN_DEFAULT_OPEN_API as the default for all enums
+            assertThat(status).isEqualTo(ModelVersionStatus.UNKNOWN_DEFAULT_OPEN_API);
+            assertThat(status.toString()).isEqualTo("unknown_default_open_api");
         }).doesNotThrowAnyException();
     }
 
@@ -118,7 +122,8 @@ public class EnumDeserializationTest {
         assertThatCode(() -> {
             ColumnTypeName typeName = objectMapper.readValue(unknownType, ColumnTypeName.class);
             assertThat(typeName).isNotNull();
-            assertThat(typeName.toString()).isEqualTo("UNKNOWN");
+            assertThat(typeName).isEqualTo(ColumnTypeName.UNKNOWN_DEFAULT_OPEN_API);
+            assertThat(typeName.toString()).isEqualTo("unknown_default_open_api");
         }).doesNotThrowAnyException();
     }
 
@@ -153,7 +158,8 @@ public class EnumDeserializationTest {
             assertThat(volumeInfo).isNotNull();
             assertThat(volumeInfo.getName()).isEqualTo("test_volume");
             assertThat(volumeInfo.getVolumeType()).isNotNull();
-            assertThat(volumeInfo.getVolumeType().toString()).isEqualTo("UNKNOWN");
+            assertThat(volumeInfo.getVolumeType()).isEqualTo(VolumeType.UNKNOWN_DEFAULT_OPEN_API);
+            assertThat(volumeInfo.getVolumeType().toString()).isEqualTo("unknown_default_open_api");
         }).doesNotThrowAnyException();
     }
 
@@ -176,10 +182,12 @@ public class EnumDeserializationTest {
             assertThat(tableInfo.getName()).isEqualTo("test_table");
             // Both table_type and data_source_format should handle unknown values
             if (tableInfo.getTableType() != null) {
-                assertThat(tableInfo.getTableType().toString()).isEqualTo("UNKNOWN");
+                assertThat(tableInfo.getTableType()).isEqualTo(TableType.UNKNOWN_DEFAULT_OPEN_API);
+                assertThat(tableInfo.getTableType().toString()).isEqualTo("unknown_default_open_api");
             }
             if (tableInfo.getDataSourceFormat() != null) {
-                assertThat(tableInfo.getDataSourceFormat().toString()).isEqualTo("UNKNOWN");
+                assertThat(tableInfo.getDataSourceFormat()).isEqualTo(DataSourceFormat.UNKNOWN_DEFAULT_OPEN_API);
+                assertThat(tableInfo.getDataSourceFormat().toString()).isEqualTo("unknown_default_open_api");
             }
         }).doesNotThrowAnyException();
     }
