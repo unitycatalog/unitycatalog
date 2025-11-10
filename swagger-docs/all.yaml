@@ -396,6 +396,23 @@ paths:
       summary: Get a table
       description: |
         Gets a table for a specific catalog and schema.
+      parameters:
+        - name: read_streaming_table_as_managed
+          in: query
+          description: |
+            Whether to read Streaming Tables as Managed tables.
+          required: false
+          schema:
+            type: boolean
+            default: true
+        - name: read_materialized_view_as_managed
+          in: query
+          description: |
+            Whether to read Materialized Views as Managed tables.
+          required: false
+          schema:
+            type: boolean
+            default: true
       responses:
         '200':
           description: The table was successfully retrieved.
@@ -1693,6 +1710,8 @@ components:
       enum:
         - MANAGED
         - EXTERNAL
+        - STREAMING_TABLE # Not yet fully implemented
+        - MATERIALIZED_VIEW # Not yet fully implemented
     DataSourceFormat:
       description: Data source format
       type: string
