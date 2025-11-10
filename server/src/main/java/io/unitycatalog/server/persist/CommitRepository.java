@@ -11,6 +11,7 @@ import io.unitycatalog.server.model.Metadata;
 import io.unitycatalog.server.model.TableType;
 import io.unitycatalog.server.persist.dao.CommitDAO;
 import io.unitycatalog.server.persist.dao.TableInfoDAO;
+import io.unitycatalog.server.persist.utils.FileOperations;
 import io.unitycatalog.server.persist.utils.TransactionManager;
 import io.unitycatalog.server.utils.ServerProperties;
 import io.unitycatalog.server.utils.ValidationUtils;
@@ -220,7 +221,10 @@ public class CommitRepository {
   private static void validateTableForCommit(Commit commit, TableInfoDAO tableInfoDAO) {
     validateTable(tableInfoDAO);
     ValidationUtils.checkArgument(
-        commit.getTableUri() != null && commit.getTableUri().equals(tableInfoDAO.getUrl()),
-        "Table URI in commit does not match the table path");
+        FileOperations.toStandardizedURIString(commit.getTableUri())
+            .equals(FileOperations.toStandardizedURIString(tableInfoDAO.getUrl())),
+        "Table URI in commit %s does not match the table path %s",
+        commit.getTableUri(),
+        tableInfoDAO.getUrl());
   }
 }
