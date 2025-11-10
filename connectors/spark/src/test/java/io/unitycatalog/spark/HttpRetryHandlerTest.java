@@ -36,11 +36,12 @@ public class HttpRetryHandlerTest {
   @Test
   @SuppressWarnings("unchecked")
   public void testRetrySucceedsAfterTwoFailures() throws IOException, InterruptedException {
-    ApiClientConf conf = new ApiClientConf()
-        .setRequestMaxAttempts(5)
-        .setRequestInitialDelayMs(100L)
-        .setRequestMultiplier(2.0)
-        .setRequestJitterFactor(0.0); // Disable jitter
+    ApiClientConf conf =
+        new ApiClientConf()
+            .setRequestMaxAttempts(5)
+            .setRequestInitialDelayMs(100L)
+            .setRequestMultiplier(2.0)
+            .setRequestJitterFactor(0.0); // Disable jitter
 
     HttpClient mockClient = mock(HttpClient.class);
     HttpRequest mockRequest =
@@ -79,11 +80,12 @@ public class HttpRetryHandlerTest {
   @Test
   @SuppressWarnings("unchecked")
   public void testRetriesRecoverableException() throws IOException, InterruptedException {
-    ApiClientConf conf = new ApiClientConf()
-        .setRequestMaxAttempts(2)
-        .setRequestInitialDelayMs(50L)
-        .setRequestMultiplier(1.0)
-        .setRequestJitterFactor(0.0); // Disable jitter
+    ApiClientConf conf =
+        new ApiClientConf()
+            .setRequestMaxAttempts(2)
+            .setRequestInitialDelayMs(50L)
+            .setRequestMultiplier(1.0)
+            .setRequestJitterFactor(0.0); // Disable jitter
 
     HttpClient mockClient = mock(HttpClient.class);
     HttpRequest mockRequest =
@@ -115,4 +117,3 @@ public class HttpRetryHandlerTest {
     return response;
   }
 }
-

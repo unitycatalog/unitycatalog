@@ -21,7 +21,7 @@ public class ApiClientFactory {
         : new ApiClientConf();
     return createApiClient(clientConf, url, token);
   }
-  
+
   /**
    * Constructs a catalog API client from an application-supplied
    * {@link ApiClientConf}. Use this overload on the driver or in tests when
