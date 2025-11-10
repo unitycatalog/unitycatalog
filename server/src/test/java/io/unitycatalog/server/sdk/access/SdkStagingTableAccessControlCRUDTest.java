@@ -78,10 +78,8 @@ public class SdkStagingTableAccessControlCRUDTest extends SdkAccessControlBaseCR
     }
 
     // Create API clients for both users
-    String userAToken = createTestJwtToken(userAEmail);
-    String userBToken = createTestJwtToken(userBEmail);
-    ServerConfig userAConfig = new ServerConfig(serverConfig.getServerUrl(), userAToken);
-    ServerConfig userBConfig = new ServerConfig(serverConfig.getServerUrl(), userBToken);
+    ServerConfig userAConfig = createTestUserServerConfig(userAEmail);
+    ServerConfig userBConfig = createTestUserServerConfig(userBEmail);
     TablesApi userATablesApi = new TablesApi(TestUtils.createApiClient(userAConfig));
     TablesApi userBTablesApi = new TablesApi(TestUtils.createApiClient(userBConfig));
     TemporaryCredentialsApi userATempCredsApi =

@@ -273,4 +273,14 @@ public abstract class SdkAccessControlBaseCRUDTest extends BaseAccessControlCRUD
       throw new RuntimeException("Failed to create test JWT token: " + e.getMessage(), e);
     }
   }
+
+  /**
+   * Helper method to create a ServerConfig for the user.
+   *
+   * @param subject The subject (email) for the user
+   * @return A ServerConfig with the user token
+   */
+  protected ServerConfig createTestUserServerConfig(String subject) {
+    return new ServerConfig(serverConfig.getServerUrl(), createTestJwtToken(subject));
+  }
 }
