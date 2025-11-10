@@ -92,7 +92,8 @@ public abstract class GenericCredentialProvider {
   }
 
   protected TemporaryCredentialsApi temporaryCredentialsApi() {
-    // Retry is automatically handled by RetryingHttpClient when fs.unitycatalog.retry.enabled=true
+    // Retry is automatically handled by RetryingHttpClient when configured
+    // via fs.unitycatalog.request.retry*
     if (tempCredApi == null) {
       synchronized (this) {
         if (tempCredApi == null) {

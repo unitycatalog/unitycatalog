@@ -15,13 +15,12 @@ import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.time.Duration;
 import java.time.Instant;
-import org.apache.hadoop.conf.Configuration;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentMatchers;
 
-public class DefaultHttpRetryHandlerTest {
+public class HttpRetryHandlerTest {
   private Clock.ManualClock clock;
 
   @BeforeEach
@@ -37,11 +36,11 @@ public class DefaultHttpRetryHandlerTest {
   @Test
   @SuppressWarnings("unchecked")
   public void testRetrySucceedsAfterTwoFailures() throws IOException, InterruptedException {
-    Configuration conf = new Configuration();
-    conf.setInt(UCHadoopConf.RETRY_MAX_ATTEMPTS_KEY, 5);
-    conf.setLong(UCHadoopConf.RETRY_INITIAL_DELAY_KEY, 100L);
-    conf.setDouble(UCHadoopConf.RETRY_MULTIPLIER_KEY, 2.0);
-    conf.setDouble(UCHadoopConf.RETRY_JITTER_FACTOR_KEY, 0.0); // Disable jitter
+    ApiClientConf conf = new ApiClientConf()
+        .setRequestMaxAttempts(5)
+        .setRequestInitialDelayMs(100L)
+        .setRequestMultiplier(2.0)
+        .setRequestJitterFactor(0.0); // Disable jitter
 
     HttpClient mockClient = mock(HttpClient.class);
     HttpRequest mockRequest =
@@ -60,7 +59,7 @@ public class DefaultHttpRetryHandlerTest {
         .thenReturn(response200);
 
     Instant start = clock.now();
-    DefaultHttpRetryHandler handler = new DefaultHttpRetryHandler(conf, clock);
+    HttpRetryHandler handler = new HttpRetryHandler(conf, clock);
     HttpResponse<String> result = handler.call(mockClient, mockRequest, bodyHandler);
 
     verify(mockClient, times(3))
@@ -79,7 +78,13 @@ public class DefaultHttpRetryHandlerTest {
 
   @Test
   @SuppressWarnings("unchecked")
-  public void testSimpleRetryHandlerRetriesOnce() throws IOException, InterruptedException {
+  public void testRetriesRecoverableException() throws IOException, InterruptedException {
+    ApiClientConf conf = new ApiClientConf()
+        .setRequestMaxAttempts(2)
+        .setRequestInitialDelayMs(50L)
+        .setRequestMultiplier(1.0)
+        .setRequestJitterFactor(0.0); // Disable jitter
+
     HttpClient mockClient = mock(HttpClient.class);
     HttpRequest mockRequest =
         HttpRequest.newBuilder().uri(URI.create("http://localhost:8080/api/simple")).build();
@@ -89,50 +94,17 @@ public class DefaultHttpRetryHandlerTest {
 
     when(mockClient.send(
             any(HttpRequest.class), ArgumentMatchers.<HttpResponse.BodyHandler<String>>any()))
-        .thenThrow(new IOException("Transient error"))
+        .thenThrow(new java.net.SocketTimeoutException("Transient error"))
         .thenReturn(response200);
 
     Instant start = clock.now();
-    SimpleRetryHandler handler = new SimpleRetryHandler(clock, 2, 50L);
+    HttpRetryHandler handler = new HttpRetryHandler(conf, clock);
     HttpResponse<String> result = handler.call(mockClient, mockRequest, bodyHandler);
 
     verify(mockClient, times(2))
         .send(any(HttpRequest.class), ArgumentMatchers.<HttpResponse.BodyHandler<String>>any());
     assertThat(result.statusCode()).isEqualTo(200);
-    assertThat(clock.now()).isEqualTo(start.plusMillis(50));
-  }
-
-  private static class SimpleRetryHandler implements HttpRetryHandler {
-    private final Clock clock;
-    private final int maxAttempts;
-    private final long delayMs;
-
-    SimpleRetryHandler(Clock clock, int maxAttempts, long delayMs) {
-      this.clock = clock;
-      this.maxAttempts = maxAttempts;
-      this.delayMs = delayMs;
-    }
-
-    @Override
-    public <T> HttpResponse<T> call(
-        HttpClient delegate, HttpRequest request, HttpResponse.BodyHandler<T> responseBodyHandler)
-        throws IOException, InterruptedException {
-      IOException lastException = null;
-
-      for (int attempt = 1; attempt <= maxAttempts; attempt++) {
-        try {
-          return delegate.send(request, responseBodyHandler);
-        } catch (IOException e) {
-          lastException = e;
-          if (attempt == maxAttempts) {
-            throw e;
-          }
-          clock.sleep(Duration.ofMillis(delayMs));
-        }
-      }
-
-      throw lastException;
-    }
+    assertThat(clock.now()).isEqualTo(start.plus(Duration.ofMillis(50)));
   }
 
   @SuppressWarnings("unchecked")
@@ -143,3 +115,4 @@ public class DefaultHttpRetryHandlerTest {
     return response;
   }
 }
+

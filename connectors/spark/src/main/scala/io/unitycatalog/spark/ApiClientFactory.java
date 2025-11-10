@@ -8,19 +8,28 @@ import java.net.URI;
 
 public class ApiClientFactory {
   private ApiClientFactory() {}
-
+  /**
+   * Constructs a catalog API client using retry settings embedded in a Hadoop
+   * {@link Configuration}. This overload is intended for executor-side code
+   * (for example, credential providers) that already receives the driver’s
+   * serialized `fs.unitycatalog.request.retry.*` keys; defaults are used if
+   * the keys are absent.
+   */
   public static ApiClient createApiClient(Configuration conf, URI url, String token) {
-    return createApiClient(conf, url, token, null);
+    ApiClientConf clientConf = conf != null
+        ? UCHadoopConf.getApiClientConf(conf)
+        : new ApiClientConf();
+    return createApiClient(clientConf, url, token);
   }
-
-  public static ApiClient createApiClient(
-      Configuration conf,
-      URI url,
-      String token,
-      HttpRetryHandler retryHandler) {
-    RetryingApiClient apiClient = retryHandler != null
-        ? new RetryingApiClient(conf, Clock.systemClock(), retryHandler)
-        : new RetryingApiClient(conf);
+  
+  /**
+   * Constructs a catalog API client from an application-supplied
+   * {@link ApiClientConf}. Use this overload on the driver or in tests when
+   * the caller can define retry behaviour directly without going through
+   * Hadoop configuration serialization.
+   */
+  public static ApiClient createApiClient(ApiClientConf clientConf, URI url, String token) {
+    RetryingApiClient apiClient = new RetryingApiClient(clientConf, Clock.systemClock());
     apiClient.setHost(url.getHost())
         .setPort(url.getPort())
         .setScheme(url.getScheme());

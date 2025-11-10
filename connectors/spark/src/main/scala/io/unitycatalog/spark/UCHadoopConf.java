@@ -1,5 +1,7 @@
 package io.unitycatalog.spark;
 
+import org.apache.hadoop.conf.Configuration;
+
 public class UCHadoopConf {
   private UCHadoopConf() {
   }
@@ -64,16 +66,46 @@ public class UCHadoopConf {
       "fs.unitycatalog.credential.cache.enabled";
   public static final boolean UC_CREDENTIAL_CACHE_ENABLED_DEFAULT_VALUE = true;
 
-  // Keys for HTTP client retry configuration
-  public static final String RETRY_MAX_ATTEMPTS_KEY = "fs.unitycatalog.retry.maxAttempts";
-  public static final int RETRY_MAX_ATTEMPTS_DEFAULT = 3;
+  // Keys for HTTP request configuration
+  // Maximum number of times a request is retried before surfacing an error to the caller.
+  public static final String REQUEST_RETRY_MAX_ATTEMPTS_KEY =
+      "fs.unitycatalog.request.retry.maxAttempts";
+  // Base delay (in milliseconds) used before the first retry; later retries back off from this.
+  public static final String REQUEST_RETRY_INITIAL_DELAY_KEY =
+      "fs.unitycatalog.request.retry.initialDelayMs";
+  // Multiplier applied to the delay after each retry, producing exponential backoff.
+  public static final String REQUEST_RETRY_MULTIPLIER_KEY =
+      "fs.unitycatalog.request.retry.multiplier";
+  // Randomisation factor (0-1) applied to the computed delay to avoid thundering herds.
+  public static final String REQUEST_RETRY_JITTER_FACTOR_KEY =
+      "fs.unitycatalog.request.retry.jitterFactor";
 
-  public static final String RETRY_INITIAL_DELAY_KEY = "fs.unitycatalog.retry.initialDelayMs";
-  public static final long RETRY_INITIAL_DELAY_DEFAULT = 500L;
+  // Sets the HTTP request retry configuration in the Hadoop configuration.
+  public static void setApiClientConf(Configuration conf, ApiClientConf apiClientConf) {
+    if (conf == null || apiClientConf == null) {
+      return;
+    }
+    conf.setInt(REQUEST_RETRY_MAX_ATTEMPTS_KEY, apiClientConf.getRequestMaxAttempts());
+    conf.setLong(REQUEST_RETRY_INITIAL_DELAY_KEY, apiClientConf.getRequestInitialDelayMs());
+    conf.setDouble(REQUEST_RETRY_MULTIPLIER_KEY, apiClientConf.getRequestMultiplier());
+    conf.setDouble(REQUEST_RETRY_JITTER_FACTOR_KEY, apiClientConf.getRequestJitterFactor());
+  }
 
-  public static final String RETRY_MULTIPLIER_KEY = "fs.unitycatalog.retry.multiplier";
-  public static final double RETRY_MULTIPLIER_DEFAULT = 2.0;
+  public static ApiClientConf getApiClientConf(Configuration conf) {
+    ApiClientConf apiClientConf = new ApiClientConf();
+    if (conf == null) {
+      return apiClientConf;
+    }
 
-  public static final String RETRY_JITTER_FACTOR_KEY = "fs.unitycatalog.retry.jitterFactor";
-  public static final double RETRY_JITTER_FACTOR_DEFAULT = 0.5;
+    apiClientConf
+        .setRequestMaxAttempts(conf.getInt(
+            REQUEST_RETRY_MAX_ATTEMPTS_KEY, apiClientConf.getRequestMaxAttempts()))
+        .setRequestInitialDelayMs(conf.getLong(
+            REQUEST_RETRY_INITIAL_DELAY_KEY, apiClientConf.getRequestInitialDelayMs()))
+        .setRequestMultiplier(conf.getDouble(
+            REQUEST_RETRY_MULTIPLIER_KEY, apiClientConf.getRequestMultiplier()))
+        .setRequestJitterFactor(conf.getDouble(
+            REQUEST_RETRY_JITTER_FACTOR_KEY, apiClientConf.getRequestJitterFactor()));
+    return apiClientConf;
+  }
 }

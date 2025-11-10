@@ -8,7 +8,6 @@ import io.unitycatalog.spark.utils.OptionsUtil
 
 import java.net.URI
 import java.util
-import org.apache.hadoop.conf.Configuration
 import org.apache.hadoop.fs.Path
 import org.apache.spark.internal.Logging
 import org.apache.spark.sql.catalyst.TableIdentifier
@@ -50,7 +49,7 @@ class UCSingleCatalog
       OptionsUtil.RENEW_CREDENTIAL_ENABLED,
       OptionsUtil.DEFAULT_RENEW_CREDENTIAL_ENABLED)
 
-    apiClient = ApiClientFactory.createApiClient(new Configuration(), uri, token)
+    apiClient = ApiClientFactory.createApiClient(new ApiClientConf(), uri, token)
     temporaryCredentialsApi = new TemporaryCredentialsApi(apiClient)
     val proxy = new UCProxy(uri, token, renewCredEnabled, apiClient, temporaryCredentialsApi)
     proxy.initialize(name, options)
