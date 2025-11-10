@@ -1595,8 +1595,8 @@ components:
       enum:
         - MANAGED
         - EXTERNAL
-        - STREAMING_TABLE
-        - MATERIALIZED_VIEW
+        - STREAMING_TABLE # Not yet fully implemented
+        - MATERIALIZED_VIEW # Not yet fully implemented
     DataSourceFormat:
       description: Data source format
       type: string
