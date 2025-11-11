@@ -1,6 +1,7 @@
 package io.unitycatalog.spark.auth;
 
 import io.unitycatalog.spark.UCHadoopConf;
+import io.unitycatalog.spark.utils.Clock;
 import org.apache.hadoop.conf.Configuration;
 import org.sparkproject.guava.base.Preconditions;
 import software.amazon.awssdk.auth.credentials.AwsCredentials;
@@ -14,6 +15,11 @@ public class AwsVendedTokenProvider extends GenericCredentialProvider
    * Constructor for the hadoop's CredentialProviderListFactory#buildAWSProviderList to initialize.
    */
   public AwsVendedTokenProvider(Configuration conf) {
+    initialize(conf);
+  }
+
+  AwsVendedTokenProvider(Configuration conf, Clock clock, long renewalLeadTimeMillis) {
+    super(clock, renewalLeadTimeMillis);
     initialize(conf);
   }
 
