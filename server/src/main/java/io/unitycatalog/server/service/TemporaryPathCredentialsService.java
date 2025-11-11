@@ -95,6 +95,8 @@ public class TemporaryPathCredentialsService {
   }
 
   private void evaluateCreateTableForSchema(PathComponents pathComponents) {
+    // CREATE_TABLE requires either OWNER or USE_CATALOG on the catalog AND
+    // either OWNER or USE_SCHEMA on the schema.
     String authorizeExpression =
         "#authorizeAny(#principal, #catalog, OWNER, USE_CATALOG) && #authorizeAny(#principal, #schema, OWNER, USE_SCHEMA)";
     Map<SecurableType, Object> keyMap =
