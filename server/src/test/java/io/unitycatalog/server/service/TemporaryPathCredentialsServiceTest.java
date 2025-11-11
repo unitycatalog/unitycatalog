@@ -57,13 +57,11 @@ public class TemporaryPathCredentialsServiceTest extends BaseAccessControlCRUDTe
   private CatalogOperations catalogOperations;
 
   private static RequestHeaders createHeaders() {
-    RequestHeaders headers =
-        RequestHeaders.builder()
-            .method(HttpMethod.POST)
-            .path(ENDPOINT)
-            .contentType(MediaType.JSON)
-            .build();
-    return headers;
+    return RequestHeaders.builder()
+        .method(HttpMethod.POST)
+        .path(ENDPOINT)
+        .contentType(MediaType.JSON)
+        .build();
   }
 
   private static Stream<Arguments> createPermissionsTestCases() {
