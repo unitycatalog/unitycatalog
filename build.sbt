@@ -298,6 +298,7 @@ lazy val server = (project in file("server"))
   // Server and control models are added as provided to avoid them being added as maven dependencies
   // This is because the server and control models are included in the server jar
   .dependsOn(serverModels % "provided", controlModels % "provided")
+  .dependsOn(controlApi % "test->compile")
   .enablePlugins(CheckstylePlugin)
   .settings (
     name := s"$artifactNamePrefix-server",
