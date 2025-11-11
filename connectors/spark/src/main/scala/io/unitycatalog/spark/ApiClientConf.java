@@ -11,9 +11,17 @@ import org.sparkproject.guava.base.Preconditions;
  */
 public class ApiClientConf {
 
+  // Default maximum attempts per request (initial try + retries).
   public static final int DEFAULT_REQUEST_MAX_ATTEMPTS = 3;
+  // Default initial backoff delay, in milliseconds. This is the wait time before the second
+  // attempt. Later attempts scale this delay exponentially with the formula: 
+  // delay = initialDelayMs * multiplier ^ (attempt - 1) * (1 ± jitterFactor).
   public static final long DEFAULT_REQUEST_INITIAL_DELAY_MS = 500L;
+  // Default exponential backoff multiplier. Each retry multiplies the previous delay by this
+  // factor (e.g. 2.0 doubles the wait).
   public static final double DEFAULT_REQUEST_MULTIPLIER = 2.0;
+  // Default jitter factor expressed as a fraction of the calculated delay. A value of 0.5 means we
+  // randomise by ±50% around the base backoff.
   public static final double DEFAULT_REQUEST_JITTER_FACTOR = 0.5;
 
   private int requestMaxAttempts;

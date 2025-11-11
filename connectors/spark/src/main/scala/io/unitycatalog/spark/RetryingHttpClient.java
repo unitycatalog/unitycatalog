@@ -14,6 +14,18 @@ import java.util.concurrent.Executor;
 import javax.net.ssl.SSLContext;
 import javax.net.ssl.SSLParameters;
 
+/**
+ * Wraps an {@link HttpClient} to add retries.
+ *
+ * <p>The generated {@link io.unitycatalog.client.ApiClient} is recreated from OpenAPI specs, so we
+ * keep retry state outside of it. Handling retries here means every generated endpoint class that
+ * relies on the shared {@link io.unitycatalog.client.ApiClient} automatically gets the same
+ * behaviour. {@link RetryingApiClient} uses this adapter to run retries through
+ * {@link HttpRetryHandler} by overriding {@link #send(HttpRequest, HttpResponse.BodyHandler)} to
+ * call {@link HttpRetryHandler#call}, which implements exponential backoff while using the
+ * underlying {@link HttpClient#send(HttpRequest, HttpResponse.BodyHandler)} to send the request.
+ * </p>
+ */
 public class RetryingHttpClient extends HttpClient {
   private final HttpClient delegate;
   private final HttpRetryHandler retryHandler;
