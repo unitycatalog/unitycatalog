@@ -197,7 +197,8 @@ public class UnityCatalogServer {
         new TemporaryModelVersionCredentialsService(
             authorizer, cloudCredentialVendor, repositories);
     TemporaryPathCredentialsService temporaryPathCredentialsService =
-        new TemporaryPathCredentialsService(cloudCredentialVendor);
+        new TemporaryPathCredentialsService(
+            authorizer, cloudCredentialVendor, repositories);
 
     JacksonRequestConverterFunction requestConverterFunction =
         new JacksonRequestConverterFunction(
