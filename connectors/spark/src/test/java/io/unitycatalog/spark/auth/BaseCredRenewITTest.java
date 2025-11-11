@@ -3,6 +3,7 @@ package io.unitycatalog.spark.auth;
 import static io.unitycatalog.server.utils.TestUtils.createApiClient;
 import static org.assertj.core.api.AssertionsForClassTypes.assertThat;
 
+import io.delta.tables.DeltaTable;
 import io.unitycatalog.client.model.CreateCatalog;
 import io.unitycatalog.client.model.CreateSchema;
 import io.unitycatalog.server.base.BaseCRUDTest;
@@ -15,16 +16,17 @@ import io.unitycatalog.spark.UCHadoopConf;
 import io.unitycatalog.spark.UCSingleCatalog;
 import io.unitycatalog.spark.utils.Clock;
 import java.io.File;
-import java.io.IOException;
 import java.net.URI;
 import java.time.Duration;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
-import io.delta.tables.DeltaTable;
 import org.apache.hadoop.conf.Configuration;
+import org.apache.hadoop.fs.FileSystem;
 import org.apache.hadoop.fs.Path;
 import org.apache.spark.api.java.function.MapPartitionsFunction;
 import org.apache.spark.sql.Encoders;
@@ -46,9 +48,9 @@ import org.sparkproject.guava.collect.Iterators;
  * <p>This test sets up the Unity Catalog server and a local Spark cluster, then runs a custom Spark
  * job to validate credential renewal.
  *
- * <p>The approach is as follows: a testing credential generator is injected into the
- * local Unity Catalog server, issuing a new credential every 30-second interval. The Spark job uses
- * {@link CredRenewFileSystem} to check that the credential matches the current time window for each
+ * <p>The approach is as follows: a testing credential generator is injected into the local Unity
+ * Catalog server, issuing a new credential every 30-second interval. The Spark job uses {@link
+ * CredRenewFileSystem} to check that the credential matches the current time window for each
  * filesystem access. {@link CredRenewFileSystem} also tracks the number of renewals, allowing
  * verification that credential renewal occurs as expected.
  */
@@ -60,8 +62,7 @@ public abstract class BaseCredRenewITTest extends BaseCRUDTest {
   protected static final String BUCKET_NAME = "test-bucket";
   protected static final long DEFAULT_INTERVAL_MILLIS = 30_000L;
 
-  @TempDir
-  private File dataDir;
+  @TempDir private File dataDir;
   private SparkSession session;
   private SdkSchemaOperations schemaOperations;
 
@@ -72,32 +73,33 @@ public abstract class BaseCredRenewITTest extends BaseCRUDTest {
 
   protected abstract String scheme();
 
-  protected abstract Map<String, String> catalogProps();
-
-  protected abstract CredRenewFileSystem createTestFileSystem(URI uri, Configuration conf)
-      throws IOException;
+  protected abstract Map<String, String> catalogExtraProps();
 
   private SparkSession createSparkSession() {
-    SparkSession.Builder builder = SparkSession.builder()
-        .appName("test-aws-credential-renewal")
-        .master("local[1]") // Make it single-threaded explicitly.
-        .config("spark.sql.extensions", "io.delta.sql.DeltaSparkSessionExtension")
-        .config("spark.sql.catalog.spark_catalog",
-            "org.apache.spark.sql.delta.catalog.DeltaCatalog")
-        .config("spark.hadoop." + UCHadoopConf.UC_TEST_CLOCK_NAME, CLOCK_NAME)
-        .config("spark.hadoop." + UCHadoopConf.UC_RENEWAL_LEAD_TIME_KEY, 0L)
-        .config("spark.sql.shuffle.partitions", "1");
+    SparkSession.Builder builder =
+        SparkSession.builder()
+            .appName("test-cloud-vendor-credential-renewal")
+            .master("local[1]") // Make it single-threaded explicitly.
+            .config("spark.sql.extensions", "io.delta.sql.DeltaSparkSessionExtension")
+            .config(
+                "spark.sql.catalog.spark_catalog",
+                "org.apache.spark.sql.delta.catalog.DeltaCatalog")
+            .config("spark.hadoop." + UCHadoopConf.UC_TEST_CLOCK_NAME, CLOCK_NAME)
+            .config("spark.hadoop." + UCHadoopConf.UC_RENEWAL_LEAD_TIME_KEY, 0L)
+            .config("spark.sql.shuffle.partitions", "1")
+            .config("spark.serializer.debug", "false");
 
     // Set the default catalog properties.
     String testCatalogKey = String.format("spark.sql.catalog.%s", CATALOG_NAME);
-    builder.config(testCatalogKey, UCSingleCatalog.class.getName())
+    builder
+        .config(testCatalogKey, UCSingleCatalog.class.getName())
         .config(testCatalogKey + ".uri", serverConfig.getServerUrl())
         .config(testCatalogKey + ".token", serverConfig.getAuthToken())
         .config(testCatalogKey + ".warehouse", CATALOG_NAME)
         .config(testCatalogKey + ".renewCredential.enabled", "true");
 
     // Set the customized catalog properties.
-    catalogProps().forEach(builder::config);
+    catalogExtraProps().forEach(builder::config);
 
     return builder.getOrCreate();
   }
@@ -154,10 +156,13 @@ public abstract class BaseCredRenewITTest extends BaseCRUDTest {
     return Clock.getManualClock(CLOCK_NAME);
   }
 
+  private String bucketRoot() {
+    return String.format("%s://%s", scheme(), BUCKET_NAME);
+  }
+
   @Test
   public void testFileSystemRenewal() throws Exception {
-    String location = String.format("%s://%s%s/fs",
-        scheme(), BUCKET_NAME, dataDir.getCanonicalPath());
+    String location = String.format("%s%s/fs", bucketRoot(), dataDir.getCanonicalPath());
     Path locPath = new Path(location);
 
     // Create the external Delta table in catalog.
@@ -194,7 +199,8 @@ public abstract class BaseCredRenewITTest extends BaseCRUDTest {
             .map(
                 row -> {
                   Configuration conf = serialConf.value();
-                  CredRenewFileSystem fs = createTestFileSystem(new URI(location), conf);
+                  CredRenewFileSystem<?> fs =
+                      (CredRenewFileSystem<?>) FileSystem.get(new URI(location), conf);
 
                   for (int refreshIndex = 0; refreshIndex < 10; refreshIndex += 1) {
                     // Pre-check before the credential renewal.
@@ -219,10 +225,8 @@ public abstract class BaseCredRenewITTest extends BaseCRUDTest {
 
   @Test
   public void testDeltaReadWriteRenewal() throws Exception {
-    String srcLoc = String.format("%s://%s%s/src",
-        scheme(), BUCKET_NAME, dataDir.getCanonicalPath());
-    String dstLoc = String.format("%s://%s%s/dst",
-        scheme(), BUCKET_NAME, dataDir.getCanonicalPath());
+    String srcLoc = String.format("%s%s/src", bucketRoot(), dataDir.getCanonicalPath());
+    String dstLoc = String.format("%s%s/dst", bucketRoot(), dataDir.getCanonicalPath());
     String srcTable = String.format("%s.%s.src", CATALOG_NAME, SCHEMA_NAME);
     String dstTable = String.format("%s.%s.dst", CATALOG_NAME, SCHEMA_NAME);
 
@@ -269,7 +273,46 @@ public abstract class BaseCredRenewITTest extends BaseCRUDTest {
     return session.sql(String.format(statement, args)).collectAsList();
   }
 
-  public abstract static class CredRenewFileSystem extends CredentialTestFileSystem {
-    public abstract int renewalCount();
+  /**
+   * A testing filesystem used to verify credential renewal behavior. For each {@code
+   * checkCredentials()} call, the previous credentials should automatically renew as the 30-second
+   * time window advances. The test tracks how many distinct credentials this filesystem receives,
+   * which should match the expected number of credential renewals. We use this filesystem to
+   * accurately track how many renewal happened.
+   */
+  public abstract static class CredRenewFileSystem<T> extends CredentialTestFileSystem {
+    private final Set<Long> verifiedTs = new HashSet<>();
+    private volatile T lazyProvider;
+
+    @Override
+    protected void checkCredentials(Path f) {
+      String host = f.toUri().getHost();
+
+      if (credentialCheckEnabled && BUCKET_NAME.equals(host)) {
+        T provider = accessProvider();
+        assertThat(provider).isNotNull();
+
+        long curTs = testClock().now().toEpochMilli();
+        long windowStartTs = curTs / DEFAULT_INTERVAL_MILLIS * DEFAULT_INTERVAL_MILLIS;
+        assertCredentials(provider, windowStartTs);
+
+        verifiedTs.add(windowStartTs);
+      }
+    }
+
+    private synchronized T accessProvider() {
+      if (lazyProvider == null) {
+        lazyProvider = createProvider();
+      }
+      return lazyProvider;
+    }
+
+    protected abstract T createProvider();
+
+    protected abstract void assertCredentials(T provider, long ts);
+
+    public int renewalCount() {
+      return verifiedTs.size() - 1;
+    }
   }
 }
