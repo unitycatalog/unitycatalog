@@ -12,15 +12,15 @@ public class ApiClientFactoryTest extends BaseSparkIntegrationTest {
   public void testApiClientBaseUri() {
     String token = "";
 
-    URI uriDatabricks = URI.create("https://adb-1234567890123456.3.azuredatabricks.net");
-    ApiClient apiClientDatabricks = ApiClientFactory.createApiClient(uriDatabricks, token);
-    assertThat(apiClientDatabricks.getBaseUri())
-        .isEqualTo("https://adb-1234567890123456.3.azuredatabricks.net/api/2.1/unity-catalog");
+    URI uriNoSuffix = URI.create("https://localhost:8080");
+    ApiClient apiClientNoSuffix = ApiClientFactory.createApiClient(uriNoSuffix, token);
+    assertThat(apiClientNoSuffix.getBaseUri())
+        .isEqualTo("https://localhost:8080/api/2.1/unity-catalog");
 
-    URI uriMicrosoftFabric = URI.create("https://onelake.table.fabric.microsoft.com/delta/workspace/test.lakehouse");
-    ApiClient apiClientFabric = ApiClientFactory
-        .createApiClient(uriMicrosoftFabric, token);
-    assertThat(apiClientFabric.getBaseUri())
-        .isEqualTo("https://onelake.table.fabric.microsoft.com/delta/workspace/test.lakehouse/api/2.1/unity-catalog");
+    URI uriWithSuffix = URI.create("https://localhost:8080/path/to/uc/api");
+    ApiClient apiClientWithSuffix = ApiClientFactory
+        .createApiClient(uriWithSuffix, token);
+    assertThat(apiClientWithSuffix.getBaseUri())
+        .isEqualTo("https://localhost:8080/path/to/uc/api/api/2.1/unity-catalog");
   }
 }
