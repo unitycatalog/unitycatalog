@@ -98,21 +98,20 @@ public class TemporaryPathCredentialsService {
     String authorizeExpression =
         "#authorizeAny(#principal, #catalog, OWNER, USE_CATALOG) && #authorizeAny(#principal, #schema, OWNER, USE_SCHEMA)";
     Map<SecurableType, Object> keyMap =
-        new HashMap<>(
-            Map.of(SCHEMA, pathComponents.schemaName(), CATALOG, pathComponents.catalogName()));
+        Map.of(SCHEMA, pathComponents.schemaName(), CATALOG, pathComponents.catalogName());
     evaluateResources(keyMap, authorizeExpression);
   }
 
   private void evaluateCreateTableForCatalog(PathComponents pathComponents) {
     String authorizeExpression = "#authorizeAny(#principal, #catalog, OWNER, USE_CATALOG)";
     Map<SecurableType, Object> keyMap =
-        new HashMap<>(Map.of(CATALOG, pathComponents.catalogName()));
+        Map.of(CATALOG, pathComponents.catalogName());
     evaluateResources(keyMap, authorizeExpression);
   }
 
   private void evaluateArbitraryPathOperation() {
     String authorizeExpression = "#authorize(#principal, #metastore, OWNER)";
-    Map<SecurableType, Object> keyMap = new HashMap<>(Map.of(METASTORE, "metastore"));
+    Map<SecurableType, Object> keyMap = Map.of(METASTORE, "metastore");
     evaluateResources(keyMap, authorizeExpression);
   }
 
