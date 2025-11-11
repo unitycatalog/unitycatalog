@@ -25,7 +25,6 @@ import io.unitycatalog.server.service.credential.CredentialContext;
 import io.unitycatalog.server.utils.PathUtils;
 import io.unitycatalog.server.utils.PathUtils.PathComponents;
 import java.util.Collections;
-import java.util.HashMap;
 import java.util.Map;
 import java.util.Set;
 import lombok.SneakyThrows;
@@ -106,8 +105,7 @@ public class TemporaryPathCredentialsService {
 
   private void evaluateCreateTableForCatalog(PathComponents pathComponents) {
     String authorizeExpression = "#authorizeAny(#principal, #catalog, OWNER, USE_CATALOG)";
-    Map<SecurableType, Object> keyMap =
-        Map.of(CATALOG, pathComponents.catalogName());
+    Map<SecurableType, Object> keyMap = Map.of(CATALOG, pathComponents.catalogName());
     evaluateResources(keyMap, authorizeExpression);
   }
 
