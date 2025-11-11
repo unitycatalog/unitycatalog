@@ -91,9 +91,7 @@ public class HttpRetryHandlerTest {
 
     HttpClient mockClient = mock(HttpClient.class);
     HttpRequest mockRequest =
-        HttpRequest.newBuilder()
-            .uri(URI.create("http://localhost:8080/api/server-error"))
-            .build();
+        HttpRequest.newBuilder().uri(URI.create("http://localhost:8080/api/server-error")).build();
     HttpResponse.BodyHandler<String> bodyHandler = HttpResponse.BodyHandlers.ofString();
 
     HttpResponse<String> response503 = createMockResponse(503, "Service Unavailable");
@@ -131,9 +129,9 @@ public class HttpRetryHandlerTest {
   public void testRetriesRecoverableException() throws IOException, InterruptedException {
     ApiClientConf conf =
         new ApiClientConf()
-            .setRequestMaxAttempts(2)
+            .setRequestMaxAttempts(3)
             .setRequestInitialDelayMs(50L)
-            .setRequestMultiplier(1.0)
+            .setRequestMultiplier(2.0)
             .setRequestJitterFactor(0.0); // Disable jitter
 
     HttpClient mockClient = mock(HttpClient.class);
@@ -141,21 +139,24 @@ public class HttpRetryHandlerTest {
         HttpRequest.newBuilder().uri(URI.create("http://localhost:8080/api/simple")).build();
     HttpResponse.BodyHandler<String> bodyHandler = HttpResponse.BodyHandlers.ofString();
 
+    HttpResponse<String> response503 = createMockResponse(503, "Service Unavailable");
     HttpResponse<String> response200 = createMockResponse(200, "Success");
 
     when(mockClient.send(
             any(HttpRequest.class), ArgumentMatchers.<HttpResponse.BodyHandler<String>>any()))
         .thenThrow(new java.net.SocketTimeoutException("Transient error"))
+        .thenReturn(response503)
         .thenReturn(response200);
 
     Instant start = clock.now();
     HttpRetryHandler handler = new HttpRetryHandler(conf, clock);
     HttpResponse<String> result = handler.call(mockClient, mockRequest, bodyHandler);
 
-    verify(mockClient, times(2))
+    verify(mockClient, times(3))
         .send(any(HttpRequest.class), ArgumentMatchers.<HttpResponse.BodyHandler<String>>any());
     assertThat(result.statusCode()).isEqualTo(200);
-    assertThat(clock.now()).isEqualTo(start.plus(Duration.ofMillis(50)));
+    // Retry delays: 50ms (after exception) + 100ms (after 503) = 150ms total.
+    assertThat(clock.now()).isEqualTo(start.plus(Duration.ofMillis(150)));
   }
 
   @SuppressWarnings("unchecked")
