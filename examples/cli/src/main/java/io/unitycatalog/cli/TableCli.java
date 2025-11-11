@@ -100,6 +100,10 @@ public class TableCli {
             .dataSourceFormat(DataSourceFormat.valueOf(format.toUpperCase()));
     TemporaryCredentials temporaryCredentials;
     if (createTable.getTableType() == TableType.EXTERNAL) {
+      throw new RuntimeException("EXTERNAL table creation doesn't work in this experiment.");
+    }
+    String stagingTableId = null;
+    if (createTable.getTableType() == TableType.EXTERNAL) {
       if (!json.has(CliParams.STORAGE_LOCATION.getServerParam())) {
         throw new CliException("Storage location is required for external tables");
       }
@@ -131,7 +135,7 @@ public class TableCli {
               .schemaName(json.getString(CliParams.SCHEMA_NAME.getServerParam()))
               .name(json.getString(CliParams.NAME.getServerParam()));
       StagingTableInfo stagingTableInfo = tablesApi.createStagingTable(createStagingTable);
-      String stagingTableId = stagingTableInfo.getId();
+      stagingTableId = stagingTableInfo.getId();
       String stagingLocation = stagingTableInfo.getStagingLocation();
       if (stagingTableId == null || stagingLocation == null) {
         throw new CliException("Failed to create staging table");
@@ -149,7 +153,7 @@ public class TableCli {
     // try and initialize the directory and initiate delta log at the location
     try {
       DeltaKernelUtils.createDeltaTable(
-          createTable.getStorageLocation(), columnInfoList, temporaryCredentials);
+          createTable.getStorageLocation(), columnInfoList, temporaryCredentials, stagingTableId);
     } catch (Exception e) {
       if (e instanceof TableAlreadyExistsException
           || e.getCause() instanceof TableAlreadyExistsException) {

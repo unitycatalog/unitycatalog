@@ -134,6 +134,12 @@ public abstract class BaseTableCRUDTestEnv extends BaseCRUDTest {
             .tableType(tableType)
             .dataSourceFormat(DataSourceFormat.DELTA);
 
-    return tableOperations.createTable(createTableRequest);
+    try {
+      return tableOperations.createTable(createTableRequest);
+    } catch (IOException e) {
+      throw new RuntimeException(e);
+    } catch (ApiException e) {
+      throw new RuntimeException(e);
+    }
   }
 }

@@ -1,12 +1,9 @@
 package io.unitycatalog.cli.delta;
 
 import de.vandermeer.asciitable.AsciiTable;
-import io.delta.kernel.Operation;
 import io.delta.kernel.ScanBuilder;
 import io.delta.kernel.Snapshot;
 import io.delta.kernel.Table;
-import io.delta.kernel.Transaction;
-import io.delta.kernel.TransactionBuilder;
 import io.delta.kernel.TransactionCommitResult;
 import io.delta.kernel.data.Row;
 import io.delta.kernel.defaults.engine.DefaultEngine;
@@ -16,6 +13,8 @@ import io.delta.kernel.types.DataType;
 import io.delta.kernel.types.IntegerType;
 import io.delta.kernel.types.StructType;
 import io.delta.kernel.utils.CloseableIterable;
+import io.delta.storage.commit.uccommitcoordinator.UCTokenBasedRestClient;
+import io.delta.unity.UCCatalogManagedClient;
 import io.unitycatalog.cli.utils.Constants;
 import io.unitycatalog.client.model.AwsCredentials;
 import io.unitycatalog.client.model.ColumnInfo;
@@ -42,20 +41,31 @@ public class DeltaKernelUtils {
 
   public static void createDeltaTable(
       String tablePath, List<ColumnInfo> columns, TemporaryCredentials temporaryCredentials) {
+    createDeltaTable(tablePath, columns, temporaryCredentials, null);
+  }
+
+  public static void createDeltaTable(
+      String tablePath,
+      List<ColumnInfo> columns,
+      TemporaryCredentials temporaryCredentials,
+      String tableId) {
     try {
       URI tablePathUri = URI.create(tablePath);
       Engine engine = getEngine(tablePathUri, temporaryCredentials);
       Table table = Table.forPath(engine, substituteSchemeForS3(tablePath));
       // construct the schema
       StructType tableSchema = getSchema(columns);
-      TransactionBuilder txnBuilder =
-          table.createTransactionBuilder(engine, "UnityCatalogCli", Operation.CREATE_TABLE);
-      // Set the schema of the new table on the transaction builder
-      txnBuilder = txnBuilder.withSchema(engine, tableSchema);
-      // Build the transaction
-      Transaction txn = txnBuilder.build(engine);
-      // create an empty table
-      TransactionCommitResult commitResult = txn.commit(engine, CloseableIterable.emptyIterable());
+
+      // The new code path to create CCv2 enabled table
+      UCTokenBasedRestClient ucClient = new UCTokenBasedRestClient("http://127.0.0.1:8080", "");
+      UCCatalogManagedClient ucCatalogManagedClient = new UCCatalogManagedClient(ucClient);
+
+      // Step 1: CREATE -- v0.json
+      TransactionCommitResult commitResult =
+          ucCatalogManagedClient
+              .buildCreateTableTransaction(tableId, tablePath, tableSchema, "test-engine")
+              .build(engine)
+              .commit(engine, CloseableIterable.emptyIterable() /* dataActions */);
       if (commitResult.getVersion() >= 0) {
         LOGGER.info("Table created successfully at: {}", tablePathUri);
       } else {

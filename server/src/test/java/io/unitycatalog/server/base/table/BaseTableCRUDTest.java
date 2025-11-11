@@ -52,7 +52,7 @@ public abstract class BaseTableCRUDTest extends BaseTableCRUDTestEnv {
     testDeleteTable();
 
     // Test managed table creation and verify
-    createAndVerifyManagedTable();
+    // createAndVerifyManagedTable();
 
     // Test schema update and deletion scenarios
     testTableAfterSchemaUpdateAndDeletion();

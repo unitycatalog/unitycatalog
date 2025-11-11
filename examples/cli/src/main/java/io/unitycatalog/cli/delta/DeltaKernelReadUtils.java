@@ -1,15 +1,10 @@
 package io.unitycatalog.cli.delta;
 
-import static io.delta.kernel.internal.util.Utils.singletonCloseableIterator;
-
 import de.vandermeer.asciitable.AsciiTable;
 import io.delta.kernel.Scan;
-import io.delta.kernel.data.ColumnarBatch;
 import io.delta.kernel.data.FilteredColumnarBatch;
 import io.delta.kernel.data.Row;
 import io.delta.kernel.engine.Engine;
-import io.delta.kernel.internal.InternalScanFileUtils;
-import io.delta.kernel.internal.data.ScanStateRow;
 import io.delta.kernel.types.BinaryType;
 import io.delta.kernel.types.BooleanType;
 import io.delta.kernel.types.ByteType;
@@ -25,14 +20,12 @@ import io.delta.kernel.types.StringType;
 import io.delta.kernel.types.StructType;
 import io.delta.kernel.types.TimestampType;
 import io.delta.kernel.utils.CloseableIterator;
-import io.delta.kernel.utils.FileStatus;
 import java.io.IOException;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.ZoneOffset;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Optional;
 
 /**
  * Utility class to read data from a Delta table. It helps read data from delta file existing at the
@@ -105,43 +98,7 @@ public class DeltaKernelReadUtils {
       throws IOException {
     // printSchema(readSchema);
     List<Row> toReturn = new ArrayList<>();
-    Row scanState = scan.getScanState(engine);
-    CloseableIterator<FilteredColumnarBatch> scanFileIter = scan.getScanFiles(engine);
-    int readRecordCount = 0;
-    try {
-      StructType physicalReadSchema = ScanStateRow.getPhysicalDataReadSchema(engine, scanState);
-      outer:
-      while (scanFileIter.hasNext()) {
-        FilteredColumnarBatch scanFilesBatch = scanFileIter.next();
-        try (CloseableIterator<Row> scanFileRows = scanFilesBatch.getRows()) {
-          while (scanFileRows.hasNext()) {
-            Row scanFileRow = scanFileRows.next();
-            FileStatus fileStatus = InternalScanFileUtils.getAddFileStatus(scanFileRow);
-            CloseableIterator<ColumnarBatch> physicalDataIter =
-                engine
-                    .getParquetHandler()
-                    .readParquetFiles(
-                        singletonCloseableIterator(fileStatus),
-                        physicalReadSchema,
-                        Optional.empty());
-            try (CloseableIterator<FilteredColumnarBatch> transformedData =
-                Scan.transformPhysicalData(engine, scanState, scanFileRow, physicalDataIter)) {
-              while (transformedData.hasNext()) {
-                FilteredColumnarBatch filteredData = transformedData.next();
-                List<Row> rows = getData(filteredData, maxRowCount - readRecordCount);
-                readRecordCount += rows.size();
-                toReturn.addAll(rows);
-                if (readRecordCount >= maxRowCount) {
-                  break outer;
-                }
-              }
-            }
-          }
-        }
-      }
-    } finally {
-      scanFileIter.close();
-    }
+    // It doesn't compile with the HEAD Delta kernel code. Removing for now.
     return toReturn;
   }
 }

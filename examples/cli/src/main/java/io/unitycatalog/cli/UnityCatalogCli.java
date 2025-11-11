@@ -3,7 +3,6 @@ package io.unitycatalog.cli;
 import static io.unitycatalog.cli.utils.CliUtils.commonOptions;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
-import io.unitycatalog.cli.utils.CliException;
 import io.unitycatalog.cli.utils.CliParams;
 import io.unitycatalog.cli.utils.CliUtils;
 import io.unitycatalog.client.ApiClient;
@@ -167,11 +166,7 @@ public class UnityCatalogCli {
               + "Please check the command and try again. "
               + e.getMessage());
       CliUtils.printHelp();
-    } catch (CliException e) {
-      System.out.println(
-          "Error occurred while executing the command. "
-              + e.getMessage()
-              + (e.getCause() != null ? e.getCause().getMessage() : ""));
+      // Removed exception catching so that I can see stack trace
     } catch (ApiException | io.unitycatalog.control.ApiException e) {
       throw new RuntimeException(e);
     }

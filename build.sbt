@@ -21,7 +21,7 @@ lazy val javacRelease17 = Seq("--release", "17")
 
 lazy val scala213 = "2.13.16"
 
-lazy val deltaVersion = "4.0.0"
+lazy val deltaVersion = "3.4.0-SNAPSHOT"
 lazy val sparkVersion = "4.0.0"
 lazy val hadoopVersion = "3.4.0"
 
@@ -505,6 +505,7 @@ lazy val cli = (project in file("examples") / "cli")
       "io.delta" % "delta-kernel-api" % deltaVersion,
       "io.delta" % "delta-kernel-defaults" % deltaVersion,
       "io.delta" % "delta-storage" % deltaVersion,
+      "io.delta" % "delta-unity" % deltaVersion,
       "org.apache.hadoop" % "hadoop-client-api" % hadoopVersion,
       "org.apache.hadoop" % "hadoop-client-runtime" % hadoopVersion,
       "de.vandermeer" % "asciitable" % "0.3.2",
