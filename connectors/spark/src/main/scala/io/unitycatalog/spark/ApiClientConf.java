@@ -7,14 +7,15 @@ import org.sparkproject.guava.base.Preconditions;
  *
  * <p>The defaults here are chosen to work out of the box. Callers can override them either
  * programmatically or via {@link UCHadoopConf#setApiClientConf} when communicating through
- * Hadoop configuration.</p>
+ * Hadoop configuration. These settings are used by {@link RetryingApiClient} to configure the
+ * retry behaviour of the {@link RetryingHttpClient}.</p>
  */
 public class ApiClientConf {
 
   // Default maximum attempts per request (initial try + retries).
   public static final int DEFAULT_REQUEST_MAX_ATTEMPTS = 3;
   // Default initial backoff delay, in milliseconds. This is the wait time before the second
-  // attempt. Later attempts scale this delay exponentially with the formula: 
+  // attempt. Later attempts scale this delay exponentially with the formula:
   // delay = initialDelayMs * multiplier ^ (attempt - 1) * (1 ± jitterFactor).
   public static final long DEFAULT_REQUEST_INITIAL_DELAY_MS = 500L;
   // Default exponential backoff multiplier. Each retry multiplies the previous delay by this

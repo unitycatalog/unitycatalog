@@ -79,6 +79,55 @@ public class HttpRetryHandlerTest {
 
   @Test
   @SuppressWarnings("unchecked")
+  public void testRetryServerErrorAppliesJitterWithinBounds()
+      throws IOException, InterruptedException {
+    double jitterFactor = 0.5;
+    ApiClientConf conf =
+        new ApiClientConf()
+            .setRequestMaxAttempts(2)
+            .setRequestInitialDelayMs(100L)
+            .setRequestMultiplier(1.0)
+            .setRequestJitterFactor(jitterFactor);
+
+    HttpClient mockClient = mock(HttpClient.class);
+    HttpRequest mockRequest =
+        HttpRequest.newBuilder()
+            .uri(URI.create("http://localhost:8080/api/server-error"))
+            .build();
+    HttpResponse.BodyHandler<String> bodyHandler = HttpResponse.BodyHandlers.ofString();
+
+    HttpResponse<String> response503 = createMockResponse(503, "Service Unavailable");
+    HttpResponse<String> response200 = createMockResponse(200, "Recovered");
+
+    when(mockClient.send(
+            any(HttpRequest.class), ArgumentMatchers.<HttpResponse.BodyHandler<String>>any()))
+        .thenReturn(response503)
+        .thenReturn(response200);
+
+    Instant start = clock.now();
+    HttpRetryHandler handler = new HttpRetryHandler(conf, clock);
+    HttpResponse<String> result = handler.call(mockClient, mockRequest, bodyHandler);
+
+    verify(mockClient, times(2))
+        .send(any(HttpRequest.class), ArgumentMatchers.<HttpResponse.BodyHandler<String>>any());
+
+    assertThat(result.statusCode()).isEqualTo(200);
+    assertThat(result.body()).isEqualTo("Recovered");
+
+    // Verify the elapsed time is within the jitter-adjusted bounds of the base delay.
+    // Calculated as: baseDelay * (1 ± jitterFactor). In this case, the base delay is 100ms and
+    // the jitter factor is 0.5 so the range is [50ms, 150ms].
+    long elapsedMs = Duration.between(start, clock.now()).toMillis();
+    long baseDelay = conf.getRequestInitialDelayMs();
+    long minDelay = (long) Math.floor(baseDelay * (1 - jitterFactor));
+    long maxDelay = (long) Math.ceil(baseDelay * (1 + jitterFactor));
+    assertThat(elapsedMs)
+        .as("retry delay should stay within jitter-adjusted bounds")
+        .isBetween(minDelay, maxDelay);
+  }
+
+  @Test
+  @SuppressWarnings("unchecked")
   public void testRetriesRecoverableException() throws IOException, InterruptedException {
     ApiClientConf conf =
         new ApiClientConf()
