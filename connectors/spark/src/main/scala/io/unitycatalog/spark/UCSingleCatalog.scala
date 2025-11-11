@@ -3,12 +3,12 @@ package io.unitycatalog.spark
 import io.unitycatalog.client.{ApiClient, ApiException}
 import io.unitycatalog.client.api.{SchemasApi, TablesApi, TemporaryCredentialsApi}
 import io.unitycatalog.client.model.{ColumnInfo, ColumnTypeName, CreateSchema, CreateTable, DataSourceFormat, GenerateTemporaryPathCredential, GenerateTemporaryTableCredential, ListTablesResponse, PathOperation, SchemaInfo, TableOperation, TableType, TemporaryCredentials}
-import io.unitycatalog.spark.auth.AbfsVendedTokenProvider
+import io.unitycatalog.spark.auth.CredPropsUtil
+import io.unitycatalog.spark.utils.OptionsUtil
 
 import java.net.URI
 import java.util
 import org.apache.hadoop.fs.Path
-import org.apache.hadoop.fs.azurebfs.constants.ConfigurationKeys.{FS_AZURE_ACCOUNT_AUTH_TYPE_PROPERTY_NAME, FS_AZURE_ACCOUNT_IS_HNS_ENABLED, FS_AZURE_SAS_TOKEN_PROVIDER_TYPE}
 import org.apache.spark.internal.Logging
 import org.apache.spark.sql.catalyst.TableIdentifier
 import org.apache.spark.sql.catalyst.analysis.{NoSuchNamespaceException, NoSuchTableException}
@@ -17,6 +17,7 @@ import org.apache.spark.sql.connector.catalog._
 import org.apache.spark.sql.connector.expressions.Transform
 import org.apache.spark.sql.types.{BinaryType, BooleanType, ByteType, DataType, DoubleType, FloatType, IntegerType, LongType, ShortType, StringType, StructField, StructType, TimestampNTZType, TimestampType}
 import org.apache.spark.sql.util.CaseInsensitiveStringMap
+import org.sparkproject.guava.base.Preconditions
 
 import scala.collection.convert.ImplicitConversions._
 import scala.collection.JavaConverters._
@@ -30,29 +31,27 @@ class UCSingleCatalog
   with SupportsNamespaces
   with Logging {
 
+  private[this] var uri: URI = null
+  private[this] var token: String = null
+  private[this] var renewCredEnabled: Boolean = false
   private[this] var apiClient: ApiClient = null;
   private[this] var temporaryCredentialsApi: TemporaryCredentialsApi = null
 
   @volatile private var delegate: TableCatalog = null
 
   override def initialize(name: String, options: CaseInsensitiveStringMap): Unit = {
-    val urlStr = options.get("uri")
-    if (urlStr == null) {
-      throw new IllegalArgumentException(s"uri must be specified for Unity Catalog '$name'")
-    }
-    val url = new URI(urlStr)
-    apiClient = new ApiClient()
-      .setHost(url.getHost)
-      .setPort(url.getPort)
-      .setScheme(url.getScheme)
-    val token = options.get("token")
-    if (token != null && token.nonEmpty) {
-      apiClient = apiClient.setRequestInterceptor { request =>
-        request.header("Authorization", "Bearer " + token)
-      }
-    }
+    val urlStr = options.get(OptionsUtil.URI)
+    Preconditions.checkArgument(urlStr != null,
+      "uri must be specified for Unity Catalog '%s'", name)
+    uri = new URI(urlStr)
+    token = options.get(OptionsUtil.TOKEN)
+    renewCredEnabled = OptionsUtil.getBoolean(options,
+      OptionsUtil.RENEW_CREDENTIAL_ENABLED,
+      OptionsUtil.DEFAULT_RENEW_CREDENTIAL_ENABLED)
+
+    apiClient = ApiClientFactory.createApiClient(uri, token)
     temporaryCredentialsApi = new TemporaryCredentialsApi(apiClient)
-    val proxy = new UCProxy(apiClient, temporaryCredentialsApi)
+    val proxy = new UCProxy(uri, token, renewCredEnabled, apiClient, temporaryCredentialsApi)
     proxy.initialize(name, options)
     if (UCSingleCatalog.LOAD_DELTA_CATALOG.get()) {
       try {
@@ -114,9 +113,17 @@ class UCSingleCatalog
         new GenerateTemporaryPathCredential().url(location).operation(PathOperation.PATH_CREATE_TABLE))
       val newProps = new util.HashMap[String, String]
       newProps.putAll(properties)
-      val credentialProps = UCSingleCatalog.generateCredentialProps(
-        CatalogUtils.stringToURI(location).getScheme, cred)
-      newProps.putAll(credentialProps.asJava)
+
+      val credentialProps = CredPropsUtil.createPathCredProps(
+        renewCredEnabled,
+        CatalogUtils.stringToURI(location).getScheme,
+        uri.toString,
+        token,
+        location,
+        PathOperation.PATH_CREATE_TABLE,
+        cred)
+
+      newProps.putAll(credentialProps)
       // TODO: Delta requires the options to be set twice in the properties, with and without the
       //       `option.` prefix. We should revisit this in Delta.
       val prefix = TableCatalog.OPTION_PREFIX
@@ -173,49 +180,13 @@ class UCSingleCatalog
 object UCSingleCatalog {
   val LOAD_DELTA_CATALOG = ThreadLocal.withInitial[Boolean](() => true)
   val DELTA_CATALOG_LOADED = ThreadLocal.withInitial[Boolean](() => false)
-
-  def generateCredentialProps(
-      scheme: String,
-      temporaryCredentials: TemporaryCredentials): Map[String, String] = {
-    if (scheme == "s3") {
-      val awsCredentials = temporaryCredentials.getAwsTempCredentials
-      Map(
-        // TODO: how to support s3:// properly?
-        "fs.s3a.access.key" -> awsCredentials.getAccessKeyId,
-        "fs.s3a.secret.key" -> awsCredentials.getSecretAccessKey,
-        "fs.s3a.session.token" -> awsCredentials.getSessionToken,
-        "fs.s3a.path.style.access" -> "true",
-        "fs.s3.impl.disable.cache" -> "true",
-        "fs.s3a.impl.disable.cache" -> "true"
-      )
-    } else if (scheme == "gs") {
-      val gcsCredentials = temporaryCredentials.getGcpOauthToken
-      Map(
-        GcsVendedTokenProvider.ACCESS_TOKEN_KEY -> gcsCredentials.getOauthToken,
-        GcsVendedTokenProvider.ACCESS_TOKEN_EXPIRATION_KEY -> temporaryCredentials.getExpirationTime.toString,
-        "fs.gs.create.items.conflict.check.enable" -> "false",
-        "fs.gs.auth.type" -> "ACCESS_TOKEN_PROVIDER",
-        "fs.gs.auth.access.token.provider" -> classOf[GcsVendedTokenProvider].getName,
-        "fs.gs.impl.disable.cache" -> "true"
-      )
-    } else if (scheme == "abfs" || scheme == "abfss") {
-      val azCredentials = temporaryCredentials.getAzureUserDelegationSas
-      Map(
-        FS_AZURE_ACCOUNT_AUTH_TYPE_PROPERTY_NAME -> "SAS",
-        FS_AZURE_ACCOUNT_IS_HNS_ENABLED -> "true",
-        FS_AZURE_SAS_TOKEN_PROVIDER_TYPE -> classOf[AbfsVendedTokenProvider].getName,
-        AbfsVendedTokenProvider.ACCESS_TOKEN_KEY -> azCredentials.getSasToken,
-        "fs.abfs.impl.disable.cache" -> "true",
-        "fs.abfss.impl.disable.cache" -> "true"
-      )
-    } else {
-      Map.empty
-    }
-  }
 }
 
 // An internal proxy to talk to the UC client.
 private class UCProxy(
+    uri: URI,
+    token: String,
+    renewCredEnabled: Boolean,
     apiClient: ApiClient,
     temporaryCredentialsApi: TemporaryCredentialsApi) extends TableCatalog with SupportsNamespaces {
   private[this] var name: String = null
@@ -260,8 +231,9 @@ private class UCProxy(
       StructField(col.getName, DataType.fromDDL(col.getTypeText), col.getNullable)
         .withComment(col.getComment)
     }.toArray
-    val uri = CatalogUtils.stringToURI(t.getStorageLocation)
+    val locationUri = CatalogUtils.stringToURI(t.getStorageLocation)
     val tableId = t.getTableId
+    var tableOp = TableOperation.READ_WRITE
     val temporaryCredentials = {
       try {
         temporaryCredentialsApi
@@ -270,17 +242,28 @@ private class UCProxy(
             //       request READ_WRITE credentials as the server doesn't distinguish between READ and
             //       READ_WRITE credentials as of today. When loading a table, Spark should tell if it's
             //       for read or write, we can request the proper credential after fixing Spark.
-            new GenerateTemporaryTableCredential().tableId(tableId).operation(TableOperation.READ_WRITE)
+            new GenerateTemporaryTableCredential().tableId(tableId).operation(tableOp)
           )
       } catch {
-        case e: ApiException => temporaryCredentialsApi
-          .generateTemporaryTableCredentials(
-            new GenerateTemporaryTableCredential().tableId(tableId).operation(TableOperation.READ)
-          )
+        case _: ApiException =>
+          tableOp = TableOperation.READ
+          temporaryCredentialsApi
+            .generateTemporaryTableCredentials(
+              new GenerateTemporaryTableCredential().tableId(tableId).operation(tableOp)
+            )
       }
     }
-    val extraSerdeProps = UCSingleCatalog.generateCredentialProps(
-      uri.getScheme, temporaryCredentials)
+
+    val extraSerdeProps = CredPropsUtil.createTableCredProps(
+      renewCredEnabled,
+      locationUri.getScheme,
+      uri.toString,
+      token,
+      tableId,
+      tableOp,
+      temporaryCredentials,
+    )
+
     val sparkTable = CatalogTable(
       identifier,
       tableType = if (t.getTableType == TableType.MANAGED) {
@@ -289,7 +272,7 @@ private class UCProxy(
         CatalogTableType.EXTERNAL
       },
       storage = CatalogStorageFormat.empty.copy(
-        locationUri = Some(uri),
+        locationUri = Some(locationUri),
         properties = t.getProperties.asScala.toMap ++ extraSerdeProps
       ),
       schema = StructType(fields),
