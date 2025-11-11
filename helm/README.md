@@ -14,6 +14,7 @@ using the [Helm](https://github.com/helm/helm) package manager.
 - Supports OAuth authentication
 - Supports file H2DB and PostgreSQL as a database
 - Customizable configuration for server and UI using Helm values
+- **S3-compatible storage support** - Works with MinIO, Wasabi, DigitalOcean Spaces, Cloudflare R2, and other S3-compatible services
 
 ## Installing the Chart
 To install the chart with the release name `unitycatalog`:
@@ -21,6 +22,21 @@ To install the chart with the release name `unitycatalog`:
 ```sh
 helm install unitycatalog .
 ```
+
+### Installing with MinIO S3-compatible storage
+To install Unity Catalog configured to use MinIO instead of AWS S3:
+
+```sh
+# Create MinIO credentials secret
+kubectl create secret generic minio-credentials \
+  --from-literal=accessKey=minioadmin \
+  --from-literal=secretKey=minioadmin
+
+# Install with MinIO configuration
+helm install unitycatalog . -f values.minio.yaml
+```
+
+See `values.minio.yaml` for a complete MinIO configuration example with detailed comments.
 
 ## Uninstalling the Chart
 To uninstall the `unitycatalog` chart:
@@ -1099,11 +1115,19 @@ s3:
   region: us-east-1
   awsRoleArn: arn:aws:iam::123456789012:role/my-role
   credentialsSecretName: my-bucket-secret
+  # serviceEndpoint: https://minio.example.com:9000  # Optional: For MinIO/S3-compatible storage
 ```
 
 Credential secret must contain the following keys:
 - `accessKey`: AWS access key
 - `secretKey`: AWS secret key
+
+Optional `serviceEndpoint` field:
+- Use for S3-compatible storage services (MinIO, Wasabi, DigitalOcean Spaces, etc.)
+- Must be a valid HTTP/HTTPS URL (e.g., `https://minio.example.com:9000`)
+- Omit for standard AWS S3 (uses default AWS endpoints)
+
+For MinIO configuration example, see `helm/values.minio.yaml`
 </td>
 		</tr>
 		<tr>

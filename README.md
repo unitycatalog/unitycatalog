@@ -10,6 +10,7 @@ Unity Catalog is the industry’s only universal catalog for data and AI.
   - Multimodal: It supports all your data and AI assets, including tables, files, functions, AI models.
 - **Open source API and implementation** - OpenAPI spec and OSS implementation (Apache 2.0 license). It is also compatible with Apache Hive's metastore API and Apache Iceberg's REST catalog API. Unity Catalog is currently a sandbox project with LF AI and Data Foundation (part of the Linux Foundation).
 - **Unified governance** for data and AI - Govern and secure tabular data, unstructured assets, and AI assets with a single interface.
+- **S3-compatible storage support** - Works with AWS S3, MinIO, Wasabi, DigitalOcean Spaces, Cloudflare R2, and other S3-compatible services. Configure multiple storage providers simultaneously. See [S3-Compatible Storage Configuration](docs/server/configuration.md#s3-and-s3-compatible-storage-configuration) for details.
 
 The current roadmap is available at [Unity Catalog Roadmap](roadmap.md).
 
