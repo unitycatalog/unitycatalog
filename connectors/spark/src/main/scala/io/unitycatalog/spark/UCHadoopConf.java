@@ -22,6 +22,15 @@ public class UCHadoopConf {
   public static final String AZURE_INIT_SAS_TOKEN_EXPIRED_TIME =
       "fs.azure.init.sas.token.expired.time";
 
+  // Copy keys from hadoop-azure here, because we don't want to add extra hadoop-azure dependency.
+  // Same as org.apache.hadoop.fs.azurebfs.constants#FS_AZURE_ACCOUNT_AUTH_TYPE_PROPERTY_NAME
+  public static final String FS_AZURE_ACCOUNT_AUTH_TYPE_PROPERTY_NAME =
+      "fs.azure.account.auth.type";
+  // Same as org.apache.hadoop.fs.azurebfs.constants#FS_AZURE_ACCOUNT_IS_HNS_ENABLED.
+  public static final String FS_AZURE_ACCOUNT_IS_HNS_ENABLED = "fs.azure.account.hns.enabled";
+  // Same as org.apache.hadoop.fs.azurebfs.constants#FS_AZURE_SAS_TOKEN_PROVIDER_TYPE.
+  public static final String FS_AZURE_SAS_TOKEN_PROVIDER_TYPE = "fs.azure.sas.token.provider.type";
+
   // Keys for the initialized Google Cloud Storage OAuth token.
   public static final String GCS_INIT_OAUTH_TOKEN = "fs.gs.init.oauth.token";
   public static final String GCS_INIT_OAUTH_TOKEN_EXPIRATION_TIME =
