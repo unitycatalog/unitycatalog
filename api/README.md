@@ -106,6 +106,7 @@ All URIs are relative to *http://localhost:8080/api/2.1/unity-catalog*
  - [GenerateTemporaryPathCredential](./Models/GenerateTemporaryPathCredential.md)
  - [GenerateTemporaryTableCredential](./Models/GenerateTemporaryTableCredential.md)
  - [GenerateTemporaryVolumeCredential](./Models/GenerateTemporaryVolumeCredential.md)
+ - [GetCommits](./Models/GetCommits.md)
  - [GetCommitsResponse](./Models/GetCommitsResponse.md)
  - [GetMetastoreSummaryResponse](./Models/GetMetastoreSummaryResponse.md)
  - [ListCatalogsResponse](./Models/ListCatalogsResponse.md)
