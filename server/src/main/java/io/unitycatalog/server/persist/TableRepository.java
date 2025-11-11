@@ -151,6 +151,14 @@ public class TableRepository {
             throw new BaseException(
                 ErrorCode.INVALID_ARGUMENT, "MANAGED table creation is not supported yet.");
           }
+          if (TableType.STREAMING_TABLE.equals(tableInfo.getTableType())) {
+            throw new BaseException(
+                ErrorCode.INVALID_ARGUMENT, "STREAMING TABLE creation is not supported yet.");
+          }
+          if (TableType.MATERIALIZED_VIEW.equals(tableInfo.getTableType())) {
+            throw new BaseException(
+                ErrorCode.INVALID_ARGUMENT, "MATERIALIZED VIEW creation is not supported yet.");
+          }
           // only external table creation is supported at this time
           if (tableInfo.getStorageLocation() == null) {
             throw new BaseException(
