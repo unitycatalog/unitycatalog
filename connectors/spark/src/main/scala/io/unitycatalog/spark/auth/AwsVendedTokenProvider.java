@@ -14,7 +14,7 @@ public class AwsVendedTokenProvider extends GenericCredentialProvider
    * Constructor for the hadoop's CredentialProviderListFactory#buildAWSProviderList to initialize.
    */
   public AwsVendedTokenProvider(Configuration conf) {
-    super(conf);
+    initialize(conf);
   }
 
   @Override
