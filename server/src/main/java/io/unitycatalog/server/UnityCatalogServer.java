@@ -66,19 +66,20 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 public class UnityCatalogServer {
+  public static final String SERVER_PROPERTIES_FILE = "etc/conf/server.properties";
   private static final Logger LOGGER = LoggerFactory.getLogger(UnityCatalogServer.class);
   private static final String BASE_PATH = "/api/2.1/unity-catalog/";
   private static final String CONTROL_PATH = "/api/1.0/unity-control/";
   private static final int DEFAULT_PORT = 8080;
-  public static final String SERVER_PROPERTIES_FILE = "etc/conf/server.properties";
-  private final Server server;
-  private final ServerProperties serverProperties;
-  private final SecurityContext securityContext;
 
   static {
     System.setProperty("log4j.configurationFile", "etc/conf/server.log4j2.properties");
     Configurator.initialize(null, "etc/conf/server.log4j2.properties");
   }
+
+  private final Server server;
+  private final ServerProperties serverProperties;
+  private final SecurityContext securityContext;
 
   public UnityCatalogServer() {
     this(UnityCatalogServer.builder());
@@ -93,6 +94,25 @@ public class UnityCatalogServer {
         new SecurityContext(configurationFolder, securityConfiguration, "server", INTERNAL);
     this.serverProperties = unityCatalogServerBuilder.serverProperties;
     this.server = initializeServer(unityCatalogServerBuilder);
+  }
+
+  public static void main(String[] args) {
+    OptionParser options = new OptionParser();
+    options.parse(args);
+    // Start Unity Catalog server
+    UnityCatalogServer unityCatalogServer =
+        UnityCatalogServer.builder().port(options.getPort() + 1).build();
+    unityCatalogServer.printArt();
+    unityCatalogServer.start();
+    // Start URL transcoder
+    Vertx vertx = Vertx.vertx();
+    Verticle transcodeVerticle =
+        new URLTranscoderVerticle(options.getPort(), options.getPort() + 1);
+    vertx.deployVerticle(transcodeVerticle);
+  }
+
+  public static UnityCatalogServer.Builder builder() {
+    return new UnityCatalogServer.Builder();
   }
 
   private void setDefaults(UnityCatalogServer.Builder unityCatalogServerBuilder) {
@@ -197,8 +217,7 @@ public class UnityCatalogServer {
         new TemporaryModelVersionCredentialsService(
             authorizer, cloudCredentialVendor, repositories);
     TemporaryPathCredentialsService temporaryPathCredentialsService =
-        new TemporaryPathCredentialsService(
-            authorizer, cloudCredentialVendor, repositories);
+        new TemporaryPathCredentialsService(authorizer, cloudCredentialVendor, repositories);
 
     JacksonRequestConverterFunction requestConverterFunction =
         new JacksonRequestConverterFunction(
@@ -331,21 +350,6 @@ public class UnityCatalogServer {
     }
   }
 
-  public static void main(String[] args) {
-    OptionParser options = new OptionParser();
-    options.parse(args);
-    // Start Unity Catalog server
-    UnityCatalogServer unityCatalogServer =
-        UnityCatalogServer.builder().port(options.getPort() + 1).build();
-    unityCatalogServer.printArt();
-    unityCatalogServer.start();
-    // Start URL transcoder
-    Vertx vertx = Vertx.vertx();
-    Verticle transcodeVerticle =
-        new URLTranscoderVerticle(options.getPort(), options.getPort() + 1);
-    vertx.deployVerticle(transcodeVerticle);
-  }
-
   public void start() {
     LOGGER.info("Starting Unity Catalog server...");
     server.start().join();
@@ -372,10 +376,6 @@ public class UnityCatalogServer {
             + "  |___/  #\n"
             + "###################################################################\n";
     System.out.println(art);
-  }
-
-  public static UnityCatalogServer.Builder builder() {
-    return new UnityCatalogServer.Builder();
   }
 
   public static class Builder {
