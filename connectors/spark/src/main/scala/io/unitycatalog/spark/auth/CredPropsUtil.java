@@ -1,8 +1,8 @@
 package io.unitycatalog.spark.auth;
 
-import static org.apache.hadoop.fs.azurebfs.constants.ConfigurationKeys.FS_AZURE_ACCOUNT_AUTH_TYPE_PROPERTY_NAME;
-import static org.apache.hadoop.fs.azurebfs.constants.ConfigurationKeys.FS_AZURE_ACCOUNT_IS_HNS_ENABLED;
-import static org.apache.hadoop.fs.azurebfs.constants.ConfigurationKeys.FS_AZURE_SAS_TOKEN_PROVIDER_TYPE;
+import static io.unitycatalog.spark.UCHadoopConf.FS_AZURE_ACCOUNT_AUTH_TYPE_PROPERTY_NAME;
+import static io.unitycatalog.spark.UCHadoopConf.FS_AZURE_ACCOUNT_IS_HNS_ENABLED;
+import static io.unitycatalog.spark.UCHadoopConf.FS_AZURE_SAS_TOKEN_PROVIDER_TYPE;
 
 import io.unitycatalog.client.model.AwsCredentials;
 import io.unitycatalog.client.model.AzureUserDelegationSAS;
@@ -295,18 +295,6 @@ public class CredPropsUtil {
         .build();
   }
 
-  private static Map<String, String> abfsProps(TemporaryCredentials tempCreds) {
-    AzureUserDelegationSAS sas = tempCreds.getAzureUserDelegationSas();
-    return ImmutableMap.<String, String>builder()
-        .put(FS_AZURE_ACCOUNT_AUTH_TYPE_PROPERTY_NAME, "SAS")
-        .put(FS_AZURE_ACCOUNT_IS_HNS_ENABLED, "true")
-        .put(FS_AZURE_SAS_TOKEN_PROVIDER_TYPE, AbfsVendedTokenProvider.class.getName())
-        .put(AbfsVendedTokenProvider.ACCESS_TOKEN_KEY, sas.getSasToken())
-        .put("fs.abfs.impl.disable.cache", "true")
-        .put("fs.abfss.impl.disable.cache", "true")
-        .build();
-  }
-
   public static Map<String, String> createTableCredProps(
       boolean renewCredEnabled,
       String scheme,
@@ -330,7 +318,7 @@ public class CredPropsUtil {
         }
       case "abfss":
       case "abfs":
-        if(renewCredEnabled) {
+        if (renewCredEnabled) {
           return abfsTableTempCredProps(uri, token, tableId, tableOp, tempCreds);
         } else {
           return abfsFixedCredProps(tempCreds);
@@ -363,7 +351,7 @@ public class CredPropsUtil {
         }
       case "abfss":
       case "abfs":
-        if(renewCredEnabled) {
+        if (renewCredEnabled) {
           return abfsPathTempCredProps(uri, token, path, pathOp, tempCreds);
         } else {
           return abfsFixedCredProps(tempCreds);
