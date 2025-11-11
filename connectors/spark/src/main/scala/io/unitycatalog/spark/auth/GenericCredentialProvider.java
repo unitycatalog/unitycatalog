@@ -7,6 +7,7 @@ import io.unitycatalog.client.model.GenerateTemporaryTableCredential;
 import io.unitycatalog.client.model.PathOperation;
 import io.unitycatalog.client.model.TableOperation;
 import io.unitycatalog.client.model.TemporaryCredentials;
+import io.unitycatalog.spark.ApiClientConf;
 import io.unitycatalog.spark.ApiClientFactory;
 import io.unitycatalog.spark.UCHadoopConf;
 import io.unitycatalog.spark.utils.Clock;
@@ -97,8 +98,9 @@ public abstract class GenericCredentialProvider {
     if (tempCredApi == null) {
       synchronized (this) {
         if (tempCredApi == null) {
+          ApiClientConf clientConf = UCHadoopConf.getApiClientConf(conf);
           tempCredApi = new TemporaryCredentialsApi(
-              ApiClientFactory.createApiClient(conf, ucUri, ucToken));
+              ApiClientFactory.createApiClient(clientConf, ucUri, ucToken));
         }
       }
     }
