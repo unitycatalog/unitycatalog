@@ -139,7 +139,27 @@ public class SdkTableCRUDTest extends BaseTableCRUDTest {
     assertThat(stagingTableInfo.getStagingLocation())
         .isEqualTo("file:///tmp/ucroot/tables/" + stagingTableInfo.getId());
 
-    // Step 2: Create a managed table using the staging location
+    // Step 2: Create a managed table that's not DELTA
+    CreateTable createTableRequestNotDelta =
+        new CreateTable()
+            .name(stagingTableName)
+            .catalogName(TestUtils.CATALOG_NAME)
+            .schemaName(TestUtils.SCHEMA_NAME)
+            .columns(columns)
+            .tableType(TableType.MANAGED)
+            .dataSourceFormat(DataSourceFormat.PARQUET)
+            .storageLocation(stagingTableInfo.getStagingLocation())
+            .comment("Table created from staging location");
+    // This should fail with INVALID_ARGUMENT
+    assertThatExceptionOfType(ApiException.class)
+        .isThrownBy(() -> localTablesApi.createTable(createTableRequestNotDelta))
+        .satisfies(
+            ex ->
+                assertThat(ex.getCode())
+                    .isEqualTo(ErrorCode.INVALID_ARGUMENT.getHttpStatus().code()))
+        .withMessageContaining("Managed table creation is only supported for Delta format");
+
+    // Step 3: Create a managed table using the staging location
     CreateTable createTableRequest =
         new CreateTable()
             .name(stagingTableName)

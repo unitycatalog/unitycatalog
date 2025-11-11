@@ -19,7 +19,6 @@ import io.unitycatalog.server.utils.TestUtils;
 import java.io.IOException;
 import java.util.List;
 import java.util.Optional;
-import lombok.SneakyThrows;
 import org.junit.jupiter.api.BeforeEach;
 
 /**
@@ -37,6 +36,25 @@ public abstract class BaseTableCRUDTestEnv extends BaseCRUDTest {
   protected abstract SchemaOperations createSchemaOperations(ServerConfig serverConfig);
 
   protected abstract TableOperations createTableOperations(ServerConfig serverConfig);
+
+  protected static final List<ColumnInfo> COLUMNS =
+      List.of(
+          new ColumnInfo()
+              .name("as_int")
+              .typeText("INTEGER")
+              .typeJson("{\"type\": \"integer\"}")
+              .typeName(ColumnTypeName.INT)
+              .position(0)
+              .comment("Integer column")
+              .nullable(true),
+          new ColumnInfo()
+              .name("as_string")
+              .typeText("VARCHAR(255)")
+              .typeJson("{\"type\": \"string\", \"length\": \"255\"}")
+              .typeName(ColumnTypeName.STRING)
+              .position(1)
+              .comment("String column")
+              .nullable(true));
 
   @BeforeEach
   @Override
@@ -76,43 +94,40 @@ public abstract class BaseTableCRUDTestEnv extends BaseCRUDTest {
     return tableInfo;
   }
 
-  @SneakyThrows
+  protected TableInfo createAndVerifyManagedTable() throws ApiException, IOException {
+    TableInfo managedTable =
+        createTestingTable(
+            TestUtils.TABLE_NAME, TableType.MANAGED, Optional.empty(), tableOperations);
+    assertThat(managedTable.getName()).isEqualTo(TestUtils.TABLE_NAME);
+    assertThat(managedTable.getCatalogName()).isEqualTo(TestUtils.CATALOG_NAME);
+    assertThat(managedTable.getSchemaName()).isEqualTo(TestUtils.SCHEMA_NAME);
+    assertThat(managedTable.getStorageLocation())
+        .isEqualTo("file:///tmp/ucroot/tables/" + managedTable.getTableId());
+    assertThat(managedTable.getTableType()).isEqualTo(TableType.MANAGED);
+    assertThat(managedTable.getDataSourceFormat()).isEqualTo(DataSourceFormat.DELTA);
+    assertThat(managedTable.getCreatedAt()).isNotNull();
+    assertThat(managedTable.getTableId()).isNotNull();
+    return managedTable;
+  }
+
   public static TableInfo createTestingTable(
       String tableName,
       TableType tableType,
       Optional<String> storageLocation,
-      TableOperations tableOperations) {
+      TableOperations tableOperations)
+      throws IOException, ApiException {
     if (tableType == TableType.MANAGED) {
       assert storageLocation.isEmpty();
     } else {
       assert storageLocation.isPresent();
     }
-    ColumnInfo columnInfo1 =
-        new ColumnInfo()
-            .name("as_int")
-            .typeText("INTEGER")
-            .typeJson("{\"type\": \"integer\"}")
-            .typeName(ColumnTypeName.INT)
-            .position(0)
-            .comment("Integer column")
-            .nullable(true);
-
-    ColumnInfo columnInfo2 =
-        new ColumnInfo()
-            .name("as_string")
-            .typeText("VARCHAR(255)")
-            .typeJson("{\"type\": \"string\", \"length\": \"255\"}")
-            .typeName(ColumnTypeName.STRING)
-            .position(1)
-            .comment("String column")
-            .nullable(true);
 
     CreateTable createTableRequest =
         new CreateTable()
             .name(tableName)
             .catalogName(TestUtils.CATALOG_NAME)
             .schemaName(TestUtils.SCHEMA_NAME)
-            .columns(List.of(columnInfo1, columnInfo2))
+            .columns(COLUMNS)
             .properties(TestUtils.PROPERTIES)
             .comment(TestUtils.COMMENT)
             .storageLocation(storageLocation.orElse(null))
