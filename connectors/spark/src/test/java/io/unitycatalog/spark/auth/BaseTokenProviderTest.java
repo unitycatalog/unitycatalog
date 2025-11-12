@@ -65,7 +65,7 @@ public abstract class BaseTokenProviderTest<T extends GenericCredentialProvider>
     assertCred(provider, cred1);
 
     // Advance the clock to trigger renewal, cred2 will be valid.
-    clock.advance(Duration.ofMillis(1000));
+    clock.sleep(Duration.ofMillis(1000));
 
     // Use the cred2 for the 3rd access, since renewal happened.
     assertCred(provider, cred2);
@@ -99,7 +99,7 @@ public abstract class BaseTokenProviderTest<T extends GenericCredentialProvider>
     // cred0 is still valid.
     assertCred(provider, cred0);
 
-    clock.advance(Duration.ofMillis(1000));
+    clock.sleep(Duration.ofMillis(1000));
 
     // cred0 is invalid while cred1 is valid.
     assertCred(provider, cred1);
@@ -107,7 +107,7 @@ public abstract class BaseTokenProviderTest<T extends GenericCredentialProvider>
     // cred1 is still valid.
     assertCred(provider, cred1);
 
-    clock.advance(Duration.ofMillis(1000));
+    clock.sleep(Duration.ofMillis(1000));
 
     // cred1 is expired, while cred2 is valid.
     assertCred(provider, cred2);
@@ -137,7 +137,7 @@ public abstract class BaseTokenProviderTest<T extends GenericCredentialProvider>
     assertCred(provider, cred1);
 
     // Advance the clock to renew.
-    clock.advance(Duration.ofMillis(1000));
+    clock.sleep(Duration.ofMillis(1000));
 
     // Use the cred2 for the 3rd access, since cred1 it's expired.
     assertCred(provider, cred2);
@@ -170,7 +170,7 @@ public abstract class BaseTokenProviderTest<T extends GenericCredentialProvider>
     // cred0 is still valid.
     assertCred(provider, cred0);
 
-    clock.advance(Duration.ofMillis(1000));
+    clock.sleep(Duration.ofMillis(1000));
 
     // cred0 is invalid while cred1 is valid.
     assertCred(provider, cred1);
@@ -178,7 +178,7 @@ public abstract class BaseTokenProviderTest<T extends GenericCredentialProvider>
     // cred1 is still valid.
     assertCred(provider, cred1);
 
-    clock.advance(Duration.ofMillis(1000));
+    clock.sleep(Duration.ofMillis(1000));
 
     // cred1 is expired, while cred2 is valid.
     assertCred(provider, cred2);
@@ -266,7 +266,7 @@ public abstract class BaseTokenProviderTest<T extends GenericCredentialProvider>
     assertCred(providerPathA, pathACred1);
     assertGlobalCache(4, tableACred1, tableBCred1, pathACred1, pathBCred1);
 
-    clock.advance(Duration.ofMillis(1000));
+    clock.sleep(Duration.ofMillis(1000));
 
     // TableA: 3rd access. renew tableACred1 to tableACred2.
     assertCred(providerTableA, tableACred2);
