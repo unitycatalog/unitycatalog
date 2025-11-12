@@ -1,4 +1,4 @@
-# GetCommits
+# DeltaGetCommits
 ## Properties
 
 | Name | Type | Description | Notes |

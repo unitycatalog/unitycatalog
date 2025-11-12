@@ -17,7 +17,7 @@ All URIs are relative to *http://localhost:8080/api/2.1/unity-catalog*
 *CredentialsApi* | [**getCredential**](Apis/CredentialsApi.md#getcredential) | **GET** /credentials/{name} | Get a credential |
 *CredentialsApi* | [**listCredentials**](Apis/CredentialsApi.md#listcredentials) | **GET** /credentials | List credentials |
 *CredentialsApi* | [**updateCredential**](Apis/CredentialsApi.md#updatecredential) | **PATCH** /credentials/{name} | Update a credential |
-| *DeltaCommitsApi* | [**commit**](Apis/DeltaCommitsApi.md#commit) | **POST** /delta/preview/commits | Commit changes to a specified table. The server has a limit defined in config on how many unbackfilled commits it can hold. Clients are expected to do active backfill of the commit after committing to UC. So in most cases the number of unbackfilled commits should be close to zero or one. But if clients misbehave and unbackfilled commits accumulate beyond the limit, server will reject further commits until more backfill is done. WARNING: This API is experimental and may change in future versions.  |
+| *DeltaCommitsApi* | [**commit**](Apis/DeltaCommitsApi.md#commit) | **POST** /delta/preview/commits | Commit changes to a specified Delta table. The server has a limit defined in config on how many unbackfilled commits it can hold. Clients are expected to do active backfill of the commit after committing to UC. So in most cases the number of unbackfilled commits should be close to zero or one. But if clients misbehave and unbackfilled commits accumulate beyond the limit, server will reject further commits until more backfill is done. WARNING: This API is experimental and may change in future versions.  |
 *DeltaCommitsApi* | [**getCommits**](Apis/DeltaCommitsApi.md#getcommits) | **GET** /delta/preview/commits | List unbackfilled Delta table commits. WARNING: This API is experimental and may change in future versions.  |
 | *ExternalLocationsApi* | [**createExternalLocation**](Apis/ExternalLocationsApi.md#createexternallocation) | **POST** /external-locations | Create an external location |
 *ExternalLocationsApi* | [**deleteExternalLocation**](Apis/ExternalLocationsApi.md#deleteexternallocation) | **DELETE** /external-locations/{name} | Delete an external location |
@@ -74,9 +74,6 @@ All URIs are relative to *http://localhost:8080/api/2.1/unity-catalog*
  - [ColumnInfo](./Models/ColumnInfo.md)
  - [ColumnInfos](./Models/ColumnInfos.md)
  - [ColumnTypeName](./Models/ColumnTypeName.md)
- - [Commit](./Models/Commit.md)
- - [CommitInfo](./Models/CommitInfo.md)
- - [CommitMetadataProperties](./Models/CommitMetadataProperties.md)
  - [CreateCatalog](./Models/CreateCatalog.md)
  - [CreateCredentialRequest](./Models/CreateCredentialRequest.md)
  - [CreateExternalLocation](./Models/CreateExternalLocation.md)
@@ -91,6 +88,12 @@ All URIs are relative to *http://localhost:8080/api/2.1/unity-catalog*
  - [CredentialInfo](./Models/CredentialInfo.md)
  - [CredentialPurpose](./Models/CredentialPurpose.md)
  - [DataSourceFormat](./Models/DataSourceFormat.md)
+ - [DeltaCommit](./Models/DeltaCommit.md)
+ - [DeltaCommitInfo](./Models/DeltaCommitInfo.md)
+ - [DeltaCommitMetadataProperties](./Models/DeltaCommitMetadataProperties.md)
+ - [DeltaGetCommits](./Models/DeltaGetCommits.md)
+ - [DeltaGetCommitsResponse](./Models/DeltaGetCommitsResponse.md)
+ - [DeltaMetadata](./Models/DeltaMetadata.md)
  - [Dependency](./Models/Dependency.md)
  - [DependencyList](./Models/DependencyList.md)
  - [ExternalLocationInfo](./Models/ExternalLocationInfo.md)
@@ -106,8 +109,6 @@ All URIs are relative to *http://localhost:8080/api/2.1/unity-catalog*
  - [GenerateTemporaryPathCredential](./Models/GenerateTemporaryPathCredential.md)
  - [GenerateTemporaryTableCredential](./Models/GenerateTemporaryTableCredential.md)
  - [GenerateTemporaryVolumeCredential](./Models/GenerateTemporaryVolumeCredential.md)
- - [GetCommits](./Models/GetCommits.md)
- - [GetCommitsResponse](./Models/GetCommitsResponse.md)
  - [GetMetastoreSummaryResponse](./Models/GetMetastoreSummaryResponse.md)
  - [ListCatalogsResponse](./Models/ListCatalogsResponse.md)
  - [ListCredentialsResponse](./Models/ListCredentialsResponse.md)
@@ -118,7 +119,6 @@ All URIs are relative to *http://localhost:8080/api/2.1/unity-catalog*
  - [ListSchemasResponse](./Models/ListSchemasResponse.md)
  - [ListTablesResponse](./Models/ListTablesResponse.md)
  - [ListVolumesResponseContent](./Models/ListVolumesResponseContent.md)
- - [Metadata](./Models/Metadata.md)
  - [ModelVersionInfo](./Models/ModelVersionInfo.md)
  - [ModelVersionOperation](./Models/ModelVersionOperation.md)
  - [ModelVersionStatus](./Models/ModelVersionStatus.md)
