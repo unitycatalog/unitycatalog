@@ -82,7 +82,7 @@ public class SdkDeltaCommitsCRUDTest extends BaseTableCRUDTestEnv {
   private List<DeltaCommitDAO> getCommitDAOs(UUID tableId) {
     try (Session session = hibernateConfigurator.getSessionFactory().openSession()) {
       String sql =
-          "SELECT * FROM uc_commits WHERE table_id = :tableId ORDER BY commit_version DESC";
+          "SELECT * FROM uc_delta_commits WHERE table_id = :tableId ORDER BY commit_version DESC";
       Query<DeltaCommitDAO> query = session.createNativeQuery(sql, DeltaCommitDAO.class);
       query.setParameter("tableId", tableId);
       return query.getResultList();
@@ -154,9 +154,7 @@ public class SdkDeltaCommitsCRUDTest extends BaseTableCRUDTestEnv {
         createCommitObject(tableInfo.getTableId(), version, tableInfo.getStorageLocation());
     modify.accept(commit);
     assertApiException(
-        () -> deltaCommitsApi.commit(commit),
-        ErrorCode.INVALID_ARGUMENT,
-        containsErrorMessage);
+        () -> deltaCommitsApi.commit(commit), ErrorCode.INVALID_ARGUMENT, containsErrorMessage);
   }
 
   @Test

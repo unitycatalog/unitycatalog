@@ -122,10 +122,10 @@ public class DeltaCommitRepository {
   private List<DeltaCommitDAO> getFirstAndLastCommits(Session session, UUID tableId) {
     // Use native SQL to get the first and last commits since HQL doesn't support UNION ALL
     String sql =
-        "(SELECT * FROM uc_commits WHERE table_id = :tableId "
+        "(SELECT * FROM uc_delta_commits WHERE table_id = :tableId "
             + "ORDER BY commit_version ASC LIMIT 1) "
             + "UNION ALL "
-            + "(SELECT * FROM uc_commits WHERE table_id = :tableId "
+            + "(SELECT * FROM uc_delta_commits WHERE table_id = :tableId "
             + "ORDER BY commit_version DESC LIMIT 1)";
     Query<DeltaCommitDAO> query = session.createNativeQuery(sql, DeltaCommitDAO.class);
     query.setParameter("tableId", tableId);
