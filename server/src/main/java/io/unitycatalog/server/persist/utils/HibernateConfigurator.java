@@ -1,6 +1,25 @@
 package io.unitycatalog.server.persist.utils;
 
+<<<<<<< HEAD
 import io.unitycatalog.server.persist.dao.*;
+=======
+import io.unitycatalog.server.persist.dao.CatalogInfoDAO;
+import io.unitycatalog.server.persist.dao.ColumnInfoDAO;
+import io.unitycatalog.server.persist.dao.CredentialDAO;
+import io.unitycatalog.server.persist.dao.DeltaCommitDAO;
+import io.unitycatalog.server.persist.dao.ExternalLocationDAO;
+import io.unitycatalog.server.persist.dao.FunctionInfoDAO;
+import io.unitycatalog.server.persist.dao.FunctionParameterInfoDAO;
+import io.unitycatalog.server.persist.dao.MetastoreDAO;
+import io.unitycatalog.server.persist.dao.ModelVersionInfoDAO;
+import io.unitycatalog.server.persist.dao.PropertyDAO;
+import io.unitycatalog.server.persist.dao.RegisteredModelInfoDAO;
+import io.unitycatalog.server.persist.dao.SchemaInfoDAO;
+import io.unitycatalog.server.persist.dao.StagingTableDAO;
+import io.unitycatalog.server.persist.dao.TableInfoDAO;
+import io.unitycatalog.server.persist.dao.UserDAO;
+import io.unitycatalog.server.persist.dao.VolumeInfoDAO;
+>>>>>>> 82d4b4e9 (Add basic support of Delta commits for managed tables (#1166))
 import io.unitycatalog.server.utils.ServerProperties;
 import io.unitycatalog.server.utils.ServerProperties.Property;
 import java.io.IOException;
@@ -55,6 +74,7 @@ public class HibernateConfigurator {
       configuration.addAnnotatedClass(MetastoreDAO.class);
       configuration.addAnnotatedClass(CredentialDAO.class);
       configuration.addAnnotatedClass(ExternalLocationDAO.class);
+      configuration.addAnnotatedClass(DeltaCommitDAO.class);
 
       ServiceRegistry serviceRegistry =
           new StandardServiceRegistryBuilder().applySettings(configuration.getProperties()).build();
