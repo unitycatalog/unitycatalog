@@ -4,7 +4,7 @@ import static io.unitycatalog.server.utils.TestUtils.assertApiException;
 import static org.assertj.core.api.AssertionsForClassTypes.assertThat;
 
 import io.unitycatalog.client.ApiException;
-import io.unitycatalog.client.api.CoordinatedCommitsApi;
+import io.unitycatalog.client.api.DeltaCommitsApi;
 import io.unitycatalog.client.model.Commit;
 import io.unitycatalog.client.model.CommitInfo;
 import io.unitycatalog.client.model.CommitMetadataProperties;
@@ -34,7 +34,7 @@ import org.junit.jupiter.api.Test;
 
 public class SdkDeltaCommitsCRUDTest extends BaseTableCRUDTestEnv {
 
-  private CoordinatedCommitsApi coordinatedCommitsApi;
+  private DeltaCommitsApi deltaCommitsApi;
   private TableInfo tableInfo;
 
   @Override
@@ -56,7 +56,7 @@ public class SdkDeltaCommitsCRUDTest extends BaseTableCRUDTestEnv {
   @Override
   public void setUp() {
     super.setUp();
-    coordinatedCommitsApi = new CoordinatedCommitsApi(TestUtils.createApiClient(serverConfig));
+    deltaCommitsApi = new DeltaCommitsApi(TestUtils.createApiClient(serverConfig));
     tableInfo =
         createTestingTable(
             TestUtils.TABLE_NAME, TableType.MANAGED, Optional.empty(), tableOperations);
@@ -106,11 +106,11 @@ public class SdkDeltaCommitsCRUDTest extends BaseTableCRUDTestEnv {
     assertThat(getCommitDAOs(UUID.fromString(tableInfo.getTableId())).size()).isEqualTo(0);
 
     Commit commit1 = createCommitObject(tableInfo.getTableId(), 1L, tableInfo.getStorageLocation());
-    coordinatedCommitsApi.commit(commit1);
+    deltaCommitsApi.commit(commit1);
 
     // Commit the same version again, and it would fail
     assertApiException(
-        () -> coordinatedCommitsApi.commit(commit1),
+        () -> deltaCommitsApi.commit(commit1),
         ErrorCode.ALREADY_EXISTS,
         "Commit version already accepted.");
 
@@ -119,7 +119,7 @@ public class SdkDeltaCommitsCRUDTest extends BaseTableCRUDTestEnv {
         createCommitObject(tableInfo.getTableId(), 1L, tableInfo.getStorageLocation());
     commit1_other_filename.getCommitInfo().setFileName("some_other_filename_" + UUID.randomUUID());
     assertApiException(
-        () -> coordinatedCommitsApi.commit(commit1_other_filename),
+        () -> deltaCommitsApi.commit(commit1_other_filename),
         ErrorCode.ALREADY_EXISTS,
         "Commit version already accepted.");
 
@@ -127,17 +127,17 @@ public class SdkDeltaCommitsCRUDTest extends BaseTableCRUDTestEnv {
 
     // Must commit N+1 on top of N. Committing 3 on top of 1 would fail.
     assertApiException(
-        () -> coordinatedCommitsApi.commit(commit3),
+        () -> deltaCommitsApi.commit(commit3),
         ErrorCode.INVALID_ARGUMENT,
         "Commit version must be the next version after the latest commit");
 
     Commit commit2 = createCommitObject(tableInfo.getTableId(), 2L, tableInfo.getStorageLocation());
-    coordinatedCommitsApi.commit(commit2);
-    coordinatedCommitsApi.commit(commit3);
+    deltaCommitsApi.commit(commit2);
+    deltaCommitsApi.commit(commit3);
 
     // Commit the old version 1 again, and it would fail
     assertApiException(
-        () -> coordinatedCommitsApi.commit(commit1),
+        () -> deltaCommitsApi.commit(commit1),
         ErrorCode.ALREADY_EXISTS,
         "Commit version already accepted.");
 
@@ -154,7 +154,7 @@ public class SdkDeltaCommitsCRUDTest extends BaseTableCRUDTestEnv {
         createCommitObject(tableInfo.getTableId(), version, tableInfo.getStorageLocation());
     modify.accept(commit);
     assertApiException(
-        () -> coordinatedCommitsApi.commit(commit),
+        () -> deltaCommitsApi.commit(commit),
         ErrorCode.INVALID_ARGUMENT,
         containsErrorMessage);
   }
@@ -192,7 +192,7 @@ public class SdkDeltaCommitsCRUDTest extends BaseTableCRUDTestEnv {
 
     // Commit version 1 successfully
     Commit commit1 = createCommitObject(tableInfo.getTableId(), 1L, tableInfo.getStorageLocation());
-    coordinatedCommitsApi.commit(commit1);
+    deltaCommitsApi.commit(commit1);
 
     // Try to commit version 3 when version 2 hasn't been committed yet
     checkCommitInvalidParameter(
@@ -210,6 +210,6 @@ public class SdkDeltaCommitsCRUDTest extends BaseTableCRUDTestEnv {
     Commit commit2 = createCommitObject(tableInfo.getTableId(), 2L, tableInfo.getStorageLocation());
     assertThat(commit2.getTableUri()).contains("file:///");
     commit2.setTableUri(commit2.getTableUri().replace("file:///", "file:/"));
-    coordinatedCommitsApi.commit(commit2);
+    deltaCommitsApi.commit(commit2);
   }
 }
