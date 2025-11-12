@@ -9,32 +9,37 @@ import org.sparkproject.guava.base.Preconditions;
  * programmatically or via {@link UCHadoopConf#setApiClientConf} when communicating through
  * Hadoop configuration. These settings are used by {@link RetryingApiClient} to configure the
  * retry behaviour of the {@link RetryingHttpClient}.</p>
+ *
+ * <p>Retry defaults:</p>
+ * <ul>
+ *   <li>{@link #DEFAULT_REQUEST_MAX_ATTEMPTS}: maximum attempts per request (initial try plus
+ *       retries).</li>
+ *   <li>{@link #DEFAULT_REQUEST_INITIAL_DELAY_MS}: initial backoff delay in milliseconds; later
+ *       attempts scale this using {@code initialDelayMs * multiplier ^ (attempt - 1) *
+ *       (1 ± jitterFactor)}.</li>
+ *   <li>{@link #DEFAULT_REQUEST_DELAY_MULTIPLIER}: exponential multiplier (e.g. {@code 2.0} doubles
+ *       the wait each retry).</li>
+ *   <li>{@link #DEFAULT_REQUEST_DELAY_JITTER_FACTOR}: jitter fraction in {@code [0, 1)} applied to
+ *       the computed delay (e.g. {@code 0.5} randomises by ±50%).</li>
+ * </ul>
  */
 public class ApiClientConf {
 
-  // Default maximum attempts per request (initial try + retries).
   public static final int DEFAULT_REQUEST_MAX_ATTEMPTS = 3;
-  // Default initial backoff delay, in milliseconds. This is the wait time before the second
-  // attempt. Later attempts scale this delay exponentially with the formula:
-  // delay = initialDelayMs * multiplier ^ (attempt - 1) * (1 ± jitterFactor).
   public static final long DEFAULT_REQUEST_INITIAL_DELAY_MS = 500L;
-  // Default exponential backoff multiplier. Each retry multiplies the previous delay by this
-  // factor (e.g. 2.0 doubles the wait).
-  public static final double DEFAULT_REQUEST_MULTIPLIER = 2.0;
-  // Default jitter factor expressed as a fraction of the calculated delay [0, 1). A value of 0.5 means we
-  // randomise by ±50% around the base backoff, i.e. [0.5 * delay, 1.5 * delay].
-  public static final double DEFAULT_REQUEST_JITTER_FACTOR = 0.5;
+  public static final double DEFAULT_REQUEST_DELAY_MULTIPLIER = 2.0;
+  public static final double DEFAULT_REQUEST_DELAY_JITTER_FACTOR = 0.5;
 
   private int requestMaxAttempts;
   private long requestInitialDelayMs;
-  private double requestMultiplier;
-  private double requestJitterFactor;
+  private double requestDelayMultiplier;
+  private double requestDelayJitterFactor;
 
   public ApiClientConf() {
     this.requestMaxAttempts = DEFAULT_REQUEST_MAX_ATTEMPTS;
     this.requestInitialDelayMs = DEFAULT_REQUEST_INITIAL_DELAY_MS;
-    this.requestMultiplier = DEFAULT_REQUEST_MULTIPLIER;
-    this.requestJitterFactor = DEFAULT_REQUEST_JITTER_FACTOR;
+    this.requestDelayMultiplier = DEFAULT_REQUEST_DELAY_MULTIPLIER;
+    this.requestDelayJitterFactor = DEFAULT_REQUEST_DELAY_JITTER_FACTOR;
   }
 
   public int getRequestMaxAttempts() {
@@ -59,25 +64,25 @@ public class ApiClientConf {
     return this;
   }
 
-  public double getRequestMultiplier() {
-    return requestMultiplier;
+  public double getRequestDelayMultiplier() {
+    return requestDelayMultiplier;
   }
 
-  public ApiClientConf setRequestMultiplier(double requestMultiplier) {
-    Preconditions.checkArgument(requestMultiplier > 0,
-        "Retry multiplier must be positive, but got %s", requestMultiplier);
-    this.requestMultiplier = requestMultiplier;
+  public ApiClientConf setRequestDelayMultiplier(double requestDelayMultiplier) {
+    Preconditions.checkArgument(requestDelayMultiplier > 0,
+        "Retry delay multiplier must be positive, but got %s", requestDelayMultiplier);
+    this.requestDelayMultiplier = requestDelayMultiplier;
     return this;
   }
 
-  public double getRequestJitterFactor() {
-    return requestJitterFactor;
+  public double getRequestDelayJitterFactor() {
+    return requestDelayJitterFactor;
   }
 
-  public ApiClientConf setRequestJitterFactor(double requestJitterFactor) {
-    Preconditions.checkArgument(requestJitterFactor >= 0 && requestJitterFactor < 1,
-        "Retry jitter factor must be in [0, 1), but got %s", requestJitterFactor);
-    this.requestJitterFactor = requestJitterFactor;
+  public ApiClientConf setRequestDelayJitterFactor(double requestDelayJitterFactor) {
+    Preconditions.checkArgument(requestDelayJitterFactor >= 0 && requestDelayJitterFactor < 1,
+        "Retry delay jitter factor must be in [0, 1), but got %s", requestDelayJitterFactor);
+    this.requestDelayJitterFactor = requestDelayJitterFactor;
     return this;
   }
 }

@@ -15,7 +15,6 @@ import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.time.Duration;
 import java.time.Instant;
-import java.util.Arrays;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -41,8 +40,8 @@ public class HttpRetryHandlerTest {
         new ApiClientConf()
             .setRequestMaxAttempts(5)
             .setRequestInitialDelayMs(100L)
-            .setRequestMultiplier(2.0)
-            .setRequestJitterFactor(0.0); // Disable jitter
+            .setRequestDelayMultiplier(2.0)
+            .setRequestDelayJitterFactor(0.0); // Disable jitter
 
     HttpClient mockClient = mock(HttpClient.class);
     HttpRequest mockRequest =
@@ -87,8 +86,8 @@ public class HttpRetryHandlerTest {
         new ApiClientConf()
             .setRequestMaxAttempts(2)
             .setRequestInitialDelayMs(100L)
-            .setRequestMultiplier(1.0)
-            .setRequestJitterFactor(jitterFactor);
+            .setRequestDelayMultiplier(1.0)
+            .setRequestDelayJitterFactor(jitterFactor);
 
     HttpClient mockClient = mock(HttpClient.class);
     HttpRequest mockRequest =
@@ -132,8 +131,8 @@ public class HttpRetryHandlerTest {
         new ApiClientConf()
             .setRequestMaxAttempts(3)
             .setRequestInitialDelayMs(50L)
-            .setRequestMultiplier(2.0)
-            .setRequestJitterFactor(0.0); // Disable jitter
+            .setRequestDelayMultiplier(2.0)
+            .setRequestDelayJitterFactor(0.0); // Disable jitter
 
     HttpClient mockClient = mock(HttpClient.class);
     HttpRequest mockRequest =

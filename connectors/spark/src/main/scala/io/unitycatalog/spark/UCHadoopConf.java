@@ -80,10 +80,10 @@ public class UCHadoopConf {
       "fs.unitycatalog.request.retry.maxAttempts";
   public static final String REQUEST_RETRY_INITIAL_DELAY_KEY =
       "fs.unitycatalog.request.retry.initialDelayMs";
-  public static final String REQUEST_RETRY_MULTIPLIER_KEY =
-      "fs.unitycatalog.request.retry.multiplier";
-  public static final String REQUEST_RETRY_JITTER_FACTOR_KEY =
-      "fs.unitycatalog.request.retry.jitterFactor";
+  public static final String REQUEST_RETRY_DELAY_MULTIPLIER_KEY =
+      "fs.unitycatalog.request.retry.delayMultiplier";
+  public static final String REQUEST_RETRY_DELAY_JITTER_FACTOR_KEY =
+      "fs.unitycatalog.request.retry.delayJitterFactor";
 
   // Sets the HTTP request retry configuration in the Hadoop configuration.
   public static void setApiClientConf(Configuration conf, ApiClientConf apiClientConf) {
@@ -92,8 +92,8 @@ public class UCHadoopConf {
     }
     conf.setInt(REQUEST_RETRY_MAX_ATTEMPTS_KEY, apiClientConf.getRequestMaxAttempts());
     conf.setLong(REQUEST_RETRY_INITIAL_DELAY_KEY, apiClientConf.getRequestInitialDelayMs());
-    conf.setDouble(REQUEST_RETRY_MULTIPLIER_KEY, apiClientConf.getRequestMultiplier());
-    conf.setDouble(REQUEST_RETRY_JITTER_FACTOR_KEY, apiClientConf.getRequestJitterFactor());
+    conf.setDouble(REQUEST_RETRY_DELAY_MULTIPLIER_KEY, apiClientConf.getRequestDelayMultiplier());
+    conf.setDouble(REQUEST_RETRY_DELAY_JITTER_FACTOR_KEY, apiClientConf.getRequestDelayJitterFactor());
   }
 
   public static ApiClientConf getApiClientConf(Configuration conf) {
@@ -107,10 +107,10 @@ public class UCHadoopConf {
             REQUEST_RETRY_MAX_ATTEMPTS_KEY, apiClientConf.getRequestMaxAttempts()))
         .setRequestInitialDelayMs(conf.getLong(
             REQUEST_RETRY_INITIAL_DELAY_KEY, apiClientConf.getRequestInitialDelayMs()))
-        .setRequestMultiplier(conf.getDouble(
-            REQUEST_RETRY_MULTIPLIER_KEY, apiClientConf.getRequestMultiplier()))
-        .setRequestJitterFactor(conf.getDouble(
-            REQUEST_RETRY_JITTER_FACTOR_KEY, apiClientConf.getRequestJitterFactor()));
+        .setRequestDelayMultiplier(conf.getDouble(
+            REQUEST_RETRY_DELAY_MULTIPLIER_KEY, apiClientConf.getRequestDelayMultiplier()))
+        .setRequestDelayJitterFactor(conf.getDouble(
+            REQUEST_RETRY_DELAY_JITTER_FACTOR_KEY, apiClientConf.getRequestDelayJitterFactor()));
     return apiClientConf;
   }
 }
