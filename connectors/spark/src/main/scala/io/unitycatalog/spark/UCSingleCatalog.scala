@@ -49,7 +49,7 @@ class UCSingleCatalog
       OptionsUtil.RENEW_CREDENTIAL_ENABLED,
       OptionsUtil.DEFAULT_RENEW_CREDENTIAL_ENABLED)
 
-    apiClient = ApiClientFactory.createApiClient(uri, token)
+    apiClient = ApiClientFactory.createApiClient(new ApiClientConf(), uri, token)
     temporaryCredentialsApi = new TemporaryCredentialsApi(apiClient)
     val proxy = new UCProxy(uri, token, renewCredEnabled, apiClient, temporaryCredentialsApi)
     proxy.initialize(name, options)

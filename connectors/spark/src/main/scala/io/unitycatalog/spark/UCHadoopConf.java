@@ -1,5 +1,7 @@
 package io.unitycatalog.spark;
 
+import org.apache.hadoop.conf.Configuration;
+
 public class UCHadoopConf {
   private UCHadoopConf() {
   }
@@ -50,4 +52,47 @@ public class UCHadoopConf {
   public static final String UC_CREDENTIAL_CACHE_ENABLED_KEY =
       "fs.unitycatalog.credential.cache.enabled";
   public static final boolean UC_CREDENTIAL_CACHE_ENABLED_DEFAULT_VALUE = true;
+
+  // Keys for HTTP request configuration - see ApiClientConf for more details.
+  public static final String REQUEST_RETRY_MAX_ATTEMPTS_KEY =
+      "fs.unitycatalog.request.retry.maxAttempts";
+  public static final String REQUEST_RETRY_INITIAL_DELAY_KEY =
+      "fs.unitycatalog.request.retry.initialDelayMs";
+  public static final String REQUEST_RETRY_DELAY_MULTIPLIER_KEY =
+      "fs.unitycatalog.request.retry.delayMultiplier";
+  public static final String REQUEST_RETRY_DELAY_JITTER_FACTOR_KEY =
+      "fs.unitycatalog.request.retry.delayJitterFactor";
+
+  // Sets the HTTP request retry configuration in the Hadoop configuration.
+  public static void setApiClientConf(Configuration conf, ApiClientConf apiClientConf) {
+    if (conf == null || apiClientConf == null) {
+      return;
+    }
+    conf.setInt(
+        REQUEST_RETRY_MAX_ATTEMPTS_KEY, apiClientConf.getRequestMaxAttempts());
+    conf.setLong(
+        REQUEST_RETRY_INITIAL_DELAY_KEY, apiClientConf.getRequestInitialDelayMs());
+    conf.setDouble(
+        REQUEST_RETRY_DELAY_MULTIPLIER_KEY, apiClientConf.getRequestDelayMultiplier());
+    conf.setDouble(
+        REQUEST_RETRY_DELAY_JITTER_FACTOR_KEY, apiClientConf.getRequestDelayJitterFactor());
+  }
+
+  public static ApiClientConf getApiClientConf(Configuration conf) {
+    ApiClientConf apiClientConf = new ApiClientConf();
+    if (conf == null) {
+      return apiClientConf;
+    }
+
+    apiClientConf
+        .setRequestMaxAttempts(conf.getInt(
+            REQUEST_RETRY_MAX_ATTEMPTS_KEY, apiClientConf.getRequestMaxAttempts()))
+        .setRequestInitialDelayMs(conf.getLong(
+            REQUEST_RETRY_INITIAL_DELAY_KEY, apiClientConf.getRequestInitialDelayMs()))
+        .setRequestDelayMultiplier(conf.getDouble(
+            REQUEST_RETRY_DELAY_MULTIPLIER_KEY, apiClientConf.getRequestDelayMultiplier()))
+        .setRequestDelayJitterFactor(conf.getDouble(
+            REQUEST_RETRY_DELAY_JITTER_FACTOR_KEY, apiClientConf.getRequestDelayJitterFactor()));
+    return apiClientConf;
+  }
 }

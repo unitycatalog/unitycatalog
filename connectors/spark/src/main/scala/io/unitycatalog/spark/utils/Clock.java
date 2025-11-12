@@ -10,10 +10,15 @@ public interface Clock {
   Instant now();
 
   /**
-   * Advances the current time of this clock by the specified duration. After this call,
-   * {@link #now()} should return a time equal to the previous time plus the given {@code duration}.
+   * Sleeps for the given duration.
+   * <p>
+   * For system clock, this performs an actual sleep by calling {@link Thread#sleep}.
+   * For manual clock, this advances the clock time by the given duration without sleeping.
+   *
+   * @param duration the duration to sleep
+   * @throws InterruptedException if the sleep is interrupted (only for system clock)
    */
-  void advance(Duration duration);
+  void sleep(Duration duration) throws InterruptedException;
 
   static Clock systemClock() {
     return SystemClock.SINGLETON;
@@ -32,8 +37,8 @@ public interface Clock {
     }
 
     @Override
-    public void advance(Duration duration) {
-      throw new UnsupportedOperationException("Cannot advance system clock.");
+    public void sleep(Duration duration) throws InterruptedException {
+      Thread.sleep(duration.toMillis());
     }
   }
 
@@ -50,7 +55,8 @@ public interface Clock {
     }
 
     @Override
-    public synchronized void advance(Duration duration) {
+    public synchronized void sleep(Duration duration) {
+      // For manual clock, just advance the time without actual sleeping
       now = now.plus(duration);
     }
   }
