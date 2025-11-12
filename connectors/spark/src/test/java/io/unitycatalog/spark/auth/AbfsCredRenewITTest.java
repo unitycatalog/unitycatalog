@@ -2,7 +2,6 @@ package io.unitycatalog.spark.auth;
 
 import static org.assertj.core.api.AssertionsForClassTypes.assertThat;
 
-import io.unitycatalog.server.service.credential.CredentialContext;
 import io.unitycatalog.server.service.credential.azure.ADLSStorageConfig;
 import io.unitycatalog.server.service.credential.azure.AzureCredential;
 import io.unitycatalog.server.service.credential.azure.AzureCredentialsGenerator;
@@ -19,7 +18,8 @@ public class AbfsCredRenewITTest extends BaseCredRenewITTest {
     serverProperties.put("adls.tenantId.0", "tenantId0");
     serverProperties.put("adls.clientId.0", "clientId0");
     serverProperties.put("adls.clientSecret.0", "clientSecret0");
-    serverProperties.put("adls.credentialsGenerator.0", TimeBasedCredGenerator.class.getName());
+    // Customize the time based credential generator to issue a new credential every 30 sec.
+    serverProperties.put("adls.credentialsGenerator.0", AzureCredGenerator.class.getName());
   }
 
   @Override
@@ -32,20 +32,17 @@ public class AbfsCredRenewITTest extends BaseCredRenewITTest {
     return Map.of("fs.abfs.impl", AbfsCredFileSystem.class.getName());
   }
 
-  public static class TimeBasedCredGenerator implements AzureCredentialsGenerator {
-    // Default constructor for AzureCredentialGenerator reflection.
-    public TimeBasedCredGenerator(ADLSStorageConfig ignore) {
-    }
+  public static class AzureCredGenerator extends TimeBasedCredGenerator<AzureCredential>
+      implements AzureCredentialsGenerator {
+    // Default constructor for AzureCredGenerator reflection.
+    public AzureCredGenerator(ADLSStorageConfig ignore) {}
 
     @Override
-    public AzureCredential generate(CredentialContext credentialContext) {
-      long curTsMillis = testClock().now().toEpochMilli();
-      // Align it into the window [starTs, starTs + DEFAULT_INTERVAL_MILLIS].
-      long startTsMillis = curTsMillis / DEFAULT_INTERVAL_MILLIS * DEFAULT_INTERVAL_MILLIS;
-      String sasToken = String.format("sasToken-%s", startTsMillis);
+    protected AzureCredential newTimeBasedCred(long ts) {
+      String sasToken = String.format("sasToken-%s", ts);
       return AzureCredential.builder()
           .sasToken(sasToken)
-          .expirationTimeInEpochMillis(startTsMillis + DEFAULT_INTERVAL_MILLIS)
+          .expirationTimeInEpochMillis(ts + DEFAULT_INTERVAL_MILLIS)
           .build();
     }
   }

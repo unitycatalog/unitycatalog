@@ -2,7 +2,6 @@ package io.unitycatalog.spark.auth;
 
 import static org.assertj.core.api.AssertionsForClassTypes.assertThat;
 
-import io.unitycatalog.server.service.credential.CredentialContext;
 import io.unitycatalog.server.service.credential.aws.CredentialsGenerator;
 import io.unitycatalog.spark.UCHadoopConf;
 import java.time.Instant;
@@ -24,7 +23,7 @@ public class AwsCredRenewITTest extends BaseCredRenewITTest {
     // Customize the test credential generator to issue a new credential every 30-second interval.
     // This allows us to verify whether credential renewal is functioning correctly by checking
     // if the current credential matches the expected time window.
-    serverProperties.put("s3.credentialsGenerator.0", TimeBasedCredGenerator.class.getName());
+    serverProperties.put("s3.credentialsGenerator.0", AwsCredGenerator.class.getName());
   }
 
   @Override
@@ -37,25 +36,15 @@ public class AwsCredRenewITTest extends BaseCredRenewITTest {
     return Map.of("fs.s3.impl", S3CredFileSystem.class.getName());
   }
 
-  /**
-   * A customized {@link CredentialsGenerator} that generates credentials based on time intervals.
-   * The entire timeline is divided into consecutive 30-second windows, and all requests that fall
-   * within the same window will receive the same credential. This generator is dynamically loaded
-   * by the Unity Catalog server and serves credential generation requests from client REST API
-   * calls.
-   */
-  public static class TimeBasedCredGenerator implements CredentialsGenerator {
-
+  public static class AwsCredGenerator extends TimeBasedCredGenerator<Credentials>
+      implements CredentialsGenerator {
     @Override
-    public Credentials generate(CredentialContext credentialContext) {
-      long curTsMillis = testClock().now().toEpochMilli();
-      // Align it into the window [starTs, starTs + DEFAULT_INTERVAL_MILLIS].
-      long startTsMillis = curTsMillis / DEFAULT_INTERVAL_MILLIS * DEFAULT_INTERVAL_MILLIS;
+    protected Credentials newTimeBasedCred(long ts) {
       return Credentials.builder()
-          .accessKeyId("accessKeyId" + startTsMillis)
-          .secretAccessKey("secretAccessKey" + startTsMillis)
-          .sessionToken("sessionToken" + startTsMillis)
-          .expiration(Instant.ofEpochMilli(startTsMillis + DEFAULT_INTERVAL_MILLIS))
+          .accessKeyId("accessKeyId" + ts)
+          .secretAccessKey("secretAccessKey" + ts)
+          .sessionToken("sessionToken" + ts)
+          .expiration(Instant.ofEpochMilli(ts + DEFAULT_INTERVAL_MILLIS))
           .build();
     }
   }

@@ -11,6 +11,7 @@ import io.unitycatalog.server.base.ServerConfig;
 import io.unitycatalog.server.base.catalog.CatalogOperations;
 import io.unitycatalog.server.sdk.catalog.SdkCatalogOperations;
 import io.unitycatalog.server.sdk.schema.SdkSchemaOperations;
+import io.unitycatalog.server.service.credential.CredentialContext;
 import io.unitycatalog.spark.CredentialTestFileSystem;
 import io.unitycatalog.spark.UCHadoopConf;
 import io.unitycatalog.spark.UCSingleCatalog;
@@ -86,8 +87,7 @@ public abstract class BaseCredRenewITTest extends BaseCRUDTest {
                 "org.apache.spark.sql.delta.catalog.DeltaCatalog")
             .config("spark.hadoop." + UCHadoopConf.UC_TEST_CLOCK_NAME, CLOCK_NAME)
             .config("spark.hadoop." + UCHadoopConf.UC_RENEWAL_LEAD_TIME_KEY, 0L)
-            .config("spark.sql.shuffle.partitions", "1")
-            .config("spark.serializer.debug", "false");
+            .config("spark.sql.shuffle.partitions", "1");
 
     // Set the default catalog properties.
     String testCatalogKey = String.format("spark.sql.catalog.%s", CATALOG_NAME);
@@ -269,8 +269,25 @@ public abstract class BaseCredRenewITTest extends BaseCRUDTest {
         .isEqualTo(ImmutableList.of(1, 2, 3));
   }
 
-  protected List<Row> sql(String statement, Object... args) {
+  private List<Row> sql(String statement, Object... args) {
     return session.sql(String.format(statement, args)).collectAsList();
+  }
+
+  /**
+   * A customized credential provider that generates credentials based on time intervals. The entire
+   * timeline is divided into consecutive 30-second windows, and all requests that fall within the
+   * same window will receive the same credential. This generator is dynamically loaded by the Unity
+   * Catalog server and serves credential generation requests from client REST API calls.
+   */
+  public abstract static class TimeBasedCredGenerator<T> {
+    public T generate(CredentialContext ignored) {
+      long curTsMillis = testClock().now().toEpochMilli();
+      // Align it into the window [starTs, starTs + DEFAULT_INTERVAL_MILLIS].
+      long startTsMillis = curTsMillis / DEFAULT_INTERVAL_MILLIS * DEFAULT_INTERVAL_MILLIS;
+      return newTimeBasedCred(startTsMillis);
+    }
+
+    protected abstract T newTimeBasedCred(long ts);
   }
 
   /**
