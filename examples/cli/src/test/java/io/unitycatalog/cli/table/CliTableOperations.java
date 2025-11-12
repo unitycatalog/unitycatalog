@@ -52,6 +52,10 @@ public class CliTableOperations implements TableOperations {
       argsList.add("--storage_location");
       argsList.add(createTableRequest.getStorageLocation());
     }
+    if (createTableRequest.getTableType() != null) {
+      argsList.add("--table_type");
+      argsList.add(createTableRequest.getTableType().name());
+    }
     String[] args = addServerAndAuthParams(argsList, config);
     JsonNode tableJson = executeCLICommand(args);
     return objectMapper.convertValue(tableJson, TableInfo.class);

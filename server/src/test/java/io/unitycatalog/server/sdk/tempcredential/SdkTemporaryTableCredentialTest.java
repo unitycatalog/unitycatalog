@@ -4,7 +4,17 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import io.unitycatalog.client.ApiException;
 import io.unitycatalog.client.api.TemporaryCredentialsApi;
+<<<<<<< HEAD
 import io.unitycatalog.client.model.*;
+=======
+import io.unitycatalog.client.model.CreateCatalog;
+import io.unitycatalog.client.model.CreateSchema;
+import io.unitycatalog.client.model.GenerateTemporaryTableCredential;
+import io.unitycatalog.client.model.TableInfo;
+import io.unitycatalog.client.model.TableOperation;
+import io.unitycatalog.client.model.TableType;
+import io.unitycatalog.client.model.TemporaryCredentials;
+>>>>>>> 72ddfe72 (Add CLI support for MANAGED tables with CLI tests (#1136))
 import io.unitycatalog.server.base.BaseCRUDTestWithMockCredentials;
 import io.unitycatalog.server.base.ServerConfig;
 import io.unitycatalog.server.base.catalog.CatalogOperations;
@@ -17,6 +27,7 @@ import io.unitycatalog.server.sdk.tables.SdkTableOperations;
 import io.unitycatalog.server.utils.TestUtils;
 import java.io.IOException;
 import java.net.URI;
+import java.util.Optional;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.MethodSource;
@@ -66,7 +77,8 @@ public class SdkTemporaryTableCredentialTest extends BaseCRUDTestWithMockCredent
     URI uri = URI.create(url);
     String tableName = "testtable-" + uri.getScheme();
     TableInfo tableInfo =
-        BaseTableCRUDTest.createTestingTable(tableName, url + "/" + tableName, tableOperations);
+        BaseTableCRUDTest.createTestingTable(
+            tableName, TableType.EXTERNAL, Optional.of(url + "/" + tableName), tableOperations);
 
     GenerateTemporaryTableCredential generateTemporaryTableCredential =
         new GenerateTemporaryTableCredential()
