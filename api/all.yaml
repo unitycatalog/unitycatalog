@@ -38,9 +38,9 @@ tags:
   - name: Metastores
     description: |
       A metastore is the top-level container of objects in Unity Catalog that stores all UC assets.
-  - name: CoordinatedCommits
+  - name: DeltaCommits
     description: |
-      "Coordinated commits" is a Delta tables feature that allows Delta tables to designate a coordinator to coordinate commits. This is Unity Catalog's API to allow Unity Catalog be the commit coordinator for managed tables. (See https://github.com/delta-io/delta/blob/master/protocol_rfcs/catalog-managed.md for more details)
+      "Delta commits" is a Delta tables feature that allows Delta tables to designate a coordinator to coordinate commits. This is Unity Catalog's API to allow Unity Catalog be the commit coordinator for managed tables. (See https://github.com/delta-io/delta/blob/master/protocol_rfcs/catalog-managed.md for more details)
 paths:
   /catalogs:
     post:
@@ -1422,7 +1422,7 @@ paths:
     get:
       operationId: getCommits
       tags:
-        - CoordinatedCommits
+        - DeltaCommits
       summary: |
         List unbackfilled Delta table commits.
         WARNING: This API is experimental and may change in future versions.
@@ -1456,7 +1456,7 @@ paths:
           description: Internal Server Error. An unexpected error occurred on the server.
     post:
       tags:
-        - CoordinatedCommits
+        - DeltaCommits
       summary: |
         Commit changes to a specified table.
         The server has a limit defined in config on how many unbackfilled commits it can hold.
@@ -2947,7 +2947,7 @@ components:
           description: The array of column descriptions.
     CommitInfo:
       type: object
-      description: Represents a coordinated commit version.
+      description: Represents a delta commit version.
       properties:
         version:
           type: integer
