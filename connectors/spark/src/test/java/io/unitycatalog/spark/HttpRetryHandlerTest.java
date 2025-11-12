@@ -126,6 +126,43 @@ public class HttpRetryHandlerTest {
 
   @Test
   @SuppressWarnings("unchecked")
+  public void testMultiplierControlsBackoffScaling() throws IOException, InterruptedException {
+    ApiClientConf conf =
+        new ApiClientConf()
+            .setRequestMaxAttempts(3)
+            .setRequestInitialDelayMs(40L)
+            .setRequestDelayMultiplier(3.0)
+            .setRequestDelayJitterFactor(0.0); // Disable jitter
+
+    HttpClient mockClient = mock(HttpClient.class);
+    HttpRequest mockRequest =
+        HttpRequest.newBuilder().uri(URI.create("http://localhost:8080/api/backoff")).build();
+    HttpResponse.BodyHandler<String> bodyHandler = HttpResponse.BodyHandlers.ofString();
+
+    HttpResponse<String> response503 = createMockResponse(503, "Service Unavailable");
+    HttpResponse<String> response502 = createMockResponse(502, "Bad Gateway");
+    HttpResponse<String> response200 = createMockResponse(200, "Recovered");
+
+    when(mockClient.send(
+            any(HttpRequest.class), ArgumentMatchers.<HttpResponse.BodyHandler<String>>any()))
+        .thenReturn(response503)
+        .thenReturn(response502)
+        .thenReturn(response200);
+
+    Instant start = clock.now();
+    HttpRetryHandler handler = new HttpRetryHandler(conf, clock);
+    HttpResponse<String> result = handler.call(mockClient, mockRequest, bodyHandler);
+
+    verify(mockClient, times(3))
+        .send(any(HttpRequest.class), ArgumentMatchers.<HttpResponse.BodyHandler<String>>any());
+    assertThat(result.statusCode()).isEqualTo(200);
+
+    // Delays: 40ms * 3^(1-1) = 40ms, then 40ms * 3^(2-1) = 120ms.
+    assertThat(clock.now()).isEqualTo(start.plus(Duration.ofMillis(160)));
+  }
+
+  @Test
+  @SuppressWarnings("unchecked")
   public void testRetriesRecoverableException() throws IOException, InterruptedException {
     ApiClientConf conf =
         new ApiClientConf()

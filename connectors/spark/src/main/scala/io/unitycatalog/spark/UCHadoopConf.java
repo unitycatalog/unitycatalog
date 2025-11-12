@@ -90,10 +90,14 @@ public class UCHadoopConf {
     if (conf == null || apiClientConf == null) {
       return;
     }
-    conf.setInt(REQUEST_RETRY_MAX_ATTEMPTS_KEY, apiClientConf.getRequestMaxAttempts());
-    conf.setLong(REQUEST_RETRY_INITIAL_DELAY_KEY, apiClientConf.getRequestInitialDelayMs());
-    conf.setDouble(REQUEST_RETRY_DELAY_MULTIPLIER_KEY, apiClientConf.getRequestDelayMultiplier());
-    conf.setDouble(REQUEST_RETRY_DELAY_JITTER_FACTOR_KEY, apiClientConf.getRequestDelayJitterFactor());
+    conf.setInt(
+        REQUEST_RETRY_MAX_ATTEMPTS_KEY, apiClientConf.getRequestMaxAttempts());
+    conf.setLong(
+        REQUEST_RETRY_INITIAL_DELAY_KEY, apiClientConf.getRequestInitialDelayMs());
+    conf.setDouble(
+        REQUEST_RETRY_DELAY_MULTIPLIER_KEY, apiClientConf.getRequestDelayMultiplier());
+    conf.setDouble(
+        REQUEST_RETRY_DELAY_JITTER_FACTOR_KEY, apiClientConf.getRequestDelayJitterFactor());
   }
 
   public static ApiClientConf getApiClientConf(Configuration conf) {
