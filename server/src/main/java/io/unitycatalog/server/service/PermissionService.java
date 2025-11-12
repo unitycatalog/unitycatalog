@@ -122,16 +122,16 @@ public class PermissionService {
     UUID grandparentId = (parentId != null) ? authorizer.getHierarchyParent(parentId) : null;
 
     boolean isOwner =
-            authorizer.authorize(principalId, metastoreRepository.getMetastoreId(), Privileges.OWNER) ||
-            authorizer.authorize(principalId, resourceId, Privileges.OWNER) ||
-            (parentId != null && authorizer.authorize(principalId, parentId, Privileges.OWNER)) ||
-            (grandparentId != null && authorizer.authorize(principalId, grandparentId, Privileges.OWNER));
+        authorizer.authorize(principalId, metastoreRepository.getMetastoreId(), Privileges.OWNER)
+            || authorizer.authorize(principalId, resourceId, Privileges.OWNER)
+            || (parentId != null && authorizer.authorize(principalId, parentId, Privileges.OWNER))
+            || (grandparentId != null
+                && authorizer.authorize(principalId, grandparentId, Privileges.OWNER));
 
     Map<UUID, List<Privileges>> authorizations =
-            isOwner ?
-                    authorizer.listAuthorizations(resourceId)
-                    :
-                    Map.of(principalId, authorizer.listAuthorizations(principalId, resourceId));
+        isOwner
+            ? authorizer.listAuthorizations(resourceId)
+            : Map.of(principalId, authorizer.listAuthorizations(principalId, resourceId));
 
     List<PrivilegeAssignment> privilegeAssignments =
         authorizations.entrySet().stream()
@@ -139,7 +139,7 @@ public class PermissionService {
                 entry -> {
                   List<Privilege> privileges =
                       entry.getValue().stream()
-                          .map(Privileges::toPrivilege)
+                          .<Privilege>map(Privileges::toPrivilege)
                           // mapping to Privilege may result in nulls since Privilege is a subset of
                           // Privileges, so filter them out.
                           .filter(Objects::nonNull)
@@ -189,7 +189,9 @@ public class PermissionService {
       #authorize(#principal, #metastore, OWNER) ||
       #authorize(#principal, #catalog, OWNER) ||
       (#authorize(#principal, #catalog, USE_CATALOG) && #authorize(#principal, #schema, OWNER)) ||
-      (#authorize(#principal, #catalog, USE_CATALOG) && #authorize(#principal, #schema, USE_SCHEMA) && #authorize(#principal, #table, OWNER))
+      (#authorize(#principal, #catalog, USE_CATALOG) &&
+          #authorize(#principal, #schema, USE_SCHEMA) &&
+          #authorize(#principal, #table, OWNER))
       """)
   @AuthorizeKey(METASTORE)
   public HttpResponse updateTableAuthorization(
@@ -202,7 +204,9 @@ public class PermissionService {
       #authorize(#principal, #metastore, OWNER) ||
       #authorize(#principal, #catalog, OWNER) ||
       (#authorize(#principal, #catalog, USE_CATALOG) && #authorize(#principal, #schema, OWNER)) ||
-      (#authorize(#principal, #catalog, USE_CATALOG) && #authorize(#principal, #schema, USE_SCHEMA) && #authorize(#principal, #function, OWNER))
+      (#authorize(#principal, #catalog, USE_CATALOG) &&
+          #authorize(#principal, #schema, USE_SCHEMA) &&
+          #authorize(#principal, #function, OWNER))
       """)
   @AuthorizeKey(METASTORE)
   public HttpResponse updateFunctionAuthorization(
@@ -215,7 +219,9 @@ public class PermissionService {
       #authorize(#principal, #metastore, OWNER) ||
       #authorize(#principal, #catalog, OWNER) ||
       (#authorize(#principal, #catalog, USE_CATALOG) && #authorize(#principal, #schema, OWNER)) ||
-      (#authorize(#principal, #catalog, USE_CATALOG) && #authorize(#principal, #schema, USE_SCHEMA) && #authorize(#principal, #volume, OWNER))
+      (#authorize(#principal, #catalog, USE_CATALOG) &&
+          #authorize(#principal, #schema, USE_SCHEMA) &&
+          #authorize(#principal, #volume, OWNER))
       """)
   @AuthorizeKey(METASTORE)
   public HttpResponse updateVolumeAuthorization(
@@ -269,7 +275,7 @@ public class PermissionService {
                 entry -> {
                   List<Privilege> privileges =
                       entry.getValue().stream()
-                          .map(Privileges::toPrivilege)
+                          .<Privilege>map(Privileges::toPrivilege)
                           // mapping to Privilege may result in nulls since Privilege is a subset of
                           // Privileges, so filter them out.
                           .filter(Objects::nonNull)
@@ -300,3 +306,4 @@ public class PermissionService {
     return UUID.fromString(Objects.requireNonNull(resourceId));
   }
 }
+

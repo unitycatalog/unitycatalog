@@ -26,15 +26,17 @@ public class CloudCredentialVendor {
   private final GcpCredentialVendor gcpCredentialVendor;
 
   public CloudCredentialVendor(
-          AwsCredentialVendor awsCredentialVendor,
-          AzureCredentialVendor azureCredentialVendor,
-          GcpCredentialVendor gcpCredentialVendor) {
+      AwsCredentialVendor awsCredentialVendor,
+      AzureCredentialVendor azureCredentialVendor,
+      GcpCredentialVendor gcpCredentialVendor) {
     this.awsCredentialVendor = awsCredentialVendor;
     this.azureCredentialVendor = azureCredentialVendor;
     this.gcpCredentialVendor = gcpCredentialVendor;
   }
 
-  public TemporaryCredentials vendCredential(String path, Set<CredentialContext.Privilege> privileges) {
+  public TemporaryCredentials vendCredential(
+      String path,
+      Set<CredentialContext.Privilege> privileges) {
     if (path == null || path.isEmpty()) {
       throw new BaseException(ErrorCode.FAILED_PRECONDITION, "Storage location is null or empty.");
     }
@@ -54,20 +56,22 @@ public class CloudCredentialVendor {
     switch (storageScheme) {
       case URI_SCHEME_ABFS, URI_SCHEME_ABFSS -> {
         AzureCredential azureCredential = vendAzureCredential(context);
-        temporaryCredentials.azureUserDelegationSas(new AzureUserDelegationSAS().sasToken(azureCredential.getSasToken()))
-          .expirationTime(azureCredential.getExpirationTimeInEpochMillis());
+        temporaryCredentials.azureUserDelegationSas(new AzureUserDelegationSAS()
+                .sasToken(azureCredential.getSasToken()))
+            .expirationTime(azureCredential.getExpirationTimeInEpochMillis());
       }
       case URI_SCHEME_GS -> {
         AccessToken gcpToken = vendGcpToken(context);
-        temporaryCredentials.gcpOauthToken(new GcpOauthToken().oauthToken(gcpToken.getTokenValue()))
-          .expirationTime(gcpToken.getExpirationTime().getTime());
+        temporaryCredentials.gcpOauthToken(new GcpOauthToken()
+                .oauthToken(gcpToken.getTokenValue()))
+            .expirationTime(gcpToken.getExpirationTime().getTime());
       }
       case URI_SCHEME_S3 -> {
         Credentials awsSessionCredentials = vendAwsCredential(context);
         temporaryCredentials.awsTempCredentials(new AwsCredentials()
-          .accessKeyId(awsSessionCredentials.accessKeyId())
-          .secretAccessKey(awsSessionCredentials.secretAccessKey())
-          .sessionToken(awsSessionCredentials.sessionToken()));
+            .accessKeyId(awsSessionCredentials.accessKeyId())
+            .secretAccessKey(awsSessionCredentials.secretAccessKey())
+            .sessionToken(awsSessionCredentials.sessionToken()));
       }
     }
 

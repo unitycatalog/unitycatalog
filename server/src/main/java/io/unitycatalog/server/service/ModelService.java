@@ -46,25 +46,29 @@ public class ModelService extends AuthorizedService {
 
   @Post("")
   @AuthorizeExpression("""
-          (#authorizeAny(#principal, #catalog, OWNER, USE_CATALOG) && #authorize(#principal, #schema, OWNER)) ||
-          (#authorizeAny(#principal, #catalog, OWNER, USE_CATALOG) && #authorizeAll(#principal, #schema, USE_SCHEMA, CREATE_MODEL)) ||
-          (#authorizeAny(#principal, #catalog, OWNER, USE_CATALOG) && #authorizeAll(#principal, #schema, USE_SCHEMA, CREATE_FUNCTION))
-          """)
+      (#authorizeAny(#principal, #catalog, OWNER, USE_CATALOG) &&
+          #authorize(#principal, #schema, OWNER)) ||
+      (#authorizeAny(#principal, #catalog, OWNER, USE_CATALOG) &&
+          #authorizeAll(#principal, #schema, USE_SCHEMA, CREATE_MODEL)) ||
+      (#authorizeAny(#principal, #catalog, OWNER, USE_CATALOG) &&
+          #authorizeAll(#principal, #schema, USE_SCHEMA, CREATE_FUNCTION))
+      """)
   public HttpResponse createRegisteredModel(
-          @AuthorizeKeys({
-                  @AuthorizeKey(value = SCHEMA, key = "schema_name"),
-                  @AuthorizeKey(value = CATALOG, key = "catalog_name")
-          })
-          CreateRegisteredModel createRegisteredModel) {
+      @AuthorizeKeys({
+        @AuthorizeKey(value = SCHEMA, key = "schema_name"),
+        @AuthorizeKey(value = CATALOG, key = "catalog_name")
+      })
+      CreateRegisteredModel createRegisteredModel) {
     assert createRegisteredModel != null;
     RegisteredModelInfo createRegisteredModelResponse =
         modelRepository.createRegisteredModel(createRegisteredModel);
-    
-    SchemaInfo schemaInfo =
-        schemaRepository.getSchema(
-            createRegisteredModelResponse.getCatalogName() + "." + createRegisteredModelResponse.getSchemaName());
-    initializeHierarchicalAuthorization(createRegisteredModelResponse.getId(), schemaInfo.getSchemaId());
-    
+
+    String catalogName = createRegisteredModelResponse.getCatalogName();
+    String schemaName = createRegisteredModelResponse.getSchemaName();
+    SchemaInfo schemaInfo = schemaRepository.getSchema(catalogName + "." + schemaName);
+    String modelId = createRegisteredModelResponse.getId();
+    initializeHierarchicalAuthorization(modelId, schemaInfo.getSchemaId());
+
     return HttpResponse.ofJson(createRegisteredModelResponse);
   }
 
@@ -77,26 +81,31 @@ public class ModelService extends AuthorizedService {
       @Param("page_token") Optional<String> pageToken) {
 
     ListRegisteredModelsResponse listRegisteredModelsResponse =
-            modelRepository.listRegisteredModels(catalogName, schemaName, maxResults, pageToken);
+        modelRepository.listRegisteredModels(catalogName, schemaName, maxResults, pageToken);
     filterModels("""
-            #authorize(#principal, #metastore, OWNER) ||
-            #authorize(#principal, #catalog, OWNER) ||
-            (#authorize(#principal, #catalog, USE_CATALOG) && #authorize(#principal, #schema, OWNER)) ||
-            (#authorizeAny(#principal, #registered_model, OWNER, EXECUTE) && #authorize(#principal, #schema, USE_SCHEMA) && #authorize(#principal, #catalog, USE_CATALOG))
-            """, listRegisteredModelsResponse.getRegisteredModels());
+        #authorize(#principal, #metastore, OWNER) ||
+        #authorize(#principal, #catalog, OWNER) ||
+        (#authorize(#principal, #catalog, USE_CATALOG) && #authorize(#principal, #schema, OWNER)) ||
+        (#authorizeAny(#principal, #registered_model, OWNER, EXECUTE) &&
+            #authorize(#principal, #schema, USE_SCHEMA) &&
+            #authorize(#principal, #catalog, USE_CATALOG))
+        """, listRegisteredModelsResponse.getRegisteredModels());
 
     return HttpResponse.ofJson(listRegisteredModelsResponse);
   }
 
   @Get("/{full_name}")
   @AuthorizeExpression("""
-          #authorize(#principal, #metastore, OWNER) ||
-          #authorize(#principal, #catalog, OWNER) ||
-          (#authorize(#principal, #catalog, USE_CATALOG) && #authorize(#principal, #schema, OWNER)) ||
-          (#authorizeAny(#principal, #registered_model, OWNER, EXECUTE) && #authorize(#principal, #schema, USE_SCHEMA) && #authorize(#principal, #catalog, USE_CATALOG))
-          """)
+      #authorize(#principal, #metastore, OWNER) ||
+      #authorize(#principal, #catalog, OWNER) ||
+      (#authorize(#principal, #catalog, USE_CATALOG) && #authorize(#principal, #schema, OWNER)) ||
+      (#authorizeAny(#principal, #registered_model, OWNER, EXECUTE) &&
+          #authorize(#principal, #schema, USE_SCHEMA) &&
+          #authorize(#principal, #catalog, USE_CATALOG))
+      """)
   @AuthorizeKey(METASTORE)
-  public HttpResponse getRegisteredModel(@Param("full_name") @AuthorizeKey(REGISTERED_MODEL) String fullNameArg) {
+  public HttpResponse getRegisteredModel(
+      @Param("full_name") @AuthorizeKey(REGISTERED_MODEL) String fullNameArg) {
     assert fullNameArg != null;
     RegisteredModelInfo registeredModelInfo = modelRepository.getRegisteredModel(fullNameArg);
     return HttpResponse.ofJson(registeredModelInfo);
@@ -104,10 +113,14 @@ public class ModelService extends AuthorizedService {
 
   @Patch("/{full_name}")
   @AuthorizeExpression("""
-          (#authorize(#principal, #registered_model, OWNER) && #authorizeAny(#principal, #schema, OWNER, USE_SCHEMA) && #authorizeAny(#principal, #catalog, OWNER, USE_CATALOG))
-          """)
+      (#authorize(#principal, #registered_model, OWNER) &&
+          #authorizeAny(#principal, #schema, OWNER, USE_SCHEMA) &&
+          #authorizeAny(#principal, #catalog, OWNER, USE_CATALOG))
+      """)
   @AuthorizeKey(METASTORE)
-  public HttpResponse updateRegisteredModel(@Param("full_name") @AuthorizeKey(REGISTERED_MODEL) String fullName, UpdateRegisteredModel updateRegisteredModel) {
+  public HttpResponse updateRegisteredModel(
+      @Param("full_name") @AuthorizeKey(REGISTERED_MODEL) String fullName,
+      UpdateRegisteredModel updateRegisteredModel) {
     assert updateRegisteredModel != null;
     RegisteredModelInfo updateRegisteredModelResponse =
         modelRepository.updateRegisteredModel(fullName, updateRegisteredModel);
@@ -116,34 +129,41 @@ public class ModelService extends AuthorizedService {
 
   @Delete("/{full_name}")
   @AuthorizeExpression("""
-          #authorize(#principal, #metastore, OWNER) ||
-          #authorize(#principal, #catalog, OWNER) ||
-          (#authorize(#principal, #catalog, USE_CATALOG) && #authorize(#principal, #schema, OWNER)) ||
-          (#authorize(#principal, #registered_model, OWNER) && #authorize(#principal, #schema, USE_SCHEMA) && #authorize(#principal, #catalog, USE_CATALOG))
-          """)
+      #authorize(#principal, #metastore, OWNER) ||
+      #authorize(#principal, #catalog, OWNER) ||
+      (#authorize(#principal, #catalog, USE_CATALOG) && #authorize(#principal, #schema, OWNER)) ||
+      (#authorize(#principal, #registered_model, OWNER) &&
+          #authorize(#principal, #schema, USE_SCHEMA) &&
+          #authorize(#principal, #catalog, USE_CATALOG))
+      """)
   @AuthorizeKey(METASTORE)
   public HttpResponse deleteRegisteredModel(
-      @Param("full_name") @AuthorizeKey(REGISTERED_MODEL) String fullName, @Param("force") Optional<Boolean> force) {
+      @Param("full_name") @AuthorizeKey(REGISTERED_MODEL) String fullName,
+      @Param("force") Optional<Boolean> force) {
     RegisteredModelInfo registeredModelInfo = modelRepository.getRegisteredModel(fullName);
     modelRepository.deleteRegisteredModel(fullName, force.orElse(false));
-    
+
     SchemaInfo schemaInfo =
         schemaRepository.getSchema(
             registeredModelInfo.getCatalogName() + "." + registeredModelInfo.getSchemaName());
     removeHierarchicalAuthorizations(registeredModelInfo.getId(), schemaInfo.getSchemaId());
-    
+
     return HttpResponse.of(HttpStatus.OK);
   }
 
   @Post("/versions")
   @AuthorizeExpression("""
-          (#authorize(#principal, #registered_model, OWNER) && #authorizeAny(#principal, #schema, OWNER, USE_SCHEMA) && #authorizeAny(#principal, #catalog, OWNER, USE_CATALOG))
-          """)
-  public HttpResponse createModelVersion(@AuthorizeKeys({
-          @AuthorizeKey(value = CATALOG, key = "catalog_name"),
-          @AuthorizeKey(value = SCHEMA, key = "schema_name"),
-          @AuthorizeKey(value = REGISTERED_MODEL, key = "model_name")})
-          CreateModelVersion createModelVersion) {
+      (#authorize(#principal, #registered_model, OWNER) &&
+          #authorizeAny(#principal, #schema, OWNER, USE_SCHEMA) &&
+          #authorizeAny(#principal, #catalog, OWNER, USE_CATALOG))
+      """)
+  public HttpResponse createModelVersion(
+      @AuthorizeKeys({
+        @AuthorizeKey(value = CATALOG, key = "catalog_name"),
+        @AuthorizeKey(value = SCHEMA, key = "schema_name"),
+        @AuthorizeKey(value = REGISTERED_MODEL, key = "model_name")
+      })
+      CreateModelVersion createModelVersion) {
     assert createModelVersion != null;
     assert createModelVersion.getModelName() != null;
     assert createModelVersion.getCatalogName() != null;
@@ -156,11 +176,13 @@ public class ModelService extends AuthorizedService {
 
   @Get("/{full_name}/versions")
   @AuthorizeExpression("""
-          #authorize(#principal, #metastore, OWNER) ||
-          #authorize(#principal, #catalog, OWNER) ||
-          (#authorize(#principal, #catalog, USE_CATALOG) && #authorize(#principal, #schema, OWNER)) ||
-          (#authorizeAny(#principal, #registered_model, OWNER, EXECUTE) && #authorize(#principal, #schema, USE_SCHEMA) && #authorize(#principal, #catalog, USE_CATALOG))
-          """)
+      #authorize(#principal, #metastore, OWNER) ||
+      #authorize(#principal, #catalog, OWNER) ||
+      (#authorize(#principal, #catalog, USE_CATALOG) && #authorize(#principal, #schema, OWNER)) ||
+      (#authorizeAny(#principal, #registered_model, OWNER, EXECUTE) &&
+          #authorize(#principal, #schema, USE_SCHEMA) &&
+          #authorize(#principal, #catalog, USE_CATALOG))
+      """)
   @AuthorizeKey(METASTORE)
   public HttpResponse listModelVersions(
       @Param("full_name") @AuthorizeKey(REGISTERED_MODEL) String fullName,
@@ -171,14 +193,17 @@ public class ModelService extends AuthorizedService {
 
   @Get("/{full_name}/versions/{version}")
   @AuthorizeExpression("""
-          #authorize(#principal, #metastore, OWNER) ||
-          #authorize(#principal, #catalog, OWNER) ||
-          (#authorize(#principal, #catalog, USE_CATALOG) && #authorize(#principal, #schema, OWNER)) ||
-          (#authorizeAny(#principal, #registered_model, OWNER, EXECUTE) && #authorize(#principal, #schema, USE_SCHEMA) && #authorize(#principal, #catalog, USE_CATALOG))
-          """)
+      #authorize(#principal, #metastore, OWNER) ||
+      #authorize(#principal, #catalog, OWNER) ||
+      (#authorize(#principal, #catalog, USE_CATALOG) && #authorize(#principal, #schema, OWNER)) ||
+      (#authorizeAny(#principal, #registered_model, OWNER, EXECUTE) &&
+          #authorize(#principal, #schema, USE_SCHEMA) &&
+          #authorize(#principal, #catalog, USE_CATALOG))
+      """)
   @AuthorizeKey(METASTORE)
   public HttpResponse getModelVersion(
-      @Param("full_name") @AuthorizeKey(REGISTERED_MODEL) String fullName, @Param("version") Long version) {
+      @Param("full_name") @AuthorizeKey(REGISTERED_MODEL) String fullName,
+      @Param("version") Long version) {
     assert fullName != null && version != null;
     ModelVersionInfo modelVersionInfo = modelRepository.getModelVersion(fullName, version);
     return HttpResponse.ofJson(modelVersionInfo);
@@ -186,11 +211,15 @@ public class ModelService extends AuthorizedService {
 
   @Patch("/{full_name}/versions/{version}")
   @AuthorizeExpression("""
-          (#authorize(#principal, #registered_model, OWNER) && #authorizeAny(#principal, #schema, OWNER, USE_SCHEMA) && #authorizeAny(#principal, #catalog, OWNER, USE_CATALOG))
-          """)
+      (#authorize(#principal, #registered_model, OWNER) &&
+          #authorizeAny(#principal, #schema, OWNER, USE_SCHEMA) &&
+          #authorizeAny(#principal, #catalog, OWNER, USE_CATALOG))
+      """)
   @AuthorizeKey(METASTORE)
-  public HttpResponse updateModelVersion(@Param("full_name") @AuthorizeKey(REGISTERED_MODEL) String fullName, @Param("version") Long version,
-                                         UpdateModelVersion updateModelVersion) {
+  public HttpResponse updateModelVersion(
+      @Param("full_name") @AuthorizeKey(REGISTERED_MODEL) String fullName,
+      @Param("version") Long version,
+      UpdateModelVersion updateModelVersion) {
     assert updateModelVersion != null;
     ModelVersionInfo updateModelVersionResponse =
         modelRepository.updateModelVersion(fullName, version, updateModelVersion);
@@ -199,25 +228,31 @@ public class ModelService extends AuthorizedService {
 
   @Delete("/{full_name}/versions/{version}")
   @AuthorizeExpression("""
-          #authorize(#principal, #metastore, OWNER) ||
-          #authorize(#principal, #catalog, OWNER) ||
-          (#authorize(#principal, #catalog, USE_CATALOG) && #authorize(#principal, #schema, OWNER)) ||
-          (#authorize(#principal, #registered_model, OWNER) && #authorize(#principal, #schema, USE_SCHEMA) && #authorize(#principal, #catalog, USE_CATALOG))
-          """)
+      #authorize(#principal, #metastore, OWNER) ||
+      #authorize(#principal, #catalog, OWNER) ||
+      (#authorize(#principal, #catalog, USE_CATALOG) && #authorize(#principal, #schema, OWNER)) ||
+      (#authorize(#principal, #registered_model, OWNER) &&
+          #authorize(#principal, #schema, USE_SCHEMA) &&
+          #authorize(#principal, #catalog, USE_CATALOG))
+      """)
   @AuthorizeKey(METASTORE)
   public HttpResponse deleteModelVersion(
-      @Param("full_name") @AuthorizeKey(REGISTERED_MODEL) String fullName, @Param("version") Long version) {
+      @Param("full_name") @AuthorizeKey(REGISTERED_MODEL) String fullName,
+      @Param("version") Long version) {
     modelRepository.deleteModelVersion(fullName, version);
     return HttpResponse.of(HttpStatus.OK);
   }
 
   @Patch("/{full_name}/versions/{version}/finalize")
   @AuthorizeExpression("""
-          (#authorize(#principal, #registered_model, OWNER) && #authorizeAny(#principal, #schema, OWNER, USE_SCHEMA) && #authorizeAny(#principal, #catalog, OWNER, USE_CATALOG))
-          """)
+      (#authorize(#principal, #registered_model, OWNER) &&
+          #authorizeAny(#principal, #schema, OWNER, USE_SCHEMA) &&
+          #authorizeAny(#principal, #catalog, OWNER, USE_CATALOG))
+      """)
   @AuthorizeKey(METASTORE)
-  public HttpResponse finalizeModelVersion(@Param("full_name") @AuthorizeKey(REGISTERED_MODEL) String fullName,
-                                           FinalizeModelVersion finalizeModelVersion) {
+  public HttpResponse finalizeModelVersion(
+      @Param("full_name") @AuthorizeKey(REGISTERED_MODEL) String fullName,
+      FinalizeModelVersion finalizeModelVersion) {
     assert finalizeModelVersion != null;
     ModelVersionInfo finalizeModelVersionResponse =
         modelRepository.finalizeModelVersion(finalizeModelVersion);
@@ -229,22 +264,23 @@ public class ModelService extends AuthorizedService {
     UUID principalId = userRepository.findPrincipalId();
 
     evaluator.filter(
-            principalId,
-            expression,
-            entries,
-            ti -> {
-              CatalogInfo catalogInfo = catalogRepository.getCatalog(ti.getCatalogName());
-              SchemaInfo schemaInfo =
-                      schemaRepository.getSchema(ti.getCatalogName() + "." + ti.getSchemaName());
-              return Map.of(
-                      METASTORE,
-                      metastoreRepository.getMetastoreId(),
-                      CATALOG,
-                      UUID.fromString(catalogInfo.getId()),
-                      SCHEMA,
-                      UUID.fromString(schemaInfo.getSchemaId()),
-                      REGISTERED_MODEL,
-                      UUID.fromString(ti.getId()));
-            });
+        principalId,
+        expression,
+        entries,
+        ti -> {
+          CatalogInfo catalogInfo = catalogRepository.getCatalog(ti.getCatalogName());
+          SchemaInfo schemaInfo =
+              schemaRepository.getSchema(ti.getCatalogName() + "." + ti.getSchemaName());
+          return Map.of(
+              METASTORE,
+              metastoreRepository.getMetastoreId(),
+              CATALOG,
+              UUID.fromString(catalogInfo.getId()),
+              SCHEMA,
+              UUID.fromString(schemaInfo.getSchemaId()),
+              REGISTERED_MODEL,
+              UUID.fromString(ti.getId()));
+        });
   }
 }
+

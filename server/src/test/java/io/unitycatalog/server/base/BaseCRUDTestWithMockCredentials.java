@@ -1,7 +1,6 @@
 package io.unitycatalog.server.base;
 
 import static org.assertj.core.api.Assertions.*;
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.mock;
@@ -108,8 +107,10 @@ public abstract class BaseCRUDTestWithMockCredentials extends BaseCRUDTest {
                             argThat(isCredentialContextForCloudPath("gs", path))));
   }
 
-  private ArgumentMatcher<CredentialContext> isCredentialContextForCloudPath(String scheme, String path) {
-    return arg -> arg.getStorageScheme().equals(scheme) && arg.getStorageBase().contains(path);
+  private ArgumentMatcher<CredentialContext> isCredentialContextForCloudPath(
+      String scheme, String path) {
+    return arg -> arg.getStorageScheme().equals(scheme)
+        && arg.getStorageBase().contains(path);
   }
 
   /**
@@ -121,10 +122,10 @@ public abstract class BaseCRUDTestWithMockCredentials extends BaseCRUDTest {
     // test-bucket0 is configured in the properties
     String bucket = isConfiguredPath ? "test-bucket0" : "test-bucket1";
     return switch (scheme) {
-        case "s3" -> "s3://" + bucket + "/test";
-        case "abfs", "abfss" -> "abfs://test-container@" + bucket + ".dfs.core.windows.net/test";
-        case "gs" -> "gs://" + bucket + "/test";
-        default -> throw new IllegalArgumentException("Invalid scheme");
+      case "s3" -> "s3://" + bucket + "/test";
+      case "abfs", "abfss" -> "abfs://test-container@" + bucket + ".dfs.core.windows.net/test";
+      case "gs" -> "gs://" + bucket + "/test";
+      default -> throw new IllegalArgumentException("Invalid scheme");
     };
   }
 

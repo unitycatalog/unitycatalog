@@ -20,28 +20,28 @@ import static io.unitycatalog.server.service.credential.CredentialContext.Privil
 
 @ExceptionHandler(GlobalExceptionHandler.class)
 public class TemporaryPathCredentialsService {
-    private final CloudCredentialVendor cloudCredentialVendor;
+  private final CloudCredentialVendor cloudCredentialVendor;
 
-    public TemporaryPathCredentialsService(CloudCredentialVendor cloudCredentialVendor) {
-        this.cloudCredentialVendor = cloudCredentialVendor;
-    }
+  public TemporaryPathCredentialsService(CloudCredentialVendor cloudCredentialVendor) {
+    this.cloudCredentialVendor = cloudCredentialVendor;
+  }
 
-    @Post("")
-    @AuthorizeExpression("#authorize(#principal, #metastore, OWNER)")
-    @AuthorizeKey(METASTORE)
-    public HttpResponse generateTemporaryPathCredential(
-        GenerateTemporaryPathCredential generateTemporaryPathCredential) {
-        return HttpResponse.ofJson(
-                cloudCredentialVendor.vendCredential(
-                        generateTemporaryPathCredential.getUrl(),
-                        pathOperationToPrivileges(generateTemporaryPathCredential.getOperation())));
-    }
+  @Post("")
+  @AuthorizeExpression("#authorize(#principal, #metastore, OWNER)")
+  @AuthorizeKey(METASTORE)
+  public HttpResponse generateTemporaryPathCredential(
+      GenerateTemporaryPathCredential generateTemporaryPathCredential) {
+    return HttpResponse.ofJson(
+        cloudCredentialVendor.vendCredential(
+            generateTemporaryPathCredential.getUrl(),
+            pathOperationToPrivileges(generateTemporaryPathCredential.getOperation())));
+  }
 
-    private Set<CredentialContext.Privilege> pathOperationToPrivileges(PathOperation pathOperation) {
-        return switch (pathOperation) {
-            case PATH_READ -> Set.of(SELECT);
-            case PATH_READ_WRITE, PATH_CREATE_TABLE -> Set.of(SELECT, UPDATE);
-            case UNKNOWN_PATH_OPERATION -> Collections.emptySet();
-        };
-    }
+  private Set<CredentialContext.Privilege> pathOperationToPrivileges(PathOperation pathOperation) {
+    return switch (pathOperation) {
+      case PATH_READ -> Set.of(SELECT);
+      case PATH_READ_WRITE, PATH_CREATE_TABLE -> Set.of(SELECT, UPDATE);
+      case UNKNOWN_PATH_OPERATION -> Collections.emptySet();
+    };
+  }
 }
