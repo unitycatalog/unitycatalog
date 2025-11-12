@@ -98,7 +98,7 @@ public class ServerProperties {
       String accessKey = getProperty("s3.accessKey." + i);
       String secretKey = getProperty("s3.secretKey." + i);
       String sessionToken = getProperty("s3.sessionToken." + i);
-      String credentialGenerator = getProperty("s3.credentialGenerator." + i);
+      String credentialsGenerator = getProperty("s3.credentialsGenerator." + i);
       if ((bucketPath == null || region == null || awsRoleArn == null)
           && (accessKey == null || secretKey == null || sessionToken == null)) {
         break;
@@ -111,7 +111,7 @@ public class ServerProperties {
               .accessKey(accessKey)
               .secretKey(secretKey)
               .sessionToken(sessionToken)
-              .credentialGenerator(credentialGenerator)
+              .credentialsGenerator(credentialsGenerator)
               .build();
       s3BucketConfigMap.put(bucketPath, s3StorageConfig);
       i++;
@@ -146,7 +146,7 @@ public class ServerProperties {
       String clientId = getProperty("adls.clientId." + i);
       String clientSecret = getProperty("adls.clientSecret." + i);
       String testMode = getProperty("adls.testMode." + i);
-      String credentialGenerator = getProperty("adls.credentialGenerator." + i);
+      String credentialsGenerator = getProperty("adls.credentialsGenerator." + i);
       if (storageAccountName == null
           || tenantId == null
           || clientId == null
@@ -161,7 +161,7 @@ public class ServerProperties {
               .clientId(clientId)
               .clientSecret(clientSecret)
               .testMode(testMode != null && testMode.equalsIgnoreCase("true"))
-              .credentialGenerator(credentialGenerator)
+              .credentialsGenerator(credentialsGenerator)
               .build());
       i++;
     }

@@ -10,6 +10,6 @@ public class ADLSStorageConfig {
   private String tenantId;
   private String clientId;
   private String clientSecret;
-  private String credentialGenerator;
+  private String credentialsGenerator;
   private boolean testMode;
 }

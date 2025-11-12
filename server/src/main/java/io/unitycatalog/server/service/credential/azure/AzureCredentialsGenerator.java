@@ -16,13 +16,13 @@ import java.net.URI;
 import java.time.OffsetDateTime;
 import java.util.Set;
 
-public interface AzureCredentialGenerator {
+public interface AzureCredentialsGenerator {
   AzureCredential generate(CredentialContext ctx);
 
-  class StaticAzureCredentialGenerator implements AzureCredentialGenerator {
+  class StaticAzureCredentialsGenerator implements AzureCredentialsGenerator {
     private final ADLSStorageConfig config;
 
-    public StaticAzureCredentialGenerator(ADLSStorageConfig config) {
+    public StaticAzureCredentialsGenerator(ADLSStorageConfig config) {
       this.config = config;
     }
 
@@ -38,10 +38,10 @@ public interface AzureCredentialGenerator {
     }
   }
 
-  class DatalakeCredentialGenerator implements AzureCredentialGenerator {
+  class DatalakeCredentialsGenerator implements AzureCredentialsGenerator {
     private final TokenCredential tokenCredential;
 
-    public DatalakeCredentialGenerator(ADLSStorageConfig config) {
+    public DatalakeCredentialsGenerator(ADLSStorageConfig config) {
       if (config == null) {
         this.tokenCredential = new DefaultAzureCredentialBuilder().build();
       } else {

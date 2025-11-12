@@ -5,7 +5,7 @@ import static org.assertj.core.api.AssertionsForClassTypes.assertThat;
 import io.unitycatalog.server.service.credential.CredentialContext;
 import io.unitycatalog.server.service.credential.azure.ADLSStorageConfig;
 import io.unitycatalog.server.service.credential.azure.AzureCredential;
-import io.unitycatalog.server.service.credential.azure.AzureCredentialGenerator;
+import io.unitycatalog.server.service.credential.azure.AzureCredentialsGenerator;
 import io.unitycatalog.spark.UCHadoopConf;
 import java.util.Map;
 
@@ -19,7 +19,7 @@ public class AbfsCredRenewITTest extends BaseCredRenewITTest {
     serverProperties.put("adls.tenantId.0", "tenantId0");
     serverProperties.put("adls.clientId.0", "clientId0");
     serverProperties.put("adls.clientSecret.0", "clientSecret0");
-    serverProperties.put("adls.credentialGenerator.0", TimeBasedCredGenerator.class.getName());
+    serverProperties.put("adls.credentialsGenerator.0", TimeBasedCredGenerator.class.getName());
   }
 
   @Override
@@ -32,9 +32,10 @@ public class AbfsCredRenewITTest extends BaseCredRenewITTest {
     return Map.of("fs.abfs.impl", AbfsCredFileSystem.class.getName());
   }
 
-  public static class TimeBasedCredGenerator implements AzureCredentialGenerator {
+  public static class TimeBasedCredGenerator implements AzureCredentialsGenerator {
     // Default constructor for AzureCredentialGenerator reflection.
-    public TimeBasedCredGenerator(ADLSStorageConfig ignore) {}
+    public TimeBasedCredGenerator(ADLSStorageConfig ignore) {
+    }
 
     @Override
     public AzureCredential generate(CredentialContext credentialContext) {
