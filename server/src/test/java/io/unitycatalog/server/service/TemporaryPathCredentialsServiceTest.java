@@ -222,7 +222,21 @@ public class TemporaryPathCredentialsServiceTest extends BaseAccessControlCRUDTe
             "s3://bucket/" + TEST_CATALOG,
             CATALOG_USER,
             HttpStatus.FORBIDDEN,
-            PathOperation.PATH_READ_WRITE));
+            PathOperation.PATH_READ_WRITE),
+
+        // Test with local path format
+        Arguments.of(
+            "/" + TEST_CATALOG + "/" + TEST_SCHEMA + "/table",
+            SCHEMA_USER,
+            HttpStatus.OK,
+            PathOperation.PATH_CREATE_TABLE),
+
+        Arguments.of(
+            "file:/" + TEST_CATALOG + "/" + TEST_SCHEMA + "/table",
+            SCHEMA_USER,
+            HttpStatus.OK,
+            PathOperation.PATH_CREATE_TABLE
+        ));
   }
 
   @Override
