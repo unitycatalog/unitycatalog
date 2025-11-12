@@ -10,6 +10,7 @@ import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.time.Duration;
 import java.time.Instant;
+import java.util.Iterator;
 import java.util.Set;
 
 /**
@@ -32,8 +33,13 @@ public class HttpRetryHandler {
   private final long initialDelayMs;
   private final double multiplier;
   private final double jitterFactor;
+  private final Iterator<Double> jitterOverrides;
 
   public HttpRetryHandler(ApiClientConf conf, Clock clock) {
+    this(conf, clock, /* jitterOverrides = */ null);
+  }
+
+  HttpRetryHandler(ApiClientConf conf, Clock clock, Iterator<Double> jitterOverrides) {
     Preconditions.checkNotNull(conf, "ApiClientConf must not be null");
     Preconditions.checkNotNull(clock, "Clock must not be null");
     this.clock = clock;
@@ -41,6 +47,7 @@ public class HttpRetryHandler {
     this.initialDelayMs = conf.getRequestInitialDelayMs();
     this.multiplier = conf.getRequestMultiplier();
     this.jitterFactor = conf.getRequestJitterFactor();
+    this.jitterOverrides = jitterOverrides;
   }
 
   public <T> HttpResponse<T> call(
@@ -87,7 +94,7 @@ public class HttpRetryHandler {
 
   private void sleepWithBackoff(int attempt) throws InterruptedException {
     long baseDelay = (long) (initialDelayMs * Math.pow(multiplier, attempt - 1));
-    double jitter = jitterFactor == 0 ? 0 : (Math.random() - 0.5) * 2 * jitterFactor;
+    double jitter = jitterFactor == 0 ? 0 : nextJitter();
     long delay = (long) (baseDelay * (1 + jitter));
     if (delay <= 0) {
       return;
@@ -99,6 +106,18 @@ public class HttpRetryHandler {
       Thread.currentThread().interrupt();
       throw interrupted;
     }
+  }
+
+  // Returns the next jitter value from the overrides or a random value between [-jitterFactor, jitterFactor]
+  // It is used to add a random delay to the calculated base delay to avoid thundering herds.
+  // For example, if jitterFactor is 0.5, the jitter value will be between [-0.5, 0.5] and the actual delay
+  // will be between [0.5 * baseDelay, 1.5 * baseDelay].
+  private double nextJitter() {
+    if (jitterOverrides != null && jitterOverrides.hasNext()) {
+      return jitterOverrides.next();
+    }
+    return (Math.random() - 0.5) * 2 * jitterFactor;
+    // return (jitterOverrides.next() - 0.5) * 2 * jitterFactor;
   }
 
   private boolean isRecoverableException(Throwable e) {

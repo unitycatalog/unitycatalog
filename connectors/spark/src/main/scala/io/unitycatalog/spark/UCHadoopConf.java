@@ -75,17 +75,13 @@ public class UCHadoopConf {
       "fs.unitycatalog.credential.cache.enabled";
   public static final boolean UC_CREDENTIAL_CACHE_ENABLED_DEFAULT_VALUE = true;
 
-  // Keys for HTTP request configuration
-  // Maximum number of times a request is retried before surfacing an error to the caller.
+  // Keys for HTTP request configuration - see ApiClientConf for more details.
   public static final String REQUEST_RETRY_MAX_ATTEMPTS_KEY =
       "fs.unitycatalog.request.retry.maxAttempts";
-  // Base delay (in milliseconds) used before the first retry; later retries back off from this.
   public static final String REQUEST_RETRY_INITIAL_DELAY_KEY =
       "fs.unitycatalog.request.retry.initialDelayMs";
-  // Multiplier applied to the delay after each retry, producing exponential backoff.
   public static final String REQUEST_RETRY_MULTIPLIER_KEY =
       "fs.unitycatalog.request.retry.multiplier";
-  // Randomisation factor (0-1) applied to the computed delay to avoid thundering herds.
   public static final String REQUEST_RETRY_JITTER_FACTOR_KEY =
       "fs.unitycatalog.request.retry.jitterFactor";
 

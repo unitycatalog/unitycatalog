@@ -21,8 +21,8 @@ public class ApiClientConf {
   // Default exponential backoff multiplier. Each retry multiplies the previous delay by this
   // factor (e.g. 2.0 doubles the wait).
   public static final double DEFAULT_REQUEST_MULTIPLIER = 2.0;
-  // Default jitter factor expressed as a fraction of the calculated delay. A value of 0.5 means we
-  // randomise by ±50% around the base backoff.
+  // Default jitter factor expressed as a fraction of the calculated delay [0, 1). A value of 0.5 means we
+  // randomise by ±50% around the base backoff, i.e. [0.5 * delay, 1.5 * delay].
   public static final double DEFAULT_REQUEST_JITTER_FACTOR = 0.5;
 
   private int requestMaxAttempts;
