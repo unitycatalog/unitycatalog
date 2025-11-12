@@ -12,7 +12,6 @@ import software.amazon.awssdk.auth.credentials.AwsSessionCredentials;
 import software.amazon.awssdk.services.sts.model.Credentials;
 
 public class AwsCredRenewITTest extends BaseCredRenewITTest {
-  private static final String CREDENTIALS_GENERATOR = TimeBasedCredentialsGenerator.class.getName();
   private static final String SCHEME = "s3";
 
   @Override
@@ -25,7 +24,7 @@ public class AwsCredRenewITTest extends BaseCredRenewITTest {
     // Customize the test credential generator to issue a new credential every 30-second interval.
     // This allows us to verify whether credential renewal is functioning correctly by checking
     // if the current credential matches the expected time window.
-    serverProperties.put("s3.credentialsGenerator.0", CREDENTIALS_GENERATOR);
+    serverProperties.put("s3.credentialsGenerator.0", TimeBasedCredGenerator.class.getName());
   }
 
   @Override
@@ -45,7 +44,7 @@ public class AwsCredRenewITTest extends BaseCredRenewITTest {
    * by the Unity Catalog server and serves credential generation requests from client REST API
    * calls.
    */
-  public static class TimeBasedCredentialsGenerator implements CredentialsGenerator {
+  public static class TimeBasedCredGenerator implements CredentialsGenerator {
 
     @Override
     public Credentials generate(CredentialContext credentialContext) {

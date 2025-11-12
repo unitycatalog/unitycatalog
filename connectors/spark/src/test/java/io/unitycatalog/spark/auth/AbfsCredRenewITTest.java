@@ -2,6 +2,10 @@ package io.unitycatalog.spark.auth;
 
 import static org.assertj.core.api.AssertionsForClassTypes.assertThat;
 
+import io.unitycatalog.server.service.credential.CredentialContext;
+import io.unitycatalog.server.service.credential.azure.ADLSStorageConfig;
+import io.unitycatalog.server.service.credential.azure.AzureCredential;
+import io.unitycatalog.server.service.credential.azure.AzureCredentialGenerator;
 import io.unitycatalog.spark.UCHadoopConf;
 import java.util.Map;
 
@@ -15,7 +19,7 @@ public class AbfsCredRenewITTest extends BaseCredRenewITTest {
     serverProperties.put("adls.tenantId.0", "tenantId0");
     serverProperties.put("adls.clientId.0", "clientId0");
     serverProperties.put("adls.clientSecret.0", "clientSecret0");
-    serverProperties.put("adls.testMode.0", "true");
+    serverProperties.put("adls.credentialGenerator.0", TimeBasedCredGenerator.class.getName());
   }
 
   @Override
@@ -26,6 +30,23 @@ public class AbfsCredRenewITTest extends BaseCredRenewITTest {
   @Override
   protected Map<String, String> catalogExtraProps() {
     return Map.of("fs.abfs.impl", AbfsCredFileSystem.class.getName());
+  }
+
+  public static class TimeBasedCredGenerator implements AzureCredentialGenerator {
+    // Default constructor for AzureCredentialGenerator reflection.
+    public TimeBasedCredGenerator(ADLSStorageConfig ignore) {}
+
+    @Override
+    public AzureCredential generate(CredentialContext credentialContext) {
+      long curTsMillis = testClock().now().toEpochMilli();
+      // Align it into the window [starTs, starTs + DEFAULT_INTERVAL_MILLIS].
+      long startTsMillis = curTsMillis / DEFAULT_INTERVAL_MILLIS * DEFAULT_INTERVAL_MILLIS;
+      String sasToken = String.format("sasToken-%s", startTsMillis);
+      return AzureCredential.builder()
+          .sasToken(sasToken)
+          .expirationTimeInEpochMillis(startTsMillis + DEFAULT_INTERVAL_MILLIS)
+          .build();
+    }
   }
 
   public static class AbfsCredFileSystem extends CredRenewFileSystem<AbfsVendedTokenProvider> {
@@ -48,7 +69,7 @@ public class AbfsCredRenewITTest extends BaseCredRenewITTest {
     @Override
     protected void assertCredentials(AbfsVendedTokenProvider provider, long ts) {
       String sasToken = provider.getSASToken("testAccount", "testFs", "testPath", "testOperation");
-      assertThat(sasToken).isEqualTo("sasToken" + ts);
+      assertThat(sasToken).isEqualTo("sasToken-" + ts);
     }
   }
 }
