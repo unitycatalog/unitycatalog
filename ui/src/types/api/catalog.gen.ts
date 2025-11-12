@@ -184,6 +184,64 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  '/views': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * List views
+     * @description Gets the list of all available views under the parent catalog and schema.
+     *     There is no guarantee of a specific ordering of the elements in the array.
+     *
+     */
+    get: operations['listViews'];
+    put?: never;
+    /**
+     * Create a view. Only regular view creation is supported.
+     *     WARNING: This API is experimental and will change in future versions.
+     * @description Creates a new view instance.
+     *     WARNING: This API is experimental and will change in future versions.
+     *
+     */
+    post: operations['createView'];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/views/{full_name}': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Full name of the view. */
+        full_name: string;
+      };
+      cookie?: never;
+    };
+    /**
+     * Get a view
+     * @description Gets a view for a specific catalog and schema.
+     *
+     */
+    get: operations['getView'];
+    put?: never;
+    post?: never;
+    /**
+     * Delete a view
+     * @description Deletes a view from the specified parent catalog and schema.
+     *
+     */
+    delete: operations['deleteView'];
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   '/volumes': {
     parameters: {
       query?: never;
@@ -792,6 +850,67 @@ export interface components {
       /** @description Opaque token to retrieve the next page of results. Absent if there are no more pages.
        *     __page_token__ should be set to this value for the next request (for the next page of results).
        *      */
+      next_page_token?: string;
+    };
+    ViewInfo: {
+      /** @description Name of view, relative to parent schema. */
+      name?: string;
+      /** @description Name of parent catalog. */
+      catalog_name?: string;
+      /** @description Name of parent schema relative to its parent catalog. */
+      schema_name?: string;
+      view_type?: components['schemas']['TableType'];
+      /** @description The array of __ColumnInfo__ definitions of the views's columns. */
+      columns?: components['schemas']['ColumnInfo'][];
+      /** @description View query SQL text. */
+      sql_query?: string;
+      /** @description User-provided free-form text description. */
+      comment?: string;
+      properties?: components['schemas']['SecurablePropertiesMap'];
+      /** @description Username of current owner of view. */
+      owner?: string;
+      /**
+       * Format: int64
+       * @description Time at which this view was created, in epoch milliseconds.
+       *
+       */
+      created_at?: number;
+      /** @description Username of view creator. */
+      created_by?: string;
+      /**
+       * Format: int64
+       * @description Time at which this view was last modified, in epoch milliseconds.
+       *
+       */
+      updated_at?: number;
+      /** @description Username of user who last modified the view. */
+      updated_by?: string;
+      /** @description Unique identifier for the view. */
+      view_id?: string;
+    };
+    CreateView: {
+      /** @description Name of view, relative to parent schema. */
+      name: string;
+      /** @description Name of parent catalog. */
+      catalog_name: string;
+      /** @description Name of parent schema relative to its parent catalog. */
+      schema_name: string;
+      view_type: components['schemas']['TableType'];
+      /** @description The array of __ColumnInfo__ definitions of the view's columns. */
+      columns: components['schemas']['ColumnInfo'][];
+      /** @description View query SQL text. */
+      sql_query?: string;
+      /** @description User-provided free-form text description. */
+      comment?: string;
+      properties?: components['schemas']['SecurablePropertiesMap'];
+    };
+    ListViewsResponse: {
+      /** @description An array of view information objects. */
+      views?: components['schemas']['ViewInfo'][];
+      /**
+       * @description Opaque token to retrieve the next page of results. Absent if there are no more pages.
+       *     __page_token__ should be set to this value for the next request (for the next page of results).
+       */
       next_page_token?: string;
     };
     SchemaInfo: {
@@ -1733,6 +1852,110 @@ export interface operations {
       };
     };
   };
+  listViews: {
+    parameters: {
+      query: {
+        /** @description Name of parent catalog for views of interest. */
+        catalog_name: string;
+        /** @description Parent schema of views. */
+        schema_name: string;
+        /**
+         * @description Maximum number of views to return.
+         *     - when set to a value greater than 0, the page length is the minimum of this value and a server configured value;
+         *     - when set to 0, the page length is set to a server configured value;
+         *     - when set to a value less than 0, an invalid parameter error is returned;
+         */
+        max_results?: number;
+        /** @description Opaque token to send for the next page of results (pagination). */
+        page_token?: string;
+      };
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description The views list was successfully retrieved. */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['ListViewsResponse'];
+        };
+      };
+    };
+  };
+  createView: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: {
+      content: {
+        'application/json': components['schemas']['CreateView'];
+      };
+    };
+    responses: {
+      /** @description The new view was successfully created. */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['ViewInfo'];
+        };
+      };
+    };
+  };
+  getView: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Full name of the view. */
+        full_name: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description The view was successfully retrieved. */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['ViewInfo'];
+        };
+      };
+    };
+  };
+  deleteView: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Full name of the view. */
+        full_name: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description The view was successfully deleted. */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': unknown;
+        };
+      };
+    };
+  };
   listVolumes: {
     parameters: {
       query: {
@@ -2474,6 +2697,7 @@ export enum TableType {
   MANAGED = 'MANAGED',
   EXTERNAL = 'EXTERNAL',
   METRIC_VIEW = 'METRIC_VIEW',
+  VIEW = 'VIEW',
 }
 export enum DataSourceFormat {
   DELTA = 'DELTA',
@@ -2557,6 +2781,7 @@ export enum SecurableType {
   catalog = 'catalog',
   schema = 'schema',
   table = 'table',
+  view = 'view',
   function = 'function',
   volume = 'volume',
   registered_model = 'registered_model',
@@ -2567,6 +2792,7 @@ export enum Privilege {
   CREATE_SCHEMA = 'CREATE SCHEMA',
   USE_SCHEMA = 'USE SCHEMA',
   CREATE_TABLE = 'CREATE TABLE',
+  CREATE_VIEW = 'CREATE_VIEW',
   SELECT = 'SELECT',
   MODIFY = 'MODIFY',
   CREATE_FUNCTION = 'CREATE FUNCTION',
