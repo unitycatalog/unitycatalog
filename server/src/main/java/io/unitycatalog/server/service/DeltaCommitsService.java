@@ -10,7 +10,7 @@ import io.unitycatalog.server.auth.annotation.AuthorizeKey;
 import io.unitycatalog.server.auth.annotation.AuthorizeKeys;
 import io.unitycatalog.server.exception.GlobalExceptionHandler;
 import io.unitycatalog.server.model.Commit;
-import io.unitycatalog.server.persist.CommitRepository;
+import io.unitycatalog.server.persist.DeltaCommitRepository;
 import io.unitycatalog.server.persist.Repositories;
 import lombok.SneakyThrows;
 
@@ -21,14 +21,14 @@ import static io.unitycatalog.server.model.SecurableType.TABLE;
  * REST API service for coordinated commits to Delta tables in Unity Catalog.
  */
 @ExceptionHandler(GlobalExceptionHandler.class)
-public class CoordinatedCommitsService extends AuthorizedService {
+public class DeltaCommitsService extends AuthorizedService {
 
-  private final CommitRepository commitRepository;
+  private final DeltaCommitRepository deltaCommitRepository;
 
   @SneakyThrows
-  public CoordinatedCommitsService(UnityCatalogAuthorizer authorizer, Repositories repositories) {
+  public DeltaCommitsService(UnityCatalogAuthorizer authorizer, Repositories repositories) {
     super(authorizer, repositories.getUserRepository());
-    this.commitRepository = repositories.getCommitRepository();
+    this.deltaCommitRepository = repositories.getDeltaCommitRepository();
   }
 
   @Post("")
@@ -41,7 +41,7 @@ public class CoordinatedCommitsService extends AuthorizedService {
   public HttpResponse postCommit(
       @AuthorizeKeys({@AuthorizeKey(value = TABLE, key = "table_id")})
       Commit commit) {
-    commitRepository.postCommit(commit);
+    deltaCommitRepository.postCommit(commit);
     return HttpResponse.of(HttpStatus.OK);
   }
 

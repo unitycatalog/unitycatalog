@@ -9,7 +9,7 @@ import io.unitycatalog.server.model.CommitMetadataProperties;
 import io.unitycatalog.server.model.DataSourceFormat;
 import io.unitycatalog.server.model.Metadata;
 import io.unitycatalog.server.model.TableType;
-import io.unitycatalog.server.persist.dao.CommitDAO;
+import io.unitycatalog.server.persist.dao.DeltaCommitDAO;
 import io.unitycatalog.server.persist.dao.TableInfoDAO;
 import io.unitycatalog.server.persist.utils.FileOperations;
 import io.unitycatalog.server.persist.utils.TransactionManager;
@@ -26,12 +26,12 @@ import org.hibernate.SessionFactory;
 import org.hibernate.query.Query;
 
 /** Repository for managing coordinated commits for managed Delta tables in Unity Catalog. */
-public class CommitRepository {
+public class DeltaCommitRepository {
 
   private final SessionFactory sessionFactory;
   private final ServerProperties serverProperties;
 
-  public CommitRepository(SessionFactory sessionFactory, ServerProperties serverProperties) {
+  public DeltaCommitRepository(SessionFactory sessionFactory, ServerProperties serverProperties) {
     this.sessionFactory = sessionFactory;
     this.serverProperties = serverProperties;
   }
@@ -49,12 +49,12 @@ public class CommitRepository {
             throw new BaseException(ErrorCode.NOT_FOUND, "Table not found: " + commit.getTableId());
           }
           validateTableForCommit(commit, tableInfoDAO);
-          List<CommitDAO> firstAndLastCommits = getFirstAndLastCommits(session, tableId);
+          List<DeltaCommitDAO> firstAndLastCommits = getFirstAndLastCommits(session, tableId);
           if (firstAndLastCommits.isEmpty()) {
             handleOnboardingCommit(session, tableId, tableInfoDAO, commit);
           } else {
-            CommitDAO firstCommit = firstAndLastCommits.get(0);
-            CommitDAO lastCommit = firstAndLastCommits.get(1);
+            DeltaCommitDAO firstCommit = firstAndLastCommits.get(0);
+            DeltaCommitDAO lastCommit = firstAndLastCommits.get(1);
             assert firstCommit.getCommitVersion() <= lastCommit.getCommitVersion();
             if (commit.getCommitInfo() == null) {
               // This is already checked in validateCommit()
@@ -70,6 +70,13 @@ public class CommitRepository {
         /* readOnly = */ false);
   }
 
+  /**
+   * Handle an onboarding commit which is the very first commit sent to UC, and it's commiting a
+   * version. This commit does not do backfill because there is no version prior to this commit.
+   * This may be the first ever commit of the table since creation, or that the previous commits
+   * were just FS commits. In any way, the table will use UC as commit coordinator starting from
+   * this commit.
+   */
   private static void handleOnboardingCommit(
       Session session, UUID tableId, TableInfoDAO tableInfoDAO, Commit commit) {
     CommitInfo commitInfo = commit.getCommitInfo();
@@ -81,8 +88,12 @@ public class CommitRepository {
     // TODO: update table metadata
   }
 
+  /**
+   * Handle a normal commit which is commiting a version, and it's not the first version sent to UC.
+   * Optionally in the same commit it may also report backfilled version and/or update metadata.
+   */
   private static void handleNormalCommit(
-      Session session, UUID tableId, Commit commit, CommitDAO lastCommit) {
+      Session session, UUID tableId, Commit commit, DeltaCommitDAO lastCommit) {
     CommitInfo commitInfo = Objects.requireNonNull(commit.getCommitInfo());
     long lastCommitVersion = lastCommit.getCommitVersion();
     long newCommitVersion = commitInfo.getVersion();
@@ -104,11 +115,11 @@ public class CommitRepository {
   }
 
   private static void saveCommit(Session session, UUID tableId, CommitInfo commitInfo) {
-    CommitDAO commitDAO = CommitDAO.from(tableId, commitInfo);
-    session.persist(commitDAO);
+    DeltaCommitDAO deltaCommitDAO = DeltaCommitDAO.from(tableId, commitInfo);
+    session.persist(deltaCommitDAO);
   }
 
-  private List<CommitDAO> getFirstAndLastCommits(Session session, UUID tableId) {
+  private List<DeltaCommitDAO> getFirstAndLastCommits(Session session, UUID tableId) {
     // Use native SQL to get the first and last commits since HQL doesn't support UNION ALL
     String sql =
         "(SELECT * FROM uc_commits WHERE table_id = :tableId "
@@ -116,11 +127,11 @@ public class CommitRepository {
             + "UNION ALL "
             + "(SELECT * FROM uc_commits WHERE table_id = :tableId "
             + "ORDER BY commit_version DESC LIMIT 1)";
-    Query<CommitDAO> query = session.createNativeQuery(sql, CommitDAO.class);
+    Query<DeltaCommitDAO> query = session.createNativeQuery(sql, DeltaCommitDAO.class);
     query.setParameter("tableId", tableId);
-    List<CommitDAO> result = query.getResultList();
+    List<DeltaCommitDAO> result = query.getResultList();
     // Sort to ensure the first commit is at index 0
-    result.sort(Comparator.comparing(CommitDAO::getCommitVersion));
+    result.sort(Comparator.comparing(DeltaCommitDAO::getCommitVersion));
     return result;
   }
 
@@ -172,6 +183,7 @@ public class CommitRepository {
                 .orElse(false);
 
         if (metadata.getDescription() == null && !hasProperties && !hasSchema) {
+          // metadata should only be set when there is an actual change in metadata.
           throw new BaseException(
               ErrorCode.INVALID_ARGUMENT,
               "At least one of description, properties, or schema must be set in commit.metadata");

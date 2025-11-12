@@ -25,7 +25,9 @@ import org.hibernate.annotations.UuidGenerator;
 @Builder
 @AllArgsConstructor
 @NoArgsConstructor
-public class CommitDAO {
+public class DeltaCommitDAO {
+  // This id is never used to identify a commit. We only look for commits by table_id and
+  // optionally commit_version. But this is a required field as a unique ID in the database.
   @Id
   @UuidGenerator
   @Column(name = "id", columnDefinition = "BINARY(16)")
@@ -52,8 +54,8 @@ public class CommitDAO {
   @Column(name = "is_backfilled_latest_commit", nullable = false)
   private Boolean isBackfilledLatestCommit;
 
-  public static CommitDAO from(UUID tableId, CommitInfo commitInfo) {
-    return CommitDAO.builder()
+  public static DeltaCommitDAO from(UUID tableId, CommitInfo commitInfo) {
+    return DeltaCommitDAO.builder()
         .tableId(tableId)
         .commitVersion(commitInfo.getVersion())
         .commitFilename(commitInfo.getFileName())

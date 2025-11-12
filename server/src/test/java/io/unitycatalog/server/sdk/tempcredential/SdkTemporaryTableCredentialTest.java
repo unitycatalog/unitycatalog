@@ -21,7 +21,6 @@ import io.unitycatalog.server.sdk.catalog.SdkCatalogOperations;
 import io.unitycatalog.server.sdk.schema.SdkSchemaOperations;
 import io.unitycatalog.server.sdk.tables.SdkTableOperations;
 import io.unitycatalog.server.utils.TestUtils;
-import java.io.IOException;
 import java.net.URI;
 import java.util.Optional;
 import org.junit.jupiter.api.BeforeEach;
@@ -67,7 +66,7 @@ public class SdkTemporaryTableCredentialTest extends BaseCRUDTestWithMockCredent
   @ParameterizedTest
   @MethodSource("getArgumentsForParameterizedTests")
   public void testGenerateTemporaryCredentialsWhereConfIsProvided(
-      String scheme, boolean isConfiguredPath) throws ApiException, IOException {
+      String scheme, boolean isConfiguredPath) throws ApiException {
     createCatalogAndSchema();
     String url = getTestCloudPath(scheme, isConfiguredPath);
     URI uri = URI.create(url);

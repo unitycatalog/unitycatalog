@@ -140,8 +140,7 @@ public abstract class BaseTableCRUDTest extends BaseTableCRUDTestEnv {
         .isInstanceOf(Exception.class);
   }
 
-  protected List<TableInfo> createMultipleTestingTables(int numberOfTables)
-      throws IOException, ApiException {
+  protected List<TableInfo> createMultipleTestingTables(int numberOfTables) {
     List<TableInfo> createdTables = new ArrayList<>();
     for (int i = numberOfTables; i > 0; i--) {
       String tableName = TestUtils.TABLE_NAME + "_" + i;

@@ -1,7 +1,7 @@
-package io.unitycatalog.server.sdk.coordinatedcommits;
+package io.unitycatalog.server.sdk.deltacommits;
 
+import static io.unitycatalog.server.utils.TestUtils.assertApiException;
 import static org.assertj.core.api.AssertionsForClassTypes.assertThat;
-import static org.junit.jupiter.api.Assertions.assertThrows;
 
 import io.unitycatalog.client.ApiException;
 import io.unitycatalog.client.api.CoordinatedCommitsApi;
@@ -17,7 +17,7 @@ import io.unitycatalog.server.base.schema.SchemaOperations;
 import io.unitycatalog.server.base.table.BaseTableCRUDTestEnv;
 import io.unitycatalog.server.base.table.TableOperations;
 import io.unitycatalog.server.exception.ErrorCode;
-import io.unitycatalog.server.persist.dao.CommitDAO;
+import io.unitycatalog.server.persist.dao.DeltaCommitDAO;
 import io.unitycatalog.server.sdk.catalog.SdkCatalogOperations;
 import io.unitycatalog.server.sdk.schema.SdkSchemaOperations;
 import io.unitycatalog.server.sdk.tables.SdkTableOperations;
@@ -32,7 +32,7 @@ import org.hibernate.query.Query;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
-public class SdkCoordinatedCommitsCRUDTest extends BaseTableCRUDTestEnv {
+public class SdkDeltaCommitsCRUDTest extends BaseTableCRUDTestEnv {
 
   private CoordinatedCommitsApi coordinatedCommitsApi;
   private TableInfo tableInfo;
@@ -79,17 +79,17 @@ public class SdkCoordinatedCommitsCRUDTest extends BaseTableCRUDTestEnv {
                     new CommitMetadataProperties().properties(Map.of("ucTableId", tableId))));
   }
 
-  private List<CommitDAO> getCommitDAOs(UUID tableId) {
+  private List<DeltaCommitDAO> getCommitDAOs(UUID tableId) {
     try (Session session = hibernateConfigurator.getSessionFactory().openSession()) {
       String sql =
           "SELECT * FROM uc_commits WHERE table_id = :tableId ORDER BY commit_version DESC";
-      Query<CommitDAO> query = session.createNativeQuery(sql, CommitDAO.class);
+      Query<DeltaCommitDAO> query = session.createNativeQuery(sql, DeltaCommitDAO.class);
       query.setParameter("tableId", tableId);
       return query.getResultList();
     }
   }
 
-  private void checkCommitDAO(CommitDAO dao, Commit commit) {
+  private void checkCommitDAO(DeltaCommitDAO dao, Commit commit) {
     CommitInfo commitInfo = commit.getCommitInfo();
     assertThat(commitInfo).isNotNull();
     assertThat(dao).isNotNull();
@@ -109,42 +109,43 @@ public class SdkCoordinatedCommitsCRUDTest extends BaseTableCRUDTestEnv {
     coordinatedCommitsApi.commit(commit1);
 
     // Commit the same version again, and it would fail
-    ApiException ex = assertThrows(ApiException.class, () -> coordinatedCommitsApi.commit(commit1));
-    assertThat(ex.getCode()).isEqualTo(ErrorCode.ALREADY_EXISTS.getHttpStatus().code());
-    assertThat(ex.getMessage()).contains("Commit version already accepted.");
+    assertApiException(
+        () -> coordinatedCommitsApi.commit(commit1),
+        ErrorCode.ALREADY_EXISTS,
+        "Commit version already accepted.");
 
     // Commit the same version again with a different filename: the same failure
     Commit commit1_other_filename =
         createCommitObject(tableInfo.getTableId(), 1L, tableInfo.getStorageLocation());
     commit1_other_filename.getCommitInfo().setFileName("some_other_filename_" + UUID.randomUUID());
-    ex =
-        assertThrows(
-            ApiException.class, () -> coordinatedCommitsApi.commit(commit1_other_filename));
-    assertThat(ex.getCode()).isEqualTo(ErrorCode.ALREADY_EXISTS.getHttpStatus().code());
-    assertThat(ex.getMessage()).contains("Commit version already accepted.");
+    assertApiException(
+        () -> coordinatedCommitsApi.commit(commit1_other_filename),
+        ErrorCode.ALREADY_EXISTS,
+        "Commit version already accepted.");
 
     Commit commit3 = createCommitObject(tableInfo.getTableId(), 3L, tableInfo.getStorageLocation());
 
     // Must commit N+1 on top of N. Committing 3 on top of 1 would fail.
-    ex = assertThrows(ApiException.class, () -> coordinatedCommitsApi.commit(commit3));
-    assertThat(ex.getCode()).isEqualTo(ErrorCode.INVALID_ARGUMENT.getHttpStatus().code());
-    assertThat(ex.getMessage())
-        .contains("Commit version must be the next version after the latest commit");
+    assertApiException(
+        () -> coordinatedCommitsApi.commit(commit3),
+        ErrorCode.INVALID_ARGUMENT,
+        "Commit version must be the next version after the latest commit");
 
     Commit commit2 = createCommitObject(tableInfo.getTableId(), 2L, tableInfo.getStorageLocation());
     coordinatedCommitsApi.commit(commit2);
     coordinatedCommitsApi.commit(commit3);
 
     // Commit the old version 1 again, and it would fail
-    ex = assertThrows(ApiException.class, () -> coordinatedCommitsApi.commit(commit1));
-    assertThat(ex.getCode()).isEqualTo(ErrorCode.ALREADY_EXISTS.getHttpStatus().code());
-    assertThat(ex.getMessage()).contains("Commit version already accepted.");
+    assertApiException(
+        () -> coordinatedCommitsApi.commit(commit1),
+        ErrorCode.ALREADY_EXISTS,
+        "Commit version already accepted.");
 
-    List<CommitDAO> commitDAOs = getCommitDAOs(UUID.fromString(tableInfo.getTableId()));
-    assertThat(commitDAOs.size()).isEqualTo(3);
-    checkCommitDAO(commitDAOs.get(0), commit3);
-    checkCommitDAO(commitDAOs.get(1), commit2);
-    checkCommitDAO(commitDAOs.get(2), commit1);
+    List<DeltaCommitDAO> deltaCommitDAOS = getCommitDAOs(UUID.fromString(tableInfo.getTableId()));
+    assertThat(deltaCommitDAOS.size()).isEqualTo(3);
+    checkCommitDAO(deltaCommitDAOS.get(0), commit3);
+    checkCommitDAO(deltaCommitDAOS.get(1), commit2);
+    checkCommitDAO(deltaCommitDAOS.get(2), commit1);
   }
 
   private void checkCommitInvalidParameter(
@@ -152,9 +153,10 @@ public class SdkCoordinatedCommitsCRUDTest extends BaseTableCRUDTestEnv {
     Commit commit =
         createCommitObject(tableInfo.getTableId(), version, tableInfo.getStorageLocation());
     modify.accept(commit);
-    ApiException ex = assertThrows(ApiException.class, () -> coordinatedCommitsApi.commit(commit));
-    assertThat(ex.getCode()).isEqualTo(ErrorCode.INVALID_ARGUMENT.getHttpStatus().code());
-    assertThat(ex.getMessage()).contains(containsErrorMessage);
+    assertApiException(
+        () -> coordinatedCommitsApi.commit(commit),
+        ErrorCode.INVALID_ARGUMENT,
+        containsErrorMessage);
   }
 
   @Test

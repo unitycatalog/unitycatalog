@@ -16,7 +16,6 @@ import io.unitycatalog.server.base.BaseCRUDTest;
 import io.unitycatalog.server.base.ServerConfig;
 import io.unitycatalog.server.base.schema.SchemaOperations;
 import io.unitycatalog.server.utils.TestUtils;
-import java.io.IOException;
 import java.util.List;
 import java.util.Optional;
 import lombok.SneakyThrows;
@@ -80,7 +79,7 @@ public abstract class BaseTableCRUDTestEnv extends BaseCRUDTest {
     }
   }
 
-  protected TableInfo createAndVerifyExternalTable() throws IOException, ApiException {
+  protected TableInfo createAndVerifyExternalTable() {
     TableInfo tableInfo =
         createTestingTable(
             TestUtils.TABLE_NAME,
@@ -95,8 +94,7 @@ public abstract class BaseTableCRUDTestEnv extends BaseCRUDTest {
     return tableInfo;
   }
 
-  @SneakyThrows
-  public static TableInfo createAndVerifyManagedTable() throws ApiException, IOException {
+  protected TableInfo createAndVerifyManagedTable() {
     TableInfo managedTable =
         createTestingTable(
             TestUtils.TABLE_NAME, TableType.MANAGED, Optional.empty(), tableOperations);
