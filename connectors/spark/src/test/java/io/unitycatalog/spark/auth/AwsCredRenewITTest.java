@@ -12,6 +12,7 @@ import software.amazon.awssdk.services.sts.model.Credentials;
 
 public class AwsCredRenewITTest extends BaseCredRenewITTest {
   private static final String SCHEME = "s3";
+  private static final String CREDENTIALS_GENERATOR_CLASS = AwsCredentialsProvider.class.getName();
 
   @Override
   protected void setUpProperties() {
@@ -23,7 +24,7 @@ public class AwsCredRenewITTest extends BaseCredRenewITTest {
     // Customize the test credential generator to issue a new credential every 30-second interval.
     // This allows us to verify whether credential renewal is functioning correctly by checking
     // if the current credential matches the expected time window.
-    serverProperties.put("s3.credentialsGenerator.0", AwsCredGenerator.class.getName());
+    serverProperties.put("s3.credentialsGenerator.0", CREDENTIALS_GENERATOR_CLASS);
   }
 
   @Override
