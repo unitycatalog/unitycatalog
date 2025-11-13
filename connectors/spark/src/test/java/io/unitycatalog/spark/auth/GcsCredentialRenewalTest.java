@@ -45,6 +45,8 @@ import org.sparkproject.guava.collect.Iterators;
 
 public class GcsCredentialRenewalTest extends BaseCRUDTest {
 
+  // Name of the manual clock used to drive the credential renewal specific to GCS Credential Renewal integration tests.
+  // Clocks need a new name for each test class to avoid conflicts.
   private static final String CLOCK_NAME = GcsCredentialRenewalTest.class.getSimpleName();
   private static final String CATALOG_NAME = "CredRenewalCatalog";
   private static final String SCHEMA_NAME = "Default";
@@ -52,17 +54,27 @@ public class GcsCredentialRenewalTest extends BaseCRUDTest {
   private static final String BUCKET_NAME = "test-bucket";
   private static final String GCS_SCHEME = "gs:";
   private static final String GCS_TEST_TOKEN_PREFIX = "testing-renew://";
+  // Default interval for credential renewal is 30 seconds. (issue a new credential every 30 seconds for tests)
   private static final long DEFAULT_INTERVAL_MILLIS = 30_000L;
 
   @TempDir private File dataDir;
   private SparkSession session;
   private SdkSchemaOperations schemaOperations;
 
+  /**
+   * Create an SDK client aimed at the embedded server so catalog CRUD uses the full REST stack.
+   * This keeps the integration realistic, with HTTP serialization and auth headers applied.
+   */
   @Override
   protected CatalogOperations createCatalogOperations(ServerConfig serverConfig) {
     return new SdkCatalogOperations(createApiClient(serverConfig));
   }
 
+  /**
+   * Use the `testing-renew` prefix so the server emits clock-synchronized OAuth tokens.
+   * The clock name is embedded so server and Spark reference the same ManualClock instance.
+   * Bucket assignment ensures only the targeted test bucket receives these test-specific tokens.
+   */
   @Override
   protected void setUpProperties() {
     super.setUpProperties();
@@ -71,6 +83,11 @@ public class GcsCredentialRenewalTest extends BaseCRUDTest {
         "gcs.jsonKeyFilePath.0", GCS_TEST_TOKEN_PREFIX + CLOCK_NAME + "/" + BUCKET_NAME);
   }
 
+  /**
+   * Build a Spark session that shares the manual clock with the server.
+   * Renewal lead time is disabled so the test can control exactly when refreshes occur.
+   * Hadoop config registers the GCS-specific filesystem wrapper for token introspection.
+   */
   private SparkSession createSparkSession() {
     String testCatalogKey = String.format("spark.sql.catalog.%s", CATALOG_NAME);
     return SparkSession.builder()
@@ -136,6 +153,15 @@ public class GcsCredentialRenewalTest extends BaseCRUDTest {
     return Clock.getManualClock(CLOCK_NAME);
   }
 
+  /**
+   * Parallels AwsCredentialRenewalTest#testFileSystemRenewal, but exercises the GCS provider and
+   * asserts each manual-clock tick yields a new OAuth token.
+   * 
+   * <p> Repeatedly hit the filesystem around manual-clock sleeps and watch the token set grow.
+   * The first call seeds the set, and every subsequent sleep should add exactly one value.
+   * Serializing the Delta table configuration mimics executor startup in real workloads.
+   * Any mismatch in renewal count would reveal stale-token usage within the provider path.
+   */
   @Test
   public void testFileSystemRenewal() throws Exception {
     String location = String.format("gs://%s%s/fs", BUCKET_NAME, dataDir.getCanonicalPath());
@@ -178,6 +204,12 @@ public class GcsCredentialRenewalTest extends BaseCRUDTest {
         .isEqualTo(ImmutableList.of(10));
   }
 
+  /**
+   * Drive a full Delta read-transform-write cycle while advancing the manual clock per partition.
+   * The sleep occurs inside mapPartitions so renewals happen during active task execution.
+   * Successful completion shows that refreshes coexist with continuous reader and writer IO.
+   * The final SELECT asserts data integrity after all renewal events have occurred.
+   */
   @Test
   public void testDeltaReadWriteRenewal() throws Exception {
     String srcLoc = String.format("gs://%s%s/src", BUCKET_NAME, dataDir.getCanonicalPath());
@@ -218,8 +250,11 @@ public class GcsCredentialRenewalTest extends BaseCRUDTest {
     return session.sql(String.format(statement, args)).collectAsList();
   }
 
+  /**
+   * Test filesystem that proxies real GCS access while capturing distinct OAuth tokens.
+   * Observed tokens are stored in a set so duplicates do not inflate the renewal counter.
+   */
   public static class GcsCredFileSystem extends CredentialTestFileSystem {
-
     private final Set<String> observedTokens = new HashSet<>();
     private final AtomicReference<AccessTokenProvider> providerRef = new AtomicReference<>();
 
@@ -228,6 +263,12 @@ public class GcsCredentialRenewalTest extends BaseCRUDTest {
       return GCS_SCHEME;
     }
 
+    /**
+     * Filter events so only the configured test bucket records token usage.
+     * This keeps unrelated filesystem calls from polluting the observed token set.
+     * Each qualifying access fetches the provider and captures its current OAuth token value.
+     * Accumulated tokens later drive renewalCount(), which powers the assertions in the test methods.
+     */
     @Override
     protected void checkCredentials(Path f) {
       String host = f.toUri().getHost();
@@ -246,6 +287,12 @@ public class GcsCredentialRenewalTest extends BaseCRUDTest {
       return Math.max(0, observedTokens.size() - 1);
     }
 
+    /**
+     * Cache the provider to avoid reconstructing it on every filesystem call.
+     * First, attempt an unsynchronized read for the fast path; return if available.
+     * If absent, synchronize and perform reflective instantiation of the configured provider.
+     * Newly created providers inherit the Hadoop configuration before being stored for reuse.
+     */
     private AccessTokenProvider accessProvider() {
       AccessTokenProvider existing = providerRef.get();
       if (existing != null) {
