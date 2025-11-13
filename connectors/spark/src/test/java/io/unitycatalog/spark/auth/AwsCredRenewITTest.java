@@ -12,7 +12,7 @@ import software.amazon.awssdk.services.sts.model.Credentials;
 
 public class AwsCredRenewITTest extends BaseCredRenewITTest {
   private static final String SCHEME = "s3";
-  private static final String CREDENTIALS_GENERATOR_CLASS = AwsCredentialsProvider.class.getName();
+  private static final String CREDENTIALS_GENERATOR_CLASS = AwsCredGenerator.class.getName();
 
   @Override
   protected void setUpProperties() {
