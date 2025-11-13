@@ -45,15 +45,21 @@ public class GcpCredentialVendor {
 
   public static final List<String> INITIAL_SCOPES =
       List.of("https://www.googleapis.com/auth/cloud-platform");
+  /** Prefix for static test tokens issued by the embedded server. */
   private static final String TEST_STATIC_PREFIX = "testing://";
+  /** Prefix for renewable test tokens keyed by clock name plus bucket. */
   private static final String TEST_RENEW_PREFIX = "testing-renew://";
+  /** Renewal cadence for synthetic tokens, matches the integration tests. */
   private static final long TEST_RENEW_INTERVAL_MILLIS = 30_000L;
 
   private final Map<String, GcsStorageConfig> gcsConfigurations;
   private final Map<String, GcpCredentialsGenerator> credentialGenerators =
       new ConcurrentHashMap<>();
 
-  /** Pluggable contract mirroring the AWS credentials generator. */
+  /**
+   * Pluggable contract for generating GCS OAuth tokens. This is used to allow for custom credential
+   * generation for local integration tests.
+   */
   public interface GcpCredentialsGenerator {
     AccessToken generate(CredentialContext context);
   }
@@ -66,12 +72,14 @@ public class GcpCredentialVendor {
     String storageBase = credentialContext.getStorageBase();
     GcsStorageConfig storageConfig = gcsConfigurations.get(storageBase);
 
+    // Cache a generator per bucket so repeated requests reuse the same credential strategy.
     GcpCredentialsGenerator generator =
         credentialGenerators.computeIfAbsent(
             storageBase, key -> createGenerator(key, storageConfig));
     return generator.generate(credentialContext);
   }
 
+  // Resolve user-provided generators first, otherwise fall back to built-in options.
   private GcpCredentialsGenerator createGenerator(
       String storageBase, GcsStorageConfig storageConfig) {
     if (storageConfig != null) {
@@ -93,13 +101,16 @@ public class GcpCredentialVendor {
     }
 
     if (jsonKeyFilePath != null && jsonKeyFilePath.startsWith(TEST_RENEW_PREFIX)) {
+      // testing-renew loads a clock-aware generator that emits short-lived tokens.
       return new TestingRenewalCredentialsGenerator(jsonKeyFilePath, storageBase);
     }
 
     if (jsonKeyFilePath != null && jsonKeyFilePath.startsWith(TEST_STATIC_PREFIX)) {
+      // testing:// maps to a single token that never expires, used for simple flows.
       return new StaticTestingCredentialsGenerator(jsonKeyFilePath);
     }
 
+    // Default behavior: produce service-account derived tokens for real deployments.
     return new ServiceAccountCredentialsGenerator(jsonKeyFilePath);
   }
 
@@ -113,6 +124,7 @@ public class GcpCredentialVendor {
           Method nowMethod = manualClock.getClass().getMethod("now");
           Object instant = nowMethod.invoke(manualClock);
           if (instant instanceof Instant) {
+            // Use the manual clock if Spark injected one so tests can drive expiry.
             return ((Instant) instant).toEpochMilli();
           }
         }
@@ -124,6 +136,7 @@ public class GcpCredentialVendor {
   }
 
   private static long alignToInterval(long millis) {
+    // Snap the timestamp to the start of the renewal window for deterministic tokens.
     return Math.floorDiv(millis, TEST_RENEW_INTERVAL_MILLIS) * TEST_RENEW_INTERVAL_MILLIS;
   }
 
@@ -183,10 +196,16 @@ public class GcpCredentialVendor {
     return List.of();
   }
 
+  /**
+   * Generates access tokens by loading service-account JSON when specified, or by falling back to
+   * Google application-default credentials. Tokens are then downscoped to the caller’s bucket
+   * privileges, matching the production flow used outside of tests.
+   */
   private final class ServiceAccountCredentialsGenerator implements GcpCredentialsGenerator {
     private final String jsonKeyFilePath;
 
     private ServiceAccountCredentialsGenerator(String jsonKeyFilePath) {
+      // Retain the optional service-account path so we can load explicit keys when present.
       this.jsonKeyFilePath = jsonKeyFilePath;
     }
 
@@ -195,9 +214,11 @@ public class GcpCredentialVendor {
       try {
         GoogleCredentials creds;
         if (jsonKeyFilePath != null && !jsonKeyFilePath.isEmpty()) {
+          // Local files leverage the Iceberg helper to load service-account JSON.
           creds =
               ServiceAccountCredentials.fromStream(Files.localInput(jsonKeyFilePath).newStream());
         } else {
+          // Otherwise fall back to GCP default credentials configured on the host.
           creds = GoogleCredentials.getApplicationDefault();
         }
         return downscopeGcpCreds(creds.createScoped(INITIAL_SCOPES), context).refreshAccessToken();
@@ -207,10 +228,16 @@ public class GcpCredentialVendor {
     }
   }
 
+  /**
+   * Returns a fixed, non-expiring access token for {@code testing://} scenarios. This allows local
+   * integration tests to validate plumbing and downscoping without exercising refresh logic or
+   * service-account IO.
+   */
   private static final class StaticTestingCredentialsGenerator implements GcpCredentialsGenerator {
     private final AccessToken staticToken;
 
     private StaticTestingCredentialsGenerator(String value) {
+      // Bake the provided value into an effectively non-expiring AccessToken instance.
       this.staticToken =
           AccessToken.newBuilder()
               .setTokenValue(value)
@@ -224,11 +251,17 @@ public class GcpCredentialVendor {
     }
   }
 
+  /**
+   * Issues short-lived tokens for {@code testing-renew://} buckets. Each token encodes the active
+   * renewal window and bucket hint so tests can assert rotation frequency while staying within the
+   * same generator abstraction used in production.
+   */
   private static final class TestingRenewalCredentialsGenerator implements GcpCredentialsGenerator {
     private final String clockName;
     private final String bucketHint;
 
     private TestingRenewalCredentialsGenerator(String spec, String defaultBucket) {
+      // Parse "clock/bucket" components so tests can override renewal timing and bucket labeling.
       String payload = spec.substring(TEST_RENEW_PREFIX.length());
       String localClock = null;
       String localBucket = payload;
@@ -251,6 +284,7 @@ public class GcpCredentialVendor {
       Instant expiration = Instant.ofEpochMilli(windowStart + TEST_RENEW_INTERVAL_MILLIS);
       String bucketComponent =
           bucketHint == null || bucketHint.isEmpty() ? context.getStorageBase() : bucketHint;
+      // Token embeds bucket plus renewal window so the filesystem can verify rotation.
       String tokenValue = format("%s%s#%d", TEST_RENEW_PREFIX, bucketComponent, windowStart);
       return AccessToken.newBuilder()
           .setTokenValue(tokenValue)

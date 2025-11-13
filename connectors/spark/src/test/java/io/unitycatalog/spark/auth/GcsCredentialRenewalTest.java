@@ -207,7 +207,6 @@ public class GcsCredentialRenewalTest extends BaseCRUDTest {
   /**
    * Drive a full Delta read-transform-write cycle while advancing the manual clock per partition.
    * The sleep occurs inside mapPartitions so renewals happen during active task execution.
-   * Successful completion shows that refreshes coexist with continuous reader and writer IO.
    * The final SELECT asserts data integrity after all renewal events have occurred.
    */
   @Test
@@ -251,7 +250,7 @@ public class GcsCredentialRenewalTest extends BaseCRUDTest {
   }
 
   /**
-   * Test filesystem that proxies real GCS access while capturing distinct OAuth tokens.
+   * Test filesystem that mimics real GCS access while capturing distinct OAuth tokens.
    * Observed tokens are stored in a set so duplicates do not inflate the renewal counter.
    */
   public static class GcsCredFileSystem extends CredentialTestFileSystem {
@@ -290,8 +289,8 @@ public class GcsCredentialRenewalTest extends BaseCRUDTest {
     /**
      * Cache the provider to avoid reconstructing it on every filesystem call.
      * First, attempt an unsynchronized read for the fast path; return if available.
-     * If absent, synchronize and perform reflective instantiation of the configured provider.
-     * Newly created providers inherit the Hadoop configuration before being stored for reuse.
+     * If absent, synchronize and instantiate the configured provider.
+     * The provider is instantiated with the Hadoop configuration.
      */
     private AccessTokenProvider accessProvider() {
       AccessTokenProvider existing = providerRef.get();
