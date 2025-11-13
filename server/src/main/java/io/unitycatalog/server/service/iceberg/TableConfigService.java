@@ -76,7 +76,10 @@ public class TableConfigService {
         S3FileIOProperties.ACCESS_KEY_ID, awsCredential.accessKeyId(),
         S3FileIOProperties.SECRET_ACCESS_KEY, awsCredential.secretAccessKey(),
         S3FileIOProperties.SESSION_TOKEN, awsCredential.sessionToken(),
-        AwsClientProperties.CLIENT_REGION, s3StorageConfig.getRegion());
+        AwsClientProperties.CLIENT_REGION, s3StorageConfig.getRegion(),
+        S3FileIOProperties.ENDPOINT, s3StorageConfig.getEndpointUrl()
+    );
+
   }
 }
 
