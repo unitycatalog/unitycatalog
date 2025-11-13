@@ -12,6 +12,7 @@ import io.unitycatalog.server.service.credential.aws.S3StorageConfig;
 import io.unitycatalog.server.service.credential.azure.ADLSStorageConfig;
 import io.unitycatalog.server.service.credential.azure.AzureCredentialVendor;
 import io.unitycatalog.server.service.credential.gcp.GcpCredentialVendor;
+import io.unitycatalog.server.service.credential.gcp.GcsStorageConfig;
 import io.unitycatalog.server.utils.ServerProperties;
 import java.util.Map;
 import java.util.Set;
@@ -115,7 +116,13 @@ public class CloudCredentialVendorTest {
   public void testGenerateGcpTemporaryCredentials() {
     // Test mode used
     when(serverProperties.getGcsConfigurations())
-        .thenReturn(Map.of("gs://uctest", "testing://test"));
+        .thenReturn(
+            Map.of(
+                "gs://uctest",
+                GcsStorageConfig.builder()
+                    .bucketPath("gs://uctest")
+                    .jsonKeyFilePath("testing://test")
+                    .build()));
     GcpCredentialVendor gcpCredentialVendor = new GcpCredentialVendor(serverProperties);
     credentialsOperations = new CloudCredentialVendor(null, null, gcpCredentialVendor);
     TemporaryCredentials gcpTemporaryCredentials =
@@ -124,7 +131,11 @@ public class CloudCredentialVendorTest {
     assertThat(gcpTemporaryCredentials.getGcpOauthToken().getOauthToken()).isNotNull();
 
     // Use default creds
-    when(serverProperties.getGcsConfigurations()).thenReturn(Map.of("gs://uctest", ""));
+    when(serverProperties.getGcsConfigurations())
+        .thenReturn(
+            Map.of(
+                "gs://uctest",
+                GcsStorageConfig.builder().bucketPath("gs://uctest").jsonKeyFilePath("").build()));
     gcpCredentialVendor = new GcpCredentialVendor(serverProperties);
     credentialsOperations = new CloudCredentialVendor(null, null, gcpCredentialVendor);
     assertThatThrownBy(
