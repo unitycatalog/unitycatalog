@@ -3,11 +3,11 @@ package io.unitycatalog.server.persist;
 import io.unitycatalog.server.exception.BaseException;
 import io.unitycatalog.server.exception.ErrorCode;
 import io.unitycatalog.server.model.ColumnInfos;
-import io.unitycatalog.server.model.Commit;
-import io.unitycatalog.server.model.CommitInfo;
-import io.unitycatalog.server.model.CommitMetadataProperties;
 import io.unitycatalog.server.model.DataSourceFormat;
-import io.unitycatalog.server.model.Metadata;
+import io.unitycatalog.server.model.DeltaCommit;
+import io.unitycatalog.server.model.DeltaCommitInfo;
+import io.unitycatalog.server.model.DeltaCommitMetadataProperties;
+import io.unitycatalog.server.model.DeltaMetadata;
 import io.unitycatalog.server.model.TableType;
 import io.unitycatalog.server.persist.dao.DeltaCommitDAO;
 import io.unitycatalog.server.persist.dao.TableInfoDAO;
@@ -37,7 +37,7 @@ public class DeltaCommitRepository {
   }
 
   /** Commits a new version to a managed Delta table with coordinated commit semantics. */
-  public void postCommit(Commit commit) {
+  public void postCommit(DeltaCommit commit) {
     serverProperties.checkManagedTableEnabled();
     validateCommit(commit);
     TransactionManager.executeWithTransaction(
@@ -78,12 +78,12 @@ public class DeltaCommitRepository {
    * this commit.
    */
   private static void handleOnboardingCommit(
-      Session session, UUID tableId, TableInfoDAO tableInfoDAO, Commit commit) {
-    CommitInfo commitInfo = commit.getCommitInfo();
+      Session session, UUID tableId, TableInfoDAO tableInfoDAO, DeltaCommit commit) {
+    DeltaCommitInfo commitInfo = commit.getCommitInfo();
     ValidationUtils.checkArgument(
         commitInfo != null,
         "Field can not be null: %s in onboarding commit",
-        Commit.JSON_PROPERTY_COMMIT_INFO);
+        DeltaCommit.JSON_PROPERTY_COMMIT_INFO);
     saveCommit(session, tableId, commitInfo);
     // TODO: update table metadata
   }
@@ -93,8 +93,8 @@ public class DeltaCommitRepository {
    * Optionally in the same commit it may also report backfilled version and/or update metadata.
    */
   private static void handleNormalCommit(
-      Session session, UUID tableId, Commit commit, DeltaCommitDAO lastCommit) {
-    CommitInfo commitInfo = Objects.requireNonNull(commit.getCommitInfo());
+      Session session, UUID tableId, DeltaCommit commit, DeltaCommitDAO lastCommit) {
+    DeltaCommitInfo commitInfo = Objects.requireNonNull(commit.getCommitInfo());
     long lastCommitVersion = lastCommit.getCommitVersion();
     long newCommitVersion = commitInfo.getVersion();
     if (newCommitVersion <= lastCommitVersion) {
@@ -114,7 +114,7 @@ public class DeltaCommitRepository {
     // TODO: update table metadata
   }
 
-  private static void saveCommit(Session session, UUID tableId, CommitInfo commitInfo) {
+  private static void saveCommit(Session session, UUID tableId, DeltaCommitInfo commitInfo) {
     DeltaCommitDAO deltaCommitDAO = DeltaCommitDAO.from(tableId, commitInfo);
     session.persist(deltaCommitDAO);
   }
@@ -122,10 +122,10 @@ public class DeltaCommitRepository {
   private List<DeltaCommitDAO> getFirstAndLastCommits(Session session, UUID tableId) {
     // Use native SQL to get the first and last commits since HQL doesn't support UNION ALL
     String sql =
-        "(SELECT * FROM uc_commits WHERE table_id = :tableId "
+        "(SELECT * FROM uc_delta_commits WHERE table_id = :tableId "
             + "ORDER BY commit_version ASC LIMIT 1) "
             + "UNION ALL "
-            + "(SELECT * FROM uc_commits WHERE table_id = :tableId "
+            + "(SELECT * FROM uc_delta_commits WHERE table_id = :tableId "
             + "ORDER BY commit_version DESC LIMIT 1)";
     Query<DeltaCommitDAO> query = session.createNativeQuery(sql, DeltaCommitDAO.class);
     query.setParameter("tableId", tableId);
@@ -135,46 +135,46 @@ public class DeltaCommitRepository {
     return result;
   }
 
-  private static void validateCommit(Commit commit) {
+  private static void validateCommit(DeltaCommit commit) {
     // Validate the commit object
     ValidationUtils.checkArgument(
         commit.getTableId() != null && !commit.getTableId().isEmpty(),
         "Field can not be empty: %s",
-        Commit.JSON_PROPERTY_TABLE_ID);
+        DeltaCommit.JSON_PROPERTY_TABLE_ID);
     ValidationUtils.checkArgument(
         commit.getTableUri() != null && !commit.getTableUri().isEmpty(),
         "Field can not be empty: %s",
-        Commit.JSON_PROPERTY_TABLE_URI);
+        DeltaCommit.JSON_PROPERTY_TABLE_URI);
 
     // Validate the commit info object
     if (commit.getCommitInfo() != null) {
-      CommitInfo commitInfo = commit.getCommitInfo();
+      DeltaCommitInfo commitInfo = commit.getCommitInfo();
       ValidationUtils.checkArgument(
           commitInfo.getVersion() != null && commitInfo.getVersion() > 0,
           "Field must be positive: %s",
-          CommitInfo.JSON_PROPERTY_VERSION);
+          DeltaCommitInfo.JSON_PROPERTY_VERSION);
       ValidationUtils.checkArgument(
           commitInfo.getTimestamp() != null && commitInfo.getTimestamp() > 0,
           "Field must be positive: %s",
-          CommitInfo.JSON_PROPERTY_TIMESTAMP);
+          DeltaCommitInfo.JSON_PROPERTY_TIMESTAMP);
       ValidationUtils.checkArgument(
           commitInfo.getFileName() != null && !commitInfo.getFileName().isEmpty(),
           "Field can not be empty: %s",
-          CommitInfo.JSON_PROPERTY_FILE_NAME);
+          DeltaCommitInfo.JSON_PROPERTY_FILE_NAME);
       ValidationUtils.checkArgument(
           commitInfo.getFileSize() != null && commitInfo.getFileSize() > 0,
           "Field must be positive: %s",
-          CommitInfo.JSON_PROPERTY_FILE_SIZE);
+          DeltaCommitInfo.JSON_PROPERTY_FILE_SIZE);
       ValidationUtils.checkArgument(
           commitInfo.getFileModificationTimestamp() != null
               && commitInfo.getFileModificationTimestamp() > 0,
           "Field must be positive: %s",
-          CommitInfo.JSON_PROPERTY_FILE_MODIFICATION_TIMESTAMP);
+          DeltaCommitInfo.JSON_PROPERTY_FILE_MODIFICATION_TIMESTAMP);
       if (commit.getMetadata() != null) {
-        Metadata metadata = commit.getMetadata();
+        DeltaMetadata metadata = commit.getMetadata();
         Optional<Map<String, String>> propertiesOpt =
             Optional.ofNullable(metadata.getProperties())
-                .map(CommitMetadataProperties::getProperties);
+                .map(DeltaCommitMetadataProperties::getProperties);
         boolean hasProperties = propertiesOpt.map(p -> !p.isEmpty()).orElse(false);
         boolean hasSchema =
             Optional.ofNullable(metadata.getSchema())
@@ -230,7 +230,7 @@ public class DeltaCommitRepository {
     }
   }
 
-  private static void validateTableForCommit(Commit commit, TableInfoDAO tableInfoDAO) {
+  private static void validateTableForCommit(DeltaCommit commit, TableInfoDAO tableInfoDAO) {
     validateTable(tableInfoDAO);
     ValidationUtils.checkArgument(
         FileOperations.toStandardizedURIString(commit.getTableUri())

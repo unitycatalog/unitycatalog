@@ -38,9 +38,9 @@ tags:
   - name: Metastores
     description: |
       A metastore is the top-level container of objects in Unity Catalog that stores all UC assets.
-  - name: CoordinatedCommits
+  - name: DeltaCommits
     description: |
-      "Coordinated commits" is a Delta tables feature that allows Delta tables to designate a coordinator to coordinate commits. This is Unity Catalog's API to allow Unity Catalog be the commit coordinator for managed tables. (See https://github.com/delta-io/delta/blob/master/protocol_rfcs/catalog-managed.md for more details)
+      "Delta commits" is a Delta tables feature that allows Delta tables to designate a coordinator to coordinate commits. This is Unity Catalog's API to allow Unity Catalog be the commit coordinator for managed tables. (See https://github.com/delta-io/delta/blob/master/protocol_rfcs/catalog-managed.md for more details)
 paths:
   /catalogs:
     post:
@@ -1422,60 +1422,27 @@ paths:
     get:
       operationId: getCommits
       tags:
-        - CoordinatedCommits
+        - DeltaCommits
       summary: |
         List unbackfilled Delta table commits.
         WARNING: This API is experimental and may change in future versions.
       description: |
-        List all the unbackfilled delta commits that are currently being tracked by the UC coordinator. 
-        If no commits are being tracked in the specific version range (from start_version to an optional end_version), 
+        List all the unbackfilled Delta commits that are currently being tracked by the UC coordinator.
+        If no commits are being tracked in the specific version range (from start_version to an optional end_version),
         it will return an empty list.
         WARNING: This API is experimental and may change in future versions.
-      parameters:
-        - name: table_id
-          in: query
-          description: The ID of the table to get the commits for. This ID uniquely identifies a table.
-          required: true
-          schema:
-            type: string
-        - name: table_uri
-          in: query
-          description: |
-            The URI of the storage location of the table. If the table_id exists but the table_uri is 
-            different from the one previously registered (e.g., if the client moved the table), the request will fail.
-            Example: s3://bucket-name/tables/some-table-id
-          required: true
-          schema:
-            type: string
-        - name: start_version
-          in: query
-          description: |
-            The start version from which to retrieve commits (inclusive). This along with the
-            optional end_version specifies the range of commit versions that this request wants.
-          required: true
-          schema:
-            type: integer
-            format: int64
-        - name: end_version
-          in: query
-          description: |
-            The end version upto which to retrieve commits (inclusive).
-            If not set, the latest version will be used as the end version. This does not affect the
-            latest_table_version in the response.
-            If num of commits that meet this criteria is larger than a limit set by server config,
-            the response will be limited to the first X commits. Call can send request again with a
-            larger start_version according to the response to get the remaining commits.
-          required: false
-          schema:
-            type: integer
-            format: int64
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DeltaGetCommits'
       responses:
         '200':
           description: Successful response
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/GetCommitsResponse'
+                $ref: '#/components/schemas/DeltaGetCommitsResponse'
         '400':
           description: |
             Bad request or Invalid Argument. Example: table_uri in the request doesn't match the existing table_uri for the table.
@@ -1489,9 +1456,9 @@ paths:
           description: Internal Server Error. An unexpected error occurred on the server.
     post:
       tags:
-        - CoordinatedCommits
+        - DeltaCommits
       summary: |
-        Commit changes to a specified table.
+        Commit changes to a specified Delta table.
         The server has a limit defined in config on how many unbackfilled commits it can hold.
         Clients are expected to do active backfill of the commit after committing to UC. So in
         most cases the number of unbackfilled commits should be close to zero or one. But if
@@ -1504,14 +1471,14 @@ paths:
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/Commit'
+              $ref: '#/components/schemas/DeltaCommit'
       responses:
         '200':
           description: Successful response
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/CommitResponse'
+                $ref: '#/components/schemas/DeltaCommitResponse'
         '400':
           description: |
             Bad request or Invalid Argument. Example: Commit version is not expected (e.g., latest_table_version +1) 
@@ -2926,9 +2893,9 @@ components:
         next_page_token:
           type: string
           description: Opaque token to retrieve the next page of results. Absent if there are no more pages. __page_token__ should be set to this value for the next request (for the next page of results).
-    Commit:
+    DeltaCommit:
       type: object
-      description: Request body for committing changes to a specified table. At least one of commit_info and latest_backfilled_version must be present.
+      description: Request body for committing changes to a specified Delta table. At least one of commit_info and latest_backfilled_version must be present.
       properties:
         table_id:
           type: string
@@ -2940,7 +2907,7 @@ components:
             different from the one previously registered (e.g., if the client moved the table), the request will fail.
             Example: s3://bucket-name/tables/some-table-id
         commit_info:
-          $ref: '#/components/schemas/CommitInfo'
+          $ref: '#/components/schemas/DeltaCommitInfo'
         latest_backfilled_version:
           type: integer
           format: int64
@@ -2948,11 +2915,11 @@ components:
             The highest version of the commits that have been backfilled for this table; meaning UC no longer 
             needs to keep track of commits of versions <= this version.
         metadata:
-          $ref: '#/components/schemas/Metadata'
+          $ref: '#/components/schemas/DeltaMetadata'
       required:
         - table_id
         - table_uri
-    Metadata:
+    DeltaMetadata:
       description: Represents a Delta metadata action (see https://github.com/delta-io/delta/blob/master/PROTOCOL.md#change-metadata for more information).
       properties:
         description:
@@ -2961,9 +2928,9 @@ components:
         schema:
           $ref: '#/components/schemas/ColumnInfos'
         properties:
-          $ref: '#/components/schemas/CommitMetadataProperties'
-    CommitMetadataProperties:
-      description: The properties of the table. Updated by UC if set.
+          $ref: '#/components/schemas/DeltaCommitMetadataProperties'
+    DeltaCommitMetadataProperties:
+      description: The properties of the Delta table. Updated by UC if set.
       type: object
       properties:
         properties:
@@ -2978,9 +2945,9 @@ components:
             $ref: '#/components/schemas/ColumnInfo'
           maxItems: 32768
           description: The array of column descriptions.
-    CommitInfo:
+    DeltaCommitInfo:
       type: object
-      description: Represents a coordinated commit version.
+      description: Represents a Delta commit version.
       properties:
         version:
           type: integer
@@ -3007,17 +2974,49 @@ components:
         - file_name
         - file_size
         - file_modification_timestamp
-    CommitResponse:
+    DeltaCommitResponse:
       type: object
       description: The response for the commit action
-    GetCommitsResponse:
+    DeltaGetCommits:
+      type: object
+      properties:
+        table_id:
+          type: string
+          description: The ID of the table to get the commits for. This ID uniquely identifies a table.
+        table_uri:
+          type: string
+          description: |
+            The URI of the storage location of the table. If the table_id exists but the table_uri is 
+            different from the one previously registered (e.g., if the client moved the table), the request will fail.
+            Example: s3://bucket-name/tables/some-table-id
+        start_version:
+          type: integer
+          format: int64
+          description: |
+            The start version from which to retrieve commits (inclusive). This along with the
+            optional end_version specifies the range of commit versions that this request wants.
+        end_version:
+          type: integer
+          format: int64
+          description: |
+            The end version upto which to retrieve commits (inclusive).
+            If not set, the latest version will be used as the end version. This does not affect the
+            latest_table_version in the response.
+            If num of commits that meet this criteria is larger than a limit set by server config,
+            the response will be limited to the first X commits. Call can send request again with a
+            larger start_version according to the response to get the remaining commits.
+      required:
+        - table_id
+        - table_uri
+        - start_version
+    DeltaGetCommitsResponse:
       type: object
       properties:
         commits:
           type: array
           description: The list of unbackfilled Delta table commits. Can be in arbitrary order.
           items:
-            $ref: '#/components/schemas/CommitInfo'
+            $ref: '#/components/schemas/DeltaCommitInfo'
         latest_table_version:
           type: integer
           format: int64
