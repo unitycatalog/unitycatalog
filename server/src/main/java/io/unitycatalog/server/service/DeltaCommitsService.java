@@ -9,7 +9,7 @@ import io.unitycatalog.server.auth.annotation.AuthorizeExpression;
 import io.unitycatalog.server.auth.annotation.AuthorizeKey;
 import io.unitycatalog.server.auth.annotation.AuthorizeKeys;
 import io.unitycatalog.server.exception.GlobalExceptionHandler;
-import io.unitycatalog.server.model.Commit;
+import io.unitycatalog.server.model.DeltaCommit;
 import io.unitycatalog.server.persist.DeltaCommitRepository;
 import io.unitycatalog.server.persist.Repositories;
 import lombok.SneakyThrows;
@@ -40,7 +40,7 @@ public class DeltaCommitsService extends AuthorizedService {
   @AuthorizeKey(METASTORE)
   public HttpResponse postCommit(
       @AuthorizeKeys({@AuthorizeKey(value = TABLE, key = "table_id")})
-      Commit commit) {
+      DeltaCommit commit) {
     deltaCommitRepository.postCommit(commit);
     return HttpResponse.of(HttpStatus.OK);
   }

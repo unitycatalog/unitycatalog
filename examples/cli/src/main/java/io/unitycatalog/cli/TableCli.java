@@ -117,13 +117,13 @@ public class TableCli {
       //             .url(storageLocation)
       //             .operation(PathOperation.PATH_CREATE_TABLE));
     } else if (createTable.getTableType() == TableType.MANAGED) {
-      // handle delta managed tables
+      // handle Delta managed tables
       if (json.has(CliParams.STORAGE_LOCATION.getServerParam())) {
         throw new CliException("Storage location is not allowed for managed tables");
       }
-      // Create staging table if format is delta
+      // Create staging table if format is Delta
       if (!DataSourceFormat.DELTA.name().equals(format.toUpperCase())) {
-        throw new CliException("Only delta tables are supported for managed tables: " + format);
+        throw new CliException("Only Delta tables are supported for managed tables: " + format);
       }
       CreateStagingTable createStagingTable =
           new CreateStagingTable()
@@ -146,7 +146,7 @@ public class TableCli {
       throw new CliException("Unknown table type: " + createTable.getTableType());
     }
 
-    // try and initialize the directory and initiate delta log at the location
+    // try and initialize the directory and initiate Delta log at the location
     try {
       DeltaKernelUtils.createDeltaTable(
           createTable.getStorageLocation(), columnInfoList, temporaryCredentials);
@@ -155,14 +155,14 @@ public class TableCli {
               || e.getCause() instanceof TableAlreadyExistsException)
           && createTable.getTableType() == TableType.EXTERNAL) {
         // A common pattern is that many tests would test the failure cases of table creation. But
-        // they often leave the delta table on disk after failing to register a table in UC. Then
+        // they often leave the Delta table on disk after failing to register a table in UC. Then
         // they retry the table creation on the same location. This would allow those tests to
         // continue. This will only happen to external tables as managed tables would have a unique
         // new location allocated by UC.
         // TODO confirm the schema of the existing table matches the schema of the new table
       } else {
         throw new CliException(
-            "Failed to create delta table at " + createTable.getStorageLocation(), e);
+            "Failed to create Delta table at " + createTable.getStorageLocation(), e);
       }
     }
 
@@ -210,7 +210,7 @@ public class TableCli {
             /* readStreamingTableAsManaged = */ true,
             /* readMaterializedViewAsManaged = */ true);
     if (!DataSourceFormat.DELTA.equals(info.getDataSourceFormat())) {
-      throw new CliException("Only delta tables are supported for read operations");
+      throw new CliException("Only Delta tables are supported for read operations");
     }
     String tableId = info.getTableId();
     int maxResults = 100;
@@ -226,7 +226,7 @@ public class TableCli {
       return DeltaKernelUtils.readDeltaTable(
           info.getStorageLocation(), temporaryCredentials, maxResults);
     } catch (Exception e) {
-      throw new CliException("Failed to read delta table " + info.getStorageLocation(), e);
+      throw new CliException("Failed to read Delta table " + info.getStorageLocation(), e);
     }
   }
 
@@ -240,7 +240,7 @@ public class TableCli {
             /* readStreamingTableAsManaged = */ true,
             /* readMaterializedViewAsManaged = */ true);
     if (!DataSourceFormat.DELTA.equals(info.getDataSourceFormat())) {
-      throw new CliException("Only delta tables are supported for write operations");
+      throw new CliException("Only Delta tables are supported for write operations");
     }
     String tableId = info.getTableId();
     try {

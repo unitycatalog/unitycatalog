@@ -21,7 +21,7 @@ import org.slf4j.LoggerFactory;
 
 /**
  * Utility class to create and read Delta tables. The create method creates a Delta table with the
- * given schema at the given path. The create method just initializes the delta log and does not
+ * given schema at the given path. The create method just initializes the Delta log and does not
  * write any data to the table. The read method reads the data from the Delta table The code has
  * evolved from examples provided in <a
  * href="https://github.com/delta-io/delta/tree/master/kernel/examples/kernel-examples/src/main/java/io/delta/kernel/examples">Delta
@@ -127,7 +127,7 @@ public class DeltaKernelUtils {
       }
       return at.render();
     } catch (Exception e) {
-      throw new IllegalArgumentException("Failed to read delta table", e);
+      throw new IllegalArgumentException("Failed to read Delta table", e);
     }
   }
 
