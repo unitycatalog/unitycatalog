@@ -95,6 +95,17 @@ public class GcpCredentialVendor {
       }
     }
 
+    // Here the switch between the different credential generators is done. We either use
+    // a service account credentials generator, a static testing credentials generator, or a
+    // testing renewal credentials generator.
+    //
+    // <p>The service account credentials generator is used when a json key file path is provided.
+    //   - This is the default behavior for production deployments.
+    // <p>The static testing credentials generator is used when the json key file path starts with
+    // "testing://". With `testing://<value>`, the string after the prefix is used as the token
+    // value.
+    // <p>The testing renewal credentials generator is used when the json key file path starts with
+    // "testing-renew://".
     String jsonKeyFilePath = storageConfig != null ? storageConfig.getJsonKeyFilePath() : null;
     if (jsonKeyFilePath != null && jsonKeyFilePath.isEmpty()) {
       jsonKeyFilePath = null;
@@ -241,7 +252,7 @@ public class GcpCredentialVendor {
       this.staticToken =
           AccessToken.newBuilder()
               .setTokenValue(value)
-              .setExpirationTime(Date.from(Instant.ofEpochMilli(253370790000000L)))
+              .setExpirationTime(Date.from(Instant.ofEpochMilli(Long.MAX_VALUE)))
               .build();
     }
 
